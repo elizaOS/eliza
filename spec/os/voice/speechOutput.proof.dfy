@@ -30,6 +30,7 @@ lemma focusChanged_ensures(s: SpeechOutput, change: FocusChange)
   ensures (inv(s) ==> canFocusChanged(s, change) ==> alwaysOnlyTheOwnerIsOpen(focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> alwaysWorkerIdsAreUnique(focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> alwaysNoSpeechDuringCall(focusChanged(s, change).state))
+  ensures (inv(s) ==> canFocusChanged(s, change) ==> alwaysSpeakingHasPositiveUtteranceId(focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> stepRetiredWorkerNeverStartsPlaying(s, focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> stepNoWriteAfterRetireOrTimeout(s, focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> stepOutputReleasedOnce(s, focusChanged(s, change).state))
@@ -47,6 +48,7 @@ lemma writeSpeech_ensures(s: SpeechOutput)
   ensures (inv(s) ==> canWriteSpeech(s) ==> alwaysOnlyTheOwnerIsOpen(writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> alwaysWorkerIdsAreUnique(writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> alwaysNoSpeechDuringCall(writeSpeech(s).state))
+  ensures (inv(s) ==> canWriteSpeech(s) ==> alwaysSpeakingHasPositiveUtteranceId(writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> stepRetiredWorkerNeverStartsPlaying(s, writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> stepNoWriteAfterRetireOrTimeout(s, writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> stepOutputReleasedOnce(s, writeSpeech(s).state))
@@ -57,11 +59,16 @@ lemma writeSpeech_ensures(s: SpeechOutput)
   if inv(s) && canWriteSpeech(s) {
     UnchangedWorkersKeepPhaseRules(s, writeSpeech(s).state);
     assert s.speech.Speaking?;
-    if s.speech.written == 0 {
-      assert writeSpeech(s).out == [FirstAudio(s.speech.utteranceId)];
+    assert s.speech.utteranceId > 0;
+    var after := writeSpeech(s);
+    if writtenOf(s.speech) == 0 {
+      var notice := FirstAudio(s.speech.utteranceId);
+      assert notice in after.out && isFirstAudio(notice);
+      assert exists n :: n in after.out && isFirstAudio(n);
     } else {
-      assert writeSpeech(s).out == [];
+      assert after.out == [];
     }
+    assert stepFirstAudioReportedOnce(s, "writeSpeech", after.state, after.out);
   }
 }
 
@@ -70,6 +77,7 @@ lemma endSpeech_ensures(s: SpeechOutput)
   ensures (inv(s) ==> canEndSpeech(s) ==> alwaysOnlyTheOwnerIsOpen(endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> alwaysWorkerIdsAreUnique(endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> alwaysNoSpeechDuringCall(endSpeech(s).state))
+  ensures (inv(s) ==> canEndSpeech(s) ==> alwaysSpeakingHasPositiveUtteranceId(endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> stepRetiredWorkerNeverStartsPlaying(s, endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> stepNoWriteAfterRetireOrTimeout(s, endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> stepOutputReleasedOnce(s, endSpeech(s).state))
@@ -87,6 +95,7 @@ lemma cancelSpeech_ensures(s: SpeechOutput)
   ensures (inv(s) ==> canCancelSpeech(s) ==> alwaysOnlyTheOwnerIsOpen(cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> alwaysWorkerIdsAreUnique(cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> alwaysNoSpeechDuringCall(cancelSpeech(s).state))
+  ensures (inv(s) ==> canCancelSpeech(s) ==> alwaysSpeakingHasPositiveUtteranceId(cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> stepRetiredWorkerNeverStartsPlaying(s, cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> stepNoWriteAfterRetireOrTimeout(s, cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> stepOutputReleasedOnce(s, cancelSpeech(s).state))
@@ -155,6 +164,7 @@ lemma stopWarmup_ensures(s: SpeechOutput)
   ensures (inv(s) ==> canStopWarmup(s) ==> alwaysOnlyTheOwnerIsOpen(stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> alwaysWorkerIdsAreUnique(stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> alwaysNoSpeechDuringCall(stopWarmup(s)))
+  ensures (inv(s) ==> canStopWarmup(s) ==> alwaysSpeakingHasPositiveUtteranceId(stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> stepRetiredWorkerNeverStartsPlaying(s, stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> stepNoWriteAfterRetireOrTimeout(s, stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> stepOutputReleasedOnce(s, stopWarmup(s)))
@@ -210,6 +220,7 @@ lemma releaseWarmup_ensures(s: SpeechOutput, id: int)
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysOnlyTheOwnerIsOpen(releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysWorkerIdsAreUnique(releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysNoSpeechDuringCall(releaseWarmup(s, id)))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysSpeakingHasPositiveUtteranceId(releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepRetiredWorkerNeverStartsPlaying(s, releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepNoWriteAfterRetireOrTimeout(s, releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepOutputReleasedOnce(s, releaseWarmup(s, id)))
