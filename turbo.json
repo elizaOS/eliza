@@ -112,6 +112,7 @@
       ],
       "inputs": [
         "vibestack/**",
+        "!vibestack/selftest.ts",
         "!vibestack/examples/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
         "!**/.DS_Store",
