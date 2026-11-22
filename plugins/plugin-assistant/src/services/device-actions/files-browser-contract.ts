@@ -15,6 +15,10 @@
  *   leaves the phone. A move keeps both files when the name is taken; trash is
  *   undoable from Files > Trash. A file that is no longer where the owner
  *   reviewed it is left alone.
+ * - With `files.shown-target.v1`, a share, move or trash may name its files
+ *   by `shown` positions instead of paths. The phone resolves them to paths
+ *   from the filter results on screen when it builds the review card, so the
+ *   owner reviews the actual files and no file name reaches the agent.
  * - A move or trash carries `reviewed`: the opaque storage identity of
  *   each path as the phone read it when the proposal card was built. The agent
  *   never supplies it (the coordinator replaces whatever arrives), and the phone
@@ -26,6 +30,8 @@
 import type { ActionParameterSchema } from "@elizaos/core/schema-types";
 
 export const FILES_CAPABILITY = "files.browser.v1";
+/** `files_share`, `files_move` and `files_trash` may name files by their `shown` positions. */
+export const FILES_SHOWN_TARGET_CAPABILITY = "files.shown-target.v1";
 export const FILES_OPERATION_TYPES = [
   "files_filter",
   "files_open",
@@ -69,7 +75,19 @@ export type FilesAgentOperation =
       reviewed?: FilesIdentity[];
     }
   | { type: "files_trash"; paths: string[]; reviewed?: FilesIdentity[] }
+  | FilesShownOperation
   | { type: "files_folder_create"; parent: string; name: string };
+/** A share, move or trash of filter results on screen, by position (1 is the first). The phone
+ * replaces `shown` with the paths before the owner reviews the card. */
+export type FilesShownOperation =
+  | { type: "files_share"; shown: number[] }
+  | { type: "files_move"; shown: number[]; dest: string }
+  | { type: "files_trash"; shown: number[] };
+/** Path-based operations: everything except a not yet resolved `shown` target. */
+export type FilesPathOperation = Exclude<
+  FilesAgentOperation,
+  FilesShownOperation
+>;
 
 type Row = Record<string, unknown>;
 function row(value: unknown): Row {
@@ -116,6 +134,28 @@ function paths(value: unknown): string[] {
   if (new Set(out).size !== out.length) throw Error("Duplicate files");
   return out;
 }
+function shownPositions(value: unknown): number[] {
+  if (
+    !Array.isArray(value) ||
+    !value.length ||
+    value.length > FILES_PATHS_MAX ||
+    value.some((n) => !Number.isSafeInteger(n) || (n as number) < 1)
+  )
+    throw Error("Invalid shown items");
+  if (new Set(value).size !== value.length) throw Error("Duplicate files");
+  return value.slice() as number[];
+}
+/** The positions a share, move or trash names instead of paths. */
+export function filesShownTarget(
+  op: FilesAgentOperation,
+): op is FilesShownOperation {
+  return (
+    (op.type === "files_share" ||
+      op.type === "files_move" ||
+      op.type === "files_trash") &&
+    "shown" in op
+  );
+}
 function identities(value: unknown, count: number): FilesIdentity[] {
   if (!Array.isArray(value) || value.length !== count)
     throw Error("Invalid reviewed files");
@@ -128,8 +168,11 @@ function identities(value: unknown, count: number): FilesIdentity[] {
 /** Files operations that change files the owner reviewed by identity. */
 export function filesNeedsIdentity(
   op: FilesAgentOperation,
-): op is Extract<FilesAgentOperation, { type: "files_move" | "files_trash" }> {
-  return op.type === "files_move" || op.type === "files_trash";
+): op is Extract<FilesPathOperation, { type: "files_move" | "files_trash" }> {
+  return (
+    (op.type === "files_move" || op.type === "files_trash") &&
+    !filesShownTarget(op)
+  );
 }
 function isoDate(value: unknown): string {
   if (
@@ -199,9 +242,18 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
         throw Error("Invalid shown item");
       return { type: "files_open", shown: op.shown as number };
     case "files_share":
+      if (op.shown !== undefined) {
+        exact(op, ["type", "shown"]);
+        return { type: "files_share", shown: shownPositions(op.shown) };
+      }
       exact(op, ["type", "paths"]);
       return { type: "files_share", paths: paths(op.paths) };
     case "files_trash": {
+      // A shown target never carries reviewed identities: they are bound to resolved paths.
+      if (op.shown !== undefined) {
+        exact(op, ["type", "shown"]);
+        return { type: "files_trash", shown: shownPositions(op.shown) };
+      }
       exact(op, ["type", "paths", "reviewed"]);
       const list = paths(op.paths);
       return {
@@ -213,6 +265,14 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
       };
     }
     case "files_move": {
+      if (op.shown !== undefined) {
+        exact(op, ["type", "shown", "dest"]);
+        return {
+          type: "files_move",
+          shown: shownPositions(op.shown),
+          dest: validFilesPath(op.dest, true),
+        };
+      }
       exact(op, ["type", "paths", "dest", "reviewed"]);
       const list = paths(op.paths);
       return {
@@ -246,6 +306,8 @@ const listed = (list: readonly string[]) =>
     ? list.map(baseName).join(", ")
     : `${list.slice(0, 2).map(baseName).join(", ")} and ${list.length - 2} more`;
 const count = (n: number) => (n === 1 ? "1 item" : `${n} items`);
+const shownLabel = (list: readonly number[]) =>
+  `${list.length === 1 ? "Item" : "Items"} ${list.join(", ")} in the results shown`;
 const KIND_LABELS: Record<FilesFilterKind, string> = {
   image: "Images",
   video: "Videos",
@@ -285,19 +347,29 @@ export function describeFilesOperation(op: FilesAgentOperation): {
         description: "shown" in op ? `Shown item ${op.shown}` : place(op.path),
       };
     case "files_share":
-      return {
-        title: `Share ${count(op.paths.length)}`,
-        description: listed(op.paths),
-      };
+      return "shown" in op
+        ? {
+            title: `Share ${count(op.shown.length)}`,
+            description: shownLabel(op.shown),
+          }
+        : {
+            title: `Share ${count(op.paths.length)}`,
+            description: listed(op.paths),
+          };
     case "files_trash":
-      return {
-        title: `Move ${count(op.paths.length)} to Trash`,
-        description: listed(op.paths),
-      };
+      return "shown" in op
+        ? {
+            title: `Move ${count(op.shown.length)} to Trash`,
+            description: shownLabel(op.shown),
+          }
+        : {
+            title: `Move ${count(op.paths.length)} to Trash`,
+            description: listed(op.paths),
+          };
     case "files_move":
       return {
-        title: `Move ${count(op.paths.length)}`,
-        description: `${listed(op.paths)} → ${place(op.dest)}`,
+        title: `Move ${count("shown" in op ? op.shown.length : op.paths.length)}`,
+        description: `${"shown" in op ? shownLabel(op.shown) : listed(op.paths)} → ${place(op.dest)}`,
       };
     case "files_folder_create":
       return {
@@ -324,6 +396,12 @@ const filesPaths = {
   type: "array",
   items: filesPath,
   description: "1-50 paths on Internal storage",
+} as const;
+const filesShown = {
+  type: "array",
+  items: { type: "integer", minimum: 1 },
+  description:
+    "Instead of paths: 1-50 positions of items in the files_filter results on screen; 1 is the first",
 } as const;
 /** Tool schema branches (one per operation, disjoint by `type`). */
 export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
@@ -378,6 +456,26 @@ export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
       },
     },
   },
+  // With files.shown-target.v1 only (deviceActionForCapabilities).
+  ...(["files_share", "files_trash"] as const).map((type) => ({
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "shown"],
+    properties: { type: { type: "string", enum: [type] }, shown: filesShown },
+  })),
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "shown", "dest"],
+    properties: {
+      type: { type: "string", enum: ["files_move"] },
+      shown: filesShown,
+      dest: {
+        ...filesPath,
+        description: 'Destination folder; "" is Internal storage',
+      },
+    },
+  },
   {
     type: "object",
     additionalProperties: false,
@@ -392,3 +490,6 @@ export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
     },
   },
 ];
+/** Offered with files.shown-target.v1. */
+export const FILES_SHOWN_TARGET_GUIDANCE =
+  "files_share, files_move and files_trash may also name files by shown instead of paths: the positions (1 is the first) of items in the files_filter results on screen, for example shown [1] after a filter found one file. The phone shows the owner the actual files to review.";

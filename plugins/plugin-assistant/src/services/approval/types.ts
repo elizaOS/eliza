@@ -186,6 +186,12 @@ export type ApprovalPayload =
       recurrenceScope?: "instance" | "this_and_following" | "series" | null;
       notifyAttendees?: boolean;
       editorRequestSha256?: string;
+      /**
+       * Invitee RSVP. When set, `patch` must be empty: the approved change is
+       * only the owner's own attendee response. Declines stay `cancel_event`
+       * with `cancellationMode: "decline_invitation"`.
+       */
+      invitationResponse?: "accepted" | "tentative" | null;
       patch: {
         allDay?: {
           readonly startDate: string;

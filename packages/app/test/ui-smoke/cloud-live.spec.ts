@@ -8,7 +8,9 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import {
+  type Browser,
   type BrowserContext,
   expect,
   type Locator,
@@ -49,6 +51,8 @@ import {
 import {
   cloudLiveDeployedRendererOrigin,
   openAuthenticatedStagingJoin,
+  openStagingJoin,
+  readPublicJsonDocument,
   requireStagingJoinBytes,
   STAGING_PAGES_ALIAS,
 } from "../cloud-live-deployed-target";
@@ -255,12 +259,6 @@ async function requireDeployedRendererIdentity(
   expectedOrigin = DEPLOYED_APP_ORIGIN,
 ): Promise<DeployedRendererIdentity | null> {
   if (!DEPLOYED_RENDERER_ENABLED) return null;
-  const sourceSha =
-    process.env.ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA?.trim() ?? "";
-  expect(
-    sourceSha,
-    "deployed renderer mode requires an exact source SHA",
-  ).toMatch(/^[0-9a-f]{40}$/);
   expect(new URL(page.url()).origin).toBe(expectedOrigin);
 
   const observed = await page.evaluate(async (expectedOrigin) => {
@@ -285,6 +283,19 @@ async function requireDeployedRendererIdentity(
     }
     return (await response.json()) as Record<string, unknown>;
   }, expectedOrigin);
+  return requireRendererManifest(observed, expectedOrigin);
+}
+
+function requireRendererManifest(
+  observed: Record<string, unknown>,
+  expectedOrigin: string,
+): DeployedRendererIdentity {
+  const sourceSha =
+    process.env.ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA?.trim() ?? "";
+  expect(
+    sourceSha,
+    "deployed renderer mode requires an exact source SHA",
+  ).toMatch(/^[0-9a-f]{40}$/);
   expect(Object.keys(observed).sort()).toEqual(
     [
       "assetCount",
@@ -321,12 +332,62 @@ async function requireDeployedRendererIdentity(
   };
 }
 
+async function readStagingRendererIdentity(
+  browser: Browser,
+  origin: string,
+): Promise<DeployedRendererIdentity> {
+  const publicPage = await browser.newPage({
+    serviceWorkers: "block",
+    extraHTTPHeaders: { "cache-control": "no-cache" },
+  });
+  try {
+    const manifest = await readPublicJsonDocument(
+      publicPage,
+      `${origin}/eliza-renderer-build.json`,
+    );
+    const identity = requireRendererManifest(manifest, origin);
+    await requireStagingJoinBytes(publicPage, origin, identity.indexHtmlSha256);
+    const health = await publicPage.evaluate(async (origin) => {
+      if (
+        window !== window.top ||
+        location.href !== `${origin}/eliza-renderer-build.json` ||
+        document.contentType !== "application/json"
+      ) {
+        throw new Error("Expected the top-level staging renderer manifest");
+      }
+      const url = `${origin}/api/health`;
+      const response = await fetch(url, {
+        credentials: "omit",
+        redirect: "error",
+        cache: "no-store",
+        headers: { "cache-control": "no-cache" },
+      });
+      if (
+        response.status !== 200 ||
+        response.url !== url ||
+        response.headers.get("content-type")?.split(";")[0]?.trim() !==
+          "application/json"
+      ) {
+        throw new Error(
+          "Cloud health did not come from the renderer API proxy",
+        );
+      }
+      return response.json();
+    }, origin);
+    expect(health.status).toBe("ok");
+    expect(health.environment).toBe("staging");
+    expect(health.commit).toBe(identity.commit);
+    return identity;
+  } finally {
+    await publicPage.close();
+  }
+}
+
 async function requireRendererCloudApiOrigin(
   page: Page,
   expectedApiOrigin: string,
   deployedRenderer: DeployedRendererIdentity | null,
 ): Promise<string> {
-  // Each staging renderer boots through its own first-party API proxy.
   const stagingAppOrigin = cloudLiveDeployedRendererOrigin("staging");
   const stagingRenderer =
     deployedRenderer &&
@@ -334,64 +395,68 @@ async function requireRendererCloudApiOrigin(
       deployedRenderer.origin === STAGING_PAGES_ALIAS)
       ? deployedRenderer
       : null;
-  const expectedRendererOrigin = stagingRenderer?.origin ?? expectedApiOrigin;
+  if (stagingRenderer) {
+    expect(expectedApiOrigin).toBe(
+      ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin,
+    );
+  }
+  const bridgeUrl =
+    stagingRenderer?.origin === stagingAppOrigin
+      ? new URL("/auth/bridge", ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin)
+          .href
+      : null;
   const readRendererCloudBase = () =>
-    page.evaluate(() => {
-      const config = (
-        window as unknown as {
-          __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
+    page.evaluate(
+      ({ renderer, bridgeUrl }) => {
+        if (renderer) {
+          if (window.top !== window)
+            throw new Error("Expected top-level renderer");
+          if (location.origin + location.pathname === bridgeUrl) return "";
+          if (location.origin !== renderer.origin) {
+            throw new Error("Unexpected staging renderer origin");
+          }
         }
-      ).__ELIZAOS_APP_BOOT_CONFIG__;
-      return config?.cloudApiBase ?? "";
-    });
+        const config = (
+          window as unknown as {
+            __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
+          }
+        ).__ELIZAOS_APP_BOOT_CONFIG__;
+        return config?.cloudApiBase ?? "";
+      },
+      { renderer: stagingRenderer, bridgeUrl },
+    );
   const observation = await waitForRendererCloudApiOrigin({
     readCloudBase: readRendererCloudBase,
-    expectedApiOrigin: expectedRendererOrigin,
+    ...(stagingRenderer?.origin === STAGING_PAGES_ALIAS
+      ? { mode: "same-origin", expectedApiOrigin: STAGING_PAGES_ALIAS }
+      : { mode: "direct", expectedApiOrigin }),
   });
-  if (stagingRenderer) {
-    expect(expectedApiOrigin).toBe("https://api-staging.eliza.app");
-    expect(await readRendererCloudBase()).toBe(stagingRenderer.origin);
-    const health = await page.evaluate(async (expectedOrigin) => {
-      if (window.top !== window || window.location.origin !== expectedOrigin) {
-        throw new Error(
-          "refusing Cloud health proof outside the attested origin",
-        );
-      }
-      const response = await fetch("/api/health", {
-        credentials: "omit",
-        redirect: "error",
-        cache: "no-store",
-        headers: { "cache-control": "no-cache" },
-      });
-      const responseUrl = new URL(response.url);
-      if (
-        response.status !== 200 ||
-        response.headers.get("content-type")?.split(";", 1)[0]?.trim() !==
-          "application/json" ||
-        responseUrl.origin !== expectedOrigin ||
-        responseUrl.pathname !== "/api/health" ||
-        responseUrl.search !== "" ||
-        responseUrl.hash !== ""
-      ) {
-        throw new Error(
-          "Cloud health did not come from the renderer API proxy",
-        );
-      }
-      const value = (await response.json()) as Record<string, unknown>;
-      return {
-        status: value.status,
-        commit: value.commit,
-        environment: value.environment,
-      };
-    }, stagingRenderer.origin);
-    expect(health.status).toBe("ok");
-    expect(health.commit).toBe(stagingRenderer.commit);
-    expect(health.environment).toBe("staging");
-  }
+  if (stagingRenderer)
+    expect(observation.cloudBase).toBe(stagingRenderer.origin);
   return observation.apiOrigin;
 }
 
+async function observePublicStagingJoinApiOrigin(
+  context: BrowserContext,
+  expectedApiOrigin: string,
+  renderer: DeployedRendererIdentity,
+): Promise<string> {
+  const publicPage = await context.newPage();
+  try {
+    await seedProtectedCloudBlankStart(publicPage);
+    await openStagingJoin(publicPage, renderer.origin);
+    return await requireRendererCloudApiOrigin(
+      publicPage,
+      expectedApiOrigin,
+      renderer,
+    );
+  } finally {
+    await publicPage.close();
+  }
+}
+
 async function openProtectedCloudBlankStart(
+  browser: Browser,
   page: Page,
   baseURL: string | undefined,
   expectedApiOrigin: string,
@@ -405,42 +470,42 @@ async function openProtectedCloudBlankStart(
       DEPLOYED_APP_ORIGIN,
     );
   }
-  let aliasIdentity: DeployedRendererIdentity | null = null;
+  let publicIdentity: DeployedRendererIdentity | null;
+  let publicApiOrigin: string;
   if (staging) {
-    await page.goto(`${STAGING_PAGES_ALIAS}/join`, {
-      waitUntil: "domcontentloaded",
-    });
-    aliasIdentity = await requireDeployedRendererIdentity(
-      page,
+    const aliasIdentity = await readStagingRendererIdentity(
+      browser,
       STAGING_PAGES_ALIAS,
     );
-    await requireStagingJoinBytes(
-      page,
-      STAGING_PAGES_ALIAS,
-      aliasIdentity?.indexHtmlSha256,
+    await observePublicStagingJoinApiOrigin(
+      page.context(),
+      expectedApiOrigin,
+      aliasIdentity,
     );
-    await requireRendererCloudApiOrigin(page, expectedApiOrigin, aliasIdentity);
-  }
-  await page.goto(DEPLOYED_RENDERER_ENABLED ? "/join" : "/", {
-    waitUntil: "domcontentloaded",
-  });
-  const publicIdentity = await requireDeployedRendererIdentity(page);
-  if (staging) {
-    await requireStagingJoinBytes(
-      page,
+    publicIdentity = await readStagingRendererIdentity(
+      browser,
       DEPLOYED_APP_ORIGIN,
-      publicIdentity?.indexHtmlSha256,
     );
     expect(publicIdentity).toEqual({
       ...aliasIdentity,
       origin: DEPLOYED_APP_ORIGIN,
     });
+    publicApiOrigin = await observePublicStagingJoinApiOrigin(
+      page.context(),
+      expectedApiOrigin,
+      publicIdentity,
+    );
+  } else {
+    await page.goto(DEPLOYED_RENDERER_ENABLED ? "/join" : "/", {
+      waitUntil: "domcontentloaded",
+    });
+    publicIdentity = await requireDeployedRendererIdentity(page);
+    publicApiOrigin = await requireRendererCloudApiOrigin(
+      page,
+      expectedApiOrigin,
+      publicIdentity,
+    );
   }
-  const publicApiOrigin = await requireRendererCloudApiOrigin(
-    page,
-    expectedApiOrigin,
-    publicIdentity,
-  );
   if (!DEPLOYED_RENDERER_ENABLED) {
     return {
       deployedRenderer: publicIdentity,
@@ -459,7 +524,9 @@ async function openProtectedCloudBlankStart(
     await seedVerifiedDeployedCloudBrowserAuth(page);
     await page.reload({ waitUntil: "domcontentloaded" });
   }
-  const authenticatedIdentity = await requireDeployedRendererIdentity(page);
+  const authenticatedIdentity = staging
+    ? await readStagingRendererIdentity(browser, DEPLOYED_APP_ORIGIN)
+    : await requireDeployedRendererIdentity(page);
   expect(authenticatedIdentity).toEqual(publicIdentity);
   const authenticatedApiOrigin = await requireRendererCloudApiOrigin(
     page,
@@ -940,7 +1007,12 @@ test.describe("real cloud login + personal identity + chat", () => {
 
     const primaryAudit = installNetworkAudit(context);
     const { deployedRenderer, rendererApiOrigin } =
-      await openProtectedCloudBlankStart(page, baseURL, originContract.origin);
+      await openProtectedCloudBlankStart(
+        browser,
+        page,
+        baseURL,
+        originContract.origin,
+      );
     // Dormant #18045 proof must never turn a local renderer or production run
     // into evidence merely because its opt-in flag was set. This uses the
     // verified public + authenticated renderer attestation above, not env shape.
@@ -1546,6 +1618,7 @@ test.describe("real cloud login + personal identity + chat", () => {
         freshAudit.setHistoryAnchorToken(turnAnchorToken);
         const { deployedRenderer: freshDeployedRenderer } =
           await openProtectedCloudBlankStart(
+            browser,
             freshPage,
             baseURL,
             originContract.origin,
@@ -1678,7 +1751,7 @@ test.describe("real cloud login + personal identity + chat", () => {
         await writeDeployedBrowserSmokeEvidence(
           deployedBrowserEvidencePath,
           deployedRenderer as DeployedRendererIdentity,
-          originContract.origin,
+          rendererApiOrigin,
           referenceBinding,
           chatCorrelation,
         );

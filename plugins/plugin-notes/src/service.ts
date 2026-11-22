@@ -618,12 +618,21 @@ export class NotesService extends Service {
       // logical note (replay). The Notes editor sets forceNew on each new
       // draft so the first keystroke that matches another note does not bind
       // that draft to the other note's id.
-      const existing =
-        input.forceNew || input.format
+      // A client creation id is the creation's identity: its repeat returns the
+      // note it made (still live or in Trash); a new id never binds by content.
+      const createdId =
+        input.creationId === undefined
           ? undefined
-          : distinctNotes(draft.notes, draft.noteRevisions).find(
-              (note) => !note.format && noteContentKey(note) === requestedKey,
-            );
+          : draft.noteCreations?.[input.creationId];
+      const existing =
+        createdId !== undefined
+          ? (draft.notes.find((note) => note.id === createdId) ??
+            draft.trash?.find((entry) => entry.note.id === createdId)?.note)
+          : input.forceNew || input.format || input.creationId !== undefined
+            ? undefined
+            : distinctNotes(draft.notes, draft.noteRevisions).find(
+                (note) => !note.format && noteContentKey(note) === requestedKey,
+              );
       if (existing) return { note: existing, replayed: true };
       if (draft.notes.some((note) => note.id === id)) {
         throw new ElizaError(`Notes generated duplicate note id "${id}".`, {
@@ -646,6 +655,11 @@ export class NotesService extends Service {
         ...draft.noteRevisions,
         [id]: draft.revision + 1,
       };
+      if (input.creationId !== undefined)
+        draft.noteCreations = {
+          ...draft.noteCreations,
+          [input.creationId]: id,
+        };
       return { note, replayed: false };
     }, projectNotesSnapshot);
     if (!transaction.value.replayed) {

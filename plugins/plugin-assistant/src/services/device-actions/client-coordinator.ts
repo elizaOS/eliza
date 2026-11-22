@@ -84,6 +84,7 @@ import {
   validateCalendarResult,
 } from "./calendar-contract.ts";
 import {
+  CAMERA_LIBRARY_ID_CAPABILITY,
   type CameraCaptureOperation,
   type CameraCaptureResult,
   cameraCaptureCapabilityAvailable,
@@ -108,10 +109,12 @@ import {
   describeFilesOperation,
   FILES_CAPABILITY,
   FILES_DIRECT_TYPES,
+  FILES_SHOWN_TARGET_CAPABILITY,
   type FilesAgentOperation,
   type FilesIdentity,
   filesContextAllowed,
   filesNeedsIdentity,
+  filesShownTarget,
   isFilesOperation,
   validateFilesOperation,
 } from "./files-browser-contract.ts";
@@ -146,6 +149,7 @@ import {
   NOTES_ORGANIZE_DIRECT_TYPES,
   type NotesOrganizeOperation,
   notesOrganizeContextAllowed,
+  notesRecordCapabilityAvailable,
   validateNotesOrganizeOperation,
 } from "./notes-organize-contract.ts";
 import {
@@ -612,6 +616,7 @@ export function validateDeviceOperation(
   }
   if (p.type === "create_note") {
     if (
+      Object.keys(p).some((k) => !["type", "title", "body"].includes(k)) ||
       typeof p.body !== "string" ||
       p.body.length > 32000 ||
       p.body.includes("\0")
@@ -1177,6 +1182,13 @@ export interface DeviceActionCoordinatorPorts<
     paths: string[],
     signal: AbortSignal,
   ): Promise<FilesIdentity[]>;
+  /**
+   * Resolves positions (1 is the first) in the Files filter results on screen
+   * to their paths, in order; rejects when a position shows nothing. A share,
+   * move or trash of shown items is reviewable only with it
+   * (files.shown-target.v1).
+   */
+  filesShownPaths?(shown: number[], signal: AbortSignal): Promise<string[]>;
   profile: DeviceActionClientProfile<C, R>;
 }
 type ExecutionResult = DeviceExecutionResult & {
@@ -1196,7 +1208,7 @@ export class DeviceActionCoordinator<
   private reviewSequence = 0;
   private readonly filesReviews = new Map<
     string,
-    { digest: string; identities: FilesIdentity[] }
+    { digest: string; paths?: string[]; identities?: FilesIdentity[] }
   >();
   private proposals = new Map<
     string,
@@ -1460,12 +1472,20 @@ export class DeviceActionCoordinator<
     if (isFilesOperation(op) && !this.capability(FILES_CAPABILITY))
       throw Error("Files access was not negotiated with this agent");
     if (
+      isFilesOperation(op) &&
+      filesShownTarget(op) &&
+      !this.capability(FILES_SHOWN_TARGET_CAPABILITY)
+    )
+      throw Error("Files shown items were not negotiated with this agent");
+    if (
       isNotesOrganizeOperation(op) &&
-      !this.capability(
-        op.type === "notes_list_filter"
-          ? NOTES_LIST_FILTER_CAPABILITY
-          : NOTES_ORGANIZE_CAPABILITY,
-      )
+      !(op.type === "notes_record"
+        ? notesRecordCapabilityAvailable(this.credential.capabilities)
+        : this.capability(
+            op.type === "notes_list_filter"
+              ? NOTES_LIST_FILTER_CAPABILITY
+              : NOTES_ORGANIZE_CAPABILITY,
+          ))
     )
       throw Error("Notes folders were not negotiated with this agent");
     if (
@@ -1825,40 +1845,70 @@ export class DeviceActionCoordinator<
           expiresAt: Math.max(binding?.expiresAt ?? 0, proposal.expiresAt),
         });
       }
-      // A Files move or trash binds the identity of each file as the card shows
-      // it; whatever identity the agent sent is replaced.
+      // Shown positions resolve to the paths the card then shows. A Files move
+      // or trash binds the identity of each file as the card shows it; whatever
+      // identity the agent sent is replaced.
       let reviewed = proposal;
+      const files = proposal.operation;
       if (
-        isFilesOperation(proposal.operation) &&
-        filesNeedsIdentity(proposal.operation)
+        isFilesOperation(files) &&
+        (filesShownTarget(files) || filesNeedsIdentity(files))
       ) {
-        const op = proposal.operation;
         let operation: FilesAgentOperation | undefined;
         try {
           const before = this.filesReviews.get(proposal.id);
-          const identities =
-            before?.identities ??
-            (await this.ports.filesIdentity?.(op.paths, signal));
-          assertCurrentReview();
+          // The operation on the resolved paths; a missing path or identity refuses the card.
+          const resolve = (paths?: string[]) => {
+            // One path for each position, or the card would name other files.
+            if (filesShownTarget(files) && paths?.length !== files.shown.length)
+              throw Error("Shown files were not resolved");
+            const target = validateFilesOperation(
+              filesShownTarget(files)
+                ? {
+                    ...Object.fromEntries(
+                      Object.entries(files).filter(([key]) => key !== "shown"),
+                    ),
+                    paths,
+                  }
+                : files,
+            );
+            if (filesShownTarget(target))
+              throw Error("Shown files were not resolved");
+            return target;
+          };
+          const bind = (paths?: string[], identities?: FilesIdentity[]) => {
+            const target = resolve(paths);
+            if (!filesNeedsIdentity(target)) return target;
+            if (!identities) throw Error("Files identities were not read");
+            return validateFilesOperation({ ...target, reviewed: identities });
+          };
+          let paths = before?.paths;
+          if (filesShownTarget(files) && !paths) {
+            paths = await this.ports.filesShownPaths?.(files.shown, signal);
+            assertCurrentReview();
+          }
+          let identities = before?.identities;
+          const unbound = resolve(paths);
+          if (filesNeedsIdentity(unbound) && !identities) {
+            identities = await this.ports.filesIdentity?.(
+              unbound.paths,
+              signal,
+            );
+            assertCurrentReview();
+          }
           // Once a card has been shown, a refresh must not bind its approval to replacement files.
           const recorded = this.filesReviews.get(proposal.id);
-          if (
-            identities &&
-            (!recorded || recorded.digest === proposal.digest)
-          ) {
-            operation = validateFilesOperation({
-              ...op,
-              reviewed: recorded?.identities ?? identities,
-            });
-            if (
-              !recorded &&
-              isFilesOperation(operation) &&
-              filesNeedsIdentity(operation) &&
-              operation.reviewed
-            )
+          if (!recorded || recorded.digest === proposal.digest) {
+            operation = recorded
+              ? bind(recorded.paths, recorded.identities)
+              : bind(paths, identities);
+            if (!recorded)
               this.filesReviews.set(proposal.id, {
                 digest: proposal.digest,
-                identities: operation.reviewed,
+                ...(filesShownTarget(files) ? { paths } : {}),
+                ...(filesNeedsIdentity(operation) && operation.reviewed
+                  ? { identities: operation.reviewed }
+                  : {}),
               });
           }
         } catch {
@@ -1885,7 +1935,11 @@ export class DeviceActionCoordinator<
           digest: proposal.digest,
           origin: proposal.readReplyOrigin,
         });
-      items.push({ proposalId: proposal.id, proposal: card });
+      items.push({
+        proposalId: proposal.id,
+        // A card for shown items names the files they resolved to.
+        proposal: reviewed === proposal ? card : this.card(reviewed, context),
+      });
     }
     const failures = invalid
       .filter((item) => item.pending)
@@ -2208,9 +2262,8 @@ export class DeviceActionCoordinator<
     let cameraResult: CameraCaptureResult | undefined;
     if (isCameraCapture(op)) {
       if (result.status === "succeeded")
-        cameraResult = validateCameraCaptureResult(
-          result.cameraResult,
-          operationId,
+        cameraResult = this.negotiatedCameraResult(
+          validateCameraCaptureResult(result.cameraResult, operationId),
         );
       else if (result.cameraResult !== undefined)
         throw Error("Unconfirmed camera capture cannot return a saved photo");
@@ -2327,8 +2380,9 @@ export class DeviceActionCoordinator<
       assertNotesQueryContext(context);
     if (
       isFilesOperation(reviewed.proposal.operation) &&
-      filesNeedsIdentity(reviewed.proposal.operation) &&
-      !reviewed.proposal.operation.reviewed
+      (filesShownTarget(reviewed.proposal.operation) ||
+        (filesNeedsIdentity(reviewed.proposal.operation) &&
+          !reviewed.proposal.operation.reviewed))
     )
       throw Error("Review these files again before making changes");
     const p = reviewed.proposal,
@@ -3400,10 +3454,25 @@ export class DeviceActionCoordinator<
       "No exact saved photo receipt; capture will not be repeated",
       { succeeded: true, device: true },
     );
-    return validateCameraCaptureResult(
-      entry.result?.cameraResult,
-      entry.operationId,
+    return this.negotiatedCameraResult(
+      validateCameraCaptureResult(
+        entry.result?.cameraResult,
+        entry.operationId,
+      ),
     );
+  }
+  /** An agent that did not negotiate the library id would refuse the whole receipt for it. The
+   * photo is saved either way, so only the id is left out. */
+  private negotiatedCameraResult(
+    result: CameraCaptureResult,
+  ): CameraCaptureResult {
+    if (
+      result.libraryId === undefined ||
+      this.capability(CAMERA_LIBRARY_ID_CAPABILITY)
+    )
+      return result;
+    const { libraryId: _omitted, ...receipt } = result;
+    return receipt;
   }
   private async savedMapsResult(
     p: DeviceProposal,

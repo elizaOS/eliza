@@ -158,11 +158,13 @@ import { CalendarService } from "../service/CalendarService.js";
 import { evaluateCalendarWriteAvailability } from "./conflict-detect.js";
 import type {
   CalendarActionDeps,
+  CalendarJsonModelResult,
   CalendarModelCallArgs,
   CalendarMutationApprovalResult,
   CalendarTravelBufferResult,
   CalendarTravelIntent,
 } from "./deps.js";
+import { calendarExtractionSchemaViolations } from "./extraction-conformance.js";
 import { CALENDAR_PLAN_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
 import { standaloneCalendarDeps } from "./standalone-calendar-deps.js";
 
@@ -185,13 +187,75 @@ function runLifeOpsTextModel(
   return hostDeps.runTextModel(args);
 }
 
-function runLifeOpsJsonModel<
+/**
+ * Every calendar JSON model call goes through here, whichever host supplies
+ * the model runner. When the call declares a `responseSchema`, a record that
+ * does not conform to it (see `calendarExtractionSchemaViolations`: not an
+ * object, or no declared field with a value) is not an extraction: the call is
+ * retried once with the violations named (plus the caller's `retryGuidance`),
+ * and a second nonconforming record is returned as `parsed: null` so callers
+ * report an extraction failure instead of reading missing fields as
+ * "no change". A `null` result always means the model call itself failed (no
+ * response from the provider), never a nonconforming record.
+ */
+async function runLifeOpsJsonModel<
   T extends Record<string, unknown> = Record<string, unknown>,
 >(
   args: CalendarModelCallArgs,
   hostDeps: CalendarActionDeps = standaloneCalendarDeps,
-) {
-  return hostDeps.runJsonModel<T>(args);
+  options: { retryGuidance?: string } = {},
+): Promise<CalendarJsonModelResult<T> | null> {
+  const schema = args.responseSchema;
+  const first = await hostDeps.runJsonModel<T>(args);
+  if (!schema || !first) return first;
+  const firstViolations = calendarExtractionSchemaViolations(
+    schema,
+    first.parsed,
+  );
+  if (firstViolations.length === 0) return first;
+  const retry = await hostDeps.runJsonModel<T>({
+    ...args,
+    prompt: [
+      args.prompt,
+      `The previous response did not match the response schema (${firstViolations.join("; ")}). Output one complete JSON object matching the response schema, with every field. Use null for unchanged or unknown values; never invent a value.`,
+      ...(options.retryGuidance ? [options.retryGuidance] : []),
+    ].join("\n"),
+  });
+  if (!retry) return null;
+  const retryViolations = calendarExtractionSchemaViolations(
+    schema,
+    retry.parsed,
+  );
+  if (retryViolations.length === 0) return retry;
+  args.runtime.logger?.warn?.(
+    {
+      src: args.source,
+      actionType: args.actionType,
+      violations: retryViolations,
+    },
+    "Calendar extraction did not match its response schema after one retry",
+  );
+  return { rawResponse: retry.rawResponse, parsed: null };
+}
+
+/**
+ * The extraction model call itself returned nothing (provider unavailable or
+ * failed). This is not a problem with the user's request, so it carries no
+ * rephrase coaching; nothing was read and nothing was written.
+ */
+const CALENDAR_EXTRACTION_MODEL_UNAVAILABLE =
+  "CALENDAR_EXTRACTION_MODEL_UNAVAILABLE";
+
+function calendarExtractionModelUnavailable(
+  operation: "create" | "update",
+): CalendarServiceError {
+  return new CalendarServiceError(
+    503,
+    operation === "create"
+      ? "The calendar model did not respond, so the event request was not read. No event was created. This is a service problem, not a problem with the request."
+      : "The calendar model did not respond, so the requested change was not read. No event was changed. This is a service problem, not a problem with the request.",
+    CALENDAR_EXTRACTION_MODEL_UNAVAILABLE,
+  );
 }
 
 function collectRecentConversationTexts(
@@ -1277,7 +1341,8 @@ function buildCalendarServiceErrorFallback(
     error.code === "CALENDAR_READ_DATE_CONFLICT" ||
     error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
     error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
-    error.code === "CALENDAR_TARGET_SELECTOR_INVALID"
+    error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
+    error.code === CALENDAR_EXTRACTION_MODEL_UNAVAILABLE
   ) {
     return error.message;
   }
@@ -4748,24 +4813,19 @@ async function inferCreateEventDetails(
     failureMessage: "Calendar create-event extraction model call failed",
     source: "action:calendar",
   };
-  const result = await runLifeOpsJsonModel(extraction, hostDeps);
-  let extracted = result?.parsed ?? {};
-  if (result && Object.keys(extracted).length === 0) {
-    // A provider can accept the structured request and return no fields. Recover
-    // once from the original conversation, before any write or authority checks.
-    const retry = await runLifeOpsJsonModel(
-      {
-        ...extraction,
-        prompt: `${prompt}\nThe last extraction returned no fields. Resolve the final request with its relevant previous turns and output one complete object matching the response schema. Preserve the original evidence quotes. If a required detail is still missing, return a clarification object.`,
-      },
-      hostDeps,
-    );
-    extracted = retry?.parsed ?? {};
-  }
-  if (Object.keys(extracted).length === 0) {
+  // A provider can accept the structured request and return no fields; the
+  // shared JSON runner retries a nonconforming record once from the same
+  // conversation and returns `parsed: null` if it still does not conform.
+  const result = await runLifeOpsJsonModel(extraction, hostDeps, {
+    retryGuidance:
+      "Resolve the final request with its relevant previous turns. Preserve the original evidence quotes. If a required detail is still missing, return a clarification object.",
+  });
+  if (!result) throw calendarExtractionModelUnavailable("create");
+  const extracted = result.parsed;
+  if (!extracted) {
     throw new CalendarServiceError(
       400,
-      "The generated Calendar fields were empty. Retry extraction from the complete original request. No event was created.",
+      "The generated Calendar fields did not match the creation schema (no object, or no field with a value). Retry extraction from the complete original request. No event was created.",
       "CALENDAR_CREATE_EXTRACTION_INVALID",
     );
   }
@@ -4978,8 +5038,23 @@ async function inferUpdateEventDetails(
       source: "action:calendar",
     },
     hostDeps,
+    {
+      retryGuidance:
+        "If a requested change still lacks a necessary detail, return requiresInput:true with a clarification.",
+    },
   );
-  return result?.parsed ?? {};
+  // No model response is a provider failure, not an unreadable request.
+  if (!result) throw calendarExtractionModelUnavailable("update");
+  // A nonconforming record is a failed extraction, not a request for no
+  // change: never let it fall through to the "nothing to update" path.
+  if (!result.parsed) {
+    throw new CalendarServiceError(
+      400,
+      "The generated Calendar update fields did not match the update schema (no object, or no field with a value). Retry extraction from the complete original request. No event was changed.",
+      "CALENDAR_UPDATE_EXTRACTION_INVALID",
+    );
+  }
+  return result.parsed;
 }
 
 function scoreCalendarEvent(
@@ -8538,6 +8613,7 @@ export function createCalendarActionRunner(
           // CALENDAR_SERVICE_400).
           const coachingFailure =
             error.code === "CALENDAR_CREATE_EXTRACTION_INVALID" ||
+            error.code === "CALENDAR_UPDATE_EXTRACTION_INVALID" ||
             error.code === "CALENDAR_SEARCH_FILTER_UNBOUND" ||
             error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
             error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
@@ -8561,6 +8637,7 @@ export function createCalendarActionRunner(
                 error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
                 error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
                 error.code === "CALENDAR_CREATE_EXTRACTION_INVALID" ||
+                error.code === "CALENDAR_UPDATE_EXTRACTION_INVALID" ||
                 error.code === "CALENDAR_CREATE_EVIDENCE_INVALID" ||
                 (error.status === 400 && coachingFailure),
               subaction: subaction ?? "none",
@@ -8629,6 +8706,9 @@ export function createCalendarActionRunner(
                 error.code !== "CALENDAR_ATTENDEE_ARGUMENT_INVALID" &&
                 error.code !== "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" &&
                 error.code !== "CALENDAR_CREATE_EXTRACTION_INVALID" &&
+                error.code !== "CALENDAR_UPDATE_EXTRACTION_INVALID" &&
+                // The extraction never ran, so no write was attempted.
+                error.code !== CALENDAR_EXTRACTION_MODEL_UNAVAILABLE &&
                 error.code !== "CALENDAR_CREATE_EVIDENCE_INVALID" &&
                 (subaction === "create_event" ||
                   subaction === "update_event" ||
@@ -8852,16 +8932,48 @@ export async function inferSelectedCalendarUpdate(args: {
     ...standaloneCalendarDeps,
     ...calendarHosts.get(args.runtime),
   };
-  const extracted = await inferUpdateEventDetails(
-    args.runtime,
-    args.message,
-    undefined,
-    messageText(args.message).trim(),
-    null,
-    zone,
-    deps,
-    context,
-  );
+  let extracted: Record<string, unknown>;
+  try {
+    extracted = await inferUpdateEventDetails(
+      args.runtime,
+      args.message,
+      undefined,
+      messageText(args.message).trim(),
+      null,
+      zone,
+      deps,
+      context,
+    );
+  } catch (error) {
+    args.signal.throwIfAborted();
+    // The device update runs before the action's service-error handling.
+    if (
+      error instanceof CalendarServiceError &&
+      error.code === CALENDAR_EXTRACTION_MODEL_UNAVAILABLE
+    ) {
+      // The model did not respond: say so plainly, without asking the owner
+      // to rephrase a request that was never read.
+      args.runtime.reportError("calendar:native-update", error, {
+        code: error.code,
+      });
+      return { text: error.message };
+    }
+    // A nonconforming extraction changes nothing; ask again rather than report
+    // that no change was requested.
+    if (
+      error instanceof CalendarServiceError &&
+      error.code === "CALENDAR_UPDATE_EXTRACTION_INVALID"
+    ) {
+      args.runtime.reportError("calendar:native-update", error, {
+        diagnosticOnly: true,
+        code: error.code,
+      });
+      return {
+        text: "The requested change could not be read from your request. Nothing was changed. Say the change again.",
+      };
+    }
+    throw error;
+  }
   args.signal.throwIfAborted();
   if (extracted.requiresInput === true)
     return {
@@ -8972,7 +9084,18 @@ export async function inferNativeCalendarCreate(args: {
       ].includes(error.code)
     )
       return { text: error.message };
-    // The native create runs before the action's service-error handling. Empty
+    // The native create runs before the action's service-error handling. A
+    // model that did not respond is reported as such, without rephrase coaching.
+    if (
+      error instanceof CalendarServiceError &&
+      error.code === CALENDAR_EXTRACTION_MODEL_UNAVAILABLE
+    ) {
+      args.runtime.reportError("calendar:native-create", error, {
+        code: error.code,
+      });
+      return { text: error.message };
+    }
+    // Empty
     // fields or evidence that does not match the original request refuse this
     // extraction: nothing was created, and the owner is asked again instead of
     // the planner repeating the same request.
