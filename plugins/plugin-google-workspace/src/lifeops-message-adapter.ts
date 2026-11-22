@@ -171,13 +171,20 @@ function mapGmailMessage(
   };
 }
 
+// Gmail applies from: to the next word only: `from:Alex Chen` is from:Alex
+// plus the free word Chen. Keep a sender of several words in one phrase.
+function fromToken(sender: string): string {
+  const words = sender.replace(/"/g, " ").trim().split(/\s+/);
+  return words.length > 1 ? `from:"${words.join(" ")}"` : `from:${words[0]}`;
+}
+
 function searchQuery(filters: SearchMessagesFilters): string {
   const tokens: string[] = ["in:anywhere"];
   const sender = filters.sender;
   if (sender?.identifier) {
-    tokens.push(`from:${sender.identifier}`);
+    tokens.push(fromToken(sender.identifier));
   } else if (sender?.displayName) {
-    tokens.push(`from:${sender.displayName}`);
+    tokens.push(fromToken(sender.displayName));
   }
   if (filters.content) {
     tokens.push(filters.content);
