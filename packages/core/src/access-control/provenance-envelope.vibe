@@ -10,6 +10,7 @@ import {
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
   type OwnerExclusiveDisclosureDecision,
   type OwnerExclusiveDisclosureDenial,
+  renewExpiredTrustedDeliveryAudience,
   revalidateOwnerExclusiveDisclosure,
   trustedDeliveryAudienceIsBoundToRuntime,
 } from "../security/trusted-delivery-audience.vibe"
@@ -499,6 +500,7 @@ effect function searchCanonicalConversationMemories(
 ) {
   const { deliveryMessage } = input
   const destinationRoomId = deliveryMessage.roomId
+  try renewExpiredTrustedDeliveryAudience(input.runtime, deliveryMessage)
   const deliveryTurnDenial = trustedDeliveryTurnDenial(
     input.runtime,
     deliveryMessage,
