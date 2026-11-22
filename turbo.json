@@ -149,6 +149,7 @@
       ],
       "inputs": [
         "*",
+        "!.git",
         "!*.md",
         "vibestack/**",
         "!vibestack/{examples,studio}/**",
