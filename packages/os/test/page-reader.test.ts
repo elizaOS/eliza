@@ -51,6 +51,9 @@ const digits = (prefix: string, count: number, from = 1, extra = (_: number) => 
   Array.from({ length: count }, (_, index) => `<input id="${prefix}${from + index}" aria-label="Digit ${from + index}" maxlength="1" inputmode="numeric"${extra(from + index)}>`).join("");
 const moveOn = (form: string) =>
   `<script>const boxes=[...document.querySelectorAll('#${form} input')];boxes.forEach((box,i)=>box.addEventListener('input',()=>{if(box.value.length===1&&boxes[i+1])boxes[i+1].focus()}));</script>`;
+const accountInvitation = (publicContent: string, attributes = "", extra = "", prompt = "Sign in to view and pay your bill.") =>
+  page(`<main><section ${attributes} style="height:55vh"><p>${prompt}</p><a href="/signin">Sign in</a>${extra}</section>${publicContent}</main>`);
+const publicPanel = (attributes = "") => `<section ${attributes}><h2>Public information</h2><a href="/help">Help center</a></section>`;
 const pages: Record<string, string> = {
   [`${shop}/signin`]: page(`<h1>Welcome back</h1><northfield-login></northfield-login><sealed-box></sealed-box><script>
     customElements.define("northfield-login", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<form><label>Username <input id="shadow-user" name="username"></label><label>Password <input id="shadow-pass" type="password"></label><button type="button" id="shadow-next">Next</button><p id="echo"></p></form>'; } });
@@ -67,6 +70,21 @@ const pages: Record<string, string> = {
   [`${shop}/modal-frame`]: page(`<form><label>Email <input id="email" type="email"></label><button type="button" id="details">Show details</button></form><div role="dialog" aria-modal="true" aria-label="Session" style="position:fixed;left:0;top:0;right:0;bottom:0;background:#fff">Your session is about to end.<button type="button" id="stay">Close</button></div>`),
   [`${shop}/shadow-consent`]: page(`<h1>Opening hours</h1><p>Our branches open at nine.</p><consent-layer></consent-layer><script>customElements.define("consent-layer", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<div id="cookie-banner" style="position:fixed;left:0;right:0;bottom:0;height:140px;background:#eee">We use cookies.<button type="button" id="reject">Reject all</button><button type="button" id="accept">Accept all</button></div>'; } });</script>`),
   [`${shop}/sign-on`]: page(`<h1>Online banking</h1><button type="button" id="sign-on">Sign On</button><button type="button" id="log-on">Log on</button><button type="button" id="hours">Branch hours</button>`),
+  [`${shop}/scoped-invitation`]: accountInvitation(publicPanel()),
+  [`${shop}/mixed-invitation`]: accountInvitation(publicPanel() + '<section><p>Please sign in to continue.</p><a href="/signin">Sign in to continue</a></section>'),
+  [`${shop}/overlay-invitation`]: page(`<main>${publicPanel()}<section style="position:fixed;inset:0;background:white"><p>Sign in to view your bill.</p><a href="/signin">Sign in</a></section></main>`),
+  [`${shop}/footer-only-invitation`]: accountInvitation(`<footer>${publicPanel()}</footer>`),
+  [`${shop}/disabled-invitation`]: accountInvitation(publicPanel('aria-disabled="true"')),
+  [`${shop}/hidden-invitation`]: accountInvitation(publicPanel('aria-hidden="true"')),
+  [`${shop}/placeholder-invitation`]: accountInvitation(publicPanel().replace('href="/help"', 'href="#"')),
+  [`${shop}/external-invitation`]: accountInvitation(publicPanel().replace('href="/help"', 'href="https://elsewhere.example/help"')),
+  [`${shop}/inert-invitation`]: accountInvitation(publicPanel("inert")),
+  [`${shop}/covered-invitation`]: accountInvitation(publicPanel('style="position:relative"').replace("</section>", '<div style="position:absolute;inset:0;background:white"></div></section>')),
+  [`${shop}/password-invitation`]: accountInvitation(publicPanel(), "", '<form><label>Password <input type="password"></label></form>'),
+  [`${shop}/code-invitation`]: accountInvitation(publicPanel(), "", '<label>Verification code <input autocomplete="one-time-code"></label>'),
+  [`${shop}/required-invitation`]: accountInvitation(publicPanel(), "", "<p>Please sign in to continue.</p>"),
+  [`${shop}/paywall-invitation`]: accountInvitation(publicPanel(), "", "", "Subscribe to read the full article."),
+  [`${shop}/captcha-invitation`]: accountInvitation(publicPanel(), "", "", "Confirm you are human."),
   [`${shop}/wall`]: page(`<h1>Your statements</h1><p>Statements for the last seven years are kept here, with the notices we sent about each account and the letters about changes to its terms.</p><section><p>Please sign in to continue.</p><a href="/signin">Sign in</a></section>`),
   [`${shop}/static-dialog`]: page(`<h1>Opening hours</h1><div role="dialog" aria-label="Notice">We changed our opening hours for the holidays.<button type="button" id="close-notice">Close</button></div><p>Our branches open at nine.</p>`),
   [`${shop}/absolute-wall`]: page(`<h1>Your statements</h1><p>Statements for the last seven years are kept here, with the notices we sent about each account and the letters about changes to its terms.</p><div style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,.6)"><section><p>Please sign in to continue.</p><a href="/signin">Sign in</a></section></div>`),
@@ -368,6 +386,12 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
 
   it("says a sign-in wall or a dialog written into the page, or into the site's full-page app frame, is not a layer over it, and a positioned one is", async () => {
     for (const [path, blocker] of [
+      ["/scoped-invitation", { kind: "login-wall", overlay: false, covers: "partial" }],
+      ["/overlay-invitation", { kind: "login-wall", overlay: true, covers: "viewport" }],
+      ...["footer-only", "disabled", "hidden", "placeholder", "external", "inert", "covered", "password", "code", "required"].map((fixture) =>
+        [`/${fixture}-invitation`, { kind: "login-wall", overlay: false, covers: "viewport" }] as const),
+      ["/paywall-invitation", { kind: "paywall", overlay: false, covers: "viewport" }],
+      ["/captcha-invitation", { kind: "captcha", overlay: false, covers: "viewport" }],
       ["/wall", { kind: "login-wall", overlay: false }],
       ["/fixed-shell", { kind: "login-wall", overlay: false }],
       ["/absolute-shell", { kind: "login-wall", overlay: false }],
@@ -378,6 +402,11 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
       await open(`${shop}${path}`);
       expect((await snapshot()).value.blockers, path).toEqual([expect.objectContaining(blocker)]);
     }
+    await open(`${shop}/mixed-invitation`);
+    expect((await snapshot()).value.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "login-wall", overlay: false, covers: "partial" }),
+      expect.objectContaining({ kind: "login-wall", overlay: false, covers: "viewport", text: "Please sign in to continue." }),
+    ]));
   });
 
   it("finds a dialog in a frame and a consent layer in an open root, with the controls that close them", async () => {

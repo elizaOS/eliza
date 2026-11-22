@@ -1266,6 +1266,43 @@ export function pageCommand(
         for (let text = walker.nextNode(); text; text = walker.nextNode())
           texts.push(text);
       }
+      const privateInvitation =
+        /^(?:sign|log) ?in (?:to|now to) (?:view|see|read|access|manage|pay)(?: and (?:view|see|read|access|manage|pay))? your\b/i;
+      const unavailableAncestry =
+        `${DIALOG},form,[inert],[aria-hidden=true],[aria-disabled=true]`;
+      const scopedInvitation = (root, overlay, words) => {
+        if (
+          overlay ||
+          !privateInvitation.test(words) ||
+          !root.matches("section,article,aside") ||
+          root.closest(unavailableAncestry) ||
+          queryAll(`${DIALOG},form,input,textarea,select`, root).length ||
+          /\b(?:sign|log) ?in (?:(?:now )?to (?:continue|proceed|keep reading)|(?:is )?required)\b|\byou (?:must|need to) (?:be )?(?:signed|logged) ?in\b/i.test(textOf(root))
+        )
+          return false;
+        const main = root.parentElement?.closest("main,[role=main]");
+        if (!main || main.closest(unavailableAncestry)) return false;
+        const location = root.ownerDocument.location;
+        return [...nodes.values()].some(({ node, bounds: box, scrollOnly }) => {
+          if (
+            scrollOnly ||
+            !node.matches("a[href]") ||
+            !within(main, node) ||
+            within(root, node) ||
+            node.closest(`${unavailableAncestry},header,footer,nav,[role=navigation]`) ||
+            !node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) ||
+            !node.textContent.trim() ||
+            !["http:", "https:"].includes(node.protocol) ||
+            node.origin !== location.origin ||
+            (node.pathname === location.pathname && node.search === location.search)
+          )
+            return false;
+          const region = node.closest("section,article,aside");
+          if (!region || within(region, root)) return false;
+          const hit = hitAt(box.x + box.width / 2, box.y + box.height / 2);
+          return !!hit && within(node, hit);
+        });
+      };
       const inline = new Set();
       for (const text of texts) {
         const parent = text.parentElement;
@@ -1286,16 +1323,15 @@ export function pageCommand(
           !visible(parent)
         )
           continue;
-        inline.add(kind);
         const root =
           parent.closest(
             `${DIALOG},form,section,article,aside,main,[role=main]`,
           ) ?? parent;
-        add(layerOf(root) ?? root, {
-          overlay: !!layerOf(root) || layered(root),
-          kind,
-          text: words.trim(),
-        });
+        const layer = layerOf(root);
+        const overlay = !!layer || layered(root);
+        const scoped = kind === "login-wall" && scopedInvitation(root, overlay, words.trim());
+        if (!scoped) inline.add(kind);
+        add(layer ?? root, { overlay, kind, text: words.trim(), scoped });
       }
       const result = [];
       for (const [root, found] of roots) {
@@ -1339,8 +1375,10 @@ export function pageCommand(
             root.matches("dialog:modal") ||
             !!root.querySelector("dialog:modal");
         } catch {}
-        if (modal || share(root) >= 0.5) covers = "viewport";
+        const scoped = kind === "login-wall" && found.scoped === true;
+        if (modal || (!scoped && share(root) >= 0.5)) covers = "viewport";
         else if (
+          !scoped &&
           !found.overlay &&
           kind !== "modal" &&
           kind !== "cookie-consent" &&
