@@ -217,6 +217,7 @@ import {
   TURN_SCOPE_ARG,
   trajectoryStepsToMessages,
 } from "./planner-rendering.ts";
+import { containsRenderedCardBlock } from "./rendered-card-blocks.ts";
 
 export {
   looksLikeActionEnvelopeJson,
@@ -11248,6 +11249,12 @@ function combinedVerifiedToolTextAndProse(
   // Widget payloads ([CHOICE]/[FORM] interaction blocks) are grammar the
   // client renders; appended prose would corrupt the block contract.
   if (parseInteractionBlocks(verified).blocks.length > 0) return undefined;
+  // A client-rendered card block ([MAPSCARD]{json}[/MAPSCARD]) makes the
+  // verified text the action's own presentation, not command output: fencing
+  // it shows literal ``` lines around the card's list (Pixel v620, "find
+  // coffee near the Ferry Building"). It is delivered unfenced; evaluator
+  // prose still follows, since it may answer more than the card shows.
+  const presentsCard = containsRenderedCardBlock(verified);
   const prose = modelText.trim();
   // Combining must preserve the same user-safety boundary as selecting model
   // text directly; evaluator channels can contain serialized tool invocations.
@@ -11258,7 +11265,7 @@ function combinedVerifiedToolTextAndProse(
   // can distinguish units, identifiers, or quoted source values.
   if (verified.includes(prose)) return undefined;
   const fenced =
-    verified.includes("\n") && !verified.includes("```")
+    !presentsCard && verified.includes("\n") && !verified.includes("```")
       ? `\`\`\`\n${verified}\n\`\`\``
       : verified;
   return `${fenced}\n\n${prose}`;
@@ -12602,9 +12609,15 @@ function userSafeRefusalCandidate(
 // looksLikeProgressOnlyReply classifier (services/message.ts). Single-sourced
 // HERE because message.ts imports from this module and the reverse import
 // would be a cycle. The two consumers deliberately extend it differently —
-// see PROGRESS_ONLY_ANSWER_REJECT below.
-export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN =
-  "calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will";
+// see PROGRESS_ONLY_ANSWER_REJECT below. A wait cue the acknowledgment grammar
+// speaks ("On it.", "One sec.", "Just a moment.") opens progress only as the
+// whole reply, or when one of the grammar's separators leads into more
+// progress ("One sec, let me check."). Answers that open with the same words
+// ("Just a second, your dentist is Thursday.", "One second is 1,000
+// milliseconds.", "On it — the alarm is set.") stay answers.
+const WAIT_CUE = "(?:on it|(?:one|just a) (?:sec(?:ond)?|moment))";
+const WAIT_CUE_OPENER = `${WAIT_CUE}(?=(?:[.!…]+\\s+${WAIT_CUE}){0,2}[.!…]*\\s*$|\\s*(?:,|[.!…]+|[—–:;]|\\s-)\\s*(?:let me|i(?:'|’)ll|i will|i(?:'|’)m going to|i am going to|checking|looking|pulling|digging|searching|reading|taking a look|having a look)\\b)`;
+export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN = `calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|${WAIT_CUE_OPENER}|let me|i(?:'|’)ll|i will`;
 
 // Bare opener screen (no final-answer-only extensions) for text where a
 // progress-shaped opener is disqualifying but "Okay, …" openings are
