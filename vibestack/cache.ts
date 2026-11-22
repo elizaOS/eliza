@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { gunzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import { filesUnder, sha, tokenize, writeWhole } from "./util.ts";
 import { NEEDS_DAFNY, findBin, exec, onPath, stamp } from "./run.ts";
 
@@ -406,10 +406,11 @@ async function toolchainId(root: string, stage: Stage): Promise<string> {
 export interface Memory { root: string; fresh: boolean; used: Set<string> }
 /** An entry of `.spec-cache`: JSON, compressed, since a run of the simulator says megabytes. */
 interface Entry { name: string; file: string }
+const formats = [["zst", zstdDecompressSync], ["gz", gunzipSync]] as const;
+const primaryExtension = `.${formats[0][0]}`;
 const localCache = (root: string) => path.join(root, ".spec-cache");
-const actionEntry = /^action-[a-f0-9]{24}\.json\.gz$/;
 const formalCache = new AsyncLocalStorage<{ directory: string; used: Set<string> }>();
-const sharedCache = (name: string) => actionEntry.test(name) ? formalCache.getStore() : undefined;
+const sharedCache = (name: string) => isActionEntry(name) ? formalCache.getStore() : undefined;
 const cacheFile = (root: string, name: string) => path.join(sharedCache(name)?.directory ?? localCache(root), name);
 
 export async function withFormalCache<T>(directory: string, run: () => Promise<T>): Promise<T> {
@@ -422,7 +423,7 @@ export async function withFormalCache<T>(directory: string, run: () => Promise<T
 }
 
 export async function entry(root: string, stage: Stage, key: string[]): Promise<Entry> {
-  const name = `${stage}-${sha(await toolchainId(root, stage), ...key).slice(0, 24)}.json.gz`;
+  const name = `${stage}-${sha(await toolchainId(root, stage), ...key).slice(0, 24)}.json${primaryExtension}`;
   return { name, file: cacheFile(root, name) };
 }
 /** Entries are deleted when unused for a while (see collectGarbage), so a hit says the entry is in use. */
@@ -435,26 +436,31 @@ function use(memory: Memory, name: string) {
 export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined {
   memory.used.add(name);
   if (memory.fresh) return undefined;
-  let bytes: Buffer;
-  try {
-    bytes = fs.readFileSync(file);
-  } catch {
-    return undefined;
+  const fileBase = file.slice(0, -primaryExtension.length);
+  const nameBase = name.slice(0, -primaryExtension.length);
+  for (const [extension, decompress] of formats) {
+    const stored = `${fileBase}.${extension}`;
+    let bytes: Buffer;
+    try {
+      bytes = fs.readFileSync(stored);
+    } catch {
+      continue;
+    }
+    try {
+      const value = JSON.parse(decompress(bytes).toString("utf8")) as T;
+      use(memory, `${nameBase}.${extension}`);
+      return value;
+    } catch {
+      fs.rmSync(stored, { force: true });
+    }
   }
-  try {
-    const value = JSON.parse(gunzipSync(bytes).toString("utf8")) as T;
-    use(memory, name);
-    return value;
-  } catch {
-    fs.rmSync(file, { force: true });
-    return undefined;
-  }
+  return undefined;
 }
 /** Remember `value` under an entry, unless this process cannot say which tools computed it: then the next check computes it again. */
 export function store(memory: Memory, { name, file }: Entry, value: unknown) {
   memory.used.add(name);
   if (!unsure && !checking.getStore()?.changed) {
-    writeWhole(file, gzipSync(JSON.stringify(value)));
+    writeWhole(file, zstdCompressSync(JSON.stringify(value)));
     sharedCache(name)?.used.add(name);
   }
 }
@@ -481,7 +487,8 @@ export async function remembered<T>(memory: Memory, at: Entry | Promise<Entry>, 
   return result;
 }
 
-const ENTRY = new RegExp(`^(${STAGES.join("|")})-(?:.*-)?[a-f0-9]{24}\\.json\\.gz$`);
+const ENTRY = new RegExp(`^(${STAGES.join("|")})-(?:.*-)?[a-f0-9]{24}\\.json\\.(?:${formats.map(([extension]) => extension).join("|")})$`);
+export const isActionEntry = (name: string) => name.startsWith("action-") && ENTRY.test(name);
 /** Keep recent branches and profiles for a month, within 256 MiB; never evict this check's entries. */
 export function collectGarbage(memory: Memory) {
   pruneCache(localCache(memory.root), memory.used, false);
@@ -492,7 +499,7 @@ function pruneCache(directory: string, inUse: ReadonlySet<string>, shared: boole
   const expired = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const retained: { file: string; size: number; touched: number; used: boolean }[] = [];
   for (const name of fs.readdirSync(directory)) {
-    if (name === "lock" || (shared && !actionEntry.test(name))) continue;
+    if (name === "lock" || (shared && !isActionEntry(name))) continue;
     const file = path.join(directory, name);
     const stat = fs.lstatSync(file, { throwIfNoEntry: false });
     if (!stat) continue;
