@@ -115,13 +115,24 @@ from its name and signature:
 | `pure def declassifyLast4(c: SecretCard): str` | the one way out for a secret | a function whose result is public; review names it |
 | `pure val idValues = Set(1, 2, 3)` | what the simulator tries for a parameter named `id`. It must be a set whose elements match the parameter type; any supported Quint is allowed in it | nothing: it never reaches TypeScript |
 | `pure val weight_pay = 5` | how often the simulator tries `pay`: a whole number from 1 to 100, times as often as an event of weight 1 (the default). For deep interleavings, such as a message lost, repeated and reordered | nothing |
+| `pure val eval_witness_sometimesPaid = (("authorize", 8), ("pay", 8), "finish")` | an example path from `initial` to the named `sometimes` rule | nothing |
 | `pure val fair_pay = "weak"` or `"strong"` | an assumption for `leadsTo` rules: a fair run does not put `pay` off for ever while its guard keeps allowing it (`"weak"`), or while it allows it again and again (`"strong"`) | nothing |
 | `pure val within_leadsToPaid = 3` | a bound for a `leadsTo` rule: every run meets it within 3 events, from 1 to 100 | a search of simulated traces for a run that does not ("Liveness", below) |
 | any other `pure val` or `pure def` | a constant or helper | the same constant or function |
 
 When a reachability search uses multiple trace lengths, it tries short,
-single-threaded batches before spending the full search budgets. A trace
-that reaches the goal or breaks a rule goes through the usual replay.
+single-threaded batches before spending the full search budgets. Give a
+`eval_witness_<rule>` for a goal that needs a rare sequence or specific values.
+Write each step as a transition name followed by its arguments in
+declaration order. A step with no arguments is just its name. For one step,
+write that step alone. In a model with senders, add the sender last for a
+transition that does not take `by`.
+
+Quint typechecks the arguments and runs the original transitions and their
+guards, checking state and step rules until the path reaches the goal or
+breaks a rule. A broken rule fails the check. The usual search runs if the
+example stops short of the goal. The safety and probe samples stay the same, and a
+trace that reaches the goal or breaks a rule goes through the usual replay.
 
 A transition parameter named `by` identifies its sender. All such parameters
 use the same type. It is supplied separately as `enabled(current, event, by)`

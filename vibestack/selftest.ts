@@ -9,6 +9,7 @@ import { stripTypeScriptTypes } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
@@ -24,7 +25,7 @@ import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
 import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
 import { explore, explored, pageInputs } from "./explore.ts";
-import { harnessFiles, search, simulate } from "./simulate.ts";
+import { harnessFiles, search, simulate, simulation } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./pipeline.ts";
 
 const project = path.join(import.meta.dirname, "..");
@@ -719,6 +720,41 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.equal(result.broken, true, result.again);
     assert.match(result.again, /--max-samples 32 --max-steps 40\b/);
     assert.equal(result.traces[0]?.at(-1)?.state, 38);
+  });
+
+  test("a concrete witness uses the original guards and rules and supplies its steps to replay", async () => {
+    const modelSource = `pure val initial: int = 0
+pure def publish(n: int, amount: int): int = amount
+pure def canPublish(n: int, amount: int): bool = n == 0 and amount > 0
+pure def finish(n: int): int = n + 1
+pure def canFinish(n: int): bool = n > 0 and n < 42
+pure def alwaysSafe(n: int): bool = n <= 42
+pure def sometimesDone(n: int): bool = n == 42
+pure val witnessIndex = 3
+pure val witnessSender = 4
+pure val witness_fixture = 5
+pure val witness_sometimesDone = 6
+pure def witnessStep_sometimesDone(n: int): int = n`;
+    const simulateExample = async (source: string, example: string) => {
+      const root = oneRule("journey", "Publish then finish", `${source}\npure val eval_witness_sometimesDone = ${example}`);
+      const spec = readSpecs(root)[0];
+      const model = await gen(root, spec);
+      const domain = await import(pathToFileURL(path.join(root, "gen", "journey.ts")).href);
+      assert.deepEqual([domain.witnessIndex, domain.witnessSender, domain.witness_fixture, domain.witness_sometimesDone, domain.witnessStep_sometimesDone(7)], [3, 4, 5, 6, 7]);
+      return simulation({ root, fresh: false, used: new Set() }, spec, [spec], model, domain, 1);
+    };
+    const [reached, denied, unsafe, mistyped] = await Promise.all([
+      simulateExample(modelSource, '(("publish", 41), "finish")'),
+      simulateExample(modelSource.replace("n == 42", "n == 1"), '("publish", -1)'),
+      simulateExample(modelSource, '(("publish", 43), "finish")'),
+      simulateExample(modelSource, '("publish", "unknown")'),
+    ]);
+    assert.ok(reached.said.some((r) => r.ok && r.summary === "sometimesDone is reachable"), JSON.stringify(reached.said));
+    assert.ok(reached.said.some((r) => r.ok && r.stage === "replay"), JSON.stringify(reached.said));
+    assert.deepEqual(reached.tested?.journeys[0]?.events, [{ type: "publish", amount: 41 }, { type: "finish" }]);
+    assert.ok(denied.said.some((r) => r.ok && r.summary === "sometimesDone is reachable"), JSON.stringify(denied.said));
+    assert.ok(unsafe.said.some((r) => !r.ok && r.stage === "always" && r.detail.includes('publish{"amount":43}')), JSON.stringify(unsafe.said));
+    assert.ok(mistyped.said.some((r) => !r.ok && /Couldn't unify (?:int and str|str and int)/.test(r.detail)), JSON.stringify(mistyped.said));
   });
 
   test("hand-written code that changes what it is checked against is refused or flagged", async () => {

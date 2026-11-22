@@ -6,11 +6,17 @@ import { fail, type Json, type Types } from "./types.ts";
 /** A definition the simulator evaluates so that its result can be compared with TypeScript's. */
 export interface Eval { name: string; params: (Param & { from: "state" | "prev" | "emitted" | "pick" })[]; result: Json }
 
+export interface WitnessStep { transition: Transition; args: string[] }
+export const witnessAction = (goal: string) => `eval_witnessStep_${goal}`;
+export const witnessFile = (model: string) => `${model}.witness.qnt`;
+const WITNESS_INDEX = "x2";
+const WITNESS_SENDER = "eval_witnessSender";
+
 /** A fair event cannot be put off for ever: weakly, while it stays possible; strongly, while it keeps becoming possible. */
 export type Fairness = "weak" | "strong";
 
 /** The harness's variables, in the order it declares them. */
-const VARS = ["state", "prev", "moved", "last", "lawsHold", "outcome", "emitted", "refined", "fairEnabled", "settled"];
+const VARS = ["state", "prev", "moved", "last", "lawsHold", "outcome", "emitted", "refined", "fairEnabled", "settled", WITNESS_INDEX];
 /** Every name the harness binds itself, which a spec parameter would hide (TAKEN in gen.ts). */
 export const HARNESS = [...VARS, "fairOn", "init", "settle", "step", "probe", "inv", "Out", "Nothing"];
 
@@ -22,6 +28,7 @@ export function harness(
   samples: Map<string, { elem: Json; ref: string; line: number | undefined }>, { stateType, transitions, always, sometimes, steps, laws, opaques, output, refines, sender }: Roles,
   { fields, typedef, resolve, shape, tagged, named, qType }: Types,
   { weights, fair }: { weights: Map<string, number>; fair: Map<string, Fairness> },
+  witnesses?: ReadonlyMap<string, WitnessStep[]>,
 ): { text: string; evals: Eval[]; uncompared: string[] } {
   const stateShape = stateType && shape(stateType);
   const spell = (t: Json) => { try { return qType(t).replace(/^(M|D_\w+)::/, ""); } catch { return shape(t); } };
@@ -107,7 +114,7 @@ export function harness(
     `{ nondet table_${o.name} = setOfMaps(${keys(o)}, ${results(o)}).oneOf() nondet else_${o.name} = table_${o.name}.keys().map(k => table_${o.name}.get(k)).oneOf() ${rest} }`, inner);
   const settled = (action: string) => (opaques.length ? `if (settled) ${action} else settle` : action);
 
-  const declared: Record<string, unknown> = { state: stateType, prev: stateType, moved: stateType, last: stateType, lawsHold: true, outcome: evals.length, emitted: output, refined: refines, fairEnabled: fair.size, settled: opaques.length };
+  const declared: Record<string, unknown> = { state: stateType, prev: stateType, moved: stateType, last: stateType, lawsHold: true, outcome: !witnesses && evals.length, emitted: output, refined: refines, fairEnabled: fair.size, settled: opaques.length, [WITNESS_INDEX]: witnesses };
   const vars = [...VARS.filter((v) => declared[v]), ...tables];
   /** What the initial state starts, which may call an opaque function, and so waits for `settle` if there are any. */
   const start = { refined: refines ? `M::${refines.fn}(M::initial) == D_${refines.of.module}::initial` : "", fairEnabled: "fairOn(M::initial)" };
@@ -128,11 +135,17 @@ export function harness(
    * someone, picked as for those that do, and recorded beside the event without being passed to the transition.
    */
   const sentBy = (t: Transition): Param[] => (sender && !t.params.some((p) => p.name === SENDER) ? [...t.params, { name: SENDER, type: sender }] : t.params);
-  const action = (t: Transition) => {
+  const transition = (t: Transition, guide?: { index: number; args: string[] }) => {
+    const params = sentBy(t);
     const result = call(t.name, t.params.map((p) => p.name));
     const after = t.emits ? `${result}.state` : result;
-    return `  action ${t.name} = ${braces(sentBy(t), t.name, frame(t.guard ? [call(t.guard, t.guardParams)] : [],
-      { state: after, emitted: t.emits ? `${result}.out` : "List()", refined: refines ? refined(t, after) : "", prev: "state", moved: "true", last: JSON.stringify(t.name), fairEnabled: `fairOn(${after})` }))}`;
+    const body = frame(t.guard ? [call(t.guard, t.guardParams)] : [], {
+      state: after, emitted: t.emits ? `${result}.out` : "List()", refined: refines ? refined(t, after) : "",
+      prev: "state", moved: "true", last: JSON.stringify(t.name), fairEnabled: `fairOn(${after})`,
+      ...(guide ? { [WITNESS_INDEX]: String(guide.index + 1) } : {}),
+    });
+    if (!guide || !params.length) return braces(params, t.name, body);
+    return `{ ${params.map((p, i) => `nondet ${p.name} = Set(${i >= t.params.length ? `${WITNESS_SENDER}(${guide.args[i]})` : guide.args[i]}).oneOf()`).join(" ")} ${body} }`;
   };
 
   /** Whether a fair event is possible in state `x0`: its guard allows it for some value the simulator tries. */
@@ -165,23 +178,28 @@ export function harness(
     `module ${module}_run {`,
     `  import ${module} as M from "./${module}${opaques.length ? ".sim" : ""}"`,
     ...imports.map((i) => `  import ${i} as D_${i} from "./${i}"`),
-    ...(evals.length ? [`  type Out = Nothing | ${evals.map((v) => `Out_${v.name}(${qType(v.result)})`).join(" | ")}`, `  var outcome: Out`] : []),
+    ...(!witnesses && evals.length ? [`  type Out = Nothing | ${evals.map((v) => `Out_${v.name}(${qType(v.result)})`).join(" | ")}`, `  var outcome: Out`] : []),
     ...(stateType ? [`  var state: ${qType(stateType)}`, `  var prev: ${qType(stateType)}`, `  var moved: bool`, `  var last: str`] : []),
     ...(output ? [`  var emitted: ${qType(output.out)}`] : []),
     ...(refines ? [`  var refined: bool`] : []),
     `  var lawsHold: bool`,
+    ...(witnesses ? [`  var ${WITNESS_INDEX}: int`] : []),
+    ...(witnesses && sender ? [`  pure def ${WITNESS_SENDER}(by: ${qType(sender)}): ${qType(sender)} = by`] : []),
     ...(opaques.length ? [`  var settled: bool`] : []),
     ...(fair.size ? [`  var fairEnabled: Set[str]`,
       `  def fairOn(x0: ${qType(stateType)}): Set[str] = Set(${[...fair.keys()].map((e) => JSON.stringify(e)).join(", ")}).filter(x1 => or { ${transitions.filter((t) => fair.has(t.name)).map((t) => `x1 == ${JSON.stringify(t.name)} and ${possible(t)}`).join(", ")} })`] : []),
-    `  action init = ${choose(frame([], { state: "M::initial", prev: "M::initial", moved: "false", last: '""', lawsHold: "true", outcome: "Nothing", emitted: "List()",
+    `  action init = ${choose(frame([], { state: "M::initial", prev: "M::initial", moved: "false", last: '""', lawsHold: "true", outcome: "Nothing", emitted: "List()", [WITNESS_INDEX]: "0",
       ...(opaques.length ? { refined: "true", fairEnabled: "Set()", settled: "false", ...chosen } : start) }))}`,
     ...(opaques.length ? [`  action settle = ${frame(assumed, { ...start, settled: "true" })}`] : []),
-    ...transitions.map(action),
-    ...sampled.map(lawAction),
-    ...evals.map(evalAction),
-    `  action step = ${settled(any(events))}`,
-    // Half events, half evaluations, so that definitions are evaluated on states well into a trace and not just near its start.
-    `  action probe = ${settled(events.length && evals.length ? `any { ${any(events)}, ${any(evals.map((v) => `eval_${v.name}`))} }` : any([...events, ...evals.map((v) => `eval_${v.name}`)]))}`,
+    ...(witnesses ? [...witnesses].map(([goal, steps]) =>
+      `  action ${witnessAction(goal)} = ${settled(steps.reduceRight((rest, { transition: event, args }, index) =>
+        `if (${WITNESS_INDEX} == ${index}) ${transition(event, { index, args })} else ${rest}`, frame(["false"], {})))}`) : [
+      ...transitions.map((t) => `  action ${t.name} = ${transition(t)}`),
+      ...sampled.map(lawAction),
+      ...evals.map(evalAction),
+      `  action step = ${settled(any(events))}`,
+      `  action probe = ${settled(events.length && evals.length ? `any { ${any(events)}, ${any(evals.map((v) => `eval_${v.name}`))} }` : any([...events, ...evals.map((v) => `eval_${v.name}`)]))}`,
+    ]),
     `  val inv = ${opaques.length ? "not(settled) or " : ""}and { lawsHold, ${[...(refines ? ["refined"] : []), ...always.map((a) => `M::${a}(state)`), ...steps.map((r) => `(not(moved) or M::${r.name}(prev, ${r.via ? "last, " : ""}state${r.out ? ", emitted" : ""}))`), "true"].join(", ")} }`,
     // A witness search also stops at a broken rule, so that no run can step over one unreported.
     ...sometimes.map((w) => `  val never_${w} = inv and not(${opaques.length ? "settled and " : ""}M::${w}(state))`),
@@ -189,7 +207,7 @@ export function harness(
     // which X allows its event, breaking `never_refuses_X` one for which it refuses it. Each reads the result the
     // last evaluation recorded, so a state costs the same however many values a parameter could take. An event fires
     // only where its guard allows it, so one that fired is a witness too, however rarely its guard is evaluated.
-    ...[...new Set(transitions.flatMap((t) => (t.guard && evals.some((v) => v.name === t.guard) ? [t.guard] : [])))].flatMap((guard) => [
+    ...[...new Set((witnesses ? [] : transitions).flatMap((t) => (t.guard && evals.some((v) => v.name === t.guard) ? [t.guard] : [])))].flatMap((guard) => [
       `  val never_allows_${guard} = inv and not(Set(${transitions.filter((t) => t.guard === guard).map((t) => JSON.stringify(t.name)).join(", ")}).contains(last)) and match outcome { | Out_${guard}(r) => not(r) | _ => true }`,
       `  val never_refuses_${guard} = inv and match outcome { | Out_${guard}(r) => r | _ => true }`,
     ]),

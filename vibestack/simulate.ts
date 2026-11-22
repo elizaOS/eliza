@@ -5,7 +5,7 @@ import { SENDER } from "./gen/classify.ts";
 import { act, completed, violated, type Input } from "./action.ts";
 import { entry, evaluatorForCheck, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
-import { simulated } from "./gen/harness.ts";
+import { simulated, witnessAction, witnessFile } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
 import { TABLE, compiledAs } from "./simulator.ts";
@@ -39,13 +39,14 @@ export interface Step {
 }
 
 /** A simulated trace; with opaque functions, from the step that settled their tables (gen/harness.ts), and empty if none did. */
-function readTrace(itf: string, model: Model): Step[] {
+function readTrace(itf: string, model: Model, witness?: true): Step[] {
   const states = JSON.parse(itf).states.filter((st: any) => !model.opaques.length || st.settled);
   return states.map((st: any, i: number): Step => {
     // Values are decoded by their type, and sets put in a fixed order, so that they compare equal to TypeScript's.
     const read = (type: any, itf: any) => model.canon(type, model.decode(type, itf));
     const picked = (ps: { name: string; type: any }[]) => Object.fromEntries(ps.map((p) => [p.name, read(p.type, st["mbt::nondetPicks"][p.name].value)]));
-    const taken: string = st["mbt::actionTaken"];
+    const action: string = st["mbt::actionTaken"];
+    const taken: string = witness && action?.startsWith(witnessAction("")) ? st.last : action;
     const t = model.transitions.find((t) => t.name === taken);
     const v = model.evals.find((v) => `eval_${v.name}` === taken);
     const l = model.laws.find((l) => l.name === taken);
@@ -98,11 +99,13 @@ const SHARD_SAMPLES = 1000;
 const MAX_SHARDS = 4;
 
 /** What a spec's runs of Quint share: the check's memory, the model, and every file of Quint its harness reads. */
-export interface Harness { memory: Memory; model: Model; files: Record<string, Input> }
+export interface Harness { memory: Memory; model: Model; files: Record<string, Input>; witness?: true }
 /** What a spec's harness reads: its modules, the harness itself, and the spec as the harness reads it where it has opaque functions. */
-export function harnessFiles(spec: Spec, specs: Spec[], model: Model): Record<string, Input> {
+export function harnessFiles(spec: Spec, specs: Spec[], model: Model, witness?: { harness: string }): Record<string, Input> {
   const sim = model.opaques.length ? simulated(spec.qnt, model.opaques) : undefined;
-  return { ...modules(spec, specs), [`${model.name}.run.qnt`]: { text: model.harness, key: model.harness }, ...(sim ? { [`${model.name}.sim.qnt`]: { text: sim, key: codeOf(sim) } } : {}) };
+  const file = witness ? witnessFile(model.name) : `${model.name}.run.qnt`;
+  const text = witness?.harness ?? model.harness;
+  return { ...modules(spec, specs), [file]: { text, key: text }, ...(sim ? { [`${model.name}.sim.qnt`]: { text: sim, key: codeOf(sim) } } : {}) };
 }
 
 /**
@@ -111,9 +114,10 @@ export function harnessFiles(spec: Spec, specs: Spec[], model: Model): Record<st
  */
 const compilations = new WeakMap<Harness, Promise<Record<string, Input> | undefined>>();
 function compiled(harness: Harness): Promise<Record<string, Input> | undefined> {
-  const { memory, model, files } = harness;
+  const { memory, model, files, witness } = harness;
   let parts = compilations.get(harness);
-  if (!parts) compilations.set(harness, parts = act(memory, "simulator", ["compile", `${model.name}.run.qnt`, "--main", `${model.name}_run`], `${SIMULATIONS}/${model.name}.compiled`, files)
+  const file = witness ? witnessFile(model.name) : `${model.name}.run.qnt`;
+  if (!parts) compilations.set(harness, parts = act(memory, "simulator", ["compile", file, "--main", `${model.name}_run`], `${SIMULATIONS}/${witness ? file : model.name}.compiled`, files)
     .then((r) => (r.ok ? Object.fromEntries(Object.entries(r.files).map(([f, text]) => [f, { text, key: digest(text) }])) : undefined)));
   return parts;
 }
@@ -128,7 +132,7 @@ function compiled(harness: Harness): Promise<Record<string, Input> | undefined> 
  * remembered (action.ts) is not.
  */
 export async function simulate(harness: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
-  const { memory, model, files } = harness;
+  const { memory, model, files, witness } = harness;
   const dir = `${SIMULATIONS}/${model.name}.${invariant}.${step}`;
   const parts = await compiled(harness);
   const needed = [TABLE, ...["init", step, invariant].map(compiledAs)];
@@ -136,7 +140,7 @@ export async function simulate(harness: Harness, invariant: string, traces: numb
   const shards = !split ? 1 : Math.max(1, Math.min(MAX_SHARDS, Math.floor(samples / SHARD_SAMPLES)));
   const runs = Array.from({ length: shards }, async (_, k) => {
     const derivedSeed = seedFor(seed, model.harness, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
-    const main = `${model.name}.run.qnt`;
+    const main = witness ? witnessFile(model.name) : `${model.name}.run.qnt`;
     const args = ["--main", `${model.name}_run`, "--step", step, "--invariant", invariant,
       "--max-samples", String(Math.ceil(sampleLimit / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, "--n-threads", "1"];
     const run = ["run", main, ...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", "{seq}.itf.json"];
@@ -149,7 +153,7 @@ export async function simulate(harness: Harness, invariant: string, traces: numb
     const again = `seed ${derivedSeed}; to simulate again: pnpm exec quint run gen/${main} ${args.join(" ")}`;
     // Anything other than "held" or "violated", each with a trace, is Quint failing to run.
     if ((!r.ok && !broken) || !written.length) throw new Error(`quint run did not complete (${again}):\n${r.out.trim()}`);
-    return { broken, traces: written.map((f) => readTrace(r.files[f], model)).filter((t) => t.length), again };
+    return { broken, traces: written.map((f) => readTrace(r.files[f], model, witness)).filter((t) => t.length), again };
   });
   // Every run finishes before anything is said, so that none is left writing into gen/.
   const done = await allDone(runs);
@@ -337,6 +341,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), (memory) => inTurn(async () => {
     const harness: Harness = { memory, model, files };
+    const guided = model.witness && { memory, model, files: harnessFiles(spec, specs, model, model.witness), witness: true } satisfies Harness;
     const said: Result[] = [];
     let tested: Simulated | undefined;
     /** A result concerns the rules it cites. */
@@ -372,7 +377,15 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       if (broke([sim])) return { said, tested };
       const [probe, ...searches] = await allDone([
         simulate(harness, "inv", REPLAYED, COMPARED_SAMPLES, "probe", true, STEPS, seed),
-        ...model.sometimes.map((w) => search(harness, `never_${w}`, "step", DEPTHS, WITNESS_SAMPLES, seed)),
+        ...model.sometimes.map(async (w) => {
+          const invariant = `never_${w}`;
+          const length = model.witness?.lengths.get(w);
+          if (guided && length !== undefined) {
+            const run = await simulate(guided, invariant, 1, 1, witnessAction(w), false, length + 1 + Number(!!model.opaques.length), seed);
+            if (run.broken) return run;
+          }
+          return search(harness, invariant, "step", DEPTHS, WITNESS_SAMPLES, seed);
+        }),
       ]);
       const witnesses = model.sometimes.map((w, i) => ({ w, run: searches[i] }));
       const runs = [sim, probe, ...searches.filter((run) => run.broken)];
