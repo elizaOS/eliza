@@ -725,6 +725,7 @@ export async function main() {
   const takes = (...allowed: string[][]) => allowed.some((a) => a.length === args.length && a.every((x, i) => x === "*" || x === args[i]));
   try {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
+    if (installing && process.env.GITHUB_ACTIONS === "true" && process.env.GITHUB_JOB === "vibestack-fixture-selftests") return;
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {
       await steady(() => generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]));
       return;

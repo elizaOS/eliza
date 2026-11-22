@@ -32,17 +32,13 @@ jobs:
         include:
           - name: verify
             tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
-          - name: selftest-a
-            tasks: //#selftest:tools:a
-          - name: selftest-b
-            tasks: //#selftest:tools:b
           - name: selftest-rest
             tasks: //#selftest:tools:rest
-    environment: ${{ github.event_name == 'push' && 'turbo-cache-publish' || 'turbo-cache-read' }}
-    env:
+    environment: &cache-environment ${{ github.event_name == 'push' && 'turbo-cache-publish' || 'turbo-cache-read' }}
+    env: &cache-env
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_CACHE: ${{ github.event_name == 'push' && 'local:rw,remote:rw' || 'local:rw,remote:r' }}
-    steps:
+    steps: &verification-steps
       - uses: actions/checkout@v7
       - id: setup
         uses: ./.github/actions/setup
@@ -91,3 +87,18 @@ jobs:
             vibestack/examples/*/test/__traces__/
           if-no-files-found: ignore
           include-hidden-files: true
+
+  vibestack-fixture-selftests:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: selftest-a
+            tasks: //#selftest:tools:a
+          - name: selftest-b
+            tasks: //#selftest:tools:b
+    environment: *cache-environment
+    env: *cache-env
+    steps: *verification-steps

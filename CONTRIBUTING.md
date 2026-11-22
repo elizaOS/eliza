@@ -204,7 +204,7 @@ device, inode, size and modification and change times stay the same, so an
 unchanged toolchain is not read again, nor Z3 asked its version. A check
 reads those times of Dafny's installation once, and reads them again after each
 run of Dafny, so a result is not remembered when the verifier was installed
-again during the run. The template install generates locally with `gen --if-valid`. On GitHub Actions it uses the same strict root
+again during the run. The template install generates locally with `gen --if-valid`. The two fixture-only CI shards build the tools and generate their scratch projects on demand. Other GitHub Actions jobs use the same strict root
 `gen` task as verification, so a successful install warms the task cache. A failed generation leaves the
 remaining checks runnable and is retried by verification. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts

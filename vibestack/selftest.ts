@@ -3185,7 +3185,7 @@ function theCommandLine() {
     fs.writeFileSync(path.join(root, "packages/app/package.json"), JSON.stringify({ name: "app" }));
     fs.symlinkSync(nodeModules, path.join(root, "node_modules"), "dir");
     fs.symlinkSync(path.dirname(script), path.join(root, "vibestack"), "dir");
-    const prepare = (hosted: boolean) => exec(process.execPath, [script, "gen", "--install"], root, { ...process.env, GITHUB_ACTIONS: String(hosted), TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
+    const prepare = (hosted: boolean, job = "verify") => exec(process.execPath, [script, "gen", "--install"], root, { ...process.env, GITHUB_ACTIONS: String(hosted), GITHUB_JOB: job, TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
     for (const hosted of [false, true]) {
       const invalid = await prepare(hosted);
       assert.equal(invalid.status, 0, invalid.stderr);
@@ -3193,6 +3193,10 @@ function theCommandLine() {
       assert.equal((await import(path.join(root, "gen/value.ts"))).answer, 42);
     }
     fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = 43", "A value"));
+    fs.rmSync(path.join(root, "gen/value.ts"));
+    const fixtures = await prepare(true, "vibestack-fixture-selftests");
+    assert.equal(fixtures.status, 0, fixtures.stderr);
+    assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
     const installed = await prepare(true);
     assert.equal(installed.status, 0, installed.stderr);
     assert.doesNotMatch(installed.stdout, /gen\/ was not generated/);
