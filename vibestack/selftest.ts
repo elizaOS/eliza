@@ -3442,10 +3442,12 @@ describe("the documents name what exists", () => {
       return seen;
     };
     const real = [...tasks.values()].filter((task) => task.command !== "<NONEXISTENT>" && !task.taskId.endsWith("#gen")).map((task) => task.taskId);
+    let previousPlan = tasks;
     const changedBy = async (edit: () => void | Promise<void>) => {
-      const before = await plan();
+      const before = previousPlan;
       await edit();
-      return [...await plan()].filter(([id, task]) => before.get(id)?.hash !== task.hash).map(([id]) => id).sort();
+      previousPlan = await plan();
+      return [...previousPlan].filter(([id, task]) => before.get(id)?.hash !== task.hash).map(([id]) => id).sort();
     };
     const studio = (ids: string[]) => ids.filter((id) => /^(vibestack-studio#(?!check)|@repo\/(ui#(build|typecheck)|design-system#build)|\/\/#lint:css)/.test(id));
     const append = (file: string, text = "\nMore words.\n") => () => fs.appendFileSync(path.join(root, file), text);
@@ -3456,10 +3458,12 @@ describe("the documents name what exists", () => {
       await changedBy(append("vibestack/fixtures/door.md")),
       await changedBy(append("vibestack/design/test/design.test.ts", "\n")),
     ];
+    let previousExampleKeys = await exampleCheckKeys(root);
     const examplesChangedBy = async (edit: () => void) => {
-      const before = await exampleCheckKeys(root);
+      const before = previousExampleKeys;
       edit();
-      return [...await exampleCheckKeys(root)].filter(([name, key]) => before.get(name) !== key).map(([name]) => name).sort();
+      previousExampleKeys = await exampleCheckKeys(root);
+      return [...previousExampleKeys].filter(([name, key]) => before.get(name) !== key).map(([name]) => name).sort();
     };
     const order = path.join(EXAMPLES, "order");
     const exampleChanges = [
@@ -3469,6 +3473,7 @@ describe("the documents name what exists", () => {
     ];
     const exampleNames = fs.readdirSync(path.join(root, EXAMPLES)).sort();
     assert.deepEqual(exampleChanges, [["order"], ["order"], exampleNames]);
+    previousPlan = await plan();
     assert.deepEqual({
       notWaiting: real.filter((id) => !reach(id).has("//#gen")).sort(),
       analyzeWaitsFor: tasks.get("//#analyze")!.dependencies.toSorted(),
