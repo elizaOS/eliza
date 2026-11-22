@@ -146,6 +146,9 @@ pure def sometimesCronRanAfterAMiss(t: Trigger): bool = t.schedule == CronSchedu
 pure def sometimesMissedOnceStaysListed(t: Trigger): bool = t.life == Saved and t.schedule == OnceAt and not(t.enabled) and t.history.includes(Missed({ scheduledAt: 1000 }))
 pure val weight_tick = 3
 pure val weight_fire = 3
+pure val weight_create = 4
+pure val weight_setEnabled = 4
+pure val weight_finishRun = 3
 ```
 
 ### An event trigger runs once for each emitted event of its name, never for its own run's events
