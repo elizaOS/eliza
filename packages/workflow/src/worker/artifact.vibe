@@ -7,7 +7,7 @@ export interface StagedWorkerArtifact { readonly files: number; readonly bytes: 
 
 /** The worker program and engine a device needs before it enables workflows. */
 export const WORKER_REQUIRED_FILES: readonly string[] = [
-  "src/worker/main.js", "src/worker/protocol.js", "src/worker/engine.js", "src/worker/compiler.js", "workflow-worker.json", "dependencies.json", "compiler/compiler.json", "compiler/eliza-workflow.d.ts",
+  "src/worker/main.js", "src/worker/protocol.js", "src/worker/engine.js", "src/worker/guest.js", "src/worker/compiler.js", "workflow-worker.json", "dependencies.json", "compiler/compiler.json", "compiler/eliza-workflow.d.ts",
 ]
 /** The built worker program inside a package's dist and an artifact. */
 export const WORKER_EXECUTABLE = "src/worker/main.js"
@@ -116,7 +116,6 @@ module node {
 
   export interface WorkerClosure { readonly entries: readonly { readonly path: string; readonly from: string }[]; readonly dependencies: Readonly<Record<string, string>> }
 
-  const specifierPattern = /(?:^|[;\s}])(?:import|export)\s*(?:[^'"`;]*?\sfrom\s*)?["']([^"'\n]+)["']|import\(\s*["']([^"'\n]+)["']\s*\)/g
   const conditions = ["node", "import", "default"]
 
   function target(exportsField: unknown, subpath: string): string | undefined {
@@ -171,6 +170,7 @@ module node {
   }
 
   export async function closure(packageDir: string, executable: string): Promise<Checked<WorkerClosure>> {
+    const ts = (await import("typescript")).default
     const root = await realpath(resolve(packageDir))
     const dist = join(root, "dist")
     const start = await file(join(dist, executable))
@@ -196,9 +196,17 @@ module node {
       }
       if (!/\.(?:m|c)?js$/.test(current)) continue
       const text = await readFile(current, "utf8")
-      for (const found of text.matchAll(specifierPattern)) {
-        const specifier = found[1] ?? found[2]
-        if (specifier === undefined || specifier.startsWith("node:") || builtinModules.includes(specifier.split("/")[0])) continue
+      const specifiers = new Set<string>()
+      const visit = (node: import("typescript").Node): void => {
+        const specifier = ts.isImportDeclaration(node) || ts.isExportDeclaration(node) ? node.moduleSpecifier
+          : ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword ? node.arguments[0]
+          : undefined
+        if (specifier !== undefined && ts.isStringLiteralLike(specifier)) specifiers.add(specifier.text)
+        ts.forEachChild(node, visit)
+      }
+      visit(ts.createSourceFile(current, text, ts.ScriptTarget.ESNext, false, ts.ScriptKind.JS))
+      for (const specifier of specifiers) {
+        if (specifier.startsWith("node:") || builtinModules.includes(specifier.split("/")[0])) continue
         if (specifier.startsWith(".") || specifier.startsWith("/")) {
           const next = await file(resolve(dirname(current), specifier))
           if (next === undefined) return refuse(`A worker module is missing: ${specifier}`)
@@ -285,7 +293,7 @@ module node {
       const bound = JSON.stringify(manifest.compiler) === JSON.stringify(descriptor)
       return {
         typescript: bound && seen.has(descriptor.compilerModule) && libraries.length === descriptor.declarationFiles && seen.has("node_modules/typescript/lib/lib.es2022.d.ts"),
-        engine: bound && seen.has(descriptor.engineDeclaration) && seen.has("src/worker/compiler.js") && seen.has("src/worker/engine.js"),
+        engine: bound && seen.has(descriptor.engineDeclaration) && seen.has("src/worker/compiler.js") && seen.has("src/worker/engine.js") && seen.has("src/worker/guest.js"),
       }
     } catch {
       return { typescript: false, engine: false }

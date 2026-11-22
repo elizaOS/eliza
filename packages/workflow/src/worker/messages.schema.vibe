@@ -24,4 +24,5 @@ export const ParentLine = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("effect"), call: Schema.String, text: Schema.String }),
   Schema.Struct({ type: Schema.Literal("effectFailed"), call: Schema.String, message: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("checkpointed"), call: Schema.String, digest: Schema.String }),
 ])

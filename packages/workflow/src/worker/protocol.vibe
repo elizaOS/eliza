@@ -6,7 +6,7 @@ import {
 import type { WorkflowDeviceOperation } from "../contract/device.vibe"
 import { ParentLine } from "./messages.schema.vibe"
 import { checkGeneratedSource, type GeneratedCheck } from "./compiler.vibe"
-import { runGenerated, type EffectAnswer, type EngineMessage, type GeneratedStart } from "./engine.vibe"
+import { runGenerated, type CheckpointAnswer, type EffectAnswer, type EngineMessage, type GeneratedStart } from "./engine.vibe"
 
 /** The largest value one typed step may produce. */
 export const WORKFLOW_STEP_MAX_BYTES = 65_536
@@ -41,6 +41,7 @@ export type ParentMessage =
   | { readonly type: "draft"; readonly stepId: string; readonly text: string }
   | { readonly type: "draftFailed"; readonly stepId: string; readonly message: string }
   | EffectAnswer
+  | CheckpointAnswer
 /** A message from a worker to the parent. */
 export type WorkerMessage =
   | { readonly type: "step"; readonly result: WorkerStepResult; readonly next: number; readonly allowed: boolean }
@@ -161,11 +162,19 @@ export effect function serveWorker(channel: WorkerChannel): void!! {
       return try channel.send({ type: "checked", result })
     }
     if (start.type === "startGenerated") {
-      return try mapError(runGenerated(start, (message) => channel.send(message), (call) => effect {
-        const answer = (channel.receive catch () => ({ type: "cancel" }) as const)
-        if (answer.type === "cancel") return answer
-        if ((answer.type === "effect" || answer.type === "effectFailed") && answer.call === call) return answer
-        return { type: "effectFailed", call, message: "The effect answer did not match its call" } as const
+      return try mapError(runGenerated(start, {
+        send: (message) => channel.send(message),
+        effect checkpoint(call, digest) {
+          const answer = channel.receive catch () => undefined
+          if (answer?.type === "cancel") return "cancelled"
+          return answer?.type === "checkpointed" && answer.call === call && answer.digest === digest ? "acknowledged" : "refused"
+        },
+        effect effectAnswer(call) {
+          const answer = channel.receive catch () => ({ type: "cancel" }) as const
+          if (answer.type === "cancel") return answer
+          if ((answer.type === "effect" || answer.type === "effectFailed") && answer.call === call) return answer
+          return { type: "effectFailed", call, message: "The effect answer did not match its call" } as const
+        },
       }), (error) => new WorkerStepFailed({ message: error.reason, cancelled: false }))
     }
     if (start.type !== "start") throw new WorkerStepFailed({ message: "The worker was not started", cancelled: start.type === "cancel" })

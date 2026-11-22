@@ -16,7 +16,7 @@ import { HOSTED_DIGEST_METADATA_KEY } from "../contract/digest.vibe"
 import { checkWorkflowScope, WORKFLOW_OPERATION_LABELS } from "../scope.vibe"
 import { WORKFLOW_ENGINE, WORKFLOW_PHONE_SPEC_METADATA_KEY } from "../client/workflow-client.vibe"
 import { workflowRunDeepLink } from "../client/notices.vibe"
-import { TYPED_STEPS_NODE, type WorkerMessage, type WorkerResume } from "../worker/protocol.vibe"
+import { TYPED_STEPS_NODE, type ParentMessage, type WorkerMessage, type WorkerResume } from "../worker/protocol.vibe"
 import type { GeneratedEntry, GeneratedWait } from "../worker/engine.vibe"
 import { WorkflowStoreUnavailable, workflowStore, type ApprovalRow, type DefinitionRow, type ReceiptRow, type RunEvent, type RunRow, type StoredDefinition } from "./store.vibe"
 import type { WorkflowHost, WorkflowWorkerConnection } from "./host.vibe"
@@ -624,7 +624,11 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     try host.notify({ kind: "result", title: title.slice(0, 200), body: "Open the run to see what it did.", deepLink: workflowRunDeepLink(route), groupKey: `workflow-run:${row.id}`, route })
   }
 
-  effect function handle(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection): { readonly row: RunRow; readonly done: boolean }!WorkflowRefused {
+  type WorkerTurn =
+    | { readonly row: RunRow; readonly done: true }
+    | { readonly row: RunRow; readonly done: false; readonly reply?: ParentMessage }
+
+  effect function handle(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection): WorkerTurn!WorkflowRefused {
     if (message === undefined) {
       const live = try connection.alive
       const uncertain = try executed(row, { type: "observeUncertain", workerKnownLive: live })
@@ -639,8 +643,8 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
       case "needsDraft": {
         const draft = host.draft
         const text = draft === undefined ? undefined : draft(message.prompt) catch () => undefined
-        try connection.send(text === undefined ? { type: "draftFailed", stepId: message.stepId, message: "The text model could not draft this step" } : { type: "draft", stepId: message.stepId, text })
-        return { row, done: false }
+        const reply: ParentMessage = text === undefined ? { type: "draftFailed", stepId: message.stepId, message: "The text model could not draft this step" } : { type: "draft", stepId: message.stepId, text }
+        return { row, done: false, reply }
       }
       case "needsDevice": {
         try connection.close
@@ -706,12 +710,15 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     return waiting
   }
 
-  effect function handleGenerated(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection): { readonly row: RunRow; readonly done: boolean }!WorkflowRefused {
+  effect function handleGenerated(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection): WorkerTurn!WorkflowRefused {
     if (message === undefined) return try handle(row, message, connection)
     switch (message.type) {
       case "checkpoint": {
         const next = try journaled(row, { type: "checkpointStep", call: message.call, digest: message.digest })
-        return { row: { ...next, journalValues: { ...(row.journalValues ?? {}), [message.call]: message.value }, events: [...row.events, try event("NodeFinished", message.call)] }, done: false }
+        return {
+          row: { ...next, journalValues: { ...(row.journalValues ?? {}), [message.call]: message.value }, events: [...row.events, try event("NodeFinished", message.call)] },
+          done: false, reply: { type: "checkpointed", call: message.call, digest: message.digest },
+        }
       }
       case "needsEffect": {
         const pending = try journaled(row, { type: "dispatchEffect", call: message.call, digest: message.digest })
@@ -719,8 +726,11 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         const draft = host.draft
         const text = draft === undefined ? undefined : draft(message.request.prompt) catch () => undefined
         const committed = try journaled(pending, { type: "commitEffect" })
-        try connection.send(text === undefined ? { type: "effectFailed", call: message.call, message: "The text model could not draft this call" } : { type: "effect", call: message.call, text })
-        return { row: { ...committed, journalValues: { ...(row.journalValues ?? {}), [message.call]: text ?? null }, events: [...row.events, try event(text === undefined ? "NodeFailed" : "NodeFinished", message.call)] }, done: false }
+        const reply: ParentMessage = text === undefined ? { type: "effectFailed", call: message.call, message: "The text model could not draft this call" } : { type: "effect", call: message.call, text }
+        return {
+          row: { ...committed, journalValues: { ...(row.journalValues ?? {}), [message.call]: text ?? null }, events: [...row.events, try event(text === undefined ? "NodeFailed" : "NodeFinished", message.call)] },
+          done: false, reply,
+        }
       }
       case "park": {
         try connection.close
@@ -766,28 +776,37 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
       const port = host.worker
       if (port === undefined || (try Ref.get(stopping))) return
       const connection = try mapError(port.open(runId), (error) => new WorkflowRefused({ status: 503, message: error.reason }))
-      let row = try updateRun(runId, effect (current) => {
-        if (current.execution.worker || terminal(current.execution.phase) || current.execution.cancelAsked) return current
-        return try executed({ ...current, events: [...current.events, try event(current.events.some((e) => e.type === "RunStarted") ? "NodeStarted" : "RunStarted")] }, { type: "startWorker" })
-      })
-      if (row.execution.phase !== "RunningWorker") {
+      const starting = try onError(lock(effect {
+        const current = try runOf(runId)
+        if (current.execution.worker || terminal(current.execution.phase) || current.execution.cancelAsked) return undefined
+        const next = try executed({ ...current, events: [...current.events, try event(current.events.some((e) => e.type === "RunStarted") ? "NodeStarted" : "RunStarted")] }, { type: "startWorker" })
+        try persist(next)
+        return next
+      }), () => connection.close)
+      if (starting === undefined) {
         try connection.close
         return
       }
-      row = try ensuring(effect {
-      const generated = row.generated !== undefined && row.js !== undefined && row.jsDigest !== undefined
+      const row = try ensuring(effect {
+      const generated = starting.generated !== undefined && starting.js !== undefined && starting.jsDigest !== undefined
       try connection.send(generated
-        ? { type: "startGenerated", runId: row.id, js: row.js ?? "", jsDigest: row.jsDigest ?? "", input: row.input, journal: journalOf(row) }
+        ? { type: "startGenerated", runId: starting.id, js: starting.js ?? "", jsDigest: starting.jsDigest ?? "", input: starting.input, journal: journalOf(starting) }
         : {
-          type: "start", runId: row.id, spec: row.spec, specDigest: row.specDigest, anchorAt: row.anchorAt, values: row.values, results: row.results, next: row.next, allowed: row.allowed,
+          type: "start", runId: starting.id, spec: starting.spec, specDigest: starting.specDigest, anchorAt: starting.anchorAt, values: starting.values, results: starting.results, next: starting.next, allowed: starting.allowed,
           ...(resume === undefined ? {} : { resume }),
         })
-      let current = row
+      let current = starting
       for (;;) {
         const message = try connection.next
-        const handled = try updateRun(runId, (stored) => generated ? handleGenerated(stored, message, connection) : handle(stored, message, connection))
+        const handled = try lock(effect {
+          const stored = try runOf(runId)
+          const next = generated ? try handleGenerated(stored, message, connection) : try handle(stored, message, connection)
+          try persist(next.row)
+          return next
+        })
         current = handled.row
         if (handled.done) break
+        if (handled.reply !== undefined) try connection.send(handled.reply)
       }
       return current
       }, connection.close)

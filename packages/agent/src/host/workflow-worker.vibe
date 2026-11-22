@@ -122,7 +122,10 @@ module node {
         if (current.kind !== "measured" || current.worker.executable !== pinned.executable || current.worker.measured !== pinned.measured) {
           throw new Error("The workflow worker no longer matches its verified digest")
         }
-        return spawn(pinned.executable, [...args], {
+        const [command, ...argv] = /\.[cm]?js$/i.test(pinned.executable)
+          ? [process.execPath, pinned.executable, ...args]
+          : [pinned.executable, ...args]
+        return spawn(command, argv, {
           cwd: pinned.runtimeDir, env, shell: false, stdio: "pipe",
           ...(options.signal === undefined ? {} : { signal: options.signal }),
         })

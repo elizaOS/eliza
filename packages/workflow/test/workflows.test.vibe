@@ -448,11 +448,18 @@ it.live('Turn on generated code only after review and resume it without repeatin
   const done = try settled(rig.client, sleeping)
   try check(() => assert.deepStrictEqual([done.status, drafts, JSON.parse(done.output ?? "null")], ["finished", 1, { text: "Your summary", signal: { received: true, payload: { ok: true } } }]))
 
-  const edited = try rig.request(`/api/workflow/workflows/${receipt.workflowId}`, { name: "Summary", description: "", source: generatedSource.replace("Summarize ", "Summarise "), mutationId: "55555555-5555-4555-8555-555555555555", expectedVersionId: on.versionId })
+  const edited = try rig.request(`/api/workflow/workflows/${receipt.workflowId}`, { name: "Summary", description: "", source: "export default async function () { for (;;) {} }", mutationId: "55555555-5555-4555-8555-555555555555", expectedVersionId: on.versionId })
   const after = try rig.client.detail(receipt.workflowId)
-  const editedVersion = (edited as { readonly receipt: { readonly versionId: string } }).receipt.versionId
+  const editedReceipt = (edited as { readonly receipt: { readonly versionId: string; readonly sourceDigest: string } }).receipt
+  const editedVersion = editedReceipt.versionId
   const stale = try Effect.flip(rig.request(`/api/workflow/workflows/${receipt.workflowId}/activate`, { expectedVersionId: editedVersion }))
   try check(() => assert.deepStrictEqual([after.active, after.versionId === editedVersion, stale._tag === "WorkflowHttpError" ? stale.code : ""], [false, true, "WORKFLOW_ACTIVATION_NOT_APPLIED"]))
+  try rig.request(`/api/workflow/workflows/${receipt.workflowId}/review`, { expectedVersionId: editedVersion, sourceDigest: editedReceipt.sourceDigest })
+  const updated = try rig.client.activate(receipt.workflowId, editedVersion)
+  const longRun = try rig.client.run(receipt.workflowId, updated.versionId, () => succeed(undefined))
+  try sleep("2 seconds")
+  const limited = try settled(rig.client, longRun)
+  try check(() => assert.deepStrictEqual([limited.status, drafts], ["failed", 1]))
 })
 
 it.live('Import only complete reviewed workflow source, and run only a worker built and installed intact (spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"; spec/workflow/worker.md, "Story: Run workflows from the reviewed source and signed device assets")', effect () => {
@@ -473,7 +480,8 @@ it.live('Import only complete reviewed workflow source, and run only a worker bu
       "dist/src/worker/main.js": "import { serve } from \"./protocol.js\"\nimport { Effect } from \"dep-a\"\nserve(Effect)\n",
       "dist/src/worker/protocol.js": "export { helper } from \"../../gen/helper.js\"\nimport \"./compiler.js\"\nimport \"./engine.js\"\nexport const serve = () => undefined\n",
       "dist/src/worker/compiler.js": "export const load = () => import(\"typescript\")\n",
-      "dist/src/worker/engine.js": "export const engine = 1\n",
+      "dist/src/worker/engine.js": "export{guest as engine}from\"./guest.js\"\n",
+      "dist/src/worker/guest.js": "export const guest = 1\n",
       "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version: "6.0.3", main: "./lib/typescript.js" }),
       "node_modules/typescript/lib/typescript.js": "module.exports = {}\n",
       "node_modules/typescript/lib/lib.es2022.d.ts": "interface Array<T> {}\n",
@@ -481,13 +489,14 @@ it.live('Import only complete reviewed workflow source, and run only a worker bu
       "dist/gen/helper.js": "export const helper = 1\n",
       "dist/src/unused.js": "export const unused = 1\n",
       "node_modules/dep-a/package.json": JSON.stringify({ name: "dep-a", version: "1.2.3", type: "module", exports: { ".": { types: "./index.d.ts", import: "./dist/index.js" } } }),
-      "node_modules/dep-a/dist/index.js": "export const Effect = {}\n",
+      "node_modules/dep-a/dist/index.js": "export * as Effect from './namespace.mjs'\n",
+      "node_modules/dep-a/dist/namespace.mjs": "export const value = 1\n",
       "node_modules/dep-a/dist/unused.js": "export {}\n",
     }))
     const closure = try workerArtifactClosure(worker.path)
     try check(() => assert.deepStrictEqual([closure.entries.map((entry) => entry.path).sort(), closure.dependencies], [
-      ["gen/helper.js", "node_modules/dep-a/dist/index.js", "node_modules/dep-a/package.json", "node_modules/typescript/lib/typescript.js", "node_modules/typescript/package.json",
-        "src/worker/compiler.js", "src/worker/engine.js", "src/worker/main.js", "src/worker/protocol.js"], { "dep-a": "1.2.3", typescript: "6.0.3" },
+      ["gen/helper.js", "node_modules/dep-a/dist/index.js", "node_modules/dep-a/dist/namespace.mjs", "node_modules/dep-a/package.json", "node_modules/typescript/lib/typescript.js", "node_modules/typescript/package.json",
+        "src/worker/compiler.js", "src/worker/engine.js", "src/worker/guest.js", "src/worker/main.js", "src/worker/protocol.js"], { "dep-a": "1.2.3", typescript: "6.0.3" },
     ]))
     const identity = { sourceStampSha256: "a".repeat(64), lockSha256: "b".repeat(64) }
     const provenance = try workerProvenance()

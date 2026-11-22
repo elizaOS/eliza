@@ -5,7 +5,11 @@ agent generated: one TypeScript module whose default export takes the
 engine's context. The workflow worker ([worker provenance](./worker.md))
 checks it with the staged TypeScript compiler against the engine's
 declarations, publishes the compiled source ([source
-publication](./sourcePublication.md)) and runs it. [Admission](./admission.md)
+publication](./sourcePublication.md)) and runs the verified bytes in a
+bounded WebAssembly JavaScript guest. Each start gets fresh guest memory.
+The guest receives JSON data and calls the journaled context. The worker
+keeps filesystem, network and process capabilities outside the guest.
+[Admission](./admission.md)
 binds each run to the exact reviewed version and
 [execution](./execution.md) owns the worker slot and wakeups.
 
