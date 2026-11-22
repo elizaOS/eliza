@@ -422,24 +422,34 @@ pure val weight_archiveRecovery = 3
 ### A hold is taken only with no child, blocks every start and is released only for its target or an ended attempt
 
 The install journal (`appUpdate/install.md`) takes the hold after the
-agent stopped. A release counts only when the installed code and digest
-equal the target, or the attempt is proven ended (baseline installed, no
-session pending). A failed grant write opens the launch gate only after the
-shell confirms no grant is saved. If it cannot confirm absence, it keeps
-the target fenced. The updater sees a grant only after the shell confirms
-the saved record. The shell clears and syncs the saved hold before opening
-the launch gate. On restart, it confirms a visible release by syncing its
-directory, and resolves an unconfirmed grant only from the synced record
+agent stopped. If a launch is checking and no child is journaled, the hold
+request cancels that check before saving the grant. Any recorded child
+blocks the grant until its journal entry is cleared. A release counts only
+when the installed code and digest equal the target, or the attempt is
+proven ended (baseline installed, no session pending). A failed grant write
+opens the launch gate only after the shell confirms no grant is saved.
+If it cannot confirm absence, it keeps the target fenced. The updater sees
+a grant only after the shell confirms the saved record. The shell clears
+and syncs the saved hold before opening the launch gate. On restart, it
+resolves a visible release or unconfirmed grant only from a synced record
 or confirmed absence.
 
 ```quint
 type UpdateOutcome = Installed({ artifact: int }) | AttemptEnded
 pure def canHoldForUpdate(s: AgentService, target: int): bool =
-  s.hold == NotHeld and target >= 1 and s.child == NoChild and (s.phase == Stopped or isFailed(s.phase))
-pure def holdForUpdate(s: AgentService, target: int): AgentService = { ...s, hold: HeldFor({ target: target }) }
+  s.hold == NotHeld and target >= 1 and s.child == NoChild
+    and (s.phase == Stopped or isFailed(s.phase) or s.phase == Starting({ step: Checking }))
+pure def stopCheckingForHold(s: AgentService): AgentService =
+  if (s.phase == Starting({ step: Checking })) stop(s).state else s
+pure def holdForUpdate(s: AgentService, target: int): AgentService = {
+  val stopped = stopCheckingForHold(s)
+  { ...stopped, hold: HeldFor({ target: target }) }
+}
 pure def canHoldWriteFailed(s: AgentService, target: int, absenceConfirmed: bool): bool = canHoldForUpdate(s, target)
-pure def holdWriteFailed(s: AgentService, target: int, absenceConfirmed: bool): AgentService =
-  if (absenceConfirmed) s else { ...s, hold: UnconfirmedHold({ pendingTarget: target }) }
+pure def holdWriteFailed(s: AgentService, target: int, absenceConfirmed: bool): AgentService = {
+  val stopped = stopCheckingForHold(s)
+  if (absenceConfirmed) stopped else { ...stopped, hold: UnconfirmedHold({ pendingTarget: target }) }
+}
 pure def holdTarget(hold: UpdateHold): int = match hold {
   | NotHeld => 0
   | HeldFor(saved) => saved.target
@@ -464,8 +474,9 @@ pure def stepHoldChangesOnlyByReleaseOrReadback(before: AgentService, via: str, 
   (before.hold != NotHeld and after.hold != before.hold) implies
     (via == "releaseUpdate" or (via == "observeHoldGrant" and unconfirmed(before.hold)
       and (after.hold == NotHeld or holdTarget(before.hold) == holdTarget(after.hold))))
-pure def stepFailedGrantChangesOnlyFence(before: AgentService, via: str, after: AgentService): bool =
-  via == "holdWriteFailed" implies { ...after, hold: before.hold } == before
+pure def stepHoldCancelsOnlyChecking(before: AgentService, via: str, after: AgentService, out: List[ServiceEffect]): bool =
+  (via == "holdForUpdate" or via == "holdWriteFailed") implies
+    (out == List() and { ...after, hold: before.hold } == stopCheckingForHold(before))
 pure def stepFailedReleaseKeepsState(before: AgentService, via: str, after: AgentService): bool =
   via == "releaseUpdateFailed" implies after == before
 pure def sometimesHeldForUpdate(s: AgentService): bool = s.hold != NotHeld and not(unconfirmed(s.hold)) and s.key != NoKey
