@@ -606,7 +606,7 @@ export function newSpec(root: string, name = ""): string {
 const COMMANDS = [
   ["check", "[<directory>] [--json] [--nightly]", "run every stage; --json prints each result as one line of JSON, then { ok, results, next }; --nightly uses the nightly test profile"],
   ["watch", "[<directory>]", "check again whenever spec/, src/, test/ or tsconfig.json changes"],
-  ["gen", "[<directory>] [--if-valid] or --owner <name> [<directory>] or --install", "write gen/ from the spec; --install prepares a template checkout"],
+  ["gen", "[<directory>] [--if-valid] or --owner <name> [<directory>] or --install [//#task…]", "write gen/ from the spec; --install prepares a template checkout"],
   ["accept", "[<directory>] [unproved]", "record what was reviewed, or the obligations that are simulated only"],
   ["new", "[<path>]", "fill an empty spec/index.md, or write a starter spec/<path>/index.md"],
   ["init", "[<directory>]", "add what a project is missing"],
@@ -718,16 +718,46 @@ ${error.message}`);
   }
 }
 
+async function runTasks(root: string, args: string[]): Promise<number | null> {
+  const fingerprint = path.join(root, ".cache", "toolchain.json");
+  const text = JSON.stringify(await steady(toolchainFingerprint)) + "\n";
+  fs.mkdirSync(path.dirname(fingerprint), { recursive: true });
+  if (!fs.existsSync(fingerprint) || fs.readFileSync(fingerprint, "utf8") !== text) fs.writeFileSync(fingerprint, text);
+  let env: NodeJS.ProcessEnv = { ...process.env, TURBO_TELEMETRY_DISABLED: "1", VIBESTACK_QUINT_EVALUATOR: evaluatorIdentity(root) ?? randomUUID() };
+  const credentials = path.join(os.homedir(), ".config", "vibestack", "turbo-cache.json");
+  if (env.TURBO_TOKEN === undefined && fs.existsSync(credentials)) {
+    const cache = JSON.parse(fs.readFileSync(credentials, "utf8"));
+    const declared = JSON.parse(fs.readFileSync(path.join(root, "turbo.json"), "utf8")).remoteCache?.apiUrl;
+    env = cacheCredentials(env, args, declared, cache);
+  }
+  const turboPackage = createRequire(bin("turbo", root)).resolve("turbo/package.json");
+  const turboEntry = path.resolve(path.dirname(turboPackage), JSON.parse(fs.readFileSync(turboPackage, "utf8")).bin.turbo);
+  const child = spawn(process.execPath, [turboEntry, "run", ...args], { cwd: root, env, stdio: "inherit" });
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", resolve);
+  });
+}
+
 /** The `spec` command, on `process.argv`. */
 export async function main(argv = process.argv.slice(2)) {
   let root = process.cwd();
   let [command, ...args] = argv;
-  const installing = command === "gen" && args.length === 1 && args[0] === "--install";
-  if (installing) [command, ...args] = process.env.GITHUB_ACTIONS === "true" ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
+  const installing = command === "gen" && args[0] === "--install" && args.slice(1).every((task) => /^\/\/#[\w.:-]+$/.test(task));
   const takes = (...allowed: string[][]) => allowed.some((a) => a.length === args.length && a.every((x, i) => x === "*" || x === args[i]));
   try {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
-    if (installing && process.env.GITHUB_ACTIONS === "true" && process.env.GITHUB_JOB === "vibestack-fixture-selftests") return;
+    if (installing) {
+      const hosted = process.env.GITHUB_ACTIONS === "true";
+      const fixture = hosted && process.env.GITHUB_JOB === "vibestack-fixture-selftests";
+      const prerequisites = args.slice(1).filter((task) => !fixture || task === "//#build");
+      if (prerequisites.length) {
+        const code = await runTasks(root, prerequisites);
+        if (code !== 0) { process.exitCode = code ?? 1; return; }
+      }
+      if (fixture) return;
+      [command, ...args] = hosted ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
+    }
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {
       await steady(() => generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]));
       return;
@@ -742,24 +772,9 @@ export async function main(argv = process.argv.slice(2)) {
     }
     if (command === "--help" && takes([])) console.log(USAGE);
     else if (command === "tasks") {
-      const fingerprint = path.join(root, ".cache", "toolchain.json");
-      const text = JSON.stringify(await steady(toolchainFingerprint)) + "\n";
-      fs.mkdirSync(path.dirname(fingerprint), { recursive: true });
-      if (!fs.existsSync(fingerprint) || fs.readFileSync(fingerprint, "utf8") !== text) fs.writeFileSync(fingerprint, text);
-      let env: NodeJS.ProcessEnv = { ...process.env, TURBO_TELEMETRY_DISABLED: "1", VIBESTACK_QUINT_EVALUATOR: evaluatorIdentity(root) ?? randomUUID() };
-      const credentials = path.join(os.homedir(), ".config", "vibestack", "turbo-cache.json");
-      if (env.TURBO_TOKEN === undefined && fs.existsSync(credentials)) {
-        const cache = JSON.parse(fs.readFileSync(credentials, "utf8"));
-        const declared = JSON.parse(fs.readFileSync(path.join(root, "turbo.json"), "utf8")).remoteCache?.apiUrl;
-        env = cacheCredentials(env, args, declared, cache);
-      }
-      const turboPackage = createRequire(bin("turbo", root)).resolve("turbo/package.json");
-      const turboEntry = path.resolve(path.dirname(turboPackage), JSON.parse(fs.readFileSync(turboPackage, "utf8")).bin.turbo);
-      const child = spawn(process.execPath, [turboEntry, "run", ...args], { cwd: root, env, stdio: "inherit" });
-      child.on("exit", (code, signal) => {
-        if (installing && code) console.log("note: gen/ was not generated; `pnpm check` says why");
-        else process.exitCode = code ?? (signal ? 1 : 0);
-      });
+      const code = await runTasks(root, args);
+      if (installing && code) console.log("note: gen/ was not generated; `pnpm check` says why");
+      else process.exitCode = code ?? 1;
     } else if (command === "gen" && takes([], ["--if-valid"])) {
       // --if-valid is for `pnpm install`: a spec in the middle of an edit, or a check running, must not make installing fail.
       let release = () => {};
