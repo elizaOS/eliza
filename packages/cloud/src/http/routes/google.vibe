@@ -2,8 +2,9 @@
 import { refuse, refuseFor, statusOf, type Refusal } from "../../../gen/cloud__shared__types.effect.vibe"
 import { json, jsonBody, owner, type Area, type RouteContext } from "../routes.vibe"
 import { refusalBody, refused } from "../refusal.vibe"
+import { signed } from "../request-auth.vibe"
 import { disconnectGrant, readGrantAccounts, readGrantStatus } from "../../services/google/grant-access.vibe"
-import { GoogleSubject, linkNativeGoogle, ServerAuthCode, type GoogleLinkFault } from "../../services/google/managed-grants.vibe"
+import { GoogleSubject, linkAuthorizedGoogle, ServerAuthCode, type GoogleLinkFault } from "../../services/google/managed-grants.vibe"
 import { browserConnectRoutes, browserConnectSweep } from "../../services/google/managed-browser.vibe"
 import { mailReadRoutes } from "../../services/google/mail-read.vibe"
 import { calendarRoutes, calendarSweeps } from "../../services/google/calendar.vibe"
@@ -47,14 +48,15 @@ const nativeFaults = {
   google_code_rejected: refuse("InvalidRequest"),
   google_scopes_missing: refuse("InvalidRequest"),
   google_account_mismatch: refuse("InvalidRequest"),
+  google_reconnect_required: refuse("GoogleReauthRequired"),
   google_unavailable: refuse("ProviderUnavailable")
 } satisfies Readonly<Record<GoogleLinkFault, Refusal>>
 
 effect function connectNative(context: RouteContext) {
-  const caller = owner(context.caller)
+  const caller = signed(context.caller)
   if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
   const body = try jsonBody(context, nativeBody)
-  const linked = try linkNativeGoogle(caller, body.serverAuthCode, body.expectedGoogleSubject)
+  const linked = try linkAuthorizedGoogle(caller, body.serverAuthCode, body.expectedGoogleSubject)
   if (linked.connected) return json(linked)
   const refusal = nativeFaults[linked.code]
   return json({ ...refusalBody(refusal), code: linked.code }, { status: statusOf(refusal.code) })

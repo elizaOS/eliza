@@ -7,7 +7,7 @@ import { landAccount, type Landed } from "../identity/accounts.vibe"
 import { spendNativeGoogle, verifyNativeGoogle, type VerifiedGoogle } from "../identity/federated.vibe"
 import { factorChallenge } from "../identity/second-factor.vibe"
 import { Deployment, rowOf } from "../profile/profile.vibe"
-import { linkNativeGoogle, ServerAuthCode, unlinked, type GoogleLink } from "../services/google/managed-grants.vibe"
+import { linkNativeSignInGoogle, ServerAuthCode, unlinked, type GoogleLink } from "../services/google/managed-grants.vibe"
 import { s256 } from "../shared/credential-crypto.vibe"
 import { newId } from "../shared/sealing.vibe"
 import { Store, type Tx } from "../store/connection.vibe"
@@ -80,7 +80,7 @@ effect function signIn(opening: MobileOpening) {
 }
 
 effect function linkGoogle(landed: Landed, subject: string, code: string) {
-  const linked = linkNativeGoogle(landed, code, subject) catch effect (failure) => {
+  const linked = linkNativeSignInGoogle(landed, code, subject) catch effect (failure) => {
     try annotateLogs(logWarning("native google connection not linked"), { cause: failure._tag })
     return unlinked("google_unavailable")
   }

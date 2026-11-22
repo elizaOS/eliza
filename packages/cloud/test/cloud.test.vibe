@@ -758,6 +758,30 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
         googleCalls: [["google-server-client", "", false]]
       }
     ))
+
+    const connect = (serverAuthCode: string) => cloud.call("/api/v1/eliza/google/connect/native", {
+      json: { serverAuthCode }, headers: bearer(body.secret)
+    })
+    const otherPerson = { ...person, subject: "another-google-subject" }
+    const wrongSubject = try connect(try sync(() => google.serverAuthCode(otherPerson, scopes)))
+    const noRefresh = try connect(try sync(() => google.serverAuthCode(person, scopes, { refreshToken: false })))
+    const onlySend = try connect(try sync(() => google.serverAuthCode(person, ["openid", "https://www.googleapis.com/auth/gmail.send"])))
+    const untouched = try sql(cloud, "SELECT key, subject, email FROM google_connections", [])
+    const linked = try connect(try sync(() => google.serverAuthCode(person, scopes)))
+    const firstReplay = try connect("4/invalid-authorization-code")
+    const secondReplay = try connect("4/invalid-authorization-code")
+    const callsBeforeLimit = google.tokenRequests.length
+    const overLimit = try connect(try sync(() => google.serverAuthCode(person, scopes)))
+    try sql(cloud, "DELETE FROM native_clients WHERE client_id=$1", [native.clientId])
+    const noLongerRegistered = try connect(try sync(() => google.serverAuthCode(otherPerson, scopes)))
+    try check(() => {
+      assert.deepStrictEqual([wrongSubject.status, noRefresh.status, onlySend.status, firstReplay.status, secondReplay.status], [409, 409, 409, 409, 409])
+      assert.deepStrictEqual(untouched, connections)
+      assert.equal(linked.status, 200)
+      assert.equal(overLimit.status, 429)
+      assert.equal(noLongerRegistered.status, 400)
+      assert.equal(google.tokenRequests.length, callsBeforeLimit)
+    })
   }), 60_000)
 
   it.live("Connect only the verified native Google grant and retain only its granted scopes (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
