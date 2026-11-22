@@ -1,11 +1,13 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"
-import { WorkerResponse, WorkerStream, newRequestId } from "./worker-platform.ts"
+import { WorkerResponse, newRequestId } from "./worker-platform.ts"
 import type { Client } from "pg"
 import { inferenceAccount } from "./identity.vibe"
 import type { NativeRegistryEnv } from "./native-registry.vibe"
 import { reserveUsage, dispatchUsage, releaseUsage, settleUsage } from "./worker-metering.vibe"
 import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { billedUsage, sideCost, isValidPrice, sideInBound } from "../gen/cloud__services__models.effect.vibe"
+import { ProviderUnreachable } from "./providers/llm.vibe"
+import { meteredChatStream } from "./services/chat-stream.vibe"
 
 type WorkersAI = {
   run(model: string, input: Record<string, unknown>, options: { returnRawResponse: true; signal: AbortSignal }): Promise<Response>
@@ -26,6 +28,8 @@ export type InferenceEnv = WorkerDatabase & NativeRegistryEnv & InferenceProvide
 }
 
 const jsonError = (status: number, error: string) => WorkerResponse.json({ error }, { status })
+error WorkerSettlementFailed { cause: unknown }
+
 const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
 
 export async function limitedBody(request: Pick<Request, "body">, limit: number) {
@@ -105,9 +109,10 @@ export async function inferenceRequest(request: Request, env: InferenceEnv, db: 
     }
   }
   const streaming = !embedding && body.stream === true
+  const includeUsage = streaming && record(body.stream_options) && body.stream_options.include_usage === true
   if (streaming) body.stream_options = { include_usage: true }
-  const estimatedInput = bytes.byteLength
-  const quote = Math.max(1, sideCost(estimatedInput, inputPrice) + sideCost(Number(body.max_tokens ?? 0), outputPrice))
+  const quoted = { inputTokens: bytes.byteLength, outputTokens: Number(body.max_tokens ?? 0) }
+  const quote = Math.max(1, sideCost(quoted.inputTokens, inputPrice) + sideCost(quoted.outputTokens, outputPrice))
   const admission = await reserveUsage(db, { account, service: "inference", requestId: id, quoteMicros: quote })
   if (admission.kind === "duplicate") return jsonError(409, "already_dispatched")
   if (admission.kind === "unfunded") return jsonError(402, "insufficient_credits")
@@ -135,15 +140,40 @@ export async function inferenceRequest(request: Request, env: InferenceEnv, db: 
     return jsonError(502, "inference_provider_unavailable")
   }
   if (!response.ok || !response.body) {
-    await settleUsage(db, admission.key, response.ok ? null : 0)
-    await response.body?.cancel()
+    try {
+      await settleUsage(db, admission.key, response.ok || (streaming && (response.status < 400 || response.status >= 500)) ? null : 0)
+    } finally {
+      await response.body?.cancel().catch(() => undefined)
+    }
     return jsonError(502, "inference_provider_unavailable")
   }
   const type = response.headers.get("content-type") ?? ""
   const headers = { "content-type": type, "cache-control": "no-store", "x-request-id": id }
-  if (streaming && type.startsWith("text/event-stream")) {
-    const settle = (cost: number | null) => withCloudDatabase(env, (connection) => settleUsage(connection, admission.key, cost))
-    return new WorkerResponse(meteredStream(response.body, inputPrice, outputPrice, settle), { headers })
+  if (streaming) {
+    if (!type.toLowerCase().startsWith("text/event-stream")) {
+      try {
+        await settleUsage(db, admission.key, null)
+      } finally {
+        await response.body.cancel().catch(() => undefined)
+      }
+      return jsonError(502, "invalid_provider_response")
+    }
+    const providerBody = response.body
+    const upstream = Stream.fromReadableStream({
+      evaluate: () => providerBody,
+      onError: () => new ProviderUnreachable()
+    })
+    const framed = meteredChatStream({
+      upstream, publicModelId: model, quoted, holdKey: admission.key, includeUsage,
+      price: (counts) => Effect.succeed(sideCost(counts.inputTokens, inputPrice) + sideCost(counts.outputTokens, outputPrice)),
+      finishHold: (settlement) => Effect.tryPromise({
+        try: () => withCloudDatabase(env, (connection) => settleUsage(connection, admission.key, settlement.kind === "known" ? settlement.actual : null)),
+        catch: (cause) => new WorkerSettlementFailed({ cause })
+      })
+    })
+    return new WorkerResponse(Stream.toReadableStreamWith(framed, Context.empty(), {
+      strategy: { highWaterMark: 0 }, signal: request.signal
+    }), { headers })
   }
   const reply = await limitedBody(response, 16 * 1024 * 1024).catch(() => null)
   if (!reply || !type.toLowerCase().includes("application/json")) {
@@ -177,45 +207,4 @@ function costOf(json: string, inputPrice: number, outputPrice: number, embedding
     completionTokens: embedding ? 0 : count(usage.completion_tokens), reasoningTokens: count(completion.reasoning_tokens ?? 0) })
   if (billed.tag !== "Reported") return null
   return sideCost(billed.counts.inputTokens, inputPrice) + sideCost(billed.counts.outputTokens, outputPrice)
-}
-
-function meteredStream(body: ReadableStream<Uint8Array>, inputPrice: number, outputPrice: number, settle: (cost: number | null) => Promise<void>) {
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let pending = ""
-  let skipLine = false
-  let measured: number | null = null
-  let settlement: Promise<void> | undefined
-  const finish = () => settlement ??= settle(measured)
-  function consume(text: string) {
-    const lines = (pending + text).split("\n")
-    pending = lines.pop() ?? ""
-    for (const line of lines) {
-      if (!skipLine && line.startsWith("data:")) {
-        measured = costOf(line.slice(5).trim(), inputPrice, outputPrice, false) ?? measured
-      }
-      skipLine = false
-    }
-    if (pending.length > 262144) { skipLine = true; pending = "" }
-  }
-  return new WorkerStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const chunk = await reader.read()
-        if (chunk.done) {
-          consume(decoder.decode() + "\n")
-          await finish()
-          controller.close()
-        } else {
-          consume(decoder.decode(chunk.value, { stream: true }))
-          controller.enqueue(chunk.value)
-        }
-      } catch (failure) {
-        try { await finish() } finally { controller.error(failure) }
-      }
-    },
-    async cancel(reason) {
-      try { await reader.cancel(reason) } finally { await finish() }
-    }
-  })
 }
