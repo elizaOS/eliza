@@ -248,14 +248,25 @@
         : null;
     if (policy?.commitGrant && !grant && command.subaction !== "snapshot")
       return denied();
+    const realmOf = (node) => node?.ownerDocument?.defaultView ?? window;
+    const is = (node, type) =>
+      node !== null &&
+      typeof node === "object" &&
+      node instanceof (realmOf(node)[type] ?? globalThis[type]);
+    const styleOf = (node) => realmOf(node).getComputedStyle(node);
     let monitor = store[monitorKey];
-    if (!monitor || monitor.document !== document) {
+    if (
+      !monitor ||
+      monitor.document !== document ||
+      typeof monitor.watch !== "function"
+    ) {
       monitor = {
         document,
         domRevision: 0,
         inputRevision: 0,
         ownedHosts: host?.ownedHosts ?? new WeakSet(),
         editedFields: new WeakSet(),
+        roots: new WeakSet(),
       };
       monitor.recordMutations = (records) => {
         if (
@@ -276,46 +287,203 @@
           monitor.domRevision++;
       };
       monitor.observer = new MutationObserver(monitor.recordMutations);
-      monitor.observer.observe(document, {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        characterData: true,
-      });
       const input = (event) => {
         monitor.inputRevision++;
         if (
           ["input", "change"].includes(event?.type) &&
-          event.target instanceof Element
+          is(event.target, "Element")
         )
           monitor.editedFields.add(event.target);
       };
-      document.addEventListener("beforeinput", input, true);
-      document.addEventListener("input", input, true);
-      document.addEventListener("change", input, true);
-      document.addEventListener(
-        "pointerdown",
-        (event) => {
-          if (event.isTrusted) input();
-        },
-        true,
-      );
+      const press = (event) => {
+        if (event.isTrusted) input();
+      };
+      monitor.watch = (root) => {
+        if (monitor.roots.has(root)) return false;
+        monitor.roots.add(root);
+        monitor.observer.observe(root, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          characterData: true,
+        });
+        root.addEventListener("beforeinput", input, true);
+        root.addEventListener("input", input, true);
+        root.addEventListener("change", input, true);
+        root.addEventListener("pointerdown", press, true);
+        return true;
+      };
+      monitor.watch(document);
       store[monitorKey] = monitor;
     }
     // Drain queued mutations synchronously as an effect may arrive before the
     // MutationObserver microtask. Never store or return form values in this monitor.
     monitor.recordMutations(monitor.observer.takeRecords());
+    const descend =
+      command.subaction === "snapshot"
+        ? command.childFrames !== false
+        : store[key]?.descend !== false;
+    const walk = () => {
+      const parts = [];
+      const frames = [];
+      const order = [];
+      const skipOwned = (node) =>
+        monitor.ownedHosts.has(node)
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT;
+      const rendered = (element) => {
+        const rect = element.getBoundingClientRect();
+        const view = element.ownerDocument.defaultView;
+        const page =
+          element.ownerDocument.scrollingElement ??
+          element.ownerDocument.documentElement;
+        return (
+          element.checkVisibility({ checkVisibilityCSS: true }) &&
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.right + view.scrollX > 0 &&
+          rect.bottom + view.scrollY > 0 &&
+          rect.left + view.scrollX <
+            Math.max(page.scrollWidth, view.innerWidth) &&
+          rect.top + view.scrollY <
+            Math.max(page.scrollHeight, view.innerHeight)
+        );
+      };
+      const enter = (root, frame) => {
+        const part = { root, frame };
+        parts.push(part);
+        const doc = root.ownerDocument ?? root;
+        const start = root === doc ? (doc.body ?? doc.documentElement) : root;
+        if (!start) return;
+        if (frame && root === doc && doc.scrollingElement)
+          order.push({ node: doc.scrollingElement, part, frameRoot: true });
+        if (start !== root && start.shadowRoot) enter(start.shadowRoot, frame);
+        const walker = doc.createTreeWalker(
+          start,
+          NodeFilter.SHOW_ELEMENT,
+          skipOwned,
+        );
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          order.push({ node, part });
+          if (node.shadowRoot) enter(node.shadowRoot, frame);
+          else if (
+            descend &&
+            (node.localName === "iframe" || node.localName === "frame") &&
+            node.namespaceURI === "http://www.w3.org/1999/xhtml"
+          ) {
+            const shown = rendered(node);
+            let child = null;
+            if (shown)
+              try {
+                child = node.contentDocument;
+              } catch {}
+            const read =
+              !!child && child.defaultView?.origin === location.origin;
+            const entry = {
+              index: frames.length + 1,
+              element: node,
+              parent: frame,
+              document: read ? child : null,
+              origin: read ? location.origin : null,
+              reason: read ? null : shown ? "other-origin" : "not-rendered",
+            };
+            frames.push(entry);
+            if (read) enter(child, entry);
+          }
+        }
+      };
+      enter(document, null);
+      return { parts, frames, order };
+    };
+    const scan = walk();
+    for (const { root } of scan.parts)
+      if (monitor.watch(root)) monitor.domRevision++;
+    const partOf = new Map(scan.parts.map((part) => [part.root, part]));
+    const frameOf = (node) => partOf.get(node.getRootNode())?.frame ?? null;
+    const readFrame = new Map(
+      scan.frames
+        .filter((frame) => frame.document)
+        .map((frame) => [frame.element, frame]),
+    );
+    const within = (outer, node) => {
+      for (let item = node; item; ) {
+        if (item === outer) return true;
+        if (item.parentNode) item = item.parentNode;
+        else if (item.host) item = item.host;
+        else if (item.nodeType === Node.DOCUMENT_NODE && item !== document)
+          item = partOf.get(item)?.frame?.element ?? null;
+        else item = null;
+      }
+      return false;
+    };
+    const boxes = new Map();
+    const frameBox = (frame) => {
+      if (!frame)
+        return {
+          x: 0,
+          y: 0,
+          scale: 1,
+          clip: { left: 0, top: 0, right: innerWidth, bottom: innerHeight },
+        };
+      if (boxes.has(frame)) return boxes.get(frame);
+      const outer = frameBox(frame.parent);
+      const element = frame.element;
+      const rect = element.getBoundingClientRect();
+      const style = styleOf(element);
+      const scale =
+        outer.scale *
+        (element.offsetWidth > 0 ? rect.width / element.offsetWidth : 1);
+      const view = frame.document.defaultView;
+      const x =
+        outer.x +
+        rect.x * outer.scale +
+        (element.clientLeft + Number.parseFloat(style.paddingLeft || "0")) *
+          scale;
+      const y =
+        outer.y +
+        rect.y * outer.scale +
+        (element.clientTop + Number.parseFloat(style.paddingTop || "0")) *
+          scale;
+      const box = {
+        x,
+        y,
+        scale,
+        clip: {
+          left: Math.max(outer.clip.left, x),
+          top: Math.max(outer.clip.top, y),
+          right: Math.min(outer.clip.right, x + view.innerWidth * scale),
+          bottom: Math.min(outer.clip.bottom, y + view.innerHeight * scale),
+        },
+      };
+      boxes.set(frame, box);
+      return box;
+    };
     const bounds = (node) => {
-      if (node === document.scrollingElement)
-        return { x: 0, y: 0, width: innerWidth, height: innerHeight };
-      const rect = node.getBoundingClientRect();
-      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      const rect =
+        node === node.ownerDocument.scrollingElement
+          ? {
+              x: 0,
+              y: 0,
+              width: realmOf(node).innerWidth,
+              height: realmOf(node).innerHeight,
+            }
+          : node.getBoundingClientRect();
+      const frame = frameOf(node);
+      if (!frame)
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      const box = frameBox(frame);
+      return {
+        x: box.x + rect.x * box.scale,
+        y: box.y + rect.y * box.scale,
+        width: rect.width * box.scale,
+        height: rect.height * box.scale,
+      };
     };
     const scrollState = (node) => {
-      const root = node === document.scrollingElement;
-      const style = getComputedStyle(node);
-      const width = root ? innerWidth : node.clientWidth;
-      const height = root ? innerHeight : node.clientHeight;
+      const root = node === node.ownerDocument.scrollingElement;
+      const style = styleOf(node);
+      const width = root ? realmOf(node).innerWidth : node.clientWidth;
+      const height = root ? realmOf(node).innerHeight : node.clientHeight;
       const horizontal =
         (root || /^(auto|scroll)$/.test(style.overflowX)) &&
         node.scrollWidth > width;
@@ -351,7 +519,7 @@
       const collectText = (node) => {
         if (node.nodeType === Node.TEXT_NODE) {
           const visibility = node.parentElement
-            ? getComputedStyle(node.parentElement).visibility
+            ? styleOf(node.parentElement).visibility
             : "visible";
           if (
             visibility !== "hidden" &&
@@ -361,37 +529,51 @@
             visibleText.push(node.textContent);
           return;
         }
-        if (!(node instanceof Element)) return;
+        if (!is(node, "Element")) return;
         if (
           node.matches("input,textarea,select,script,style,noscript") ||
           node.isContentEditable
         )
           return;
-        const style = getComputedStyle(node);
+        const style = styleOf(node);
         if (style.display === "none") return;
-        if (node instanceof HTMLDetailsElement && !node.open) {
+        if (is(node, "HTMLDetailsElement") && !node.open) {
           const summary = node.querySelector(":scope > summary");
           if (summary) collectText(summary);
           return;
         }
-        for (const child of node.childNodes) collectText(child);
+        const assigned =
+          node.localName === "slot" && node.getRootNode().host
+            ? node.assignedNodes({ flatten: true })
+            : [];
+        const inner = readFrame.get(node)?.document;
+        for (const child of inner
+          ? [inner.body ?? inner.documentElement].filter(Boolean)
+          : node.shadowRoot
+            ? node.shadowRoot.childNodes
+            : assigned.length
+              ? assigned
+              : node.childNodes)
+          collectText(child);
       };
       collectText(root);
       return visibleText.join("\n").trim();
     };
     // Accessible name in the usual order. Never reads a form control value
     // except the visible caption of a button-type input.
-    const idText = (value) =>
-      (value || "")
+    const idText = (value, node) => {
+      const scope = node.getRootNode();
+      return (value || "")
         .split(/\s+/)
-        .map((id) => id && document.getElementById(id))
+        .map((id) => id && scope.getElementById?.(id))
         .filter(Boolean)
         .map((ref) => readVisibleText(ref) || ref.getAttribute("aria-label"))
         .filter(Boolean)
         .join(" ")
         .trim();
+    };
     const accessibleName = (node) => {
-      const labelled = idText(node.getAttribute("aria-labelledby"));
+      const labelled = idText(node.getAttribute("aria-labelledby"), node);
       if (labelled) return labelled;
       const aria = node.getAttribute("aria-label")?.trim();
       if (aria) return aria;
@@ -401,18 +583,18 @@
         .join(" ");
       if (labels) return labels;
       if (
-        node instanceof HTMLInputElement &&
+        is(node, "HTMLInputElement") &&
         ["button", "submit", "reset"].includes(node.type)
       )
         return node.value || (node.type === "submit" ? "Submit" : "");
-      if (node instanceof HTMLInputElement && node.type === "image")
+      if (is(node, "HTMLInputElement") && node.type === "image")
         return node.alt || node.title || "";
-      if (node instanceof HTMLInputElement && node.type === "password")
+      if (is(node, "HTMLInputElement") && node.type === "password")
         return node.getAttribute("placeholder") || node.title || "Password";
       if (
-        node instanceof HTMLInputElement ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement ||
+        is(node, "HTMLInputElement") ||
+        is(node, "HTMLTextAreaElement") ||
+        is(node, "HTMLSelectElement") ||
         node.isContentEditable
       )
         return node.getAttribute("placeholder") || node.title || "";
@@ -427,9 +609,9 @@
     const sensitivity = (node) => {
       if (
         !(
-          node instanceof HTMLInputElement ||
-          node instanceof HTMLTextAreaElement ||
-          node instanceof HTMLSelectElement ||
+          is(node, "HTMLInputElement") ||
+          is(node, "HTMLTextAreaElement") ||
+          is(node, "HTMLSelectElement") ||
           node.isContentEditable
         )
       )
@@ -438,7 +620,7 @@
         .toLowerCase()
         .split(/\s+/);
       if (
-        (node instanceof HTMLInputElement && node.type === "password") ||
+        (is(node, "HTMLInputElement") && node.type === "password") ||
         autocomplete.some((token) => token.endsWith("password"))
       )
         return "password";
@@ -505,18 +687,22 @@
       node.matches("button[type=button][aria-expanded],[role=tab]") &&
       (node.getAttribute("aria-controls") ?? "")
         .split(/\s+/)
-        .some((id) => id !== "" && document.getElementById(id) !== null);
+        .some(
+          (id) =>
+            id !== "" &&
+            (node.getRootNode().getElementById?.(id) ?? null) !== null,
+        );
     const inert = (node) => {
       if (
         node.matches("input[type=checkbox],input[type=radio],option,summary") ||
         discloses(node)
       )
         return true;
-      if (!(node instanceof HTMLAnchorElement) || !node.hasAttribute("href"))
+      if (!is(node, "HTMLAnchorElement") || !node.hasAttribute("href"))
         return false;
       try {
         const target = new URL(node.href);
-        const here = new URL(location.href);
+        const here = new URL(node.ownerDocument.URL);
         target.hash = "";
         here.hash = "";
         return /^https?:$/.test(target.protocol) && target.href !== here.href;
@@ -525,21 +711,31 @@
       }
     };
     const showsMoney = () =>
-      [
-        ...document.querySelectorAll("input,textarea,select,[contenteditable]"),
-      ].some((field) =>
-        ["payment-card", "bank-account"].includes(sensitivity(field)),
-      ) ||
+      scan.parts
+        .flatMap(({ root }) => [
+          ...root.querySelectorAll("input,textarea,select,[contenteditable]"),
+        ])
+        .some((field) =>
+          ["payment-card", "bank-account"].includes(sensitivity(field)),
+        ) ||
       /(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)\s?\d|\d\s?(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)/u.test(
         readVisibleText(document.body ?? document.documentElement),
       );
     if (command.subaction === "snapshot") {
+      let active = document.activeElement;
+      for (let inner = active; inner; ) {
+        active = inner;
+        inner =
+          inner.shadowRoot?.activeElement ??
+          readFrame.get(inner)?.document.activeElement ??
+          null;
+      }
       const controlState = (node) => {
         const flag = (name) => node.getAttribute(name) === "true";
         return {
-          focused: document.activeElement === node,
+          focused: document.activeElement === node || active === node,
           disabled: node.matches(":disabled") || flag("aria-disabled"),
-          ...(node instanceof HTMLInputElement &&
+          ...(is(node, "HTMLInputElement") &&
           ["checkbox", "radio"].includes(node.type)
             ? { checked: node.checked }
             : node.hasAttribute("aria-checked")
@@ -553,23 +749,23 @@
           // Field help and error text the page ties to this control.
           description:
             [
-              idText(node.getAttribute("aria-describedby")),
+              idText(node.getAttribute("aria-describedby"), node),
               flag("aria-invalid")
-                ? idText(node.getAttribute("aria-errormessage"))
+                ? idText(node.getAttribute("aria-errormessage"), node)
                 : "",
             ]
               .filter(Boolean)
               .join(" ") || null,
           sensitive: sensitivity(node),
-          ...(node instanceof HTMLInputElement ||
-          node instanceof HTMLSelectElement ||
-          node instanceof HTMLTextAreaElement ||
+          ...(is(node, "HTMLInputElement") ||
+          is(node, "HTMLSelectElement") ||
+          is(node, "HTMLTextAreaElement") ||
           node.isContentEditable
             ? { edited: monitor.editedFields.has(node) }
             : {}),
           // A select can have a valid choice whose internal value is empty.
           // Only selection/occupancy leaves the page, never the field value.
-          ...(node instanceof HTMLSelectElement
+          ...(is(node, "HTMLSelectElement")
             ? {
                 hasInput:
                   node.selectedIndex >= 0 &&
@@ -577,7 +773,7 @@
                   !node.options[node.selectedIndex].disabled &&
                   (node.value !== "" || monitor.editedFields.has(node)),
               }
-            : (node instanceof HTMLInputElement &&
+            : (is(node, "HTMLInputElement") &&
                   ![
                     "button",
                     "submit",
@@ -590,7 +786,7 @@
                     "range",
                     "color",
                   ].includes(node.type)) ||
-                node instanceof HTMLTextAreaElement
+                is(node, "HTMLTextAreaElement")
               ? { hasInput: node.value !== "" }
               : node.isContentEditable
                 ? { hasInput: (node.textContent ?? "").trim() !== "" }
@@ -603,7 +799,8 @@
       // not compared: they would match ordinary words.
       const secrets = [
         ...new Set(
-          [...document.querySelectorAll("input,textarea")]
+          scan.parts
+            .flatMap(({ root }) => [...root.querySelectorAll("input,textarea")])
             .filter((node) => sensitivity(node) !== null)
             .map((node) => node.value)
             .filter((value) => typeof value === "string" && value.length >= 4),
@@ -632,9 +829,11 @@
       const candidates = [];
       if (document.scrollingElement && scrollState(document.scrollingElement))
         candidates.push(document.scrollingElement);
-      for (const node of (
-        document.body ?? document.documentElement
-      ).querySelectorAll("*")) {
+      for (const { node, frameRoot } of scan.order) {
+        if (frameRoot) {
+          if (scrollState(node)) candidates.push(node);
+          continue;
+        }
         if (node.matches(NATIVE)) {
           candidates.push(node);
           continue;
@@ -643,8 +842,8 @@
         if (
           !(
             node.matches('[onclick],[tabindex]:not([tabindex="-1"])') ||
-            (getComputedStyle(node).cursor === "pointer" &&
-              getComputedStyle(node.parentElement ?? node).cursor !== "pointer")
+            (styleOf(node).cursor === "pointer" &&
+              styleOf(node.parentElement ?? node).cursor !== "pointer")
           ) ||
           node.closest(NATIVE) ||
           node.querySelector(NATIVE)
@@ -673,7 +872,7 @@
       const nearbyText = (node) => {
         for (
           let item = node, depth = 0;
-          item && item !== document.body && depth < 4;
+          item && item !== item.ownerDocument.body && depth < 4;
           item = item.parentElement, depth++
         )
           for (
@@ -684,7 +883,7 @@
             const text =
               sibling.nodeType === Node.TEXT_NODE
                 ? sibling.textContent.trim()
-                : sibling instanceof Element
+                : is(sibling, "Element")
                   ? readVisibleText(sibling)
                   : "";
             if (text) return text.split("\n").filter(Boolean).at(-1).trim();
@@ -694,21 +893,23 @@
       // The form or field group the control belongs to, by its own name.
       const groupName = (group) =>
         group
-          ? idText(group.getAttribute("aria-labelledby")) ||
+          ? idText(group.getAttribute("aria-labelledby"), group) ||
             group.getAttribute("aria-label")?.trim() ||
             (group.querySelector("legend,h1,h2,h3,h4,h5,h6")
               ? readVisibleText(group.querySelector("legend,h1,h2,h3,h4,h5,h6"))
               : "") ||
             null
           : null;
-      const forms = [...document.forms];
+      const forms = scan.parts.flatMap(({ root }) => [
+        ...root.querySelectorAll("form"),
+      ]);
       // Position of an element among its siblings with the same tag, counted
       // once per parent.
       const typeIndexes = new Map();
       const typeIndex = (item) => {
         if (!typeIndexes.has(item)) {
           const counts = {};
-          for (const sibling of item.parentElement?.children ?? [item]) {
+          for (const sibling of item.parentNode?.children ?? [item]) {
             counts[sibling.tagName] = (counts[sibling.tagName] ?? 0) + 1;
             typeIndexes.set(sibling, counts[sibling.tagName]);
           }
@@ -719,13 +920,22 @@
       // task action on it after the person agrees; the page guard checks the
       // match again at the moment of the action.
       const uniqueSelector = (node) => {
-        if (node === document.documentElement) return "html";
+        const scope = node.getRootNode();
+        const own = localSelector(node, scope);
+        if (own === null || scope === document) return own;
+        const via = scope.host ?? partOf.get(scope)?.frame?.element;
+        const outer = via ? uniqueSelector(via) : null;
+        const selector = outer === null ? null : `${outer} >>> ${own}`;
+        return selector !== null && selector.length <= 256 ? selector : null;
+      };
+      const localSelector = (node, scope) => {
+        if (node === scope.documentElement) return "html";
         const unique = (selector) => {
           try {
             return (
               selector.length <= 256 &&
-              document.querySelectorAll(selector).length === 1 &&
-              document.querySelector(selector) === node
+              scope.querySelectorAll(selector).length === 1 &&
+              scope.querySelector(selector) === node
             );
           } catch {
             return false;
@@ -744,7 +954,7 @@
         const path = [];
         for (
           let item = node;
-          item && item !== document.documentElement;
+          item && item !== scope.documentElement;
           item = item.parentElement
         ) {
           if (item !== node && item.id && unique(`#${CSS.escape(item.id)}`)) {
@@ -757,7 +967,10 @@
         }
         const selector = path.join(" > ");
         try {
-          return selector.length <= 256 && node.matches(selector)
+          return selector.length <= 256 &&
+            (scope.nodeType === Node.DOCUMENT_NODE
+              ? node.matches(selector)
+              : unique(selector))
             ? selector
             : null;
         } catch {
@@ -775,16 +988,16 @@
         nodes.set(id, {
           node,
           bounds: geometry,
-          href: node instanceof HTMLAnchorElement ? node.href : null,
+          href: is(node, "HTMLAnchorElement") ? node.href : null,
           scroll,
           scrollOnly,
           value: typeof node.value === "string" ? node.value : null,
-          selection:
-            node instanceof HTMLSelectElement ? node.selectedIndex : null,
+          selection: is(node, "HTMLSelectElement") ? node.selectedIndex : null,
         });
         const state = controlState(node);
         const form = node.form ?? node.closest("form");
         const hint = (value) => withoutSecrets(value?.trim() || null);
+        const frame = frameOf(node);
         elements.push({
           bounds: geometry,
           id,
@@ -793,7 +1006,9 @@
           label: withoutSecrets(
             scrollOnly
               ? scroll.document
-                ? "Page"
+                ? frame
+                  ? frame.element.title.trim() || "Frame"
+                  : "Page"
                 : groupName(node) || "Scrollable region"
               : accessibleName(node),
           ),
@@ -802,7 +1017,7 @@
           ...state,
           description: withoutSecrets(state.description),
           // Option labels are page-authored choices, not internal option values.
-          ...(node instanceof HTMLSelectElement && sensitivity(node) === null
+          ...(is(node, "HTMLSelectElement") && sensitivity(node) === null
             ? {
                 options: [...node.options].map((option) => ({
                   label: hint(option.label.replace(/\s+/g, " ")),
@@ -839,8 +1054,7 @@
           group: hint(groupName(node.closest("fieldset,[role=group]"))),
           // A button that sends its form when pressed.
           submits:
-            (node instanceof HTMLButtonElement ||
-              node instanceof HTMLInputElement) &&
+            (is(node, "HTMLButtonElement") || is(node, "HTMLInputElement")) &&
             node.form !== null &&
             ["submit", "image"].includes(node.type),
           pressable: custom.has(node)
@@ -856,7 +1070,12 @@
             geometry.x < innerWidth &&
             geometry.y < innerHeight &&
             geometry.x + geometry.width > 0 &&
-            geometry.y + geometry.height > 0,
+            geometry.y + geometry.height > 0 &&
+            (!frame ||
+              (geometry.x < frameBox(frame).clip.right &&
+                geometry.y < frameBox(frame).clip.bottom &&
+                geometry.x + geometry.width > frameBox(frame).clip.left &&
+                geometry.y + geometry.height > frameBox(frame).clip.top)),
           targetSelector: uniqueSelector(node),
           heading: node.querySelector("h1,h2,h3,h4,h5,h6")
             ? withoutSecrets(
@@ -864,9 +1083,19 @@
               )
             : null,
           href:
-            node instanceof HTMLAnchorElement && /^https?:/.test(node.href)
+            is(node, "HTMLAnchorElement") && /^https?:/.test(node.href)
               ? node.href
               : null,
+          ...(frame
+            ? {
+                frame: {
+                  index: frame.index,
+                  origin: frame.origin,
+                  title: hint(frame.element.title),
+                },
+              }
+            : {}),
+          ...(node.getRootNode().host ? { inShadowRoot: true } : {}),
         });
       }
       const pageText = readVisibleText(
@@ -885,8 +1114,23 @@
         const labelOf = new Map(
           elements.map((element) => [element.id, element.label ?? ""]),
         );
+        const inner = scan.parts.filter(({ root }) => root !== document);
+        const queryAll = (selector, root = document) => [
+          ...(root === document ? [] : root.matches(selector) ? [root] : []),
+          ...root.querySelectorAll(selector),
+          ...inner
+            .filter((part) =>
+              within(root, part.root.host ?? part.frame.element),
+            )
+            .flatMap((part) => [...part.root.querySelectorAll(selector)]),
+        ];
+        const up = (item) =>
+          item.parentElement ??
+          item.parentNode?.host ??
+          partOf.get(item.parentNode)?.frame?.element ??
+          null;
         const owned = (node) => {
-          for (let item = node; item; item = item.parentElement)
+          for (let item = node; item; item = up(item))
             if (monitor.ownedHosts.has(item)) return true;
           return false;
         };
@@ -907,7 +1151,7 @@
                 !elements.some(
                   (element) =>
                     !element.scrollOnly &&
-                    !node.contains(nodes.get(element.id).node),
+                    !within(node, nodes.get(element.id).node),
                 ),
             );
           return shells.get(node);
@@ -918,24 +1162,41 @@
           for (
             let item = node;
             item && item !== document.body && item !== document.documentElement;
-            item = item.parentElement
+            item = up(item)
           )
-            if (getComputedStyle(item).position === "fixed" && !shell(item))
+            if (styleOf(item).position === "fixed" && !shell(item))
               layer = item;
           return layer;
+        };
+        const hitAt = (x, y) => {
+          let hit = document.elementFromPoint(x, y);
+          let local = [x, y];
+          while (hit && !owned(hit)) {
+            const frame = readFrame.get(hit);
+            if (frame) {
+              const box = frameBox(frame);
+              local = [(x - box.x) / box.scale, (y - box.y) / box.scale];
+            }
+            const deeper = frame
+              ? frame.document.elementFromPoint(...local)
+              : hit.shadowRoot?.elementFromPoint(...local);
+            if (!deeper || deeper === hit) break;
+            hit = deeper;
+          }
+          return hit;
         };
         const GRID = 9;
         const hits = [];
         for (let row = 0; row < GRID; row++)
           for (let column = 0; column < GRID; column++) {
-            const hit = document.elementFromPoint(
+            const hit = hitAt(
               ((column + 0.5) * innerWidth) / GRID,
               ((row + 0.5) * innerHeight) / GRID,
             );
             if (hit && !owned(hit)) hits.push(hit);
           }
         const share = (root) =>
-          hits.filter((hit) => root.contains(hit)).length / (GRID * GRID);
+          hits.filter((hit) => within(root, hit)).length / (GRID * GRID);
         const DIALOG =
           "dialog[open],[role=dialog],[role=alertdialog],[aria-modal=true]";
         const CONSENT =
@@ -962,7 +1223,7 @@
         // An invisible reCAPTCHA or hCaptcha is bound to a page's own button
         // and is not in the way until the site shows a challenge. Its frame's
         // address says size=invisible.
-        const captchas = [...document.querySelectorAll(CAPTCHA)].filter(
+        const captchas = queryAll(CAPTCHA).filter(
           (node) =>
             !node.matches(
               'button,input,a,[data-size=invisible],iframe[src*="size=invisible" i]',
@@ -977,10 +1238,7 @@
         };
         for (const hit of hits) add(layerOf(hit), { overlay: true });
         // A "Cookie settings" link in the footer is not a banner.
-        for (const node of [
-          ...document.querySelectorAll(`${DIALOG},${CONSENT}`),
-          ...captchas,
-        ])
+        for (const node of [...queryAll(`${DIALOG},${CONSENT}`), ...captchas])
           if (
             visible(node) &&
             !node.matches(
@@ -991,12 +1249,17 @@
             add(layer ?? node, { overlay: !!layer || node.matches(DIALOG) });
           }
         // A sign-in wall, paywall or person check written into the page itself.
-        const walker = document.createTreeWalker(
-          document.body ?? document.documentElement,
-          NodeFilter.SHOW_TEXT,
-        );
+        const texts = [];
+        for (const { root } of scan.parts) {
+          const doc = root.ownerDocument ?? root;
+          const start = root === doc ? (doc.body ?? doc.documentElement) : root;
+          if (!start) continue;
+          const walker = doc.createTreeWalker(start, NodeFilter.SHOW_TEXT);
+          for (let text = walker.nextNode(); text; text = walker.nextNode())
+            texts.push(text);
+        }
         const inline = new Set();
-        for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+        for (const text of texts) {
           const parent = text.parentElement;
           const words = text.textContent.replace(/\s+/g, " ");
           const kind = CAPTCHA_TEXT.test(words)
@@ -1031,25 +1294,24 @@
           // One report per blocker: an inner element of another is part of it.
           if (
             [...roots.keys()].some(
-              (other) => other !== root && other.contains(root),
+              (other) => other !== root && within(other, root),
             )
           )
             continue;
-          const has = (selector) =>
-            root.matches(selector) || !!root.querySelector(selector);
+          const has = (selector) => queryAll(selector, root).length > 0;
           const text = textOf(root);
           const dialog = has(DIALOG);
           const kind =
             found.kind === "captcha" ||
-            captchas.some((node) => root.contains(node)) ||
+            captchas.some((node) => within(root, node)) ||
             CAPTCHA_TEXT.test(text)
               ? "captcha"
               : has(CONSENT)
                 ? "cookie-consent"
                 : found.kind === "login-wall" ||
-                    [...root.querySelectorAll("input[type=password]")].some(
-                      visible,
-                    ) ||
+                    queryAll("input[type=password]", root)
+                      .filter((node) => node !== root)
+                      .some(visible) ||
                     LOGIN_TEXT.test(text)
                   ? "login-wall"
                   : found.kind === "paywall" ||
@@ -1080,21 +1342,21 @@
             covers = "viewport";
           else if (
             [...nodes.values()].some(({ node, bounds: box, scrollOnly }) => {
-              if (scrollOnly || root.contains(node) || node.contains(root))
+              if (scrollOnly || within(root, node) || within(node, root))
                 return false;
               const x = box.x + box.width / 2;
               const y = box.y + box.height / 2;
               if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight)
                 return false;
-              const hit = document.elementFromPoint(x, y);
-              return !!hit && root.contains(hit);
+              const hit = hitAt(x, y);
+              return !!hit && within(root, hit);
             })
           )
             covers = "target";
           const control = (pattern) => {
             for (const [node, id] of idOf)
               if (
-                root.contains(node) &&
+                within(root, node) &&
                 node !== root &&
                 pattern.test((labelOf.get(id) ?? "").trim()) &&
                 (pattern === REJECT ||
@@ -1135,6 +1397,9 @@
         domRevision: monitor.domRevision,
         inputRevision: monitor.inputRevision,
         viewport: viewport(),
+        descend,
+        parts: scan.parts.map(({ root }) => root),
+        frameUrls: scan.frames.map((frame) => frame.document?.URL ?? null),
       };
       // A submit or page change that a task fill or click set off in this
       // document, under this binding. The watch below stopped it.
@@ -1205,10 +1470,29 @@
         viewport: viewport(),
         text: withoutSecrets(pageText),
         blockers,
+        ...(descend
+          ? {
+              childFrames: scan.frames.map((frame) => ({
+                index: frame.index,
+                read: frame.document !== null,
+                ...(frame.reason ? { reason: frame.reason } : {}),
+                origin: frame.origin,
+                parent: frame.parent?.index ?? null,
+                title: withoutSecrets(frame.element.title.trim() || null),
+                bounds: bounds(frame.element),
+              })),
+            }
+          : {}),
         complete: true,
         omitted: [
           "form control values and editable region contents (credential boundary)",
           "page text, title and control names equal to the value of a password, code or card field",
+          ...(scan.frames.some((frame) => frame.reason === "other-origin")
+            ? ["the contents of frames on another origin (childFrames)"]
+            : []),
+          ...(scan.frames.some((frame) => frame.reason === "not-rendered")
+            ? ["frames the page does not show (childFrames)"]
+            : []),
         ],
         elements,
       };
@@ -1221,7 +1505,12 @@
       state.url !== location.href ||
       state.domRevision !== monitor.domRevision ||
       state.inputRevision !== monitor.inputRevision ||
-      JSON.stringify(state.viewport) !== JSON.stringify(viewport())
+      JSON.stringify(state.viewport) !== JSON.stringify(viewport()) ||
+      !Array.isArray(state.parts) ||
+      state.parts.length !== scan.parts.length ||
+      state.parts.some((root, index) => root !== scan.parts[index].root) ||
+      JSON.stringify(state.frameUrls) !==
+        JSON.stringify(scan.frames.map((frame) => frame.document?.URL ?? null))
     )
       return {
         error: {
@@ -1233,9 +1522,10 @@
     const node = recorded?.node;
     if (
       !node?.isConnected ||
+      !partOf.has(node.getRootNode()) ||
       recorded.value !== (typeof node.value === "string" ? node.value : null) ||
       recorded.selection !==
-        (node instanceof HTMLSelectElement ? node.selectedIndex : null) ||
+        (is(node, "HTMLSelectElement") ? node.selectedIndex : null) ||
       JSON.stringify(recorded.bounds) !== JSON.stringify(bounds(node)) ||
       JSON.stringify(recorded.scroll) !== JSON.stringify(scrollState(node))
     )
@@ -1261,6 +1551,21 @@
         return denied();
     }
     if (policy) {
+      const named = (selector) => {
+        let scope = document;
+        const steps = selector.split(" >>> ");
+        for (let index = 0; ; index++) {
+          const matches = scope.querySelectorAll(steps[index]);
+          if (matches.length !== 1) return null;
+          if (index === steps.length - 1) return matches[0];
+          const inner =
+            matches[0].shadowRoot ??
+            readFrame.get(matches[0])?.document ??
+            null;
+          if (!inner || !partOf.has(inner)) return null;
+          scope = inner;
+        }
+      };
       // The native host supplies reviewed target permissions; DOM text cannot
       // grant an action. Re-check the actual node immediately before the effect.
       if (
@@ -1278,8 +1583,7 @@
               : command.subaction;
           if (target.action !== permission) return false;
           try {
-            const matches = document.querySelectorAll(target.selector);
-            return matches.length === 1 && matches[0] === node;
+            return named(target.selector) === node;
           } catch {
             return false;
           }
@@ -1291,7 +1595,7 @@
         node.getAttribute("aria-label"),
         node.textContent,
         node.title,
-        node instanceof HTMLInputElement ? node.value : "",
+        is(node, "HTMLInputElement") ? node.value : "",
         ...[...(node.labels ?? [])].map((item) => item.textContent),
       ].join(" ");
       // The host's own commit words, for the languages it serves (bounded and
@@ -1385,7 +1689,7 @@
       return denied();
     if (
       ["fill", "select"].includes(command.subaction) &&
-      (node.disabled || node.readOnly)
+      (frameOf(node) !== null || node.disabled || node.readOnly)
     )
       return denied();
     // A control the provider disabled stays as the provider left it. A script
@@ -1403,7 +1707,8 @@
     if (command.subaction === "follow") {
       if (
         !policy ||
-        !(node instanceof HTMLAnchorElement) ||
+        frameOf(node) !== null ||
+        !is(node, "HTMLAnchorElement") ||
         !node.hasAttribute("href") ||
         node.hasAttribute("download") ||
         (node.target && node.target !== "_self") ||
@@ -1492,6 +1797,12 @@
       // which is reported), a second submit, another form, another origin, any
       // other own-site request and every other page change, same-document
       // address changes included, are still stopped or recorded as above.
+      const views = [
+        window,
+        ...scan.frames
+          .filter((frame) => frame.document?.defaultView)
+          .map((frame) => frame.document.defaultView),
+      ];
       const prior = store[watchKey];
       prior?.stop();
       // What the earlier watch saw of her up to now. Her press since the last
@@ -1529,8 +1840,8 @@
         ? (node.form ?? node.closest("form") ?? null)
         : null;
       const submitControl = (element) =>
-        (element instanceof HTMLButtonElement && element.type === "submit") ||
-        (element instanceof HTMLInputElement &&
+        (is(element, "HTMLButtonElement") && element.type === "submit") ||
+        (is(element, "HTMLInputElement") &&
           ["submit", "image"].includes(element.type));
       const overrides = [
         "formaction",
@@ -1566,7 +1877,7 @@
       // control is the form's default button and overrides nothing.
       const implicitAllowed =
         grantedRequest !== null &&
-        [...document.querySelectorAll("button,input")].find(
+        [...node.getRootNode().querySelectorAll("button,input")].find(
           (element) => element.form === grantedForm && submitControl(element),
         ) === node &&
         !overrides.some((attribute) => node.hasAttribute(attribute));
@@ -1772,16 +2083,27 @@
         record(kind);
       };
       const options = { capture: true, signal: controller.signal };
+      const watched = {
+        addEventListener: (...listener) => {
+          for (const view of views) view.addEventListener(...listener);
+        },
+      };
+      const navigations = {
+        addEventListener: (...listener) => {
+          for (const view of views)
+            view.navigation?.addEventListener(...listener);
+        },
+      };
       const person = (event) => {
         if (!event.isTrusted) return;
         personAt = performance.now();
         watch.presses.push(Date.now());
       };
       const personForms = new WeakSet();
-      window.addEventListener("pointerdown", person, options);
-      window.addEventListener("keydown", person, options);
+      watched.addEventListener("pointerdown", person, options);
+      watched.addEventListener("keydown", person, options);
       const activate = (event) => {
-        if (!event.isTrusted || !(event.target instanceof Element)) return;
+        if (!event.isTrusted || !is(event.target, "Element")) return;
         const target = event.target;
         const control = target.closest(
           'button,input[type="submit"],input[type="button"],input[type="reset"],a[href],[role="button"],[role="link"]',
@@ -1818,7 +2140,7 @@
               item.matches(
                 '[tabindex],[onclick],[role="menuitem"],[role="option"],[role="switch"],[role="checkbox"],[role="radio"],[role="tab"]',
               ) ||
-              (item === target && getComputedStyle(item).cursor === "pointer")
+              (item === target && styleOf(item).cursor === "pointer")
             ) {
               if (!item.matches('[aria-disabled="true"]'))
                 personForms.add(form);
@@ -1828,7 +2150,7 @@
         }
         const enterForm =
           event.key === "Enter" &&
-          target instanceof HTMLInputElement &&
+          is(target, "HTMLInputElement") &&
           target.form;
         const controlKey =
           control &&
@@ -1839,20 +2161,21 @@
         activationAt = Math.min(activationAt, performance.now());
         watch.activatedAt ??= Date.now();
       };
-      window.addEventListener("click", activate, options);
-      window.addEventListener("keydown", activate, options);
+      watched.addEventListener("click", activate, options);
+      watched.addEventListener("keydown", activate, options);
       // The last submit event, so the form data it sends is not taken for a
       // script form.submit(), which sends no submit event.
       let lastSubmit = null;
-      window.addEventListener(
+      watched.addEventListener(
         "submit",
         (event) => {
           lastSubmit = event;
           if (personForms.has(event.target)) return;
           const form = event.target;
           const submitter = event.submitter ?? null;
-          const sent =
-            form instanceof HTMLFormElement ? requestOf(submitter, form) : null;
+          const sent = is(form, "HTMLFormElement")
+            ? requestOf(submitter, form)
+            : null;
           // The form data this submit sends, as the person saw it or not.
           const sentHash =
             consent && form === grantedForm
@@ -1893,7 +2216,7 @@
       // A script form.submit() sends no submit event. Into this window its page
       // load is stopped below; into another window or frame (target=_blank) it
       // is not seen there, so its form data being read is reported here.
-      window.addEventListener(
+      watched.addEventListener(
         "formdata",
         (event) => {
           if (reading) return;
@@ -1903,7 +2226,7 @@
           lastSubmit = null;
           if (
             submitted ||
-            !(form instanceof HTMLFormElement) ||
+            !is(form, "HTMLFormElement") ||
             personForms.has(form) ||
             byPerson(performance.now()) ||
             ["", "_self", "_top", "_parent"].includes(
@@ -1915,14 +2238,14 @@
         },
         options,
       );
-      globalThis.navigation?.addEventListener(
+      navigations.addEventListener(
         "navigate",
         (event) => {
           // Chromium marks the page load of a script click on a submit button
           // as user initiated; for a form submission only her own press counts.
           const formLoad =
             event.formData != null ||
-            event.sourceElement instanceof HTMLFormElement ||
+            is(event.sourceElement, "HTMLFormElement") ||
             event.sourceElement?.form !== undefined;
           if (
             (event.userInitiated &&
@@ -2005,12 +2328,18 @@
         host === location.hostname ||
         tail(host, 2) === tail(location.hostname, 2) ||
         tail(host, 3) === tail(location.hostname, 3);
-      if (typeof PerformanceObserver === "function") {
-        const requests = new PerformanceObserver((list) => {
+      for (const view of views) {
+        if (typeof view.PerformanceObserver !== "function") continue;
+        const shift = view.performance.timeOrigin - performance.timeOrigin;
+        const requests = new view.PerformanceObserver((list) => {
           // Oldest first, so the granted action's own request is the one used.
-          const entries = [...list.getEntries()].sort(
-            (a, b) => a.startTime - b.startTime,
-          );
+          const entries = [...list.getEntries()]
+            .map(({ name, initiatorType, startTime }) => ({
+              name,
+              initiatorType,
+              startTime: startTime + shift,
+            }))
+            .sort((a, b) => a.startTime - b.startTime);
           for (const entry of entries) {
             // Resource timing carries no method, so a read and a write look the
             // same here: past 30 s (CROSS_SITE_WINDOW_MS in effect-watch.mjs) a
@@ -2274,13 +2603,77 @@
     const scrollGuide =
       request.action === "scroll" ||
       snapshot.nodes.get(request.nodeId)?.scrollOnly === true;
-    if (!target?.isConnected || target.getRootNode() !== document)
-      return fail("missing-target");
+    const chain = (node) => {
+      const roots = [];
+      const frames = [];
+      let anchor = node;
+      for (let root = node.getRootNode(); root !== document; ) {
+        roots.push(root);
+        if (root.host) anchor = root.host;
+        else {
+          const element = root.defaultView?.frameElement ?? null;
+          if (
+            !element?.isConnected ||
+            element.contentDocument !== root ||
+            root.defaultView.origin !== location.origin
+          )
+            return null;
+          frames.push(element);
+          anchor = element;
+        }
+        root = anchor.getRootNode();
+      }
+      return { roots, frames, anchor };
+    };
+    const path = target?.isConnected ? chain(target) : null;
+    if (!path) return fail("missing-target");
+    const locate = (node, frames) => {
+      const local =
+        node === node.ownerDocument.scrollingElement
+          ? new DOMRect(
+              0,
+              0,
+              node.ownerDocument.defaultView.innerWidth,
+              node.ownerDocument.defaultView.innerHeight,
+            )
+          : node.getBoundingClientRect();
+      let { x, y, width, height } = local;
+      let inside = true;
+      for (const element of frames) {
+        const view = element.contentDocument.defaultView;
+        inside &&=
+          x >= 0 &&
+          y >= 0 &&
+          x + width <= view.innerWidth &&
+          y + height <= view.innerHeight;
+        const box = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const scale =
+          element.offsetWidth > 0 ? box.width / element.offsetWidth : 1;
+        x =
+          box.x +
+          (element.clientLeft + Number.parseFloat(style.paddingLeft || "0")) *
+            scale +
+          x * scale;
+        y =
+          box.y +
+          (element.clientTop + Number.parseFloat(style.paddingTop || "0")) *
+            scale +
+          y * scale;
+        width *= scale;
+        height *= scale;
+      }
+      return { rect: new DOMRect(x, y, width, height), inside };
+    };
     // Controls the label must not cover, for example the button she presses
     // next. A control that is gone is simply not avoided.
     const clear = keepClear
       .map((id) => snapshot.nodes.get(id)?.node)
-      .filter((node) => node?.isConnected && node !== target);
+      .filter((node) => node?.isConnected && node !== target)
+      .map((node) => ({ node, path: chain(node) }))
+      .filter(({ path }) => path !== null);
+    const clearRects = () =>
+      clear.map(({ node, path }) => locate(node, path.frames).rect);
     // The person's Dismiss holds for this step, also after a reload of the
     // page (the extension remembers it), until she asks to see it again.
     const dismissed =
@@ -2300,7 +2693,7 @@
     // needs the page exactly as observed.
     const targetRect = () => {
       if (target !== document.scrollingElement)
-        return target.getBoundingClientRect();
+        return locate(target, path.frames).rect;
       // Native panes and page zoom can make the visible viewport fractional.
       // Rounded layout bounds would center the tall document as an off-screen
       // target, scrolling before the separately authorized action.
@@ -2312,6 +2705,8 @@
         view?.height ?? innerHeight,
       );
     };
+    const insideFrames = () =>
+      path.frames.length === 0 || locate(target, path.frames).inside;
     const placed = targetRect();
     const view0 = window.visualViewport;
     const placement =
@@ -2319,7 +2714,8 @@
       placed.height <= 0 ||
       getComputedStyle(target).visibility !== "visible"
         ? "hidden"
-        : placed.left >= (view0?.offsetLeft ?? 0) &&
+        : insideFrames() &&
+            placed.left >= (view0?.offsetLeft ?? 0) &&
             placed.top >= (view0?.offsetTop ?? 0) &&
             placed.right <=
               (view0?.offsetLeft ?? 0) + (view0?.width ?? innerWidth) &&
@@ -2530,7 +2926,8 @@
     monitor.ownedHosts.add(host);
     // Keep guidance above a website modal and inside its non-inert subtree.
     // A manual popover does not dismiss the site's dialog or steal its modality.
-    const parent = target.closest("dialog:modal") ?? document.documentElement;
+    const parent =
+      path.anchor.closest("dialog:modal") ?? document.documentElement;
     if (typeof host.showPopover === "function")
       host.setAttribute("popover", "manual");
     parent.append(host);
@@ -2651,20 +3048,22 @@
       )
         invalidate();
     });
-    observer.observe(document, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      characterData: true,
-    });
+    for (const root of [document, ...path.roots]) {
+      observer.observe(root, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        characterData: true,
+      });
+      root.addEventListener("beforeinput", invalidate, true);
+      root.addEventListener("change", invalidate, true);
+    }
     const viewport = window.visualViewport;
     window.addEventListener("scroll", moving, true);
     window.addEventListener("resize", moving);
     viewport?.addEventListener("resize", moving);
     viewport?.addEventListener("scroll", moving);
     window.addEventListener("pagehide", invalidate);
-    document.addEventListener("beforeinput", invalidate, true);
-    document.addEventListener("change", invalidate, true);
     // The navigation bar's inset last seen without a keyboard, kept for this document in the
     // isolated world: a guide shown after the keyboard opened (each show is a new renderer) still
     // knows it.
@@ -2728,8 +3127,10 @@
         viewport?.removeEventListener("resize", moving);
         viewport?.removeEventListener("scroll", moving);
         window.removeEventListener("pagehide", invalidate);
-        document.removeEventListener("beforeinput", invalidate, true);
-        document.removeEventListener("change", invalidate, true);
+        for (const root of [document, ...path.roots]) {
+          root.removeEventListener("beforeinput", invalidate, true);
+          root.removeEventListener("change", invalidate, true);
+        }
         host.remove();
         state.visible = false;
       },
@@ -2781,7 +3182,8 @@
         (request.action && Date.now() >= request.expiresAt) ||
         location.href !== snapshot.url ||
         !host.isConnected ||
-        !target.isConnected
+        !target.isConnected ||
+        (path.roots.length > 0 && !chain(target))
       ) {
         state.destroy();
         return;
@@ -2843,6 +3245,7 @@
         rect.height > 0 &&
         css.visibility === "visible" &&
         css.display !== "none" &&
+        insideFrames() &&
         rect.left >= view.left &&
         rect.top >= view.top &&
         rect.right <= view.left + view.width &&
@@ -2875,10 +3278,7 @@
             (p) =>
               p.y >= view.top + 8 &&
               p.y + height <= view.top + view.height - 8 &&
-              [
-                ...(scrollGuide ? [] : [rect]),
-                ...clear.map((node) => node.getBoundingClientRect()),
-              ].every(
+              [...(scrollGuide ? [] : [rect]), ...clearRects()].every(
                 (avoid) =>
                   p.x + width <= avoid.left - 8 ||
                   p.x >= avoid.right + 8 ||

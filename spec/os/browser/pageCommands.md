@@ -166,8 +166,17 @@ pure val weight_settleBinding = 4
 A snapshot drops the page's old observation before the native read, and
 keeps the new one only while the same binding is live and native returned
 a complete main-frame result for the scoped origin; each node is then
-named by snapshot, main frame and node. Dispatching an input consumes the
-observation, so the next input needs a new read.
+named by snapshot, main frame and node. The main frame's read covers its
+document, the open shadow roots in it and the frames on its own origin that
+the page shows, with the same rules: private boxes marked, no values,
+blockers found in every part read, and a change in any part read makes the
+observation stale. A closed shadow root, a frame on another origin and a
+frame the page does not show (no size, hidden, or wholly outside the page)
+are never read or watched; such a frame is listed as unread, with the
+reason. A click reaches a control in a frame read by the same rules as one
+in the document; a fill, select or follow inside a frame is refused.
+Dispatching an input consumes the observation, so the next input needs a
+new read.
 
 ```quint
 pure def canSettleRead(s: SurfaceReceiver): bool = s.phase == ReceiverReading
