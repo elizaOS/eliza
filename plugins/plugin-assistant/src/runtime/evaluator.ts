@@ -29,6 +29,7 @@ import {
   CALENDAR_READ_ACTIONS,
   type CalendarReadBinding,
   type CalendarReadFailureCode,
+  type CalendarReadFilterEvidence,
   parseUnambiguousZonedDateTime,
 } from "@elizaos/contracts";
 import type {
@@ -2672,6 +2673,229 @@ export function validatedOutcomeCoverage(params: {
   );
 }
 
+/** A current-turn update or delete that the Calendar action committed: the
+ * event it changed as it read that event before the change, and the version
+ * its applied receipt names (the changed event's for an update, the deleted
+ * target's for a delete). Archived, failed and uncertain effects are not. */
+function committedCalendarMutation(
+  step: PlannerTrajectory["steps"][number] | undefined,
+  trajectory: PlannerTrajectory,
+):
+  | {
+      index: number;
+      target: Record<string, unknown> & {
+        id: string;
+        metadata: Record<string, unknown> & { etag: string };
+      };
+      /** The receipt version this change produced. */
+      produced?: string;
+      /** This step's active applied receipts that name `produced`. */
+      producedReceiptIds: string[];
+    }
+  | undefined {
+  const result = step?.result;
+  const index = step ? trajectory.steps.indexOf(step) : -1;
+  const call = step?.toolCall;
+  // The umbrella CALENDAR action may infer its subaction from the request;
+  // the producer then reports the one it ran (calendar-handler result data).
+  const subaction =
+    call?.params?.subaction ??
+    call?.params?.action ??
+    (call?.name === "CALENDAR" && isObjectRecord(result?.data)
+      ? result.data.subaction
+      : undefined);
+  const operation =
+    call?.name === "CALENDAR_UPDATE_EVENT" ||
+    (call?.name === "CALENDAR" && subaction === "update_event")
+      ? "update"
+      : call?.name === "CALENDAR_DELETE_EVENT" ||
+          (call?.name === "CALENDAR" && subaction === "delete_event")
+        ? "delete"
+        : undefined;
+  if (
+    index < 0 ||
+    !operation ||
+    step?.terminalOnly ||
+    result?.success !== true ||
+    result.error != null ||
+    result.failureProvenance ||
+    result.replyFailure
+  )
+    return;
+  const data = result.data;
+  if (!isObjectRecord(data) || !isObjectRecord(data.targetEvent)) return;
+  const target = data.targetEvent;
+  if (
+    typeof target.id !== "string" ||
+    !target.id ||
+    // An update returns the changed event; a delete only marks the target.
+    (operation === "update"
+      ? !isObjectRecord(data.event) || data.event.id !== target.id
+      : data.deleted !== true) ||
+    !isObjectRecord(target.metadata) ||
+    typeof target.metadata.etag !== "string" ||
+    !target.metadata.etag
+  )
+    return;
+  let applied: { receiptId: string; version: unknown }[];
+  try {
+    applied = activeCommittedEffectReceipts(
+      [...(trajectory.archivedSteps ?? []), ...trajectory.steps].flatMap(
+        (other) => other.result?.effectReceipts ?? [],
+      ),
+    ).flatMap((receipt) =>
+      result.effectReceipts?.some(
+        (own) => own.receiptId === receipt.receiptId,
+      ) &&
+      receipt.operation === `calendar.event.${operation}` &&
+      receipt.outcome === "applied" &&
+      receipt.resource?.id === target.id
+        ? [{ receiptId: receipt.receiptId, version: receipt.resource.version }]
+        : [],
+    );
+  } catch {
+    return;
+  }
+  if (applied.length === 0) return;
+  const changed = isObjectRecord(data.event) ? data.event.metadata : undefined;
+  // plugin-calendar calendarEventMutationReceipt: a delete's version is
+  // `deleted:` + the deleted target's etag, an update's the changed event's.
+  const produced =
+    operation === "delete"
+      ? `deleted:${target.metadata.etag}`
+      : isObjectRecord(changed) && typeof changed.etag === "string"
+        ? changed.etag
+        : undefined;
+  return {
+    index,
+    target: target as Record<string, unknown> & {
+      id: string;
+      metadata: Record<string, unknown> & { etag: string };
+    },
+    ...(produced === undefined ? {} : { produced }),
+    producedReceiptIds:
+      produced === undefined
+        ? []
+        : applied
+            .filter((receipt) => receipt.version === produced)
+            .map((receipt) => receipt.receiptId),
+  };
+}
+
+/** Lowercase letter and digit words, space-delimited at both ends, so one
+ * phrase can be matched against another on whole words. */
+function calendarPhraseWords(text: string): string {
+  const words = text
+    .normalize("NFKC")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+  return words.length ? ` ${words.join(" ")} ` : "";
+}
+
+/** A requested search's filters when every one quotes this request, or an
+ * identifiable same-room message, verbatim. */
+function sourceBoundSearchFilters(
+  binding: CalendarReadBinding,
+): readonly CalendarReadFilterEvidence[] | undefined {
+  const filters = binding.filterEvidence;
+  return Array.isArray(filters) &&
+    filters.length > 0 &&
+    filters.every(
+      (e) =>
+        isObjectRecord(e) &&
+        typeof e.query === "string" &&
+        typeof e.quote === "string" &&
+        e.query === e.quote.trim() &&
+        (e.origin === "current" || e.origin === "referent") &&
+        (e.origin !== "current" ||
+          (e.sourceMessageId === binding.sourceMessageId &&
+            e.sourceActorId === binding.actorId &&
+            e.sourceCreatedAt === binding.requestedAt)) &&
+        e.sourceRoomId === binding.roomId &&
+        !!e.sourceMessageId &&
+        !!e.sourceActorId &&
+        Number.isFinite(e.sourceCreatedAt) &&
+        e.sourceCreatedAt <= binding.requestedAt,
+    )
+    ? filters
+    : undefined;
+}
+
+/** Stage 1 should bind the lookup behind "delete coffee with Sam" as a
+ * mutation prerequisite. When it binds a requested search instead (Pixel
+ * v618) and the planner runs only the change, the Calendar action's read of
+ * its target is the current read: it reads that event's current record from
+ * the calendar before changing it, and its applied receipt names the version
+ * the change produced. That read answers only the search for that one event,
+ * in a turn that asks for nothing else:
+ * - the turn has one intent, so the search cannot belong to another request;
+ * - the reply reports the change: it is applied and selects that receipt, so
+ *   a read question answered by a stray change gets the failure copy unless
+ *   the evaluator also labels that answer applied (its labels are the only
+ *   signal here that the owner asked for the change);
+ * - every quoted phrase is the target's whole title, so a broader search
+ *   ("Sam") is not answered by one of its matches;
+ * - no read in the turn shows another version of the event: one before the
+ *   change shows the version it changed, one after shows what it produced. */
+function mutationReadSearchedEvent(
+  binding: CalendarReadBinding,
+  step: PlannerTrajectory["steps"][number] | undefined,
+  trajectory: PlannerTrajectory,
+  output: EvaluatorOutput,
+  original: ContextObject,
+): boolean {
+  if (binding.operation !== "search_events") return false;
+  const mutation = committedCalendarMutation(step, trajectory);
+  if (!mutation?.produced || mutation.producedReceiptIds.length === 0)
+    return false;
+  if (
+    evaluatorIntentSources(original, trajectory).length !== 1 ||
+    declaredIntentsFromContext(original).length > 1
+  )
+    return false;
+  // finalizeEvaluatorOutput's selection of an applied reply's receipts.
+  const selected =
+    output.effectReceiptIds ??
+    (output.messageToUser === output.plannerReply?.text
+      ? output.plannerReply?.effectReceiptIds
+      : undefined);
+  if (
+    output.replyEffectStatus !== "applied" ||
+    !selected?.some((id) => mutation.producedReceiptIds.includes(id))
+  )
+    return false;
+  const filters = sourceBoundSearchFilters(binding);
+  const { target, index, produced } = mutation;
+  const title =
+    typeof target.title === "string" ? calendarPhraseWords(target.title) : "";
+  if (
+    !filters ||
+    !title ||
+    !filters.every((filter) => calendarPhraseWords(filter.query) === title)
+  )
+    return false;
+  return ![...(trajectory.archivedSteps ?? []), ...trajectory.steps].some(
+    (read) => {
+      const data = read.result?.data;
+      if (read === step || !isObjectRecord(data) || !Array.isArray(data.events))
+        return false;
+      // Archived steps precede every current step. A delete produces
+      // `deleted:` + etag, which no later read of the event can show.
+      const expected =
+        trajectory.steps.indexOf(read) > index
+          ? produced
+          : target.metadata.etag;
+      return data.events.some(
+        (event) =>
+          isObjectRecord(event) &&
+          event.id === target.id &&
+          (!isObjectRecord(event.metadata) || event.metadata.etag !== expected),
+      );
+    },
+  );
+}
+
 /** A requested operation needs a fresh, source-bound producer receipt, not another read's success. */
 /** A cited update or delete may depend on an earlier exact target search. Keep
  * the required read guard, but follow current result provenance rather than
@@ -2687,64 +2911,10 @@ function calendarMutationTargetReadEvidence(
   if (binding.operation !== "search_events") return cited;
   const ids = new Set(cited);
   for (const id of cited) {
-    const mutation = evidence.get(id),
-      result = mutation?.result;
-    const index = mutation ? trajectory.steps.indexOf(mutation) : -1;
-    const call = mutation?.toolCall;
-    const subaction = call?.params?.subaction ?? call?.params?.action;
-    const operation =
-      call?.name === "CALENDAR_UPDATE_EVENT" ||
-      (call?.name === "CALENDAR" && subaction === "update_event")
-        ? "update"
-        : call?.name === "CALENDAR_DELETE_EVENT" ||
-            (call?.name === "CALENDAR" && subaction === "delete_event")
-          ? "delete"
-          : undefined;
-    if (
-      index < 0 ||
-      !operation ||
-      mutation?.terminalOnly ||
-      result?.success !== true ||
-      result.error != null ||
-      result.failureProvenance ||
-      result.replyFailure
-    )
-      continue;
-    const data = result.data;
-    if (!isObjectRecord(data) || !isObjectRecord(data.targetEvent)) continue;
-    const target = data.targetEvent;
-    if (
-      typeof target.id !== "string" ||
-      !target.id ||
-      // An update returns the changed event; a delete only marks the target.
-      (operation === "update"
-        ? !isObjectRecord(data.event) || data.event.id !== target.id
-        : data.deleted !== true) ||
-      !isObjectRecord(target.metadata) ||
-      typeof target.metadata.etag !== "string" ||
-      !target.metadata.etag
-    )
-      continue;
+    const mutation = committedCalendarMutation(evidence.get(id), trajectory);
+    if (!mutation) continue;
+    const { index, target } = mutation;
     const targetEtag = target.metadata.etag;
-    let applied = false;
-    try {
-      applied = activeCommittedEffectReceipts(
-        [...(trajectory.archivedSteps ?? []), ...trajectory.steps].flatMap(
-          (step) => step.result?.effectReceipts ?? [],
-        ),
-      ).some(
-        (receipt) =>
-          result.effectReceipts?.some(
-            (own) => own.receiptId === receipt.receiptId,
-          ) &&
-          receipt.operation === `calendar.event.${operation}` &&
-          receipt.outcome === "applied" &&
-          receipt.resource?.id === target.id,
-      );
-    } catch {
-      continue;
-    }
-    if (!applied) continue;
     for (const [readId, read] of evidence) {
       const readIndex = trajectory.steps.indexOf(read),
         readData = read.result?.data;
@@ -3268,6 +3438,18 @@ export function calendarReadCoverage(
             isCalendarReadCall(step.toolCall, "next_event"),
         );
         if (calls.length === 1) fallback = calls[0][0];
+      } else if (binding.operation === "search_events") {
+        // The sole committed change that read the searched event itself.
+        const own = [...evidence].filter(([, step]) =>
+          mutationReadSearchedEvent(
+            binding,
+            step,
+            trajectory,
+            output,
+            original,
+          ),
+        );
+        if (own.length === 1) fallback = own[0][0];
       }
     }
     const coverage = fallback
@@ -3315,6 +3497,10 @@ export function calendarReadCoverage(
       const data = step.result.data;
       if (!isObjectRecord(data))
         return rejectEvidence("CALENDAR_READ_RESULT_INVALID");
+      if (
+        mutationReadSearchedEvent(binding, step, trajectory, output, original)
+      )
+        return true;
       if (!isCalendarReadCall(step.toolCall, binding.operation))
         return rejectEvidence("CALENDAR_READ_OPERATION_MISMATCH");
       if (
@@ -3400,7 +3586,7 @@ export function calendarReadCoverage(
             return rejectEvidence("CALENDAR_READ_EVIDENCE_REJECTED");
           }
         }
-        const filters = binding.filterEvidence;
+        const filters = sourceBoundSearchFilters(binding);
         const values = [
           step.toolCall.params?.query,
           ...(Array.isArray(step.toolCall.params?.queries)
@@ -3415,26 +3601,8 @@ export function calendarReadCoverage(
         ].filter((v): v is string => typeof v === "string" && !!v.trim());
         const scope = reply.context;
         if (
-          !Array.isArray(filters) ||
-          !filters.length ||
+          !filters ||
           !values.length ||
-          !filters.every(
-            (e) =>
-              isObjectRecord(e) &&
-              typeof e.query === "string" &&
-              typeof e.quote === "string" &&
-              e.query === e.quote.trim() &&
-              (e.origin === "current" || e.origin === "referent") &&
-              (e.origin !== "current" ||
-                (e.sourceMessageId === binding.sourceMessageId &&
-                  e.sourceActorId === binding.actorId &&
-                  e.sourceCreatedAt === binding.requestedAt)) &&
-              e.sourceRoomId === binding.roomId &&
-              !!e.sourceMessageId &&
-              !!e.sourceActorId &&
-              Number.isFinite(e.sourceCreatedAt) &&
-              e.sourceCreatedAt <= binding.requestedAt,
-          ) ||
           !values.every((q) =>
             filters.some(
               (e) => e.query.toLowerCase() === q.trim().toLowerCase(),
