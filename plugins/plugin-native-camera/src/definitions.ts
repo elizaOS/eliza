@@ -11,6 +11,8 @@ export type CameraFlashMode = "auto" | "on" | "off" | "torch";
 export type CameraFocusMode = "auto" | "continuous" | "manual";
 export type CameraExposureMode = "auto" | "continuous" | "manual";
 export type MediaType = "photo" | "video";
+/** Photo stream aspect ratio, width:height in the sensor's landscape orientation. */
+export type CameraCaptureAspectRatio = "4:3" | "16:9";
 
 export interface CameraDevice {
   deviceId: string;
@@ -21,6 +23,11 @@ export interface CameraDevice {
   maxZoom: number;
   supportedResolutions: CameraResolution[];
   supportedFrameRates: number[];
+  /**
+   * Values `startPreview` accepts as `captureAspectRatio` for this device.
+   * Absent where the platform ignores that option (web and iOS).
+   */
+  supportedCaptureAspectRatios?: CameraCaptureAspectRatio[];
 }
 
 export interface CameraResolution {
@@ -48,6 +55,13 @@ export interface CameraPreviewOptions {
    */
   frameRate?: number;
   mirror?: boolean;
+  /**
+   * Aspect ratio of the photo stream. Defaults to 4:3. Only platforms that
+   * list it in `CameraDevice.supportedCaptureAspectRatios` honor it; Android
+   * rejects any other value with `INVALID_OPTIONS`. A lens without the ratio
+   * falls back to another one, so read `captureSize` for the bound size.
+   */
+  captureAspectRatio?: CameraCaptureAspectRatio;
 }
 
 export interface CameraPreviewResult {
