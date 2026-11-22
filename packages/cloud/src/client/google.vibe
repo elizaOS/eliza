@@ -92,11 +92,14 @@ const mailKindSchema = Schema.Literals([
 ])
 export type MailKind = typeof mailKindSchema.Type
 
+// spec/cloud/services/google/mailRead.md, "Capabilities offer exactly the reads and changes the grant allows, and each change comes with the read its review needs"
 const mailCapabilitiesSchema = Schema.Struct({
   version: Schema.Literal(1),
   from: Schema.String,
+  reads: Schema.optionalKey(Schema.Array(Schema.Literals(["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"]))),
   kinds: Schema.Array(mailKindSchema),
-  attachmentPolicy: Schema.Struct({ mimeTypes: Schema.Array(Schema.String), maxBytes: Schema.Number })
+  attachmentPolicy: Schema.Struct({ mimeTypes: Schema.Array(Schema.String), maxBytes: Schema.Number }),
+  providerExactlyOnce: Schema.optionalKey(Schema.Literal(false))
 })
 export type MailCapabilities = typeof mailCapabilitiesSchema.Type
 

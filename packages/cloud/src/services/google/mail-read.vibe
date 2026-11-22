@@ -1,13 +1,13 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 // spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"
-import { htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, threadMaxMessages, threadOutcome, threadPageMax, type MailSurface, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
+import { htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, offeredReads, threadMaxMessages, threadOutcome, threadPageMax, type MailSurface, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { refused, Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
 import { bearerToken, recheckServiceAccess, signed } from "../../http/request-auth.vibe"
 import { Deployment } from "../../profile/profile.vibe"
 import { seal, sha256Hex, tokenDigest, unseal } from "../../shared/sealing.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
-import { holds, readGrantStatus, useGrant, useMailReadGrant, type GoogleCapability } from "./grant-access.vibe"
+import { holds, knownScopes, readGrantStatus, useGrant, useMailReadGrant, type GoogleCapability } from "./grant-access.vibe"
 import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBinding, inboxWatchInput, observeInboxWatch } from "./inbox-arrival.vibe"
 import * as GoogleRead from "../../google-read.vibe"
 import type { OperationKind } from "./mail-operations.vibe"
@@ -91,6 +91,12 @@ const kindsByCapability: ReadonlyArray<readonly [GoogleCapability, ReadonlyArray
   ["google.gmail.drafts", ["draft-create", "draft-replace", "draft-delete"]],
   ["google.gmail.manage", ["archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"]]
 ]
+
+const readNames: Readonly<Record<MailSurface, string>> = {
+  TriageSurface: "triage", SearchSurface: "search", MessageSurface: "read",
+  ThreadSurface: "thread", AttachmentSurface: "attachment",
+  DraftsSurface: "drafts", DraftSurface: "draft", CapabilitiesSurface: "capabilities"
+}
 
 export function googleRefused(failure: GoogleFailure): Refused {
   switch (failure._tag) {
@@ -352,7 +358,12 @@ effect function readRoute(context: RouteContext) {
 effect function capabilitiesRoute(context: RouteContext) {
   const grant = try grantOf(context, "CapabilitiesSurface")
   const kinds = kindsByCapability.flatMap(([capability, granted]) => holds(grant.scopes, capability) ? granted : [])
-  return json({ version: 1, from: grant.email, kinds, attachmentPolicy: { mimeTypes: GoogleRead.attachmentMimeTypes, maxBytes: GoogleRead.attachmentMaxBytes } })
+  const reads = offeredReads(knownScopes(grant.scopes)).map((surface) => readNames[surface])
+  return json({
+    version: 1, from: grant.email, reads, kinds,
+    attachmentPolicy: { mimeTypes: GoogleRead.attachmentMimeTypes, maxBytes: GoogleRead.attachmentMaxBytes },
+    providerExactlyOnce: false
+  })
 }
 
 effect function arrivalRoute(context: RouteContext) {

@@ -1902,6 +1902,10 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         return reply.status === 200 ? value.kinds ?? 200 : [...errorOf(reply), value.reason]
       })
     }))
+    const advertised = try promise(() => Promise.all(restricted.map(async (grant) => {
+      const value = await client.gmailCapabilities({ grantId: grant.id })
+      return ["reads" in value ? value.reads : undefined, "providerExactlyOnce" in value ? value.providerExactlyOnce : undefined]
+    })))
     const beforeRejected = cloud.fakes.seen.length
     const wrongSides = try all(surfaces.map((path) => atSurface(path, "metadata", "other")))
     const foreign = try atSurface("/read?messageId=msg-direct", "no-held-grant")
@@ -1909,7 +1913,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const afterRejected = cloud.fakes.seen.length
     const missing = [403, "access_denied", "capability_missing"]
     try check(() => assert.deepStrictEqual({
-      decisions, wrongSides: wrongSides.map(errorOf), selection: [errorOf(foreign), errorOf(ambiguous)],
+      decisions, advertised, wrongSides: wrongSides.map(errorOf), selection: [errorOf(foreign), errorOf(ambiguous)],
       providerCallsOnRejectedSelection: afterRejected - beforeRejected,
     }, {
       decisions: [
@@ -1917,6 +1921,12 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         [200, 200, 200, 200, 200, missing, missing, []],
         [missing, missing, missing, missing, missing, 200, 200, ["draft-create", "draft-replace", "draft-delete"]],
         [missing, missing, missing, missing, missing, missing, missing, ["send"]],
+      ],
+      advertised: [
+        [["triage", "capabilities"], false],
+        [["triage", "search", "read", "thread", "attachment", "capabilities"], false],
+        [["drafts", "draft", "capabilities"], false],
+        [["capabilities"], false],
       ],
       wrongSides: surfaces.map(() => [400, "invalid_request"]),
       selection: [[404, "not_found"], [400, "invalid_request"]],
@@ -1969,7 +1979,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
           ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
         oversized: [413, "content_too_large"],
-        capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
+        capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"],
+          kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 }, providerExactlyOnce: false }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
         thread: [200, "1001", 1, ["Please review the plan."]],
         pages: [true, [200, true, 2, 0, 1, [["page-earlier", "1006", true]]], [200, true, 2, 1, null, [["page-later", "1005", true]]]],
