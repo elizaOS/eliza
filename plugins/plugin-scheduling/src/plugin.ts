@@ -247,7 +247,6 @@ export const schedulingPlugin: Plugin = {
       // desktop tabs. The route stays reachable for the live-test workflow.
       viewKind: "developer",
       visibleInManager: false,
-      desktopTabEnabled: false,
     },
   ],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {

@@ -8,7 +8,7 @@
  *
  * The family drives a real AgentRuntime through the CLI-subscription provider
  * (plugin-cli-inference: `codex exec -m gpt-5.5`), so the runtime's
- * JsonFileTrajectoryRecorder writes RecordedTrajectory JSON to
+ * trajectory recorder exports RecordedTrajectory JSON to
  * ELIZA_TRAJECTORY_DIR. The driver then converts that to eliza_native_v1 JSONL
  * with the same scenario-runner native-export the scenario family uses.
  *

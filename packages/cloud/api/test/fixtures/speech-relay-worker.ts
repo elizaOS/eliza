@@ -7,7 +7,24 @@ import {
 import { InferenceAdmissionGate as ProductionInferenceAdmissionGate } from "../../src/inference-admission-gate";
 import { SpeechRelayCoordinator } from "../../src/speech-relay-coordinator";
 
+type DeferredImport = {
+  hold?: boolean;
+  pending?: boolean;
+  reject?: boolean;
+  release?: () => void;
+};
+
 export class TestSpeechRelayCoordinator extends SpeechRelayCoordinator {
+  // Alarms on other coordinators can fire during any deferred-import test.
+  readonly importFixture: Record<
+    "upgrade" | "opening" | "closing",
+    DeferredImport
+  > = {
+    upgrade: {},
+    opening: {},
+    closing: {},
+  };
+
   constructor(
     private readonly fixtureState: DurableObjectState,
     env: ConstructorParameters<typeof SpeechRelayCoordinator>[1],
@@ -48,17 +65,20 @@ export class TestSpeechRelayCoordinator extends SpeechRelayCoordinator {
     if (
       path === "/test-hold-import" ||
       path === "/test-release-import" ||
-      path === "/test-reject-import"
+      path === "/test-reject-import" ||
+      path === "/test-import-state"
     ) {
       const { kind } = (await request.json()) as { kind: string };
       if (kind !== "upgrade" && kind !== "opening" && kind !== "closing")
         return new Response(null, { status: 400 });
-      if (path === "/test-hold-import") stats[`${kind}HoldImport`] = true;
-      else if (path === "/test-reject-import")
-        stats[`${kind}RejectImport`] = true;
+      const control = this.importFixture[kind];
+      if (path === "/test-import-state")
+        return Response.json({ pending: control.pending === true });
+      if (path === "/test-hold-import") control.hold = true;
+      else if (path === "/test-reject-import") control.reject = true;
       else {
-        stats[`${kind}ReleaseImport`]?.();
-        delete stats[`${kind}ReleaseImport`];
+        control.release?.();
+        delete control.release;
       }
       return Response.json({ configured: true });
     }

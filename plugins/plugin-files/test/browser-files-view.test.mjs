@@ -292,6 +292,31 @@ test("the agent opens a shown filter result by its position, without its name", 
   assert.equal((await open(3)).status, "failed");
 });
 
+test("shown filter results resolve to their paths for a reviewed share, move or trash", async (t) => {
+  const entries = [
+    file("Download/new.pdf", "application/pdf", 2),
+    file("Download/old.pdf", "application/pdf", 1),
+  ];
+  const view = files(t, {
+    storageQuery: async () => ({ status: "ready", entries, truncated: false }),
+  });
+  view.render();
+  await tick();
+  const signal = new AbortController().signal;
+  await assert.rejects(view.runner.shownPaths([1], signal), /search results/);
+  await view.runner.run({ type: "files_filter", kind: "pdf" }, signal);
+  assert.deepEqual(await view.runner.shownPaths([2, 1], signal), [
+    "Download/old.pdf",
+    "Download/new.pdf",
+  ]);
+  await assert.rejects(view.runner.shownPaths([3], signal), /that item/);
+  // An unresolved position never changes or shares anything.
+  assert.deepEqual(
+    await view.runner.run({ type: "files_trash", shown: [1] }, signal),
+    { status: "failed", summary: "Review these files again. Nothing changed." },
+  );
+});
+
 test("empty and loading states carry text", async (t) => {
   const listing = Promise.withResolvers();
   const view = files(t, { storageList: async () => listing.promise });

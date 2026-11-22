@@ -10,6 +10,8 @@ import {
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
+  type ResponseHandlerResult,
+  runWithStreamingContext,
 } from "@elizaos/core";
 import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import { sql } from "drizzle-orm";
@@ -36,6 +38,7 @@ import { createCalendarActionRunner } from "../src/actions/calendar-handler.js";
 import type { CalendarActionDeps } from "../src/actions/deps.js";
 import { __testing as appleTesting } from "../src/apple-calendar.ts";
 import { calendarPlugin } from "../src/plugin.ts";
+import { calendarReadBindingField } from "../src/read-binding.js";
 import {
   type CalendarHostGate,
   CalendarService,
@@ -198,6 +201,101 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
           } as never)
         : services(name),
     );
+    const prompt =
+      "Check only my built-in Eliza calendar. What is my next event?";
+    input.content.text = prompt;
+    input.createdAt = Date.now();
+    const googleAccounts = vi.spyOn(calendar, "discoverCalendars");
+    const signal = new AbortController().signal;
+    await runWithStreamingContext({ abortSignal: signal }, async () => {
+      const context = {
+        runtime,
+        message: input,
+        state: { values: {}, data: {}, text: "" },
+        senderRole: "OWNER" as const,
+        turnSignal: signal,
+      };
+      const bindings = calendarReadBindingField.parse?.(
+        [
+          {
+            intentId: "intent:1",
+            operation: "next_event",
+            execution: "required",
+            purpose: "requested_read",
+            filterEvidence: [],
+            source: "builtin",
+          },
+        ],
+        context,
+      );
+      expect(bindings ?? []).toHaveLength(1);
+      const parsed: ResponseHandlerResult = {
+        shouldRespond: "RESPOND",
+        contexts: [],
+        intents: [prompt],
+        candidateActionNames: ["CALENDAR_NEXT_EVENT"],
+        replyText: "",
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      };
+      const effect = await calendarReadBindingField.handle?.({
+        ...context,
+        parsed,
+        value: bindings ?? [],
+      });
+      effect?.mutateResult?.(parsed);
+      const result = await execute({}, "next_event");
+      expect(result.success).toBe(true);
+      expect(googleAccounts).toHaveBeenCalledExactlyOnceWith(
+        expect.any(URL),
+        expect.objectContaining({ grantId: "eliza-calendar" }),
+        expect.anything(),
+      );
+      const builtInSources = [
+        expect.objectContaining({
+          key: expect.objectContaining({
+            grantId: "eliza-calendar",
+            calendarId: "primary",
+          }),
+        }),
+      ];
+      expect(result.data?.calendarSources).toEqual(builtInSources);
+      googleAccounts.mockClear();
+      const withAlias = await execute(
+        { grantId: "eliza-calendar", calendarId: "eliza" },
+        "next_event",
+      );
+      expect(withAlias.success).toBe(true);
+      expect(googleAccounts).toHaveBeenCalledExactlyOnceWith(
+        expect.any(URL),
+        expect.objectContaining({ grantId: "eliza-calendar" }),
+        expect.anything(),
+      );
+      expect(withAlias.data?.calendarSources).toEqual(builtInSources);
+      googleAccounts.mockClear();
+      const conflict = await execute(
+        { grantId: googleGrant.id, calendarId: "primary" },
+        "next_event",
+      );
+      expect(conflict.success).toBe(false);
+      expect(googleAccounts).not.toHaveBeenCalled();
+    });
+    const singleCalendar = await execute(
+      { grantId: "eliza-calendar", calendarId: "eliza-calendar-primary" },
+      "next_event",
+    );
+    expect(singleCalendar.success).toBe(true);
+    expect(singleCalendar.data?.calendarSources).toEqual([
+      expect.objectContaining({
+        key: expect.objectContaining({
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+        }),
+      }),
+    ]);
+    googleAccounts.mockRestore();
+    input.content.text = "Read my phone Calendar";
     appleTesting.setNativeCalendarBridgeForTest({
       platform: "fixture",
       checkPermissions: async () => ({
@@ -252,6 +350,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
       expect(feed.mock.lastCall?.[1]).toMatchObject({ grantId });
       expect(JSON.stringify(next)).not.toContain('"grantId":"eliza-calendar"');
       const list = vi.spyOn(calendar, "listCalendars");
+      const snapshot = vi.spyOn(calendar, "getCalendarFeedSnapshot");
       const extraction = vi.spyOn(runtime, "useModel").mockResolvedValue(
         JSON.stringify({
           requiresInput: true,
@@ -261,8 +360,11 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
       await withDeviceActionTurn(runtime, credentials, () =>
         execute({ grantId }, "create_event"),
       );
-      expect(list).toHaveBeenLastCalledWith(expect.any(URL), { grantId });
-      expect(feed.mock.lastCall?.[1]).toMatchObject({ grantId });
+      expect(list).not.toHaveBeenCalled();
+      expect(snapshot).toHaveBeenCalledExactlyOnceWith(
+        expect.any(URL),
+        expect.objectContaining({ grantId, forceSync: true }),
+      );
       expect(extraction).toHaveBeenCalledExactlyOnceWith(
         expect.anything(),
         expect.objectContaining({
@@ -271,6 +373,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
       );
       extraction.mockRestore();
       list.mockRestore();
+      snapshot.mockRestore();
     }
     expect(googlePages).toHaveBeenCalled();
     // A connected grant must not turn a built-in event identifier into a
@@ -485,6 +588,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
         );
       feed.mockClear();
       googlePages.mockClear();
+      const snapshot = vi.spyOn(calendar, "getCalendarFeedSnapshot");
       const run = () =>
         execute(
           {
@@ -500,7 +604,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
         ? await withDeviceActionTurn(runtime, credentials, run)
         : await run();
       expect(result.data).toHaveProperty("availability");
-      expect(feed.mock.calls.length).toBeGreaterThanOrEqual(
+      expect(snapshot.mock.calls.length).toBeGreaterThanOrEqual(
         subaction === "create_event" ? 3 : 2,
       );
       expect(JSON.stringify(result)).toContain("Selected conflict");
@@ -509,7 +613,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
           /FORBIDDEN_(ELIZA|OTHER)_AVAILABILITY/,
         );
         expect(
-          feed.mock.calls.every(
+          snapshot.mock.calls.every(
             ([, request]) => request?.grantId === googleGrant.id,
           ),
         ).toBe(true);
@@ -542,6 +646,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
         );
       }
       extraction.mockRestore();
+      snapshot.mockRestore();
     }
     const unknown = await withDeviceActionTurn(runtime, credentials, () =>
       execute({ grantId: "connector-account:unavailable" }),
@@ -549,6 +654,16 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
     // The established feed contract records unavailable separately from empty.
     expect(unknown.data).toMatchObject({ state: "unavailable" });
     expect(JSON.stringify(unknown)).not.toContain('"grantId":"eliza-calendar"');
+    const unavailableExtraction = vi.spyOn(runtime, "useModel");
+    const unavailableCreate = await withDeviceActionTurn(
+      runtime,
+      credentials,
+      () =>
+        execute({ grantId: "connector-account:unavailable" }, "create_event"),
+    );
+    expect(unavailableCreate.success).toBe(false);
+    expect(unavailableExtraction).not.toHaveBeenCalled();
+    unavailableExtraction.mockRestore();
   } finally {
     appleTesting.setNativeCalendarBridgeForTest(null);
     await fixture.cleanup();

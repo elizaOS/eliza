@@ -2,8 +2,7 @@
  * Bug-report dialog mounted in the shell overlay stack (ShellOverlays), gated on
  * the shared `useBugReport` open state. Collects a structured report
  * (description, repro, expected/actual, environment) and submits it via the API
- * client. On the Electrobun desktop it can additionally attach local diagnostics
- * — collected via `../../utils/desktop-bug-report` — and open the logs folder.
+ * client.
  */
 import {
   toWellFormedUnicode,
@@ -12,19 +11,11 @@ import {
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useBranding } from "../../config/branding-react.hooks";
 import { useBugReport } from "../../hooks/useBugReport.hooks";
 import { logger } from "../../logger.ts";
 import { useAppSelector } from "../../state/app-store";
 import type { useApp } from "../../state/useApp";
-import {
-  createDesktopBugReportBundle,
-  type DesktopBugReportDiagnostics,
-  formatDesktopBugReportDiagnostics,
-  loadDesktopBugReportDiagnostics,
-  openDesktopLogsFolder,
-} from "../../utils/desktop-bug-report";
 import { openExternalUrl } from "../../utils/openExternalUrl";
 import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
@@ -115,7 +106,6 @@ export function stripBugReportField(s: string, max = 10_000): string {
 export function BugReportModal() {
   const copyToClipboard = useAppSelector((s) => s.copyToClipboard);
   const t = useAppSelector((s) => s.t);
-  const desktopRuntime = isElectrobunRuntime();
   const branding = useBranding();
   const { isOpen, draft, close } = useBugReport();
   const [form, setForm] = useState<BugReportForm>(EMPTY_FORM);
@@ -125,13 +115,6 @@ export function BugReportModal() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
-  const [desktopDiagnostics, setDesktopDiagnostics] =
-    useState<DesktopBugReportDiagnostics | null>(null);
-  const [attachLogs, setAttachLogs] = useState(true);
-  const [attachSystemInfo, setAttachSystemInfo] = useState(true);
-  const [bundlePath, setBundlePath] = useState<string | null>(null);
-  const [savingBundle, setSavingBundle] = useState(false);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const successHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -147,12 +130,6 @@ export function BugReportModal() {
     setErrorMsg(null);
     setShowLogs(false);
     setCopied(false);
-    setCopiedDiagnostics(false);
-    setDesktopDiagnostics(null);
-    setAttachLogs(true);
-    setAttachSystemInfo(true);
-    setBundlePath(null);
-    setSavingBundle(false);
 
     client
       .checkBugReportInfo()
@@ -180,39 +157,12 @@ export function BugReportModal() {
       .catch((err: unknown) => {
         logger.warn({ err }, "[BugReportModal] bug-report info prefill failed");
       });
-    if (desktopRuntime) {
-      loadDesktopBugReportDiagnostics()
-        .then((diagnostics) => {
-          if (cancelled || !diagnostics) return;
-          setDesktopDiagnostics(diagnostics);
-          if (diagnostics.platform === "win32") {
-            setForm((f) => ({
-              ...f,
-              environment: f.environment || "Windows",
-              logs: f.logs || diagnostics.logTail || "",
-            }));
-          } else {
-            setForm((f) => ({
-              ...f,
-              logs: f.logs || diagnostics.logTail || "",
-            }));
-          }
-        })
-        // error-policy:J4 diagnostics prefill only — the report still submits
-        // without the log tail; warn keeps the broken bridge observable.
-        .catch((err: unknown) => {
-          logger.warn(
-            { err },
-            "[BugReportModal] desktop diagnostics prefill failed",
-          );
-        });
-    }
     setTimeout(() => descRef.current?.focus(), 50);
 
     return () => {
       cancelled = true;
     };
-  }, [desktopRuntime, isOpen]);
+  }, [isOpen]);
   useEffect(() => {
     if (!isOpen || !draft) return;
     setForm((f) => ({
@@ -233,25 +183,6 @@ export function BugReportModal() {
     [],
   );
 
-  const buildDiagnosticsBlock = useCallback((): string => {
-    if (!desktopDiagnostics) return "";
-    const sections: string[] = [];
-    if (attachSystemInfo) {
-      sections.push(formatDesktopBugReportDiagnostics(desktopDiagnostics));
-    }
-    if (attachLogs && desktopDiagnostics.logTail) {
-      sections.push(`Startup Log Tail\n${desktopDiagnostics.logTail}`);
-    }
-    return sections.join("\n\n");
-  }, [attachLogs, attachSystemInfo, desktopDiagnostics]);
-
-  const buildCombinedLogs = useCallback((): string => {
-    const sections = [form.logs.trim(), buildDiagnosticsBlock().trim()].filter(
-      Boolean,
-    );
-    return sections.join("\n\n");
-  }, [buildDiagnosticsBlock, form.logs]);
-
   const formatMarkdown = useCallback((): string => {
     const strip = (s: string, max = 10_000) => stripBugReportField(s, max);
     const lines: string[] = [];
@@ -268,33 +199,12 @@ export function BugReportModal() {
       lines.push(`\n### Node Version\n${strip(form.nodeVersion, 200)}`);
     if (form.modelProvider)
       lines.push(`\n### Model Provider\n${strip(form.modelProvider, 200)}`);
-    const combinedLogs = buildCombinedLogs();
-    if (combinedLogs) {
-      lines.push(`\n### Logs\n\`\`\`\n${strip(combinedLogs, 50_000)}\n\`\`\``);
+    const logs = form.logs.trim();
+    if (logs) {
+      lines.push(`\n### Logs\n\`\`\`\n${strip(logs, 50_000)}\n\`\`\``);
     }
     return lines.join("\n");
-  }, [buildCombinedLogs, form]);
-
-  const buildReportPayload = useCallback(
-    () => ({
-      description: form.description,
-      stepsToReproduce: form.stepsToReproduce,
-      expectedBehavior: form.expectedBehavior,
-      actualBehavior: form.actualBehavior,
-      environment: form.environment,
-      nodeVersion: form.nodeVersion,
-      modelProvider: form.modelProvider,
-      attachLogs,
-      attachSystemInfo,
-      desktopDiagnostics: desktopDiagnostics
-        ? {
-            ...desktopDiagnostics,
-            logTail: attachLogs ? desktopDiagnostics.logTail : "",
-          }
-        : null,
-    }),
-    [attachLogs, attachSystemInfo, desktopDiagnostics, form],
-  );
+  }, [form]);
 
   const handleSubmit = useCallback(async () => {
     if (!form.description.trim() || !form.stepsToReproduce.trim()) {
@@ -312,7 +222,7 @@ export function BugReportModal() {
         environment: form.environment,
         nodeVersion: form.nodeVersion,
         modelProvider: form.modelProvider,
-        logs: buildCombinedLogs(),
+        logs: form.logs.trim(),
       });
       const safeResultUrl = normalizeHttpsResultUrl(result.url);
       if (safeResultUrl) {
@@ -348,7 +258,7 @@ export function BugReportModal() {
     } finally {
       setSubmitting(false);
     }
-  }, [buildCombinedLogs, copyToClipboard, form, formatMarkdown, t]);
+  }, [copyToClipboard, form, formatMarkdown, t]);
 
   const handleCopyAndOpen = useCallback(async () => {
     let ok = false;
@@ -361,38 +271,6 @@ export function BugReportModal() {
     setCopied(ok);
     await openExternalUrl(branding.bugReportUrl);
   }, [copyToClipboard, formatMarkdown, branding.bugReportUrl]);
-
-  const handleCopyDiagnostics = useCallback(async () => {
-    const diagnosticsText = buildDiagnosticsBlock();
-    if (!diagnosticsText) return;
-    let ok = false;
-    try {
-      await copyToClipboard(diagnosticsText);
-      ok = true;
-    } catch {
-      // clipboard write failed; ok stays false
-    }
-    setCopiedDiagnostics(ok);
-  }, [buildDiagnosticsBlock, copyToClipboard]);
-
-  const handleSaveBundle = useCallback(async () => {
-    setSavingBundle(true);
-    setErrorMsg(null);
-    try {
-      const bundle = await createDesktopBugReportBundle({
-        prefix: "elizaos-report",
-        reportMarkdown: formatMarkdown(),
-        reportJson: buildReportPayload(),
-      });
-      setBundlePath(bundle?.directory ?? null);
-    } catch (err) {
-      setErrorMsg(
-        err instanceof Error ? err.message : "Failed to create report bundle",
-      );
-    } finally {
-      setSavingBundle(false);
-    }
-  }, [buildReportPayload, formatMarkdown]);
 
   // Close on Escape
   useEffect(() => {
@@ -500,11 +378,6 @@ export function BugReportModal() {
           >
             <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
               {errorMsg && <Banner variant="errorCompact">{errorMsg}</Banner>}
-              {bundlePath && (
-                <FieldMessage tone="success" className="text-xs">
-                  {bundlePath}
-                </FieldMessage>
-              )}
               <Field>
                 <FieldLabel htmlFor="bug-report-description">
                   {t("common.description")}{" "}
@@ -657,38 +530,6 @@ export function BugReportModal() {
                 </div>
                 {showLogs && (
                   <div className="space-y-3">
-                    {desktopRuntime ? (
-                      <div className="flex flex-wrap gap-4 text-xs-tight text-muted">
-                        <label
-                          htmlFor="bug-report-attach-logs"
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Input
-                            id="bug-report-attach-logs"
-                            type="checkbox"
-                            checked={attachLogs}
-                            onChange={(e) => setAttachLogs(e.target.checked)}
-                            className="size-4 shrink-0"
-                          />
-                          {t("bugreportmodal.attachLogs")}
-                        </label>
-                        <label
-                          htmlFor="bug-report-attach-system-info"
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Input
-                            id="bug-report-attach-system-info"
-                            type="checkbox"
-                            checked={attachSystemInfo}
-                            onChange={(e) =>
-                              setAttachSystemInfo(e.target.checked)
-                            }
-                            className="size-4 shrink-0"
-                          />
-                          {t("bugreportmodal.attachSystemInfo")}
-                        </label>
-                      </div>
-                    ) : null}
                     <Textarea
                       id="bug-report-logs-panel"
                       variant="modal"
@@ -708,36 +549,6 @@ export function BugReportModal() {
                 {t("common.cancel")}
               </Button>
               <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                {desktopRuntime ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCopyDiagnostics}
-                    >
-                      {copiedDiagnostics
-                        ? t("bugreportmodal.copiedDiagnostics")
-                        : t("bugreportmodal.copyDiagnostics")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={openDesktopLogsFolder}
-                    >
-                      {t("bugreportmodal.openLogsFolder")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleSaveBundle}
-                      disabled={savingBundle}
-                    >
-                      {savingBundle
-                        ? t("bugreportmodal.savingBundle")
-                        : t("bugreportmodal.saveBundle")}
-                    </Button>
-                  </>
-                ) : null}
                 <Button
                   variant="outline"
                   size="sm"

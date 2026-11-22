@@ -1,6 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  BrowserDispatchFailure,
   BrowserService,
   browserAction,
   nativeBrowserAction,
@@ -185,5 +186,131 @@ describe("host-declared native browser commands", () => {
 
   it("refuses a command name it does not know", () => {
     expect(() => nativeBrowserCommands("back,teleport")).toThrow("teleport");
+  });
+});
+
+describe("dispatch-only native command results", () => {
+  const dispatchOnly = (
+    subaction: "reload" | "back" | "click" | "fill" | "scroll" | "close",
+  ) => ({
+    targetId: "native-client",
+    mode: "web" as const,
+    subaction,
+    value: { dispatched: true, completed: false, requiresReadback: true },
+  });
+  const runWith = async (
+    commands: ReturnType<typeof nativeBrowserCommands>,
+    parameters: Record<string, unknown>,
+    execute: (...args: unknown[]) => Promise<unknown>,
+  ) =>
+    nativeBrowserAction(commands).handler?.(
+      { getService: () => ({ execute }) } as unknown as IAgentRuntime,
+      browserTurn({ kind: "browser-tab", id: "t", revision: "1" }) as never,
+      undefined,
+      { parameters } as never,
+    );
+
+  it("owns an honest reply and a typed dispatch marker without asking for an impossible readback", async () => {
+    const result = await runWith(
+      nativeBrowserCommands("back,forward,reload"),
+      { action: "reload" },
+      async () => dispatchOnly("reload"),
+    );
+    const expected = {
+      ...dispatchOnly("reload"),
+      value: { dispatched: true, completed: false, requiresReadback: false },
+    };
+    expect(result).toEqual({
+      success: true,
+      text: JSON.stringify(expected),
+      userFacingText:
+        "I asked the browser to reload the page. It may still be loading.",
+      verifiedUserFacing: true,
+      turnComplete: true,
+      data: {
+        actionName: "BROWSER",
+        executionStatus: "dispatched",
+        result: expected,
+      },
+    });
+    expect(result).not.toHaveProperty("effectReceipts");
+  });
+
+  it("keeps the readback request when the host can read the page", async () => {
+    const result = await runWith(
+      nativeBrowserCommands(undefined),
+      { action: "back" },
+      async () => dispatchOnly("back"),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText:
+        "I asked the browser to go back. The previous page may still be loading.",
+      data: {
+        executionStatus: "dispatched",
+        result: dispatchOnly("back"),
+      },
+    });
+  });
+
+  it.each(["click", "fill", "scroll", "close"] as const)(
+    "returns a dispatched %s exactly as an ordinary result",
+    async (subaction) => {
+      // A page interaction can submit or change something on the site, so its
+      // dispatch receipt keeps the receipt guard instead of a tool-owned finish.
+      const dispatched = dispatchOnly(subaction);
+      const result = await runWith(
+        nativeBrowserCommands("back,forward,reload,click,fill,scroll,close"),
+        { action: subaction },
+        async () => dispatched,
+      );
+      expect(result).toEqual({
+        success: true,
+        text: JSON.stringify(dispatched),
+        data: { actionName: "BROWSER", result: dispatched },
+      });
+    },
+  );
+
+  it("leaves completed and read results unchanged", async () => {
+    const read = {
+      targetId: "native-client",
+      mode: "web" as const,
+      subaction: "get" as const,
+      value: { url: "https://example.com", title: "Example", text: "hi" },
+    };
+    const result = await runWith(
+      nativeBrowserCommands(undefined),
+      { action: "get" },
+      async () => read,
+    );
+    expect(result).toEqual({
+      success: true,
+      text: JSON.stringify(read),
+      data: { actionName: "BROWSER", result: read },
+    });
+  });
+
+  it("still reports a failed native command as a failure", async () => {
+    const result = await runWith(
+      nativeBrowserCommands("back,forward,reload"),
+      { action: "reload" },
+      async () => {
+        throw new BrowserDispatchFailure(
+          "UNAVAILABLE",
+          "Connect the requesting native browser client.",
+        );
+      },
+    );
+    expect(result).toMatchObject({
+      success: false,
+      text: "Connect the requesting native browser client.",
+      data: {
+        actionName: "BROWSER",
+        dispatchFailure: { kind: "UNAVAILABLE" },
+      },
+    });
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result?.data).not.toHaveProperty("executionStatus");
   });
 });

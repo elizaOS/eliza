@@ -33,11 +33,15 @@ test("a written number becomes the exact dial form or is rejected with the forma
     ["+1 415 555-0100", "+14155550100"],
     ["(415)555-0100", "4155550100"],
     [" 01.23.45.67.89 ", "0123456789"],
-    // International notation: the same Paris number, a Sydney and an
-    // Argentine mobile number whose first national group is one digit.
     ["+33 1 23 45 67 89", "+33123456789"],
     ["+61 2 9876 5432", "+61298765432"],
     ["+54 9 11 1234-5678", "+5491112345678"],
+    // One North American number typed with mixed separators, which the
+    // secret-swap phone detector restores whole.
+    ["415-555 0100", "4155550100"],
+    ["415.555 0100", "4155550100"],
+    ["+1 415-555 0100", "+14155550100"],
+    ["(415) 555 0100", "4155550100"],
   ])
     assert.equal(phoneDialNumber(written), exact);
   for (const bad of [
@@ -48,6 +52,8 @@ test("a written number becomes the exact dial form or is rejected with the forma
     "++1555",
     // More than one number, a range, a date or an address is not one number.
     "555-0100 555-0199",
+    "415-555 0100 0199",
+    "415-555-0100 415-555-0199",
     "5550100\n5550101",
     "+1 415 555 0100 - 0105",
     "415 555 0100 415 555 0199",

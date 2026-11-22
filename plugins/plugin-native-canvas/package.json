@@ -80,7 +80,7 @@
     "runtime": "both",
     "platformDetails": {
       "browser": "Full support via HTML5 Canvas API (drawing, layers, web view, A2UI bridge)",
-      "node": "Full support via Electrobun native canvas and web view integration",
+      "node": "Not supported; there is no Node or desktop implementation.",
       "ios": true,
       "android": true
     }

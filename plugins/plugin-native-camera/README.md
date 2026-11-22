@@ -36,7 +36,9 @@ host's preview/recording options. Every start and stop bumps an epoch, so an
 answer that arrives after the surface closed never moves it forward; stops are
 chained so a new preview never races the previous release, and a preview that
 comes up after its surface closed is released. One capture, control change or
-recording start runs at a time (`exclusive`, `control`, `startRecording`).
+recording start runs at a time (`exclusive`, `control`, `startRecording`); while
+a recording runs, `control(task, "zoom" | "torch")` may still change the zoom or
+the torch, one change at a time, and every other control waits for the stop.
 Stopping the surface finishes an active recording first; finalization is single
 flight and a recording is reported saved only for a complete receipt the host's
 `recordingSaved` hook accepted (the host decides where it lives). Starts are
@@ -77,6 +79,9 @@ and duration stops remain retrievable. Concurrent finalization cannot start a
 competing recording. Gallery output requires Android 10+; microphone denial is an
 explicit failure. Quality, bitrate and frame rate are validated per recording;
 actual device capabilities determine output. Stop recording before switching.
+`startPreview` takes an optional photo `captureAspectRatio` (4:3 by default);
+`getDevices` lists the accepted values in `supportedCaptureAspectRatios`, which
+web and iOS omit because they ignore the option.
 
 Preview cancellation owns pending provider/permission callbacks. Frame events
 sample completed captures at approximately 2 Hz and stop with camera inactivity;

@@ -2432,7 +2432,10 @@ describe("literal Notes edits", () => {
       (p) => p.name === "expectedRevision",
     )?.description;
     expect(description).toMatch(/every PATCH, including textEdit/);
-    expect(description).toMatch(/Only UPDATE literal textEdit may omit/);
+    expect(description).toMatch(
+      /Only UPDATE literal textEdit substitution \(oldText\/newText\) may omit/,
+    );
+    expect(description).toMatch(/a textEdit append always needs it/);
   });
   it("updates through the promoted tool without a read and persists only the requested substring", async () => {
     const runtime = await executorHarness();

@@ -1172,6 +1172,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           });
           return {
             text: JSON.stringify({
+              reviewBeforeCreate: false,
               requiresInput,
               grantId: ELIZA_CALENDAR_GRANT_ID,
               calendarId: ELIZA_CALENDAR_ID,
@@ -1532,6 +1533,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
                     : null,
           };
           return JSON.stringify({
+            reviewBeforeCreate: false,
             requiresInput: mode === "missing-clock",
             clarification: mode === "missing-clock" ? "What exact time?" : null,
             guestIntent: { state: "none", evidence, guests: [] },
@@ -2194,6 +2196,7 @@ it("grounds the observed relative-create reply against the real CalendarService 
       String(params?.prompt).includes("Extract calendar event creation fields")
     )
       return JSON.stringify({
+        reviewBeforeCreate: false,
         requiresInput: false,
         clarification: null,
         guestIntent: { state: "none", evidence, guests: [] },

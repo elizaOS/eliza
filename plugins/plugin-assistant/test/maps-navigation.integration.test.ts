@@ -116,6 +116,14 @@ test("Maps requests reach only their enrolled conversation, once, and require a 
           phase: "result",
           status: { state: "stopped", travelMode: ["drive"] },
         },
+        // A route summary belongs only to a planned route awaiting the user.
+        {
+          phase: "result",
+          status: {
+            state: "stopped",
+            route: { durationSeconds: 60, distanceMeters: 80, traffic: "none" },
+          },
+        },
       ]) {
         await expect(
           handleMapsNavigationRelay(runtime, credential, {
@@ -256,6 +264,110 @@ test("Maps requests reach only their enrolled conversation, once, and require a 
   }
 });
 
+test("a phone refusal reaches the owner with the phone's own reason, not a generic failure", async () => {
+  const { runtime, cleanup } = await createTestRuntime({
+    characterName: "MapsRelayRefusalFixture",
+  });
+  const devices = new DeviceActionService(runtime);
+  const credential = {
+    subjectUserId: randomUUID(),
+    installationId: randomUUID(),
+    deviceKey: "c".repeat(64),
+  };
+  const conversationId = randomUUID(),
+    offerId = randomUUID();
+  try {
+    await devices.register(credential, "Maps refusal fixture");
+    await runtime.registerService(MapsService);
+    await runtime.getServiceLoadPromise(MapsService.serviceType);
+    const maps = runtime.getService<MapsService>(MapsService.serviceType);
+    if (!maps) throw Error("Maps service unavailable");
+    const refuse = async (failed: Record<string, unknown>) => {
+      await handleMapsNavigationRelay(runtime, credential, {
+        phase: "open",
+        offerId,
+        conversationId,
+      });
+      return withDeviceActionTurn(runtime, credential, async () => {
+        setDeviceReadReplyConversation(runtime, conversationId, randomUUID());
+        const completed = maps.requireDeviceNavigation().stop();
+        completed.catch(() => {});
+        let delivered: Awaited<ReturnType<typeof handleMapsNavigationRelay>>;
+        do {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          delivered = await handleMapsNavigationRelay(runtime, credential, {
+            phase: "poll",
+            offerId,
+            conversationId,
+          });
+        } while (!delivered.request);
+        await handleMapsNavigationRelay(runtime, credential, {
+          phase: "result",
+          offerId,
+          conversationId,
+          id: delivered.request.id,
+          failed,
+        });
+        return completed.then(
+          () => {
+            throw Error("The refusal resolved");
+          },
+          (error: unknown) => error as { code: string; message: string },
+        );
+      });
+    };
+    expect(
+      await refuse({
+        code: "MAPS_DEVICE_UNAVAILABLE",
+        message:
+          "Open Maps on the phone to continue. Nothing was changed on the map.",
+      }),
+    ).toMatchObject({
+      code: "MAPS_DEVICE_UNAVAILABLE",
+      message:
+        "Open Maps on the phone to continue. Nothing was changed on the map.",
+    });
+    // An older phone sends only the code; the reply still says what the code means.
+    expect(await refuse({ code: "MAPS_DEVICE_UNAVAILABLE" })).toMatchObject({
+      code: "MAPS_DEVICE_UNAVAILABLE",
+      message:
+        "Maps could not be shown on the phone right now. Nothing was changed on the map.",
+    });
+    // A used-up allowance and a Cloud refusal keep their own codes, so chat
+    // says neither "Maps is busy" nor "Sign in again".
+    expect(
+      await refuse({
+        code: "MAPS_BUDGET_EXHAUSTED",
+        message: "You have used your Maps allowance for this period.",
+      }),
+    ).toMatchObject({
+      code: "MAPS_BUDGET_EXHAUSTED",
+      message: "You have used your Maps allowance for this period.",
+    });
+    expect(await refuse({ code: "MAPS_PROVIDER_REJECTED" })).toMatchObject({
+      code: "MAPS_PROVIDER_REJECTED",
+      message:
+        "Cloud refused this Maps request. Nothing was changed on the map.",
+    });
+    for (const message of ["x".repeat(301), "line\nbreak", "  ", 7])
+      expect(await refuse({ code: "MAPS_NOT_FOUND", message })).toMatchObject({
+        code: "MAPS_NOT_FOUND",
+        message: "Cloud Maps on the phone found no such place or route.",
+      });
+    await expect(
+      handleMapsNavigationRelay(runtime, credential, {
+        phase: "result",
+        offerId,
+        conversationId,
+        id: randomUUID(),
+        failed: { code: "MAPS_NOT_FOUND", extra: true },
+      }),
+    ).rejects.toThrow();
+  } finally {
+    await cleanup();
+  }
+});
+
 test("the shared phone client completes a Maps turn over authenticated HTTP and cancels pending device work", async () => {
   const { runtime, cleanup } = await createTestRuntime({
     characterName: "MapsHttpFixture",
@@ -370,16 +482,23 @@ test("the shared phone client completes a Maps turn over authenticated HTTP and 
         signal.throwIfAborted();
         const operation = value as { kind: string };
         calls.push(operation.kind);
-        return {
-          state:
-            operation.kind === "select"
-              ? "selected"
-              : operation.kind === "start"
-                ? "awaiting-confirmation"
-                : operation.kind === "reroute"
-                  ? "navigating"
-                  : "stopped",
-        };
+        return operation.kind === "start"
+          ? {
+              state: "awaiting-confirmation",
+              route: {
+                durationSeconds: 480,
+                distanceMeters: 640,
+                traffic: "none",
+              },
+            }
+          : {
+              state:
+                operation.kind === "select"
+                  ? "selected"
+                  : operation.kind === "reroute"
+                    ? "navigating"
+                    : "stopped",
+            };
       },
     };
     const conversationId = randomUUID();
@@ -417,7 +536,18 @@ test("the shared phone client completes a Maps turn over authenticated HTTP and 
               },
             }),
           ).toMatchObject({
-            data: { device: { state: "awaiting-confirmation" } },
+            userFacingText:
+              "Confirm on the phone to start navigation to the destination. The route is about 8 min, 640 m.",
+            data: {
+              device: {
+                state: "awaiting-confirmation",
+                route: {
+                  durationSeconds: 480,
+                  distanceMeters: 640,
+                  traffic: "none",
+                },
+              },
+            },
           });
           expect(
             await mapsNavigationAction.handler(runtime, message, undefined, {
@@ -504,6 +634,47 @@ test("the shared phone client completes a Maps turn over authenticated HTTP and 
         }),
     );
     expect(effectSignal?.aborted).toBe(true);
+    // The phone's own reason for a refusal is what the owner reads, not a generic failure.
+    const refusal =
+      "Open Maps on the phone to continue. Nothing was changed on the map.";
+    await withMapsNavigationRelay(
+      {
+        ...host,
+        execute: async () => {
+          throw Error("Maps could not be shown");
+        },
+        failureMessage: () => refusal,
+      },
+      request,
+      conversationId,
+      new AbortController().signal,
+      () =>
+        withDeviceActionTurn(runtime, credential, async () => {
+          setDeviceReadReplyConversation(runtime, conversationId, randomUUID());
+          const message = {
+            id: randomUUID(),
+            entityId: credential.subjectUserId,
+            agentId: runtime.agentId,
+            roomId: randomUUID(),
+            content: { text: "fixture Maps request" },
+          } as Memory;
+          expect(
+            await mapsNavigationAction.handler(runtime, message, undefined, {
+              parameters: {
+                action: "start",
+                name: "Fixture place",
+                latitude: 1,
+                longitude: 2,
+                travelMode: "walk",
+              },
+            }),
+          ).toMatchObject({
+            success: false,
+            userFacingText: refusal,
+            data: { error: "MAPS_DEVICE_UNAVAILABLE" },
+          });
+        }),
+    );
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

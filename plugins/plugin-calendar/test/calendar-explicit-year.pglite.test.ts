@@ -155,6 +155,7 @@ async function create(args: {
     title: "Lunch",
     description: null,
     location: null,
+    reviewBeforeCreate: false,
     requiresInput: false,
     clarification: null,
     startAt: args.start ?? null,

@@ -15,10 +15,12 @@ import {
   hashString,
   type Memory,
   ModelType,
+  normalizeEffectReceipt,
+  type PlannerTrajectory,
   stringToUuid,
 } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolvePlannedReplyEgress } from "./egress-policy";
 
 const REVIEW_PREFIX = "Review recovered reply grounding.";
@@ -103,6 +105,8 @@ function fixture(judge: (offersContextRequest: boolean) => unknown) {
   };
   const beforeContextRestore = vi.fn(async () => {});
   return {
+    runtime,
+    message,
     beforeContextRestore,
     renderPrompts,
     reviewPrompts,
@@ -191,5 +195,201 @@ it("still rejects an unsupported navigation claim after restoration", async () =
   await expect(f.recover()).rejects.toMatchObject({
     code: "REPLY_GROUNDING_FAILED",
     message: "Recovered reply asserts an unsupported outcome",
+  });
+});
+
+// A leading state assertion rejected the entire live answer before the
+// prepared Calendar handoff could reach the originating renderer.
+describe("a prepared view with a settled, independent read", () => {
+  const readReply = "You have one event tomorrow, the camera rehearsal.";
+  const rejectedReply = `Calendar is open. ${readReply}`;
+  const fixedReply = `I’ll open Calendar. ${readReply}`;
+
+  function calendarReply() {
+    const f = fixture(() => prospectiveVerdict);
+    f.message.content.text = "Open Calendar and tell me what’s on tomorrow.";
+    f.runtime.registerAction({
+      name: "CALENDAR_FEED",
+      description: "Read the current Calendar agenda.",
+      historicalObservationOperations: ["calendar.feed.read"],
+      validate: async () => true,
+      handler: async () => {
+        throw Error("Reply egress must not execute any action");
+      },
+    });
+    const required = {
+      viewId: "calendar",
+      clientId: "origin-client",
+      installationId: "install-1",
+    };
+    const navigation = {
+      effect: "view_navigation",
+      status: "prepared",
+      viewId: "calendar",
+      path: "/calendar",
+      label: "Calendar",
+      handoffId: HANDOFF,
+      stepId: null,
+    };
+    const prepared = {
+      success: true,
+      transcriptVisibility: "internal" as const,
+      modelReplyRequired: true,
+      data: {
+        actionName: "VIEWS_SHOW",
+        view: {
+          id: "calendar",
+          label: "Calendar",
+          installationId: "install-1",
+        },
+        navigation,
+        awaitingDeviceExecution: true,
+        values: {
+          mode: "show",
+          viewId: "calendar",
+          viewPath: "/calendar",
+          completedActionHandoffId: HANDOFF,
+          navigationPrepared: true,
+          navigationBinding: {
+            requestId: HANDOFF,
+            viewId: "calendar",
+            viewType: "gui",
+            clientId: "origin-client",
+            installationId: "install-1",
+          },
+        },
+      },
+    };
+    const read = {
+      success: true,
+      transcriptVisibility: "internal" as const,
+      modelReplyRequired: true,
+      data: {
+        actionName: "CALENDAR_FEED",
+        events: [{ title: "Camera rehearsal" }],
+      },
+      effectReceipts: [
+        normalizeEffectReceipt({
+          receiptId: "calendar-agenda-read",
+          operation: "calendar.feed.read",
+          resource: { kind: "calendar.feed", id: "snapshot", version: "v1" },
+          artifacts: [],
+          idempotency: { key: null, replayed: false },
+          observedAt: "2026-11-19T08:53:21.703Z",
+          outcome: "noop",
+          reason: "Observed without changes.",
+        }),
+      ],
+    };
+    const trajectory: PlannerTrajectory = {
+      context: { events: [], metadata: { requiredViewNavigation: required } },
+      outcomeIntents: ["Open Calendar", "Read tomorrow’s agenda"],
+      steps: [
+        {
+          iteration: 1,
+          toolCall: { name: "VIEWS_SHOW", params: { view: "calendar" } },
+          result: prepared,
+        },
+        { iteration: 2, toolCall: { name: "CALENDAR_FEED" }, result: read },
+      ],
+      archivedSteps: [],
+      evaluatorOutputs: [],
+      plannedQueue: [],
+    };
+    const input = {
+      runtime: f.runtime,
+      message: f.message,
+      reply: rejectedReply,
+      actionResults: [prepared, read],
+      trajectory,
+      providers: {
+        VIEW_NAVIGATION: {
+          data: {
+            currentViewId: "chat",
+            views: [
+              { id: "calendar", label: "Calendar" },
+              { id: "inbox", label: "Inbox" },
+            ],
+          },
+        },
+      },
+    };
+    return {
+      input,
+      trajectory,
+      required,
+      prepared,
+      read,
+      renderPrompts: f.renderPrompts,
+    };
+  }
+
+  it("changes the false Calendar opening and keeps the agenda answer without another model call", async () => {
+    const f = calendarReply();
+    await expect(resolvePlannedReplyEgress(f.input)).resolves.toEqual({
+      text: fixedReply,
+      effectReceiptIds: [],
+    });
+    expect(f.renderPrompts).toHaveLength(0);
+    expect(f.prepared.data.navigation.status).toBe("prepared");
+  });
+
+  it.each([
+    [
+      "wrong view in the reply",
+      (f: ReturnType<typeof calendarReply>) => {
+        f.input.reply = `Inbox is open. ${readReply}`;
+      },
+    ],
+    [
+      "wrong renderer binding",
+      (f: ReturnType<typeof calendarReply>) => {
+        f.required.clientId = "another-client";
+      },
+    ],
+    [
+      "no prepare receipt",
+      (f: ReturnType<typeof calendarReply>) => {
+        f.trajectory.steps.shift();
+      },
+    ],
+    [
+      "no unconditional navigation obligation",
+      (f: ReturnType<typeof calendarReply>) => {
+        delete f.trajectory.context.metadata?.requiredViewNavigation;
+      },
+    ],
+    [
+      "unproved read",
+      (f: ReturnType<typeof calendarReply>) => {
+        f.read.effectReceipts = [];
+      },
+    ],
+    [
+      "unsupported mutation in the remainder",
+      (f: ReturnType<typeof calendarReply>) => {
+        f.input.reply = "Calendar is open. I deleted your event.";
+      },
+    ],
+    [
+      "another premature claim in the remainder",
+      (f: ReturnType<typeof calendarReply>) => {
+        f.input.reply = `Calendar is open. Inbox is open. ${readReply}`;
+      },
+    ],
+    [
+      "navigation only",
+      (f: ReturnType<typeof calendarReply>) => {
+        f.input.reply = "Calendar is open.";
+      },
+    ],
+  ] as const)("keeps ordinary recovery for %s", async (_reason, mutate) => {
+    const f = calendarReply();
+    mutate(f);
+    await expect(resolvePlannedReplyEgress(f.input)).resolves.toEqual({
+      text: REPLY,
+      effectReceiptIds: [],
+    });
+    expect(f.renderPrompts).toHaveLength(1);
   });
 });

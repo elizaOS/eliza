@@ -331,6 +331,83 @@ export function applyHistoryRetentionReview(
   return cp;
 }
 
+/** Most originals a host without a reviewer keeps inline before it defers a batch. */
+export const HISTORY_WINDOW_MAX_SOURCES = 40;
+/** Originals left inline directly after a batch is deferred. */
+export const HISTORY_WINDOW_KEEP_SOURCES = 20;
+/** Deferred user messages kept inline because their wording reads as standing. */
+export const HISTORY_WINDOW_STANDING_SOURCES = 12;
+
+/**
+ * Wording that usually states a standing instruction or a lasting fact about
+ * the speaker. No reviewer reads what a positional boundary defers, so this is
+ * the only thing that keeps "always read it back before sending" in view once
+ * it is older than the window. English only, and a floor rather than a
+ * judgement: a miss is still readable through the history references.
+ */
+const STANDING_WORDING =
+  /\b(?:always|never|from now on|going forward|in (?:the )?future|every time|each time|whenever|remember (?:that|to|my)|don['’]?t (?:ever|forget)|do not (?:ever|forget)|i prefer|call me|my name is|i(?:['’]m| am) allergic|unless i)\b/i;
+
+/**
+ * Boundary for a host whose background reviewer never runs. Without a
+ * checkpoint the foreground renders the room's whole lifetime on every model
+ * call of every turn. This defers the originals before a boundary without
+ * reviewing them; every deferred original stays readable through the history
+ * references. The boundary depends only on the sources at or before it and
+ * advances a batch at a time, so between two advances the inline transcript
+ * only grows at its end and a provider can reuse the prompt prefix. It starts
+ * on a user message, so a reply is never shown without its request.
+ * `windowed` is true when the boundary lies past everything a reviewer saw.
+ */
+export function windowHistoryRetention(
+  context: ContextObject,
+  scope: HistoryRetentionScope,
+  stored: unknown,
+): { checkpoint: HistoryRetentionCheckpoint | null; windowed: boolean } {
+  const previous = validateHistoryRetention(context, scope, stored);
+  const reviewed = { checkpoint: previous, windowed: false };
+  if (context.metadata?.roomId !== scope.roomId) return reviewed;
+  const sources = collectCompletionContextSources(context);
+  const reviewedCount = previous?.reviewedCount ?? 0;
+  if (sources.length - reviewedCount <= HISTORY_WINDOW_MAX_SOURCES)
+    return reviewed;
+  const step = HISTORY_WINDOW_MAX_SOURCES - HISTORY_WINDOW_KEEP_SOURCES;
+  let boundary =
+    Math.floor((sources.length - HISTORY_WINDOW_KEEP_SOURCES) / step) * step;
+  while (
+    boundary < sources.length &&
+    sources[boundary].event.segment.label !== "prior_message:user"
+  )
+    boundary++;
+  if (boundary <= reviewedCount) return reviewed;
+  const prefix = sources.slice(0, boundary);
+  const retained = new Set(previous?.retainedEventIds ?? []);
+  const standing = prefix
+    .filter(
+      (source, index) =>
+        index >= reviewedCount &&
+        source.event.segment.label === "prior_message:user" &&
+        STANDING_WORDING.test(source.event.segment.content),
+    )
+    .slice(-HISTORY_WINDOW_STANDING_SOURCES);
+  for (const source of standing) retained.add(source.event.id);
+  return {
+    windowed: true,
+    checkpoint: {
+      version: 1,
+      ...(previous?.dependencyEventGroups
+        ? { dependencyEventGroups: previous.dependencyEventGroups }
+        : {}),
+      scopeHash: scopeHash(scope),
+      reviewedCount: boundary,
+      prefixHash: sourcePrefixHash(scope, prefix),
+      retainedEventIds: prefix
+        .filter((source) => retained.has(source.event.id))
+        .map((source) => source.event.id),
+    },
+  };
+}
+
 export function visibleHistoryEventIds(
   context: ContextObject,
   scope: HistoryRetentionScope,
@@ -351,9 +428,12 @@ export function visibleHistoryEventIds(
     sources[start - 1].event.segment.label === "prior_message:user"
   )
     start--;
+  // An exchange that is one long run of user messages (a group the agent stays
+  // silent in) must not bring the whole room back inline.
+  start = Math.max(start, sources.length - HISTORY_WINDOW_MAX_SOURCES);
   // Keep conversational continuity even when the background reviewer has
   // deferred ordinary recent exchanges. This is a floor, never a cap on
-  // retained constraints, unreviewed originals or the current exchange.
+  // retained constraints or unreviewed originals.
   start = Math.min(
     start,
     Math.max(0, sources.length - HISTORY_CONTINUITY_SOURCE_COUNT),

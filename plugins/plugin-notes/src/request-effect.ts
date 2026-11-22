@@ -4,8 +4,11 @@ import {
   type NotesRequestInterpretation,
   normalizeNotesRequestInterpretation,
   type RequestOperationClassification,
+  type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
+import { ownerRequestText } from "./owner-text.js";
+import { getNotesService } from "./service.js";
 
 type ParsedNotesEffect = NotesRequestInterpretation & {
   readonly classification: RequestOperationClassification;
@@ -19,8 +22,11 @@ export const notesRequestEffectField: ResponseHandlerFieldEvaluator<NotesFieldVa
     // navigation (19.75), so a direct answer can stream once it says the
     // turn has no Notes effect.
     priority: 19.5,
-    description:
-      "Classify only the CURRENT user's requested Notes effects: read_only for reads/history/navigation, mutation_requested for an explicit create/edit/append/delete/restore/move request, unresolved for no Notes effect or uncertainty or unsupported operations. List only the requested registered operations, not a tool plan: create=new note, get/list=reads, update=edit, patch=append or patch edit, delete=remove, restore=bring back a deleted note, move=put a note in a folder or take it out; include read and write for compounds, with no duplicates. Quoted commands, past requests and operation words inside note content do not add operations. Use [] for unresolved/navigation-only; mutation_requested must name a mutation and read_only must not. This is semantic interpretation for completion accounting, not proof of intent truth, execution or write permission; existing permissions and full outcome evaluation still apply.",
+    description: `What supported Notes operation does the CURRENT message actually request? Ignore quoted commands and completed actions in the conversation. First select the operation(s):
+- No clear supported operation: return {"classification":"unresolved","operations":[]}. A stray word beside a note title is not a command. The same applies after an earlier request was completed. Sending or sharing notes is unsupported; never substitute a write.
+- Read the contents or history of an existing note: read_only with ["get"]. Search or list notes: read_only with ["list"]. Open the Notes view: read_only with [].
+- Explicitly change a note: mutation_requested with only the requested operations. To add an item or append text use patch; to edit existing text use update or patch. Use create for a new note, delete to remove it, restore to bring it back, and move to change its folder. A detail-only answer can complete an explicit request only if the assistant is waiting for that very detail; carry forward its operation.
+Include both reads and writes without duplicates for compound requests. Classification describes intent, not permission or proof of execution; existing authorization and outcome checks still apply.`,
     schema: {
       type: "object",
       properties: {
@@ -140,3 +146,49 @@ export const notesRequestEffectField: ResponseHandlerFieldEvaluator<NotesFieldVa
       };
     },
   };
+
+/** Route a single admitted named read through the canonical Notes executor. */
+export const namedNoteReadEvaluator: ResponseHandlerEvaluator = {
+  name: "notes.named-note-read",
+  priority: 80,
+  deterministicActions: ["NOTES_GET"],
+  shouldRun: ({ messageHandler, userRoles, wholeRequestOwner }) => {
+    const { plan } = messageHandler;
+    const interpretation = plan.notesRequestInterpretation;
+    return (
+      userRoles?.includes("OWNER") === true &&
+      messageHandler.processMessage === "RESPOND" &&
+      plan.notesRequestEffect === "read_only" &&
+      interpretation?.status === "explicit" &&
+      interpretation.operations.length === 1 &&
+      interpretation.operations[0] === "get" &&
+      plan.intents?.length === 1 &&
+      plan.contexts?.length === 1 &&
+      plan.contexts[0] === "notes" &&
+      !plan.notesRequestHostRestriction &&
+      !wholeRequestOwner &&
+      !plan.deterministicToolCall &&
+      !plan.candidateActions?.some(
+        (action) => action !== "NOTES" && action !== "NOTES_GET",
+      )
+    );
+  },
+  evaluate({ runtime, message }) {
+    try {
+      const notes = getNotesService(runtime).findNotesNamedInText(
+        ownerRequestText(message),
+      );
+      if (notes.length === 1)
+        return {
+          requiresTool: true,
+          clearReply: true,
+          deterministicToolCall: {
+            name: "NOTES_GET",
+            params: { noteId: notes[0].id },
+          },
+        };
+    } catch (error) {
+      runtime.reportError("notes.named-read-routing", error);
+    }
+  },
+};

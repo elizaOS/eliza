@@ -97,7 +97,7 @@ on:
         required: false
       ELIZACLOUD_API_KEY:
         required: false
-      ELIZAOS_CLOUD_API_KEY:
+      STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY:
         required: false
       ELIZA_APNS_KEY:
         required: false
@@ -177,6 +177,8 @@ on:
         required: false
       NETWORK_SITE_AUTH_SERVER_TOKEN:
         required: false
+      STAGING_SESSION_EXCHANGE_GRANT_READ_KEY:
+        required: false
       STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
         required: false
       STAGING_SPEECH_CUTOVER_ATTESTATION:
@@ -187,6 +189,8 @@ on:
       STEWARD_JWT_SECRET:
         required: false
       STEWARD_PLATFORM_KEYS:
+        required: false
+      STAGING_STEWARD_PRODUCT_OPERATOR_KEY:
         required: false
       STEWARD_REQUEST_SIGNING_SECRET:
         required: false
@@ -237,6 +241,7 @@ jobs:
       telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
       telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
       whatsapp_phone_number: ${{ steps.whatsapp.outputs.phone_number }}
+      validation_waiver: ${{ steps.validation_waiver.outputs.record }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -312,6 +317,18 @@ jobs:
           printf 'bot_username=%s\n' "$resolved_bot_username" >> "$GITHUB_OUTPUT"
           printf 'Accepted caller-admitted Telegram public identity for %s.\n' \
             "$TARGET_ENVIRONMENT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Read the one-release production validation record
+        id: validation_waiver
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          PRODUCTION_VALIDATION_WAIVER_JSON: ${{ vars.PRODUCTION_VALIDATION_WAIVER_JSON }}
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_ENVIRONMENT" = production ] && [ -n "$PRODUCTION_VALIDATION_WAIVER_JSON" ]; then
+            record="$(printf '%s' "$PRODUCTION_VALIDATION_WAIVER_JSON" | jq -ce .)"
+            printf 'record=%s\n' "$record" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Resolve public WhatsApp configuration
         id: whatsapp
@@ -858,6 +875,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           MAIN_VALIDATION_ENVIRONMENT: ${{ inputs.target_environment }}
+          PRODUCTION_VALIDATION_WAIVER_JSON: ${{ needs.resolve-pages-environment-config.outputs.validation_waiver }}
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
           # Explicit activation boundary for #21594. `off` performs no query;
           # `report` emits only SHA-256 receipts and never blocks (malformed
@@ -1470,6 +1488,8 @@ jobs:
           # only after exact-commit deploy proof.
           STAGING_SESSION_EXCHANGE_DESIRED_ENABLED: ${{ steps.env.outputs.deploy_environment == 'staging' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.STAGING_SESSION_EXCHANGE_ENABLED) && 'true' || 'false' }}
           STAGING_SESSION_EXCHANGE_VERSION: "v1"
+          STAGING_SESSION_EXCHANGE_GRANT_READ_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY || '' }}
+          STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT || '' }}
           STAGING_SESSION_EXCHANGE_SIGNING_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_SIGNING_SECRET || '' }}
           # Value is used only for collision validation; this workflow does not
           # publish or mutate the pre-existing service bridge credential.
@@ -1493,7 +1513,7 @@ jobs:
           # shared default tenant (#11461). queue_secret no-ops with a notice
           # while unset, so this is safe before ops adds the GH env secret and
           # keeps it published on every redeploy once they do.
-          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          STEWARD_PLATFORM_KEYS: ${{ inputs.target_environment == 'staging' && secrets.STAGING_STEWARD_PRODUCT_OPERATOR_KEY || secrets.STEWARD_PLATFORM_KEYS }}
           STEWARD_TENANT_API_KEY: ${{ secrets.STEWARD_TENANT_API_KEY }}
           OIDC_SIGNING_JWKS: ${{ secrets.OIDC_SIGNING_JWKS }}
           # Subscription entitlement signing and grant-code pepper. Optional: the
@@ -1553,6 +1573,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           MAIN_VALIDATION_ENVIRONMENT: ${{ inputs.target_environment }}
+          PRODUCTION_VALIDATION_WAIVER_JSON: ${{ needs.resolve-pages-environment-config.outputs.validation_waiver }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
@@ -1586,7 +1607,7 @@ jobs:
           DISCORD_GATEWAY_URL: ${{ vars.ELIZA_DISCORD_GATEWAY_URL }}
           GATEWAY_DISCORD_BOOTSTRAP_SECRET: ${{ secrets.GATEWAY_DISCORD_BOOTSTRAP_SECRET }}
           GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
-          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          STEWARD_PLATFORM_KEYS: ${{ inputs.target_environment == 'staging' && secrets.STAGING_STEWARD_PRODUCT_OPERATOR_KEY || secrets.STEWARD_PLATFORM_KEYS }}
           STEWARD_TENANT_ID: elizacloud-staging
         run: |
           set -euo pipefail
@@ -2610,6 +2631,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           MAIN_VALIDATION_ENVIRONMENT: ${{ inputs.target_environment }}
+          PRODUCTION_VALIDATION_WAIVER_JSON: ${{ needs.resolve-pages-environment-config.outputs.validation_waiver }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           EVENT_NAME: ${{ github.event_name }}
@@ -2671,6 +2693,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           MAIN_VALIDATION_ENVIRONMENT: ${{ inputs.target_environment }}
+          PRODUCTION_VALIDATION_WAIVER_JSON: ${{ needs.resolve-pages-environment-config.outputs.validation_waiver }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PAGES_AUTHORITY_FILE: ${{ runner.temp }}/pages-deployment-authority/pages-deployment-authority.json
@@ -3053,14 +3076,14 @@ jobs:
           ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
           ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
           ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA: ${{ github.sha }}
-          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY }}
           PLAYWRIGHT_NO_COPY_PROMPT: "1"
         run: |
           set -euo pipefail
           key_without_whitespace="${ELIZAOS_CLOUD_API_KEY:-}"
           key_without_whitespace="${key_without_whitespace//[[:space:]]/}"
           if [ -z "$key_without_whitespace" ]; then
-            echo "::error::The deployed staging browser lane requires the staging Environment's ELIZAOS_CLOUD_API_KEY; refusing a green-by-skip run."
+            echo "::error::The deployed staging browser lane requires the staging Environment's STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY; refusing a green-by-skip run."
             exit 1
           fi
           unset key_without_whitespace

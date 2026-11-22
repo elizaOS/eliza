@@ -171,7 +171,6 @@ async function startDevStack(): Promise<StartedDevStack> {
       ELIZA_PORT: String(uiPort),
       ELIZA_STATE_DIR: stateDir,
       ALLOW_NO_DATABASE: "",
-      SELFCONTROL_HOSTS_FILE_PATH: hostsFilePath,
       WEBSITE_BLOCKER_HOSTS_FILE_PATH: hostsFilePath,
     },
     stdio: ["pipe", "pipe", "pipe"],

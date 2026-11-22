@@ -103,7 +103,10 @@ export interface ElizaPasswordsPlugin {
    * with `conflict` if it changed since that revision. No secret or draft crosses the bridge.
    */
   openEditor(input?: PasswordEditorInput): Promise<PasswordEditorResult>;
-  remove(input: { id: string }): Promise<{ removed: true }>;
+  remove(input: {
+    id: string;
+    expectedRevision?: number;
+  }): Promise<{ removed: true }>;
   /**
    * Deletes the vault only when it can never be decrypted again (its key was lost or
    * permanently invalidated, reported as `key-invalidated`). Requires an unlock; a readable
@@ -111,9 +114,15 @@ export interface ElizaPasswordsPlugin {
    */
   reset(): Promise<{ reset: true }>;
   /** Native FLAG_SECURE dialog. Resolves with an acknowledgement, never the value. */
-  reveal(input: { id: string }): Promise<{ shown: true; hidesAfterMs: number }>;
+  reveal(input: {
+    id: string;
+    expectedRevision?: number;
+  }): Promise<{ shown: true; hidesAfterMs: number }>;
   /** Native sensitive clipboard copy, cleared later if still the copied clip. */
-  copy(input: { id: string }): Promise<{ copied: true; clearsAfterMs: number }>;
+  copy(input: {
+    id: string;
+    expectedRevision?: number;
+  }): Promise<{ copied: true; clearsAfterMs: number }>;
   /** Opens Android's own autofill-provider confirmation. Selection is read back by status(). */
   openAutofillSettings(): Promise<{
     status: "opened";

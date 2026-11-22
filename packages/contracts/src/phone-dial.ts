@@ -25,10 +25,15 @@ export const CONTACT_LOOKUP_CAPABILITY = "contacts.lookup.v1";
 /** Digits with an optional leading +, the same shape the native dial handoff accepts. */
 export const PHONE_DIAL_NUMBER = /^\+?[0-9]{2,20}$/;
 // One number as a person writes it: digit groups, each joined by at most one
-// space, dash or dot. Only the first group (a country code) may be one digit,
-// and the first national group after a +country code, as in +33 1 23 45 67 89.
+// space, dash or dot. The country code and first group after it can be one digit.
 const WRITTEN_DIAL_NUMBER =
   /^(?:\+\d{1,3}[ .-]\d(?=[ .-]\d{2})|\+?(?:\(\d+\)|\d+))(?:[ .-]?(?:\(\d{2,}\)|\d{2,}))*$/;
+// One North American number, whatever single separator sits between its
+// groups ("415-555 0100", "+1 415.555 0100"): the shape the secret-swap phone
+// detector takes as one number. It is exactly one number of 10 or 11 digits,
+// so it cannot be a date, a range or two numbers.
+const WRITTEN_NANP_NUMBER =
+  /^(?:\+?1[ .-]?)?(?:\(\d{3}\)[ .-]?|\d{3}[ .-])\d{3}[ .-]?\d{4}$/;
 /**
  * A number as a person writes it, such as "(415) 555-0100", in the exact dial
  * form. Single spaces, dashes and dots between digit groups and one bracket
@@ -36,7 +41,8 @@ const WRITTEN_DIAL_NUMBER =
  * that was asked for. A value that reads as more than one number, a range, a
  * date or an address is rejected too: a line break, a run of separators, a
  * space after a dash or dot, more than 15 digits (the E.164 limit) or a
- * year-month-day date.
+ * year-month-day date. A single North American number may mix its
+ * separators ("415-555 0100"), as people type it.
  */
 export function phoneDialNumber(value: unknown): string {
   const written = typeof value === "string" ? value.trim() : "";
@@ -44,6 +50,7 @@ export function phoneDialNumber(value: unknown): string {
   if (
     !PHONE_DIAL_NUMBER.test(number) ||
     (number !== written &&
+      !WRITTEN_NANP_NUMBER.test(written) &&
       (!WRITTEN_DIAL_NUMBER.test(written) ||
         written.split("(").length > 2 ||
         /[.-].* /.test(written) ||

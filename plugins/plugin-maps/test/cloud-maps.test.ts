@@ -359,6 +359,29 @@ describe("ElizaCloudMapsAdapter", () => {
     }
   });
 
+  it("names an unreachable Cloud in plain words, not the transport's message", async () => {
+    const adapter = new ElizaCloudMapsAdapter({
+      apiKey: "eliza_test_key",
+      baseUrl: "https://api.example.test",
+      testTransport: {
+        fetchImpl: async () => Response.json(COVERAGE),
+        pinnedFetchImpl: async () => {
+          throw new TypeError("fetch failed: ECONNRESET 10.0.0.1:443");
+        },
+        lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+    const error = await adapter
+      .searchPlaces({ query: "Casino" })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(MapsError);
+    expect(error).toMatchObject({
+      code: "MAPS_PROVIDER_NETWORK",
+      message:
+        "Eliza Cloud Maps could not be reached from this device. Try again.",
+    });
+  });
+
   it("refuses a 401 whose code is not a string with a typed error", async () => {
     const { adapter } = cloud(() =>
       Response.json({ code: { toString: 1 } }, { status: 401 }),
@@ -578,6 +601,32 @@ describe("Cloud provider binding", () => {
     // A served mode is answered from the cache without another read.
     await route("walk").catch(() => undefined);
     expect(capabilityReads).toHaveLength(2);
+  });
+
+  it("keeps Cloud's place categories, dropping unusable labels, and reads none as empty", async () => {
+    const answers = [
+      ["Casino", "Landmark", "Casino", "", 7, "x".repeat(81)],
+      "Casino",
+      undefined,
+    ];
+    const { adapter } = cloud((request) =>
+      Response.json({
+        providerId: "eliza-cloud-osm",
+        attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+        ...(request.path.endsWith("/search")
+          ? { places: [{ ...PLACE, categories: answers[0] }] }
+          : { place: { ...PLACE, categories: answers.shift() } }),
+      }),
+    );
+    const page = await adapter.searchPlaces({ query: "Casino", limit: 5 });
+    expect(page.places[0]?.categories).toEqual(["Casino", "Landmark"]);
+    expect((await adapter.getPlace("N1234"))?.categories).toEqual([
+      "Casino",
+      "Landmark",
+    ]);
+    // A malformed list does not refuse the place; an absent one reads as none.
+    expect((await adapter.getPlace("N1234"))?.categories).toEqual([]);
+    expect((await adapter.getPlace("N1234"))?.categories).toEqual([]);
   });
 
   it("accepts the opaque place ids of Cloud's configured geocoder", async () => {

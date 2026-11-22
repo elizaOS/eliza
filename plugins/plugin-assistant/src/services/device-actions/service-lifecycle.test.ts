@@ -548,6 +548,11 @@ it("lists all open work but only the newest fifty settled proposals", async () =
       { type: "open_view", view: "home" },
       new Date(start),
     );
+    // Still open: its review has not lapsed although it is the oldest row.
+    await f.pg.query(
+      "UPDATE approval_requests SET expires_at = now() + interval '10 minutes' WHERE id = $1",
+      [open],
+    );
     for (let i = 1; i <= 60; i++)
       await insertRow(
         f,
@@ -558,6 +563,7 @@ it("lists all open work but only the newest fifty settled proposals", async () =
     const listed = await f.service.list(f.credential);
     expect(listed).toHaveLength(51);
     expect(listed.at(-1)?.id).toBe(open);
+    expect(listed.at(-1)?.state).toBe("pending");
   } finally {
     await f.pg.close();
   }
