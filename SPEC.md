@@ -221,7 +221,8 @@ it does for the root's own `src/` and `test/`:
 An owner has no `check`, `gen` or `accept` script: the root's are its own.
 
 For an independent owner build, `pnpm gen --owner <name>` reads every spec
-in `spec/<name>/` and follows its imports and links. It writes the same
+in `spec/<name>/` and follows its imports and links to check references.
+It compiles the owner's Quint and the Quint it imports, and writes the same
 `gen/` artifact that whole-tree generation writes for that owner. Root
 `pnpm check` still checks the whole tree and owns acceptance.
 
