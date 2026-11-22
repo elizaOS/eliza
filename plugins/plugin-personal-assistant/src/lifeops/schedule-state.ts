@@ -859,8 +859,13 @@ export function mergeScheduleObservations(args: {
       firstActiveAt,
     },
   });
+  // Stored meal-window starts are floored to the observation bucket, and the
+  // insight opens an in-progress window at `now`. Compare against the floored
+  // `now` so the current bucket's window still counts as the next meal.
+  const mealHorizonMs =
+    parseIsoMs(bucketIso(now.toISOString(), args.timezone, "floor")) ?? nowMs;
   const mealWindowStartFromObservation =
-    mealWindow && isFutureIsoAt(mealWindow.windowStartAt, nowMs)
+    mealWindow && isFutureIsoAt(mealWindow.windowStartAt, mealHorizonMs)
       ? mealWindow.windowStartAt
       : null;
   const mealWindowStartFromSnapshot =
@@ -868,7 +873,7 @@ export function mergeScheduleObservations(args: {
       ? pickFutureSnapshotValue(
           relevant,
           (snapshot) => snapshot.nextMealWindowStartAt,
-          nowMs,
+          mealHorizonMs,
         )
       : null;
   const mealWindowSource: "observation" | "snapshot" | null =
