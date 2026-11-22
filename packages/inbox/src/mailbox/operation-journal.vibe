@@ -86,7 +86,7 @@ export type OperationFailure = OperationRefused | ReviewNotBound | JournalStoreF
 /** Compare-and-exchange storage for the journal record, encrypted on a phone. */
 export interface InboxOperationStore {
   read(key: string): unknown!JournalStoreFailed
-  compareExchange(key: string, expected: unknown, next: unknown): "saved" | "conflict"!JournalStoreFailed
+  compareExchange(key: string, expected: unknown, next: unknown): ("saved" | "conflict")!JournalStoreFailed
 }
 
 /** The reviewed calls of one operation; dispatch is made at most once and recovery only reads the receipt. */
@@ -119,13 +119,13 @@ export interface ProviderReferenceChecks {
 
 /** One durable selected-account intent; no recovery path dispatches an effect. */
 export interface InboxOperation {
-  snapshot(): InboxOperationRecord | null!!
-  load(): InboxOperationRecord | null!OperationFailure
-  prepare(proposal: Bag, source?: OperationSource): InboxOperationRecord | null!OperationFailure
-  reloadReview(): InboxOperationRecord | null!OperationFailure
-  confirm(current?: ComposerEmail | null): InboxOperationRecord | null!OperationFailure
-  refresh(): InboxOperationRecord | null!OperationFailure
-  abandon(warned: true): InboxOperationRecord | null!OperationFailure
+  snapshot(): (InboxOperationRecord | null)!!
+  load(): (InboxOperationRecord | null)!OperationFailure
+  prepare(proposal: Bag, source?: OperationSource): (InboxOperationRecord | null)!OperationFailure
+  reloadReview(): (InboxOperationRecord | null)!OperationFailure
+  confirm(current?: ComposerEmail | null): (InboxOperationRecord | null)!OperationFailure
+  refresh(): (InboxOperationRecord | null)!OperationFailure
+  abandon(warned: true): (InboxOperationRecord | null)!OperationFailure
   clear(): void!OperationFailure
   adopt(checks: ProviderReferenceChecks): { readonly cleared: boolean }!OperationFailure
   stop(): void!!
@@ -213,7 +213,7 @@ export effect function discardUnsent(store: InboxOperationStore, owner: string, 
 export interface JournalModel {
   state(): MailState!!
   admits(events: readonly Event[]): boolean!!
-  step(event: Event): MailState | undefined!!
+  step(event: Event): (MailState | undefined)!!
   restore(state: MailState): void!!
 }
 
@@ -301,7 +301,7 @@ export effect function inboxOperation(deps: InboxOperationDependencies): InboxOp
     }, Ref.set(busy, false))
   }
 
-  effect function snapshot(): InboxOperationRecord | null!! {
+  effect function snapshot(): (InboxOperationRecord | null)!! {
     if (record === null) return null
     const value = copyOf(record)
     if ((try model.state()).cleanupHeld) {

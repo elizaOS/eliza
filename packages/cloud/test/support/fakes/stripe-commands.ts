@@ -248,6 +248,7 @@ export function stripePlanDowngrade(stripe: StripeFake, now: () => number) {
   type Phase = { start_date: number; end_date: number; items: { price: string; quantity: number }[]; proration_behavior: string };
   type Schedule = ReturnType<typeof scheduleOf>;
   type Stage = "attach" | "configure";
+  type Payment = "paid" | "open" | "failed" | "plan-change";
   const entries = new Map<string, Schedule>();
   const attached = new Map<string, string>();
   const events: { type: string; created: number; object: Schedule; key: string; requestId: string }[] = [];
@@ -294,7 +295,7 @@ export function stripePlanDowngrade(stripe: StripeFake, now: () => number) {
       form.get(`${prefix}[1][items][0][quantity]`) === "1" && form.get(`${prefix}[1][proration_behavior]`) === "none";
   }
 
-  function renewalOf(subscription: Subscription, phase: Phase, payment: "paid" | "open" | "failed") {
+  function renewalOf(subscription: Subscription, phase: Phase, payment: Payment) {
     const paid = payment === "paid";
     const item = subscription.items.data[0];
     const price = stripe.object(target.priceId);
@@ -308,7 +309,8 @@ export function stripePlanDowngrade(stripe: StripeFake, now: () => number) {
       current_period_start: start, current_period_end: end, items: { ...subscription.items, data: [
         { ...item, price, current_period_start: start, current_period_end: end }
       ] } };
-    const invoice = { id: invoiceId, customer: subscription.customer, livemode: false, billing_reason: "subscription_cycle",
+    const invoice = { id: invoiceId, customer: subscription.customer, livemode: false,
+      billing_reason: payment === "plan-change" ? "subscription_update" : "subscription_cycle",
       parent: { subscription_details: { subscription: subscription.id } }, status: paid ? "paid" : "open", attempted: false,
       amount_paid: paid ? amount : 0, currency: "usd", lines: { has_more: false, data: [
         { quantity: 1, period: { start, end }, pricing: { price_details: { price: target.priceId } },
@@ -399,7 +401,7 @@ export function stripePlanDowngrade(stripe: StripeFake, now: () => number) {
       if (!isSubscription(subscription)) throw new Error("Missing fixture subscription");
       return remember(subscription).id;
     },
-    renew: (id: string, payment: "paid" | "open" | "failed") => {
+    renew: (id: string, payment: Payment) => {
       const subscription = stripe.object(id);
       const schedule = entries.get(attached.get(id) ?? "");
       const effective = schedule?.phases[1];

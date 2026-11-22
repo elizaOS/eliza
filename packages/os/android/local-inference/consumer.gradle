@@ -9,13 +9,13 @@ def assetsOnly = project.findProperty('elizaParadeeAssetsOnly')?.toString() == '
 def apiOnly = project.findProperty('elizaParadeeApiOnly')?.toString() == 'true'
 if (apiOnly && assetsOnly) throw new GradleException('elizaParadeeApiOnly and elizaParadeeAssetsOnly are exclusive')
 def nativeBuild = !assetsOnly && !apiOnly
-if (nativeBuild && (ffiInclude == null || !new File(ffiInclude, 'eliza-inference-ffi.h').isFile())) throw new GradleException('[local-inference] set elizaInferenceEngineDir or elizaParadeeFfiIncludeDir to the pinned engine checkout')
 def omittedAssets = apiOnly || (assetsOnly && (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'))
 def packageInference = nativeBuild && (!project.hasProperty('elizaParadeePackageInference') || project.elizaParadeePackageInference.toString() != 'false')
 def inferenceLibDir = project.hasProperty('elizaParadeeInferenceLibDir') ? file(project.elizaParadeeInferenceLibDir) : new File(paradeeNative, 'jniLibs')
 // The engine is the consumer's checkout of the pinned elizaOS/llama.cpp fork (engine.lock.json).
 def engineDir = project.hasProperty('elizaInferenceEngineDir') ? file(project.elizaInferenceEngineDir) : null
 def ffiInclude = project.hasProperty('elizaParadeeFfiIncludeDir') ? file(project.elizaParadeeFfiIncludeDir) : (engineDir == null ? null : new File(engineDir, 'tools/omnivoice/include'))
+if (nativeBuild && (ffiInclude == null || !new File(ffiInclude, 'eliza-inference-ffi.h').isFile())) throw new GradleException('[local-inference] set elizaInferenceEngineDir or elizaParadeeFfiIncludeDir to the pinned engine checkout')
 def jniSource = new File(paradeeSource, 'src/main/elizavoice-jni')
 def paradeeAbis = project.findProperty('elizaParadeeAbis')?.toString()?.split(',', -1)?.toList() ?: ['arm64-v8a', 'x86_64']
 if (!paradeeAbis || paradeeAbis.toSet().size() != paradeeAbis.size() || paradeeAbis.any { !(it in ['arm64-v8a', 'x86_64']) }) throw new GradleException('Invalid elizaParadeeAbis')

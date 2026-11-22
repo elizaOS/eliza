@@ -86,7 +86,7 @@ export effect function mediaArchive(selection: readonly SelectedMedia[]): Blob!A
 
 /** What the shell reads, rechecks and hands over for one download. */
 export interface DownloadPorts {
-  readonly read: (sources: readonly string[]) => readonly SelectedMedia[] | undefined!!
+  readonly read: (sources: readonly string[]) => (readonly SelectedMedia[] | undefined)!!
   readonly reread: (selection: readonly SelectedMedia[]) => boolean!!
   readonly ownerCurrent: () => boolean
   readonly visible: () => boolean

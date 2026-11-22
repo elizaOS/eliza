@@ -12,18 +12,18 @@ const StripeCustomerId = Schema.String.check(Schema.isPattern(/^cus_[A-Za-z0-9_]
 const StripeSubscriptionId = Schema.String.check(Schema.isPattern(/^sub_[A-Za-z0-9_]+$/))
 const ConnectionKey = Schema.String.check(Schema.isMinLength(1))
 
-export const BillingTarget = Schema.Struct({
+const BillingTargetSchema = Schema.Struct({
   kind: Schema.Literal("stripe"), customerId: StripeCustomerId, subscriptionId: StripeSubscriptionId
 })
-export type BillingTarget = typeof BillingTarget.Type
+export type BillingTarget = typeof BillingTargetSchema.Type
 
 const LayeredTarget = Schema.Struct({ kind: Schema.Literal("google-layered"), key: ConnectionKey })
 const LegacyTarget = Schema.Struct({ kind: Schema.Literal("google-worker"), key: ConnectionKey })
-export const GoogleTarget = Schema.Union([LayeredTarget, LegacyTarget])
-export type GoogleTarget = typeof GoogleTarget.Type
+const GoogleTargetSchema = Schema.Union([LayeredTarget, LegacyTarget])
+export type GoogleTarget = typeof GoogleTargetSchema.Type
 
-export const ProviderTarget = Schema.Union([BillingTarget, GoogleTarget])
-export type ProviderTarget = typeof ProviderTarget.Type
+export const ProviderTargetSchema = Schema.Union([BillingTargetSchema, GoogleTargetSchema])
+export type ProviderTarget = typeof ProviderTargetSchema.Type
 
 const LegacyCustody = Schema.Struct({
   account_id: ConnectionKey, subject: ConnectionKey, refresh_cipher: ConnectionKey,

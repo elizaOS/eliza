@@ -206,6 +206,7 @@ pure val googleRoutes: List[DeviceRoute] = List(
   route(Get, google(List("gmail", "triage")), KeyOrSession),
   route(Get, google(List("gmail", "search")), KeyOrSession),
   route(Get, google(List("gmail", "read")), KeyOrSession),
+  route(Get, google(List("gmail", "inbox-v1", "arrival")), KeyOrSession),
   route(Get, google(List("gmail", "inbox-v1", "capabilities")), KeyOrSession),
   route(Get, google(List("gmail", "inbox-v1", "thread")), KeyOrSession),
   route(Get, google(List("gmail", "inbox-v1", "attachment")), KeyOrSession),
@@ -311,8 +312,8 @@ pure def cloudErrorOf(status: int, code: RefusalCode, reason: RefusalReason, ret
 type CustodyEffect = KeepsCredential | ClearsCredential
 pure def custodyAfter(e: CloudError): CustodyEffect = KeepsCredential
 pure val eValues = Set(CloudCredentialInvalid({ reason: CredentialExpired }), CloudInsufficientCredits, CloudAllowanceExhausted({ resetsAt: 10 }),
-  CloudRateLimited({ retryAt: 5 }), CloudConsentRequired, CloudUnavailable({ retryAfter: 5 }), CloudProviderIssue, CloudNetwork,
-  CloudRefused({ code: NotFound, reason: NoReason }))
+  CloudRateLimited({ retryAt: 5 }), CloudRateLimited({ retryAt: 20 }), CloudConsentRequired, CloudUnavailable({ retryAfter: 5 }),
+  CloudProviderIssue, CloudNetwork, CloudRefused({ code: NotFound, reason: NoReason }))
 pure val statusValues = Set(400, 401, 402, 403, 404, 409, 428, 429, 500, 502, 503)
 pure def lawEvery401IsCredentialInvalid(status: int, code: RefusalCode, reason: RefusalReason, retryAt: Millis, resetsAt: Millis): bool =
   status == 401 implies cloudErrorOf(status, code, reason, retryAt, resetsAt) == CloudCredentialInvalid({ reason: credentialReasonOf(reason) })

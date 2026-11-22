@@ -14,7 +14,7 @@ import { ProviderSockets, realtimeOpenBudget } from "../providers/speech.vibe"
 import { deploymentLayer, parseEnvironment, parseProfile, requireSecrets, specProfile, type CloudEnvironment, type CloudProfile } from "../profile/profile.vibe"
 import { Store } from "../store/connection.vibe"
 import { observeIdentity } from "../store/identity.vibe"
-import { WorkerResponse } from "../worker-platform.ts"
+import { WorkerRequest, WorkerResponse, type WorkerLifetime } from "../worker-platform.ts"
 import { clientStore, closeCloudDatabase, openCloudDatabase, type WorkerDatabase } from "../worker-store.vibe"
 import { dueSweeps, relayRoutes, workerRoutes } from "./routes.vibe"
 import { dialSocket, socketPair } from "./sockets.ts"
@@ -72,7 +72,7 @@ const workerSockets: ProviderSockets.Shape = {
 
 async function assetTemplate(env: ProfileBindings, file: string): Promise<string | undefined> {
   if (env.ASSETS === undefined) return renderedTemplate(file)
-  const asset = await env.ASSETS.fetch(new Request(new URL(file, "https://assets.invalid/")))
+  const asset = await env.ASSETS.fetch(new WorkerRequest(new URL(file, "https://assets.invalid/")))
   return asset.ok ? await asset.text() : undefined
 }
 
@@ -129,7 +129,13 @@ function clientAddress(request: HttpServerRequest.HttpServerRequest): Option.Opt
   return forwarded === undefined || forwarded === "" ? request.remoteAddress : Option.some(forwarded)
 }
 
-effect function served(env: ProfileBindings): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | Scope.Scope) {
+effect function served(env: ProfileBindings, lifetime?: WorkerLifetime): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | Scope.Scope) {
+  if (lifetime !== undefined) {
+    const scope = try Scope.Scope
+    const completed = try Deferred.make<void>()
+    try Scope.addFinalizer(scope, Deferred.succeed(completed, undefined))
+    try sync(() => lifetime.waitUntil(runPromise(Deferred.await(completed))))
+  }
   const now = try Clock.currentTimeMillis
   const answered = effect {
     const ready = try preparedFor(env)
@@ -193,16 +199,18 @@ export function workerReady(env: ProfileBindings): Promise<Response | undefined>
     }
     return undefined
   })
-  return runPromise(checked catch effect (unready) => {
-    const now = try Clock.currentTimeMillis
-    try annotateLogs(logError("the Worker is not ready to serve"), { problem: unready.problem })
-    return unreadyAnswer(now)
+  return runPromise(effect {
+    return checked catch effect (unready) => {
+      const now = try Clock.currentTimeMillis
+      try annotateLogs(logError("the Worker is not ready to serve"), { problem: unready.problem })
+      return unreadyAnswer(now)
+    }
   })
 }
 
 /** Answers one request from the server's route table, holding its database connection until the answer's body ends. */
-export function serveFromTable(request: Request, env: ProfileBindings): Promise<Response> {
-  return HttpEffect.toWebHandler(served(env))(request)
+export function serveFromTable(request: Request, env: ProfileBindings, lifetime?: WorkerLifetime): Promise<Response> {
+  return HttpEffect.toWebHandler(served(env, lifetime))(request)
 }
 
 /** Runs, one at a time, every sweep of the served table due at this scheduled tick. */
@@ -220,7 +228,9 @@ export function sweepTable(env: ProfileBindings, scheduledAt: number): Promise<v
       }
     }
   })
-  return runPromise(ticked catch effect (unready) => {
-    try annotateLogs(logError("the Worker skipped its sweeps"), { problem: unready.problem })
+  return runPromise(effect {
+    ticked catch effect (unready) => {
+      try annotateLogs(logError("the Worker skipped its sweeps"), { problem: unready.problem })
+    }
   })
 }

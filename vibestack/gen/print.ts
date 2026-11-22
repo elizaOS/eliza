@@ -36,6 +36,8 @@ export interface Scope {
   types: Types;
   /** The type the checker inferred for an expression or parameter, if it recorded one. */
   inferred: (id: number) => Json | undefined;
+  /** The declaring module's type for an imported constant, as it appears in a proof bundle. */
+  importedConstantType: (name: string) => string | undefined;
   /** A reference to a definition, as TypeScript spells it. */
   ref: (name: string) => string;
   /** The name of a helper function the module carries for itself (HELPERS in typescript.ts). */
@@ -105,7 +107,7 @@ const negative = (e: Json): Json | undefined => (e.kind === "app" && e.opcode ==
 /** Puts a binding back as it was before an inner scope shadowed it. */
 const restore = <V>(m: Map<string, V>, k: string, v: V | undefined) => (v === undefined ? m.delete(k) : m.set(k, v));
 
-export function printer({ types, inferred, ref, helper, bind, variants, definitions, simulatorOnly, proof }: Scope) {
+export function printer({ types, inferred, importedConstantType, ref, helper, bind, variants, definitions, simulatorOnly, proof }: Scope) {
   const { resolve, tagged, isScalar, setElem, keyOf, storedKey, holdsSet, named, ownerOf, typeName, tsType } = types;
   const typeOf = typeOfIn(inferred);
   const forSimulator = (n: string): never => fail(`\`${n}\` is for the simulator only (a sample set or a weight_, fair_ or within_ setting) and cannot be used in a definition`);
@@ -227,7 +229,11 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
         if (!locals.has(e.name) && simulatorOnly.has(e.name)) return forSimulator(e.name);
         if (renamed.has(e.name)) return fail(`\`${e.name}\` is what a match arm carries; use its fields (${e.name}.field), or rebuild the variant, rather than the value as a whole`);
         // Inside a module-level value, the prover knows another one's type only where it is expected (Expected).
-        if (!variants.has(e.name)) return [proof && constant && expected !== "typed" && !locals.has(e.name) ? ascribe(reference(e.name), tsType(typeOf(e.id))) : reference(e.name), ATOM];
+        if (!variants.has(e.name)) {
+          const name = reference(e.name);
+          return [proof && constant && expected !== "typed" && !locals.has(e.name)
+            ? ascribe(name, importedConstantType(e.name) ?? tsType(typeOf(e.id))) : name, ATOM];
+        }
         const owner = ownerOf(e.name);
         return variant(tagged(owner.type) ? `({ tag: ${tag(e.name)} } as ${typeName(owner)})` : tag(e.name), owner);
       }
@@ -359,12 +365,13 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       return [text, text.startsWith("!") ? UNARY : ATOM];
     }
     if (op === "Set") {
-      const t = resolve(typeOf(e.id));
-      setElem(t);
+      const el = setElem(resolve(typeOf(e.id)));
       const distinct = [...new Set(at(within(), () => a.map((x) => ex(x, TERNARY))))];
       const literal = (x: Json) => ["int", "str", "bool"].includes(x.kind) || !!negative(x) || (x.kind === "name" && variants.has(x.name));
       if (a.length > 1 && !a.every(literal)) fail("Set(…) with several members that are not literals could hold the same value twice; write Set(a).union(Set(b))");
-      return [distinct.length && nesting <= 1 ? `[${distinct.join(", ")}]` : `([${distinct.join(", ")}] as ${tsType(t.elem)}[])`, ATOM];
+      // Keep variant sets typed where TypeScript would otherwise infer string[]. LemmaScript reads the original literals.
+      const items = `[${distinct.join(", ")}]`;
+      return [distinct.length && nesting <= 1 && (proof || resolve(el).kind !== "sum") ? items : `(${items} as ${tsType(el)}[])`, ATOM];
     }
     return [`${reference(op)}(${at("typed", () => a.map((x) => ex(x, TERNARY))).join(", ")})`, ATOM];
   };

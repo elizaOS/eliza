@@ -1,5 +1,6 @@
-// spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"
+// spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"; spec/calendar/managedFeed.md, "An event's change time is the provider's edit time, never the refresh time"
 import { Service, type IAgentRuntime } from "@elizaos/core"
+import { providerTimestamps } from "../feed/cache.vibe"
 import { calendarHost, type CalendarApprovalRecord, type CalendarApprovalRow, type CalendarApprovals, type CalendarHost, type CalendarLedgerOutcome } from "./host.vibe"
 import type { CalendarEvent } from "../model.vibe"
 import type { CalendarAccount, CalendarProviderPort } from "./providers.vibe"
@@ -38,21 +39,16 @@ export interface CalendarEventFacts {
   readonly copyUpdatedAt: number
 }
 
-function stamp(metadata: Readonly<Record<string, unknown>>, keys: readonly string[]): string | undefined {
-  const found = keys.map((key) => metadata[key]).find((value) => value !== undefined && value !== null)
-  return typeof found === "string" ? found : undefined
-}
-
 function eventFacts(event: CalendarEvent): CalendarEventFacts {
   const metadata = event.metadata
-  const metadataValid = typeof metadata === "object" && metadata !== null && !Array.isArray(metadata)
+  const timestamps = typeof metadata === "object" && metadata !== null && !Array.isArray(metadata) ? providerTimestamps(metadata) : undefined
   return {
     title: event.title,
     startAt: Date.parse(event.startAt),
     synced: event.provider !== "eliza",
-    metadataValid,
-    providerEditedAt: metadataValid ? stamp(metadata, ["updated", "updatedAt"]) : undefined,
-    providerCreatedAt: metadataValid ? stamp(metadata, ["created", "createdAt"]) : undefined,
+    metadataValid: timestamps?.valid ?? false,
+    providerEditedAt: timestamps?.editedAt,
+    providerCreatedAt: timestamps?.createdAt,
     copyUpdatedAt: Date.parse(event.updatedAt),
   }
 }

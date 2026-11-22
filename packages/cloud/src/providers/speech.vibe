@@ -94,8 +94,13 @@ export const realtimeSampleRate = 16_000
 export service ProviderSockets {
   static readonly key = "@elizaos/cloud/providers/ProviderSockets"
   static readonly defaultValue = () => ({
-    open: (url: string, headers: Readonly<Record<string, string>>) =>
-      provideService(Socket.makeWebSocket(url, { headers, openTimeout: realtimeOpenBudget }), Socket.WebSocketConstructor, headerWebSocket)
+    open: (url: string, headers: Readonly<Record<string, string>>) => Socket.fromWebSocket(acquireRelease(
+      Effect.try({
+        try: () => headerWebSocket(url, { headers }),
+        catch: (cause) => new Socket.SocketError({ reason: new Socket.SocketOpenError({ kind: "Unknown", cause }) }),
+      }),
+      (socket) => Effect.ignore(Effect.try(() => socket.close(1000)))
+    ), { openTimeout: realtimeOpenBudget })
   })
   readonly open: (url: string, headers: Readonly<Record<string, string>>) => Socket.Socket!!
 }

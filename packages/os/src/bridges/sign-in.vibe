@@ -16,11 +16,11 @@ import type {
   SignInVerdict,
 } from "./definitions/sign-in.ts"
 import {
-  Account,
+  type Account,
   Cancelled,
   FactorCodeSent,
-  FailureWire,
-  GoogleWire,
+  type FailureWire,
+  type GoogleWire,
   Readiness,
   Receipt,
   Rejected,

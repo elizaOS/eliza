@@ -13,7 +13,7 @@ export type { Answer, FakeServer, StripeFake }
 export interface TestCloud {
   readonly url: string
   readonly fakes: FakeServer
-  readonly store: Store.Shape
+  readonly store: typeof Store.Service
   call(path: string, init?: CallInit): Answer!!
   inside<A, E>(body: A!E!CloudContext): A!E
 }

@@ -30,7 +30,7 @@ export interface GeneratedStart {
 }
 
 module node {
-  import { mkdtemp } from "node:fs/promises"
+  import { mkdtemp, realpath } from "node:fs/promises"
   import { tmpdir } from "node:os"
   import { join } from "node:path"
   import { pathToFileURL } from "node:url"
@@ -43,7 +43,7 @@ module node {
   let directory: Promise<string> | undefined
 
   export function sourceDirectory(): Promise<string> {
-    directory ??= mkdtemp(join(tmpdir(), "eliza-workflow-source-"))
+    directory ??= realpath(tmpdir()).then((parent) => mkdtemp(join(parent, "eliza-workflow-source-")))
     return directory
   }
 

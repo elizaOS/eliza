@@ -23,6 +23,8 @@ jobs:
         with:
           ref: vibestack
       - uses: ./.github/actions/setup
+        with:
+          cache-verification: "false"
       # --nightly bypasses the inner verification cache and always exercises the real application.
       - run: pnpm all check --continue -- --nightly
       - if: failure()
@@ -39,7 +41,8 @@ jobs:
           git push origin "$BRANCH"
           gh pr create --base vibestack --head "$BRANCH" --title "Fuzz counterexamples, nightly profile" \
             --body "The nightly fuzz run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed and saved these shrunk traces. Each is a regression test: decide whether the application or the spec is wrong, fix that, and keep the trace."
-  selftest:
+  vibestack-fixture-selftests:
+    name: selftest (${{ matrix.shard }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,4 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - run: rm -rf .cache/selftest && pnpm selftest:tools:${{ matrix.shard }}
+        with:
+          job: selftest-${{ matrix.shard }}
+          cache-verification: "false"
+      - run: pnpm selftest:tools:${{ matrix.shard }}

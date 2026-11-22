@@ -476,7 +476,7 @@ describe("Node subscriptions", () => {
     }
   }))
 
-  it.live("Schedule a downgrade once after verifying attachment and schedule binding (spec/cloud/billing/subscriptionCommands.md, \"A downgrade is scheduled once, for the quoted plan, before the command frees the slot\")", () => scoped(effect {
+  it.live("Schedule a downgrade once after verifying attachment and schedule binding (spec/cloud/billing/subscriptionCommands.md, \"A downgrade is scheduled once, for the quoted plan, before the command frees the slot\"; spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\")", () => scoped(effect {
     const now = 1_800_000_000_987
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(now))
@@ -574,6 +574,7 @@ describe("Node subscriptions", () => {
       try sync(() => provider.renew(direct.subscriptionId, "failed"))
       const grace = try refresh(renewalAt)
       const graceView = try cloud.call("/api/v1/billing/limits", renewalToken)
+      const repeatedFailure = try refresh(renewalAt + 1_000)
       const afterGrace = direct.periodEnd + 3 * 24 * 60 * minuteMs + 1_000
       try sync(() => clock.set(afterGrace))
       const swept = try cloud.inside(sweepSubscriptions())
@@ -582,6 +583,9 @@ describe("Node subscriptions", () => {
       try session(cloud, "direct-schedule", lateToken, { ...live, authAt: afterGrace,
         accessExpiresAt: afterGrace + 15 * minuteMs, refreshExpiresAt: afterGrace + 60 * minuteMs }, afterGrace)
       const lapsedView = try cloud.call("/api/v1/billing/limits", lateToken)
+      try sync(() => provider.renew(direct.subscriptionId, "plan-change"))
+      const planChange = try refresh(afterGrace)
+      const planChangeView = try cloud.call("/api/v1/billing/limits", lateToken)
       try sync(() => provider.renew(direct.subscriptionId, "paid"))
       const latePaid = try refresh(afterGrace)
       const paidObservation = try cloud.inside(cloud.store.transaction((tx) => observeSubscription(tx, "org-direct-schedule")))
@@ -591,6 +595,7 @@ describe("Node subscriptions", () => {
       const paidSnapshot = (paid.body as { data: BillingSnapshot }).data
       const graceSnapshot = (graceView.body as { data: BillingSnapshot }).data
       const lapsedSnapshot = (lapsedView.body as { data: BillingSnapshot }).data
+      const planChangeSnapshot = (planChangeView.body as { data: BillingSnapshot }).data
       const renewedAllowances = try sql(cloud, "SELECT key FROM allowance_periods WHERE organization_id=$1 AND status='open'", ["org-direct-schedule"])
       try check(() => {
         assert.deepStrictEqual([foreign.status, obscured.status, same.status, directView.kind, directView.status, repeat.body, wrongOwnerStatus.status,
@@ -606,6 +611,9 @@ describe("Node subscriptions", () => {
         assert.deepStrictEqual([grace.status, grace.dunning.tag === "DunningSince" ? grace.dunning.endsAt : null,
           swept.expired, lapsed.status, latePaid.status],
           ["Dunning", afterGrace - 1_000, 1, "PastDue", "Active"])
+        assert.deepStrictEqual([repeatedFailure.dunning, repeatedFailure.revision], [grace.dunning, grace.revision])
+        assert.deepStrictEqual([planChange.status, planChange.dunning, planChangeView.status, planChangeSnapshot.funding],
+          ["PastDue", grace.dunning, 200, { inference: "creditsOnly", speech: "creditsOnly", maps: "creditsOnly" }])
         assert.deepStrictEqual([graceView.status, graceSnapshot.plan, graceSnapshot.funding, lapsedView.status, lapsedSnapshot.plan, lapsedSnapshot.funding],
           [200, { key: "pro_monthly", source: "subscription", effectiveUntil: afterGrace - 1_000 },
             { inference: "allowanceThenCredits", speech: "allowanceThenCredits", maps: "allowanceThenCredits" },

@@ -4,6 +4,6 @@ import { renderedTemplate } from "./rendered.ts"
 /** Where a host reads its built return pages: the package's build output under `serve`, the Worker's static assets on a Worker. */
 export service PageTemplates {
   static readonly key = "@elizaos/cloud/pages/PageTemplates"
-  static readonly defaultValue = () => ({ read: renderedTemplate })
+  static readonly defaultValue = () => ({ read: async (file: string) => renderedTemplate(file) })
   readonly read: (file: string) => Promise<string | undefined>
 }

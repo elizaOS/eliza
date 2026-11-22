@@ -19,8 +19,9 @@ module node {
 
   /** @throws {never} */
   export function eliza(packageDir: string, args: readonly string[]): Promise<Run> {
+    const env = { ...process.env, VIBELANG_PROJECT: path.join(packageDir, "tsconfig.build.json") }
     return new Promise((resolve) => {
-      execFile(process.execPath, ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", path.join(packageDir, "src/cli.vibe"), ...args], { cwd: packageDir, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (failure, stdout, stderr) => {
+      execFile(process.execPath, ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", path.join(packageDir, "src/cli.vibe"), ...args], { cwd: packageDir, env, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (failure, stdout, stderr) => {
         resolve({ status: failure === null ? 0 : typeof failure.code === "number" ? failure.code : null, stdout, stderr })
       })
     })
@@ -309,6 +310,50 @@ it.live("Read an update's status from the device by cable (spec/os/update/operat
     (call.tool === "adb" ? call.args[2] === "get-state" : call.args[2] === "getvar")))
   assert.deepStrictEqual(calls.slice(beforeForeign).filter((call) => call.tool === "fastboot").map((call) => call.args[3]), ["product", "product"])
 
+  try Effect.try({ try: () => phone.set({ mode: "device", image: { selinux: "Enforcing", props: {
+    "sys.boot_completed": "1", "ro.product.device": journal.release.device, "ro.build.fingerprint": journal.from.fingerprint,
+    "ro.boot.slot_suffix": "_a", "ro.boot.verifiedbootstate": "green", "ro.boot.flash.locked": "1",
+    "ro.build.version.security_patch": journal.from.securityPatch,
+  } } }), catch: failed("boot the installed build on its original slot") })
+  for (const [flashLocked, state, phase, wasLocked] of [
+    ["0", "sideload", "Sideloading", false],
+    ["1", "interrupted", "AwaitingSideload", true],
+  ] as const) {
+    const legacy = JSON.stringify({ ...journal, state, from: { ...journal.from, flashLocked } })
+    try files.writeFileString(`${root}/journal.json`, legacy, { mode: 0o600 })
+    const legacyStatus = try run(...statusArgs)
+    assert.strictEqual(legacyStatus.status, 0, legacyStatus.stderr)
+    const observedLegacy = try parsed("ota status for an earlier journal", legacyStatus)
+    assert.deepStrictEqual([observedLegacy.executed, observedLegacy.next, observedLegacy.state], [false, "retry", {
+      phase, lock: { tag: "Unlocked" }, start: {
+        device: journal.release.device, installedBuild: journal.from.fingerprint, candidateBuild: journal.release.fingerprint,
+        candidatePatch: 20260105, originalSlot: "SlotA", originalBoot: "Green", wasLocked, virtualAb: true,
+      },
+    }])
+    if (state === "interrupted") {
+      const repeated = try run(...statusArgs)
+      assert.strictEqual(repeated.status, 0, repeated.stderr)
+      assert.deepStrictEqual(try parsed("repeat ota status for an earlier journal", repeated), observedLegacy)
+    }
+    assert.strictEqual(try files.readFileString(`${root}/journal.json`), legacy)
+  }
+
+  const readCalls = try Effect.try({ try: () => phone.calls(), catch: failed("read the cable calls") })
+  assert.isTrue(readCalls.slice(calls.length).every(({ tool, args }) => tool === "adb" && args[0] === "-s" && args[1] === serial &&
+    (args[2] === "get-state" || (args[2] === "shell" && (args[3] === "getprop" || args[3] === "getenforce")))))
+  for (const invalid of [
+    { ...journal, from: { ...journal.from, flashLocked: "unknown" } },
+    { ...journal, serial: "OTHER", from: { ...journal.from, flashLocked: "1" } },
+  ]) {
+    const rejected = JSON.stringify(invalid)
+    try files.writeFileString(`${root}/journal.json`, rejected, { mode: 0o600 })
+    const refusal = try run(...statusArgs)
+    assert.strictEqual(refusal.status, 1, refusal.stderr)
+    assert.strictEqual(refusal.stdout, "")
+    assert.strictEqual(try files.readFileString(`${root}/journal.json`), rejected)
+  }
+  assert.deepStrictEqual(try Effect.try({ try: () => phone.calls(), catch: failed("read the cable calls") }), readCalls)
+
   const interrupted = { ...journal, state: "interrupted", from: { ...journal.from, flashLocked: "1" } }
   try files.writeFileString(`${root}/interrupted.json`, JSON.stringify(interrupted), { mode: 0o600 })
   try Effect.try({ try: () => phone.set({ mode: "sideload", variables: {} }), catch: failed("return to sideload") })
@@ -319,7 +364,7 @@ it.live("Read an update's status from the device by cable (spec/os/update/operat
   const refusedFallback = try run("ota", "fallback", ...earlierArgs)
   assert.strictEqual(refusedFallback.status, 1, refusedFallback.stdout)
   assert.include(refusedFallback.stderr, "Fallback is not done")
-}))
+}), 120_000)
 
 it.live("Refuse a malformed signing request and judge the release gates by their evidence (spec/os/image/signing.md, \"Story: Sign a release only with keys I enrolled\"; spec/os/image/signing.md, \"Story: Record my release's qualification gates honestly\"; spec/os/image/signing.md, \"A gate passes only on release evidence, source admission only for the pinned production lock, signed-update recovery only for a distributable channel, and user acceptance last\")", () => journey(effect {
   const root = try scratch("cli-release")

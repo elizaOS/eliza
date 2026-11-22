@@ -419,7 +419,7 @@ export effect function librarySelections() {
   const library = try LibraryStore
   const bound = try Ref.make(new Map<string, { readonly id: string; readonly revision: string }>())
 
-  effect function current(selectionId: string, limit: number): LibraryRow & { readonly bytes: Uint8Array<ArrayBuffer> }!VolumeRefused {
+  effect function current(selectionId: string, limit: number): (LibraryRow & { readonly bytes: Uint8Array<ArrayBuffer> })!VolumeRefused {
     const binding = (try Ref.get(bound)).get(selectionId)
     const all = try mapError(library.rows(), (failure) => refused("unavailable", failure.message))
     const row = binding === undefined ? undefined : all.find((candidate) => candidate.id === binding.id)

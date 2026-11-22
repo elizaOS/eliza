@@ -103,8 +103,15 @@ it.effect(`Read only the exact selected source and window, cache it under its ow
       assert.deepEqual(broker.calls[1], { operation: "feed", grantId: grant, calendarId: "work", ...window, url: endpoint.url, authorization: `Bearer ${"t".repeat(64)}` })
       assert.equal(rows.get("google:work:e1")?.calendarId, "work")
 
-      mode.feed = (call) => ({ status: 200, body: JSON.stringify(feedReply(call, [providerRow(grant, "work", "e2", { etag: "\"1\"" })])) })
-      assert.equal((try feed.read(work, window)).events[0]?.updatedAt, "")
+      const created = "2026-11-21T10:00:00.000Z"
+      mode.feed = (call) => ({ status: 200, body: JSON.stringify(feedReply(call, [
+        providerRow(grant, "work", "e2", {}),
+        providerRow(grant, "work", "e2-created", { created }),
+        providerRow(grant, "work", "e2-unreadable", { updated: 42, created }),
+      ])) })
+      assert.deepEqual((try feed.read(work, window)).events.map(({ id, updatedAt }) => [id, updatedAt]), [
+        ["google:work:e2", ""], ["google:work:e2-created", created], ["google:work:e2-unreadable", ""],
+      ])
 
       rows.set("google:work:e3", { ...residentBase, id: "google:work:e3", provider: "google", calendarId: "personal", grantId: grant, connectorAccountId: grant })
       mode.feed = (call) => ({ status: 200, body: JSON.stringify(feedReply(call, [providerRow(grant, "work", "e3", { created: "2026-11-01T00:00:00.000Z" })])) })

@@ -5,12 +5,11 @@ module node {
   import { readFile } from "node:fs/promises"
   import { renderedTemplate } from "./rendered.ts"
 
-  const packageRoot = new URL("../../", import.meta.url)
   const built = new Map<string, Promise<string | undefined>>()
 
-  /** @throws {never} */
-  export function builtTemplate(file: string): Promise<string | undefined> {
+  export async function builtTemplate(file: string, moduleUrl: string): Promise<string | undefined> {
     const known = built.get(file) ?? (async () => {
+      const packageRoot = new URL("../../", moduleUrl)
       for (const base of ["pages/", "dist/pages/"]) {
         const text = await readFile(new URL(base + file, packageRoot), "utf8").catch(() => undefined)
         if (text !== undefined) return text
@@ -24,4 +23,4 @@ module node {
 import { builtTemplate } from node
 
 /** The return pages `serve` reads from the package's build output, rendered without the stylesheet when there is none. */
-export const nodePageTemplates = Layer.succeed(PageTemplates, { read: builtTemplate })
+export const nodePageTemplates = Layer.succeed(PageTemplates, { read: async (file: string) => builtTemplate(file, import.meta.url) })

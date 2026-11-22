@@ -310,8 +310,11 @@ recognition, `error` on the `voice-transcript` event stream
 ([event feeds](../conversation/events.md)) for the screen's live session;
 a failed recognition answers 502 `ASR_FAILED`. A fifth session is 429
 `LIVE_ASR_SESSIONS_FULL`; no local transcription model is 503
-`LIVE_ASR_UNAVAILABLE`; a session idle for 60 seconds, or closed, is
-disposed with its segment, and a session opened on another runtime is
+`LIVE_ASR_UNAVAILABLE`. An accepted close finishes after already queued
+audio. A duplicate close shares its answer, and later audio receives 409
+`LIVE_ASR_SESSION_CLOSING` while it finishes. A session retains its slot
+while processing requests. Once idle for 60 seconds, or once closed, it
+is disposed with its segment. A session opened on another runtime is
 reopened on the current one. `GET /api/asr/local-inference/live/status`
 answers `{ready, streaming: false, sessions, maxSessions}`.
 
@@ -320,6 +323,7 @@ type LiveSegment = NoSegment | Speaking({ kept: int })
 type LiveStep = { segment: LiveSegment, recognised: int }
 pure val maxLiveSessions = 4
 pure val liveIdleMs = 60000
+pure def liveSessionExpired(idleMs: int): bool = idleMs >= liveIdleMs
 pure val maxSegmentSamples = 1920000
 pure def admitsSession(open: int, known: bool): bool = known or open < maxLiveSessions
 pure def keptAfter(kept: int, added: int): int = if (kept + added > maxSegmentSamples) maxSegmentSamples else kept + added

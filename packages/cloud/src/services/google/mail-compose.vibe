@@ -116,7 +116,7 @@ const referenceChain = /^(?:<[^<>\s]+@[^<>\s]+>\s*)+$/
 const mailbox = /^(?:"(?:[^"\\]|\\.)*"|[^<>,@"]*)\s*<([^<>]+)>$/
 const headerUnsafe = /[\r\n\0]/
 const mimeToken = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
-const fileName = /^[^\\/\x00-\x1f\x7f]{1,120}$/
+const fileName = /^[\x20-\x2e\x30-\x5b\x5d-\x7e\x80-\uffff]{1,120}$/
 const replyHeaders = ["From", "Reply-To", "To", "Cc", "Subject", "Message-ID", "References"]
 const sendable: Readonly<Record<string, RegExp>> = {
   "text/plain": /\.txt$/i,
@@ -148,7 +148,6 @@ const RepliedMessage = Schema.Struct({
   payload: Schema.Struct({ headers: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))) })
 })
 
-type Proposal = typeof Proposal.Type
 type Replied = typeof RepliedMessage.Type
 
 function headerValues(message: Replied, name: string): ReadonlyArray<string> {
@@ -317,7 +316,7 @@ function attachmentReview(file: File): AttachmentReview {
 export effect function composeMessage(raw: unknown, context: ComposeContext) {
   const decoded = Schema.decodeUnknownOption(Proposal, { onExcessProperty: "error" })(raw)
   if (Option.isNone(decoded)) throw refused("InvalidRequest")
-  const proposal: Proposal = decoded.value
+  const proposal = decoded.value
   const replying = proposal.mode === "reply" || proposal.mode === "reply-all"
   if (headerUnsafe.test(proposal.subject) || replying !== (proposal.replyMessageId !== undefined)) throw refused("InvalidRequest")
   const source = proposal.forwardAttachments

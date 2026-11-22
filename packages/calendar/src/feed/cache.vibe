@@ -1,5 +1,5 @@
 // spec/calendar/managedFeed.md, "A cache write for another identity leaves the stored copy unchanged"; spec/calendar/managedFeed.md, "An event's change time is the provider's edit time, never the refresh time"
-import { cacheWriteResult, eventChangeTime, type CacheIdentity, type ChangeClock } from "../../gen/calendar__managedFeed.effect.vibe"
+import { cacheWriteResult, providerClock, type CacheIdentity } from "../../gen/calendar__managedFeed.effect.vibe"
 import type { CalendarEvent, CalendarProvider, ConnectorSide } from "../model.vibe"
 
 /** The imported projection of one owner grant and connector account at one provider. */
@@ -52,20 +52,25 @@ export effect function writeFeedCache(store: ManagedCacheStore, events: readonly
   return { written, conflicts }
 }
 
-type Reading = { readonly clock: ChangeClock; readonly iso: string }
+type Reading =
+  | { readonly clock: "ClockAbsent" | "ClockInvalid"; readonly iso?: never }
+  | { readonly clock: "ClockRecent"; readonly iso: string }
 
 function reading(metadata: Readonly<Record<string, unknown>>, keys: readonly string[]): Reading {
   const value = keys.map((key) => metadata[key]).find((candidate) => candidate !== undefined && candidate !== null)
-  if (value === undefined) return { clock: "ClockAbsent", iso: "" }
+  if (value === undefined) return { clock: "ClockAbsent" }
   const stamp = typeof value === "string" ? Date.parse(value) : Number.NaN
-  return Number.isFinite(stamp) ? { clock: "ClockRecent", iso: new Date(stamp).toISOString() } : { clock: "ClockInvalid", iso: "" }
+  return Number.isFinite(stamp) ? { clock: "ClockRecent", iso: new Date(stamp).toISOString() } : { clock: "ClockInvalid" }
+}
+
+export function providerTimestamps(metadata: Readonly<Record<string, unknown>>) {
+  const edited = reading(metadata, ["updated", "updatedAt"])
+  const created = reading(metadata, ["created", "createdAt"])
+  return { editedAt: edited.iso, createdAt: created.iso, valid: providerClock(edited.clock, created.clock) !== "ClockInvalid" }
 }
 
 /** The provider's edit time of an event, else its creation time, as an instant; undefined when neither is readable. */
 export function providerChangeTime(metadata: Readonly<Record<string, unknown>>): string | undefined {
-  const edited = reading(metadata, ["updated", "updatedAt"])
-  const created = reading(metadata, ["created", "createdAt"])
-  const chosen = eventChangeTime(edited.clock, created.clock)
-  if (chosen === "ClockAbsent") return undefined
-  return edited.clock !== "ClockAbsent" ? edited.iso : created.iso
+  const { editedAt, createdAt, valid } = providerTimestamps(metadata)
+  return valid ? editedAt ?? createdAt : undefined
 }

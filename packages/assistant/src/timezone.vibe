@@ -27,7 +27,9 @@ const aliases: Readonly<Record<string, string>> = {
 export function resolveZone(named: string): string | undefined {
   const plain = named.trim().replace(/[.,!;]+$/u, "").replace(/\s+time$/iu, "").trim()
   if (plain === "" || plain.length > 64) return undefined
-  return aliases[plain.toLowerCase()] ?? (/^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,3}$/u.test(plain) ? ianaZone(plain) : undefined)
+  const alias = plain.toLowerCase()
+  if (Object.hasOwn(aliases, alias)) return aliases[alias]
+  return /^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,3}$/u.test(plain) ? ianaZone(plain) : undefined
 }
 
 const statement = /\bmy\s+time\s*zone\s+is\s+(?:now\s+)?([A-Za-z0-9_/+:.-]{1,60}(?:\s+time)?)/iu

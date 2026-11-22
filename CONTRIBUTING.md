@@ -110,8 +110,14 @@ files and the `vibestack/fixtures/` they read, besides the tools every task is k
 `check` rewrites its owners' `gen/` too, so it waits for their tasks: name each owner's in `//#check` of `turbo.json`,
 as `@elizaos/core`'s are. `pnpm lint:js` on its own needs what `gen` and `typecheck` write (`gen/`, `.vibe/declarations`);
 `pnpm lint` runs them first.
+`pnpm all //#analyze` also runs or restores the application and Studio generators,
+the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
+
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `1c40171`](https://github.com/lalalune/vibestack/commit/1c40171d189e9a450a37cfe25e0c831efe550852).
+Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
+and workspace and CI integration.
 
 | File | Role |
 |---|---|
@@ -131,7 +137,7 @@ as `@elizaos/core`'s are. `pnpm lint:js` on its own needs what `gen` and `typech
 | `vibestack/explore.ts` | the `explore` stage: serves a package's page with its app script, runs Bombadil on it, and replays and removes a saved run |
 | `vibestack/conformance.ts` | the comparing: journeys, malformed-input probes, walks, shrinking and replay; copied into `gen/` for a driver's types |
 | `vibestack/testing/` | what packages import: `project()` (the Vitest configuration), the property-test generator, `effectDriver` |
-| `vibestack/stories/`, `vibestack/design/` | generated stories and their tests; design tokens and their lint rules |
+| `vibestack/stories/`, `vibestack/design/` | generated stories and their tests; design tokens and their lint rules. The design project module in [`vibestack/design/project.ts`](vibestack/design/project.ts) builds or checks several token directories in one process. |
 | `vibestack/gen.ts` | the translator: reads what a module imports and defines |
 | `vibestack/gen/types.ts` | everything decided by a type |
 | `vibestack/gen/print.ts` | expressions |
@@ -156,16 +162,26 @@ The two suites of the tools, the command line and each kind of mistake, run side
 edits copy and a few long checks of fixtures are shared projects: each starts with the tool runs (`action-*` entries)
 earlier selftests kept in `.cache/selftest/.spec-cache` and leaves its own there; entries unused for a week are pruned.
 A test that observes a tool really running uses a scratch project of its own, which starts empty.
+Scratch dependency installs clone package files when the filesystem supports it and copy them otherwise. Both methods leave the shared store's hardlink metadata stable while parallel checks observe an installed verifier.
 `pnpm selftest` runs all five through Turborepo, side by side, as `pnpm verify` does. Each of the three
 `selftest:tools` processes bounds its own tests and tools to the machine and checks the order project once for itself,
 so three at once ask about three times what one does: on a machine too small for that,
-`pnpm selftest --concurrency=1` runs one at a time, to the same cached results, as a release does. What a change to the
+`pnpm selftest --concurrency=1` runs one shard at a time. What a change to the
 tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENTS.md#definition-of-done).
+
+For phase timings, subscribe to the Node diagnostics channel `vibestack:check:phase` before running `spec check`.
+Each message has `root`, `checkStartedAt` (Unix milliseconds), `phase`, `event` (`start` or `end`) and
+`elapsedMs` (milliseconds measured by a monotonic clock since the check acquired its project lock). Phases
+can overlap. The simulation end records when the last simulation settled. Its message can arrive later,
+once generation has scheduled every simulation. An ordinary exception closes open phases as the check
+unwinds. If the process is interrupted, only events already delivered are available. The check's results
+and exit code still come from its normal output. Keep subscribers' output outside the project and catch
+errors in subscribers, since Node reports a thrown subscriber error as an uncaught exception.
 
 ## Releasing
 
 Set `version` in the root `package.json`, merge to `vibestack`, and push the tag `vibestack-v<version>` from it.
-`.github/workflows/release.yml` builds, packs with `pnpm pack`, runs `pnpm selftest --concurrency=1`, which the shared cache answers for a commit CI has verified, and attaches the tarball to a GitHub release of that tag.
+`.github/workflows/release.yml` builds, packs with `pnpm pack`, materializes the shard prerequisites and runs `pnpm selftest --only --concurrency=1` using the same keys as CI, and attaches the tarball to a GitHub release of that tag.
 A project installs it as [the Vibestack guide, "Using it from another package"](vibestack/README.md#using-it-from-another-package) says.
 ## Architecture
 
@@ -206,8 +222,11 @@ imports `gen/` only as types, so it does not compare the model with itself.
 Core generation produces deterministic code. It, and the story and property-test
 generators, write files only when their bytes change and remove outputs whose
 sources have gone: a check that changes no spec leaves `gen/` and the owners'
-`gen/` untouched, so nothing that watches them rebuilds. A check loads each
-generated module from its own `.spec-cache/run-<time>/`, removed when it ends. `.spec-cache/`
+`gen/` untouched, so nothing that watches them rebuilds. Whole-tree `spec gen`
+keeps the generated files in memory until every model is valid, then updates
+changed files. An invalid edit leaves the existing outputs in use. A check loads
+each generated module from its own `.spec-cache/run-<number>/`, removed when it ends. The first check in a new
+process uses the same path so Node can reuse compiled modules. `.spec-cache/`
 remembers each run of Quint (which parses and typechecks a harness once for all its simulations, each run by Quint's
 evaluator on the result: `vibestack/simulator.ts`), and of LemmaScript and Dafny on a proof, under the program as installed, its arguments and
 the files it reads, without their prose, comments and layout (`vibestack/action.ts`),
@@ -229,7 +248,9 @@ for its time or its output is ended the same way. A run
 of a tool is remembered when it reached its answer, a refusal of its input
 included, never when it was stopped, timed out or failed for want of a file or
 program: an unchanged unit whose proof failed runs neither again, and an edit
-to a proof file only checks and verifies the Dafny it changes. A unit offered
+to a proof file only checks and verifies the Dafny it changes. When several proof units import
+the same module, the check renders that module once for each name prefix and citation setting they use.
+A unit offered
 what the units it imports proved is proved once when their results are
 remembered, and meanwhile, to be proved again if they fail, only while one of
 them is still being proved. A test run
@@ -238,6 +259,9 @@ typecheck, a driver's run and an exploration by VibeLang's version and bytes.
 An exploration is keyed by the code that explores and what its page reads
 (`pageInputs` in `vibestack/explore.ts`), which holds every tool when the
 page runs one, as Studio's does.
+Vitest stores transformed test modules per package. That package's installed
+lockfile controls when its transforms are cleared.
+
 It also remembers a package's passing test run under a hash of what its tests
 read; a driver's passing run under the same hash and the events the simulator
 found; and a passing typecheck under the package's files without its Markdown,
@@ -253,20 +277,38 @@ loads the pipeline, and hands its directory to every process a check starts,
 so each `spec` process, Studio's checks, Turborepo's tasks and the tests and
 drivers they run included, compiles only the code that changed.
 
+An integration checking disposable project directories can import `check`
+and `withFormalCache` from [vibestack/formal](vibestack/formal.ts). Run
+`await withFormalCache(cacheDirectory, () => check(projectDirectory))`
+in the same Node process. Use a persistent cache directory writable only
+by trusted runs. It holds
+the completed Quint, LemmaScript, and Dafny actions, keyed by the installed
+tools and their inputs. The project directory holds its lock, generated files,
+and stage results. An acceptance or nightly check always reads fresh inputs.
+
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
-and their runtime files before Turbo hashes its inputs. What it reads of an
+and their runtime files before Turbo hashes its inputs. A build can run
+without the verifier. Its task key records missing verification tools,
+and a proof still requires them. What it reads of an
 installed file, and Dafny's version, is remembered across processes in
 `$XDG_CACHE_HOME/vibestack` (`~/.cache/vibestack` by default) while the file's
 device, inode, size and modification and change times stay the same, so an
 unchanged toolchain is not read again, nor Z3 asked its version. A check
 reads those times of Dafny's installation once, and reads them again after each
 run of Dafny, so a result is not remembered when the verifier was installed
-again during the run. Generated stories,
+again during the run. The template install generates locally with `gen --if-valid`.
+The install command runs its listed root prerequisite tasks together before generation.
+The three tool selftest jobs in `ci.yml` run only the listed `//#build` task and generate their scratch
+projects on demand. The packaged CLI test rebuilds from a clean copy of the
+workspace. Other GitHub Actions jobs use the same strict root
+`gen` task as verification, so a successful install warms the task cache. A failed generation leaves the
+remaining checks runnable and is retried by verification. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
 are restored with their owning task. `check` is never skipped whole: its
-`driver:` programs run the real application in `traces` every time. Standalone examples install and check
-separately, outside the workspace cache.
+`driver:` programs run the real application in `traces` every time. Standalone examples install and check separately. The selftest keeps a complete passing run for each example
+under its own inputs and the shared toolchain and sources. After an edit to one example, the other examples
+can reuse their passing runs. Use `pnpm selftest:examples` to run every install and check directly.
 
 A complete passing Vitest run records its input fingerprint. `check` reuses
 that result only while its source, generated core, transitive workspace
@@ -286,7 +328,11 @@ receipt matches unless another root document changed, and then `check` runs the
 root's tests itself. Generated code names each rule by its heading, not its line, so
 prose that only moves a rule changes none of these keys. Filtered, exclusive, interrupted
 and failed runs record no complete result. Acceptance and nightly checks
-bypass these receipts and the inner verification cache.
+bypass these receipts and the inner verification cache. A package that declares a `link:`
+dependency, or reaches one through a workspace dependency, runs its inner tests, typecheck and
+drivers afresh. The linked checkout can supply compiled files and resources outside the
+consumer's lockfile. Its project's Turbo tasks can cache those commands when they declare
+the external inputs and outputs they use.
 
 The spec cache retains recent branch and profile results for 30 days within
 256 MiB, evicting the oldest unused results first. A check's own entries are
@@ -294,8 +340,20 @@ preserved. Proof identity covers the verifier and solver contents, so moving
 an identical installation does not invalidate it and replacing an executable
 with the same version does; tests, drivers and explorations are keyed by the
 verifier too, since they may run proofs, as Studio's do. A process that
-outlives a reinstall, as `spec watch` does, reads Quint, LemmaScript and Dafny
-again once their installed files change. In CI, a Turborepo cache entry is
+outlives a reinstall, as `spec watch` does, reads the installed toolchain
+again on the next check. Simulations and proofs include the resolved package files
+and dependency links for Quint and LemmaScript. Each check shares an installation
+inventory across runs of the same tool and validates its files before publishing a batch.
+The first action, long actions, completed stages and the end of the check flush pending results.
+If a concurrent installation changes these files, the check discards the pending results
+and retries under the same project lock. It stops after two unsuccessful retries. A
+simulation also depends on the bytes of Quint's installed Rust evaluator. A
+run that installs its evaluator can produce a result; the next run records it
+against the installed binary. The task runner supplies the evaluator fingerprint
+to simulation-capable tests and selftests, leaving generation, builds and
+typechecks reusable before and after installation. Turbo passes `QUINT_HOME`
+to tasks so they use the selected evaluator. Its bytes determine the fingerprint.
+In CI, a Turborepo cache entry is
 kept for seven days after its last hit, which the run summary names.
 
 ### Seeds and budgets
@@ -368,24 +426,40 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 |---|---|
 | Pull request or push to `vibestack` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `vibestack`. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
-| A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest --concurrency=1` read from the shared cache, and the tarball attached to a GitHub release |
+| A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
 exploration is, as an artifact.
+The run summary lists Turbo task times, cache status and exit codes.
 
 Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
 tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job and
 the commit: what a job of the same name last saved, or else another job's that holds the same.
-Turborepo shares task results through the private Cloudflare/R2 cache.
-The task entry point disables Turbo telemetry. Each `selftest:tools` task waits for the root and
-Studio test tasks so those integration journeys do not compete with it.
-Pull requests read shared results; only branch pushes receive the publishing
-credential, protected by the `turbo-cache-publish` environment's branch
-policy. A pull request keeps its own Turborepo results in the GitHub cache
-instead, which only that pull request reads, so its next push reuses them. Newer commits replace an older run of the same pull request.
-Every pushed commit can finish. Completed tasks are shared through the cache.
+Nightly jobs restore the pinned Quint evaluator and run with fresh verification
+results.
+The default branch's `verify` job publishes the pnpm store after the frozen
+install. All jobs can restore it by the same lockfile key. This cache holds
+public packages only because fork pull requests can read it.
+Verification and release install both Chromium executables. In CI and nightly
+runs, shard A needs full Chromium for Bombadil. The other self-test shards
+run without a browser.
+CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache.
+Branch pushes save results that later pushes and pull requests can restore. A pull request's
+own saves are scoped to that pull request. Newer commits replace an older run of the same pull
+request. Every branch push runs application verification and the Android Node lock check.
+Each tool self-test shard can finish and save its cache. The last job to enter
+its queue replaces any pending job for the same shard. Re-run a specific
+commit when you need the tool self-test results for that revision.
+The task entry point disables Turbo telemetry. Local `selftest:tools` tasks wait for the
+root and Studio tests. In CI, the verify job runs those integration tests once.
+Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
+All three tool shards skip workspace generation. The two fixture shards use their scratch inputs, and the packaged CLI test builds its workspace copy.
+Release materializes the prerequisites before running the isolated shards.
+Packing the Vibestack CLI builds the toolchain and Studio. The package's
+prepare script uses `--skip-gen-on-pack` to skip Eliza application generation because
+the tool archive does not include those generated files.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.

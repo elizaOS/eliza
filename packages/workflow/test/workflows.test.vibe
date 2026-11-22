@@ -19,7 +19,7 @@ import type { ManagedGoogleReads } from "../src/service/google.vibe"
 
 module node {
   import { PGlite } from "@electric-sql/pglite"
-  import { mkdtemp, mkdir, rm, writeFile, chmod } from "node:fs/promises"
+  import { mkdtemp, mkdir, readdir, realpath, rm, writeFile, chmod } from "node:fs/promises"
   import { tmpdir } from "node:os"
   import { join } from "node:path"
   import type { LocalRoute } from "@elizaos/agent/routes"
@@ -31,9 +31,13 @@ module node {
   }
 
   export async function scratch(prefix: string): Promise<{ readonly path: string; remove(): Promise<void> }> {
-    const path = await mkdtemp(join(tmpdir(), prefix))
+    const path = await mkdtemp(join(await realpath(tmpdir()), prefix))
     await chmod(path, 0o700)
     return { path, remove: () => rm(path, { recursive: true, force: true }) }
+  }
+
+  export function listEntries(path: string): Promise<string[]> {
+    return readdir(path)
   }
 
   export async function writeTree(root: string, files: Readonly<Record<string, string>>): Promise<void> {
@@ -70,7 +74,7 @@ module node {
     return { status: 404, body: { error: "No route" } }
   }
 }
-import { call, joinPath, openDatabase, readText, scratch, writeTree } from node
+import { call, joinPath, listEntries, openDatabase, readText, scratch, writeTree } from node
 
 const owner = "owner"
 const device = { installationId: "phone-1", enrollmentId: "enrollment-1" }
@@ -460,7 +464,8 @@ it.live('Import only complete reviewed workflow source, and run only a worker bu
     const again = try publishWorkflowSource(dir.path, `${key}.json`, bytes, key)
     const other = try Effect.flip(publishWorkflowSource(dir.path, `${key}.json`, new TextEncoder().encode("{}"), key))
     const imported = try importWorkflowSource(dir.path, `${key}.json`, bytes)
-    try check(() => assert.deepStrictEqual([published, again, other instanceof SourceRefused, imported.byteLength], ["published", "existing", true, bytes.byteLength]))
+    const files = try promise(() => listEntries(dir.path))
+    try check(() => assert.deepStrictEqual([published, again, other instanceof SourceRefused, imported.byteLength, files], ["published", "existing", true, bytes.byteLength, [`${key}.json`]]))
 
     const worker = try acquireRelease(promise(() => scratch("workflow-worker-")), (made) => promise(() => made.remove()))
     try promise(() => writeTree(worker.path, {

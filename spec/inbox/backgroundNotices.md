@@ -150,4 +150,14 @@ pure def sometimesConsumedWithoutDraft(s: NoticeTap): bool = s.phase == ClosedAs
 pure val weight_confirmAsk = 6
 pure val weight_finishRecheck = 9
 pure val weight_finishConsume = 6
+
+pure val eval_witness_sometimesAskDrafts = (
+  "readPending",
+  ("acceptPending", exactTap),
+  ("checkGrants", exactGrant),
+  ("openAsk", exactMail),
+  ("confirmAsk", true, true),
+  ("finishRecheck", { sameToken: true, questionTap: true, sameGeneration: true, reviewed: exampleExcerpt, fresh: exampleExcerpt }, true),
+  ("finishConsume", exactConsume)
+)
 ```

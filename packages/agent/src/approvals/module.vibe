@@ -5,7 +5,7 @@ import { approvalRoutes, type ApprovalsPort } from "./routes.vibe"
 
 export const approvalsModuleName = "@elizaos/agent/approvals"
 
-export error ApprovalsNotStarted { serviceType: string }
+error ApprovalsNotStarted { serviceType: string }
 
 function servicePort(context: ModuleContext): ApprovalsPort {
   const service = async () => {

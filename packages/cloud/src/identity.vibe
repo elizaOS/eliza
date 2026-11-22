@@ -1,5 +1,6 @@
 // spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Google sign-in for backup returns to the protected approval page"
 import type { Client } from "pg"
+import type { JWTVerifyGetKey } from "jose"
 import { browserGoogleReturn, mayIssueAccountBoundDeviceGrant, type BrowserGooglePurpose } from "../gen/cloud.effect.vibe"
 import { Digest, Mac, SecureRandom } from "effect/crypto"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/http"
@@ -105,10 +106,10 @@ export function sessionAccount(request: Request, db: Client): Promise<string | n
 effect function requestCredential(request: Request) {
   if (request.headers.has("authorization")) {
     const hash = try deviceDigest(request)
-    return hash ? { kind: "device", hash } : null
+    return hash ? { kind: "device", hash } as const : null
   }
   const hash = try accessDigest(request)
-  return hash ? { kind: "browser", hash } : null
+  return hash ? { kind: "browser", hash } as const : null
 }
 
 export function cloudCredential(request: Request) {
@@ -577,8 +578,8 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
   return json(404, { error: "not_found" })
 }
 
-export function identityRequest(request: Request, env: IdentityEnv, db: Client): Promise<Response> {
-  if (ownsPasswordBackupPath(new URL(request.url).pathname)) return passwordBackupRequest(request, env, db)
+export function identityRequest(request: Request, env: IdentityEnv, db: Client, keys?: JWTVerifyGetKey): Promise<Response> {
+  if (ownsPasswordBackupPath(new URL(request.url).pathname)) return passwordBackupRequest(request, env, db, keys)
   return runPromise(Effect.provide(effect {
     const response = handleIdentity(request, env, db) catch (error) => match (error) {
       when InvalidRequest: json(400, { error: "invalid_request" });

@@ -74,7 +74,7 @@ pure def credentialChanged(s: CloudSpeech, version: int): SpeechStep = { val reb
   val notices = s.batches.select(b => b.verdict == BatchPending).listMap(b => BatchSettled({ requestId: b.requestId, verdict: keyGone(b).verdict }))
   if (isOpen(s.phase)) failWith(Cr::AccountIneligible, rebound, notices, NoWait) else { state: rebound, out: notices } }
 pure val versionValues = Set(0, 1, 2)
-pure val weight_credentialChanged = 2
+pure val weight_credentialChanged = 1
 pure def alwaysOpenWorkUsesTheCurrentKey(s: CloudSpeech): bool = (isOpen(s.phase) implies (s.bound == s.credential and s.bound >= 1))
   and s.batches.every(b => b.verdict == BatchPending implies (b.version == s.credential and b.version >= 1))
 pure def sometimesKeyChangeEndedSession(s: CloudSpeech): bool = s.bound >= 1 and s.credential != s.bound and hasEnded(s.phase)
@@ -100,7 +100,7 @@ pure def minted(s: CloudSpeech, answer: CloudAnswer): SpeechStep = if (answer ==
   else failWith(failureOf(answer), s, keyReport(answer, s.credential), waitOf(answer))
 pure val answerValues = Set(Answered, Misdirected, Unreachable, Refused({ refusal: { code: AuthenticationRequired, reason: CredentialExpired, wait: NoWait } }),
   Refused({ refusal: { code: RateLimited, reason: NoReason, wait: RetryAt({ retryAtMs: 5000 }) } }), Refused({ refusal: { code: AllowanceExhausted, reason: NoReason, wait: ResetsAt({ resetsAtMs: 9000 }) } }))
-pure val weight_minted = 4
+pure val weight_minted = 12
 pure def keyReportVersion(n: SpeechNotice): int = match n { | ReportRefusedKey(k) => k.version | _ => -1 }
 pure def closing(before: CloudSpeech, after: CloudSpeech): bool = isOpen(before.phase) and not(isOpen(after.phase))
 pure def stepARefusedKeyIsReportedOnceAndEndsItsRequest(before: CloudSpeech, via: str, after: CloudSpeech, out: List[SpeechNotice]): bool = out.select(n => keyReportVersion(n) != -1).length() <= 1
@@ -131,9 +131,9 @@ pure def frameArrived(s: CloudSpeech, frame: Rl::ServerFrame): SpeechStep = matc
   | CloseFrame(c) => failRelay(Cr::RemoteUnreachable, s)
   | _ => if (s.phase == Live) speechStep(List(), s) else failRelay(Cr::RequestFailed, s)
 }
-pure val frameValues = Set(Rl::ReadyFrame, Rl::SttFrame({ kind: Rl::SttConnected }), Rl::SttFrame({ kind: Rl::StartOfTurn }), Rl::SttFrame({ kind: Rl::TranscriptUpdate }),
-  Rl::SttFrame({ kind: Rl::EndOfTurn }), Rl::ExtendedFrame, Rl::CompleteFrame({ id: "u1" }), Rl::ErrorFrame({ code: Rl::RelayUnavailable, reason: Rl::FundingReason({ funding: Rl::CreditsShort }) }))
-pure val weight_frameArrived = 10
+pure val frameValues = Set(Rl::ReadyFrame, Rl::SttFrame({ kind: Rl::SttConnected }), Rl::SttFrame({ kind: Rl::StartOfTurn }), Rl::SttFrame({ kind: Rl::TurnResumed }), Rl::SttFrame({ kind: Rl::TranscriptUpdate }),
+  Rl::SttFrame({ kind: Rl::EndOfTurn }), Rl::ExtendedFrame, Rl::CompleteFrame({ id: "u1" }), Rl::CompleteFrame({ id: "u2" }), Rl::ErrorFrame({ code: Rl::RelayUnavailable, reason: Rl::FundingReason({ funding: Rl::CreditsShort }) }))
+pure val weight_frameArrived = 18
 pure def canRelayLost(s: CloudSpeech): bool = mintedPhase(s.phase)
 pure def relayLost(s: CloudSpeech): SpeechStep = failRelay(Cr::RemoteUnreachable, s)
 pure def openingRank(p: Phase): int = match p { | AwaitingConsent(a) => 1 | Minting => 2 | Connecting => 3 | Ready => 4 | Live => 5 | _ => 0 }
@@ -175,6 +175,11 @@ pure def alwaysOnlyALiveSessionCaptures(s: CloudSpeech): bool = s.generation >= 
   and (s.phase != Live implies (s.capture == Muted and s.turn == NoTurn and s.reply == NoReply))
   and (s.capture == Listening implies (s.generation >= 1 and s.audioStarted))
 pure def sometimesTurnWithoutCapture(s: CloudSpeech): bool = s.phase == Live and s.turn == TurnOf({ capture: 0 })
+pure val weight_unmute = 6
+pure val weight_captureAnswered = 8
+pure val weight_mute = 3
+pure val weight_begin = 8
+pure val weight_consentGiven = 8
 pure def sometimesMutedCaptureFinishesItsTurn(s: CloudSpeech): bool = s.capture == Muted and ownedTurn(s)
 ```
 
@@ -199,7 +204,7 @@ pure def audioArrived(s: CloudSpeech, utteranceId: str, audioMs: Millis): Speech
 pure val audioMsValues = Set(40, 100)
 pure def alwaysAReplyNeverPlaysAheadOfItsAudio(s: CloudSpeech): bool = { val r = s.reply  match r { | NoReply => true | Playing(x) => x.utteranceId != ""
   and x.pace >= minPace and x.pace <= maxPace and x.playedMs >= 0 and x.playedMs <= x.receivedMs and (x.completed implies x.playedMs < x.receivedMs) } }
-pure val weight_speak = 3
+pure val weight_speak = 6
 pure val weight_audioArrived = 3
 ```
 
@@ -220,8 +225,8 @@ pure def played(s: CloudSpeech, playedMs: Millis): SpeechStep = { val r = s.repl
   | Playing(x) => if (x.completed and x.playedMs + playedMs == x.receivedMs) settleReply(x.utteranceId, true, s)
       else speechStep(List(), { ...s, reply: Playing({ ...x, playedMs: x.playedMs + playedMs }) })
   | NoReply => speechStep(List(), s) } }
-pure val playedMsValues = Set(40, 60)
-pure val weight_played = 3
+pure val playedMsValues = Set(20, 40, 60)
+pure val weight_played = 6
 pure def canCancelReply(s: CloudSpeech): bool = s.reply != NoReply
 pure def cancelReply(s: CloudSpeech): SpeechStep = { val id = replyId(s.reply)  { state: { ...s, reply: NoReply }, out: List(CancelUtterance({ utteranceId: id }), ReplySettled({ utteranceId: id, completed: false })) } }
 pure def canOutputNotice(s: CloudSpeech, notice: O::OutputNotice): bool = s.phase == Live

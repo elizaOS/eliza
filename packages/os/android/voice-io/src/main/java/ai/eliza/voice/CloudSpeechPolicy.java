@@ -176,7 +176,6 @@ public final class CloudSpeechPolicy {
     record ConsentDismissed() implements Event {}
     record CredentialChanged(int version) implements Event {}
     record Minted(Answer answer) implements Event {}
-    record ProtocolEnd() implements Event {}
     record RelayLost() implements Event {}
     record FrameArrived(Frame frame) implements Event {}
     record Unmute(boolean recordAudio) implements Event {}
@@ -259,7 +258,7 @@ public final class CloudSpeechPolicy {
     return closeWith(s.audioStarted() ? new Ending.FailedAfterAudio(failure) : new Ending.FailedBeforeAudio(failure), s, first, wait);
   }
 
-  static Step protocolEnd(State s) { return failWith(Failure.REQUEST_FAILED, s, List.of(), NO_WAIT); }
+  private static Step protocolEnd(State s) { return failWith(Failure.REQUEST_FAILED, s, List.of(), NO_WAIT); }
 
   static Failure relayFailure(RelayErrorCode code, boolean funding) {
     if (code == RelayErrorCode.UNAUTHORIZED || funding) return Failure.ACCOUNT_INELIGIBLE;
@@ -340,7 +339,6 @@ public final class CloudSpeechPolicy {
       case Event.ConsentDismissed e -> asks(s.phase()) >= 1;
       case Event.CredentialChanged e -> e.version() >= 0 && e.version() != s.credential();
       case Event.Minted e -> s.phase() instanceof Phase.Minting;
-      case Event.ProtocolEnd e -> true;
       case Event.RelayLost e -> minted(s.phase());
       case Event.FrameArrived e -> minted(s.phase());
       case Event.Unmute e -> live(s) && s.capture() == Capture.MUTED && e.recordAudio();
@@ -382,7 +380,6 @@ public final class CloudSpeechPolicy {
       case Event.Minted e -> e.answer() instanceof Answer.Answered
         ? quiet(new State(s.credential(), s.bound(), CONNECTING, s.audioStarted(), s.capture(), s.generation(), s.turn(), s.reply(), s.batches(), s.endedBy()))
         : failWith(failureOf(e.answer()), s, keyReport(e.answer(), s.credential()), waitOf(e.answer()));
-      case Event.ProtocolEnd e -> protocolEnd(s);
       case Event.RelayLost e -> failWith(Failure.REMOTE_UNREACHABLE, s, List.of(), NO_WAIT);
       case Event.FrameArrived e -> frameArrived(s, e.frame());
       case Event.Unmute e -> new Step(s.capture(Capture.RESERVING), List.of(new Notice.ReserveLiveCapture()));

@@ -1,5 +1,5 @@
 // spec/os/appUpdate/admission.md, "A publication is authorized only when one approved graph at the floors binds the plan and every descriptor is approved and preflighted"
-import { PublisherInteger, RoleVersionsSchema, type PublisherPolicy } from "./publisher-policy.vibe"
+import { PublisherInteger, RoleVersionsSchema } from "./publisher-policy.vibe"
 
 module node {
   import { execFile } from "node:child_process"
@@ -162,14 +162,14 @@ const RoleEvidence = Schema.Struct({
   members: Schema.Array(DigestText).check(Schema.isMinLength(1), Schema.isMaxLength(16)),
   approvers: Schema.Array(DigestText).check(Schema.isMinLength(1), Schema.isMaxLength(16))
 })
-const VerifiedReport = Schema.Struct({
+const VerifiedReportSchema = Schema.Struct({
   graphVerified: Schema.Literal(true),
   timestampSha256: DigestText,
   versions: RoleVersionsSchema,
   descriptors: Schema.Record(Schema.String, Schema.Unknown),
   authority: Schema.Struct({ rootKeys: Schema.Array(DigestText), stable: RoleEvidence, beta: RoleEvidence })
 })
-export type VerifiedReport = typeof VerifiedReport.Type
+export type VerifiedReport = typeof VerifiedReportSchema.Type
 
 const PolicyInput = Schema.Struct({ trustedUpperMs: PublisherInteger, minimumVersions: RoleVersionsSchema })
 export effect function parseDescriptorJson(bytes: Uint8Array): unknown!PublicationFailed {
@@ -179,7 +179,7 @@ export effect function parseDescriptorJson(bytes: Uint8Array): unknown!Publicati
 export effect function verifyPublicationGraph(options: VerifyPublicationOptions): VerifiedReport!PublicationFailed {
   const policy = try mapError(Schema.decodeUnknownEffect(PolicyInput, { onExcessProperty: "error" })(options.policy), publicationFailure)
   const output = try tryPromise({ try: (signal) => runVerifier({ ...options, policy }, signal), catch: publicationFailure })
-  const report = try mapError(Schema.decodeUnknownEffect(VerifiedReport, { onExcessProperty: "error" })(output.report), publicationFailure)
+  const report = try mapError(Schema.decodeUnknownEffect(VerifiedReportSchema, { onExcessProperty: "error" })(output.report), publicationFailure)
   if (output.timestampSha256 !== report.timestampSha256) throw publicationFailure("The verifier report does not bind this timestamp")
   return report
 }

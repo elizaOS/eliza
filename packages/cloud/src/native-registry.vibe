@@ -1,8 +1,10 @@
 // spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"; spec/cloud/deployment.md, "A Worker serves only after the server's own start checks pass and its bindings agree with its profile"
 import {
-  clientCheck, defaultCredentialTtl, registryValid,
+  assetStatements, clientCheck, defaultCredentialTtl, registryValid,
   type Registration, type ReturnUrl
 } from "../gen/cloud__nativeClients__registry.effect.vibe"
+import { WorkerResponse } from "./worker-platform.ts"
+import { googleServerClientId } from "./native-google.vibe"
 
 export type NativeRegistryEnv = {
   CLOUD_ENVIRONMENT?: "production" | "staging"
@@ -12,6 +14,7 @@ export type NativeRegistryEnv = {
   NATIVE_CLIENT_ID?: string
   NATIVE_CLIENT_REGISTRY?: string
   GOOGLE_CLIENT_ID?: string
+  GOOGLE_CLIENT_SECRET?: string
 }
 
 const Nonempty = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))
@@ -21,7 +24,9 @@ const Entry = Schema.Struct({
   clientId: Nonempty, environment: Schema.Literals(["production", "staging"]),
   displayName: Nonempty, androidPackage: PackageName, certFingerprints: Schema.Array(Fingerprint),
   signInReturn: Schema.String, billingReturn: Schema.String, connectReturn: Schema.optionalKey(Schema.String),
-  credentialTtlMs: Schema.optionalKey(Schema.Int), nativeGoogle: Schema.optionalKey(Schema.Boolean), enabled: Schema.Boolean
+  credentialTtlMs: Schema.optionalKey(Schema.Int), nativeGoogle: Schema.optionalKey(Schema.Boolean), enabled: Schema.Boolean,
+  passwordBackupApproval: Schema.optionalKey(Schema.Literals(["browser", "native-google"])),
+  androidGoogleAuthorizedParties: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isPattern(googleServerClientId))))
 })
 const Registry = Schema.Array(Entry)
 
@@ -62,7 +67,9 @@ function registry(env: NativeRegistryEnv) {
   }
   const served: Registration["environment"] = env.CLOUD_ENVIRONMENT === "production" ? "Production" : "Staging"
   if (!registryValid(entries, served)) return null
-  return { entries, served }
+  return { entries, served, backupRegistrations: new Map(parsed.value.map((item) => [item.clientId, {
+    approval: item.passwordBackupApproval ?? "browser", presenters: item.androidGoogleAuthorizedParties ?? []
+  }])) }
 }
 
 export function browserNativeRegistration(env: NativeRegistryEnv) {
@@ -114,4 +121,27 @@ export function registrationText(r: Registration): string {
     returnLine(r.signInReturn), returnLine(r.billingReturn), r.connectReturn.tag === "ConnectsTo" ? returnLine(r.connectReturn.url) : "",
     String(r.credentialTtl), String(r.nativeGoogle), String(r.enabled)
   ].join("\n")
+}
+
+export function nativeBackupGoogle(env: NativeRegistryEnv, client: Registration) {
+  const audience = env.GOOGLE_CLIENT_ID
+  if (!client.nativeGoogle || !env.GOOGLE_CLIENT_SECRET || !audience || !googleServerClientId.test(audience)) return null
+  const registered = registry(env)?.backupRegistrations.get(client.clientId)
+  if (registered?.approval !== "native-google" || !registered.presenters.length || registered.presenters.includes(audience)) return null
+  return { audience, presenters: registered.presenters }
+}
+
+export function browserBackupApprovalAllowed(env: NativeRegistryEnv, clientId: string) {
+  return registry(env)?.backupRegistrations.get(clientId)?.approval === "browser"
+}
+
+export function nativeAssetLinks(env: NativeRegistryEnv) {
+  const current = registry(env)
+  const headers = { "cache-control": "no-store" }
+  if (!current) return WorkerResponse.json({ error: "native_clients_unconfigured" }, { status: 404, headers })
+  const statements = assetStatements(current.entries, current.served)
+  return WorkerResponse.json(statements.map(({ packageName, fingerprints }) => ({
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: { namespace: "android_app", package_name: packageName, sha256_cert_fingerprints: fingerprints }
+  })), { headers })
 }

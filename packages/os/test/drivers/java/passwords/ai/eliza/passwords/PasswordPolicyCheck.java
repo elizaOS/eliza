@@ -307,10 +307,6 @@ public final class PasswordPolicyCheck {
     return PasswordBackupApproval.admit(BACKUP, purpose, STATE, VERIFIER, OWNER, grant, CURRENT::get);
   }
 
-  private static PasswordBackupApproval approveNative(Purpose purpose, Grant grant) throws Exception {
-    return PasswordBackupApproval.admitNative(BACKUP, purpose, STATE, VERIFIER, OWNER, grant, CURRENT::get);
-  }
-
   private void backup() throws Exception {
     URL.setURLStreamHandlerFactory(scheme -> "https".equals(scheme) ? new URLStreamHandler() {
       @Override protected URLConnection openConnection(URL url) {
@@ -326,10 +322,10 @@ public final class PasswordPolicyCheck {
     PasswordBackupApproval verified = approve(Purpose.VERIFY, grant(null, "account-1", "organization-1"));
     check("a verification names the current owner", "account-1".equals(verified.ownerId()) && "organization-1".equals(verified.organizationId()));
     rejects("a verification transfers nothing", null, () -> verified.run(null, null));
-    rejects("a native approval for another account", null, () -> approveNative(Purpose.SAVE, grant(PROOF, "account-2", "organization-1")));
-    rejects("a native approval for another organization", null, () -> approveNative(Purpose.SAVE, grant(PROOF, "account-1", "organization-2")));
-    rejects("a native verification without its wire proof", null, () -> approveNative(Purpose.VERIFY, grant(null, "account-1", "organization-1")));
-    var nativeVerified = approveNative(Purpose.VERIFY, new Grant(PROOF, "a".repeat(64), "account-1", "organization-1", null, false));
+    rejects("a native verification for another account", null, () -> approve(Purpose.VERIFY, grant(null, "account-2", "organization-1")));
+    rejects("a native verification for another organization", null, () -> approve(Purpose.VERIFY, grant(null, "account-1", "organization-2")));
+    rejects("a transfer without an operation proof", null, () -> approve(Purpose.SAVE, grant(null, "account-1", "organization-1")));
+    var nativeVerified = approve(Purpose.VERIFY, new Grant(null, "a".repeat(64), "account-1", "organization-1", null, false));
     check("native verification names the current owner", OWNER.accountId().equals(nativeVerified.ownerId()) && OWNER.organizationId().equals(nativeVerified.organizationId()));
     rejects("native verification cannot transfer the backup", null, () -> nativeVerified.run(null, null));
     check("verification and refused grants never connect to the backup endpoint", connections == 0);

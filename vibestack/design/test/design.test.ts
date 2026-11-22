@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 import { expect, onTestFinished, test } from "vitest"
 import { designSystem } from "../eslint.ts"
 import { check, syncDoc, themeCss, tokensCss } from "../generate.ts"
+import { buildTokenProject, checkTokenProject } from "../project.ts"
 import { type Tokens, applyChanges, palette, parseTokens } from "../tokens.ts"
 
 const here = (file: string) => resolve(import.meta.dirname, file)
@@ -190,11 +191,18 @@ test("a build that changes nothing rewrites nothing, and the ESLint config flags
   const copy = mkdtempSync(join(dir, ".cache/design-test-"))
   onTestFinished(() => rmSync(copy, { recursive: true, force: true }))
   for (const file of ["tokens.json", "design.md"]) cpSync(join(dir, file), join(copy, file))
-  const build = () => {
-    execFileSync("node", [here("../cli.ts"), "build"], { cwd: copy })
-    return ["generated/tokens.css", "generated/theme.css", "design.md"].map((file) => statSync(join(copy, file), { bigint: true }).mtimeNs)
-  }
-  expect(build()).toEqual(build())
+  const outputs = ["generated/tokens.css", "generated/theme.css", "design.md"]
+  const snapshot = () => outputs.map((file) => {
+    const path = join(copy, file)
+    return { text: readFileSync(path, "utf8"), modified: statSync(path, { bigint: true }).mtimeNs }
+  })
+  execFileSync("node", [here("../cli.ts"), "build"], { cwd: copy })
+  const published = snapshot()
+  execFileSync("node", [here("../cli.ts"), "build"], { cwd: copy })
+  expect(snapshot()).toEqual(published)
+  buildTokenProject(copy)
+  expect(snapshot()).toEqual(published)
+  expect(checkTokenProject(copy)).toEqual([])
   const [{ ESLint }, { default: tailwind }, { parser }] = await Promise.all(["eslint", "eslint-plugin-better-tailwindcss", "typescript-eslint"].map(load))
   const linter = (name: string, json: string) => {
     mkdirSync(join(copy, name))

@@ -1,7 +1,7 @@
-// spec/os/update/operator.md, "One device has one operator: every journal change and device write happens under the device's install lock"; spec/os/update/operator.md, "Each run resumes from what the device shows, sends the package only under a marked lock, and refuses a foreign build or the installed build on the other slot"
+// spec/os/update/operator.md, "One device has one operator: every journal change and device write happens under the device's install lock"; spec/os/update/operator.md, "Each run resumes from what the device shows, sends the package only under a marked lock, and refuses a foreign build or the installed build on the other slot"; spec/os/update/operator.md, "Status can read earlier journal formats without adopting an update"
 import {
-  acquireLock, beginWrites, canBeginWrites, decodeState, initial, inv, lockHeld, releaseLock, removeLeftLock,
-  type OperatorJournal, type OperatorPhase,
+  acquireLock, beginWrites, canBeginWrites, decodeState, initial, inv, lockHeld, readsLegacyJournal, releaseLock, removeLeftLock,
+  type LegacyJournalUse, type OperatorJournal, type OperatorPhase,
 } from "../../gen/os__update__operator.effect.vibe"
 import type { BootState } from "../../gen/os__image__verification.effect.vibe"
 import { acquireDeviceLease, HELD_FOR_THE_RUN, legacyInstallLockPath, markDeviceLeaseForWrites, settleDeviceLease, writeDurableDeviceState, type AdbSerial } from "./device.vibe"
@@ -41,8 +41,8 @@ const decodeLegacy = Schema.decodeUnknownEffect(Schema.Struct({
   release: Schema.Struct({ device: identity, product: identity, channel: identity, fingerprint: identity, securityPatch: identity,
     otaSha256: digest, recordSha256: digest }),
   from: Schema.Struct({ fingerprint: identity, slot: Schema.Literals(["a", "b"]),
-    verifiedBootState: Schema.Literals(["green", "yellow", "orange", "red"]), flashLocked: Schema.Union([Schema.Boolean, Schema.Literals(["0", "1"])]),
-    virtualAb: Schema.Boolean, recordSha256: digest }),
+    verifiedBootState: Schema.Literals(["green", "yellow", "orange", "red"]),
+    flashLocked: Schema.Union([Schema.Boolean, Schema.Literals(["0", "1"])]), virtualAb: Schema.Boolean, recordSha256: digest }),
 }))
 const legacyPhases = new Map<string, OperatorPhase>([
   ["preflight", "AwaitingSideload"], ["interrupted", "AwaitingSideload"], ["recovery", "AwaitingSideload"], ["sideload-unavailable", "AwaitingSideload"],
@@ -64,7 +64,7 @@ export interface JournalAdoption {
   readonly candidatePatch: number
 }
 
-effect function readStored(file: string, serial: string) {
+effect function readStored(file: string, serial: string, use: LegacyJournalUse) {
   const files = try FileSystem.FileSystem
   if (!(try files.exists(file))) return undefined
   const info = try files.stat(file)
@@ -77,25 +77,28 @@ effect function readStored(file: string, serial: string) {
     return { kind: "bound", binding: stored.binding, state, createdAt: stored.createdAt, events: stored.events ?? [] } as const
   }
   const legacy = try decodeLegacy(raw)
-  const phase = legacyPhases.get(legacy.state)
+  const { flashLocked } = legacy.from
+  const interrupted = legacy.state === "interrupted"
+  const phase = interrupted ? "AwaitingSideload" : legacyPhases.get(legacy.state)
   const candidatePatch = patchLevel(legacy.release.securityPatch)
-  if (legacy.serial !== serial || phase === undefined || candidatePatch === 0 || legacy.from.fingerprint === legacy.release.fingerprint) {
+  if (!readsLegacyJournal(use, { propertyLock: typeof flashLocked === "string", interrupted }) ||
+      legacy.serial !== serial || phase === undefined || candidatePatch === 0 || legacy.from.fingerprint === legacy.release.fingerprint) {
     throw new OtaRefused({ reason: "Earlier OTA journal is invalid or belongs to a different device" })
   }
   const state: OperatorJournal = { phase, lock: { tag: "Unlocked" }, start: { device: legacy.release.device,
     installedBuild: legacy.from.fingerprint, candidateBuild: legacy.release.fingerprint, candidatePatch,
     originalSlot: legacy.from.slot === "a" ? "SlotA" : "SlotB", originalBoot: bootStates[legacy.from.verifiedBootState],
-    wasLocked: legacy.from.flashLocked === true || legacy.from.flashLocked === "1", virtualAb: legacy.from.virtualAb } }
+    wasLocked: flashLocked === true || flashLocked === "1", virtualAb: legacy.from.virtualAb } }
   if (!inv(state)) throw new OtaRefused({ reason: "Earlier OTA journal has an invalid state" })
   return { kind: "legacy", state, legacy, createdAt: undefined, events: [] } as const
 }
 
 export effect function readOperatorStatus(file: string, serial: string) {
-  return (try readStored(file, serial))?.state
+  return (try readStored(file, serial, "LegacyStatus"))?.state
 }
 
 export effect function readOperatorJournal(file: string, serial: string, adoption?: JournalAdoption) {
-  const stored = try readStored(file, serial)
+  const stored = try readStored(file, serial, "LegacyAdoption")
   if (stored === undefined) return undefined
   if (stored.kind === "bound") return { binding: stored.binding, state: stored.state, adopted: false, createdAt: stored.createdAt, events: stored.events }
   const { legacy, state } = stored

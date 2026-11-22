@@ -16,22 +16,22 @@ import { composeMessage } from "./mail-compose.vibe"
 export type LabelKind = "archive" | "unarchive" | "trash" | "untrash" | "mark-read" | "mark-unread" | "star" | "unstar"
 export type ComposeKind = "send" | "draft-create" | "draft-replace"
 export type OperationKind = ComposeKind | "draft-delete" | LabelKind
-export type WireState = "prepared" | "dispatched" | "succeeded" | "rejected" | "outcome-unknown"
+type WireState = "prepared" | "dispatched" | "succeeded" | "rejected" | "outcome-unknown"
 
-export interface Owner {
+interface Owner {
   readonly organizationId: string
   readonly userId: string
 }
 
-export interface Scope {
+interface Scope {
   readonly owner: Owner
   readonly grantId: string
   readonly requestId: string
 }
 
-export type ProviderResult = Readonly<Record<string, unknown>>
+type ProviderResult = Readonly<Record<string, unknown>>
 
-export interface Operation {
+interface Operation {
   readonly receipt: Receipt
   readonly kind: OperationKind
   readonly reviewDigest: string
@@ -74,7 +74,7 @@ interface GmailMessage {
   readonly historyId?: string
 }
 
-export const staleAfter = 90 * millisPerSecond
+const staleAfter = 90 * millisPerSecond
 const preparedFor = millisPerDay
 const maxProposalBytes = 12 * 1024 * 1024
 const gmail = "/gmail/v1/users/me"
@@ -136,7 +136,7 @@ function senderOf(owner: Owner): SessionOwner {
   return { agentId: owner.organizationId, actorId: owner.userId, connector: "gmail_operation" }
 }
 
-export function operationRows(by: SessionOwner) {
+function operationRows(by: SessionOwner) {
   return machineRows<Receipt, Event, Rejected, NotAState>("mail_operations", { initial, decodeState, apply: (state, event) => apply(state, event, by) })
 }
 
@@ -144,7 +144,7 @@ function rowsFor(owner: Owner) {
   return operationRows(senderOf(owner))
 }
 
-export function rowKey(scope: Scope): string {
+function rowKey(scope: Scope): string {
   return [scope.owner.organizationId, scope.owner.userId, scope.grantId, scope.requestId].map(encodeURIComponent).join("/")
 }
 
@@ -164,7 +164,7 @@ function at(receipt: Receipt, now: number): Receipt {
 
 const toNow = (now: number) => (receipt: Receipt): Event | undefined => now > receipt.session.now ? { type: "elapse", elapsed: now - receipt.session.now } : undefined
 
-export function wireState(receipt: Receipt): WireState {
+function wireState(receipt: Receipt): WireState {
   const status = receiptStatus(receipt)
   switch (status) {
     case "StatusAbsent":
@@ -189,7 +189,7 @@ function iso(millis: number): string | null {
   return millis > 0 ? new Date(millis).toISOString() : null
 }
 
-export function wireReceipt(scope: Scope, operation: Operation, now: number) {
+function wireReceipt(scope: Scope, operation: Operation, now: number) {
   const receipt = at(operation.receipt, now)
   const state = wireState(receipt)
   return {
@@ -205,7 +205,7 @@ export function wireReceipt(scope: Scope, operation: Operation, now: number) {
   }
 }
 
-export function operationColumns(scope: Scope, kind: OperationKind, now: number, result: ProviderResult | null) {
+function operationColumns(scope: Scope, kind: OperationKind, now: number, result: ProviderResult | null) {
   return (receipt: Receipt): Columns => ({
     organization_id: scope.owner.organizationId,
     user_id: scope.owner.userId,
@@ -518,7 +518,7 @@ effect function dispatchRoute(context: RouteContext) {
   return answer(scope, operation, settledAt)
 }
 
-export effect function lookupOperation(scope: Scope, now: number) {
+effect function lookupOperation(scope: Scope, now: number) {
   const store = try Store
   const existing = try store.transaction((tx) => readOperation(tx, scope))
   if (existing === undefined) throw refused("NotFound")
@@ -542,7 +542,7 @@ effect function lookupRoute(context: RouteContext) {
 
 const sweepBatch = 100
 
-export effect function sweepStaleOperations(): number!!Store {
+effect function sweepStaleOperations(): number!!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const stale = store.transaction((tx) => tx.query(

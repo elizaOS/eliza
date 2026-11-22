@@ -15,73 +15,87 @@ import org.json.JSONObject;
 
 public final class SharedPasswordBackup {
   private static final String BACKUP = "/api/v1/app-auth/mobile/password-backup";
-  private static final String NATIVE_GOOGLE = "/steward/auth/oauth/google/native/";
-  private static final String PROVIDERS = "/steward/auth/providers";
-  private static final String LOGOUT = "/steward/auth/logout";
 
-  private final CodeSignIn.Http http;
-  private final String appClientId;
-  private final SignInRegistration.Environment environment;
-  private final String tenantId;
-  private final String googleClientId;
-  private final URI endpoint;
-
-  public SharedPasswordBackup(SignInRegistration registration, SignInRegistration.Environment environment,
-      String tenantId, String googleClientId) {
-    this(CodeSignIn.CONNECTION, registration, environment, tenantId, googleClientId);
+  interface Readiness {
+    boolean advertises(URI endpoint, String version) throws IOException;
   }
 
-  SharedPasswordBackup(CodeSignIn.Http http, SignInRegistration registration, SignInRegistration.Environment environment,
-      String tenantId, String googleClientId) {
-    if (environment != registration.environment(environment.name)
-        || !tenantId.matches("[A-Za-z0-9_-]{1,128}") || !googleClientId.matches("[A-Za-z0-9_-]{1,128}")) {
+  private record ApprovalProof(String state, String verifier, JSONObject body) {}
+
+  private final CodeSignIn.Http http;
+  private final Readiness readiness;
+  private final String appClientId;
+  private final SignInRegistration.Environment environment;
+  private final URI endpoint;
+
+  public SharedPasswordBackup(SignInRegistration registration, SignInRegistration.Environment environment) {
+    this(CodeSignIn.CONNECTION, PasswordBackupApproval::advertisesNative, registration, environment);
+  }
+
+  SharedPasswordBackup(CodeSignIn.Http http, Readiness readiness, SignInRegistration registration,
+      SignInRegistration.Environment environment) {
+    if (environment != registration.environment(environment.name)) {
       throw new IllegalArgumentException("Invalid shared password backup registration");
     }
     this.http = http;
+    this.readiness = readiness;
     this.appClientId = registration.clientId;
     this.environment = environment;
-    this.tenantId = tenantId;
-    this.googleClientId = googleClientId;
     this.endpoint = URI.create(environment.apiOrigin + BACKUP);
   }
 
   public boolean available() {
     try {
-      URI readiness = URI.create(endpoint + "/readiness?clientId=" + encode(appClientId));
-      if (!PasswordBackupApproval.advertisesNativeV2(readiness)) return false;
-      CodeSignIn.Answer discovery = http.send("GET", environment.apiOrigin + PROVIDERS
-        + "?tenantId=" + encode(tenantId) + "&clientId=" + encode(googleClientId), null, null);
-      JSONObject app = discovery.body().optJSONObject("nativeGoogleApp");
-      return discovery.status() == 200 && app != null && googleClientId.equals(app.opt("clientId"))
-        && Boolean.TRUE.equals(app.opt("ready"));
+      return confirmedReadiness();
     } catch (IOException | RuntimeException unavailable) {
       return false;
     }
   }
 
-  public Attempt begin(Purpose purpose, Owner owner, BooleanSupplier active) throws IOException {
+  private boolean confirmedReadiness() throws IOException {
+    URI probe = URI.create(endpoint + "/readiness?clientId=" + encode(appClientId)
+      + "&environment=" + encode(environment.name) + "&redirectUri=" + encode(environment.redirectUri)
+      + "&approval=native-google");
+    return readiness.advertises(probe, "3");
+  }
+
+  private ApprovalProof approvalProof(Purpose purpose) throws IOException {
+    String state = SignInPolicy.newState();
+    String verifier = SignInPolicy.newVerifier();
+    return new ApprovalProof(state, verifier, CodeSignIn.json(
+      "clientId", appClientId, "environment", environment.name, "redirectUri", environment.redirectUri,
+      "purpose", purpose.value(), "state", state, "codeChallenge", SignInPolicy.s256(verifier),
+      "codeChallengeMethod", "S256"));
+  }
+
+  public Attempt begin(Purpose purpose, Owner owner, String deviceCredential, BooleanSupplier active) throws IOException {
     Objects.requireNonNull(purpose);
     if (owner == null || !SignInPolicy.validUuid(owner.accountId()) || !SignInPolicy.validUuid(owner.organizationId())) {
       throw new IOException("A verified account is required");
     }
+    if (deviceCredential == null || !deviceCredential.matches("eliza_mobile_[0-9a-f]{64}")) {
+      throw new IOException("An acknowledged native device is required");
+    }
     requireActive(active);
+    if (!confirmedReadiness()) throw new IOException("Native password backup verification is unavailable");
+    requireActive(active);
+    ApprovalProof proof = approvalProof(purpose);
     String verifier = SignInPolicy.newVerifier();
-    CodeSignIn.Answer reply = post(NATIVE_GOOGLE + "challenge", CodeSignIn.json(
-      "tenantId", tenantId, "clientId", googleClientId, "codeChallenge", SignInPolicy.s256(verifier),
-      "codeChallengeMethod", "S256"), null);
+    CodeSignIn.Answer reply = post("/native/challenge", CodeSignIn.json(
+      "approval", proof.body(), "googleChallenge", SignInPolicy.s256(verifier)), deviceCredential);
     JSONObject body = reply.body();
     String id = body.optString("challengeId", "");
     String nonce = body.optString("nonce", "");
     String audience = body.optString("serverClientId", "");
     long now = System.currentTimeMillis();
     long expires = SignInPolicy.instant(body.opt("expiresAt"));
-    if (reply.status() != 200 || !Boolean.TRUE.equals(body.opt("ok")) || id.isEmpty() || id.length() > 256
+    if (reply.status() != 200 || id.isEmpty() || id.length() > 256
         || !SignInPolicy.validNonce(nonce) || !SignInPolicy.validServerClientId(audience)
         || expires <= now || expires - now > SignInPolicy.MAX_CHALLENGE_LIFETIME_MS) {
       throw new IOException("Native password backup verification is unavailable");
     }
     requireActive(active);
-    return new Attempt(new GoogleSignIn.Challenge(id, nonce, audience, expires, verifier), purpose, owner, active);
+    return new Attempt(new GoogleSignIn.Challenge(id, nonce, audience, expires, verifier), purpose, owner, active, proof, deviceCredential);
   }
 
   public final class Attempt {
@@ -89,13 +103,18 @@ public final class SharedPasswordBackup {
     private final Purpose purpose;
     private final Owner owner;
     private final BooleanSupplier active;
+    private final ApprovalProof proof;
+    private final String deviceCredential;
     private boolean used;
 
-    private Attempt(GoogleSignIn.Challenge challenge, Purpose purpose, Owner owner, BooleanSupplier active) {
+    private Attempt(GoogleSignIn.Challenge challenge, Purpose purpose, Owner owner, BooleanSupplier active,
+        ApprovalProof proof, String deviceCredential) {
       this.challenge = challenge;
       this.purpose = purpose;
       this.owner = owner;
       this.active = active;
+      this.proof = proof;
+      this.deviceCredential = deviceCredential;
     }
 
     public GoogleSignIn.Challenge challenge() { return challenge; }
@@ -104,27 +123,19 @@ public final class SharedPasswordBackup {
       claim();
       if (picked == null || !SignInPolicy.validIdToken(picked.idToken())) throw new IOException("Native Google verification is required");
       requireCurrent();
-      CodeSignIn.Answer reply = post(NATIVE_GOOGLE + "verify", CodeSignIn.json(
-        "tenantId", tenantId, "clientId", googleClientId, "challengeId", challenge.challengeId(),
-        "idToken", picked.idToken(), "codeVerifier", challenge.verifier()), null);
-      if (reply.status() != 200) throw new IOException("Native Google verification was refused");
-      JSONObject response = reply.body();
-      JSONObject nested = response.optJSONObject("data");
-      JSONObject session = nested != null && !response.has("token") ? nested : response;
-      String token = session.optString("token", "");
-      if (!SignInPolicy.validBearer(token) || token.startsWith("eliza_") || token.startsWith("pbackup_")) {
-        throw new IOException("A fresh Steward session is required");
-      }
-      try {
-        Object mfa = session.opt("mfaRequired");
-        if (mfa != null && !Boolean.FALSE.equals(mfa)) throw new IOException("Native Google verification requires another factor");
-        requireCurrent();
-        if (!confirm.getAsBoolean()) throw new IOException("Password backup consent was declined");
-        requireCurrent();
-        return grant(token);
-      } finally {
-        revoke(token, session.optString("refreshToken", ""));
-      }
+      if (!confirm.getAsBoolean()) throw new IOException("Password backup consent was declined");
+      requireCurrent();
+      CodeSignIn.Answer answer = post("/native/approve", CodeSignIn.json(
+        "approval", proof.body(), "challengeId", challenge.challengeId(), "googleVerifier", challenge.verifier(),
+        "idToken", picked.idToken(), "consent", true), deviceCredential);
+      if (answer.status() != 200) throw new IOException("Password backup approval was refused");
+      requireCurrent();
+      JSONObject body = answer.body();
+      if (!body.has("code") || !body.has("revision")) throw new IOException("Incomplete password backup approval");
+      Grant grant = new Grant(body.isNull("code") ? null : body.opt("code"), body.optString("scope", null),
+        body.optString("ownerId", null), body.opt("organizationId"),
+        body.isNull("revision") ? null : body.opt("revision"), body.opt("present"));
+      return PasswordBackupApproval.admit(endpoint, purpose, proof.state(), proof.verifier(), owner, grant, active);
     }
 
     private synchronized void claim() throws IOException {
@@ -136,35 +147,10 @@ public final class SharedPasswordBackup {
       requireActive(active);
       if (System.currentTimeMillis() >= challenge.expiresAt()) throw new IOException("Native password backup verification expired");
     }
-
-    private PasswordBackupApproval grant(String shortLivedSession) throws IOException {
-      String state = SignInPolicy.newState();
-      String verifier = SignInPolicy.newVerifier();
-      CodeSignIn.Answer answer = post(BACKUP, CodeSignIn.json(
-        "clientId", appClientId, "environment", environment.name, "redirectUri", environment.redirectUri,
-        "purpose", purpose.value(), "state", state, "codeChallenge", SignInPolicy.s256(verifier),
-        "codeChallengeMethod", "S256"), shortLivedSession);
-      if (answer.status() != 200) throw new IOException("Password backup approval was refused");
-      requireCurrent();
-      JSONObject body = answer.body();
-      if (!body.has("revision")) throw new IOException("Missing password backup revision");
-      Grant grant = new Grant(body.opt("code"), body.optString("scope", null), body.optString("ownerId", null),
-        body.opt("organizationId"), body.isNull("revision") ? null : body.opt("revision"), body.opt("present"));
-      return PasswordBackupApproval.admitNative(endpoint, purpose, state, verifier, owner, grant, active);
-    }
   }
 
-  private void revoke(String token, String refreshToken) {
-    try {
-      JSONObject body = SignInPolicy.validBearer(refreshToken) ? CodeSignIn.json("refreshToken", refreshToken) : new JSONObject();
-      post(LOGOUT, body, token);
-    } catch (IOException | RuntimeException unavailable) {
-      return;
-    }
-  }
-
-  private CodeSignIn.Answer post(String path, JSONObject body, String token) throws IOException {
-    return http.post(environment.apiOrigin + path, body, token);
+  private CodeSignIn.Answer post(String suffix, JSONObject body, String token) throws IOException {
+    return http.post(endpoint + suffix, body, token);
   }
 
   private static void requireActive(BooleanSupplier active) throws IOException {

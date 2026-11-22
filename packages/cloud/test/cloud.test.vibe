@@ -33,9 +33,9 @@ import { s256, signedIn } from "./support/identity-fixture.ts"
 import { connectionColumns, connectionRows, scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
 import { issueSession } from "../src/identity/sessions.vibe"
 import { sealTokens } from "../src/providers/google.vibe"
-import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
+import { bearerGrant, googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
-import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
+import { gmailReads, mimeBoundaryPayload, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
 import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
@@ -581,7 +581,7 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
       try registered(cloud, undefined, effect (tx: Tx, now: number) => { return (try registerClient(tx, try decodeRegistration(two), now)).clientId }),
       try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try registerClient(tx, try decodeRegistration({ ...two, clientId: "com.example.three", signInReturn: "https://api.staging.example.com/apps/three", billingReturn: `${web}/apps/three/billing`, androidPackage: "com.example.three" }), now) }),
       try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try registerClient(tx, try decodeRegistration({ ...two, clientId: "com.example.four", androidPackage: "com.example.one", signInReturn: `${web}/apps/four/sign-in`, billingReturn: `${web}/apps/four/billing` }), now) }),
-      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try decodeRegistration({ ...two, signInReturn: `${web}/apps/two/sign-in?next=1` }) }),
+      try registered(cloud, undefined, effect () => { return try decodeRegistration({ ...two, signInReturn: `${web}/apps/two/sign-in?next=1` }) }),
       try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try updateClient(tx, try decodeRegistration({ ...two, clientId: "com.example.unknown", androidPackage: "com.example.unknown" }), now) })
     ]
     const admitted = try cloud.call(configPath("com.example.one", "staging", signInOne))
@@ -668,7 +668,7 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
 
   it.live("Tell an app that Google sign-in is off (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
     const googleOff: ProfileEdit = (profile) => {
-      const { google, ...staging } = profile.environments.staging
+      const { google: _google, ...staging } = profile.environments.staging
       return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
     }
     const cloud = try testCloud({ edit: googleOff })
@@ -691,7 +691,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
   const person: GooglePerson = { subject: "google-native-1", email: "native@example.com", emailVerified: true, givenName: "Native" }
   const scopes = ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"]
   const googleOff: ProfileEdit = (profile) => {
-    const { google, ...staging } = profile.environments.staging
+    const { google: _google, ...staging } = profile.environments.staging
     return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
   }
 
@@ -1657,9 +1657,114 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
   }), 60_000)
 })
 describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => {
+  it.live('Notice new inbox mail through the Node service (spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately")', () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    const now = 1_800_000_000_000
+    try sync(() => clock.set(now))
+    provide Clock.Clock = clock.clock {
+      const google = try sync(() => googleFakeState())
+      const started = Promise.withResolvers<void>()
+      const closed = Promise.withResolvers<boolean>()
+      const historyRead = Promise.withResolvers<void>()
+      const releaseHistory = Promise.withResolvers<void>()
+      let provider = "empty"
+      const cloud = try testCloud({ mount: (fakes) => {
+        fakes.mount("/google/", mountGoogleToken(google))
+        fakes.mount("/google/api/", (request) => {
+          if (bearerGrant(google, request) === undefined) return { status: 401 }
+          if (request.path === "/gmail/v1/users/me/profile") return { status: 200, body: { historyId: "1000" } }
+          if (request.path !== "/gmail/v1/users/me/history") return undefined
+          if (provider === "hanging") {
+            started.resolve()
+            return { status: 200, chunks: ["{"], hangAfter: 1, onClose: closed.resolve }
+          }
+          if (provider === "held") {
+            historyRead.resolve()
+            return releaseHistory.promise.then(() => ({ status: 200, body: { historyId: "1001", history: [] } }))
+          }
+          if (provider === "arrived" && !request.query.has("pageToken")) return { status: 200, body: { historyId: "1001", nextPageToken: "more" } }
+          const history = provider === "arrived" ? [{ id: "1001", messagesAdded: [{ message: { id: "new-mail" } }] }] : []
+          return { status: 200, body: { historyId: "1001", history } }
+        })
+      } })
+      const device = try signedCaller(cloud, "mail-arrival")
+      const other = try signedCaller(cloud, "other-mail-arrival")
+      const browser = try cloud.store.transaction((tx) => issueSession(tx, { ...device, assurance: "SingleFactor", accountCreated: false, now }))
+      const freshSession = try cloud.store.transaction((tx) => issueSession(tx, { ...device, assurance: "SingleFactor", accountCreated: false, now }))
+      const web = { authorization: `Bearer ${browser.accessToken}` }
+      const otherSession = { authorization: `Bearer ${freshSession.accessToken}` }
+      const grant = "a82cab0c-2443-4d7d-b7c3-d77142db3478"
+      const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+      const refresh = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
+      try cloud.inside(linkedGrant(cloud, device, grant, refresh, scopes, now - 1000))
+
+      const path = "/api/v1/eliza/google/gmail/inbox-v1/arrival"
+      const selected = `?grantId=${grant}`
+      const baseline = try cloud.call(path, { headers: device.headers })
+      const browserBaseline = try cloud.call(path + selected, { headers: web })
+      const cursorOf = (answer: { readonly body: unknown }) => (answer.body as { readonly cursor: string }).cursor
+      const cursor = cursorOf(baseline)
+      const webCursor = cursorOf(browserBaseline)
+      try check(() => { assert.match(cursor, /^[a-f0-9]+$/); assert.match(webCursor, /^[a-f0-9]+$/) })
+      const poll = `${path}?cursor=${cursor}`
+      const empty = try cloud.call(poll, { headers: device.headers })
+      provider = "arrived"
+      const arrived = try cloud.call(poll, { headers: device.headers })
+      const history = cloud.fakes.seen.filter((request) => request.path.endsWith("/history"))
+      const beforeRefusals = cloud.fakes.seen.length
+      const anonymous = try cloud.call(path)
+      const unspecified = try cloud.call(path, { headers: web })
+      const foreign = try cloud.call(path + selected, { headers: other.headers })
+      const acrossSessions = try cloud.call(`${path}${selected}&cursor=${webCursor}`, { headers: otherSession })
+      const malformed = try cloud.call(poll + "0", { headers: device.headers })
+      try check(() => assert.equal(cloud.fakes.seen.length, beforeRefusals))
+
+      provider = "hanging"
+      const cancelled = try timeout(promise(async () => {
+        const controller = new AbortController()
+        const pending = openCloud(cloud.url, poll, { headers: device.headers, signal: controller.signal }).then(
+          () => false, (failure: unknown) => failure instanceof Error && failure.name === "AbortError"
+        )
+        await started.promise
+        controller.abort()
+        return [await pending, await closed.promise]
+      }), "5 seconds")
+
+      try sync(() => clock.set(now + 300_000))
+      const beforeExpiry = cloud.fakes.seen.length
+      const expired = try cloud.call(poll, { headers: device.headers })
+      try check(() => assert.equal(cloud.fakes.seen.length, beforeExpiry))
+
+      const fresh = try cloud.call(path, { headers: device.headers })
+      const freshPoll = `${path}?cursor=${cursorOf(fresh)}`
+      provider = "held"
+      const reading = try forkChild(cloud.call(freshPoll, { headers: device.headers }))
+      try timeout(promise(() => historyRead.promise), "5 seconds")
+      const disconnected = try cloud.call("/api/v1/eliza/google/disconnect", { headers: device.headers, json: { grantId: grant } })
+      try sync(() => releaseHistory.resolve())
+      const lostDuringRead = try Fiber.join(reading)
+      const beforeRevoked = cloud.fakes.seen.length
+      const lostBeforeRead = try cloud.call(freshPoll, { headers: device.headers })
+      try check(() => {
+        assert.deepStrictEqual([baseline.body, browserBaseline.body, empty.body, arrived.body], [
+          { cursor, arrived: false }, { cursor: webCursor, arrived: false }, { cursor, arrived: false }, { cursor, arrived: true }
+        ])
+        assert.deepStrictEqual([baseline.status, browserBaseline.status, empty.status, arrived.status, baseline.headers["cache-control"]], [200, 200, 200, 200, "no-store"])
+        assert.deepStrictEqual(history.map(({ query }) => [query.get("startHistoryId"), query.get("labelId"), query.get("historyTypes"), query.get("pageToken")]),
+          [["1000", "INBOX", "messageAdded", null], ["1000", "INBOX", "messageAdded", null], ["1000", "INBOX", "messageAdded", "more"]])
+        assert.deepStrictEqual([anonymous.status, unspecified.status, foreign.status, acrossSessions.status, malformed.status, expired.status], [401, 400, 404, 409, 409, 409])
+        assert.deepStrictEqual(cancelled, [true, false])
+        assert.deepStrictEqual([disconnected.status, errorOf(lostDuringRead), errorOf(lostBeforeRead)],
+          [200, [409, "google_reauth_required"], [409, "google_reauth_required"]])
+        assert.equal(cloud.fakes.seen.length, beforeRevoked)
+      })
+    }
+  }))
+
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
     const now = try Clock.currentTimeMillis
+    const wholeText = "é".repeat(4 * 1024 * 1024)
     const mailbox = try Effect.try(() => readableMailbox([
       {
         id: "msg-direct", threadId: "thr-direct", labelIds: ["INBOX", "UNREAD", "IMPORTANT"], internalDate: now - 60_000,
@@ -1673,8 +1778,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
       },
       {
-        id: "msg-digest", threadId: "thr-digest", labelIds: ["INBOX"], internalDate: now - 120_000,
-        headers: { From: "News <noreply@news.example>", To: "conn-mail@example.com", Subject: "Weekly digest", "List-Id": "<digest.news.example>" }, snippet: "digest", bodyText: "x".repeat(300 * 1024)
+        id: "msg-digest", threadId: "thr-digest", labelIds: ["INBOX"], internalDate: now - 30_000,
+        headers: { From: "News <noreply@news.example>", To: "conn-mail@example.com", Subject: "Weekly digest", "List-Id": "<digest.news.example>" }, snippet: "digest", bodyText: wholeText
       },
       {
         id: "msg-trashed", threadId: "thr-trashed", labelIds: ["TRASH"], internalDate: now - 30_000,
@@ -1684,13 +1789,22 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example" }
         ],
         headers: { From: "ada@example.org", Subject: "Old plan" }, snippet: "plan"
-      }
+      },
+      { id: "msg-oversized", threadId: "thr-oversized", labelIds: ["TRASH"], internalDate: now, bodyText: wholeText + "x" }
     ]))
     const draftRaw = btoa("To: ada@example.org\r\nSubject: Re: Quarterly plan\r\n\r\nLooks good.").replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
     mailbox.drafts.set("draft-1", { id: "draft-1", messageId: "msg-draft-1", raw: draftRaw })
+    const metadataScope = "https://www.googleapis.com/auth/gmail.metadata"
     const cloud = try testCloud({ mount: (fakes) => {
+      const mailProvider = gmailReads(mailbox)
       fakes.mount("/google/", mountGoogleToken(google))
-      fakes.mount("/google/api/", gmailReads(mailbox))
+      fakes.mount("/google/api/", (request) => {
+        const grant = bearerGrant(google, request)
+        if (grant?.scopes.includes(metadataScope) && request.path.endsWith("/messages") && request.query.has("q")) {
+          return { status: 400, body: { error: { status: "INVALID_ARGUMENT" } } }
+        }
+        return mailProvider(request)
+      })
     } })
     const token = try entitledDevice(cloud, "mail", now)
     const owner: Owner = { organizationId: "org-mail", userId: "user-mail" }
@@ -1704,21 +1818,121 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const gmail = (path: string) => cloud.call(`/api/v1/eliza/google/gmail${path}`, { headers: { authorization: `Bearer ${token}` } })
     const errorOf = (answer: { readonly status: number; readonly body: unknown }) => [answer.status, (answer.body as { readonly error?: string }).error]
     const triage = try gmail("/triage")
+    const triageLimit = cloud.fakes.seen.find(({ path }) => path.endsWith("/gmail/v1/users/me/messages"))?.query.get("maxResults")
     const search = try gmail("/search?query=plan&maxResults=10")
     const tooMany = try gmail("/search?query=plan&maxResults=101")
     const read = try gmail("/read?messageId=msg-direct")
     const fetched = try gmail("/read?messageId=msg-trashed")
     const decoded = try promise(() => readMailThroughClient(cloud.url, token, "msg-direct"))
-    const oversized = try gmail("/read?messageId=msg-digest")
+    const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => token }))
+    const whole = try promise(() => client.gmailRead({ messageId: "msg-digest" }))
+    const snippet = try promise(() => client.gmailRead({ messageId: "msg-trashed" }))
+    const oversized = try gmail("/read?messageId=msg-oversized")
+    const htmlTextAtLimit = "é".repeat(256 * 1024 - 4) + "x"
+    const htmlAtLimit = `<p>${htmlTextAtLimit}</p>`
+    const htmlOverLimit = `<p>${htmlTextAtLimit}y</p>`
+    try sync(() => {
+      const message = { labelIds: ["TRASH"], historyId: String(mailbox.history), internalDate: now, snippet: "Preview only" }
+      mailbox.messages.set("html-at-limit", { ...message, id: "html-at-limit", threadId: "html-at-limit", bodyHtml: htmlAtLimit })
+      mailbox.messages.set("html-alternative", { ...message, id: "html-alternative", threadId: "html-alternative", bodyText: "Plain alternative", bodyHtml: htmlOverLimit })
+      mailbox.messages.set("html-over-limit", { ...message, id: "html-over-limit", threadId: "html-over-limit", bodyHtml: htmlOverLimit })
+      mailbox.messages.set("mime-at-limit", { ...message, id: "mime-at-limit", threadId: "mime-at-limit", mimePayload: mimeBoundaryPayload(200, "plain") })
+      mailbox.messages.set("mime-over-limit", { ...message, id: "mime-over-limit", threadId: "mime-over-limit", mimePayload: mimeBoundaryPayload(201, "plain") })
+      mailbox.messages.set("mime-html-only", { ...message, id: "mime-html-only", threadId: "mime-html-only", mimePayload: mimeBoundaryPayload(201, "html") })
+      mailbox.messages.set("mime-malformed", { ...message, id: "mime-malformed", threadId: "mime-malformed", mimePayload: mimeBoundaryPayload(201, "malformed") })
+    })
+    const htmlReads = try promise(() => Promise.all(["html-at-limit", "html-alternative", "html-over-limit"].map((messageId) => client.gmailRead({ messageId }))))
+    const html = htmlReads.map((message, index) => [
+      message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
+      message.bodyText === [htmlTextAtLimit, "Plain alternative", htmlTextAtLimit + "y"][index],
+    ])
+    const mimeReads = try promise(() => Promise.all(["mime-at-limit", "mime-over-limit", "mime-html-only"].map((messageId) => client.gmailRead({ messageId }))))
+    const mime = mimeReads.map((message) => [message.bodyHtmlStatus, message.bodyHtml, message.bodyText, message.attachments?.map(({ name }) => name)])
+    const mimeAttachment = try gmail("/inbox-v1/attachment?messageId=mime-over-limit&partId=2&historyId=" + mailbox.history)
+    const mimeMalformed = try gmail("/read?messageId=mime-malformed")
     const capabilities = try gmail("/inbox-v1/capabilities")
     const attachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
     const thread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
+    const earlierText = "é".repeat(450 * 1024)
+    const laterText = "new " + earlierText
+    try sync(() => {
+      mailbox.messages.set("page-later", { id: "page-later", threadId: "thr-pages", labelIds: ["TRASH"], historyId: String(++mailbox.history), internalDate: now, bodyText: laterText })
+      mailbox.messages.set("page-earlier", { id: "page-earlier", threadId: "thr-pages", labelIds: ["TRASH"], historyId: String(++mailbox.history), internalDate: now - 1000, bodyText: earlierText })
+      mailbox.messages.set("page-oversized", { id: "page-oversized", threadId: "thr-indivisible", labelIds: ["TRASH"], historyId: String(++mailbox.history), internalDate: now, bodyText: "\0".repeat(300 * 1024) })
+    })
+    type Page = { readonly historyId: string; readonly total: number; readonly offset: number; readonly nextOffset: number | null; readonly messages: ReadonlyArray<{ readonly message: { readonly id: string }; readonly historyId: string; readonly bodyText: string }> }
+    const page = (suffix: string) => promise(async () => {
+      const response = await openCloud(cloud.url, "/api/v1/eliza/google/gmail/inbox-v1/thread?threadId=thr-pages" + suffix, { headers: { authorization: `Bearer ${token}` } })
+      const bytes = await response.arrayBuffer()
+      return { status: response.status, bytes: bytes.byteLength, body: JSON.parse(new TextDecoder().decode(bytes)) as Page }
+    })
+    const first = try page("")
+    const next = try page("&offset=1&historyId=" + first.body.historyId)
+    const missingRevision = try gmail("/inbox-v1/thread?threadId=thr-pages&offset=1")
+    const indivisible = try gmail("/inbox-v1/thread?threadId=thr-indivisible")
+    try sync(() => touchMessage(mailbox, "page-later"))
+    const changedPage = try gmail("/inbox-v1/thread?threadId=thr-pages&offset=1&historyId=" + first.body.historyId)
+    const pageOf = (result: { readonly status: number; readonly bytes: number; readonly body: Page }, expected: string) => [
+      result.status, result.bytes <= 1.5 * 1024 * 1024, result.body.total, result.body.offset, result.body.nextOffset,
+      result.body.messages.map((message) => [message.message.id, message.historyId, message.bodyText === expected]),
+    ]
     try Effect.try(() => touchMessage(mailbox, "msg-direct"))
     const staleAttachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
     const staleThread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
     const drafts = try gmail("/inbox-v1/drafts")
     const draft = try gmail("/inbox-v1/draft?draftId=draft-1")
     const anonymous = try cloud.call("/api/v1/eliza/google/gmail/triage")
+    const restricted = [
+      { id: "metadata", scopes: [metadataScope] },
+      { id: "readonly", scopes: scopeFor("google.gmail.triage") },
+      { id: "compose", scopes: scopeFor("google.gmail.drafts") },
+      { id: "send", scopes: scopeFor("google.gmail.send") },
+    ]
+    for (const grant of restricted) {
+      const refresh = try sync(() => seedGrant(google, { subject: "subject-" + grant.id, email: grant.id + "@example.com", scopes: grant.scopes }))
+      try cloud.inside(linkedGrant(cloud, owner, grant.id, refresh, grant.scopes, now - 1000))
+    }
+    const surfaces = ["/triage", "/search?query=plan", "/read?messageId=msg-trashed",
+      "/inbox-v1/thread?threadId=thr-direct", "/inbox-v1/attachment?messageId=mime-over-limit&partId=2&historyId=" + (mailbox.messages.get("mime-over-limit")?.historyId ?? ""),
+      "/inbox-v1/drafts", "/inbox-v1/draft?draftId=draft-1", "/inbox-v1/capabilities"]
+    const atSurface = (path: string, grantId: string, side = "owner") => gmail(path + (path.includes("?") ? "&" : "?") + new URLSearchParams({ grantId, side }))
+    const decisions = try all(restricted.map((grant) => effect {
+      const replies = try all(surfaces.map((path) => atSurface(path, grant.id)))
+      return replies.map((reply) => {
+        const value = reply.body as { readonly reason?: string; readonly kinds?: ReadonlyArray<string> }
+        return reply.status === 200 ? value.kinds ?? 200 : [...errorOf(reply), value.reason]
+      })
+    }))
+    const advertised = try promise(() => Promise.all(restricted.map(async (grant) => {
+      const value = await client.gmailCapabilities({ grantId: grant.id })
+      return ["reads" in value ? value.reads : undefined, "providerExactlyOnce" in value ? value.providerExactlyOnce : undefined]
+    })))
+    const beforeRejected = cloud.fakes.seen.length
+    const wrongSides = try all(surfaces.map((path) => atSurface(path, "metadata", "other")))
+    const foreign = try atSurface("/read?messageId=msg-direct", "no-held-grant")
+    const ambiguous = try gmail("/triage")
+    const afterRejected = cloud.fakes.seen.length
+    const missing = [403, "access_denied", "capability_missing"]
+    try check(() => assert.deepStrictEqual({
+      decisions, advertised, wrongSides: wrongSides.map(errorOf), selection: [errorOf(foreign), errorOf(ambiguous)],
+      providerCallsOnRejectedSelection: afterRejected - beforeRejected,
+    }, {
+      decisions: [
+        [200, missing, missing, missing, missing, missing, missing, []],
+        [200, 200, 200, 200, 200, missing, missing, []],
+        [missing, missing, missing, missing, missing, 200, 200, ["draft-create", "draft-replace", "draft-delete"]],
+        [missing, missing, missing, missing, missing, missing, missing, ["send"]],
+      ],
+      advertised: [
+        [["triage", "capabilities"], false],
+        [["triage", "search", "read", "thread", "attachment", "capabilities"], false],
+        [["drafts", "draft", "capabilities"], false],
+        [["capabilities"], false],
+      ],
+      wrongSides: surfaces.map(() => [400, "invalid_request"]),
+      selection: [[404, "not_found"], [400, "invalid_request"]],
+      providerCallsOnRejectedSelection: 0,
+    }))
     const pdf = new TextEncoder().encode("%PDF-plan")
     type Card = { readonly id: string; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
     const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId])
@@ -1729,36 +1943,49 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const draftBody = draft.body as { readonly providerDigest: string; readonly content: { readonly to: ReadonlyArray<string>; readonly subject: string; readonly bodyText: string; readonly plainText: boolean } }
     try check(() => assert.deepStrictEqual(
       {
-        triage: [triage.status, (triage.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, cards(triage)],
+        triage: [triage.status, (triage.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, triageLimit, cards(triage)],
         search: [search.status, (search.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, (search.body as { readonly nextPageToken: string | null }).nextPageToken, cards(search)],
         tooMany: errorOf(tooMany),
         read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments, readBody.authenticationResults],
         fetched: [fetched.status, (fetched.body as { readonly authenticationResults: string | null }).authenticationResults],
         client: decoded,
+        text: [whole.message.id, whole.bodyText === wholeText, snippet.bodyText],
+        html,
+        mime: [mime, mimeAttachment.status, (mimeAttachment.body as { readonly dataBase64?: string }).dataBase64, mimeMalformed.status],
         oversized: errorOf(oversized),
         capabilities: [capabilities.status, capabilities.body],
         attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
         thread: [thread.status, threadBody.historyId, threadBody.total, threadBody.messages.map((message) => message.bodyText)],
+        pages: [first.body.historyId === next.body.historyId, pageOf(first, earlierText), pageOf(next, laterText)],
+        pageRefusals: [errorOf(missingRevision), errorOf(changedPage), errorOf(indivisible)],
         stale: [errorOf(staleAttachment), errorOf(staleThread)],
         drafts: [drafts.status, draftList.drafts, draftList.nextPageToken],
         draft: [draft.status, draftBody.providerDigest, draftBody.content.to, draftBody.content.subject, draftBody.content.bodyText, draftBody.content.plainText],
         anonymous: errorOf(anonymous)
       },
       {
-        triage: [200, "1003", [
+        triage: [200, "1004", "12", [
           ["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"],
           ["msg-digest", 0, "directly addressed, automated sender", false, false, "1002"]
         ]],
-        search: [200, "1003", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"]]],
+        search: [200, "1004", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"]]],
         tooMany: [400, "invalid_request"],
         read: [200, "msg-direct", ["conn-mail@example.com"], "Please review the plan.", null, "none", [{ partId: "1", name: "plan.pdf", mimeType: "application/pdf", size: pdf.length, supported: true }],
           "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org"],
         fetched: [200, null],
         client: ["mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org", undefined],
+        text: ["msg-digest", true, "plan"],
+        html: [["available", true, true], ["too_large", null, true], ["too_large", null, true]],
+        mime: [[["available", "<p>HTML after the attachments</p>", "Complete plain text", ["first.txt", "last.txt"]],
+          ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
+          ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
         oversized: [413, "content_too_large"],
-        capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
+        capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"],
+          kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 }, providerExactlyOnce: false }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
         thread: [200, "1001", 1, ["Please review the plan."]],
+        pages: [true, [200, true, 2, 0, 1, [["page-earlier", "1006", true]]], [200, true, 2, 1, null, [["page-later", "1005", true]]]],
+        pageRefusals: [[400, "invalid_request"], [409, "stale_revision"], [413, "content_too_large"]],
         stale: [[409, "stale_revision"], [409, "stale_revision"]],
         drafts: [200, [{ draftId: "draft-1", messageId: "msg-draft-1", subject: "Re: Quarterly plan", to: ["ada@example.org"], snippet: "", updatedAt: null }], null],
         draft: [200, sha256Hex(draftRaw), ["ada@example.org"], "Re: Quarterly plan", "Looks good.", true],
@@ -1972,7 +2199,7 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     const unchanged = try sql(cloud, "SELECT key, revision, last_used_at FROM google_connections WHERE user_id = $1 ORDER BY key", [caller.userId])
 
     const off = try serveOnStore(cloud, areas.flatMap((area) => area.routes), (profile) => {
-      const { google, ...staging } = profile.environments.staging
+      const { google: _google, ...staging } = profile.environments.staging
       return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
     })
     const [offStatus, offAccounts] = try promise(() => Promise.all([
@@ -3302,12 +3529,14 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
 module node {
   import { Effect, Schema } from "effect"
   import { SecureRandom } from "effect/crypto"
-  import { createCipheriv, createHash } from "node:crypto"
+  import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
   import { exportJWK, generateKeyPair, SignJWT } from "jose"
   import { CLEF_DECISIONS_PATH, createClefDecisionsClient, type ClefDecisionRequest } from "../src/clef-decisions.vibe"
   import { signInWithProof } from "../src/identity-store.vibe"
   import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
-  import { createCloudClient } from "../src/client/index.vibe"
+  import { googleRequest } from "../src/google.vibe"
+  import { CloudError, createCloudClient } from "../src/client/index.vibe"
+  import { mimeBoundaryPayload } from "./support/fakes/google-gmail.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
   import { registerClients, workerBindings } from "./support/worker.ts"
 
@@ -3348,9 +3577,11 @@ module node {
       const api = "https://api.example.test"
       const providerInputs: string[] = []
       let chosen = "hours"
+      /* eslint-disable no-redeclare -- Both Worker AI call signatures use this fake. */
       async function run(id: string, input: Record<string, unknown>, options: { returnRawResponse: true; signal: AbortSignal }): Promise<Response>
       async function run(id: string, input: unknown): Promise<unknown>
       async function run(id: string, input: unknown, options?: unknown): Promise<unknown> {
+        /* eslint-enable no-redeclare */
         if (options) return Response.json({ error: "unexpected inference request" }, { status: 500 })
         providerInputs.push(JSON.stringify({ id, input }))
         if (providerInputs.length === 1) await Effect.runPromise(Effect.sleep(4_250))
@@ -3406,6 +3637,11 @@ module node {
       const encrypted = Buffer.concat([nonce, cipher.update("fixture-refresh"), cipher.final(), cipher.getAuthTag()]).toString("hex")
       await fixture.db.query("INSERT INTO cloud_google_connections (account_id, id, subject, email, mail, calendar, refresh_cipher) VALUES ($1, $2, $3, $4, true, false, $5)",
         [owner.account.id, grant, subject, "attachment-owner@example.test", encrypted])
+      const wholeText = "x".repeat(8 * 1024 * 1024)
+      const externalText = "é".repeat(450 * 1024)
+      const htmlTextAtLimit = "é".repeat(256 * 1024 - 4) + "x"
+      const htmlAtLimit = `<p>${htmlTextAtLimit}</p>`
+      const htmlOverLimit = `<p>${htmlTextAtLimit}y</p>`
       const bytes = Buffer.from("%PDF-local-fixture")
       const part = { partId: "1", filename: "fixture.pdf", mimeType: "application/pdf", body: { attachmentId: "fixture-attachment", size: bytes.length } }
       const unsupported = { partId: "2", filename: "fixture.html", mimeType: "text/html", body: { attachmentId: "never-fetch", size: 10 } }
@@ -3417,6 +3653,21 @@ module node {
       let revokeListing: "grant" | "session" | undefined
       let providerRequestsValid = true
       const providerCalls: string[] = []
+      const suppliedPage = "opaque+/?=%#&".padEnd(4096, "x")
+      let searchReply: { historyId: string | null; messages: string[]; nextPageToken?: string } | undefined
+      const searchCalls: unknown[][] = []
+      const searchCards: string[] = []
+      const arrivalRequests: string[] = []
+      const triageLimits: Array<string | null> = []
+      let mailArrived = false
+      let staleHistory = false
+      let rejectHistory = false
+      let revokeArrival = false
+      let invalidHistory = false
+      let invalidTriageRevision = false
+      let incompleteHistory: "cycle" | "over-budget" | undefined
+      let abortArrival: AbortController | undefined
+      let providerAbort: AbortSignal | undefined
       const providerFetch: typeof fetch = async (input, init) => {
         const request = new Request(input, init)
         const url = new URL(request.url)
@@ -3425,9 +3676,48 @@ module node {
         if (url.href === "https://oauth2.googleapis.com/token" && request.method === "POST")
           return Response.json({ access_token: "fixture-access", scope: "https://www.googleapis.com/auth/gmail.readonly" })
         providerRequestsValid &&= request.headers.get("authorization") === "Bearer fixture-access"
+        if (searchReply && url.origin === "https://gmail.googleapis.com") {
+          if (url.pathname === "/gmail/v1/users/me/profile") {
+            searchCalls.push(["profile", url.searchParams.get("fields")])
+            return Response.json(searchReply.historyId === null ? {} : { historyId: searchReply.historyId })
+          }
+          if (url.pathname === "/gmail/v1/users/me/messages") {
+            const token = url.searchParams.get("pageToken")
+            searchCalls.push(["list", url.searchParams.get("q"), url.searchParams.get("maxResults"),
+              url.searchParams.get("includeSpamTrash"), token === null ? null : token === suppliedPage])
+            return Response.json({ messages: searchReply.messages.map((id) => ({ id })), nextPageToken: searchReply.nextPageToken })
+          }
+          if (url.pathname.startsWith("/gmail/v1/users/me/messages/")) {
+            searchCards.push(url.pathname.split("/").at(-1) + ":" + url.searchParams.get("format"))
+          }
+        }
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/profile") {
+          arrivalRequests.push(url.pathname + url.search)
+          return Response.json({ historyId: invalidTriageRevision ? "malformed" : "10000000000000000001" })
+        }
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/history") {
+          arrivalRequests.push(url.pathname + url.search)
+          if (staleHistory) return Response.json({}, { status: 404 })
+          if (rejectHistory) return Response.json({}, { status: 401 })
+          if (invalidHistory) return Response.json({ historyId: "malformed" })
+          if (incompleteHistory) {
+            const page = Number(url.searchParams.get("pageToken") ?? "0")
+            return Response.json({ historyId: "10000000000000000003", nextPageToken: incompleteHistory === "cycle" ? "1" : String(page + 1) })
+          }
+          if (abortArrival) {
+            providerAbort = request.signal
+            abortArrival.abort()
+          }
+          if (revokeArrival) await fixture.db.query("UPDATE device_grants SET key_expires_at = 0 WHERE user_id = $1", [owner.account.id])
+          if (!url.searchParams.has("pageToken")) return Response.json({ historyId: "10000000000000000003", nextPageToken: "next" })
+          return Response.json({ historyId: "10000000000000000003", history: mailArrived ?
+            [{ id: "10000000000000000002", messagesAdded: [{ message: { id: "private-mail" } }] }] :
+            [{ id: "10000000000000000002" }] })
+        }
         if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages") {
           const label = url.searchParams.get("labelIds")
-          const found = label === "INBOX" ? ["fixture-message", "moved-to-trash"] : label === "TRASH" && url.searchParams.get("includeSpamTrash") === "true" &&
+          if (label === "INBOX") triageLimits.push(url.searchParams.get("maxResults"))
+          const found = label === "INBOX" ? ["automated-message", "fixture-message", "moved-to-trash"] : label === "TRASH" && url.searchParams.get("includeSpamTrash") === "true" &&
             url.searchParams.get("q") === "subject:plan & dates" ? ["trashed-message", "moved-message"] : []
           return Response.json({ messages: found.map((id) => ({ id })), nextPageToken: "page-two" })
         }
@@ -3438,14 +3728,48 @@ module node {
           if (revokeListing === "session") await fixture.db.query("UPDATE sessions SET live = false WHERE user_id = $1", [owner.account.id])
           return Response.json({ id: "DRAFT", messagesTotal: 7 })
         }
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/automated-message")
+          return Response.json({ id: "automated-message", threadId: "automated-thread", internalDate: "1760000001000", historyId: "790",
+            labelIds: ["INBOX", "UNREAD", "IMPORTANT"], payload: { headers: [
+              { name: "From", value: "Notices <sender@example.test>" },
+              { name: "To", value: "attachment-owner@example.test" },
+              ...url.searchParams.getAll("metadataHeaders").filter((name) => name === "Auto-Submitted").map((name) => ({ name, value: "auto-generated" })),
+            ] } })
         if (url.origin === "https://gmail.googleapis.com" && ["/gmail/v1/users/me/messages/trashed-message", "/gmail/v1/users/me/messages/moved-message", "/gmail/v1/users/me/messages/moved-to-trash"].includes(url.pathname)) {
           const id = url.pathname.split("/").at(-1)
           const labelIds = id === "moved-to-trash" ? ["TRASH", "INBOX"] : [id === "trashed-message" ? "TRASH" : "INBOX"]
-          return Response.json({ id, threadId: "trash-thread", internalDate: "1760000000000", labelIds })
+          const internalDate = searchReply && id === "trashed-message" ? "1760000000001" : "1760000000000"
+          return Response.json({ id, threadId: "trash-thread", internalDate, labelIds })
+        }
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/mail-external/attachments/plain") {
+          return Response.json({ data: Buffer.from(externalText).toString("base64url") })
+        }
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname.startsWith("/gmail/v1/users/me/messages/mail-")) {
+          const id = url.pathname.split("/").at(-1)
+          const message = { id, threadId: "fixture-thread", internalDate: "1760000000000", snippet: "Preview only" }
+          if (id === "mail-envelope") return Response.json({ ...message, extra: "x".repeat(11_250_348) })
+          if (id === "mail-snippet") return Response.json(message)
+          if (id === "mail-mime-at-limit") return Response.json({ ...message, historyId: "789", payload: mimeBoundaryPayload(200, "plain") })
+          if (id === "mail-mime-over-limit") return Response.json({ ...message, historyId: "789", payload: mimeBoundaryPayload(201, "plain") })
+          if (id === "mail-mime-html-only") return Response.json({ ...message, historyId: "789", payload: mimeBoundaryPayload(201, "html") })
+          if (id === "mail-mime-malformed") return Response.json({ ...message, historyId: "789", payload: mimeBoundaryPayload(201, "malformed") })
+          if (id?.startsWith("mail-html-")) {
+            const data = (text: string) => ({ data: Buffer.from(text).toString("base64url"), size: Buffer.byteLength(text) })
+            const html = id === "mail-html-at-limit" ? htmlAtLimit : htmlOverLimit
+            return Response.json({ ...message, payload: { parts: [
+              { mimeType: "text/html", body: data(html) },
+              ...(id === "mail-html-alternative" ? [{ mimeType: "text/plain", body: data("Plain alternative") }] : []),
+            ] } })
+          }
+          const body = id === "mail-external" ? { attachmentId: "plain", size: Buffer.byteLength(externalText) } : {
+            data: id === "mail-malformed" ? "x=" : Buffer.from(wholeText + (id === "mail-oversized" ? "x" : "")).toString("base64url"),
+          }
+          return Response.json({ ...message, payload: { mimeType: "text/plain", body } })
         }
         if (url.hostname === "gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/fixture-message")
-          return Response.json({ id: "fixture-message", threadId: "fixture-thread", internalDate: "1760000000000", historyId: "789", labelIds: ["INBOX"],
-            payload: { headers: [{ name: "Received", value: "by 2002:a05:6400:1::1 with SMTP id a1; Tue, 1 Dec 2026 10:00:01 -0800" },
+          return Response.json({ id: "fixture-message", threadId: "fixture-thread", internalDate: "1760000000000", historyId: "789", labelIds: ["INBOX", "UNREAD"],
+            payload: { headers: [{ name: "From", value: "Ada <ada@example.test>" }, { name: "Cc", value: '"Owner, Gmail" < ATTACHMENT-OWNER@example.test >' },
+              { name: "Received", value: "by 2002:a05:6400:1::1 with SMTP id a1; Tue, 1 Dec 2026 10:00:01 -0800" },
               { name: "Received", value: "from mail.example.test (mail.example.test. [192.0.2.10]) by mx.google.com with ESMTPS id b2 for <owner@example.com>; Tue, 1 Dec 2026 10:00:00 -0800" },
               { name: "Received-SPF", value: "pass (google.com: domain of sender@example.test designates 192.0.2.10 as permitted sender)" },
               { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.i=@example.test; spf=pass smtp.mailfrom=example.test" }, { name: "Subject", value: "Selected PDF" },
@@ -3484,8 +3808,174 @@ module node {
       const get = (path: string, cookie?: string) => worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + path, {
         headers: cookie ? { origin: web, cookie: "__Host-eliza-session=" + cookie } : { origin: web },
       }), env)
+      const arrival = (headers?: Record<string, string>, cursor?: string, includeGrant = false, signal?: AbortSignal) => {
+        const query = new URLSearchParams(includeGrant ? { grantId: grant } : {})
+        if (cursor !== undefined) query.set("cursor", cursor)
+        return worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/inbox-v1/arrival?" + query, { headers, signal }), env)
+      }
+      const decision = async (response: Response) => ({
+        status: response.status,
+        cache: response.headers.get("cache-control"),
+        body: Schema.decodeUnknownSync(Schema.Struct({ cursor: Schema.String, arrived: Schema.Boolean }), { onExcessProperty: "error" })(await response.json()),
+      })
+      const webHeaders = { origin: web, cookie: "__Host-eliza-session=" + owner.access }
+      const webNoGrant = await arrival(webHeaders)
+      const webBaseline = await decision(await arrival(webHeaders, undefined, true))
+      const beforeBaseline = Date.now()
+      const baseline = await decision(await arrival(ownDevice))
+      const afterBaseline = Date.now()
+      const cursor = baseline.body.cursor
+      const emptyArrival = await decision(await arrival(ownDevice, cursor))
+      mailArrived = true
+      const freshArrival = await decision(await arrival(ownDevice, cursor))
+      const organization = (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id
+      const callerHash = createHash("sha256").update(ownDevice.authorization.slice("Bearer ".length)).digest("hex")
+      const binding = Buffer.from(JSON.stringify(["cloud-google-inbox-arrival-v1", api, owner.account.id, organization, grant, "device", callerHash]))
+      const sealed = Buffer.from(cursor, "hex")
+      const open = createDecipheriv("aes-256-gcm", Buffer.from(key, "hex"), sealed.subarray(0, 12))
+      open.setAAD(binding)
+      open.setAuthTag(sealed.subarray(-16))
+      const claims = Schema.decodeUnknownSync(Schema.Struct({ historyId: Schema.String, expiresAt: Schema.Number }))(
+        JSON.parse(Buffer.concat([open.update(sealed.subarray(12, -16)), open.final()]).toString("utf8")),
+      )
+      const expiredNonce = randomBytes(12)
+      const expiredCipher = createCipheriv("aes-256-gcm", Buffer.from(key, "hex"), expiredNonce)
+      expiredCipher.setAAD(binding)
+      const expiredBody = expiredCipher.update(JSON.stringify({ ...claims, expiresAt: beforeBaseline - 1 }))
+      const expiredCursor = Buffer.concat([expiredNonce, expiredBody, expiredCipher.final(), expiredCipher.getAuthTag()]).toString("hex")
+      const beforeDenied = providerCalls.length
+      const directAddress = new URL("/api/v1/eliza/google/gmail/inbox-v1/arrival", api)
+      const directWithoutCredential = await googleRequest(new Request(directAddress), env, fixture.db, owner.account.id, providerFetch)
+      const elapsedWatch = await arrival(ownDevice, expiredCursor)
+      const differentGrant = "10213243-5465-7687-98a9-bacbdcedfe0f"
+      await fixture.db.query("UPDATE cloud_google_connections SET id = $1 WHERE account_id = $2", [differentGrant, owner.account.id])
+      const replacedGrant = await arrival(ownDevice, cursor)
+      await fixture.db.query("UPDATE cloud_google_connections SET id = $1 WHERE account_id = $2", [grant, owner.account.id])
+      const deniedBeforeProvider = providerCalls.length === beforeDenied
+      const foreignArrival = await arrival(otherDevice, cursor, true)
+      const replayAcrossCredentials = await arrival(webHeaders, cursor, true)
+      const anonymousArrival = await arrival(undefined, cursor)
+      const fabricatedArrival = await arrival(ownDevice, "10000000000000000001")
+      staleHistory = true
+      const expiredArrival = await arrival(ownDevice, cursor)
+      staleHistory = false
+      rejectHistory = true
+      const providerRevokedArrival = await arrival(ownDevice, cursor)
+      rejectHistory = false
+      invalidHistory = true
+      const malformedHistory = await arrival(ownDevice, cursor)
+      invalidHistory = false
+      revokeArrival = true
+      const deviceRevokedArrival = await arrival(ownDevice, cursor)
+      await fixture.db.query("UPDATE device_grants SET key_expires_at = $1 WHERE user_id = $2", [Date.now() + 86400000, owner.account.id])
+      revokeArrival = false
+      const requests = [...arrivalRequests]
+      incompleteHistory = "cycle"
+      const cycle = await arrival(ownDevice, cursor)
+      const cyclePages = arrivalRequests.length - requests.length
+      incompleteHistory = "over-budget"
+      const overBudget = await arrival(ownDevice, cursor)
+      const budgetPages = arrivalRequests.length - requests.length - cyclePages
+      incompleteHistory = undefined
+      abortArrival = new AbortController()
+      const cancelled = await arrival(ownDevice, cursor, false, abortArrival.signal)
+      const arrivalResult = {
+        baseline: [baseline.status, baseline.cache, baseline.body.arrived, !cursor.includes("10000000000000000001") && cursor.length > 20, webBaseline.status, webBaseline.body.arrived],
+        polling: [emptyArrival.body.cursor === cursor, emptyArrival.body.arrived, freshArrival.body.cursor === cursor, freshArrival.body.arrived],
+        denied: [webNoGrant, replayAcrossCredentials, foreignArrival, anonymousArrival, fabricatedArrival, expiredArrival, providerRevokedArrival, malformedHistory, deviceRevokedArrival].map(({ status }) => status),
+        timerAndGrant: [claims.expiresAt >= beforeBaseline + 300000 && claims.expiresAt <= afterBaseline + 300000,
+          elapsedWatch.status, replacedGrant.status, directWithoutCredential.status, deniedBeforeProvider],
+        requests,
+        failureControls: [cycle.status, cyclePages, overBudget.status, budgetPages, cancelled.ok, providerAbort?.aborted],
+        exposedOnlyHistory: providerCalls.every((call) => [
+          "POST https://oauth2.googleapis.com/token",
+          "GET https://gmail.googleapis.com/gmail/v1/users/me/profile",
+          "GET https://gmail.googleapis.com/gmail/v1/users/me/history",
+        ].includes(call)),
+      }
+      const client = createCloudClient({ baseUrl: api, credential: () => owner.access, fetch: (input, init) => {
+        const request = new Request(input, init)
+        request.headers.set("cookie", "__Host-eliza-session=" + owner.access)
+        return worker.fetch(request, env)
+      } })
+      const readMail = (messageId: string) => client.gmailRead({ messageId, grantId: grant })
+      const whole = await readMail("mail-whole")
+      const external = await readMail("mail-external")
+      const snippet = await readMail("mail-snippet")
+      const readFailure = (messageId: string) => readMail(messageId).then(() => null, (error: unknown) => error instanceof CloudError ? error.failure : String(error))
+      const mailText = [whole.message.id, whole.bodyText === wholeText, external.bodyText === externalText, snippet.bodyText,
+        await readFailure("mail-oversized"), await readFailure("mail-envelope"), (await get("read?messageId=mail-malformed&grantId=" + grant, owner.access)).status]
+      const htmlReads = await Promise.all(["mail-html-at-limit", "mail-html-alternative", "mail-html-over-limit"].map(readMail))
+      const html = htmlReads.map((message, index) => [
+        message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
+        message.bodyText === [htmlTextAtLimit, "Plain alternative", htmlTextAtLimit + "y"][index],
+      ])
+      const mimeReads = await Promise.all(["mail-mime-at-limit", "mail-mime-over-limit", "mail-mime-html-only"].map(readMail))
+      const mime = mimeReads.map((message) => [message.bodyHtmlStatus, message.bodyHtml, message.bodyText, message.attachments?.map(({ name }) => name)])
+      const mimeAttachment = await get("attachment?messageId=mail-mime-over-limit&partId=2&historyId=789&grantId=" + grant, owner.access)
+      const mimeFile = Schema.decodeUnknownSync(Schema.Struct({ dataBase64: Schema.String }))(await mimeAttachment.json())
+      const mimeMalformed = await get("read?messageId=mail-mime-malformed&grantId=" + grant, owner.access)
+      const searchRevision = "10000000000000000011"
+      const newerRevision = "10000000000000000012"
+      const searchText = "in:anywhere subject:plan & dates"
+      searchReply = { historyId: searchRevision, messages: ["fixture-message", "trashed-message"], nextPageToken: suppliedPage }
+      const firstSearch = await client.gmailSearch({ grantId: grant, query: "  " + searchText + "  " })
+      searchReply = { historyId: newerRevision, messages: ["moved-to-trash"] }
+      const nextSearch = await client.gmailSearch({ grantId: grant, query: searchText, pageToken: suppliedPage, maxResults: 100 })
+      const searchPath = (query: Record<string, string>) => "search?" + new URLSearchParams({ grantId: grant, query: searchText, ...query })
+      const searchError = async (params: Record<string, string>) => {
+        const response = await get(searchPath(params), owner.access)
+        const failure = Schema.decodeUnknownSync(Schema.Struct({ error: Schema.String }))(await response.json())
+        return [response.status, failure.error]
+      }
+      searchReply = { historyId: newerRevision, messages: [], nextPageToken: suppliedPage }
+      const repeatedSearch = await searchError({ pageToken: suppliedPage })
+      searchReply = { historyId: newerRevision, messages: ["fixture-message", "trashed-message"] }
+      const oversizedSearch = await searchError({ query: "subject:plan", maxResults: "1" })
+      searchReply = { historyId: null, messages: ["fixture-message"] }
+      const missingSearchRevision = await searchError({})
+      searchReply = undefined
+      const beforeDeniedSearch = providerCalls.length
+      const nativeSearch = await worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + searchPath({}), { headers: ownDevice }), env)
+      const deniedSearch = [
+        (await get(searchPath({}))).status, nativeSearch.status, (await get(searchPath({}), other.access)).status,
+        (await get(searchPath({ side: "agent" }), owner.access)).status,
+      ]
+      const invalidSearch = [
+        await searchError({ query: "   " }), await searchError({ maxResults: "01" }), await searchError({ maxResults: "101" }),
+        await searchError({ pageToken: "" }), await searchError({ pageToken: "x".repeat(4097) }),
+      ]
+      const search = {
+        pages: [
+          [firstSearch.messages.map((message) => message.id), firstSearch.mailboxHistoryId, firstSearch.nextPageToken === suppliedPage, firstSearch.supportsSpamTrash],
+          [nextSearch.messages.map((message) => message.id), nextSearch.mailboxHistoryId, nextSearch.nextPageToken, nextSearch.supportsSpamTrash],
+        ],
+        providerRefusals: [repeatedSearch, oversizedSearch, missingSearchRevision],
+        denied: deniedSearch, invalid: invalidSearch, providersOnDenied: providerCalls.length - beforeDeniedSearch,
+        requests: searchCalls, cards: searchCards.sort(),
+      }
       const query = "grantId=" + grant + "&messageId=fixture-message"
       const folder = "triage?" + new URLSearchParams({ grantId: grant, folder: "trash", q: "  subject:plan & dates ", counts: "1" })
+      const inbox = await client.gmailTriage({ grantId: grant })
+      const maxInbox = await client.gmailTriage({ grantId: grant, maxResults: 50 })
+      const triageError = async (maxResults: string) => {
+        const answer = await get("triage?" + new URLSearchParams({ grantId: grant, maxResults }), owner.access)
+        const failure = Schema.decodeUnknownSync(Schema.Struct({ error: Schema.String }))(await answer.json())
+        return [answer.status, failure.error]
+      }
+      const countRefusals = [await triageError("01"), await triageError("0"), await triageError("51"), await triageError("1")]
+      invalidTriageRevision = true
+      const revisionRefusal = await triageError("12")
+      invalidTriageRevision = false
+      const triage = {
+        revision: inbox.mailboxHistoryId,
+        sameAtMaximum: maxInbox.mailboxHistoryId === inbox.mailboxHistoryId &&
+          maxInbox.messages.map(({ id }) => id).join(",") === inbox.messages.map(({ id }) => id).join(","),
+        limits: [...triageLimits],
+        messages: inbox.messages.map(({ id, triageScore, triageReason, isImportant, likelyReplyNeeded, metadata }) =>
+          [id, triageScore, triageReason, isImportant, likelyReplyNeeded, metadata.historyId]),
+        countRefusals, revisionRefusal,
+      }
       const readFolder = async (path: string) => {
         const answer = await get(path, owner.access)
         const result: unknown = await answer.json()
@@ -3542,9 +4032,10 @@ module node {
       revokeListing = "grant"
       const disconnected = await get(folder, signedBackIn.access)
       return {
-        mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
+        arrivalResult, triage, search, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
-        organization: (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id, grant, manifest, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
+        organization, grant, manifest, mailText, html, mime: [mime, mimeAttachment.status, mimeFile.dataBase64, mimeMalformed.status],
+        readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
         cache: downloaded.headers.get("cache-control"), owner: owner.account.id, expectedHash: createHash("sha256").update(bytes).digest("hex"),
         expectedData: bytes.toString("base64"), size: bytes.length, rejectedRedirect: rejectedRedirect.status, providerRequestsValid, attachmentFetches,
       }
@@ -3566,18 +4057,66 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connect Google mail and calendar")', () => effect {
+it.live('Read complete mail text, open the selected named attachment and watch for new mail (spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately")', () => effect {
   const got = try tryPromise(() => readSelectedAttachment())
   try check(() => assert.deepStrictEqual(
     {
+      arrivals: got.arrivalResult,
+      text: got.mailText,
+      html: got.html,
+      mime: got.mime,
+      search: got.search,
       read: [got.readStatus, got.manifest.historyId, got.manifest.bodyText, got.manifest.attachments, got.manifest.authenticationResults],
       refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
       file: [got.fileStatus, got.cache, got.file],
       provider: [got.providerRequestsValid, got.attachmentFetches],
+      triage: got.triage,
       mailboxes: [got.mailboxes, got.deniedFolders, got.signedOut, got.disconnected],
       device: [got.refused, got.beforeDeviceRead, got.deviceStatus, got.deviceReceipt, got.changed, got.revoked],
     },
     {
+      arrivals: {
+        baseline: [200, "no-store", false, true, 200, false],
+        polling: [true, false, true, true],
+        denied: [400, 409, 409, 401, 409, 404, 409, 502, 401],
+        exposedOnlyHistory: true,
+        timerAndGrant: [true, 409, 409, 401, true],
+        failureControls: [502, 2, 502, 8, false, true],
+        requests: [
+          "/gmail/v1/users/me/profile?fields=historyId",
+          "/gmail/v1/users/me/profile?fields=historyId",
+          ...[false, true, false, true, false, false, false, false, true].map((continued) => {
+            const query = new URLSearchParams({
+              startHistoryId: "10000000000000000001", historyTypes: "messageAdded", labelId: "INBOX", maxResults: "25",
+              fields: "historyId,nextPageToken,history(id,messagesAdded(message(id)))",
+            })
+            if (continued) query.set("pageToken", "next")
+            return "/gmail/v1/users/me/history?" + query
+          }),
+        ],
+      },
+      text: ["mail-whole", true, true, "Preview only",
+        { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, 502],
+      html: [["available", true, true], ["too_large", null, true], ["too_large", null, true]],
+      mime: [[["available", "<p>HTML after the attachments</p>", "Complete plain text", ["first.txt", "last.txt"]],
+        ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
+        ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
+      search: {
+        pages: [
+          [["fixture-message", "trashed-message"], "10000000000000000011", true, true],
+          [["moved-to-trash"], "10000000000000000012", null, true],
+        ],
+        providerRefusals: Array.from({ length: 3 }, () => [502, "provider_invalid_response"]),
+        denied: [401, 401, 409, 403], invalid: Array.from({ length: 5 }, () => [400, "invalid_request"]), providersOnDenied: 0,
+        cards: ["fixture-message:metadata", "moved-to-trash:metadata", "trashed-message:metadata"],
+        requests: [
+          ["profile", "historyId"], ["list", "in:anywhere subject:plan & dates", "50", "true", null],
+          ["profile", "historyId"], ["list", "in:anywhere subject:plan & dates", "100", "true", true],
+          ["profile", "historyId"], ["list", "in:anywhere subject:plan & dates", "50", "true", true],
+          ["profile", "historyId"], ["list", "subject:plan", "1", "false", null],
+          ["profile", "historyId"],
+        ],
+      },
       read: [200, "789", "hello", [
         { partId: "1", name: "fixture.pdf", mimeType: "application/pdf", size: got.size, supported: true },
         { partId: "2", name: "fixture.html", mimeType: "text/html", size: 10, supported: false },
@@ -3587,8 +4126,17 @@ it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connec
       file: [200, "no-store", { version: 1, accountId: got.owner, organizationId: got.organization, grantId: got.grant, messageId: "fixture-message", partId: "1", historyId: "789",
         name: "fixture.pdf", mimeType: "application/pdf", size: got.size, dataBase64: got.expectedData, sha256: got.expectedHash, supported: true }],
       provider: [true, 5],
-      mailboxes: [[[200, true, "inbox", "", ["fixture-message"], null, "page-two"], [200, true, "trash", "subject:plan & dates", ["trashed-message"], { inboxUnread: 52, drafts: 7 }, "page-two"]], [409, 400], 401, 409],
+      triage: {
+        revision: "10000000000000000001", sameAtMaximum: true, limits: ["12", "50", "1"],
+        messages: [
+          ["fixture-message", 75, "unread, directly addressed, likely needs reply", true, true, "789"],
+          ["automated-message", 55, "unread, important label, directly addressed, automated sender", true, false, "790"],
+        ],
+        countRefusals: [[400, "invalid_request"], [400, "invalid_request"], [400, "invalid_request"], [502, "provider_invalid_response"]],
+        revisionRefusal: [502, "provider_invalid_response"],
+      },
+      mailboxes: [[[200, true, "inbox", "", ["fixture-message", "automated-message"], null, "page-two"], [200, true, "trash", "subject:plan & dates", ["trashed-message"], { inboxUnread: 52, drafts: 7 }, "page-two"]], [409, 400], 401, 409],
       device: [[401, 409, 409], 1, 200, got.file, 409, 401],
     },
   ))
-}, 30_000)
+}, 120_000)

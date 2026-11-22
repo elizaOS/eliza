@@ -77,8 +77,8 @@ export interface LocalModelsApi {
   deactivate(): void!Rejected
   uninstall(id: CatalogId): void!Rejected
   repairAssignments(): void!(Rejected | AssignmentsUnreadable)
-  embeddingModel(): InstalledModel | undefined!!
-  textModel(): InstalledModel | undefined!!
+  embeddingModel(): (InstalledModel | undefined)!!
+  textModel(): (InstalledModel | undefined)!!
   close(): void!!
 }
 

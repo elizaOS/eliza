@@ -1,7 +1,7 @@
 // spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page"
 import type { Client } from "pg"
 import { SecureRandom } from "effect/crypto"
-import { decisionAccountLimit, decisionContinuationLimit, decisionDailyLimit, decisionFundingOf, type DecisionFunding } from "../gen/cloud.ts"
+import { decisionAccountLimit, decisionContinuationLimit, decisionDailyLimit, decisionFundingOf } from "../gen/cloud.effect.vibe"
 import { isPaid, planRpm } from "./billing/plans.vibe"
 import { readPolicy } from "./billing/policy.vibe"
 import { foreign, toInt, type Tx } from "./store/connection.vibe"
@@ -121,7 +121,7 @@ effect function admit(db: Client, account: string) {
       if (!(failure instanceof RateLimited)) throw failure
       return false
     }
-    if (try withinDay) return "organization-day" as Scope
+    if (withinDay) return "organization-day" as Scope
     if (decided.tag !== "SubscribedDecisionFunding") throw new DecisionLimited({ scope: "organization-day" })
     const continuation = decisionContinuationLimit(decided.rpm)
     rateLimit(db, continuation.name, organization, continuation.limit, continuation.windowMs / 1000) catch effect (failure) => {

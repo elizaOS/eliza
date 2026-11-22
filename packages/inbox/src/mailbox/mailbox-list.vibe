@@ -41,7 +41,7 @@ export interface MailboxListView {
 
 /** One mailbox list's paging over the reads model. */
 export interface MailboxFeed {
-  begin(request: MailboxListRequest): MailboxReadReceipt | null!!
+  begin(request: MailboxListRequest): (MailboxReadReceipt | null)!!
   accept(receipt: MailboxReadReceipt, pageToken: string | null, page: GmailSearchPage): boolean!!
   disconnect(): boolean!!
   view(): MailboxListView!!
@@ -150,9 +150,9 @@ export interface MailBodyEntry {
 /** The list and body caches of one mailbox view, newest first and bounded. */
 export interface MailCaches {
   rememberList(row: MailboxListSnapshot): boolean!!
-  list(key: string, now: number): MailboxListSnapshot | undefined!!
+  list(key: string, now: number): (MailboxListSnapshot | undefined)!!
   rememberBody(entry: MailBodyEntry): void!!
-  body(key: string, now: number): { readonly entry: MailBodyEntry; readonly skipsRead: boolean } | undefined!!
+  body(key: string, now: number): ({ readonly entry: MailBodyEntry; readonly skipsRead: boolean } | undefined)!!
   restore(lists: readonly MailboxListSnapshot[], bodies: readonly MailBodyEntry[], now: number): void!!
   contents(): { readonly lists: readonly MailboxListSnapshot[]; readonly bodies: readonly MailBodyEntry[] }!!
   clear(): void!!
@@ -348,8 +348,8 @@ export error MailStoreFailed { cause: unknown }
 
 /** Compare-and-exchange storage for the saved mailbox document. */
 export interface SavedMailboxStore {
-  read(name: string): string | undefined!MailStoreFailed
-  compareExchange(name: string, expected: string | undefined, next: string | undefined): "saved" | "conflict"!MailStoreFailed
+  read(name: string): (string | undefined)!MailStoreFailed
+  compareExchange(name: string, expected: string | undefined, next: string | undefined): ("saved" | "conflict")!MailStoreFailed
 }
 
 /** The storage name of the saved mailbox of one owner, organization and credential. */

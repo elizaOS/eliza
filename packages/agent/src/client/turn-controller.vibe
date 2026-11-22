@@ -61,9 +61,11 @@ type Posted =
   | ({ readonly ending: "Refusal" } & TurnRefusal)
   | { readonly ending: Exclude<StreamEnd, "Done" | "FailureFrame" | "Refusal"> }
 
+type TurnMachine = Effect.Success<ReturnType<typeof hold>>
+
 interface Session {
   readonly transport: TurnTransport
-  readonly machine: Machine.Shape
+  readonly machine: TurnMachine
   readonly keys: Map<number, ClientMessageId>
   readonly conversationIds: Map<string, number>
   readonly roomIds: Map<string, number>

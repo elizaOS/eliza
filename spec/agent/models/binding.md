@@ -88,6 +88,7 @@ pure def lawImageDescriptionOnlyFromTheCloud(backend: Backend, embeddings: Embed
 
 A launch with no backend never calls a model, so its account state stays
 usable. Each call remembers the credential version it was sent with.
+The next call number starts at zero and advances for each admitted call.
 
 ```quint
 pure val nowValues = Set(0, 5, 10)
@@ -102,7 +103,7 @@ pure def canStartCall(s: ModelBinding, handler: ModelHandler, now: int): bool =
 pure def startCall(s: ModelBinding, handler: ModelHandler, now: int): ModelBinding =
   { ...s, calls: s.calls.append({ id: s.nextCall, credentialVersion: s.credentialVersion }), nextCall: s.nextCall + 1, clock: clockAt(s, now) }
 pure def alwaysCallsUseAHeldCredential(s: ModelBinding): bool =
-  s.calls.every(c => c.id >= 0 and c.id < s.nextCall and c.credentialVersion >= 1 and c.credentialVersion <= s.credentialVersion)
+  s.nextCall >= 0 and s.calls.every(c => c.id >= 0 and c.id < s.nextCall and c.credentialVersion >= 1 and c.credentialVersion <= s.credentialVersion)
 pure def alwaysNoBackendNeverCalls(s: ModelBinding): bool = s.backend == NoBackend implies
   (s.nextCall == 0 and s.accountState == Usable and s.lastCloudFailure == NoCloudFailure)
 pure def stepClockNeverGoesBack(before: ModelBinding, after: ModelBinding): bool = after.clock >= before.clock
@@ -354,8 +355,9 @@ The runtime service `cloud` hands plugins the authenticated cloud client;
 no plugin reads the credential. A managed Gmail change needs
 `launch.google.gmailChanges`, a calendar edit `launch.google.calendarEdits`
 (a refusal is `changes-off`, before any cloud call); reads need only the
-link. No plugin, native module or managed-Google host is a precondition of
-a cloud backend.
+link for ordinary reads. The link refuses the private inbox arrival route
+before any cloud call. No plugin, native module or managed-Google host is a
+precondition of a cloud backend.
 
 ```quint
 type GoogleOperation = GmailChange | CalendarEdit | GoogleRead
@@ -365,4 +367,9 @@ pure val consentValues = Set({ gmailChanges: false, calendarEdits: false }, { gm
 pure def lawGoogleChangeNeedsConsent(backend: Backend, consent: GoogleConsent): bool =
   (googleAdmitted(backend, consent, GmailChange) implies consent.gmailChanges) and (googleAdmitted(backend, consent, CalendarEdit) implies consent.calendarEdits)
 pure def lawGoogleReadNeedsOnlyTheLink(backend: Backend, consent: GoogleConsent): bool = googleAdmitted(backend, consent, GoogleRead) iff isCloud(backend)
+pure val privateInboxArrivalPath = "/api/v1/eliza/google/gmail/inbox-v1/arrival"
+pure def pluginCloudPathAllowed(pathname: str): bool = pathname != privateInboxArrivalPath
+pure val pathnameValues = Set(privateInboxArrivalPath, "/api/v1/eliza/google/gmail/read")
+pure def lawPrivateInboxArrivalStaysOffThePluginLink(pathname: str): bool =
+  pathname == privateInboxArrivalPath implies not(pluginCloudPathAllowed(pathname))
 ```

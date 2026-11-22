@@ -4,7 +4,7 @@ import {
   organizeRunsDirectly, type OrganizeKind, type OrganizeScreen,
 } from "../gen/notes__organize.effect.vibe"
 import { isNoteKind } from "./format.vibe"
-import { NotesTarget } from "./selected-read.vibe"
+import { NotesTargetSchema, type NotesTarget } from "./selected-read.vibe"
 import type { NoteFormat } from "./types.vibe"
 
 /** The organize capability: filters, folders, moves and restores. */
@@ -56,7 +56,7 @@ export const NOTES_ORGANIZE_TYPES: readonly NotesOrganizeType[] = ["notes_filter
 
 /** Whether a value is an organize operation type. */
 export function isNotesOrganizeType(value: unknown): value is NotesOrganizeType {
-  return typeof value === "string" && value in kindOf
+  return typeof value === "string" && Object.hasOwn(kindOf, value)
 }
 
 /** Whether the device's advertised capabilities offer this operation. */
@@ -133,7 +133,7 @@ export function noteFolderId(format: NoteFormat | undefined): string | undefined
   return typeof id === "string" ? id : undefined
 }
 
-effect function filterText(value: unknown): string | undefined!NotesOrganizeRefused {
+effect function filterText(value: unknown): (string | undefined)!NotesOrganizeRefused {
   if (value === undefined) return undefined
   if (typeof value !== "string" || value.trim() === "" || !filterTextAdmitted(value.length, value.includes("\0"))) throw new NotesOrganizeRefused({ reason: "Invalid Notes text" })
   return value.trim()
@@ -149,7 +149,7 @@ effect function only(operation: object, keys: readonly string[]): void!NotesOrga
   if (Object.keys(operation).some((key) => !keys.includes(key))) throw new NotesOrganizeRefused({ reason: "Unexpected Notes field" })
 }
 
-const decodeTarget = Schema.decodeUnknownEffect(NotesTarget, { onExcessProperty: "error" })
+const decodeTarget = Schema.decodeUnknownEffect(NotesTargetSchema, { onExcessProperty: "error" })
 
 /** An untrusted organize operation checked field by field; names are normalized and nothing is truncated. */
 export effect function decodeNotesOrganizeOperation(value: unknown): NotesOrganizeOperation!NotesOrganizeRefused {

@@ -1,10 +1,14 @@
 // spec/cloud/shared/metering.md, "Story: Never overdraw an account"; spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/billing/funds.md, "Story: Spend only money the account has"; spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"
 import { assert, describe, it } from "@effect/vitest"
+import { drainProviderEvents, webhookPath } from "../src/billing/provider-events.vibe"
+import { observeSubscription, reconcileSubscription } from "../src/billing/subscriptions.vibe"
 import { addCredits, stepFunds } from "../src/billing/funds.vibe"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { holdRows, markDispatched, periodRows, renderHoldKey, reserve, settle, sweepHolds, type HoldOwner, type HoldKey } from "../src/shared/metering.vibe"
 import { stepRow } from "../src/store/rows.vibe"
 import { Store } from "../src/store/store.vibe"
+import { signedCaller } from "./support/caller.vibe"
+import { createStripeFake, type SignedEvent } from "./support/fakes/stripe.ts"
 import { manualClock, shiftedClock } from "./support/clock.ts"
 import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
 
@@ -268,3 +272,78 @@ describe("WP0 Foundation: metering and funds", () => {
     }
   }))
 })
+
+it.live('Follow the verified Checkout and scope shared charge events (spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/providerEvents.md, "Each event type has one owner, and an event of any other type is done at its first handling")', () => scoped(effect {
+  const stripe = try sync(() => createStripeFake())
+  const cloud = try testCloud({ stripe })
+  const owner = try signedCaller(cloud, "verified-checkout")
+  const legacy = try signedCaller(cloud, "legacy-checkout")
+  const path = "/api/v1/subscriptions/checkout"
+  const OpenCheckout = Schema.Struct({ sessionId: Schema.String })
+  const buildCheckout = (headers: Readonly<Record<string, string>>, idempotencyKey: string) =>
+    cloud.call(path, { headers, json: { planKey: "plus_monthly", presentation: "shared", idempotencyKey } })
+  const confirm = (sessionId: string, headers: Readonly<Record<string, string>>) =>
+    cloud.call(path + "/confirm", { headers, json: { sessionId } })
+  const opened = try buildCheckout(owner.headers, "verified-checkout-current")
+  const { sessionId } = try Schema.decodeUnknownEffect(OpenCheckout)(opened.body)
+  const completed = try sync(() => stripe.completeSession(sessionId))
+  if (completed.kind !== "paid") return try Effect.die("The provider fixture did not pay for Checkout")
+  const refused = try confirm(sessionId, legacy.headers)
+  const beforeConfirm = try sql(cloud, "SELECT status FROM subscriptions WHERE key=$1", [owner.organizationId])
+  const confirmed = try confirm(sessionId, owner.headers)
+  const confirmedAgain = try confirm(sessionId, owner.headers)
+  const legacyOpened = try buildCheckout(legacy.headers, "verified-checkout-legacy")
+  const legacySession = (try Schema.decodeUnknownEffect(OpenCheckout)(legacyOpened.body)).sessionId
+  const old = try sync(() => stripe.completeSession(legacySession))
+  const legacyConfirmed = try confirm(legacySession, legacy.headers)
+  const legacyState = { customerId: old.subscription.customer, subscriptionId: old.subscription.id,
+    planKey: "plus_monthly", status: "active", periodEnd: old.subscription.current_period_end * 1000 }
+  try sql(cloud, "UPDATE subscriptions SET state=$2::jsonb WHERE key=$1", [legacy.organizationId, JSON.stringify(legacyState)])
+  const now = try Clock.currentTimeMillis
+  const recovered = try cloud.inside(cloud.store.transaction(effect (tx) => {
+    const checked = try observeSubscription(tx, legacy.organizationId)
+    return try reconcileSubscription(tx, legacy.organizationId, checked, now)
+  }))
+  const refresh = (at: number, status: "active" | "past_due", latestInvoice: "PlanChangeInvoice" | "PeriodInvoiceFailed") =>
+    cloud.inside(cloud.store.transaction(effect (tx) => {
+      const checked = try observeSubscription(tx, owner.organizationId)
+      return try reconcileSubscription(tx, owner.organizationId, { ...checked, status, latestInvoice, payment: undefined }, at)
+    }))
+  const failed = try refresh(now + 1_000, "past_due", "PeriodInvoiceFailed")
+  const planChange = try refresh(now + 2_000, "active", "PlanChangeInvoice")
+
+  const deliver = effect (event: SignedEvent) => {
+    const json: unknown = try Effect.try(() => JSON.parse(event.raw))
+    const answer = try cloud.call(webhookPath, { json, headers: { "stripe-signature": event.header } })
+    try cloud.inside(drainProviderEvents(try Clock.currentTimeMillis))
+    return [answer.status, answer.body]
+  }
+  const allowanceKey = "renewal/staging/" + completed.invoice.id
+  const allowance = () => sql(cloud, "SELECT status FROM allowance_periods WHERE key=$1 AND organization_id=$2", [allowanceKey, owner.organizationId])
+  const beforeUnknown = try allowance()
+  const upstreamBefore = cloud.fakes.seen.length
+  const unknown = try deliver(try sync(() => stripe.signedEvent("refund.created", { object: "refund", charge: "ch_foreign" })))
+  const ignored = cloud.fakes.seen.length === upstreamBefore
+  const withdrawal = try sync(() => stripe.disputeCharge(completed.charge.id))
+  const dispute = try deliver(try sync(() => stripe.signedEvent("charge.dispute.funds_withdrawn", withdrawal)))
+  const clawed = try allowance()
+  const restoredDispute = try sync(() => stripe.resolveDispute(withdrawal.id, "won"))
+  const returned = try deliver(try sync(() => stripe.signedEvent("charge.dispute.funds_reinstated", restoredDispute)))
+  const restored = try allowance()
+  const refund = try sync(() => stripe.refundCharge(completed.charge.id))
+  const refundEvent = try sync(() => stripe.signedEvent("charge.refunded", refund))
+  const refundDelivery = try deliver(refundEvent)
+  const refundReplay = try deliver(refundEvent)
+  const afterRefund = try allowance()
+  const otherAllowance = try sql(cloud, "SELECT status FROM allowance_periods WHERE organization_id=$1", [legacy.organizationId])
+  const queued = [200, { received: true, queued: true }]
+  try check(() => {
+    assert.deepStrictEqual([refused.status, beforeConfirm, confirmed.status, confirmedAgain.body, legacyConfirmed.status, recovered.status],
+      [404, [{ status: "none" }], 200, confirmed.body, 200, "Active"])
+    assert.deepStrictEqual([failed.status, planChange.status, planChange.dunning], ["Dunning", "Dunning", failed.dunning])
+    assert.deepStrictEqual([unknown, dispute, returned, refundDelivery, refundReplay, ignored],
+      [queued, queued, queued, queued, [200, { received: true, duplicate: true }], true])
+    assert.deepStrictEqual([beforeUnknown, clawed, restored, afterRefund, otherAllowance],
+      [[{ status: "open" }], [{ status: "clawed_back" }], [{ status: "open" }], [{ status: "clawed_back" }], [{ status: "open" }]])
+  })
+}), 90_000)

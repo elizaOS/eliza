@@ -2,6 +2,7 @@
 import { types } from "pg"
 
 export const WorkerResponse = globalThis.Response
+export const WorkerRequest = globalThis.Request
 export const WorkerHeaders = globalThis.Headers
 export const workerFetch: typeof fetch = (input, init) => globalThis.fetch(input, init)
 
@@ -32,6 +33,10 @@ export async function limitedBody(request: Pick<Request, "body">, limit: number)
   } finally {
     reader.releaseLock()
   }
+}
+
+export interface WorkerLifetime {
+  waitUntil(work: Promise<unknown>): void
 }
 
 export function withRequestBody(request: Request, bytes: Uint8Array) {

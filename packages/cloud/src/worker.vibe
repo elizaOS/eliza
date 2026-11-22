@@ -1,15 +1,14 @@
 // spec/cloud/deployment.md, "Story: Serve the deployment from a Worker"; spec/cloud/deployment.md, "A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve"
-import { workerFetch } from "./worker-platform.ts"
+import { workerFetch, type WorkerLifetime } from "./worker-platform.ts"
 import { relayFromTable, serveFromTable, sweepTable, workerReady, type ProfileBindings } from "./worker/canonical.vibe"
 import { ownsWorkerOnly, workerOnlyRequest, type DeploymentExtension, type LegacyBindings, type WorkerPorts } from "./worker/legacy.vibe"
 import { answerOf, opensRelay } from "./worker/routes.vibe"
 
+export { nativeAssetLinks } from "./native-registry.vibe"
 export type { DeploymentExtension }
 
 /** The part of a Worker's execution context that keeps work running after the answer. */
-export interface WorkerExecution {
-  waitUntil(work: Promise<unknown>): void
-}
+export type WorkerExecution = WorkerLifetime
 
 /** Every binding a deployment's Worker reads: the profile, its database, its secrets and the Worker-only routes' own. */
 export type CloudBindings = LegacyBindings & ProfileBindings
@@ -27,7 +26,7 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
         return relayFromTable(request, env, (work) => execution === undefined ? void work.then(() => undefined, () => undefined) : execution.waitUntil(work))
       }
       const answer = answerOf(request.method, path, (owned) => ownsWorkerOnly(owned, ports))
-      if (answer !== "FromWorkerOnly") return serveFromTable(request, env)
+      if (answer !== "FromWorkerOnly") return serveFromTable(request, env, execution)
       return (await workerReady(env)) ?? workerOnlyRequest(request, env, ports)
     }
   }

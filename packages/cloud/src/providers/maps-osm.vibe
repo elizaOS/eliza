@@ -40,7 +40,7 @@ error Unreachable { cause: string }
 function boundedText(value: unknown, max: number): string | undefined {
   if (typeof value !== "string") return undefined
   const text = value.trim()
-  return text.length > 0 && text.length <= max && !/[\u0000-\u001f]/.test(text) ? text : undefined
+  return text.length > 0 && text.length <= max && !/[^\x20-\uffff]/.test(text) ? text : undefined
 }
 
 function finiteNumber(value: unknown): number | undefined {

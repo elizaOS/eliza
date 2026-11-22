@@ -1,27 +1,19 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
-import { refused, type Refused } from "../../http/refusal.vibe"
+// spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"
+import { htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, offeredReads, threadMaxMessages, threadOutcome, threadPageMax, type MailSurface, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
+import { refused, Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
-import { sha256Hex } from "../../shared/sealing.vibe"
+import { bearerToken, recheckServiceAccess, signed } from "../../http/request-auth.vibe"
+import { Deployment } from "../../profile/profile.vibe"
+import { seal, sha256Hex, tokenDigest, unseal } from "../../shared/sealing.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
-import { holds, useGrant, type GoogleCapability } from "./grant-access.vibe"
-import { attachmentDescriptor, attachmentMaxBytes, attachmentMimeTypes, receivedAuthentication } from "../../google-read.vibe"
+import { holds, knownScopes, readGrantStatus, useGrant, useMailReadGrant, type GoogleCapability } from "./grant-access.vibe"
+import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBinding, inboxWatchInput, observeInboxWatch } from "./inbox-arrival.vibe"
+import * as GoogleRead from "../../google-read.vibe"
 import type { OperationKind } from "./mail-operations.vibe"
 
 module node {
   import { createHash } from "node:crypto"
-
-  /** @throws {never} */
-  export function decodePart(data: string, charset: string): { readonly text: string; readonly size: number } {
-    const bytes = Buffer.from(data, "base64url")
-    const decoder = (() => {
-      try {
-        return new TextDecoder(charset)
-      } catch {
-        return new TextDecoder("utf-8")
-      }
-    })()
-    return { text: decoder.decode(bytes), size: bytes.length }
-  }
 
   /** @throws {never} */
   export function partBytes(data: string): { readonly dataBase64: string; readonly size: number; readonly sha256: string } {
@@ -33,21 +25,30 @@ module node {
   export function utf8Length(text: string): number {
     return Buffer.byteLength(text, "utf8")
   }
-}
-import { decodePart, partBytes, utf8Length } from node
 
-schema Header { name: string; value: string }
-schema PartBody { data?: string; attachmentId?: string; size?: number }
-schema MailPart { partId?: string; mimeType?: string; filename?: string; headers?: Header[]; body?: PartBody; parts?: Schema.Unknown[] }
+  /** @throws {never} */
+  export function encodeCursor(value: string): string {
+    return Buffer.from(value, "utf8").toString("hex")
+  }
+
+  /** @throws {never} */
+  export function cursorEnvelope(cursor: string): string {
+    if (cursor.length % 2 !== 0) return ""
+    const envelope = Buffer.from(cursor, "hex").toString("utf8")
+    return /^v1\.[^.]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(envelope) ? envelope : ""
+  }
+}
+import { cursorEnvelope, encodeCursor, partBytes, utf8Length } from node
+
 schema MailMessage {
-  id: string; threadId: string; historyId?: string; snippet?: string; internalDate?: string; labelIds?: string[]; payload?: MailPart
+  id: string; threadId: string; historyId?: string; snippet?: string; internalDate?: string; labelIds?: string[]; payload?: GoogleRead.MailPart
 }
 schema MessageRef { id: string }
 schema MessageList { messages?: MessageRef[]; nextPageToken?: string }
 schema Profile { historyId: string }
 schema Thread { id: string; historyId: string; messages: Schema.Unknown[] }
 schema DraftList { drafts?: MessageRef[]; nextPageToken?: string }
-schema DraftMessage { id: string; raw?: string; snippet?: string; internalDate?: string; payload?: MailPart }
+schema DraftMessage { id: string; raw?: string; snippet?: string; internalDate?: string; payload?: GoogleRead.MailPart }
 schema Draft { id: string; message: DraftMessage }
 
 export interface ReadGrant {
@@ -67,27 +68,18 @@ export interface Attachment {
   readonly sha256: string
 }
 
-type HtmlStatus = "available" | "none"
 type Format = "metadata" | "full"
 
-export { attachmentMaxBytes, attachmentMimeTypes }
+export { attachmentMaxBytes, attachmentMimeTypes } from "../../google-read.vibe"
 const gmail = "/gmail/v1/users/me"
 const providerId = /^[A-Za-z0-9_-]{1,256}$/
 const historyPattern = /^\d{1,20}$/
 const partIdPattern = /^[0-9.]{1,32}$/
-const pageSize = /^[1-9]\d{0,2}$/
-const triageMax = 50
-const searchMax = 100
-const threadPage = 25
-const threadOffsetMax = 2000
+const threadPageMaxBytes = 1.5 * mebibyte
 const draftPage = 25
-const maxParts = 200
-const bodyTextMaxBytes = 256 * 1024
-const bodyHtmlMaxBytes = 512 * 1024
-const messageMaxBytes = Math.ceil(attachmentMaxBytes / 3) * 4 + 65536
+const messageMaxBytes = Math.ceil(GoogleRead.attachmentMaxBytes / 3) * 4 + 65536
 const threadMaxBytes = 12 * 1024 * 1024
 const metadataHeaders = ["From", "To", "Cc", "Subject", "Reply-To", "Message-ID", "Precedence", "List-Id", "Auto-Submitted"]
-const automatedSender = /(?:^|\b)(?:no-?reply|donotreply|notifications?|mailer-daemon)(?:\b|@)/i
 const trashQuery = /(?:^|[\s({])in:(?:spam|trash|anywhere)(?=[\s)}]|$)/i
 
 const kindsByCapability: ReadonlyArray<readonly [GoogleCapability, ReadonlyArray<OperationKind>]> = [
@@ -95,6 +87,12 @@ const kindsByCapability: ReadonlyArray<readonly [GoogleCapability, ReadonlyArray
   ["google.gmail.drafts", ["draft-create", "draft-replace", "draft-delete"]],
   ["google.gmail.manage", ["archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"]]
 ]
+
+const readNames: Readonly<Record<MailSurface, string>> = {
+  TriageSurface: "triage", SearchSurface: "search", MessageSurface: "read",
+  ThreadSurface: "thread", AttachmentSurface: "attachment",
+  DraftsSurface: "drafts", DraftSurface: "draft", CapabilitiesSurface: "capabilities"
+}
 
 export function googleRefused(failure: GoogleFailure): Refused {
   switch (failure._tag) {
@@ -124,71 +122,25 @@ effect function parsed<A>(schema: Schema.Codec<A>, raw: unknown): A!Refused {
   return value.value
 }
 
-function headerValues(part: MailPart | undefined, name: string): ReadonlyArray<string> {
+function headerValues(part: GoogleRead.MailPart | undefined, name: string): ReadonlyArray<string> {
   return (part?.headers ?? []).filter((header) => header.name.toLowerCase() === name).map((header) => header.value)
 }
 
-function header(part: MailPart | undefined, name: string): string {
+function header(part: GoogleRead.MailPart | undefined, name: string): string {
   return headerValues(part, name).at(-1) ?? ""
 }
 
-function addressOf(entry: string): string {
-  const bracketed = /<([^<>]+)>\s*$/.exec(entry)
-  return (bracketed?.[1] ?? entry).trim()
-}
-
-function addresses(value: string): ReadonlyArray<string> {
-  return value.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(addressOf).filter((entry) => entry !== "")
-}
-
-function senderEmail(value: string): string | null {
-  const candidate = addressOf(value)
-  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(candidate) ? candidate.toLowerCase() : null
-}
-
-function triage(labels: ReadonlyArray<string>, part: MailPart | undefined, to: ReadonlyArray<string>, cc: ReadonlyArray<string>, selfEmail: string) {
-  const labelSet = new Set(labels.map((label) => label.trim().toUpperCase()))
-  const isUnread = labelSet.has("UNREAD")
-  const explicitlyImportant = labelSet.has("IMPORTANT")
-  const self = selfEmail.trim().toLowerCase()
-  const fromEmail = senderEmail(header(part, "from"))
-  const directlyAddressed = self !== "" && [...to, ...cc].some((entry) => entry.trim().toLowerCase() === self)
-  const fromSelf = self !== "" && fromEmail === self
-  const precedence = header(part, "precedence").trim().toLowerCase()
-  const autoSubmitted = headerValues(part, "auto-submitted").at(-1)?.trim().toLowerCase()
-  const automated = (fromEmail !== null && automatedSender.test(fromEmail)) || header(part, "list-id") !== "" ||
-    precedence === "bulk" || precedence === "list" || precedence === "junk" || (autoSubmitted !== undefined && autoSubmitted !== "no")
-  const likelyReplyNeeded = !automated && !fromSelf && isUnread && directlyAddressed
-  const weights: ReadonlyArray<readonly [boolean, number, string]> = [
-    [isUnread, 30, "unread"],
-    [explicitlyImportant, 35, "important label"],
-    [directlyAddressed, 15, "directly addressed"],
-    [likelyReplyNeeded, 30, "likely needs reply"],
-    [automated, -25, "automated sender"],
-    [fromSelf, -60, "sent by self"]
-  ]
-  const applied = weights.filter(([holds]) => holds)
-  return {
-    isImportant: explicitlyImportant || likelyReplyNeeded,
-    likelyReplyNeeded,
-    triageScore: Math.max(0, applied.reduce((total, [, weight]) => total + weight, 0)),
-    triageReason: applied.map(([, , reason]) => reason).join(", ") || "recent inbox message"
-  }
-}
-
 effect function mailCard(message: MailMessage, selfEmail: string) {
-  const received = Number(message.internalDate ?? "")
-  if (!providerId.test(message.id) || !providerId.test(message.threadId) || !/^\d+$/.test(message.internalDate ?? "") || !Number.isSafeInteger(received)) {
+  const receivedAt = GoogleRead.isoMailDate(message.internalDate)
+  if (!providerId.test(message.id) || !providerId.test(message.threadId) || receivedAt === null) {
     throw refused("ProviderInvalidResponse")
   }
-  const part = message.payload
+  const headers = GoogleRead.headerMap(message.payload)
   const labels = (message.labelIds ?? []).map((label) => label.trim()).filter((label) => label !== "")
-  const to = addresses(header(part, "to"))
-  const cc = addresses(header(part, "cc"))
   return {
-    id: message.id, threadId: message.threadId, subject: header(part, "subject"), from: header(part, "from"), to, cc,
-    snippet: message.snippet ?? "", receivedAt: new Date(received).toISOString(), labels, isUnread: labels.includes("UNREAD"),
-    ...triage(labels, part, to, cc, selfEmail), metadata: { historyId: message.historyId ?? null }
+    id: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from: headers.get("from") ?? "",
+    snippet: message.snippet ?? "", receivedAt, labels, ...GoogleRead.mailTriageFields(labels, headers, selfEmail),
+    metadata: { historyId: message.historyId ?? null }
   }
 }
 
@@ -208,86 +160,73 @@ export effect function readAtHistory(grant: ReadGrant, messageId: string, histor
   return message
 }
 
-effect function partsOf(root: MailPart | undefined) {
-  const found: MailPart[] = []
-  const pending: unknown[] = root === undefined ? [] : [root]
-  while (pending.length > 0) {
-    if (found.length >= maxParts) throw refused("ContentTooLarge")
-    const part = try parsed(MailPart, pending.shift())
-    found.push(part)
-    pending.unshift(...(part.parts ?? []))
+effect function mailParts(root: GoogleRead.MailPart | undefined, maxParts?: number) {
+  return GoogleRead.scanMailParts(root, "depth-first", maxParts) catch effect (failure) => {
+    if (failure instanceof GoogleRead.GoogleReadTooLarge) throw refused("ContentTooLarge")
+    throw refused("ProviderInvalidResponse")
   }
-  return found
 }
 
-function charsetOf(part: MailPart): string {
+function charsetOf(part: GoogleRead.MailPart): string {
   return /charset="?([^";\s]+)"?/i.exec(header(part, "content-type"))?.[1] ?? "utf-8"
 }
 
-effect function partData(grant: ReadGrant, messageId: string, part: MailPart, maxBytes: number) {
-  const body = part.body ?? {}
+effect function partData(grant: ReadGrant, messageId: string, part: GoogleRead.MailPart, maxBytes: number) {
+  const body = part.body
+  if (body === undefined) throw refused("ProviderInvalidResponse")
   if ((body.size ?? 0) > maxBytes) throw refused("ContentTooLarge")
   if (body.data !== undefined) return body.data
-  if (body.attachmentId === undefined || !providerId.test(body.attachmentId)) return ""
-  const fetched = try parsed(PartBody, try google(grant, `/messages/${messageId}/attachments/${body.attachmentId}`, Math.ceil(maxBytes / 3) * 4 + 4096))
-  return fetched.data ?? ""
+  if (body.attachmentId === undefined) {
+    if (body.size === 0) return ""
+    throw refused("ProviderInvalidResponse")
+  }
+  if (!providerId.test(body.attachmentId)) throw refused("ProviderInvalidResponse")
+  const fetched = try parsed(GoogleRead.MessageBody, try google(grant, `/messages/${messageId}/attachments/${body.attachmentId}`, Math.ceil(maxBytes / 3) * 4 + 4096))
+  if (fetched.data === undefined) throw refused("ProviderInvalidResponse")
+  return fetched.data
 }
 
-effect function bodyPart(grant: ReadGrant, messageId: string, part: MailPart | undefined, maxBytes: number) {
+effect function bodyPart(grant: ReadGrant, messageId: string, part: GoogleRead.MailPart | undefined, maxBytes: number) {
   if (part === undefined) return undefined
   const data = try partData(grant, messageId, part, maxBytes)
-  if (!/^[A-Za-z0-9_=-]*$/.test(data)) throw refused("ProviderInvalidResponse")
-  const decoded = decodePart(data, charsetOf(part))
-  if (decoded.size > maxBytes || utf8Length(decoded.text) > maxBytes) throw refused("ContentTooLarge")
-  return decoded.text
-}
-
-function htmlText(html: string): string {
-  return html
-    .replace(/<(script|style|head)\b[\s\S]*?<\/\1\s*>/gi, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
-    .replace(/<[^<>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&#39;|&apos;/gi, "'").replace(/&amp;/gi, "&")
-    .replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ")
-    .trim()
-}
-
-function attachmentDescriptors(parts: ReadonlyArray<MailPart>) {
-  return parts.filter((part) => part.filename !== undefined && part.filename !== "").map(attachmentDescriptor)
+  return GoogleRead.decodeMailText(data, charsetOf(part), maxBytes) catch effect (failure) => {
+    if (failure instanceof GoogleRead.GoogleReadTooLarge) throw refused("ContentTooLarge")
+    throw refused("ProviderInvalidResponse")
+  }
 }
 
 effect function messageView(grant: ReadGrant, message: MailMessage, selfEmail: string) {
-  const parts = try partsOf(message.payload)
-  const inline = parts.filter((part) => (part.filename ?? "") === "")
-  const plain = try bodyPart(grant, message.id, inline.find((part) => part.mimeType?.toLowerCase() === "text/plain"), bodyTextMaxBytes)
-  const html = try bodyPart(grant, message.id, inline.find((part) => part.mimeType?.toLowerCase() === "text/html"), bodyHtmlMaxBytes)
-  const bodyText = plain ?? (html === undefined ? "" : htmlText(html))
-  if (utf8Length(bodyText) > bodyTextMaxBytes) throw refused("ContentTooLarge")
-  const bodyHtmlStatus: HtmlStatus = html === undefined ? "none" : "available"
+  const parts = try mailParts(message.payload)
+  const plain = try bodyPart(grant, message.id, parts.plain, mailMaxBytes)
+  const omitHtml = plain !== undefined && !parts.partsWithinLimit
+  const html = bodyPart(grant, message.id, omitHtml ? undefined : parts.html, plain === undefined ? mailMaxBytes : htmlMaxBytes) catch effect (failure) => {
+    if (plain !== undefined && failure.refusal.code === "ContentTooLarge") return null
+    throw failure
+  }
+  const bodyText = plain ?? (typeof html === "string" ? GoogleRead.htmlText(html) : message.snippet ?? "")
+  if (utf8Length(bodyText) > mailMaxBytes) throw refused("ContentTooLarge")
   return {
     message: try mailCard(message, selfEmail),
     bodyText,
-    bodyHtml: html ?? null,
-    bodyHtmlStatus,
-    attachments: attachmentDescriptors(parts),
-    authenticationResults: receivedAuthentication(message.payload?.headers ?? [])
+    ...GoogleRead.mailHtmlView(html, parts.partsWithinLimit),
+    attachments: parts.attachments.map(GoogleRead.attachmentDescriptor),
+    authenticationResults: GoogleRead.receivedAuthentication(message.payload?.headers ?? [])
   }
 }
 
 export effect function attachmentBytes(grant: ReadGrant, messageId: string, partId: string, historyId: string) {
   if (!partIdPattern.test(partId)) throw refused("InvalidRequest")
   const message = try readAtHistory(grant, messageId, historyId)
-  const matching = (try partsOf(message.payload)).filter((part) => part.partId === partId && (part.filename ?? "") !== "")
+  const matching = (try mailParts(message.payload)).attachments.filter((part) => part.partId === partId)
   const part = matching[0]
   if (part === undefined || matching.length !== 1) throw refused("NotFound")
   const declared = part.body?.size
   if (declared === undefined || !Number.isSafeInteger(declared) || declared < 0) throw refused("ProviderInvalidResponse")
-  const data = try partData(grant, message.id, part, attachmentMaxBytes)
+  const data = try partData(grant, message.id, part, GoogleRead.attachmentMaxBytes)
   if (!/^[A-Za-z0-9_-]*={0,2}$/.test(data)) throw refused("ProviderInvalidResponse")
   const bytes = partBytes(data)
   if (bytes.size !== declared) throw refused("ProviderInvalidResponse")
-  const { name, mimeType } = attachmentDescriptor(part)
+  const { name, mimeType } = GoogleRead.attachmentDescriptor(part)
   return { name, mimeType, ...bytes } satisfies Attachment
 }
 
@@ -307,11 +246,11 @@ effect function listed(grant: Grant, query: URLSearchParams, limit: number, page
   return { messages, nextPageToken: next ?? null }
 }
 
-effect function grantOf(context: RouteContext) {
+effect function grantOf(context: RouteContext, surface: MailSurface) {
   const owner = ownerOf(context.caller)
   if (owner === undefined) throw refused("AuthenticationRequired")
   const grantId = context.query.get("grantId") ?? ""
-  const grant: Grant = try useGrant(owner, grantId === "" ? undefined : grantId, "google.gmail.triage")
+  const grant: Grant = try useMailReadGrant(owner, grantId === "" ? undefined : grantId, context.query.get("side"), surface)
   return grant
 }
 
@@ -319,13 +258,6 @@ effect function param(context: RouteContext, name: string, pattern: RegExp) {
   const value = context.query.get(name) ?? ""
   if (!pattern.test(value)) throw refused("InvalidRequest")
   return value
-}
-
-effect function limitOf(context: RouteContext, fallback: number, max: number) {
-  const raw = context.query.get("maxResults")
-  if (raw === null) return fallback
-  if (!pageSize.test(raw) || Number(raw) > max) throw refused("InvalidRequest")
-  return Number(raw)
 }
 
 effect function pageTokenOf(context: RouteContext) {
@@ -338,20 +270,23 @@ effect function pageTokenOf(context: RouteContext) {
 const syncedAt = (context: RouteContext) => new Date(context.now).toISOString()
 
 effect function triageRoute(context: RouteContext) {
-  const limit = try limitOf(context, triageMax, triageMax)
-  const grant = try grantOf(context)
+  const limit = GoogleRead.mailListCount("TriageList", context.query.get("maxResults"))
+  if (limit === null) throw refused("InvalidRequest")
+  const grant = try grantOf(context, "TriageSurface")
   const mailboxHistoryId = try mailboxHistory(grant)
-  const page = try listed(grant, new URLSearchParams({ maxResults: String(limit), labelIds: "INBOX", q: "-in:trash" }), limit, undefined)
-  const messages = page.messages.toSorted((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt))
+  const page = try listed(grant, new URLSearchParams({ maxResults: String(limit), labelIds: "INBOX" }), limit, undefined)
+  const messages = page.messages.filter(({ labels }) => labels.includes("INBOX") && !labels.includes("TRASH"))
+    .sort(GoogleRead.compareMailTriage)
   return json({ messages, syncedAt: syncedAt(context), mailboxHistoryId })
 }
 
 effect function searchRoute(context: RouteContext) {
   const query = (context.query.get("query") ?? "").trim()
   if (query === "" || query.length > 2048) throw refused("InvalidRequest")
-  const limit = try limitOf(context, triageMax, searchMax)
+  const limit = GoogleRead.mailListCount("SearchList", context.query.get("maxResults"))
+  if (limit === null) throw refused("InvalidRequest")
   const pageToken = try pageTokenOf(context)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "SearchSurface")
   const mailboxHistoryId = try mailboxHistory(grant)
   const search = new URLSearchParams({ q: query, maxResults: String(limit), includeSpamTrash: String(trashQuery.test(query)) })
   if (pageToken !== undefined) search.set("pageToken", pageToken)
@@ -361,51 +296,116 @@ effect function searchRoute(context: RouteContext) {
 
 effect function readRoute(context: RouteContext) {
   const messageId = try param(context, "messageId", providerId)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "MessageSurface")
   return json(try messageView(grant, try readMessage(grant, messageId, "full"), grant.email))
 }
 
 effect function capabilitiesRoute(context: RouteContext) {
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "CapabilitiesSurface")
   const kinds = kindsByCapability.flatMap(([capability, granted]) => holds(grant.scopes, capability) ? granted : [])
-  return json({ version: 1, from: grant.email, kinds, attachmentPolicy: { mimeTypes: attachmentMimeTypes, maxBytes: attachmentMaxBytes } })
+  const reads = offeredReads(knownScopes(grant.scopes)).map((surface) => readNames[surface])
+  return json({
+    version: 1, from: grant.email, reads, kinds,
+    attachmentPolicy: { mimeTypes: GoogleRead.attachmentMimeTypes, maxBytes: GoogleRead.attachmentMaxBytes },
+    providerExactlyOnce: false
+  })
+}
+
+effect function arrivalRoute(context: RouteContext) {
+  const caller = signed(context.caller)
+  const authorization = context.request.headers.authorization
+  const token = bearerToken(authorization)
+  if (caller === undefined || token === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const mode = caller.kind === "deviceKey" ? "DeviceWatch" : "BrowserWatch"
+  const input = inboxWatchInput(context.query, mode) catch effect () => { throw refused("InvalidRequest") }
+  const now = try Clock.currentTimeMillis
+  const selection = try readGrantStatus(caller, input.grant, context.query.get("side"), now)
+  const grantId = selection.connectionId
+  const subject = selection.identity?.id
+  const capability = "google.gmail.triage"
+  if (!grantId || !subject || !selection.grantedCapabilities.includes(capability)) throw refused("GoogleReauthRequired")
+  const { settings } = try Deployment
+  const identity = JSON.stringify([grantId, subject])
+  const binding = sha256Hex(inboxWatchBinding(settings.api, caller.userId, caller.organizationId, identity, {
+    kind: mode === "DeviceWatch" ? "device" : "browser", hash: tokenDigest(token)
+  })) + ":"
+  const presentedCursor = input.cursor
+  const watch = presentedCursor === undefined ? undefined : try (effect {
+    const claim = unseal("gmail-arrival", cursorEnvelope(presentedCursor)) catch effect () => { throw refused("GoogleReauthRequired") }
+    if (!claim.startsWith(binding)) throw refused("GoogleReauthRequired")
+    return decodeInboxWatch(claim.slice(binding.length), now) catch effect () => { throw refused("GoogleReauthRequired") }
+  })
+  const grant = try useGrant(caller, grantId, capability, subject)
+  // Grant refresh must settle before the HTTP server can interrupt this read.
+  return try Effect.interruptible(effect {
+    const answer = observeInboxWatch(watch, now, effect (path) => {
+      return googleJson(grant.accessToken, "GET", gmail + path, { maxBytes: inboxArrivalBodyLimit }) catch effect (failure) => {
+        if (failure._tag === "Rejected" && failure.status === 403) throw refused("GoogleReauthRequired")
+        throw googleRefused(failure)
+      }
+    }) catch effect (failure) => {
+      if (failure._tag === "InboxHistoryInvalid") throw refused("ProviderInvalidResponse")
+      throw failure
+    }
+    const cursor = presentedCursor ?? encodeCursor(try seal("gmail-arrival", binding + JSON.stringify(answer.watch)))
+    const current = try readGrantStatus(caller, grantId, null, try Clock.currentTimeMillis)
+    try recheckServiceAccess(authorization, caller)
+    const grantCurrent = current.connected && current.connectionId === grantId && current.identity?.id === subject && current.grantedCapabilities.includes(capability)
+    if (!inboxWatchCanAnswer(answer.watch, try Clock.currentTimeMillis, grantCurrent, true, true)) throw refused("GoogleReauthRequired")
+    return json({ cursor, arrived: answer.arrived })
+  })
 }
 
 effect function threadRoute(context: RouteContext) {
   const threadId = try param(context, "threadId", providerId)
   const offset = Number(context.query.get("offset") ?? "0")
   const expected = context.query.get("historyId") ?? undefined
-  if (!Number.isSafeInteger(offset) || offset < 0 || offset > threadOffsetMax || (offset > 0 && expected === undefined) ||
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > threadMaxMessages || (offset > 0 && expected === undefined) ||
       (expected !== undefined && !historyPattern.test(expected))) throw refused("InvalidRequest")
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "ThreadSurface")
   const thread = try parsed(Thread, try google(grant, `/threads/${threadId}?format=full`, threadMaxBytes))
   if (thread.id !== threadId || !historyPattern.test(thread.historyId)) throw refused("ProviderInvalidResponse")
-  if (expected !== undefined && thread.historyId !== expected) throw refused("StaleRevision")
+  const ask: ThreadAsk = { offset, asked: expected === undefined ? { tag: "AnyRevision" } : { tag: "AtRevision", historyId: expected } }
+  const snapshot = { threadRevision: thread.historyId, total: thread.messages.length, fitting: threadPageMax, oversized: false }
+  const window = threadOutcome(ask, snapshot)
+  if (window.tag === "ThreadRefused") throw new Refused({ refusal: window.refusal })
   const all = (try Effect.forEach(thread.messages, (raw) => parsed(MailMessage, raw))).toSorted((left, right) => Number(left.internalDate) - Number(right.internalDate))
   if (all.some((message) => message.threadId !== threadId)) throw refused("ProviderInvalidResponse")
-  if (offset > all.length) throw refused("InvalidRequest")
-  const page = all.slice(offset, offset + threadPage)
-  const messages = try Effect.forEach(page, effect (message) => {
-    return { ...(try messageView(grant, message, grant.email)), historyId: message.historyId ?? null }
-  })
-  return json({
-    version: 1, threadId, historyId: thread.historyId, total: all.length, offset,
-    nextOffset: offset + page.length < all.length ? offset + page.length : null, messages
-  })
+
+  const receipt = effect (messages: ReadonlyArray<unknown>) => {
+    const chosen = threadOutcome(ask, { ...snapshot, fitting: messages.length })
+    if (chosen.tag === "ThreadRefused") throw new Refused({ refusal: chosen.refusal })
+    return json({
+      version: 1, threadId, historyId: thread.historyId, total: snapshot.total, offset: chosen.first,
+      nextOffset: chosen.rest.tag === "NextAt" ? chosen.rest.nextOffset : null, messages
+    })
+  }
+  const messages: unknown[] = []
+  let served: ReturnType<typeof json> | undefined
+  for (const message of all.slice(window.first, window.first + window.count)) {
+    messages.push({ ...(try messageView(grant, message, grant.email)), historyId: message.historyId ?? null })
+    const candidate = try receipt(messages)
+    if (candidate.body._tag !== "Uint8Array" || candidate.body.contentLength > threadPageMaxBytes) {
+      if (served === undefined) throw refused("ContentTooLarge")
+      break
+    }
+    served = candidate
+  }
+  return served ?? (try receipt(messages))
 }
 
 effect function attachmentRoute(context: RouteContext) {
   const messageId = try param(context, "messageId", providerId)
   const partId = try param(context, "partId", partIdPattern)
   const historyId = try param(context, "historyId", historyPattern)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "AttachmentSurface")
   const file = try attachmentBytes(grant, messageId, partId, historyId)
-  return json({ version: 1, messageId, partId, historyId, ...file, supported: attachmentMimeTypes.includes(file.mimeType) })
+  return json({ version: 1, messageId, partId, historyId, ...file, supported: GoogleRead.attachmentMimeTypes.includes(file.mimeType) })
 }
 
 effect function draftsRoute(context: RouteContext) {
   const pageToken = try pageTokenOf(context)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "DraftsSurface")
   const query = new URLSearchParams({ maxResults: String(draftPage) })
   if (pageToken !== undefined) query.set("pageToken", pageToken)
   const page = try parsed(DraftList, try google(grant, `/drafts?${query}`))
@@ -418,7 +418,7 @@ effect function draftsRoute(context: RouteContext) {
     const updated = Number(draft.message.internalDate ?? "")
     return {
       draftId: draft.id, messageId: draft.message.id, subject: header(draft.message.payload, "subject"),
-      to: addresses(header(draft.message.payload, "to")), snippet: draft.message.snippet ?? "",
+      to: GoogleRead.mailAddresses(header(draft.message.payload, "to")), snippet: draft.message.snippet ?? "",
       updatedAt: Number.isSafeInteger(updated) && updated > 0 ? new Date(updated).toISOString() : null
     }
   }, { concurrency: 8 })
@@ -427,24 +427,22 @@ effect function draftsRoute(context: RouteContext) {
 
 effect function draftRoute(context: RouteContext) {
   const draftId = try param(context, "draftId", providerId)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "DraftSurface")
   const raw = try parsed(Draft, try google(grant, `/drafts/${draftId}?format=raw`, threadMaxBytes))
   const full = try parsed(Draft, try google(grant, `/drafts/${draftId}?format=full`, threadMaxBytes))
   if (raw.id !== draftId || raw.message.raw === undefined || !providerId.test(raw.message.id)) throw refused("ProviderInvalidResponse")
   if (full.id !== draftId || full.message.id !== raw.message.id) throw refused("StaleRevision")
-  const parts = try partsOf(full.message.payload)
-  const inline = parts.filter((part) => (part.filename ?? "") === "")
-  const plain = inline.find((part) => part.mimeType?.toLowerCase() === "text/plain")
+  const parts = try mailParts(full.message.payload, GoogleRead.mailMaxParts)
   const payload = full.message.payload
   return json({
     version: 1, id: draftId, messageId: raw.message.id, providerDigest: sha256Hex(raw.message.raw),
     content: {
-      to: addresses(header(payload, "to")), cc: addresses(header(payload, "cc")), bcc: addresses(header(payload, "bcc")),
+      to: GoogleRead.mailAddresses(header(payload, "to")), cc: GoogleRead.mailAddresses(header(payload, "cc")), bcc: GoogleRead.mailAddresses(header(payload, "bcc")),
       subject: header(payload, "subject"),
-      bodyText: (try bodyPart(grant, full.message.id, plain, bodyTextMaxBytes)) ?? "",
-      plainText: plain !== undefined || !inline.some((part) => part.mimeType?.toLowerCase() === "text/html"),
+      bodyText: (try bodyPart(grant, full.message.id, parts.plain, mailMaxBytes)) ?? "",
+      plainText: parts.plain !== undefined || parts.html === undefined,
       threaded: header(payload, "in-reply-to") !== "" || header(payload, "references") !== "",
-      attachmentCount: attachmentDescriptors(parts).length
+      attachmentCount: parts.attachments.length
     }
   })
 }
@@ -455,6 +453,7 @@ export const mailReadRoutes: ReadonlyArray<Route> = [
   { method: "GET", path: `${gmailPath}/triage`, auth: "ServiceAccess", capability: "managedGoogle", handler: triageRoute },
   { method: "GET", path: `${gmailPath}/search`, auth: "ServiceAccess", capability: "managedGoogle", handler: searchRoute },
   { method: "GET", path: `${gmailPath}/read`, auth: "ServiceAccess", capability: "managedGoogle", handler: readRoute },
+  { method: "GET", path: inboxArrivalPath, auth: "ServiceAccess", capability: "managedGoogle", handler: arrivalRoute },
   { method: "GET", path: `${gmailPath}/inbox-v1/capabilities`, auth: "ServiceAccess", capability: "managedGoogle", handler: capabilitiesRoute },
   { method: "GET", path: `${gmailPath}/inbox-v1/thread`, auth: "ServiceAccess", capability: "managedGoogle", handler: threadRoute },
   { method: "GET", path: `${gmailPath}/inbox-v1/attachment`, auth: "ServiceAccess", capability: "managedGoogle", handler: attachmentRoute },

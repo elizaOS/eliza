@@ -1,6 +1,7 @@
-// spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does fails as Agent"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 package ai.eliza.os.agent;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -13,23 +14,27 @@ public final class AgentPolicy {
   public enum AfterExit { STOP, START, RESTART, FAIL }
   public enum ExitClass { CLEAN, RELEASE_FAILED, CONFIG, CREDENTIAL, STORAGE, AGENT, CRASH }
 
-  public record UpdateTarget(long code, String digest) {}
+  public record UpdateTarget(long code, String digest) {
+    boolean valid() { return code > 0 && digest != null && digest.matches("[a-f0-9]{64}"); }
+  }
   public record RecoveryToken(long epoch, String nonce) {}
+  public record Recovery(RecoveryToken token, boolean archiving) {}
 
   public record State(Phase phase, Cause failure, String error, long epoch, int attempt, boolean reaped, boolean hookRan,
     boolean credentialHeld, long credentialVersion, long delivered, String account, AfterExit afterExit, Cause afterExitCause,
-    UpdateTarget hold, RecoveryToken recovery) {
-    public boolean child() { return phase == Phase.SPAWNED || phase == Phase.RUNNING || phase == Phase.STOPPING; }
+    UpdateTarget hold, Recovery recovery, long staleEpoch) {
+    public boolean child() { return staleEpoch != 0 || phase == Phase.SPAWNED || phase == Phase.RUNNING || phase == Phase.STOPPING; }
   }
 
   public record Status(boolean available, String state, String failure, String error, long epoch, long requestBodyLimit) {}
 
-  public sealed interface Event permits Start, Stop, ReapStale, LaunchHook, Refuse, Spawned, SpawnFailed, ObserveReady, ReadyTimeout,
+  public sealed interface Event permits Start, Stop, ReapStale, StaleChildReaped, LaunchHook, Refuse, Spawned, SpawnFailed, ObserveReady, ReadyTimeout,
     ObserveExit, FailUnclassified, RestartUnhealthy, StableReset, CredentialArrived, CredentialReplaced, SignedOut, CredentialExpired,
-    AccountChanged, ReviewRecovery, ArchiveRecovery, HoldForUpdate, ReleaseUpdate {}
+    AccountChanged, ReviewRecovery, ArchiveRecovery, ArchiveFinished, HoldForUpdate, ReleaseUpdate {}
   public record Start() implements Event {}
   public record Stop() implements Event {}
   public record ReapStale() implements Event {}
+  public record StaleChildReaped(long epoch) implements Event {}
   public record LaunchHook(boolean refused, String reason) implements Event {}
   public record Refuse(Cause cause, String reason) implements Event {}
   public record Spawned() implements Event {}
@@ -47,6 +52,7 @@ public final class AgentPolicy {
   public record AccountChanged(String account) implements Event {}
   public record ReviewRecovery(boolean focused, String nonce) implements Event {}
   public record ArchiveRecovery(RecoveryToken token) implements Event {}
+  public record ArchiveFinished(RecoveryToken token, boolean archiveSucceeded) implements Event {}
   public record HoldForUpdate(UpdateTarget target) implements Event {}
   public record ReleaseUpdate(long installedCode, String installedDigest, boolean attemptEnded) implements Event {}
 
@@ -55,24 +61,34 @@ public final class AgentPolicy {
   public record Kill(long epoch) implements Effect {}
   public record PushCredential(long epoch, long version) implements Effect {}
   public record RecoveryReview(RecoveryToken token) implements Effect {}
-  public record Archive(long epoch, String account) implements Effect {}
+  public record Archive(RecoveryToken token, String account) implements Effect {}
 
   public record Step(boolean accepted, State state, List<Effect> effects) {}
+
+  @FunctionalInterface interface EpochReservation { void reserve(long epoch) throws IOException; }
 
   private Phase phase = Phase.STOPPED;
   private Cause failure, afterExitCause;
   private String error, account;
-  private long epoch, credentialVersion, delivered;
+  private long epoch, credentialVersion, delivered, staleEpoch;
   private int attempt;
   private boolean reaped, hookRan, credentialHeld;
   private AfterExit afterExit = AfterExit.STOP;
   private UpdateTarget hold;
-  private RecoveryToken recovery;
+  private Recovery recovery;
   private final List<Effect> effects = new ArrayList<>();
+  private final EpochReservation reservation;
 
   public AgentPolicy(String account, UpdateTarget hold) {
+    this(account, hold, 0, 0, epoch -> {});
+  }
+
+  AgentPolicy(String account, UpdateTarget hold, long epoch, long staleEpoch, EpochReservation reservation) {
     this.account = account;
     this.hold = hold;
+    this.epoch = epoch;
+    this.staleEpoch = staleEpoch;
+    this.reservation = reservation;
   }
 
   public static ExitClass exitClass(int code) {
@@ -89,7 +105,7 @@ public final class AgentPolicy {
 
   public synchronized State state() {
     return new State(phase, failure, error, epoch, attempt, reaped, hookRan, credentialHeld, credentialVersion, delivered, account,
-      afterExit, afterExitCause, hold, recovery);
+      afterExit, afterExitCause, hold, recovery, staleEpoch);
   }
 
   public synchronized Status status(long requestBodyLimit) {
@@ -115,12 +131,13 @@ public final class AgentPolicy {
     if (event instanceof Start) return start();
     if (event instanceof Stop) return stop();
     if (event instanceof ReapStale) return reapStale();
+    if (event instanceof StaleChildReaped reapedChild) return staleChildReaped(reapedChild.epoch());
     if (event instanceof LaunchHook hook) return launchHook(hook.refused(), hook.reason());
     if (event instanceof Refuse refuse) return refuse(refuse.cause(), refuse.reason());
     if (event instanceof Spawned) return spawned();
-    if (event instanceof SpawnFailed failed) return phase == Phase.CHECKING && fail(Cause.AGENT, failed.reason());
+    if (event instanceof SpawnFailed failed) return phase == Phase.CHECKING && staleEpoch == 0 && fail(Cause.AGENT, failed.reason());
     if (event instanceof ObserveReady ready) return observeReady(ready.epoch());
-    if (event instanceof ReadyTimeout) return phase == Phase.SPAWNED && kill(AfterExit.FAIL, Cause.AGENT, "not ready within 60 s");
+    if (event instanceof ReadyTimeout) return readyTimeout();
     if (event instanceof ObserveExit exit) return observeExit(exit.code());
     if (event instanceof FailUnclassified unclassified) return failUnclassified(unclassified.reason());
     if (event instanceof RestartUnhealthy) return phase == Phase.RUNNING && kill(AfterExit.RESTART, null, null);
@@ -131,12 +148,14 @@ public final class AgentPolicy {
     if (event instanceof AccountChanged changed) return accountChanged(changed.account());
     if (event instanceof ReviewRecovery review) return reviewRecovery(review.focused(), review.nonce());
     if (event instanceof ArchiveRecovery archive) return archiveRecovery(archive.token());
+    if (event instanceof ArchiveFinished finished) return archiveFinished(finished.token(), finished.archiveSucceeded());
     if (event instanceof HoldForUpdate holding) return holdForUpdate(holding.target());
-    ReleaseUpdate release = (ReleaseUpdate) event;
-    return releaseUpdate(release.installedCode(), release.installedDigest(), release.attemptEnded());
+    return releaseUpdate((ReleaseUpdate) event);
   }
 
   private boolean begin(int nextAttempt, long delayMs) {
+    try { reservation.reserve(epoch + 1); }
+    catch (IOException failed) { return fail(Cause.RUNTIME, "The agent launch epoch could not be saved: " + failed.getMessage()); }
     phase = Phase.CHECKING;
     epoch++;
     attempt = nextAttempt;
@@ -211,8 +230,14 @@ public final class AgentPolicy {
   }
 
   private boolean reapStale() {
-    if (phase != Phase.CHECKING || reaped) return false;
+    if (phase != Phase.CHECKING || reaped || staleEpoch != 0) return false;
     reaped = true;
+    return true;
+  }
+
+  private boolean staleChildReaped(long reapedEpoch) {
+    if (staleEpoch == 0 || staleEpoch != reapedEpoch) return false;
+    staleEpoch = 0;
     return true;
   }
 
@@ -224,7 +249,7 @@ public final class AgentPolicy {
   }
 
   private boolean refuse(Cause cause, String reason) {
-    if (phase != Phase.CHECKING || cause == Cause.AGENT || cause == Cause.CRASHED || cause == Cause.RUNTIME) return false;
+    if (phase != Phase.CHECKING || staleEpoch != 0 || cause == Cause.AGENT || cause == Cause.CRASHED || cause == Cause.RUNTIME) return false;
     if (cause == Cause.STORAGE && !reaped) return false;
     if (cause == Cause.CREDENTIAL && credentialHeld) return false;
     return fail(cause, reason);
@@ -242,6 +267,13 @@ public final class AgentPolicy {
     phase = Phase.RUNNING;
     push();
     return true;
+  }
+
+  private boolean readyTimeout() {
+    if (phase != Phase.SPAWNED) return false;
+    staleEpoch = epoch;
+    effects.add(new Kill(epoch));
+    return fail(Cause.AGENT, "not ready within 60 s");
   }
 
   private void push() {
@@ -289,6 +321,7 @@ public final class AgentPolicy {
     if (credentialHeld) return credentialReplaced(version);
     credentialHeld = true;
     credentialVersion = Math.max(credentialVersion, version);
+    if (phase == Phase.FAILED && failure == Cause.STORAGE) recovery = null;
     if (phase == Phase.FAILED && failure == Cause.CREDENTIAL) return hold == null ? begin(attempt, 0) : stopped();
     if (phase == Phase.STOPPING && afterExit == AfterExit.FAIL && afterExitCause == Cause.CREDENTIAL) {
       afterExit = AfterExit.START;
@@ -328,7 +361,9 @@ public final class AgentPolicy {
     if (next == null || next.isEmpty() || next.equals(account)) return false;
     account = next;
     switch (phase) {
-      case CHECKING -> begin(0, 0);
+      case CHECKING -> {
+        if (credentialHeld) begin(0, 0);
+      }
       case SPAWNED, RUNNING -> kill(AfterExit.START, null, null);
       case FAILED -> {
         if (failure == Cause.STORAGE) stopped();
@@ -341,20 +376,33 @@ public final class AgentPolicy {
 
   private boolean reviewRecovery(boolean focused, String nonce) {
     if (phase != Phase.FAILED || failure != Cause.STORAGE || !focused || nonce == null || nonce.isEmpty()) return false;
-    recovery = new RecoveryToken(epoch, nonce);
-    effects.add(new RecoveryReview(recovery));
+    if (recovery != null && recovery.archiving()) return false;
+    RecoveryToken token = new RecoveryToken(epoch, nonce);
+    recovery = new Recovery(token, false);
+    effects.add(new RecoveryReview(token));
     return true;
   }
 
   private boolean archiveRecovery(RecoveryToken token) {
-    if (phase != Phase.FAILED || failure != Cause.STORAGE || recovery == null || !recovery.equals(token)) return false;
-    effects.add(new Archive(epoch, account));
+    if (phase != Phase.FAILED || failure != Cause.STORAGE || !recoveryMatches(token, false)) return false;
+    recovery = new Recovery(token, true);
+    effects.add(new Archive(token, account));
+    return true;
+  }
+
+  private boolean archiveFinished(RecoveryToken token, boolean archiveSucceeded) {
+    if (phase != Phase.FAILED || failure != Cause.STORAGE || !recoveryMatches(token, true)) return false;
     recovery = null;
-    return stopped();
+    if (archiveSucceeded) stopped();
+    return true;
+  }
+
+  private boolean recoveryMatches(RecoveryToken token, boolean archiving) {
+    return recovery != null && recovery.archiving() == archiving && recovery.token().equals(token);
   }
 
   private boolean holdForUpdate(UpdateTarget target) {
-    if (hold != null || target == null || target.digest() == null) return false;
+    if (hold != null || target == null || !target.valid() || staleEpoch != 0) return false;
     switch (phase) {
       case CHECKING -> stopped();
       case STOPPED, FAILED -> { }
@@ -366,10 +414,14 @@ public final class AgentPolicy {
     return true;
   }
 
-  private boolean releaseUpdate(long installedCode, String installedDigest, boolean attemptEnded) {
+  synchronized boolean canReleaseUpdate(ReleaseUpdate event) {
     if (hold == null) return false;
-    boolean successor = installedCode == hold.code() && hold.digest().equals(installedDigest);
-    if (!successor && !attemptEnded) return false;
+    boolean successor = event.installedCode() == hold.code() && hold.digest().equals(event.installedDigest());
+    return successor || event.attemptEnded();
+  }
+
+  private boolean releaseUpdate(ReleaseUpdate event) {
+    if (!canReleaseUpdate(event)) return false;
     hold = null;
     return true;
   }

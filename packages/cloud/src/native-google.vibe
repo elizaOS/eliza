@@ -1,0 +1,41 @@
+// spec/cloud/nativeClients/registry.md, "Native Google sign-in is refused as google_not_configured when Google is off, and as invalid_client when the registration does not enable it"
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose"
+import type { Identity } from "./identity-store.vibe"
+
+const issuer = ["https://accounts.google.com", "accounts.google.com"] as const
+const signingKeys = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"), { timeoutDuration: 4000 })
+export const googleServerClientId = /^[a-zA-Z0-9-]{1,200}\.apps\.googleusercontent\.com$/
+const subject = /^[a-zA-Z0-9_-]{1,255}$/
+const nonce = /^[0-9a-f]{64}$/
+
+export error GoogleCredentialRejected
+
+export interface VerifiedNativeGoogle {
+  readonly identity: Identity
+  readonly nonce: string
+  readonly authorizedPresenter: string | undefined
+  readonly expiresAt: number
+}
+
+export effect function verifyNativeGoogle(idToken: string, audience: string, keys: JWTVerifyGetKey = signingKeys): VerifiedNativeGoogle!GoogleCredentialRejected {
+  const verified = try tryPromise({
+    try: () => jwtVerify(idToken, keys, {
+      algorithms: ["RS256"], audience, maxTokenAge: "5m", issuer: [...issuer], requiredClaims: ["sub", "exp", "iat", "nonce"],
+    }),
+    catch: () => new GoogleCredentialRejected(),
+  })
+  const claims = verified.payload
+  if (claims.aud !== audience || typeof claims.sub !== "string" || !subject.test(claims.sub) ||
+      typeof claims.nonce !== "string" || !nonce.test(claims.nonce) ||
+      typeof claims.exp !== "number" || !Number.isSafeInteger(claims.exp) || !Number.isSafeInteger(claims.iat)) throw new GoogleCredentialRejected()
+  const address = typeof claims.email === "string" ? claims.email.trim().toLowerCase() : ""
+  const authoritative = address.endsWith("@gmail.com") || (typeof claims.hd === "string" && claims.hd.length > 0)
+  const email = claims.email_verified === true && authoritative && address.length <= 254 &&
+    /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address) ? address : null
+  return {
+    identity: { provider: "google", subject: claims.sub, email },
+    nonce: claims.nonce,
+    authorizedPresenter: typeof claims.azp === "string" ? claims.azp : undefined,
+    expiresAt: claims.exp * 1000,
+  }
+}

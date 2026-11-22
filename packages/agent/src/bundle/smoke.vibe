@@ -15,7 +15,7 @@ export interface SmokeInput {
   readonly runtimeServices?: readonly ServiceClass[]
 }
 
-export interface SmokeReport {
+interface SmokeReport {
   readonly loaded: readonly string[]
   readonly registered: BundleManifest["actions"]
 }

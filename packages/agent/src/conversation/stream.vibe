@@ -217,7 +217,7 @@ module node {
   }
 }
 export {
-  ReplyWire, streamRoutes, writeReplyStream,
+  ReplyWire, streamRoutes,
   type Activity, type ActionResultFrame, type AdmittedStream, type DoneFrame, type ErrorFrame, type ReplyFrame, type ReplySink, type ReplyWriter,
   type StartStream, type StreamStart, type TurnEnd,
 } from node

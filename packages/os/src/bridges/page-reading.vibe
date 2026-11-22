@@ -35,7 +35,7 @@ const SENSITIVE_ROUTE =
 const SHORT_CODE = /(?:^|\D)\d{6,8}(?:\D|$)/
 const CREDENTIAL_FIELD =
   /(?:^|[^a-z0-9])(?:otp|totp|mfa|2fa)(?:$|[^a-z0-9])|password|passcode|one[\s_-]*time|verification[\s_-]*code|security[\s_-]*code|auth(?:entication)?[\s_-]*code/i
-const INVISIBLE = /[​-‍﻿]/g
+const INVISIBLE = /[\u200b-\u200d\ufeff]/g
 const SKIPPED = ["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"]
 const CHROME = ["NAV", "HEADER", "FOOTER", "A"]
 const INPUT_LABELS = ["autocomplete", "id", "name", "aria-label", "placeholder"]

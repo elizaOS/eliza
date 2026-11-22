@@ -6,6 +6,10 @@ export {
   type Transcription, type UndoRequest, type UndoReview
 } from "./client.vibe"
 export { CloudError, isCredentialInvalid, networkError, readCloudError, type CloudFailure, type CloudResponse } from "./errors.vibe"
+export type {
+  CalendarEvent, CalendarFeed, CalendarRow, ConnectStart, GoogleStatus, MailCapabilities, MailCard, MailMessage, MailOperation,
+  MailReceipt, MailReview, MailSearch, MailTriage
+} from "./google.vibe"
 export { normalizeSubscriptionCode } from "../billing/grant-code.vibe"
 export { checkEntitlement, EntitlementInvalid, nextRefreshDelay, parseEntitlementKeys, verifyEntitlement, type Entitlement, type EntitlementCheck, type EntitlementClaims, type EntitlementExpectation, type EntitlementKey, type PlanAllowance } from "./entitlement.vibe"
 export {

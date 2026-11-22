@@ -39,7 +39,7 @@ interface TitledRow {
 }
 
 const TAB_ID = /^[A-Za-z0-9_-]{1,80}$/
-const CONTROLS = /[\u0000-\u001f\u007f]/g
+const CONTROLS = /[^\x20-\x7e\x80-\uffff]/g
 
 function field(record: unknown, key: string): unknown {
   return typeof record === "object" && record !== null ? (record as Readonly<Record<string, unknown>>)[key] : undefined

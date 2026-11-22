@@ -89,17 +89,17 @@ export function ownsWorkerOnly<E extends LegacyBindings>(path: string, ports: Wo
 
 function corsFor(request: Request, env: LegacyBindings, path: string) {
   const origin = request.headers.get("origin")
-  const cors = new WorkerHeaders({ Vary: "Origin", "Cache-Control": "no-store" })
-  if (origin) {
-    cors.set("Access-Control-Allow-Origin", origin)
-    cors.set("Access-Control-Allow-Credentials", "true")
-  }
-  if (request.method === "OPTIONS") {
-    cors.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    cors.set("Access-Control-Allow-Headers", path === CLEF_DECISIONS_PATH
-      ? "Authorization, Content-Type, X-Eliza-Account"
-      : "Authorization, Content-Type, Idempotency-Key")
-  }
+  const cors = new WorkerHeaders({
+    Vary: "Origin",
+    "Cache-Control": "no-store",
+    ...(origin ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true" } : {}),
+    ...(request.method === "OPTIONS" ? {
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": path === CLEF_DECISIONS_PATH
+        ? "Authorization, Content-Type, X-Eliza-Account"
+        : "Authorization, Content-Type, Idempotency-Key",
+    } : {}),
+  })
   return { origin, cors, foreign: origin !== null && origin !== env.WEB_ORIGIN && origin !== env.PUBLIC_API_ORIGIN }
 }
 

@@ -304,3 +304,89 @@ pure def lawEveryOfferedChangeComesWithTheReadItsReviewNeeds(kind: MailOperation
   offeredKinds(scopes).includes(kind) implies
     (if (kind == SendKind) true else if (isDraftKind(kind)) offeredReads(scopes).includes(DraftSurface) else offeredReads(scopes).includes(MessageSurface) and offeredReads(scopes).includes(ThreadSurface))
 ```
+
+## Story: Notice new mail while I sign in privately
+
+> As an owner signing in on a website, I can start a short watch for new
+> mail in my connected inbox. If mail arrives, I can open my inbox and
+> return to the website to finish signing in myself.
+
+### A watch uses one current Gmail grant and one five-minute baseline
+
+An authenticated client calls `GET …/gmail/inbox-v1/arrival`. The browser
+must name a usable Gmail read grant. An authenticated device may omit the
+grant and use the owner's active Gmail connection. Starting a watch
+answers `arrived: false` and a sealed cursor for the provider's current
+history position. The cursor binds the deployment, owner, organization,
+grant and exact device key or browser access credential. Invalid or
+expired cursors stop before provider access. Polling returns the same
+cursor and does not advance the baseline or extend the original deadline.
+There is no server-side watch to update or recover. Concurrent polls and
+retries can observe different provider snapshots against the same baseline.
+
+```quint
+type InboxWatch = { historyId: str, expiresAt: int }
+type InboxWatchCaller = BrowserWatch | DeviceWatch
+pure val inboxWatchWindowMs = 300000
+pure def inboxWatchSelectionAllowed(caller: InboxWatchCaller, selected: bool): bool =
+  selected or caller == DeviceWatch
+pure def startInboxWatch(historyId: str, startedAt: int): InboxWatch =
+  { historyId: historyId, expiresAt: startedAt + inboxWatchWindowMs }
+pure def inboxWatchCurrent(watch: InboxWatch, nowAt: int): bool =
+  nowAt >= watch.expiresAt - inboxWatchWindowMs and nowAt < watch.expiresAt
+pure val historyIdValues = Set("1", "10000000000000000001")
+pure val startedAtValues = Set(0, 1000)
+pure val nowAtValues = Set(0, 999, 1000, 299999, 300000, 301000)
+pure val watchValues = Set(startInboxWatch("1", 0), startInboxWatch("10000000000000000001", 1000))
+pure def lawBrowserWatchRequiresSelection(selected: bool): bool =
+  inboxWatchSelectionAllowed(BrowserWatch, selected) iff selected
+pure def lawWatchHasOneWindow(historyId: str, startedAt: int, nowAt: int): bool = {
+  val opened = startInboxWatch(historyId, startedAt)
+  opened.historyId == historyId and
+    (inboxWatchCurrent(opened, nowAt) iff (nowAt >= startedAt and nowAt - startedAt < inboxWatchWindowMs))
+}
+```
+
+### A poll reports only Inbox message additions under current authorization
+
+The provider request asks for Inbox message-added history after the baseline
+and only requests history and message identifiers. The caller gets only the
+sealed cursor and the arrival flag. A valid page with a message addition
+can answer true. An empty page answers false only at the end of the history.
+Continue through at most eight pages using fresh tokens. An invalid page,
+repeated continuation or exhausted page budget refuses instead of reporting
+false. Each provider request and body read has a timeout, so progress does
+not require another client poll or an unlimited provider response.
+
+The service rechecks the grant and the caller after the provider returns. It
+answers successfully only before the original deadline and while the
+request is live. The shell checks the cryptographic binding, provider
+payload and authorization. The model represents these checks by their
+results and covers the deadline boundaries and the first, last and
+out-of-range page counts.
+
+```quint
+type InboxContinuation = EndOfHistory | FreshPageToken | InvalidPageToken
+type InboxPageOutcome = ArrivalFound | NoArrival | ReadNextPage | RefusePage
+pure val inboxWatchPageLimit = 8
+pure def inboxPageOutcome(pageCount: int, validPage: bool, hasArrival: bool, continuation: InboxContinuation): InboxPageOutcome =
+  if (not(validPage) or pageCount < 1 or pageCount > inboxWatchPageLimit) RefusePage
+  else if (hasArrival) ArrivalFound
+  else if (continuation == EndOfHistory) NoArrival
+  else if (continuation == FreshPageToken and pageCount < inboxWatchPageLimit) ReadNextPage
+  else RefusePage
+pure def inboxWatchCanAnswer(watch: InboxWatch, nowAt: int, grantCurrent: bool, callerCurrent: bool, requestLive: bool): bool =
+  inboxWatchCurrent(watch, nowAt) and grantCurrent and callerCurrent and requestLive
+pure val pageCountValues = Set(0, 1, 7, 8, 9)
+pure def lawAnEmptyAnswerRequiresCompleteHistory(pageCount: int, validPage: bool, hasArrival: bool, continuation: InboxContinuation): bool =
+  inboxPageOutcome(pageCount, validPage, hasArrival, continuation) == NoArrival implies
+    (validPage and not(hasArrival) and continuation == EndOfHistory)
+pure def lawAnArrivalRequiresProviderEvidence(pageCount: int, validPage: bool, hasArrival: bool, continuation: InboxContinuation): bool =
+  inboxPageOutcome(pageCount, validPage, hasArrival, continuation) == ArrivalFound implies (validPage and hasArrival)
+pure def lawTheLastPageDoesNotContinue(pageCount: int, validPage: bool, hasArrival: bool, continuation: InboxContinuation): bool =
+  inboxPageOutcome(pageCount, validPage, hasArrival, continuation) == ReadNextPage implies
+    (validPage and not(hasArrival) and continuation == FreshPageToken and pageCount < inboxWatchPageLimit)
+pure def lawNoAnswerAfterAuthorityEnds(watch: InboxWatch, nowAt: int, grantCurrent: bool, callerCurrent: bool, requestLive: bool): bool =
+  (not(grantCurrent) or not(callerCurrent) or not(requestLive) or nowAt >= watch.expiresAt) implies
+    not(inboxWatchCanAnswer(watch, nowAt, grantCurrent, callerCurrent, requestLive))
+```

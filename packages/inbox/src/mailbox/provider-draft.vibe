@@ -15,7 +15,7 @@ export error DraftSlotFailed { cause: unknown }
 /** The composer's saved slot and shelf, and whether its owner is still current. */
 export interface ProviderDraftPorts<S extends SavedLocalDraft> {
   readonly current: () => boolean
-  saved(): S | null!DraftSlotFailed
+  saved(): (S | null)!DraftSlotFailed
   shelve(saved: S): boolean!DraftSlotFailed
   clearSlot(saved: S): boolean!DraftSlotFailed
   mountSaved(saved: S): void!!

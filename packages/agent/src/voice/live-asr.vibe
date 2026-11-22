@@ -1,7 +1,7 @@
 // spec/agent/voice/clientAudio.md, "Story: Have my words recognised on this device while I speak"; spec/agent/voice/clientAudio.md, "A live session recognises each segment once, from its speech start through the speech end or close that ends it, and at most four sessions are open"; spec/agent/conversation/events.md, "Only the voice-transcript stream is open to plugins"
 import { Base64 } from "effect/encoding"
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core"
-import { admitsSession, keptAfter, liveIdleMs, maxLiveSessions } from "../../gen/agent__voice__clientAudio.ts"
+import { admitsSession, keptAfter, liveSessionExpired, maxLiveSessions } from "../../gen/agent__voice__clientAudio.ts"
 import type { LocalRoute } from "../access/routes.vibe"
 import { publishEventServiceType, type PublishEventService } from "../conversation/events.vibe"
 import { encodeMonoPcm16WavChunks } from "./capture.vibe"
@@ -26,11 +26,14 @@ interface Segment {
   kept: number
 }
 
+type SessionSchedule =
+  | { readonly phase: "idle"; readonly since: number }
+  | { readonly phase: "busy" | "closing"; readonly answer: Promise<Answer> }
+
 interface LiveSession {
   segment: Segment | undefined
   framesReceived: number
-  seenAt: number
-  queue: Promise<unknown>
+  schedule: SessionSchedule
 }
 
 interface Final {
@@ -81,8 +84,10 @@ export function liveAsrRoutes(runtime: AgentRuntime, now: () => number = Date.no
   }
 
   const sweep = () => {
-    const cutoff = now() - liveIdleMs
-    for (const [id, session] of sessions) if (session.seenAt < cutoff) sessions.delete(id)
+    const time = now()
+    for (const [id, { schedule }] of sessions) {
+      if (schedule.phase === "idle" && liveSessionExpired(time - schedule.since)) sessions.delete(id)
+    }
   }
 
   async function recognise(sessionId: string, segment: Segment, endedAt: number, signal: AbortSignal): Promise<Final> {
@@ -121,11 +126,9 @@ export function liveAsrRoutes(runtime: AgentRuntime, now: () => number = Date.no
       } catch (cause: unknown) {
         publish(sessionId, { phase: "error", turnId: segment.turnId, code: "ASR_FAILED" })
         logger.warn({ src: "agent", sessionId, turnId: segment.turnId, error: String(cause) }, "Live recognition failed")
-        if (closing) sessions.delete(sessionId)
         return { status: 502, body: { error: "Live recognition failed", code: "ASR_FAILED", ...(closing ? { closed: true } : {}) } }
       }
     }
-    if (closing) sessions.delete(sessionId)
     return { status: 200, body: { ok: true, sessionId, mode: "batch", framesReceived: session.framesReceived, ...(final === undefined ? {} : { final }), ...(closing ? { closed: true } : {}) } }
   }
 
@@ -158,14 +161,23 @@ export function liveAsrRoutes(runtime: AgentRuntime, now: () => number = Date.no
         if (session === undefined) {
           if (closing) return { status: 200, body: { ok: true, sessionId, closed: true } }
           if (!admitsSession(sessions.size, false)) return refused(429, `At most ${maxLiveSessions} live recognition sessions`, "LIVE_ASR_SESSIONS_FULL")
-          session = { segment: undefined, framesReceived: 0, seenAt: now(), queue: Promise.resolve() }
+          session = { segment: undefined, framesReceived: 0, schedule: { phase: "idle", since: now() } }
           sessions.set(sessionId, session)
         }
         const current = session
-        current.seenAt = now()
-        const answered = current.queue.then(() => apply(sessionId, current, edges, pcm, closing, signal))
-        current.queue = answered.catch(() => undefined)
-        return answered
+        const scheduled = current.schedule
+        if (scheduled.phase === "closing") {
+          return closing ? scheduled.answer : refused(409, "Live recognition is closing", "LIVE_ASR_SESSION_CLOSING")
+        }
+        const previous = scheduled.phase === "idle" ? Promise.resolve() : scheduled.answer.catch(() => undefined)
+        const answer = previous.then(() => apply(sessionId, current, edges, pcm, closing, signal)).finally(() => {
+          const latest = current.schedule
+          if (latest.phase === "idle" || latest.answer !== answer || sessions.get(sessionId) !== current) return
+          if (closing) sessions.delete(sessionId)
+          else current.schedule = { phase: "idle", since: now() }
+        })
+        current.schedule = { phase: closing ? "closing" : "busy", answer }
+        return answer
       },
     },
   ]

@@ -1,5 +1,6 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "globalPassThroughEnv": ["QUINT_HOME"],
   "globalDependencies": [
     ".nvmrc",
     "pnpm-workspace.yaml",
@@ -62,6 +63,9 @@
       ],
       "outputs": [
         ".cache/test-result-*.json"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
     "test:browser": {
@@ -70,7 +74,10 @@
         "//#gen",
         "^build"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "check": {
       "dependsOn": [
@@ -92,10 +99,13 @@
       "cache": false
     },
     "//#gen": {
+      "env": ["!VITE_*"],
       "inputs": [
         "spec/**",
         "apps/*/package.json",
+        "apps/*/spec/**",
         "packages/*/package.json",
+        "packages/*/spec/**",
         "package.json"
       ],
       "outputs": [
@@ -110,6 +120,9 @@
       ],
       "inputs": [
         "vibestack/**",
+        "!vibestack/selftest.ts",
+        "!vibestack/{testing,stories,design}/test/**",
+        "!vibestack/fixtures/**",
         "!vibestack/examples/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
         "!**/.DS_Store",
@@ -147,6 +160,7 @@
       ],
       "inputs": [
         "*",
+        "!.git",
         "!*.md",
         "vibestack/**",
         "!vibestack/{examples,studio}/**",
@@ -159,6 +173,9 @@
       ],
       "outputs": [
         ".cache/test-result-*.json"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
     "//#selftest:tools:a": {
@@ -174,22 +191,22 @@
         "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
         "!**/.DS_Store",
-        "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
-        "apps/*/package.json",
-        "packages/**",
+        "!vibestack/{studio,examples}/**/gen/**",
         ".agents/**",
         "AGENTS.md",
         "SPEC.md",
         "README.md",
         "LICENSE",
-        "spec/**",
         "package.json",
         "pnpm-lock.yaml",
         "turbo.json",
         "tsconfig.json",
         "tsconfig.build.json"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#selftest:tools:b": {
       "dependsOn": [
@@ -204,22 +221,22 @@
         "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
         "!**/.DS_Store",
-        "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
-        "apps/*/package.json",
-        "packages/**",
+        "!vibestack/{studio,examples}/**/gen/**",
         ".agents/**",
         "AGENTS.md",
         "SPEC.md",
         "README.md",
         "LICENSE",
-        "spec/**",
         "package.json",
         "pnpm-lock.yaml",
         "turbo.json",
         "tsconfig.json",
         "tsconfig.build.json"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#selftest:tools:rest": {
       "dependsOn": [
@@ -235,7 +252,7 @@
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
         "!**/.DS_Store",
         "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
-        "apps/*/package.json",
+        "apps/**",
         "packages/**",
         ".agents/**",
         "AGENTS.md",
@@ -249,7 +266,10 @@
         "tsconfig.json",
         "tsconfig.build.json"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#selftest:docs": {
       "inputs": [
@@ -270,7 +290,12 @@
         "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
         "package.json"
       ],
-      "outputs": []
+      "outputs": [
+        "vibestack/examples/*/.spec-cache/tests-*.json.{gz,zst}"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#check": {
       "dependsOn": [
@@ -290,7 +315,10 @@
         "@elizaos/agent#test",
         "@elizaos/os#build",
         "@elizaos/os#typecheck",
-        "@elizaos/os#test"
+        "@elizaos/os#test",
+        "@elizaos/plugin-notes#build",
+        "@elizaos/plugin-notes#typecheck",
+        "@elizaos/plugin-notes#test"
       ],
       "cache": false
     },
@@ -335,6 +363,7 @@
       "outputs": []
     },
     "//#analyze": {
+      "dependsOn": ["//#gen", "@repo/design-system#build", "@repo/ui#gen", "vibestack-studio#gen"],
       "inputs": [
         "apps/**",
         "packages/**",
@@ -360,6 +389,10 @@
     "//#studio": {
       "cache": false,
       "persistent": true
+    },
+    "vibestack-studio#gen": {
+      "env": ["!VITE_*"],
+      "outputs": ["gen/**", "generated/**"]
     },
     "vibestack-studio#dev": {
       "dependsOn": [
@@ -400,6 +433,9 @@
       ],
       "outputs": [
         ".cache/test-result-*.json"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
     "vibestack-studio#test:browser": {
@@ -407,7 +443,10 @@
         "gen",
         "^build"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "@repo/ui#build": {
       "dependsOn": [

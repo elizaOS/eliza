@@ -80,6 +80,30 @@ pure def alwaysClaimBeforeDispatch(s: DeviceAttempt): bool =
 pure def sometimesExistingEntryGoesToHistory(s: DeviceAttempt): bool = s.phase == NeedsHistory
 ```
 
+### A lost journal write answer needs an exact readback
+
+Each attempt write replaces the last-read revision with the next revision
+in one compare-and-set. A definite refusal does not count. If the write
+returns an error, read the entry once. The write counts only if the entire
+stored entry matches, including its revision, binding, attempt, agent
+attempt and evidence. An unconfirmed write stops the attempt without
+calling the executor or repeating the write. A lost result is recovered
+from the journal without repeating the call.
+
+```quint
+type JournalWrite = WriteKept | WriteRefused | WriteAnswerLost
+type JournalReread = ReadbackSkipped | ReadbackExact | ReadbackUnconfirmed
+pure def needsJournalReread(write: JournalWrite): bool = write == WriteAnswerLost
+pure def journalWriteHeld(write: JournalWrite, reread: JournalReread): bool =
+  write == WriteKept or (needsJournalReread(write) and reread == ReadbackExact)
+pure def lawJournalRefusalIsFinal(reread: JournalReread): bool =
+  not(needsJournalReread(WriteRefused)) and not(journalWriteHeld(WriteRefused, reread))
+pure def lawLostJournalAnswerNeedsExactReadback(reread: JournalReread): bool =
+  journalWriteHeld(WriteAnswerLost, reread) iff reread == ReadbackExact
+pure def lawAKeptWriteNeedsNoReread(reread: JournalReread): bool =
+  not(needsJournalReread(WriteKept)) and journalWriteHeld(WriteKept, reread)
+```
+
 ### The executor is called at most once, for a live claim
 
 Calling the executor needs the applying entry. An attempt retires when its
@@ -184,29 +208,6 @@ pure def stepSettledEntryKeepsItsAttempt(before: DeviceAttempt, after: DeviceAtt
   isSettled(before.phase) implies (isSettled(after.phase) and after.calls == before.calls and after.attemptId == before.attemptId and after.operationId == before.operationId and (settledResult(before.phase) != Unknown implies after.phase == before.phase))
 pure def sometimesResultSentAfterTheScreenRetired(s: DeviceAttempt): bool = s.retired and s.calls == 1 and s.uploads > 0
 pure def sometimesUploadRetried(s: DeviceAttempt): bool = s.uploads >= 2
-```
-
-### A journal write whose answer was lost counts only when a reread finds exactly that entry, and is never written again
-
-Each journal write replaces the entry at the revision the device last read
-with the next revision, in one compare-and-set. A write the journal
-refused, because the stored revision moved on, never counts. A write whose
-answer was lost may still have committed, so the device rereads the entry
-once: it counts only when the stored entry is the one it wrote, revision,
-attempt, evidence and agent attempt alike; anything else, or a failed
-reread, loses the journal, and the attempt stops without calling the
-executor or writing that revision again. A lost result is then recovered
-only from the journal, as any entry is, never by repeating the call.
-
-```quint
-type JournalWrite = WriteKept | WriteRefused | WriteAnswerLost
-type JournalReread = RereadWritten | RereadEarlier | RereadOther | RereadFailed
-pure def journalWriteHeld(write: JournalWrite, reread: JournalReread): bool =
-  write == WriteKept or (write == WriteAnswerLost and reread == RereadWritten)
-pure def lawALostAnswerCountsOnlyWhenTheRereadFindsTheWrite(reread: JournalReread): bool =
-  journalWriteHeld(WriteAnswerLost, reread) iff reread == RereadWritten
-pure def lawARefusedWriteNeverCounts(reread: JournalReread): bool = not(journalWriteHeld(WriteRefused, reread))
-pure def lawAKeptWriteNeedsNoReread(reread: JournalReread): bool = journalWriteHeld(WriteKept, reread)
 ```
 
 ### A review the owner confirms matches the saved evidence

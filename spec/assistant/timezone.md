@@ -43,7 +43,7 @@ pure def lawUnknownStatementKeepsTheStoredZone(storedZone: str, namedZone: str):
   not(knownZone(namedZone)) implies stateTimezone({ storedZone: storedZone }, namedZone).storedZone == storedZone
 pure def lawKnownStatementReplacesTheStoredZone(storedZone: str, namedZone: str): bool =
   knownZone(namedZone) implies stateTimezone({ storedZone: storedZone }, namedZone).storedZone == namedZone
-pure def sometimesZoneStated(s: OwnerTimezone): bool = s.storedZone != ""
+pure def sometimesZoneStated(s: OwnerTimezone): bool = s.storedZone == "America/Los_Angeles"
 ```
 
 ### The calendar reads the stored zone, or the agent's zone when none is stored
