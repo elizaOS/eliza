@@ -210,7 +210,9 @@ and stage results. An acceptance or nightly check always reads fresh inputs.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
-and their runtime files before Turbo hashes its inputs. What it reads of an
+and their runtime files before Turbo hashes its inputs. A build can run
+without the verifier. Its task key records missing verification tools,
+and a proof still requires them. What it reads of an
 installed file, and Dafny's version, is remembered across processes in
 `$XDG_CACHE_HOME/vibestack` (`~/.cache/vibestack` by default) while the file's
 device, inode, size and modification and change times stay the same, so an
