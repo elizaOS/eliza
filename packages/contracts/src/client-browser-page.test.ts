@@ -112,7 +112,7 @@ test("page text, title, selection and links are bounded and control-free", () =>
   const invalid: Array<[Record<string, unknown>, RegExp]> = [
     [{ text: "a".repeat(CLIENT_BROWSER_PAGE_TEXT_MAX + 1) }, /text is invalid/],
     [{ text: "bell\u0007" }, /text is invalid/],
-    [{ text: "split line" }, /text is invalid/],
+    [{ text: "split\u2028line" }, /text is invalid/],
     [{ text: "lone \uD800 surrogate" }, /text is invalid/],
     [{ text: undefined }, /text is invalid/],
     [{ truncated: "no" }, /truncation is invalid/],
