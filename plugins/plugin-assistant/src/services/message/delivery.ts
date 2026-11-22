@@ -186,21 +186,29 @@ export function wrapSingleTurnVisibleCallback(
         rawUnsanitizedText = response.text.trim() ? response.text : undefined;
         response = { ...response, text: guarded };
       }
+      // Reply-text egress: model output is re-pseudonymized inside model
+      // dispatch, so a callback that quotes the model carries the PII
+      // surrogate. Every other user-facing text path restores it
+      // (`restorePiiInUserReplyText`); this funnel covers action narration and
+      // its voice rewrite. Restore first, then let the secret pass keep
+      // credential values redacted.
+      //
       // Secret-swap egress: tool-call sends arrive here with real values
       // already restored at the execution boundary, so placeholder-based
       // redaction cannot see them. Redact known credential values from
       // visible text; backend tool calls are unaffected.
-      const secretSession = getTrajectoryContext()?.secretSwapSession;
-      if (
-        secretSession &&
-        typeof response.text === "string" &&
-        response.text.length > 0
-      ) {
-        const redacted = secretSession.redactRestoredSecretValues(
-          response.text,
-        );
-        if (redacted !== response.text) {
-          response = { ...response, text: redacted };
+      const trajectoryContext = getTrajectoryContext();
+      const secretSession = trajectoryContext?.secretSwapSession;
+      const textBeforeEgress = response.text;
+      if (typeof textBeforeEgress === "string") {
+        const restoredText = trajectoryContext?.piiSwapSession
+          ? trajectoryContext.piiSwapSession.restoreInValue(textBeforeEgress)
+          : textBeforeEgress;
+        const egressText = secretSession
+          ? secretSession.redactRestoredSecretValues(restoredText)
+          : restoredText;
+        if (egressText !== textBeforeEgress) {
+          response = { ...response, text: egressText };
         }
       }
     }
