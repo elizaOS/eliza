@@ -62,6 +62,10 @@ import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "./dm-policy";
 import { resolveTelegramRuntimeEntityId } from "./identity";
 import { MessageManager } from "./messageManager";
 import {
+  handleElizaPairCommand,
+  hasOwnerBindVerifyService,
+} from "./owner-pairing-service";
+import {
   claimTelegramPollerToken,
   ensureTelegramPollerTokenAvailable,
   getTelegramPollerClaim,
@@ -1129,6 +1133,20 @@ export class TelegramService extends Service {
       this.runtime,
       commandMessageManager,
       accountId,
+    );
+    // Owner pairing (`/eliza_pair <code>`, owner-pairing-service.ts) is
+    // registered here for the same reason: a command added after the
+    // catch-all message handler never runs. It sits behind the same gate as
+    // `/tasks`. Without OWNER_BIND_VERIFY the message goes on to the message
+    // handler as before.
+    bot.command("eliza_pair", (ctx, next) =>
+      hasOwnerBindVerifyService(this.runtime)
+        ? this.authorizationMiddleware(
+            ctx,
+            () => handleElizaPairCommand(ctx, this.runtime),
+            accountId,
+          )
+        : next(),
     );
   }
 
