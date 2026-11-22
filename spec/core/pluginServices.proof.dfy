@@ -563,31 +563,53 @@ lemma failPlugin_ensures(s: PluginServices, epochId: int)
 {
   if inv(s) && canFailPlugin(s, epochId) {
     var after := failPlugin(s, epochId);
-    var mid := s.(epochs := after.epochs);
-    EpochIdLookup(s, epochId);
-    EpochsAfterFailPlugin(s, epochId);
-    EpochMapPhases(s, mid, epochId);
-    EpochMapRules(s, mid);
-    EpochMapView(s, mid);
-    CaptureRetirementFrame(mid, epochId);
-    forall x | x != epochId ensures epoch(mid, x) == epoch(s, x)
-    {
-      EpochIdLookup(s, x);
-      EpochIdLookup(mid, x);
-      if e :| e in s.epochs && e.id == x {
-        var i :| 0 <= i < |s.epochs| && s.epochs[i] == e;
-        assert mid.epochs[i] == e;
-        PluginEpochExact(mid, e);
-        PluginEpochExact(s, e);
-      } else if e :| e in mid.epochs && e.id == x {
-        var i :| 0 <= i < |mid.epochs| && mid.epochs[i] == e;
-        assert s.epochs[i] in s.epochs;
-      }
+    assert alwaysEpochIdentityUnique(after) && alwaysOneActiveEpochPerName(after) && alwaysEpochOutcomeHonest(after) &&
+      alwaysLiveClassOwnerUnique(after) && alwaysChildLifecyclesValid(after) &&
+      alwaysOwnedClassesMatchServices(after) && alwaysInvokingStartHasNoInstance(after) by {
+      EpochsAfterFailPlugin(s, epochId);
     }
-    EpochIdLookup(mid, epochId);
-    var k :| 0 <= k < |mid.epochs| && mid.epochs[k] == epoch(mid, epochId);
-    assert s.epochs[k] in s.epochs;
-    CaptureRetirementOnce(s, mid, epochId);
+    assert alwaysServiceOwnerEpochExists(after) && alwaysSealedOwnedClassesStable(after) &&
+      alwaysLiveInstanceReachable(after) && alwaysNoOrphanInstance(after) &&
+      alwaysRetiredUndeclaredTypeIsUnknown(after) && alwaysRetiredEpochHasNoResources(after) &&
+      alwaysStopObservationsFollowSlots(after) by {
+      var mid := s.(epochs := after.epochs);
+      assert after == captureRetirement(epochId, mid);
+      EpochIdLookup(s, epochId);
+      EpochMapPhases(s, mid, epochId);
+      EpochMapRules(s, mid);
+      assert epochOwnsResources(mid, epochId) by {
+        EpochMapView(s, mid);
+      }
+      CaptureRetirementFrame(mid, epochId);
+    }
+    assert alwaysRetirementPerRetiredEpoch(after) && alwaysRetirementFollowsPlan(after) by {
+      var mid := s.(epochs := after.epochs);
+      assert after == captureRetirement(epochId, mid);
+      EpochIdLookup(s, epochId);
+      forall x | x != epochId ensures epoch(mid, x) == epoch(s, x)
+      {
+        EpochIdLookup(s, x);
+        EpochIdLookup(mid, x);
+        if e :| e in s.epochs && e.id == x {
+          var i :| 0 <= i < |s.epochs| && s.epochs[i] == e;
+          assert mid.epochs[i] == e;
+          PluginEpochExact(mid, e);
+          PluginEpochExact(s, e);
+        } else if e :| e in mid.epochs && e.id == x {
+          var i :| 0 <= i < |mid.epochs| && mid.epochs[i] == e;
+          assert s.epochs[i] in s.epochs;
+        }
+      }
+      assert epochAdmitsClass(s, epochId) && !epochAdmitsClass(mid, epochId) && epoch(mid, epochId).id == epochId by {
+        EpochIdLookup(s, epochId);
+        assert epoch(s, epochId) != absentEpoch;
+        var k :| 0 <= k < |s.epochs| && s.epochs[k] == epoch(s, epochId);
+        var pre := s.epochs[k];
+        assert mid.epochs[k] in mid.epochs && mid.epochs[k] == pre.(lifecycle := core__plugins_failRegistration(pre.lifecycle));
+        PluginEpochExact(mid, mid.epochs[k]);
+      }
+      CaptureRetirementOnce(s, mid, epochId);
+    }
   }
 }
 
@@ -611,31 +633,53 @@ lemma unloadPlugin_ensures(s: PluginServices, epochId: int)
 {
   if inv(s) && canUnloadPlugin(s, epochId) {
     var after := unloadPlugin(s, epochId);
-    var mid := s.(epochs := after.epochs);
-    EpochIdLookup(s, epochId);
-    EpochsAfterUnloadPlugin(s, epochId);
-    EpochMapPhases(s, mid, epochId);
-    EpochMapRules(s, mid);
-    EpochMapView(s, mid);
-    CaptureRetirementFrame(mid, epochId);
-    forall x | x != epochId ensures epoch(mid, x) == epoch(s, x)
-    {
-      EpochIdLookup(s, x);
-      EpochIdLookup(mid, x);
-      if e :| e in s.epochs && e.id == x {
-        var i :| 0 <= i < |s.epochs| && s.epochs[i] == e;
-        assert mid.epochs[i] == e;
-        PluginEpochExact(mid, e);
-        PluginEpochExact(s, e);
-      } else if e :| e in mid.epochs && e.id == x {
-        var i :| 0 <= i < |mid.epochs| && mid.epochs[i] == e;
-        assert s.epochs[i] in s.epochs;
-      }
+    assert alwaysEpochIdentityUnique(after) && alwaysOneActiveEpochPerName(after) && alwaysEpochOutcomeHonest(after) &&
+      alwaysLiveClassOwnerUnique(after) && alwaysChildLifecyclesValid(after) &&
+      alwaysOwnedClassesMatchServices(after) && alwaysInvokingStartHasNoInstance(after) by {
+      EpochsAfterUnloadPlugin(s, epochId);
     }
-    EpochIdLookup(mid, epochId);
-    var k :| 0 <= k < |mid.epochs| && mid.epochs[k] == epoch(mid, epochId);
-    assert s.epochs[k] in s.epochs;
-    CaptureRetirementOnce(s, mid, epochId);
+    assert alwaysServiceOwnerEpochExists(after) && alwaysSealedOwnedClassesStable(after) &&
+      alwaysLiveInstanceReachable(after) && alwaysNoOrphanInstance(after) &&
+      alwaysRetiredUndeclaredTypeIsUnknown(after) && alwaysRetiredEpochHasNoResources(after) &&
+      alwaysStopObservationsFollowSlots(after) by {
+      var mid := s.(epochs := after.epochs);
+      assert after == captureRetirement(epochId, mid);
+      EpochIdLookup(s, epochId);
+      EpochMapPhases(s, mid, epochId);
+      EpochMapRules(s, mid);
+      assert epochOwnsResources(mid, epochId) by {
+        EpochMapView(s, mid);
+      }
+      CaptureRetirementFrame(mid, epochId);
+    }
+    assert alwaysRetirementPerRetiredEpoch(after) && alwaysRetirementFollowsPlan(after) by {
+      var mid := s.(epochs := after.epochs);
+      assert after == captureRetirement(epochId, mid);
+      EpochIdLookup(s, epochId);
+      forall x | x != epochId ensures epoch(mid, x) == epoch(s, x)
+      {
+        EpochIdLookup(s, x);
+        EpochIdLookup(mid, x);
+        if e :| e in s.epochs && e.id == x {
+          var i :| 0 <= i < |s.epochs| && s.epochs[i] == e;
+          assert mid.epochs[i] == e;
+          PluginEpochExact(mid, e);
+          PluginEpochExact(s, e);
+        } else if e :| e in mid.epochs && e.id == x {
+          var i :| 0 <= i < |mid.epochs| && mid.epochs[i] == e;
+          assert s.epochs[i] in s.epochs;
+        }
+      }
+      assert epochAdmitsClass(s, epochId) && !epochAdmitsClass(mid, epochId) && epoch(mid, epochId).id == epochId by {
+        EpochIdLookup(s, epochId);
+        assert epoch(s, epochId) != absentEpoch;
+        var k :| 0 <= k < |s.epochs| && s.epochs[k] == epoch(s, epochId);
+        var pre := s.epochs[k];
+        assert mid.epochs[k] in mid.epochs && mid.epochs[k] == pre.(lifecycle := core__plugins_beginUnload(pre.lifecycle));
+        PluginEpochExact(mid, mid.epochs[k]);
+      }
+      CaptureRetirementOnce(s, mid, epochId);
+    }
   }
 }
 
@@ -1393,13 +1437,10 @@ lemma finishNextObserver_ensures(s: PluginServices, ok: bool)
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysSealedOwnedClassesStable(finishNextObserver(s, ok)))
 {
   if inv(s) && canFinishNextObserver(s, ok) {
-    var after := finishNextObserver(s, ok);
-    core__serviceInstances_finishNextObserver_ensures(s.services, ok);
-    ServiceStep(s, after);
-    ISAttemptStep(s.services, after.services, core__serviceInstances_nextObservableAttempt(s.services));
-    ClassShape(s, after);
-    OrphanClassFrame(s, after);
-    ReachFrame(s, after);
+    var attemptId := core__serviceInstances_nextObservableAttempt(s.services);
+    assert canFinishClassObserver(s, attemptId, ok);
+    assert finishNextObserver(s, ok) == finishClassObserver(s, attemptId, ok);
+    finishClassObserver_ensures(s, attemptId, ok);
   }
 }
 
@@ -1637,6 +1678,104 @@ lemma ensureServices_ensures(s: PluginServices, callId: int, serviceType: string
   }
 }
 
+lemma PluginResumeFrames(s: PluginServices, callId: int)
+  requires inv(s) && canResumeEnsure(s, callId)
+  ensures alwaysEpochIdentityUnique(resumeEnsure(s, callId))
+  ensures alwaysOneActiveEpochPerName(resumeEnsure(s, callId))
+  ensures alwaysEpochOutcomeHonest(resumeEnsure(s, callId))
+  ensures alwaysRetirementPerRetiredEpoch(resumeEnsure(s, callId))
+  ensures alwaysServiceOwnerEpochExists(resumeEnsure(s, callId))
+  ensures alwaysRetirementFollowsPlan(resumeEnsure(s, callId))
+  ensures alwaysSealedOwnedClassesStable(resumeEnsure(s, callId))
+{
+  var after := resumeEnsure(s, callId);
+  assert forall id :: epoch(after, id) == epoch(s, id);
+  EpochOwnerFrame(s, after);
+}
+
+lemma PluginResumeClasses(s: PluginServices, callId: int)
+  requires inv(s) && canResumeEnsure(s, callId)
+  ensures alwaysLiveClassOwnerUnique(resumeEnsure(s, callId))
+  ensures alwaysOwnedClassesMatchServices(resumeEnsure(s, callId))
+  ensures alwaysInvokingStartHasNoInstance(resumeEnsure(s, callId))
+{
+  hide *;
+  var after := resumeEnsure(s, callId);
+  assert after == s.(services := core__serviceInstances_resumeAcquire(s.services, callId)) by {
+    reveal resumeEnsure();
+  }
+  assert alwaysLiveClassOwnerUnique(after) by {
+    assert alwaysLiveClassOwnerUnique(s) by { reveal inv(); }
+    reveal alwaysLiveClassOwnerUnique();
+  }
+  assert alwaysOwnedClassesMatchServices(after) by {
+    assert alwaysOwnedClassesMatchServices(s) by { reveal inv(); }
+    assert core__serviceInstances_alwaysDeclarationsMatch(s.services) && core__serviceInstances_alwaysClassAndObjectIdentities(s.services) by {
+      reveal inv();
+      ChildInv(s);
+      reveal core__serviceInstances_inv();
+    }
+    var trimmed := s.services.(calls := ProofLib.Filter((other: core__serviceInstances_Acquire) => (other.id != callId), s.services.calls));
+    assert core__serviceInstances_alwaysDeclarationsMatch(trimmed) && core__serviceInstances_alwaysClassAndObjectIdentities(trimmed) by {
+      reveal core__serviceInstances_alwaysDeclarationsMatch();
+      reveal core__serviceInstances_alwaysClassAndObjectIdentities();
+      reveal core__serviceInstances_serviceClass();
+    }
+    ResumeIs(s.services, callId);
+    var serviceType := core__serviceInstances_acquireCall(s.services, callId).serviceType;
+    AcquireFrame(callId, serviceType, trimmed);
+    assert after.services == core__serviceInstances_admittedAcquire(callId, serviceType, trimmed);
+    forall i | 0 <= i < |s.services.classes| ensures after.services.classes[i].id == s.services.classes[i].id && after.services.classes[i].serviceType == s.services.classes[i].serviceType && (after.services.classes[i].live == 0 || after.services.classes[i].registered)
+    {
+      reveal alwaysOwnedClassesMatchServices();
+      assert s.services.classes[i] in s.services.classes;
+    }
+    ClassShape(s, after);
+  }
+  assert alwaysInvokingStartHasNoInstance(after) by {
+    assert core__serviceInstances_alwaysPendingAttemptsOwned(after.services) by {
+      assert core__serviceInstances_inv(s.services) by {
+        reveal inv();
+        ChildInv(s);
+      }
+      assert core__serviceInstances_canResumeAcquire(s.services, callId) by { reveal canResumeEnsure(); }
+      core__serviceInstances_resumeAcquire_ensures(s.services, callId);
+    }
+    reveal core__serviceInstances_alwaysPendingAttemptsOwned();
+    reveal alwaysInvokingStartHasNoInstance();
+  }
+}
+
+lemma PluginResumeChild(s: PluginServices, callId: int)
+  requires inv(s) && canResumeEnsure(s, callId)
+  ensures alwaysChildLifecyclesValid(resumeEnsure(s, callId))
+  ensures alwaysStopObservationsFollowSlots(resumeEnsure(s, callId))
+  ensures alwaysRetiredEpochHasNoResources(resumeEnsure(s, callId))
+{
+  var after := resumeEnsure(s, callId);
+  core__serviceInstances_resumeAcquire_ensures(s.services, callId);
+  ServiceStep(s, after);
+}
+
+lemma PluginResumeReachability(s: PluginServices, callId: int)
+  requires inv(s) && canResumeEnsure(s, callId)
+  ensures alwaysRetiredUndeclaredTypeIsUnknown(resumeEnsure(s, callId))
+  ensures alwaysLiveInstanceReachable(resumeEnsure(s, callId))
+  ensures alwaysNoOrphanInstance(resumeEnsure(s, callId))
+{
+  var after := resumeEnsure(s, callId);
+  core__serviceInstances_resumeAcquire_ensures(s.services, callId);
+  var trimmed := s.services.(calls := ProofLib.Filter((other: core__serviceInstances_Acquire) => (other.id != callId), s.services.calls));
+  ResumeIs(s.services, callId);
+  assert core__serviceInstances_alwaysDeclarationsMatch(trimmed) && core__serviceInstances_alwaysClassAndObjectIdentities(trimmed);
+  var serviceType := core__serviceInstances_acquireCall(s.services, callId).serviceType;
+  AcquireFrame(callId, serviceType, trimmed);
+  assert after.services == core__serviceInstances_admittedAcquire(callId, serviceType, trimmed);
+  OrphanClassFrame(s, after);
+  ReachFrame(s, after);
+  UndeclaredFrame(s, after);
+}
+
 lemma resumeEnsure_ensures(s: PluginServices, callId: int)
   ensures (inv(s) ==> canResumeEnsure(s, callId) ==> alwaysEpochIdentityUnique(resumeEnsure(s, callId)))
   ensures (inv(s) ==> canResumeEnsure(s, callId) ==> alwaysOneActiveEpochPerName(resumeEnsure(s, callId)))
@@ -1655,21 +1794,12 @@ lemma resumeEnsure_ensures(s: PluginServices, callId: int)
   ensures (inv(s) ==> canResumeEnsure(s, callId) ==> alwaysRetiredEpochHasNoResources(resumeEnsure(s, callId)))
   ensures (inv(s) ==> canResumeEnsure(s, callId) ==> alwaysSealedOwnedClassesStable(resumeEnsure(s, callId)))
 {
+  hide *;
   if inv(s) && canResumeEnsure(s, callId) {
-    var after := resumeEnsure(s, callId);
-    core__serviceInstances_resumeAcquire_ensures(s.services, callId);
-    ServiceStep(s, after);
-    var trimmed := s.services.(calls := ProofLib.Filter((other: core__serviceInstances_Acquire) => (other.id != callId), s.services.calls));
-    ResumeIs(s.services, callId);
-    assert core__serviceInstances_alwaysDeclarationsMatch(trimmed) && core__serviceInstances_alwaysClassAndObjectIdentities(trimmed);
-    var serviceType := core__serviceInstances_acquireCall(s.services, callId).serviceType;
-    AcquireFrame(callId, serviceType, trimmed);
-    ISAcquire(callId, serviceType, trimmed);
-    assert after.services == core__serviceInstances_admittedAcquire(callId, serviceType, trimmed);
-    ClassShape(s, after);
-    OrphanClassFrame(s, after);
-    ReachFrame(s, after);
-    UndeclaredFrame(s, after);
+    PluginResumeFrames(s, callId);
+    PluginResumeClasses(s, callId);
+    PluginResumeChild(s, callId);
+    PluginResumeReachability(s, callId);
   }
 }
 
@@ -1882,6 +2012,79 @@ lemma LiveOwnersAfterRegister(s: PluginServices, after: PluginServices, captured
   }
 }
 
+lemma PluginRegisterFrames(s: PluginServices, epochId: int, classId: int, serviceType: string)
+  requires inv(s) && canRegisterOwnedClass(s, epochId, classId, serviceType)
+  ensures alwaysEpochIdentityUnique(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysOneActiveEpochPerName(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysEpochOutcomeHonest(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysRetirementPerRetiredEpoch(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysServiceOwnerEpochExists(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysRetirementFollowsPlan(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysSealedOwnedClassesStable(registerOwnedClass(s, epochId, classId, serviceType))
+{
+  var after := registerOwnedClass(s, epochId, classId, serviceType);
+  var captured := OwnedClass(epochId, classId, serviceType);
+  EpochIdLookup(s, epochId);
+  assert epoch(s, epochId).id == epochId;
+  assert forall id :: epoch(after, id) == epoch(s, id);
+  forall owner | owner in after.ownership
+    ensures epoch(after, owner.epochId).id == owner.epochId
+  {
+    if owner != captured {
+      assert owner in s.ownership;
+    }
+  }
+}
+
+lemma PluginRegisterClasses(s: PluginServices, epochId: int, classId: int, serviceType: string)
+  requires inv(s) && canRegisterOwnedClass(s, epochId, classId, serviceType)
+  ensures alwaysLiveClassOwnerUnique(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysOwnedClassesMatchServices(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysInvokingStartHasNoInstance(registerOwnedClass(s, epochId, classId, serviceType))
+{
+  var after := registerOwnedClass(s, epochId, classId, serviceType);
+  var captured := OwnedClass(epochId, classId, serviceType);
+  core__serviceInstances_registerClass_ensures(s.services, classId, serviceType);
+  RegisterClassFacts(s.services, classId, serviceType);
+  assert core__serviceInstances_alwaysPendingAttemptsOwned(after.services);
+  assert alwaysInvokingStartHasNoInstance(after);
+  ClassFound(s.services, classId);
+  forall owner | owner in after.ownership
+    ensures core__serviceInstances_serviceClass(after.services, owner.classId).id == owner.classId && core__serviceInstances_serviceClass(after.services, owner.classId).serviceType == owner.serviceType
+  {
+    if owner != captured {
+      assert owner in s.ownership;
+    }
+  }
+  RegisterOwnedIs(s, epochId, classId, serviceType);
+  LiveOwnersAfterRegister(s, after, captured);
+}
+
+lemma PluginRegisterChild(s: PluginServices, epochId: int, classId: int, serviceType: string)
+  requires inv(s) && canRegisterOwnedClass(s, epochId, classId, serviceType)
+  ensures alwaysChildLifecyclesValid(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysStopObservationsFollowSlots(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysRetiredEpochHasNoResources(registerOwnedClass(s, epochId, classId, serviceType))
+{
+  var after := registerOwnedClass(s, epochId, classId, serviceType);
+  core__serviceInstances_registerClass_ensures(s.services, classId, serviceType);
+  ServiceStep(s, after);
+}
+
+lemma PluginRegisterReachability(s: PluginServices, epochId: int, classId: int, serviceType: string)
+  requires inv(s) && canRegisterOwnedClass(s, epochId, classId, serviceType)
+  ensures alwaysRetiredUndeclaredTypeIsUnknown(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysLiveInstanceReachable(registerOwnedClass(s, epochId, classId, serviceType))
+  ensures alwaysNoOrphanInstance(registerOwnedClass(s, epochId, classId, serviceType))
+{
+  var after := registerOwnedClass(s, epochId, classId, serviceType);
+  core__serviceInstances_registerClass_ensures(s.services, classId, serviceType);
+  RegisterClassFacts(s.services, classId, serviceType);
+  OrphanClassFrame(s, after);
+  ReachFrame(s, after);
+  UndeclaredFrame(s, after);
+}
+
 lemma registerOwnedClass_ensures(s: PluginServices, epochId: int, classId: int, serviceType: string)
   ensures (inv(s) ==> canRegisterOwnedClass(s, epochId, classId, serviceType) ==> alwaysEpochIdentityUnique(registerOwnedClass(s, epochId, classId, serviceType)))
   ensures (inv(s) ==> canRegisterOwnedClass(s, epochId, classId, serviceType) ==> alwaysOneActiveEpochPerName(registerOwnedClass(s, epochId, classId, serviceType)))
@@ -1900,26 +2103,12 @@ lemma registerOwnedClass_ensures(s: PluginServices, epochId: int, classId: int, 
   ensures (inv(s) ==> canRegisterOwnedClass(s, epochId, classId, serviceType) ==> alwaysRetiredEpochHasNoResources(registerOwnedClass(s, epochId, classId, serviceType)))
   ensures (inv(s) ==> canRegisterOwnedClass(s, epochId, classId, serviceType) ==> alwaysSealedOwnedClassesStable(registerOwnedClass(s, epochId, classId, serviceType)))
 {
+  hide *;
   if inv(s) && canRegisterOwnedClass(s, epochId, classId, serviceType) {
-    var after := registerOwnedClass(s, epochId, classId, serviceType);
-    var captured := OwnedClass(epochId, classId, serviceType);
-    core__serviceInstances_registerClass_ensures(s.services, classId, serviceType);
-    ServiceStep(s, after);
-    RegisterClassFacts(s.services, classId, serviceType);
-    ISClassFrame(s.services, after.services);
-    ClassFound(s.services, classId);
-    forall o | o in after.ownership
-      ensures core__serviceInstances_serviceClass(after.services, o.classId).id == o.classId && core__serviceInstances_serviceClass(after.services, o.classId).serviceType == o.serviceType
-    {
-      if o != captured {
-        assert o in s.ownership;
-      }
-    }
-    RegisterOwnedIs(s, epochId, classId, serviceType);
-    LiveOwnersAfterRegister(s, after, captured);
-    OrphanClassFrame(s, after);
-    ReachFrame(s, after);
-    UndeclaredFrame(s, after);
+    PluginRegisterFrames(s, epochId, classId, serviceType);
+    PluginRegisterClasses(s, epochId, classId, serviceType);
+    PluginRegisterChild(s, epochId, classId, serviceType);
+    PluginRegisterReachability(s, epochId, classId, serviceType);
   }
 }
 
@@ -2492,44 +2681,99 @@ lemma observeClassHook_ensures(s: PluginServices, epochId: int, hookObservation:
   ensures (inv(s) ==> canObserveClassHook(s, epochId, hookObservation) ==> alwaysRetiredEpochHasNoResources(observeClassHook(s, epochId, hookObservation)))
   ensures (inv(s) ==> canObserveClassHook(s, epochId, hookObservation) ==> alwaysSealedOwnedClassesStable(observeClassHook(s, epochId, hookObservation)))
 {
+  hide *;
   if inv(s) && canObserveClassHook(s, epochId, hookObservation) {
+    var after := observeClassHook(s, epochId, hookObservation);
     var cleared := clearRetiredClassFailure(currentClassHook(s, epochId).id, s);
     PluginClearRetiredFailureKeepsRules(s, currentClassHook(s, epochId).id);
-    assert currentGroup(cleared, epochId) == currentGroup(s, epochId);
-    assert currentClassHook(cleared, epochId) == currentClassHook(s, epochId);
-    if hookObservation.Callable? {
-      var k := CurrentAt(s, epochId);
-      var r := s.retirements[k];
-      var g := r.groups[r.cursor];
-      assert g in r.groups && r in s.retirements;
-      var s1 := clearRetiredClassFailure(currentClassHook(s, epochId).id, s);
-      var g2 := g.(hook := ClassHookPhase.HookPending);
-      GroupsDistinct(r);
-      PutAt(s1, epochId, g2, k);
-      var r2 := r.(groups := r.groups[r.cursor := g2]);
-      var after := observeClassHook(s, epochId, hookObservation);
-      assert after == s1.(retirements := s.retirements[k := r2]);
-      ClassFailedFrame(s.services, after.services);
-      ISClassFrame(s.services, after.services);
-      ChildInv(after);
-      StopsValid(g2, after.services);
-      UAt(s, after, k, r2);
-      ShapeReplaceCurrent(r, r2, g2);
-      ShapeAt(s, after, k, r2);
-      StopsValid(g, s.services);
-      SlotsAtGroup(s, after, k, r.cursor, g2, r2);
-      OwnsOpen(s, k);
-      NoResourcesAt(s, after, k, r2);
-      OrphanAt(s, after, k, r.cursor, g2, r2);
-      StepSameObjects(s.services, after.services);
-      ReachAt(s, after, k, r.cursor, g2, r2);
-      UndeclaredAt(s, after, k, r.cursor, g2, r2);
-      ClassShape(s, after);
-    } else if hookObservation.Missing? {
-      PluginClassSlotCompletionKeepsRules(cleared, epochId);
-    } else {
-      PluginClassHookReadFailureKeepsRules(cleared, epochId, hookObservation.errorId);
+    assert currentGroup(cleared, epochId).phase.GroupStoppingClasses? &&
+      currentGroup(cleared, epochId).hook.HookReady? && currentClassHook(cleared, epochId).id != 0 by {
+      reveal canObserveClassHook();
+      reveal clearRetiredClassFailure();
+      reveal retirement();
+      reveal currentGroup();
+      reveal currentClassHook();
     }
+    if hookObservation.Callable? {
+      assert alwaysRetirementPerRetiredEpoch(cleared) && alwaysRetirementFollowsPlan(cleared) by {
+        reveal inv();
+      }
+      var k := CurrentAt(cleared, epochId);
+      var r := cleared.retirements[k];
+      var g := r.groups[r.cursor];
+      var g2 := g.(hook := ClassHookPhase.HookPending);
+      var r2 := r.(groups := r.groups[r.cursor := g2]);
+      assert after == cleared.(retirements := cleared.retirements[k := r2]) by {
+        GroupsDistinct(r);
+        PutAt(cleared, epochId, g2, k);
+        reveal observeClassHook();
+      }
+      assert !r.exited by { reveal retirementShaped(); }
+      assert alwaysEpochIdentityUnique(after) && alwaysOneActiveEpochPerName(after) && alwaysEpochOutcomeHonest(after) &&
+        alwaysLiveClassOwnerUnique(after) && alwaysChildLifecyclesValid(after) && alwaysOwnedClassesMatchServices(after) &&
+        alwaysInvokingStartHasNoInstance(after) && alwaysServiceOwnerEpochExists(after) && alwaysSealedOwnedClassesStable(after) by {
+        assert alwaysEpochIdentityUnique(cleared) && alwaysOneActiveEpochPerName(cleared) && alwaysEpochOutcomeHonest(cleared) &&
+          alwaysLiveClassOwnerUnique(cleared) && alwaysChildLifecyclesValid(cleared) && alwaysOwnedClassesMatchServices(cleared) &&
+          alwaysInvokingStartHasNoInstance(cleared) && alwaysServiceOwnerEpochExists(cleared) by { reveal inv(); }
+        reveal alwaysEpochIdentityUnique();
+        reveal alwaysOneActiveEpochPerName();
+        reveal alwaysEpochOutcomeHonest();
+        reveal alwaysLiveClassOwnerUnique();
+        reveal alwaysChildLifecyclesValid();
+        reveal alwaysOwnedClassesMatchServices();
+        reveal alwaysInvokingStartHasNoInstance();
+        reveal epoch();
+        EpochOwnerFrame(cleared, after);
+      }
+      UAt(cleared, after, k, r2);
+      assert alwaysRetirementFollowsPlan(after) by {
+        reveal retirementShaped();
+        reveal groupSlotsPassed();
+        ShapeReplaceCurrent(r, r2, g2);
+        ShapeAt(cleared, after, k, r2);
+      }
+      assert alwaysStopObservationsFollowSlots(after) by {
+        assert alwaysStopObservationsFollowSlots(cleared) by { reveal inv(); }
+        reveal alwaysStopObservationsFollowSlots();
+        reveal classPhaseFollowsInstances();
+        reveal validStopObservation();
+        assert g in r.groups && r in cleared.retirements;
+        StopsValid(g, cleared.services);
+        SlotsAtGroup(cleared, after, k, r.cursor, g2, r2);
+      }
+      assert alwaysRetiredEpochHasNoResources(after) by {
+        assert alwaysRetiredEpochHasNoResources(cleared) by { reveal inv(); }
+        OwnsOpen(cleared, k);
+        NoResourcesAt(cleared, after, k, r2);
+      }
+      assert alwaysNoOrphanInstance(after) by {
+        assert alwaysNoOrphanInstance(cleared) by { reveal inv(); }
+        OrphanAt(cleared, after, k, r.cursor, g2, r2);
+      }
+      assert alwaysLiveInstanceReachable(after) by {
+        assert alwaysChildLifecyclesValid(cleared) && alwaysLiveInstanceReachable(cleared) by { reveal inv(); }
+        ChildInv(cleared);
+        reveal core__serviceInstances_inv();
+        StepSameObjects(cleared.services, after.services);
+        ReachAt(cleared, after, k, r.cursor, g2, r2);
+      }
+      assert alwaysRetiredUndeclaredTypeIsUnknown(after) by {
+        assert alwaysRetiredUndeclaredTypeIsUnknown(cleared) by { reveal inv(); }
+        UndeclaredAt(cleared, after, k, r.cursor, g2, r2);
+      }
+      assert inv(after) by { reveal inv(); }
+    } else if hookObservation.Missing? {
+      assert inv(after) by {
+        reveal observeClassHook();
+        PluginClassSlotCompletionKeepsRules(cleared, epochId);
+      }
+    } else {
+      assert inv(after) by {
+        reveal observeClassHook();
+        PluginClassHookReadFailureKeepsRules(cleared, epochId, hookObservation.errorId);
+      }
+    }
+    reveal inv();
   }
 }
 
@@ -2809,66 +3053,119 @@ lemma cleanPlugin_ensures(s: PluginServices, epochId: int)
   ensures (inv(s) ==> canCleanPlugin(s, epochId) ==> alwaysRetiredEpochHasNoResources(cleanPlugin(s, epochId)))
   ensures (inv(s) ==> canCleanPlugin(s, epochId) ==> alwaysSealedOwnedClassesStable(cleanPlugin(s, epochId)))
 {
+  hide *;
   if inv(s) && canCleanPlugin(s, epochId) {
     var after := cleanPlugin(s, epochId);
+    assert after == s.(epochs := after.epochs) by { reveal cleanPlugin(); }
+    assert alwaysEpochIdentityUnique(s) && alwaysOneActiveEpochPerName(s) && alwaysEpochOutcomeHonest(s) && alwaysRetirementPerRetiredEpoch(s) by { reveal inv(); }
     EpochsAfterCleanPlugin(s, epochId);
-    forall i | 0 <= i < |s.epochs| && s.epochs[i].id == epochId
-      ensures s.epochs[i] == epoch(s, epochId)
-    {
-      assert s.epochs[i] in s.epochs;
-      PluginEpochExact(s, s.epochs[i]);
+    assert (forall x :: epoch(after, x).id == epoch(s, x).id && epochAdmitsClass(after, x) == epochAdmitsClass(s, x) && (x != epochId ==> epochOwnsResources(after, x) == epochOwnsResources(s, x))) && !epochOwnsResources(after, epochId) by {
+      reveal cleanPlugin();
+      reveal canCleanPlugin();
+      reveal core__plugins_canFinishCleanup();
+      reveal core__plugins_finishCleanup();
+      reveal activePhase();
+      forall i | 0 <= i < |s.epochs| && s.epochs[i].id == epochId ensures s.epochs[i] == epoch(s, epochId)
+      {
+        assert s.epochs[i] in s.epochs;
+        PluginEpochExact(s, s.epochs[i]);
+      }
+      CleanedEpochView(s, after, epochId);
     }
-    CleanedEpochView(s, after, epochId);
-    EpochOwnerFrame(s, after);
-    forall r | r in after.retirements
-      ensures epoch(after, r.epochId).id == r.epochId && !epochAdmitsClass(after, r.epochId)
-    {
+    assert alwaysLiveClassOwnerUnique(after) && alwaysChildLifecyclesValid(after) && alwaysOwnedClassesMatchServices(after) && alwaysInvokingStartHasNoInstance(after) && alwaysRetirementFollowsPlan(after) && alwaysRetiredUndeclaredTypeIsUnknown(after) && alwaysStopObservationsFollowSlots(after) by {
+      assert alwaysLiveClassOwnerUnique(s) && alwaysChildLifecyclesValid(s) && alwaysOwnedClassesMatchServices(s) && alwaysInvokingStartHasNoInstance(s) && alwaysRetirementFollowsPlan(s) && alwaysRetiredUndeclaredTypeIsUnknown(s) && alwaysStopObservationsFollowSlots(s) by { reveal inv(); }
+      reveal alwaysLiveClassOwnerUnique();
+      reveal alwaysChildLifecyclesValid();
+      reveal alwaysOwnedClassesMatchServices();
+      reveal alwaysInvokingStartHasNoInstance();
+      reveal alwaysRetirementFollowsPlan();
+      reveal alwaysRetiredUndeclaredTypeIsUnknown();
+      reveal alwaysStopObservationsFollowSlots();
     }
-    RetirementFound(s, epochId);
-    var k := RetirementIndex(s, retirement(s, epochId));
-    var done := s.retirements[k];
-    SettledGroupsDone(s, done);
-    forall r | r in after.retirements && !epochOwnsResources(after, r.epochId)
-      ensures retirementSettled(after, r.epochId) && forall g :: g in r.groups ==> g.instanceCursor == |g.instances| && forall slot :: slot in g.observedStops ==> stopSlotSettled(slot, after.services)
-    {
-      var i := RetirementIndex(s, r);
-      if r.epochId == epochId {
-        assert r == done;
-        forall g, slot | g in r.groups && slot in g.observedStops ensures stopSlotSettled(slot, after.services)
-        {
-          var m :| 0 <= m < |g.observedStops| && g.observedStops[m] == slot;
+    assert alwaysServiceOwnerEpochExists(after) && alwaysSealedOwnedClassesStable(after) by {
+      assert alwaysServiceOwnerEpochExists(s) by { reveal inv(); }
+      EpochOwnerFrame(s, after);
+    }
+    assert alwaysRetirementPerRetiredEpoch(after) by {
+      reveal alwaysRetirementPerRetiredEpoch();
+    }
+    var done := retirement(s, epochId);
+    assert done in s.retirements && done.epochId == epochId && (done.exited || done.cursor == |done.plan|) &&
+      (forall g :: g in done.groups ==> (g.instanceCursor == |g.instances| && |g.observedStops| == |g.instances| &&
+        (forall i :: 0 <= i < |g.observedStops| ==> (g.observedStops[i].instanceId == g.instances[i] && stopSlotSettled(g.observedStops[i], s.services))))) by {
+      reveal canCleanPlugin();
+      reveal retirementSettled();
+      reveal noRetirement;
+      RetirementFound(s, epochId);
+      SettledGroupsDone(s, done);
+    }
+    assert core__serviceInstances_alwaysObjectStopOnce(s.services) && core__serviceInstances_alwaysClassAndObjectIdentities(s.services) by {
+      reveal inv();
+      ChildInv(s);
+      reveal core__serviceInstances_inv();
+    }
+    assert alwaysRetiredEpochHasNoResources(after) by {
+      assert alwaysRetiredEpochHasNoResources(s) by { reveal inv(); }
+      reveal alwaysRetiredEpochHasNoResources();
+      reveal retirementSettled();
+      reveal retirement();
+      forall r | r in after.retirements && !epochOwnsResources(after, r.epochId)
+        ensures retirementSettled(after, r.epochId) && forall g :: g in r.groups ==> g.instanceCursor == |g.instances| && forall slot :: slot in g.observedStops ==> stopSlotSettled(slot, after.services)
+      {
+        var i := RetirementIndex(s, r);
+        if r.epochId == epochId {
+          assert r == done;
+          forall g, slot | g in r.groups && slot in g.observedStops ensures stopSlotSettled(slot, after.services)
+          {
+            var m :| 0 <= m < |g.observedStops| && g.observedStops[m] == slot;
+          }
         }
       }
     }
-    forall cl | cl in after.services.classes && cl.live != 0 && cl.registered && !(core__serviceInstances_serviceObject(after.services, cl.live).stopCalls > 0) && !(cl.live in core__serviceInstances_publishedInstances(after.services, cl.serviceType))
-      ensures exists r :: r in after.retirements && (exists g :: g in r.groups && (missingStopObservedFor(g, cl.live) || (epochOwnsResources(after, r.epochId) && (cl.live in g.instances))))
-    {
-      var r, g :| r in s.retirements && g in r.groups && (missingStopObservedFor(g, cl.live) || (epochOwnsResources(s, r.epochId) && (cl.live in g.instances)));
-      if !missingStopObservedFor(g, cl.live) && r.epochId == epochId {
-        var i := RetirementIndex(s, r);
-        assert r == done;
-        var m :| 0 <= m < |g.instances| && g.instances[m] == cl.live;
-        var slot := g.observedStops[m];
-        assert slot in g.observedStops && stopSlotSettled(slot, s.services);
-        if slot.observed.AwaitedStopSlot? {
-          ObjectFound(s.services, cl.live);
-          assert false;
+    assert alwaysLiveInstanceReachable(after) by {
+      assert alwaysLiveInstanceReachable(s) by { reveal inv(); }
+      reveal alwaysLiveInstanceReachable();
+      reveal missingStopObservedFor();
+      reveal stopSlotSettled();
+      reveal core__serviceInstances_alwaysObjectStopOnce();
+      reveal core__serviceInstances_noObject;
+      forall cl | cl in after.services.classes && cl.live != 0 && cl.registered && !(core__serviceInstances_serviceObject(after.services, cl.live).stopCalls > 0) && !(cl.live in core__serviceInstances_publishedInstances(after.services, cl.serviceType))
+        ensures exists r :: r in after.retirements && (exists g :: g in r.groups && (missingStopObservedFor(g, cl.live) || (epochOwnsResources(after, r.epochId) && (cl.live in g.instances))))
+      {
+        var r, g :| r in s.retirements && g in r.groups && (missingStopObservedFor(g, cl.live) || (epochOwnsResources(s, r.epochId) && (cl.live in g.instances)));
+        if !missingStopObservedFor(g, cl.live) && r.epochId == epochId {
+          var i := RetirementIndex(s, r);
+          assert r == done;
+          var m :| 0 <= m < |g.instances| && g.instances[m] == cl.live;
+          var slot := g.observedStops[m];
+          assert slot in g.observedStops && stopSlotSettled(slot, s.services);
+          if slot.observed.AwaitedStopSlot? {
+            ObjectFound(s.services, cl.live);
+            assert false;
+          }
         }
       }
     }
-    forall o | o in after.services.objects && o.stopCalls <= 0 && !((exists cl :: cl in after.services.classes && cl.live == o.id && cl.registered) && (exists p :: p in after.services.published && o.id in p.instances))
-      ensures exists r :: r in after.retirements && (exists g :: g in r.groups && (missingStopObservedFor(g, o.id) || (epochOwnsResources(after, r.epochId) && (o.id in g.instances))))
-    {
-      var r, g :| r in s.retirements && g in r.groups && (missingStopObservedFor(g, o.id) || (epochOwnsResources(s, r.epochId) && (o.id in g.instances)));
-      if !missingStopObservedFor(g, o.id) && r.epochId == epochId {
-        var i := RetirementIndex(s, r);
-        assert r == done;
-        var m :| 0 <= m < |g.instances| && g.instances[m] == o.id;
-        var slot := g.observedStops[m];
-        assert slot in g.observedStops && stopSlotSettled(slot, s.services);
-        if slot.observed.AwaitedStopSlot? {
-          ObjectExact(s.services, o);
-          assert false;
+    assert alwaysNoOrphanInstance(after) by {
+      assert alwaysNoOrphanInstance(s) by { reveal inv(); }
+      reveal alwaysNoOrphanInstance();
+      reveal missingStopObservedFor();
+      reveal stopSlotSettled();
+      reveal core__serviceInstances_alwaysObjectStopOnce();
+      forall o | o in after.services.objects && o.stopCalls <= 0 && !((exists cl :: cl in after.services.classes && cl.live == o.id && cl.registered) && (exists p :: p in after.services.published && o.id in p.instances))
+        ensures exists r :: r in after.retirements && (exists g :: g in r.groups && (missingStopObservedFor(g, o.id) || (epochOwnsResources(after, r.epochId) && (o.id in g.instances))))
+      {
+        var r, g :| r in s.retirements && g in r.groups && (missingStopObservedFor(g, o.id) || (epochOwnsResources(s, r.epochId) && (o.id in g.instances)));
+        if !missingStopObservedFor(g, o.id) && r.epochId == epochId {
+          var i := RetirementIndex(s, r);
+          assert r == done;
+          var m :| 0 <= m < |g.instances| && g.instances[m] == o.id;
+          var slot := g.observedStops[m];
+          assert slot in g.observedStops && stopSlotSettled(slot, s.services);
+          if slot.observed.AwaitedStopSlot? {
+            ObjectExact(s.services, o);
+            assert false;
+          }
         }
       }
     }
