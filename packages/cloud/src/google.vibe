@@ -844,7 +844,9 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
       return flowCookie(response, "", "", 0)
     }
     if (url.searchParams.has("side") && url.searchParams.get("side") !== "owner") return body(403, { error: "owner_consent_required" })
-    if (path === arrivalPath && credential !== undefined) return try inboxArrival(url, env, db, account, credential)
+    if (path === arrivalPath) return credential === undefined
+      ? body(401, { error: "authentication_required" })
+      : try inboxArrival(url, env, db, account, credential)
     if (path === "/gmail/send/status") return try sentMailReceipt(url, db, account)
     if (path === "/status") return try status(db, env, account)
     const selected = url.searchParams.get("grantId")
