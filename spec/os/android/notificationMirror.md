@@ -124,11 +124,12 @@ pure val postedAtValues = Set(1, 2)
 ### A row handle exists only while collecting with a connected listener, and a new or replaced notice gets a fresh one
 
 At most the newest hundred rows hold handles; the Android key never leaves
-native code.
+native code. The mirror starts with a positive next handle and never moves
+that counter back.
 
 ```quint
 pure def alwaysRowsNeedLiveCollection(s: MirrorState): bool = s.handles.length() > 0 implies (collecting(s) and isBound(s))
-pure def alwaysRowHandlesAreIssued(s: MirrorState): bool = s.handles.length() <= maxActiveRows and s.handles.every(h => h.handle >= 1 and h.handle < s.nextHandle)
+pure def alwaysRowHandlesAreIssued(s: MirrorState): bool = s.nextHandle >= 1 and s.handles.length() <= maxActiveRows and s.handles.every(h => h.handle >= 1 and h.handle < s.nextHandle)
 pure def stepNewRowsGetFreshHandles(before: MirrorState, after: MirrorState): bool =
   after.handles.every(h => before.handles.includes(h) or h.handle >= before.nextHandle)
 pure def sometimesLiveRow(s: MirrorState): bool = s.handles.length() > 0
