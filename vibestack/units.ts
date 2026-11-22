@@ -5,7 +5,7 @@ import type * as TS from "typescript";
 import ts from "typescript";
 import { generate, type Model, type Origin } from "./gen.ts";
 import { writeConformance } from "./conform.ts";
-import { simulated } from "./gen/harness.ts";
+import { simulated, witnessFile } from "./gen/harness.ts";
 import { fail } from "./gen/types.ts";
 import type { Unit } from "./prove.ts";
 import { modules, originalColumn, type Spec } from "./parse.ts";
@@ -109,6 +109,7 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
   const write = (name: string, text: string) => put(root, path.join(dir, name), text, staged);
   write(`${spec.name}.ts`, model.ts);
   write(`${spec.name}.run.qnt`, model.harness);
+  if (model.witness) write(witnessFile(spec.name), model.witness.harness);
   writeFaces(root, root, dir, spec, model.ts, staged);
   if (model.opaques.length) write(`${spec.name}.sim.qnt`, simulated(spec.qnt, model.opaques));
   writeConformance(model, write);
