@@ -94,7 +94,7 @@ module node {
 import { newDigest, verifiedVbmeta } from node
 export type { VerifiedBootImage } from node
 
-const entryName = /^[A-Za-z0-9._+\/-]+$/
+const entryName = /^[A-Za-z0-9._+/-]+$/
 export const metadataLimit = 2 * 1024 * 1024
 
 function archiveName(name: string): boolean {

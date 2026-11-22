@@ -40,9 +40,10 @@ export const driver: Driver & AsyncDisposable = {
   dispatch: (key, event: Event) => settle(key, (run) => run.machine.send(event)),
   receive: (key, raw) => settle(key, (run) => run.machine.receive(raw)),
   observe: (key) => Effect.runPromise(Effect.flatMap(opened(key), (run) => run.machine.get())),
-  async [Symbol.asyncDispose]() {
+  [Symbol.asyncDispose]: () => new Promise<void>((resolve) => {
     reset();
-  },
+    resolve();
+  }),
 };
 
 export const options: Options = { keys: ["consumer", "other"] };
@@ -51,7 +52,7 @@ if (import.meta.main) {
   for await (const line of readline.createInterface({ input: process.stdin })) {
     if (line.trim() === "") continue;
     const event = (JSON.parse(line) as { event?: Event }).event;
-    if (event === undefined) driver.reset();
+    if (event === undefined) await driver.reset();
     else await driver.dispatch("consumer", event);
     process.stdout.write(`${JSON.stringify({ state: await driver.observe("consumer") })}\n`);
   }

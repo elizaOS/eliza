@@ -1,4 +1,5 @@
 // spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/image/qualification.md, "Story: Read the verdict against my requirements"
+import type { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import {
   admitRun,
   atLeast,
@@ -38,7 +39,7 @@ const base = { id: RequirementName, level: Level, rationale: Schema.optionalKey(
 const NumericCheck = Schema.Literals(["androidRelease", "vendorApiLevel", "displayLongEdgePx", "displayShortEdgePx", "microphoneCount"])
 const FlagCheck = Schema.Literals(["treble", "wifi5GHz", "dynamicPartitions", "abUpdates", "selinuxEnforcing", "chargeControl", "wifiCountryProcNotWorldWritable"])
 const BootloaderCheck = Schema.Literals(["fastbootUnlockable", "fastbootAvbCustomKey"])
-const Requirement = Schema.Union([
+const RequirementSchema = Schema.Union([
   Schema.Struct({ ...base, check: Schema.Literal("identity"), field: IdentityField, equals: NonBlank }),
   Schema.Struct({ ...base, check: Schema.Literal("abi"), equals: NonBlank }),
   Schema.Struct({ ...base, check: Schema.Literal("kernelVersion"), min: Schema.String.check(Schema.makeFilter((min) => /^\d+\.\d+$/.test(min))) }),
@@ -53,14 +54,14 @@ const Requirements = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   description: Schema.optionalKey(Schema.String),
   reviewedAt: Schema.optionalKey(Schema.String),
-  requirements: Schema.Array(Requirement),
-  fastbootRequirements: Schema.optionalKey(Schema.Array(Requirement)),
+  requirements: Schema.Array(RequirementSchema),
+  fastbootRequirements: Schema.optionalKey(Schema.Array(RequirementSchema)),
 })
 const decodeRequirements = Schema.decodeUnknownOption(Requirements)
 const readRequirements = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
 
 export type DeviceRequirements = typeof Requirements.Type
-type Requirement = typeof Requirement.Type
+type Requirement = typeof RequirementSchema.Type
 
 const verdictName = { Qualified: "pass", Disqualified: "fail", Incomplete: "incomplete" } as const
 const evidenceName = { EmulatorObservation: "emulator-observation", BootloaderObservation: "bootloader-observation", DeviceObservation: "device-observation" } as const
@@ -202,7 +203,7 @@ function isCaptureKey(key: string): key is keyof typeof readOnlyCommands {
   return Object.hasOwn(readOnlyCommands, key)
 }
 
-effect function readDevice(mode: ProbeMode, binary: string, serial: AdbSerial, command: DeviceCommand): Capture!QualificationRefused!import("effect/process/ChildProcessSpawner").ChildProcessSpawner {
+effect function readDevice(mode: ProbeMode, binary: string, serial: AdbSerial, command: DeviceCommand): Capture!QualificationRefused!ChildProcessSpawner {
   if (!commandAllowed(mode, command)) throw new QualificationRefused({ reason: "The probe command does not belong to this mode" })
   let args: readonly string[]
   switch (command.tag) {
