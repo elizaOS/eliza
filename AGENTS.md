@@ -188,8 +188,7 @@ Check each point before you write, and again after.
   `//@` contracts, spec citations and Vitest environment directives, and a doc
   comment only where a generator reads it: on a `@repo/ui` component and its
   props. This holds for the project's own code, tests, scripts and proof files;
-  `vibestack/` and vendored checkouts are upstream's. In `apps/` and
-  `packages/`, `pnpm lint:js` enforces it, with no effect hooks, timers or
+  `vibestack/` and vendored checkouts are upstream's. In `packages/`, `pnpm lint:js` enforces it, with no effect hooks, timers or
   `console`. An `eslint-disable` there names its rules, never `code/*` or
   `no-console`, and says why; any other inline config fails the lint.
 - **Scripts and tests.** Extend existing ones before adding; no new scripts.

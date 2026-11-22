@@ -159,7 +159,7 @@ one thing at a time and asserts which stage catches each. It runs as five cached
 read: `selftest:docs` the documents against every file they can name, `selftest:examples` each standalone example
 against its own files and the tools. `selftest:tools:a` and `selftest:tools:b` build scratch projects from the order
 example and fixtures. `selftest:tools:rest` also rebuilds the packaged CLI from the workspace, so changes under
-`apps/`, `packages/` and `spec/` invalidate its isolated CI run. The first two each run one shard of the kinds of mistake, the
+`packages/` and `spec/` invalidate its isolated CI run. The first two each run one shard of the kinds of mistake, the
 `describe` named `in shard a` or `in shard b` in `vibestack/selftest.ts`; the third skips what the other four name, so
 a new test runs there unless it is written into a shard. Keep the longest tests spread over the three.
 The two suites of the tools, the command line and each kind of mistake, run side by side under one parent, each at most four tests at a time. The order project the
@@ -426,8 +426,7 @@ compare screenshots.
 Asynchronous Effect programs are tested, not proved. Each `proof` line says
 how many obligations are proved and how many are simulated only.
 
-ESLint enforces package exports and the stack boundaries, and in `apps/` and
-`packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
+ESLint enforces package exports and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
 citation or tool directive, no effect hook, timer or `console`, and no inline
 config but a reasoned `eslint-disable` of another rule. `commented` and
 `scheduled` in `eslint.config.js` give each file that still breaks them the
