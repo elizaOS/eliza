@@ -132,9 +132,14 @@ function providerVersion(event: LifeOpsCalendarEvent): string {
   return etag.trim();
 }
 
+type EditorRespondRequest = Parameters<
+  NonNullable<CalendarOwnerMutationGateway["respond"]>
+>[1];
+
 type EditorMutationRequest =
   | Parameters<CalendarOwnerMutationGateway["update"]>[1]
-  | Parameters<CalendarOwnerMutationGateway["cancel"]>[1];
+  | Parameters<CalendarOwnerMutationGateway["cancel"]>[1]
+  | EditorRespondRequest;
 
 interface EditorMutationTargets {
   readonly visible: LifeOpsCalendarEvent;
@@ -689,6 +694,108 @@ export class OwnerCalendarMutationGatewayService
       cancellationMode: request.cancellationMode,
       event: null,
     };
+  }
+
+  /**
+   * Owner RSVP. A decline is the existing reviewed `decline_invitation`
+   * cancellation, so one decline has one approval shape and receipt. Accept
+   * and tentative are `modify_event` approvals that carry only
+   * `invitationResponse`; the port allows them for invitees only.
+   */
+  async respond(
+    requestUrl: URL,
+    request: EditorRespondRequest,
+  ): Promise<LifeOpsCalendarEvent> {
+    const recurrenceScope: unknown = request.recurrenceScope;
+    if (
+      recurrenceScope !== undefined &&
+      recurrenceScope !== null &&
+      recurrenceScope !== "instance" &&
+      recurrenceScope !== "series"
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "An invitation response applies to one occurrence or the whole series.",
+        "CALENDAR_RECURRENCE_RESPONSE_SCOPE_UNSUPPORTED",
+      );
+    }
+    if (request.responseStatus === "declined") {
+      const { responseStatus: _declined, ...cancelRequest } = request;
+      const result = await this.cancel(requestUrl, {
+        ...cancelRequest,
+        cancellationMode: "decline_invitation",
+      });
+      if (result.outcome !== "invitation_declined") {
+        throw new CalendarServiceError(
+          500,
+          "A declined invitation did not return its updated event.",
+          "CALENDAR_MUTATION_RESULT_INVALID",
+        );
+      }
+      return result.event;
+    }
+    const invitationResponse = request.responseStatus;
+    const operationKey = requireOperationKey(request.idempotencyKey);
+    const requestSha256 = sha256({ operation: "respond", request });
+    const queue = this.approvalQueue();
+    const existing = await queue.byIdempotencyKey(
+      approvalKey("modify_event", operationKey),
+      SELF_ENTITY_ID,
+    );
+    let approval: ApprovalRequest;
+    if (existing) {
+      approval = await confirmExistingEditorApproval({
+        queue,
+        existing,
+        action: "modify_event",
+        requestSha256,
+      });
+    } else {
+      const targets = await resolveEditorMutationTargets(
+        this.calendar(),
+        requestUrl,
+        request,
+      );
+      const target = targets.visible;
+      const payload: CalendarEditorPayload = {
+        action: "modify_event",
+        side: request.side ?? "owner",
+        grantId: request.grantId ?? target.grantId ?? null,
+        calendarId: request.calendarId ?? target.calendarId,
+        eventId: request.eventId,
+        expectedProvider: target.provider,
+        expectedProviderVersion: providerVersion(target),
+        expectedEventUpdatedAt: target.updatedAt,
+        expectedEventStartAtMs: requireAbsoluteTimestamp(
+          target.startAt,
+          "target.startAt",
+        ),
+        recurrenceScope: request.recurrenceScope ?? null,
+        seriesMaster: seriesMasterBinding(targets.seriesMaster),
+        notifyAttendees: request.notifyAttendees === true,
+        editorRequestSha256: requestSha256,
+        invitationResponse,
+        patch: {
+          title: null,
+          startsAtMs: null,
+          endsAtMs: null,
+          attendees: null,
+          location: null,
+          description: null,
+        },
+      };
+      approval = await resolveConfirmedApproval({
+        queue,
+        action: payload.action,
+        payload,
+        reason: `${invitationResponse === "accepted" ? "Accept" : "Tentatively accept"} the invitation "${target.title}" from the authenticated owner calendar editor.`,
+        operationKey,
+        requestSha256,
+      });
+    }
+    const result = await this.execute(approval);
+    if (result.kind !== "succeeded") throwExecutionFailure(result);
+    return requireReceiptEvent(result);
   }
 
   async linkCalendar(

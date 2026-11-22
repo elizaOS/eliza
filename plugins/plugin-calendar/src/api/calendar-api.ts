@@ -27,6 +27,7 @@ import type {
   ListLifeOpsIcsCalendarSourcesResponse,
   PurgeLifeOpsCalendarImportedDataRequest,
   ResolveLifeOpsLinkedCalendarConflictRequest,
+  RespondLifeOpsCalendarEventRequest,
   SeedLifeOpsCalendarRequest,
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
@@ -98,6 +99,11 @@ export interface CalendarClientMethods {
     eventId: string,
     options: CalendarEditorDeleteRequest,
   ): Promise<LifeOpsCalendarEventCancellationResult>;
+  /** Owner RSVP through the reviewed approval path; returns the updated event. */
+  respondToLifeOpsCalendarEvent(
+    eventId: string,
+    request: RespondLifeOpsCalendarEventRequest,
+  ): Promise<LifeOpsCalendarEventMutationResult>;
   getMeetingAutoJoinSettings(): Promise<MeetingAutoJoinSettings>;
   setMeetingAutoJoinPolicy(
     policy: MeetingAutoJoinPolicy,
@@ -412,6 +418,30 @@ export function installCalendarApi(host: CalendarApiHost): CalendarApi {
       `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}${query ? `?${query}` : ""}`,
       {
         method: "DELETE",
+      },
+    );
+  };
+
+  calendarClientPrototype.respondToLifeOpsCalendarEvent = async function (
+    this: CalendarApiHost,
+    eventId: string,
+    request: RespondLifeOpsCalendarEventRequest,
+  ) {
+    if (!request.expectedProviderVersion?.trim()) {
+      throw new Error(
+        "Calendar invitation response requires expectedProviderVersion.",
+      );
+    }
+    if (!request.idempotencyKey?.trim()) {
+      throw new Error(
+        "Calendar invitation response requires a stable idempotencyKey.",
+      );
+    }
+    return this.fetch<LifeOpsCalendarEventMutationResult>(
+      `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}/response`,
+      {
+        method: "POST",
+        body: JSON.stringify(request),
       },
     );
   };

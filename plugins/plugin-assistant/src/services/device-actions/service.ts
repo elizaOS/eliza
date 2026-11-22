@@ -101,9 +101,11 @@ import {
 import {
   CAMERA_CAPTURE_CAPABILITY,
   CAMERA_LENS_CAPABILITY,
+  CAMERA_LIBRARY_ID_CAPABILITY,
   isCameraCapture,
   validateCameraCaptureResult,
 } from "./camera-contract.ts";
+import { requestedCameraCapture } from "./camera-request.ts";
 import {
   assertClockObservation,
   CLOCK_ALARMS_CAPABILITY,
@@ -132,6 +134,7 @@ import { deviceActionEffectReceipts } from "./effect-receipts.ts";
 import {
   FILES_CAPABILITY,
   FILES_OPERATION_TYPES,
+  FILES_SHOWN_TARGET_CAPABILITY,
   isFilesOperation,
 } from "./files-browser-contract.ts";
 import {
@@ -161,6 +164,7 @@ import {
   isNotesOrganizeOperation,
   NOTES_ORGANIZE_CAPABILITY,
   NOTES_ORGANIZE_TYPES,
+  NOTES_RECORD_CAPABILITY,
 } from "./notes-organize-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { notesUpdateAfterReadPlan } from "./notes-update-continuation.ts";
@@ -172,9 +176,15 @@ import {
   phoneDialReceiptOutcome,
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
-import { PHOTO_LIBRARY_CAPABILITY } from "./photo-library-contract.ts";
+import {
+  isLibraryOperation,
+  LIBRARY_OPERATION_TYPES,
+  PHOTO_LIBRARY_CAPABILITY,
+  validateLibraryResult,
+} from "./photo-library-contract.ts";
 import {
   isPhotosViewOperation,
+  PHOTOS_SELECTED_CAPABILITY,
   PHOTOS_VIEW_CAPABILITY,
   PHOTOS_VIEW_TYPES,
   photosViewCapabilityAvailable,
@@ -237,6 +247,7 @@ import {
   SMS_SENDER_ADDRESS_CAPABILITY,
   selectedTelephonyView,
   smsComposeNotSubmitted,
+  smsDraftRequestAlsoSends,
   smsReplyNotDrafted,
   smsSenderDisclosure,
   TELEPHONY_ACTION_OPERATION_TYPES,
@@ -250,6 +261,7 @@ import {
   DeviceTelephonyTargetNotRequestedError,
   groundTelephonyTarget,
   namesTelephonyTarget,
+  proposesRequestedRecipient,
   swappedPhoneReferences,
 } from "./telephony-target-grounding.ts";
 import { requireTurnObservation, turnObservation } from "./turn-observation.ts";
@@ -1308,6 +1320,7 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   "notes.local-record.v1",
   NOTES_QUERY_CAPABILITY,
   NOTES_ORGANIZE_CAPABILITY,
+  NOTES_RECORD_CAPABILITY,
   NOTES_LIST_FILTER_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
   CALENDAR_AVAILABILITY_CAPABILITY,
@@ -1334,7 +1347,10 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   VOICEMAIL_DELETE_CAPABILITY,
   PHOTO_LIBRARY_CAPABILITY,
   PHOTOS_VIEW_CAPABILITY,
+  PHOTOS_SELECTED_CAPABILITY,
   CAMERA_LENS_CAPABILITY,
+  CAMERA_LIBRARY_ID_CAPABILITY,
+  FILES_SHOWN_TARGET_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
   CONTACT_UPDATE_VALUES_CAPABILITY,
   CONTACT_SHOW_CAPABILITY,
@@ -2598,6 +2614,7 @@ export class DeviceActionService {
         "calendar_update",
         "calendar_delete",
         ...PHOTOS_VIEW_TYPES,
+        ...LIBRARY_OPERATION_TYPES,
         ...FOREGROUND_REVIEW_TYPES,
       ].includes(validated.type)
     )
@@ -2622,13 +2639,17 @@ export class DeviceActionService {
       !(validated.type === "phone_keypad" && validated.number === undefined) &&
       getDeviceActionTurn()?.runtime === this.runtime;
     const foregroundTurn =
-      isPhotosViewOperation(validated) || isFilesOperation(validated)
+      isPhotosViewOperation(validated) ||
+      isLibraryOperation(validated) ||
+      isFilesOperation(validated)
         ? getDeviceActionTurn()
         : undefined;
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
+    const cameraCapture = validated.type === "camera_capture_photo";
     const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
       allowReviewed:
         browserRequest ||
+        cameraCapture ||
         selectedTelephonyView(validated) !== undefined ||
         telephonyTarget ||
         smsDraftOrRead,
@@ -2636,6 +2657,7 @@ export class DeviceActionService {
       readText:
         smsDraftOrRead ||
         browserRequest ||
+        cameraCapture ||
         telephonyTarget ||
         validated.type === "browser_tab_switch" ||
         validated.type === "browser_find",
@@ -2669,10 +2691,20 @@ export class DeviceActionService {
         validated.type === "sms_reply_selected")
     ) {
       const requested = requestedSmsDraftRecipient(requestOrigin.requestText);
+      // "Write a text to Mom ... and send it" asks for a send: the model's
+      // reviewed operation stays when it goes to the recipient the owner
+      // addressed, and that recipient is grounded as usual. A send to anyone
+      // else is still made the addressed draft, never sent elsewhere.
+      const sends =
+        (requested?.kind === "contact" || requested?.kind === "number") &&
+        validated.type !== "sms_reply_selected" &&
+        smsDraftRequestAlsoSends(requestOrigin.requestText) &&
+        proposesRequestedRecipient(validated, requested);
       const recipient =
-        validated.type === "sms_reply_selected" &&
-        (requested?.kind === "previous-sender" ||
-          requested?.kind === "unaddressed")
+        sends ||
+        (validated.type === "sms_reply_selected" &&
+          (requested?.kind === "previous-sender" ||
+            requested?.kind === "unaddressed"))
           ? undefined
           : requested;
       if (recipient?.kind === "ambiguous" || recipient?.kind === "unaddressed")
@@ -2723,7 +2755,7 @@ export class DeviceActionService {
     // The final operation decides whether the proposal stays bound to the
     // owner's open item.
     const selectedTelephony = selectedTelephonyView(validated) !== undefined;
-    // Reviewed Photos and Files proposals retain their foreground owner
+    // Reviewed Photos, library and Files proposals retain their foreground owner
     // even without a direct-request message binding.
     const assertCurrent =
       foregroundTurn?.runtime === this.runtime
@@ -2788,8 +2820,15 @@ export class DeviceActionService {
           (isPhoneDial(grounded.operation) &&
             !phoneDialCapabilityAvailable(grounded.operation, c.capabilities))
         )
-          throw new DeviceTelephonyTargetNotRequestedError("form");
+          // An emergency keypad this phone cannot open tells the owner to
+          // dial their local emergency number, never to name a recipient.
+          throw new DeviceTelephonyTargetNotRequestedError(
+            grounded.emergency ? "emergency" : "form",
+          );
         validated = grounded.operation;
+        if (grounded.emergency)
+          telephonyReason =
+            "Open the keypad so the owner can dial their local emergency number.";
         // The review shows the owner's recipient; the model's reason may
         // still name the number it invented.
         if (grounded.handedThrough)
@@ -2844,6 +2883,31 @@ export class DeviceActionService {
       if (!query) throw new DeviceBrowserNotRequestedError("search");
       validated = { ...validated, query };
     }
+    // A photo runs without its Take photo card only when the owner's own
+    // message asks for one now ("take a picture", "can you take a selfie?").
+    // A capture the model proposed for any other message ("summarize the page
+    // I have open", "don't take a photo", or text it read in a page or email)
+    // keeps the card. The camera the owner named is the one that shoots,
+    // whichever tool proposed it and whatever lens the model chose; with no
+    // camera named, the phone uses the one showing.
+    const requestedCamera =
+      validated.type === "camera_capture_photo" && requestOrigin
+        ? requestedCameraCapture(
+            requestOrigin.requestText,
+            this.runtime.character.name,
+          )
+        : undefined;
+    if (
+      validated.type === "camera_capture_photo" &&
+      requestedCamera &&
+      c.capabilities?.includes(CAMERA_LENS_CAPABILITY)
+    )
+      validated = {
+        type: "camera_capture_photo",
+        ...(requestedCamera.lens ? { lens: requestedCamera.lens } : {}),
+      };
+    const reviewedCamera =
+      validated.type === "camera_capture_photo" && !requestedCamera;
     // An open or a search runs without a review only when the whole message
     // is that direct request. Any other typed address or query is reviewed.
     // A tab word or find text runs without a review only when the owner typed
@@ -2908,7 +2972,8 @@ export class DeviceActionService {
           "agentActionMode" in metadata &&
           metadata.agentActionMode === "direct-request-v1";
         const requestingMessage =
-          (directRequest && !reviewedBrowserRequest) || selectedTelephony
+          (directRequest && !reviewedBrowserRequest && !reviewedCamera) ||
+          selectedTelephony
             ? requestOrigin?.messageId
             : undefined;
         const payload: DeviceActionPayload = {
@@ -2935,16 +3000,28 @@ export class DeviceActionService {
         const directOpen =
           payload.requestMessageId !== undefined &&
           validated.type === "browser_navigate";
+        // A requested photo is one photo: a second capture proposed in the
+        // same turn (the routed tool beside PROPOSE_DEVICE_ACTION, each with
+        // its own key) is that same capture, never a second shot.
+        const directCapture =
+          payload.requestMessageId !== undefined &&
+          validated.type === "camera_capture_photo";
         const queuedReason = directOpen
           ? "Open the address the owner typed."
-          : (telephonyReason ?? text(reason, 1000));
+          : directCapture
+            ? "Take the photo the owner asked for."
+            : (telephonyReason ?? text(reason, 1000));
         // This is the canonical queue's transaction API: no notification or effect before commit.
         // A direct request binds its key to that message: a key reused in a later turn is a new review.
         const idempotencyKey = `device:${digest([
           c.subjectUserId,
           c.installationId,
           ...(payload.requestMessageId ? [payload.requestMessageId] : []),
-          directOpen ? { browserOpen: payload.operation } : requestKey,
+          directOpen
+            ? { browserOpen: payload.operation }
+            : directCapture
+              ? { cameraCapture: payload.operation }
+              : requestKey,
         ])}`;
         const existing = await queue.byIdempotencyKey(
           idempotencyKey,
@@ -3457,6 +3534,7 @@ export class DeviceActionService {
             isNativeNotesQuery(operation) ||
             isNotesOrganizeOperation(operation) ||
             isPhotosViewOperation(operation) ||
+            isLibraryOperation(operation) ||
             isBrowserControl(operation) ||
             isFilesOperation(operation) ||
             isForegroundReviewOperation(operation) ||
@@ -3538,6 +3616,11 @@ export class DeviceActionService {
       !photosViewCapabilityAvailable(c.capabilities)
     )
       throw new DeviceActionError("Photos capability unavailable");
+    if (
+      isLibraryOperation(payload.operation) &&
+      !c.capabilities?.includes(PHOTO_LIBRARY_CAPABILITY)
+    )
+      throw new DeviceActionError("Photo library capability unavailable");
     if (
       isCalendarOperation(payload.operation) &&
       !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
@@ -3727,6 +3810,11 @@ export class DeviceActionService {
         !photosViewCapabilityAvailable(c.capabilities)
       )
         throw new DeviceActionError("Photos capability unavailable");
+      if (
+        isLibraryOperation(payload.operation) &&
+        !c.capabilities?.includes(PHOTO_LIBRARY_CAPABILITY)
+      )
+        throw new DeviceActionError("Photo library capability unavailable");
       const read =
         payload.operation.type === "read_selected_notes" ||
         payload.operation.type === "read_calendar_range" ||
@@ -3921,6 +4009,18 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid Photos receipt");
+        }
+      } else if (
+        isLibraryOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateLibraryResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid photo library receipt");
         }
       } else if (
         isCalendarOperation(payload.operation) &&
@@ -4129,6 +4229,11 @@ export class DeviceActionService {
         !photosViewCapabilityAvailable(c.capabilities)
       )
         throw new DeviceActionError("Photos capability unavailable");
+      if (
+        isLibraryOperation(payload.operation) &&
+        !c.capabilities?.includes(PHOTO_LIBRARY_CAPABILITY)
+      )
+        throw new DeviceActionError("Photo library capability unavailable");
       if (isSmsSend(payload.operation)) {
         if (receipt.operationId !== request.execution?.providerIdempotencyKey)
           throw new DeviceActionError(
@@ -4312,6 +4417,18 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid Photos receipt");
+        }
+      } else if (
+        isLibraryOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateLibraryResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid photo library receipt");
         }
       } else if (
         isCalendarOperation(payload.operation) &&

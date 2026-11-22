@@ -16,6 +16,8 @@ import { phoneDialNumber } from "./phone-dial-contract.ts";
 import {
   type AuthoredTelephonyTarget,
   authoredTelephonyTarget,
+  emergencyServicesRequest,
+  namesEmergencyService,
 } from "./telephony-request.ts";
 
 /** Why a recipient was refused before persistence. Never a human review decision. */
@@ -25,7 +27,18 @@ export type TelephonyTargetRefusal =
   /** A contact name the owner did not write in this message. */
   | "contact"
   /** The owner's recipient does not fit a form this phone negotiated. */
-  | "form";
+  | "form"
+  /**
+   * The owner wrote a number, but not as one dial number ("415-555 0100",
+   * "415/555/0100"): they are asked to type it again, never told they did
+   * not write it.
+   */
+  | "unreadable"
+  /**
+   * The owner asked for emergency services and this phone cannot open its
+   * keypad: they are told to dial their local emergency number themselves.
+   */
+  | "emergency";
 
 /**
  * A number the owner wrote in this message that reached the planner only as a
@@ -79,21 +92,53 @@ export class DeviceTelephonyTargetNotRequestedError extends Error {
     readonly references: readonly string[] = [],
   ) {
     super(
-      refusal === "form"
-        ? "This phone cannot take the recipient the owner wrote in this form. No proposal was created; nothing was called or sent."
-        : refusal === "contact"
-          ? "The current original request does not name this contact. Use only the name the owner wrote in this message. No proposal was created; nothing was called or sent."
-          : references.length > 0
-            ? `The current original request does not contain this phone number. The owner's number reaches you only as a contact reference, so digits you write for it are invented. Copy ${references.length === 1 ? "this reference" : "one of these references"} verbatim as the number, every character and underscore (a country code such as +1 before it is allowed): ${references.join(", ")}. No proposal was created; nothing was called or sent.`
-            : "The current original request does not contain this phone number. Use only a number the owner wrote in this message, by copying its contact reference exactly. No proposal was created; nothing was called or sent.",
+      refusal === "emergency"
+        ? "The owner asked for emergency services, and this phone cannot open its keypad. No proposal was created; nothing was called. Tell the owner to dial their local emergency number on the phone's own dialer now."
+        : refusal === "unreadable"
+          ? "The owner wrote a phone number this request cannot read as one dial number (mixed or unusual separators). No proposal was created; nothing was called or sent. Ask the owner to type the number again with digits only."
+          : refusal === "form"
+            ? "This phone cannot take the recipient the owner wrote in this form. No proposal was created; nothing was called or sent."
+            : refusal === "contact"
+              ? "The current original request does not name this contact. Use only the name the owner wrote in this message. No proposal was created; nothing was called or sent."
+              : references.length > 0
+                ? `The current original request does not contain this phone number. The owner's number reaches you only as a contact reference, so digits you write for it are invented. Copy ${references.length === 1 ? "this reference" : "one of these references"} verbatim as the number, every character and underscore (a country code such as +1 before it is allowed): ${references.join(", ")}. No proposal was created; nothing was called or sent.`
+                : "The current original request does not contain this phone number. Use only a number the owner wrote in this message, by copying its contact reference exactly. No proposal was created; nothing was called or sent.",
     );
   }
 }
 
-/** The reply the owner sees for a refusal: true whichever recipient was refused. */
+/** What the owner is told to do for an emergency: the keypad opens empty. */
+export const EMERGENCY_KEYPAD_REPLY =
+  "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call.";
+
+/**
+ * The reply the owner sees for a refusal: true whichever recipient was
+ * refused. With the owner's `text`, a refused number is described as missing
+ * only when the message writes or speaks no number at all. A refused contact
+ * change (`operationType`) saves a number rather than calling it.
+ */
 export function telephonyTargetRefusalReply(
   refusal: TelephonyTargetRefusal,
+  text?: string,
+  operationType?: unknown,
 ): string {
+  const contactChange =
+    operationType === "contact_create" || operationType === "contact_update";
+  if (refusal === "emergency")
+    return "I can't open the keypad on this phone. For an emergency, dial your local emergency number (911 in the US and Canada, 112 in most of Europe) on your phone's dialer now.";
+  if (refusal === "unreadable")
+    return contactChange
+      ? "I couldn't read that as one phone number, so I didn't save it. Nothing was saved. Type the number again with digits only, like 4155550100."
+      : "I couldn't read that as one phone number, so I didn't set it up. Nothing was called or sent. Type the number again with digits only, like 4155550100.";
+  if (refusal === "number" && contactChange)
+    return "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use.";
+  if (
+    refusal === "number" &&
+    text !== undefined &&
+    !/\d/.test(text) &&
+    spokenPhoneNumbers(text).length === 0
+  )
+    return "I didn't set that up, because your message doesn't include a phone number. Nothing was called or sent. Tell me the number to use, or the name saved in Contacts.";
   if (refusal === "form")
     return "I can't set that up on this phone with that recipient. Tell me the number to use.";
   if (refusal === "contact")
@@ -101,14 +146,43 @@ export function telephonyTargetRefusalReply(
   return "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use.";
 }
 
-/** Operations whose recipient or prefill is a phone number or contact. */
+const CONTACT_NUMBER_PARTS = ["set", "add", "remove"] as const;
+
+/**
+ * The phone numbers a contact change writes, adds or removes. A number saved
+ * under a contact's name becomes the recipient of every later "call Bob" and
+ * "text Bob", so it is grounded like a call's recipient.
+ */
+function contactNumbers(value: { type?: unknown }): string[] {
+  const operation = value as { type?: unknown; [key: string]: unknown };
+  const lists: unknown[] = [];
+  if (operation.type === "contact_create")
+    lists.push((operation.contact as { phoneNumbers?: unknown })?.phoneNumbers);
+  if (operation.type === "contact_update")
+    for (const part of CONTACT_NUMBER_PARTS)
+      lists.push(
+        (operation[part] as { phoneNumbers?: unknown } | undefined)
+          ?.phoneNumbers,
+      );
+  return lists.flatMap((list) =>
+    Array.isArray(list)
+      ? list.filter((item): item is string => typeof item === "string")
+      : [],
+  );
+}
+
+/**
+ * Operations whose recipient or prefill is a phone number or contact, and
+ * contact changes that write a phone number.
+ */
 export function namesTelephonyTarget(operation: { type?: unknown }): boolean {
   return (
     operation.type === "phone_call" ||
     operation.type === "phone_dial" ||
     operation.type === "sms_compose" ||
     operation.type === "sms_send" ||
-    operation.type === "phone_keypad"
+    operation.type === "phone_keypad" ||
+    contactNumbers(operation).length > 0
   );
 }
 
@@ -149,12 +223,25 @@ export function writtenPhoneNumbers(text: string): string[] {
  * oh" → "4155550100"), which a proposal must equal exactly.
  */
 export function ownerPhoneNumbers(text: string): string[] {
+  return ownerPhoneNumberTiers(text).flat();
+}
+
+/** The owner's written numbers, then the spoken ones that are not also written. */
+function ownerPhoneNumberTiers(text: string): OwnedNumbers {
   const written = writtenPhoneNumbers(text);
   return [
-    ...written,
-    ...spokenPhoneNumbers(text).filter((number) => !written.includes(number)),
+    written,
+    spokenPhoneNumbers(text).filter((number) => !written.includes(number)),
   ];
 }
+
+/**
+ * The owner's numbers in the order a proposal is matched against them: the
+ * numbers they wrote, then the ones only read as spoken. "to 415-555-0100"
+ * also reads as a spoken "24155550100", which must not make the written
+ * number ambiguous to a proposal with a country code.
+ */
+type OwnedNumbers = readonly [written: string[], spoken: string[]];
 
 /**
  * The same number with or without a country code: equal digits, or the same
@@ -203,48 +290,180 @@ export function writesContactName(text: string, name: string): boolean {
 }
 
 /**
+ * Whether a send proposal goes to exactly the recipient of the owner's own
+ * addressing clause: the same contact name or the same number. "Write a text
+ * to Mom saying Dad is home and send it" never sends to Dad.
+ */
+export function proposesRequestedRecipient(
+  operation: DeviceOperation,
+  requested:
+    | { kind: "contact"; query: string }
+    | { kind: "number"; number: string },
+): boolean {
+  if (operation.type === "sms_send")
+    return (
+      requested.kind === "number" &&
+      operation.recipients.length === 1 &&
+      samePhoneNumber(operation.recipients[0] ?? "", requested.number)
+    );
+  if (operation.type !== "sms_compose") return false;
+  const target =
+    "target" in operation
+      ? operation.target
+      : { kind: "contact" as const, query: operation.query };
+  if (target.kind === "number")
+    return (
+      requested.kind === "number" &&
+      samePhoneNumber(target.number, requested.number)
+    );
+  return (
+    requested.kind === "contact" &&
+    writesContactName(requested.query, target.query) &&
+    writesContactName(target.query, requested.query)
+  );
+}
+
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+
+/**
+ * Where `body` occurs in `text` as whole words: a body that starts or ends
+ * with a letter or digit never matches inside a longer word or number, so the
+ * body "hi" is not the "hi" in "Phil" and "55" is not the "55" in "555".
+ */
+function bodyOccurrences(text: string, body: string): number[] {
+  const haystack = text.toLowerCase(),
+    needle = body.toLowerCase();
+  const bounded = (at: number) =>
+    !(
+      WORD_CHARACTER.test(needle[0] ?? "") &&
+      WORD_CHARACTER.test(haystack[at - 1] ?? "")
+    ) &&
+    !(
+      WORD_CHARACTER.test(needle.at(-1) ?? "") &&
+      WORD_CHARACTER.test(haystack[at + needle.length] ?? "")
+    );
+  const found: number[] = [];
+  for (
+    let at = haystack.indexOf(needle);
+    at >= 0;
+    at = haystack.indexOf(needle, at + 1)
+  )
+    if (bounded(at)) found.push(at);
+  return found;
+}
+
+/**
  * The owner's text without the message body they asked to send, so that "text
  * Sam saying call me at 415-555-0100" never makes that number the recipient.
+ *
+ * The body is cut where it occurs as whole words, preferring the last such
+ * occurrence (a body follows its recipient) and never one whose cut would
+ * take away the proposed recipient (`keeps`), so "text Phil hi" still names
+ * Phil. When every occurrence would, the last is cut and the recipient is
+ * refused.
  */
 function textWithoutBody(
   text: string,
   body: unknown,
+  keeps: (rest: string) => boolean = () => true,
 ): { text: string; bodyNumbers: string[] } {
   if (typeof body !== "string" || !body.trim())
     return { text, bodyNumbers: [] };
-  const at = text.toLowerCase().indexOf(body.trim().toLowerCase());
-  if (at >= 0)
+  const trimmed = body.trim();
+  const cut = (at: number) =>
+    text.slice(0, at) + " " + text.slice(at + trimmed.length);
+  const occurrences = bodyOccurrences(text, trimmed);
+  if (occurrences.length > 0) {
+    const cuts = occurrences.map(cut).reverse();
     return {
-      text: text.slice(0, at) + " " + text.slice(at + body.trim().length),
+      text: cuts.find((rest) => keeps(rest)) ?? cuts[0],
       bodyNumbers: [],
     };
+  }
   // The model reworded the body: no number it carries can be the recipient.
   return { text, bodyNumbers: ownerPhoneNumbers(body) };
 }
 
 function ownerNumber(
   proposed: string,
-  owned: readonly string[],
+  owned: OwnedNumbers,
 ): string | undefined {
-  // The owner's own dial form, never the model's spelling of it.
+  // The owner's own dial form, never the model's spelling of it. A number the
+  // owner wrote is matched before one only read as spoken.
   const digits = proposed.replace("+", "");
-  const exact = owned.find((number) => number.replace("+", "") === digits);
-  if (exact) return exact;
-  const matches = owned.filter((number) => samePhoneNumber(number, proposed));
-  return matches.length === 1 ? matches[0] : undefined;
+  for (const tier of owned) {
+    const exact = tier.find((number) => number.replace("+", "") === digits);
+    if (exact) return exact;
+    const matches = tier.filter((number) => samePhoneNumber(number, proposed));
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) return undefined;
+  }
+  return undefined;
 }
 
-function recipientNumbers(text: string, body: unknown): string[] {
-  const { text: rest, bodyNumbers } = textWithoutBody(text, body);
-  return ownerPhoneNumbers(rest).filter(
-    (number) => !bodyNumbers.some((inBody) => samePhoneNumber(inBody, number)),
+function recipientNumbers(
+  text: string,
+  body: unknown,
+  proposed?: string,
+): OwnedNumbers {
+  const numbersIn = (rest: string, bodyNumbers: readonly string[]) =>
+    ownerPhoneNumberTiers(rest).map((tier) =>
+      tier.filter(
+        (number) =>
+          !bodyNumbers.some((inBody) => samePhoneNumber(inBody, number)),
+      ),
+    ) as unknown as OwnedNumbers;
+  const { text: rest, bodyNumbers } = textWithoutBody(
+    text,
+    body,
+    (candidate) =>
+      proposed === undefined ||
+      ownerNumber(proposed, numbersIn(candidate, [])) !== undefined,
   );
+  return numbersIn(rest, bodyNumbers);
 }
 
-/** A refused number: with swapped numbers, the references to copy instead. */
+// Digits joined by any separators a person might type, slashes included.
+const NUMBER_SHAPED =
+  /(?<![\p{L}\p{N}+])\+?[\d(][\d\s()./-]*\d(?![\p{L}\p{N}])/gu;
+
+/**
+ * Whether `text` writes `number`'s digits (7 to 15 of them) in a form that is
+ * not one dial number: "415-555 0100", "415 - 555 - 0100", "415/555/0100".
+ * Only the proposed number's own digits count, so a date or an order number
+ * elsewhere in the message never does.
+ */
+export function writesUnreadableNumber(text: string, number: string): boolean {
+  const wanted = number.replace(/\D/g, "");
+  for (const [written] of text.matchAll(NUMBER_SHAPED)) {
+    const digits = written.replace(/\D/g, "");
+    if (
+      digits.length < 7 ||
+      digits.length > 15 ||
+      !samePhoneNumber(digits, wanted)
+    )
+      continue;
+    try {
+      phoneDialNumber(written.trim());
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A refused number: with swapped numbers, the references to copy instead;
+ * without them, a number the owner wrote in a form nobody can read asks them
+ * to type it again.
+ */
 function numberRefusal(
   references: readonly SwappedPhoneReference[],
+  text: string,
+  proposed: string,
 ): DeviceTelephonyTargetNotRequestedError {
+  if (references.length === 0 && writesUnreadableNumber(text, proposed))
+    return new DeviceTelephonyTargetNotRequestedError("unreadable");
   return new DeviceTelephonyTargetNotRequestedError(
     "number",
     references.map((reference) => reference.placeholder),
@@ -260,16 +479,19 @@ function numberRefusal(
  */
 function groundedNumber(
   proposed: string,
-  owned: readonly string[],
+  owned: OwnedNumbers,
   references: readonly SwappedPhoneReference[],
+  text: string,
 ): string {
   const number = ownerNumber(proposed, owned);
   // Only a number that can be the recipient is offered: never one in the body.
   if (!number)
     throw numberRefusal(
       references.filter((reference) =>
-        owned.some((owner) => samePhoneNumber(owner, reference.number)),
+        owned.flat().some((owner) => samePhoneNumber(owner, reference.number)),
       ),
+      text,
+      proposed,
     );
   return number;
 }
@@ -287,11 +509,13 @@ function groundTarget(
       kind: "number",
       number: groundedNumber(
         target.number,
-        recipientNumbers(text, body),
+        recipientNumbers(text, body, target.number),
         references,
+        textWithoutBody(text, body).text,
       ),
     };
-  if (!writesContactName(textWithoutBody(text, body).text, target.query))
+  const named = (rest: string) => writesContactName(rest, target.query);
+  if (!named(textWithoutBody(text, body, named).text))
     throw new DeviceTelephonyTargetNotRequestedError("contact");
   return target;
 }
@@ -307,6 +531,78 @@ function withTarget<T extends TargetedOperation>(
   target: AuthoredTelephonyTarget,
 ): T {
   return { ...operation, target };
+}
+
+// Words around a name that say how or which line, never who: "mom again",
+// "Maya's mobile", "Sam back right now".
+const NOT_A_NAME_AROUND = new Set([
+  ...NOT_A_NAME,
+  ..."again right away asap home work office landline line phone".split(" "),
+]);
+
+/**
+ * Whether the model's contact name is the owner's own, with only words that
+ * name nobody dropped around it: "mom" for the written "mom again", "Maya"
+ * for "Maya's mobile". A shorter part of a full name ("Sam" for "Sam Lee")
+ * is never taken: it would match more contacts than the owner named.
+ */
+function ownerNameWithoutFiller(authored: string, proposed: string): boolean {
+  const owner = normalizedWords(authored).split(" ");
+  const name = normalizedWords(proposed).split(" ");
+  if (!name[0] || name.length >= owner.length) return false;
+  for (let at = 0; at + name.length <= owner.length; at++)
+    if (
+      name.every((word, i) => owner[at + i] === word) &&
+      [...owner.slice(0, at), ...owner.slice(at + name.length)].every((word) =>
+        NOT_A_NAME_AROUND.has(word),
+      )
+    )
+      return true;
+  return false;
+}
+
+/** An empty keypad: it names nobody, never dials, and needs no grounding. */
+const EMERGENCY_KEYPAD = { type: "phone_keypad" } as DeviceOperation;
+
+function callOrKeypad(operation: DeviceOperation): boolean {
+  return (
+    operation.type === "phone_call" ||
+    operation.type === "phone_dial" ||
+    operation.type === "phone_keypad"
+  );
+}
+
+/**
+ * The operation with its recipient grounded in the owner's authored text of
+ * this message, or a {@link DeviceTelephonyTargetNotRequestedError}. An
+ * emergency request ("call an ambulance", "call the police", "call for help")
+ * whose call or keypad would otherwise be refused, or that names the service
+ * as a contact, opens the empty keypad instead (`emergency: true`): the owner
+ * dials their local emergency number there and the system dialer handles it.
+ * It is never refused for its recipient. A number the owner wrote ("call
+ * 911") is still the reviewed recipient, which the phone hands to the system
+ * dialer.
+ */
+export function groundTelephonyTarget(
+  operation: DeviceOperation,
+  text: string,
+  references: readonly SwappedPhoneReference[] = [],
+): { operation: DeviceOperation; handedThrough: boolean; emergency?: true } {
+  const emergency = callOrKeypad(operation) && emergencyServicesRequest(text);
+  if (
+    emergency &&
+    (operation.type === "phone_call" || operation.type === "phone_dial") &&
+    operation.target.kind === "contact" &&
+    namesEmergencyService(operation.target.query)
+  )
+    return { operation: EMERGENCY_KEYPAD, handedThrough: false, emergency };
+  try {
+    return groundOwnerTarget(operation, text, references);
+  } catch (error) {
+    if (emergency && error instanceof DeviceTelephonyTargetNotRequestedError)
+      return { operation: EMERGENCY_KEYPAD, handedThrough: false, emergency };
+    throw error;
+  }
 }
 
 /**
@@ -326,10 +622,10 @@ function withTarget<T extends TargetedOperation>(
  * Phone contacts never leave the phone, so a name the address book does not
  * know is refused there (`not-found`), never matched to a number here.
  */
-export function groundTelephonyTarget(
+function groundOwnerTarget(
   operation: DeviceOperation,
   text: string,
-  references: readonly SwappedPhoneReference[] = [],
+  references: readonly SwappedPhoneReference[],
 ): { operation: DeviceOperation; handedThrough: boolean } {
   const authored = authoredTelephonyTarget(text);
   const command =
@@ -338,8 +634,27 @@ export function groundTelephonyTarget(
       ? operation.type === "phone_call" || operation.type === "phone_dial"
       : operation.type === "sms_compose" || operation.type === "sms_send");
   if (command) {
-    const target = authored.target;
-    if (!target) throw new DeviceTelephonyTargetNotRequestedError("number");
+    // Number-shaped, but not one dial number: the owner retypes it.
+    if (!authored.target)
+      throw new DeviceTelephonyTargetNotRequestedError("unreadable");
+    let target = authored.target;
+    const proposed =
+      operation.type === "phone_call" || operation.type === "phone_dial"
+        ? operation.target
+        : operation.type === "sms_compose"
+          ? "target" in operation
+            ? operation.target
+            : { kind: "contact" as const, query: operation.query }
+          : undefined;
+    // The model's name when it is the owner's with only words that name
+    // nobody dropped ("mom" for "mom again"): the phone looks it up as is.
+    if (
+      target.kind === "contact" &&
+      proposed?.kind === "contact" &&
+      writesContactName(text, proposed.query) &&
+      ownerNameWithoutFiller(target.query, proposed.query)
+    )
+      target = { kind: "contact", query: proposed.query.trim() };
     if (operation.type === "phone_call" || operation.type === "phone_dial")
       return { operation: withTarget(operation, target), handedThrough: true };
     if (operation.type === "sms_compose") {
@@ -393,9 +708,13 @@ export function groundTelephonyTarget(
       );
       return { operation, handedThrough: false };
     case "sms_send": {
-      const owned = recipientNumbers(text, operation.body);
       const recipients = operation.recipients.map((recipient) =>
-        groundedNumber(recipient, owned, references),
+        groundedNumber(
+          recipient,
+          recipientNumbers(text, operation.body, recipient),
+          references,
+          textWithoutBody(text, operation.body).text,
+        ),
       );
       return { operation: { ...operation, recipients }, handedThrough: false };
     }
@@ -404,12 +723,60 @@ export function groundTelephonyTarget(
         return { operation, handedThrough: false };
       const number = groundedNumber(
         operation.number,
-        ownerPhoneNumbers(text),
+        ownerPhoneNumberTiers(text),
         references,
+        text,
       );
       return { operation: { ...operation, number }, handedThrough: false };
     }
+    case "contact_create":
+    case "contact_update":
+      return {
+        operation: groundContactNumbers(operation, text, references),
+        handedThrough: false,
+      };
     default:
       return { operation, handedThrough: false };
   }
+}
+
+type ContactNumberOperation = Extract<
+  DeviceOperation,
+  { type: "contact_create" | "contact_update" }
+>;
+
+/**
+ * A contact change's numbers, each one the owner wrote in this message (in
+ * the owner's dial form), when the message writes any number. A message that
+ * writes no number has nothing to ground a number in and is left unchanged,
+ * for the owner's review of the exact digits.
+ */
+function groundContactNumbers(
+  operation: ContactNumberOperation,
+  text: string,
+  references: readonly SwappedPhoneReference[],
+): ContactNumberOperation {
+  const owned = ownerPhoneNumberTiers(text);
+  if (!owned.flat().length || !contactNumbers(operation).length)
+    return operation;
+  const grounded = (numbers: string[]) => [
+    ...new Set(
+      numbers.map((number) => groundedNumber(number, owned, references, text)),
+    ),
+  ];
+  if (operation.type === "contact_create")
+    return {
+      ...operation,
+      contact: {
+        ...operation.contact,
+        phoneNumbers: grounded(operation.contact.phoneNumbers),
+      },
+    };
+  const update: ContactNumberOperation = { ...operation };
+  for (const part of CONTACT_NUMBER_PARTS) {
+    const values = operation[part];
+    if (values?.phoneNumbers)
+      update[part] = { ...values, phoneNumbers: grounded(values.phoneNumbers) };
+  }
+  return update;
 }

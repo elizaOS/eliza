@@ -1,6 +1,7 @@
 /** Composes native-client browser control without desktop engines or server-side browser profiles. */
 import {
   type Action,
+  type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
   logger,
@@ -366,11 +367,7 @@ function nativeBrowserHandler(
         clientId,
         observedNativeHistorySelection(message, action),
       );
-      return {
-        success: true,
-        text: JSON.stringify(result),
-        data: { actionName: "BROWSER", result },
-      };
+      return nativeBrowserActionResult(result, commands);
     } catch (error) {
       // error-policy:J1 action boundary exposes native failure without fabricated success.
       return {
@@ -390,6 +387,79 @@ function nativeBrowserHandler(
         },
       };
     }
+  };
+}
+
+/**
+ * Tool-owned copy for an accepted native page navigation, keyed by the typed
+ * subaction. Only commands that move the page to a URL or through its history
+ * are listed: a click, fill, scroll or close can change something on the site,
+ * so their dispatch receipts keep the ordinary result and the runtime's
+ * receipt guard.
+ */
+const dispatchedNavigationText: Partial<Record<NativeBrowserCommand, string>> =
+  {
+    open: "I asked the browser to open that page. It may still be loading.",
+    navigate: "I asked the browser to open that page. It may still be loading.",
+    show: "I asked the browser to show that page. It may still be loading.",
+    back: "I asked the browser to go back. The previous page may still be loading.",
+    forward:
+      "I asked the browser to go forward. The next page may still be loading.",
+    reload: "I asked the browser to reload the page. It may still be loading.",
+  };
+
+/**
+ * A native receipt that proves only that the renderer accepted the command,
+ * not that the page finished it.
+ */
+function isDispatchOnlyNativeResult(
+  result: BrowserWorkspaceCommandResult,
+): boolean {
+  const value = asRecord(result.value);
+  return value?.dispatched === true && value.completed === false;
+}
+
+/**
+ * The planner-facing result of a native command. A dispatch-only navigation
+ * receipt owns the turn's complete reply (`turnComplete`): an honest sentence
+ * that says the command was sent and never that the page finished, so no
+ * model-written completion claim is appended after it. It also carries
+ * `executionStatus: "dispatched"` so the runtime can tell, without reading
+ * prose, that no durable change was claimed. The planner can still keep the
+ * turn open by declaring more work pending. When this host's renderer runs no read
+ * command, the result does not ask for a readback the model has no tool to
+ * perform. Every other result is returned unchanged.
+ */
+export function nativeBrowserActionResult(
+  result: BrowserWorkspaceCommandResult,
+  commands: readonly NativeBrowserCommand[],
+): ActionResult {
+  const subaction = commands.find((name) => name === result.subaction);
+  const userFacingText = subaction && dispatchedNavigationText[subaction];
+  if (!userFacingText || !isDispatchOnlyNativeResult(result))
+    return {
+      success: true,
+      text: JSON.stringify(result),
+      data: { actionName: "BROWSER", result },
+    };
+  const readable = commands.includes("get") || commands.includes("snapshot");
+  const settled: BrowserWorkspaceCommandResult = readable
+    ? result
+    : {
+        ...result,
+        value: { ...asRecord(result.value), requiresReadback: false },
+      };
+  return {
+    success: true,
+    text: JSON.stringify(settled),
+    userFacingText,
+    verifiedUserFacing: true,
+    turnComplete: true,
+    data: {
+      actionName: "BROWSER",
+      executionStatus: "dispatched",
+      result: settled,
+    },
   };
 }
 

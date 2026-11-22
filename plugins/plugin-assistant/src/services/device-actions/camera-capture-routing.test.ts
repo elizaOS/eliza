@@ -21,7 +21,10 @@ import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { collectV5PlannerCandidateActions } from "../message/action-surface.ts";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../message/stage1-evaluators.ts";
 import { deviceActionForCapabilities, proposeDeviceAction } from "./action.ts";
-import { authoredCameraCapture } from "./camera-request.ts";
+import {
+  authoredCameraCapture,
+  requestedCameraCapture,
+} from "./camera-request.ts";
 import {
   DeviceActionService,
   deviceActionToolGuidance,
@@ -310,6 +313,37 @@ it("reads the named lens from the owner's words", () => {
   expect(authoredCameraCapture("Luna, take a picture")).toBeUndefined();
 });
 
+// Fable review (camera 1): only the owner's own photo request runs a capture
+// without its card in direct-request mode.
+it("reads a photo request only from the owner's own request for one now", () => {
+  for (const text of [
+    "take a picture",
+    "please snap a photo",
+    "can you take a picture?",
+    "could you please take a photo with the back camera?",
+  ])
+    expect(requestedCameraCapture(text)).toBeDefined();
+  expect(requestedCameraCapture("could you take a selfie?")).toEqual({
+    lens: "front",
+  });
+  expect(
+    requestedCameraCapture("would you take a photo with the rear camera"),
+  ).toEqual({ lens: "back" });
+  for (const text of [
+    "don't take a photo",
+    "do not take a picture",
+    "summarize the page I have open",
+    "did you take a photo?",
+    "can you not take a picture?",
+    "take a photo in five minutes",
+    "take a photo of the page and send it to Sam",
+    "take a picture?",
+  ])
+    expect(requestedCameraCapture(text)).toBeUndefined();
+  // The routed whole-message command stays the strict imperative.
+  expect(authoredCameraCapture("can you take a picture?")).toBeUndefined();
+});
+
 it("offers the camera tool exactly one capture form per phone", () => {
   const forms = (capabilities: string[]) =>
     deviceActionForCapabilities(camera, capabilities)
@@ -342,7 +376,10 @@ it("lists the camera tool among the host's declared device tools", async () => {
   );
 });
 
-it("proposes the lens the owner named, not the model's choice", async () => {
+// The lens the owner named is applied by the service for every tool that
+// proposes a capture (test/browser-request-grounding.pglite.test.ts); the
+// camera tool hands the model's operation through unchanged.
+it("hands the model's capture to the shared proposal unchanged", async () => {
   const f = await fixture("take a selfie");
   const propose = vi
     .spyOn(proposeDeviceAction, "handler")
@@ -368,6 +405,6 @@ it("proposes the lens the owner named, not the model's choice", async () => {
     | undefined;
   expect(options?.parameters.operation).toEqual({
     type: "camera_capture_photo",
-    lens: "front",
+    lens: "back",
   });
 });

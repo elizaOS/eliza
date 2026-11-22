@@ -122,6 +122,45 @@ export function requiredViewNavigationStatus(
   return "missing";
 }
 
+/** Browser commands that only move the page through its history or to a URL. */
+const BROWSER_NAVIGATION_SUBACTIONS = new Set([
+  "open",
+  "navigate",
+  "show",
+  "back",
+  "forward",
+  "reload",
+]);
+
+/**
+ * A successful BROWSER navigation whose native renderer accepted the command
+ * without reporting completion (`executionStatus: "dispatched"`). Page
+ * navigation is not a durable record mutation, so like a delivered view
+ * navigation it cannot ground an applied reply. Clicks, fills and other page
+ * interactions stay unrestricted so the receipt guard keeps covering them.
+ */
+function isDispatchedBrowserNavigation(step: PlannerStep): boolean {
+  const { toolCall: call, result } = step;
+  const data = result?.data;
+  if (
+    call?.name !== "BROWSER" ||
+    result?.success !== true ||
+    !record(data) ||
+    data.actionName !== "BROWSER" ||
+    data.executionStatus !== "dispatched" ||
+    !record(data.result)
+  )
+    return false;
+  const value = data.result.value;
+  return (
+    typeof data.result.subaction === "string" &&
+    BROWSER_NAVIGATION_SUBACTIONS.has(data.result.subaction) &&
+    record(value) &&
+    value.dispatched === true &&
+    value.completed === false
+  );
+}
+
 /** Restricts model classification only; never converts replies or waives receipt validation. */
 export function isDeliveredNavigationOnlyTurn(
   trajectory: PlannerTrajectory,
@@ -140,6 +179,7 @@ export function isDeliveredNavigationOnlyTurn(
     step.result?.userFacingEffectReceiptIds?.length
   )
     return false;
+  if (isDispatchedBrowserNavigation(step)) return true;
   const receipt = readViewNavigationReceipt(step);
   return (
     receipt?.status === "delivered" &&

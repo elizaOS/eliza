@@ -1,6 +1,7 @@
 /** Runs only in a native-owned isolated world, never in the website world. */
 export function installControlChannel(pageCommand, pageGuidance) {
   if (window !== window.top || !/^https?:$/.test(location.protocol)) return;
+  pageCommand(null);
   const channel = globalThis.elizaSurfaceControl;
   // randomUUID requires a secure context; getRandomValues also works on HTTP
   // pages. The identifier is an opaque document reference, never a credential.

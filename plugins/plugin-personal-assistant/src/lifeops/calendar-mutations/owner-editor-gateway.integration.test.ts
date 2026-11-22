@@ -433,10 +433,11 @@ describe("OwnerCalendarMutationGatewayService — real PGlite", () => {
         });
       },
     };
-    const result = await new OwnerCalendarMutationGatewayService(
+    const gateway = new OwnerCalendarMutationGatewayService(
       runtime,
       deps(declinePort),
-    ).cancel(new URL("http://internal.local"), {
+    );
+    const result = await gateway.cancel(new URL("http://internal.local"), {
       side: "owner",
       grantId: "google-calendar-owner-grant",
       calendarId: "primary",
@@ -459,6 +460,124 @@ describe("OwnerCalendarMutationGatewayService — real PGlite", () => {
       },
     });
     expect(providerCalls).toBe(1);
+
+    // An RSVP "declined" is the same reviewed decline: it replays this
+    // approval's receipt instead of creating a second approval shape.
+    const viaRespond = await gateway.respond(new URL("http://internal.local"), {
+      side: "owner",
+      grantId: "google-calendar-owner-grant",
+      calendarId: "primary",
+      eventId: "provider-created-1",
+      responseStatus: "declined",
+      expectedProviderVersion: '"created-v1"',
+      idempotencyKey: "owner-editor-decline-1",
+      notifyAttendees: false,
+    });
+    expect(viaRespond.metadata.etag).toBe('"declined-v2"');
+    expect(providerCalls).toBe(1);
+  });
+
+  it("binds an accepted RSVP to a reviewed response-only modification and replays it once", async () => {
+    storedEvent = {
+      ...event(),
+      organizer: { self: false, email: "host@example.com" },
+      attendees: [
+        {
+          email: "owner@example.com",
+          displayName: "Owner",
+          responseStatus: "needsAction",
+          self: true,
+          organizer: false,
+          optional: false,
+        },
+      ],
+    };
+    const invited = storedEvent;
+    const acceptedEvent: LifeOpsCalendarEvent = {
+      ...invited,
+      attendees: invited.attendees.map((attendee) => ({
+        ...attendee,
+        responseStatus: attendee.self ? "accepted" : attendee.responseStatus,
+      })),
+      metadata: { etag: '"accepted-v2"' },
+      updatedAt: "2027-03-01T01:00:00.000Z",
+    };
+    const acceptPort: CalendarMutationPort = {
+      async preflight() {
+        return {
+          operation: "modify_event",
+          provider: "google",
+          sourceId: "google-calendar-owner-grant",
+          calendarId: "primary",
+          event: invited,
+          providerEventId: "provider-created-1",
+          providerVersion: '"created-v1"',
+          idempotencyKey: null,
+          recurrenceScope: null,
+          cancellationMode: null,
+        };
+      },
+      async execute(request) {
+        providerCalls += 1;
+        executedApprovals.push(request);
+        storedEvent = acceptedEvent;
+        return readableReceipt(acceptedEvent, {
+          operation: "modify_event",
+          providerVersion: '"accepted-v2"',
+        });
+      },
+    };
+    const respondRequest = {
+      side: "owner" as const,
+      grantId: "google-calendar-owner-grant",
+      calendarId: "primary",
+      eventId: "provider-created-1",
+      responseStatus: "accepted" as const,
+      expectedProviderVersion: '"created-v1"',
+      idempotencyKey: "owner-editor-accept-1",
+      notifyAttendees: false,
+    };
+    const gateway = new OwnerCalendarMutationGatewayService(
+      runtime,
+      deps(acceptPort),
+    );
+    const accepted = await gateway.respond(
+      new URL("http://internal.local"),
+      respondRequest,
+    );
+    expect(accepted.attendees[0]?.responseStatus).toBe("accepted");
+    expect(executedApprovals[0]).toMatchObject({
+      action: "modify_event",
+      requestedBy: "OWNER_CALENDAR_EDITOR",
+      payload: {
+        action: "modify_event",
+        eventId: "provider-created-1",
+        expectedProviderVersion: '"created-v1"',
+        invitationResponse: "accepted",
+        patch: {
+          title: null,
+          startsAtMs: null,
+          endsAtMs: null,
+          attendees: null,
+          location: null,
+          description: null,
+        },
+      },
+    });
+
+    const replay = await gateway.respond(
+      new URL("http://internal.local"),
+      respondRequest,
+    );
+    expect(replay.metadata.etag).toBe('"accepted-v2"');
+    expect(providerCalls).toBe(1);
+
+    await expect(
+      gateway.respond(new URL("http://internal.local"), {
+        ...respondRequest,
+        responseStatus: "tentative",
+      }),
+    ).rejects.toMatchObject({ code: "CALENDAR_EDITOR_IDEMPOTENCY_CONFLICT" });
   });
 
   it("blocks an in-flight duplicate and sends exactly one provider create", async () => {
