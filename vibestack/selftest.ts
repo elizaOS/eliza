@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
-import { cacheCredentials, collectGarbage, entry, isActionEntry, recall, store, withFormalCache } from "./cache.ts";
+import { cacheCredentials, collectGarbage, entry, isActionEntry, recall, store, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
 import { exec, run as tool } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
@@ -30,7 +30,7 @@ import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, dangl
 
 const project = path.join(import.meta.dirname, "..");
 for (const name of Object.keys(process.env)) if (name.toLowerCase().replaceAll("-", "_") === "npm_config_package_import_method") delete process.env[name];
-process.env.npm_config_package_import_method = "copy";
+process.env.npm_config_package_import_method = "clone-or-copy";
 const harnessSkillPaths = [".claude/skills", ".codex/skills", ".cursor/skills", ".droid/skills", ".factory/skills", ".gemini/skills", ".grok/skills", ".grokbot/skills", ".muse/skills", ".t3/skills"];
 const scaffoldedIgnores = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ".cache/", ".turbo/", "test/__traces__/", "/.claude/", "/CLAUDE.md", ...harnessSkillPaths.filter((alias) => !alias.startsWith(".claude/")).map((alias) => `/${alias}`)];
 const EXAMPLES = "vibestack/examples";
@@ -255,7 +255,7 @@ pure def selected(which: bool): Set[Field] = {
     const checked = await tool("vibelang", ["--noEmit", "--strict", "--target", "es2023", "gen/fields.ts"], root);
     assert.ok(checked.ok, checked.out);
     const proof = model.render("");
-    assert.match(proof, /includeSecond \? \["Second"\] : \(\[\] as Field\[\]\)/);
+    assert.ok(proof.includes('includeSecond ? ([typed0_fields("Second")] as Field[]) : ([] as Field[])'));
     const domain = await import(pathToFileURL(path.join(root, "gen", "fields.ts")).href);
     assert.deepEqual([domain.required(true), domain.required(false)], [["First", "Second"], ["First"]]);
     assert.deepEqual([domain.selected(true), domain.selected(false)], [["First", "Second"], ["Second"]]);
@@ -2314,6 +2314,22 @@ function eachCheck() {
     await runCli(script, root, "check", "--json");
     assert.equal(unmarked, entries);
     assert.equal(remembered(), unmarked);
+    if (process.platform !== "win32") {
+      const shim = path.join(root, "node_modules/.bin/quint");
+      fs.unlinkSync(shim);
+      fs.copyFileSync(path.join(nodeModules, ".bin/quint"), shim);
+      const retry = await exec(process.execPath, ["--input-type=module", "--eval", `
+        import fs from "node:fs";
+        import { check } from "./vibestack/formal.ts";
+        let models = 0;
+        const result = await check(".", false, (step) => {
+          if (step.stage === "model" && ++models <= 2) fs.linkSync("node_modules/.bin/quint", "concurrent-install-" + models);
+        });
+        console.log(JSON.stringify([models, result.results.filter(s => s.stage === "model").length, result.results.filter(s => !s.ok).map(s => s.stage)]));
+      `], root);
+      assert.equal(retry.status, 0, retry.stderr);
+      assert.deepEqual(JSON.parse(retry.stdout), [3, 1, ["review"]]);
+    }
     fs.writeFileSync(path.join(root, "tsconfig.json"), '{"compilerOptions":{"noEmit":true},"include":["gen/*.ts"]}');
     if (process.platform !== "win32") {
       const compiler = path.join(root, "node_modules/.bin/vibelang");
@@ -2394,6 +2410,8 @@ function eachCheck() {
     const dependency = path.join(scope, "quint/node_modules/quint-dependency/package.json");
     fs.mkdirSync(path.dirname(dependency), { recursive: true });
     fs.writeFileSync(dependency, JSON.stringify({ name: "quint-dependency", version: "1.0.0" }));
+    const source = path.join(path.dirname(dependency), "index.js");
+    fs.writeFileSync(source, "export const version = 1;\n");
     const manager = path.join(scope, "quint/dist/src/rust/binaryManager.js");
     fs.mkdirSync(path.dirname(manager), { recursive: true });
     fs.writeFileSync(manager, "exports.QUINT_EVALUATOR_VERSION = 'v1';");
@@ -2414,6 +2432,8 @@ function eachCheck() {
       'const reinstalled = await steady(async () => ({ after: [await runs(), await runs()], reinstalled: await simulation(), proof: (await entry(".", "prove", ["same"])).name }));',
       `fs.writeFileSync(${JSON.stringify(dependency)}, JSON.stringify({ name: "quint-dependency", version: "1.0.1" }));`,
       'const dependency = await steady(async () => ({ runs: [await runs(), await runs()], simulation: await simulation(), proof: (await entry(".", "prove", ["same"])).name }));',
+      `fs.writeFileSync(${JSON.stringify(source)}, "export const version = 2;\\n");`,
+      'const patched = await steady(async () => ({ runs: [await runs(), await runs()], simulation: await simulation() }));',
       `process.env.QUINT_HOME = ${JSON.stringify(path.join(root, "quint-home"))};`,
       `const native = ${JSON.stringify(native)};`,
       'const simulate = () => steady(async () => {',
@@ -2424,7 +2444,7 @@ function eachCheck() {
       'const bootstrap = await simulate(), installed = await simulate(), warm = await simulate();',
       'fs.writeFileSync(native, "replacement"); const replaced = await simulate(); fs.writeFileSync(native, "replacement");',
       'const identical = await simulate(); process.env.QUINT_HOME = "quint-home";',
-      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
+      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, patched, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
     ].join("\n");
     const r = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
     assert.equal(r.status, 0, r.stderr);
@@ -2436,6 +2456,9 @@ function eachCheck() {
     assert.notEqual(said.dependency.simulation, said.reinstalled, "a dependency reinstalled under the same Quint launcher changes the simulation identity");
     assert.equal(said.dependency.proof, said.proof, "the independent LemmaScript proof stays current");
     assert.deepEqual(said.dependency.runs, [["first", "second", "second"], ["first", "second", "second"]], "Quint runs again for the changed dependency, once");
+
+    assert.notEqual(said.patched.simulation, said.dependency.simulation, "a same-version change to installed dependency code invalidates the simulation");
+    assert.deepEqual(said.patched.runs, [said.dependency.runs[1].concat("second"), said.dependency.runs[1].concat("second")]);
 
     const [bootstrap, installed, warm, replaced, identical, relative] = said.evaluations;
     assert.equal(bootstrap.saved, false, "a simulation that installed its own evaluator is not a receipt for a missing evaluator");
@@ -2932,8 +2955,7 @@ function eachCheck() {
   });
 
   test("owner generation mirrors the same artifact as the whole tree and checks its dependency closure", async () => {
-    const script = path.join(project, "vibestack/spec.ts");
-    const root = scratch({
+    const root = toolchain(scratch({
       "package.json": PACKAGE["package.json"],
       "packages/target/package.json": JSON.stringify({ name: "@repo/target" }),
       "packages/other/package.json": JSON.stringify({ name: "@repo/other" }),
@@ -2941,7 +2963,15 @@ function eachCheck() {
       "spec/target/index.md": ruleSpec('import lib.* from "../lib"\npure val targetValue = baseValue'),
       "spec/lib.md": ruleSpec("pure val baseValue = 1"),
       "spec/other/index.md": ruleSpec("pure val otherValue = 2"),
-    });
+    }), "quint", "lsc");
+    const script = path.join(root, "vibestack/spec.ts");
+    const linkDuringGeneration = (phase: string) => {
+      if (process.platform === "win32") return;
+      const shim = path.join(root, "node_modules/.bin/quint");
+      fs.unlinkSync(shim);
+      fs.writeFileSync(shim, `#!/bin/sh\nln "$0" '${path.join(root, phase)}' 2>/dev/null || true\nexec '${path.join(nodeModules, ".bin/quint")}' "$@"\n`, { mode: 0o755 });
+    };
+    linkDuringGeneration("install-during-full-generation");
     const all = await runCli(script, root, "gen");
     assert.equal(all.status, 0, all.stdout + all.stderr);
     const target = path.join(root, "packages/target/gen");
@@ -2951,6 +2981,7 @@ function eachCheck() {
     const before = fs.readFileSync(unrelated, "utf8");
     fs.rmSync(target, { recursive: true });
     fs.appendFileSync(path.join(root, "spec/other/index.md"), "\n[Missing](./missing.md)\n");
+    linkDuringGeneration("install-during-owner-generation");
     const scoped = await runCli(script, root, "gen", "--owner", "target");
     assert.equal(scoped.status, 0, scoped.stdout + scoped.stderr);
     assert.deepEqual(outputs(), expected);
@@ -3866,6 +3897,114 @@ const SHARDS = { "in shard a": eachCheckA, "in shard b": eachCheckB };
 describe("the tools", { concurrency: true }, () => {
   describe("the command line and what a failed proof leaves to start from", { concurrency: LANES }, theCommandLine);
   describe("each check catches its own kind of mistake", { concurrency: LANES }, eachCheck);
+});
+
+test("the same installed Quint shares verification results across checkouts and distinct launchers and patches keep their own", { skip: process.platform === "win32" }, async () => {
+  const install = (patch: string, fallback?: string) => {
+    const root = toolchain(scratch({}));
+    const modules = path.join(root, "node_modules");
+    const store = path.join(modules, ".pnpm");
+    const locator = `@informalsystems+quint@1.0.0_patch_hash=${patch}/node_modules`;
+    const dir = path.join(store, locator, "@informalsystems/quint");
+    fs.unlinkSync(store);
+    fs.unlinkSync(path.join(modules, "@informalsystems"));
+    fs.mkdirSync(dir, { recursive: true });
+    fs.symlinkSync(path.dirname(dir), path.join(modules, "@informalsystems"));
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "@informalsystems/quint", version: "1.0.0", bin: "cli.cjs", dependencies: { values: "1.0.0" } }));
+    fs.writeFileSync(path.join(dir, "cli.cjs"), 'require("node:fs").writeFileSync("ir.json", JSON.stringify(require("values")));\n');
+    const lookup = fallback ? "secondary/node_modules" : locator;
+    const values = path.join(store, lookup, "values");
+    fs.mkdirSync(values, { recursive: true });
+    fs.writeFileSync(path.join(values, "package.json"), JSON.stringify({ name: "values", version: "1.0.0" }));
+    fs.writeFileSync(path.join(values, "index.js"), `module.exports = ${JSON.stringify(fallback ?? "default")};\n`);
+    const shim = path.join(modules, ".bin/quint");
+    fs.writeFileSync(shim, `#!/bin/sh\nexport NODE_PATH="${store}/${lookup}:${store}/node_modules:$NODE_PATH"\nexec node "$(dirname "$0")/../.pnpm/${locator}/@informalsystems/quint/cli.cjs" "$@"\n`, { mode: 0o755 });
+    return { root, shim, values };
+  };
+  const identity = async (root: string) => {
+    const { installedProgram }: { installedProgram: typeof lookupTool } = await import(path.join(root, "vibestack/cache.ts"));
+    const program = installedProgram(root, "quint");
+    assert.ok(program);
+    return program.id;
+  };
+  const left = install("first");
+  const right = install("first");
+  const expected = await identity(left.root);
+  assert.equal(await identity(right.root), expected);
+  assert.notEqual(await identity(install("second").root), expected);
+  const launcher = fs.readFileSync(right.shim, "utf8");
+  for (const changed of [launcher.replace("exec node", "exec node --no-warnings"), launcher.replace("/node_modules:$NODE_PATH", "/another-module-path:$NODE_PATH")]) {
+    fs.writeFileSync(right.shim, changed);
+    assert.notEqual(await identity(right.root), expected);
+  }
+  const publication = await exec(process.execPath, ["--input-type=module", "--eval", `
+    import assert from "node:assert/strict";
+    import fs from "node:fs";
+    import { entry, installedProgram, recall, steady, store } from "./vibestack/cache.ts";
+    const memory = { root: ".", fresh: false, used: new Set() };
+    const [first, next, tainted] = await Promise.all(["first", "next", "tainted"].map(key => entry(".", "action", [key])));
+    const aggregate = await entry(".", "types", ["together"]);
+    const program = installedProgram(".", "quint");
+    const write = to => store(memory, to, to.name, { program, began: performance.now() });
+    await steady(async () => {
+      write(first);
+      assert.ok(fs.existsSync(first.file), "the first completed action survives interruption");
+      write(next);
+      assert.equal(recall(memory, next), next.name, "the check can use its own completed action");
+      store(memory, aggregate, [first.name, next.name]);
+      assert.ok([first, next, aggregate].every(item => fs.existsSync(item.file)), "a stage publishes its verified actions");
+    });
+    await assert.rejects(steady(async () => {
+      write(first);
+      const source = "node_modules/@informalsystems/quint/cli.cjs";
+      const original = fs.readFileSync(source);
+      fs.appendFileSync(source, "export const changed = true;");
+      fs.writeFileSync(source, original);
+      write(tainted);
+    }), /tool installation changed/);
+    assert.equal(fs.existsSync(tainted.file), false, "an edit and restore cannot publish a stale action");
+    assert.equal(recall(memory, first), first.name, "the prior verified action survives");
+    await assert.rejects(steady(async () => {
+      installedProgram(".", "quint");
+      assert.equal(recall(memory, first), first.name);
+      fs.appendFileSync("node_modules/@informalsystems/quint/cli.cjs", " ");
+    }), /tool installation changed/);
+  `], left.root);
+  assert.equal(publication.status, 0, publication.stderr);
+  const results = [];
+  for (const selection of ["left", "right"]) {
+    const project = install("first", selection);
+    const child = await exec(process.execPath, ["--input-type=module", "--eval", `
+      import fs from "node:fs";
+      import { act } from "./vibestack/action.ts";
+      const run = async () => (await act({ root: ".", fresh: false, used: new Set() }, "quint", ["typecheck"], "run", {})).files["ir.json"];
+      const first = await run();
+      fs.writeFileSync(${JSON.stringify(path.join(project.values, "index.js"))}, 'module.exports = "revised";');
+      console.log(JSON.stringify([first, await run()]));
+    `], project.root);
+    assert.equal(child.status, 0, child.stderr);
+    results.push([...JSON.parse(child.stdout), toolRuns(path.join(project.root, ".spec-cache"))]);
+  }
+  assert.deepEqual(results, [['"left"', '"revised"', []], ['"right"', '"revised"', []]]);
+  const hosted = install("first");
+  const store = path.join(hosted.root, "node_modules/.pnpm");
+  const modules = path.join(store, "runner@1/node_modules");
+  const runner = path.join(modules, "runner");
+  fs.mkdirSync(runner, { recursive: true });
+  fs.writeFileSync(path.join(runner, "package.json"), '{"name":"runner","version":"1.0.0"}');
+  const provided = path.join(modules, "values");
+  fs.renameSync(hosted.values, provided);
+  const checked = await exec(process.execPath, ["--input-type=module", "--eval", `
+    import fs from "node:fs";
+    import { act } from "./vibestack/action.ts";
+    const run = async () => (await act({ root: ".", fresh: false, used: new Set() }, "quint", ["typecheck"], "run", {})).files["ir.json"];
+    const values = [await run(), await run()];
+    fs.writeFileSync(${JSON.stringify(path.join(provided, "index.js"))}, 'module.exports = "from host";');
+    console.log(JSON.stringify([...values, await run()]));
+  `], hosted.root, { ...process.env, NODE_PATH: [path.join(runner, "node_modules"), modules, path.join(store, "node_modules")].join(path.delimiter) });
+  assert.equal(checked.status, 0, checked.stderr);
+  assert.deepEqual([JSON.parse(checked.stdout), toolRuns(path.join(hosted.root, ".spec-cache")).length], [['"default"', '"default"', '"from host"'], 2]);
+
 });
 
 test("check phase timings end a simulation before later definitions finish generating", { skip: process.platform === "win32" }, async () => {
