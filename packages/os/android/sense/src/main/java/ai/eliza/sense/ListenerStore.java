@@ -75,8 +75,11 @@ final class ListenerStore {
  boolean grantConsent(long now,long generation){
   synchronized(CONSENT_LOCK){
   if(generation!=resetGeneration)return false;
-  processConsent = commit(prefs.edit().putInt(CONSENT,ListenerPolicy.CONSENT_VERSION).putLong(CONSENT_AT,now).putBoolean(ENABLED,true)
-   .putLong(PAUSED_UNTIL,0).remove(EXITS).remove(TRIPPED));
+  boolean reauthorize=lapsedAfterRestart()&&!crashLoopTripped();
+  SharedPreferences.Editor edit=prefs.edit().putInt(CONSENT,ListenerPolicy.CONSENT_VERSION).putLong(CONSENT_AT,now).putBoolean(ENABLED,true)
+   .putLong(PAUSED_UNTIL,0);
+  if(!reauthorize)edit.remove(EXITS).remove(TRIPPED);
+  processConsent=commit(edit);
   Listener.speechUnavailable=false;
   if(processConsent)Listener.indicatorLost=false;
   return processConsent;
@@ -114,7 +117,12 @@ final class ListenerStore {
 
  /** {@code until} is {@link ListenerPolicy#PAUSE_UNTIL_RESUMED} or an {@code SystemClock.elapsedRealtime} deadline. */
  void pause(long until){commit(prefs.edit().putLong(PAUSED_UNTIL,until).putLong(PAUSE_BOOT,bootCount(context)));}
- void resume(){commit(prefs.edit().putLong(PAUSED_UNTIL,0).remove(EXITS).remove(TRIPPED));Listener.speechUnavailable=false;Listener.indicatorLost=false;}
+ void resume(){
+  SharedPreferences.Editor edit=prefs.edit().putLong(PAUSED_UNTIL,0);
+  if(enabled())edit.remove(EXITS).remove(TRIPPED);
+  commit(edit);
+  Listener.speechUnavailable=false;Listener.indicatorLost=false;
+ }
 
  /** Marks a capture session open (true) or cleanly closed (false); a process start that finds it open counts an unclean exit. */
  boolean setSessionOpen(boolean open){
@@ -134,5 +142,7 @@ final class ListenerStore {
  }
 
  /** Sticky once tripped: the window ageing out never restarts capture; only an explicit user action does. */
- boolean crashLoopTripped(){return prefs.getBoolean(TRIPPED,false);}
+ boolean crashLoopTripped(){
+  return !storageFailed&&ListenerPolicy.consented(prefs.getInt(CONSENT,0))&&prefs.getBoolean(ENABLED,false)&&prefs.getBoolean(TRIPPED,false);
+ }
 }
