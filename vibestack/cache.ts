@@ -217,6 +217,7 @@ function perCheck<T>(read: () => Promise<T>): () => Promise<T> {
 }
 
 const TOOL_PACKAGES = { quint: "@informalsystems/quint", lsc: "lemmascript" } as const;
+const packageName = (name: string) => /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i.test(name);
 type Isolated = { entry: string; script: string };
 type Program = { exe: string; unchanged: () => boolean } & ({ id: string; isolated: Isolated } | { id: undefined; isolated?: never });
 const latest = new Map<keyof typeof TOOL_PACKAGES, Program>();
@@ -300,6 +301,10 @@ function launcherInputs(exe: string, packageDir: string, exists: (file: string) 
   const bin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.[name];
   if (typeof bin !== "string") return undefined;
   const entry = path.resolve(packageDir, bin);
+  const relativeEntry = path.relative(packageDir, entry);
+  if (path.isAbsolute(relativeEntry) || relativeEntry.split(path.sep).includes("..") || !exists(entry) || !fs.statSync(entry).isFile()) return undefined;
+  const resolvedEntry = path.relative(packageDir, fs.realpathSync(entry));
+  if (path.isAbsolute(resolvedEntry) || resolvedEntry.split(path.sep).includes("..")) return undefined;
   const normalized: string[] = [];
   for (const line of text.split("\n")) {
     if (/^  export NODE_PATH="[^"\r]*"$/.test(line)) normalized.push('  export NODE_PATH="<paths>"');
@@ -409,7 +414,7 @@ function packageGraph(exe: string, name: string) {
     return present;
   };
   const seen = new Map<string, number>();
-  const graph: { dir: string; version: string; dependencies: [string, number | null][] }[] = [];
+  const graph: { dir: string; name: string; version: string; dependencies: [string, number | null][] }[] = [];
   let complete = true;
   const visit = (dir: string): number => {
     const previous = seen.get(dir);
@@ -417,12 +422,13 @@ function packageGraph(exe: string, name: string) {
     const file = path.join(dir, "package.json");
     observed(file);
     const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (typeof pkg.name !== "string" || typeof pkg.version !== "string") throw new Error(`no ${pkg.name ?? name} with a version is installed at ${dir}`);
+    if (typeof pkg.name !== "string" || !packageName(pkg.name) || typeof pkg.version !== "string") throw new Error(`no ${pkg.name ?? name} with a version is installed at ${dir}`);
     const index = graph.length;
     seen.set(dir, index);
     const dependencies: [string, number | null][] = [];
-    graph.push({ version: `${pkg.name}@${pkg.version}`, dir, dependencies });
+    graph.push({ name: pkg.name, version: `${pkg.name}@${pkg.version}`, dir, dependencies });
     for (const dependency of Object.keys({ ...pkg.dependencies, ...pkg.optionalDependencies, ...pkg.peerDependencies }).sort()) {
+      if (!packageName(dependency)) throw new Error(`invalid package dependency ${dependency}`);
       const at = packageLocation(dependency, dir, observeLocation);
       if (!at && dependency in (pkg.dependencies ?? {})) complete = false;
       dependencies.push([dependency, at ? visit(at) : null]);
@@ -440,9 +446,10 @@ function packageGraph(exe: string, name: string) {
     const script = path.join(import.meta.dirname, `simulator${path.extname(import.meta.filename)}`);
     observed(script);
     const scriptId = executableDigest(script);
-    const directory = path.join(path.dirname(LASTING), "programs");
+    const directory = path.join(path.dirname(LASTING), "programs", "1");
     const view = path.join(directory, `${id}-${scriptId.slice(0, 12)}`);
     const expected = graph.map(({ dir }) => contents(dir));
+    const dependencies = graph.map((node, index): [string, number | null][] => node.dependencies.some(([name]) => name === node.name) ? node.dependencies : [...node.dependencies, [node.name, index]]);
     fs.mkdirSync(directory, { recursive: true });
     if (!fs.existsSync(view)) {
       const staged = fs.mkdtempSync(path.join(directory, ".building-"));
@@ -460,7 +467,7 @@ function packageGraph(exe: string, name: string) {
             } });
           const modules = path.join(target, "node_modules");
           fs.mkdirSync(modules);
-          for (const [name, dependency] of graph[index].dependencies) if (dependency !== null) {
+          for (const [name, dependency] of dependencies[index]) if (dependency !== null) {
             const link = path.join(modules, name);
             fs.mkdirSync(path.dirname(link), { recursive: true });
             fs.symlinkSync(path.relative(path.dirname(link), path.join(staged, "packages", String(dependency))), link, "dir");
@@ -487,24 +494,26 @@ function packageGraph(exe: string, name: string) {
         if (JSON.stringify(fs.readdirSync(scoped).sort()) !== JSON.stringify(expected)) throw new Error("an isolated installation has undeclared scoped modules");
       }
     };
-    for (const [index, node] of graph.entries()) {
+    for (const [index] of graph.entries()) {
       const target = path.join(view, "packages", String(index));
       if (contents(target) !== expected[index]) throw new Error("an isolated package differs from its source");
       const modules = path.join(target, "node_modules");
-      modulesMatch(modules, node.dependencies.filter(([, dependency]) => dependency !== null).map(([name]) => name));
+      modulesMatch(modules, dependencies[index].filter(([, dependency]) => dependency !== null).map(([name]) => name));
       for (const dir of fs.readdirSync(target, { recursive: true, withFileTypes: true }).filter((dir) => dir.isDirectory())) {
         const at = path.join(dir.parentPath, dir.name);
         if (at === modules || at.startsWith(modules + path.sep)) continue;
         if (observeLocation(path.join(at, "node_modules"))) throw new Error("an isolated package has nested ambient modules");
       }
-      for (const [name, dependency] of node.dependencies) if (dependency !== null) {
+      for (const [name, dependency] of dependencies[index]) if (dependency !== null) {
         const link = path.join(modules, name);
         if (!observeLocation(link) || fs.realpathSync(link) !== path.join(view, "packages", String(dependency))) throw new Error("an isolated dependency differs from its source");
       }
     }
     const privateScript = path.join(view, path.basename(script));
     const privateEntry = path.join(view, "packages", String(roots[0]), path.relative(main, entry));
-    for (const file of [privateEntry, privateScript, path.join(view, "package.json"), path.join(view, "node_modules", name)]) observeLocation(file);
+    if (!observeLocation(privateEntry) || path.relative(path.join(view, "packages", String(roots[0])), fs.realpathSync(privateEntry)).split(path.sep).includes("..")
+      || executableDigest(privateEntry) !== executableDigest(entry)) throw new Error("an isolated entry differs from its source");
+    for (const file of [privateScript, path.join(view, "package.json"), path.join(view, "node_modules", name)]) observeLocation(file);
     if (executableDigest(privateScript) !== scriptId) throw new Error("an isolated runner differs from its source");
     if (fs.readFileSync(path.join(view, "package.json"), "utf8") !== '{"type":"module"}') throw new Error("an isolated runner has a different module format");
     modulesMatch(path.join(view, "node_modules"), [name]);

@@ -3932,6 +3932,43 @@ test("the same installed Quint shares verification results across checkouts and 
     fs.writeFileSync(right.shim, changed);
     assert.notEqual(await identity(right.root), expected);
   }
+  const malformed = install("first");
+  const malformedManifest = path.join(malformed.root, "node_modules/@informalsystems/quint/package.json");
+  const manifest = JSON.parse(fs.readFileSync(malformedManifest, "utf8"));
+  for (const dependency of ["../escape", "/absolute", "@scope/../escape"]) {
+    fs.writeFileSync(malformedManifest, JSON.stringify({ ...manifest, dependencies: { [dependency]: "1.0.0" } }));
+    await assert.rejects(identity(malformed.root), /invalid package dependency/);
+  }
+  fs.writeFileSync(malformedManifest, JSON.stringify({ ...manifest, bin: "../escape.cjs" }));
+  assert.equal(await identity(malformed.root), undefined);
+  const mainVersion = install("first");
+  const loadedVersion = install("second");
+  for (const [project, value] of [[mainVersion, "main"], [loadedVersion, "loaded"]] as const) {
+    const directory = path.join(project.root, "node_modules/@informalsystems/quint");
+    fs.writeFileSync(path.join(directory, "identity.cjs"), `module.exports = ${JSON.stringify(value)};`);
+    fs.writeFileSync(path.join(directory, "cli.cjs"), 'require("node:fs").writeFileSync("ir.json", JSON.stringify(require("@informalsystems/quint/identity.cjs")));');
+    const manifest = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
+    if (value === "loaded") manifest.version = "2.0.0";
+    fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify(manifest));
+  }
+  fs.writeFileSync(path.join(loadedVersion.root, "vibestack/simulator.ts"), `
+import fs from "node:fs";
+import { createRequire } from "node:module";
+export const SIMULATOR = import.meta.filename;
+export const TABLE = "table.json";
+if (import.meta.main) fs.writeFileSync(TABLE, JSON.stringify(createRequire(import.meta.url)("@informalsystems/quint/identity.cjs")));
+`);
+  const roles = await exec(process.execPath, ["--input-type=module", "--eval", `
+    import assert from "node:assert/strict";
+    import { act } from ${JSON.stringify(path.join(loadedVersion.root, "vibestack/action.ts"))};
+    import { installedProgram } from ${JSON.stringify(path.join(loadedVersion.root, "vibestack/cache.ts"))};
+    assert.ok(installedProgram(${JSON.stringify(mainVersion.root)}, "quint").id);
+    const memory = { root: ${JSON.stringify(mainVersion.root)}, fresh: false, used: new Set() };
+    const cli = await act(memory, "quint", ["typecheck"], "cli", {});
+    const simulator = await act(memory, "simulator", ["compile"], "simulator", {});
+    assert.deepEqual([JSON.parse(cli.files["ir.json"]), JSON.parse(simulator.files["table.json"])], ["main", "loaded"]);
+  `], mainVersion.root);
+  assert.equal(roles.status, 0, roles.stderr);
   for (const kind of ["source", "node-options", "require"] as const) {
     const changed = install("first");
     const external = path.join(changed.root, kind === "source" ? "external.sh" : "external.cjs");
