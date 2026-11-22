@@ -49,4 +49,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+        with:
+          job: selftest-${{ matrix.shard }}
       - run: rm -rf .cache/selftest && pnpm selftest:tools:${{ matrix.shard }}

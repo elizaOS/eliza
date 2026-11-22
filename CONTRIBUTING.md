@@ -105,7 +105,8 @@ tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENT
 ## Releasing
 
 Set `version` in the root `package.json`, merge to `main`, and push the tag `v<version>` from it.
-`.github/workflows/release.yml` builds, packs with `pnpm pack`, materializes the shard prerequisites and runs `pnpm selftest --only --concurrency=1` using the same keys as CI, and attaches the tarball to a GitHub release of that tag.
+`.github/workflows/release.yml` reuses the `build` task when it runs `pnpm pack`. Then it runs the remaining shard prerequisites
+and `pnpm selftest --only --concurrency=1` with the CI cache keys and attaches the tarball to a GitHub release of that tag.
 A project installs it as [README.md, "Using it from another package"](README.md#using-it-from-another-package) says.
 ## Architecture
 
@@ -216,8 +217,9 @@ again during the run. The template install generates locally with `gen --if-vali
 remaining checks runnable and is retried by verification. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
 are restored with their owning task. `check` is never skipped whole: its
-`driver:` programs run the real application in `traces` every time. Standalone examples install and check
-separately, outside the workspace cache.
+`driver:` programs run the real application in `traces` every time. Standalone examples install and check separately. The selftest keeps a complete passing run for each example
+under its own inputs and the shared toolchain and sources. After an edit to one example, the other examples
+can reuse their passing runs. Use `pnpm selftest:examples` to run every install and check directly.
 
 A complete passing Vitest run records its input fingerprint. `check` reuses
 that result only while its source, generated core, transitive workspace
@@ -330,6 +332,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
 exploration is, as an artifact.
+The run summary lists Turbo task times, cache status and exit codes.
 
 Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
@@ -339,6 +342,9 @@ Turborepo shares task results through the private Cloudflare/R2 cache.
 The task entry point disables Turbo telemetry. On a shared machine, each `selftest:tools` task waits for the root and
 Studio tests. In CI, the verify job owns those integration tests. Each dedicated shard runs with Turbo's
 `--only` after setup has built the toolchain. Its cache key covers its own declared source inputs.
+Verification and release install the headless shell for Playwright and full
+Chromium for Bombadil. In CI and nightly runs, shard A installs full Chromium
+for its Bombadil journey, and the other tool shards run without a browser.
 Release runs the prerequisite tasks once, then uses the same isolated shard keys as CI.
 Pull requests read shared results; only branch pushes receive the publishing
 credential, protected by the `turbo-cache-publish` environment's branch
