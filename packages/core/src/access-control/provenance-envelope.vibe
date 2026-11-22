@@ -1,4 +1,5 @@
 // spec/core/authorization.md, "Story: Read only the authorized records"; spec/core/authorization.md, "Verified cross-world membership is intersected with the agent membership"
+// spec/core/trustedAudience.md, "Renewal rechecks lease identity and audience after the authority await"
 import { buildAccessContext, buildCrossWorldConversationAccessContext } from "../access-context.vibe"
 import { normalizeConnectorSource } from "../connectors.vibe"
 import { asLegacy, failingAs, foreign, promised, thrownValue } from "../edge.vibe"
