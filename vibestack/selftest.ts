@@ -114,6 +114,25 @@ function toolchain(root: string, ...tools: string[]): string {
     fs.symlinkSync(path.join(nodeModules, ".bin", tool), path.join(modules, ".bin", tool), "file");
   return root;
 }
+function stockQuint(root: string, prelude: string) {
+  const originalStore = path.join(nodeModules, ".pnpm");
+  const realStore = fs.realpathSync(originalStore);
+  const source = fs.realpathSync(path.join(nodeModules, "@informalsystems/quint"));
+  const store = path.join(root, "node_modules/.pnpm");
+  const directory = path.join(store, path.relative(realStore, source));
+  const scope = path.join(root, "node_modules/@informalsystems");
+  fs.unlinkSync(store);
+  fs.cpSync(path.dirname(path.dirname(source)), path.dirname(path.dirname(directory)), { recursive: true, mode: fs.constants.COPYFILE_FICLONE });
+  fs.unlinkSync(scope);
+  fs.symlinkSync(path.dirname(directory), scope, "dir");
+  const manifest = path.join(directory, "package.json");
+  const cli = path.join(directory, JSON.parse(read("package.json", directory)).bin.quint);
+  const launcher = path.join(root, "node_modules/.bin/quint");
+  fs.writeFileSync(launcher, read(".bin/quint", nodeModules).replaceAll(originalStore, store).replaceAll(realStore, store), { mode: 0o755 });
+  const original = fs.readFileSync(cli, "utf8");
+  fs.writeFileSync(cli, original.replace(/^#![^\n]*\n/, (shebang) => `${shebang}"use strict";\n${prelude}\n`));
+  return { directory, manifest, cli };
+}
 /** `root` with node_modules of its own that also holds these tools as `vibestack`, as a project that installed them has. */
 function installed(root: string): string {
   const modules = path.join(root, "node_modules");
@@ -2356,26 +2375,28 @@ function eachCheck() {
   test("a process that outlives a reinstall of Quint, as watch does, keys what it runs and simulates by the Quint installed now, and remembers its runs again", { skip: process.platform === "win32" }, async () => {
     const root = toolchain(scratch({}), "lsc");
     const log = path.join(root, "quint.log");
-    const shim = path.join(root, "node_modules/.bin/quint");
-    const scope = path.join(root, "node_modules/@informalsystems");
-    const manifest = path.join(scope, "quint/package.json");
-    const original = fs.readFileSync(path.join(nodeModules, "@informalsystems/quint/package.json"), "utf8");
-    fs.unlinkSync(scope);
-    fs.mkdirSync(path.dirname(manifest), { recursive: true });
-    const direct = JSON.parse(original);
+    const { directory, manifest, cli } = stockQuint(root, "");
+    const direct = JSON.parse(fs.readFileSync(manifest, "utf8"));
     fs.writeFileSync(manifest, JSON.stringify({ ...direct, dependencies: { ...direct.dependencies, "quint-dependency": "*" } }));
-    const dependency = path.join(scope, "quint/node_modules/quint-dependency/package.json");
+    const dependency = path.join(directory, "node_modules/quint-dependency/package.json");
     fs.mkdirSync(path.dirname(dependency), { recursive: true });
     fs.writeFileSync(dependency, JSON.stringify({ name: "quint-dependency", version: "1.0.0" }));
     const source = path.join(path.dirname(dependency), "index.js");
     fs.writeFileSync(source, "export const version = 1;\n");
-    const manager = path.join(scope, "quint/dist/src/rust/binaryManager.js");
-    fs.mkdirSync(path.dirname(manager), { recursive: true });
+    const manager = path.join(directory, "dist/src/rust/binaryManager.js");
     fs.writeFileSync(manager, "exports.QUINT_EVALUATOR_VERSION = 'v1';");
     const native = path.join(root, "quint-home/rust-evaluator-v1/quint_evaluator");
     fs.mkdirSync(path.dirname(native), { recursive: true });
-    const install = (build: string) => fs.writeFileSync(shim, `#!/bin/sh\necho ${build} >> '${log}'\necho '{}' > ir.json\nif [ "$1" = run ]; then echo '{}' > 0.itf.json; [ -x '${native}' ] || { echo initial > '${native}'; chmod +x '${native}'; }; fi\n`, { mode: 0o755 });
-    install("first");
+    fs.writeFileSync(cli, `
+      const fs = require("node:fs");
+      fs.appendFileSync(${JSON.stringify(log)}, "first\\n");
+      fs.writeFileSync("ir.json", "{}");
+      if (process.argv[2] === "run") {
+        fs.writeFileSync("0.itf.json", "{}");
+        const native = ${JSON.stringify(native)};
+        if (!fs.existsSync(native)) fs.writeFileSync(native, "initial", { mode: 0o755 });
+      }
+    `);
     const script = [
       'const fs = await import("node:fs");',
       `const { act } = await import(${JSON.stringify(path.join(root, "vibestack/action.ts"))});`,
@@ -2384,7 +2405,7 @@ function eachCheck() {
       `const runs = async () => { await act(memory, "quint", ["typecheck"], "typed", { "a.qnt": { text: "module a {}", key: "a" } }); return fs.readFileSync(${JSON.stringify(log)}, "utf8").trim().split("\\n"); };`,
       'const simulation = async () => (await entry(".", "simulate", ["same"])).name;',
       'const said = { before: [await runs(), await runs()], simulation: await simulation() };',
-      `fs.writeFileSync(${JSON.stringify(shim)}, fs.readFileSync(${JSON.stringify(shim)}, "utf8").replace("first", "second"));`,
+      `fs.writeFileSync(${JSON.stringify(cli)}, fs.readFileSync(${JSON.stringify(cli)}, "utf8").replace('"first', '"second'));`,
       `fs.writeFileSync(${JSON.stringify(manifest)}, JSON.stringify({ ...JSON.parse(fs.readFileSync(${JSON.stringify(manifest)}, "utf8")), version: "0.0.0-reinstalled" }));`,
       'const reinstalled = await steady(async () => ({ after: [await runs(), await runs()], reinstalled: await simulation(), proof: (await entry(".", "prove", ["same"])).name }));',
       `fs.writeFileSync(${JSON.stringify(dependency)}, JSON.stringify({ name: "quint-dependency", version: "1.0.1" }));`,
@@ -2449,11 +2470,9 @@ function eachCheck() {
   });
 
   test("a change to the tools or the prose that leaves the Quint alone runs no Quint again, nor a simulation for prose that only moves the rules, and its results cite the rules where they now are", { skip: process.platform === "win32" }, async () => {
-    const root = toolchain(oneRule("index", "Small", "pure val initial: int = 0\npure def up(n: int): int = n + 1\npure def alwaysSmall(n: int): bool = n < 3"), "quint");
+    const root = toolchain(oneRule("index", "Small", "pure val initial: int = 0\npure def up(n: int): int = n + 1\npure def alwaysSmall(n: int): bool = n < 3"));
     const log = path.join(root, "quint.log");
-    const shim = path.join(root, "node_modules/.bin/quint");
-    fs.unlinkSync(shim);
-    fs.writeFileSync(shim, `#!/bin/sh\necho "$1" >> '${log}'\nexec '${path.join(nodeModules, ".bin/quint")}' "$@"\n`, { mode: 0o755 });
+    stockQuint(root, `require("node:fs").appendFileSync(${JSON.stringify(log)}, process.argv[2] + "\\n");`);
     const checked = async () => {
       fs.rmSync(log, { force: true });
       const { stdout } = await runCli(path.join(root, "vibestack/spec.ts"), root, "check", "--json");
@@ -4174,23 +4193,16 @@ test("check phase timings end a simulation before later definitions finish gener
   const root = toolchain(scratch({
     "spec/counter.md": ruleSpec("pure val initial: int = 0\npure def bump(n: int): int = n + 1\npure def alwaysPositive(n: int): bool = n > 0"),
     "spec/definitions.md": ruleSpec("pure val answer: int = 42"),
-  }), "quint");
-  const shim = path.join(root, "node_modules/.bin/quint");
-  fs.renameSync(shim, `${shim}-real`);
-  fs.writeFileSync(shim, `#!/bin/sh
-basedir="$(dirname "$0")"
-if [ "$1:$4" = typecheck:definitions.qnt ]; then node "$basedir/../../wait-for-simulation.mjs" || exit $?; fi
-exec "$basedir/quint-real" "$@"
-`, { mode: 0o755 });
-  fs.writeFileSync(path.join(root, "wait-for-simulation.mjs"), `
-    import fs from "node:fs";
-    import { setTimeout } from "node:timers/promises";
-    const marker = new URL("./simulation-finished", import.meta.url);
+  }));
+  stockQuint(root, `if (process.argv[2] === "typecheck" && process.argv[5] === "definitions.qnt") {
+    const fs = require("node:fs");
+    const marker = ${JSON.stringify(path.join(root, "simulation-finished"))};
+    const signal = new Int32Array(new SharedArrayBuffer(4));
     const deadline = performance.now() + 60_000;
-    while (!fs.existsSync(marker) && performance.now() < deadline) await setTimeout(20);
+    while (!fs.existsSync(marker) && performance.now() < deadline) Atomics.wait(signal, 0, 0, 20);
     if (!fs.existsSync(marker)) throw new Error("no simulation result was saved");
-    await setTimeout(300);
-  `);
+    Atomics.wait(signal, 0, 0, 300);
+  }`);
   const child = await exec(process.execPath, ["--input-type=module", "--eval", `
     import assert from "node:assert/strict";
     import { channel } from "node:diagnostics_channel";
