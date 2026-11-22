@@ -1432,22 +1432,6 @@ function eachCheckB() {
     assert.ok(!fs.existsSync(path.join(root, "gen/traces")), text);
   });
 
-}
-
-function eachCheck() {
-  before(async () => {
-    for (const file of ["spec/index.md", "src", "test"]) fs.cpSync(path.join(EXAMPLE, file), path.join(pristine, file), { recursive: true });
-    for (const [file, text] of Object.entries(PACKAGE)) fs.writeFileSync(path.join(pristine, file), text);
-    fs.symlinkSync(nodeModules, path.join(pristine, "node_modules"), "dir");
-    for (const spec of readSpecs(pristine)) acceptReviews(pristine, spec);
-    acceptContracts(pristine);
-    const began = Date.now() - 1000;
-    const pristineCheck = await check(pristine);
-    assert.equal(pristineCheck.ok, true, pristineCheck.results.map(show).join("\n"));
-    for (const name of unused(pristine, began)) fs.rmSync(path.join(pristine, ".spec-cache", name));
-  });
-  for (const [shard, tests] of Object.entries(SHARDS)) describe(shard, { concurrency: LANES }, tests);
-
   test("event weights, fairness and bounds name real events and rules and stay outside generated code; a weight repeats its event in the simulator's choice", async () => {
     const base = "type S = { n: int }\npure val initial: S = { n: 0 }\npure def add(s: S, k: int): S = { n: s.n + k }\npure def leadsToSome(s: S, later: S): bool = later.n >= s.n\n";
     const model = (quint: string) => { const root = oneRule("w", "Weights", base + quint); return gen(root, parseSpec(root, "spec/w.md")); };
@@ -1538,6 +1522,21 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const domain = await import(path.join(scoped, "gen/use.ts"));
     assert.deepEqual([domain.echo(7), domain.echoLocal(8), domain.sum([2, 3]), domain.shadowOwn(9), domain.paramShadow(1), domain.nestedShadow(1)], [7, 8, 5, 9, 7, 8]);
   });
+}
+
+function eachCheck() {
+  before(async () => {
+    for (const file of ["spec/index.md", "src", "test"]) fs.cpSync(path.join(EXAMPLE, file), path.join(pristine, file), { recursive: true });
+    for (const [file, text] of Object.entries(PACKAGE)) fs.writeFileSync(path.join(pristine, file), text);
+    fs.symlinkSync(nodeModules, path.join(pristine, "node_modules"), "dir");
+    for (const spec of readSpecs(pristine)) acceptReviews(pristine, spec);
+    acceptContracts(pristine);
+    const began = Date.now() - 1000;
+    const pristineCheck = await check(pristine);
+    assert.equal(pristineCheck.ok, true, pristineCheck.results.map(show).join("\n"));
+    for (const name of unused(pristine, began)) fs.rmSync(path.join(pristine, ".spec-cache", name));
+  });
+  for (const [shard, tests] of Object.entries(SHARDS)) describe(shard, { concurrency: LANES }, tests);
 
   test("install creates ignored agent aliases inside the checkout and recreates them on reinstall", () => {
     const { packageManager, scripts } = JSON.parse(read("package.json"));
