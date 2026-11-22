@@ -3196,7 +3196,7 @@ describe("the documents name what exists", () => {
     assert.deepEqual(fs.readdirSync(path.join(project, ".github/workflows")).filter((flow) => /\bdevelop\b/.test(read(`.github/workflows/${flow}`))), [], "main is the only long-lived branch");
   });
 
-  test("a task waits for the root's gen unless its package can never own a root spec; Studio's dev waits for what its build does; prose, the selftest and a failed run's leftovers rerun no Studio task, and the fixtures its tests read do", async () => {
+  test("tasks wait for the root's gen where needed; selftest edits keep the CLI build cached, and Studio only reacts to its inputs", async () => {
     const root = scratch({ "spec/kit/index.md": "# Kit\n", "packages/kit/package.json": JSON.stringify({ name: "@repo/kit", scripts: Object.fromEntries(["build", "typecheck", "test", "test:browser"].map((task) => [task, "true"])) }) });
     for (const file of (await exec("git", ["ls-files"], project)).stdout.trim().split("\n")) {
       if (fs.lstatSync(path.join(project, file)).isDirectory()) continue;
@@ -3243,7 +3243,7 @@ describe("the documents name what exists", () => {
       lintWaitsFor: vibeDeclared.filter((id) => tasks.get("//#lint:js")!.dependencies.includes(id)),
       devWaitsFor: tasks.get("vibestack-studio#dev")!.dependencies.toSorted(),
       prose: [studio(prose), prose.includes("@repo/app#test")],
-      selftest: [studio(selftest), ["a", "b", "rest"].every((shard) => selftest.includes(`//#selftest:tools:${shard}`))],
+      selftest: [studio(selftest), selftest.includes("//#build"), ["a", "b", "rest"].every((shard) => selftest.includes(`//#selftest:tools:${shard}`))],
       fixture: studio(fixture),
       independentOwner: (await changedBy(() => {
         fs.mkdirSync(path.join(root, "packages/kit/spec"));
@@ -3257,7 +3257,7 @@ describe("the documents name what exists", () => {
       }),
     }, {
       notWaiting: ["//#analyze", "//#build", "//#lint:css", "//#selftest:docs", "//#selftest:examples", "@repo/design-system#build", "@repo/ui#typecheck", "vibestack-studio#build", "vibestack-studio#dev", "vibestack-studio#test", "vibestack-studio#typecheck"],
-      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true], selftest: [[], true], fixture: ["vibestack-studio#test"], independentOwner: true, leftovers: [],
+      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true], selftest: [[], false, true], fixture: ["vibestack-studio#test"], independentOwner: true, leftovers: [],
     }, "the owners' tasks, @repo/kit's among them, wait for the root's gen, and install's //#build does not, so `gen --if-valid` after it keeps a half-edited spec from failing install");
   });
 });
