@@ -60,11 +60,17 @@ public final class ColdPasswordBackupInstrumentedTest {
       Uri activation = browserReturn("enroll", enrollment);
       assertTrue("The device must redeem and acknowledge a real grant", account.exchange(activation));
       assertFalse("The acknowledged account closes device-only access", account.isDeviceOnly());
-      CloudPasswordBackup backup = new CloudPasswordBackup(account, CLIENT, "staging");
-      assertTrue("The disposable authenticated Worker must be ready", backup.available());
       boolean save = "save".equals(phase);
+      CloudPasswordBackup backup = save
+        ? new CloudPasswordBackup(account, CLIENT, "staging")
+        : new CloudPasswordBackup(account::session, URI.create(CLOUD), Uri.parse(BROWSER + CALLBACK), CLIENT, "staging");
+      assertTrue("The disposable authenticated Worker must be ready", backup.available());
       var purpose = save ? PasswordBackupApproval.Purpose.SAVE : PasswordBackupApproval.Purpose.READ;
-      var approval = backup.exchange(browserReturn("approve", backup.begin(purpose)), purpose, () -> true);
+      var callback = browserReturn("approve", backup.begin(purpose));
+      assertFalse(backup.accepts(callback.buildUpon().encodedAuthority("other.localhost").build()));
+      assertFalse(backup.accepts(callback.buildUpon().encodedPath("/android/other/callback").build()));
+      assertTrue(backup.accepts(callback));
+      var approval = backup.exchange(callback, purpose, () -> true);
       if (save) {
         assertFalse(approval.present());
         vault.saveEntry(null, "Fixture bill", "fixture-owner", List.of(SITE), SECRET);
