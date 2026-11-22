@@ -3901,7 +3901,7 @@ test("the same installed Quint shares verification results across checkouts and 
     fs.unlinkSync(path.join(modules, "@informalsystems"));
     fs.mkdirSync(dir, { recursive: true });
     fs.symlinkSync(path.dirname(dir), path.join(modules, "@informalsystems"));
-    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "@informalsystems/quint", version: "1.0.0", bin: "cli.cjs", dependencies: { values: "1.0.0" } }));
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "@informalsystems/quint", version: "1.0.0", bin: "cli.cjs", description: patch, dependencies: { values: "1.0.0" } }));
     fs.writeFileSync(path.join(dir, "cli.cjs"), 'require("node:fs").writeFileSync("ir.json", JSON.stringify(require("values")));\n');
     const lookup = fallback ? "secondary/node_modules" : locator;
     const values = path.join(store, lookup, "values");
@@ -3985,7 +3985,10 @@ test("the same installed Quint shares verification results across checkouts and 
       fs.writeFileSync(path.join(marker, "package.json"), '{"name":"marker","version":"1.0.0"}');
     }
     fs.writeFileSync(bareFile ? `${marker}.js` : path.join(marker, "index.js"), `module.exports = ${JSON.stringify(value)};\n`);
-    fs.writeFileSync(path.join(root, "node_modules/@informalsystems/quint/cli.cjs"), 'require("node:fs").writeFileSync("ir.json", JSON.stringify(require("marker")));\n');
+    fs.writeFileSync(path.join(root, "node_modules/@informalsystems/quint/cli.cjs"), 'let value; try { value = require("marker"); } catch (error) { if (error.code !== "MODULE_NOT_FOUND") throw error; value = "isolated"; } require("node:fs").writeFileSync("ir.json", JSON.stringify(value));\n');
+    const ordinary = await exec(path.join(root, "node_modules/.bin/quint"), ["typecheck"], root);
+    assert.equal(ordinary.status, 0, ordinary.stderr);
+    assert.equal(JSON.parse(read("ir.json", root)), value);
     const child = await exec(process.execPath, ["--input-type=module", "--eval", `
       import { act } from "./vibestack/action.ts";
       import { withFormalCache } from "./vibestack/cache.ts";
@@ -3993,9 +3996,9 @@ test("the same installed Quint shares verification results across checkouts and 
       console.log(result.files["ir.json"]);
     `], root);
     assert.equal(child.status, 0, child.stderr);
-    assert.equal(JSON.parse(child.stdout), value);
+    assert.equal(JSON.parse(child.stdout), "isolated");
   }
-  assert.equal(toolRuns(shared).length, 3);
+  assert.equal(toolRuns(shared).length, 1);
   const transient = install("first");
   const implementation = path.join(transient.root, "node_modules/@informalsystems/quint/cli.cjs");
   fs.writeFileSync(implementation, `const fs = require("node:fs");
@@ -4086,7 +4089,7 @@ try {
     console.log(JSON.stringify([...values, await run()]));
   `], hosted.root, { ...process.env, NODE_PATH: [path.join(runner, "node_modules"), modules, path.join(store, "node_modules")].join(path.delimiter) });
   assert.equal(checked.status, 0, checked.stderr);
-  assert.deepEqual([JSON.parse(checked.stdout), toolRuns(path.join(hosted.root, ".spec-cache")).length], [['"default"', '"default"', '"from host"'], 2]);
+  assert.deepEqual([JSON.parse(checked.stdout), toolRuns(path.join(hosted.root, ".spec-cache")).length], [['"default"', '"default"', '"from host"'], 0]);
 
 });
 

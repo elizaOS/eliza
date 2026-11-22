@@ -217,7 +217,8 @@ function perCheck<T>(read: () => Promise<T>): () => Promise<T> {
 }
 
 const TOOL_PACKAGES = { quint: "@informalsystems/quint", lsc: "lemmascript" } as const;
-type Program = { exe: string; id: string | undefined; unchanged: () => boolean };
+type Isolated = { entry: string; script: string };
+type Program = { exe: string; unchanged: () => boolean } & ({ id: string; isolated: Isolated } | { id: undefined; isolated?: never });
 const latest = new Map<keyof typeof TOOL_PACKAGES, Program>();
 
 function virtualStore(dir: string): string | undefined {
@@ -284,7 +285,7 @@ const PNPM_SHIM = [
   "fi",
 ].join("\n") + "\n";
 
-function launcherInputs(exe: string, packageDir: string, exists: (file: string) => boolean, ambient = process.env.NODE_PATH?.split(path.delimiter) ?? []): { digest: string; searchPaths: string[] } | undefined {
+function launcherInputs(exe: string, packageDir: string, exists: (file: string) => boolean): { digest: string; entry: string } | undefined {
   const launcher = fs.realpathSync(exe);
   if (path.basename(path.dirname(launcher)) !== ".bin" || process.env.NODE_OPTIONS) return undefined;
   const bytes = fs.readFileSync(launcher);
@@ -314,14 +315,12 @@ function launcherInputs(exe: string, packageDir: string, exists: (file: string) 
   }
   if (normalized.join("\n") !== PNPM_SHIM) return undefined;
   const known = new Set(pnpmSearchPaths(bin ? path.dirname(path.resolve(packageDir, bin)) : packageDir, store));
-  if (ambient.length && ambient.join(path.delimiter) !== pnpmSearchPaths(path.dirname(ambient[0]), store).join(path.delimiter)) return undefined;
-  const lines = [node];
-  const searchPaths = new Set<string>();
-  for (const line of text.split("\n")) {
+  const lines = [node, path.relative(packageDir, entry)];
+  for (const [index, line] of text.split("\n").entries()) {
     const assignment = /^( *export NODE_PATH="| *@SET "NODE_PATH=)([^"\r]*)("\r?)$/.exec(line);
     if (!assignment) {
       if (/\bNODE_PATH\s*=/.test(line)) return undefined;
-      lines.push(JSON.stringify(line));
+      lines.push(JSON.stringify(normalized[index]));
       continue;
     }
     const [, before, paths, after] = assignment;
@@ -330,13 +329,12 @@ function launcherInputs(exe: string, packageDir: string, exists: (file: string) 
       if (entry === "$NODE_PATH" || entry === "%NODE_PATH%") relative.push(entry);
       else if (known.has(entry) && (path.dirname(entry) === packageDir || !entry.startsWith(packageDir + path.sep) || !exists(entry))) {
         relative.push([path.relative(store, entry)]);
-        searchPaths.add(entry);
       }
       else return undefined;
     }
     lines.push(JSON.stringify([before, relative, after]));
   }
-  return { digest: sha(...lines), searchPaths: [...searchPaths, ...ambient.filter((directory) => !searchPaths.has(directory))] };
+  return { digest: sha(...lines), entry };
 }
 
 type Stamps = Iterable<readonly [string, string]>;
@@ -352,14 +350,16 @@ const sameFiles = (files: Stamps, links: Stamps) => {
 const isStamps = (value: unknown): value is [string, string][] => Array.isArray(value) && value.every((entry) =>
   Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string" && typeof entry[1] === "string");
 
-function readProgram(index: string, key: string): Omit<Program, "exe"> | undefined {
+function readProgram(index: string, key: string): { id: string; isolated: Isolated; unchanged: () => boolean } | undefined {
   try {
     const data: unknown = JSON.parse(zstdDecompressSync(fs.readFileSync(index)).toString("utf8"));
     if (!Array.isArray(data)) return undefined;
-    const [saved, id, files, links] = data;
+    const [saved, id, files, links, isolated] = data;
     if (saved !== key || typeof id !== "string" || !/^[a-f0-9]{64}$/.test(id) || !isStamps(files) || !files.length || !isStamps(links)) return undefined;
+    if (typeof isolated !== "object" || !isolated || typeof isolated.entry !== "string" || typeof isolated.script !== "string"
+      || ![isolated.entry, isolated.script].every((file) => file.startsWith(path.join(path.dirname(LASTING), "programs") + path.sep) && files.some(([observed]) => observed === file))) return undefined;
     const unchanged = () => sameFiles(files, links);
-    if (unchanged()) return { id, unchanged };
+    if (unchanged()) return { id, isolated: { entry: isolated.entry, script: isolated.script }, unchanged };
   } catch {
     return undefined;
   }
@@ -408,26 +408,9 @@ function packageGraph(exe: string, name: string) {
     if (present && path.basename(file) !== "package.json" && fs.lstatSync(file).isSymbolicLink()) links.set(file, fileStamp(file, false));
     return present;
   };
-  const exposedLauncher = (file: string, store: string | undefined) => {
-    const text = fs.readFileSync(file, "utf8");
-    if (!store || !text.startsWith("#!/bin/sh\n")) return undefined;
-    const script = /^  exec node  "\$basedir\/([^"$`\r\n]+)" "\$@"$/m.exec(text)?.[1];
-    if (!script) return undefined;
-    const entry = path.resolve(path.dirname(file), script);
-    if (!observeLocation(entry)) return undefined;
-    const target = fs.realpathSync(entry);
-    if (virtualStore(target) !== store) return undefined;
-    for (let dir = path.dirname(target); dir.startsWith(store + path.sep); dir = path.dirname(dir)) {
-      const manifest = path.join(dir, "package.json");
-      if (!observed(manifest)) continue;
-      const { bin } = JSON.parse(fs.readFileSync(manifest, "utf8"));
-      const declared = typeof bin === "string" ? bin : bin?.[path.basename(file)];
-      if (typeof declared === "string" && path.resolve(dir, declared) === target) return launcherInputs(file, dir, observeLocation, []);
-      return undefined;
-    }
-  };
   const seen = new Map<string, number>();
   const graph: { dir: string; version: string; dependencies: [string, number | null][] }[] = [];
+  let complete = true;
   const visit = (dir: string): number => {
     const previous = seen.get(dir);
     if (previous !== undefined) return previous;
@@ -441,49 +424,10 @@ function packageGraph(exe: string, name: string) {
     graph.push({ version: `${pkg.name}@${pkg.version}`, dir, dependencies });
     for (const dependency of Object.keys({ ...pkg.dependencies, ...pkg.optionalDependencies, ...pkg.peerDependencies }).sort()) {
       const at = packageLocation(dependency, dir, observeLocation);
+      if (!at && dependency in (pkg.dependencies ?? {})) complete = false;
       dependencies.push([dependency, at ? visit(at) : null]);
     }
     return index;
-  };
-  const exposed = (dirs: string[]) => {
-    const search: [string, number | string][][] = [];
-    const directories = new Set(dirs);
-    for (const directory of directories) {
-      const entries: [string, number | string][] = [];
-      search.push(entries);
-      if (!observeLocation(directory)) continue;
-      const store = virtualStore(directory);
-      if (!fs.statSync(directory).isDirectory() || virtualStore(fs.realpathSync(directory)) !== store) return undefined;
-      for (const first of fs.readdirSync(directory).sort()) {
-        const scope = path.join(directory, first);
-        if (!observeLocation(scope)) return undefined;
-        if (first === ".bin" && fs.statSync(scope).isDirectory()) {
-          for (const bin of fs.readdirSync(scope).sort()) {
-            const file = path.join(scope, bin);
-            if (!observeLocation(file) || !fs.statSync(file).isFile()) return undefined;
-            const launcher = exposedLauncher(file, store);
-            entries.push([`.bin/${bin}`, launcher?.digest ?? executableDigest(file)]);
-            for (const directory of launcher?.searchPaths ?? []) directories.add(directory);
-          }
-          continue;
-        }
-        const names = first.startsWith("@") && fs.statSync(scope).isDirectory()
-          ? fs.readdirSync(scope).sort().map((next) => `${first}/${next}`) : [first];
-        for (const name of names) {
-          const file = path.join(directory, name);
-          if (!observeLocation(file)) return undefined;
-          if (fs.statSync(file).isFile()) {
-            entries.push([name, executableDigest(file)]);
-            continue;
-          }
-          if (!fs.statSync(file).isDirectory() || !observed(path.join(file, "package.json"))) return undefined;
-          const target = fs.realpathSync(file);
-          if (virtualStore(target) !== store) return undefined;
-          entries.push([name, visit(target)]);
-        }
-      }
-    }
-    return search;
   };
   observed(exe);
   if (fs.lstatSync(exe).isSymbolicLink()) links.set(exe, fileStamp(exe, false));
@@ -491,7 +435,90 @@ function packageGraph(exe: string, name: string) {
   const [main, loaded] = packageRoots(exe, name, observeLocation);
   if (!main) throw new Error(`no ${name} with a version is installed beside ${exe} or these tools; run pnpm install`);
   const roots = [visit(main), loaded && visit(loaded)];
-  return { graph, roots, main, contents, observeLocation, exposed, files: observations, links, unchanged: () => sameFiles(observations, links) };
+  const isolate = (id: string, entry: string): Isolated => {
+    if (!complete) throw new Error("a declared dependency needs ambient resolution");
+    const script = path.join(import.meta.dirname, `simulator${path.extname(import.meta.filename)}`);
+    observed(script);
+    const scriptId = executableDigest(script);
+    const directory = path.join(path.dirname(LASTING), "programs");
+    const view = path.join(directory, `${id}-${scriptId.slice(0, 12)}`);
+    const expected = graph.map(({ dir }) => contents(dir));
+    fs.mkdirSync(directory, { recursive: true });
+    if (!fs.existsSync(view)) {
+      const staged = fs.mkdtempSync(path.join(directory, ".building-"));
+      try {
+        for (const [index, { dir }] of graph.entries()) {
+          const target = path.join(staged, "packages", String(index));
+          fs.cpSync(dir, target, { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE,
+            filter: (file) => {
+              if (["node_modules", ".git"].includes(path.basename(file))) return false;
+              if (fs.lstatSync(file).isSymbolicLink()) {
+                const link = fs.readlinkSync(file);
+                if (path.isAbsolute(link) || path.relative(dir, fs.realpathSync(file)).startsWith("..")) throw new Error("a package link escapes its isolated installation");
+              }
+              return true;
+            } });
+          const modules = path.join(target, "node_modules");
+          fs.mkdirSync(modules);
+          for (const [name, dependency] of graph[index].dependencies) if (dependency !== null) {
+            const link = path.join(modules, name);
+            fs.mkdirSync(path.dirname(link), { recursive: true });
+            fs.symlinkSync(path.relative(path.dirname(link), path.join(staged, "packages", String(dependency))), link, "dir");
+          }
+        }
+        fs.writeFileSync(path.join(staged, "package.json"), '{"type":"module"}');
+        const loaded = roots[1] ?? roots[0];
+        const link = path.join(staged, "node_modules", name);
+        fs.mkdirSync(path.dirname(link), { recursive: true });
+        fs.symlinkSync(path.relative(path.dirname(link), path.join(staged, "packages", String(loaded))), link, "dir");
+        fs.copyFileSync(script, path.join(staged, path.basename(script)));
+        if (!sameFiles(observations, links)) throw new InstallationChanged();
+        try { fs.renameSync(staged, view); } catch (error) { if (!fs.existsSync(view)) throw error; }
+      } finally { fs.rmSync(staged, { recursive: true, force: true }); }
+    }
+    const modulesMatch = (directory: string, names: string[]) => {
+      observeLocation(directory);
+      const first = [...new Set(names.map((name) => name.split("/")[0]))].sort();
+      if (JSON.stringify(fs.readdirSync(directory).sort()) !== JSON.stringify(first)) throw new Error("an isolated installation has undeclared modules");
+      for (const scope of first.filter((name) => name.startsWith("@"))) {
+        const scoped = path.join(directory, scope);
+        observeLocation(scoped);
+        const expected = names.filter((name) => name.startsWith(scope + "/")).map((name) => name.slice(scope.length + 1)).sort();
+        if (JSON.stringify(fs.readdirSync(scoped).sort()) !== JSON.stringify(expected)) throw new Error("an isolated installation has undeclared scoped modules");
+      }
+    };
+    for (const [index, node] of graph.entries()) {
+      const target = path.join(view, "packages", String(index));
+      if (contents(target) !== expected[index]) throw new Error("an isolated package differs from its source");
+      const modules = path.join(target, "node_modules");
+      modulesMatch(modules, node.dependencies.filter(([, dependency]) => dependency !== null).map(([name]) => name));
+      for (const dir of fs.readdirSync(target, { recursive: true, withFileTypes: true }).filter((dir) => dir.isDirectory())) {
+        const at = path.join(dir.parentPath, dir.name);
+        if (at === modules || at.startsWith(modules + path.sep)) continue;
+        if (observeLocation(path.join(at, "node_modules"))) throw new Error("an isolated package has nested ambient modules");
+      }
+      for (const [name, dependency] of node.dependencies) if (dependency !== null) {
+        const link = path.join(modules, name);
+        if (!observeLocation(link) || fs.realpathSync(link) !== path.join(view, "packages", String(dependency))) throw new Error("an isolated dependency differs from its source");
+      }
+    }
+    const privateScript = path.join(view, path.basename(script));
+    const privateEntry = path.join(view, "packages", String(roots[0]), path.relative(main, entry));
+    for (const file of [privateEntry, privateScript, path.join(view, "package.json"), path.join(view, "node_modules", name)]) observeLocation(file);
+    if (executableDigest(privateScript) !== scriptId) throw new Error("an isolated runner differs from its source");
+    if (fs.readFileSync(path.join(view, "package.json"), "utf8") !== '{"type":"module"}') throw new Error("an isolated runner has a different module format");
+    modulesMatch(path.join(view, "node_modules"), [name]);
+    const loadedLink = path.join(view, "node_modules", name);
+    if (fs.realpathSync(loadedLink) !== path.join(view, "packages", String(roots[1] ?? roots[0]))) throw new Error("an isolated runner resolves a different package");
+    for (let parent = path.dirname(view); ; parent = path.dirname(parent)) {
+      if (observeLocation(path.join(parent, "node_modules"))) throw new Error("an isolated installation has ambient modules");
+      if (parent === path.dirname(parent)) break;
+    }
+    if (observeLocation(path.join(view, "packages", "node_modules"))) throw new Error("isolated packages have ambient modules");
+    if (!sameFiles(observations, links)) throw new InstallationChanged();
+    return { entry: privateEntry, script: privateScript };
+  };
+  return { graph, roots, main, contents, observeLocation, isolate, files: observations, links, unchanged: () => sameFiles(observations, links) };
 }
 
 export const installedPackages = (exe: string, name: string) => packageGraph(exe, name).graph.map((p) => p.version).sort();
@@ -515,28 +542,32 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
     const name = `installed-${key.slice(0, 24)}.json.zst`;
     const directory = path.join(path.dirname(LASTING), "installations");
     const index = path.join(directory, name);
-    let installed = unsure || previous?.exe === exe ? undefined : readProgram(index, key);
+    let installed: { id: string; isolated: Isolated; unchanged: () => boolean } | undefined = unsure || previous?.exe === exe ? undefined : readProgram(index, key);
     if (!installed) {
-      const { graph, roots, main, contents, observeLocation, exposed, files, links, unchanged } = packageGraph(exe, TOOL_PACKAGES[tool]);
-      let id: string | undefined;
+      const inventory = packageGraph(exe, TOOL_PACKAGES[tool]);
+      const { graph, roots, main, contents, observeLocation, isolate, files, links, unchanged } = inventory;
       try {
         const launcher = launcherInputs(exe, main, observeLocation);
-        const search = launcher && exposed(launcher.searchPaths);
-        if (launcher && search) id = sha(launcher.digest, JSON.stringify([roots, ...search, graph.map(({ dir, version, dependencies }) => [version, contents(dir), dependencies])]), `node@${process.versions.node}:${process.platform}:${process.arch}`);
-      } catch { /* A search path that cannot be inventoried leaves the program runnable without cache reuse. */ }
-      installed = { id, unchanged };
-      if (id && !unsure) {
-        try {
-          writeWhole(index, zstdCompressSync(JSON.stringify([key, id, [...files], [...links]])));
-          pruneCache(directory, new Set([name]), (file) => /^installed-[a-f0-9]{24}\.json\.zst$/.test(file));
-        } catch { /* optional cache */ }
-      }
+        if (launcher) {
+          const id = sha(launcher.digest, JSON.stringify([roots, graph.map(({ dir, version, dependencies }) => [version, contents(dir), dependencies])]), `node@${process.versions.node}:${process.platform}:${process.arch}`);
+          const isolated = isolate(id, launcher.entry);
+          installed = { id, isolated, unchanged };
+          if (!unsure) {
+            try {
+              writeWhole(index, zstdCompressSync(JSON.stringify([key, id, [...files], [...links], isolated])));
+              pruneCache(directory, new Set([name]), (file) => /^installed-[a-f0-9]{24}\.json\.zst$/.test(file));
+            } catch { /* optional cache */ }
+          }
+        }
+      } catch (error) { if (error instanceof InstallationChanged) throw error; }
+      const stable = () => process.env.NODE_PATH === searchPath && process.env.PATH === commandPath && process.env.NODE_OPTIONS === nodeOptions && unchanged();
+      latest.set(tool, previous = installed ? { exe, ...installed, unchanged: stable } : { exe, id: undefined, unchanged: stable });
+    } else {
+      const stable = installed.unchanged;
+      latest.set(tool, previous = { exe, ...installed, unchanged: () => process.env.NODE_PATH === searchPath && process.env.PATH === commandPath && process.env.NODE_OPTIONS === nodeOptions && stable() });
     }
-    const { id, unchanged } = installed;
-    latest.set(tool, previous = { exe, id, unchanged: () => process.env.NODE_PATH === searchPath && process.env.PATH === commandPath && process.env.NODE_OPTIONS === nodeOptions && unchanged() });
   }
-  const { id, unchanged } = previous;
-  const program = { exe, id, unchanged: () => findBin(tool, root) === exe && unchanged() };
+  const program: Program = { ...previous, unchanged: () => findBin(tool, root) === exe && previous.unchanged() };
   scope?.programs.set(key, program);
   return program;
 }
