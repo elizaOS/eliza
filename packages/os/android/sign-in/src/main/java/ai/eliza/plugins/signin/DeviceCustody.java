@@ -2,6 +2,8 @@
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
+import ai.eliza.plugins.signin.CredentialPolicy.Account;
+import ai.eliza.plugins.signin.DeviceKeyClient.Acknowledgement;
 import ai.eliza.plugins.signin.DeviceKeyClient.Answer;
 import ai.eliza.plugins.signin.DeviceKeyClient.Binding;
 import ai.eliza.plugins.signin.DeviceKeyClient.Exchange;
@@ -36,6 +38,30 @@ public final class DeviceCustody implements SignInCustody {
 
   public static CredentialReader reader(Context context, String apiOrigin) {
     return authority(context, apiOrigin).store();
+  }
+
+  public static LegacyCredentialAuthority legacyCredentials(Context context, String apiOrigin) {
+    return new LegacyCredentialAuthority(authority(context, apiOrigin).client());
+  }
+
+  public static final class LegacyCredentialAuthority {
+    private final DeviceKeyClient client;
+
+    private LegacyCredentialAuthority(DeviceKeyClient client) {
+      this.client = client;
+    }
+
+    public Answer<Acknowledgement> acknowledge(String credentialId, String secret) {
+      return client.ack(credentialId, secret);
+    }
+
+    public Answer<Account> user(String secret) {
+      return client.user(secret);
+    }
+
+    public boolean revoke(String secret) {
+      return client.revoke(secret);
+    }
   }
 
   public static boolean deviceOnly(Context context, String apiOrigin) {
