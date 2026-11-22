@@ -76,6 +76,8 @@ const pages: Record<string, string> = {
   [`${shop}/footer-only-invitation`]: accountInvitation(`<footer>${publicPanel()}</footer>`),
   [`${shop}/disabled-invitation`]: accountInvitation(publicPanel('aria-disabled="true"')),
   [`${shop}/hidden-invitation`]: accountInvitation(publicPanel('aria-hidden="true"')),
+  [`${shop}/placeholder-invitation`]: accountInvitation(publicPanel().replace('href="/help"', 'href="#"')),
+  [`${shop}/external-invitation`]: accountInvitation(publicPanel().replace('href="/help"', 'href="https://elsewhere.example/help"')),
   [`${shop}/inert-invitation`]: accountInvitation(publicPanel("inert")),
   [`${shop}/covered-invitation`]: accountInvitation(publicPanel('style="position:relative"').replace("</section>", '<div style="position:absolute;inset:0;background:white"></div></section>')),
   [`${shop}/password-invitation`]: accountInvitation(publicPanel(), "", '<form><label>Password <input type="password"></label></form>'),
@@ -386,7 +388,7 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     for (const [path, blocker] of [
       ["/scoped-invitation", { kind: "login-wall", overlay: false, covers: "partial" }],
       ["/overlay-invitation", { kind: "login-wall", overlay: true, covers: "viewport" }],
-      ...["footer-only", "disabled", "hidden", "inert", "covered", "password", "code", "required"].map((fixture) =>
+      ...["footer-only", "disabled", "hidden", "placeholder", "external", "inert", "covered", "password", "code", "required"].map((fixture) =>
         [`/${fixture}-invitation`, { kind: "login-wall", overlay: false, covers: "viewport" }] as const),
       ["/paywall-invitation", { kind: "paywall", overlay: false, covers: "viewport" }],
       ["/captcha-invitation", { kind: "captcha", overlay: false, covers: "viewport" }],

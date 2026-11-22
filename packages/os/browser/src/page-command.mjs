@@ -1282,6 +1282,7 @@ export function pageCommand(
           return false;
         const main = root.parentElement?.closest("main,[role=main]");
         if (!main || main.closest(unavailableAncestry)) return false;
+        const location = root.ownerDocument.location;
         return [...nodes.values()].some(({ node, bounds: box, scrollOnly }) => {
           if (
             scrollOnly ||
@@ -1292,7 +1293,8 @@ export function pageCommand(
             !node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) ||
             !node.textContent.trim() ||
             !["http:", "https:"].includes(node.protocol) ||
-            node.origin !== root.ownerDocument.location.origin
+            node.origin !== location.origin ||
+            (node.pathname === location.pathname && node.search === location.search)
           )
             return false;
           const region = node.closest("section,article,aside");
