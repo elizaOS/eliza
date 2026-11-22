@@ -158,7 +158,7 @@ export function typecheckAll(memory: Memory, specs: Spec[], output = memory.root
       let ir: any;
       try { ir = JSON.parse(typed.files["ir.json"]); } catch { ir = undefined; }
       if (!typed.ok || !ir || ir.errors?.length) throw typeErrors(spec, ir, typed.out, specs);
-      return ir;
+      return { modules: ir.modules, types: ir.types };
     })();
     ir.catch(() => {}); // a spec that is not valid is reported in its turn, not as an unhandled rejection
     return [spec.name, ir] as const;

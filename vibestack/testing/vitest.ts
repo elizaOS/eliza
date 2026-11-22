@@ -51,6 +51,13 @@ export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
         writeWhole(receipt, JSON.stringify({ fingerprint }));
       },
     };
+    const generatedTests = {
+      name: "vibestack-generated-tests",
+      async configureVitest() {
+        if (fs.existsSync(path.join(root, GENERATED)) || fs.globSync("src/**/*.{schema,contract}.{ts,vibe}", { cwd: root }).length)
+          await (await import("./generate.ts")).main(root);
+      },
+    };
     return {
       root,
       plugins: [vibelang(), ...plugins],
@@ -73,13 +80,7 @@ export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
         projects: [
           {
             extends: true,
-            plugins: [{
-              name: "vibestack-generated-tests",
-              async configureVitest() {
-                if (fs.existsSync(path.join(root, GENERATED)) || fs.globSync("src/**/*.{schema,contract}.{ts,vibe}", { cwd: root }).length)
-                  await (await import("./generate.ts")).main(root);
-              },
-            }],
+            plugins: [generatedTests],
             test: { name: "node", include: [...tests, `${GENERATED}/**/*.test.ts`], exclude: ["**/node_modules/**", ...BROWSER], environment: "node" },
           },
           // Chromium, and the provider that drives it, only where there are browser tests.
