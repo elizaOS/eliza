@@ -10,9 +10,9 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { gunzipSync } from "node:zlib";
+import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
-import { cacheCredentials, collectGarbage } from "./cache.ts";
+import { cacheCredentials, collectGarbage, isActionEntry } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
 import { exec, run as tool } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
@@ -45,7 +45,7 @@ const STORE = path.join(project, ".cache/selftest/.spec-cache");
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const sharing: string[] = [];
 const attempt = (act: () => void) => { try { act(); } catch { return; } };
-const toolRuns = (dir: string) => fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^action-[a-f0-9]{24}\.json\.gz$/.test(f)) : [];
+const toolRuns = (dir: string) => fs.existsSync(dir) ? fs.readdirSync(dir).filter(isActionEntry) : [];
 const unused = (root: string, since: number) => toolRuns(path.join(root, ".spec-cache")).filter((f) => fs.statSync(path.join(root, ".spec-cache", f)).mtimeMs < since);
 const keepRuns = (from: string, to: string) => {
   for (const name of toolRuns(from)) attempt(() => {
@@ -2056,17 +2056,31 @@ function eachCheck() {
     assert.ok(!fs.existsSync(sidecar));
   });
 
-  test("a truncated cache entry is recomputed and generated modules run in a CommonJS project", async () => {
+  test("gzip cache entries still work, truncated entries are recomputed and generated modules run in a CommonJS project", async () => {
     const root = fixtures(["door"], (f) => { f["package.json"] = '{"type":"commonjs"}'; });
     const before = await run(root);
     assert.deepEqual(before.failed, ["review"], before.text);
     const cache = path.join(root, ".spec-cache");
-    const entries = fs.readdirSync(cache).filter((f) => f.endsWith(".json.gz"));
-    assert.ok(entries.length > 0);
-    for (const entry of entries) fs.writeFileSync(path.join(cache, entry), "{");
+    const entries = () => fs.readdirSync(cache).filter((f) => f.endsWith(".json.zst")).sort();
+    const initial = entries();
+    assert.ok(initial.length > 0);
+    for (const entry of initial) {
+      const file = path.join(cache, entry);
+      const legacy = file.replace(/\.zst$/, ".gz");
+      fs.writeFileSync(legacy, gzipSync(zstdDecompressSync(fs.readFileSync(file))));
+      fs.rmSync(file);
+    }
+    const legacy = await run(root);
+    assert.deepEqual(legacy.results, before.results, legacy.text);
+    assert.deepEqual(entries(), []);
+    for (const entry of initial) {
+      fs.writeFileSync(path.join(cache, entry), "{");
+      fs.writeFileSync(path.join(cache, entry.replace(/\.zst$/, ".gz")), "{");
+    }
     const after = await run(root);
-    assert.deepEqual(after.failed, ["review"], after.text);
-    for (const entry of fs.readdirSync(cache).filter((f) => f.endsWith(".json.gz"))) assert.doesNotThrow(() => JSON.parse(gunzipSync(fs.readFileSync(path.join(cache, entry))).toString("utf8")));
+    assert.deepEqual(after.results, before.results, after.text);
+    assert.deepEqual(entries(), initial);
+    for (const entry of entries()) assert.doesNotThrow(() => JSON.parse(zstdDecompressSync(fs.readFileSync(path.join(cache, entry))).toString("utf8")));
   });
 
   test("changing an imported definition invalidates model and simulation results", async () => {
@@ -2551,7 +2565,7 @@ function eachCheck() {
     assert.ok(!fs.existsSync(expired), "an unused entry past retention is deleted");
     assert.ok(fs.existsSync(recent), "a recent entry from another branch remains reusable");
     assert.ok(fs.readdirSync(path.dirname(lock)).length > 0, "the entries it used are kept");
-    const newer = path.join(root, `.spec-cache/prove-${"3".repeat(24)}.json.gz`);
+    const newer = path.join(root, `.spec-cache/prove-${"3".repeat(24)}.json.zst`);
     fs.writeFileSync(newer, "{}");
     const file = fs.openSync(recent, "r+");
     fs.ftruncateSync(file, 256 * 2 ** 20);
