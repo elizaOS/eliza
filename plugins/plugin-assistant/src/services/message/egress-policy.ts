@@ -16,6 +16,7 @@ import type {
   StateData,
 } from "@elizaos/core";
 import {
+  activeCommittedEffectReceipts,
   composeToolDiagnosticRedactor,
   ElizaError,
   effectDeliveryBindingIsValid,
@@ -1165,11 +1166,43 @@ export async function resolvePlannedReplyEgress(args: {
     )
       return fail("Recovered reply asserts an unsupported outcome");
     // The judge attributes each claim; only the assistant's own changes need
-    // this turn's receipt, and that proof stays in code.
+    // this turn's proof, and that proof stays in code. A change that occurred
+    // needs a selected applied receipt. A change reported as not having
+    // occurred needs the cited result of this turn to have failed or left its
+    // effect unapplied: an honest failure report has no applied receipt to
+    // cite, while a failure no result records stays unsupported. A receipt
+    // whose provider acceptance is unknown proves neither polarity.
+    const results = actionResults();
+    const committed = new Set(
+      activeCommittedEffectReceipts(
+        mergeEffectReceipts(...results.map((result) => result.effectReceipts)),
+      ).map((receipt) => receipt.receiptId),
+    );
+    const reportsUnappliedResult = (claim: RecoveredReplyClaim) => {
+      const result =
+        typeof claim.failedResult === "number"
+          ? results[claim.failedResult - 1]
+          : undefined;
+      const receipts = result?.effectReceipts ?? [];
+      return (
+        result !== undefined &&
+        (result.success === false || receipts.length > 0) &&
+        !receipts.some(
+          (receipt) =>
+            committed.has(receipt.receiptId) ||
+            (receipt.outcome === "failed" &&
+              receipt.failure.acceptance === "unknown"),
+        )
+      );
+    };
     const unsupportedClaims = grounding.claims.filter(
       (claim) =>
         !claim.supported ||
-        (claim.change && claim.actor === "assistant" && !finalProof),
+        (claim.change &&
+          claim.actor === "assistant" &&
+          (claim.outcome === "not_occurred"
+            ? !reportsUnappliedResult(claim)
+            : !finalProof)),
     );
     return unsupportedClaims.length === 0
       ? {
