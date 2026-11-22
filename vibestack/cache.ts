@@ -270,6 +270,8 @@ export const verifierIdentity = perCheck(async () => {
 /** The verifier as installed now, even within a check: whether it was installed again while a tool ran. */
 export const verifiedNow = () => checking.exit(verifierIdentity);
 
+class SolverUnavailable extends Error {}
+
 /**
  * The solver selected by Dafny's installation, pinned for every proof and recorded in its cache key; selected again once
  * per check from the bundled candidates and Z3 on the PATH. A candidate's version is asked of it only once it changed.
@@ -299,19 +301,23 @@ export const solver = perCheck(async () => {
       if (version) return { path: real, version: keep(version) };
     } catch { /* try the next solver supplied by this installation */ }
   }
-  throw new Error("the proof stage needs the Z3 solver bundled with Dafny or on the PATH");
+  throw new SolverUnavailable("the proof stage needs the Z3 solver bundled with Dafny or on the PATH");
 });
 /** The native toolchain that a Turbo task's inputs cannot read from the repository. */
 export async function toolchainFingerprint() {
-  const z3 = await solver();
+  const z3 = await solver().catch((error: unknown) => {
+    if (error instanceof SolverUnavailable) return null;
+    throw error;
+  });
   const { findBinary } = await import("vibelang/binary");
   const compiler = findBinary();
-  for (const executable of [process.execPath, compiler, z3.path]) fs.accessSync(executable, fs.constants.X_OK);
+  for (const executable of [process.execPath, compiler]) fs.accessSync(executable, fs.constants.X_OK);
+  if (z3) fs.accessSync(z3.path, fs.constants.X_OK);
   return {
     platform: process.platform, arch: process.arch,
     node: { version: process.versions.node, digest: executableDigest(process.execPath) },
-    dafny: await dafnyIdentity(),
-    z3: { version: z3.version, digest: executableDigest(z3.path) },
+    dafny: onPath("dafny") ? await dafnyIdentity() : null,
+    z3: z3 && { version: z3.version, digest: executableDigest(z3.path) },
     vibelang: { version: packageVersion("vibelang"), digest: executableDigest(compiler) },
     packages: ["@informalsystems/quint", "lemmascript", "vibelang-runtime", "vibelang-vite", "typescript", "vitest", "effect", "@effect/platform-node", "@effect/vitest"].map(packageVersion),
   };

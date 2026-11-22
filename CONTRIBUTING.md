@@ -206,8 +206,10 @@ imports `gen/` only as types, so it does not compare the model with itself.
 Core generation produces deterministic code. It, and the story and property-test
 generators, write files only when their bytes change and remove outputs whose
 sources have gone: a check that changes no spec leaves `gen/` and the owners'
-`gen/` untouched, so nothing that watches them rebuilds. A check loads each
-generated module from its own `.spec-cache/run-<time>/`, removed when it ends. `.spec-cache/`
+`gen/` untouched, so nothing that watches them rebuilds. Whole-tree `spec gen`
+keeps the generated files in memory until every model is valid, then updates
+changed files. An invalid edit leaves the existing outputs in use. A check loads
+each generated module from its own `.spec-cache/run-<time>/`, removed when it ends. `.spec-cache/`
 remembers each run of Quint (which parses and typechecks a harness once for all its simulations, each run by Quint's
 evaluator on the result: `vibestack/simulator.ts`), and of LemmaScript and Dafny on a proof, under the program as installed, its arguments and
 the files it reads, without their prose, comments and layout (`vibestack/action.ts`),
@@ -269,7 +271,9 @@ and stage results. An acceptance or nightly check always reads fresh inputs.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
-and their runtime files before Turbo hashes its inputs. What it reads of an
+and their runtime files before Turbo hashes its inputs. A build can run
+without the verifier. Its task key records missing verification tools,
+and a proof still requires them. What it reads of an
 installed file, and Dafny's version, is remembered across processes in
 `$XDG_CACHE_HOME/vibestack` (`~/.cache/vibestack` by default) while the file's
 device, inode, size and modification and change times stay the same, so an
