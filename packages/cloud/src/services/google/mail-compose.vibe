@@ -148,7 +148,6 @@ const RepliedMessage = Schema.Struct({
   payload: Schema.Struct({ headers: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))) })
 })
 
-type Proposal = typeof Proposal.Type
 type Replied = typeof RepliedMessage.Type
 
 function headerValues(message: Replied, name: string): ReadonlyArray<string> {
@@ -317,7 +316,7 @@ function attachmentReview(file: File): AttachmentReview {
 export effect function composeMessage(raw: unknown, context: ComposeContext) {
   const decoded = Schema.decodeUnknownOption(Proposal, { onExcessProperty: "error" })(raw)
   if (Option.isNone(decoded)) throw refused("InvalidRequest")
-  const proposal: Proposal = decoded.value
+  const proposal = decoded.value
   const replying = proposal.mode === "reply" || proposal.mode === "reply-all"
   if (headerUnsafe.test(proposal.subject) || replying !== (proposal.replyMessageId !== undefined)) throw refused("InvalidRequest")
   const source = proposal.forwardAttachments

@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest"
 import { decodeRegistration, registerClient } from "../../src/native-clients/registry.vibe"
 import type { Tx } from "../../src/store/connection.vibe"
 import { testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
-import { fragment, googleIdentityFake, visit, type GoogleIdentityFake } from "../support/google-identity-fake.ts"
+import { fragment, googleIdentityFake, visit } from "../support/google-identity-fake.ts"
 import { s256 } from "../support/identity-fixture.ts"
 import { secrets } from "../support/profile.ts"
 
