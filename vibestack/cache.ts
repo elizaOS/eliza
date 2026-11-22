@@ -218,6 +218,8 @@ function perCheck<T>(read: () => Promise<T>): () => Promise<T> {
 
 const TOOL_PACKAGES = { quint: "@informalsystems/quint", lsc: "lemmascript" } as const;
 const packageName = (name: string) => /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i.test(name);
+const NODE_FLAGS = ["NODE_OPTIONS", "NODE_PRESERVE_SYMLINKS", "NODE_PRESERVE_SYMLINKS_MAIN"] as const;
+const nodeFlags = () => JSON.stringify(NODE_FLAGS.map((name) => process.env[name] ?? ""));
 type Isolated = { entry: string; script: string };
 type Program = { exe: string; unchanged: () => boolean } & ({ id: string; isolated: Isolated } | { id: undefined; isolated?: never });
 const latest = new Map<keyof typeof TOOL_PACKAGES, Program>();
@@ -288,7 +290,7 @@ const PNPM_SHIM = [
 
 function launcherInputs(exe: string, packageDir: string, exists: (file: string) => boolean): { digest: string; entry: string } | undefined {
   const launcher = fs.realpathSync(exe);
-  if (path.basename(path.dirname(launcher)) !== ".bin" || process.env.NODE_OPTIONS) return undefined;
+  if (path.basename(path.dirname(launcher)) !== ".bin" || NODE_FLAGS.some((name) => process.env[name])) return undefined;
   const bytes = fs.readFileSync(launcher);
   if (!isUtf8(bytes)) return undefined;
   const store = virtualStore(packageDir);
@@ -542,7 +544,7 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
   if (previous?.exe !== exe || !previous.unchanged()) {
     const searchPath = process.env.NODE_PATH;
     const commandPath = process.env.PATH;
-    const nodeOptions = process.env.NODE_OPTIONS;
+    const nodeOptions = nodeFlags();
     const key = sha(programSource ??= code(closure("cache")), import.meta.dirname, path.resolve(exe), searchPath ?? "", commandPath ?? "", nodeOptions ?? "", process.execPath, process.version, process.platform, process.arch);
     const name = `installed-${key.slice(0, 24)}.json.zst`;
     const directory = path.join(path.dirname(LASTING), "installations");
@@ -565,11 +567,11 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
           }
         }
       } catch (error) { if (error instanceof InstallationChanged) throw error; }
-      const stable = () => process.env.NODE_PATH === searchPath && process.env.PATH === commandPath && process.env.NODE_OPTIONS === nodeOptions && unchanged();
+      const stable = () => process.env.NODE_PATH === searchPath && process.env.PATH === commandPath && nodeFlags() === nodeOptions && unchanged();
       latest.set(tool, previous = installed ? { exe, ...installed, unchanged: stable } : { exe, id: undefined, unchanged: stable });
     } else {
       const stable = installed.unchanged;
-      latest.set(tool, previous = { exe, ...installed, unchanged: () => process.env.NODE_PATH === searchPath && process.env.PATH === commandPath && process.env.NODE_OPTIONS === nodeOptions && stable() });
+      latest.set(tool, previous = { exe, ...installed, unchanged: () => process.env.NODE_PATH === searchPath && process.env.PATH === commandPath && nodeFlags() === nodeOptions && stable() });
     }
   }
   const program: Program = { ...previous, unchanged: () => findBin(tool, root) === exe && previous.unchanged() };

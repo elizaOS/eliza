@@ -3932,6 +3932,44 @@ test("the same installed Quint shares verification results across checkouts and 
     fs.writeFileSync(right.shim, changed);
     assert.notEqual(await identity(right.root), expected);
   }
+  for (const flag of ["NODE_PRESERVE_SYMLINKS", "NODE_PRESERVE_SYMLINKS_MAIN"]) {
+    const project = install("first");
+    const directory = path.join(project.root, "node_modules/@informalsystems/quint");
+    const main = path.join(directory, "cli.cjs");
+    if (flag === "NODE_PRESERVE_SYMLINKS") {
+      const manifestFile = path.join(directory, "package.json");
+      const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+      fs.writeFileSync(manifestFile, JSON.stringify({ ...manifest, dependencies: { left: "1.0.0", right: "1.0.0" } }));
+      for (const name of ["left", "right"]) fs.symlinkSync("values", path.join(path.dirname(project.values), name), "dir");
+      fs.writeFileSync(path.join(project.values, "index.js"), "module.exports = {};");
+      fs.writeFileSync(main, 'require("node:fs").writeFileSync("ir.json", JSON.stringify(require("left") === require("right")));');
+    } else {
+      fs.mkdirSync(path.join(directory, "code"));
+      fs.writeFileSync(path.join(directory, "code/cli.cjs"), 'require("node:fs").writeFileSync("ir.json", JSON.stringify(require("./local.cjs")));');
+      fs.writeFileSync(path.join(directory, "code/local.cjs"), 'module.exports = "resolved-main";');
+      fs.writeFileSync(path.join(directory, "local.cjs"), 'module.exports = "preserved-main";');
+      fs.unlinkSync(main);
+      fs.symlinkSync("code/cli.cjs", main);
+    }
+    const receipts = scratch({});
+    const freshReceipts = scratch({});
+    const child = await exec(process.execPath, ["--input-type=module", "--eval", `
+      import assert from "node:assert/strict";
+      import { act } from "./vibestack/action.ts";
+      import { installedProgram, steady, withFormalCache } from "./vibestack/cache.ts";
+      const program = installedProgram(".", "quint");
+      assert.ok(program.id);
+      const run = async cache => JSON.parse((await withFormalCache(cache, () => steady(() => act({ root: ".", fresh: false, used: new Set() }, "quint", ["typecheck"], "run", {})))).files["ir.json"]);
+      assert.equal(await run(${JSON.stringify(receipts)}), ${flag === "NODE_PRESERVE_SYMLINKS" ? 'true' : '"resolved-main"'});
+      process.env[${JSON.stringify(flag)}] = "1";
+      assert.equal(program.unchanged(), false);
+      assert.equal(installedProgram(".", "quint").id, undefined);
+      assert.deepEqual([await run(${JSON.stringify(receipts)}), await run(${JSON.stringify(freshReceipts)})], ${JSON.stringify(flag === "NODE_PRESERVE_SYMLINKS" ? [false, false] : ["preserved-main", "preserved-main"])});
+    `], project.root);
+    assert.equal(child.status, 0, child.stderr);
+    assert.equal(toolRuns(receipts).length, 1);
+    assert.deepEqual(toolRuns(freshReceipts), []);
+  }
   const malformed = install("first");
   const malformedManifest = path.join(malformed.root, "node_modules/@informalsystems/quint/package.json");
   const manifest = JSON.parse(fs.readFileSync(malformedManifest, "utf8"));
