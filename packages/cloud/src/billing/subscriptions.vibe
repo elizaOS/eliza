@@ -18,7 +18,6 @@ export error ProviderSubscriptionInvalid { organizationId: string; problem: stri
 export const staleAfterMs = 300_000
 export const sweepEveryMs = 60_000
 const sweepBatch = 25
-const providerTimeout = 30_000
 
 const wireStatus: Readonly<Record<SubscriptionStatus, string>> = {
   NoSubscription: "none", Pending: "pending", Incomplete: "incomplete", Active: "active", Dunning: "dunning",
