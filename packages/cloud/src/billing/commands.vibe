@@ -598,8 +598,8 @@ function cancellation(kind: "CancelCommand" | "UndoCommand"): CommandSpec {
   }
 }
 
-export const cancelCommand = cancellation("CancelCommand")
-export const undoCommand = cancellation("UndoCommand")
+const cancelCommand = cancellation("CancelCommand")
+const undoCommand = cancellation("UndoCommand")
 
 schema CommandBody {
   subscriptionId: string
