@@ -155,12 +155,19 @@ jobs:
         with:
           path: ${{ steps.setup.outputs.spec-cache-path }}
           key: ${{ steps.setup.outputs.spec-cache-key }}
-      - if: always() && steps.setup.outputs.turbo-cache-key != ''
+      - id: prune-turbo-cache
+        if: always() && steps.setup.outputs.turbo-cache-key != ''
         run: |
-          mkdir -p .turbo/cache
+          [[ -d .turbo/cache ]] || exit 0
           cat .turbo/runs/*.json 2>/dev/null | jq -r '.tasks[] | select(.cache.status == "HIT") | .hash' | while read -r hash; do find .turbo/cache -name "$hash*" -exec touch {} +; done
           find .turbo/cache -type f -mtime +7 -delete
-      - if: always() && steps.setup.outputs.turbo-cache-key != ''
+          for archive in .turbo/cache/*.tar.zst; do
+            metadata="${archive%.tar.zst}-meta.json"
+            [[ -f "$archive" && -s "$archive" && -f "$metadata" && -s "$metadata" ]] || continue
+            echo "populated=true" >> "$GITHUB_OUTPUT"
+            break
+          done
+      - if: always() && steps.prune-turbo-cache.outputs.populated == 'true'
         uses: actions/cache/save@v6
         with:
           path: .turbo/cache

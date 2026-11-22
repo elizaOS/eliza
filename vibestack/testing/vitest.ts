@@ -27,9 +27,11 @@ const BROWSER = ["test/**/*.browser.test.{ts,tsx,vibe}", "generated/stories/stor
 /** The package's tests, and those generate.ts derives from its schemas and contracts, written first (its `main`). */
 export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
   defineConfig(async ({ mode }) => {
-    // Only a package with something to derive from, or with tests derived before, pays for the generator.
-    if (fs.existsSync(path.join(root, GENERATED)) || fs.globSync("src/**/*.{schema,contract}.{ts,vibe}", { cwd: root }).length)
-      await (await import("./generate.ts")).main(root);
+    let generated: Promise<void> | undefined;
+    const generate = async () => {
+      if (fs.existsSync(path.join(root, GENERATED)) || fs.globSync("src/**/*.{schema,contract}.{ts,vibe}", { cwd: root }).length)
+        await (await import("./generate.ts")).main(root);
+    };
     const browser = fs.globSync(BROWSER, { cwd: root }).length > 0;
     const selected = mode === "nightly" ? "nightly" : "normal", receipt = testReceipt(root, selected);
     let fingerprint: string | undefined, complete = false;
@@ -56,12 +58,13 @@ export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
     };
     return {
       root,
-      plugins: [vibelang(), ...plugins],
+      plugins: [{ name: "vibestack:generate-property-tests", config: () => generated ??= generate() }, vibelang(), ...plugins],
       test: {
         reporters: ["default", record],
         allowOnly: false,
         passWithNoTests: true,
         attachmentsDir: ".cache/vitest/attachments",
+        fsModuleCachePath: ".cache/vitest/modules",
         // `vitest run` leaves Chromium to `test:browser`, whose `--project browser` takes the place of this filter.
         project: ["!browser"],
         // A failure repeats: fixed order, no retry that could hide a flaky test. Properties use profile.ts.
