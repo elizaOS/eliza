@@ -75,8 +75,7 @@ const SecureCameraModuleSchema = Schema.Struct({
   files: Schema.Record(Schema.String, Sha256Hex),
 })
 const SecureCameraContractSchema = Schema.Struct({ schemaVersion: Schema.Literal(1), modules: Schema.Array(SecureCameraModuleSchema).check(Schema.isMinLength(1)) })
-export type SecureCameraContract = typeof SecureCameraContractSchema.Type
-export type SecureCameraModule = typeof SecureCameraModuleSchema.Type
+type SecureCameraModule = typeof SecureCameraModuleSchema.Type
 
 export interface ReviewedOverride {
   readonly path: string

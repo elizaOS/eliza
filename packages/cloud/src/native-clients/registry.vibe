@@ -30,7 +30,6 @@ const RegistrationFieldsSchema = Schema.Struct({
   nativeGoogle: Schema.Boolean,
   enabled: Schema.Boolean
 })
-export type RegistrationFields = typeof RegistrationFieldsSchema.Encoded
 
 const environments: Readonly<Record<string, Environment | undefined>> = { production: "Production", staging: "Staging" }
 const wireEnvironment: Readonly<Record<Environment, "production" | "staging">> = { Production: "production", Staging: "staging" }
