@@ -151,7 +151,7 @@ pure def lawAnAdmittedCallIsHeldAtItsQuote(ingress: R::Window, auth: RA::Admissi
         and bodyAccepted(body) and x.call.model.id == body.model and (hasImage(body) implies x.call.model.vision)
         and Mo::countsInBound(x.call.counts) and x.call.quote == Mo::callCost(x.call.model, x.call.counts) and x.call.lane == E::fundingLane(policy)
         and x.call.hold.phase == M::Reserved and x.call.hold.quote == x.call.quote and x.call.hold.reserved >= x.call.quote
-        and x.call.hold.key == inferenceHoldKey(a.organization, a.requestId)
+        and M::holdKeyOf(x.call.hold) == inferenceHoldKey(a.organization, a.requestId)
     | RefusedAt(r) => wellFormed(r.refusal)
   }
 }
@@ -308,18 +308,19 @@ A finished stream sends its chunks, one usage chunk when the request asked
 ```quint
 type StreamEnding = StreamFinished | StreamFailed | StreamHungUp
 type Frame = Delta({ seq: int }) | UsageChunk | ErrorChunk | Done
+pure val errorFrame: Frame = ErrorChunk
 pure def streamFrames(deltas: List[int], ending: StreamEnding, usageAsked: bool, usageReported: bool): List[Frame] = {
   val body = deltas.listMap(d => Delta({ seq: d }))
   if (ending == StreamFinished) body.concat(if (usageAsked and usageReported) List(UsageChunk, Done) else List(Done))
   else if (ending == StreamFailed) body.concat(List(ErrorChunk, Done))
   else body
 }
-pure def completes(frames: List[Frame]): bool = frames.length() > 0 and frames.nthOr(frames.length() - 1, ErrorChunk) == Done and not(frames.includes(ErrorChunk))
+pure def completes(frames: List[Frame]): bool = frames.length() > 0 and frames.nthOr(frames.length() - 1, errorFrame) == Done and not(frames.includes(ErrorChunk))
 pure def countOf(frames: List[Frame], f: Frame): int = frames.select(g => g == f).length()
 pure val deltasValues = Set(List(), List(1), List(1, 2, 3))
 pure def lawEveryUnbrokenStreamEndsInOneDone(deltas: List[int], ending: StreamEnding, usageAsked: bool, usageReported: bool): bool = {
   val frames = streamFrames(deltas, ending, usageAsked, usageReported)
-  (ending != StreamHungUp implies (frames.nthOr(frames.length() - 1, ErrorChunk) == Done and countOf(frames, Done) == 1))
+  (ending != StreamHungUp implies (frames.nthOr(frames.length() - 1, errorFrame) == Done and countOf(frames, Done) == 1))
     and (ending == StreamHungUp implies countOf(frames, Done) == 0)
 }
 pure def lawOnlyAFinishedStreamCompletes(deltas: List[int], ending: StreamEnding, usageAsked: bool, usageReported: bool): bool =
