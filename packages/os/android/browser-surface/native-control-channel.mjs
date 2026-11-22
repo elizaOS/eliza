@@ -17,6 +17,7 @@ function installControlChannel(pageCommand, pageGuidance) {
   let documentId = identifier();
   let active = true;
   let sequence = 0;
+  const spent = new Set();
   const send = (value) => channel.postMessage(JSON.stringify(value));
   channel.onmessage = (event) => {
     let request;
@@ -112,10 +113,18 @@ function installControlChannel(pageCommand, pageGuidance) {
             (target) =>
               target &&
               typeof target.selector === "string" &&
-              ["click", "fill", "select", "scroll", "follow"].includes(
-                target.action,
-              ),
+              [
+                "click",
+                "fill",
+                "fill-code",
+                "select",
+                "scroll",
+                "follow",
+              ].includes(target.action),
           ) ||
+          (policy.protectedValueKind !== undefined &&
+            (policy.protectedValueKind !== "verification-code" ||
+              command.subaction !== "fill")) ||
           (policy.commitGrant !== undefined &&
             (!policy.commitGrant ||
               typeof policy.commitGrant !== "object" ||
@@ -134,6 +143,10 @@ function installControlChannel(pageCommand, pageGuidance) {
                     "string")) ||
               (policy.commitGrant.formHash !== undefined &&
                 !/^[0-9a-f]{64}$/.test(policy.commitGrant.formHash)) ||
+              (command.subaction === "click"
+                ? policy.commitGrant.valueHash !== undefined
+                : typeof policy.commitGrant.valueHash !== "string" ||
+                  !/^[0-9a-f]{64}$/.test(policy.commitGrant.valueHash)) ||
               !["click", "fill", "select"].includes(command.subaction)))))
     ) {
       reject(
@@ -142,20 +155,60 @@ function installControlChannel(pageCommand, pageGuidance) {
       );
       return;
     }
-    try {
-      const snapshotId = command.subaction === "snapshot" ? identifier() : null;
-      const result = pageCommand(
-        command,
-        snapshotId,
-        command.validateOnly === true,
-      );
-      reply(snapshotId && !result.error ? { ...result, snapshotId } : result);
-    } catch {
-      reject(
-        command.subaction === "snapshot" ? "UNAVAILABLE" : "UNCERTAIN_OUTCOME",
-        "The page command did not return a result; observe before continuing.",
-      );
+    const run = () => {
+      try {
+        const snapshotId =
+          command.subaction === "snapshot" ? identifier() : null;
+        const result = pageCommand(
+          command,
+          snapshotId,
+          command.validateOnly === true,
+        );
+        reply(snapshotId && !result.error ? { ...result, snapshotId } : result);
+      } catch {
+        reject(
+          command.subaction === "snapshot"
+            ? "UNAVAILABLE"
+            : "UNCERTAIN_OUTCOME",
+          "The page command did not return a result; observe before continuing.",
+        );
+      }
+    };
+    const grant = policy?.commitGrant;
+    if (!grant) {
+      run();
+      return;
     }
+    const refuse = () =>
+      reject(
+        "POLICY_BLOCKED",
+        "This commit grant was spent or does not match.",
+      );
+    if (spent.has(grant.grantId)) {
+      refuse();
+      return;
+    }
+    if (command.validateOnly !== true) spent.add(grant.grantId);
+    if (command.subaction === "click") {
+      run();
+      return;
+    }
+    Promise.resolve()
+      .then(() =>
+        crypto.subtle.digest("SHA-256", new TextEncoder().encode(command.text)),
+      )
+      .then((digest) => {
+        const hash = Array.from(new Uint8Array(digest), (byte) =>
+          byte.toString(16).padStart(2, "0"),
+        ).join("");
+        if (!active || request.documentId !== documentId)
+          reject(
+            "STALE_REF",
+            "The document or command sequence is no longer current.",
+          );
+        else if (hash !== grant.valueHash) refuse();
+        else run();
+      }, refuse);
   };
   const ready = () => send({ ready: true, documentId });
   window.addEventListener("pagehide", (event) => {
