@@ -338,14 +338,18 @@ effect function openNative(purpose: NativePurpose, request: typeof NativeBody.Ty
   })
 }
 
-export effect function issueNativeBackupChallenge(tx: Tx, attempt: NativeBackupAttempt & { readonly codeChallenge: string; readonly audience: string }, now: number) {
+export effect function issueNativeBackupChallenge(tx: Tx, attempt: NativeBackupAttempt & {
+  readonly accountId: string
+  readonly codeChallenge: string
+  readonly audience: string
+}, now: number) {
   const purpose: NativePurpose = { tag: "NativeBackup", binding: attempt.binding }
   if (!challengePattern.test(attempt.codeChallenge) || !canIssueNative(initial, purpose, "S256")) throw refused("InvalidRequest")
   const key = newId()
   const nonce = secretText("", 32, "hex")
   const issued = try step(tx, key, { type: "issueNative", purpose, method: "S256" }, now, {
     route: "native", client_id: attempt.clientId, redirect_uri: attempt.redirectUri,
-    challenge_digest: tokenDigest(attempt.codeChallenge), nonce_digest: tokenDigest(nonce)
+    challenge_digest: tokenDigest(attempt.codeChallenge), nonce_digest: tokenDigest(nonce), link_user_id: attempt.accountId
   })
   return { challengeId: key, nonce, serverClientId: attempt.audience, expiresAt: dueAt(issued.state) } satisfies NativeChallenge
 }

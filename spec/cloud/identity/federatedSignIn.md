@@ -329,11 +329,12 @@ current acknowledged device grant, its account and organization, and one
 recovery purpose, state and backup PKCE challenge. The shell admits that
 device and registration before opening the challenge, binds these facts in
 one canonical request digest, and checks them again using the current device
-credential when the proof is presented. The verified Google subject must
-equal the subject recorded for that same account. Native confirmation is
-for the bound recovery action. The usual Google PKCE, issuer, audience,
-signature, nonce and expiration checks also apply. For this purpose, the
-client match also checks the signed Google authorized presenter against
+credential when the proof is presented. The attempt records the account
+owner so [account erasure](./deletion.md) removes it. The verified Google
+subject must equal the subject recorded for that same account. Native
+confirmation is for the bound recovery action. The usual Google PKCE,
+issuer, audience, signature, nonce and expiration checks also apply.
+The client match also checks the signed Google authorized presenter against
 the Android OAuth clients registered for the app. The audience remains
 the Cloud server client. Existing sign-in and link proofs keep their
 own checks.
