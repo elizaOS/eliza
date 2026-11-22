@@ -1,5 +1,5 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "Story: Sign in to the Cloud"
-import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch } from "./worker-platform.ts"
+import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch, type WorkerLifetime } from "./worker-platform.ts"
 import type { Client } from "pg"
 import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { sweepUsage } from "./worker-metering.vibe"
@@ -13,7 +13,7 @@ import { deviceAttachmentPath, googleRequest, reminderSchedule, type GoogleEnv }
 import { billingRequest, refreshPaidAccess, stripeWebhook, stripeWebhookRoute, sweepSubscriptions, type BillingEnv } from "./billing.vibe"
 import { CLEF_DECISIONS_PATH } from "./clef-decisions.vibe"
 import { clefRequest, type ClefEnv } from "./clef-worker.vibe"
-import { inferenceRequest, limitedBody, type InferenceEnv, type WorkerLifetime } from "./inference.vibe"
+import { inferenceRequest, limitedBody, type InferenceEnv } from "./inference.vibe"
 
 export type CloudBindings = ClefEnv & IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase
 type DeploymentExtension<E extends CloudBindings> = (request: Request, env: E, db: Client, account: string) => Promise<Response>

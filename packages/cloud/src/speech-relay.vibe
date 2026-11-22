@@ -2,14 +2,13 @@
 import { browserNativeRegistration } from "./native-registry.vibe"
 import { withCloudDatabase } from "./worker-store.vibe"
 import { dispatchUsage, releaseUsage, settleUsage } from "./worker-metering.vibe"
-import { WorkerResponse } from "./worker-platform.ts"
+import { WorkerResponse, type WorkerLifetime } from "./worker-platform.ts"
 import { acceptSpeechSocket, drainSpeechInput, openSpeechProvider, speechDeadline, voiceNow, type CloudSocket } from "./speech-platform.ts"
 import {
   speechCharacters, speechChunk, speechOutputLimit, speechPcmBudget, speechPhraseCharacters,
   speechSettings, speechTokenHash, type SpeechEnv
 } from "./speech.vibe"
 
-type Lifetime = { waitUntil(work: Promise<unknown>): void }
 type RelayControl = { halt(): Promise<void> }
 
 const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
@@ -154,7 +153,7 @@ function closeSocket(socket: CloudSocket | null, reason: string, code = 1000) {
   }
 }
 
-function bindRelay(life: Lifetime, env: SpeechEnv, id: string, downstream: CloudSocket, key: string, voice: string, onEnded: () => void): RelayControl {
+function bindRelay(life: WorkerLifetime, env: SpeechEnv, id: string, downstream: CloudSocket, key: string, voice: string, onEnded: () => void): RelayControl {
   const abort = new AbortController()
   const contexts = new Map<string, "prepared" | "speaking" | "finishing" | "closed">()
   const usage: Usage = { pcmBytes: 0, ttsCharacters: 0 }
@@ -419,7 +418,7 @@ export class SpeechRelayCoordinator {
   private active: RelayControl | null = null
   private blocked = false
 
-  constructor(private readonly lifetime: Lifetime, private readonly env: SpeechEnv) {}
+  constructor(private readonly lifetime: WorkerLifetime, private readonly env: SpeechEnv) {}
 
   async fetch(request: Request) {
     const url = new URL(request.url)

@@ -65,7 +65,8 @@ The original hold settles once at the billed cost when usable counts were
 reported, including after a stream failure. It settles at the quote when no
 usable report arrived. A caller disconnect releases the provider connection
 and charges the greater of quoted and reported input tokens, plus the
-output tokens estimated from delivered text.
+output tokens estimated from delivered text. Between dispatch and the
+provider's response headers, a disconnect charges only quoted input.
 
 The [chat completion rules](./services/inference.md) define the framing,
 chunking and charge decisions. The [shared metering rules](./shared/metering.md)

@@ -62,9 +62,11 @@ export function meteredChatStream({ upstream, publicModelId, quoted, holdKey, pr
   const replies = Stream.flatMap(Stream.takeUntil(frames, isDone), (frame) => Stream.fromEffect(effect {
     if (frame.length > frameBytes) throw new ProviderInvalidResponse()
     if (isDone(frame)) {
-      const actual = reported === undefined ? undefined : try price(reported)
-      try finishHold(completionSettlement(actual))
-      settled = true
+      try Effect.uninterruptible(effect {
+        const actual = reported === undefined ? undefined : try price(reported)
+        try finishHold(completionSettlement(actual))
+        settled = true
+      })
       return encoder.encode(usageFrame + doneFrame)
     }
     const payload = readLlmObject(decoder.decode(Uint8Array.from(frame)))

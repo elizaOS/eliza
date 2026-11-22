@@ -5,6 +5,10 @@ export const WorkerHeaders = globalThis.Headers
 export const workerFetch: typeof fetch = (input, init) => globalThis.fetch(input, init)
 export const newRequestId = () => globalThis.crypto.randomUUID()
 
+export interface WorkerLifetime {
+  waitUntil(work: Promise<unknown>): void
+}
+
 export function withRequestBody(request: Request, bytes: Uint8Array) {
   return new Request(request, { body: Uint8Array.from(bytes) })
 }
