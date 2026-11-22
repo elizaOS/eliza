@@ -3909,7 +3909,10 @@ test("the same installed Quint shares verification results across checkouts and 
     fs.writeFileSync(path.join(values, "package.json"), JSON.stringify({ name: "values", version: "1.0.0" }));
     fs.writeFileSync(path.join(values, "index.js"), `module.exports = ${JSON.stringify(fallback ?? "default")};\n`);
     const shim = path.join(modules, ".bin/quint");
-    fs.writeFileSync(shim, `#!/bin/sh\nexport NODE_PATH="${store}/${lookup}:${store}/node_modules:$NODE_PATH"\nexec node "$(dirname "$0")/../.pnpm/${locator}/@informalsystems/quint/cli.cjs" "$@"\n`, { mode: 0o755 });
+    const stock = fs.readFileSync(path.join(nodeModules, ".bin/quint"), "utf8");
+    const search = `${store}/${lookup}:${store}/node_modules`;
+    fs.writeFileSync(shim, stock.replace(/^(  export NODE_PATH=")[^"\r]*("\r?)$/gm, (_line, before: string, after: string) => `${before}${search}:${before.includes("export") ? "$NODE_PATH" : ""}${after}`)
+      .replace(/("\$basedir\/)[^"\r\n]+(" "\$@")/g, `$1../.pnpm/${locator}/@informalsystems/quint/cli.cjs$2`), { mode: 0o755 });
     return { root, shim, values };
   };
   const identity = async (root: string) => {
@@ -3921,6 +3924,7 @@ test("the same installed Quint shares verification results across checkouts and 
   const left = install("first");
   const right = install("first");
   const expected = await identity(left.root);
+  assert.ok(expected, "a recognized pnpm launcher supplies a reusable identity");
   assert.equal(await identity(right.root), expected);
   assert.notEqual(await identity(install("second").root), expected);
   const launcher = fs.readFileSync(right.shim, "utf8");
@@ -3928,6 +3932,48 @@ test("the same installed Quint shares verification results across checkouts and 
     fs.writeFileSync(right.shim, changed);
     assert.notEqual(await identity(right.root), expected);
   }
+  for (const kind of ["source", "node-options", "require"] as const) {
+    const changed = install("first");
+    const external = path.join(changed.root, kind === "source" ? "external.sh" : "external.cjs");
+    const stock = fs.readFileSync(changed.shim, "utf8");
+    const directive = kind === "source" ? `. ${JSON.stringify(external)}` : `export NODE_OPTIONS="--require ${external}"`;
+    const launcher = kind === "require" ? stock.replace(/^(  exec (?:node|"\$basedir\/node"))  /gm, `$1 --require ${JSON.stringify(external)} `)
+      : stock.replace("#!/bin/sh\n", `#!/bin/sh\n${directive}\n`);
+    fs.writeFileSync(changed.shim, launcher);
+    fs.writeFileSync(path.join(changed.root, "node_modules/@informalsystems/quint/cli.cjs"), 'require("node:fs").writeFileSync("ir.json", JSON.stringify(process.env.EXTERNAL_VALUE));\n');
+    const cache = scratch({});
+    for (const value of ["before", "after"]) {
+      fs.writeFileSync(external, kind === "source" ? `export EXTERNAL_VALUE=${value}\n` : `process.env.EXTERNAL_VALUE = ${JSON.stringify(value)};\n`);
+      const child = await exec(process.execPath, ["--input-type=module", "--eval", `
+        import assert from "node:assert/strict";
+        import { act } from "./vibestack/action.ts";
+        import { installedProgram, withFormalCache } from "./vibestack/cache.ts";
+        assert.equal(installedProgram(".", "quint").id, undefined);
+        const result = await withFormalCache(${JSON.stringify(cache)}, () => act({ root: ".", fresh: false, used: new Set() }, "quint", ["typecheck"], "run", {}));
+        console.log(result.files["ir.json"]);
+      `], changed.root);
+      assert.equal(child.status, 0, child.stderr);
+      assert.equal(JSON.parse(child.stdout), value);
+    }
+    assert.deepEqual(toolRuns(cache), [], `${kind} external code always executes afresh`);
+  }
+  const changedInterpreter = install("first");
+  const alternateNode = path.join(changedInterpreter.root, "node_modules/.bin/node");
+  const alternateCache = scratch({});
+  for (const value of ["alternate", "revised"]) {
+    fs.writeFileSync(alternateNode, `#!/bin/sh\n${JSON.stringify(process.execPath)} -e 'require("node:fs").writeFileSync("ir.json", JSON.stringify(${JSON.stringify(value)}))'\n`, { mode: 0o755 });
+    const child = await exec(process.execPath, ["--input-type=module", "--eval", `
+      import assert from "node:assert/strict";
+      import { act } from "./vibestack/action.ts";
+      import { installedProgram, withFormalCache } from "./vibestack/cache.ts";
+      assert.equal(installedProgram(".", "quint").id, undefined);
+      const result = await withFormalCache(${JSON.stringify(alternateCache)}, () => act({ root: ".", fresh: false, used: new Set() }, "quint", ["typecheck"], "run", {}));
+      console.log(result.files["ir.json"]);
+    `], changedInterpreter.root);
+    assert.equal(child.status, 0, child.stderr);
+    assert.equal(JSON.parse(child.stdout), value);
+  }
+  assert.deepEqual(toolRuns(alternateCache), [], "a different selected Node cannot reuse a receipt");
   const shared = scratch({});
   for (const [value, bareFile] of [["first", false], ["second", false], ["third", true]] as const) {
     const { root } = install("first");
@@ -3950,6 +3996,30 @@ test("the same installed Quint shares verification results across checkouts and 
     assert.equal(JSON.parse(child.stdout), value);
   }
   assert.equal(toolRuns(shared).length, 3);
+  const transient = install("first");
+  const implementation = path.join(transient.root, "node_modules/@informalsystems/quint/cli.cjs");
+  fs.writeFileSync(implementation, `const fs = require("node:fs");
+const original = fs.readFileSync(__filename);
+try {
+  fs.writeFileSync(__filename, 'require("node:fs").writeFileSync("ir.json", JSON.stringify("transient"));');
+  require("node:child_process").execFileSync(process.execPath, [__filename]);
+} finally {
+  fs.writeFileSync(__filename, original);
+}
+`);
+  const changedDuringRun = await exec(process.execPath, ["--input-type=module", "--eval", `
+    import assert from "node:assert/strict";
+    import fs from "node:fs";
+    import { act } from "./vibestack/action.ts";
+    import { steady } from "./vibestack/cache.ts";
+    const file = "node_modules/@informalsystems/quint/cli.cjs";
+    const original = fs.readFileSync(file);
+    await assert.rejects(steady(() => act({ root: ".", fresh: false, used: new Set() }, "quint", ["typecheck"], "run", {})), /tool installation changed/);
+    assert.equal(JSON.parse(fs.readFileSync("run/ir.json", "utf8")), "transient");
+    assert.deepEqual(fs.readFileSync(file), original);
+  `], transient.root);
+  assert.equal(changedDuringRun.status, 0, changedDuringRun.stderr);
+  assert.deepEqual(toolRuns(path.join(transient.root, ".spec-cache")), [], "a changed implementation executed then restored cannot publish");
   const publication = await exec(process.execPath, ["--input-type=module", "--eval", `
     import assert from "node:assert/strict";
     import fs from "node:fs";

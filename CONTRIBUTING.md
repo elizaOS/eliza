@@ -283,6 +283,10 @@ outlives a reinstall, as `spec watch` does, reads the installed toolchain
 again on the next check. Simulations and proofs include the resolved package files
 and dependency links for Quint and LemmaScript. Each check shares an installation
 inventory across runs of the same tool and validates its files before publishing a batch.
+Reusable launcher identities recognize the stock pnpm POSIX shim, its declared entry,
+module search roots and selected Node interpreter. Custom launchers, Windows shims
+and Node preload options run without receipt reuse when their loaded code cannot be
+inventoried.
 The first action, long actions, completed stages and the end of the check flush pending results.
 If a concurrent installation changes these files, the check discards the pending results
 and retries under the same project lock. It stops after two unsuccessful retries. A

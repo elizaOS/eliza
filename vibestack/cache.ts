@@ -260,20 +260,59 @@ function shimNode(exe: string, text: string, observe: (file: string) => boolean)
   return resolved === fs.realpathSync(process.execPath) && observe(resolved) ? executableDigest(resolved) : undefined;
 }
 
+const PNPM_SHIM = [
+  "#!/bin/sh",
+  "basedir=$(dirname \"$(echo \"$0\" | sed -e 's,\\\\,/,g')\")",
+  "",
+  "case `uname` in",
+  "    *CYGWIN*|*MINGW*|*MSYS*)",
+  "        if command -v cygpath > /dev/null 2>&1; then",
+  "            basedir=`cygpath -w \"$basedir\"`",
+  "        fi",
+  "    ;;",
+  "esac",
+  "",
+  "if [ -z \"$NODE_PATH\" ]; then",
+  "  export NODE_PATH=\"<paths>\"",
+  "else",
+  "  export NODE_PATH=\"<paths>\"",
+  "fi",
+  "if [ -x \"$basedir/node\" ]; then",
+  "  exec \"$basedir/node\"  \"$basedir/<entry>\" \"$@\"",
+  "else",
+  "  exec node  \"$basedir/<entry>\" \"$@\"",
+  "fi",
+].join("\n") + "\n";
+
 function launcherInputs(exe: string, packageDir: string, exists: (file: string) => boolean, ambient = process.env.NODE_PATH?.split(path.delimiter) ?? []): { digest: string; searchPaths: string[] } | undefined {
-  const fallback = () => ambient.length ? undefined : { digest: executableDigest(exe), searchPaths: [] };
   const launcher = fs.realpathSync(exe);
-  if (path.basename(path.dirname(launcher)) !== ".bin") return fallback();
+  if (path.basename(path.dirname(launcher)) !== ".bin" || process.env.NODE_OPTIONS) return undefined;
   const bytes = fs.readFileSync(launcher);
-  if (!isUtf8(bytes)) return fallback();
+  if (!isUtf8(bytes)) return undefined;
   const store = virtualStore(packageDir);
-  const text = bytes.toString("utf8");
-  if (!store) return /\bNODE_PATH\s*=/.test(text) ? undefined : fallback();
+  const text = bytes.toString("utf8").replaceAll("\r\n", "\n");
+  if (!store) return undefined;
   const node = shimNode(exe, text, exists);
   if (node === undefined) return undefined;
   const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, "package.json"), "utf8"));
   const name = path.basename(exe).replace(/\.cmd$/i, "");
   const bin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.[name];
+  if (typeof bin !== "string") return undefined;
+  const entry = path.resolve(packageDir, bin);
+  const normalized: string[] = [];
+  for (const line of text.split("\n")) {
+    if (/^  export NODE_PATH="[^"\r]*"$/.test(line)) normalized.push('  export NODE_PATH="<paths>"');
+    else {
+      const call = /^(  exec (?:"\$basedir\/node"|node)  "\$basedir\/)([^"$`\r\n]+)(" "\$@")$/.exec(line);
+      if (!call) normalized.push(line);
+      else {
+        const called = path.resolve(path.dirname(exe), call[2]);
+        if (!exists(called) || fs.realpathSync(called) !== fs.realpathSync(entry)) return undefined;
+        normalized.push(`${call[1]}<entry>${call[3]}`);
+      }
+    }
+  }
+  if (normalized.join("\n") !== PNPM_SHIM) return undefined;
   const known = new Set(pnpmSearchPaths(bin ? path.dirname(path.resolve(packageDir, bin)) : packageDir, store));
   if (ambient.length && ambient.join(path.delimiter) !== pnpmSearchPaths(path.dirname(ambient[0]), store).join(path.delimiter)) return undefined;
   const lines = [node];
@@ -471,7 +510,8 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
   if (previous?.exe !== exe || !previous.unchanged()) {
     const searchPath = process.env.NODE_PATH;
     const commandPath = process.env.PATH;
-    const key = sha(programSource ??= code(closure("cache")), import.meta.dirname, path.resolve(exe), searchPath ?? "", commandPath ?? "", process.execPath, process.version, process.platform, process.arch);
+    const nodeOptions = process.env.NODE_OPTIONS;
+    const key = sha(programSource ??= code(closure("cache")), import.meta.dirname, path.resolve(exe), searchPath ?? "", commandPath ?? "", nodeOptions ?? "", process.execPath, process.version, process.platform, process.arch);
     const name = `installed-${key.slice(0, 24)}.json.zst`;
     const directory = path.join(path.dirname(LASTING), "installations");
     const index = path.join(directory, name);
@@ -493,7 +533,7 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
       }
     }
     const { id, unchanged } = installed;
-    latest.set(tool, previous = { exe, id, unchanged: () => process.env.NODE_PATH === searchPath && process.env.PATH === commandPath && unchanged() });
+    latest.set(tool, previous = { exe, id, unchanged: () => process.env.NODE_PATH === searchPath && process.env.PATH === commandPath && process.env.NODE_OPTIONS === nodeOptions && unchanged() });
   }
   const { id, unchanged } = previous;
   const program = { exe, id, unchanged: () => findBin(tool, root) === exe && unchanged() };
