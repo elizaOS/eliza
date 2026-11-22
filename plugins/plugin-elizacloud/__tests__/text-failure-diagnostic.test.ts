@@ -209,6 +209,17 @@ test("actual central text error boundary emits only projected metadata while pre
   expect(error.message).toBe("private provider message");
   expect(error.error).toBe(body.error);
   expect(error.rateLimit).toBe(rate);
+  // The body core reads a provider's fields from, code and param first; the
+  // error keeps it, the log does not.
+  expect(error.responseBody).toBe(
+    JSON.stringify({
+      error: {
+        code: "invalid_request_error",
+        param: "response_format",
+        message: "private provider message",
+      },
+    })
+  );
   expect(logs).toHaveLength(1);
   expect(JSON.stringify(logs)).not.toMatch(/private/);
   expect(logs[0]).toMatchObject({
