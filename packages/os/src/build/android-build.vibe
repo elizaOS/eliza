@@ -2,7 +2,6 @@
 import { ChildProcess } from "effect/process"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import {
-  type Machine,
   assemble,
   canAdmit,
   canArchiveSet,
@@ -117,6 +116,8 @@ export interface BuildAndroid {
   readonly allowances?: WorkspaceAllowances
 }
 
+type AndroidBuildMachine = Effect.Success<ReturnType<typeof machineOver>>
+
 export interface AndroidBuildRun {
   readonly options: BuildAndroid
   readonly root: string
@@ -125,7 +126,7 @@ export interface AndroidBuildRun {
   readonly output: string
   readonly work: string
   readonly archive: string | undefined
-  readonly machine: Machine.Shape
+  readonly machine: AndroidBuildMachine
 }
 
 export interface BuildStep {
