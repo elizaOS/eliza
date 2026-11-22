@@ -1,5 +1,6 @@
 {
   "test/mailbox/operation-journal.test.ts": [
+    "InboxOperation binds a supplied send identity to its durable operation and provider receipt",
     "InboxOperation persists dispatching before the single dispatch and records the receipt",
     "InboxOperation never dispatches again after a lost reply and resolves only from the receipt",
     "InboxOperation keeps an observed dispatched receipt when a later read returns prepared",

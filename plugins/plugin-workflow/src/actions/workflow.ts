@@ -22,14 +22,14 @@ import {
   WORKFLOW_SERVICE_TYPE,
   type WorkflowService,
 } from '../services/workflow-service';
-import { WorkflowApiError } from '../types/index';
+import { WORKFLOW_DEFINITION_NOT_APPLIED, WorkflowApiError } from '../types/index';
 import {
   workflowCancellationEffect,
   workflowDefinitionEffect,
   workflowPendingEffect,
   workflowSubmissionEffect,
 } from './workflow-effects';
-import { notApplied, resolveWorkflowRef } from './workflow-reference';
+import { normalizeName, notApplied, resolveWorkflowRef } from './workflow-reference';
 import { authoredWorkflowRequest } from './workflow-request';
 
 const WORKFLOW_OPS = [
@@ -142,12 +142,25 @@ async function respond(
 /**
  * Generated workflow modules get only the agent adapter, not the device
  * notification bridge, so a chat-created "reminder" never reaches the owner.
- * The create result says so whenever the request asked to be told.
+ * The create and modify results say so whenever the request asked to be told,
+ * in any of the ways owners say it ("texts me", "lets me know", "reminding me",
+ * "sends me a push").
  */
 const NOTIFY_REQUEST =
-  /\b(?:remind(?:er|ers|s)?|notif(?:y|ies|ication|ications)|alerts?|ping\s+me|tell\s+me|let\s+me\s+know)\b/i;
+  /\b(?:remind\w*|notif\w*|alert\w*|(?:ping|tell|text|message|messag|email|e-mail|nudge|warn|buzz|call|sms|dm)(?:s|es|ed|ing)?\s+me|(?:let|lets|letting)\s+me\s+know|(?:send|sends|sending|sent)\s+me|push\s+(?:notification|alert|message)s?|wake\s+me)\b/i;
 function asksToNotify(...texts: Array<string | undefined>): boolean {
   return texts.some((value) => typeof value === 'string' && NOTIFY_REQUEST.test(value));
+}
+const NO_NOTIFICATION =
+  ' It can’t send you a notification: when it is on, each run’s output appears only in its run history. For a reminder that notifies you, use a phone reminder instead.';
+
+/** A refusal of the call itself: nothing was read or written. */
+const badCall = (code: string, text: string) => notApplied(code, text, text);
+
+/** A model-written name that is already taken gets a number, so names stay distinct. */
+function unusedName(name: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(normalizeName(name))) return name;
+  for (let n = 2; ; n++) if (!taken.has(normalizeName(`${name} ${n}`))) return `${name} ${n}`;
 }
 
 export const workflowAction: Action = {
@@ -254,9 +267,10 @@ export const workflowAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     let params = (options?.parameters ?? {}) as WorkflowActionParameters;
+    let ownerWords = false;
     const op = text(params.action)?.toLowerCase() as WorkflowOp | undefined;
     if (!op || !WORKFLOW_OPS.includes(op)) {
-      return { success: false, text: `action is required (${WORKFLOW_OPS.join(', ')})` };
+      return badCall('WORKFLOW_ACTION_REQUIRED', `action is required (${WORKFLOW_OPS.join(', ')})`);
     }
     if (!READ_OPS.includes(op)) {
       const userText = unwrapUserMessageText(
@@ -270,11 +284,15 @@ export const workflowAction: Action = {
             'The proposed workflow operation differs from the owner’s request.',
             'I left your workflows unchanged.'
           );
-        params = { ...authored, instruction: userText };
+        // The owner's words name the workflow. The planner's id is kept only to
+        // pick among same-named workflows or to confirm a name given in part.
+        params = { ...authored, instruction: userText, workflowId: params.workflowId };
+        ownerWords = true;
       }
     }
     const service = serviceFor(runtime);
-    if (!service) return { success: false, text: 'Workflow service is unavailable.' };
+    if (!service)
+      return badCall('WORKFLOW_SERVICE_UNAVAILABLE', 'Workflow service is unavailable.');
     const ownerId = (await resolveCanonicalOwnerIdForMessage(runtime, message)) ?? message.entityId;
     const timeZone = ownerTimeZone(runtime, message);
     const limit = Math.min(50, Math.max(1, number(params.limit, 20)));
@@ -289,13 +307,20 @@ export const workflowAction: Action = {
           callback,
           {
             success: true,
+            // A cut list says so, so neither the owner nor the planner reads it as all of them.
             text: workflows.length
-              ? `Found ${workflows.length} workflow${workflows.length === 1 ? '' : 's'}: ${workflows
+              ? `Found ${workflows.length} workflow${workflows.length === 1 ? '' : 's'}${
+                  workflows.length > limit ? `. Showing the first ${limit}` : ''
+                }: ${workflows
                   .slice(0, limit)
                   .map((workflow) => `“${workflow.name}” (${workflow.active ? 'on' : 'off'})`)
                   .join(', ')}.`
               : 'No workflows found.',
-            data: { workflows: workflows.slice(0, limit) },
+            data: {
+              workflows: workflows.slice(0, limit),
+              total: workflows.length,
+              truncated: workflows.length > limit,
+            },
           },
           { count: workflows.length }
         );
@@ -303,16 +328,31 @@ export const workflowAction: Action = {
       if (op === 'create') {
         const instruction =
           text(params.seedPrompt) ?? text(params.instruction) ?? message.content.text;
-        if (!instruction) return { success: false, text: 'A workflow description is required.' };
+        if (!instruction)
+          return badCall('WORKFLOW_DESCRIPTION_REQUIRED', 'A workflow description is required.');
         // The owner's name for the workflow is how chat finds it again later.
         const requestedName = text(params.name);
         if (requestedName && requestedName.length > 200)
-          return { success: false, text: 'name must be 1 to 200 characters.' };
+          return badCall('WORKFLOW_NAME_INVALID', 'name must be 1 to 200 characters.');
+        // A second "create a workflow called Alpha" (say, after a lost reply)
+        // would leave two workflows chat cannot tell apart by name.
+        const taken = new Set(
+          (await service.listWorkflows(ownerId)).map((workflow) => normalizeName(workflow.name))
+        );
+        if (requestedName && taken.has(normalizeName(requestedName)))
+          return notApplied(
+            'WORKFLOW_NAME_TAKEN',
+            `A workflow named “${requestedName}” already exists. Nothing was created. Ask the owner for another name or whether they mean the existing one.`,
+            `You already have a workflow called “${requestedName}”, so I didn’t create another. Give me a different name, or tell me what to do with that one.`,
+            false
+          );
         const authored = await service.generateWorkflowDraft(instruction, {
           userId: ownerId,
           timeZone,
         });
-        const draft = requestedName ? { ...authored, name: requestedName } : authored;
+        const draft = requestedName
+          ? { ...authored, name: requestedName }
+          : { ...authored, name: unusedName(authored.name, taken) };
         if (draft.id !== undefined)
           throw new Error('Create requires a new definition without an existing workflow id');
         const workflow = await service.deployWorkflowDefinition(draft, ownerId, {
@@ -323,7 +363,7 @@ export const workflowAction: Action = {
           callback,
           {
             success: true,
-            text: `Created “${workflow.name}”. It is off until you turn it on.${asksToNotify(instruction, message.content.text) ? ' It can’t send you a notification: when it is on, each run’s reminder text appears only in its run history. For a reminder that notifies you, use a phone reminder instead.' : ''}`,
+            text: `Created “${workflow.name}”. It is off until you turn it on.${asksToNotify(instruction, message.content.text) ? NO_NOTIFICATION : ''}`,
             effectReceipts: [workflowDefinitionEffect('create', workflow)],
             data: { workflow, widget: { type: 'workflow', workflowId: workflow.id } },
           },
@@ -365,7 +405,7 @@ export const workflowAction: Action = {
       }
       if (op === 'cancel_run') {
         const executionId = text(params.executionId);
-        if (!executionId) return { success: false, text: 'executionId is required.' };
+        if (!executionId) return badCall('WORKFLOW_EXECUTION_REQUIRED', 'executionId is required.');
         const cancellation = await service.cancelExecutionWithReceipt(executionId, ownerId);
         const execution = cancellation.execution;
         const receipt = workflowCancellationEffect(cancellation);
@@ -382,7 +422,12 @@ export const workflowAction: Action = {
         service,
         ownerId,
         { workflowId: text(params.workflowId), workflowName: text(params.workflowName) },
-        op === 'restore_removed'
+        {
+          removed: op === 'restore_removed',
+          strict: op === 'remove' || op === 'rename',
+          ownerWords,
+          timeZone,
+        }
       );
       if ('success' in current) return current;
       const workflowId = current.id;
@@ -414,7 +459,8 @@ export const workflowAction: Action = {
       }
       if (op === 'modify') {
         const instruction = text(params.instruction) ?? text(params.seedPrompt);
-        if (!instruction) return { success: false, text: 'An edit instruction is required.' };
+        if (!instruction)
+          return badCall('WORKFLOW_INSTRUCTION_REQUIRED', 'An edit instruction is required.');
         // The typed draft path never lets a model set the schedule or phone target, and
         // its steps use sources the owner selects, so a chat edit cannot be a reviewed one.
         if (typed)
@@ -437,7 +483,7 @@ export const workflowAction: Action = {
         if (workflow.active) throw new Error('Inactive workflow update was not verified');
         return respond(callback, {
           success: true,
-          text: `Updated “${workflow.name}”.${current.active ? ' It was on, so it is now off. Review the change, then turn it on again.' : ''}`,
+          text: `Updated “${workflow.name}”.${current.active ? ' It was on, so it is now off. Review the change, then turn it on again.' : ''}${asksToNotify(instruction, message.content.text) ? NO_NOTIFICATION : ''}`,
           effectReceipts: [workflowDefinitionEffect('modify', workflow)],
           data: { workflow },
         });
@@ -445,12 +491,26 @@ export const workflowAction: Action = {
       if (op === 'rename') {
         const name = text(params.name);
         if (!name || name.length > 200)
-          return { success: false, text: 'name is required for rename (1 to 200 characters).' };
+          return badCall(
+            'WORKFLOW_NAME_INVALID',
+            'name is required for rename (1 to 200 characters).'
+          );
         if (name === current.name)
           return notApplied(
             'WORKFLOW_NAME_UNCHANGED',
             `${label} already has that name. Nothing was changed.`,
             `${label} already has that name.`,
+            false
+          );
+        const clash = (await service.listWorkflows(ownerId)).find(
+          (workflow) =>
+            workflow.id !== workflowId && normalizeName(workflow.name) === normalizeName(name)
+        );
+        if (clash)
+          return notApplied(
+            'WORKFLOW_NAME_TAKEN',
+            `Another workflow is already named “${clash.name}”. Nothing was changed. Ask the owner for another name.`,
+            `You already have a workflow called “${clash.name}”, so I left ${label} as it is. What else should I call it?`,
             false
           );
         const workflow = await service.renameWorkflow(workflowId, name, ownerId);
@@ -576,7 +636,7 @@ export const workflowAction: Action = {
       }
       if (op === 'restore') {
         const versionId = text(params.versionId);
-        if (!versionId) return { success: false, text: 'versionId is required.' };
+        if (!versionId) return badCall('WORKFLOW_VERSION_REQUIRED', 'versionId is required.');
         const workflow = await service.restoreWorkflowRevision(workflowId, versionId, ownerId);
         return respond(callback, {
           success: true,
@@ -630,7 +690,9 @@ export const workflowAction: Action = {
         : status === 404
           ? 'WORKFLOW_NOT_FOUND'
           : (status === 409 && refusal?.endsWith('_NOT_APPLIED')) ||
-              refusal === WORKFLOW_DRAFT_NOT_APPLIED
+              refusal === WORKFLOW_DRAFT_NOT_APPLIED ||
+              // Refused while checking the definition, before any row was written.
+              (status === 400 && refusal === WORKFLOW_DEFINITION_NOT_APPLIED)
             ? refusal
             : undefined;
       // error-policy:J1 action boundary returns the failure to the planner.

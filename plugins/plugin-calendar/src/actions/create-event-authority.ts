@@ -9,8 +9,8 @@ import {
   type Memory,
   readTaskExtractionUserSources,
   type State,
-  unwrapUserMessageText,
 } from "@elizaos/core";
+import { messageText } from "../internal/detail.js";
 import { basicEmailValid } from "../internal/email.js";
 import { CalendarServiceError } from "../internal/errors.js";
 
@@ -21,7 +21,7 @@ export function calendarCreateUserSources(
 ): readonly CalendarUserSource[] {
   return [
     ...(readTaskExtractionUserSources(state, message) ?? []),
-    { id: `current:${message.id}`, text: unwrapUserMessageText(message) },
+    { id: `current:${message.id}`, text: messageText(message) },
   ];
 }
 const evidenceSchema = {

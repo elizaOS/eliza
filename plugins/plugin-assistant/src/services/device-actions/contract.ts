@@ -9,6 +9,8 @@ import {
   BROWSER_OPEN_NEW_TAB_CAPABILITY,
   type BrowserControlOperation,
   browserControlCapabilityAvailable,
+  browserControlFormAvailable,
+  isBrowserControl,
   isBrowserControlType,
   validateBrowserControl,
 } from "./browser-contract.ts";
@@ -36,7 +38,9 @@ import {
 } from "./clock-contract.ts";
 import {
   FILES_CAPABILITY,
+  FILES_SHOWN_TARGET_CAPABILITY,
   type FilesAgentOperation,
+  filesShownTarget,
   isFilesOperation,
   validateFilesOperation,
 } from "./files-browser-contract.ts";
@@ -55,6 +59,7 @@ import {
   isNotesOrganizeType,
   NOTES_ORGANIZE_CAPABILITY,
   type NotesOrganizeOperation,
+  notesRecordCapabilityAvailable,
   validateNotesOrganizeOperation,
 } from "./notes-organize-contract.ts";
 import {
@@ -63,9 +68,17 @@ import {
   validatePhoneDial,
 } from "./phone-dial-contract.ts";
 import {
+  isLibraryOperation,
+  type LibraryAgentOperation,
+  PHOTO_LIBRARY_CAPABILITY,
+  validateLibraryOperation,
+} from "./photo-library-contract.ts";
+import {
+  isPhotosViewOperation,
   isPhotosViewType,
   type PhotosViewOperation,
   photosViewCapabilityAvailable,
+  photosViewFormSupported,
   validatePhotosViewOperation,
 } from "./photos-view-contract.ts";
 import {
@@ -160,6 +173,7 @@ export type DeviceOperation =
   | NativeNotesQueryOperation
   | CalendarOperation
   | PhotosViewOperation
+  | LibraryAgentOperation
   | ForegroundReviewOperation
   | WorkflowReadOperation
   | WorkflowPresentationOperation
@@ -198,11 +212,15 @@ export function deviceOperationSupportedByCapabilities(
     );
   if (type === "notes_list_filter")
     return capabilities?.includes(NOTES_LIST_FILTER_CAPABILITY) === true;
+  if (type === "notes_record")
+    return notesRecordCapabilityAvailable(capabilities);
   if (isNotesOrganizeType(type))
     return (
       capabilities?.includes(NOTES_ORGANIZE_CAPABILITY) === true &&
       capabilities.includes("notes.local-record.v1")
     );
+  if (isLibraryOperation({ type }))
+    return capabilities?.includes(PHOTO_LIBRARY_CAPABILITY) === true;
   if (isPhotosViewType(type))
     return photosViewCapabilityAvailable(capabilities);
   if (isBrowserControlType(type))
@@ -220,7 +238,9 @@ export function deviceOperationSupportedByCapabilities(
     );
   // Transport policy negotiation never widens a clock-only executor.
   const operationCapabilities = capabilities?.filter(
-    (capability) => capability !== "gmail.request-policy.v1",
+    (capability) =>
+      capability !== "gmail.request-policy.v1" &&
+      capability !== "gmail.local-compose.v1",
   );
   const clockOnly =
     operationCapabilities?.length &&
@@ -234,8 +254,9 @@ export function deviceOperationSupportedByCapabilities(
 }
 /**
  * An optional form of an operation needs its own negotiated capability: a
- * requested camera lens, an SMS `target`, or a contact update with `add` or
- * `remove`. It is never sent to a phone that did not advertise it.
+ * requested camera lens, an SMS `target`, a contact update with `add` or
+ * `remove`, or a Photos album or share of the open item (`selected`). It is
+ * never sent to a phone that did not advertise it.
  */
 export function deviceOperationFormSupported(
   operation: DeviceOperation,
@@ -245,8 +266,14 @@ export function deviceOperationFormSupported(
     return cameraCaptureCapabilityAvailable(operation, capabilities);
   if (isTelephonyAction(operation))
     return telephonyActionFormAvailable(operation, capabilities);
+  if (isPhotosViewOperation(operation))
+    return photosViewFormSupported(operation, capabilities);
   if (operation.type === "browser_navigate" && operation.newTab)
     return capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY) === true;
+  if (isBrowserControl(operation))
+    return browserControlFormAvailable(operation, capabilities);
+  if (isFilesOperation(operation) && filesShownTarget(operation))
+    return capabilities?.includes(FILES_SHOWN_TARGET_CAPABILITY) === true;
   return true;
 }
 export type DeviceActionPayload = {
@@ -360,6 +387,17 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch (error) {
         throw new DeviceActionError(
           `Invalid Photos operation: ${(error as Error).message}`,
+        );
+      }
+    case "photo_library_search":
+    case "photo_library_inspect":
+    case "photo_library_select":
+    case "photo_library_review":
+      try {
+        return validateLibraryOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid photo library operation: ${(error as Error).message}`,
         );
       }
     case "calendar_create_local":
@@ -633,9 +671,6 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     ...(p.requestMessageId === undefined
       ? {}
       : { requestMessageId: identifier(p.requestMessageId) }),
-    ...(operation.type === "clock_alarm"
-      ? { clockContextRevision: Number(p.clockContextRevision) }
-      : {}),
     ...(p.viewProfileRevision === undefined
       ? {}
       : { viewProfileRevision: identifier(p.viewProfileRevision) }),

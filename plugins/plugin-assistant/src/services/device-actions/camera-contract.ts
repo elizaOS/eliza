@@ -1,7 +1,12 @@
+import { isLibraryId, libraryKindOf } from "./photo-library-contract.ts";
+
 /** One foreground still capture. Pixels and paths never enter the agent receipt. */
 export const CAMERA_CAPTURE_CAPABILITY = "camera.capture-photo.v1";
 /** `camera_capture_photo` with a requested `lens`. */
 export const CAMERA_LENS_CAPABILITY = "camera.capture-lens.v1";
+/** A saved-photo receipt that also names the photo's library id, so the agent can open or share
+ * the photo it just took with the Photos operations. */
+export const CAMERA_LIBRARY_ID_CAPABILITY = "camera.capture-library-id.v1";
 /** The single-operation tool for `camera_capture_photo` (tools.ts). */
 export const DEVICE_CAMERA_CAPTURE_ACTION = "DEVICE_CAMERA_CAPTURE";
 /** Without `lens` the phone uses the camera that is showing. */
@@ -14,6 +19,8 @@ export type CameraCaptureResult = {
   kind: "camera_capture_photo";
   operationId: string;
   mediaId: string;
+  /** The saved photo's library id. Sent only with `camera.capture-library-id.v1`. */
+  libraryId?: string;
   width: number;
   height: number;
   mime: "image/jpeg";
@@ -64,6 +71,7 @@ export function validateCameraCaptureResult(
           "kind",
           "operationId",
           "mediaId",
+          "libraryId",
           "width",
           "height",
           "mime",
@@ -77,6 +85,10 @@ export function validateCameraCaptureResult(
     (operationId !== undefined && row.operationId !== operationId) ||
     typeof row.mediaId !== "string" ||
     !/^[1-9][0-9]{0,24}$/.test(row.mediaId) ||
+    (row.libraryId !== undefined &&
+      !(
+        isLibraryId(row.libraryId) && libraryKindOf(row.libraryId) === "image"
+      )) ||
     ![row.width, row.height].every(
       (n) =>
         typeof n === "number" && Number.isSafeInteger(n) && n > 0 && n <= 65536,
@@ -88,6 +100,9 @@ export function validateCameraCaptureResult(
     kind: "camera_capture_photo",
     operationId: row.operationId,
     mediaId: row.mediaId,
+    ...(row.libraryId === undefined
+      ? {}
+      : { libraryId: row.libraryId as string }),
     width: row.width as number,
     height: row.height as number,
     mime: "image/jpeg",

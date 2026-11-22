@@ -83,8 +83,20 @@ const LOCAL_PROVIDER: ProviderDefinition = {
 				enabled: true,
 				reason: "Eliza-1 model installed; native local runtime available",
 			};
-		} catch {
-			return { enabled: false, reason: "No local model installed" };
+		} catch (err) {
+			// No models/ dir is legitimately "nothing installed": first run depends
+			// on that. ENOTDIR/EACCES/EIO/EMFILE leave the contents unknown, and
+			// reporting "No local model installed" there sends the user off to
+			// download models that may already be on disk. Name the failure instead
+			// — the same ENOENT-vs-unknown split registry.ts makes for artifacts.
+			const code = (err as NodeJS.ErrnoException | null)?.code;
+			if (code === "ENOENT") {
+				return { enabled: false, reason: "No local model installed" };
+			}
+			return {
+				enabled: false,
+				reason: `Cannot read local model directory${code ? ` (${code})` : ""}`,
+			};
 		}
 	},
 	configureHref: "#local-inference-panel",

@@ -49,6 +49,7 @@ import {
   getMegaModel,
   getNanoModel,
   getResponseHandlerModel,
+  getSetting,
   getSmallModel,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
@@ -421,6 +422,16 @@ function resolveCerebrasThinkingOffReasoningEffort(
   return undefined;
 }
 
+/**
+ * Maps the `thinking: "low"` hint (bounded reasoning, not off) only for the
+ * Cerebras ids that accept `"low"`, mirroring plugin-openai; other models keep
+ * their effort.
+ */
+function resolveCerebrasThinkingLowReasoningEffort(modelName: string): "low" | undefined {
+  const id = normalizeCerebrasModelId(modelName);
+  return id === "qwen-3.8-27b" || id === "gpt-oss-120b" ? "low" : undefined;
+}
+
 const VALID_USER_REASONING_EFFORTS: ReadonlySet<string> = new Set([
   "low",
   "medium",
@@ -538,7 +549,65 @@ export type CloudTextRequestError = Error & {
   status: number;
   error?: unknown;
   rateLimit?: ProviderRateLimit;
+  responseBody?: string;
 };
+
+/**
+ * A Cloud 429 on a runtime whose text slots all send one model.
+ *
+ * The runtime's failover reads a 429 as fallback-class and tries the next
+ * registration. This provider registers one handler per text model type, so
+ * when every slot resolves to the same model each sibling uploads the refused
+ * request again, to the model that just refused it: five uploads for one
+ * refused RESPONSE_HANDLER call, four for ACTION_PLANNER. The typed code marks
+ * this provider as spent for the dispatch: the runtime skips those siblings
+ * and still fails over to a distinct provider.
+ *
+ * Nothing is retried or waited here. The status stays 429 and `rateLimit`
+ * keeps the reported wait, so a chat turn's single re-send and the client's
+ * typed failure read this error as they read the untyped one.
+ */
+export class ElizaCloudRateLimitedError extends ElizaError {
+  override readonly name = "ElizaCloudRateLimitedError";
+  readonly status = 429;
+  declare readonly error?: unknown;
+  declare readonly rateLimit?: ProviderRateLimit;
+
+  constructor(message: string, detail: { error?: unknown; rateLimit?: ProviderRateLimit }) {
+    super(message, {
+      code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
+      context: { provider: "elizaOSCloud", status: 429 },
+      severity: "ephemeral",
+    });
+    if (detail.error) this.error = detail.error;
+    if (detail.rateLimit) this.rateLimit = detail.rateLimit;
+  }
+}
+
+/**
+ * The typed 429, or undefined when the slots send different models: another
+ * slot is then a different model, which the refusal may not cover, so the
+ * runtime's failover keeps trying it as before.
+ */
+function cloudRateLimitedBySharedModel(
+  runtime: IAgentRuntime | undefined,
+  message: string,
+  detail: { error?: unknown; rateLimit?: ProviderRateLimit }
+): ElizaCloudRateLimitedError | undefined {
+  if (!runtime) return undefined;
+  const models = [
+    getNanoModel,
+    getSmallModel,
+    getMediumModel,
+    getLargeModel,
+    getMegaModel,
+    getResponseHandlerModel,
+    getActionPlannerModel,
+  ].map((read) => read(runtime));
+  return models.every((model) => model === models[0])
+    ? new ElizaCloudRateLimitedError(message, detail)
+    : undefined;
+}
 
 /**
  * Typed wait for a Cloud refusal, read from structured fields only.
@@ -556,9 +625,12 @@ export type CloudTextRequestError = Error & {
  * to the chosen reset. Without any retry field, the wait is the time to the
  * reset. Malformed values are skipped and the wait is capped. This is a
  * report for the client; nothing here waits.
+ *
+ * `response` is an HTTP response, or the status of a refusal that arrived as
+ * an error frame inside a 200 stream, which has no headers of its own.
  */
 export function readCloudRateLimit(
-  response: Response,
+  response: { status: number; headers: Pick<Headers, "get"> },
   body: unknown,
   now: number = Date.now()
 ): ProviderRateLimit | undefined {
@@ -611,23 +683,51 @@ export function readCloudRateLimit(
 /**
  * One error shape for every non-ok Cloud text response. The message comes from
  * the body's `error.message` or the status; a 429 or a period-allowance 402
- * adds the typed `rateLimit`.
+ * adds the typed `rateLimit`. With the calling `runtime`, a 429 whose sibling
+ * registrations would repeat the request is the typed
+ * {@link ElizaCloudRateLimitedError}, with the same status, body and wait.
  */
 export function cloudTextRequestError(
   response: Response,
   body: unknown,
-  requestBody: Record<string, unknown> = {}
+  requestBody: Record<string, unknown> = {},
+  runtime?: IAgentRuntime
 ): CloudTextRequestError {
   logger.warn(readCloudTextFailureDiagnostic(response, body, requestBody), "[ELIZAOS_CLOUD] text request failed");
   const errorBody = asRecord(body).error;
   const message =
     firstString(asRecord(errorBody).message) ?? `elizaOS Cloud error ${response.status}`;
+  const rateLimit = readCloudRateLimit(response, body);
+  const typedRateLimited =
+    response.status === 429
+      ? cloudRateLimitedBySharedModel(runtime, message, { error: errorBody, rateLimit })
+      : undefined;
+  if (typedRateLimited) return typedRateLimited;
   const requestError = new Error(message) as CloudTextRequestError;
   requestError.status = response.status;
   if (errorBody) requestError.error = errorBody;
-  const rateLimit = readCloudRateLimit(response, body);
   if (rateLimit) requestError.rateLimit = rateLimit;
+  const responseBody = cloudProviderResponseBody(errorBody);
+  if (responseBody) requestError.responseBody = responseBody;
   return requestError;
+}
+
+/**
+ * The Cloud's error record as the body a direct provider route keeps on its
+ * error. Core reads a provider's `code`, `param` and message from
+ * `responseBody`: Stage 1's one re-send after Cerebras's `parser_error` on
+ * `tool_calls`, and the context-length and schema replies. The gateway passes
+ * a provider 400's text as `provider_message` and, in a stream frame whose
+ * numeric `code` is the status, its code as `provider_code`. Code and param
+ * go first because core keeps only a 400-character excerpt of the body.
+ */
+function cloudProviderResponseBody(errorBody: unknown): string | undefined {
+  const fields = asRecord(errorBody);
+  if (Object.keys(fields).length === 0) return undefined;
+  const { provider_code, code, param, provider_message, message, ...rest } = fields;
+  return JSON.stringify({
+    error: { code: provider_code ?? code, param, message: provider_message ?? message, ...rest },
+  });
 }
 
 function parseJsonRecord(text: string): Record<string, unknown> | undefined {
@@ -1306,7 +1406,8 @@ function resolvePromptCacheKey(providerOptions: Record<string, unknown>, modelNa
   const cerebras = recordAt(providerOptions, "cerebras");
   // Match the direct Cerebras route's provider-scoped workflow key. Generic
   // fallback and every other vendor keep their existing ordering and scope.
-  if (modelName === "qwen-3.8-27b") {
+  // Cloud ids carry a provider prefix (`cerebras/qwen-3.8-27b`).
+  if (modelName && normalizeCerebrasModelId(modelName) === "qwen-3.8-27b") {
     const selected = firstString(cerebras.promptCacheKey, cerebras.prompt_cache_key);
     if (selected) return selected;
   }
@@ -1479,8 +1580,15 @@ function buildNativeRequestBody(
     requestBody.temperature = params.temperature;
   }
   const userReasoningEffort = resolveUserReasoningEffort(runtime, modelName);
+  const thinkingLowEffort =
+    recordAt(asRecord(params.providerOptions), "eliza").thinking === "low"
+      ? resolveCerebrasThinkingLowReasoningEffort(modelName)
+      : undefined;
   if (userReasoningEffort) {
     requestBody.reasoning_effort = userReasoningEffort;
+  } else if (thinkingLowEffort) {
+    // Bounded reasoning replaces only the default below; a host pin still wins.
+    requestBody.reasoning_effort = thinkingLowEffort;
   } else if (resolveCerebrasThinkingOffReasoningEffort(modelName) !== undefined) {
     // Use the highest supported Cerebras effort unless the caller selects one.
     requestBody.reasoning_effort = "high";
@@ -1860,7 +1968,7 @@ async function generateTextWithModel(
   }
 
   if (!response.ok) {
-    const error = cloudTextRequestError(response, data, requestBody);
+    const error = cloudTextRequestError(response, data, requestBody, runtime);
     if (!params.signal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
     throw error;
   }
@@ -1986,7 +2094,7 @@ export async function generateNativeChatCompletion(
   }
 
   if (!response.ok) {
-    const error = cloudTextRequestError(response, data, requestBody);
+    const error = cloudTextRequestError(response, data, requestBody, runtime);
     if (!params.signal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
     throw error;
   }
@@ -2468,7 +2576,7 @@ export async function streamNativeChatCompletion(
         if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
         throw error;
       }
-      const error = cloudTextRequestError(response, parseJsonRecord(warmingBodyText), requestBody);
+      const error = cloudTextRequestError(response, parseJsonRecord(warmingBodyText), requestBody, runtime);
       if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
       throw error;
     }
@@ -2492,7 +2600,7 @@ export async function streamNativeChatCompletion(
       // status (and the Retry-After header) through the error below.
     }
     releasePermit();
-    const error = cloudTextRequestError(response, errorBody, requestBody);
+    const error = cloudTextRequestError(response, errorBody, requestBody, runtime);
     if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
     throw error;
   }
@@ -2596,11 +2704,31 @@ export async function streamNativeChatCompletion(
       for await (const frame of parseOpenAiSseStream(body)) {
         if (frame.error) {
           const errorBody = asRecord(frame.error);
-          const requestError = new Error(
-            firstString(errorBody.message) ?? "elizaOS Cloud stream error"
-          ) as Error & { status?: number; error?: unknown };
-          if (typeof errorBody.code === "number") requestError.status = errorBody.code;
-          if (Object.keys(errorBody).length > 0) requestError.error = errorBody;
+          const message = firstString(errorBody.message) ?? "elizaOS Cloud stream error";
+          const status = typeof errorBody.code === "number" ? errorBody.code : undefined;
+          const error = Object.keys(errorBody).length > 0 ? errorBody : undefined;
+          // The stream answered 200 before the provider refused, so the wait
+          // can only come from the frame: the same fields as a 429 body.
+          const rateLimit =
+            status === undefined
+              ? undefined
+              : readCloudRateLimit({ status, headers: new Headers() }, frame);
+          const typedRateLimited =
+            status === 429
+              ? cloudRateLimitedBySharedModel(runtime, message, { error, rateLimit })
+              : undefined;
+          if (typedRateLimited) throw typedRateLimited;
+          const requestError = new Error(message) as Error & {
+            status?: number;
+            error?: unknown;
+            rateLimit?: ProviderRateLimit;
+            responseBody?: string;
+          };
+          if (status !== undefined) requestError.status = status;
+          if (error) requestError.error = error;
+          if (rateLimit) requestError.rateLimit = rateLimit;
+          const responseBody = cloudProviderResponseBody(error);
+          if (responseBody) requestError.responseBody = responseBody;
           throw requestError;
         }
         if (!Array.isArray(frame.choices)) {
@@ -2851,6 +2979,38 @@ function onlyNativeCacheBookkeeping(options:Record<string,unknown>,raw:unknown,k
  return true;
 }
 
+/**
+ * Cloud bases a host declares as served by the same gateway code as
+ * `https://api.eliza.app/api/v1`: a product's own deployment of this
+ * repository's Cloud Worker, in front of the same Cerebras route. A request to
+ * a listed base takes the canonical Cerebras form (one strictness mode for the
+ * whole tool batch, JSON-object output for a schema-only request, no
+ * `providerOptions` copy of the cache key), so a product that moves to its own
+ * Cloud keeps the request form it had on `api.eliza.app`.
+ *
+ * Comma-separated; each entry must equal the configured base exactly (trailing
+ * slashes aside). There is no wildcard and no host or prefix matching, and an
+ * unlisted base keeps the general form: a gateway that serves another provider
+ * must not receive the Cerebras form.
+ *
+ * Read with the plugin's getSetting: a runtime or character setting first,
+ * then `process.env`. Under a development authority the base itself comes only
+ * from the frozen launcher tuple, so a character setting can opt that base in.
+ * The setting changes only the request's form, never where it is sent. A
+ * launcher that sets `ELIZAOS_CLOUD_BASE_URL` in the agent's environment sets
+ * this beside it.
+ */
+const CANONICAL_CEREBRAS_BASE_URLS_SETTING = "ELIZAOS_CLOUD_CANONICAL_CEREBRAS_BASE_URLS";
+
+function isDeclaredCanonicalCerebrasBase(runtime: IAgentRuntime, base: string): boolean {
+  const declared = getSetting(runtime, CANONICAL_CEREBRAS_BASE_URLS_SETTING);
+  if (!declared) return false;
+  return declared.split(",").some((entry) => {
+    const candidate = entry.trim().replace(/\/+$/, "");
+    return candidate.length > 0 && candidate === base;
+  });
+}
+
 /** Formatting only. Reuse Core's actual selected handlers and the normal Cloud
  * transport tuple; no mirrored registry, lease, financial or permission state. */
 function usesCanonicalCerebrasNativeSerialization(
@@ -2866,7 +3026,12 @@ function usesCanonicalCerebrasNativeSerialization(
       tuple.authority === "staging-explicit" &&
       base === "https://api-staging.eliza.app/api/v1" &&
       tuple.apiKey.startsWith("eliza_mobile_");
-    if (base !== "https://api.eliza.app/api/v1" && !stagingMobileTools) return false;
+    if (
+      base !== "https://api.eliza.app/api/v1" &&
+      !stagingMobileTools &&
+      !isDeclaredCanonicalCerebrasBase(runtime, base)
+    )
+      return false;
     const ownHandlers: ReadonlyArray<readonly [ModelTypeName, unknown]> = [
       [TEXT_NANO_MODEL_TYPE, handleTextNano], [TEXT_SMALL_MODEL_TYPE, handleTextSmall],
       [TEXT_MEDIUM_MODEL_TYPE, handleTextMedium], [TEXT_LARGE_MODEL_TYPE, handleTextLarge],

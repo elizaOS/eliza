@@ -45,32 +45,97 @@ function isHistoricalDialogueSegment(
 			label.startsWith("verified_cross_room_message:"))
 	);
 }
-function historyMessageTimestamp(
+
+interface WallClock {
+	year: string;
+	/** Month, day, hour and minute: `MM-DD HH:MM`. */
+	minute: string;
+	/** `Z` or `±HH:MM`. */
+	offset: string;
+	/** False when the display zone is unusable and UTC stands in for it. */
+	local: boolean;
+}
+
+const pad = (value: number) => String(value).padStart(2, "0");
+
+function wallClock(at: number, zone: unknown): WallClock | undefined {
+	const date = new Date(at);
+	if (!Number.isFinite(date.getTime())) return undefined;
+	if (typeof zone === "string" && zone.trim()) {
+		try {
+			const parts: Partial<Record<Intl.DateTimeFormatPartTypes, string>> = {};
+			for (const part of displayZoneFormatter(zone).formatToParts(date)) {
+				parts[part.type] = part.value;
+			}
+			const offset =
+				parts.timeZoneName === "GMT"
+					? "Z"
+					: parts.timeZoneName?.replace(GMT_PREFIX, "");
+			if (parts.year && offset && UTC_OFFSET.test(offset))
+				return {
+					year: parts.year,
+					minute: `${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`,
+					offset,
+					local: true,
+				};
+		} catch {
+			// An unavailable display zone cannot erase the actual recorded UTC instant.
+		}
+	}
+	return {
+		year: String(date.getUTCFullYear()),
+		minute: `${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`,
+		offset: "Z",
+		local: false,
+	};
+}
+
+const offsetMinutes = (offset: string) =>
+	offset === "Z"
+		? 0
+		: (offset.startsWith("-") ? -1 : 1) *
+			(Number(offset.slice(1, 3)) * 60 + Number(offset.slice(4, 6)));
+
+/** A zone shows the same wall-clock minute twice in the hour its clocks are
+ * set back. Only there does a stamp need its offset to name one instant. */
+function repeatsWallClock(at: number, zone: unknown, clock: WallClock) {
+	for (const probe of [at - 3 * 3_600_000, at + 3 * 3_600_000]) {
+		const other = wallClock(probe, zone);
+		if (!other?.local || other.offset === clock.offset) continue;
+		const twin = wallClock(
+			at + (offsetMinutes(clock.offset) - offsetMinutes(other.offset)) * 60_000,
+			zone,
+		);
+		if (twin?.offset === other.offset && twin.minute === clock.minute)
+			return true;
+	}
+	return false;
+}
+
+/** The recorded local time of a historical message, to the minute. Position
+ * already orders messages within a minute, and a model that spends a token on
+ * every digit pays three times as much for seconds, milliseconds and an
+ * offset the local-date line already states. The year is printed unless it is
+ * the year of the newest event rendered with the message: a recalled exchange
+ * can be older than that. Nothing parses the stamp back. */
+function historyMessageStamp(
 	segment: ContextObjectPromptSegment,
 ): string | undefined {
 	if (!isHistoricalDialogueSegment(segment)) return undefined;
 	const at = segment.createdAt;
 	if (typeof at !== "number" || !Number.isSafeInteger(at) || at <= 0)
 		return undefined;
-	const date = new Date(at);
-	if (!Number.isFinite(date.getTime())) return undefined;
 	const zone = segment.metadata?.displayTimeZone;
-	if (typeof zone !== "string" || !zone.trim()) return date.toISOString();
-	try {
-		const parts: Partial<Record<Intl.DateTimeFormatPartTypes, string>> = {};
-		for (const part of displayZoneFormatter(zone).formatToParts(date)) {
-			parts[part.type] = part.value;
-		}
-		const offset =
-			parts.timeZoneName === "GMT"
-				? "Z"
-				: parts.timeZoneName?.replace(GMT_PREFIX, "");
-		if (!offset || !UTC_OFFSET.test(offset)) return date.toISOString();
-		return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${String(date.getUTCMilliseconds()).padStart(3, "0")}${offset}`;
-	} catch {
-		// An unavailable display zone cannot erase the actual recorded UTC instant.
-		return date.toISOString();
-	}
+	const clock = wallClock(at, zone);
+	if (!clock) return undefined;
+	const year =
+		clock.year === segment.metadata?.displayYear ? "" : `${clock.year}-`;
+	const offset = !clock.local
+		? "Z"
+		: repeatsWallClock(at, zone, clock)
+			? clock.offset
+			: "";
+	return `${year}${clock.minute}${offset}`;
 }
 
 const GMT_PREFIX = /^GMT/;
@@ -88,7 +153,6 @@ function displayZoneFormatter(zone: string): Intl.DateTimeFormat {
 			day: "2-digit",
 			hour: "2-digit",
 			minute: "2-digit",
-			second: "2-digit",
 			hourCycle: "h23",
 			timeZoneName: "longOffset",
 		});
@@ -99,7 +163,7 @@ function displayZoneFormatter(zone: string): Intl.DateTimeFormat {
 
 /** Render readable block framing while keeping machine labels in segment metadata. */
 export function segmentBlock(segment: ContextObjectPromptSegment): string {
-	const timestamp = historyMessageTimestamp(segment);
+	const timestamp = historyMessageStamp(segment);
 	const content = timestamp
 		? `[message_at=${timestamp}] ${segment.content}`
 		: segment.content;
@@ -464,7 +528,7 @@ function renderRuntimeEventContent(event: ContextEvent): string {
 function renderEvent(
 	rendered: RenderedContextObject,
 	event: ContextEvent,
-	displayTimeZone?: string,
+	display: { displayTimeZone?: string; displayYear?: string } = {},
 ): void {
 	if (isMessageEvent(event)) {
 		rendered.messages.push(event.message);
@@ -541,8 +605,8 @@ function renderEvent(
 				? {
 						...event.segment,
 						createdAt: event.createdAt,
-						...(displayTimeZone
-							? { metadata: { ...event.segment.metadata, displayTimeZone } }
+						...(display.displayTimeZone || display.displayYear
+							? { metadata: { ...event.segment.metadata, ...display } }
 							: {}),
 					}
 				: event.segment,
@@ -646,8 +710,21 @@ export function renderContextObject(
 		typeof context.metadata?.displayTimeZone === "string"
 			? context.metadata.displayTimeZone
 			: undefined;
+	// A message stamp omits the year of the newest event: see historyMessageStamp.
+	let newest = 0;
 	for (const event of context.events) {
-		renderEvent(rendered, event, displayTimeZone);
+		const at = event.createdAt;
+		if (typeof at === "number" && Number.isSafeInteger(at) && at > newest)
+			newest = at;
+	}
+	const displayYear =
+		newest > 0 ? wallClock(newest, displayTimeZone)?.year : undefined;
+	const display = {
+		...(displayTimeZone ? { displayTimeZone } : {}),
+		...(displayYear ? { displayYear } : {}),
+	};
+	for (const event of context.events) {
+		renderEvent(rendered, event, display);
 	}
 
 	return rendered;

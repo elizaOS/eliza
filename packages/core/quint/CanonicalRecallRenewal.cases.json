@@ -1,0 +1,45 @@
+{
+	"sources": [
+		"packages/core/src/access-control/provenance-envelope.ts",
+		"packages/core/src/security/trusted-delivery-audience.ts",
+		"packages/core/test/canonical-recall-renewal-model.test.ts",
+		"packages/core/quint/check-canonical-recall-renewal.mjs"
+	],
+	"conformance": "packages/core/quint/check-canonical-recall-renewal.mjs",
+	"bounds": "One delivery turn in one canonical group room (requester and agent) with one stamped stored row, and up to five steps drawn from: the clock passes the real five-minute evidence TTL, the turn ends, the turn's abort signal fires, one more participant joins, and searchCanonicalConversationMemories runs. The conformance script replays every generated step sequence through searchCanonicalConversationMemories on an initialized runtime with SQLite storage. It moves Date past the default TTL without shortening the TTL, and it requires every combination of fresh or expired evidence, a running, ended or cancelled turn, and an unchanged or changed census to reach a search. Direct and owner-private rooms, cross-room recall, authenticated API principals and renewal lookup failures are not modeled; this change does not touch those paths in trusted-delivery-audience.ts. Under weak fairness of search, a running turn with an unchanged census eventually gets its recall served. Explicit stuttering lets nobody search, so the same claim without fairness must fail. No latency bound is proved.",
+	"cases": [
+		{
+			"name": "group-room-recall-across-the-evidence-ttl",
+			"main": "CanonicalRecallRenewal",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"FreshEvidenceRecalls",
+				"ActiveTurnRenews",
+				"EndedTurnStaysDenied",
+				"ChangedCensusStaysDenied",
+				"RenewalOnlyForActiveUnchangedTurn",
+				"TypeOK"
+			],
+			"temporal": ["ActiveTurnRecalls", "ActiveTurnRecallsWithoutFairness"],
+			"maxSteps": 5,
+			"samples": 4000,
+			"temporalChecks": [
+				{
+					"property": "ActiveTurnRecalls",
+					"expect": "holds",
+					"assumptions": [
+						"Every continuously enabled search eventually runs (weak fairness). This checks that a search on a running turn with an unchanged census serves the room whether or not its evidence has expired, not how soon the search runs."
+					]
+				},
+				{
+					"property": "ActiveTurnRecallsWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No search fairness is assumed. Nobody may ever search, so a temporal loop counterexample is required."
+					]
+				}
+			]
+		}
+	]
+}

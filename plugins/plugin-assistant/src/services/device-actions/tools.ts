@@ -1,16 +1,16 @@
+import {
+  requestedSmsDraftRecipient,
+  SMS_COMPOSE_TARGET_CAPABILITY,
+  SMS_SENDER_ADDRESS_CAPABILITY,
+} from "@elizaos/contracts/telephony-actions";
 /** Narrow owner-device operations over the canonical proposal/approval/receipt path. */
 import type {
   Action,
   ActionParameterSchema,
   HandlerOptions,
 } from "@elizaos/core";
-import {
-  ElizaError,
-  extractUserText,
-  registerDirectActionRoutingRule,
-  unwrapUserMessageText,
-} from "@elizaos/core";
-import { proposeDeviceAction } from "./action.ts";
+import { ElizaError, registerDirectActionRoutingRule } from "@elizaos/core";
+import { opensAddressInNewTab, proposeDeviceAction } from "./action.ts";
 import { isBrowserControlType } from "./browser-contract.ts";
 import { authoredBrowserDestination } from "./browser-request-grounding.ts";
 import {
@@ -20,7 +20,6 @@ import {
 } from "./calendar-contract.ts";
 import {
   CAMERA_CAPTURE_CAPABILITY,
-  CAMERA_LENS_CAPABILITY,
   DEVICE_CAMERA_CAPTURE_ACTION,
 } from "./camera-contract.ts";
 import { authoredCameraCapture } from "./camera-request.ts";
@@ -49,6 +48,7 @@ import {
 import {
   authoredKeypadRequest,
   authoredTelephonyRequest,
+  emergencyServicesRequest,
 } from "./telephony-request.ts";
 import { turnObservation } from "./turn-observation.ts";
 
@@ -178,7 +178,7 @@ const declarations = [
   [
     "DEVICE_BROWSER_TAB_CLOSE",
     "browser_tab_close",
-    "Close a tab in this phone's Browser (browser.tabs.v1). target is a word of the tab's title or site as the owner said it; leave it out to close the tab that is showing. Closing a tab is always reviewed by the owner. You never receive the list of tabs.",
+    "Close a tab in this phone's Browser (browser.tabs.v1). target is a word of the tab's title or site as the owner said it; leave it out to close the tab that is showing. When the owner asks to close all or every tab, set all true (browser.tabs.close-all.v1) instead: the phone lists the tabs on one review card. Never close only the showing tab for a request about several or all tabs. Closing a tab is always reviewed by the owner. You never receive the list of tabs.",
   ],
   [
     "DEVICE_BROWSER_TAB_NEW",
@@ -371,7 +371,14 @@ function operationSchema(type: string): ActionParameterSchema {
       (branch.properties as Record<string, { enum?: readonly string[] }>).type
         ?.enum?.[0] === type,
   );
-  if (selected.length !== (type === "camera_capture_photo" ? 2 : 1))
+  // These operations declare two forms; their tool filters one out per phone.
+  const forms =
+    type === "camera_capture_photo" ||
+    type === "photos_album_create" ||
+    type === "photos_share"
+      ? 2
+      : 1;
+  if (selected.length !== forms)
     throw Error("Canonical device operation is not uniquely declared: " + type);
   return readableReminderOperationSchema(type, { anyOf: selected });
 }
@@ -465,6 +472,14 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
       type === "calendar_update" || type === "notes_update"
         ? { minRole: "OWNER" as const }
         : proposeDeviceAction.roleGate,
+    // browser_tab_new carries the owner's own words for it: "open a new tab"
+    // matched only DEVICE_BROWSER_OPEN, whose description speaks of a new tab
+    // for an address, so the planner was offered that tool alone and a search
+    // for the empty tab found that tool again. "Open example.com in a new
+    // tab" holds the same words, and a search narrows to the tools with a
+    // simile the request holds, so browser_navigate carries its own new-tab
+    // words to stay the first result for an address. "open a tab" stays:
+    // without it "open a tab" and "open a private tab" list only the open.
     similes:
       type === "camera_capture_photo"
         ? [
@@ -474,26 +489,28 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
             "take a selfie",
           ]
         : type === "browser_navigate"
-          ? ["DEVICE_BROWSER_NAVIGATE"]
+          ? ["DEVICE_BROWSER_NAVIGATE", "open in a new tab"]
           : type === "browser_tab_switch"
             ? ["switch tab", "go to tab", "show tab"]
             : type === "browser_tab_close"
               ? ["close tab"]
-              : type === "reminder_read_selected"
-                ? ["DEVICE_REMINDER_READ_SELECTED"]
-                : type === "notes_query"
-                  ? [
-                      "find note by title",
-                      "look up saved note",
-                      "search notes before reading",
-                      "read a named note",
-                    ]
-                  : type === "notes_read_selected"
+              : type === "browser_tab_new"
+                ? ["new tab", "open a new tab", "open a tab"]
+                : type === "reminder_read_selected"
+                  ? ["DEVICE_REMINDER_READ_SELECTED"]
+                  : type === "notes_query"
                     ? [
-                        "read selected note",
-                        "read note by returned identity and revision",
+                        "find note by title",
+                        "look up saved note",
+                        "search notes before reading",
+                        "read a named note",
                       ]
-                    : [],
+                    : type === "notes_read_selected"
+                      ? [
+                          "read selected note",
+                          "read note by returned identity and revision",
+                        ]
+                      : [],
     // "phone" is the telephony context: its call/text/dial keyword signals
     // ranked this Maps read above the dialer for "open the phone keypad".
     contexts:
@@ -521,6 +538,15 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
       message: Parameters<NonNullable<Action["validate"]>>[1],
     ) => {
       if (!deviceAppRecordOperationAvailable(runtime, { type }, message))
+        return false;
+      // "Open example.com in a new tab" holds the empty tab's own words, so
+      // this tool was listed beside the typed open in the first list and in a
+      // search. The proposal tool offers no empty tab for that request, and
+      // neither does this one.
+      if (
+        type === "browser_tab_new" &&
+        opensAddressInNewTab(message, runtime.character?.name)
+      )
         return false;
       const validate: Action["validate"] =
         type === "notes_update"
@@ -709,34 +735,8 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
         throw new ElizaError("Device action handler is unavailable", {
           code: "DEVICE_ACTION_HANDLER_UNAVAILABLE",
         });
-      if (type === "camera_capture_photo") {
-        // A whole-message photo command owns its lens: the camera the owner
-        // named, or the one showing. The model's lens choice never overrides it.
-        // The owner's words, not a prompt-only document envelope around them.
-        const authored = authoredCameraCapture(
-          args[1] ? extractUserText(unwrapUserMessageText(args[1])) : "",
-          args[0].character?.name,
-        );
-        if (
-          authored &&
-          getDeviceActionTurn()?.credential.capabilities?.includes(
-            CAMERA_LENS_CAPABILITY,
-          )
-        ) {
-          const next = [...args] as Parameters<NonNullable<Action["handler"]>>;
-          next[3] = {
-            ...(args[3] as HandlerOptions | undefined),
-            parameters: {
-              ...(raw as Record<string, unknown>),
-              operation: {
-                type,
-                ...(authored.lens ? { lens: authored.lens } : {}),
-              },
-            } as HandlerOptions["parameters"],
-          };
-          return proposeDeviceAction.handler(...next);
-        }
-      }
+      // A camera capture's lens is the one the owner named; the service
+      // applies that for every tool that proposes one (proposeWithOutcome).
       return proposeDeviceAction.handler(...args);
     },
   })),
@@ -897,9 +897,30 @@ export function registerDeviceTelephonyRouting(
   ): boolean => {
     const capabilities = ownerPhoneChatCapabilities(runtime, message);
     if (!capabilities) return false;
+    // An emergency request ("call an ambulance", "call for help") always
+    // reaches the phone: its keypad opens for the local emergency number.
+    if (emergencyServicesRequest(text))
+      return (
+        deviceOperationSupportedByCapabilities("phone_keypad", capabilities) ||
+        deviceOperationSupportedByCapabilities("phone_call", capabilities)
+      );
     const request = authoredTelephonyRequest(text);
+    if (request === "sender")
+      return deviceOperationSupportedByCapabilities(
+        "sms_latest_sender",
+        capabilities,
+      );
     if (request === "call")
       return deviceOperationSupportedByCapabilities("phone_call", capabilities);
+    if (
+      request === "text" &&
+      requestedSmsDraftRecipient(text)?.kind === "previous-sender"
+    )
+      return (
+        capabilities.includes(SMS_SENDER_ADDRESS_CAPABILITY) &&
+        capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY) &&
+        deviceOperationSupportedByCapabilities("sms_compose", capabilities)
+      );
     if (request === "text")
       return (
         deviceOperationSupportedByCapabilities("sms_compose", capabilities) ||

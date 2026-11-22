@@ -382,6 +382,72 @@ describe("request-bound Calendar read coverage", () => {
       calendarReadCoverage(f.output, f.context, f.trajectory).verified,
     ).toBe(true);
   });
+  it.each([true, false])(
+    "preserves the verified Calendar date with explicit model coverage %s",
+    async (explicitCoverage) => {
+      const f = fixture();
+      const step = requiredFixtureValue(f.trajectory.steps[0]);
+      const result = requiredFixtureValue(step.result);
+      const canonical = "Next event: Design review on October 5 at 10 AM UTC.";
+      step.result = {
+        ...result,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+        data: {
+          ...result.data,
+          replyContext: {
+            domain: "calendar",
+            scenario: "next_event",
+            userFacingFacts: canonical,
+          },
+        },
+      };
+      f.output.messageToUser = "Your next event is tomorrow at 10 AM.";
+      if (!explicitCoverage) {
+        delete f.output.requestFullyCovered;
+        delete f.output.outcomeCoverage;
+      }
+      const reply = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(reply.success).toBe(true);
+      expect(reply.messageToUser).toBe(canonical);
+    },
+  );
+  it("uses the sole current next-event read when the evaluator omits its citation", async () => {
+    const f = fixture();
+    delete f.output.outcomeCoverage;
+    delete f.output.requestFullyCovered;
+    f.output.messageToUser = "Your next event is tomorrow at 10 AM.";
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+    const reply = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(reply.success).toBe(true);
+    expect(reply.messageToUser).toBe(f.output.messageToUser);
+    const step = requiredFixtureValue(f.trajectory.steps[0]);
+    f.trajectory.steps.push({
+      ...step,
+      toolCall: {
+        ...requiredFixtureValue(step.toolCall),
+        id: "another-next-event",
+      },
+    });
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+    f.trajectory.steps.pop();
+    requiredFixtureValue(step.result).effectReceipts = [];
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+  });
   it("accepts the canonical dispatcher only for its explicit next_event discriminator", () => {
     const f = fixture();
     f.trajectory.steps[0].toolCall = {
@@ -2289,7 +2355,7 @@ function liveMoveFixture() {
 }
 
 describe("committed Calendar mutations behind a read binding", () => {
-  it("restricts coverage to the turn's intent IDs so a committed move keeps its reply", async () => {
+  it("restricts coverage to intent IDs so a committed move keeps its reply", async () => {
     const f = liveMoveFixture();
     let intentIds: unknown;
     // Strict structured decoding can emit only values the schema allows.
@@ -2316,7 +2382,10 @@ describe("committed Calendar mutations behind a read binding", () => {
       trajectory: f.trajectory,
     });
     expect(result.messageToUser).toBe(f.live.messageToUser);
-    expect(intentIds).toEqual(["intent:1", "intent:2"]);
+    // The same list on every turn; this turn's two intents lead it.
+    expect(intentIds).toEqual(
+      Array.from({ length: 8 }, (_, index) => `intent:${index + 1}`),
+    );
     expect(result.success).toBe(true);
     expect(result.decision).toBe("FINISH");
     expect(result.effectReceiptIds).toEqual(f.live.effectReceiptIds);
@@ -2373,6 +2442,399 @@ describe("committed Calendar mutations behind a read binding", () => {
     expect((await evaluate()).messageToUser).toContain(
       "I couldn't look up that event in your calendar just now.",
     );
+  });
+
+  /** Pixel v618: "delete coffee with Sam" bound its lookup as a requested
+   * search, and the planner ran only the delete, which found the event itself. */
+  function ownLookupDeleteFixture() {
+    const f = liveMoveFixture();
+    const update = f.trajectory.steps[2];
+    const target = (
+      update.result.data as {
+        targetEvent: { id: string; title: string; metadata: { etag: string } };
+      }
+    ).targetEvent;
+    const receiptId = "calendar-event-mutation-receipt-v1:delete";
+    f.trajectory.outcomeIntents = ["delete the coffee with Sam"];
+    f.trajectory.steps = [
+      {
+        iteration: 1,
+        toolCall: { id: "delete", name: "CALENDAR_DELETE_EVENT", params: {} },
+        result: {
+          ...update.result,
+          effectReceipts: update.result.effectReceipts?.map((receipt) => ({
+            ...receipt,
+            receiptId,
+            operation: "calendar.event.delete",
+            resource: {
+              ...receipt.resource,
+              version: `deleted:${target.metadata.etag}`,
+            },
+          })),
+          data: { deleted: true, targetEvent: target },
+        },
+      },
+    ];
+    const output: EvaluatorOutput = {
+      ...f.live,
+      outcomeCoverage: [
+        {
+          intentId: "intent:1",
+          status: "completed",
+          evidenceStepIds: ["step:1"],
+        },
+      ],
+      messageToUser: "Deleted “coffee with Sam” from your calendar.",
+      effectReceiptIds: [receiptId],
+    };
+    const evaluate = (reply: EvaluatorOutput = output) =>
+      runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(reply) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+    return { ...f, target, output, evaluate };
+  }
+
+  it("reports a delete that found its own target behind a requested search", async () => {
+    const f = ownLookupDeleteFixture();
+    const result = await f.evaluate();
+    expect(result.messageToUser).toBe(f.output.messageToUser);
+    expect(result.success).toBe(true);
+    expect(result.replyFailure).toBeUndefined();
+    expect(result.effectReceiptIds).toEqual(f.output.effectReceiptIds);
+    // The evaluator may also leave the delete uncited.
+    const uncited = await f.evaluate({
+      ...f.output,
+      outcomeCoverage: undefined,
+    });
+    expect(uncited.messageToUser).toBe(f.output.messageToUser);
+    expect(uncited.success).toBe(true);
+  });
+
+  it("reports the real built-in delete that found its own target", async () => {
+    const f = ownLookupDeleteFixture();
+    const bindings = f.context.metadata
+      ?.calendarReadBindings as CalendarReadBinding[];
+    const binding = bindings[0];
+    const runtime = new AgentRuntime({
+      character: { name: "Real built-in delete", bio: [] },
+      logLevel: "fatal",
+    });
+    registerCalendarTimeZoneResolver(runtime, async () => "UTC");
+    // No delete confirmation is pending.
+    vi.spyOn(runtime, "getCache").mockResolvedValue(undefined);
+    const service = new CalendarService(runtime);
+    const syncedAt = new Date(binding.requestedAt).toISOString();
+    const event: LifeOpsCalendarEvent = {
+      id: f.target.id,
+      externalId: "event-1",
+      agentId: runtime.agentId,
+      provider: "eliza",
+      side: "owner",
+      grantId: "eliza-calendar",
+      calendarId: "primary",
+      title: "coffee with Sam",
+      description: "",
+      location: "",
+      status: "confirmed",
+      startAt: "2026-10-05T17:00:00.000Z",
+      endAt: "2026-10-05T18:00:00.000Z",
+      isAllDay: false,
+      timezone: "UTC",
+      htmlLink: null,
+      conferenceLink: null,
+      organizer: null,
+      attendees: [],
+      metadata: { etag: '"eliza-1"' },
+      syncedAt,
+      updatedAt: syncedAt,
+    };
+    const read = vi.spyOn(service, "getCalendarFeed").mockResolvedValue({
+      calendarId: "primary",
+      events: [event],
+      source: "synced",
+      state: "complete",
+      syncedAt,
+      timeMin: "2026-09-01T00:00:00.000Z",
+      timeMax: "2026-12-01T00:00:00.000Z",
+      sources: [
+        {
+          key: {
+            provider: "eliza",
+            side: "owner",
+            grantId: "eliza-calendar",
+            connectorAccountId: "eliza-calendar",
+            calendarId: "primary",
+          },
+          summary: "Eliza Calendar",
+          accessRole: "owner",
+          visibility: "details",
+          status: "fresh",
+          syncedAt,
+          error: null,
+        },
+      ],
+    } as LifeOpsCalendarFeed);
+    const remove = vi
+      .spyOn(service, "deleteCalendarEvent")
+      .mockResolvedValue(undefined);
+    runtime.services.set(CalendarService.serviceType, [service]);
+    const noModel = async () => {
+      throw new Error("Unexpected producer model call");
+    };
+    const outcome = await createCalendarActionRunner({
+      runTextModel: noModel,
+      runJsonModel: noModel,
+      recentConversationTexts: async () => [],
+    }).handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000391",
+        entityId: "00000000-0000-0000-0000-000000000392",
+        roomId: "00000000-0000-0000-0000-000000000393",
+        agentId: runtime.agentId,
+        createdAt: binding.requestedAt,
+        content: { text: "Delete coffee with Sam" },
+      },
+      undefined,
+      {
+        parameters: {
+          subaction: "delete_event",
+          details: { title: "coffee with Sam" },
+        },
+      },
+    );
+    if (!outcome || typeof outcome !== "object")
+      throw new Error("Missing real producer result");
+    expect(read).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ forceSync: true }),
+    );
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(outcome.success).toBe(true);
+    f.trajectory.steps[0] = { ...f.trajectory.steps[0], result: outcome };
+    const receiptIds = (outcome.effectReceipts ?? []).map(
+      (receipt) => receipt.receiptId,
+    );
+    const output: EvaluatorOutput = {
+      ...f.output,
+      messageToUser: "Deleted “coffee with Sam” from your calendar.",
+      effectReceiptIds: receiptIds,
+    };
+    expect(calendarReadCoverage(output, f.context, f.trajectory)).toEqual({
+      verified: true,
+      unverifiedIntentIds: [],
+    });
+    const result = await f.evaluate(output);
+    expect(result.messageToUser).toBe(output.messageToUser);
+    expect(result.success).toBe(true);
+  });
+
+  it("reports a committed move that found its own target behind a requested search", async () => {
+    const f = liveMoveFixture();
+    f.trajectory.outcomeIntents = ["move the coffee with Sam to 2pm"];
+    f.trajectory.steps = [f.trajectory.steps[2]];
+    const output = {
+      ...f.live,
+      outcomeCoverage: [
+        {
+          intentId: "intent:1",
+          status: "completed" as const,
+          evidenceStepIds: ["step:1"],
+        },
+      ],
+    };
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.messageToUser).toBe(output.messageToUser);
+    expect(result.success).toBe(true);
+    // A read after the move shows the version it produced, not a conflict.
+    const [move] = f.trajectory.steps;
+    const { event: after, targetEvent: before } = move.result.data as {
+      event: object;
+      targetEvent: object;
+    };
+    const later = (events: object[]) => {
+      f.trajectory.steps = [
+        move,
+        {
+          iteration: 2,
+          toolCall: { id: "afternoon", name: "CALENDAR_FEED", params: {} },
+          result: { success: true, data: { events } },
+        },
+      ];
+      return calendarReadCoverage(output, f.context, f.trajectory).verified;
+    };
+    expect(later([after])).toBe(true);
+    // One that still shows the event as it was before the move is stale.
+    expect(later([before])).toBe(false);
+  });
+
+  it("recognizes a delete the umbrella Calendar action inferred", () => {
+    const f = ownLookupDeleteFixture();
+    const [step] = f.trajectory.steps;
+    step.toolCall = {
+      id: "delete",
+      name: "CALENDAR",
+      params: { intent: "delete coffee with Sam" },
+    };
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+    (step.result.data as Record<string, unknown>).subaction = "delete_event";
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+  });
+
+  it.each([
+    [
+      "the turn also asks another question",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        f.trajectory.outcomeIntents = [
+          "what else do I have with Sam this week?",
+          "delete coffee with Sam",
+        ];
+      },
+    ],
+    [
+      "the search is broader than the deleted event",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        const bindings = f.context.metadata
+          ?.calendarReadBindings as CalendarReadBinding[];
+        const [filter] = bindings[0].filterEvidence ?? [];
+        filter.query = "Sam";
+        filter.quote = "Sam";
+      },
+    ],
+    [
+      "the reply does not report the delete",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        f.output.replyEffectStatus = undefined;
+        f.output.effectReceiptIds = undefined;
+        f.output.messageToUser = "Coffee with Sam is at 10am on Monday.";
+      },
+    ],
+    [
+      "the reply is not marked as reporting a change",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        f.output.replyEffectStatus = undefined;
+      },
+    ],
+    [
+      "the reply selects another receipt",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        f.output.effectReceiptIds = [
+          "calendar-event-mutation-receipt-v1:other",
+        ];
+      },
+    ],
+    [
+      "a later read still shows the deleted event",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        f.trajectory.steps.push({
+          iteration: 2,
+          toolCall: { id: "agenda", name: "CALENDAR_FEED", params: {} },
+          result: { success: true, data: { events: [f.target] } },
+        });
+      },
+    ],
+    [
+      "the delete removed another event",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        f.target.title = "Dentist";
+      },
+    ],
+    [
+      "the delete failed",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        f.trajectory.steps[0].result.success = false;
+      },
+    ],
+    [
+      "the delete committed nothing",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        f.trajectory.steps[0].result.effectReceipts = [];
+      },
+    ],
+    [
+      "the delete removed another version of the event",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        const [receipt] = f.trajectory.steps[0].result.effectReceipts ?? [];
+        receipt.resource.version = 'deleted:"eliza-0"';
+      },
+    ],
+    [
+      "an earlier read saw another version of the event",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        f.trajectory.steps.unshift({
+          iteration: 0,
+          toolCall: { id: "agenda", name: "CALENDAR_FEED", params: {} },
+          result: {
+            success: true,
+            data: {
+              events: [{ ...f.target, metadata: { etag: '"eliza-0"' } }],
+            },
+          },
+        });
+        f.output.outcomeCoverage = [
+          {
+            intentId: "intent:1",
+            status: "completed",
+            evidenceStepIds: ["step:2"],
+          },
+        ];
+      },
+    ],
+    [
+      "the search binding quotes no event content",
+      (f: ReturnType<typeof ownLookupDeleteFixture>) => {
+        const bindings = f.context.metadata
+          ?.calendarReadBindings as CalendarReadBinding[];
+        bindings[0].filterEvidence = [];
+      },
+    ],
+  ])(
+    "does not count the delete as the requested search when %s",
+    (_, mutate) => {
+      const f = ownLookupDeleteFixture();
+      expect(
+        calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+      ).toBe(true);
+      mutate(f);
+      expect(calendarReadCoverage(f.output, f.context, f.trajectory)).toEqual(
+        expect.objectContaining({
+          verified: false,
+          unverifiedIntentIds: ["intent:1"],
+        }),
+      );
+    },
+  );
+
+  it("still says the event was not looked up for a search question with no search", async () => {
+    const f = liveMoveFixture();
+    f.trajectory.outcomeIntents = ["when is coffee with Sam?"];
+    f.trajectory.steps = [];
+    const output: EvaluatorOutput = {
+      thought: "Answered from memory.",
+      success: true,
+      decision: "FINISH",
+      requestFullyCovered: true,
+      messageToUser: "Coffee with Sam is at 10am on Saturday.",
+    };
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.messageToUser).toBe(
+      "I couldn't look up that event in your calendar just now.",
+    );
+    expect(result.success).toBe(false);
   });
 });
 
@@ -2463,6 +2925,43 @@ describe("Calendar proposal and availability outcome evidence", () => {
       throw new Error("Incomplete scheduling evidence fixture");
     return { ...f, step, result, data, receipt, call, binding };
   }
+  it("answers a sole current built-in slot preview from the producer instead of converting it with a model", async () => {
+    const f = proposalFixture();
+    f.binding.source = "builtin";
+    f.result.transcriptVisibility = "internal";
+    f.result.modelReplyRequired = true;
+    const answer =
+      "I found a 30-minute opening. Mon, Oct 5, 12:00–12:30 PM UTC.";
+    f.data.replyContext = {
+      domain: "calendar",
+      scenario: "propose_times",
+      userFacingFacts: answer,
+    };
+    const useModel = vi.fn(async () =>
+      JSON.stringify({
+        ...f.output,
+        outcomeCoverage: undefined,
+        messageToUser: "It is free at 1 PM.",
+      }),
+    );
+    const evaluate = () =>
+      runEvaluator({
+        runtime: { useModel },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+    expect(await evaluate()).toMatchObject({
+      success: true,
+      decision: "FINISH",
+      messageToUser: answer,
+      outcomeCoverage: [{ status: "completed", evidenceStepIds: ["step:1"] }],
+    });
+    expect(useModel).not.toHaveBeenCalled();
+    // The early reply cannot count a stale preview for the current request.
+    f.binding.requestedAt = Date.parse(f.receipt.observedAt) + 1000;
+    await evaluate();
+    expect(useModel).toHaveBeenCalledOnce();
+  });
   it.each([
     ["binding", "CALENDAR_READ_BINDING_IDENTITY_INVALID"],
     ["coverage", "CALENDAR_READ_COVERAGE_MISSING"],

@@ -1,0 +1,41 @@
+{
+  "sources": [
+    "packages/cloud/api/v1/decisions/route.ts",
+    "packages/cloud/api/v1/decisions/route.test.ts",
+    "packages/cloud/shared/src/lib/services/organization-quota-policy.ts",
+    "packages/cloud/shared/src/lib/services/org-rate-limits.ts",
+    "packages/cloud/shared/src/lib/middleware/rate-limit-hono-cloudflare.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json"
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "bounds": {
+    "domain": "One organization, two credentials, five funding observations and independent outcomes of the credential guard and both shared Redis buckets. The daily count saturates at five, and the subscription minute count saturates at three. Daily limits two and four abstract 2,000 and 4,000. The minute limit uses two slots to model per-plan renewal.",
+    "limitations": "Redis increments for both credentials are modeled as atomic on each shared key. Each request models a current policy read and the ordered limiter checks. Daily and minute windows can reset and funding can change between requests. Progress through a full minute depends on Redis expiry and a subsequent valid request. This model does not cover wall clock drift, in-flight policy changes, settlement internals or provider execution."
+  },
+  "cases": [
+    {
+      "name": "funded-allowance",
+      "main": "ClefDailyQuota",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "DailyAdmissionBounded",
+        "ContinuedOnlyWhileSubscribed",
+        "ExhaustedSubscriptionWindowRefuses"
+      ],
+      "maxSteps": 20,
+      "samples": 200,
+      "temporal": ["ContinuationRenews"],
+      "temporalChecks": [
+        {
+          "property": "ContinuationRenews",
+          "expect": "holds",
+          "assumptions": [
+            "A saturated subscription minute bucket eventually expires if the subscription remains current. This does not assume a provider request or response succeeds."
+          ]
+        }
+      ]
+    }
+  ]
+}

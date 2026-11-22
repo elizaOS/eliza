@@ -122,6 +122,8 @@ export function dominantPlace(
 ): PlaceRef | undefined {
   const qualified = qualifiedPlaces(query, places);
   const candidates = qualified ?? places;
+  // A lone result is the place meant: a provider answers "SFO" with "San
+  // Francisco International Airport" and a typo with the spelled place.
   if (candidates.length <= 1) return candidates[0];
   const local =
     qualified === undefined && anchor

@@ -212,6 +212,11 @@ back a key already committed. Saved-key acknowledgement recovery on the next sta
 creates no interactive attempt and reserves no intent; it settles the key with the
 same outcomes as the in-process retries (below).
 
+`GET /auth/providers?tenantId=…&clientId=…` reports `nativeGoogleApp` with
+the requested client ID and its native Google eligibility. Use that exact
+client result for app-specific availability. The `googleNative` field
+describes the tenant as a whole. Discovery does not issue a challenge.
+
 ### Google sign-in with Gmail, and sign-out
 
 - Native Google mode makes one Cloud call. The plugin gets a Steward challenge,

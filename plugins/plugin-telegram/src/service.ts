@@ -2698,8 +2698,22 @@ export class TelegramService extends Service {
         chat,
       );
       return chat;
-    } catch {
-      return null;
+    } catch (error) {
+      // error-policy:J2 Only "this bot cannot see this chat" answers null.
+      // A rejected token, flood limit or transport failure must not look like
+      // a chat that does not exist: the caller then reports no matching target.
+      const errorCode = (error as { response?: { error_code?: number } })
+        .response?.error_code;
+      if (errorCode === 400 || errorCode === 403) {
+        return null;
+      }
+      throw error instanceof ElizaError
+        ? error
+        : new ElizaError("Telegram chat lookup failed", {
+            code: "TELEGRAM_CHAT_LOOKUP_FAILED",
+            cause: error,
+            context: { accountId, chatId: String(chatId) },
+          });
     }
   }
 

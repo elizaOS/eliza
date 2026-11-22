@@ -228,6 +228,11 @@ export function taskCreatePlanGuidance(nativeTool = false): string {
     '  - "count_per_day" — a flexible count quota with no invented clock slots (e.g. "25 pushups, 3 sets a day, whenever")',
     '  - "interval" — happens every N minutes/hours (e.g. "every 2 hours")',
     '  If the request names a specific calendar date OR a specific wall-clock time without a recurrence word, pick "once".',
+    ...(nativeTool
+      ? []
+      : [
+          '  A condition ("if ...", "unless ...") is not a recurrence: without a recurrence word, the reminder happens once.',
+        ]),
     '  A deadline phrase IS a dated "once" task: "by the 20th" / "before Friday" / "due on the 28th" means cadenceKind="once" with the deadline as its date (dueDate for a named date, dueWeekday for a weekday). Never use mode="respond" to ask for an exact time on a deadline ask — the owner already gave the date that matters.',
     `  If the owner explicitly says they have not provided the date/time yet or tells you not to guess one, choose mode="respond", leave cadenceKind and every due/time field ${unknownField}, and ask when. Never invent a default schedule against that instruction.`,
     "- windows: list of time windows like [morning, night, afternoon, evening]",
@@ -455,6 +460,16 @@ function buildRepairPrompt(args: {
   ].join("\n");
 }
 
+/**
+ * Reasoning hint for every create-plan extraction call. Measured 2026-11-20 on
+ * Cerebras qwen-3.8-27b, 12 synthetic requests 3 times each: low reasoning
+ * matched the default high on every plan (36/36 each) with less than half the
+ * output tokens at p90, while reasoning off got 30/36 (dropped
+ * nativeProjection, missed multiStep, off-schema output). Providers apply it
+ * only to models that document a low effort; a host reasoning pin still wins.
+ */
+const taskCreatePlanProviderOptions = () => ({ eliza: { thinking: "low" } });
+
 function buildExtractionFailurePlan(): ExtractedTaskCreatePlan {
   return {
     ...EMPTY_TASK_CREATE_PLAN,
@@ -528,6 +543,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
     const first = await runExtractorPipeline({
       runtime,
       responseFormat: { type: "json_object" },
+      providerOptions: taskCreatePlanProviderOptions(),
       ...(managed.system !== undefined ? { system: managed.system } : {}),
       prompt: `${prompt}\n\nTask-create context is bound to this request. Selected history and provider-owned reference notices preserve standing constraints; current receipts stay complete. If any provider detail, constraint, correction, referent or historical dependency is missing or uncertain, return exactly {"restoreContext":true} before proposing any effect. Never infer omitted source contents.`,
       parser: parsePlan,
@@ -544,6 +560,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
       const restored = await runExtractorPipeline({
         runtime,
         responseFormat: { type: "json_object" },
+        providerOptions: taskCreatePlanProviderOptions(),
         ...(managed.system !== undefined ? { system: managed.system } : {}),
         prompt: buildExtractionPrompt(
           intent,
@@ -567,6 +584,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
     const repaired = await runExtractorPipeline({
       runtime,
       responseFormat: { type: "json_object" },
+      providerOptions: taskCreatePlanProviderOptions(),
       ...(managed.system !== undefined ? { system: managed.system } : {}),
       prompt: buildRepairPrompt({
         intent,
@@ -584,6 +602,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
   const { parsed } = await runExtractorPipeline({
     runtime,
     responseFormat: { type: "json_object" },
+    providerOptions: taskCreatePlanProviderOptions(),
     prompt,
     parser: parsePlan,
     buildRepairPrompt: (rawResponse) =>
