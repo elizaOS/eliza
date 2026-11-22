@@ -96,10 +96,17 @@ describe("acknowledgment cues and the routing classifiers", () => {
     "One second, then it retries automatically.",
     "One second... then release.",
     "Just a moment ago the build finished green.",
+    "One moment after sunrise is enough.",
     "On it, the alarm is set.",
   ])("keeps an answer that opens with cue words an answer: %s", (reply) => {
     expect(looksLikeProgressOnlyReply(reply)).toBe(false);
     expect(looksLikeCompleteDirectReply(reply)).toBe(true);
+  });
+
+  it("allows a captured answer that starts with a duration", () => {
+    expect(
+      PROGRESS_ONLY_ANSWER_REJECT.test("One moment after sunrise is enough."),
+    ).toBe(false);
   });
 
   it.each([
@@ -112,6 +119,8 @@ describe("acknowledgment cues and the routing classifiers", () => {
     "On it, let me check your calendar.",
     "On it. Let me check your calendar.",
     "Just a moment, let me check your calendar.",
+    "One moment. One sec.",
+    "Just a second! One sec. One moment.",
   ])("reads a cue before more progress as progress: %s", (reply) => {
     expect(looksLikeProgressOnlyReply(reply)).toBe(true);
     expect(PROGRESS_ONLY_ANSWER_REJECT.test(reply)).toBe(true);

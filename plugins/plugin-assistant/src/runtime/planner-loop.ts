@@ -12608,9 +12608,9 @@ function userSafeRefusalCandidate(
 // progress ("One sec, let me check."). Answers that open with the same words
 // ("Just a second, your dentist is Thursday.", "One second is 1,000
 // milliseconds.", "On it — the alarm is set.") stay answers.
-const WAIT_CUE_OPENER =
-  "(?:on it|(?:one|just a) (?:sec(?:ond)?|moment))(?=[.!…]*\\s*$|\\s*(?:,|[.!…]+|[—–:;]|\\s-)\\s*(?:let me|i(?:'|’)ll|i will|i(?:'|’)m going to|i am going to|checking|looking|pulling|digging|searching|reading|taking a look|having a look)\\b)";
-export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN = `calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|${WAIT_CUE_OPENER}|let me|i(?:'|’)ll|i will`;
+const WAIT_CUE = "(?:on it|(?:one|just a) (?:sec(?:ond)?|moment))";
+const WAIT_CUE_OPENER = `${WAIT_CUE}(?=(?:[.!…]+\\s+${WAIT_CUE}){0,2}[.!…]*\\s*$|\\s*(?:,|[.!…]+|[—–:;]|\\s-)\\s*(?:let me|i(?:'|’)ll|i will|i(?:'|’)m going to|i am going to|checking|looking|pulling|digging|searching|reading|taking a look|having a look)\\b)`;
+export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN = `calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|${WAIT_CUE_OPENER}|let me|i(?:'|’)ll|i will`;
 
 // Bare opener screen (no final-answer-only extensions) for text where a
 // progress-shaped opener is disqualifying but "Okay, …" openings are
