@@ -100,13 +100,14 @@ public class AgentService extends Service {
   private final List<ScheduledFuture<?>> timers = new ArrayList<>();
   private volatile AgentPolicy policy = new AgentPolicy(null, null);
   private volatile long base;
-  private volatile int lastStartId;
+  private int appliedStartId;
   private boolean foreground;
   private String initFailure;
   private AgentDirectories directories;
   private ChildJournal journal;
   private UpdateHold hold;
   private AgentSupervisor.Child child;
+  private AgentPolicy.Check checkAfterReap;
   private String token;
   private Path socket;
   private HealthPolicy.HealthWatch watch = HealthPolicy.HealthWatch.FRESH;
@@ -186,7 +187,7 @@ public class AgentService extends Service {
 
   public static void stop(Context context) {
     AgentService service = live;
-    if (service != null) service.post(new AgentPolicy.Stop());
+    if (service != null) service.later(() -> service.settled(() -> service.step(new AgentPolicy.Stop())));
   }
 
   public static void credentialChanged(Context context) {
@@ -249,7 +250,11 @@ public class AgentService extends Service {
       AgentService service = live;
       if (service == null) {
         UpdateHold store = UpdateHold.of(context);
-        if (new AgentPolicy(null, store.held()).step(new AgentPolicy.HoldForUpdate(target)).accepted()) store.save(target);
+        if (new AgentPolicy(null, store.held()).step(new AgentPolicy.HoldForUpdate(target)).accepted()) {
+          AgentDirectories dirs = new AgentDirectories(context.getFilesDir().toPath(), AndroidRuntimeDirectories::syncRuntimeDirectory);
+          requireNoJournaledChild(new ChildJournal(dirs.journal(), new ChildJournal.AndroidProcesses(), dirs.sync()));
+          store.save(target);
+        }
         return;
       }
       service.call(() -> {
@@ -318,17 +323,16 @@ public class AgentService extends Service {
   }
 
   @Override public int onStartCommand(Intent intent, int flags, int startId) {
-    lastStartId = startId;
     if (intent != null && ACTION_STOP.equals(intent.getAction())) {
-      post(new AgentPolicy.Stop());
+      post(startId, new AgentPolicy.Stop());
       return START_NOT_STICKY;
     }
     if (!foreground && !showForeground()) {
       stopSelfResult(startId);
       return START_NOT_STICKY;
     }
-    if (intent != null && ACTION_RESTART.equals(intent.getAction())) post(new AgentPolicy.Stop(), new AgentPolicy.Start());
-    else post(new AgentPolicy.Start());
+    if (intent != null && ACTION_RESTART.equals(intent.getAction())) post(startId, new AgentPolicy.Stop(), new AgentPolicy.Start());
+    else post(startId, new AgentPolicy.Start());
     return START_STICKY;
   }
 
@@ -400,8 +404,11 @@ public class AgentService extends Service {
     }
   }
 
-  private void post(AgentPolicy.Event... events) {
-    later(() -> settled(() -> { for (AgentPolicy.Event event : events) step(event); }));
+  private void post(int startId, AgentPolicy.Event... events) {
+    later(() -> settled(() -> {
+      appliedStartId = startId;
+      for (AgentPolicy.Event event : events) step(event);
+    }));
   }
 
   private void later(Runnable task) {
@@ -423,26 +430,26 @@ public class AgentService extends Service {
 
   private void settled(Runnable steps) {
     steps.run();
-    AgentPolicy.State state = policy.state();
-    if (pendingHold != null && !state.child()) {
+    if (pendingHold != null && !policy.state().child()) {
       try { hold(pendingHold); }
       catch (IOException failed) { Log.e(TAG, "The update hold could not be saved", failed); }
-      state = policy.state();
     }
-    boolean stopped = state.phase() == Phase.STOPPED;
-    int startId = lastStartId;
+    int startId = appliedStartId;
     main.post(() -> {
+      AgentPolicy.State state = policy.state();
+      boolean stopped = state.phase() == Phase.STOPPED;
       if (stopped && foreground) {
         stopForeground(STOP_FOREGROUND_REMOVE);
         foreground = false;
-        stopSelfResult(startId);
       } else if (!stopped && !foreground) {
         showForeground();
       }
+      if (stopped && !state.child()) stopSelfResult(startId);
     });
   }
 
   private AgentPolicy.Step step(AgentPolicy.Event event) {
+    if (pendingHold != null && event instanceof AgentPolicy.Start) return new AgentPolicy.Step(false, policy.state(), List.of());
     AgentPolicy.Step step = policy.step(event);
     if (!step.accepted()) return step;
     for (Effect effect : step.effects()) carryOut(effect);
@@ -469,6 +476,10 @@ public class AgentService extends Service {
     AgentPolicy.State state = policy.state();
     if (state.phase() != Phase.CHECKING || state.epoch() != check.epoch()) return;
     long epoch = base + check.epoch();
+    if (state.staleEpoch() != 0 && owns(base + state.staleEpoch())) {
+      checkAfterReap = check;
+      return;
+    }
     if (initFailure != null) {
       step(new AgentPolicy.FailUnclassified(initFailure));
       return;
@@ -478,6 +489,7 @@ public class AgentService extends Service {
       step(new AgentPolicy.FailUnclassified("The previous agent could not be ended: " + failed.getMessage()));
       return;
     }
+    if (state.staleEpoch() != 0) step(new AgentPolicy.StaleChildReaped(state.staleEpoch()));
     if (!step(new AgentPolicy.ReapStale()).accepted()) return;
     AgentConfig config;
     try { config = config(this); }
@@ -560,7 +572,7 @@ public class AgentService extends Service {
   private boolean owns(long launchEpoch) { return child != null && child.epoch == launchEpoch; }
 
   private void ready(long launchEpoch) {
-    if (!owns(launchEpoch)) return;
+    if (!owns(launchEpoch) || policy.state().phase() != Phase.SPAWNED) return;
     CHANNEL.open(launchEpoch, token, socket);
     if (!step(new AgentPolicy.ObserveReady(launchEpoch - base)).accepted()) {
       CHANNEL.retire(launchEpoch);
@@ -579,10 +591,27 @@ public class AgentService extends Service {
     token = null;
     cancelTimers();
     CHANNEL.retire(launchEpoch);
-    try { journal.clear(launchEpoch); }
+    long relativeEpoch = launchEpoch - base;
+    boolean stale = policy.state().staleEpoch() == relativeEpoch;
+    try {
+      if (stale) clearStaleChild(relativeEpoch);
+      else journal.clear(launchEpoch);
+    }
     catch (IOException failed) { Log.e(TAG, "The agent child journal could not be cleared", failed); }
     Log.i(TAG, "The agent of epoch " + launchEpoch + " exited with code " + code);
-    step(new AgentPolicy.ObserveExit(code));
+    if (!stale) step(new AgentPolicy.ObserveExit(code));
+    if (checkAfterReap != null) {
+      AgentPolicy.Check next = checkAfterReap;
+      checkAfterReap = null;
+      later(() -> settled(() -> check(next)));
+    }
+  }
+
+  private void clearStaleChild(long epoch) throws IOException {
+    if (journal.observe() instanceof ChildJournal.Journaled observed && observed.alive())
+      throw new IOException("The journaled agent child is still running");
+    journal.clear(base + epoch);
+    step(new AgentPolicy.StaleChildReaped(epoch));
   }
 
   private void health(long launchEpoch, boolean probe) {
@@ -724,6 +753,9 @@ public class AgentService extends Service {
   }
 
   private void hold(AgentPolicy.UpdateTarget target) throws IOException {
+    AgentPolicy.State state = policy.state();
+    if (state.staleEpoch() != 0 && !owns(base + state.staleEpoch())) clearStaleChild(state.staleEpoch());
+    if (!policy.state().child()) requireNoJournaledChild(journal);
     if (step(new AgentPolicy.HoldForUpdate(target)).accepted()) {
       pendingHold = null;
       try { hold.save(target); }
@@ -737,6 +769,11 @@ public class AgentService extends Service {
       pendingHold = target;
       step(new AgentPolicy.Stop());
     }
+  }
+
+  static void requireNoJournaledChild(ChildJournal journal) throws IOException {
+    if (journal == null || journal.observe() instanceof ChildJournal.Journaled)
+      throw new IOException("The previous agent must be reaped before taking an update hold");
   }
 
   private Path writeLaunch(String document) throws IOException {
