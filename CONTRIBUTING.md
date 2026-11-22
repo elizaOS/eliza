@@ -87,8 +87,9 @@ it is reported, then that object as its last line. Each result has `ok`, `stage`
 line ends with. `pnpm selftest` builds scratch projects from this project's spec or from `vibestack/fixtures/`, breaks
 one thing at a time and asserts which stage catches each. It runs as five cached tasks, each keyed by what its tests
 read: `selftest:docs` the documents against every file they can name, `selftest:examples` each standalone example
-against its own files and the tools, and `selftest:tools:a`, `selftest:tools:b` and `selftest:tools:rest` everything
-else, which no example but the order one reaches. The first two each run one shard of the kinds of mistake, the
+against its own files and the tools. `selftest:tools:a` and `selftest:tools:b` build scratch projects from the order
+example and fixtures. `selftest:tools:rest` also rebuilds the packaged CLI from the workspace, so changes under
+`apps/`, `packages/` and `spec/` invalidate its isolated CI run. The first two each run one shard of the kinds of mistake, the
 `describe` named `in shard a` or `in shard b` in `vibestack/selftest.ts`; the third skips what the other four name, so
 a new test runs there unless it is written into a shard. Keep the longest tests spread over the three.
 The two suites of the tools, the command line and each kind of mistake, run side by side under one parent, each at most four tests at a time. The order project the

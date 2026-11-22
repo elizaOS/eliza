@@ -3052,13 +3052,17 @@ describe("the documents name what exists", () => {
     const [docs, examples, ...tools] = ["selftest:docs", "selftest:examples", ...shards].map((task) => new Set([...global, ...Object.keys(plan.tasks.find((t) => t.taskId === `//#${task}`)!.inputs)]));
     const tracked = (await exec("git", ["ls-files"], project)).stdout.trim().split("\n").filter((file) => fs.lstatSync(path.join(project, file)).isFile());
     const missed = (hashed: Set<string>, read: (file: string) => boolean) => tracked.filter((file) => read(file) && !hashed.has(file));
+    const workspace = (file: string) => /^(apps|packages|spec)\//.test(file);
+    const [shardA, shardB, packed] = tools;
     assert.deepEqual({
       docs: missed(docs, () => true),
       examples: missed(examples, (file) => /^vibestack\/(examples\/|(?!studio\/|fixtures\/|(testing|stories|design)\/test\/))/.test(file)),
-      tools: tools.flatMap((hashed) => missed(hashed, (file) => PACKED.includes(file) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|packages\/|apps\/[^/]+\/package\.json$|spec\/|\.agents\/skills\/)/.test(file))),
+      tools: tools.flatMap((hashed) => missed(hashed, (file) => PACKED.includes(file) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|\.agents\/skills\/)/.test(file))),
+      packed: missed(packed, workspace),
+      workspaceInFixtures: [shardA, shardB].flatMap((hashed) => [...hashed].filter(workspace)),
       examplesInTools: tools.flatMap((hashed) => [...hashed]).filter((file) => /^vibestack\/examples\/(?!order\/)/.test(file)),
       selftestInGlobal: global.filter((file) => /^vibestack\/(selftest|remote-cache)\.ts$|\/test\//.test(file)),
-    }, { docs: [], examples: [], tools: [], examplesInTools: [], selftestInGlobal: [] });
+    }, { docs: [], examples: [], tools: [], packed: [], workspaceInFixtures: [], examplesInTools: [], selftestInGlobal: [] });
     assert.deepEqual([shards, listed("selftest").sort(), listed("verify").filter((task) => task.includes("selftest")).sort()],
       [["selftest:tools:a", "selftest:tools:b", "selftest:tools:rest"], selftests.map((task) => `//#${task}`), selftests.map((task) => `//#${task}`)], "pnpm selftest and pnpm verify run every selftest task");
     const each = "the tools each check catches its own kind of mistake";
@@ -3078,8 +3082,8 @@ describe("the documents name what exists", () => {
     const releasePrerequisites = release.match(/^ +- run: pnpm all (.+) --concurrency=1$/m)?.[1].split(" ").sort();
     assert.deepEqual(releasePrerequisites, JSON.parse(read("turbo.json")).tasks["//#selftest:tools:a"].dependsOn.toSorted(), "a release materializes every prerequisite before using the isolated CI shard cache");
     assert.deepEqual(read(".github/workflows/fuzz.yml").match(/^ +shard: \[(.+)\]$/m)?.[1].split(", "), shards.map((task) => task.split(":")[2]), "the nightly run names every shard");
-    const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`]);
-    assert.deepEqual(others, others.map(() => first), "the shards wait for the same tasks and are keyed by the same files");
+    const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`].dependsOn);
+    assert.deepEqual(others, others.map(() => first), "the shards wait for the same integration prerequisites");
     assert.deepEqual(fs.readdirSync(path.join(project, ".github/workflows")).filter((flow) => /\bdevelop\b/.test(read(`.github/workflows/${flow}`))), [], "main is the only long-lived branch");
   });
 
