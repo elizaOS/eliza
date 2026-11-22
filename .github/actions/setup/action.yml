@@ -121,10 +121,10 @@ runs:
       with:
         path: ~/.quint/rust-evaluator-${{ steps.quint-evaluator.outputs.version }}
         key: ${{ steps.quint-cache.outputs.cache-primary-key }}
-    # Studio's journeys and every test:browser drive a real Chromium.
-    - if: inputs.verification == 'true'
+    - name: Install Chromium
+      if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest'
       run: |
         pnpm exec playwright install-deps chromium & deps=$!
-        pnpm exec playwright install chromium
+        pnpm exec playwright install chromium ${{ inputs.job == 'selftest-a' && '--no-shell' || '' }}
         wait "$deps"
       shell: bash

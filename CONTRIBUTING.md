@@ -389,6 +389,9 @@ tool runs, any other the spec cache of the root, each workspace package and each
 the commit: what a job of the same name last saved, or else another job's that holds the same.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
+Verification and release install both Chromium executables. In CI and nightly
+runs, shard A needs full Chromium for Bombadil. The other self-test shards
+run without a browser.
 CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache.
 Branch pushes save results that later pushes and pull requests can restore. A pull request's
 own saves are scoped to that pull request. Newer commits replace an older run of the same pull
