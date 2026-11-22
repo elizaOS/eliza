@@ -18,8 +18,12 @@ supplies observations and clocks; audio, recognizer and store stay in it.
 The image admitted the listener (`spec/os/image/listener.md`: two privileged
 permissions, its own SELinux domain, no indicator-exempt role, no battery
 exemption), and I gave the current consent, `RECORD_AUDIO` and notifications
-in its own screen. Turning on and resuming need the keyguard unlocked; both
-clear a pause, a crash stop and a lost-indicator stop.
+in its own screen. Turning on and resuming need the keyguard unlocked. A
+new process needs fresh consent before listening. Renewing consent after a
+restart preserves recent crashes unless the listener has already stopped
+after errors. An explicit turn-on from off or from that stop clears the
+crash record. Resuming an enabled, consented listener clears its pause and
+lost-indicator stop.
 
 ```quint
 import indicatorLease as I from "./indicatorLease"
@@ -30,13 +34,13 @@ type Device = { recordAudio: bool, notificationsVisible: bool, userForeground: b
 type Pause = NotPaused | UntilResumed | UntilClock({ at: int })
 type Promotion = NoPromotion | Promoted | PromotionRefused
 type WakeOutcome = NoWake | AssistantOpened | IgnoredWhileLocked | PausedBySpeech
-type ListenerService = { enabled: bool, pause: Pause, tripped: bool, recentExits: List[int], indicatorLost: bool,
+type ListenerService = { enabled: bool, processConsent: bool, pause: Pause, tripped: bool, recentExits: List[int], indicatorLost: bool,
   device: Device, lease: I::IndicatorLease, unsilencedSince: int, queued: int, delivered: int, stopped: bool,
   foreground: bool, capturing: bool, promotion: Promotion, stopConfirmed: bool, lastWake: WakeOutcome }
 pure val unknownDevice: Device = { recordAudio: false, notificationsVisible: false, userForeground: false, unlocked: false,
   keyguardLocked: true, speechUnavailable: false, inCall: false, otherAppRecording: false, micSilenced: false,
   speechPlaying: false, screenInteractive: true }
-pure val initial: ListenerService = { enabled: false, pause: NotPaused, tripped: false, recentExits: List(), indicatorLost: false,
+pure val initial: ListenerService = { enabled: false, processConsent: false, pause: NotPaused, tripped: false, recentExits: List(), indicatorLost: false,
   device: unknownDevice, lease: I::initial, unsilencedSince: -1, queued: 0, delivered: 0, stopped: true,
   foreground: false, capturing: false, promotion: NoPromotion, stopConfirmed: false, lastWake: NoWake }
 pure def admitted(g: ListenerGrant): bool = g.imageAdmitted and g.consented and g.recordAudioGranted and g.notificationsGranted
@@ -45,12 +49,16 @@ pure val grantValues = Set(admittedGrant, { ...admittedGrant, imageAdmitted: fal
 pure def canTurnOn(s: ListenerService, by: Caller, grant: ListenerGrant): bool =
   by == Owner and admitted(grant) and not(s.device.keyguardLocked)
 pure def turnOn(s: ListenerService, by: Caller, grant: ListenerGrant): ListenerService = {
-  val t = { ...s, enabled: true, pause: NotPaused, tripped: false, recentExits: List(), indicatorLost: false, stopConfirmed: false }
+  val reauthorizing = s.enabled and not(s.processConsent) and not(s.tripped)
+  val t = { ...s, enabled: true, processConsent: true, pause: NotPaused, tripped: false,
+    recentExits: if (reauthorizing) s.recentExits else List(), indicatorLost: false, stopConfirmed: false }
   { ...t, indicatorLost: lossLatches(t, t) }
 }
 pure def canResume(s: ListenerService, by: Caller): bool = by == Owner and not(s.device.keyguardLocked)
 pure def resume(s: ListenerService, by: Caller): ListenerService = {
-  val t = { ...s, pause: NotPaused, tripped: false, recentExits: List(), indicatorLost: false }
+  val authorized = s.enabled and s.processConsent
+  val t = { ...s, pause: NotPaused, tripped: s.tripped and not(authorized),
+    recentExits: if (authorized) List() else s.recentExits, indicatorLost: false }
   { ...t, indicatorLost: lossLatches(t, t) }
 }
 pure def sometimesListening(s: ListenerService): bool = decide(s) == Listening and s.capturing
@@ -69,10 +77,10 @@ pure def pausedAt(p: Pause, now: int): bool = match p { | NotPaused => false | U
 pure def decide(s: ListenerService): ListenerState = {
   val d = s.device
   val v = leaseVerdict(s)
-  if (not(s.enabled)) Off
+  if (s.enabled and s.tripped) StoppedAfterErrors
+  else if (not(s.enabled and s.processConsent)) Off
   else if (not(d.recordAudio)) PermissionRequired
   else if (not(d.notificationsVisible)) NotificationsRequired
-  else if (s.tripped) StoppedAfterErrors
   else if (s.indicatorLost) StoppedIndicatorLost
   else if (not(d.userForeground)) PausedOtherUser
   else if (not(d.unlocked)) WaitingForUnlock
@@ -116,7 +124,8 @@ pure def canTurnOff(s: ListenerService, by: Caller): bool = by == Owner or by ==
 pure def turnOff(s: ListenerService, by: Caller): ListenerService = { ...s, enabled: false, pause: NotPaused }
 pure def timed(p: Pause): bool = match p { | UntilClock(u) => true | _ => false }
 pure def stepOnlyTheOwnerRaisesListening(before: ListenerService, via: str, after: ListenerService): bool =
-  (after.enabled and (not(before.enabled) or (before.tripped and not(after.tripped)) or (before.indicatorLost and not(after.indicatorLost))
+  (after.enabled and (not(before.enabled) or (not(before.processConsent) and after.processConsent)
+    or (before.tripped and not(after.tripped)) or (before.indicatorLost and not(after.indicatorLost))
     or (pausedAt(before.pause, before.lease.now) and not(pausedAt(after.pause, after.lease.now)))))
   implies (via == "turnOn" or via == "resume" or (via == "advanceClock" and timed(before.pause) and after.pause == before.pause))
 pure def sometimesPausedWithServiceRunning(s: ListenerService): bool = decide(s) == PausedUser and s.foreground
@@ -191,8 +200,9 @@ pure def sometimesStopConfirmedAfterRunning(s: ListenerService): bool = s.stopCo
 Android restarts the persistent listener after every end. Only a crash with
 a capture session open and `RECORD_AUDIO` granted counts, stamped on the wall
 clock; exits ten minutes old or in the future drop out, and a trip is sticky.
-The new process holds no lease; after a reboot a timed pause lasts until I
-resume, as the monotonic clock restarted.
+The new process holds neither consent nor a lease. An enabled listener
+shows a crash stop even before consent is renewed. After a reboot a timed
+pause lasts until I resume, as the monotonic clock restarted.
 
 ```quint
 type ProcessEnd = Crash | Reboot | PackageUpdate
@@ -204,7 +214,7 @@ pure def exitsAfter(exits: List[int], unclean: bool, now: int): List[int] = {
 }
 pure def restartProcess(s: ListenerService, cause: ProcessEnd, now: int): ListenerService = {
   val exits = exitsAfter(s.recentExits, cause == Crash and s.capturing and s.device.recordAudio, now)
-  val t = { ...s, recentExits: exits, tripped: s.tripped or exits.length() >= crashLimit, lease: { ...I::initial, now: s.lease.now },
+  val t = { ...s, processConsent: false, recentExits: exits, tripped: s.tripped or exits.length() >= crashLimit, lease: { ...I::initial, now: s.lease.now },
     pause: if (cause == Reboot and timed(s.pause)) UntilResumed else s.pause, foreground: false, capturing: false, unsilencedSince: -1 }
   val queued = if (runsInForeground(decide(t))) t.queued + 1 else t.queued
   { ...t, queued: queued, stopped: t.delivered == queued }
@@ -213,6 +223,8 @@ pure val nowValues = Set(0, 1000, 700000)
 pure def lawThirdUncleanExitWithinTheWindowTrips(now: int): bool =
   exitsAfter(exitsAfter(exitsAfter(List(), true, now), true, now), true, now).length() >= crashLimit
 pure def lawOldAndFutureExitsNoLongerCount(now: int): bool = exitsAfter(List(now - crashWindowMs, now + 1), false, now) == List()
+pure def stepRestartRetiresProcessConsent(before: ListenerService, via: str, after: ListenerService): bool =
+  via == "restartProcess" implies not(after.processConsent) and not(after.capturing) and after.lease == { ...I::initial, now: before.lease.now }
 pure def alwaysTrippedListenerHoldsNoMicrophone(s: ListenerService): bool = s.tripped implies not(s.capturing)
 pure def sometimesUncleanExitCounted(s: ListenerService): bool = s.recentExits.length() >= 1 and not(s.tripped)
 pure def sometimesCrashLoopTripped(s: ListenerService): bool = s.tripped and decide(s) == StoppedAfterErrors
