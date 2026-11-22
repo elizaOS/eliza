@@ -398,3 +398,63 @@ lemma releaseWarmup_ensures(s: SpeechOutput, id: int)
     WorkerUpdatePreservesRules(s, id, worker.(phase := WorkerPhase.Released));
   }
 }
+
+lemma requestWarmup_ensures(s: SpeechOutput, id: int)
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> alwaysWarmupOnlyWhileIdle(requestWarmup(s, id)))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> alwaysOnlyTheOwnerIsOpen(requestWarmup(s, id)))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> alwaysWorkerIdsAreUnique(requestWarmup(s, id)))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> alwaysNoSpeechDuringCall(requestWarmup(s, id)))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> alwaysSpeakingHasPositiveUtteranceId(requestWarmup(s, id)))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepRetiredWorkerNeverStartsPlaying(s, requestWarmup(s, id)))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepNoWriteAfterRetireOrTimeout(s, requestWarmup(s, id)))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepOutputReleasedOnce(s, requestWarmup(s, id)))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepFirstAudioReportedOnce(s, "requestWarmup", requestWarmup(s, id), []))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepFocusAbandonedWhenSpeechStops(s, "requestWarmup", requestWarmup(s, id), []))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepStoppedSpeechDropsItsAudio(s, "requestWarmup", requestWarmup(s, id), []))
+{
+  if inv(s) && canRequestWarmup(s, id) {
+    var retired := stopWarmup(s);
+    RetiringWorkersKeepsRules(s, retired);
+    var opening := WarmupWorker(id, WorkerPhase.Opening, false, 0);
+    var after := requestWarmup(s, id);
+    assert after.workers == retired.workers + [opening] && after.owner == id;
+    forall w | w in retired.workers
+      ensures w.workerId != id
+    {
+      var i :| 0 <= i < |retired.workers| && retired.workers[i] == w;
+      assert s.workers[i] in s.workers;
+      assert w.workerId == s.workers[i].workerId;
+    }
+    ProofLib.FilterNone((x: WarmupWorker) => x.workerId == id, retired.workers);
+    forall w | w in after.workers
+      ensures w.workerId > 0 && |ProofLib.Filter((x: WarmupWorker) => x.workerId == w.workerId, after.workers)| == 1
+      ensures w.workerId != after.owner ==> w.closed
+    {
+      var matches := (x: WarmupWorker) => x.workerId == w.workerId;
+      ProofLib.FilterAppend(matches, retired.workers, opening);
+      if w != opening {
+        assert w in retired.workers && w.workerId != id;
+        assert |ProofLib.Filter(matches, retired.workers)| == 1;
+      } else {
+        assert |ProofLib.Filter(matches, retired.workers)| == 0;
+      }
+    }
+    forall w | w in after.workers
+      ensures startedPlaying(s, w) ==> !w.closed
+      ensures startedWriting(s, w) ==> !w.closed && w.elapsedMs < warmupLimitMs
+      ensures w.phase.Released? ==> workerOf(w.workerId, s).phase.CleaningUp? || workerOf(w.workerId, s).phase.Released?
+    {
+      if w != opening {
+        assert w in retired.workers;
+      }
+    }
+    forall w | w in s.workers && finished(w.phase)
+      ensures workerOf(w.workerId, after).phase == w.phase
+    {
+      assert w.workerId != id;
+      var matches := (x: WarmupWorker) => x.workerId == w.workerId;
+      ProofLib.FilterAppend(matches, retired.workers, opening);
+      assert workerOf(w.workerId, after) == workerOf(w.workerId, retired);
+    }
+  }
+}
