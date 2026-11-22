@@ -284,7 +284,9 @@ The runtime service `cloud` hands plugins the authenticated cloud client;
 no plugin reads the credential. A managed Gmail change needs
 `launch.google.gmailChanges`, a calendar edit `launch.google.calendarEdits`
 (a refusal is `changes-off`, before any cloud call); reads need only the
-link. No plugin, native module or managed-Google host is a precondition of
+link for ordinary reads. The link refuses the tablet’s private inbox
+arrival route before any cloud call. No plugin, native module or
+managed-Google host is a precondition of
 a cloud backend.
 
 ```quint

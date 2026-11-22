@@ -145,6 +145,7 @@ it.live('Give plugins the owner\'s cloud link: a managed Gmail change needs the 
   try Effect.sync(() => {
     cloud.route("POST", `${google}/gmail/inbox-v1/operations`, answerJson({ done: true }))
     cloud.route("GET", `${google}/gmail/triage`, answerJson({ threads: [] }))
+    cloud.route("GET", `${google}/gmail/inbox-v1/arrival`, answerJson({ cursor: "fixture", arrived: false }))
   })
   const product = { productPlugin: googleProductPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productGoogleActionName] }
   const withheld = try cloudAgent(cloud, product)
@@ -153,6 +154,7 @@ it.live('Give plugins the owner\'s cloud link: a managed Gmail change needs the 
     gmailChange: { kind: "changes-off", operation: "gmail_change" },
     calendarEdit: { kind: "changes-off", operation: "calendar_edit" },
     read: { kind: "answered", status: 200, body: { threads: [] } },
+    privateInboxArrival: { kind: "refused", status: 403, body: null },
   })
   assert.deepStrictEqual(cloud.calls.map((made) => [made.method, made.path]), [["GET", `${google}/gmail/triage`]])
 

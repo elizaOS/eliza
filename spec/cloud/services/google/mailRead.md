@@ -44,6 +44,23 @@ pure def lawAReadNeedsTheCapabilityTheStatusReports(surface: MailSurface, scopes
     C::capabilitiesOf(scopes).includes(if (surface == DraftsSurface or surface == DraftSurface) C::GmailDrafts else C::GmailTriage)
 ```
 
+### A selected inbox can signal a new arrival during a short watch
+
+The tablet can start a watch with `GET …/gmail/inbox-v1/arrival?grantId=…`
+for an explicitly selected, usable Gmail read grant. An authenticated device
+may omit the grant to use its owner's active Gmail connection. The service takes only
+the provider's current mailbox history position and returns an opaque cursor
+with `arrived: false`. A follow-up with that cursor can report that Gmail
+added a new message to Inbox since the baseline. Only Gmail's Inbox
+message-added history counts. The service asks for neither headers nor
+message contents and returns only the cursor and arrival flag. An empty
+history page with a continuation is not a completed check. The sealed
+cursor binds the deployment, owner, organization, grant, and device key or
+browser session to the same
+five-minute window. Polling keeps its original baseline and deadline. An
+expired or unusable cursor, lost authorization or incomplete provider answer
+ends the watch without a substitute mailbox read.
+
 ### A list asks for a count within its bounds, and a count outside them is refused rather than clamped
 
 Triage defaults to 12 and allows at most 50; search defaults to 50 and allows

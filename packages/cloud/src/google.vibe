@@ -1,5 +1,6 @@
-// spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"
+// spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/services/google/mailRead.md, "A selected inbox can signal a new arrival during a short watch"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"
 import type { Client } from "pg"
+import type { cloudCredential } from "./identity.vibe"
 import { canReadCloudCalendarReminder, currentAttachmentTransfer } from "../gen/cloud.effect.vibe"
 import { nativeConnectAttempts, nativeConnectStores, nativeConnectStoresAny, nativeConnectWindowSeconds } from "../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
@@ -46,6 +47,8 @@ error ItemChanged
 error DatabaseUnavailable
 
 const route = "/api/v1/eliza/google"
+const arrivalPath = "/gmail/inbox-v1/arrival"
+export const inboxArrivalPath = route + arrivalPath
 export const deviceAttachmentPath = "/api/v1/google-attachments/device"
 const callbackPath = route + "/connect/callback"
 const oauthCookie = "__Host-eliza-google-connect"
@@ -717,6 +720,80 @@ effect function mailGrant(db: Client, account: string, grant: string | null) {
   return rows[0]
 }
 
+schema ArrivalCursor { historyId: string; expiresAt: number }
+schema ArrivalProfile { historyId: string }
+schema ArrivalEntry { message: { id: string } }
+schema ArrivalRecord { id: string; messagesAdded?: ArrivalEntry[] }
+schema ArrivalHistory { historyId: string; history?: ArrivalRecord[]; nextPageToken?: string }
+
+type ArrivalCredential = NonNullable<Awaited<ReturnType<typeof cloudCredential>>>
+
+const arrivalWindowMs = 300000
+const historyIdPattern = /^[1-9][0-9]{0,19}$/
+const historyBefore = (earlier: string, later: string) => earlier.length < later.length || (earlier.length === later.length && earlier < later)
+
+effect function arrivalPayload<A>(schema: Schema.Decoder<A>, access: string, path: string) {
+  const response = try http("https://gmail.googleapis.com/gmail/v1/users/me" + path, { access })
+  if (response.status === 401 || response.status === 403) throw new AuthorizationFailed()
+  if (response.status === 404 || response.status === 410) throw new GoogleNotFound()
+  if (!ok(response.status)) throw new ProviderUnavailable()
+  const text = timeout(boundedText(response, 65536), "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+  const value = Schema.decodeUnknownOption(schema)(Effect.try(() => JSON.parse(text) as unknown) catch () => undefined)
+  if (Option.isNone(value)) throw new ProviderUnavailable()
+  return value.value
+}
+
+effect function inboxArrived(access: string, historyId: string) {
+  const query = new URLSearchParams({
+    startHistoryId: historyId, historyTypes: "messageAdded", labelId: "INBOX", maxResults: "25",
+    fields: "historyId,nextPageToken,history(id,messagesAdded(message(id)))",
+  })
+  const visited = new Set<string>()
+  for (let index = 0; index < 8; index += 1) {
+    const page = try arrivalPayload(ArrivalHistory, access, "/history?" + query)
+    if (!historyIdPattern.test(page.historyId) || historyBefore(page.historyId, historyId)) throw new ProviderUnavailable()
+    const records = page.history ?? []
+    if (records.some(({ id }) => !historyIdPattern.test(id) || !historyBefore(historyId, id) || historyBefore(page.historyId, id))) throw new ProviderUnavailable()
+    const additions = records.flatMap((entry) => entry.messagesAdded ?? [])
+    if (additions.some(({ message }) => !providerId.test(message.id))) throw new ProviderUnavailable()
+    if (additions.length > 0) return true
+    const token = page.nextPageToken
+    if (token === undefined) return false
+    if (token.length === 0 || token.length > 2048 || visited.has(token)) throw new ProviderUnavailable()
+    visited.add(token)
+    query.set("pageToken", token)
+  }
+  throw new ProviderUnavailable()
+}
+
+effect function inboxArrival(url: URL, env: GoogleEnv, db: Client, account: string, credential: ArrivalCredential) {
+  const grants = url.searchParams.getAll("grantId")
+  const cursors = url.searchParams.getAll("cursor")
+  const selected = grants[0]
+  const cursor = cursors[0]
+  if (grants.length > 1 || (selected === undefined ? credential.kind !== "device" : !uuid.test(selected)) || cursors.length > 1 ||
+      (cursor !== undefined && (cursor.length > 1024 || !/^[a-f0-9]+$/.test(cursor)))) throw new BadRequest()
+  const { id: grant, organization_id: organization } = try mailGrant(db, account, selected ?? null)
+  const config = try googleConfig(env)
+  const binding = encoder.encode(JSON.stringify(["cloud-google-inbox-arrival-v1", env.PUBLIC_API_ORIGIN, account, organization, grant, credential.kind, credential.hash]))
+  const now = try Clock.currentTimeMillis
+  const watch = cursor === undefined ? undefined : (effect {
+    const raw = try unseal(config.key, cursor, binding)
+    const decoded = Schema.decodeUnknownOption(ArrivalCursor)(Effect.try(() => JSON.parse(raw) as unknown) catch () => undefined)
+    if (Option.isNone(decoded) || !historyIdPattern.test(decoded.value.historyId) ||
+        !Number.isSafeInteger(decoded.value.expiresAt) || decoded.value.expiresAt <= now) throw new ConnectionUnavailable()
+    return decoded.value
+  } catch () => undefined)
+  if (cursor !== undefined && watch === undefined) throw new ConnectionUnavailable()
+  const access = try accessFor(env, db, account, "mail", grant)
+  const historyId = watch?.historyId ?? (try arrivalPayload(ArrivalProfile, access, "/profile?fields=historyId")).historyId
+  if (!historyIdPattern.test(historyId)) throw new ProviderUnavailable()
+  const arrived = watch === undefined ? false : try inboxArrived(access, historyId)
+  const expiresAt = watch?.expiresAt ?? now + arrivalWindowMs
+  if ((try Clock.currentTimeMillis) >= expiresAt || (try mailGrant(db, account, grant)).organization_id !== organization) throw new ConnectionUnavailable()
+  return body(200, { cursor: cursor ?? (try seal(config, JSON.stringify({ historyId, expiresAt }), binding)), arrived })
+}
+
 effect function selectedAttachment(env: GoogleEnv, db: Client, account: string, grant: string, selection: { messageId: string; partId: string; historyId: string }) {
   const api = googleReadApi(try accessFor(env, db, account, "mail", grant))
   const { bytes, ...file } = try googleGmailAttachment(api, selection)
@@ -742,7 +819,7 @@ effect function redeemAttachment(request: Request, env: GoogleEnv, db: Client, a
   return body(200, file)
 }
 
-effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, account: string) {
+effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, account: string, credential?: ArrivalCredential) {
   const url = try Effect.try({ try: () => new URL(request.url), catch: () => new BadRequest() })
   if (url.pathname === deviceAttachmentPath && request.method === "POST") return try redeemAttachment(request, env, db, account)
   const path = url.pathname.slice(route.length)
@@ -767,6 +844,7 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
       return flowCookie(response, "", "", 0)
     }
     if (url.searchParams.has("side") && url.searchParams.get("side") !== "owner") return body(403, { error: "owner_consent_required" })
+    if (path === arrivalPath && credential !== undefined) return try inboxArrival(url, env, db, account, credential)
     if (path === "/gmail/send/status") return try sentMailReceipt(url, db, account)
     if (path === "/status") return try status(db, env, account)
     const selected = url.searchParams.get("grantId")
@@ -815,9 +893,9 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
   return body(404, { error: "route_not_found" })
 }
 
-export function googleRequest(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch): Promise<Response> {
+export function googleRequest(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch, credential?: ArrivalCredential): Promise<Response> {
   const routed = effect {
-    const response = routeGoogle(request, env, db, account) catch (error) => match (error) {
+    const response = routeGoogle(request, env, db, account, credential) catch (error) => match (error) {
       when BadRequest: body(400, { error: "invalid_request" });
       when GoogleReadInput: body(400, { error: "invalid_request" });
       when GoogleAttachmentStale: body(409, { error: "google_item_changed" });

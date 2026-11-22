@@ -3408,6 +3408,12 @@ module node {
       let revokeListing: "grant" | "session" | undefined
       let providerRequestsValid = true
       const providerCalls: string[] = []
+      const arrivalRequests: string[] = []
+      let mailArrived = false
+      let staleHistory = false
+      let rejectHistory = false
+      let revokeArrival = false
+      let invalidHistory = false
       const providerFetch: typeof fetch = async (input, init) => {
         const request = new Request(input, init)
         const url = new URL(request.url)
@@ -3416,6 +3422,21 @@ module node {
         if (url.href === "https://oauth2.googleapis.com/token" && request.method === "POST")
           return Response.json({ access_token: "fixture-access", scope: "https://www.googleapis.com/auth/gmail.readonly" })
         providerRequestsValid &&= request.headers.get("authorization") === "Bearer fixture-access"
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/profile") {
+          arrivalRequests.push(url.pathname + url.search)
+          return Response.json({ historyId: "10000000000000000001" })
+        }
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/history") {
+          arrivalRequests.push(url.pathname + url.search)
+          if (staleHistory) return Response.json({}, { status: 404 })
+          if (rejectHistory) return Response.json({}, { status: 401 })
+          if (invalidHistory) return Response.json({ historyId: "malformed" })
+          if (revokeArrival) await fixture.db.query("UPDATE device_grants SET key_expires_at = 0 WHERE user_id = $1", [owner.account.id])
+          if (!url.searchParams.has("pageToken")) return Response.json({ historyId: "10000000000000000003", nextPageToken: "next" })
+          return Response.json({ historyId: "10000000000000000003", history: mailArrived ?
+            [{ id: "10000000000000000002", messagesAdded: [{ message: { id: "private-mail" } }] }] :
+            [{ id: "10000000000000000002" }] })
+        }
         if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages") {
           const label = url.searchParams.get("labelIds")
           const found = label === "INBOX" ? ["fixture-message", "moved-to-trash"] : label === "TRASH" && url.searchParams.get("includeSpamTrash") === "true" &&
@@ -3477,6 +3498,51 @@ module node {
       const get = (path: string, cookie?: string) => worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + path, {
         headers: cookie ? { origin: web, cookie: "__Host-eliza-session=" + cookie } : { origin: web },
       }), env)
+      const arrival = (headers?: Record<string, string>, cursor?: string, includeGrant = false) => {
+        const query = new URLSearchParams(includeGrant ? { grantId: grant } : {})
+        if (cursor !== undefined) query.set("cursor", cursor)
+        return worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/inbox-v1/arrival?" + query, { headers }), env)
+      }
+      const decision = async (response: Response) => ({
+        status: response.status,
+        cache: response.headers.get("cache-control"),
+        body: Schema.decodeUnknownSync(Schema.Struct({ cursor: Schema.String, arrived: Schema.Boolean }), { onExcessProperty: "error" })(await response.json()),
+      })
+      const webHeaders = { origin: web, cookie: "__Host-eliza-session=" + owner.access }
+      const webNoGrant = await arrival(webHeaders)
+      const webBaseline = await decision(await arrival(webHeaders, undefined, true))
+      const baseline = await decision(await arrival(ownDevice))
+      const cursor = baseline.body.cursor
+      const emptyArrival = await decision(await arrival(ownDevice, cursor))
+      mailArrived = true
+      const freshArrival = await decision(await arrival(ownDevice, cursor))
+      const foreignArrival = await arrival(otherDevice, cursor, true)
+      const replayAcrossCredentials = await arrival(webHeaders, cursor, true)
+      const anonymousArrival = await arrival(undefined, cursor)
+      const fabricatedArrival = await arrival(ownDevice, "10000000000000000001")
+      staleHistory = true
+      const expiredArrival = await arrival(ownDevice, cursor)
+      staleHistory = false
+      rejectHistory = true
+      const providerRevokedArrival = await arrival(ownDevice, cursor)
+      rejectHistory = false
+      invalidHistory = true
+      const malformedHistory = await arrival(ownDevice, cursor)
+      invalidHistory = false
+      revokeArrival = true
+      const deviceRevokedArrival = await arrival(ownDevice, cursor)
+      await fixture.db.query("UPDATE device_grants SET key_expires_at = $1 WHERE user_id = $2", [Date.now() + 86400000, owner.account.id])
+      const arrivalResult = {
+        baseline: [baseline.status, baseline.cache, baseline.body.arrived, !cursor.includes("10000000000000000001") && cursor.length > 20, webBaseline.status, webBaseline.body.arrived],
+        polling: [emptyArrival.body.cursor === cursor, emptyArrival.body.arrived, freshArrival.body.cursor === cursor, freshArrival.body.arrived],
+        denied: [webNoGrant, replayAcrossCredentials, foreignArrival, anonymousArrival, fabricatedArrival, expiredArrival, providerRevokedArrival, malformedHistory, deviceRevokedArrival].map(({ status }) => status),
+        requests: arrivalRequests,
+        exposedOnlyHistory: providerCalls.every((call) => [
+          "POST https://oauth2.googleapis.com/token",
+          "GET https://gmail.googleapis.com/gmail/v1/users/me/profile",
+          "GET https://gmail.googleapis.com/gmail/v1/users/me/history",
+        ].includes(call)),
+      }
       const query = "grantId=" + grant + "&messageId=fixture-message"
       const folder = "triage?" + new URLSearchParams({ grantId: grant, folder: "trash", q: "  subject:plan & dates ", counts: "1" })
       const readFolder = async (path: string) => {
@@ -3535,7 +3601,7 @@ module node {
       revokeListing = "grant"
       const disconnected = await get(folder, signedBackIn.access)
       return {
-        mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
+        arrivalResult, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
         organization: (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id, grant, manifest, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
         cache: downloaded.headers.get("cache-control"), owner: owner.account.id, expectedHash: createHash("sha256").update(bytes).digest("hex"),
@@ -3559,10 +3625,11 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connect Google mail and calendar")', () => effect {
+it.live('Open the selected named attachment and watch for new mail (spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/services/google/mailRead.md, "A selected inbox can signal a new arrival during a short watch")', () => effect {
   const got = try tryPromise(() => readSelectedAttachment())
   try check(() => assert.deepStrictEqual(
     {
+      arrivals: got.arrivalResult,
       read: [got.readStatus, got.manifest.historyId, got.manifest.bodyText, got.manifest.attachments, got.manifest.authenticationResults],
       refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
       file: [got.fileStatus, got.cache, got.file],
@@ -3571,6 +3638,24 @@ it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connec
       device: [got.refused, got.beforeDeviceRead, got.deviceStatus, got.deviceReceipt, got.changed, got.revoked],
     },
     {
+      arrivals: {
+        baseline: [200, "no-store", false, true, 200, false],
+        polling: [true, false, true, true],
+        denied: [400, 409, 409, 401, 409, 404, 409, 502, 401],
+        exposedOnlyHistory: true,
+        requests: [
+          "/gmail/v1/users/me/profile?fields=historyId",
+          "/gmail/v1/users/me/profile?fields=historyId",
+          ...[false, true, false, true, false, false, false, false, true].map((continued) => {
+            const query = new URLSearchParams({
+              startHistoryId: "10000000000000000001", historyTypes: "messageAdded", labelId: "INBOX", maxResults: "25",
+              fields: "historyId,nextPageToken,history(id,messagesAdded(message(id)))",
+            })
+            if (continued) query.set("pageToken", "next")
+            return "/gmail/v1/users/me/history?" + query
+          }),
+        ],
+      },
       read: [200, "789", "hello", [
         { partId: "1", name: "fixture.pdf", mimeType: "application/pdf", size: got.size, supported: true },
         { partId: "2", name: "fixture.html", mimeType: "text/html", size: 10, supported: false },
@@ -3584,4 +3669,4 @@ it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connec
       device: [[401, 409, 409], 1, 200, got.file, 409, 401],
     },
   ))
-}, 30_000)
+}, 120_000)

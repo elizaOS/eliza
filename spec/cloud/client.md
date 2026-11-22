@@ -203,6 +203,7 @@ pure val googleRoutes: List[DeviceRoute] = List(
   route(Get, google(List("gmail", "triage")), KeyOrSession),
   route(Get, google(List("gmail", "search")), KeyOrSession),
   route(Get, google(List("gmail", "read")), KeyOrSession),
+  route(Get, google(List("gmail", "inbox-v1", "arrival")), KeyOrSession),
   route(Get, google(List("gmail", "inbox-v1", "capabilities")), KeyOrSession),
   route(Get, google(List("gmail", "inbox-v1", "thread")), KeyOrSession),
   route(Get, google(List("gmail", "inbox-v1", "attachment")), KeyOrSession),
