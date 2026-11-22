@@ -121,6 +121,7 @@
       "inputs": [
         "vibestack/**",
         "!vibestack/selftest.ts",
+        "!vibestack/selftests/**",
         "!vibestack/{testing,stories,design}/test/**",
         "!vibestack/fixtures/**",
         "!vibestack/examples/**",
@@ -284,6 +285,7 @@
     "//#selftest:examples": {
       "inputs": [
         "vibestack/**",
+        "!vibestack/selftest.ts",
         "!vibestack/{studio,fixtures}/**",
         "!vibestack/{testing,stories,design}/test/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",

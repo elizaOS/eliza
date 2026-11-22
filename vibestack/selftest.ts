@@ -13,12 +13,13 @@ import { pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
-import { cacheCredentials, collectGarbage, entry, isActionEntry, recall, store, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
+import { cacheCredentials, collectGarbage, isActionEntry, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
 import { exec, run as tool } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
-import { filesUnder, packageScripts, sha, testInputs, testReceipt, writeWhole } from "./util.ts";
+import { filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
 import { profile } from "./testing/profile.ts";
+import { isolatedInstalls } from "./selftests/install.ts";
 import { bigNumberInteger } from "./gen/types.ts";
 import { canonical, check as conformanceCheck, ConformanceError, departure, replay as replayTrace } from "./conformance.ts";
 import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
@@ -29,8 +30,7 @@ import { harnessFiles, search, simulate, simulation } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./pipeline.ts";
 
 const project = path.join(import.meta.dirname, "..");
-for (const name of Object.keys(process.env)) if (name.toLowerCase().replaceAll("-", "_") === "npm_config_package_import_method") delete process.env[name];
-process.env.npm_config_package_import_method = "clone-or-copy";
+isolatedInstalls();
 const harnessSkillPaths = [".claude/skills", ".codex/skills", ".cursor/skills", ".droid/skills", ".factory/skills", ".gemini/skills", ".grok/skills", ".grokbot/skills", ".muse/skills", ".t3/skills"];
 const scaffoldedIgnores = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ".cache/", ".turbo/", "test/__traces__/", "/.claude/", "/CLAUDE.md", ...harnessSkillPaths.filter((alias) => !alias.startsWith(".claude/")).map((alias) => `/${alias}`)];
 const EXAMPLES = "vibestack/examples";
@@ -3268,65 +3268,6 @@ function eachCheck() {
 
 import { scanSpec } from "./scan.ts";
 
-// The examples are the tools' own subjects: checked here, where the tools test themselves, and never by an application
-// built on them, whose check reaches only its own packages and whose installed toolchain carries no example.
-async function exampleCheckKeys(root: string): Promise<Map<string, string>> {
-  const planned = await exec(turbo, ["run", "//#selftest:examples", "--dry=json"], root, { ...process.env, TURBO_TELEMETRY_DISABLED: "1" });
-  assert.equal(planned.status, 0, planned.stderr);
-  const Schema = await import("effect/Schema");
-  const plan = Schema.decodeUnknownSync(Schema.Struct({
-    globalCacheInputs: Schema.Record(Schema.String, Schema.Unknown),
-    tasks: Schema.Array(Schema.Struct({
-      taskId: Schema.String,
-      inputs: Schema.Record(Schema.String, Schema.String),
-      command: Schema.String,
-      dependencies: Schema.Array(Schema.String),
-      envMode: Schema.String,
-      environmentVariables: Schema.Record(Schema.String, Schema.Unknown),
-      resolvedTaskDefinition: Schema.Struct({ cache: Schema.Boolean }),
-    })),
-  }))(JSON.parse(planned.stdout));
-  const task = plan.tasks.find(({ taskId }) => taskId === "//#selftest:examples");
-  assert.ok(task);
-  if (task.dependencies.length || !task.resolvedTaskDefinition.cache) return new Map();
-  const { inputs, ...settings } = task;
-  const common: [string, string][] = [];
-  const examples = new Map<string, [string, string][]>();
-  for (const [file, hash] of Object.entries(inputs).sort(([a], [b]) => a.localeCompare(b))) {
-    const name = file.startsWith(`${EXAMPLES}/`) ? file.slice(EXAMPLES.length + 1).split("/", 1)[0] : undefined;
-    if (!name) common.push([file, hash]);
-    else {
-      const owned = examples.get(name) ?? [];
-      owned.push([file, hash]);
-      examples.set(name, owned);
-    }
-  }
-  const shared = sha(JSON.stringify(plan.globalCacheInputs), JSON.stringify(settings), JSON.stringify(common));
-  return new Map([...examples].map(([name, owned]) => [name, sha(shared, JSON.stringify(owned))]));
-}
-
-describe("the standalone examples", () => {
-  let keys: Map<string, string> | undefined;
-  before(async () => { if (process.env.TURBO_HASH) keys = await exampleCheckKeys(project); });
-  for (const name of fs.readdirSync(path.join(project, EXAMPLES)).sort())
-    test(`the ${name} example installs from its own lock file and passes its check, its page explored where it has one`, async (context) => {
-      const example = path.join(project, EXAMPLES, name);
-      const memory = { root: example, fresh: false, used: new Set<string>() };
-      const key = keys?.get(name);
-      const receipt = key ? await entry(example, "tests", ["standalone example check", key]) : undefined;
-      if (receipt && recall(memory, receipt) === true) {
-        context.diagnostic("Reused a complete standalone install and check for these inputs");
-        return;
-      }
-      const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-      const installed = await exec(pnpm, ["install", "--frozen-lockfile", "--ignore-workspace"], example);
-      assert.equal(installed.status, 0, installed.stdout + installed.stderr);
-      const checked = await exec(pnpm, ["check"], example);
-      assert.equal(checked.status, 0, `${checked.stdout}${checked.stderr}`.trim().split("\n").slice(-80).join("\n"));
-      if (receipt && (await exampleCheckKeys(project)).get(name) === key) store(memory, receipt, true);
-    });
-});
-
 describe("the documents name what exists", () => {
   const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".agents/skills").filter((file) => file.endsWith(".md"))];
   const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
@@ -3384,7 +3325,7 @@ describe("the documents name what exists", () => {
     const [shardA, shardB, packed] = tools;
     assert.deepEqual({
       docs: missed(docs, () => true),
-      examples: missed(examples, (file) => /^vibestack\/(examples\/|(?!studio\/|fixtures\/|(testing|stories|design)\/test\/))/.test(file)),
+      examples: missed(examples, (file) => file !== "vibestack/selftest.ts" && /^vibestack\/(examples\/|(?!studio\/|fixtures\/|(testing|stories|design)\/test\/))/.test(file)),
       tools: tools.flatMap((hashed) => missed(hashed, (file) => PACKED.includes(file) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|\.agents\/skills\/)/.test(file))),
       packed: missed(packed, workspace),
       workspaceInFixtures: [shardA, shardB].flatMap((hashed) => [...hashed].filter(workspace)),
@@ -3395,10 +3336,16 @@ describe("the documents name what exists", () => {
       [["selftest:tools:a", "selftest:tools:b", "selftest:tools:rest"], selftests.map((task) => `//#${task}`), selftests.map((task) => `//#${task}`)], "pnpm selftest and pnpm verify run every selftest task");
     const each = "the tools each check catches its own kind of mistake";
     const inShards = Object.fromEntries(Object.keys(SHARDS).map((shard) => [`${each} ${shard}`, `selftest:tools:${shard.at(-1)}`]));
-    const elsewhere: Record<string, string> = { "the documents name what exists": "selftest:docs", "the standalone examples": "selftest:examples", ...inShards };
+    const elsewhere: Record<string, string> = { "the documents name what exists": "selftest:docs", ...inShards };
     const titles = [...[...read("vibestack/selftest.ts").matchAll(/^(?:describe|test)\("([^"]+)"/gm)].map(([, title]) => title), ...Object.keys(inShards),
       "a new test", "the tools a new suite", "the tools the command line and what a failed proof leaves to start from a new test", `${each} a new test`];
+    const examplesSource = "vibestack/selftests/examples.ts";
+    assert.ok(read(examplesSource).includes('describe("the standalone examples"'));
+    assert.ok(!titles.includes("the standalone examples"), "the standalone suite has one source file");
+    assert.equal(scripts["selftest:examples"], `node --test --test-name-pattern="^the standalone examples " ${examplesSource}`);
     const ranBy = (title: string) => selftests.filter((task) => {
+      if (task === "selftest:examples") return false;
+      assert.ok(scripts[task].endsWith(" vibestack/selftest.ts"), task);
       const [, kind, pattern] = scripts[task].match(/--test-(name|skip)-pattern="([^"]+)"/)!;
       return new RegExp(pattern).test(`${title} `) === (kind === "name");
     });
@@ -3458,21 +3405,24 @@ describe("the documents name what exists", () => {
       await changedBy(append("vibestack/fixtures/door.md")),
       await changedBy(append("vibestack/design/test/design.test.ts", "\n")),
     ];
-    let previousExampleKeys = await exampleCheckKeys(root);
+    const { exampleCheckKeys } = await import("./selftests/examples.ts");
+    let previousExampleKeys = await exampleCheckKeys(root, turbo);
     const examplesChangedBy = async (edit: () => void) => {
       const before = previousExampleKeys;
       edit();
-      previousExampleKeys = await exampleCheckKeys(root);
+      previousExampleKeys = await exampleCheckKeys(root, turbo);
       return [...previousExampleKeys].filter(([name, key]) => before.get(name) !== key).map(([name]) => name).sort();
     };
     const order = path.join(EXAMPLES, "order");
     const exampleChanges = [
+      await examplesChangedBy(append("vibestack/selftest.ts", "\n")),
       await examplesChangedBy(append(path.join(order, "src/app.vibe"), "\n")),
       await examplesChangedBy(append(path.join(order, "pnpm-lock.yaml"), "\n")),
       await examplesChangedBy(append("vibestack/run.ts", "\n")),
+      await examplesChangedBy(append("vibestack/selftests/examples.ts", "\n")),
     ];
     const exampleNames = fs.readdirSync(path.join(root, EXAMPLES)).sort();
-    assert.deepEqual(exampleChanges, [["order"], ["order"], exampleNames]);
+    assert.deepEqual(exampleChanges, [[], ["order"], ["order"], exampleNames, exampleNames]);
     previousPlan = await plan();
     assert.deepEqual({
       notWaiting: real.filter((id) => !reach(id).has("//#gen")).sort(),
