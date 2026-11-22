@@ -3707,9 +3707,10 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
   const eslint = new ESLint({ cwd: project });
   const found = async (file: string, lines: string[]) => (await eslint.lintText(lines.join("\n"), { filePath: path.join(project, file) }))[0]!.messages
     .filter((m) => m.fatal || m.ruleId === "no-console" || m.ruleId?.startsWith("code/")).map((m) => `${m.line} ${m.ruleId ?? "inline config"}`);
+  const [story, rule] = ["Story: Say hello", "A rule"].map((heading) => citing("spec/app/index.md", heading).slice(3).trimEnd());
   assert.deepEqual(await found("apps/app/src/probe.vibe", [
-    `// spec/app/index.md, "Story: Say hello"; spec/app/index.md, "A rule"`,
-    `/* spec/app/index.md, "Story: Say hello" */`,
+    `// ${story}; ${rule}`,
+    `/* ${story} */`,
     "//@ ghost",
     "/** @model spec/app/index.md */",
     "// a note",
