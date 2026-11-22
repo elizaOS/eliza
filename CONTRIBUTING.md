@@ -210,8 +210,9 @@ again during the run. The template install generates locally with `gen --if-vali
 remaining checks runnable and is retried by verification. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
 are restored with their owning task. `check` is never skipped whole: its
-`driver:` programs run the real application in `traces` every time. Standalone examples install and check
-separately, outside the workspace cache.
+`driver:` programs run the real application in `traces` every time. Standalone examples install and check separately. The selftest keeps a complete passing run for each example
+under its own inputs and the shared toolchain and sources. After an edit to one example, the other examples
+can reuse their passing runs. Use `pnpm selftest:examples` to run every install and check directly.
 
 A complete passing Vitest run records its input fingerprint. `check` reuses
 that result only while its source, generated core, transitive workspace
