@@ -194,6 +194,7 @@ export interface SpeechSettlementOutcome {
     state: "actual" | "conservative";
     amountUsd: string;
     terminal?: true;
+    basis?: "submitted_counter_provider_unconfirmed";
   };
   tts: {
     requestId: string;

@@ -34,30 +34,35 @@ function ports() {
           throw Error("settlement failed");
         }
         money++;
+        // Mirrors the Cloud admission's per-kind choice.
+        const basis = (kind: "stt" | "tts") =>
+          details.dispatched?.[kind] === true
+            ? details.accountingBasis
+            : undefined;
+        const stt = basis("stt"),
+          tts = basis("tts");
         return {
           ...(kinds.includes("stt") && {
             stt: {
               state:
-                details.dispatched?.stt !== true ||
-                details.outcomes?.stt === "complete"
+                !stt &&
+                (details.dispatched?.stt !== true ||
+                  details.outcomes?.stt === "complete")
                   ? ("actual" as const)
                   : ("conservative" as const),
               requestId: `speech:${scope.cloudSessionId}:stt`,
               amountUsd: "0",
               terminal: true as const,
+              ...(stt ? { basis: stt } : {}),
             },
           }),
           ...(kinds.includes("tts") && {
             tts: {
-              state: details.ttsAccountingBasis
-                ? ("conservative" as const)
-                : ("actual" as const),
+              state: tts ? ("conservative" as const) : ("actual" as const),
               requestId: `speech:${scope.cloudSessionId}:tts`,
               amountUsd: "0",
               terminal: true as const,
-              ...(details.ttsAccountingBasis
-                ? { basis: details.ttsAccountingBasis }
-                : {}),
+              ...(tts ? { basis: tts } : {}),
             },
           }),
         };
@@ -160,6 +165,204 @@ test("paid renewal retains one STT connection and settles each window once", asy
     expect(p.money).toBe(4);
     await session.close();
     expect(p.money).toBe(4);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+/** An org gate that holds every unsettled kind's estimate until it settles. */
+function gated(p: ReturnType<typeof ports>, windowsOfBalance: number) {
+  let available = windowsOfBalance * 2,
+    window = 0;
+  const settled = new Map<
+    string,
+    Parameters<SpeechRelayCreditReservation["settle"]>[0][]
+  >();
+  const renewals: unknown[] = [];
+  let delivered = 0;
+  const reserve = p.value.reserveCredits;
+  p.value.reserveCredits = async (...args) => {
+    const index = window++;
+    if (available < 2)
+      throw Object.assign(Error("Insufficient credits"), {
+        name: "InsufficientCreditsError",
+        required: 2,
+        available,
+      });
+    available -= 2;
+    const reservation = await reserve(...args);
+    return {
+      ...reservation,
+      settle: async (details, kinds = ["stt", "tts"]) => {
+        for (const kind of kinds) {
+          const key = `${index}:${kind}`;
+          settled.set(key, [...(settled.get(key) ?? []), details]);
+        }
+        const result = await reservation.settle(details, kinds);
+        available += kinds.length;
+        for (const kind of kinds)
+          if (result?.[kind])
+            result[kind].requestId += index ? `:${index}` : "";
+        return result;
+      },
+    };
+  };
+  p.value.openStt = () => ({
+    sendAudioChunk(chunk) {
+      delivered += chunk.byteLength;
+    },
+    cancel() {},
+    drain: async () => ({
+      source: "provider-graceful-close",
+      audioBytes: delivered,
+      sampleRate: 16000,
+      channels: 1,
+      encoding: "pcm_s16le",
+    }),
+  });
+  p.value.extend = async (_scope, expiresAt) => expiresAt;
+  p.value.onRenewal = (result) => renewals.push(result);
+  return {
+    settled,
+    renewals,
+    get available() {
+      return available;
+    },
+  };
+}
+const SUPERSEDED = {
+  providerMayHaveStarted: true,
+  outcome: "unknown",
+  outcomes: { stt: "unknown", tts: "unknown" },
+  accountingBasis: "submitted_counter_provider_unconfirmed",
+} as const;
+test("superseded windows settle at renewal so two holds of balance renew every window", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  const gate = gated(p, 2);
+  p.value.maxWindows = 4;
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    session.sendPcm(new Uint8Array(3200));
+    await session.control({ t: "tts", id: "turn", text: "hello" });
+    for (let n = 0; n < 3; n++) await vi.advanceTimersByTimeAsync(50_000);
+    expect(gate.renewals).toEqual(
+      Array(3).fill({ phase: "extend", result: "extended" }),
+    );
+    // Each renewal released the window its predecessor superseded before
+    // reserving, so the balance only ever held the live window and one more.
+    expect(gate.available).toBe(0);
+    expect([...gate.settled.keys()]).toEqual([
+      "0:stt",
+      "0:tts",
+      "1:stt",
+      "1:tts",
+    ]);
+    for (const kind of ["stt", "tts"]) {
+      expect(gate.settled.get(`0:${kind}`)).toEqual([
+        {
+          ...SUPERSEDED,
+          pcmBytes: 3200,
+          ttsCharacters: 5,
+          dispatched: { stt: true, tts: true },
+        },
+      ]);
+      expect(gate.settled.get(`1:${kind}`)).toEqual([
+        {
+          ...SUPERSEDED,
+          pcmBytes: 0,
+          ttsCharacters: 0,
+          dispatched: { stt: false, tts: false },
+        },
+      ]);
+    }
+    await session.close();
+    expect([...gate.settled.keys()].sort()).toEqual(
+      [0, 1, 2, 3].flatMap((index) => [`${index}:stt`, `${index}:tts`]),
+    );
+    for (const details of gate.settled.values())
+      expect(details).toHaveLength(1);
+    // The oldest held window still carries the open streams' closure.
+    expect(gate.settled.get("2:stt")?.[0]).toMatchObject({
+      pcmBytes: 0,
+      dispatched: { stt: true },
+      outcomes: { stt: "complete" },
+    });
+    expect(gate.settled.get("3:stt")?.[0]).toMatchObject({
+      dispatched: { stt: false, tts: false },
+    });
+    expect(p.handle.evidence()).toMatchObject({
+      stt: "gracefully_drained",
+      tts: "transport_closed",
+      accounting: "settled_actual",
+      moneyTerminal: true,
+    });
+    expect(gate.available).toBe(4);
+    await session.close();
+    for (const details of gate.settled.values())
+      expect(details).toHaveLength(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+test("an unsettled superseded window refuses renewal at the current end and close retries its frozen target", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  const gate = gated(p, 2);
+  p.value.maxWindows = 4;
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    session.sendPcm(new Uint8Array(3200));
+    await vi.advanceTimersByTimeAsync(50_000);
+    p.failSettlement();
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(gate.renewals).toMatchObject([
+      { phase: "extend", result: "extended" },
+      {
+        phase: "reserve",
+        result: "error",
+        error: { name: "InsufficientCreditsError", required: 2, available: 1 },
+      },
+    ]);
+    // The refusal leaves the second window's end in force.
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(p.handle.evidence()).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    await session.close();
+    const attempts = gate.settled.get("0:stt");
+    expect(attempts).toHaveLength(2);
+    expect(attempts?.[1]).toBe(attempts?.[0]);
+    expect(attempts?.[0]).toEqual({
+      ...SUPERSEDED,
+      pcmBytes: 3200,
+      ttsCharacters: 0,
+      dispatched: { stt: true, tts: false },
+    });
+    expect(gate.settled.get("0:tts")).toHaveLength(1);
+    expect(gate.settled.get("1:stt")?.[0]).toMatchObject({
+      pcmBytes: 0,
+      dispatched: { stt: true },
+      outcomes: { stt: "complete" },
+    });
+    expect([...gate.settled.keys()].sort()).toEqual([
+      "0:stt",
+      "0:tts",
+      "1:stt",
+      "1:tts",
+    ]);
+    expect(p.handle.evidence()).toMatchObject({
+      accounting: "settled_actual",
+      moneyTerminal: true,
+    });
   } finally {
     vi.useRealTimers();
   }
@@ -707,7 +910,7 @@ test("final bounded retry settles the frozen submitted counter but leaves provid
   expect(ttsInputs).toMatchObject([
     {
       ttsCharacters: 0,
-      ttsAccountingBasis: "submitted_counter_provider_unconfirmed",
+      accountingBasis: "submitted_counter_provider_unconfirmed",
     },
   ]);
   expect(p.handle.evidence()).toMatchObject({

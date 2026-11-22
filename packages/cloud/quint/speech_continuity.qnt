@@ -1,5 +1,7 @@
 // One active speech transport and three billing windows. Runtime window counts
 // may be larger. Reservations are recorded before asynchronous admission.
+// A renewal first settles each window the live one superseded, so it needs
+// headroom for one more window, not for every window granted so far.
 // A teardown request is not provider closure or a wall-clock progress claim.
 module speech_continuity {
   var open: bool
@@ -48,6 +50,16 @@ module speech_continuity {
     confirmed' = confirmed, providerCloseRequested' = providerCloseRequested,
     quotaRelease' = quotaRelease }
   action settle = { nondet window = recorded.oneOf(); settleWindow(window) }
+  // While open, only a window a later granted window superseded settles, at
+  // its frozen metered share. A failed attempt stays for settleWindow after Stop.
+  action settleSuperseded(window: int): bool = all {
+    open, pending == -1, granted.contains(window),
+    granted.exists(later => later > window), not(settled.contains(window)),
+    settled' = settled.union(Set(window)), open' = open, pending' = pending,
+    granted' = granted, recorded' = recorded, funded' = funded,
+    confirmed' = confirmed, providerCloseRequested' = providerCloseRequested,
+    quotaRelease' = quotaRelease }
+  action supersede = { nondet window = granted.oneOf(); settleSuperseded(window) }
   action refuse = all { pending >= 0, not(funded.contains(pending)),
     settled' = settled.union(Set(pending)), pending' = -1,
     open' = open, granted' = granted, recorded' = recorded, funded' = funded,
@@ -69,14 +81,28 @@ module speech_continuity {
   action settlementFails = all { not(open), pending == -1,
     not(funded.subseteq(settled)), idle }
   action step = any { reserve, admission, extend, stop, stoppedRenewalReturns,
-    settle, settlementFails, refuse, quotaRefund(true), quotaRefund(false), confirm, idle }
+    settle, supersede, settlementFails, refuse, quotaRefund(true), quotaRefund(false),
+    confirm, idle }
   val PaidBeforeExtension = granted.subseteq(funded)
+  // The live window's reservation is never settled while speech can still run.
+  val LiveWindowHeld = open implies
+    granted.forall(window => settled.contains(window) implies
+      granted.exists(later => later > window))
   val ReceiptBeforeConfirmation = confirmed implies
     (not(open) and pending == -1 and recorded.subseteq(settled))
   val StopStartsProviderShutdown = not(open) implies providerCloseRequested
-  val safety = PaidBeforeExtension and ReceiptBeforeConfirmation and StopStartsProviderShutdown
+  val safety = PaidBeforeExtension and ReceiptBeforeConfirmation and
+    StopStartsProviderShutdown and LiveWindowHeld
   run continuousRenewal = init.then(reserve).then(admission).then(extend)
     .then(reserve).then(admission).then(extend).expect(open and granted.size() == 3 and safety)
+  // Each renewal holds only the live window and the one it reserves.
+  run supersededRenewal = init.then(reserve).then(admission).then(extend)
+    .then(settleSuperseded(0))
+    .expect(open and funded.exclude(settled) == Set(1) and safety)
+    .then(reserve).then(admission).then(extend)
+    .expect(open and granted.size() == 3 and funded.exclude(settled) == Set(1, 2) and safety)
+    .then(stop).then(settleWindow(1)).then(settleWindow(2)).then(confirm)
+    .expect(confirmed and settled == Set(0, 1, 2) and safety)
   run stopDuringAdmission = init.then(reserve).then(stop)
     .expect(providerCloseRequested and pending >= 0 and not(confirmed))
     .then(admission).then(stoppedRenewalReturns)
