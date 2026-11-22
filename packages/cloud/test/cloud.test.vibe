@@ -3415,6 +3415,9 @@ module node {
       let rejectHistory = false
       let revokeArrival = false
       let invalidHistory = false
+      let incompleteHistory: "cycle" | "over-budget" | undefined
+      let abortArrival: AbortController | undefined
+      let providerAbort: AbortSignal | undefined
       const providerFetch: typeof fetch = async (input, init) => {
         const request = new Request(input, init)
         const url = new URL(request.url)
@@ -3432,6 +3435,14 @@ module node {
           if (staleHistory) return Response.json({}, { status: 404 })
           if (rejectHistory) return Response.json({}, { status: 401 })
           if (invalidHistory) return Response.json({ historyId: "malformed" })
+          if (incompleteHistory) {
+            const page = Number(url.searchParams.get("pageToken") ?? "0")
+            return Response.json({ historyId: "10000000000000000003", nextPageToken: incompleteHistory === "cycle" ? "1" : String(page + 1) })
+          }
+          if (abortArrival) {
+            providerAbort = request.signal
+            abortArrival.abort()
+          }
           if (revokeArrival) await fixture.db.query("UPDATE device_grants SET key_expires_at = 0 WHERE user_id = $1", [owner.account.id])
           if (!url.searchParams.has("pageToken")) return Response.json({ historyId: "10000000000000000003", nextPageToken: "next" })
           return Response.json({ historyId: "10000000000000000003", history: mailArrived ?
@@ -3499,10 +3510,10 @@ module node {
       const get = (path: string, cookie?: string) => worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + path, {
         headers: cookie ? { origin: web, cookie: "__Host-eliza-session=" + cookie } : { origin: web },
       }), env)
-      const arrival = (headers?: Record<string, string>, cursor?: string, includeGrant = false) => {
+      const arrival = (headers?: Record<string, string>, cursor?: string, includeGrant = false, signal?: AbortSignal) => {
         const query = new URLSearchParams(includeGrant ? { grantId: grant } : {})
         if (cursor !== undefined) query.set("cursor", cursor)
-        return worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/inbox-v1/arrival?" + query, { headers }), env)
+        return worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/inbox-v1/arrival?" + query, { headers, signal }), env)
       }
       const decision = async (response: Response) => ({
         status: response.status,
@@ -3559,13 +3570,25 @@ module node {
       revokeArrival = true
       const deviceRevokedArrival = await arrival(ownDevice, cursor)
       await fixture.db.query("UPDATE device_grants SET key_expires_at = $1 WHERE user_id = $2", [Date.now() + 86400000, owner.account.id])
+      revokeArrival = false
+      const requests = [...arrivalRequests]
+      incompleteHistory = "cycle"
+      const cycle = await arrival(ownDevice, cursor)
+      const cyclePages = arrivalRequests.length - requests.length
+      incompleteHistory = "over-budget"
+      const overBudget = await arrival(ownDevice, cursor)
+      const budgetPages = arrivalRequests.length - requests.length - cyclePages
+      incompleteHistory = undefined
+      abortArrival = new AbortController()
+      const cancelled = await arrival(ownDevice, cursor, false, abortArrival.signal)
       const arrivalResult = {
         baseline: [baseline.status, baseline.cache, baseline.body.arrived, !cursor.includes("10000000000000000001") && cursor.length > 20, webBaseline.status, webBaseline.body.arrived],
         polling: [emptyArrival.body.cursor === cursor, emptyArrival.body.arrived, freshArrival.body.cursor === cursor, freshArrival.body.arrived],
         denied: [webNoGrant, replayAcrossCredentials, foreignArrival, anonymousArrival, fabricatedArrival, expiredArrival, providerRevokedArrival, malformedHistory, deviceRevokedArrival].map(({ status }) => status),
         timerAndGrant: [claims.expiresAt >= beforeBaseline + 300000 && claims.expiresAt <= afterBaseline + 300000,
           elapsedWatch.status, replacedGrant.status, directWithoutCredential.status, deniedBeforeProvider],
-        requests: arrivalRequests,
+        requests,
+        failureControls: [cycle.status, cyclePages, overBudget.status, budgetPages, cancelled.ok, providerAbort?.aborted],
         exposedOnlyHistory: providerCalls.every((call) => [
           "POST https://oauth2.googleapis.com/token",
           "GET https://gmail.googleapis.com/gmail/v1/users/me/profile",
@@ -3654,7 +3677,7 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Open the selected named attachment and watch for new mail (spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/services/google/mailRead.md, "A selected inbox can signal a new arrival during a short watch")', () => effect {
+it.live('Open the selected named attachment and watch for new mail (spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately")', () => effect {
   const got = try tryPromise(() => readSelectedAttachment())
   try check(() => assert.deepStrictEqual(
     {
@@ -3673,6 +3696,7 @@ it.live('Open the selected named attachment and watch for new mail (spec/cloud/i
         denied: [400, 409, 409, 401, 409, 404, 409, 502, 401],
         exposedOnlyHistory: true,
         timerAndGrant: [true, 409, 409, 401, true],
+        failureControls: [502, 2, 502, 8, false, true],
         requests: [
           "/gmail/v1/users/me/profile?fields=historyId",
           "/gmail/v1/users/me/profile?fields=historyId",

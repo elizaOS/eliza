@@ -53,10 +53,10 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
     const owner = await inferenceAccount(request, db, env)
     const credential = owner ? await cloudCredential(request) : null
     if (!owner || !credential) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
-    const response = await googleRequest(request, env, db, owner, providerFetch, credential)
-    if (response.ok && await inferenceAccount(request, db, env) !== owner)
-      return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
-    return response
+    return googleRequest(request, env, db, owner, providerFetch, {
+      credential,
+      current: async () => await inferenceAccount(request, db, env) === owner,
+    })
   }
   const decisions = path === CLEF_DECISIONS_PATH
   const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"
