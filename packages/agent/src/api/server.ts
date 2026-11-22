@@ -1663,18 +1663,6 @@ async function handleRequestForViewClient(
   ) {
     return;
   }
-  // The packaged desktop runs the agent listener directly, but app owns
-  // its browser-session store. The host consumes the one-shot local socket
-  // proof here; its handler enforces loopback peer+Host, originlessness,
-  // socket ownership, and socket mode before minting anything.
-  const handleDesktopAuthBootstrapRoute =
-    getAgentHostBridge().handleDesktopAuthBootstrapRoute;
-  if (
-    typeof handleDesktopAuthBootstrapRoute === "function" &&
-    (await handleDesktopAuthBootstrapRoute(req, res, state.runtime))
-  ) {
-    return;
-  }
   const handleHostAuthRoutes = getAgentHostBridge().handleAuthRoutes;
   if (
     handleHostAuthRoutes &&

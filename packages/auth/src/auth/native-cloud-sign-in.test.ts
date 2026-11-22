@@ -7,11 +7,13 @@ import {
   nativeSignInAuthenticated,
   nativeSignInCodeStarted,
   nativeSignInGoogleOutcome,
+  nativeSignInGoogleScopes,
   nativeSignInReadiness,
   nativeSignInReadinessChanged,
   nativeSignInRenewal,
   nativeSignInRenewed,
   nativeSignInVerified,
+  nativeSignOut,
   normalizeNativeSignInCode,
   validNativeSignInEmail,
   validNativeSignInPhone,
@@ -83,6 +85,75 @@ describe("native Cloud sign-in renderer contract", () => {
       expect(code(() => nativeSignInAuthenticated(bad, "production"))).toBe(
         "unavailable",
       );
+  });
+
+  it("reads the Gmail connection a Google sign-in made, with no secret", () => {
+    const GMAIL = "https://www.googleapis.com/auth/gmail.readonly";
+    const signedIn = {
+      status: "authenticated",
+      environment: "production",
+      expiresAt: NOW,
+      accountCreated: false,
+    };
+    for (const google of [
+      { connected: true, email: "owner@example.invalid", scopes: [GMAIL] },
+      { connected: true, email: null, scopes: [] },
+      { connected: false, reason: "google_account_mismatch" },
+    ])
+      expect(
+        nativeSignInAuthenticated({ ...signedIn, google }, "production"),
+      ).toEqual({ ...signedIn, google });
+    for (const google of [
+      {
+        connected: true,
+        email: "owner@example.invalid",
+        scopes: [GMAIL],
+        connectionId: "c",
+      },
+      {
+        connected: true,
+        email: "owner@example.invalid",
+        scopes: ["https://mail.google.com/"],
+      },
+      { connected: true, email: "not an address", scopes: [GMAIL] },
+      { connected: false, reason: "Google said <b>no</b>" },
+      { connected: false, reason: "google_declined", serverAuthCode: "4/x" },
+      null,
+    ])
+      expect(
+        code(() =>
+          nativeSignInAuthenticated({ ...signedIn, google }, "production"),
+        ),
+      ).toBe("unavailable");
+  });
+
+  it("reads a sign-out for exactly this deployment", () => {
+    for (const out of [
+      { environment: "production", status: "signed-out" },
+      {
+        environment: "production",
+        status: "signed-out",
+        revocation: "revoked",
+      },
+      {
+        environment: "production",
+        status: "signed-out",
+        revocation: "unconfirmed",
+      },
+    ])
+      expect(nativeSignOut(out, "production")).toEqual(out);
+    for (const bad of [
+      { environment: "staging", status: "signed-out" },
+      { environment: "production", status: "authenticated" },
+      { environment: "production", status: "signed-out", revocation: "lost" },
+      {
+        environment: "production",
+        status: "signed-out",
+        token: "eliza_mobile_x",
+      },
+      null,
+    ])
+      expect(code(() => nativeSignOut(bad, "production"))).toBe("unavailable");
   });
 
   it("reads a started code attempt and refuses malformed attempt ids or times", () => {
@@ -383,6 +454,18 @@ describe("native Cloud sign-in renderer contract", () => {
       "activationPending",
     ])
       expect(nativeSignInActivationPending(value)).toBe(false);
+  });
+
+  it("reads the registered Google scopes a disclosure shows from status", () => {
+    const scopes = ["email", "https://www.googleapis.com/auth/gmail.readonly"];
+    expect(nativeSignInGoogleScopes({ googleScopes: scopes })).toEqual(scopes);
+    expect(nativeSignInGoogleScopes({})).toEqual([]);
+    for (const value of [
+      { googleScopes: ["https://mail.google.com/"] },
+      { googleScopes: "email" },
+      null,
+    ])
+      expect(() => nativeSignInGoogleScopes(value)).toThrow("unavailable");
   });
 
   it("reads a readiness change only for this deployment and only from explicit booleans", () => {

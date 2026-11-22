@@ -268,6 +268,8 @@ export const NOTES_REQUEST_OPERATIONS = Object.freeze([
 	"update",
 	"patch",
 	"delete",
+	"restore",
+	"move",
 ] as const);
 export type NotesRequestOperation = (typeof NOTES_REQUEST_OPERATIONS)[number];
 export type NotesRequestInterpretation = {
@@ -1059,7 +1061,9 @@ export function checkBoundNotesOperation(
 		operation === "create" ||
 		operation === "update" ||
 		operation === "patch" ||
-		operation === "delete";
+		operation === "delete" ||
+		operation === "restore" ||
+		operation === "move";
 	// An observation never fixes or changes the mutation identity of this host
 	// action. A compound view action may read before its one resolved mutation,
 	// and a later read cannot erase a settled denied mutation.
@@ -1237,18 +1241,35 @@ export function bindRequestOperationResult(
 						row.op === attempt.registeredOperation ||
 						row.op === attempt.resolved,
 				);
-			// The Notes owner resolves its registered patch action to update before
-			// checking permission. An explicit edit may be fulfilled by that patch;
-			// keep its raw dispatch identity for matching and freshness checks.
-			const requested =
+			// The Notes owner resolves its registered patch and move actions to
+			// update before checking permission. An explicit edit may be fulfilled
+			// by either; keep the raw dispatch identity for matching and freshness
+			// checks.
+			const explicit =
 				value.interpretation?.status === "explicit"
-					? value.interpretation.operations.includes(
-							attempt.registeredOperation,
-						) ||
-						(attempt.registeredOperation === "patch" &&
-							attempt.resolved === "update" &&
-							value.interpretation.operations.includes("update"))
+					? value.interpretation.operations
 					: undefined;
+			const direct =
+				explicit !== undefined &&
+				(explicit.includes(attempt.registeredOperation) ||
+					((attempt.registeredOperation === "patch" ||
+						attempt.registeredOperation === "move") &&
+						attempt.resolved === "update" &&
+						explicit.includes("update")));
+			// Stage 1 names an append or partial edit "patch", and the registered
+			// update child accepts the same textEdit append/substitution. Its
+			// applied edit of an existing note therefore fulfils an explicit
+			// patch instead of counting as an unrequested effect. This alternate
+			// route adds no obligation: its no-effect rejection stays outside
+			// the request, so the original patch remains the operation to correct.
+			const alternateEdit =
+				explicit !== undefined &&
+				!direct &&
+				attempt.registeredOperation === "update" &&
+				attempt.resolved === "update" &&
+				explicit.includes("patch");
+			const requested =
+				explicit !== undefined ? direct || alternateEdit : undefined;
 			if (dispatch && canonicalChild)
 				completion = Object.freeze({
 					issuer: attempt.issuer,
@@ -1260,8 +1281,9 @@ export function bindRequestOperationResult(
 					canonicalChild,
 					childDefinition: definition(canonicalChild),
 					requested,
-					rejected: requested === true && noEffectRejection,
-					outsideRequestRejection: requested === false && noEffectRejection,
+					rejected: direct && noEffectRejection,
+					outsideRequestRejection:
+						(requested === false || alternateEdit) && noEffectRejection,
 					ambiguousRejection:
 						value.interpretation?.status !== "explicit" && noEffectRejection,
 				});

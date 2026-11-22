@@ -10,6 +10,7 @@ import {
   type DeviceExecutionResult,
   type DeviceExecutor,
   type DeviceJournalEntry,
+  type DeviceOperation,
   type DeviceOperationReceipt,
   proposalContextNotice,
   publishCommittedDeviceChanges,
@@ -576,6 +577,55 @@ describe("DeviceActionCoordinator", () => {
     ).rejects.toThrow(/Camera capture was not negotiated/);
   });
 
+  it("sends the photo's library id only to an agent that negotiated it", async () => {
+    const camera = { view: "camera", revision: 1, sensitive: false };
+    for (const negotiated of [false, true]) {
+      const { server, request } = fixtureServer({
+        type: "camera_capture_photo",
+      });
+      const { journal } = memoryJournal();
+      const actions = new DeviceActionCoordinator({
+        session,
+        credential: {
+          ...credential,
+          capabilities: [
+            "camera.capture-photo.v1",
+            ...(negotiated ? ["camera.capture-library-id.v1"] : []),
+          ],
+        },
+        scope,
+        request,
+        journal,
+        execute: async (_op, operationId) => ({
+          status: "succeeded",
+          summary: "Photo saved",
+          cameraResult: {
+            version: 1,
+            kind: "camera_capture_photo",
+            operationId,
+            mediaId: "42",
+            libraryId: "lib:i:42:1700000000000",
+            width: 4000,
+            height: 3000,
+            mime: "image/jpeg",
+          },
+        }),
+        profile,
+      });
+      await actions.pending(camera, signal());
+      expect((await actions.approve("proposal", camera, signal())).status).toBe(
+        "succeeded",
+      );
+      const sent = server.receipts[0].receipt as {
+        result: Record<string, unknown>;
+      };
+      expect(sent.result.mediaId).toBe("42");
+      expect(sent.result.libraryId).toBe(
+        negotiated ? "lib:i:42:1700000000000" : undefined,
+      );
+    }
+  });
+
   it("closes an attempt that never dispatched as failed with nothing sent", async () => {
     for (const legacy of [false, true]) {
       const { server, request } = fixtureServer(note);
@@ -858,6 +908,20 @@ describe("DeviceActionCoordinator", () => {
         profile.operations,
       ),
     ).toEqual({ type: "open_view", view: "notes" });
+    for (const view of ["phone", "messages", "contacts"]) {
+      expect(
+        validateDeviceOperation(
+          { type: "open_view", view },
+          profile.operations,
+        ),
+      ).toEqual({ type: "open_view", view });
+      expect(() =>
+        validateDeviceOperation(
+          { type: "open_view", view },
+          { ...profile.operations, admitView: () => false },
+        ),
+      ).toThrow(/Unsupported/);
+    }
     expect(() =>
       validateDeviceOperation(
         { type: "open_view", view: "files" },
@@ -870,6 +934,19 @@ describe("DeviceActionCoordinator", () => {
         profile.operations,
       ),
     ).toThrow(/browser destination/);
+    expect(
+      validateDeviceOperation(
+        { type: "create_note", title: "Groceries", body: "Milk" },
+        profile.operations,
+      ),
+    ).toEqual({ type: "create_note", title: "Groceries", body: "Milk" });
+    // The server refuses unexpected note fields; the device must not drop them silently.
+    expect(() =>
+      validateDeviceOperation(
+        { type: "create_note", title: "Groceries", body: "Milk", pinned: true },
+        profile.operations,
+      ),
+    ).toThrow(/Invalid note/);
     expect(
       proposalContextNotice(
         { type: "camera_capture_photo" } as never,
@@ -1794,6 +1871,26 @@ describe("shared phone and reminder-read parity", () => {
       { kind: "voicemail-delete", status: "deleted" },
       "Delete voicemail",
     ],
+    [
+      { type: "contact_show", query: "Ada" },
+      "contacts.show.v1",
+      { kind: "contact-show", status: "shown" },
+      "Show contact",
+    ],
+    [
+      { type: "contact_read_selected" },
+      "contacts.read.v1",
+      {
+        kind: "contact-read",
+        status: "read",
+        contact: {
+          displayName: "Ada Lovelace",
+          phoneNumbers: ["(555) 555-0123"],
+          emailAddresses: [],
+        },
+      },
+      "Share open contact",
+    ],
   ] as const;
   it.each(telephonyCases)(
     "negotiates %o and journals/replays its exact result without acting twice",
@@ -1850,6 +1947,42 @@ describe("shared phone and reminder-read parity", () => {
       expect(effects).toBe(1);
     },
   );
+  it("admits a contact update that adds or removes values only with contacts.write.v2", async () => {
+    const { request } = fixtureServer({
+      type: "contact_update",
+      query: "Ada",
+      add: { emailAddresses: ["ada@work.example"] },
+      remove: { phoneNumbers: ["+15555550123"] },
+    });
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const execute: DeviceExecutor = async () => {
+      effects++;
+      return {
+        status: "succeeded",
+        summary: "Done",
+        telephonyResult: { kind: "contact-write", status: "saved" },
+      };
+    };
+    await expect(
+      make(request, journal, execute, ["contacts.write.v1"]).pending(
+        home,
+        signal(),
+      ),
+    ).rejects.toThrow(/negotiated/);
+    const actions = make(request, journal, execute, [
+      "contacts.write.v1",
+      "contacts.write.v2",
+    ]);
+    const [card] = await actions.pending(home, signal());
+    expect(card.description).toBe(
+      "Contact: Ada\nAdd: ada@work.example\nRemove: +15555550123\n\nAdds or removes only these values after you confirm. The contact's other details stay. Nothing else is shared with the agent.",
+    );
+    expect((await actions.approve("proposal", home, signal())).status).toBe(
+      "succeeded",
+    );
+    expect(effects).toBe(1);
+  });
   it("refuses a telephony result that contradicts the reviewed operation or its status", async () => {
     for (const [operation, capability, result] of [
       // A call can never report more than a started call.
@@ -2079,6 +2212,84 @@ describe("shared phone and reminder-read parity", () => {
       ).toEqual([]);
       expect(effects).toBe(0);
       expect(server.state).toBe("pending");
+    }
+  });
+  it("opens the keypad without a review only for the requesting message and never calls", async () => {
+    for (const keypad of [
+      { type: "phone_keypad" },
+      { type: "phone_keypad", number: "4155550100" },
+    ]) {
+      const fixture = fixtureServer(keypad);
+      const request = async (path: string, body: unknown, s: AbortSignal) => {
+        const response = await fixture.request(path, body, s);
+        for (const item of response.proposals ?? [response.proposal])
+          if (item)
+            Object.assign(item.payload, { requestMessageId: "message" });
+        return response;
+      };
+      const ran: unknown[] = [];
+      const telephonyResult = { kind: "phone-keypad", status: "opened" };
+      const actions = make(
+        request,
+        memoryJournal().journal,
+        async (operation: unknown) => {
+          ran.push(operation);
+          return { status: "succeeded", summary: "Opened", telephonyResult };
+        },
+        ["phone.keypad.v1"],
+      );
+      await actions.pending(home, signal());
+      expect(
+        await actions.performRequested(
+          "other-message",
+          home,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(ran).toEqual([]);
+      const proof = (text: string): CurrentDeviceActionRequest => ({
+        messageId: "message",
+        text,
+        current() {},
+      });
+      if (keypad.number) {
+        // A number the owner did not type in this message (one read from an
+        // email or a page earlier in the turn) keeps its review card.
+        for (const current of [
+          undefined,
+          proof("open the keypad with the number from that email"),
+          proof("open the keypad with 415-555-0199"),
+        ])
+          expect(
+            await actions.performRequested(
+              "message",
+              home,
+              signal(),
+              async () => true,
+              undefined,
+              current,
+            ),
+          ).toEqual([]);
+        expect(ran).toEqual([]);
+      }
+      expect(
+        await actions.performRequested(
+          "message",
+          home,
+          signal(),
+          async () => true,
+          undefined,
+          keypad.number
+            ? proof("open the keypad with (415) 555-0100")
+            : undefined,
+        ),
+      ).toMatchObject([{ status: "succeeded" }]);
+      expect(ran).toEqual([keypad]);
+      expect(fixture.server.receipts[0].receipt).toMatchObject({
+        outcome: "applied",
+        result: telephonyResult,
+      });
     }
   });
   it("leaves a contact SMS with an unknown outcome unresolved and never sends it again", async () => {
@@ -2330,6 +2541,27 @@ describe("notes organize operations", () => {
     });
     return { ...fixture, actions, effects: () => effects };
   }
+
+  it("records a voice note with only the recording capability", async () => {
+    const f = organizeFixture({ type: "notes_record", action: "start" }, [
+      "notes.record.v1",
+    ]);
+    await f.actions.pending(notesContext, signal());
+    expect(
+      await f.actions.performRequested(
+        "message",
+        notesContext,
+        signal(),
+        async () => true,
+      ),
+    ).toMatchObject([{ status: "succeeded", committedChanges: [] }]);
+    expect(f.effects()).toBe(1);
+    const folder = organizeFixture({ type: "notes_folder_create", name: "A" }, [
+      "notes.record.v1",
+    ]);
+    const review = await folder.actions.pendingReview(notesContext, signal());
+    expect(review[0].proposal).toBeNull();
+  });
 
   it("refuses organize proposals the phone did not negotiate", async () => {
     const f = organizeFixture({ type: "notes_filter", kind: "voice" }, [
@@ -2614,12 +2846,185 @@ describe("photos view operations", () => {
   });
 });
 
+describe("browser control operations", () => {
+  const homeContext: DeviceContextEnvelope = {
+    view: "home",
+    revision: 4,
+    sensitive: false,
+  };
+  const capabilities = [
+    "browser.search.v1",
+    "browser.tabs.v1",
+    "browser.find.v1",
+    "browser.history.v1",
+  ];
+  function browserControlFixture(
+    operation: Record<string, unknown>,
+    negotiated = capabilities,
+    policy = false,
+  ) {
+    const fixture = fixtureServer(operation);
+    const request = async (path: string, body: unknown, s: AbortSignal) => {
+      const response = await fixture.request(path, body, s);
+      for (const item of response.proposals ?? [response.proposal])
+        if (item) Object.assign(item.payload, { requestMessageId: "message" });
+      return response;
+    };
+    const { journal } = memoryJournal();
+    let effects = 0,
+      presented = 0;
+    const actions = new DeviceActionCoordinator(
+      {
+        session,
+        credential: { ...credential, capabilities: negotiated },
+        scope,
+        request,
+        journal,
+        execute: async () => {
+          effects++;
+          return {
+            status: "succeeded",
+            summary: "Switched to BBC News - Home",
+            presentBrowser: () => {
+              presented++;
+            },
+          };
+        },
+        profile: { ...profile, assistantName: "Alpha" },
+      },
+      { currentRequestBrowserPolicy: policy },
+    );
+    return {
+      ...fixture,
+      actions,
+      effects: () => effects,
+      presented: () => presented,
+    };
+  }
+  const run = (f: ReturnType<typeof browserControlFixture>, proof?: unknown) =>
+    f.actions.performRequested(
+      "message",
+      homeContext,
+      signal(),
+      async () => true,
+      undefined,
+      proof as CurrentDeviceActionRequest | undefined,
+    );
+
+  it("refuses a Browser control the phone did not negotiate", async () => {
+    for (const [operation, negotiated] of [
+      [{ type: "browser_search", query: "cats" }, ["browser.tabs.v1"]],
+      [{ type: "browser_tab_new" }, ["browser.search.v1"]],
+      [{ type: "browser_find", text: "refund" }, ["browser.history.v1"]],
+      [{ type: "browser_history", action: "back" }, ["browser.find.v1"]],
+    ] as const) {
+      const f = browserControlFixture(operation, [...negotiated]);
+      const review = await f.actions.pendingReview(homeContext, signal());
+      expect(review[0].proposal).toBeNull();
+      expect(review[0].notice).toBe(
+        "This action isn't available on this phone.",
+      );
+    }
+  });
+
+  it("runs search, tab, find and history controls directly for the requesting message and shows Browser", async () => {
+    for (const [operation, title] of [
+      [{ type: "browser_search", query: "best pizza" }, "Search the web"],
+      [{ type: "browser_tab_new", private: true }, "Open a private tab"],
+      [{ type: "browser_tab_switch", target: "bbc" }, "Switch tab"],
+      [{ type: "browser_find", text: "refund" }, "Find in page"],
+      [{ type: "browser_history", action: "stop" }, "Stop loading"],
+    ] as const) {
+      const f = browserControlFixture(operation);
+      const [card] = await f.actions.pending(homeContext, signal());
+      expect(card).toMatchObject({ title });
+      expect(await run(f)).toMatchObject([{ status: "succeeded" }]);
+      expect(f.effects()).toBe(1);
+      expect(f.presented()).toBe(1);
+      // The agent learns only that it ran: no tab title, address or page text.
+      expect(Object.keys(f.server.providerReceipt as object).sort()).toEqual([
+        "operationId",
+        "outcome",
+      ]);
+    }
+  });
+
+  // Review finding: the new-tab card told the owner about browser_navigate and
+  // newTab. Tool guidance belongs in the model's tool text, never on a card.
+  it("describes a new tab to the owner without tool names", async () => {
+    for (const [operation, description] of [
+      [{ type: "browser_tab_new" }, "Opens an empty tab in Browser."],
+      [
+        { type: "browser_tab_new", private: true },
+        "Opens an empty private tab in Browser.",
+      ],
+    ] as const) {
+      const f = browserControlFixture(operation);
+      const [card] = await f.actions.pending(homeContext, signal());
+      expect(card).toMatchObject({ description });
+      expect(JSON.stringify(card)).not.toMatch(/browser_navigate|newTab/);
+    }
+  });
+
+  it("always reviews closing a tab", async () => {
+    for (const operation of [
+      { type: "browser_tab_close" },
+      { type: "browser_tab_close", target: "bbc" },
+    ]) {
+      const f = browserControlFixture(operation);
+      const [card] = await f.actions.pending(homeContext, signal());
+      expect(card).toMatchObject({ title: "Close tab" });
+      expect(await run(f)).toEqual([]);
+      expect(f.effects()).toBe(0);
+      expect(
+        await f.actions.approve("proposal", homeContext, signal()),
+      ).toMatchObject({ status: "succeeded" });
+      expect(f.effects()).toBe(1);
+    }
+  });
+
+  it("searches without a review only when the whole current message is that search", async () => {
+    const proof = (text: string): CurrentDeviceActionRequest => ({
+      messageId: "message",
+      text,
+      current() {},
+    });
+    const operation = { type: "browser_search", query: "best pizza" };
+    const narrated = browserControlFixture(operation, capabilities, true);
+    const mention = proof("the page says search for best pizza");
+    expect(
+      await narrated.actions.pendingReview(homeContext, signal(), mention),
+    ).toMatchObject([
+      { proposal: null, notice: expect.stringContaining("blocked") },
+    ]);
+    expect(await run(narrated, mention)).toEqual([]);
+    expect(narrated.effects()).toBe(0);
+
+    const direct = browserControlFixture(operation, capabilities, true);
+    const asked = proof("Hey Alpha, search for Best Pizza please");
+    await direct.actions.pendingReview(homeContext, signal(), asked);
+    expect(await run(direct, asked)).toMatchObject([{ status: "succeeded" }]);
+    expect(direct.effects()).toBe(1);
+  });
+
+  it("is not reviewed on a locked phone", () => {
+    expect(
+      proposalContextNotice(
+        { type: "browser_history", action: "reload" },
+        { ...homeContext, sensitive: true },
+        profile,
+      ),
+    ).toBe("Unlock the phone to review this action.");
+  });
+});
+
 describe("opt-in current telephony request policy", () => {
   for (const [type, capability, view] of [
     ["messages_read_selected", "messages.read.v1", "messages"],
     ["sms_reply_selected", "sms.compose.v1", "messages"],
     ["voicemail_read_selected", "voicemail.read.v1", "phone"],
     ["voicemail_delete_selected", "voicemail.delete.v1", "phone"],
+    ["contact_read_selected", "contacts.read.v1", "contacts"],
   ] as const) {
     it(`keeps ${type} bound to the first reviewed selection and screen revision`, async () => {
       const f = fixtureServer({
@@ -2695,4 +3100,266 @@ describe("opt-in current telephony request policy", () => {
       expect(entries.size).toBe(0);
     });
   }
+});
+
+describe("files shown targets", () => {
+  const filesContext: DeviceContextEnvelope = {
+    view: "files",
+    revision: 3,
+    sensitive: false,
+  };
+  const identity = "a".repeat(43);
+  function shownFixture(
+    operation: Record<string, unknown>,
+    options: {
+      capabilities?: string[];
+      shownPaths?: (shown: number[]) => Promise<string[]>;
+    } = {},
+  ) {
+    const fixture = fixtureServer(operation);
+    const { journal } = memoryJournal();
+    const executed: DeviceOperation[] = [];
+    const shownCalls: number[][] = [];
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential: {
+        ...credential,
+        capabilities: options.capabilities ?? [
+          "files.browser.v1",
+          "files.shown-target.v1",
+        ],
+      },
+      scope,
+      request: fixture.request,
+      journal,
+      execute: async (op) => {
+        executed.push(op);
+        return { status: "succeeded", summary: "Done" };
+      },
+      ...(options.shownPaths
+        ? {
+            filesShownPaths: async (shown: number[]) => {
+              shownCalls.push(shown);
+              return options.shownPaths?.(shown) ?? [];
+            },
+          }
+        : {}),
+      filesIdentity: async (paths) => paths.map(() => identity),
+      profile: {
+        ...profile,
+        operations: { ...profile.operations, admitView: () => true },
+      },
+    });
+    return { ...fixture, actions, executed, shownCalls };
+  }
+
+  it("shows the owner the files a shown position names and acts on those paths", async () => {
+    let paths = ["Download/old.pdf"];
+    const f = shownFixture(
+      { type: "files_trash", shown: [2] },
+      { shownPaths: async () => paths },
+    );
+    const [item] = await f.actions.pendingReview(filesContext, signal());
+    expect(item.proposal).toMatchObject({
+      title: "Move 1 item to Trash",
+      description: "old.pdf",
+    });
+    // A refresh keeps the files the card first showed.
+    paths = ["Download/new.pdf"];
+    const [again] = await f.actions.pendingReview(filesContext, signal());
+    expect(again.proposal).toMatchObject({ description: "old.pdf" });
+    expect(f.shownCalls).toEqual([[2]]);
+    expect(
+      (await f.actions.approve("proposal", filesContext, signal())).status,
+    ).toBe("succeeded");
+    expect(f.executed).toEqual([
+      {
+        type: "files_trash",
+        paths: ["Download/old.pdf"],
+        reviewed: [identity],
+      },
+    ]);
+  });
+
+  it("shares shown items without binding identities", async () => {
+    const f = shownFixture(
+      { type: "files_share", shown: [1, 2] },
+      { shownPaths: async () => ["Download/a.pdf", "Download/b.pdf"] },
+    );
+    const [item] = await f.actions.pendingReview(filesContext, signal());
+    expect(item.proposal).toMatchObject({
+      title: "Share 2 items",
+      description: "a.pdf, b.pdf",
+    });
+    await f.actions.approve("proposal", filesContext, signal());
+    expect(f.executed).toEqual([
+      { type: "files_share", paths: ["Download/a.pdf", "Download/b.pdf"] },
+    ]);
+  });
+
+  it("offers no card when the phone cannot resolve the positions", async () => {
+    for (const shownPaths of [
+      undefined,
+      async () => ["Download/a.pdf"],
+      async () => {
+        throw Error("Files does not show that item");
+      },
+    ]) {
+      const f = shownFixture(
+        { type: "files_move", shown: [1, 2], dest: "Documents" },
+        { shownPaths },
+      );
+      const [item] = await f.actions.pendingReview(filesContext, signal());
+      expect(item.proposal).toBeNull();
+      expect(item.notice).toBe("Move 2 items: These files are not in Files.");
+      await expect(
+        f.actions.approve("proposal", filesContext, signal()),
+      ).rejects.toThrow();
+      expect(f.executed).toEqual([]);
+    }
+  });
+
+  it("refuses shown items the agent did not negotiate", async () => {
+    const f = shownFixture(
+      { type: "files_share", shown: [1] },
+      {
+        capabilities: ["files.browser.v1"],
+        shownPaths: async () => ["Download/a.pdf"],
+      },
+    );
+    const review = await f.actions.pendingReview(filesContext, signal());
+    expect(review.every((item) => item.proposal === null)).toBe(true);
+    expect(f.shownCalls).toEqual([]);
+  });
+});
+
+// Fable review (camera 1 and 3): the phone ran any bound camera capture with
+// no check of the owner's words, and two bound captures were two photos.
+describe("a requested photo on the phone", () => {
+  const camera: DeviceContextEnvelope = {
+    view: "camera",
+    revision: 1,
+    sensitive: false,
+  };
+  function cameraFixture(ids: string[]) {
+    const servers = ids.map((id) => ({
+      id,
+      ...fixtureServer({ type: "camera_capture_photo" }, id),
+    }));
+    const bind = (proposal: Record<string, unknown>) =>
+      Object.assign(proposal.payload as object, {
+        requestMessageId: "message",
+      });
+    const request = async (path: string, body: unknown, s: AbortSignal) => {
+      if (body === undefined) {
+        const lists = await Promise.all(
+          servers.map((f) => f.request(path, body, s)),
+        );
+        const proposals = lists.flatMap(
+          (r) => (r as { proposals: Record<string, unknown>[] }).proposals,
+        );
+        for (const p of proposals) bind(p);
+        return { proposals };
+      }
+      const target = servers.find((f) => path.includes(`/${f.id}/`));
+      if (!target) throw Error(`Unknown proposal path ${path}`);
+      const response = (await target.request(path, body, s)) as {
+        proposal: Record<string, unknown>;
+      };
+      bind(response.proposal);
+      return response;
+    };
+    const calls: string[] = [];
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential: { ...credential, capabilities: ["camera.capture-photo.v1"] },
+      scope,
+      request,
+      journal: memoryJournal().journal,
+      execute: async (_operation, operationId) => {
+        calls.push(operationId);
+        return {
+          status: "succeeded",
+          summary: "Saved the photo.",
+          cameraResult: {
+            version: 1,
+            kind: "camera_capture_photo",
+            operationId,
+            mediaId: String(calls.length),
+            width: 640,
+            height: 480,
+            mime: "image/jpeg",
+          },
+        };
+      },
+      profile,
+    });
+    return { actions, calls, servers };
+  }
+  const proof = (text: string): CurrentDeviceActionRequest => ({
+    messageId: "message",
+    text,
+    current() {},
+  });
+  it.each([
+    "don't take a photo",
+    "summarize the page I have open",
+    "did you take a photo?",
+  ])("keeps the card for a capture %j never asked for", async (text) => {
+    const f = cameraFixture(["cam"]);
+    await f.actions.pendingReview(camera, signal(), proof(text));
+    expect(
+      await f.actions.performRequested(
+        "message",
+        camera,
+        signal(),
+        async () => true,
+        undefined,
+        proof(text),
+      ),
+    ).toEqual([]);
+    expect(f.calls).toEqual([]);
+    expect(f.servers[0].server.state).toBe("pending");
+  });
+  it("keeps the card when the host passes no proof of the owner's words", async () => {
+    const f = cameraFixture(["cam"]);
+    await f.actions.pendingReview(camera, signal());
+    await f.actions.performRequested(
+      "message",
+      camera,
+      signal(),
+      async () => true,
+      "camera_capture_photo",
+    );
+    expect(f.calls).toEqual([]);
+  });
+  it.each(["take a photo", "can you take a selfie?"])(
+    "takes one photo for %j however many captures were bound",
+    async (text) => {
+      const f = cameraFixture(["cam1", "cam2"]);
+      await f.actions.pendingReview(camera, signal(), proof(text));
+      const results = await f.actions.performRequested(
+        "message",
+        camera,
+        signal(),
+        async () => true,
+        undefined,
+        proof(text),
+      );
+      expect(results.map((r) => r.status)).toEqual(["succeeded"]);
+      expect(f.calls).toHaveLength(1);
+      expect(f.servers.map((f) => f.server.state)).toEqual(["done", "pending"]);
+      // A later pass for the same message takes no second photo either.
+      await f.actions.performRequested(
+        "message",
+        camera,
+        signal(),
+        async () => true,
+        undefined,
+        proof(text),
+      );
+      expect(f.calls).toHaveLength(1);
+      expect(f.servers[1].server.state).toBe("pending");
+    },
+  );
 });

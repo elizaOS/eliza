@@ -27,8 +27,8 @@ import org.json.JSONObject;
  * package-private, one-shot PendingIntent per part ({@link SmsSendRequest}); "sent" comes only from
  * RESULT_OK receipts, and a receipt that does not arrive within {@link #RECEIPT_TIMEOUT_MS}, or that
  * died with the process, makes the send "unknown". Nothing is ever resent automatically. While the
- * host is the default SMS app it stores each recipient's message in the outbox before that
- * recipient's platform call and the receipts settle the row; otherwise Android writes the row. Hosts
+ * host is the default SMS app it stores every recipient's message in the outbox before any
+ * platform send and the receipts settle the rows; otherwise Android writes the row. Hosts
  * never write sent-box rows themselves.
  *
  * Unlike {@link SmsTelephony}, receipts are held in process, so this needs no manifest receiver and
@@ -123,14 +123,18 @@ public final class ReviewedSmsSend {
      return;
     }
     if (!plan.dispatch()) { finish(callback, plan.status); return; }
-    if (MmsStore.isDefaultSmsApp(app)) for (int recipient = 0; recipient < to.length; recipient++) SmsTelephony.storeOwnRow(app, journal, plan.record, recipient, body, subscriptionId);
-    MAIN.post(() -> dispatch(app, journal, operationId, to, new ArrayList<>(plan.parts), subscriptionId, callback));
+    try {
+     if (!SmsTelephony.prepareOwnRows(app, journal, plan.record, body)) { finish(callback, plan.record.status()); return; }
+    } catch (IOException refused) { finish(callback, plan.record.status()); return; }
+    MAIN.post(() -> dispatch(app, journal, plan.record, new ArrayList<>(plan.parts), callback));
    });
   } catch (java.util.concurrent.RejectedExecutionException closed) { finish(callback, NOT_SENT); }
  }
 
  /** On the main looper: receipts first, then one platform call per recipient. */
- private static void dispatch(Context app, SmsSendJournal journal, String operationId, String[] recipients, ArrayList<String> parts, int subscriptionId, Callback callback) {
+ private static void dispatch(Context app, SmsSendJournal journal, SmsSendJournal.Record record, ArrayList<String> parts, Callback callback) {
+  final String operationId = record.operationId;
+  final String[] recipients = record.recipients;
   final int perRecipient = parts.size();
   SmsSendRequest request = new SmsSendRequest(app, perRecipient * recipients.length, RECEIPT_TIMEOUT_MS,
    (index, ok) -> { work(() -> { ReviewedSmsSendCore.receipt(journal, operationId, index, ok); SmsTelephony.settleOwnRow(app, journal, operationId, index); }); return Unit.INSTANCE; },
@@ -145,11 +149,14 @@ public final class ReviewedSmsSend {
     return Unit.INSTANCE;
    });
   boolean returned = true;
+  int attempted = 0;
   try {
    List<PendingIntent> receipts = request.start();
-   SmsManager manager = SmsTelephony.manager(app, subscriptionId);
+   SmsManager manager = SmsTelephony.manager(app, record.subscriptionId);
    for (int recipient = 0; recipient < recipients.length; recipient++) {
     ArrayList<PendingIntent> sent = new ArrayList<>(receipts.subList(recipient * perRecipient, (recipient + 1) * perRecipient));
+    SmsTelephony.checkPreparedRole(app, record);
+    attempted++;
     if (perRecipient == 1) manager.sendTextMessage(recipients[recipient], null, parts.get(0), sent.get(0), null);
     else manager.sendMultipartTextMessage(recipients[recipient], null, parts, sent, null);
    }
@@ -158,8 +165,9 @@ public final class ReviewedSmsSend {
    returned = false;
   }
   final boolean all = returned;
+  final int attemptedRecipients = attempted;
   // Queued before any receipt can be handled, so the journal sees the dispatch end first.
-  work(() -> ReviewedSmsSendCore.returned(journal, operationId, all));
+  work(() -> SmsTelephony.finishDispatch(app, journal, record, attemptedRecipients, all));
   if (!all) request.cancel("SMS dispatch interrupted; send status is unknown");
  }
 

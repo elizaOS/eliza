@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   AndroidConsumerHostError,
+  EMBEDDED_AGENT_SOURCES,
   generateAndroidConsumerHost,
 } from "./consumer-host.mjs";
 import { createConsumerFixture } from "./consumer-host-fixture.mjs";
@@ -309,6 +310,146 @@ test("missing declared input reports a typed failure without creating output", (
       error.cause?.code === "ENOENT",
   );
   assert.equal(fs.existsSync(options.output), false);
+});
+
+test("a pnpm-linked dependency is read from its package's real directory", (t) => {
+  const { options, generate } = setup(t);
+  // pnpm's layout: the app's node_modules links into the workspace .pnpm store.
+  const store = path.join(
+    options.consumerRoot,
+    "node_modules/.pnpm/@capacitor+android@8.0.0/node_modules/@capacitor/android",
+  );
+  fs.mkdirSync(path.join(store, "capacitor"), { recursive: true });
+  fs.writeFileSync(
+    path.join(store, "package.json"),
+    JSON.stringify({ name: "@capacitor/android" }),
+  );
+  options.dependencyRoot = path.join(options.consumerRoot, "app/node_modules");
+  fs.mkdirSync(path.join(options.dependencyRoot, "@capacitor"), {
+    recursive: true,
+  });
+  fs.symlinkSync(
+    store,
+    path.join(options.dependencyRoot, "@capacitor/android"),
+  );
+  const capacitor = {
+    name: "capacitor-android",
+    source: { root: "dependencies", path: "@capacitor/android/capacitor" },
+  };
+  options.profile.modules = [capacitor];
+  generate();
+  const profile = JSON.parse(
+    fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
+  );
+  assert.equal(
+    profile.modules[0].directory,
+    fs.realpathSync(path.join(store, "capacitor")),
+  );
+  // A symlink inside the package still cannot leave it.
+  fs.symlinkSync(upstreamRoot, path.join(store, "escape"));
+  capacitor.source.path = "@capacitor/android/escape";
+  assert.throws(generate, /escapes/);
+});
+
+test("a dependency link outside the allowed roots, or not its package, is refused", (t) => {
+  const { options, generate } = setup(t);
+  options.dependencyRoot = path.join(options.consumerRoot, "node_modules");
+  const link = path.join(options.dependencyRoot, "@capacitor/android");
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  const capacitor = {
+    name: "capacitor-android",
+    source: { root: "dependencies", path: "@capacitor/android" },
+  };
+  options.profile.modules = [capacitor];
+  const refused = (target, pattern) => {
+    fs.rmSync(link, { force: true });
+    fs.symlinkSync(target, link);
+    assert.throws(
+      generate,
+      (error) =>
+        error instanceof AndroidConsumerHostError &&
+        pattern.test(error.message),
+    );
+    assert.equal(fs.existsSync(options.output), false);
+  };
+  refused("/", /escapes/);
+  refused(os.homedir(), /escapes/);
+  // A real package, named as requested, that lies outside every allowed root.
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "android-outside-"));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(outside, "package.json"),
+    JSON.stringify({ name: "@capacitor/android" }),
+  );
+  refused(outside, /escapes/);
+  // Inside the consumer, but another package.
+  const other = path.join(options.consumerRoot, "other");
+  fs.mkdirSync(other);
+  fs.writeFileSync(
+    path.join(other, "package.json"),
+    JSON.stringify({ name: "other" }),
+  );
+  refused(other, /is not that package/);
+  // The store itself is not a package.
+  const store = path.join(
+    options.dependencyRoot,
+    ".pnpm/@capacitor+android@8.0.0/node_modules/@capacitor/android",
+  );
+  fs.mkdirSync(store, { recursive: true });
+  capacitor.source.path =
+    ".pnpm/@capacitor+android@8.0.0/node_modules/@capacitor/android";
+  assert.throws(generate, /not the pnpm store/);
+  assert.equal(fs.existsSync(options.output), false);
+});
+
+test("a pnpm workspace widens the dependency roots only when it holds the consumer", (t) => {
+  const workspace = fs.mkdtempSync(
+    path.join(os.tmpdir(), "android-workspace-"),
+  );
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(workspace, "pnpm-workspace.yaml"),
+    "packages: []\n",
+  );
+  const capacitorPackage = path.join(workspace, "packages/capacitor-android");
+  fs.mkdirSync(path.join(capacitorPackage, "capacitor"), { recursive: true });
+  fs.writeFileSync(
+    path.join(capacitorPackage, "package.json"),
+    JSON.stringify({ name: "@capacitor/android" }),
+  );
+  const dependencyRoot = path.join(workspace, "apps/host/node_modules");
+  fs.mkdirSync(path.join(dependencyRoot, "@capacitor"), { recursive: true });
+  fs.symlinkSync(
+    capacitorPackage,
+    path.join(dependencyRoot, "@capacitor/android"),
+  );
+  const generateFor = (consumerRoot) => {
+    const options = {
+      consumerRoot,
+      upstreamRoot,
+      output: path.join(consumerRoot, "android"),
+      ...createConsumerFixture(consumerRoot, "example.consumer"),
+      dependencyRoot,
+    };
+    options.profile.modules = [
+      {
+        name: "capacitor-android",
+        source: { root: "dependencies", path: "@capacitor/android/capacitor" },
+      },
+    ];
+    return () => generateAndroidConsumerHost(options);
+  };
+  // A workspace marker that does not contain the consumer admits none of its packages.
+  const outsider = fs.mkdtempSync(
+    path.join(os.tmpdir(), "android-consumer-host-"),
+  );
+  t.after(() => fs.rmSync(outsider, { recursive: true, force: true }));
+  assert.throws(generateFor(outsider), /escapes/);
+  assert.equal(fs.existsSync(path.join(outsider, "android")), false);
+  // The consumer's own workspace admits its packages.
+  const member = path.join(workspace, "apps/consumer");
+  fs.mkdirSync(member, { recursive: true });
+  generateFor(member)();
 });
 
 test("independent modules remain included without becoming app dependencies", (t) => {
@@ -674,4 +815,99 @@ test("build types, test mocks, admission and staged assets are normalized data",
       false,
     );
   }
+});
+
+test("an embedded agent is three data files: the host declares its service, sources and assets", (t) => {
+  const { options, generate } = setup(t);
+  const write = (name, value) => {
+    fs.writeFileSync(
+      path.join(options.consumerRoot, name),
+      JSON.stringify(value),
+    );
+    return { root: "consumer", path: name };
+  };
+  const host = {
+    schema: 1,
+    service: "example.consumer.HelperService",
+    notification: { channel: "Helper", title: "Helper", text: "Ready" },
+    cloud: { baseUrl: "https://cloud.example" },
+    routes: [{ method: "GET", path: "/api/status" }],
+  };
+  options.profile.modules.push({
+    name: "capacitor-android",
+    source: { root: "consumer", path: "library" },
+  });
+  options.profile.embeddedAgent = {
+    host: write("agent.json", host),
+    character: write("character.json", { name: "Helper", system: "Be kind." }),
+    policy: write("policy.json", {
+      schema: 1,
+      actions: { allowed: { REPLY: "talk" } },
+    }),
+  };
+  assert.throws(generate, /needs the staged Android runtime payload/);
+  const main = path.join(options.consumerRoot, "runtime/android/app/src/main");
+  fs.mkdirSync(path.join(main, "assets/agent"), { recursive: true });
+  fs.writeFileSync(path.join(main, "assets/agent/agent-bundle.js"), "fixture");
+  fs.writeFileSync(
+    path.join(main, "assets/agent-runtime.inventory"),
+    "fixture",
+  );
+  options.runtimeDirectory = path.join(options.consumerRoot, "runtime");
+  generate();
+  const manifest = fs.readFileSync(
+    path.join(
+      options.output,
+      "eliza-embedded-agent/src/main/AndroidManifest.xml",
+    ),
+    "utf8",
+  );
+  assert.match(manifest, /android:name="example\.consumer\.HelperService"/);
+  assert.match(manifest, /foregroundServiceType="specialUse"/);
+  assert.deepEqual(
+    [
+      ...manifest.matchAll(
+        /uses-permission android:name="android\.permission\.(\w+)"/g,
+      ),
+    ].map(([, name]) => name),
+    [
+      "INTERNET",
+      "ACCESS_NETWORK_STATE",
+      "FOREGROUND_SERVICE",
+      "FOREGROUND_SERVICE_SPECIAL_USE",
+    ],
+  );
+  const normalized = JSON.parse(
+    fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
+  );
+  assert.deepEqual(
+    normalized.assetFiles.map(({ name }) => name),
+    [
+      "eliza-agent.json",
+      "eliza-agent-character.json",
+      "eliza-agent-policy.json",
+    ],
+  );
+  const module = normalized.modules.find(
+    ({ name }) => name === "eliza-embedded-agent",
+  );
+  assert.equal(module.appDependency, true);
+  for (const source of EMBEDDED_AGENT_SOURCES) {
+    const text = fs.readFileSync(
+      path.join(options.output, "eliza-embedded-agent/src/main/java", source),
+      "utf8",
+    );
+    assert.doesNotMatch(text, /local[-_]?inference|ai\.eliza\.voice|kotlin/i);
+  }
+  // A changed data file or upstream source makes the generated host refuse to configure.
+  assert.equal(
+    normalized.generationInputs.length,
+    3 + EMBEDDED_AGENT_SOURCES.length,
+  );
+  // Data the device service would refuse fails the generation instead.
+  options.profile.embeddedAgent.host = write("agent.json", {
+    ...host,
+    environment: { ELIZAOS_CLOUD_API_KEY: "secret" },
+  });
+  assert.throws(generate, /Invalid embedded agent data/);
 });

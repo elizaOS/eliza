@@ -1,4 +1,7 @@
-import { notesRequestEffectField } from "./request-effect.js";
+import {
+  namedNoteReadEvaluator,
+  notesRequestEffectField,
+} from "./request-effect.js";
 import { assertNotesAgentViewOperation } from "./request-effect-gate.js";
 /**
  * Runtime declaration for the managed Cloud Notes view: one agent-drivable
@@ -110,6 +113,18 @@ export const notesPlugin: Plugin = {
           ),
         },
         get: { similes: ["NOTES_GET_NOTE"] },
+        delete: {
+          description:
+            "Move one note to Recently deleted. Use noteId for an exact ID from a current record. A content lookup deletes only when the user's message names the note's title; otherwise the result returns the closest note as a candidate and nothing is deleted until the user confirms. Several matches also return candidates for the user's choice.",
+        },
+        restore: {
+          description:
+            "Bring one note back from Recently deleted. Use noteId from a deleted-note record, or content to find it by its title or text among deleted notes only. Several matches return candidates for the user's choice. The note returns with its content unchanged.",
+        },
+        move: {
+          description:
+            "Put one existing note in a folder, or take it out. Identify the note by noteId or content, never both. folder is the exact name of a folder in the Notes folders list, or null for no folder. An unknown folder name returns the existing names and changes nothing; folders are created in the Notes app. The note's text is unchanged.",
+        },
         // Strict tool grammars cannot require UPDATE's target, edit form or
         // revision because each form needs different fields. Sent here to
         // append, the live planner wrote {} and then an empty literal edit
@@ -127,6 +142,7 @@ export const notesPlugin: Plugin = {
     }),
   ],
   responseHandlerFieldEvaluators: [notesRequestEffectField],
+  responseHandlerEvaluators: [namedNoteReadEvaluator],
   providers: [notesProvider, namedNotesProvider, namedNotesRoutingProvider],
   services: [NotesService],
   routes: notesRoutes,
@@ -158,7 +174,6 @@ export const notesPlugin: Plugin = {
       beforeAgentInteract: assertNotesAgentViewOperation,
       serverInteract,
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
   async dispose(runtime) {

@@ -5,7 +5,7 @@
  *
  *   1. **Sandbox driver mode** — when a `Driver` is available via
  *      `getCurrentDriver(runtime)` from `@elizaos/plugin-computeruse/sandbox`
- *      (i.e. the runtime is configured with `ELIZA_COMPUTERUSE_MODE=sandbox`),
+ *      (i.e. the runtime is configured with `COMPUTER_USE_MODE=sandbox`),
  *      we hand the click to that sandbox driver. The mouse never touches the
  *      host screen.
  *

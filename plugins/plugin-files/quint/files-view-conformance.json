@@ -43,6 +43,11 @@
     {
       "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
       "classname": "test",
+      "name": "selected chat bytes keep the mail bound, exact content and revision fence"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
       "name": "bulk share hands one actual ZIP File to Web Share with exact nested Unicode bytes and empty folders"
     },
     {
@@ -138,7 +143,12 @@
     {
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
       "classname": "test",
-      "name": "a filter is restored after both short and long visits away"
+      "name": "leaving Files clears a filter and its displayed positions"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a filter query retired on leave cannot publish into the next visit"
     },
     {
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
@@ -349,6 +359,11 @@
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
       "classname": "test",
       "name": "leaving Downloads during the parent read retires folder creation"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "shown filter results resolve to their paths for a reviewed share, move or trash"
     }
   ],
   "assistant": {
@@ -358,7 +373,9 @@
       "files.browser.v1 operations carries the reviewed identity of each moved or trashed file",
       "files.browser.v1 operations rejects escapes, duplicates, hidden folders, empty filters and extra fields",
       "files.browser.v1 operations runs only filter and open directly; changes need Files on the unlocked screen",
-      "files.browser.v1 operations is advertised only to a phone that negotiated files.browser.v1"
+      "files.browser.v1 operations is advertised only to a phone that negotiated files.browser.v1",
+      "files.browser.v1 operations names files to share, move or trash by their shown positions",
+      "files.browser.v1 operations offers shown positions on a share, move or trash only with files.shown-target.v1"
     ]
   }
 }

@@ -6,6 +6,13 @@ import {
   validateNativeNotesQuery,
 } from "@elizaos/contracts/native-notes-query";
 import {
+  BROWSER_OPEN_NEW_TAB_CAPABILITY,
+  type BrowserControlOperation,
+  browserControlCapabilityAvailable,
+  isBrowserControlType,
+  validateBrowserControl,
+} from "./browser-contract.ts";
+import {
   CALENDAR_CREATE_CAPABILITY,
   CALENDAR_NEXT_CAPABILITY,
   type CalendarOperation,
@@ -16,6 +23,8 @@ import {
 import {
   CAMERA_CAPTURE_CAPABILITY,
   type CameraCaptureOperation,
+  cameraCaptureCapabilityAvailable,
+  isCameraCapture,
   validateCameraCapture,
 } from "./camera-contract.ts";
 import {
@@ -27,7 +36,9 @@ import {
 } from "./clock-contract.ts";
 import {
   FILES_CAPABILITY,
+  FILES_SHOWN_TARGET_CAPABILITY,
   type FilesAgentOperation,
+  filesShownTarget,
   isFilesOperation,
   validateFilesOperation,
 } from "./files-browser-contract.ts";
@@ -46,6 +57,7 @@ import {
   isNotesOrganizeType,
   NOTES_ORGANIZE_CAPABILITY,
   type NotesOrganizeOperation,
+  notesRecordCapabilityAvailable,
   validateNotesOrganizeOperation,
 } from "./notes-organize-contract.ts";
 import {
@@ -54,9 +66,17 @@ import {
   validatePhoneDial,
 } from "./phone-dial-contract.ts";
 import {
+  isLibraryOperation,
+  type LibraryAgentOperation,
+  PHOTO_LIBRARY_CAPABILITY,
+  validateLibraryOperation,
+} from "./photo-library-contract.ts";
+import {
+  isPhotosViewOperation,
   isPhotosViewType,
   type PhotosViewOperation,
   photosViewCapabilityAvailable,
+  photosViewFormSupported,
   validatePhotosViewOperation,
 } from "./photos-view-contract.ts";
 import {
@@ -73,9 +93,11 @@ import {
   validateSmsSend,
 } from "./sms-contract.ts";
 import {
+  isTelephonyAction,
   isTelephonyActionType,
   type TelephonyActionOperation,
   telephonyActionCapabilityAvailable,
+  telephonyActionFormAvailable,
   validateTelephonyAction,
 } from "./telephony-actions-contract.ts";
 import {
@@ -110,7 +132,30 @@ export const DEVICE_VIEWS = [
   "inbox",
   "settings",
   "workflows",
+  "phone",
+  "messages",
+  "contacts",
 ] as const;
+/**
+ * Views that only some hosts have. A host must enable them in its view
+ * profile, and only a phone that advertises `views.telephony.v1` may list,
+ * enroll or be offered them. An installation without a profile, or a client
+ * from before these views, is never offered a view it cannot open.
+ */
+export const PROFILE_ONLY_DEVICE_VIEWS: readonly string[] = [
+  "phone",
+  "messages",
+  "contacts",
+];
+export const TELEPHONY_VIEWS_CAPABILITY = "views.telephony.v1";
+/** The views a phone with these capabilities may enroll and be offered. */
+export function deviceViewsForCapabilities(
+  capabilities: readonly string[] | undefined,
+): readonly string[] {
+  return capabilities?.includes(TELEPHONY_VIEWS_CAPABILITY)
+    ? DEVICE_VIEWS
+    : DEVICE_VIEWS.filter((view) => !PROFILE_ONLY_DEVICE_VIEWS.includes(view));
+}
 export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
@@ -126,13 +171,15 @@ export type DeviceOperation =
   | NativeNotesQueryOperation
   | CalendarOperation
   | PhotosViewOperation
+  | LibraryAgentOperation
   | ForegroundReviewOperation
   | WorkflowReadOperation
   | WorkflowPresentationOperation
   | { type: "create_note"; title: string; body: string }
   | { type: "create_reminder"; title: string; dueAt: string }
   | { type: "open_view"; view: (typeof DEVICE_VIEWS)[number] }
-  | { type: "browser_navigate"; url: string };
+  | { type: "browser_navigate"; url: string; newTab?: true }
+  | BrowserControlOperation;
 
 /** Clock-only executors do not inherit the legacy phone executor's base operations. */
 export function deviceOperationSupportedByCapabilities(
@@ -163,13 +210,19 @@ export function deviceOperationSupportedByCapabilities(
     );
   if (type === "notes_list_filter")
     return capabilities?.includes(NOTES_LIST_FILTER_CAPABILITY) === true;
+  if (type === "notes_record")
+    return notesRecordCapabilityAvailable(capabilities);
   if (isNotesOrganizeType(type))
     return (
       capabilities?.includes(NOTES_ORGANIZE_CAPABILITY) === true &&
       capabilities.includes("notes.local-record.v1")
     );
+  if (isLibraryOperation({ type }))
+    return capabilities?.includes(PHOTO_LIBRARY_CAPABILITY) === true;
   if (isPhotosViewType(type))
     return photosViewCapabilityAvailable(capabilities);
+  if (isBrowserControlType(type))
+    return browserControlCapabilityAvailable(type, capabilities);
   if (type === "clock_alarm")
     return capabilities?.includes(CLOCK_ALARMS_CAPABILITY) === true;
   if (type === "clock_handoff")
@@ -183,7 +236,9 @@ export function deviceOperationSupportedByCapabilities(
     );
   // Transport policy negotiation never widens a clock-only executor.
   const operationCapabilities = capabilities?.filter(
-    (capability) => capability !== "gmail.request-policy.v1",
+    (capability) =>
+      capability !== "gmail.request-policy.v1" &&
+      capability !== "gmail.local-compose.v1",
   );
   const clockOnly =
     operationCapabilities?.length &&
@@ -194,6 +249,28 @@ export function deviceOperationSupportedByCapabilities(
         capability === CLOCK_REPEAT_CAPABILITY,
     );
   return !clockOnly;
+}
+/**
+ * An optional form of an operation needs its own negotiated capability: a
+ * requested camera lens, an SMS `target`, a contact update with `add` or
+ * `remove`, or a Photos album or share of the open item (`selected`). It is
+ * never sent to a phone that did not advertise it.
+ */
+export function deviceOperationFormSupported(
+  operation: DeviceOperation,
+  capabilities?: readonly string[],
+): boolean {
+  if (isCameraCapture(operation))
+    return cameraCaptureCapabilityAvailable(operation, capabilities);
+  if (isTelephonyAction(operation))
+    return telephonyActionFormAvailable(operation, capabilities);
+  if (isPhotosViewOperation(operation))
+    return photosViewFormSupported(operation, capabilities);
+  if (operation.type === "browser_navigate" && operation.newTab)
+    return capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY) === true;
+  if (isFilesOperation(operation) && filesShownTarget(operation))
+    return capabilities?.includes(FILES_SHOWN_TARGET_CAPABILITY) === true;
+  return true;
 }
 export type DeviceActionPayload = {
   action: "device_action";
@@ -308,6 +385,17 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
           `Invalid Photos operation: ${(error as Error).message}`,
         );
       }
+    case "photo_library_search":
+    case "photo_library_inspect":
+    case "photo_library_select":
+    case "photo_library_review":
+      try {
+        return validateLibraryOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid photo library operation: ${(error as Error).message}`,
+        );
+      }
     case "calendar_create_local":
     case "calendar_read_next":
     case "calendar_create":
@@ -357,6 +445,14 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
           "Invalid call operation. Use target {kind: number, number: digits with optional leading +} or {kind: contact, query: the contact name}.",
         );
       }
+    case "phone_keypad":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid keypad operation. Use only number (digits with an optional leading +), or no fields to open an empty keypad.",
+        );
+      }
     case "contact_create":
     case "contact_update":
     case "contact_delete":
@@ -364,7 +460,15 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         return validateTelephonyAction(p);
       } catch {
         throw new DeviceActionError(
-          "Invalid contact operation. contact_create needs contact {displayName, phoneNumbers, emailAddresses}; contact_update needs query and a non-empty set of those fields; contact_delete needs query. Numbers are digits with an optional leading +.",
+          "Invalid contact operation. contact_create needs contact {displayName, phoneNumbers, emailAddresses}; contact_update needs query and at least one of set (a non-empty object of those fields), add and remove (each a non-empty object of phoneNumbers and emailAddresses lists with at least one value; a field in set cannot also be in add or remove); contact_delete needs query. Numbers are digits with an optional leading +.",
+        );
+      }
+    case "contact_show":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid contact search operation. Use only query (the contact name).",
         );
       }
     case "sms_compose":
@@ -384,7 +488,9 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         );
       }
     case "messages_read_selected":
+    case "sms_latest_sender":
     case "voicemail_read_selected":
+    case "contact_read_selected":
     case "voicemail_delete_selected":
       try {
         return validateTelephonyAction(p);
@@ -447,7 +553,9 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         throw new DeviceActionError("Unsupported view");
       return { type: p.type, view: p.view as (typeof DEVICE_VIEWS)[number] };
     case "browser_navigate": {
-      exactKeys(p, ["type", "url"]);
+      exactKeys(p, ["type", "url", "newTab"]);
+      if (p.newTab !== undefined && typeof p.newTab !== "boolean")
+        throw new DeviceActionError("Invalid new tab flag");
       let url: URL;
       try {
         const destination = text(p.url, 4096).trim();
@@ -463,12 +571,32 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError("Invalid browser destination");
       }
+      // A typed http:// address opens over HTTPS, like the address bar. One
+      // that names a port is refused: that port serves plain HTTP.
+      if (url.protocol === "http:" && !url.port) url.protocol = "https:";
       if (url.protocol !== "https:" || url.username || url.password)
         throw new DeviceActionError(
           "Only HTTPS browser destinations are supported",
         );
-      return { type: p.type, url: url.href };
+      return {
+        type: p.type,
+        url: url.href,
+        ...(p.newTab ? { newTab: true } : {}),
+      };
     }
+    case "browser_search":
+    case "browser_tab_new":
+    case "browser_tab_switch":
+    case "browser_tab_close":
+    case "browser_find":
+    case "browser_history":
+      try {
+        return validateBrowserControl(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Browser operation: ${(error as Error).message}. Use browser_search {query}, browser_tab_new {private}, browser_tab_switch {target}, browser_tab_close {target}, browser_find {text} or browser_history {action: back|forward|reload|stop}.`,
+        );
+      }
     default:
       throw new DeviceActionError("Unsupported device operation");
   }
@@ -539,9 +667,6 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     ...(p.requestMessageId === undefined
       ? {}
       : { requestMessageId: identifier(p.requestMessageId) }),
-    ...(operation.type === "clock_alarm"
-      ? { clockContextRevision: Number(p.clockContextRevision) }
-      : {}),
     ...(p.viewProfileRevision === undefined
       ? {}
       : { viewProfileRevision: identifier(p.viewProfileRevision) }),

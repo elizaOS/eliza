@@ -1,7 +1,7 @@
 # @elizaos/capacitor-talkmode
 
 Capacitor plugin for voice conversations: STT → chat orchestration → TTS, across
-browser, iOS, Android, and Electrobun (desktop).
+browser, iOS, and Android.
 
 See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 

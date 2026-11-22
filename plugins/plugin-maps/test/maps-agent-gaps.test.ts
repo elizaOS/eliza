@@ -637,6 +637,7 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
           state: "awaiting-confirmation",
           placeName: destination.name,
           travelMode,
+          route: { durationSeconds: 480, distanceMeters: 640, traffic: "none" },
         };
       },
       reroute: async () => ({ state: "navigating" }),
@@ -651,7 +652,7 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
     service.registerDeviceNavigation(device);
     expect(await run(service, destination)).toMatchObject({
       success: false,
-      text: "Confirm on the phone to start navigation to Port Hercule.",
+      text: "Confirm on the phone to start navigation to Port Hercule. The route is about 8 min, 640 m.",
       data: {
         action: "navigate",
         awaitingUserInput: true,
@@ -659,6 +660,26 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
       },
     });
     expect(started).toEqual([["Port Hercule", "walk"]]);
+  });
+
+  it("says a very short route as one minute and a long one in hours", async () => {
+    for (const [durationSeconds, distanceMeters, said] of [
+      [20, 30, "about 1 min, 30 m"],
+      [3600, 5000, "about 1 h, 5.0 km"],
+      [7500, 12_340, "about 2 h 5 min, 12.3 km"],
+    ] as const) {
+      const service = new MapsService(undefined, store([]));
+      const { device } = phone(true);
+      device.start = async () => ({
+        state: "awaiting-confirmation",
+        placeName: "Port Hercule",
+        route: { durationSeconds, distanceMeters, traffic: "none" },
+      });
+      service.registerDeviceNavigation(device);
+      expect(await run(service, destination)).toMatchObject({
+        text: `Confirm on the phone to start navigation to Port Hercule. The route is ${said}.`,
+      });
+    }
   });
 
   it("returns the directions link when the phone is not ready, refuses or does not say", async () => {
@@ -708,6 +729,26 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
       data: { awaitingUserInput: true, reason: "device_location" },
     });
   });
+
+  it("names a missing phone location and asks for a starting place instead of failing", async () => {
+    const service = new MapsService(undefined, store([]));
+    const { device } = phone(true);
+    device.start = async ({ destination: place, travelMode }) => ({
+      state: "awaiting-location",
+      placeName: place.name,
+      travelMode,
+    });
+    service.registerDeviceNavigation(device);
+    const result = await run(service, destination);
+    expect(result).toMatchObject({
+      success: false,
+      data: { awaitingUserInput: true, reason: "device_location" },
+    });
+    expect(result?.userFacingText).toBe(
+      "The phone's location isn't available, so the route to Port Hercule isn't planned yet. Where are you starting from? You can also enter a starting point in Maps on the phone.",
+    );
+    expect(result?.userFacingText).not.toMatch(/could not complete/i);
+  });
 });
 
 describe("forms ask for names, not ids", () => {
@@ -719,14 +760,172 @@ describe("forms ask for names, not ids", () => {
     formattedAddress: `${n} Quai, Monaco`,
     categories: [],
   });
-  function searching(places: PlaceRef[]) {
+  function searching(places: PlaceRef[], searched: unknown[] = []) {
     const service = new MapsService(undefined, store([]));
     service.registerAdapter({
       ...adapter(null),
-      searchPlaces: async () => ({ places, nextCursor: null }),
+      searchPlaces: async (request: unknown) => {
+        searched.push(request);
+        return { places, nextCursor: null };
+      },
     } as MapsProviderAdapter);
     return service;
   }
+  /** The locate card a reply carries, as a chat surface reads it. */
+  const locateCard = (result: ActionResult | undefined) =>
+    JSON.parse(
+      /\[MAPSCARD\]\n(.*)\n\[\/MAPSCARD\]/.exec(
+        result?.userFacingText ?? "",
+      )?.[1] ?? "null",
+    );
+
+  it("names what a locate card is for, so the phone needs no prose parsing", async () => {
+    const searched: unknown[] = [];
+    const near = await run(searching([], searched), {
+      action: "place",
+      query: "coffee shop",
+      useCurrentLocation: true,
+    });
+    expect(locateCard(near)).toEqual({
+      kind: "locate",
+      intent: "place-near",
+      prompt:
+        "I need your precise location to search near you for “coffee shop”.",
+      query: "coffee shop",
+    });
+    expect(searched).toEqual([]);
+    const from = await run(searching([hit(1, "Casino")]), {
+      action: "route",
+      destinationQuery: "Casino",
+      travelMode: "walk",
+      useCurrentLocation: true,
+    });
+    expect(locateCard(from)).toEqual({
+      kind: "locate",
+      intent: "route-origin",
+      prompt: "I need your precise location to start the route to Casino.",
+      destination: {
+        name: "Casino",
+        latitude: hit(1, "Casino").coordinates.latitude,
+        longitude: 7.42,
+        provider: "stub",
+        providerPlaceId: "H1",
+        formattedAddress: "1 Quai, Monaco",
+        categories: [],
+      },
+      travelMode: "walk",
+    });
+  });
+
+  it("leaves the nearest kind of place to the phone instead of searching with no position", async () => {
+    const nearest = {
+      kind: "locate",
+      intent: "route-origin",
+      prompt:
+        "I need your precise location to start the route to nearest pharmacy.",
+      query: "nearest pharmacy",
+    };
+    const searched: unknown[] = [];
+    const service = searching([hit(1, "Pharmacy A")], searched);
+    const started: unknown[] = [];
+    service.registerDeviceNavigation({
+      available: async () => true,
+      select: async () => ({ state: "selected" }),
+      start: async (request) => {
+        started.push(request);
+        return { state: "navigating" };
+      },
+      reroute: async () => ({ state: "navigating" }),
+      stop: async () => ({ state: "stopped" }),
+    });
+    const parameters = {
+      placeQuery: "nearest pharmacy",
+      useCurrentLocation: true,
+    };
+    const start = await mapsNavigationAction.handler?.(
+      runtimeWith(service),
+      message({}),
+      undefined,
+      { parameters: { ...parameters, action: "start" } } as HandlerOptions,
+    );
+    expect(start).toMatchObject({
+      success: false,
+      data: { reason: "missing_location", awaitingUserInput: true },
+    });
+    expect(locateCard(start)).toEqual(nearest);
+    expect(
+      locateCard(
+        await run(service, {
+          ...parameters,
+          action: "navigate",
+          travelMode: "walk",
+        }),
+      ),
+    ).toEqual({ ...nearest, travelMode: "walk" });
+    expect(searched).toEqual([]);
+    expect(started).toEqual([]);
+    // A route from here whose destination matches several places is the same
+    // question: the phone's position picks one.
+    const several = await run(
+      searching([hit(1, "Pharmacy A"), hit(2, "Pharmacy B")]),
+      {
+        action: "route",
+        destinationQuery: "nearest pharmacy",
+        useCurrentLocation: true,
+      },
+    );
+    expect(locateCard(several)).toEqual(nearest);
+  });
+
+  it("orders a search around a point nearest first and says how far each place is", async () => {
+    const searched: unknown[] = [];
+    const result = await run(
+      searching(
+        [hit(3, "Far Cafe"), hit(1, "Near Cafe"), hit(2, "Mid Cafe")],
+        searched,
+      ),
+      { action: "place", query: "cafe", latitude: 43.73, longitude: 7.42 },
+    );
+    expect(searched).toEqual([
+      {
+        query: "cafe",
+        near: { latitude: 43.73, longitude: 7.42 },
+        rank: "distance",
+      },
+    ]);
+    expect(result?.text).toBe(
+      [
+        "Found 3 places, nearest first:",
+        "Near Cafe, 1 Quai, Monaco (1.1 km away)",
+        "Mid Cafe, 2 Quai, Monaco (2.2 km away)",
+        "Far Cafe, 3 Quai, Monaco (3.3 km away)",
+      ].join("\n"),
+    );
+    expect(result).toMatchObject({
+      data: {
+        page: {
+          places: [
+            { name: "Near Cafe" },
+            { name: "Mid Cafe" },
+            { name: "Far Cafe" },
+          ],
+        },
+      },
+    });
+  });
+
+  it("keeps the provider's order and names each place when no point is given", async () => {
+    const result = await run(
+      searching([hit(3, "Far Cafe"), hit(1, "Near Cafe")]),
+      {
+        action: "place",
+        query: "cafe",
+      },
+    );
+    expect(result?.text).toBe(
+      "Found 2 places:\nFar Cafe, 3 Quai, Monaco\nNear Cafe, 1 Quai, Monaco",
+    );
+  });
 
   it("labels route fields by name or address", async () => {
     const result = await run(searching([]), { action: "route" });
@@ -760,10 +959,12 @@ describe("forms ask for names, not ids", () => {
   });
 
   it("asks which one when several places match", async () => {
-    const result = await run(
-      searching([hit(1, "Casino"), hit(2, "Casino Cafe")]),
-      { action: "share", placeQuery: "Casino" },
-    );
+    // Two places of the same name in one area are a real choice; a top
+    // "Casino" beside a "Casino Cafe" is not (route-disambiguation.test.ts).
+    const result = await run(searching([hit(1, "Casino"), hit(2, "Casino")]), {
+      action: "share",
+      placeQuery: "Casino",
+    });
     expect(result).toMatchObject({
       success: false,
       data: {
@@ -773,7 +974,7 @@ describe("forms ask for names, not ids", () => {
       },
     });
     expect(result?.text).toContain("Which one did you mean?");
-    expect(result?.userFacingText).toContain("Casino Cafe");
+    expect(result?.userFacingText).toContain("2. Casino — 2 Quai, Monaco");
     expect(
       (result?.data as { places?: unknown[] } | undefined)?.places,
     ).toHaveLength(2);

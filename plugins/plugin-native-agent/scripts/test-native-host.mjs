@@ -27,6 +27,7 @@ try {
     "runtime/RuntimeAssets",
     "runtime/PrivateOAuthCallback",
     "runtime/NativeProcessSupervisor",
+    "runtime/RuntimeStartFailure",
     "runtime/NativeRuntimeSession",
     "runtime/NativeProcessLog",
     "runtime/RuntimePrivateFiles",

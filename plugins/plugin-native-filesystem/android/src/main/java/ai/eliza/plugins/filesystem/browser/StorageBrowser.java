@@ -86,17 +86,31 @@ public final class StorageBrowser {
  public static final class Row{public final String path,name,mime;public final boolean directory;public final long size,modified;public final int children;
   Row(String path,String name,boolean directory,String mime,long size,long modified,int children){this.path=path;this.name=name;this.directory=directory;this.mime=mime;this.size=size;this.modified=modified;this.children=children;}}
  /** Visible children; hidden (dot) entries, including the trash, are not listed. */
- public List<Row> list(String path)throws IOException{
+ public List<Row> list(String path)throws IOException{return list(path,false);}
+ /** Children of `path`; with `hidden` the owner also sees dot entries. The trash is never listed. */
+ public List<Row> list(String path,boolean hidden)throws IOException{
   File folder=resolve(path,true);if(!folder.isDirectory())throw new java.io.FileNotFoundException();
   File[] files=folder.listFiles();if(files==null)throw new SecurityException("Folder unreadable");
   List<Row> out=new ArrayList<>();String parent=relative(folder);
   for(File f:files){
-   String name=f.getName();if(name.startsWith(".")||isLink(f))continue;
-   boolean dir=f.isDirectory();int children=0;
-   if(dir){String[] kids=f.list();if(kids!=null)for(String k:kids)if(!k.startsWith("."))children++;}
+   String name=f.getName();if(!shown(f,hidden)||isLink(f))continue;
+   boolean dir=f.isDirectory();int children=dir?children(f,hidden):0;
    out.add(new Row(parent.isEmpty()?name:parent+"/"+name,name,dir,dir?"":mime(name),dir?0:f.length(),f.lastModified(),children));
   }
   return out;
+ }
+ /** A listed name: dot entries only when `hidden`, and never the trash folder at the volume root.
+  * The name is compared ignoring case, since shared storage is case-insensitive: there a folder
+  * another app made as ".TRASH-x" is the host's ".Trash-x" and keeps its on-disk spelling. */
+ private boolean shown(File file,boolean hidden){
+  String name=file.getName();
+  if(!name.startsWith("."))return true;
+  if(!hidden||!name.equalsIgnoreCase(trashFolder))return hidden;
+  File parent=file.getParentFile();
+  try{return parent!=null&&!parent.getCanonicalFile().equals(root.getCanonicalFile());}catch(IOException e){return false;}
+ }
+ private int children(File folder,boolean hidden){
+  int count=0;File[] kids=folder.listFiles();if(kids!=null)for(File k:kids)if(shown(k,hidden))count++;return count;
  }
  /** The files directly in `path`, newest first (the Downloads category); a missing folder has none. */
  List<Row> files(String path,int max)throws IOException{
@@ -109,19 +123,22 @@ public final class StorageBrowser {
  /** Folders for the agent's folder filter: a bounded walk under `under` (hidden folders and the
   * trash skipped) for folders whose name holds every word and whose time is in range, newest first. */
  public List<Row> folders(String under,String text,long from,long to,int max,int visitMax)throws IOException{
+  return folders(under,text,from,to,max,visitMax,false);
+ }
+ /** The same walk; with `hidden` it also enters and returns dot folders, never the trash. */
+ public List<Row> folders(String under,String text,long from,long to,int max,int visitMax,boolean hidden)throws IOException{
   File start=resolve(under==null?"":under,true);List<Row> out=new ArrayList<>();if(!start.isDirectory())return out;
   List<String> words=new ArrayList<>();if(text!=null)for(String w:text.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+"))if(!w.isEmpty())words.add(w);
   java.util.ArrayDeque<File> queue=new java.util.ArrayDeque<>();queue.add(start);int visited=0;
   while(!queue.isEmpty()&&visited++<visitMax){
    File[] kids=queue.removeFirst().listFiles();if(kids==null)continue;
    for(File kid:kids){
-    String name=kid.getName();if(name.startsWith(".")||!isDirectory(kid))continue;
+    String name=kid.getName();if(!shown(kid,hidden)||!isDirectory(kid))continue;
     queue.add(kid);
     long modified=kid.lastModified();String lower=name.toLowerCase(Locale.ROOT);boolean match=(from<=0||modified>=from)&&(to<=0||modified<=to);
     for(String w:words)if(!lower.contains(w)){match=false;break;}
     if(!match)continue;
-    int children=0;String[] list=kid.list();if(list!=null)for(String k:list)if(!k.startsWith("."))children++;
-    out.add(new Row(relative(kid),name,true,"",0,modified,children));
+    out.add(new Row(relative(kid),name,true,"",0,modified,children(kid,hidden)));
    }
   }
   out.sort((a,b)->Long.compare(b.modified,a.modified));
@@ -166,8 +183,13 @@ public final class StorageBrowser {
   return transfer(paths,dest,copy,null);
  }
  public List<Outcome> transfer(List<String> paths,String dest,boolean copy,List<String> reviewed)throws IOException{
+  return transfer(paths,this,dest,copy,reviewed);
+ }
+ /** Move or copy each path of this volume into `dest` on `into`'s volume, which may be another
+  * volume: there a move copies, checks, then removes the source, and outcomes name `into` paths. */
+ public List<Outcome> transfer(List<String> paths,StorageBrowser into,String dest,boolean copy,List<String> reviewed)throws IOException{
   checkReviewed(paths,reviewed);
-  File target=resolve(dest,true);if(!target.isDirectory())throw new java.io.FileNotFoundException("Destination missing");
+  File target=into.resolve(dest,true);if(!target.isDirectory())throw new java.io.FileNotFoundException("Destination missing");
   List<Outcome> out=new ArrayList<>();
   for(int i=0;i<paths.size();i++){
    String path=paths.get(i);
@@ -181,8 +203,8 @@ public final class StorageBrowser {
     if(reviewed!=null&&!reviewed.get(i).equals(reviewedIdentity(source))){
      out.add(new Outcome(path,"changed",null));continue;
     }
-    if(copy)copyFresh(source,destination);else moveFile(source,destination);
-    out.add(new Outcome(path,copy?"copied":"moved",relative(destination)));
+    if(copy)copyFresh(into.root,source,destination);else moveFile(source,destination,into.root);
+    out.add(new Outcome(path,copy?"copied":"moved",into.relative(destination)));
    }catch(IOException e){out.add(new Outcome(path,"failed",null));}
   }
   return out;
@@ -300,24 +322,26 @@ public final class StorageBrowser {
   return count;
  }
 
- void moveFile(File source,File destination)throws IOException{
+ void moveFile(File source,File destination)throws IOException{moveFile(source,destination,root);}
+ /** `volume` is the destination's volume root, which a failed copy is cleaned up inside. */
+ void moveFile(File source,File destination,File volume)throws IOException{
   if(isLink(source)||exists(destination))throw new IOException("Unsafe move path");
   if(source.renameTo(destination))return;
   // Another volume or mount: copy, check, then remove the source. A failed copy leaves nothing
   // behind; once the copy is complete it is kept, since removing the source may have begun.
-  copyFresh(source,destination);
+  copyFresh(volume,source,destination);
   if(!deleteInside(root,source))throw new IOException("Source not removed");
  }
- /** A copy into a new destination that is removed again if the copy fails part way. */
- void copyFresh(File source,File destination)throws IOException{
+ /** A copy into a new destination on `volume` that is removed again if the copy fails part way. */
+ static void copyFresh(File volume,File source,File destination)throws IOException{
   if(isDirectory(source)){
    Files.createDirectory(destination.toPath());
    try{
     File[] kids=source.listFiles();
     if(kids==null||!isDirectory(source))throw new IOException("Folder unreadable");
-    for(File kid:kids)copyFresh(kid,new File(destination,kid.getName()));
+    for(File kid:kids)copyFresh(volume,kid,new File(destination,kid.getName()));
    }catch(IOException e){
-    deleteInside(root,destination);
+    deleteInside(volume,destination);
     throw e;
    }
    return;

@@ -1,0 +1,37 @@
+{
+	"sources": [
+		"packages/core/src/runtime/model-dispatch.ts",
+		"packages/core/src/runtime/execute-planned-tool-call.ts",
+		"packages/core/src/security/secret-swap.ts",
+		"packages/core/src/security/pii-pseudonymizer.ts",
+		"packages/core/src/runtime/trajectory-gate.ts",
+		"packages/core/test/pii-swap-restore.test.ts",
+		"packages/core/src/security/entity-recognizer.ts",
+		"packages/core/src/trajectory-context.ts",
+		"packages/contracts/src/sms-send.ts",
+		"packages/contracts/src/phone-dial.ts"
+	],
+	"bounds": {
+		"domain": "One turn, one current reference (known or unknown), phone/email kinds, person/org nesting, optional trajectory capture, adjacent named PII; synchronous ordered ingress and private execution boundaries.",
+		"limitations": "Abstract boundary obligations, not a second text implementation. Actual whole-runtime conformance uses AgentRuntime, SQLite, real SecretSwap/Pseudonym/Gazetteer and SMS/dial validators. No natural-model selection, durable planner SQL, native approval, broker/carrier, or arbitrary handler-returned contact-PII masking. Concurrent turns, cancellation, foreign-session restoration and unbounded text are excluded; generic authority, approval, cancellation and session gates remain unchanged and are not proven by this model. No temporal/fairness or progress claim."
+	},
+	"conformance": "packages/core/quint/check-tool-privacy-composition.ts",
+	"cases": [
+		{
+			"name": "single-turn-composition",
+			"main": "ToolPrivacyComposition",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"ProviderPrivacy",
+				"PrivateExecution",
+				"UnknownFailsClosed",
+				"CaptureIndependent"
+			],
+			"temporal": [],
+			"maxSteps": 8,
+			"samples": 100
+		}
+	]
+}

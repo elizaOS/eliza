@@ -559,6 +559,13 @@ export interface ViewDeclaration {
 	 */
 	relatedActions?: string[];
 	/**
+	 * True when this view keeps its own page history, as a browser's tabs do.
+	 * While it is foreground, a bare Back or Forward request acts on that page
+	 * history through the view's response context, never on app view
+	 * navigation.
+	 */
+	pageHistory?: boolean;
+	/**
 	 * Named agent actions this view exposes ONLY while it is the active view.
 	 * The host registers a real runtime action per entry whose `validate()`
 	 * gates on this view being foreground, and whose handler drives the view's
@@ -653,7 +660,12 @@ export interface ViewDeclaration {
 		params?: Record<string, unknown>,
 		context?: { runtime?: IAgentRuntime },
 	) => Promise<unknown>;
-	/** Allow this view to be pinned as a desktop tab. Default true. */
+	/**
+	 * @deprecated No longer read. It controlled native desktop tabs in the
+	 * removed Electrobun desktop shell; no supported host changes behavior when
+	 * it is set. Deprecated in v2.0.6 and removed in v2.0.7: delete the property
+	 * from your view declarations.
+	 */
 	desktopTabEnabled?: boolean;
 	/** Show this view in the view manager grid. Default true. */
 	visibleInManager?: boolean;

@@ -136,13 +136,14 @@ class SurfaceBridgeInstrumentedTest {
         }
     }
 
-    private fun create(layer: String, intercept: Boolean = false) = call("createSurface") {
+    private fun create(layer: String, intercept: Boolean = false, answers: Boolean = false) = call("createSurface") {
         put("id", SURFACE)
         put("url", "$origin/page")
         put("process", "shared")
         put("storage", "shared")
         put("layer", layer)
         put("interceptNavigation", intercept)
+        put("answersRequests", answers)
     }
 
     private fun onMain(block: () -> Unit) = instrumentation.runOnMainSync(block)
@@ -212,6 +213,57 @@ class SurfaceBridgeInstrumentedTest {
     }
 
     @Test
+    fun manualSignInKeepsTheBrowserToolsOutsideTheTemporaryProfile() {
+        val invalid = answer(send("createSurface") {
+            put("id", SURFACE)
+            put("purpose", "manual-sign-in")
+            put("process", "shared")
+            put("storage", "shared")
+        })
+        assertTrue(invalid.optString("error").contains("INVALID_REQUEST"))
+
+        val created = answer(send("createSurface") {
+            put("id", SURFACE)
+            put("purpose", "manual-sign-in")
+            put("process", "isolated")
+            put("storage", "isolated")
+        })
+        val attestationAvailable = BrowserLoginFields.supported()
+        android.util.Log.i("SurfaceBridgeTests", "originAttestationAvailable=$attestationAvailable")
+        if (!attestationAvailable) {
+            assertTrue(created.optString("error").contains("UNSUPPORTED"))
+            assertFalse(call("getSurfaceState") { put("id", SURFACE) }.getBoolean("exists"))
+            return
+        }
+        assertFalse(created.toString(), created.has("error"))
+        call("presentSurface") { put("id", SURFACE) }
+        val ordinary = "ordinary-test"
+        try {
+            call("createSurface") {
+                put("id", ordinary)
+                put("process", "shared")
+                put("storage", "shared")
+            }
+            for (method in listOf("readPage", "controlPage", "observeHistory", "captureSurface")) {
+                val denied = answer(send(method) {
+                    put("id", if (method == "captureSurface") ordinary else SURFACE)
+                    if (method == "controlPage") put("command", JSObject().put("subaction", "snapshot"))
+                })
+                assertTrue("$method: $denied", denied.optString("error").contains("PROTECTED_SURFACE"))
+            }
+        } finally {
+            call("destroySurface") { put("id", ordinary) }
+        }
+
+        val changedPurpose = answer(send("createSurface") {
+            put("id", SURFACE)
+            put("process", "isolated")
+            put("storage", "isolated")
+        })
+        assertTrue(changedPurpose.optString("error").contains("already exists"))
+    }
+
+    @Test
     fun aSurfaceIdIsCreatedAgainOnlyInTheSameLayer() {
         create("below-host")
         // The same options again keep the one surface.
@@ -249,7 +301,7 @@ class SurfaceBridgeInstrumentedTest {
     fun aPausedPageCancelsItsDialogAndTakesNoTaps() {
         val loaded = listen("navigationChanged")
         val dialogs = listen("dialogRequested")
-        create("below-host", intercept = true)
+        create("below-host", answers = true)
         val outerClip = JSObject().put("x", 0).put("y", 0).put("width", 200).put("height", 200)
             .put("cornerRadii", JSObject().put("topLeft", 0).put("topRight", 0).put("bottomRight", 0).put("bottomLeft", 0))
         call("setBounds") {

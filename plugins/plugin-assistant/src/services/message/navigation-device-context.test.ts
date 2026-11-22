@@ -34,9 +34,11 @@ const fn = new Function(
   "args",
   "getDeviceActionTurn",
   "deviceOperationSupportedByCapabilities",
+  "deviceAppRecordOperationAvailable",
   "CLOCK_ALARMS_CAPABILITY",
   "currentAppRecordSource",
   "deviceActionToolGuidance",
+  "offeredDeviceOperations",
   ts.transpileModule(
     "const events=[];\n" +
       statements.map((statement) => statement.getText(parsed)).join("\n") +
@@ -56,13 +58,15 @@ function render(capabilities: string[], matching = true) {
     credential: { capabilities },
   };
   return fn(
-    { runtime, includeTools: true },
+    { runtime, includeTools: true, message: { content: {} } },
     () => turn,
     (operation: string, caps: string[]) =>
       caps.includes("native.all") || caps.includes(operation),
+    () => false,
     "clock.alarms.v1",
     () => "runtime",
     () => "",
+    () => [],
   ) as Array<{ content: string }>;
 }
 for (const capabilities of [

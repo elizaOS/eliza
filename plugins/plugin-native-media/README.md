@@ -132,9 +132,10 @@ Selected documents:
 
 - `SelectedDocuments` – opaque capabilities for documents chosen in Android's picker. Renderers
   hold random selection IDs, never content URIs. Only grants Android offered are persisted; a
-  revoked grant is forgotten and reported, never repaired. Bounded UTF-8 text reads, PDF page
-  previews (up to 20 MiB, rendered only by the host's `IsolatedPdfRenderService`; without one,
-  previews are refused), provider rename, sharing and opening.
+  revoked grant is forgotten and reported, never repaired. A selection, restored ones included,
+  reports `size` (bytes) and `modified` (epoch ms) when the provider has them. Bounded UTF-8 text
+  reads, PDF page previews (up to 20 MiB, rendered only by the host's `IsolatedPdfRenderService`;
+  without one, previews are refused), provider rename, sharing and opening.
 - `SourceReferences` / `SourceReferenceStore` – durable source links for saved items. A link is
   kept while Android holds the document's persisted read grant; a grant stays while any saved or
   restorable item names it and is released with the last one. A link no item names yet (for

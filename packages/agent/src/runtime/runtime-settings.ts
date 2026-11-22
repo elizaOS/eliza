@@ -9,7 +9,11 @@ import {
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
 } from "@elizaos/auth/auth";
 import type { ServiceRouteConfig } from "@elizaos/contracts";
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  parsePositiveInteger,
+  TEXT_GENERATION_MODEL_TYPES,
+} from "@elizaos/core";
 import {
   type ElizaConfig,
   getDirectAccountProviderForFirstRunProvider,
@@ -138,6 +142,35 @@ function forwardedConfigEnvVars(config: ElizaConfig): Record<string, string> {
   );
 }
 
+/**
+ * The settings the runtime merges under a text-generation call that sends no
+ * output cap of its own, one per text-generation model type.
+ * `DEFAULT_MAX_TOKENS` is not one of them: the runtime applies it to every
+ * model type, so a host that set it to bound one kind of text call would also
+ * bound embedding, image and speech requests and every other text slot.
+ */
+const OUTPUT_CAP_SETTING_KEYS: ReadonlySet<string> = new Set(
+  TEXT_GENERATION_MODEL_TYPES.map((modelType) => `${modelType}_MAX_TOKENS`),
+);
+
+/**
+ * Output caps set in the host's environment. A host that configures the agent
+ * through its environment has no other way to set them, and a hosted provider
+ * holds its largest output reservation against a token rate limit for every
+ * call that sends no cap. Only a positive integer is a cap: the runtime reads
+ * a blank setting as zero.
+ */
+function outputCapSettingsFromEnv(
+  env: NodeJS.ProcessEnv,
+): Record<string, string> {
+  const caps: Record<string, string> = {};
+  for (const key of OUTPUT_CAP_SETTING_KEYS) {
+    const cap = parsePositiveInteger(env[key]);
+    if (cap !== undefined) caps[key] = String(cap);
+  }
+  return caps;
+}
+
 export function reconcileConfigEnvSettings(
   runtime: Pick<IAgentRuntime, "getSetting" | "setSetting">,
   previous: ElizaConfig,
@@ -262,6 +295,8 @@ export function buildRuntimeSettingsProjection(
   return {
     VALIDATION_LEVEL: "fast",
     ...(env.SECRET_SALT ? { ENCRYPTION_SALT: env.SECRET_SALT } : {}),
+    // Spread first so a cap the config sets replaces the environment's.
+    ...outputCapSettingsFromEnv(env),
     ...forwardedConfigEnvVars(config),
     ...(typeof env.EMBEDDING_PROVIDER === "string" &&
     env.EMBEDDING_PROVIDER.trim().length > 0

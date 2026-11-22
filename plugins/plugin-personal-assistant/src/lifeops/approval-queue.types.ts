@@ -256,6 +256,8 @@ export type ApprovalPayload =
       seriesMaster?: CalendarSeriesMasterBinding | null;
       notifyAttendees?: boolean;
       editorRequestSha256?: string;
+      /** Invitee RSVP; `patch` is empty when set. */
+      invitationResponse?: "accepted" | "tentative" | null;
       patch: {
         title: string | null;
         startsAtMs: number | null;
