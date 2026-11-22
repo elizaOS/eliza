@@ -3,7 +3,7 @@ import { Clock, Effect } from "effect";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import type { Driver, Options } from "../../gen/agent__schedule__triggers.conformance.ts";
 import type { Event, RunOutcome, Trigger, TriggerType } from "../../gen/agent__schedule__triggers.ts";
-import type { Delivery } from "../../src/schedule/trigger-delivery.vibe";
+import type { Delivery, ResolvedRoom } from "../../src/schedule/trigger-delivery.vibe";
 import type { TriggerDraft, TriggerTiming } from "../../src/schedule/trigger-routes.vibe";
 import { promptTriggers, type Fired, type PromptTriggers, type ScheduleFacts, type TriggerHost } from "../../src/schedule/triggers.vibe";
 import { openDeviceStorage } from "../../src/storage/index.vibe";
@@ -78,10 +78,11 @@ function service(adapter: IDatabaseAdapter): PromptTriggers {
   return promptTriggers({
     host: hostOver(adapter),
     facts: scheduleFacts,
-    listen: () => ({ idle: async () => undefined, stop: async () => undefined }),
+    listen: () => ({ idle: () => Promise.resolve(), stop: () => Promise.resolve() }),
     delivery: {
-      resolveRoom: async (requested) =>
+      resolveRoom: (requested) => Promise.resolve<ResolvedRoom>(
         rooms.exists ? { kind: "Resolved", conversationId: requested ?? rooms.fallback } : { kind: "Missing" },
+      ),
       deliver: (_conversationId, _prompt, triggerId, signal) => new Promise<Delivery>((resolve) => {
         if (signal.aborted) return resolve(cancelled);
         signal.addEventListener("abort", () => resolve(cancelled), { once: true });

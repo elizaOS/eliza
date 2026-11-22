@@ -154,6 +154,88 @@ module node {
     return close
   }
 
+  type TransportRequest = Pick<PendingRequest, "path" | "body" | "bridge">
+
+  async function requestJson(input: TransportRequest, route: Route, httpOrigin: string | undefined, deadline: AbortSignal): Promise<RuntimeJsonResponse> {
+    const method = input.body === undefined ? "GET" : "POST"
+    const fields = { path: input.path, method, ...(input.body === undefined ? {} : { body: input.body }) } as const
+    if (route === "Bridge" && input.bridge) return decodeResponse(await input.bridge.request(fields))
+    if (route !== "Http" || !httpOrigin) throw new Error("NoRoute")
+    const url = new URL(input.path, httpOrigin)
+    if (url.origin !== httpOrigin) throw new Error("InvalidPath")
+    const response = await fetch(url, {
+      method, signal: deadline, credentials: "omit", redirect: "manual",
+      ...(input.body === undefined ? {} : { body: JSON.stringify(input.body), headers: { "Content-Type": "application/json" } }),
+    })
+    const data: unknown = response.status === 204 ? null
+      : await response.json().catch((error: unknown) => {
+        if (response.ok) throw error
+        return null
+      })
+    return { status: response.status, data }
+  }
+
+  async function connectStream(input: TransportRequest, route: Route, httpOrigin: string | undefined, signal: AbortSignal): Promise<Wire> {
+    const body = input.body === undefined ? {} : { body: input.body }
+    if (route === "Bridge" && input.bridge) {
+      if (!input.bridge.requestStream) throw new Error("NoRoute")
+      const frames = input.bridge.requestStream({ path: input.path, method: "POST", ...body }, signal)[Symbol.asyncIterator]()
+      const close = closeOnce(signal, frames)
+      try {
+        const first = await frames.next()
+        if (first.done || first.value?.kind !== "head") throw new Error("TransportFailed")
+        const head = decodeHead(first.value)
+        return {
+          ...head, close, chunks: {
+            async next() {
+              const frame = await frames.next()
+              if (frame.done) throw new Error("TransportFailed")
+              const item = decodeStreamFrame(frame.value)
+              switch (item.kind) {
+                case "chunk": return { done: false, value: item.data }
+                case "end": return { done: true, value: undefined }
+                case "head":
+                case "error":
+                case "aborted": throw new Error("TransportFailed")
+              }
+            },
+          },
+        }
+      } catch (error) {
+        close()
+        throw error
+      }
+    }
+    if (route !== "Http" || !httpOrigin) throw new Error("NoRoute")
+    const url = new URL(input.path, httpOrigin)
+    if (url.origin !== httpOrigin) throw new Error("InvalidPath")
+    const response = await fetch(url, {
+      method: "POST", signal, credentials: "omit", redirect: "manual",
+      ...(input.body === undefined ? {} : { body: JSON.stringify(input.body), headers: { "Content-Type": "application/json" } }),
+    })
+    const reader = response.body?.getReader()
+    const chunks: AsyncIterator<Uint8Array> = {
+      async next() {
+        const read = reader ? await reader.read() : { done: true as const, value: undefined }
+        return read.done ? { done: true, value: undefined } : { done: false, value: read.value }
+      },
+      async return() {
+        if (reader !== undefined) {
+          try { await reader.cancel() } finally { reader.releaseLock() }
+        }
+        return { done: true, value: undefined }
+      },
+    }
+    const close = closeOnce(signal, chunks)
+    try {
+      const head = decodeHead({ status: response.status, headers: Object.fromEntries(response.headers) })
+      return { ...head, chunks, close }
+    } catch (error) {
+      close()
+      throw error
+    }
+  }
+
   export function createRuntimeJsonClient(options: RuntimeClientOptions) {
     for (const duration of [options.startupTimeoutMs, options.pollMs, options.requestTimeoutMs]) {
       if (!Number.isSafeInteger(duration) || duration <= 0 || duration > 2_147_483_647) throw new RangeError("Invalid runtime client duration")
@@ -263,88 +345,10 @@ module node {
     async function dispatch(id: number, input: PlainRequest, route: Route, signal: AbortSignal) {
       try {
         const deadline = AbortSignal.any([signal, AbortSignal.timeout(options.requestTimeoutMs)])
-        const method = input.body === undefined ? "GET" : "POST"
-        const fields = { path: input.path, method, ...(input.body === undefined ? {} : { body: input.body }) } as const
-        const answer = await abortable(deadline, async () => {
-          if (route === "Bridge" && input.bridge) return decodeResponse(await input.bridge.request(fields))
-          if (route !== "Http" || !httpOrigin) throw new Error("NoRoute")
-          const url = new URL(input.path, httpOrigin)
-          if (url.origin !== httpOrigin) throw new Error("InvalidPath")
-          const response = await fetch(url, {
-            method, signal: deadline, credentials: "omit", redirect: "manual",
-            ...(input.body === undefined ? {} : { body: JSON.stringify(input.body), headers: { "Content-Type": "application/json" } }),
-          })
-          const data: unknown = response.status === 204 ? null
-            : await response.json().catch((error: unknown) => {
-              if (response.ok) throw error
-              return null
-            })
-          return { status: response.status, data }
-        })
+        const answer = await abortable(deadline, () => requestJson(input, route, httpOrigin, deadline))
         send({ type: "reply", id, httpStatus: answer.status, retry: retryOf(answer.data) }, answer)
       } catch {
         send({ type: "transportFailed", id })
-      }
-    }
-
-    async function connect(input: StreamRequest, route: Route, signal: AbortSignal): Promise<Wire> {
-      const body = input.body === undefined ? {} : { body: input.body }
-      if (route === "Bridge" && input.bridge) {
-        if (!input.bridge.requestStream) throw new Error("NoRoute")
-        const frames = input.bridge.requestStream({ path: input.path, method: "POST", ...body }, signal)[Symbol.asyncIterator]()
-        const close = closeOnce(signal, frames)
-        try {
-          const first = await frames.next()
-          if (first.done || first.value?.kind !== "head") throw new Error("TransportFailed")
-          const head = decodeHead(first.value)
-          return {
-            ...head, close, chunks: {
-              async next() {
-                const frame = await frames.next()
-                if (frame.done) throw new Error("TransportFailed")
-                const item = decodeStreamFrame(frame.value)
-                switch (item.kind) {
-                  case "chunk": return { done: false, value: item.data }
-                  case "end": return { done: true, value: undefined }
-                  case "head":
-                  case "error":
-                  case "aborted": throw new Error("TransportFailed")
-                }
-              },
-            },
-          }
-        } catch (error) {
-          close()
-          throw error
-        }
-      }
-      if (route !== "Http" || !httpOrigin) throw new Error("NoRoute")
-      const url = new URL(input.path, httpOrigin)
-      if (url.origin !== httpOrigin) throw new Error("InvalidPath")
-      const response = await fetch(url, {
-        method: "POST", signal, credentials: "omit", redirect: "manual",
-        ...(input.body === undefined ? {} : { body: JSON.stringify(input.body), headers: { "Content-Type": "application/json" } }),
-      })
-      const reader = response.body?.getReader()
-      const chunks: AsyncIterator<Uint8Array> = {
-        async next() {
-          const read = reader ? await reader.read() : { done: true as const, value: undefined }
-          return read.done ? { done: true, value: undefined } : { done: false, value: read.value }
-        },
-        async return() {
-          if (reader !== undefined) {
-            try { await reader.cancel() } finally { reader.releaseLock() }
-          }
-          return { done: true, value: undefined }
-        },
-      }
-      const close = closeOnce(signal, chunks)
-      try {
-        const head = decodeHead({ status: response.status, headers: Object.fromEntries(response.headers) })
-        return { ...head, chunks, close }
-      } catch (error) {
-        close()
-        throw error
       }
     }
 
@@ -394,7 +398,7 @@ module node {
       const deadline = AbortSignal.any([live, AbortSignal.timeout(options.requestTimeoutMs)])
       let wire: Wire | undefined
       try {
-        const connected = await abortable(deadline, () => connect(input, route, live))
+        const connected = await abortable(deadline, () => connectStream(input, route, httpOrigin, live))
         wire = connected
         if (wire.status >= 200 && wire.status < 300) {
           input.opened = { status: wire.status, headers: wire.headers, body: body(id, wire, live, stop) }
