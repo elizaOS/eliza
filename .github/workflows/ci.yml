@@ -117,8 +117,6 @@ jobs:
         include:
           - name: verify
             tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
-          - name: selftest-rest
-            tasks: //#selftest:tools:rest
     env: &cache-env
       TURBO_CACHE: local:rw
     steps: &verification-steps
@@ -211,6 +209,8 @@ jobs:
             tasks: //#selftest:tools:a
           - name: selftest-b
             tasks: //#selftest:tools:b
+          - name: selftest-rest
+            tasks: //#selftest:tools:rest
     concurrency: *verification-concurrency
     env: *cache-env
     steps: *verification-steps
