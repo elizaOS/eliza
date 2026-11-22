@@ -273,6 +273,10 @@ describe("other requests ground the model's recipient", () => {
     // The body "hi" is not the "hi" in "Phil".
     for (const [query, body, request] of [
       ["Phil", "hi", "text Phil hi"],
+      ["Sophie", "hi", "text Sophie hi"],
+      ["Sophie", "hi", "send Sophie a text saying hi"],
+      ["Phil", "hi", "send Phil a text saying hi"],
+      ["Brooke", "ok", "send Brooke a text: ok"],
       ["Sophia", "hi", "text Sophia hi"],
       ["Noah", "no", "message Noah: no"],
       ["Brooke", "ok", "send a text to Brooke: ok"],
