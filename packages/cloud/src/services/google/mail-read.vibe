@@ -1,13 +1,13 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 // spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"
-import { htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, threadMaxMessages, threadOutcome, threadPageMax, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
+import { htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, threadMaxMessages, threadOutcome, threadPageMax, type MailSurface, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { refused, Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
 import { bearerToken, recheckServiceAccess, signed } from "../../http/request-auth.vibe"
 import { Deployment } from "../../profile/profile.vibe"
 import { seal, sha256Hex, tokenDigest, unseal } from "../../shared/sealing.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
-import { holds, readGrantStatus, useGrant, type GoogleCapability } from "./grant-access.vibe"
+import { holds, readGrantStatus, useGrant, useMailReadGrant, type GoogleCapability } from "./grant-access.vibe"
 import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBinding, inboxWatchInput, observeInboxWatch } from "./inbox-arrival.vibe"
 import * as GoogleRead from "../../google-read.vibe"
 import type { OperationKind } from "./mail-operations.vibe"
@@ -290,11 +290,11 @@ effect function listed(grant: Grant, query: URLSearchParams, limit: number, page
   return { messages, nextPageToken: next ?? null }
 }
 
-effect function grantOf(context: RouteContext) {
+effect function grantOf(context: RouteContext, surface: MailSurface) {
   const owner = ownerOf(context.caller)
   if (owner === undefined) throw refused("AuthenticationRequired")
   const grantId = context.query.get("grantId") ?? ""
-  const grant: Grant = try useGrant(owner, grantId === "" ? undefined : grantId, "google.gmail.triage")
+  const grant: Grant = try useMailReadGrant(owner, grantId === "" ? undefined : grantId, context.query.get("side"), surface)
   return grant
 }
 
@@ -322,10 +322,11 @@ const syncedAt = (context: RouteContext) => new Date(context.now).toISOString()
 
 effect function triageRoute(context: RouteContext) {
   const limit = try limitOf(context, triageMax, triageMax)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "TriageSurface")
   const mailboxHistoryId = try mailboxHistory(grant)
-  const page = try listed(grant, new URLSearchParams({ maxResults: String(limit), labelIds: "INBOX", q: "-in:trash" }), limit, undefined)
-  const messages = page.messages.toSorted((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt))
+  const page = try listed(grant, new URLSearchParams({ maxResults: String(limit), labelIds: "INBOX" }), limit, undefined)
+  const messages = page.messages.filter(({ labels }) => labels.includes("INBOX") && !labels.includes("TRASH"))
+    .toSorted((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt))
   return json({ messages, syncedAt: syncedAt(context), mailboxHistoryId })
 }
 
@@ -334,7 +335,7 @@ effect function searchRoute(context: RouteContext) {
   if (query === "" || query.length > 2048) throw refused("InvalidRequest")
   const limit = try limitOf(context, triageMax, searchMax)
   const pageToken = try pageTokenOf(context)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "SearchSurface")
   const mailboxHistoryId = try mailboxHistory(grant)
   const search = new URLSearchParams({ q: query, maxResults: String(limit), includeSpamTrash: String(trashQuery.test(query)) })
   if (pageToken !== undefined) search.set("pageToken", pageToken)
@@ -344,12 +345,12 @@ effect function searchRoute(context: RouteContext) {
 
 effect function readRoute(context: RouteContext) {
   const messageId = try param(context, "messageId", providerId)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "MessageSurface")
   return json(try messageView(grant, try readMessage(grant, messageId, "full"), grant.email))
 }
 
 effect function capabilitiesRoute(context: RouteContext) {
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "CapabilitiesSurface")
   const kinds = kindsByCapability.flatMap(([capability, granted]) => holds(grant.scopes, capability) ? granted : [])
   return json({ version: 1, from: grant.email, kinds, attachmentPolicy: { mimeTypes: GoogleRead.attachmentMimeTypes, maxBytes: GoogleRead.attachmentMaxBytes } })
 }
@@ -405,7 +406,7 @@ effect function threadRoute(context: RouteContext) {
   const expected = context.query.get("historyId") ?? undefined
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > threadMaxMessages || (offset > 0 && expected === undefined) ||
       (expected !== undefined && !historyPattern.test(expected))) throw refused("InvalidRequest")
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "ThreadSurface")
   const thread = try parsed(Thread, try google(grant, `/threads/${threadId}?format=full`, threadMaxBytes))
   if (thread.id !== threadId || !historyPattern.test(thread.historyId)) throw refused("ProviderInvalidResponse")
   const ask: ThreadAsk = { offset, asked: expected === undefined ? { tag: "AnyRevision" } : { tag: "AtRevision", historyId: expected } }
@@ -441,14 +442,14 @@ effect function attachmentRoute(context: RouteContext) {
   const messageId = try param(context, "messageId", providerId)
   const partId = try param(context, "partId", partIdPattern)
   const historyId = try param(context, "historyId", historyPattern)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "AttachmentSurface")
   const file = try attachmentBytes(grant, messageId, partId, historyId)
   return json({ version: 1, messageId, partId, historyId, ...file, supported: GoogleRead.attachmentMimeTypes.includes(file.mimeType) })
 }
 
 effect function draftsRoute(context: RouteContext) {
   const pageToken = try pageTokenOf(context)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "DraftsSurface")
   const query = new URLSearchParams({ maxResults: String(draftPage) })
   if (pageToken !== undefined) query.set("pageToken", pageToken)
   const page = try parsed(DraftList, try google(grant, `/drafts?${query}`))
@@ -470,7 +471,7 @@ effect function draftsRoute(context: RouteContext) {
 
 effect function draftRoute(context: RouteContext) {
   const draftId = try param(context, "draftId", providerId)
-  const grant = try grantOf(context)
+  const grant = try grantOf(context, "DraftSurface")
   const raw = try parsed(Draft, try google(grant, `/drafts/${draftId}?format=raw`, threadMaxBytes))
   const full = try parsed(Draft, try google(grant, `/drafts/${draftId}?format=full`, threadMaxBytes))
   if (raw.id !== draftId || raw.message.raw === undefined || !providerId.test(raw.message.id)) throw refused("ProviderInvalidResponse")

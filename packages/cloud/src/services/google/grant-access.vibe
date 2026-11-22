@@ -4,6 +4,7 @@ import {
   selectGrant as choose, selectionRefusal, useAllowed, useRefusal,
   type Connection, type Event, type GoogleCapability as CapabilityKind, type GoogleScope, type NotAState, type Rejected as ConnectionRejected, type RefreshOutcome, type Side, type StatusReason
 } from "../../../gen/cloud__services__google__connection.effect.vibe"
+import { surfaceHeld, type MailSurface } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
 import { refused, Refused } from "../../http/refusal.vibe"
 import { capabilityEnabled, Deployment } from "../../profile/profile.vibe"
@@ -406,14 +407,16 @@ type Claimed =
   | { readonly kind: "refresh"; readonly grant: Omit<GoogleGrant, "accessToken">; readonly tokens: string }
   | { readonly kind: "wait" }
 
-function admission(state: Connection, capability: GoogleCapability): Refused | undefined {
-  const holdsIt = grantsCapability(state.scopes, kindOf[capability])
+type ScopeCheck = (scopes: GoogleScope[]) => boolean
+
+function admission(state: Connection, holdsScope: ScopeCheck): Refused | undefined {
+  const holdsIt = holdsScope(state.scopes)
   const access = accessOf(state)
   return useAllowed(state.status, access, holdsIt) ? undefined : new Refused({ refusal: useRefusal(state.status, access, holdsIt) })
 }
 
-effect function claim(tx: Tx, owner: Owner, grantId: string | undefined, capability: GoogleCapability, expectedAccountId: string | undefined, time: number) {
-  const connectionId = try pickGrant(tx, owner, grantId)
+effect function claim(tx: Tx, owner: Owner, grantId: string | undefined, holdsScope: ScopeCheck, expectedAccountId: string | undefined, side: string | null | undefined, time: number) {
+  const connectionId = try pickGrant(tx, owner, grantId, side)
   if (connectionId === undefined) throw refused("GoogleReauthRequired")
   try restoreLegacyConnection(tx, owner, connectionId)
   const loaded = try loadRow(tx, connectionRows, connectionId)
@@ -430,7 +433,7 @@ effect function claim(tx: Tx, owner: Owner, grantId: string | undefined, capabil
     try stepRow(tx, connectionRows, connectionId, { at: time, event: { type: "beginRefresh" } }, connectionColumns({ refreshing_until: time + refreshLease }))
     return { kind: "refresh", grant, tokens } satisfies Claimed
   }
-  const refusal = admission(state, capability)
+  const refusal = admission(state, holdsScope)
   if (refusal !== undefined) throw refusal
   try tx.query("UPDATE google_connections SET last_used_at = $2 WHERE key = $1", [connectionId, time])
   return { kind: "ready", grant, tokens } satisfies Claimed
@@ -463,7 +466,7 @@ effect function closeRefresh(claimed: { readonly grant: Omit<GoogleGrant, "acces
   throw refusal
 }
 
-effect function refreshed(claimed: { readonly grant: Omit<GoogleGrant, "accessToken">; readonly tokens: string }, capability: GoogleCapability) {
+effect function refreshed(claimed: { readonly grant: Omit<GoogleGrant, "accessToken">; readonly tokens: string }, holdsScope: ScopeCheck) {
   const opened = openTokens(claimed.tokens) catch effect () => { return undefined }
   if (opened === undefined) return try closeRefresh(claimed, "GrantRefused", refused("GoogleReauthRequired"))
   const answer = refreshAccess(claimed.tokens) catch effect (failure) => {
@@ -476,17 +479,26 @@ effect function refreshed(claimed: { readonly grant: Omit<GoogleGrant, "accessTo
   if (answer === undefined) return undefined
   const settled = try settleRefresh(claimed.grant.connectionId, claimed.tokens, "Refreshed", answer.tokens.expiresAt, { tokens: answer.sealed })
   if (settled.kind === "dropped") return undefined
-  const refusal = admission(settled.connection, capability)
+  const refusal = admission(settled.connection, holdsScope)
   if (refusal !== undefined) throw refusal
   return { ...claimed.grant, accessToken: answer.tokens.accessToken } satisfies GoogleGrant
 }
 
 export effect function useGrant(owner: Owner, grantId: string | undefined, capability: GoogleCapability, expectedAccountId?: string) {
+  return try useSelectedGrant(owner, grantId, (scopes) => grantsCapability(scopes, kindOf[capability]), expectedAccountId)
+}
+
+// spec/cloud/services/google/mailRead.md, "A read needs a usable connection that holds the Gmail scope of its surface"
+export effect function useMailReadGrant(owner: Owner, grantId: string | undefined, side: string | null, surface: MailSurface) {
+  return try useSelectedGrant(owner, grantId, (scopes) => surfaceHeld(surface, scopes), undefined, side)
+}
+
+effect function useSelectedGrant(owner: Owner, grantId: string | undefined, holdsScope: ScopeCheck, expectedAccountId?: string, side?: string | null) {
   try profileGoogle()
   const store = try Store
   const attempt = effect {
     const time = try Clock.currentTimeMillis
-    return try store.transaction((tx) => claim(tx, owner, grantId, capability, expectedAccountId, time))
+    return try store.transaction((tx) => claim(tx, owner, grantId, holdsScope, expectedAccountId, side, time))
   }
   while (true) {
     const claimed: Claimed = try attempt
@@ -500,7 +512,7 @@ export effect function useGrant(owner: Owner, grantId: string | undefined, capab
         return { ...claimed.grant, accessToken: tokens.accessToken } satisfies GoogleGrant
       }
       case "refresh": {
-        const grant = try refreshed(claimed, capability)
+        const grant = try refreshed(claimed, holdsScope)
         if (grant !== undefined) return grant
         break
       }
