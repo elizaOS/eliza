@@ -1,21 +1,50 @@
-// spec/os/agentService/health.md, "A probe is Ok only for a ready answer of the current launch"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "A hold is taken only with no child, blocks every start and is released only for its target or an ended attempt"; spec/os/agentService/health.md, "A probe is Ok only for a ready answer of the current launch"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 package ai.eliza.os.agent;
 
 import java.io.BufferedReader;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.math.BigDecimal;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.OptionalLong;
 
 public final class LifecycleAdapter {
   private static final BigDecimal SAFE = BigDecimal.valueOf(9_007_199_254_740_991L);
   private static final String ACCOUNT = "account-a";
 
+  private final UpdateHoldFile updateHold;
+  private final ChildJournal journal;
+  private final Path stagedHold;
   private AgentPolicy policy = new AgentPolicy(ACCOUNT, null);
+
+  private LifecycleAdapter() throws IOException {
+    Path directory = Files.createTempDirectory("agent-lifecycle-");
+    stagedHold = directory.resolve("hold.next");
+    directory.toFile().deleteOnExit();
+    directory.resolve("hold").toFile().deleteOnExit();
+    stagedHold.toFile().deleteOnExit();
+    updateHold = new UpdateHoldFile(directory);
+    journal = new ChildJournal(directory.resolve("child"), new ChildJournal.Processes() {
+      @Override public OptionalLong startTime(int pid) throws IOException { throw new IOException("The portable fixture does not observe child processes"); }
+      @Override public void kill(int pid) throws IOException { throw new IOException("The portable fixture does not stop child processes"); }
+    }, path -> {
+      try (var channel = FileChannel.open(path, StandardOpenOption.READ)) { channel.force(true); }
+    });
+  }
 
   public static void main(String[] args) throws Exception {
     LifecycleAdapter adapter = new LifecycleAdapter();
@@ -24,22 +53,46 @@ public final class LifecycleAdapter {
     for (String line; (line = input.readLine()) != null;) {
       if (line.isBlank()) continue;
       try { output.println(adapter.answer(line)); }
-      catch (RuntimeException failure) { output.println("{\"error\":" + quote(String.valueOf(failure)) + "}"); }
+      catch (IOException | RuntimeException failure) { output.println("{\"error\":" + quote(String.valueOf(failure)) + "}"); }
     }
   }
 
-  private String answer(String line) {
+  private String answer(String line) throws IOException {
     Map<String, Object> request = object(RouteGate.Json.parse(line));
     if (!request.containsKey("event") && !request.containsKey("raw")) {
-      policy = new AgentPolicy(ACCOUNT, null);
+      if (updateHold.held() != null) updateHold.save(null);
+      policy = new AgentPolicy(ACCOUNT, updateHold.held());
       return "{\"state\":" + state(policy.state()) + ",\"out\":[]}";
     }
     boolean direct = request.containsKey("event");
     Object event = direct ? request.get("event") : request.get("raw");
     AgentPolicy.Step step;
-    try { step = policy.step(decode(object(event), direct)); }
+    try {
+      Map<String, Object> fields = object(event);
+      step = "releaseUpdateFailed".equals(fields.get("type"))
+        ? observeFailedRelease(releaseEvent(fields, false)) : apply(decode(fields, direct));
+    }
     catch (IllegalArgumentException | ArithmeticException malformed) { step = new AgentPolicy.Step(false, policy.state(), List.of()); }
     return "{\"outcome\":\"" + (step.accepted() ? "accepted" : "refused") + "\",\"state\":" + state(step.state()) + ",\"out\":" + effects(step.effects()) + "}";
+  }
+
+  private AgentPolicy.Step observeFailedRelease(AgentPolicy.ReleaseUpdate event) throws IOException {
+    Files.createDirectory(stagedHold);
+    try {
+      AgentPolicy.Step step = updateHold.release(policy, event);
+      if (step.accepted()) throw new IOException("The blocked hold write unexpectedly succeeded");
+      return step;
+    } catch (FileNotFoundException failed) {
+      return new AgentPolicy.Step(true, policy.state(), List.of());
+    } finally {
+      Files.delete(stagedHold);
+    }
+  }
+
+  private AgentPolicy.Step apply(AgentPolicy.Event event) throws IOException {
+    if (event instanceof AgentPolicy.HoldForUpdate hold) return updateHold.acquire(policy, journal, hold.target());
+    if (event instanceof AgentPolicy.ReleaseUpdate release) return updateHold.release(policy, release);
+    return policy.step(event);
   }
 
   private AgentPolicy.Event decode(Map<String, Object> event, boolean direct) {
@@ -69,9 +122,32 @@ public final class LifecycleAdapter {
       case "reviewRecovery" -> new AgentPolicy.ReviewRecovery(flag(event.get("focused")), event.containsKey("nonce") ? text(event.get("nonce")) : "review");
       case "archiveRecovery" -> new AgentPolicy.ArchiveRecovery(readToken(event.get("token")));
       case "archiveFinished" -> new AgentPolicy.ArchiveFinished(readToken(event.get("token")), flag(event.get("archiveSucceeded")));
-      case "holdForUpdate" -> new AgentPolicy.HoldForUpdate(new AgentPolicy.UpdateTarget(whole(event.get("targetCode")), text(event.get("targetDigest"))));
-      case "releaseUpdate" -> new AgentPolicy.ReleaseUpdate(whole(event.get("installedCode")), text(event.get("installedDigest")), flag(event.get("attemptEnded")));
+      case "holdForUpdate" -> new AgentPolicy.HoldForUpdate(direct && !event.containsKey("target")
+        ? new AgentPolicy.UpdateTarget(whole(event.get("targetCode")), text(event.get("targetDigest"))) : artifact(event.get("target")));
+      case "releaseUpdate" -> releaseEvent(event, direct);
       default -> throw new IllegalArgumentException("not an event of the agent service");
+    };
+  }
+
+  private static AgentPolicy.UpdateTarget artifact(Object value) {
+    long code = whole(value);
+    try {
+      byte[] digest = MessageDigest.getInstance("SHA-256").digest(("artifact:" + code).getBytes(StandardCharsets.UTF_8));
+      return new AgentPolicy.UpdateTarget(code, HexFormat.of().formatHex(digest));
+    } catch (NoSuchAlgorithmException missing) { throw new IllegalStateException(missing); }
+  }
+
+  private static AgentPolicy.ReleaseUpdate releaseEvent(Map<String, Object> event, boolean direct) {
+    if (direct && !event.containsKey("result"))
+      return new AgentPolicy.ReleaseUpdate(whole(event.get("installedCode")), text(event.get("installedDigest")), flag(event.get("attemptEnded")));
+    Map<String, Object> result = object(event.get("result"));
+    return switch (text(result.get("tag"))) {
+      case "AttemptEnded" -> new AgentPolicy.ReleaseUpdate(0, null, true);
+      case "Installed" -> {
+        AgentPolicy.UpdateTarget installed = artifact(result.get("artifact"));
+        yield new AgentPolicy.ReleaseUpdate(installed.code(), installed.digest(), false);
+      }
+      default -> throw new IllegalArgumentException("not an update outcome");
     };
   }
 
@@ -105,7 +181,7 @@ public final class LifecycleAdapter {
     };
   }
 
-  private static String state(AgentPolicy.State s) {
+  private String state(AgentPolicy.State s) throws IOException {
     String phase = switch (s.phase()) {
       case STOPPED -> "{\"tag\":\"Stopped\"}";
       case CHECKING -> "{\"tag\":\"Starting\",\"stage\":\"Checking\"}";
@@ -117,8 +193,10 @@ public final class LifecycleAdapter {
     String afterExit = s.afterExit() == AgentPolicy.AfterExit.FAIL
       ? "{\"tag\":\"Fail\",\"cause\":" + quote(tag(s.afterExitCause())) + "}"
       : "{\"tag\":" + quote(tag(s.afterExit())) + "}";
-    String hold = s.hold() == null ? "{\"tag\":\"NotHeld\"}"
-      : "{\"tag\":\"Held\",\"targetCode\":" + s.hold().code() + ",\"targetDigest\":" + quote(s.hold().digest()) + "}";
+    AgentPolicy.UpdateTarget saved = updateHold.held();
+    if (!Objects.equals(saved, s.hold())) throw new IOException("The persisted update hold differs from the policy");
+    String hold = saved == null ? "{\"tag\":\"NotHeld\"}"
+      : "{\"tag\":\"Held\",\"targetCode\":" + saved.code() + ",\"targetDigest\":" + quote(saved.digest()) + "}";
     String recovery = s.recovery() == null ? "{\"tag\":\"NoReview\"}"
       : "{\"tag\":\"" + (s.recovery().archiving() ? "Archiving" : "Reviewing") + "\",\"token\":" + token(s.recovery().token()) + "}";
     return "{\"phase\":" + phase + ",\"epoch\":" + s.epoch() + ",\"attempt\":" + s.attempt() + ",\"child\":" + s.child()

@@ -6,9 +6,7 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -18,25 +16,6 @@ public final class ChildJournal {
   public interface Processes {
     OptionalLong startTime(int pid) throws IOException;
     void kill(int pid) throws IOException;
-  }
-
-  public static final class AndroidProcesses implements Processes {
-    @Override public OptionalLong startTime(int pid) throws IOException {
-      String stat;
-      try { stat = new String(Files.readAllBytes(Paths.get("/proc", Integer.toString(pid), "stat")), StandardCharsets.US_ASCII); }
-      catch (NoSuchFileException gone) { return OptionalLong.empty(); }
-      int end = stat.lastIndexOf(')');
-      String[] fields = end < 0 ? new String[0] : stat.substring(end + 2).trim().split(" ");
-      if (fields.length < 20 || !fields[19].matches("[0-9]+")) throw new IOException("Unreadable /proc/" + pid + "/stat");
-      return fields[0].equals("Z") || fields[0].equals("X") ? OptionalLong.empty() : OptionalLong.of(Long.parseLong(fields[19]));
-    }
-
-    @Override public void kill(int pid) throws IOException {
-      try { android.system.Os.kill(pid, android.system.OsConstants.SIGKILL); }
-      catch (android.system.ErrnoException error) {
-        if (error.errno != android.system.OsConstants.ESRCH) throw new IOException("Cannot end agent child " + pid, error);
-      }
-    }
   }
 
   public record Entry(long epoch, int pid, long startTime) {}
@@ -59,6 +38,8 @@ public final class ChildJournal {
   }
 
   public synchronized long lastEpoch() throws IOException { return read().epoch(); }
+
+  synchronized boolean hasRecordedChild() throws IOException { return read().pid() != 0; }
 
   public synchronized void record(int pid, long epoch) throws IOException {
     if (pid < 1) throw new IllegalArgumentException("A child pid is positive");
