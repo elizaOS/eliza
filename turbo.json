@@ -99,6 +99,7 @@
       "cache": false
     },
     "//#gen": {
+      "env": ["!VITE_*"],
       "inputs": [
         "spec/**",
         "apps/*/package.json",

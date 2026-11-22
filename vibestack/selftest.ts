@@ -13,7 +13,6 @@ import { pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
-import { parse as parseYaml } from "yaml";
 import { cacheCredentials, collectGarbage, entry, isActionEntry, recall, store, withFormalCache } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
 import { exec, run as tool } from "./run.ts";
@@ -762,6 +761,29 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.deepEqual(trace?.at(-1)?.evaluated, { name: "canFinish", picks: {}, result: true });
     replay(await import(path.join(lateGuard, "gen/gate.ts")), trace, guardModel);
     assert.match(allowed.again, /gen\/gate\.guard\.run\.qnt/);
+  });
+
+  test("simulation and probes preserve guarded transitions and outputs when only the state enables an event", async () => {
+    const root = oneRule("counter", "Open and commit", `type Change = { state: int, out: List[str] }
+pure val initial: int = 0
+pure def canOpen(n: int): bool = n == 0
+pure def open(n: int, label: bool): Change = { state: 1, out: List(if (label) "yes" else "no") }
+pure def canCommit(n: int, approved: bool): bool = n == 1 and approved
+pure def commit(n: int, approved: bool): Change = if (approved) { state: 2, out: List("saved") } else { state: 3, out: List("wrong") }
+pure def alwaysValid(n: int): bool = n <= 2`);
+    const spec = readSpecs(root)[0];
+    const model = await gen(root, spec);
+    const domain = await import(pathToFileURL(path.join(root, "gen", "counter.ts")).href);
+    const harness = { memory: { root, fresh: true, used: new Set<string>() }, model, files: harnessFiles(spec, [spec], model) };
+    const [safety, probe] = await Promise.all(["step", "probe"].map((step) => simulate(harness, "inv", 64, 64, step)));
+    assert.equal(safety.broken, false);
+    assert.equal(probe.broken, false);
+    for (const trace of [...safety.traces, ...probe.traces]) replay(domain, trace, model);
+    const emitted = safety.traces.flat().flatMap((step) => step.out ?? []);
+    assert.deepEqual(new Set(emitted), new Set(["yes", "no", "saved"]));
+    const commits = probe.traces.flat().flatMap(({ evaluated }) => evaluated?.name === "commit" ? [{ picks: evaluated.picks, result: evaluated.result }] : []);
+    assert.ok(commits.length > 0);
+    assert.ok(commits.every(({ picks, result }) => picks.approved === true && JSON.stringify(result) === '{"state":2,"out":["saved"]}'));
   });
 
   test("a concrete witness uses the original guards and rules and supplies its steps to replay", async () => {
@@ -2784,13 +2806,15 @@ function eachCheck() {
     for (const directory of ["vibestack/studio", ...fs.readdirSync(path.join(copy, "packages")).map((name) => `packages/${name}`)])
       for (const output of ["gen", "dist", "generated", "node_modules", ".spec-cache", ".cache", ".vibe", ".turbo", "storybook-static"])
         assert.ok(!fs.existsSync(path.join(copy, directory, output)), `${directory}/${output} is produced by the scratch build`);
-    // The scratch workspace may be on another volume or outside the store configuration of this checkout.
     const modulesManifest = path.join(nodeModules, ".modules.yaml");
     assert.ok(fs.existsSync(modulesManifest), "The packaged command selftest needs a pnpm workspace install. Run pnpm install.");
+    const { parse: parseYaml } = await import("yaml");
     const storeDir = (parseYaml(fs.readFileSync(modulesManifest, "utf8")) as { storeDir?: unknown } | null)?.storeDir;
     assert.ok(typeof storeDir === "string" && path.isAbsolute(storeDir), `Missing absolute pnpm store path in ${modulesManifest}`);
+    const installEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toLowerCase().replaceAll("-", "_") !== "npm_config_store_dir"));
+    installEnv.npm_config_store_dir = storeDir;
     const dependencies = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm",
-      ["install", "--offline", "--frozen-lockfile", "--ignore-scripts", `--store-dir=${storeDir}`], copy);
+      ["install", "--offline", "--frozen-lockfile", "--ignore-scripts"], copy, installEnv);
     assert.equal(dependencies.status, 0, dependencies.stdout + dependencies.stderr);
     const built = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["run", "build"], copy, { ...process.env, TURBO_CACHE: "local:rw" });
     assert.equal(built.status, 0, built.stdout + built.stderr);
@@ -3362,7 +3386,7 @@ describe("the documents name what exists", () => {
     const release = read(".github/workflows/release.yml");
     assert.match(release, /^ +- run: pnpm selftest --only --concurrency=1$/m);
     const releasePrerequisites = release.match(/^ +- run: pnpm all (.+) --concurrency=1$/m)?.[1].split(" ").sort();
-    assert.match(scripts.prepare, /^node vibestack\/spec\.ts tasks \/\/#build && /);
+    assert.match(scripts.prepare, /^node vibestack\/spec\.ts gen --install --skip-gen-on-pack \/\/#build(?: |$)/);
     assert.deepEqual(["//#build", ...releasePrerequisites ?? []].sort(), JSON.parse(read("turbo.json")).tasks["//#selftest:tools:a"].dependsOn.toSorted(), "pack and the release tasks materialize every prerequisite before using the isolated CI shard cache");
     assert.deepEqual(read(".github/workflows/fuzz.yml").match(/^ +shard: \[(.+)\]$/m)?.[1].split(", "), shards.map((task) => task.split(":")[2]), "the nightly run names every shard");
     const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`].dependsOn);
@@ -3519,14 +3543,20 @@ function theCommandLine() {
     fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = nope", "A value"));
     assert.match((await runCli(script, root, "gen", "--if-valid")).stdout, /gen\/ was not generated/);
     assert.deepEqual(generatedBefore(), stable);
-    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "install-gen", packageManager: JSON.parse(read("package.json")).packageManager, scripts: { gen: "node vibestack/spec.ts gen" } }));
-    fs.writeFileSync(path.join(root, "turbo.json"), JSON.stringify({ tasks: { "//#gen": { inputs: ["spec/**"], outputs: ["gen/**"] } } }));
+    const build = "node -e \"require('fs').writeFileSync('tools-built', '')\"";
+    const owner = "node -e \"require('fs').copyFileSync('owner-source', 'owner-generated')\"";
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "install-gen", packageManager: JSON.parse(read("package.json")).packageManager,
+      scripts: { gen: "node vibestack/spec.ts gen", build, owner } }));
+    fs.writeFileSync(path.join(root, "turbo.json"), JSON.stringify({ tasks: {
+      "//#gen": { inputs: ["spec/**"], outputs: ["gen/**"] }, "//#build": { inputs: ["package.json"], cache: false },
+      "//#owner": { inputs: ["owner-source", "package.json"], cache: false },
+    } }));
     fs.writeFileSync(path.join(root, "pnpm-workspace.yaml"), "packages: [packages/*]\n");
     fs.mkdirSync(path.join(root, "packages/app"), { recursive: true });
     fs.writeFileSync(path.join(root, "packages/app/package.json"), JSON.stringify({ name: "app" }));
     fs.symlinkSync(nodeModules, path.join(root, "node_modules"), "dir");
     fs.symlinkSync(path.dirname(script), path.join(root, "vibestack"), "dir");
-    const prepare = (hosted: boolean, job = "verify") => exec(process.execPath, [script, "gen", "--install"], root, { ...process.env, GITHUB_ACTIONS: String(hosted), GITHUB_JOB: job, TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
+    const prepare = (hosted: boolean, job = "verify", ...tasks: string[]) => exec(process.execPath, [script, "gen", "--install", ...tasks], root, { ...process.env, GITHUB_ACTIONS: String(hosted), GITHUB_JOB: job, TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
     for (const hosted of [false, true]) {
       const invalid = await prepare(hosted);
       assert.equal(invalid.status, 0, invalid.stderr);
@@ -3535,16 +3565,29 @@ function theCommandLine() {
     }
     fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = 43", "A value"));
     fs.rmSync(path.join(root, "gen/value.ts"));
-    const fixtures = await prepare(true, "vibestack-fixture-selftests");
+    const prerequisites = ["//#build", "//#owner"];
+    const fixtures = await prepare(true, "vibestack-fixture-selftests", ...prerequisites);
     assert.equal(fixtures.status, 0, fixtures.stderr);
+    assert.ok(fs.existsSync(path.join(root, "tools-built")));
     assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
-    const packed = await exec(process.execPath, [script, "gen", "--install", "--skip-gen-on-pack"], root, {
-      ...process.env, GITHUB_ACTIONS: "false", npm_command: "pack", npm_lifecycle_event: "prepare",
+    for (const hosted of [false, true]) {
+      const missing = await prepare(hosted, "verify", ...prerequisites);
+      assert.notEqual(missing.status, 0, "a failed prerequisite fails ordinary installs");
+      assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    }
+    fs.writeFileSync(path.join(root, "owner-source"), "external owner");
+    const packable = ["--skip-gen-on-pack", ...prerequisites];
+    const packed = await exec(process.execPath, [script, "gen", "--install", ...packable], root, {
+      ...process.env, GITHUB_ACTIONS: "true", GITHUB_JOB: "verify",
+      npm_command: "pack", npm_lifecycle_event: "prepare", TURBO_CACHE: "local:rw", TURBO_TOKEN: "",
     });
     assert.equal(packed.status, 0, packed.stderr);
+    assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "external owner");
     assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
-    const installed = await prepare(true);
+    fs.writeFileSync(path.join(root, "owner-source"), "installed owner");
+    const installed = await prepare(true, "verify", ...packable);
     assert.equal(installed.status, 0, installed.stderr);
+    assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "installed owner");
     assert.doesNotMatch(installed.stdout, /gen\/ was not generated/);
     assert.equal((await import(path.join(root, "gen/value.ts") + "?installed")).answer, 43);
     fs.rmSync(path.join(root, "gen/value.ts"));

@@ -336,7 +336,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
   const files = harnessFiles(spec, specs, model);
-  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), model.guardHarness, spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
+  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), model.guardHarness, ...(model.witness ? [model.witness.harness] : []), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), (memory) => inTurn(async () => {
     const harness: Harness = { memory, model, files };
