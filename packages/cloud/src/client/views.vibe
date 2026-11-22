@@ -29,11 +29,10 @@ const wireFundingLaneSchema = Schema.Literals(["allowanceThenCredits", "creditsO
 export type WirePlanKey = typeof wirePlanKeySchema.Type
 export type PaidWirePlanKey = typeof paidWirePlanKeySchema.Type
 export type WirePlanSource = typeof wirePlanSourceSchema.Type
-export type WireAccountStatus = typeof wireAccountStatusSchema.Type
-export type WireSubscriptionStatus = typeof wireSubscriptionStatusSchema.Type
-export type WireControlAction = typeof wireControlActionSchema.Type
+type WireAccountStatus = typeof wireAccountStatusSchema.Type
+type WireSubscriptionStatus = typeof wireSubscriptionStatusSchema.Type
 export type WireAllowanceState = typeof wireAllowanceStateSchema.Type
-export type WireFundingLane = typeof wireFundingLaneSchema.Type
+type WireFundingLane = typeof wireFundingLaneSchema.Type
 
 const snapshotPlanSchema = Schema.Struct({ key: wirePlanKeySchema, source: wirePlanSourceSchema, effectiveUntil: Schema.NullOr(millis) })
 
