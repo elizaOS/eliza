@@ -93,10 +93,7 @@ function normalizePlannerResponse(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function normalizePackageNames(
-  value: unknown,
-  allowedPackageNames?: ReadonlySet<string>,
-): string[] {
+function normalizePackageNames(value: unknown): string[] {
   const values = Array.isArray(value)
     ? value
     : typeof value === "string"
@@ -104,11 +101,39 @@ function normalizePackageNames(
       : [];
   const normalized = values
     .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim().toLowerCase())
+    .map((item) => item.trim())
     .filter((item) => item.length > 0);
-  const unique = [...new Set(normalized)];
-  if (!allowedPackageNames) return unique;
-  return unique.filter((item) => allowedPackageNames.has(item));
+  return [...new Set(normalized)];
+}
+
+// Android package ids are case-sensitive (Slack ships as "com.Slack") and the
+// native blocker compares the foreground package id exactly, so a requested id
+// is sent with the case of the installed app it names.
+function findInstalledPackageName(
+  packageName: string,
+  installedApps: readonly InstalledAppEntry[],
+): string | undefined {
+  if (installedApps.some((app) => app.packageName === packageName)) {
+    return packageName;
+  }
+  const lower = packageName.toLowerCase();
+  const matches = installedApps.filter(
+    (app) => app.packageName.toLowerCase() === lower,
+  );
+  return matches.length === 1 ? matches[0]?.packageName : undefined;
+}
+
+function toInstalledPackageNames(
+  packageNames: readonly string[],
+  installedApps: readonly InstalledAppEntry[],
+  keepUnknown: boolean,
+): string[] {
+  const resolved = packageNames.flatMap((packageName) => {
+    const installed = findInstalledPackageName(packageName, installedApps);
+    if (installed) return [installed];
+    return keepUnknown ? [packageName] : [];
+  });
+  return [...new Set(resolved)];
 }
 
 function normalizeDurationMinutes(value: unknown): number | null | undefined {
@@ -190,7 +215,7 @@ function inferAndroidPackageNamesFromIntent(
     );
   });
 
-  return matches.map((app) => app.packageName.toLowerCase());
+  return matches.map((app) => app.packageName);
 }
 
 async function resolveAppBlockPlanWithLlm(args: {
@@ -208,9 +233,6 @@ async function resolveAppBlockPlanWithLlm(args: {
     })
   ).join("\n");
   const currentMessage = getMessageText(args.message).trim();
-  const allowedPackageNames = new Set(
-    args.installedApps.map((app) => app.packageName.toLowerCase()),
-  );
   const prompt = [
     "Plan the app blocking action for this request.",
     "Use the current request plus recent conversation context.",
@@ -256,9 +278,10 @@ async function resolveAppBlockPlanWithLlm(args: {
     return {
       shouldAct: normalizeShouldAct(parsed.shouldAct),
       response: normalizePlannerResponse(parsed.response),
-      packageNames: normalizePackageNames(
-        parsed.packageNames ?? parsed.packages,
-        allowedPackageNames,
+      packageNames: toInstalledPackageNames(
+        normalizePackageNames(parsed.packageNames ?? parsed.packages),
+        args.installedApps,
+        false,
       ),
       durationMinutes: normalizeDurationMinutes(parsed.durationMinutes),
     };
@@ -364,9 +387,10 @@ async function handleBlock(
     };
   }
 
+  // An explicit id that names no installed app is passed on as given.
   const packageNames =
     explicitPackageNames.length > 0
-      ? explicitPackageNames
+      ? toInstalledPackageNames(explicitPackageNames, installedApps, true)
       : inferredPackageNames.length > 0
         ? inferredPackageNames
         : (llmPlan?.packageNames ?? []);
