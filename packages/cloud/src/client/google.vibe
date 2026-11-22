@@ -79,7 +79,7 @@ const mailMessageSchema = Schema.Struct({
   message: mailCardSchema,
   bodyText: Schema.String,
   bodyHtml: optionalText,
-  bodyHtmlStatus: Schema.Literals(["available", "none"]),
+  bodyHtmlStatus: Schema.Literals(["available", "none", "too_large"]),
   attachments: Schema.Array(Schema.Struct({
     partId: Schema.String, name: Schema.String, mimeType: Schema.String, size: Schema.Number, supported: Schema.Boolean
   })),
