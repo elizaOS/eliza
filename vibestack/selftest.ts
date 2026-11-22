@@ -9,6 +9,7 @@ import { stripTypeScriptTypes } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
@@ -25,7 +26,7 @@ import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
 import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
 import { explore, explored, pageInputs } from "./explore.ts";
-import { harnessFiles, search, simulate } from "./simulate.ts";
+import { harnessFiles, search, simulate, simulation } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./pipeline.ts";
 
 const project = path.join(import.meta.dirname, "..");
@@ -761,6 +762,41 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.deepEqual(trace?.at(-1)?.evaluated, { name: "canFinish", picks: {}, result: true });
     replay(await import(path.join(lateGuard, "gen/gate.ts")), trace, guardModel);
     assert.match(allowed.again, /gen\/gate\.guard\.run\.qnt/);
+  });
+
+  test("a concrete witness uses the original guards and rules and supplies its steps to replay", async () => {
+    const modelSource = `pure val initial: int = 0
+pure def publish(n: int, amount: int): int = amount
+pure def canPublish(n: int, amount: int): bool = n == 0 and amount > 0
+pure def finish(n: int): int = n + 1
+pure def canFinish(n: int): bool = n > 0 and n < 42
+pure def alwaysSafe(n: int): bool = n <= 42
+pure def sometimesDone(n: int): bool = n == 42
+pure val witnessIndex = 3
+pure val witnessSender = 4
+pure val witness_fixture = 5
+pure val witness_sometimesDone = 6
+pure def witnessStep_sometimesDone(n: int): int = n`;
+    const simulateExample = async (source: string, example: string) => {
+      const root = oneRule("journey", "Publish then finish", `${source}\npure val eval_witness_sometimesDone = ${example}`);
+      const spec = readSpecs(root)[0];
+      const model = await gen(root, spec);
+      const domain = await import(pathToFileURL(path.join(root, "gen", "journey.ts")).href);
+      assert.deepEqual([domain.witnessIndex, domain.witnessSender, domain.witness_fixture, domain.witness_sometimesDone, domain.witnessStep_sometimesDone(7)], [3, 4, 5, 6, 7]);
+      return simulation({ root, fresh: false, used: new Set() }, spec, [spec], model, domain, 1);
+    };
+    const [reached, denied, unsafe, mistyped] = await Promise.all([
+      simulateExample(modelSource, '(("publish", 41), "finish")'),
+      simulateExample(modelSource.replace("n == 42", "n == 1"), '("publish", -1)'),
+      simulateExample(modelSource, '(("publish", 43), "finish")'),
+      simulateExample(modelSource, '("publish", "unknown")'),
+    ]);
+    assert.ok(reached.said.some((r) => r.ok && r.summary === "sometimesDone is reachable"), JSON.stringify(reached.said));
+    assert.ok(reached.said.some((r) => r.ok && r.stage === "replay"), JSON.stringify(reached.said));
+    assert.deepEqual(reached.tested?.journeys[0]?.events, [{ type: "publish", amount: 41 }, { type: "finish" }]);
+    assert.ok(denied.said.some((r) => r.ok && r.summary === "sometimesDone is reachable"), JSON.stringify(denied.said));
+    assert.ok(unsafe.said.some((r) => !r.ok && r.stage === "always" && r.detail.includes('publish{"amount":43}')), JSON.stringify(unsafe.said));
+    assert.ok(mistyped.said.some((r) => !r.ok && /Couldn't unify (?:int and str|str and int)/.test(r.detail)), JSON.stringify(mistyped.said));
   });
 
   test("hand-written code that changes what it is checked against is refused or flagged", async () => {
@@ -3764,6 +3800,54 @@ const SHARDS = { "in shard a": eachCheckA, "in shard b": eachCheckB };
 describe("the tools", { concurrency: true }, () => {
   describe("the command line and what a failed proof leaves to start from", { concurrency: LANES }, theCommandLine);
   describe("each check catches its own kind of mistake", { concurrency: LANES }, eachCheck);
+});
+
+test("check phase timings end a simulation before later definitions finish generating", { skip: process.platform === "win32" }, async () => {
+  const root = toolchain(scratch({
+    "spec/counter.md": ruleSpec("pure val initial: int = 0\npure def bump(n: int): int = n + 1\npure def alwaysPositive(n: int): bool = n > 0"),
+    "spec/definitions.md": ruleSpec("pure val answer: int = 42"),
+  }), "quint");
+  const shim = path.join(root, "node_modules/.bin/quint");
+  fs.renameSync(shim, `${shim}-real`);
+  fs.writeFileSync(shim, `#!/bin/sh
+basedir="$(dirname "$0")"
+if [ "$1:$4" = typecheck:definitions.qnt ]; then node "$basedir/../../wait-for-simulation.mjs" || exit $?; fi
+exec "$basedir/quint-real" "$@"
+`, { mode: 0o755 });
+  fs.writeFileSync(path.join(root, "wait-for-simulation.mjs"), `
+    import fs from "node:fs";
+    import { setTimeout } from "node:timers/promises";
+    const marker = new URL("./simulation-finished", import.meta.url);
+    const deadline = performance.now() + 60_000;
+    while (!fs.existsSync(marker) && performance.now() < deadline) await setTimeout(20);
+    if (!fs.existsSync(marker)) throw new Error("no simulation result was saved");
+    await setTimeout(300);
+  `);
+  const child = await exec(process.execPath, ["--input-type=module", "--eval", `
+    import assert from "node:assert/strict";
+    import { channel } from "node:diagnostics_channel";
+    import fs from "node:fs";
+    import path from "node:path";
+    import { check } from "./vibestack/pipeline.ts";
+    const rename = fs.renameSync;
+    fs.renameSync = (from, to) => {
+      rename(from, to);
+      if (/^simulate-.*\\.json\\./.test(path.basename(to))) fs.writeFileSync("simulation-finished", "");
+    };
+    const events = [];
+    channel("vibestack:check:phase").subscribe(event => events.push(event));
+    const result = await check(process.cwd());
+    assert.ok(result.results.some(r => r.ok && r.stage === "model" && r.where === "spec/definitions.md" && r.summary.includes("definitions only")));
+    assert.ok(result.results.some(r => !r.ok && r.stage === "always" && r.where === "spec/counter.md" && r.summary.includes("fix the model")), JSON.stringify(result.results));
+    const time = (phase, event) => events.find(e => e.phase === phase && e.event === event).elapsedMs;
+    assert.ok(time("simulation", "start") <= time("simulation", "end"));
+    assert.ok(time("generation", "end") - time("simulation", "end") >= 200, JSON.stringify(events));
+    events.length = 0;
+    const interrupted = new Error("ordinary generation failure");
+    await assert.rejects(check(process.cwd(), false, () => { throw interrupted; }), error => error === interrupted);
+    assert.deepEqual(events.map(({ phase, event }) => [phase, event]), [["generation", "start"], ["generation", "end"]]);
+  `], root);
+  assert.equal(child.status, 0, child.stdout + child.stderr);
 });
 
 test("a trace integer of 16 or more digits that Quint wrote as a BigNumber decodes to the same integer", () => {

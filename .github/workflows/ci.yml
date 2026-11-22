@@ -125,7 +125,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           job: ${{ matrix.name }}
-      - run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue --summarize
+      - run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
       - name: Report Turbo task timings
         if: ${{ !cancelled() }}
         run: |

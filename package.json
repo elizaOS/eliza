@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "turbo run dev //#studio",
     "studio": "node vibestack/spec.ts studio",
-    "check": "node vibestack/spec.ts check",
+    "check": "node --import ./vibestack/ci-check-phase.ts vibestack/spec.ts check",
     "gen": "node vibestack/spec.ts gen",
     "accept": "node vibestack/spec.ts accept",
     "new": "node vibestack/spec.ts new",
