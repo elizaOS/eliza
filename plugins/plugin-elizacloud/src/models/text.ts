@@ -549,6 +549,7 @@ export type CloudTextRequestError = Error & {
   status: number;
   error?: unknown;
   rateLimit?: ProviderRateLimit;
+  responseBody?: string;
 };
 
 /**
@@ -706,7 +707,27 @@ export function cloudTextRequestError(
   requestError.status = response.status;
   if (errorBody) requestError.error = errorBody;
   if (rateLimit) requestError.rateLimit = rateLimit;
+  const responseBody = cloudProviderResponseBody(errorBody);
+  if (responseBody) requestError.responseBody = responseBody;
   return requestError;
+}
+
+/**
+ * The Cloud's error record as the body a direct provider route keeps on its
+ * error. Core reads a provider's `code`, `param` and message from
+ * `responseBody`: Stage 1's one re-send after Cerebras's `parser_error` on
+ * `tool_calls`, and the context-length and schema replies. The gateway passes
+ * a provider 400's text as `provider_message` and, in a stream frame whose
+ * numeric `code` is the status, its code as `provider_code`. Code and param
+ * go first because core keeps only a 400-character excerpt of the body.
+ */
+function cloudProviderResponseBody(errorBody: unknown): string | undefined {
+  const fields = asRecord(errorBody);
+  if (Object.keys(fields).length === 0) return undefined;
+  const { provider_code, code, param, provider_message, message, ...rest } = fields;
+  return JSON.stringify({
+    error: { code: provider_code ?? code, param, message: provider_message ?? message, ...rest },
+  });
 }
 
 function parseJsonRecord(text: string): Record<string, unknown> | undefined {
@@ -2701,10 +2722,13 @@ export async function streamNativeChatCompletion(
             status?: number;
             error?: unknown;
             rateLimit?: ProviderRateLimit;
+            responseBody?: string;
           };
           if (status !== undefined) requestError.status = status;
           if (error) requestError.error = error;
           if (rateLimit) requestError.rateLimit = rateLimit;
+          const responseBody = cloudProviderResponseBody(error);
+          if (responseBody) requestError.responseBody = responseBody;
           throw requestError;
         }
         if (!Array.isArray(frame.choices)) {
