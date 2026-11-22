@@ -293,7 +293,7 @@ public final class CloudRequestPolicy {
       route(get, api("billing", "invoices"), key),
       route(get, api("billing", "invoices", ":invoiceId"), key),
       route(get, api("models"), key),
-      route(post, api("chat", "completions"), key),
+      keyed(post, api("chat", "completions"), IDEMPOTENCY_KEY),
       route(post, api("voice", "tts"), key),
       route(post, api("voice", "stt"), key),
       route(post, api("voice", "speech", "consent"), key),
