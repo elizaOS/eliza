@@ -1,0 +1,108 @@
+// spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"
+import { hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
+import { refusalBody, refused } from "../http/refusal.vibe"
+import { maxReplyBytes, ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, readLlmObject, type LlmFailure } from "../providers/llm.vibe"
+import type { Settlement } from "../shared/metering.vibe"
+import { billedFromUsage, type TokenCounts } from "./models.vibe"
+import { chunkFrame, doneFrame, errorFrame, feed, finish, isDone, segmenter } from "./sse.ts"
+
+const frameBytes = 256 * 1024
+const chunkBytes = 16 * 1024
+const providerPause = 5_000
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+const DeltaText = Schema.Struct({ delta: Schema.optionalKey(Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) })) })
+const readDeltaText = Schema.decodeUnknownOption(DeltaText)
+
+export function providerRefusal(failure: LlmFailure, now: number) {
+  if (failure._tag === "ProviderInvalidResponse") return refused("ProviderInvalidResponse")
+  if (failure._tag === "ProviderRefused" && failure.status >= 400 && failure.status < 500 && failure.status !== 429) return refused("ProviderInvalidResponse")
+  return refused("ProviderUnavailable", "NoReason", now + (failure._tag === "ProviderRefused" ? failure.retryAfter ?? providerPause : providerPause))
+}
+
+type ChatSettlement = Exclude<Settlement, { readonly kind: "release" }>
+
+export function completionSettlement(actual: number | undefined): ChatSettlement {
+  return actual === undefined ? { kind: "unknown" } : { kind: "known", actual }
+}
+
+export function meteredChatStream({ upstream, publicModelId, quoted, holdKey, price, finishHold, includeUsage }: {
+  readonly upstream: Stream.Stream<Uint8Array, LlmFailure>
+  readonly publicModelId: string
+  readonly quoted: TokenCounts
+  readonly holdKey: string
+  readonly price: (counts: TokenCounts) => number!!
+  readonly finishHold: (settlement: ChatSettlement) => void!({ readonly _tag: string })
+  readonly includeUsage: boolean
+}) {
+  let pending = segmenter()
+  let total = 0
+  let reported: TokenCounts | undefined
+  let deliveredChars = 0
+  let usageFrame = ""
+  let settled = false
+  let failed = false
+
+  const delivered = Stream.flatMap(upstream, (chunk) => {
+    const length = Math.min(chunk.byteLength, maxReplyBytes - total)
+    const events: number[][] = []
+    for (let start = 0; start < length; start += chunkBytes) {
+      const next = feed(pending, Array.from(chunk.subarray(start, Math.min(length, start + chunkBytes))))
+      pending = next.segmenter
+      events.push(...next.events)
+      if (pending.line.length + pending.data.length > frameBytes) {
+        return Stream.concat(Stream.fromIterable(events), Stream.fail(new ProviderInvalidResponse()))
+      }
+    }
+    total += length
+    const frames = Stream.fromIterable(events)
+    return length < chunk.byteLength ? Stream.concat(frames, Stream.fail(new ProviderInvalidResponse())) : frames
+  })
+  const frames = Stream.concat(delivered, Stream.suspend(() => Stream.fromIterable(finish(pending).events)))
+  const replies = Stream.flatMap(Stream.takeUntil(frames, isDone), (frame) => Stream.fromEffect(effect {
+    if (frame.length > frameBytes) throw new ProviderInvalidResponse()
+    if (isDone(frame)) {
+      try Effect.uninterruptible(effect {
+        const actual = reported === undefined ? undefined : try price(reported)
+        try finishHold(completionSettlement(actual))
+        settled = true
+      })
+      return encoder.encode(usageFrame + doneFrame)
+    }
+    const payload = readLlmObject(decoder.decode(Uint8Array.from(frame)))
+    if (payload === undefined || !Array.isArray(payload.choices)) throw new ProviderInvalidResponse()
+    const { usage, ...delta } = payload
+    const served = { ...delta, model: publicModelId }
+    if (usage != null && reported === undefined) {
+      const billed = try billedFromUsage(usage)
+      if (billed.tag === "Reported") {
+        reported = billed.counts
+        if (includeUsage) usageFrame = chunkFrame(JSON.stringify({ ...served, choices: [], usage }))
+      }
+    }
+    if (payload.choices.length === 0) return undefined
+    for (const choice of payload.choices) {
+      const read = readDeltaText(choice)
+      if (read._tag === "Some") deliveredChars += read.value.delta?.content?.length ?? 0
+    }
+    return encoder.encode(chunkFrame(JSON.stringify(served)))
+  })).pipe(Stream.filter((bytes) => bytes !== undefined))
+  const terminal = Stream.suspend(() => settled ? Stream.empty : Stream.fail(new ProviderInvalidResponse()))
+
+  return Stream.concat(replies, terminal).pipe(
+    Stream.catch((failure) => Stream.fromEffect(effect {
+      failed = true
+      const refusal = failure instanceof ProviderInvalidResponse || failure instanceof ProviderUnreachable || failure instanceof ProviderTimedOut || failure instanceof ProviderRefused
+        ? providerRefusal(failure, try Clock.currentTimeMillis) : refused("ServiceUnavailable")
+      return encoder.encode(errorFrame(JSON.stringify(refusalBody(refusal.refusal))) + doneFrame)
+    })),
+    Stream.ensuring(effect {
+      if (settled) return
+      const counts = failed ? reported : hangUpCounts(quoted, reported?.inputTokens ?? 0, deliveredChars)
+      const actual = counts === undefined ? undefined : try price(counts)
+      finishHold(completionSettlement(actual)) catch effect (failure) => {
+        try annotateLogs(logError("a chat hold could not settle when the connection closed"), { holdKey, failure: failure._tag })
+      }
+    })
+  )
+}

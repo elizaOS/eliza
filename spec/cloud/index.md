@@ -61,9 +61,36 @@ with one `[DONE]`, preceded by one reported usage chunk if the caller asked
 for it. A definite provider rejection before the stream starts is an HTTP
 refusal. A truncated or unreadable stream sends one error frame and then
 `[DONE]`.
-The same hold settles at the billed cost when usable counts were reported,
-or at the quote when the usage is unknown. A caller disconnect releases the
-provider connection and settles the hold using the counts already observed.
+The original hold settles once at the billed cost when usable counts were
+reported, including after a stream failure. It settles at the quote when no
+usable report arrived. A caller disconnect releases the provider connection
+and charges the greater of quoted and reported input tokens, plus the
+output tokens estimated from delivered text. Between dispatch and the
+provider's response headers, a disconnect charges only quoted input.
+
+The [chat completion rules](./services/inference.md) define the framing,
+chunking and charge decisions. The [shared metering rules](./shared/metering.md)
+define the lifecycle of the original hold.
+
+```quint
+import inference as Chat from "./services/inference"
+import metering as Holds from "./shared/metering"
+import models as Models from "./services/models"
+pure def lawInferenceStreamFraming(deltas: List[int], ending: Chat::StreamEnding, usageAsked: bool, usageReported: bool): bool =
+  Chat::lawEveryUnbrokenStreamEndsInOneDone(deltas, ending, usageAsked, usageReported)
+  and Chat::lawOnlyAFinishedStreamCompletes(deltas, ending, usageAsked, usageReported)
+  and Chat::lawUsageIsSentOnceAndOnlyAsReported(deltas, ending, usageAsked, usageReported)
+  and Chat::lawOnlyAFailedStreamSendsAnError(deltas, ending, usageAsked, usageReported)
+pure def lawInferenceStreamChunking(first: List[int], second: List[int]): bool = Chat::lawChunkBoundariesDoNotChangeEvents(first, second)
+pure def lawInferenceStreamReportDeterminesTheCharge(u: Models::ProviderUsage, quoted: Models::TokenCounts): bool =
+  Chat::lawAProviderReportDeterminesTheCharge(u, quoted)
+pure def lawInferenceStreamHangUpChargesDeliveredText(reportedInput: int, deliveredChars: int, quoted: Models::TokenCounts): bool =
+  Chat::lawAHangUpPaysForWhatItGot(reportedInput, deliveredChars, quoted)
+pure def lawInferenceStreamClosesTheOriginalHold(lane: Holds::FundingLane, quote: int, allowanceAvailable: int, creditAvailable: int,
+  dispatched: bool, end: Chat::CompletionEnd, quoted: Models::TokenCounts, creditFree: int): bool =
+  Chat::lawAMissingReportChargesTheQuote(dispatched, end, quoted)
+  and Chat::lawEveryCallClosesItsHoldOnce(lane, quote, allowanceAvailable, creditAvailable, dispatched, end, quoted, creditFree)
+```
 
 ## Story: Sign in to the Cloud
 

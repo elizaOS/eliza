@@ -100,6 +100,7 @@ pure def admission(h: Hold, sameRequest: bool, lane: FundingLane, quote: Micros,
   else if (fundable(lane, quote, allowanceAvailable, creditAvailable)) AdmitHold
   else RefuseHold({ code: InsufficientCredits })
 pure val initial: Hold = { phase: Unfunded, key: { service: MeteredInference, caller: "", requestId: "", part: WholeRequest }, quote: 0, reserved: 0, fromAllowance: 0, fromCredits: 0, charged: 0, uncollected: 0, basis: NotCharged, since: 0 }
+pure def holdKeyOf(h: Hold): HoldKey = { service: h.key.service, caller: h.key.caller, requestId: h.key.requestId, part: h.key.part }
 pure def canReserve(h: Hold, quote: Micros, lane: FundingLane, allowanceAvailable: Micros, creditAvailable: Micros, now: Millis): bool =
   h.phase == Unfunded and now >= 0 and fundable(lane, quote, allowanceAvailable, creditAvailable)
 pure def reserve(h: Hold, key: HoldKey, quote: Micros, lane: FundingLane, allowanceAvailable: Micros, creditAvailable: Micros, now: Millis): Hold = {
