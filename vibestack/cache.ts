@@ -144,11 +144,13 @@ export function publishChecked(complete = false) {
   const check = checking.getStore();
   if (!check) return;
   if (complete) includePrograms(check);
-  check.changed ||= [...check.verify].some((program) => !program.unchanged());
-  if (check.changed) {
+  const replaced = [...check.verify].some((program) => !program.unchanged());
+  if (replaced || check.changed) {
+    check.changed = true;
     check.pending.clear();
     check.verify.clear();
-    throw new Error("a tool installation changed during this check; run the check again");
+    if (replaced) throw new Error("a tool installation changed during this check; run the check again");
+    return;
   }
   if (!check.pending.size) return;
   for (const [file, bytes] of check.pending) writeWhole(file, bytes);
@@ -238,15 +240,37 @@ function launcherDigest(exe: string, packageDir: string, exists: (file: string) 
   return sha(...lines);
 }
 
+type Stamps = Iterable<readonly [string, string]>;
+const fileStamp = (file: string, follow = true) => {
+  const stat = (follow ? fs.statSync : fs.lstatSync)(file, { bigint: true, throwIfNoEntry: false });
+  return stat ? `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}` : "";
+};
+const sameFiles = (files: Stamps, links: Stamps) => {
+  for (const [file, stamp] of files) if (fileStamp(file) !== stamp) return false;
+  for (const [file, stamp] of links) if (fileStamp(file, false) !== stamp) return false;
+  return true;
+};
+const isStamps = (value: unknown): value is [string, string][] => Array.isArray(value) && value.every((entry) =>
+  Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string" && typeof entry[1] === "string");
+
+function readProgram(index: string, key: string): Omit<Program, "exe"> | undefined {
+  try {
+    const data: unknown = JSON.parse(zstdDecompressSync(fs.readFileSync(index)).toString("utf8"));
+    if (!Array.isArray(data)) return undefined;
+    const [saved, id, files, links] = data;
+    if (saved !== key || typeof id !== "string" || !/^[a-f0-9]{64}$/.test(id) || !isStamps(files) || !files.length || !isStamps(links)) return undefined;
+    const unchanged = () => sameFiles(files, links);
+    if (unchanged()) return { id, unchanged };
+  } catch {
+    return undefined;
+  }
+}
+
 function packageGraph(exe: string, name: string) {
   const observations = new Map<string, string>();
   const links = new Map<string, string>();
-  const state = (file: string, follow = true) => {
-    const stat = (follow ? fs.statSync : fs.lstatSync)(file, { bigint: true, throwIfNoEntry: false });
-    return stat ? `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}` : "";
-  };
   const observed = (file: string) => {
-    if (!observations.has(file)) observations.set(file, state(file));
+    if (!observations.has(file)) observations.set(file, fileStamp(file));
     return observations.get(file) !== "";
   };
   const contents = (root: string) => {
@@ -266,7 +290,7 @@ function packageGraph(exe: string, name: string) {
         if (entry.name === "node_modules" || entry.name === ".git") continue;
         const file = path.join(dir, entry.name);
         const name = path.relative(root, file).split(path.sep).join("/");
-        if (entry.isSymbolicLink()) links.set(file, state(file, false));
+        if (entry.isSymbolicLink()) links.set(file, fileStamp(file, false));
         const target = entry.isSymbolicLink() ? fs.readlinkSync(file) : undefined;
         if (!record(file)) files.push({ name, target });
         else if (entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(file).isDirectory())) {
@@ -282,7 +306,7 @@ function packageGraph(exe: string, name: string) {
   };
   const observeLocation = (file: string) => {
     const present = observed(file);
-    if (present && path.basename(file) !== "package.json" && fs.lstatSync(file).isSymbolicLink()) links.set(file, state(file, false));
+    if (present && path.basename(file) !== "package.json" && fs.lstatSync(file).isSymbolicLink()) links.set(file, fileStamp(file, false));
     return present;
   };
   const seen = new Map<string, number>();
@@ -305,17 +329,17 @@ function packageGraph(exe: string, name: string) {
     return index;
   };
   observed(exe);
-  if (fs.lstatSync(exe).isSymbolicLink()) links.set(exe, state(exe, false));
+  if (fs.lstatSync(exe).isSymbolicLink()) links.set(exe, fileStamp(exe, false));
   observed(path.dirname(exe));
   const [main, loaded] = packageRoots(exe, name, observeLocation);
   if (!main) throw new Error(`no ${name} with a version is installed beside ${exe} or these tools; run pnpm install`);
   const roots = [visit(main), loaded && visit(loaded)];
-  return { graph, roots, main, contents, observed, unchanged: () => [...observations].every(([file, at]) => state(file) === at)
-    && [...links].every(([file, at]) => state(file, false) === at) };
+  return { graph, roots, main, contents, observed, files: observations, links, unchanged: () => sameFiles(observations, links) };
 }
 
 export const installedPackages = (exe: string, name: string) => packageGraph(exe, name).graph.map((p) => p.version).sort();
 
+let programSource: string | undefined;
 export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES): Program | undefined {
   const scope = checking.getStore();
   const key = `${tool}\0${path.resolve(root)}`;
@@ -327,10 +351,20 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
   }
   let previous = latest.get(tool);
   if (previous?.exe !== exe || !previous.unchanged()) {
-    const { graph, roots, main, contents, observed, unchanged } = packageGraph(exe, TOOL_PACKAGES[tool]);
     const searchPath = process.env.NODE_PATH;
-    const launcher = launcherDigest(exe, main, observed);
-    const id = launcher && sha(launcher, JSON.stringify([roots, graph.map(({ dir, version, dependencies }) => [version, contents(dir), dependencies])]), `node@${process.versions.node}:${process.platform}:${process.arch}`);
+    const index = path.join(path.dirname(LASTING), `installed-${tool}.json.zst`);
+    const key = sha(programSource ??= code(closure("cache")), import.meta.dirname, path.resolve(exe), searchPath ?? "", process.version, process.platform, process.arch);
+    let installed = unsure || previous?.exe === exe ? undefined : readProgram(index, key);
+    if (!installed) {
+      const { graph, roots, main, contents, observed, files, links, unchanged } = packageGraph(exe, TOOL_PACKAGES[tool]);
+      const launcher = launcherDigest(exe, main, observed);
+      const id = launcher && sha(launcher, JSON.stringify([roots, graph.map(({ dir, version, dependencies }) => [version, contents(dir), dependencies])]), `node@${process.versions.node}:${process.platform}:${process.arch}`);
+      installed = { id, unchanged };
+      if (id && !unsure) {
+        try { writeWhole(index, zstdCompressSync(JSON.stringify([key, id, [...files], [...links]]))); } catch { /* optional cache */ }
+      }
+    }
+    const { id, unchanged } = installed;
     latest.set(tool, previous = { exe, id, unchanged: () => process.env.NODE_PATH === searchPath && unchanged() });
   }
   const { id, unchanged } = previous;
