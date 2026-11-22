@@ -4931,29 +4931,23 @@ console.log(JSON.stringify(closures));`
 delete globalThis.process;
 for (const entry of entries) failures[entry] = await import("@elizaos/core" + entry.slice(1)).then(() => null, (error) => String(error));
 out.write(JSON.stringify(failures) + "\\n");`
-  const CHECKER = `import fs from "node:fs"; import path from "node:path"; import ts from "typescript";
-const [dir, entries] = JSON.parse(process.argv[1]); const file = path.join(dir, "entries.ts");
-fs.writeFileSync(file, entries.map((entry) => "import \\"@elizaos/core" + entry.slice(1) + "\\";").join("\\n") + "\\nexport {};\\n");
-const program = ts.createProgram([file], { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ES2024, strict: true, noEmit: true, types: ["node"] });
-const checker = program.getTypeChecker(); const names = {};
-program.getSourceFile(file).statements.filter(ts.isImportDeclaration).forEach((statement, index) => {
-  const symbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
-  names[entries[index]] = symbol === undefined ? null : checker.getExportsOfModule(symbol).map((s) => s.name).sort();
-});
-console.log(JSON.stringify(names));`
-  const FIELDS = `import fs from "node:fs"; import path from "node:path"; import ts from "typescript";
-const [dir, core, entries] = JSON.parse(process.argv[1]); const file = path.join(dir, "fields.ts");
+  const INSPECT = `import fs from "node:fs"; import path from "node:path"; import ts from "typescript";
+const [dir, core, entries] = JSON.parse(process.argv[1]); const file = path.join(dir, "entries.ts");
 const surface = JSON.parse(fs.readFileSync(path.resolve(core, "../../spec/core/baseline/core-public-surface.json"), "utf8"));
 fs.writeFileSync(file, entries.map((entry) => "import \\"@elizaos/core" + entry.slice(1) + "\\";").join("\\n") + "\\nexport {};\\n");
 const program = ts.createProgram([file], { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ES2024, strict: true, noEmit: true, types: ["node"] });
 const checker = program.getTypeChecker();
-const modules = new Map(program.getSourceFile(file).statements.filter(ts.isImportDeclaration).map((statement, index) => [entries[index], checker.getSymbolAtLocation(statement.moduleSpecifier)]));
+const modules = new Map(program.getSourceFile(file).statements.filter(ts.isImportDeclaration).map((statement, index) => {
+  const symbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
+  const exports = symbol === undefined ? null : new Map(checker.getExportsOfModule(symbol).map((item) => [item.name, item]));
+  return [entries[index], exports];
+}));
+const names = Object.fromEntries([...modules].map(([entry, exports]) => [entry, exports === null ? null : [...exports.keys()].sort()]));
 const keyOf = (name) => name !== undefined && (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) ? name.text : undefined;
 const tagOf = (node, source) => node === undefined || !ts.isLiteralTypeNode(node) ? undefined : ts.isStringLiteral(node.literal) || ts.isNoSubstitutionTemplateLiteral(node.literal) ? JSON.stringify(node.literal.text) : node.literal.getText(source);
 const differences = [];
 for (const { entry, exports } of surface.entrypoints) {
-  const moduleSymbol = modules.get(entry); if (moduleSymbol === undefined) continue;
-  const packed = new Map(checker.getExportsOfModule(moduleSymbol).map((symbol) => [symbol.name, symbol]));
+  const packed = modules.get(entry); if (!packed) continue;
   for (const { name, declarations = [] } of exports) {
     const required = new Map();
     for (const { kind, signature } of declarations) {
@@ -4977,7 +4971,7 @@ for (const { entry, exports } of surface.entrypoints) {
     }
   }
 }
-console.log(JSON.stringify(differences));`
+console.log(JSON.stringify({ names, fields: differences }));`
   const WRITE = `import fs from "node:fs"; import path from "node:path";
 const [dir, files] = JSON.parse(process.argv[1]);
 for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), text);
@@ -5017,7 +5011,7 @@ console.log(JSON.stringify({
     const result = try host(() => runNode({ script, args: [JSON.stringify(input)], cwd, conditions, timeoutMs: 300_000 }))
     return try Effect.try({ try: () => JSON.parse(result.status === 0 ? result.stdout : ""), catch: () => result })
   }
-  const differences = (label: string, actual: string[], expected: string[]) => [
+  const differences = (label: string, actual: readonly string[], expected: readonly string[]) => [
     ...expected.filter((name) => !actual.includes(name)).map((name) => `${label}: missing ${name}`),
     ...actual.filter((name) => !expected.includes(name)).map((name) => `${label}: extra ${name}`),
   ]
@@ -5124,10 +5118,14 @@ console.log(JSON.stringify({
     ...sourceCompiled.stdout.split("\n").filter((line) => line.includes("error TS")),
     ...(sourceCompiled.status === 0 ? [] : [`tsc exit ${sourceCompiled.status}`]),
   ])
-  const declared = (try node(consumer, CHECKER, [consumer, codeEntries])) as Record<string, string[] | null>
+  const inspection = Schema.Struct({
+    names: Schema.Record(Schema.String, Schema.NullOr(Schema.Array(Schema.String))),
+    fields: Schema.Array(Schema.String),
+  })
+  const declared = try Schema.decodeUnknownEffect(inspection)(try node(consumer, INSPECT, [consumer, packed.sourceDir, codeEntries]))
   const declarations = try record("PackedTypes", "declaration names", baseline.filter((entry) => codeEntries.includes(entry.entry)).flatMap((entry) =>
-    differences(entry.entry, declared[entry.entry] ?? [], entry.exports.map((symbol) => symbol.name))))
-  const fields = try record("PackedTypes", "required fields and discriminants", (try node(consumer, FIELDS, [consumer, packed.sourceDir, codeEntries])) as string[])
+    differences(entry.entry, declared.names[entry.entry] ?? [], entry.exports.map((symbol) => symbol.name))))
+  const fields = try record("PackedTypes", "required fields and discriminants", [...declared.fields])
 
   const other = `${root}/other`
   const otherInstalled = try host(() => installPacked(packed, other))
