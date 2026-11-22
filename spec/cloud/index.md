@@ -319,6 +319,24 @@ pure def lawBackupApprovalCannotBeReplayed(approved: PasswordBackupPurpose, requ
   not(canRedeemBackupApproval(approved, requested, exactVerifier, exactState, grantLive, false))
 ```
 
+### Google sign-in for backup returns to the protected approval page
+
+A browser Google flow started for password backup records that purpose in its
+protected flow cookie. On success or denial it returns to the first-party
+backup approval page with a resume marker. A denial also carries a fixed
+error marker. Ordinary and legacy flows still return to the account page.
+Signing in only establishes a browser session. The owner still explicitly
+approves the backup on the protected page.
+
+```quint
+type BrowserGooglePurpose = GoogleAccount | GooglePasswordBackup
+type BrowserGoogleReturn = GoogleAccountPage | GoogleBackupApprovalPage
+pure def browserGoogleReturn(purpose: BrowserGooglePurpose): BrowserGoogleReturn =
+  if (purpose == GooglePasswordBackup) GoogleBackupApprovalPage else GoogleAccountPage
+pure def lawOnlyBackupGoogleReturnsToApproval(purpose: BrowserGooglePurpose): bool =
+  (browserGoogleReturn(purpose) == GoogleBackupApprovalPage) iff (purpose == GooglePasswordBackup)
+```
+
 ### Every backup change matches the current revision
 
 The service stores at most one complete snapshot per product and account.
