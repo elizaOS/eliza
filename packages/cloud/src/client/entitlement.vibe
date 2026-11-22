@@ -1,7 +1,7 @@
 // spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"; spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"
 import { millisPerSecond, type Micros, type Millis } from "../../gen/cloud__shared__types.effect.vibe"
 import { nextRefreshDelay } from "../../gen/cloud__client.effect.vibe"
-import { EntitlementKey } from "../profile/profile.schema.ts"
+import { EntitlementKey as entitlementKeySchema } from "../profile/profile.schema.ts"
 
 module web {
   /** @throws {never} */
@@ -43,7 +43,7 @@ export const maxEntitlementKeys = 16
 export const maxEntitlementLifetimeSeconds = 60 * 60
 export const clockSkewSeconds = 60
 
-export type EntitlementKey = typeof EntitlementKey.Type
+export type EntitlementKey = typeof entitlementKeySchema.Type
 
 export type EntitlementCheck =
   | "TooLong"
@@ -100,7 +100,7 @@ export type EntitlementClaims = typeof Claims.Type
 
 const readHeader = Schema.decodeUnknownOption(Header)
 const readClaims = Schema.decodeUnknownOption(Claims)
-const readKeys = Schema.decodeUnknownOption(Schema.Struct({ keys: Schema.Array(EntitlementKey).check(Schema.isMaxLength(maxEntitlementKeys)) }))
+const readKeys = Schema.decodeUnknownOption(Schema.Struct({ keys: Schema.Array(entitlementKeySchema).check(Schema.isMaxLength(maxEntitlementKeys)) }))
 
 export function parseEntitlementKeys(body: unknown): ReadonlyArray<EntitlementKey> | undefined {
   const read = readKeys(body)
