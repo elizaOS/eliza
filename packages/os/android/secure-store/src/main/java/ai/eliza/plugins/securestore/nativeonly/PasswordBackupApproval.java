@@ -68,18 +68,6 @@ public final class PasswordBackupApproval {
       state, verifier, grant.scope(), expected, revision, present, current);
   }
 
-  public static PasswordBackupApproval admitNative(URI endpoint, Purpose purpose, String state, String verifier, Owner expected, Grant grant, BooleanSupplier current) throws IOException {
-    if (!(grant.code() instanceof String code) || !code.matches(CODE)) throw new IOException("Invalid native password backup approval");
-    Grant operation = purpose == Purpose.VERIFY
-      ? new Grant(null, grant.scope(), grant.ownerId(), grant.organizationId(), grant.revision(), grant.present())
-      : grant;
-    return admit(endpoint, purpose, state, verifier, expected, operation, current);
-  }
-
-  public static boolean advertisesNativeV2(URI endpoint) throws IOException {
-    return advertisesNative(endpoint, "2");
-  }
-
   public static boolean advertisesNative(URI endpoint, String version) throws IOException {
     HttpsURLConnection request = connect(endpoint, "GET", null);
     try {
