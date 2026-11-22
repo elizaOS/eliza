@@ -3263,7 +3263,7 @@ describe("the documents name what exists", () => {
     const release = read(".github/workflows/release.yml");
     assert.match(release, /^ +- run: pnpm selftest --only --concurrency=1$/m);
     const releasePrerequisites = release.match(/^ +- run: pnpm all (.+) --concurrency=1$/m)?.[1].split(" ").sort();
-    assert.match(scripts.prepare, /^node vibestack\/spec\.ts tasks \/\/#build && /);
+    assert.match(scripts.prepare, /^node vibestack\/spec\.ts gen --install \/\/#build(?: |$)/);
     assert.deepEqual(["//#build", ...releasePrerequisites ?? []].sort(), JSON.parse(read("turbo.json")).tasks["//#selftest:tools:a"].dependsOn.toSorted(), "pack and the release tasks materialize every prerequisite before using the isolated CI shard cache");
     assert.deepEqual(read(".github/workflows/fuzz.yml").match(/^ +shard: \[(.+)\]$/m)?.[1].split(", "), shards.map((task) => task.split(":")[2]), "the nightly run names every shard");
     const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`].dependsOn);
@@ -3411,14 +3411,20 @@ function theCommandLine() {
     fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = nope", "A value"));
     assert.match((await runCli(script, root, "gen", "--if-valid")).stdout, /gen\/ was not generated/);
     assert.deepEqual(generatedBefore(), stable);
-    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "install-gen", packageManager: JSON.parse(read("package.json")).packageManager, scripts: { gen: "node vibestack/spec.ts gen" } }));
-    fs.writeFileSync(path.join(root, "turbo.json"), JSON.stringify({ tasks: { "//#gen": { inputs: ["spec/**"], outputs: ["gen/**"] } } }));
+    const build = "node -e \"require('fs').writeFileSync('tools-built', '')\"";
+    const owner = "node -e \"require('fs').copyFileSync('owner-source', 'owner-generated')\"";
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "install-gen", packageManager: JSON.parse(read("package.json")).packageManager,
+      scripts: { gen: "node vibestack/spec.ts gen", build, owner } }));
+    fs.writeFileSync(path.join(root, "turbo.json"), JSON.stringify({ tasks: {
+      "//#gen": { inputs: ["spec/**"], outputs: ["gen/**"] }, "//#build": { inputs: ["package.json"], cache: false },
+      "//#owner": { inputs: ["owner-source", "package.json"], cache: false },
+    } }));
     fs.writeFileSync(path.join(root, "pnpm-workspace.yaml"), "packages: [packages/*]\n");
     fs.mkdirSync(path.join(root, "packages/app"), { recursive: true });
     fs.writeFileSync(path.join(root, "packages/app/package.json"), JSON.stringify({ name: "app" }));
     fs.symlinkSync(nodeModules, path.join(root, "node_modules"), "dir");
     fs.symlinkSync(path.dirname(script), path.join(root, "vibestack"), "dir");
-    const prepare = (hosted: boolean, job = "verify") => exec(process.execPath, [script, "gen", "--install"], root, { ...process.env, GITHUB_ACTIONS: String(hosted), GITHUB_JOB: job, TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
+    const prepare = (hosted: boolean, job = "verify", ...tasks: string[]) => exec(process.execPath, [script, "gen", "--install", ...tasks], root, { ...process.env, GITHUB_ACTIONS: String(hosted), GITHUB_JOB: job, TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
     for (const hosted of [false, true]) {
       const invalid = await prepare(hosted);
       assert.equal(invalid.status, 0, invalid.stderr);
@@ -3427,10 +3433,19 @@ function theCommandLine() {
     }
     fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = 43", "A value"));
     fs.rmSync(path.join(root, "gen/value.ts"));
-    const fixtures = await prepare(true, "vibestack-fixture-selftests");
+    const prerequisites = ["//#build", "//#owner"];
+    const fixtures = await prepare(true, "vibestack-fixture-selftests", ...prerequisites);
     assert.equal(fixtures.status, 0, fixtures.stderr);
+    assert.ok(fs.existsSync(path.join(root, "tools-built")));
     assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
-    const installed = await prepare(true);
+    for (const hosted of [false, true]) {
+      const missing = await prepare(hosted, "verify", ...prerequisites);
+      assert.notEqual(missing.status, 0, "a failed prerequisite fails ordinary installs");
+      assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    }
+    fs.writeFileSync(path.join(root, "owner-source"), "external owner");
+    const installed = await prepare(true, "verify", ...prerequisites);
+    assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "external owner");
     assert.equal(installed.status, 0, installed.stderr);
     assert.doesNotMatch(installed.stdout, /gen\/ was not generated/);
     assert.equal((await import(path.join(root, "gen/value.ts") + "?installed")).answer, 43);
