@@ -8,7 +8,7 @@ const googleCapabilitySchema = Schema.Literals([
   "google.basic_identity", "google.gmail.triage", "google.gmail.send", "google.gmail.manage", "google.gmail.drafts",
   "google.gmail.mailbox", "google.calendar.read", "google.calendar.write"
 ])
-export type GoogleCapability = typeof googleCapabilitySchema.Type
+type GoogleCapability = typeof googleCapabilitySchema.Type
 
 const optionalText = Schema.NullOr(Schema.String)
 
@@ -28,10 +28,10 @@ const googleStatusSchema = Schema.Struct({
   linkedAt: optionalText,
   lastUsedAt: optionalText
 })
-export type GoogleStatus = typeof googleStatusSchema.Type
+type GoogleStatus = typeof googleStatusSchema.Type
 
 const connectStartSchema = Schema.Struct({ authUrl: Schema.String, appReturn: Schema.optionalKey(Schema.Literal(2)) })
-export type ConnectStart = typeof connectStartSchema.Type
+type ConnectStart = typeof connectStartSchema.Type
 
 export type ConnectState = string & { readonly __brand: "ConnectState" }
 
@@ -39,7 +39,7 @@ export function isConnectState(value: string): value is ConnectState {
   return /^[A-Za-z0-9_-]{43}$/.test(value)
 }
 
-export interface ConnectRequest {
+interface ConnectRequest {
   readonly capabilities: ReadonlyArray<GoogleCapability>
   readonly redirect?: { readonly connectReturn: string; readonly state: ConnectState }
 }
@@ -64,7 +64,7 @@ const mailCardSchema = Schema.Struct({
 export type MailCard = typeof mailCardSchema.Type
 
 const mailTriageSchema = Schema.Struct({ messages: Schema.Array(mailCardSchema), syncedAt: Schema.String, mailboxHistoryId: Schema.String })
-export type MailTriage = typeof mailTriageSchema.Type
+type MailTriage = typeof mailTriageSchema.Type
 
 const mailSearchSchema = Schema.Struct({
   messages: Schema.Array(mailCardSchema),
@@ -73,7 +73,7 @@ const mailSearchSchema = Schema.Struct({
   mailboxHistoryId: Schema.String,
   supportsSpamTrash: Schema.Boolean
 })
-export type MailSearch = typeof mailSearchSchema.Type
+type MailSearch = typeof mailSearchSchema.Type
 
 const mailMessageSchema = Schema.Struct({
   message: mailCardSchema,
@@ -85,12 +85,12 @@ const mailMessageSchema = Schema.Struct({
   })),
   authenticationResults: Schema.optionalKey(optionalText)
 })
-export type MailMessage = typeof mailMessageSchema.Type
+type MailMessage = typeof mailMessageSchema.Type
 
 const mailKindSchema = Schema.Literals([
   "send", "draft-create", "draft-replace", "draft-delete", "archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"
 ])
-export type MailKind = typeof mailKindSchema.Type
+type MailKind = typeof mailKindSchema.Type
 
 const mailCapabilitiesSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -98,11 +98,11 @@ const mailCapabilitiesSchema = Schema.Struct({
   kinds: Schema.Array(mailKindSchema),
   attachmentPolicy: Schema.Struct({ mimeTypes: Schema.Array(Schema.String), maxBytes: Schema.Number })
 })
-export type MailCapabilities = typeof mailCapabilitiesSchema.Type
+type MailCapabilities = typeof mailCapabilitiesSchema.Type
 
-export type LabelKind = Exclude<MailKind, "send" | "draft-create" | "draft-replace" | "draft-delete">
+type LabelKind = Exclude<MailKind, "send" | "draft-create" | "draft-replace" | "draft-delete">
 
-export type MailProposal =
+type MailProposal =
   | {
     readonly kind: "send" | "draft-create" | "draft-replace"
     readonly mode: "compose" | "reply" | "reply-all" | "forward"
@@ -157,7 +157,7 @@ const mailOperationSchema = Schema.Struct({
   review: Schema.optionalKey(mailReviewSchema),
   providerExactlyOnce: Schema.Literal(false)
 })
-export type MailOperation = typeof mailOperationSchema.Type
+type MailOperation = typeof mailOperationSchema.Type
 
 const calendarRowSchema = Schema.Struct({
   calendarId: Schema.String,
@@ -168,7 +168,7 @@ const calendarRowSchema = Schema.Struct({
   read: Schema.Boolean,
   write: Schema.Boolean
 })
-export type CalendarRow = typeof calendarRowSchema.Type
+type CalendarRow = typeof calendarRowSchema.Type
 
 const calendarEventSchema = Schema.Struct({
   externalId: Schema.String,
@@ -192,14 +192,14 @@ const calendarEventSchema = Schema.Struct({
   })),
   metadata: Schema.Struct({ iCalUID: optionalText, createdAt: optionalText, updatedAt: optionalText })
 })
-export type CalendarEvent = typeof calendarEventSchema.Type
+type CalendarEvent = typeof calendarEventSchema.Type
 
 const calendarFeedSchema = Schema.Struct({ calendarId: Schema.String, events: Schema.Array(calendarEventSchema), syncedAt: Schema.String })
-export type CalendarFeed = typeof calendarFeedSchema.Type
+type CalendarFeed = typeof calendarFeedSchema.Type
 
 const EventAnswer = Schema.Struct({ event: calendarEventSchema })
 
-export interface EventFields {
+interface EventFields {
   readonly title: string
   readonly description?: string
   readonly location?: string

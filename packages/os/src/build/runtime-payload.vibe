@@ -172,7 +172,7 @@ export interface StageRuntimePayload {
   readonly runtimes?: readonly RuntimeInput[]
 }
 
-export interface StagedRuntimePayload {
+interface StagedRuntimePayload {
   readonly output: string
   readonly inventory: readonly InventoryRow[]
   readonly workflowWorker: WorkflowWorker | undefined
@@ -187,7 +187,7 @@ export interface BuildNodeRuntime {
   readonly lock?: string
 }
 
-export interface BuiltNodeRuntime {
+interface BuiltNodeRuntime {
   readonly dir: string
   readonly abi: AndroidAbi
   readonly version: string
@@ -195,13 +195,13 @@ export interface BuiltNodeRuntime {
   readonly size: number
 }
 
-export error PayloadInputInvalid { reason: string }
+error PayloadInputInvalid { reason: string }
 export error PayloadRefused { reason: PayloadRefusal; subject: string }
-export error RuntimeFetchFailed { url: string; message: string }
-export error RuntimeNotAndroidExecutable { abi: AndroidAbi; path: string }
-export error PayloadOutputExists { output: string }
-export error NodeBuildRefused { reason: string }
-export error NodeBuildFailed { command: string; code: number; output: string }
+error RuntimeFetchFailed { url: string; message: string }
+error RuntimeNotAndroidExecutable { abi: AndroidAbi; path: string }
+error PayloadOutputExists { output: string }
+error NodeBuildRefused { reason: string }
+error NodeBuildFailed { command: string; code: number; output: string }
 
 export const INVENTORY_ASSET = "assets/agent/inventory.json"
 const WORKER_RUNTIME_DIR = "agent/workflow-worker"

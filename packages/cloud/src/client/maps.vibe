@@ -17,14 +17,10 @@ module browser {
 }
 import { freshRequestId } from browser
 
-export type {
-  MapsCapabilities, MapsPlaceResponse, MapsPlacesResponse, MapsRoutesResponse, MapsViewportResponse,
-  PlaceDetailsRequest, ReverseRequest, RoutesRequest, TextSearchRequest, TileAddress, ViewportRequest
-}
 
 export type MapsRefusal = "NoRoute" | "UnsupportedMode" | "UnsupportedRegion" | "ProviderInvalidResponse"
 
-export interface MapsTile {
+interface MapsTile {
   readonly contentType: string
   readonly bytes: Uint8Array
 }

@@ -278,7 +278,7 @@ effect function continueDowngrade(store: Store.Shape, row: PlanCommandRecord) {
   return try observeDowngrade(latest)
 }
 
-export effect function confirmDowngrade(authorization: string | undefined, input: PlanConfirmation) {
+effect function confirmDowngrade(authorization: string | undefined, input: PlanConfirmation) {
   if (!idempotencyKeyPattern.test(input.idempotencyKey) || input.quoteId === "" ||
       (input.expectedSubscriptionRevision !== undefined && (!Number.isSafeInteger(input.expectedSubscriptionRevision) || input.expectedSubscriptionRevision < 1)))
     throw refused("InvalidRequest")

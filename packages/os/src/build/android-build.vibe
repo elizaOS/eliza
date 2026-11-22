@@ -128,12 +128,12 @@ export interface AndroidBuildRun {
   readonly machine: Machine.Shape
 }
 
-export interface BuildStep {
+interface BuildStep {
   readonly state: AndroidBuild
   readonly detail: string
 }
 
-export interface BuiltAndroid {
+interface BuiltAndroid {
   readonly output: string
   readonly files: readonly string[]
   readonly manifest: readonly ManifestRow[]
@@ -142,7 +142,7 @@ export interface BuiltAndroid {
 
 export error AndroidBuildRefused { refusal: RequestRefusal; message: string }
 export error AndroidBuildFailed { failure: BuildFailure; message: string }
-export error AndroidBuildStepRefused { step: Event["type"]; state: AndroidBuild }
+error AndroidBuildStepRefused { step: Event["type"]; state: AndroidBuild }
 
 interface HostDocument {
   readonly signing: readonly string[] | null

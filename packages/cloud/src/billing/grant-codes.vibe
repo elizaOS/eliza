@@ -38,8 +38,8 @@ interface SelectedGrant {
   readonly codeKey: string
 }
 
-export error InvalidGrantCodeRequest { problem: string }
-export error GrantRevocationMoved {}
+error InvalidGrantCodeRequest { problem: string }
+error GrantRevocationMoved {}
 
 const codes = outputRows("grant_codes", Codes)
 const RedeemBody = Schema.Struct({ code: Schema.String, idempotencyKey: Schema.String })

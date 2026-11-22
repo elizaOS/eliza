@@ -48,4 +48,4 @@ module node {
   }
 }
 
-export { resources, ResourcesClosed, type HeldResources, type ResourceName } from node
+export { resources, type HeldResources, type ResourceName } from node

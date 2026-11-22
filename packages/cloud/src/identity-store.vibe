@@ -20,7 +20,7 @@ export const accessCookie = "__Host-eliza-session"
 export const refreshCookie = "__Host-eliza-refresh"
 const accessPattern = /^eliza_session_[A-Za-z0-9_-]{43}$/
 const refreshPattern = /^eliza_refresh_[A-Za-z0-9_-]{54}$/
-export const devicePattern = /^eliza_mobile_[0-9a-f]{64}$/
+const devicePattern = /^eliza_mobile_[0-9a-f]{64}$/
 
 export effect function authQuery<Row extends Record<string, unknown>>(db: Client, sql: string, params: readonly unknown[] = []) {
   return try tryPromise({ try: () => db.query<Row>(sql, [...params]), catch: () => new StorageUnavailable() })
@@ -79,7 +79,7 @@ export effect function accessDigest(request: Request) {
   return token && accessPattern.test(token) ? try digestCredential(token) : null
 }
 
-export effect function refreshDigest(request: Request) {
+effect function refreshDigest(request: Request) {
   const token = readCookie(request, refreshCookie)
   return token && refreshPattern.test(token) ? try digestCredential(token) : null
 }

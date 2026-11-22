@@ -40,7 +40,7 @@ export interface JsonOptions {
 }
 
 export const providerTimeout = 10 * millisPerSecond
-export const defaultMaxBytes = 16 * 1024 * 1024
+const defaultMaxBytes = 16 * 1024 * 1024
 const tokenMaxBytes = 64 * 1024
 
 schema TokenReply { access_token: string; expires_in: number; refresh_token?: string; scope?: string }
@@ -86,7 +86,7 @@ export function failureReply(failure: GoogleFailure): ProviderReply {
   }
 }
 
-export effect function googleProfile(): GoogleProfile!Unavailable!Deployment {
+effect function googleProfile(): GoogleProfile!Unavailable!Deployment {
   const google = (try Deployment).settings.google
   if (google === undefined) throw new Unavailable()
   return google

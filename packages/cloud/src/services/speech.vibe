@@ -7,30 +7,30 @@ import { synthesize, synthesizeTimed, prepareTranscription, ProviderInvalidRespo
 import { markDispatched, reserve, settle, type Settlement } from "../shared/metering.vibe"
 import { SynthesisBody } from "./speech-batch.schema.ts"
 
-export type SpeechSettings = NonNullable<EnvironmentProfile["speech"]>
+type SpeechSettings = NonNullable<EnvironmentProfile["speech"]>
 
-export const uploadLimit = 25 * 1024 * 1024
-export const timedBytesLimit = 8 * 1024 * 1024
-export const timedFrameLimit = 2048
-export const audioTypes: ReadonlyArray<string> = ["audio/mp3", "audio/mpeg", "audio/mp4", "audio/m4a", "audio/x-m4a", "audio/wav", "audio/x-wav", "audio/webm", "audio/ogg"]
+const uploadLimit = 25 * 1024 * 1024
+const timedBytesLimit = 8 * 1024 * 1024
+const timedFrameLimit = 2048
+const audioTypes: ReadonlyArray<string> = ["audio/mp3", "audio/mpeg", "audio/mp4", "audio/m4a", "audio/x-m4a", "audio/wav", "audio/x-wav", "audio/webm", "audio/ogg"]
 
 const providerPause = 5_000
 const uploadFields: ReadonlyArray<string> = ["audio", "languageCode", "provider"]
 const kilobitsPerSecond: Readonly<Record<string, number>> = { "audio/wav": 1411, "audio/x-wav": 1411, "audio/webm": 96, "audio/ogg": 96 }
 const encoder = new TextEncoder()
 
-export interface Upload {
+interface Upload {
   readonly audio: Uint8Array
   readonly mimeType: string
   readonly languageCode?: string
   readonly durationMs: number
 }
 
-export function ttsQuote(text: string, settings: SpeechSettings): number {
+function ttsQuote(text: string, settings: SpeechSettings): number {
   return Math.ceil(text.length * settings.tts.microsPerCharacter * 6 / 5)
 }
 
-export function sttCharge(durationMs: number, settings: SpeechSettings): number {
+function sttCharge(durationMs: number, settings: SpeechSettings): number {
   return Math.ceil(Math.max(durationMs, 0) * settings.stt.microsPerSecond / 1000)
 }
 
@@ -42,7 +42,7 @@ function ascii(bytes: Uint8Array, at: number, length: number): string {
   return String.fromCharCode(...bytes.subarray(at, at + length))
 }
 
-export function wavDurationMs(bytes: Uint8Array): number | undefined {
+function wavDurationMs(bytes: Uint8Array): number | undefined {
   if (ascii(bytes, 0, 4) !== "RIFF" || ascii(bytes, 8, 4) !== "WAVE") return undefined
   let at = 12
   let byteRate = 0
@@ -59,7 +59,7 @@ export function wavDurationMs(bytes: Uint8Array): number | undefined {
   return undefined
 }
 
-export function uploadDurationMs(audio: Uint8Array, mimeType: string): number | undefined {
+function uploadDurationMs(audio: Uint8Array, mimeType: string): number | undefined {
   if (mimeType === "audio/wav" || mimeType === "audio/x-wav") return wavDurationMs(audio)
   return Math.max(1000, Math.ceil(audio.length * 8 / (kilobitsPerSecond[mimeType] ?? 128)))
 }

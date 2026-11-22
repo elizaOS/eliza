@@ -16,7 +16,7 @@ import { applyCheckoutEvent } from "./checkout.vibe"
 import { observeSubscription, reconcileSubscription } from "./subscriptions.vibe"
 
 export const webhookPath = "/api/stripe/webhook"
-export const maxWebhookBytes = 256 * 1024
+const maxWebhookBytes = 256 * 1024
 const legacyOwner: SessionOwner = { agentId: "cloud", actorId: "payment-provider", connector: "provider-events" }
 const stripeTypes: ReadonlyMap<string, ProviderEventType> = new Map<string, ProviderEventType>([
   ["checkout.session.completed", "CheckoutSessionCompleted"],
@@ -30,7 +30,7 @@ const stripeTypes: ReadonlyMap<string, ProviderEventType> = new Map<string, Prov
   ["charge.dispute.funds_reinstated", "DisputeFundsReinstated"]
 ])
 
-export error ProviderEventMalformed { id: string; type: string }
+error ProviderEventMalformed { id: string; type: string }
 
 type Sink =
   | { readonly kind: "checkout"; readonly session: StripeCheckoutSession }
@@ -421,7 +421,7 @@ export effect function drainProviderEvents(now: number): DrainReport!!CloudConte
   return report satisfies DrainReport
 }
 
-export effect function drainDue() {
+effect function drainDue() {
   try drainProviderEvents(try Clock.currentTimeMillis)
 }
 

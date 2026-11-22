@@ -212,7 +212,6 @@ module node {
   }
 }
 export {
-  createTaskSealer, deriveTaskKeys, isPrivateFile, privateDirectory, sealedEvidenceCodec, sealedFilePorts, sealedPrefix,
-  sealedTextCodec, storageCorrupt, storageUnavailable, syncDirectory, writePrivateFile, writePrivateFileSync,
+  createTaskSealer, deriveTaskKeys, isPrivateFile, privateDirectory, storageCorrupt,
   type TaskKeys, type TaskPurpose, type TaskSealer,
 } from node

@@ -11,11 +11,11 @@ import { clientAddress, sendLinkCode, verifyLinkCode } from "./code-challenges.v
 import { googleLinkChallenge, googleLinkProof } from "./federated.vibe"
 import { revokeOthers } from "./sessions.vibe"
 
-export type MethodKind = "email" | "phone" | "google"
+type MethodKind = "email" | "phone" | "google"
 
-export type MethodsCaller = Pick<Extract<Signed, { readonly kind: "session" }>, "userId" | "sessionKey">
+type MethodsCaller = Pick<Extract<Signed, { readonly kind: "session" }>, "userId" | "sessionKey">
 
-export interface Entry {
+interface Entry {
   readonly kind: MethodKind
   readonly subject: string
 }
@@ -33,7 +33,7 @@ schema PhoneVerify { reviewId: string; phone: string; code: string; clientId: st
 schema GoogleChallenge { clientId: string; environment: "production" | "staging"; redirectUri: string; codeChallenge: string; codeChallengeMethod: "S256" }
 schema GoogleLink { reviewId: string; challengeId: string; idToken: string; codeVerifier: string }
 
-export function kindOf(text: string | undefined): MethodKind | undefined {
+function kindOf(text: string | undefined): MethodKind | undefined {
   return text === "email" || text === "phone" || text === "google" ? text : text === "sms" ? "phone" : undefined
 }
 
@@ -114,7 +114,7 @@ effect function answered(outcome: Attempt, method: string) {
   }
 }
 
-export effect function openReview(caller: MethodsCaller, reviewId: string, now: number) {
+effect function openReview(caller: MethodsCaller, reviewId: string, now: number) {
   const store = try Store
   return try store.transaction(effect (tx) => {
     const stepped = try stepReview(tx, caller.userId, { type: "review", reviewId, now })
@@ -134,7 +134,7 @@ effect function useUpOnRefusal(caller: MethodsCaller, reviewId: string, failure:
   store.transaction((tx) => stepReview(tx, caller.userId, { type: "link", reviewId, now, proof: { tag: "Unproven", refusal: failure.refusal }, holder: "NobodyHolds", kindHeld: false })) catch () => undefined
 }
 
-export effect function attemptLink(caller: MethodsCaller, reviewId: string, entry: Entry, proof: LinkProof, now: number, provenEmail?: string) {
+effect function attemptLink(caller: MethodsCaller, reviewId: string, entry: Entry, proof: LinkProof, now: number, provenEmail?: string) {
   const store = try Store
   const identity: LinkedIdentity = { method: methodsOf[entry.kind].method, subject: entry.subject, ...(provenEmail === undefined ? {} : { provenEmail }) }
   return store.transaction(effect (tx) => {
@@ -148,7 +148,7 @@ export effect function attemptLink(caller: MethodsCaller, reviewId: string, entr
   }
 }
 
-export effect function attemptUnlink(caller: MethodsCaller, kind: MethodKind | undefined, reviewId: string, now: number) {
+effect function attemptUnlink(caller: MethodsCaller, kind: MethodKind | undefined, reviewId: string, now: number) {
   const store = try Store
   return try store.transaction(effect (tx) => {
     const entries = try entriesOf(tx, caller.userId, true)
@@ -157,11 +157,6 @@ export effect function attemptUnlink(caller: MethodsCaller, kind: MethodKind | u
     if (target !== undefined) for (const action of stepped.out.out) try perform(tx, action, caller, { method: methodsOf[target.kind].method, subject: target.subject }, now)
     return stepped.state.outcome
   })
-}
-
-export effect function readMethodReview(userId: string) {
-  const store = try Store
-  return (try store.transaction((tx) => loadRow(tx, reviewRows, userId, false))).state
 }
 
 export const routes: ReadonlyArray<Route> = [

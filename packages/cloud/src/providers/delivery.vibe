@@ -8,7 +8,7 @@ import { Store, toInt, toText } from "../store/store.vibe"
 
 export type DeliveryContext = Deployment | Store | HttpClient.HttpClient
 
-export const deliveryBudget = 10_000
+const deliveryBudget = 10_000
 
 const loopbackAddress = /^(?:127(?:\.\d{1,3}){3}|::1|::ffff:127(?:\.\d{1,3}){3})$/
 

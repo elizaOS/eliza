@@ -74,7 +74,7 @@ module node {
 }
 import { assetsProblem, buffers, componentOverlay, hostPlatform, moduleClosureProblem, nativeHostConfig, reviewedSources, sha256Hex } from node
 
-export type ChromiumTarget = "chrome_public_apk" | "system_webview_apk"
+type ChromiumTarget = "chrome_public_apk" | "system_webview_apk"
 
 export interface PrepareChromium {
   readonly source: string
@@ -93,13 +93,13 @@ export interface BuildChromium extends PrepareChromium {
   readonly jobs?: number | undefined
 }
 
-export type PreparedChromium = ComponentReport & {
+type PreparedChromium = ComponentReport & {
   readonly patchSha256: string
   readonly launcherSignerSha256: string
   readonly releaseQualified: false
 }
 
-export interface ChromiumBuildReport {
+interface ChromiumBuildReport {
   readonly schemaVersion: 1
   readonly component: PreparedChromium | null
   readonly target: ChromiumTarget
@@ -133,7 +133,7 @@ export interface AndroidConsumerInputs {
   readonly composeAssets?: (input: { readonly assets: Record<string, Buffer>; readonly output: string }) => Promise<ComposedAssets>
 }
 
-export interface PreparedConsumerInputs {
+interface PreparedConsumerInputs {
   readonly sourceCommit: string
   readonly certificateSha256: string
   readonly apkSha256: string
@@ -142,10 +142,10 @@ export interface PreparedConsumerInputs {
   readonly composition: unknown
 }
 
-export error ChromiumInputInvalid { reason: string }
-export error ChromiumSourceRefused { reason: string }
-export error ChromiumBuildFailed { reason: string }
-export error BrowserExtensionInvalid { reason: string }
+error ChromiumInputInvalid { reason: string }
+error ChromiumSourceRefused { reason: string }
+error ChromiumBuildFailed { reason: string }
+error BrowserExtensionInvalid { reason: string }
 
 const DEFAULT_APPLICATION = "ai.elizaos.app"
 const HEX64 = /^[a-fA-F0-9]{64}$/

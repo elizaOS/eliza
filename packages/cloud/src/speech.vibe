@@ -24,7 +24,7 @@ export type SpeechEnv = WorkerDatabase & NativeRegistryEnv & {
 }
 
 export const speechRoute = "/api/v1/voice/speech"
-export const speechWindowSeconds = 60
+const speechWindowSeconds = 60
 export const speechPcmBudget = speechWindowSeconds * 32_000
 export const speechCharacters = 4096
 export const speechPhraseCharacters = 1024

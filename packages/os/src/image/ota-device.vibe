@@ -18,7 +18,7 @@ export effect function deviceTools(serial: string, adb: string = "adb", fastboot
   return tools
 }
 
-export function slotOf(value: string | undefined): Slot {
+function slotOf(value: string | undefined): Slot {
   return value === "_a" || value === "a" ? "SlotA" : value === "_b" || value === "b" ? "SlotB" : "NoSlot"
 }
 
@@ -39,12 +39,12 @@ function adbProperties(text: string): ReadonlyMap<string, string> {
   return values
 }
 
-export effect function readAdb(tool: DeviceTools, args: readonly string[]) {
+effect function readAdb(tool: DeviceTools, args: readonly string[]) {
   const receipt = captureCommand(tool.adb, ["-s", tool.serial, ...args], 30_000) catch () => null
   return receipt !== null && receipt.code === 0 ? utf8.decode(receipt.stdout).trim() : null
 }
 
-export effect function fastbootVariable(tool: DeviceTools, name: string) {
+effect function fastbootVariable(tool: DeviceTools, name: string) {
   const receipt = captureCommand(tool.fastboot, ["-s", tool.serial, "getvar", name], 30_000) catch () => null
   if (receipt === null || receipt.code !== 0) return undefined
   const prefix = `${name}:`

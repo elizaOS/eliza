@@ -40,7 +40,7 @@ export interface StoredCheckout {
   readonly state: Checkout
 }
 
-export interface StartRequest {
+interface StartRequest {
   readonly planKey: PlanKey
   readonly idempotencyKey: string
   readonly presentation: Presentation
@@ -51,7 +51,7 @@ type Admission =
   | { readonly kind: "live"; readonly stored: StoredCheckout }
   | { readonly kind: "fresh"; readonly customerId: string | undefined }
 
-export type CheckoutAnswer =
+type CheckoutAnswer =
   | { readonly status: "open"; readonly commandId: string; readonly checkoutUrl: string; readonly sessionId: string; readonly expiresAt: number }
   | {
       readonly status: "open"; readonly commandId: string; readonly uiMode: "embedded"; readonly sessionId: string; readonly clientSecret: string

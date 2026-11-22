@@ -67,8 +67,8 @@ const evidenceName = { EmulatorObservation: "emulator-observation", BootloaderOb
 const outcomeName = { Met: "pass", Unmet: "fail", Unknown: "unknown" } as const
 const levelName = { required: "Required", preferred: "Preferred" } as const satisfies Readonly<Record<Requirement["level"], RequirementLevel>>
 
-export error RequirementsInvalid { reason: string }
-export error QualificationRefused { reason: string }
+error RequirementsInvalid { reason: string }
+error QualificationRefused { reason: string }
 export error QualificationUsage { reason: string }
 
 function modelRequirements(requirements: DeviceRequirements): ModelRequirement[] {

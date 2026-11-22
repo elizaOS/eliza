@@ -22,7 +22,7 @@ export interface LinkedIdentity extends Identity {
 
 export type AccountFailure = StoreFailure | RowCorrupt | RowConflict | Rejected | Refused
 
-export const accountRows = outputRows<Account, Event, AccountEffect[], Rejected, NotAState>("accounts", { initial, decodeState, apply })
+const accountRows = outputRows<Account, Event, AccountEffect[], Rejected, NotAState>("accounts", { initial, decodeState, apply })
 
 const providers = { EmailSignIn: "email", PhoneSignIn: "sms", GoogleSignIn: "google" } as const satisfies Record<Identity["method"], string>
 const statusOfColumn: Readonly<Record<string, AccountStatus>> = { active: "Active", deleting: "Deleting", erased: "Erased" }
@@ -146,7 +146,7 @@ export effect function unlinkIdentity(tx: Tx, userId: string, given: Identity, n
   }
 }
 
-export effect function applyReferralCode(tx: Tx, userId: string, given: string, now: number): void!AccountFailure {
+effect function applyReferralCode(tx: Tx, userId: string, given: string, now: number): void!AccountFailure {
   const code = given.trim().toUpperCase()
   if (code === "") throw refused("InvalidRequest")
   const holder = toText((try tx.query("SELECT user_id FROM referral_codes WHERE code = $1", [code]))[0]?.user_id)

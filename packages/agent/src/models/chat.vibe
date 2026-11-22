@@ -14,7 +14,7 @@ export interface Endpoint {
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
 }
 
-export interface Sink {
+interface Sink {
   readonly stream?: boolean
   readonly onStreamChunk?: StreamChunkCallback
 }
@@ -23,7 +23,7 @@ export error ModelRefusal { message: string; code: string | undefined; status: n
 
 export error Refused { cloud: CloudFailure }
 
-export error StreamConsumerFailed { cause: unknown }
+error StreamConsumerFailed { cause: unknown }
 
 schema Choice { message: { content: string } }
 const Completion = Schema.Struct({ choices: Schema.Array(Choice).check(Schema.isMinLength(1)) })
@@ -95,7 +95,6 @@ module wireFormat {
   }
 }
 import { conversation, description, titleOf } from wireFormat
-export { description, titleOf }
 
 module edge {
   import { Cause, Effect, Exit } from "effect"

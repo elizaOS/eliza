@@ -23,9 +23,9 @@ import { readViewProfileChange, supportedViews, viewProfileWire } from "./capabi
 import { changeEnrollment, changeViewProfile, enrollment, viewProfile, DeviceStoreUnavailable, type EnrollmentEvent } from "./store.vibe"
 import { hashOf, sameHash } from node
 
-export const deviceIdHeader = "x-eliza-device-id"
-export const deviceKeyHeader = "x-eliza-device-key"
-export const workflowProtocolLimit = 5
+const deviceIdHeader = "x-eliza-device-id"
+const deviceKeyHeader = "x-eliza-device-key"
+const workflowProtocolLimit = 5
 
 const deviceKeyPattern = /^[a-f0-9]{64}$/
 const offeredCapabilities: readonly string[] = allCapabilities.map(capabilityName)

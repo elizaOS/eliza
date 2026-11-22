@@ -20,3 +20,8 @@ export {
   createLiveVoiceSession, parseVoiceTranscriptEnvelope, VOICE_TRANSCRIPT_STREAM,
   type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
 } from "./live-session.vibe"
+export {
+  audioBlobBase64, captureBlockSamples, decodeRecordedClip, encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
+} from "./capture.vibe"
+export { browserCaptureAudio, browserClipAudio } from "./capture-browser.ts"
+export { attachProgressiveSpeech, speakerPortOf } from "./playback.vibe"

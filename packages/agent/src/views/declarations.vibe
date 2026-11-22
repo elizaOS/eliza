@@ -13,7 +13,7 @@ import { newInstallationId } from node
 
 export const viewsModuleName = "@elizaos/agent/views"
 
-export interface Declarations {
+interface Declarations {
   readonly views: DeclaredView[]
   readonly labels: ReadonlyMap<string, string>
 }

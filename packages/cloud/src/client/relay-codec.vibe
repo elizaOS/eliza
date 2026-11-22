@@ -131,5 +131,3 @@ export function encodeRelayAudio(audio: RelayAudio): Uint8Array | undefined {
   const written = writeRelay({ kind: "Audio", id: bytesOf(audio.id), pcm: Array.from(audio.pcm) })
   return written.kind === "Written" ? Uint8Array.from(written.bytes) : undefined
 }
-
-export const relayCodec = { decodeDeviceFrame, encodeWireFrame, encodeClientFrame, decodeServerFrame, encodeRelayAudio, decodeRelayFrame } as const

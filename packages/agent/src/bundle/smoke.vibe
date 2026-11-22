@@ -13,7 +13,7 @@ export interface SmokeInput {
   readonly stateDirectory: string
 }
 
-export interface SmokeReport {
+interface SmokeReport {
   readonly loaded: readonly string[]
   readonly registered: BundleManifest["actions"]
 }

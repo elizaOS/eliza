@@ -29,11 +29,11 @@ const wireFundingLaneSchema = Schema.Literals(["allowanceThenCredits", "creditsO
 export type WirePlanKey = typeof wirePlanKeySchema.Type
 export type PaidWirePlanKey = typeof paidWirePlanKeySchema.Type
 export type WirePlanSource = typeof wirePlanSourceSchema.Type
-export type WireAccountStatus = typeof wireAccountStatusSchema.Type
-export type WireSubscriptionStatus = typeof wireSubscriptionStatusSchema.Type
+type WireAccountStatus = typeof wireAccountStatusSchema.Type
+type WireSubscriptionStatus = typeof wireSubscriptionStatusSchema.Type
 export type WireControlAction = typeof wireControlActionSchema.Type
 export type WireAllowanceState = typeof wireAllowanceStateSchema.Type
-export type WireFundingLane = typeof wireFundingLaneSchema.Type
+type WireFundingLane = typeof wireFundingLaneSchema.Type
 
 const snapshotPlanSchema = Schema.Struct({ key: wirePlanKeySchema, source: wirePlanSourceSchema, effectiveUntil: Schema.NullOr(millis) })
 
@@ -170,7 +170,7 @@ export interface LifecycleRequest {
   readonly idempotencyKey: string
 }
 
-export type Answer = "snapshot" | "redeem" | "command" | "commands" | "review" | "payment" | "checkout"
+type Answer = "snapshot" | "redeem" | "command" | "commands" | "review" | "payment" | "checkout"
 
 function unreadable(answer: Answer, issue: unknown): CloudError {
   return new CloudError({ failure: { tag: "CloudProviderIssue" }, cause: { answer, issue } })
@@ -254,7 +254,7 @@ export function planFromSnapshot(snapshot: BillingSnapshot): PlanView {
 export const planChecking: PlanView = { tag: "PlanChecking" }
 export const planUnavailable: PlanView = { tag: "PlanUnavailable" }
 
-export const creditMaxAge: Millis = 5 * millisPerMinute
+const creditMaxAge: Millis = 5 * millisPerMinute
 
 export type CreditView =
   | { readonly kind: "funded"; readonly usdMicros: Micros; readonly observedAt: Millis }

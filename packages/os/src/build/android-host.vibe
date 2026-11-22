@@ -39,16 +39,16 @@ export interface GenerateAndroidHost {
   readonly runtime?: string
 }
 
-export interface GeneratedAndroidHost {
+interface GeneratedAndroidHost {
   readonly directory: string
   readonly appId: string
   readonly files: readonly string[]
   readonly toolchain: string
 }
 
-export error HostInputRefused { place: string; reason: string }
-export error HostOwnershipRefused { output: string; reason: string }
-export error ToolchainWrapperChanged { expected: string; observed: string }
+error HostInputRefused { place: string; reason: string }
+error HostOwnershipRefused { output: string; reason: string }
+error ToolchainWrapperChanged { expected: string; observed: string }
 
 const TEMPLATES = "android/host-templates"
 const MARKER = ".eliza-consumer-host.json"

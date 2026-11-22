@@ -17,8 +17,8 @@ import type { AgentModule, ModuleFactory } from "../host/module.vibe"
 export const surfaceModuleName = "@elizaos/agent/surface"
 export const surfaceChannelServiceType = "agent_surface_channel"
 export const pullHoldMs = 9_000
-export const replyLimitBytes = 2 * 1024 * 1024
-export const requestLimitBytes = 4 * 1024
+const replyLimitBytes = 2 * 1024 * 1024
+const requestLimitBytes = 4 * 1024
 
 export type SurfaceAnswer =
   | { readonly kind: "answered"; readonly result: unknown }

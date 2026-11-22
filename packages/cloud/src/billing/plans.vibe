@@ -1,10 +1,10 @@
 // spec/cloud/billing/plans.md, "Story: Offer the paid plans as the provider sells them"; spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
-import { planOffers, paidPlanKeys, requestsPerMinute, isPaid, type PlanOffer, type PlanKey, type RateClass } from "../../gen/cloud__billing__plans.effect.vibe"
+import { planOffers, paidPlanKeys, requestsPerMinute, isPaid, type PlanKey, type RateClass } from "../../gen/cloud__billing__plans.effect.vibe"
 import { priceCheck, type ProviderPrice as ObservedPrice } from "../../gen/cloud__deployment.effect.vibe"
 import { Deployment, type SecretMissing } from "../profile/profile.vibe"
 import { wireName } from "../http/refusal.vibe"
 
-export type { PlanOffer, PlanKey, RateClass }
+export type { PlanKey, RateClass }
 
 export error CatalogMismatch { plan: string; problem: string }
 

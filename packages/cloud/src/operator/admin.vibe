@@ -26,7 +26,7 @@ export type OperatorOutcome =
 
 export error OperatorUsageInvalid { problem: string }
 export error OperatorRefused { refusal: Refusal }
-export error SeedInvalid { problem: string }
+error SeedInvalid { problem: string }
 
 export interface OperatorFlags {
   values(name: string): ReadonlyArray<string>
@@ -44,17 +44,17 @@ export interface OperatorCommandHandler {
   readonly run: (tx: Tx, flags: OperatorFlags, now: number, verdict: RunningVerdict) => ReadonlyArray<string>!{ readonly _tag: string }!OperatorContext
 }
 
-export interface SeedHandler {
+interface SeedHandler {
   readonly section: string
   readonly operatorCommand: OperatorCommand
   readonly run: (tx: Tx, entries: unknown, now: number) => ReadonlyArray<string>!{ readonly _tag: string }!OperatorContext
 }
 
-export function commandTable(): ReadonlyArray<OperatorCommandHandler> {
+function commandTable(): ReadonlyArray<OperatorCommandHandler> {
   return [...accounts, ...clients, ...deletion, ...grants, ...prices]
 }
 
-export function seedTable(): ReadonlyArray<SeedHandler> {
+function seedTable(): ReadonlyArray<SeedHandler> {
   return [
     { section: "clients", operatorCommand: "RegisterClient", run: seedClients },
     { section: "prices", operatorCommand: "SetPrices", run: (tx, entries) => seedPrices(tx, entries) }
@@ -105,7 +105,7 @@ effect function parseFlags(args: ReadonlyArray<string>, handler: OperatorCommand
   }
 }
 
-export effect function readDatabaseIdentity(tx: Tx): IdentityRead!! {
+effect function readDatabaseIdentity(tx: Tx): IdentityRead!! {
   const digest = identityDigest(tx) catch () => undefined
   return digest === undefined ? { tag: "UnreadableIdentity" } : { tag: "ReadDigest", digest }
 }

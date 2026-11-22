@@ -27,16 +27,7 @@ module node {
 }
 import { newCode } from node
 
-export type CodeMethod = "EmailSignIn" | "PhoneSignIn"
-
-export interface CodeSent {
-  readonly expiresAt: number
-  readonly codeLength: number
-}
-
-export interface PhoneProof {
-  readonly phone: string
-}
+type CodeMethod = "EmailSignIn" | "PhoneSignIn"
 
 interface CodeRequest {
   readonly method: CodeMethod

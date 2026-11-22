@@ -212,7 +212,7 @@ export effect function openAttempt(journal: DeviceJournal, identity: JournalIden
   return { journal, identity, slot, machine }
 }
 
-export effect function sendOr(attempt: JournaledAttempt, event: Event): (AttemptStep | undefined)!! {
+effect function sendOr(attempt: JournaledAttempt, event: Event): (AttemptStep | undefined)!! {
   const done = try exit(attempt.machine.send(event))
   return Exit.isSuccess(done) ? done.value : undefined
 }
@@ -296,7 +296,7 @@ effect function acknowledge(attempt: JournaledAttempt): void!! {
   }
 }
 
-export effect function upload<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt): boolean!! {
+effect function upload<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt): boolean!! {
   const step = try sendOr(attempt, { type: "sync" })
   if (step === undefined) return false
   const { proposalId, digest, operationId } = attempt.slot.binding

@@ -13,7 +13,7 @@ import { runningTask, startReply } from "../../gen/agent__tasks__wire.effect.vib
 import type { PauseReason, TaskStart, TaskWrite } from "./routes.vibe"
 import type { TaskRecord, TaskRecords, UnreadableTaskRecord } from "./store.vibe"
 
-export error TaskHostError { code: string; reason: string }
+error TaskHostError { code: string; reason: string }
 
 export type TaskCleanupReason = "pause" | "close" | "cancel" | "revoke" | "complete"
 
@@ -54,7 +54,7 @@ export interface TaskHostOptions {
   readonly authorizer?: TaskGoalAuthorizer
 }
 
-export interface PresentationRequest {
+interface PresentationRequest {
   readonly taskId: string
   readonly expectedEpoch: number
   readonly actorId: string
@@ -114,7 +114,7 @@ function settledOperation(operation: TaskOperation): boolean {
   return operation.status === "cancelled" || operation.status === "succeeded" || operation.status === "failed"
 }
 
-export function modelTask(task: InteractiveTask | null, clock: number): Interactive {
+function modelTask(task: InteractiveTask | null, clock: number): Interactive {
   if (task === null) return { ...emptyTask, now: clock }
   const seen = task.observation
   const latest = task.operations.at(-1)

@@ -18,7 +18,7 @@ import { hashArtifact } from "./artifact.vibe"
 import { archiveDigest, archiveEntries, properties, verifiedBoot } from "./signing-archive.vibe"
 import { keyName, readSigningJson, SigningRefused } from "./signing-keys.vibe"
 
-export const releaseRecordKind = "aosp-release-compatibility"
+const releaseRecordKind = "aosp-release-compatibility"
 const hex = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/))
 const nonEmpty = Schema.String.check(Schema.isMinLength(1))
 const label = Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/))

@@ -17,7 +17,7 @@ export type BillingEnv = {
 }
 type Customer = { customer_id: string; checkout_id: string | null }
 
-export async function billingTransaction<T>(db: Client, account: string, work: () => Promise<T>): Promise<T> {
+async function billingTransaction<T>(db: Client, account: string, work: () => Promise<T>): Promise<T> {
   await db.query("BEGIN")
   try {
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [account])

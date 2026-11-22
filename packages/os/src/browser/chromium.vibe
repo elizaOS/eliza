@@ -72,7 +72,7 @@ module node {
 import { assetProblem, nativeAbis, nativeHostOf, parseJson, resourceNames, sha256Hex } from node
 
 export type Architecture = "x86_64" | "arm64"
-export type BrowserApp = "browser" | "vault"
+type BrowserApp = "browser" | "vault"
 
 export interface PinnedApk {
   readonly packageName: string
@@ -80,19 +80,19 @@ export interface PinnedApk {
   readonly signerSha256: string
 }
 
-export interface ProvenanceReference {
+interface ProvenanceReference {
   readonly path: string
   readonly sha256: string
 }
 
-export interface OwnedComponent {
+interface OwnedComponent {
   readonly chromiumRevision: string
   readonly launcherSignerSha256: string
   readonly launcherApplication: string
   readonly provenance: ProvenanceReference
 }
 
-export type BrowserAppPin = PinnedApk & {
+type BrowserAppPin = PinnedApk & {
   readonly channel: "stable" | "development"
 } & ({ readonly kind: "upstream"; readonly sourceUrl: string } | { readonly kind: "owned"; readonly component: OwnedComponent })
 
@@ -106,7 +106,7 @@ export interface StageBrowserApps {
   readonly apksigner?: string
 }
 
-export interface StagedBrowserApps {
+interface StagedBrowserApps {
   readonly vendorDir: string
   readonly arch: Architecture
   readonly releaseQualified: false
@@ -130,12 +130,12 @@ export interface StageBrowserOverlay {
   readonly apksigner?: string
 }
 
-export interface BrowserOverlayModules {
+interface BrowserOverlayModules {
   readonly browser: string
   readonly webview?: string
 }
 
-export interface StagedBrowserOverlay {
+interface StagedBrowserOverlay {
   readonly directory: string
   readonly partition: "product" | "system"
   readonly modules: BrowserOverlayModules
@@ -144,10 +144,10 @@ export interface StagedBrowserOverlay {
   readonly releaseQualified: false
 }
 
-export error BrowserPinsInvalid { reason: string }
-export error BrowserInputInvalid { path: string; reason: string }
-export error BrowserAppRefused { app: BrowserApp; why: AppRefusal; detail: string }
-export error BrowserOverlayRefused { reason: OverlayRefusal; detail: string }
+error BrowserPinsInvalid { reason: string }
+error BrowserInputInvalid { path: string; reason: string }
+error BrowserAppRefused { app: BrowserApp; why: AppRefusal; detail: string }
+error BrowserOverlayRefused { reason: OverlayRefusal; detail: string }
 error ProvenanceProblem { reason: string }
 
 const OWNED_BROWSER_PACKAGE = "ai.elizaos.chromium"

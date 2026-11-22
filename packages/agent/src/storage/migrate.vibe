@@ -154,6 +154,6 @@ module node {
   }
 }
 export {
-  createDeviceStorageSnapshot, migrate, seedDurableStore, startStore, storeBundle, storeRefused,
+  createDeviceStorageSnapshot, migrate, seedDurableStore, startStore, storeBundle,
   type DeviceStorageSnapshot, type StoreOwner,
 } from node

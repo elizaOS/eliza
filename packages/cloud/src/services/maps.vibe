@@ -41,7 +41,7 @@ const KeptAnswerSchema = Schema.Union([
 ])
 type KeptAnswer = typeof KeptAnswerSchema.Type
 
-export error KeptAnswerCorrupt { holdKey: string }
+error KeptAnswerCorrupt { holdKey: string }
 
 const wireOperation: Readonly<Record<Metered, string>> = { Geocode: "geocode", Reverse: "reverse", PlacesSearch: "places_search", PlaceDetails: "place_details", Routes: "routes", Tile: "tile" }
 const providerPause = 5_000

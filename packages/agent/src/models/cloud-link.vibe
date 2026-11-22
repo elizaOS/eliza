@@ -28,9 +28,9 @@ export type CloudLinkReply =
   | { readonly kind: "refused"; readonly status: number; readonly body: unknown }
   | { readonly kind: "changes-off"; readonly operation: GoogleChange }
 
-export error CloudLinkUnreachable { path: string }
+error CloudLinkUnreachable { path: string }
 
-export error CloudLinkRequestRefused { path: string; reason: "path" | "body" }
+error CloudLinkRequestRefused { path: string; reason: "path" | "body" }
 
 interface Link {
   readonly backend: Backend

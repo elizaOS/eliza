@@ -5,7 +5,7 @@ import { approvalStates, type ApprovalRecord, type OwnerApprovals } from "./queu
 
 export type ApprovalsPort = Pick<OwnerApprovals, "list" | "resolve">
 
-export error ApprovalsFailed { cause: unknown }
+error ApprovalsFailed { cause: unknown }
 
 const refusalAnswer = {
   NotFound: { status: 404, error: "not_found" },

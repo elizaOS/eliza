@@ -7,8 +7,8 @@ import { checkPrices, pricesFromSeed, readPriceRows, setModelPrice, type Inferen
 import type { Tx } from "../store/store.vibe"
 import type { OperatorCommandHandler, OperatorFlags } from "./admin.vibe"
 
-export error PriceFlagsInvalid { problem: string }
-export error PricesMismatched { mismatches: number; usable: ReadonlyArray<string> }
+error PriceFlagsInvalid { problem: string }
+error PricesMismatched { mismatches: number; usable: ReadonlyArray<string> }
 
 effect function offered(): InferenceSettings!Refused!Deployment {
   const inference = (try Deployment).settings.inference
