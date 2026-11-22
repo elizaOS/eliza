@@ -246,8 +246,8 @@ pure def focusChanged(s: SpeechOutput, change: FocusChange): OutputStep = {
   match speech {
   | Speaking(u) =>
     if (change == FocusLoss or change == FocusLossTransient) { state: { ...s, speech: Silent }, out: List(StopPlayback, AbandonFocus) }
-    else if (change == FocusLossCanDuck and u.volume == FullVolume) { state: { ...s, speech: Speaking({ ...u, volume: Ducked }) }, out: List(DuckVolume) }
-    else if (change == FocusGain and u.volume == Ducked) { state: { ...s, speech: Speaking({ ...u, volume: FullVolume }) }, out: List(RestoreVolume) }
+    else if (change == FocusLossCanDuck and u.volume == FullVolume) { state: { ...s, speech: Speaking({ utteranceId: u.utteranceId, written: u.written, volume: Ducked }) }, out: List(DuckVolume) }
+    else if (change == FocusGain and u.volume == Ducked) { state: { ...s, speech: Speaking({ utteranceId: u.utteranceId, written: u.written, volume: FullVolume }) }, out: List(RestoreVolume) }
     else { state: s, out: List() }
   | _ => { state: s, out: List() }
   }
