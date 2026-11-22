@@ -277,11 +277,7 @@ effect function deviceFrame(shell: Shell, ports: RelayPorts, sessionId: string, 
 }
 
 effect function pump<A>(edges: Stream.Stream<A, Failure>, arrivals: Arrivals, wrap: (edge: A) => Arrival) {
-  const pumped = effect {
-    for try (const edge of edges) {
-      try Queue.offer(arrivals, wrap(edge))
-    }
-  }
+  const pumped = Stream.runForEach(edges, (edge: A) => Queue.offer(arrivals, wrap(edge)))
   pumped catch () => undefined
   try Queue.offer(arrivals, providerFailed)
 }

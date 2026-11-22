@@ -85,11 +85,13 @@ type Got = { readonly status: number; readonly bytes: Uint8Array; readonly conte
 effect function capped(response: HttpClientResponse.HttpClientResponse): Uint8Array!(Refused | Lost) {
   const chunks: Uint8Array[] = []
   let size = 0
-  for try (const chunk of Stream.mapError(response.stream, (cause) => new Lost({ cause: cause._tag }))) {
+  const body = Stream.mapError(response.stream, (cause) => new Lost({ cause: cause._tag }))
+  try Stream.runForEachWhile(body, effect (chunk: Uint8Array) => {
     size += chunk.length
-    if (size > upstreamBodyCap) break
+    if (size > upstreamBodyCap) return false
     chunks.push(chunk)
-  }
+    return true
+  })
   if (size > upstreamBodyCap) throw new Refused({ code: "ProviderUnavailable" })
   const bytes = new Uint8Array(size)
   chunks.reduce((offset, chunk) => { bytes.set(chunk, offset); return offset + chunk.length }, 0)

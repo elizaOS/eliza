@@ -1,4 +1,5 @@
 // spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"
+import type { Multipart } from "effect/http"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"
 import { refused, Refused } from "../http/refusal.vibe"
 import { jsonBody, owner, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
@@ -155,30 +156,27 @@ function baseType(contentType: string): string {
 effect function readUpload(context: RouteContext, settings: SpeechSettings): Upload!Refused {
   if (baseType(context.request.headers["content-type"] ?? "") !== "multipart/form-data") throw refused("InvalidRequest")
   const seen = new Set<string>()
-  let audio: { readonly bytes: Uint8Array; readonly mimeType: string } | undefined
-  let languageCode: string | undefined
-  let provider: string | undefined
-  const parts = effect {
-    for try (const part of context.request.multipartStream) {
-      if (!uploadFields.includes(part.key)) throw refused("InvalidRequest", "UnsupportedField")
-      if (seen.has(part.key)) throw refused("InvalidRequest")
-      seen.add(part.key)
-      if (part._tag === "File") {
-        if (part.key !== "audio") throw refused("InvalidRequest")
-        audio = { bytes: try part.contentEffect, mimeType: baseType(part.contentType) }
-      } else if (part.key === "languageCode") {
-        languageCode = part.value
-      } else if (part.key === "provider") {
-        provider = part.value
-      } else {
-        throw refused("InvalidRequest")
-      }
+  const upload: { audio?: { readonly bytes: Uint8Array; readonly mimeType: string }; languageCode?: string; provider?: string } = {}
+  const parts = Stream.runForEach(context.request.multipartStream, effect (part: Multipart.Part) => {
+    if (!uploadFields.includes(part.key)) throw refused("InvalidRequest", "UnsupportedField")
+    if (seen.has(part.key)) throw refused("InvalidRequest")
+    seen.add(part.key)
+    if (part._tag === "File") {
+      if (part.key !== "audio") throw refused("InvalidRequest")
+      upload.audio = { bytes: try part.contentEffect, mimeType: baseType(part.contentType) }
+    } else if (part.key === "languageCode") {
+      upload.languageCode = part.value
+    } else if (part.key === "provider") {
+      upload.provider = part.value
+    } else {
+      throw refused("InvalidRequest")
     }
-  }
+  })
   parts catch effect (failure) => match (failure) {
     when Refused: throw failure;
     default: throw failure.reason._tag === "BodyTooLarge" || failure.reason._tag === "FileTooLarge" ? refused("ContentTooLarge") : refused("InvalidRequest");
   }
+  const { audio, languageCode, provider } = upload
   if (audio === undefined || audio.bytes.length === 0 || !audioTypes.includes(audio.mimeType)) throw refused("InvalidRequest")
   if (audio.bytes.length > uploadLimit) throw refused("ContentTooLarge")
   if (provider !== undefined && provider !== settings.provider) throw refused("InvalidRequest")

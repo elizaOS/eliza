@@ -194,11 +194,13 @@ function routeId(parts: string): string {
 effect function bodyOf(response: HttpClientResponse.HttpClientResponse): string!(BodyTooLarge | Unreachable) {
   const chunks: Uint8Array[] = []
   let size = 0
-  for try (const chunk of Stream.mapError(response.stream, () => new Unreachable({ cause: "network" }))) {
+  const body = Stream.mapError(response.stream, () => new Unreachable({ cause: "network" }))
+  try Stream.runForEachWhile(body, effect (chunk: Uint8Array) => {
     size += chunk.length
-    if (size > upstreamBodyCap) break
+    if (size > upstreamBodyCap) return false
     chunks.push(chunk)
-  }
+    return true
+  })
   if (size > upstreamBodyCap) throw new BodyTooLarge()
   const bytes = new Uint8Array(size)
   let offset = 0
