@@ -26,6 +26,49 @@ Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang
 - Satisfy all Vibestack requirements and TypeScript conventions before
   merging. [Vibestack spec reference](SPEC.md) · [Required stack](AGENTS.md#the-stack) · [TypeScript conventions](AGENTS.md#typescript-best-practices)
 
+## Evidence
+
+Use an `## Evidence` heading in every PR body. Put each field on its own line
+with the exact name below. A Markdown bullet before the field name is optional.
+
+- `Change types:` Use `docs` alone for documentation-only work. For other
+  changes, list every applicable type from `non-ui`, `ui`, `performance`, and
+  `hardware`, separated by commas.
+- `Test results:` Give the tested commit, environment, exact commands, and
+  observed outcomes. Link the `pnpm verify` run and identify failures and
+  skips. For docs-only work, record the instructions, links, and examples
+  you verified.
+- `Proof of change:` Cite the affected story or rule and show what a user or
+  downstream caller sees through a supported entry point. Reproduce a fix on
+  the base and show it passing on the PR commit with the same inputs. For
+  model or proof work, link the affected Quint, Dafny, or conformance result
+  and state what it verified. For docs-only work, show the guidance gap and
+  the corrected instruction.
+- `Runtime logs:` For non-UI changes, attach redacted output from the affected
+  runtime, toolchain CLI, integration, or agent turn. Identify the invocation
+  and trace or run ID where available. Show failure and recovery for a fix.
+  For model-backed behavior, include the provider and exact model ID.
+- `UI video:` Attach before-and-after video of the same changed flow and state
+  in the application or Studio. Include the before-and-after screenshots
+  required above and steps a reviewer can repeat.
+- `Benchmarks:` Show comparable base and PR runs for every performance claim.
+  Give the command, workload, environment, samples, metric and units, and the
+  before-and-after results. Report any quality change or failure.
+- `On-device testing:` For a hardware-dependent change, show the affected flow
+  on each changed supported physical target. Record hardware, OS, build,
+  steps, and results. Report emulator or simulator observations separately.
+
+Include the first three fields for every PR and each remaining field when its
+change type applies. Use substantive output or inspectable links and remove
+credentials and private data. Update evidence when a new revision affects the
+result. For Slop.cash submissions, include `Made via @slopdotcash` and record
+the opened PR using the [Slop.cash contributor workflow](https://slop.cash/contribute/SKILL.md).
+
+Maintainers close PRs that fail to show a useful change. This includes added
+complexity for highly unlikely paths without evidence that supported use can
+reach the path and that it matters. Slop.cash deducts Points from eligible
+signed submissions when its published closure and Points policy applies.
+
 ## The monorepo
 
 | Path | Holds |
