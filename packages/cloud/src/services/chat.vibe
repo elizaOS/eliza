@@ -15,7 +15,7 @@ import { completionSettlement, meteredChatStream, providerRefusal } from "./chat
 const requestIdPattern = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
 const headers = { "cache-control": "no-store" }
 
-function providerBody({ max_tokens, max_completion_tokens, ...body }: ChatRequest, model: string, max: number) {
+function providerBody({ max_tokens: _maxTokens, max_completion_tokens, ...body }: ChatRequest, model: string, max: number) {
   return { ...body, model, ...(max_completion_tokens === undefined ? { max_tokens: max } : { max_completion_tokens: max }) }
 }
 
