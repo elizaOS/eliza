@@ -1,8 +1,9 @@
 // spec/os/appUpdate/install.md, "Story: Install an app update without running the agent mid-install"; spec/os/android/secureStore.md, "Story: Persist a value without losing a newer edit"; spec/os/browser/surface/profiles.md, "Story: Keep two sites' storage apart unless I share a profile"
 import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 import { copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import type { Driver, Outcome } from "../../gen/_conformance.ts";
@@ -75,6 +76,7 @@ interface Session {
 
 export interface JvmOptions {
   readonly receives?: boolean;
+  readonly recreateAfter?: (event: unknown) => boolean;
 }
 
 const javaTool = (name: "java" | "javac") => process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
@@ -199,8 +201,8 @@ const wire = (request: Request) => {
   }
 };
 
-async function start(classes: string, main: string): Promise<Session> {
-  const child = spawn(javaTool("java"), ["-Xshare:auto", "-XX:TieredStopAtLevel=1", "-cp", classes, main], { stdio: ["pipe", "pipe", "pipe"] });
+async function start(classes: string, main: string, args: string[]): Promise<Session> {
+  const child = spawn(javaTool("java"), ["-Xshare:auto", "-XX:TieredStopAtLevel=1", "-cp", classes, main, ...args], { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (data: Buffer) => { stderr = (stderr + data.toString("utf8")).slice(-16_384); });
   child.stdin.on("error", () => {});
@@ -214,17 +216,45 @@ async function start(classes: string, main: string): Promise<Session> {
     if (next.done) throw new Error(`${main} ended without answering ${JSON.stringify(request)}${stderr ? `; stderr: ${stderr}` : ""}`);
     return parseAnswer(next.value, request);
   };
-  const initial = await ask({ kind: "reset" });
-  return { child, ask, state: initial.state, out: initial.out };
+  try {
+    const initial = await ask({ kind: "reset" });
+    return { child, ask, state: initial.state, out: initial.out };
+  } catch (error) {
+    child.kill();
+    throw error;
+  }
+}
+
+async function retire(child: ChildProcessWithoutNullStreams) {
+  if (child.exitCode === null && child.signalCode === null) {
+    const exited = once(child, "exit", { signal: AbortSignal.timeout(ANSWER_WITHIN_MS) });
+    child.stdin.end();
+    try { await exited; }
+    catch (error) {
+      child.kill("SIGKILL");
+      throw error;
+    }
+  }
+  if (child.exitCode !== 0) throw new Error("The JVM adapter did not exit cleanly");
 }
 
 export function jvmDriver<E, V>(main: string, options: JvmOptions = {}): Driver<E, V> & AsyncDisposable {
   const sessions = new Map<string, Promise<Session>>();
+  const fixtures = new Map<string, string>();
   let classes: string | undefined;
+  const open = (key: string, mode: "fresh" | "reopen") => {
+    const args: string[] = [];
+    if (options.recreateAfter) {
+      const fixture = fixtures.get(key) ?? mkdtempSync(path.join(tmpdir(), "eliza-jvm-driver-"));
+      fixtures.set(key, fixture);
+      args.push(fixture, mode);
+    }
+    return start(classes ??= compileAdapter(main), main, args);
+  };
   const session = (key: string) => {
     const existing = sessions.get(key);
     if (existing) return existing;
-    const started = start(classes ??= compileAdapter(main), main);
+    const started = open(key, "fresh");
     sessions.set(key, started);
     return started;
   };
@@ -234,6 +264,11 @@ export function jvmDriver<E, V>(main: string, options: JvmOptions = {}): Driver<
     if (answer.kind !== "stepped") throw new Error(`${main} answered a step with a bare state`);
     held.state = answer.state;
     held.out = answer.out;
+    if (answer.outcome === "accepted" && options.recreateAfter?.(request.kind === "event" ? request.event : request.raw)) {
+      const reopened = retire(held.child).then(() => open(key, "reopen"));
+      sessions.set(key, reopened);
+      await reopened;
+    }
     return answer.outcome;
   };
   const driver: Driver<E, V> & AsyncDisposable = {
@@ -249,8 +284,17 @@ export function jvmDriver<E, V>(main: string, options: JvmOptions = {}): Driver<
     observe: async (key) => (await session(key)).state as V,
     observeOutput: async (key) => (await session(key)).out,
     [Symbol.asyncDispose]: async () => {
-      for (const started of sessions.values()) (await started).child.kill();
-      sessions.clear();
+      try {
+        for (const started of sessions.values()) {
+          const { child } = await started;
+          if (options.recreateAfter) await retire(child);
+          else child.kill();
+        }
+      } finally {
+        for (const fixture of fixtures.values()) rmSync(fixture, { recursive: true, force: true });
+        fixtures.clear();
+        sessions.clear();
+      }
     },
   };
   return options.receives ? { ...driver, receive: (key, raw, by) => step(key, { kind: "raw", raw, by }) } : driver;

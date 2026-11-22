@@ -16,7 +16,7 @@ export type LifecycleEvent =
   | { readonly type: "launchHook"; readonly refused: boolean }
   | { readonly type: "refuse"; readonly cause: Cause }
   | { readonly type: "observeReady"; readonly epoch: number }
-  | Extract<Event, { type: "observeReady" | "readinessTimedOut" | "spawn" | "holdForUpdate" | "holdWriteFailed" | "observeHoldGrant" | "releaseUpdate" | "releaseUpdateFailed" }>
+  | Extract<Event, { type: "observeReady" | "readinessTimedOut" | "spawn" | "holdForUpdate" | "holdWriteFailed" | "observeHoldGrant" | "releaseUpdate" | "releaseUpdateFailed" | "processRestarted" }>
   | { readonly type: "observeExit"; readonly code: number }
   | { readonly type: "credentialArrived" | "credentialReplaced"; readonly version: number }
   | { readonly type: "accountChanged"; readonly account: string }
@@ -84,7 +84,10 @@ function nativeEffects(output: unknown, state: AdapterState): ServiceEffect[] {
   });
 }
 
-const adapter = jvmDriver<LifecycleEvent, AdapterState>("ai.eliza.os.agent.LifecycleAdapter", { receives: true });
+const adapter = jvmDriver<LifecycleEvent, AdapterState>("ai.eliza.os.agent.LifecycleAdapter", {
+  receives: true,
+  recreateAfter: (event) => typeof event === "object" && event !== null && "type" in event && event.type === "processRestarted",
+});
 
 export const driver: Driver<LifecycleEvent, LifecycleView> & AsyncDisposable = {
   ...adapter,
