@@ -29,6 +29,8 @@ import { harnessFiles, search, simulate, simulation } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./pipeline.ts";
 
 const project = path.join(import.meta.dirname, "..");
+for (const name of Object.keys(process.env)) if (name.toLowerCase().replaceAll("-", "_") === "npm_config_package_import_method") delete process.env[name];
+process.env.npm_config_package_import_method = "copy";
 const harnessSkillPaths = [".claude/skills", ".codex/skills", ".cursor/skills", ".droid/skills", ".factory/skills", ".gemini/skills", ".grok/skills", ".grokbot/skills", ".muse/skills", ".t3/skills"];
 const scaffoldedIgnores = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ".cache/", ".turbo/", "test/__traces__/", "/.claude/", "/CLAUDE.md", ...harnessSkillPaths.filter((alias) => !alias.startsWith(".claude/")).map((alias) => `/${alias}`)];
 const EXAMPLES = "vibestack/examples";
@@ -239,6 +241,24 @@ pure def add(a: int, b: int): int = a + b`);
     assert.throws(() => domain.lazyLookup({}, 1), RangeError);
     assert.throws(() => domain.add(Number.MAX_SAFE_INTEGER, 1), RangeError);
     assert.doesNotMatch(model.render(""), /Number\.isSafeInteger|function exact_/);
+  });
+
+  test("variant set literals keep their element type in conditional unions and local bindings", async () => {
+    const root = oneRule("fields", "Evidence fields", `type Field = First | Second
+pure val common: Set[Field] = Set(First)
+pure def required(includeSecond: bool): Set[Field] = common.union(if (includeSecond) Set(Second) else Set())
+pure def selected(which: bool): Set[Field] = {
+  val choices = if (which) Set(First) else Set(Second)
+  choices.union(Set(Second))
+}`);
+    const model = await gen(root, parseSpec(root, "spec/fields.md"));
+    const checked = await tool("vibelang", ["--noEmit", "--strict", "--target", "es2023", "gen/fields.ts"], root);
+    assert.ok(checked.ok, checked.out);
+    const proof = model.render("");
+    assert.match(proof, /includeSecond \? \["Second"\] : \(\[\] as Field\[\]\)/);
+    const domain = await import(pathToFileURL(path.join(root, "gen", "fields.ts")).href);
+    assert.deepEqual([domain.required(true), domain.required(false)], [["First", "Second"], ["First"]]);
+    assert.deepEqual([domain.selected(true), domain.selected(false)], [["First", "Second"], ["Second"]]);
   });
 
   test("the explore stage finds a page that breaks a property, keeps the trace, replays it first, and drops it once fixed", { skip: !["linux-x64", "linux-arm64", "darwin-arm64"].includes(`${process.platform}-${process.arch}`) }, async () => {
