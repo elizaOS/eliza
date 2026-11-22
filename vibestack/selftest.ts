@@ -2688,6 +2688,15 @@ function eachCheck() {
     const fullCheck = await runCli(script, root, "check");
     assert.equal(fullCheck.status, 1, fullCheck.stdout + fullCheck.stderr);
     assert.match(fullCheck.stdout, /spec\/other\/index\.md.*no spec at this path/);
+    fs.writeFileSync(path.join(root, "spec/other/index.md"), ruleSpec('pure val otherValue: int = "invalid"'));
+    fs.appendFileSync(path.join(root, "spec/target/index.md"), "\n[Other](../other)\n");
+    const linked = await runCli(script, root, "gen", "--owner", "target");
+    assert.equal(linked.status, 0, linked.stdout + linked.stderr);
+    assert.deepEqual(outputs(), expected);
+    assert.equal(fs.readFileSync(unrelated, "utf8"), before);
+    const whole = await runCli(script, root, "gen");
+    assert.equal(whole.status, 1, whole.stdout + whole.stderr);
+    assert.match(whole.stderr, /spec\/other\/index\.md/);
     fs.appendFileSync(path.join(root, "spec/lib.md"), "\n[Missing](./missing.md)\n");
     const broken = await runCli(script, root, "gen", "--owner", "target");
     assert.equal(broken.status, 1, broken.stdout + broken.stderr);
