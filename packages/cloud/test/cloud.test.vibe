@@ -35,7 +35,7 @@ import { issueSession } from "../src/identity/sessions.vibe"
 import { sealTokens } from "../src/providers/google.vibe"
 import { bearerGrant, googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
-import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
+import { gmailReads, mimeBoundaryPayload, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
 import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
@@ -1827,12 +1827,20 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       mailbox.messages.set("html-at-limit", { ...message, id: "html-at-limit", threadId: "html-at-limit", bodyHtml: htmlAtLimit })
       mailbox.messages.set("html-alternative", { ...message, id: "html-alternative", threadId: "html-alternative", bodyText: "Plain alternative", bodyHtml: htmlOverLimit })
       mailbox.messages.set("html-over-limit", { ...message, id: "html-over-limit", threadId: "html-over-limit", bodyHtml: htmlOverLimit })
+      mailbox.messages.set("mime-at-limit", { ...message, id: "mime-at-limit", threadId: "mime-at-limit", mimePayload: mimeBoundaryPayload(200, "plain") })
+      mailbox.messages.set("mime-over-limit", { ...message, id: "mime-over-limit", threadId: "mime-over-limit", mimePayload: mimeBoundaryPayload(201, "plain") })
+      mailbox.messages.set("mime-html-only", { ...message, id: "mime-html-only", threadId: "mime-html-only", mimePayload: mimeBoundaryPayload(201, "html") })
+      mailbox.messages.set("mime-malformed", { ...message, id: "mime-malformed", threadId: "mime-malformed", mimePayload: mimeBoundaryPayload(201, "malformed") })
     })
     const htmlReads = try promise(() => Promise.all(["html-at-limit", "html-alternative", "html-over-limit"].map((messageId) => client.gmailRead({ messageId }))))
     const html = htmlReads.map((message, index) => [
       message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
       message.bodyText === [htmlTextAtLimit, "Plain alternative", htmlTextAtLimit + "y"][index],
     ])
+    const mimeReads = try promise(() => Promise.all(["mime-at-limit", "mime-over-limit", "mime-html-only"].map((messageId) => client.gmailRead({ messageId }))))
+    const mime = mimeReads.map((message) => [message.bodyHtmlStatus, message.bodyHtml, message.bodyText, message.attachments?.map(({ name }) => name)])
+    const mimeAttachment = try gmail("/inbox-v1/attachment?messageId=mime-over-limit&partId=2&historyId=" + mailbox.history)
+    const mimeMalformed = try gmail("/read?messageId=mime-malformed")
     const capabilities = try gmail("/inbox-v1/capabilities")
     const attachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
     const thread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
@@ -1883,6 +1891,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         client: decoded,
         text: [whole.message.id, whole.bodyText === wholeText, snippet.bodyText],
         html,
+        mime: [mime, mimeAttachment.status, (mimeAttachment.body as { readonly dataBase64?: string }).dataBase64, mimeMalformed.status],
         oversized: errorOf(oversized),
         capabilities: [capabilities.status, capabilities.body],
         attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
@@ -1907,6 +1916,9 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         client: ["mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org", undefined],
         text: ["msg-digest", true, "plan"],
         html: [["available", true, true], ["too_large", null, true], ["too_large", null, true]],
+        mime: [[["available", "<p>HTML after the attachments</p>", "Complete plain text", ["first.txt", "last.txt"]],
+          ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
+          ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
         oversized: [413, "content_too_large"],
         capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
@@ -3463,6 +3475,7 @@ module node {
   import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { googleRequest } from "../src/google.vibe"
   import { CloudError, createCloudClient } from "../src/client/index.vibe"
+  import { mimeBoundaryPayload } from "./support/fakes/google-gmail.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
 
   export async function readMailThroughClient(baseUrl: string, token: string, messageId: string) {
@@ -3645,6 +3658,10 @@ module node {
           const message = { id, threadId: "fixture-thread", internalDate: "1760000000000", snippet: "Preview only" }
           if (id === "mail-envelope") return Response.json({ ...message, extra: "x".repeat(11_250_348) })
           if (id === "mail-snippet") return Response.json(message)
+          if (id === "mail-mime-at-limit") return Response.json({ ...message, historyId: "789", payload: mimeBoundaryPayload(200, "plain") })
+          if (id === "mail-mime-over-limit") return Response.json({ ...message, historyId: "789", payload: mimeBoundaryPayload(201, "plain") })
+          if (id === "mail-mime-html-only") return Response.json({ ...message, historyId: "789", payload: mimeBoundaryPayload(201, "html") })
+          if (id === "mail-mime-malformed") return Response.json({ ...message, historyId: "789", payload: mimeBoundaryPayload(201, "malformed") })
           if (id?.startsWith("mail-html-")) {
             const data = (text: string) => ({ data: Buffer.from(text).toString("base64url"), size: Buffer.byteLength(text) })
             const html = id === "mail-html-at-limit" ? htmlAtLimit : htmlOverLimit
@@ -3803,6 +3820,11 @@ module node {
         message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
         message.bodyText === [htmlTextAtLimit, "Plain alternative", htmlTextAtLimit + "y"][index],
       ])
+      const mimeReads = await Promise.all(["mail-mime-at-limit", "mail-mime-over-limit", "mail-mime-html-only"].map(readMail))
+      const mime = mimeReads.map((message) => [message.bodyHtmlStatus, message.bodyHtml, message.bodyText, message.attachments?.map(({ name }) => name)])
+      const mimeAttachment = await get("attachment?messageId=mail-mime-over-limit&partId=2&historyId=789&grantId=" + grant, owner.access)
+      const mimeFile = Schema.decodeUnknownSync(Schema.Struct({ dataBase64: Schema.String }))(await mimeAttachment.json())
+      const mimeMalformed = await get("read?messageId=mail-mime-malformed&grantId=" + grant, owner.access)
       const query = "grantId=" + grant + "&messageId=fixture-message"
       const folder = "triage?" + new URLSearchParams({ grantId: grant, folder: "trash", q: "  subject:plan & dates ", counts: "1" })
       const readFolder = async (path: string) => {
@@ -3863,7 +3885,8 @@ module node {
       return {
         arrivalResult, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
-        organization, grant, manifest, mailText, html, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
+        organization, grant, manifest, mailText, html, mime: [mime, mimeAttachment.status, mimeFile.dataBase64, mimeMalformed.status],
+        readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
         cache: downloaded.headers.get("cache-control"), owner: owner.account.id, expectedHash: createHash("sha256").update(bytes).digest("hex"),
         expectedData: bytes.toString("base64"), size: bytes.length, rejectedRedirect: rejectedRedirect.status, providerRequestsValid, attachmentFetches,
       }
@@ -3892,6 +3915,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       arrivals: got.arrivalResult,
       text: got.mailText,
       html: got.html,
+      mime: got.mime,
       read: [got.readStatus, got.manifest.historyId, got.manifest.bodyText, got.manifest.attachments, got.manifest.authenticationResults],
       refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
       file: [got.fileStatus, got.cache, got.file],
@@ -3923,6 +3947,9 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       text: ["mail-whole", true, true, "Preview only",
         { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, 502],
       html: [["available", true, true], ["too_large", null, true], ["too_large", null, true]],
+      mime: [[["available", "<p>HTML after the attachments</p>", "Complete plain text", ["first.txt", "last.txt"]],
+        ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
+        ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
       read: [200, "789", "hello", [
         { partId: "1", name: "fixture.pdf", mimeType: "application/pdf", size: got.size, supported: true },
         { partId: "2", name: "fixture.html", mimeType: "text/html", size: 10, supported: false },
