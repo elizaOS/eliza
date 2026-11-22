@@ -374,6 +374,10 @@
       "cache": false,
       "persistent": true
     },
+    "vibestack-studio#gen": {
+      "env": ["!VITE_*"],
+      "outputs": ["gen/**", "generated/**"]
+    },
     "vibestack-studio#dev": {
       "dependsOn": [
         "gen",
