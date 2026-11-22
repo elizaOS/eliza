@@ -114,7 +114,7 @@ public final class DeviceKeyJourney {
           String credentialId = live.remove(bearer(x));
           if (credentialId == null) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
           revoked.add(credentialId);
-          answer(x, 200, "{\"status\":\"revoked\",\"credentialId\":\"" + credentialId + "\"}");
+          x.sendResponseHeaders(204, -1);
         }
         case "GET " + DeviceKeyClient.USER -> {
           if (!live.containsKey(bearer(x))) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_revoked\"}"); return; }
@@ -208,7 +208,11 @@ public final class DeviceKeyJourney {
     cloud.offline = false;
     start();
     seen.add(take("triesAtStart", store.owed().get(0).tries()));
+    String retired = store.owed().get(0).value();
+    int beforeRetry = cloud.revokeAsks.get();
     client.settleDuties();
+    seen.add(take("onlineRevokeAsks", cloud.revokeAsks.get() - beforeRetry));
+    seen.add(take("alreadyRevoked", client.revoke(retired)));
     seen.add(take("revokedAfterStart", String.join(",", cloud.revoked)));
     seen.add(take("dutiesAfterStart", store.state().duties().size()));
 
