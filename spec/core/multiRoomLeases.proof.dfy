@@ -34,6 +34,7 @@ lemma RoomBatchLargestWaiter(waiters: seq<core__concurrency_RoomWaiter>)
     }
   } else {
     assert waiters == [head];
+    assert head in waiters && (forall w :: w in waiters ==> w.room <= head.room);
   }
 }
 
