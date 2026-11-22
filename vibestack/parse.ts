@@ -346,6 +346,7 @@ export function readSpecs(root: string, texts?: Record<string, string>, ownerNam
   for (const file of files)
     if (ownerName === undefined || file.startsWith(`spec/${ownerName}/`)) add(parseSpec(root, file, texts?.[file]));
   if (!all.length) throw new Error(`${ownerName}: no specs under spec/${ownerName}/`);
+  const roots = all.slice();
   const resolve = (spec: Spec, target: string, line: number, library = false): Spec => {
     const fail = (reason: string): never => { throw new Error(`${spec.file}:${line}: ${target}: ${reason}`); };
     let link: string;
@@ -394,6 +395,8 @@ export function readSpecs(root: string, texts?: Record<string, string>, ownerNam
     for (const name of spec.imports) visit(byName.get(name)!, [...trail, spec.name]);
     ordered.push(spec);
   };
-  all.forEach((spec) => visit(spec, []));
-  return ordered;
+  roots.forEach((spec) => visit(spec, []));
+  const ownersAndImports = ordered.length;
+  all.slice(roots.length).forEach((spec) => visit(spec, []));
+  return ownerName === undefined ? ordered : ordered.slice(0, ownersAndImports);
 }
