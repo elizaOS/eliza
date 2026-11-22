@@ -296,19 +296,21 @@ it("names every intent of a turn that has more than the fixed list", async () =>
   expect(decisionState).toContain("intent:9: do thing 9");
 });
 
-it("tells a navigation-only turn that applied has no proof, and sends an applied verdict back", async () => {
-  // The recorded model verdict for this turn: applied, citing the navigation handoff.
+it("tells a navigation-only turn that applied has no proof, and reads an applied verdict as none", async () => {
+  // The recorded model verdict for this turn: applied, citing the navigation
+  // handoff. The schema keeps applied so its bytes never change; the verdict
+  // is classified as the narrower list used to force, so the honest
+  // confirmation finishes in this round instead of going back for another.
   const { output, schema, decisionState } = await evaluate(navigationTurn(), {
     verdict: navigation.rawEvaluator,
   });
   expect(schema.properties?.replyEffectStatus?.enum).toContain("applied");
   expect(decisionState).toContain(NAVIGATION_ONLY_LINE);
-  expect(output.decision).toBe("CONTINUE");
-  expect(output.success).toBe(false);
-  expect(output.messageToUser).toBeUndefined();
-  expect(output.thought).toContain(
-    "The reply claims a completed change without committed receipt evidence.",
-  );
+  expect(output.decision).toBe("FINISH");
+  expect(output.success).toBe(true);
+  expect(output.replyEffectStatus).toBe("none");
+  expect(output.messageToUser).toBe("Notes is open this time for real.");
+  expect(output.effectReceiptIds).toEqual([]);
 });
 
 it("finishes a navigation-only turn whose reply claims no change", async () => {

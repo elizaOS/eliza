@@ -710,6 +710,22 @@ function enforceEvaluatorDecisionState(
   return settled;
 }
 
+/**
+ * A delivered view navigation proves the view opened, not a record change.
+ * The schema offers all three statuses on every turn so its bytes stay the
+ * same; on such a turn an applied verdict reads as none, the classification a
+ * narrower status list used to force. It runs on the decoded output, before
+ * finalization grounds the reply, exactly where the narrower list acted.
+ */
+function classifyDeliveredNavigation(
+  output: EvaluatorOutput,
+  state: Pick<EvaluatorDecisionState, "navigationOnly">,
+): EvaluatorOutput {
+  return state.navigationOnly && output.replyEffectStatus === "applied"
+    ? { ...output, replyEffectStatus: "none" }
+    : output;
+}
+
 function evaluatorQueuedCallIds(
   trajectory: PlannerTrajectory,
   redactText: ToolDiagnosticTextRedactor,
@@ -1567,10 +1583,13 @@ async function runEvaluatorWithSelectedModel(
     });
     throw error;
   }
-  const parsedOutput = parseEvaluatorOutput(
-    raw,
-    Boolean(params.typedReadReply),
-    decisionState.intents.length,
+  const parsedOutput = classifyDeliveredNavigation(
+    parseEvaluatorOutput(
+      raw,
+      Boolean(params.typedReadReply),
+      decisionState.intents.length,
+    ),
+    decisionState,
   );
   let output = enforceEvaluatorDecisionState(
     finalizeEvaluatorOutput(

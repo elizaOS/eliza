@@ -167,7 +167,9 @@ describe("dispatch-only native browser navigation", () => {
         result: dispatchedBrowserResult(subaction),
       });
       expect(h.executed).toBe(1);
-      expect(h.enums).toEqual([["none", "non_applied"]]);
+      // One evaluator call: its applied verdict on a dispatch-only step reads
+      // as none instead of sending the reply back for another round.
+      expect(h.enums).toHaveLength(1);
       expect(h.result?.status).toBe("finished");
       expect(h.result?.evaluator).toMatchObject({
         decision: "FINISH",
@@ -226,7 +228,7 @@ describe("dispatch-only native browser navigation", () => {
     },
   );
 
-  it("lets the planner keep the turn open; the evaluator then sees only non-applied classifications", async () => {
+  it("lets the planner keep the turn open; the evaluator's applied then reads as none", async () => {
     const h = await run(
       {
         name: "BROWSER",
@@ -238,8 +240,11 @@ describe("dispatch-only native browser navigation", () => {
     );
     expect(h.executed).toBe(1);
     expect(h.enums.length).toBeGreaterThan(0);
+    // The schema is the same on every turn; the classification is enforced
+    // after decoding instead.
     for (const allowed of h.enums)
-      expect(allowed).toEqual(["none", "non_applied"]);
+      expect(allowed).toEqual(["none", "applied", "non_applied"]);
+    expect(h.result?.evaluator?.replyEffectStatus).not.toBe("applied");
     expect(h.result?.terminalFailure).toBeUndefined();
   });
 
