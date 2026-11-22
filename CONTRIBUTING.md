@@ -381,6 +381,9 @@ tool runs, any other the spec cache of the root, each workspace package and each
 the commit: what a job of the same name last saved, or else another job's that holds the same.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
+The default branch's `verify` job publishes the pnpm store after the frozen
+install. All jobs can restore it by the same lockfile key. This cache holds
+public packages only because fork pull requests can read it.
 Turborepo shares task results through the private Cloudflare/R2 cache.
 The task entry point disables Turbo telemetry. On a shared machine, each `selftest:tools` task waits for the root and
 Studio tests. In CI, the verify job owns those integration tests. Each dedicated shard runs with Turbo's
