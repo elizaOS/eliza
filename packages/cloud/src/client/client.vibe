@@ -40,7 +40,7 @@ const cents = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const optionalText = Schema.NullOr(Schema.String)
 const paidPlanKey = Schema.Literals(["plus_monthly", "pro_monthly"])
 
-const Account = Schema.Struct({
+const accountSchema = Schema.Struct({
   success: Schema.Literal(true),
   data: Schema.Struct({
     id: Schema.String,
@@ -51,10 +51,10 @@ const Account = Schema.Struct({
     organization: Schema.Struct({ id: Schema.String, name: Schema.String })
   })
 })
-export type Account = typeof Account.Type["data"]
+export type Account = typeof accountSchema.Type["data"]
 
-const Referral = Schema.Struct({ code: Schema.String, total_referrals: Schema.Int, is_active: Schema.Boolean })
-export type Referral = typeof Referral.Type
+const referralSchema = Schema.Struct({ code: Schema.String, total_referrals: Schema.Int, is_active: Schema.Boolean })
+export type Referral = typeof referralSchema.Type
 
 schema Applied { success: true }
 
@@ -72,7 +72,7 @@ export type PlanOffer = typeof Plans.Type["plans"][number]
 
 schema EntitlementToken { entitlement: string }
 
-const UndoReview = Schema.Struct({
+const undoReviewSchema = Schema.Struct({
   kind: Schema.Literal("renewal_estimate"),
   quoteId: Schema.String,
   subscriptionId: Schema.String,
@@ -84,7 +84,7 @@ const UndoReview = Schema.Struct({
   observedAt: millis,
   expiresAt: millis
 })
-export type UndoReview = typeof UndoReview.Type
+export type UndoReview = typeof undoReviewSchema.Type
 
 schema Portal { url: string }
 
@@ -99,10 +99,10 @@ const invoiceFields = {
   hostedInvoiceUrl: optionalText
 }
 
-const InvoicePage = Schema.Struct({ invoices: Schema.Array(Schema.Struct(invoiceFields)), nextCursor: optionalText })
-export type InvoicePage = typeof InvoicePage.Type
+const invoicePageSchema = Schema.Struct({ invoices: Schema.Array(Schema.Struct(invoiceFields)), nextCursor: optionalText })
+export type InvoicePage = typeof invoicePageSchema.Type
 
-const InvoiceDetail = Schema.Struct({
+const invoiceDetailSchema = Schema.Struct({
   ...invoiceFields,
   lines: Schema.Array(Schema.Struct({
     id: Schema.String,
@@ -117,7 +117,7 @@ const InvoiceDetail = Schema.Struct({
   periodEnd: millis,
   pdfUrl: optionalText
 })
-export type InvoiceDetail = typeof InvoiceDetail.Type
+export type InvoiceDetail = typeof invoiceDetailSchema.Type
 
 const Models = Schema.Struct({
   object: Schema.Literal("list"),
@@ -130,7 +130,7 @@ schema Usage { prompt_tokens: number; completion_tokens: number; total_tokens: n
 
 const ToolCalls = Schema.optionalKey(Schema.Array(Schema.Unknown))
 
-const ChatCompletion = Schema.Struct({
+const chatCompletionSchema = Schema.Struct({
   id: Schema.String,
   object: Schema.Literal("chat.completion"),
   created: Schema.Int,
@@ -142,9 +142,9 @@ const ChatCompletion = Schema.Struct({
   })),
   usage: Schema.optionalKey(Usage)
 })
-export type ChatCompletion = typeof ChatCompletion.Type
+export type ChatCompletion = typeof chatCompletionSchema.Type
 
-const ChatChunk = Schema.Struct({
+const chatChunkSchema = Schema.Struct({
   id: Schema.String,
   object: Schema.Literal("chat.completion.chunk"),
   created: Schema.Int,
@@ -156,16 +156,16 @@ const ChatChunk = Schema.Struct({
   })),
   usage: Schema.optionalKey(Schema.NullOr(Usage))
 })
-export type ChatChunk = typeof ChatChunk.Type
+export type ChatChunk = typeof chatChunkSchema.Type
 
-const TimedSpan = Schema.Struct({ text: Schema.String, startMs: Schema.Number, endMs: Schema.Number })
-export type TimedSpan = typeof TimedSpan.Type
+const timedSpanSchema = Schema.Struct({ text: Schema.String, startMs: Schema.Number, endMs: Schema.Number })
+export type TimedSpan = typeof timedSpanSchema.Type
 
 const Transcript = Schema.Struct({
   transcript: Schema.String,
   duration_ms: Schema.Number,
-  segments: Schema.optionalKey(Schema.Array(TimedSpan)),
-  words: Schema.optionalKey(Schema.Array(TimedSpan))
+  segments: Schema.optionalKey(Schema.Array(timedSpanSchema)),
+  words: Schema.optionalKey(Schema.Array(timedSpanSchema))
 })
 
 export interface Transcription {
@@ -186,11 +186,11 @@ export interface SpeechAudio {
   readonly bytes: Uint8Array
 }
 
-const SpeechConsent = Schema.Struct({ consentNonce: Schema.String, expiresAt: Schema.String })
-export type SpeechConsent = typeof SpeechConsent.Type
+const speechConsentSchema = Schema.Struct({ consentNonce: Schema.String, expiresAt: Schema.String })
+export type SpeechConsent = typeof speechConsentSchema.Type
 
-const SpeechSession = Schema.Struct({ version: Schema.Literal(1), sessionId: Schema.String, token: Schema.String, expiresAt: Schema.String, wsUrl: Schema.String })
-export type SpeechSession = typeof SpeechSession.Type
+const speechSessionSchema = Schema.Struct({ version: Schema.Literal(1), sessionId: Schema.String, token: Schema.String, expiresAt: Schema.String, wsUrl: Schema.String })
+export type SpeechSession = typeof speechSessionSchema.Type
 
 schema SpeechRevoked { revoked: true }
 
@@ -338,7 +338,7 @@ async function chunkOf(data: Array<number>): Promise<ChatChunk> {
     throw unreadable(cause)
   }
   if (typeof parsed === "object" && parsed !== null && "error" in parsed) throw unreadable(parsed)
-  const read = Schema.decodeUnknownExit(ChatChunk)(parsed)
+  const read = Schema.decodeUnknownExit(chatChunkSchema)(parsed)
   if (read._tag === "Failure") throw unreadable(read.cause)
   return read.value
 }
@@ -386,13 +386,13 @@ export function createCloudClient(options: CloudClientOptions) {
     ...mapsCalls(transport),
     ...googleCalls(transport),
     async account(options: CallOptions = {}): Promise<Account> {
-      return (await answerOf(await call(routesByName.user, { signal: options.signal }), Account)).data
+      return (await answerOf(await call(routesByName.user, { signal: options.signal }), accountSchema)).data
     },
     async revokeSelf(options: CallOptions = {}): Promise<void> {
       await call(routesByName.currentKeyRevoke, options)
     },
     async referral(options: CallOptions = {}): Promise<Referral> {
-      return answerOf(await call(routesByName.referrals, { signal: options.signal }), Referral)
+      return answerOf(await call(routesByName.referrals, { signal: options.signal }), referralSchema)
     },
     async applyReferral(code: string, options: CallOptions = {}): Promise<void> {
       await answerOf(await call(routesByName.referralApply, { json: { code }, signal: options.signal }), Applied)
@@ -432,7 +432,7 @@ export function createCloudClient(options: CloudClientOptions) {
       return Effect.runPromise(commandFromResponse(await bodyOf(await call(routesByName.cancelUndo, { json, signal: options.signal }))))
     },
     async undoReview(options: CallOptions = {}): Promise<UndoReview> {
-      return answerOf(await call(routesByName.cancelUndoReview, { signal: options.signal }), UndoReview)
+      return answerOf(await call(routesByName.cancelUndoReview, { signal: options.signal }), undoReviewSchema)
     },
     async reviewPlanChange(kind: PlanChangeKind, request: PlanChangeReviewRequest, options: CallOptions = {}): Promise<PlanChangeReview> {
       const json = { subscriptionId: request.subscriptionId, expectedSubscriptionRevision: request.expectedRevision, targetPlanKey: request.targetPlanKey }
@@ -455,10 +455,10 @@ export function createCloudClient(options: CloudClientOptions) {
       return (await answerOf(await call(routesByName.portal, { signal: options.signal }), Portal)).url
     },
     async invoices(page: PageRequest = {}, options: CallOptions = {}): Promise<InvoicePage> {
-      return answerOf(await call(routesByName.invoices, { query: queryOf({ ...page }), signal: options.signal }), InvoicePage)
+      return answerOf(await call(routesByName.invoices, { query: queryOf({ ...page }), signal: options.signal }), invoicePageSchema)
     },
     async invoice(invoiceId: string, options: CallOptions = {}): Promise<InvoiceDetail> {
-      return answerOf(await call(routesByName.invoice, { params: { invoiceId }, signal: options.signal }), InvoiceDetail)
+      return answerOf(await call(routesByName.invoice, { params: { invoiceId }, signal: options.signal }), invoiceDetailSchema)
     },
     async models(options: CallOptions = {}): Promise<ModelList> {
       return answerOf(await call(routesByName.models, { signal: options.signal }), Models)
@@ -468,7 +468,7 @@ export function createCloudClient(options: CloudClientOptions) {
         json: { ...request, stream: false },
         headers: options.idempotencyKey === undefined ? undefined : keyed(options.idempotencyKey),
         signal: options.signal
-      }), ChatCompletion)
+      }), chatCompletionSchema)
     },
     async chatCompletionStream(request: ChatRequest, options: ChatOptions = {}): Promise<AsyncGenerator<ChatChunk, void, undefined>> {
       return chunksOf(() => call(routesByName.chatCompletions, {
@@ -492,10 +492,10 @@ export function createCloudClient(options: CloudClientOptions) {
       }
     },
     async speechConsent(options: CallOptions = {}): Promise<SpeechConsent> {
-      return answerOf(await call(routesByName.speechConsent, { signal: options.signal }), SpeechConsent)
+      return answerOf(await call(routesByName.speechConsent, { signal: options.signal }), speechConsentSchema)
     },
     async speechSession(consentNonce: string, options: CallOptions = {}): Promise<SpeechSession> {
-      return answerOf(await call(routesByName.speechSession, { json: { consentNonce }, signal: options.signal }), SpeechSession)
+      return answerOf(await call(routesByName.speechSession, { json: { consentNonce }, signal: options.signal }), speechSessionSchema)
     },
     async revokeSpeech(sessionId: string, options: CallOptions = {}): Promise<void> {
       await answerOf(await call(routesByName.speechSessionRevoke, { params: { sessionId }, signal: options.signal }), SpeechRevoked)
