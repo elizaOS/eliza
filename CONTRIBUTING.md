@@ -110,6 +110,8 @@ files and the `vibestack/fixtures/` they read, besides the tools every task is k
 `check` rewrites its owners' `gen/` too, so it waits for their tasks: name each owner's in `//#check` of `turbo.json`,
 as `@elizaos/core`'s are. `pnpm lint:js` on its own needs what `gen` and `typecheck` write (`gen/`, `.vibe/declarations`);
 `pnpm lint` runs them first.
+`pnpm all //#analyze` also runs or restores the application and Studio generators,
+the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
@@ -282,6 +284,9 @@ reads those times of Dafny's installation once, and reads them again after each
 run of Dafny, so a result is not remembered when the verifier was installed
 again during the run. The template install generates locally with `gen --if-valid`.
 The install command runs its listed root prerequisite tasks together before generation.
+The tooling package sets `--skip-gen-on-pack` in its prepare script. A
+`pnpm pack` still builds the CLI and Studio. It skips the application's
+generated models, which the tools' tarball does not contain.
 The three tool selftest jobs in `ci.yml` run only the listed `//#build` task and generate their scratch
 projects on demand. The packaged CLI test rebuilds from a clean copy of the
 workspace. Other GitHub Actions jobs use the same strict root
