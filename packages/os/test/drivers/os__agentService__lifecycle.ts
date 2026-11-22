@@ -2,6 +2,7 @@
 import readline from "node:readline";
 import type { Driver } from "../../gen/_conformance.ts";
 import type { Options } from "../../gen/os__agentService__lifecycle.conformance.ts";
+import type { ServiceEffect } from "../../gen/os__agentService__lifecycle.ts";
 import { jvmDriver } from "./jvm-adapter.ts";
 
 const KEY = "device";
@@ -38,6 +39,7 @@ export interface LifecycleView {
 }
 
 interface AdapterState extends Omit<LifecycleView, "held"> {
+  readonly account: string | null;
   readonly hold: { readonly tag: "NotHeld" | "Held" };
 }
 
@@ -50,11 +52,27 @@ const nativeView = (state: AdapterState): LifecycleView => ({
   delivered: state.delivered,
 });
 
+function nativeEffects(output: unknown, selectedAccount: AdapterState["account"]): ServiceEffect[] {
+  if (!Array.isArray(output)) throw new Error("The native lifecycle adapter did not return an effect list");
+  return output.map((value: unknown) => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid native lifecycle effect");
+    const { tag, epoch, delayMs, account } = value as Record<string, unknown>;
+    if (tag !== "Check") throw new Error(`Unsupported native lifecycle effect ${JSON.stringify(tag)}`);
+    if (typeof epoch !== "number" || !Number.isSafeInteger(epoch) || epoch < 1
+      || typeof delayMs !== "number" || !Number.isSafeInteger(delayMs) || delayMs < 0
+      || (typeof account !== "string" && account !== null) || account !== selectedAccount) {
+      throw new Error("Invalid native lifecycle check effect");
+    }
+    return { tag: "BeginCheck", epoch, delayMs };
+  });
+}
+
 const adapter = jvmDriver<LifecycleEvent, AdapterState>("ai.eliza.os.agent.LifecycleAdapter", { receives: true });
 
 export const driver: Driver<LifecycleEvent, LifecycleView> & AsyncDisposable = {
   ...adapter,
   observe: async (key) => nativeView(await adapter.observe(key)),
+  observeOutput: async (key) => nativeEffects(await adapter.observeOutput?.(key), (await adapter.observe(key)).account),
 };
 
 export const options: Options<LifecycleView> = {
@@ -78,7 +96,7 @@ if (import.meta.main) {
     const event = (request as { event?: LifecycleEvent }).event;
     if (event === undefined) await driver.reset();
     else await driver.dispatch(KEY, event);
-    return { state: await driver.observe(KEY), out: event === undefined ? [] : await driver.observeOutput?.(KEY) };
+    return { state: await driver.observe(KEY), out: event === undefined ? [] : await adapter.observeOutput?.(KEY) };
   };
   for await (const line of readline.createInterface({ input: process.stdin })) {
     if (line.trim() === "") continue;
