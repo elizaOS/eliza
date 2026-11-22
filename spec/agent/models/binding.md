@@ -187,6 +187,7 @@ pure def sometimesProviderIssue(s: ModelBinding): bool = s.accountState == Faili
 A refused credential, spent credits or a newer limit replace a limit.
 
 ```quint
+pure val eValues = C::eValues.union(Set(C::CloudRateLimited({ retryAt: 20 })))
 pure def limitedBy(f: AccountFailure, t: int): bool = match f { | LimitReached(x) => t < x.retryAt | _ => false }
 pure def limitedAt(st: AccountState, t: int): bool = match st { | Failing(x) => limitedBy(x.failure, t) | Usable => false }
 pure def afterFailure(st: AccountState, failure: AccountFailure, t: int): AccountState =
