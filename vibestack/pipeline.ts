@@ -766,7 +766,9 @@ export async function main() {
         fs.rmSync(before, { recursive: true, force: true });
         if (fs.existsSync(gen)) fs.cpSync(gen, before, { recursive: true, preserveTimestamps: true });
         try {
-          for await (const { error } of generating({ root, fresh: false, used: new Set() }, specs)) if (error) throw error;
+          await steady(async () => {
+            for await (const { error } of generating({ root, fresh: false, used: new Set() }, specs)) if (error) throw error;
+          });
         } catch (e) {
           fs.rmSync(gen, { recursive: true, force: true });
           if (fs.existsSync(before)) fs.renameSync(before, gen);

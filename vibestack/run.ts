@@ -22,7 +22,7 @@ export const onPath = (name: string) => (process.env.PATH ?? "").split(path.deli
 export const stamp = (files: string[]) => files.map((f) => { const s = fs.statSync(f, { bigint: true }); return `${s.dev}:${s.ino}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`; }).join(" ");
 
 /** An executable from the toolchain's dependencies, wherever npm put it: beside the tools, or in the project. */
-export function bin(cmd: string, root: string): string {
+export function findBin(cmd: string, root: string): string | undefined {
   // On Windows pnpm installs a `.cmd` shim beside the extensionless shell script, and only the shim runs there.
   const name = WINDOWS ? `${cmd}.cmd` : cmd;
   for (let dir of [path.join(import.meta.dirname, ".."), root]) {
@@ -33,6 +33,11 @@ export function bin(cmd: string, root: string): string {
       dir = path.dirname(dir);
     }
   }
+  return undefined;
+}
+export function bin(cmd: string, root: string): string {
+  const exe = findBin(cmd, root);
+  if (exe) return exe;
   throw new Error(`${cmd} is not installed; run pnpm install`);
 }
 
