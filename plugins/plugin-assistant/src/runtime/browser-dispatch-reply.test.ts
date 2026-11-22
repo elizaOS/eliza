@@ -13,10 +13,14 @@ import { runPlannerLoop } from "./planner-loop.ts";
 const RELOAD_TEXT =
   "I asked the browser to reload the page. It may still be loading.";
 
-const CLICK_TEXT =
-  "I sent that tap to the browser. I can't confirm yet what the page did.";
+/** Model prose that claims the page finished, which the receipt only dispatched. */
+const COMPLETION_CLAIMS = [
+  "Reloaded the page.",
+  "The page has finished reloading.",
+  "Done, the page reloaded.",
+];
 
-/** The BROWSER result plugin-browser's native handler returns for a dispatch-only receipt. */
+/** The BROWSER result plugin-browser's native handler returns for a dispatch-only navigation receipt. */
 function dispatchedBrowserResult(subaction = "reload") {
   const result = {
     targetId: "native-client",
@@ -29,7 +33,23 @@ function dispatchedBrowserResult(subaction = "reload") {
     text: JSON.stringify(result),
     userFacingText: RELOAD_TEXT,
     verifiedUserFacing: true,
+    turnComplete: true,
     data: { actionName: "BROWSER", executionStatus: "dispatched", result },
+  };
+}
+
+/** The unchanged result the native handler returns for a dispatched page interaction. */
+function dispatchedInteractionResult(subaction: string) {
+  const result = {
+    targetId: "native-client",
+    mode: "web",
+    subaction,
+    value: { dispatched: true, completed: false, requiresReadback: true },
+  };
+  return {
+    success: true,
+    text: JSON.stringify(result),
+    data: { actionName: "BROWSER", result },
   };
 }
 
@@ -39,7 +59,22 @@ type ToolTurn = {
   result: unknown;
 };
 
-async function run(turn: ToolTurn, intents = ["Reload the page"]) {
+type Script = {
+  /** The evaluator's FINISH prose and effect classification. */
+  evaluatorMessage?: string;
+  evaluatorStatus?: "none" | "non_applied";
+  /** The planner's reply text, written alongside the tool call and after it. */
+  plannerMessage?: string;
+  /** The native planner's turn scope on the tool call. */
+  scope?: "final" | "more_work_pending";
+};
+
+async function run(
+  turn: ToolTurn,
+  intents = ["Reload the page"],
+  script: Script = {},
+) {
+  const plannerMessage = script.plannerMessage ?? "Reloaded the page.";
   const enums: unknown[][] = [];
   let toolCalls = 0;
   let executed = 0;
@@ -54,7 +89,7 @@ async function run(turn: ToolTurn, intents = ["Reload the page"]) {
       },
     ],
   };
-  const result = await runPlannerLoop({
+  const pending = runPlannerLoop({
     context,
     tools: [
       {
@@ -83,25 +118,30 @@ async function run(turn: ToolTurn, intents = ["Reload the page"]) {
             success: true,
             decision: "FINISH",
             requestFullyCovered: true,
-            replyEffectStatus: allowed.includes("applied") ? "applied" : "none",
-            messageToUser: "",
+            replyEffectStatus: allowed.includes("applied")
+              ? "applied"
+              : (script.evaluatorStatus ?? "none"),
+            messageToUser: script.evaluatorMessage ?? "",
           });
         }
         if (toolCalls++ === 0)
           return {
-            text: "",
+            text: plannerMessage,
             toolCalls: [
               {
                 id: "call-1",
                 name: turn.name,
-                arguments: { ...turn.args, eliza_turn_scope: "final" },
+                arguments: {
+                  ...turn.args,
+                  eliza_turn_scope: script.scope ?? "final",
+                },
               },
             ],
           };
         return JSON.stringify({
           completed: true,
           toolCalls: [],
-          messageToUser: "Reloaded the page.",
+          messageToUser: plannerMessage,
         });
       },
     },
@@ -110,12 +150,16 @@ async function run(turn: ToolTurn, intents = ["Reload the page"]) {
       return structuredClone(turn.result);
     },
   } as never);
-  return { result, enums, executed };
+  const outcome = await pending.then(
+    (result) => ({ result, error: undefined }),
+    (error: unknown) => ({ result: undefined, error }),
+  );
+  return { ...outcome, enums, executed };
 }
 
 describe("dispatch-only native browser navigation", () => {
-  it.each(["reload", "back", "forward"])(
-    "finishes a successful %s with the tool's honest text",
+  it.each(["reload", "back", "forward", "navigate", "open"])(
+    "finishes a successful %s with the tool's honest text alone",
     async (subaction) => {
       const h = await run({
         name: "BROWSER",
@@ -124,15 +168,80 @@ describe("dispatch-only native browser navigation", () => {
       });
       expect(h.executed).toBe(1);
       expect(h.enums).toEqual([["none", "non_applied"]]);
-      expect(h.result.status).toBe("finished");
-      expect(h.result.evaluator).toMatchObject({
+      expect(h.result?.status).toBe("finished");
+      expect(h.result?.evaluator).toMatchObject({
         decision: "FINISH",
         replyEffectStatus: "none",
       });
-      expect(h.result.finalMessage).toBe(RELOAD_TEXT);
-      expect(h.result.terminalFailure).toBeUndefined();
+      expect(h.result?.finalMessage).toBe(RELOAD_TEXT);
+      expect(h.result?.terminalFailure).toBeUndefined();
     },
   );
+
+  it("finishes on the tool's own text without an evaluator call when no intent was declared", async () => {
+    const h = await run(
+      {
+        name: "BROWSER",
+        args: { action: "reload" },
+        result: dispatchedBrowserResult(),
+      },
+      [],
+      { evaluatorMessage: "The page has finished reloading." },
+    );
+    expect(h.enums).toEqual([]);
+    expect(h.result?.evaluator).toMatchObject({
+      decision: "FINISH",
+      messageToUser: RELOAD_TEXT,
+    });
+    expect(h.result?.finalMessage).toBe(RELOAD_TEXT);
+  });
+
+  const echoes = COMPLETION_CLAIMS.flatMap((claim) =>
+    (["none", "non_applied"] as const).map(
+      (status) => [claim, status] as const,
+    ),
+  );
+
+  it.each(echoes)(
+    "never appends a completion claim when the planner and evaluator would say %j (%s)",
+    async (claim, status) => {
+      const h = await run(
+        {
+          name: "BROWSER",
+          args: { action: "reload" },
+          result: dispatchedBrowserResult(),
+        },
+        ["Reload the page"],
+        {
+          plannerMessage: claim,
+          evaluatorMessage: claim,
+          evaluatorStatus: status,
+        },
+      );
+      expect(h.result?.status).toBe("finished");
+      expect(h.result?.finalMessage).toBe(RELOAD_TEXT);
+      for (const other of COMPLETION_CLAIMS)
+        expect(h.result?.finalMessage).not.toContain(other);
+      expect(h.result?.terminalFailure).toBeUndefined();
+    },
+  );
+
+  it("lets the planner keep the turn open; the evaluator then sees only non-applied classifications", async () => {
+    const h = await run(
+      {
+        name: "BROWSER",
+        args: { action: "reload" },
+        result: dispatchedBrowserResult(),
+      },
+      ["Reload the page"],
+      { scope: "more_work_pending" },
+    );
+    expect(h.executed).toBe(1);
+    expect(h.enums.length).toBeGreaterThan(0);
+    for (const allowed of h.enums)
+      expect(allowed).toEqual(["none", "non_applied"]);
+    expect(h.result?.terminalFailure).toBeUndefined();
+  });
 
   it("keeps the receipt guard for a mutating action without receipts", async () => {
     const h = await run(
@@ -150,32 +259,33 @@ describe("dispatch-only native browser navigation", () => {
       ["Create a note"],
     );
     expect(h.enums[0]).toContain("applied");
-    expect(h.result.finalMessage).not.toBe("Saved your note.");
-    expect(h.result.terminalFailure).toMatchObject({
+    expect(h.result?.finalMessage).not.toBe("Saved your note.");
+    expect(h.result?.terminalFailure).toMatchObject({
       code: "REPLY_GROUNDING_FAILED",
     });
   });
 
-  it("keeps the receipt guard for a dispatched page interaction", async () => {
-    const click = {
-      ...dispatchedBrowserResult("click"),
-      userFacingText: CLICK_TEXT,
-    };
-    const h = await run({
-      name: "BROWSER",
-      args: { action: "click" },
-      result: click,
-    });
-    // Every evaluation may still classify a click as applied, and the guard
-    // rejects each one; only the action's own honest text is relayed.
-    expect(h.enums.length).toBeGreaterThan(1);
-    for (const allowed of h.enums) expect(allowed).toContain("applied");
-    expect(h.result.evaluator).toMatchObject({
-      decision: "CONTINUE",
-      thought: expect.stringContaining("without committed receipt evidence"),
-    });
-    expect(h.result.finalMessage).toBe(CLICK_TEXT);
-  });
+  it.each(["click", "fill"])(
+    "keeps the receipt guard for a dispatched %s",
+    async (subaction) => {
+      const h = await run({
+        name: "BROWSER",
+        args: { action: subaction },
+        result: dispatchedInteractionResult(subaction),
+      });
+      // A page interaction may have submitted something, so its result is
+      // unchanged from before: every evaluation may classify it as applied,
+      // the receipt guard rejects each such reply, and the turn stops on the
+      // loop limit that the message pipeline turns into its failure warning.
+      expect(h.enums.length).toBeGreaterThan(1);
+      for (const allowed of h.enums) expect(allowed).toContain("applied");
+      expect(h.result).toBeUndefined();
+      expect(h.error).toMatchObject({
+        name: "TrajectoryLimitExceeded",
+        message: expect.stringContaining("terminal_only_continuations"),
+      });
+    },
+  );
 });
 
 describe("dispatched browser navigation eligibility", () => {

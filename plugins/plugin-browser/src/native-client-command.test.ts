@@ -190,7 +190,9 @@ describe("host-declared native browser commands", () => {
 });
 
 describe("dispatch-only native command results", () => {
-  const dispatchOnly = (subaction: "reload" | "back" | "click") => ({
+  const dispatchOnly = (
+    subaction: "reload" | "back" | "click" | "fill" | "scroll" | "close",
+  ) => ({
     targetId: "native-client",
     mode: "web" as const,
     subaction,
@@ -224,6 +226,7 @@ describe("dispatch-only native command results", () => {
       userFacingText:
         "I asked the browser to reload the page. It may still be loading.",
       verifiedUserFacing: true,
+      turnComplete: true,
       data: {
         actionName: "BROWSER",
         executionStatus: "dispatched",
@@ -249,6 +252,25 @@ describe("dispatch-only native command results", () => {
       },
     });
   });
+
+  it.each(["click", "fill", "scroll", "close"] as const)(
+    "returns a dispatched %s exactly as an ordinary result",
+    async (subaction) => {
+      // A page interaction can submit or change something on the site, so its
+      // dispatch receipt keeps the receipt guard instead of a tool-owned finish.
+      const dispatched = dispatchOnly(subaction);
+      const result = await runWith(
+        nativeBrowserCommands("back,forward,reload,click,fill,scroll,close"),
+        { action: subaction },
+        async () => dispatched,
+      );
+      expect(result).toEqual({
+        success: true,
+        text: JSON.stringify(dispatched),
+        data: { actionName: "BROWSER", result: dispatched },
+      });
+    },
+  );
 
   it("leaves completed and read results unchanged", async () => {
     const read = {

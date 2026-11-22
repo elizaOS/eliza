@@ -27,6 +27,7 @@ import {
   type PlannerSourceReviewAttribution,
 } from "./evaluator-context-attribution.ts";
 import {
+  isDeliveredNavigationOnlyTurn,
   readViewNavigationReceipt,
   requiredViewNavigationStatus,
 } from "./nav-evaluator-eligibility";
@@ -11034,15 +11035,20 @@ function singleVerifiedUserFacingToolResult(
  * own callback, the evaluator finished with success:false and "I couldn't
  * read that image, so I have no description to give…", and the user got both
  * as two messages. Prose after a success verdict still combines with the
- * verified text (a second intent answered from context).
+ * verified text (a second intent answered from context), except on a
+ * navigation-only turn: there the single intent is the navigation itself, so
+ * success prose can only restate it, and with no durable receipt it may claim
+ * more than the tool proved ("I asked the browser to reload the page. It may
+ * still be loading." followed by "The page has finished reloading."). The
+ * action's `turnComplete` declares its verified text the whole reply.
  */
 function evaluatorFinishProse(
   trajectory: PlannerTrajectory,
   evaluator: { success?: boolean; messageToUser?: unknown },
 ): unknown {
   if (
-    evaluator.success === false &&
-    singleVerifiedUserFacingToolResult(trajectory)?.turnComplete === true
+    singleVerifiedUserFacingToolResult(trajectory)?.turnComplete === true &&
+    (evaluator.success === false || isDeliveredNavigationOnlyTurn(trajectory))
   ) {
     return undefined;
   }

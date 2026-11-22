@@ -390,21 +390,23 @@ function nativeBrowserHandler(
   };
 }
 
-/** Tool-owned copy for an accepted native command, keyed by the typed subaction. */
-const dispatchedCommandText: Partial<Record<NativeBrowserCommand, string>> = {
-  open: "I asked the browser to open that page. It may still be loading.",
-  navigate: "I asked the browser to open that page. It may still be loading.",
-  show: "I asked the browser to show that page. It may still be loading.",
-  click:
-    "I sent that tap to the browser. I can't confirm yet what the page did.",
-  fill: "I sent that text to the browser. I can't confirm yet what the page did.",
-  scroll: "I asked the browser to scroll the page.",
-  back: "I asked the browser to go back. The previous page may still be loading.",
-  close: "I asked the browser to close that tab.",
-  forward:
-    "I asked the browser to go forward. The next page may still be loading.",
-  reload: "I asked the browser to reload the page. It may still be loading.",
-};
+/**
+ * Tool-owned copy for an accepted native page navigation, keyed by the typed
+ * subaction. Only commands that move the page to a URL or through its history
+ * are listed: a click, fill, scroll or close can change something on the site,
+ * so their dispatch receipts keep the ordinary result and the runtime's
+ * receipt guard.
+ */
+const dispatchedNavigationText: Partial<Record<NativeBrowserCommand, string>> =
+  {
+    open: "I asked the browser to open that page. It may still be loading.",
+    navigate: "I asked the browser to open that page. It may still be loading.",
+    show: "I asked the browser to show that page. It may still be loading.",
+    back: "I asked the browser to go back. The previous page may still be loading.",
+    forward:
+      "I asked the browser to go forward. The next page may still be loading.",
+    reload: "I asked the browser to reload the page. It may still be loading.",
+  };
 
 /**
  * A native receipt that proves only that the renderer accepted the command,
@@ -418,25 +420,28 @@ function isDispatchOnlyNativeResult(
 }
 
 /**
- * The planner-facing result of a native command. A dispatch-only receipt owns
- * an honest reply that says the command was sent and never that it finished,
- * and carries `executionStatus: "dispatched"` so the runtime can tell, without
- * reading prose, that no durable change was claimed. When this host's renderer
- * runs no read command, the result does not ask for a readback the model has
- * no tool to perform.
+ * The planner-facing result of a native command. A dispatch-only navigation
+ * receipt owns the turn's complete reply (`turnComplete`): an honest sentence
+ * that says the command was sent and never that the page finished, so no
+ * model-written completion claim is appended after it. It also carries
+ * `executionStatus: "dispatched"` so the runtime can tell, without reading
+ * prose, that no durable change was claimed. The planner can still keep the
+ * turn open by declaring more work pending. When this host's renderer runs no read
+ * command, the result does not ask for a readback the model has no tool to
+ * perform. Every other result is returned unchanged.
  */
 export function nativeBrowserActionResult(
   result: BrowserWorkspaceCommandResult,
   commands: readonly NativeBrowserCommand[],
 ): ActionResult {
-  if (!isDispatchOnlyNativeResult(result))
+  const subaction = commands.find((name) => name === result.subaction);
+  const userFacingText = subaction && dispatchedNavigationText[subaction];
+  if (!userFacingText || !isDispatchOnlyNativeResult(result))
     return {
       success: true,
       text: JSON.stringify(result),
       data: { actionName: "BROWSER", result },
     };
-  const subaction = commands.find((name) => name === result.subaction);
-  const userFacingText = subaction && dispatchedCommandText[subaction];
   const readable = commands.includes("get") || commands.includes("snapshot");
   const settled: BrowserWorkspaceCommandResult = readable
     ? result
@@ -447,7 +452,9 @@ export function nativeBrowserActionResult(
   return {
     success: true,
     text: JSON.stringify(settled),
-    ...(userFacingText ? { userFacingText, verifiedUserFacing: true } : {}),
+    userFacingText,
+    verifiedUserFacing: true,
+    turnComplete: true,
     data: {
       actionName: "BROWSER",
       executionStatus: "dispatched",
