@@ -40,6 +40,9 @@ test("a written number becomes the exact dial form or is rejected with the forma
     ["+1 415 555-0100", "+14155550100"],
     ["(415)555-0100", "4155550100"],
     [" 01.23.45.67.89 ", "0123456789"],
+    ["+33 1 23 45 67 89", "+33123456789"],
+    ["+61 2 9876 5432", "+61298765432"],
+    ["+54 9 11 1234-5678", "+5491112345678"],
     // One North American number typed with mixed separators, which the
     // secret-swap phone detector restores whole.
     ["415-555 0100", "4155550100"],
@@ -64,6 +67,7 @@ test("a written number becomes the exact dial form or is rejected with the forma
     "415 555 0100 415 555 0199",
     "(415) (555) 0100",
     "555--0100",
+    "+33 1 2 34 56 78",
     "2026-11-17",
     "192.168.1.1",
     "1.5",

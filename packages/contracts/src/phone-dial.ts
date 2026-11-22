@@ -25,9 +25,9 @@ export const CONTACT_LOOKUP_CAPABILITY = "contacts.lookup.v1";
 /** Digits with an optional leading +, the same shape the native dial handoff accepts. */
 export const PHONE_DIAL_NUMBER = /^\+?[0-9]{2,20}$/;
 // One number as a person writes it: digit groups, each joined by at most one
-// space, dash or dot. Only the first group (a country code) may be one digit.
+// space, dash or dot. The country code and first group after it can be one digit.
 const WRITTEN_DIAL_NUMBER =
-  /^\+?(?:\(\d+\)|\d+)(?:[ .-]?(?:\(\d{2,}\)|\d{2,}))*$/;
+  /^(?:\+\d{1,3}[ .-]\d(?=[ .-]\d{2})|\+?(?:\(\d+\)|\d+))(?:[ .-]?(?:\(\d{2,}\)|\d{2,}))*$/;
 // One North American number, whatever single separator sits between its
 // groups ("415-555 0100", "+1 415.555 0100"): the shape the secret-swap phone
 // detector takes as one number. It is exactly one number of 10 or 11 digits,
