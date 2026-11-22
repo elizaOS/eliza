@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
-import { relative } from "node:path"
+import { relative, sep } from "node:path"
 import js from "@eslint/js"
 import react from "@eslint-react/eslint-plugin"
 import tailwind from "eslint-plugin-better-tailwindcss"
@@ -57,7 +57,7 @@ const guarded = (parser) => ({
 const within = (node) => Boolean(node) && (/Function/.test(node.type) || within(node.parent))
 const documented = (context, comment) => context.options[0]?.jsdoc && comment.type === "Block" && comment.value.startsWith("*") && !within(context.sourceCode.getNodeByRangeIndex(comment.range[0]))
 const left = { type: "object", additionalProperties: { type: "integer", minimum: 1 } }
-const excess = (context, found) => found.length > (context.options[0]?.left?.[relative(context.cwd, context.filename)] ?? 0) && found.forEach((problem) => context.report(problem))
+const excess = (context, found) => found.length > (context.options[0]?.left?.[relative(context.cwd, context.filename).split(sep).join("/")] ?? 0) && found.forEach((problem) => context.report(problem))
 const comments = {
   meta: { type: "problem", schema: [{ type: "object", properties: { jsdoc: { type: "boolean" }, left }, additionalProperties: false }] },
   create: (context) => ({
