@@ -1,6 +1,6 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 // spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"
-import { inboxWatchCanAnswer } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
+import { inboxWatchCanAnswer, mailMaxBytes } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { refused, type Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
 import { bearerToken, recheckServiceAccess, signed } from "../../http/request-auth.vibe"
@@ -9,24 +9,11 @@ import { seal, sha256Hex, tokenDigest, unseal } from "../../shared/sealing.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
 import { holds, readGrantStatus, useGrant, type GoogleCapability } from "./grant-access.vibe"
 import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBinding, inboxWatchInput, observeInboxWatch } from "./inbox-arrival.vibe"
-import { attachmentDescriptor, attachmentMaxBytes, attachmentMimeTypes, receivedAuthentication } from "../../google-read.vibe"
+import { attachmentDescriptor, attachmentMaxBytes, attachmentMimeTypes, decodeMailText, GoogleReadTooLarge, htmlText, receivedAuthentication } from "../../google-read.vibe"
 import type { OperationKind } from "./mail-operations.vibe"
 
 module node {
   import { createHash } from "node:crypto"
-
-  /** @throws {never} */
-  export function decodePart(data: string, charset: string): { readonly text: string; readonly size: number } {
-    const bytes = Buffer.from(data, "base64url")
-    const decoder = (() => {
-      try {
-        return new TextDecoder(charset)
-      } catch {
-        return new TextDecoder("utf-8")
-      }
-    })()
-    return { text: decoder.decode(bytes), size: bytes.length }
-  }
 
   /** @throws {never} */
   export function partBytes(data: string): { readonly dataBase64: string; readonly size: number; readonly sha256: string } {
@@ -51,7 +38,7 @@ module node {
     return /^v1\.[^.]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(envelope) ? envelope : ""
   }
 }
-import { cursorEnvelope, decodePart, encodeCursor, partBytes, utf8Length } from node
+import { cursorEnvelope, encodeCursor, partBytes, utf8Length } from node
 
 schema Header { name: string; value: string }
 schema PartBody { data?: string; attachmentId?: string; size?: number }
@@ -99,7 +86,6 @@ const threadPage = 25
 const threadOffsetMax = 2000
 const draftPage = 25
 const maxParts = 200
-const bodyTextMaxBytes = 256 * 1024
 const bodyHtmlMaxBytes = 512 * 1024
 const messageMaxBytes = Math.ceil(attachmentMaxBytes / 3) * 4 + 65536
 const threadMaxBytes = 12 * 1024 * 1024
@@ -242,32 +228,27 @@ function charsetOf(part: MailPart): string {
 }
 
 effect function partData(grant: ReadGrant, messageId: string, part: MailPart, maxBytes: number) {
-  const body = part.body ?? {}
+  const body = part.body
+  if (body === undefined) throw refused("ProviderInvalidResponse")
   if ((body.size ?? 0) > maxBytes) throw refused("ContentTooLarge")
   if (body.data !== undefined) return body.data
-  if (body.attachmentId === undefined || !providerId.test(body.attachmentId)) return ""
+  if (body.attachmentId === undefined) {
+    if (body.size === 0) return ""
+    throw refused("ProviderInvalidResponse")
+  }
+  if (!providerId.test(body.attachmentId)) throw refused("ProviderInvalidResponse")
   const fetched = try parsed(PartBody, try google(grant, `/messages/${messageId}/attachments/${body.attachmentId}`, Math.ceil(maxBytes / 3) * 4 + 4096))
-  return fetched.data ?? ""
+  if (fetched.data === undefined) throw refused("ProviderInvalidResponse")
+  return fetched.data
 }
 
 effect function bodyPart(grant: ReadGrant, messageId: string, part: MailPart | undefined, maxBytes: number) {
   if (part === undefined) return undefined
   const data = try partData(grant, messageId, part, maxBytes)
-  if (!/^[A-Za-z0-9_=-]*$/.test(data)) throw refused("ProviderInvalidResponse")
-  const decoded = decodePart(data, charsetOf(part))
-  if (decoded.size > maxBytes || utf8Length(decoded.text) > maxBytes) throw refused("ContentTooLarge")
-  return decoded.text
-}
-
-function htmlText(html: string): string {
-  return html
-    .replace(/<(script|style|head)\b[\s\S]*?<\/\1\s*>/gi, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
-    .replace(/<[^<>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&#39;|&apos;/gi, "'").replace(/&amp;/gi, "&")
-    .replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ")
-    .trim()
+  return decodeMailText(data, charsetOf(part), maxBytes) catch effect (failure) => {
+    if (failure instanceof GoogleReadTooLarge) throw refused("ContentTooLarge")
+    throw refused("ProviderInvalidResponse")
+  }
 }
 
 function attachmentDescriptors(parts: ReadonlyArray<MailPart>) {
@@ -277,10 +258,10 @@ function attachmentDescriptors(parts: ReadonlyArray<MailPart>) {
 effect function messageView(grant: ReadGrant, message: MailMessage, selfEmail: string) {
   const parts = try partsOf(message.payload)
   const inline = parts.filter((part) => (part.filename ?? "") === "")
-  const plain = try bodyPart(grant, message.id, inline.find((part) => part.mimeType?.toLowerCase() === "text/plain"), bodyTextMaxBytes)
+  const plain = try bodyPart(grant, message.id, inline.find((part) => part.mimeType?.toLowerCase() === "text/plain"), mailMaxBytes)
   const html = try bodyPart(grant, message.id, inline.find((part) => part.mimeType?.toLowerCase() === "text/html"), bodyHtmlMaxBytes)
-  const bodyText = plain ?? (html === undefined ? "" : htmlText(html))
-  if (utf8Length(bodyText) > bodyTextMaxBytes) throw refused("ContentTooLarge")
+  const bodyText = plain ?? (html === undefined ? message.snippet ?? "" : htmlText(html))
+  if (utf8Length(bodyText) > mailMaxBytes) throw refused("ContentTooLarge")
   const bodyHtmlStatus: HtmlStatus = html === undefined ? "none" : "available"
   return {
     message: try mailCard(message, selfEmail),
@@ -503,7 +484,7 @@ effect function draftRoute(context: RouteContext) {
     content: {
       to: addresses(header(payload, "to")), cc: addresses(header(payload, "cc")), bcc: addresses(header(payload, "bcc")),
       subject: header(payload, "subject"),
-      bodyText: (try bodyPart(grant, full.message.id, plain, bodyTextMaxBytes)) ?? "",
+      bodyText: (try bodyPart(grant, full.message.id, plain, mailMaxBytes)) ?? "",
       plainText: plain !== undefined || !inline.some((part) => part.mimeType?.toLowerCase() === "text/html"),
       threaded: header(payload, "in-reply-to") !== "" || header(payload, "references") !== "",
       attachmentCount: attachmentDescriptors(parts).length

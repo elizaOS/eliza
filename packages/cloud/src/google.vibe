@@ -8,9 +8,9 @@ import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBi
 import { Aead, Digest, SecureRandom } from "effect/crypto"
 import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
-import { attachmentSelection, googleCalendarFeed, googleCalendarItem, googleGmailAttachment, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleAttachmentMissing, GoogleAttachmentStale, GoogleAttachmentUnsupported, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
+import { attachmentSelection, googleCalendarFeed, googleCalendarItem, googleGmailAttachment, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleAttachmentMissing, GoogleAttachmentStale, GoogleAttachmentUnsupported, GoogleReadInput, GoogleReadTooLarge, type GoogleReadApi } from "./google-read.vibe"
 
-import { boundedText } from "./providers/bounded-body.vibe"
+import { boundedText, ProviderBodyTooLarge } from "./providers/bounded-body.vibe"
 import { rateLimit, RateLimited, StorageUnavailable } from "./identity-store.vibe"
 
 export type GoogleEnv = {
@@ -378,13 +378,16 @@ effect function accessFor(env: GoogleEnv, db: Client, account: string, capabilit
   return credentials.access_token
 }
 
-function googleReadApi(access: string): GoogleReadApi<ProviderUnavailable | GoogleNotFound, HttpClient.HttpClient> {
+function googleReadApi(access: string, reportOversize = false): GoogleReadApi<ProviderUnavailable | GoogleNotFound | GoogleReadTooLarge, HttpClient.HttpClient> {
   return effect (url: string, maxBytes?: number) => {
     const response = try http(url, { access })
     if (response.status === 404) throw new GoogleNotFound()
     if (!ok(response.status)) throw new ProviderUnavailable()
     if (maxBytes === undefined) return timeout(response.json, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
-    const text = timeout(boundedText(response, maxBytes), "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+    const text = timeout(boundedText(response, maxBytes), "10 seconds") catch effect (failure) => {
+      if (reportOversize && failure instanceof ProviderBodyTooLarge) throw new GoogleReadTooLarge()
+      throw new ProviderUnavailable()
+    }
     return Effect.try(() => JSON.parse(text) as unknown) catch effect () => { throw new ProviderUnavailable() }
   }
 }
@@ -825,7 +828,7 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
     }
     if (path === "/gmail/triage" || path === "/gmail/read") {
       const grant = selected ?? (try mailGrant(db, account, null)).id
-      const api = googleReadApi(try accessFor(env, db, account, "mail", grant))
+      const api = googleReadApi(try accessFor(env, db, account, "mail", grant), path === "/gmail/read")
       const result = path === "/gmail/triage" ? try googleGmailTriage(api, url, now) : try googleGmailMessage(api, url)
       try mailGrant(db, account, grant)
       return body(200, { accountId: account, ...result })
@@ -864,6 +867,7 @@ export function googleRequest(request: Request, env: GoogleEnv, db: Client, acco
       when BadRequest: body(400, { error: "invalid_request" });
       when InboxWatchRequestInvalid: body(400, { error: "invalid_request" });
       when GoogleReadInput: body(400, { error: "invalid_request" });
+      when GoogleReadTooLarge: body(413, { error: "content_too_large" });
       when GoogleAttachmentStale: body(409, { error: "google_item_changed" });
       when GoogleAttachmentMissing: body(404, { error: "google_item_not_found" });
       when GoogleAttachmentUnsupported: body(415, { error: "google_attachment_unsupported" });
