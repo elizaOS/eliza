@@ -110,8 +110,11 @@ A click, fill or select that commits something the person approved carries
 a grant the task host issued for this task, epoch, origin, reviewed
 control and value. The peer spends it at admission, after the scope and
 before the page check; a grant already spent, or one that does not match,
-is refused. The page itself refuses to press a commit control without the
-grant it carries, which the peer reports as `Unknown`.
+is refused. In the WebView the page's own channel is that peer: it spends a
+grant once for the life of its document and admits a fill or select only
+when the text hashes to the grant's value hash. The page itself refuses to
+press a commit control without the grant it carries, which the peer reports
+as `Unknown`.
 
 ```quint
 pure def stepSpentGrantsAreKept(before: SurfaceReceiver, after: SurfaceReceiver): bool = before.spentGrants.every(g => after.spentGrants.includes(g))

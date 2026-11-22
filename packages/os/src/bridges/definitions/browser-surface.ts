@@ -690,7 +690,13 @@ export interface ElizaSurfaceManagerPlugin {
           assistantName?: string;
           /** The host's commit words (a regular expression source, flags `iu`). */
           commitPattern?: string;
-          /** The one commit the person said yes to, spent by the task bindings. */
+          /** A fill of an emailed or texted code, to a `fill-code` target only. */
+          protectedValueKind?: "verification-code";
+          /**
+           * The one commit the person said yes to. The page's channel spends it
+           * once and, for a fill or select, checks the text against `valueHash`
+           * (lowercase hex SHA-256 of the exact text she approved).
+           */
           commitGrant?: {
             grantId: string;
             selector?: string;
@@ -698,11 +704,18 @@ export interface ElizaSurfaceManagerPlugin {
               | { url: string; method: string }
               | { path: string; method: string };
             formHash?: string;
+            valueHash?: string;
             expiresAt: number;
           };
           targets: Array<{
             selector: string;
-            action: "click" | "fill" | "select" | "scroll" | "follow";
+            action:
+              | "click"
+              | "fill"
+              | "fill-code"
+              | "select"
+              | "scroll"
+              | "follow";
           }>;
         };
       };

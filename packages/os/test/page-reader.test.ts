@@ -1,4 +1,5 @@
 // spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for"; spec/os/browser/pageCommands.md, "An observation belongs to the live binding it was read under, and a read or an input holds none"
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { Schema } from "effect";
@@ -562,6 +563,26 @@ describe('A consented code reaches a code box by its label or one box per digit 
     expect(filled.dispatched).toBe(true);
     expect(await Promise.all([1, 2, 3, 4, 5, 6].map((n) => tab.locator(`otp-input #d${n}`).inputValue()))).toEqual(["1", "2", "3", "4", "5", "6"]);
     expect((await codeRead()).codeReadback).toEqual({ targetRef: filled.targetRef, boxes: 6, matches: true });
+  });
+
+  it("takes a consented code through the WebView channel only with the grant's value hash, and spends the grant once", async () => {
+    const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+    const viaChannel = async (path: string, first: string, targets: readonly Fields[], { grantId = `channel-${++sequence}`, valueHash = hash("123456") } = {}) => {
+      await open(`${codes}${path}`);
+      const send = await surface();
+      const read = await send({ subaction: "snapshot", taskPolicy: codePolicy(targets) });
+      const node = fields(Schema.decodeUnknownSync(Schema.Array(Fields))(read.elements).find((element) => element.targetSelector === first)).id;
+      const fill = () => send({ subaction: "fill", snapshotId: read.snapshotId, nodeId: node, text: "123456", taskPolicy: codePolicy(targets, { expectedSelector: first, protectedValueKind: "verification-code", commitGrant: { grantId, selector: first, valueHash, expiresAt: Date.now() + 30_000 } }) });
+      const outcome = (result: Fields) => String(result.error === undefined ? result.dispatched : kindOf(result));
+      return [outcome(await fill()), outcome(await fill())];
+    };
+    expect(await viaChannel("/label", "#code", [{ selector: "#code", action: "fill-code" }])).toEqual(["true", "POLICY_BLOCKED"]);
+    expect(await valueOf("#code")).toBe("123456");
+    expect((await viaChannel("/label", "#code", [{ selector: "#code", action: "fill-code" }], { valueHash: hash("654321") }))[0]).toBe("POLICY_BLOCKED");
+    expect(await valueOf("#code")).toBe("");
+    expect((await viaChannel("/label", "#code", [{ selector: "#code", action: "fill-code" }], { valueHash: "not-a-hash" }))[0]).toBe("INVALID_REQUEST");
+    expect((await viaChannel("/digits", "#d1", group("d", 6)))[0]).toBe("true");
+    expect(await Promise.all(group("d", 6).map(({ selector }) => valueOf(selector)))).toEqual(["1", "2", "3", "4", "5", "6"]);
   });
 
   it("reads a code back and hides it in the page for fifteen minutes, and not after", async () => {
