@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { loadConfigFromFile } from "vite";
 import { deterministic, effectDriver, encodesStably, fuzz, holds, idempotent, invariant, inverse, roundTrips } from "../index.ts";
 import { generateTests } from "../generate.ts";
 import { testInputs, testReceipt } from "../../util.ts";
@@ -95,6 +96,9 @@ describe.concurrent("generated tests", () => {
       { file: "src/math.contract.ts", export: "undeclared", reason: expect.stringContaining("declares no property") },
       { file: "src/user.schema.ts", export: "Opaque", reason: expect.stringContaining("no value can be generated") },
     ];
+    const loaded = await loadConfigFromFile({ command: "serve", mode: "test" }, path.join(dir, "vitest.config.ts"));
+    expect(loaded?.path).toBe(path.join(dir, "vitest.config.ts"));
+    expect(fs.existsSync(out)).toBe(false);
     const run = await vitest(dir, { NODE_OPTIONS: "" });
     expect(run.status, run.said).toBe(0);
     expect(run.said).toMatch(/Tests {2}14 passed \(14\)/);

@@ -27,9 +27,6 @@ const BROWSER = ["test/**/*.browser.test.{ts,tsx,vibe}", "generated/stories/stor
 /** The package's tests, and those generate.ts derives from its schemas and contracts, written first (its `main`). */
 export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
   defineConfig(async ({ mode }) => {
-    // Only a package with something to derive from, or with tests derived before, pays for the generator.
-    if (fs.existsSync(path.join(root, GENERATED)) || fs.globSync("src/**/*.{schema,contract}.{ts,vibe}", { cwd: root }).length)
-      await (await import("./generate.ts")).main(root);
     const browser = fs.globSync(BROWSER, { cwd: root }).length > 0;
     const selected = mode === "nightly" ? "nightly" : "normal", receipt = testReceipt(root, selected);
     let fingerprint: string | undefined, complete = false;
@@ -73,7 +70,17 @@ export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
         testTimeout: 60_000,
         hookTimeout: 60_000,
         projects: [
-          { extends: true, test: { name: "node", include: [...tests, `${GENERATED}/**/*.test.ts`], exclude: ["**/node_modules/**", ...BROWSER], environment: "node" } },
+          {
+            extends: true,
+            plugins: [{
+              name: "vibestack-generated-tests",
+              async configureVitest() {
+                if (fs.existsSync(path.join(root, GENERATED)) || fs.globSync("src/**/*.{schema,contract}.{ts,vibe}", { cwd: root }).length)
+                  await (await import("./generate.ts")).main(root);
+              },
+            }],
+            test: { name: "node", include: [...tests, `${GENERATED}/**/*.test.ts`], exclude: ["**/node_modules/**", ...BROWSER], environment: "node" },
+          },
           // Chromium, and the provider that drives it, only where there are browser tests.
           ...browser ? [{
             extends: true,
