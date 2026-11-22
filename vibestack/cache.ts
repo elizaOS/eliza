@@ -413,7 +413,7 @@ async function toolchainId(root: string, stage: Stage): Promise<string> {
 }
 
 /** The remembered results of one check: whether it may read them, and every entry it read or wrote. */
-export interface Memory { root: string; fresh: boolean; used: Set<string> }
+export interface Memory { root: string; fresh: boolean; used: Set<string>; cacheValue?: (value: unknown) => unknown }
 /** An entry of `.spec-cache`: JSON, compressed, since a run of the simulator says megabytes. */
 interface Entry { name: string; file: string; evaluator?: string | null }
 const formats = [["zst", zstdDecompressSync], ["gz", gunzipSync]] as const;
@@ -471,7 +471,7 @@ export function recall<T>(memory: Memory, { name, file, evaluator }: Entry): T |
 export function store(memory: Memory, { name, file, evaluator }: Entry, value: unknown) {
   memory.used.add(name);
   if (!unsure && !checking.getStore()?.changed && evaluator !== null && (evaluator === undefined || stableInstallation(evaluatorIdentity(memory.root) === evaluator))) {
-    writeWhole(file, zstdCompressSync(JSON.stringify(value)));
+    writeWhole(file, zstdCompressSync(JSON.stringify(memory.cacheValue ? memory.cacheValue(value) : value)));
     sharedCache(name)?.used.add(name);
   }
 }
