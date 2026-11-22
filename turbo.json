@@ -95,7 +95,9 @@
       "inputs": [
         "spec/**",
         "apps/*/package.json",
+        "apps/*/spec/**",
         "packages/*/package.json",
+        "packages/*/spec/**",
         "package.json"
       ],
       "outputs": [

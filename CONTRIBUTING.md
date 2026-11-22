@@ -201,7 +201,9 @@ device, inode, size and modification and change times stay the same, so an
 unchanged toolchain is not read again, nor Z3 asked its version. A check
 reads those times of Dafny's installation once, and reads them again after each
 run of Dafny, so a result is not remembered when the verifier was installed
-again during the run. Generated stories,
+again during the run. The template install generates locally with `gen --if-valid`. On GitHub Actions it uses the same strict root
+`gen` task as verification, so a successful install warms the task cache. A failed generation leaves the
+remaining checks runnable and is retried by verification. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
 are restored with their owning task. `check` is never skipped whole: its
 `driver:` programs run the real application in `traces` every time. Standalone examples install and check

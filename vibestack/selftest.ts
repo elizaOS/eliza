@@ -3064,6 +3064,10 @@ describe("the documents name what exists", () => {
       prose: [studio(prose), prose.includes("@repo/app#test")],
       selftest: [studio(selftest), ["a", "b", "rest"].every((shard) => selftest.includes(`//#selftest:tools:${shard}`))],
       fixture: studio(fixture),
+      independentOwner: (await changedBy(() => {
+        fs.mkdirSync(path.join(root, "packages/kit/spec"));
+        fs.writeFileSync(path.join(root, "packages/kit/spec/index.md"), "# Standalone kit\n");
+      })).includes("//#gen"),
       leftovers: await changedBy(async () => {
         for (const dir of ["", "packages/ui/", "vibestack/fixtures/"]) fs.writeFileSync(path.join(root, `${dir}.DS_Store`), "\0");
         fs.mkdirSync(path.join(root, "packages/ui/.cache/vitest/attachments"), { recursive: true });
@@ -3072,7 +3076,7 @@ describe("the documents name what exists", () => {
       }),
     }, {
       notWaiting: ["//#analyze", "//#build", "//#lint:css", "//#selftest:docs", "//#selftest:examples", "@repo/design-system#build", "@repo/ui#typecheck", "vibestack-studio#build", "vibestack-studio#dev", "vibestack-studio#test", "vibestack-studio#typecheck"],
-      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true], selftest: [[], true], fixture: ["vibestack-studio#test"], leftovers: [],
+      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true], selftest: [[], true], fixture: ["vibestack-studio#test"], independentOwner: true, leftovers: [],
     }, "the owners' tasks, @repo/kit's among them, wait for the root's gen, and install's //#build does not, so `gen --if-valid` after it keeps a half-edited spec from failing install");
   });
 });
@@ -3103,6 +3107,29 @@ function theCommandLine() {
     fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = nope", "A value"));
     assert.match((await runCli(script, root, "gen", "--if-valid")).stdout, /gen\/ was not generated/);
     assert.ok(fs.existsSync(path.join(root, "gen/value.ts")));
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "install-gen", packageManager: JSON.parse(read("package.json")).packageManager, scripts: { gen: "node vibestack/spec.ts gen" } }));
+    fs.writeFileSync(path.join(root, "turbo.json"), JSON.stringify({ tasks: { "//#gen": { inputs: ["spec/**"], outputs: ["gen/**"] } } }));
+    fs.writeFileSync(path.join(root, "pnpm-workspace.yaml"), "packages: [packages/*]\n");
+    fs.mkdirSync(path.join(root, "packages/app"), { recursive: true });
+    fs.writeFileSync(path.join(root, "packages/app/package.json"), JSON.stringify({ name: "app" }));
+    fs.symlinkSync(nodeModules, path.join(root, "node_modules"), "dir");
+    fs.symlinkSync(path.dirname(script), path.join(root, "vibestack"), "dir");
+    const prepare = (hosted: boolean) => exec(process.execPath, [script, "gen", "--install"], root, { ...process.env, GITHUB_ACTIONS: String(hosted), TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
+    for (const hosted of [false, true]) {
+      const invalid = await prepare(hosted);
+      assert.equal(invalid.status, 0, invalid.stderr);
+      assert.match(invalid.stdout, /gen\/ was not generated/);
+      assert.equal((await import(path.join(root, "gen/value.ts"))).answer, 42);
+    }
+    fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = 43", "A value"));
+    const installed = await prepare(true);
+    assert.equal(installed.status, 0, installed.stderr);
+    assert.doesNotMatch(installed.stdout, /gen\/ was not generated/);
+    assert.equal((await import(path.join(root, "gen/value.ts") + "?installed")).answer, 43);
+    fs.rmSync(path.join(root, "gen/value.ts"));
+    const restored = await prepare(true);
+    assert.match(restored.stdout, /cache hit/);
+    assert.equal((await import(path.join(root, "gen/value.ts") + "?restored")).answer, 43);
     fs.writeFileSync(path.join(root, ".spec-cache/lock"), `${process.pid}\n`);
     assert.match((await runCli(script, root, "gen")).stderr, /another check or accept is running in this project/);
   });

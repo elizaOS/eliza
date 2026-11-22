@@ -602,7 +602,7 @@ export function newSpec(root: string, name = ""): string {
 const COMMANDS = [
   ["check", "[<directory>] [--json] [--nightly]", "run every stage; --json prints each result as one line of JSON, then { ok, results, next }; --nightly uses the nightly test profile"],
   ["watch", "[<directory>]", "check again whenever spec/, src/, test/ or tsconfig.json changes"],
-  ["gen", "[<directory>] [--if-valid]", "write gen/ from the spec"],
+  ["gen", "[<directory>] [--if-valid] or --install", "write gen/ from the spec; --install prepares a template checkout"],
   ["accept", "[<directory>] [unproved]", "record what was reviewed, or the obligations that are simulated only"],
   ["new", "[<path>]", "fill an empty spec/index.md, or write a starter spec/<path>/index.md"],
   ["init", "[<directory>]", "add what a project is missing"],
@@ -694,7 +694,9 @@ async function watch(root: string) {
 /** The `spec` command, on `process.argv`. */
 export async function main() {
   let root = process.cwd();
-  const [command, ...args] = process.argv.slice(2);
+  let [command, ...args] = process.argv.slice(2);
+  const installing = command === "gen" && args.length === 1 && args[0] === "--install";
+  if (installing) [command, ...args] = process.env.GITHUB_ACTIONS === "true" ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
   const takes = (...allowed: string[][]) => allowed.some((a) => a.length === args.length && a.every((x, i) => x === "*" || x === args[i]));
   try {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
@@ -720,7 +722,10 @@ export async function main() {
         env = cacheCredentials(env, args, declared, cache);
       }
       const child = spawn(bin("turbo", root), ["run", ...args], { cwd: root, env, stdio: "inherit" });
-      child.on("exit", (code, signal) => { process.exitCode = code ?? (signal ? 1 : 0); });
+      child.on("exit", (code, signal) => {
+        if (installing && code) console.log("note: gen/ was not generated; `pnpm check` says why");
+        else process.exitCode = code ?? (signal ? 1 : 0);
+      });
     } else if (command === "gen" && takes([], ["--if-valid"])) {
       // --if-valid is for `pnpm install`: a spec in the middle of an edit, or a check running, must not make installing fail.
       let release = () => {};
