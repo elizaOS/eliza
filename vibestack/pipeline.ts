@@ -753,7 +753,9 @@ export async function main(argv = process.argv.slice(2)) {
         const declared = JSON.parse(fs.readFileSync(path.join(root, "turbo.json"), "utf8")).remoteCache?.apiUrl;
         env = cacheCredentials(env, args, declared, cache);
       }
-      const child = spawn(bin("turbo", root), ["run", ...args], { cwd: root, env, stdio: "inherit" });
+      const turboPackage = createRequire(bin("turbo", root)).resolve("turbo/package.json");
+      const turboEntry = path.resolve(path.dirname(turboPackage), JSON.parse(fs.readFileSync(turboPackage, "utf8")).bin.turbo);
+      const child = spawn(process.execPath, [turboEntry, "run", ...args], { cwd: root, env, stdio: "inherit" });
       child.on("exit", (code, signal) => {
         if (installing && code) console.log("note: gen/ was not generated; `pnpm check` says why");
         else process.exitCode = code ?? (signal ? 1 : 0);
