@@ -279,3 +279,42 @@ index da4baff517cfdf44aa5acc248f4373e861d1e2ff..9ab6df3839e3d0a3496e0044004aed9e
  }
  
  // The types an exported declaration's signature reads, outside its function
+diff --git a/eslint.mjs b/eslint.mjs
+--- a/eslint.mjs
++++ b/eslint.mjs
+@@ -178,6 +178,7 @@
+   hideSynthesized(scopeManager)
+   hideSynthesizedReads(scopeManager)
+   markSchemaReads(scopeManager)
++  omitForTryMarkers(ast, visitorKeys)
+   // As @typescript-eslint/parser reports for a file outside any TypeScript
+   // program: a rule that needs type information says so instead of crashing.
+   const services = {
+@@ -189,6 +190,26 @@
+     tsNodeToESTreeNodeMap: new WeakMap()
+   }
+   return { ast, scopeManager, services, visitorKeys }
++}
++
++function omitForTryMarkers(node, visitorKeys) {
++  if (node.type === "SwitchStatement" && node.discriminant.synthesized === true && node.cases.length === 1) {
++    const block = node.cases[0].consequent[0]
++    if (block?.type === "BlockStatement") {
++      const [, inner, end, ...markers] = block.body
++      const loop = inner?.type === "LabeledStatement" ? inner.body : inner
++      if (loop?.type === "ForOfStatement" && loop.right.synthesized === true && loop.right.name?.startsWith("$forTryHead") &&
++          end?.type === "BreakStatement" && markers.every(marker => marker.type === "VariableDeclaration" &&
++            marker.declarations.every(declaration => declaration.id.synthesized === true && declaration.init === null))) {
++        block.body.length = 3
++      }
++    }
++  }
++  for (const key of visitorKeys[node.type] ?? []) {
++    const child = node[key]
++    if (Array.isArray(child)) child.forEach(each => { if (each) omitForTryMarkers(each, visitorKeys) })
++    else if (child) omitForTryMarkers(child, visitorKeys)
++  }
+ }
+-
++
+ // withModuleScopes runs analyze so that each module declaration's body is a
