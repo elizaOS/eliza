@@ -13,7 +13,9 @@ public final class AgentPolicy {
   public enum AfterExit { STOP, START, RESTART, FAIL }
   public enum ExitClass { CLEAN, RELEASE_FAILED, CONFIG, CREDENTIAL, STORAGE, AGENT, CRASH }
 
-  public record UpdateTarget(long code, String digest) {}
+  public record UpdateTarget(long code, String digest) {
+    boolean valid() { return code > 0 && digest != null && digest.matches("[a-f0-9]{64}"); }
+  }
   public record RecoveryToken(long epoch, String nonce) {}
   public record Recovery(RecoveryToken token, boolean archiving) {}
 
@@ -386,7 +388,7 @@ public final class AgentPolicy {
   }
 
   private boolean holdForUpdate(UpdateTarget target) {
-    if (hold != null || target == null || target.digest() == null || staleEpoch != 0) return false;
+    if (hold != null || target == null || !target.valid() || staleEpoch != 0) return false;
     switch (phase) {
       case CHECKING -> stopped();
       case STOPPED, FAILED -> { }
