@@ -1778,7 +1778,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
       },
       {
-        id: "msg-digest", threadId: "thr-digest", labelIds: ["INBOX"], internalDate: now - 120_000,
+        id: "msg-digest", threadId: "thr-digest", labelIds: ["INBOX"], internalDate: now - 30_000,
         headers: { From: "News <noreply@news.example>", To: "conn-mail@example.com", Subject: "Weekly digest", "List-Id": "<digest.news.example>" }, snippet: "digest", bodyText: wholeText
       },
       {
@@ -1818,6 +1818,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const gmail = (path: string) => cloud.call(`/api/v1/eliza/google/gmail${path}`, { headers: { authorization: `Bearer ${token}` } })
     const errorOf = (answer: { readonly status: number; readonly body: unknown }) => [answer.status, (answer.body as { readonly error?: string }).error]
     const triage = try gmail("/triage")
+    const triageLimit = cloud.fakes.seen.find(({ path }) => path.endsWith("/gmail/v1/users/me/messages"))?.query.get("maxResults")
     const search = try gmail("/search?query=plan&maxResults=10")
     const tooMany = try gmail("/search?query=plan&maxResults=101")
     const read = try gmail("/read?messageId=msg-direct")
@@ -1932,7 +1933,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const draftBody = draft.body as { readonly providerDigest: string; readonly content: { readonly to: ReadonlyArray<string>; readonly subject: string; readonly bodyText: string; readonly plainText: boolean } }
     try check(() => assert.deepStrictEqual(
       {
-        triage: [triage.status, (triage.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, cards(triage)],
+        triage: [triage.status, (triage.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, triageLimit, cards(triage)],
         search: [search.status, (search.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, (search.body as { readonly nextPageToken: string | null }).nextPageToken, cards(search)],
         tooMany: errorOf(tooMany),
         read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments, readBody.authenticationResults],
@@ -1953,7 +1954,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         anonymous: errorOf(anonymous)
       },
       {
-        triage: [200, "1004", [
+        triage: [200, "1004", "12", [
           ["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"],
           ["msg-digest", 0, "directly addressed, automated sender", false, false, "1002"]
         ]],
@@ -3642,11 +3643,13 @@ module node {
       let providerRequestsValid = true
       const providerCalls: string[] = []
       const arrivalRequests: string[] = []
+      const triageLimits: Array<string | null> = []
       let mailArrived = false
       let staleHistory = false
       let rejectHistory = false
       let revokeArrival = false
       let invalidHistory = false
+      let invalidTriageRevision = false
       let incompleteHistory: "cycle" | "over-budget" | undefined
       let abortArrival: AbortController | undefined
       let providerAbort: AbortSignal | undefined
@@ -3660,7 +3663,7 @@ module node {
         providerRequestsValid &&= request.headers.get("authorization") === "Bearer fixture-access"
         if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/profile") {
           arrivalRequests.push(url.pathname + url.search)
-          return Response.json({ historyId: "10000000000000000001" })
+          return Response.json({ historyId: invalidTriageRevision ? "malformed" : "10000000000000000001" })
         }
         if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/history") {
           arrivalRequests.push(url.pathname + url.search)
@@ -3683,7 +3686,8 @@ module node {
         }
         if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages") {
           const label = url.searchParams.get("labelIds")
-          const found = label === "INBOX" ? ["fixture-message", "moved-to-trash"] : label === "TRASH" && url.searchParams.get("includeSpamTrash") === "true" &&
+          if (label === "INBOX") triageLimits.push(url.searchParams.get("maxResults"))
+          const found = label === "INBOX" ? ["automated-message", "fixture-message", "moved-to-trash"] : label === "TRASH" && url.searchParams.get("includeSpamTrash") === "true" &&
             url.searchParams.get("q") === "subject:plan & dates" ? ["trashed-message", "moved-message"] : []
           return Response.json({ messages: found.map((id) => ({ id })), nextPageToken: "page-two" })
         }
@@ -3694,6 +3698,13 @@ module node {
           if (revokeListing === "session") await fixture.db.query("UPDATE sessions SET live = false WHERE user_id = $1", [owner.account.id])
           return Response.json({ id: "DRAFT", messagesTotal: 7 })
         }
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/automated-message")
+          return Response.json({ id: "automated-message", threadId: "automated-thread", internalDate: "1760000001000", historyId: "790",
+            labelIds: ["INBOX", "UNREAD", "IMPORTANT"], payload: { headers: [
+              { name: "From", value: "Notices <sender@example.test>" },
+              { name: "To", value: "attachment-owner@example.test" },
+              ...url.searchParams.getAll("metadataHeaders").filter((name) => name === "Auto-Submitted").map((name) => ({ name, value: "auto-generated" })),
+            ] } })
         if (url.origin === "https://gmail.googleapis.com" && ["/gmail/v1/users/me/messages/trashed-message", "/gmail/v1/users/me/messages/moved-message", "/gmail/v1/users/me/messages/moved-to-trash"].includes(url.pathname)) {
           const id = url.pathname.split("/").at(-1)
           const labelIds = id === "moved-to-trash" ? ["TRASH", "INBOX"] : [id === "trashed-message" ? "TRASH" : "INBOX"]
@@ -3725,8 +3736,9 @@ module node {
           return Response.json({ ...message, payload: { mimeType: "text/plain", body } })
         }
         if (url.hostname === "gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/fixture-message")
-          return Response.json({ id: "fixture-message", threadId: "fixture-thread", internalDate: "1760000000000", historyId: "789", labelIds: ["INBOX"],
-            payload: { headers: [{ name: "Received", value: "by 2002:a05:6400:1::1 with SMTP id a1; Tue, 1 Dec 2026 10:00:01 -0800" },
+          return Response.json({ id: "fixture-message", threadId: "fixture-thread", internalDate: "1760000000000", historyId: "789", labelIds: ["INBOX", "UNREAD"],
+            payload: { headers: [{ name: "From", value: "Ada <ada@example.test>" }, { name: "Cc", value: '"Owner, Gmail" < ATTACHMENT-OWNER@example.test >' },
+              { name: "Received", value: "by 2002:a05:6400:1::1 with SMTP id a1; Tue, 1 Dec 2026 10:00:01 -0800" },
               { name: "Received", value: "from mail.example.test (mail.example.test. [192.0.2.10]) by mx.google.com with ESMTPS id b2 for <owner@example.com>; Tue, 1 Dec 2026 10:00:00 -0800" },
               { name: "Received-SPF", value: "pass (google.com: domain of sender@example.test designates 192.0.2.10 as permitted sender)" },
               { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.i=@example.test; spf=pass smtp.mailfrom=example.test" }, { name: "Subject", value: "Selected PDF" },
@@ -3876,6 +3888,26 @@ module node {
       const mimeMalformed = await get("read?messageId=mail-mime-malformed&grantId=" + grant, owner.access)
       const query = "grantId=" + grant + "&messageId=fixture-message"
       const folder = "triage?" + new URLSearchParams({ grantId: grant, folder: "trash", q: "  subject:plan & dates ", counts: "1" })
+      const inbox = await client.gmailTriage({ grantId: grant })
+      const maxInbox = await client.gmailTriage({ grantId: grant, maxResults: 50 })
+      const triageError = async (maxResults: string) => {
+        const answer = await get("triage?" + new URLSearchParams({ grantId: grant, maxResults }), owner.access)
+        const failure = Schema.decodeUnknownSync(Schema.Struct({ error: Schema.String }))(await answer.json())
+        return [answer.status, failure.error]
+      }
+      const countRefusals = [await triageError("01"), await triageError("0"), await triageError("51"), await triageError("1")]
+      invalidTriageRevision = true
+      const revisionRefusal = await triageError("12")
+      invalidTriageRevision = false
+      const triage = {
+        revision: inbox.mailboxHistoryId,
+        sameAtMaximum: maxInbox.mailboxHistoryId === inbox.mailboxHistoryId &&
+          maxInbox.messages.map(({ id }) => id).join(",") === inbox.messages.map(({ id }) => id).join(","),
+        limits: [...triageLimits],
+        messages: inbox.messages.map(({ id, triageScore, triageReason, isImportant, likelyReplyNeeded, metadata }) =>
+          [id, triageScore, triageReason, isImportant, likelyReplyNeeded, metadata.historyId]),
+        countRefusals, revisionRefusal,
+      }
       const readFolder = async (path: string) => {
         const answer = await get(path, owner.access)
         const result: unknown = await answer.json()
@@ -3932,7 +3964,7 @@ module node {
       revokeListing = "grant"
       const disconnected = await get(folder, signedBackIn.access)
       return {
-        arrivalResult, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
+        arrivalResult, triage, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
         organization, grant, manifest, mailText, html, mime: [mime, mimeAttachment.status, mimeFile.dataBase64, mimeMalformed.status],
         readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
@@ -3969,6 +4001,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
       file: [got.fileStatus, got.cache, got.file],
       provider: [got.providerRequestsValid, got.attachmentFetches],
+      triage: got.triage,
       mailboxes: [got.mailboxes, got.deniedFolders, got.signedOut, got.disconnected],
       device: [got.refused, got.beforeDeviceRead, got.deviceStatus, got.deviceReceipt, got.changed, got.revoked],
     },
@@ -4008,7 +4041,16 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       file: [200, "no-store", { version: 1, accountId: got.owner, organizationId: got.organization, grantId: got.grant, messageId: "fixture-message", partId: "1", historyId: "789",
         name: "fixture.pdf", mimeType: "application/pdf", size: got.size, dataBase64: got.expectedData, sha256: got.expectedHash, supported: true }],
       provider: [true, 5],
-      mailboxes: [[[200, true, "inbox", "", ["fixture-message"], null, "page-two"], [200, true, "trash", "subject:plan & dates", ["trashed-message"], { inboxUnread: 52, drafts: 7 }, "page-two"]], [409, 400], 401, 409],
+      triage: {
+        revision: "10000000000000000001", sameAtMaximum: true, limits: ["12", "50", "1"],
+        messages: [
+          ["fixture-message", 75, "unread, directly addressed, likely needs reply", true, true, "789"],
+          ["automated-message", 55, "unread, important label, directly addressed, automated sender", true, false, "790"],
+        ],
+        countRefusals: [[400, "invalid_request"], [400, "invalid_request"], [400, "invalid_request"], [502, "provider_invalid_response"]],
+        revisionRefusal: [502, "provider_invalid_response"],
+      },
+      mailboxes: [[[200, true, "inbox", "", ["fixture-message", "automated-message"], null, "page-two"], [200, true, "trash", "subject:plan & dates", ["trashed-message"], { inboxUnread: 52, drafts: 7 }, "page-two"]], [409, 400], 401, 409],
       device: [[401, 409, 409], 1, 200, got.file, 409, 401],
     },
   ))

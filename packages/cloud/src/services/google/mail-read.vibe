@@ -75,15 +75,11 @@ const gmail = "/gmail/v1/users/me"
 const providerId = /^[A-Za-z0-9_-]{1,256}$/
 const historyPattern = /^\d{1,20}$/
 const partIdPattern = /^[0-9.]{1,32}$/
-const pageSize = /^[1-9]\d{0,2}$/
-const triageMax = 50
-const searchMax = 100
 const threadPageMaxBytes = 1.5 * mebibyte
 const draftPage = 25
 const messageMaxBytes = Math.ceil(GoogleRead.attachmentMaxBytes / 3) * 4 + 65536
 const threadMaxBytes = 12 * 1024 * 1024
 const metadataHeaders = ["From", "To", "Cc", "Subject", "Reply-To", "Message-ID", "Precedence", "List-Id", "Auto-Submitted"]
-const automatedSender = /(?:^|\b)(?:no-?reply|donotreply|notifications?|mailer-daemon)(?:\b|@)/i
 const trashQuery = /(?:^|[\s({])in:(?:spam|trash|anywhere)(?=[\s)}]|$)/i
 
 const kindsByCapability: ReadonlyArray<readonly [GoogleCapability, ReadonlyArray<OperationKind>]> = [
@@ -128,63 +124,17 @@ function header(part: GoogleRead.MailPart | undefined, name: string): string {
   return headerValues(part, name).at(-1) ?? ""
 }
 
-function addressOf(entry: string): string {
-  const bracketed = /<([^<>]+)>\s*$/.exec(entry)
-  return (bracketed?.[1] ?? entry).trim()
-}
-
-function addresses(value: string): ReadonlyArray<string> {
-  return value.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(addressOf).filter((entry) => entry !== "")
-}
-
-function senderEmail(value: string): string | null {
-  const candidate = addressOf(value)
-  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(candidate) ? candidate.toLowerCase() : null
-}
-
-function triage(labels: ReadonlyArray<string>, part: GoogleRead.MailPart | undefined, to: ReadonlyArray<string>, cc: ReadonlyArray<string>, selfEmail: string) {
-  const labelSet = new Set(labels.map((label) => label.trim().toUpperCase()))
-  const isUnread = labelSet.has("UNREAD")
-  const explicitlyImportant = labelSet.has("IMPORTANT")
-  const self = selfEmail.trim().toLowerCase()
-  const fromEmail = senderEmail(header(part, "from"))
-  const directlyAddressed = self !== "" && [...to, ...cc].some((entry) => entry.trim().toLowerCase() === self)
-  const fromSelf = self !== "" && fromEmail === self
-  const precedence = header(part, "precedence").trim().toLowerCase()
-  const autoSubmitted = headerValues(part, "auto-submitted").at(-1)?.trim().toLowerCase()
-  const automated = (fromEmail !== null && automatedSender.test(fromEmail)) || header(part, "list-id") !== "" ||
-    precedence === "bulk" || precedence === "list" || precedence === "junk" || (autoSubmitted !== undefined && autoSubmitted !== "no")
-  const likelyReplyNeeded = !automated && !fromSelf && isUnread && directlyAddressed
-  const weights: ReadonlyArray<readonly [boolean, number, string]> = [
-    [isUnread, 30, "unread"],
-    [explicitlyImportant, 35, "important label"],
-    [directlyAddressed, 15, "directly addressed"],
-    [likelyReplyNeeded, 30, "likely needs reply"],
-    [automated, -25, "automated sender"],
-    [fromSelf, -60, "sent by self"]
-  ]
-  const applied = weights.filter(([holds]) => holds)
-  return {
-    isImportant: explicitlyImportant || likelyReplyNeeded,
-    likelyReplyNeeded,
-    triageScore: Math.max(0, applied.reduce((total, [, weight]) => total + weight, 0)),
-    triageReason: applied.map(([, , reason]) => reason).join(", ") || "recent inbox message"
-  }
-}
-
 effect function mailCard(message: MailMessage, selfEmail: string) {
-  const received = Number(message.internalDate ?? "")
-  if (!providerId.test(message.id) || !providerId.test(message.threadId) || !/^\d+$/.test(message.internalDate ?? "") || !Number.isSafeInteger(received)) {
+  const receivedAt = GoogleRead.isoMailDate(message.internalDate)
+  if (!providerId.test(message.id) || !providerId.test(message.threadId) || receivedAt === null) {
     throw refused("ProviderInvalidResponse")
   }
-  const part = message.payload
+  const headers = GoogleRead.headerMap(message.payload)
   const labels = (message.labelIds ?? []).map((label) => label.trim()).filter((label) => label !== "")
-  const to = addresses(header(part, "to"))
-  const cc = addresses(header(part, "cc"))
   return {
-    id: message.id, threadId: message.threadId, subject: header(part, "subject"), from: header(part, "from"), to, cc,
-    snippet: message.snippet ?? "", receivedAt: new Date(received).toISOString(), labels, isUnread: labels.includes("UNREAD"),
-    ...triage(labels, part, to, cc, selfEmail), metadata: { historyId: message.historyId ?? null }
+    id: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from: headers.get("from") ?? "",
+    snippet: message.snippet ?? "", receivedAt, labels, ...GoogleRead.mailTriageFields(labels, headers, selfEmail),
+    metadata: { historyId: message.historyId ?? null }
   }
 }
 
@@ -304,13 +254,6 @@ effect function param(context: RouteContext, name: string, pattern: RegExp) {
   return value
 }
 
-effect function limitOf(context: RouteContext, fallback: number, max: number) {
-  const raw = context.query.get("maxResults")
-  if (raw === null) return fallback
-  if (!pageSize.test(raw) || Number(raw) > max) throw refused("InvalidRequest")
-  return Number(raw)
-}
-
 effect function pageTokenOf(context: RouteContext) {
   const token = context.query.get("pageToken")
   if (token === null) return undefined
@@ -321,19 +264,21 @@ effect function pageTokenOf(context: RouteContext) {
 const syncedAt = (context: RouteContext) => new Date(context.now).toISOString()
 
 effect function triageRoute(context: RouteContext) {
-  const limit = try limitOf(context, triageMax, triageMax)
+  const limit = GoogleRead.mailListCount("TriageList", context.query.get("maxResults"))
+  if (limit === null) throw refused("InvalidRequest")
   const grant = try grantOf(context, "TriageSurface")
   const mailboxHistoryId = try mailboxHistory(grant)
   const page = try listed(grant, new URLSearchParams({ maxResults: String(limit), labelIds: "INBOX" }), limit, undefined)
   const messages = page.messages.filter(({ labels }) => labels.includes("INBOX") && !labels.includes("TRASH"))
-    .toSorted((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt))
+    .sort(GoogleRead.compareMailTriage)
   return json({ messages, syncedAt: syncedAt(context), mailboxHistoryId })
 }
 
 effect function searchRoute(context: RouteContext) {
   const query = (context.query.get("query") ?? "").trim()
   if (query === "" || query.length > 2048) throw refused("InvalidRequest")
-  const limit = try limitOf(context, triageMax, searchMax)
+  const limit = GoogleRead.mailListCount("SearchList", context.query.get("maxResults"))
+  if (limit === null) throw refused("InvalidRequest")
   const pageToken = try pageTokenOf(context)
   const grant = try grantOf(context, "SearchSurface")
   const mailboxHistoryId = try mailboxHistory(grant)
@@ -462,7 +407,7 @@ effect function draftsRoute(context: RouteContext) {
     const updated = Number(draft.message.internalDate ?? "")
     return {
       draftId: draft.id, messageId: draft.message.id, subject: header(draft.message.payload, "subject"),
-      to: addresses(header(draft.message.payload, "to")), snippet: draft.message.snippet ?? "",
+      to: GoogleRead.mailAddresses(header(draft.message.payload, "to")), snippet: draft.message.snippet ?? "",
       updatedAt: Number.isSafeInteger(updated) && updated > 0 ? new Date(updated).toISOString() : null
     }
   }, { concurrency: 8 })
@@ -481,7 +426,7 @@ effect function draftRoute(context: RouteContext) {
   return json({
     version: 1, id: draftId, messageId: raw.message.id, providerDigest: sha256Hex(raw.message.raw),
     content: {
-      to: addresses(header(payload, "to")), cc: addresses(header(payload, "cc")), bcc: addresses(header(payload, "bcc")),
+      to: GoogleRead.mailAddresses(header(payload, "to")), cc: GoogleRead.mailAddresses(header(payload, "cc")), bcc: GoogleRead.mailAddresses(header(payload, "bcc")),
       subject: header(payload, "subject"),
       bodyText: (try bodyPart(grant, full.message.id, parts.plain, mailMaxBytes)) ?? "",
       plainText: parts.plain !== undefined || parts.html === undefined,

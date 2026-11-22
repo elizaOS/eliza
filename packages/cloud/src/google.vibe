@@ -8,7 +8,7 @@ import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBi
 import { Aead, Digest, SecureRandom } from "effect/crypto"
 import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
-import { attachmentSelection, googleCalendarFeed, googleCalendarItem, googleGmailAttachment, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleAttachmentMissing, GoogleAttachmentStale, GoogleAttachmentUnsupported, GoogleReadInput, GoogleReadTooLarge, type GoogleReadApi } from "./google-read.vibe"
+import { attachmentSelection, googleCalendarFeed, googleCalendarItem, googleGmailAttachment, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleAttachmentMissing, GoogleAttachmentStale, GoogleAttachmentUnsupported, GoogleReadInput, GoogleReadTooLarge, GoogleMailboxResponse, type GoogleReadApi } from "./google-read.vibe"
 
 import { boundedText, ProviderBodyTooLarge } from "./providers/bounded-body.vibe"
 import { rateLimit, RateLimited, StorageUnavailable } from "./identity-store.vibe"
@@ -717,7 +717,7 @@ function transferContext(env: GoogleEnv, account: string, organization: string) 
 }
 
 effect function mailGrant(db: Client, account: string, grant: string | null) {
-  const { rows } = try query<{ id: string; organization_id: string }>(db, `SELECT c.id, a.organization_id FROM accounts a JOIN cloud_google_connections c ON c.account_id = a.key
+  const { rows } = try query<{ id: string; organization_id: string; email: string }>(db, `SELECT c.id, a.organization_id, c.email FROM accounts a JOIN cloud_google_connections c ON c.account_id = a.key
     WHERE a.key = $1 AND a.status = 'active' AND ($2::text IS NULL OR c.id::text = $2) AND c.mail`, [account, grant])
   if (!rows[0]?.organization_id) throw new ConnectionUnavailable()
   return rows[0]
@@ -827,9 +827,9 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
       return body(200, { ...file, deviceTransfer })
     }
     if (path === "/gmail/triage" || path === "/gmail/read") {
-      const grant = selected ?? (try mailGrant(db, account, null)).id
+      const { id: grant, email } = try mailGrant(db, account, selected)
       const api = googleReadApi(try accessFor(env, db, account, "mail", grant), path === "/gmail/read")
-      const result = path === "/gmail/triage" ? try googleGmailTriage(api, url, now) : try googleGmailMessage(api, url)
+      const result = path === "/gmail/triage" ? try googleGmailTriage(api, url, now, email) : try googleGmailMessage(api, url, email)
       try mailGrant(db, account, grant)
       return body(200, { accountId: account, ...result })
     }
@@ -867,6 +867,7 @@ export function googleRequest(request: Request, env: GoogleEnv, db: Client, acco
       when BadRequest: body(400, { error: "invalid_request" });
       when InboxWatchRequestInvalid: body(400, { error: "invalid_request" });
       when GoogleReadInput: body(400, { error: "invalid_request" });
+      when GoogleMailboxResponse: body(502, { error: "provider_invalid_response" });
       when GoogleReadTooLarge: body(413, { error: "content_too_large" });
       when GoogleAttachmentStale: body(409, { error: "google_item_changed" });
       when GoogleAttachmentMissing: body(404, { error: "google_item_not_found" });
