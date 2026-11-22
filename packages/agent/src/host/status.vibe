@@ -1,7 +1,7 @@
 // spec/agent/host/process.md, "Status says running only when health says ready, and the agent can respond only with a text backend and an unblocked account"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/access/auth.md, "A Root-only route admits only a caller holding the launch token"
 import type { Backend } from "../../gen/agent__host__launch.ts"
 import { agentStateOf, mayRespond, type AgentProcess } from "../../gen/agent__host__process.ts"
-import { blocked, failureName, initial, type AccountState, type LastCloudFailure } from "../../gen/agent__models__binding.ts"
+import { blocked, failureName, type AccountState, type LastCloudFailure } from "../../gen/agent__models__binding.ts"
 import { messageBodyLimitBytes } from "../../gen/agent__access__transport.ts"
 import type { LocalRoute } from "../access/routes.vibe"
 import type { LaunchDocument } from "./launch.vibe"
@@ -23,8 +23,6 @@ export interface StatusView {
   readonly binding: () => BindingState
   readonly now: () => number
 }
-
-export const usableBinding = (): BindingState => ({ accountState: initial.accountState, lastCloudFailure: initial.lastCloudFailure })
 
 const runStates = { Starting: "starting", Running: "running", Stopping: "stopping" } as const
 

@@ -5,8 +5,11 @@ import type { ScheduledTask } from "../../gen/agent__schedule__scheduledTasks.ef
 
 export error ScheduleStoreUnavailable { step: string; cause: unknown }
 export error StaleRevision { table: "schedule_triggers" | "schedule_tasks"; id: string; revision: number }
+/** @public */
 export error MissingTriggerDetails { id: string }
+/** @public */
 export error NoScheduledTask { taskId: string }
+/** @public */
 export error TaskIdTaken { taskId: string }
 
 module node {

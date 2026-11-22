@@ -91,7 +91,7 @@ function codeOf(value: unknown): string {
   return typeof value.code === "string" ? value.code : ""
 }
 
-export function hostRefusal(value: unknown): Reply {
+function hostRefusal(value: unknown): Reply {
   const code = codeOf(value)
   if (!code.startsWith("TASK_")) return refused(refusalOf({ tag: "NotATaskError" }))
   const listed = listedCodes.get(code)
@@ -101,7 +101,7 @@ export function hostRefusal(value: unknown): Reply {
   return { status: httpStatus(refusalOf(failure)), body: { code } }
 }
 
-export function taskView(task: InteractiveTask) {
+function taskView(task: InteractiveTask) {
   return {
     schemaVersion: task.schemaVersion,
     id: task.id,

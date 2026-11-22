@@ -13,10 +13,9 @@ import { s256 } from "../shared/credential-crypto.vibe"
 import { newId, sameText, seal, secretText, tokenDigest, unseal } from "../shared/sealing.vibe"
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
 import { type Columns } from "../store/rows.vibe"
-import { currentGrant, decodeGrant, endKey, grants, inspectKey, isFlatGrant, keyExpiresAt, phaseColumn, stepGrant } from "./grants.vibe"
+import { currentGrant, decodeGrant, endKey, inspectKey, isFlatGrant, keyExpiresAt, phaseColumn, stepGrant } from "./grants.vibe"
 import { admitClient, parseReturn, readRegistry, servedEnvironment } from "./registry.vibe"
 
-export { grants, s256 }
 
 const pkceText = /^[A-Za-z0-9._~-]{43,128}$/
 const challengeText = /^[A-Za-z0-9_-]{43}$/

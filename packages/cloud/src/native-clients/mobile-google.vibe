@@ -30,7 +30,6 @@ const SignInBody = Schema.Struct({
   serverAuthCode: Schema.optionalKey(ServerAuthCode)
 })
 
-export type { GoogleLink } from "../services/google/managed-grants.vibe"
 
 type SignedIn =
   | { readonly kind: "mfa"; readonly answer: { readonly status: "mfa_required"; readonly challengeId: string; readonly methods: ReadonlyArray<string>; readonly expiresAt: number } }

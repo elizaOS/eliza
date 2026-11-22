@@ -34,7 +34,7 @@ export interface ComposeInput {
 
 export type ActionGate = (action: { readonly name: string }) => string | undefined
 
-export interface ComposedAgent {
+interface ComposedAgent {
   readonly runtime: AgentRuntime
   readonly routes: readonly LocalRoute[]
   readonly allowed: ReadonlySet<string>
@@ -45,7 +45,7 @@ export error RuntimeFailed { cause: unknown }
 export error PlanNotAdmitted { phase: PlanPhase }
 export error PlanRefused { cause: PlanFailure; plugin: string }
 export error PluginFailed { plugin: string; cause: unknown }
-export error WorkerNotVerified { phase: PlanPhase }
+error WorkerNotVerified { phase: PlanPhase }
 
 export type ComposeFailure = RuntimeFailed | PlanNotAdmitted | PlanRefused | PluginFailed | ModuleRefused
 

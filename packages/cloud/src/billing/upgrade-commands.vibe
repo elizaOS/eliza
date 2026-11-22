@@ -171,7 +171,7 @@ effect function sendUpgrade(terms: StripeUpgradeTerms, operationKey: string) {
   } catch (failure) => failureReply(failure)
 }
 
-export effect function confirmUpgrade(authorization: string | undefined, input: PlanConfirmation) {
+effect function confirmUpgrade(authorization: string | undefined, input: PlanConfirmation) {
   if (!idempotencyKeyPattern.test(input.idempotencyKey) || input.quoteId === "" ||
     (input.expectedSubscriptionRevision !== undefined && (!Number.isSafeInteger(input.expectedSubscriptionRevision) || input.expectedSubscriptionRevision < 1)))
     throw refused("InvalidRequest")
@@ -249,7 +249,7 @@ function hostedPayment(url: string | null | undefined) {
   }
 }
 
-export effect function upgradePayment(authorization: string | undefined, commandId: string) {
+effect function upgradePayment(authorization: string | undefined, commandId: string) {
   const current = try findUpgrade(authorization, commandId)
   const observed = try refreshUpgrade(current)
   const owner = try freshOwner(authorization)

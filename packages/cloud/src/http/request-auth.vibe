@@ -36,7 +36,7 @@ export type Signed = Exclude<Caller, { readonly kind: "anonymous" }>
 const deviceKeyPattern = /^eliza_mobile_[0-9a-f]{64}$/
 const sessionTokenPattern = /^eliza_session_[A-Za-z0-9_-]{43}$/
 
-export const deviceKeyPerMinute = 120
+const deviceKeyPerMinute = 120
 
 export function bearerToken(authorization: string | undefined): string | undefined {
   const match = /^Bearer ([^\s]+)$/.exec(authorization ?? "")

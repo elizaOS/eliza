@@ -38,7 +38,7 @@ module node {
 }
 import { gitBlobId, globMatches } from node
 
-export type Commit = string & { readonly __brand: "Commit" }
+type Commit = string & { readonly __brand: "Commit" }
 
 export interface WorkspaceAllowances {
   readonly generatedFiles?: readonly string[]
@@ -54,16 +54,16 @@ export interface PrepareRequest<A, E, R> {
   readonly stage: (directory: string) => A!E!R
 }
 
-export interface PreparedCommit<A> {
+interface PreparedCommit<A> {
   readonly commit: Commit
   readonly origin: Exclude<PreparedSource["origin"], "NotChosen">
   readonly staged: A
 }
 
-export error NotACommit { value: string }
-export error SourceUnreadable { directory: string; message: string }
-export error DestinationOccupied { destination: string }
-export error CacheRefused { cache: string; message: string }
+error NotACommit { value: string }
+error SourceUnreadable { directory: string; message: string }
+error DestinationOccupied { destination: string }
+error CacheRefused { cache: string; message: string }
 export error WorkspaceRefused { directory: string; finding: WorkspaceFinding; headCommit: string; path: string | undefined; message: string }
 export error ExportRefused { source: string; message: string }
 

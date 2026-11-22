@@ -27,7 +27,7 @@ export interface ScheduleFacts {
   nextInstant(expression: string, timezone: string, after: number): number | undefined
 }
 
-export const scheduleFacts: ScheduleFacts = {
+const scheduleFacts: ScheduleFacts = {
   processStartedAt: agentProcessStartedAtMs(),
   nextInstant: (expression, timezone, after) => computeNextCronRunAtMs(expression, after, timezone) ?? undefined,
 }
@@ -61,7 +61,7 @@ export interface PromptTriggers extends TriggerService {
   stop(): void!!
 }
 
-export const triggerTask = "AGENT_PROMPT_TRIGGER"
+const triggerTask = "AGENT_PROMPT_TRIGGER"
 const triggerTag = "prompt-trigger"
 const interrupted: Delivery = { kind: "Turn", turn: "Cancelled", reason: "the agent stopped before the run finished" }
 

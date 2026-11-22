@@ -1,5 +1,5 @@
 // spec/cloud/billing/allowance.md, "Story: Spend my plan's allowance before my credits, and never carry it over"; spec/cloud/billing/allowance.md, "Story: Get more allowance when I upgrade mid-period"; spec/cloud/billing/allowance.md, "Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute"
-import { enabled, type ClawbackCause, type CloseReason, type Event, type Period, type Rejected } from "../../gen/cloud__billing__allowance.effect.vibe"
+import { enabled, type Event, type Period, type Rejected } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { PlanKey } from "../../gen/cloud__billing__plans.effect.vibe"
 import type { Sweep } from "../http/routes.vibe"
 import { Deployment, type CloudEnvironment } from "../profile/profile.vibe"
@@ -10,7 +10,7 @@ import { existingRenewalPeriod, InvalidAllowancePeriod, renewalKey } from "./str
 import { parsePlanKey } from "./plans.vibe"
 import { readPolicy, type PolicyUnreadable } from "./policy.vibe"
 
-export type { ClawbackCause, CloseReason, Period }
+export type { Period }
 
 export type AllowanceFailure = StoreFailure | RowCorrupt | RowConflict | Rejected
 
@@ -74,7 +74,7 @@ export interface GrantMonth {
 
 const lifetimeMonthsAhead = 3
 
-export function grantMonths(grant: GrantTerm, now: number): ReadonlyArray<GrantMonth> {
+function grantMonths(grant: GrantTerm, now: number): ReadonlyArray<GrantMonth> {
   const monthAt = (month: number): GrantMonth => {
     const fullEndsAt = addUtcMonths(grant.effectiveFrom, month + 1)
     return { month, startsAt: addUtcMonths(grant.effectiveFrom, month), endsAt: grant.effectiveUntil === null ? fullEndsAt : Math.min(fullEndsAt, grant.effectiveUntil), fullEndsAt }

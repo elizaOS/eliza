@@ -62,7 +62,7 @@ export interface ScheduledTaskPort {
   fire(taskId: string): FireResult!!
 }
 
-export interface ScheduledTaskService {
+interface ScheduledTaskService {
   readonly port: ScheduledTaskPort
   readonly plugin: Omit<AgentPlugin, "name" | "description" | "routes">
 }
@@ -108,7 +108,7 @@ const notFound = failure(404, "not_found")
 const iso = (instant: number) => new Date(instant).toISOString()
 const keyOf = (key: string | undefined): RequestKey => key === undefined ? { tag: "Unkeyed" } : { tag: "Keyed", key }
 
-export function wireTask(row: ScheduledTaskRow) {
+function wireTask(row: ScheduledTaskRow) {
   return {
     taskId: row.taskId, kind: row.kind, ownerVisible: row.ownerVisible, promptInstructions: row.promptInstructions,
     trigger: row.trigger, metadata: row.metadata,
@@ -171,7 +171,7 @@ effect function fireAnswer(tasks: ScheduledTaskPort, taskId: string) {
   } } }
 }
 
-export function scheduledTaskRoutes(tasks: ScheduledTaskPort): LocalRoute[] {
+function scheduledTaskRoutes(tasks: ScheduledTaskPort): LocalRoute[] {
   return [
     {
       method: "GET", path: "/api/scheduled-tasks",
@@ -256,12 +256,12 @@ function scheduledTasksApi(tasks: ScheduledTasks): ServiceClass {
   }
 }
 
-export effect function openScheduledTasks(context: ModuleContext) {
+effect function openScheduledTasks(context: ModuleContext) {
   const tasks = scheduledTaskService(try runtimeTaskHost(context.runtime))
   return { port: scheduledTaskPort(tasks), plugin: { services: [scheduledTasksApi(tasks)] } } satisfies ScheduledTaskService
 }
 
-export function scheduledTasksModule<R>(open: (context: ModuleContext) => ScheduledTaskService!ModuleRefused!R): ModuleFactory<R> {
+function scheduledTasksModule<R>(open: (context: ModuleContext) => ScheduledTaskService!ModuleRefused!R): ModuleFactory<R> {
   return effect (context) => {
     const service = try open(context)
     return {

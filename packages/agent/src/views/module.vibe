@@ -10,7 +10,7 @@ export { viewsModuleName }
 
 export const viewHostServiceType = "agent_view_host"
 
-export const viewInteractStream = "view-interact"
+const viewInteractStream = "view-interact"
 
 function feedsOf(publishEvent: PublishEvent, viewFeeds: ViewFeeds): ViewFeedPort {
   return {

@@ -1,0 +1,74 @@
+// spec/core/authorization.md, "Story: Read only the authorized records"; spec/core/trustedAudience.md, "Story: Renew audience evidence only for the same active turn"; spec/core/trustedAudience.md, "Renewal rechecks lease identity and audience after the authority await"
+import { assert, it } from "@effect/vitest"
+import { vi } from "vitest"
+import { attestDeliveryAudienceFromCanonicalRoom, beginTrustedDeliveryAudienceTurn, ChannelType, getTrustedDeliveryAudience, searchCanonicalConversationMemories, stringToUuid, type Memory } from "../src/index.vibe"
+import { host, kernel } from "./support/kernel.vibe"
+
+it.live("Keep canonical recall available while the same delivery turn is active (spec/core/trustedAudience.md, \"Story: Renew audience evidence only for the same active turn\")", () => scoped(effect {
+  const runtime = try kernel()
+  try host(async () => {
+    await runtime.adapter.ensureEmbeddingDimension(3)
+    const agentId = runtime.agentId
+    const start = Date.now()
+    const id = (part: string) => stringToUuid("canonical-recall-" + part)
+    vi.useFakeTimers({ toFake: ["Date"] })
+    try {
+      const results = []
+      for (const state of ["active", "ended", "cancelled", "audience changed"] as const) {
+        vi.setSystemTime(start)
+        const worldId = id(state + "-world")
+        const roomId = id(state + "-room")
+        const requester = id(state + "-requester")
+        const stored = id(state + "-stored")
+        await runtime.createWorld({ id: worldId, agentId })
+        await runtime.createRoom({ id: roomId, worldId, source: "discord", type: ChannelType.GROUP })
+        await runtime.createEntity({ id: requester, agentId, names: ["requester"] })
+        await runtime.addParticipant(requester, roomId)
+        await runtime.addParticipant(agentId, roomId)
+        await runtime.createMemory({
+          id: stored, agentId, roomId, worldId, entityId: requester, createdAt: start,
+          content: { text: "The project meeting is on Friday.", source: "discord" },
+          metadata: {
+            type: "message", provider: "discord", accountId: "fixture-discord-account",
+            scope: "room", messageIdFull: state + "-source", discord: { userId: "fixture-requester" }
+          } as Memory["metadata"],
+          embedding: [1, 0, 0],
+        }, "messages")
+
+        const delivery: Memory = {
+          id: id(state + "-delivery"), agentId, roomId, entityId: requester, createdAt: start,
+          content: { text: "When is the project meeting?", source: "discord" },
+        }
+        const attested = await attestDeliveryAudienceFromCanonicalRoom(runtime, delivery)
+        const controller = new AbortController()
+        const end = beginTrustedDeliveryAudienceTurn(runtime, delivery, { signal: controller.signal })
+        const recall = () => searchCanonicalConversationMemories({ runtime, deliveryMessage: delivery, embedding: [1, 0, 0] })
+        try {
+          const fresh = await recall()
+          assert.deepStrictEqual([fresh.availability, fresh.items.map(({ memory }) => memory.id)], ["complete", [stored]], state + " with fresh evidence")
+          vi.setSystemTime(attested.expiresAtMs + 1)
+          if (state === "ended") end()
+          if (state === "cancelled") controller.abort()
+          if (state === "audience changed") {
+            const joiner = id(state + "-joiner")
+            await runtime.createEntity({ id: joiner, agentId, names: ["joiner"] })
+            await runtime.addParticipant(joiner, roomId)
+          }
+          const expired = await recall()
+          results.push([state, expired.availability, expired.items.map(({ memory }) => memory.id === stored),
+            (getTrustedDeliveryAudience(delivery)?.expiresAtMs ?? 0) > Date.now()])
+        } finally {
+          end()
+        }
+      }
+      assert.deepStrictEqual(results, [
+        ["active", "complete", [true], true],
+        ["ended", "unavailable", [], false],
+        ["cancelled", "unavailable", [], false],
+        ["audience changed", "unavailable", [], false],
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+}))

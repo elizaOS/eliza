@@ -66,9 +66,9 @@ module node {
 }
 import { newTotpSeed, smsCode, totpCode } from node
 
-export type WireMethod = "totp" | "sms"
+type WireMethod = "totp" | "sms"
 
-export interface MfaRequired {
+interface MfaRequired {
   readonly status: "mfa_required"
   readonly challengeId: string
   readonly methods: ReadonlyArray<WireMethod>

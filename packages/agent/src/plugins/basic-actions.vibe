@@ -47,7 +47,7 @@ function skip(cursor: Cursor): string | undefined {
   return cursor.src[cursor.pos]
 }
 
-export function refusalText(refusal: Refusal): string {
+function refusalText(refusal: Refusal): string {
   switch (refusal.kind) {
     case "TooLong": return `the expression is longer than ${refusal.limit} characters`
     case "TooDeep": return `the expression nests deeper than ${refusal.limit} levels`
@@ -181,7 +181,7 @@ async function evaluate(options: unknown): Promise<ActionResult> {
   return { success: true, text: `${expression} = ${value}${exact ? "" : " (floating point, 15 significant digits)"}`, data: { expression, value, exact } }
 }
 
-export const calculateAction: Action = {
+const calculateAction: Action = {
   name: calculateDecl.name,
   description: "Exact arithmetic: evaluates a numeric expression (+ - * / % ^, parentheses, decimals, unary minus) deterministically. Use it for any multi-digit arithmetic instead of computing it yourself; integer results are exact.",
   similes: ["MATH", "COMPUTE", "ARITHMETIC", "MULTIPLY", "DIVIDE"],

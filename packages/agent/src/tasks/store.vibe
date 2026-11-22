@@ -291,7 +291,7 @@ import {
 
 type TaskRecord = TaskRecordShape
 
-export function holdsSlot(record: TaskRecord): boolean {
+function holdsSlot(record: TaskRecord): boolean {
   const { status, operations } = record.task
   if (status !== "completed" && status !== "cancelled") return true
   return record.acknowledgedUnknown !== true
@@ -319,7 +319,7 @@ export interface TaskRecords {
   close(): void!!
 }
 
-export interface TaskStoreHandle extends TaskRecords {
+interface TaskStoreHandle extends TaskRecords {
   custody(): TaskStore!!
 }
 

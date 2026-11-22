@@ -20,11 +20,11 @@ const viewsByName = new Map<string, DeviceView>(Object.entries(viewNames).map(([
 
 export const supportedViews: readonly ViewName[] = Object.values(viewNames)
 
-export function viewName(view: DeviceView): ViewName {
+function viewName(view: DeviceView): ViewName {
   return viewNames[view]
 }
 
-export function deviceView(name: string): DeviceView | undefined {
+function deviceView(name: string): DeviceView | undefined {
   return viewsByName.get(name)
 }
 

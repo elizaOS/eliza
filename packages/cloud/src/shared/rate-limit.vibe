@@ -4,8 +4,8 @@ import { Refused } from "../http/refusal.vibe"
 import { loadRow, machineRows, stepRow } from "../store/rows.vibe"
 import { Store, type Tx } from "../store/connection.vibe"
 
-export { perWindow, windowEndOf, windowStartOf } from "../../gen/cloud__shared__rateLimit.effect.vibe"
-export type { RateLimit, Window }
+export { perWindow, windowEndOf } from "../../gen/cloud__shared__rateLimit.effect.vibe"
+export type { RateLimit }
 
 const windows = machineRows<Window, Event, Rejected, unknown>("rate_windows", { initial, decodeState, apply })
 

@@ -64,18 +64,18 @@ export interface ComposeContext {
   readonly forwarded: Forwarded | undefined
 }
 
-export interface AttachmentReview {
+interface AttachmentReview {
   readonly name: string
   readonly mimeType: string
   readonly size: number
   readonly sha256: string
 }
 
-export interface ForwardedReview extends AttachmentReview {
+interface ForwardedReview extends AttachmentReview {
   readonly partId: string
 }
 
-export type MailReview = {
+type MailReview = {
   readonly from: string
   readonly to: ReadonlyArray<string>
   readonly cc: ReadonlyArray<string>
@@ -86,7 +86,7 @@ export type MailReview = {
   readonly forwardedAttachments: ReadonlyArray<ForwardedReview>
 }
 
-export interface Composed {
+interface Composed {
   readonly raw: string
   readonly threadId?: string
   readonly review: MailReview
@@ -105,8 +105,8 @@ interface ReplyBinding {
   readonly allRecipients: ReadonlyArray<string>
 }
 
-export const maxMessageBytes = 8 * 1024 * 1024
-export const maxAttachments = 10
+const maxMessageBytes = 8 * 1024 * 1024
+const maxAttachments = 10
 const maxRecipients = 50
 const gmail = "/gmail/v1/users/me"
 const mailAddress = /^[A-Za-z0-9.!#$%&'*+\-/=?^_`{|}~]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}$/

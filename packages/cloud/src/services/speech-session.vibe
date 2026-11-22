@@ -1,7 +1,7 @@
 // spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"
 import { apply, consentLifetime, decodeState, firstSessionDeadline, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { realtimeSpeechAdmits, realtimeSpeechResetsAt, utcDayStart } from "../../gen/cloud__billing__plans.effect.vibe"
-import { relayChannels, relaySampleRate, type Shortfall } from "../../gen/cloud__services__speechRelay.effect.vibe"
+import { relayChannels, relaySampleRate } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import type { HoldKey, SpeechDirection } from "../../gen/cloud__shared__types.ts"
 import { refused, Refused, wireName } from "../http/refusal.vibe"
 import { signed, type Signed } from "../http/request-auth.vibe"
@@ -14,7 +14,7 @@ import { loadRow, machineRows, stepRow, type RowConflict, type RowCorrupt } from
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 import { inspectKey } from "../native-clients/grants.vibe"
 
-export type { Session, SessionEnd, Shortfall, SpeechDirection, WindowAdmission, WindowUsage }
+export type { Session, SessionEnd, WindowAdmission, WindowUsage }
 
 export const sessionRows = machineRows<Session, Event, Rejected, NotAState>("speech_sessions", { initial, decodeState, apply })
 
@@ -57,7 +57,7 @@ interface Rates {
   readonly microsPerCharacter: number
 }
 
-export const speechPath = "/api/v1/voice/speech"
+const speechPath = "/api/v1/voice/speech"
 const directions: ReadonlyArray<SpeechDirection> = ["Transcribe", "Synthesize"]
 const pcmBytesPerSecond = relaySampleRate * relayChannels * 2
 const reaperEveryMs = 10_000
@@ -126,7 +126,7 @@ export function sessionColumns(now: number) {
   return (session: Session) => ({ phase: wireName(session.phase), expires_at: session.expiresAt, updated_at: now })
 }
 
-export function tokenMatches(opened: OpenedSession, token: string): boolean {
+function tokenMatches(opened: OpenedSession, token: string): boolean {
   return sameText(tokenDigest(token), opened.state.tokenDigest)
 }
 
@@ -259,7 +259,7 @@ export effect function admitWindow(id: string, window: number): WindowAdmission!
   }
 }
 
-export effect function dispatchWindow(id: string, window: number, only?: SpeechDirection): void!SessionFailure!Store {
+effect function dispatchWindow(id: string, window: number, only?: SpeechDirection): void!SessionFailure!Store {
   const store = try Store
   const holds = try store.transaction((tx) => windowHolds(tx, id, window))
   if (holds === undefined || holds.settled) throw refused("SessionClosed")

@@ -101,7 +101,6 @@ export interface BuildVoiceTurnSignalContext extends ShouldRespondContext {
 const SERVER_EOT_SUPPRESS_THRESHOLD = 0.4
 const BYSTANDER_SUPPRESS_CONFIDENCE = 0.7
 const AGENT_SELF_VOICE_THRESHOLD = 0.7
-export const AGENT_SELF_VOICE_IMPRINT_THRESHOLD = 0.28
 
 function confidentBystander(speaker: VoiceTurnSpeakerAttribution, known: readonly string[]): boolean {
   const enrolled = speaker.isOwner === true || (speaker.entityId !== null && known.includes(speaker.entityId))

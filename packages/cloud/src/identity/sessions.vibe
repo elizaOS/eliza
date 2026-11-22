@@ -20,7 +20,7 @@ export interface SignedIn {
   readonly accountCreated: boolean
 }
 
-export interface Rotated {
+interface Rotated {
   readonly accessToken: string
   readonly accessExpiresAt: number
   readonly refreshToken: string

@@ -5,7 +5,6 @@ import {
   imageFeatureVersion,
   listenerActivation,
   provisioningDefaults,
-  secureCameraPackage,
   secureCameraStaging,
   type ActivationProblem,
   type CameraSource,
@@ -42,7 +41,7 @@ import { sha256Of } from node
 
 export type ProvisioningAdmitted = Extract<ProvisioningDefaults, { tag: "ProvisioningAdmitted" }>
 
-export interface ListenerActivationWritten {
+interface ListenerActivationWritten {
   readonly feature: string
   readonly assistant: string
   readonly power: string | null
@@ -56,18 +55,18 @@ export interface ImageProvisioningOverlayOptions {
   readonly resource?: string
 }
 
-export error InvalidPackage { packageName: string }
-export error LauncherManifestUnread { packageName: string; message: string }
-export error ProvisioningNotAdmitted { packageName: string; problem: ProvisioningProblem; message: string }
-export error ListenerActivationRefused { packageName: string; problem: ActivationProblem; message: string }
-export error UnknownSystemuiPatch { patch: string }
-export error InvalidOverlayName { name: string; value: string }
-export error ImageOverlayRefused { packageName: string; problem: OverlayProblem; message: string }
-export error ClockRequiredTwice { makefile: string }
-export error SecureCameraUnverified { message: string }
-export error ProductMakefileMissing { output: string }
-export error SecureCameraContractInvalid { file: string; message: string }
-export error SecureCameraSourceRefused { module: string; message: string }
+error InvalidPackage { packageName: string }
+error LauncherManifestUnread { packageName: string; message: string }
+error ProvisioningNotAdmitted { packageName: string; problem: ProvisioningProblem; message: string }
+error ListenerActivationRefused { packageName: string; problem: ActivationProblem; message: string }
+error UnknownSystemuiPatch { patch: string }
+error InvalidOverlayName { name: string; value: string }
+error ImageOverlayRefused { packageName: string; problem: OverlayProblem; message: string }
+error ClockRequiredTwice { makefile: string }
+error SecureCameraUnverified { message: string }
+error ProductMakefileMissing { output: string }
+error SecureCameraContractInvalid { file: string; message: string }
+error SecureCameraSourceRefused { module: string; message: string }
 
 const Sha256Hex = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/))
 const SecureCameraModuleSchema = Schema.Struct({
@@ -76,8 +75,7 @@ const SecureCameraModuleSchema = Schema.Struct({
   files: Schema.Record(Schema.String, Sha256Hex),
 })
 const SecureCameraContractSchema = Schema.Struct({ schemaVersion: Schema.Literal(1), modules: Schema.Array(SecureCameraModuleSchema).check(Schema.isMinLength(1)) })
-export type SecureCameraContract = typeof SecureCameraContractSchema.Type
-export type SecureCameraModule = typeof SecureCameraModuleSchema.Type
+type SecureCameraModule = typeof SecureCameraModuleSchema.Type
 
 export interface ReviewedOverride {
   readonly path: string
@@ -85,18 +83,15 @@ export interface ReviewedOverride {
   readonly sha256: string
 }
 
-export interface SecureCameraEvidence {
+interface SecureCameraEvidence {
   readonly source: Extract<CameraSource, { tag: "CameraSourceVerified" }>
   readonly modules: readonly SecureCameraModule[]
   readonly reviewedOverrides: readonly ReviewedOverride[]
 }
 
-export const SECURE_CAMERA_COMPONENT = `${secureCameraPackage}/com.android.camera.SecureCameraActivity`
-export const SECURE_CAMERA_ACTIONS = ["STILL_IMAGE_CAMERA_SECURE", "IMAGE_CAPTURE_SECURE"] as const
-
 export const IMAGE_FEATURE_VERSION = imageFeatureVersion
-export const POWER_VOICE_META_DATA = "ai.eliza.os.POWER_VOICE_ACTIVITY"
-export const CLOCK_MODULE = "DeskClock"
+const POWER_VOICE_META_DATA = "ai.eliza.os.POWER_VOICE_ACTIVITY"
+const CLOCK_MODULE = "DeskClock"
 
 const PACKAGE_NAME = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/
 const OVERLAYABLE_NAME = /^[A-Za-z][A-Za-z0-9_]*$/
@@ -240,12 +235,12 @@ function powerVoiceActivity(packageName: string, assist: readonly ManifestNode[]
   return value === "" || value.includes("/") ? "" : value.startsWith(".") ? `${packageName}${value}` : value
 }
 
-export effect function validPackage(packageName: string) {
+effect function validPackage(packageName: string) {
   if (!PACKAGE_NAME.test(packageName)) throw new InvalidPackage({ packageName })
   return packageName
 }
 
-export effect function launcherManifest(tree: string, packageName: string) {
+effect function launcherManifest(tree: string, packageName: string) {
   try validPackage(packageName)
   const root = parseXmlTree(tree)
   const manifest = childrenNamed(root, "manifest")[0]
@@ -356,7 +351,7 @@ export effect function writeImageCapability(output: string, packageName: string)
   )
 }
 
-export function hostResource(valuesXml: string, overlayable: string, resource: string): HostResource {
+function hostResource(valuesXml: string, overlayable: string, resource: string): HostResource {
   const declared = [...valuesXml.matchAll(new RegExp(`<bool\\s+name="${escapeRegExp(resource)}"\\s*>([^<]*)</bool>`, "g"))].map((match) => (match[1] ?? "").trim())
   const block = new RegExp(`<overlayable\\s+name="${escapeRegExp(overlayable)}"[^>]*>([\\s\\S]*?)</overlayable>`).exec(valuesXml)?.[1] ?? ""
   const item = new RegExp(`<item\\s+type="bool"\\s+name="${escapeRegExp(resource)}"\\s*/>`)
@@ -424,7 +419,7 @@ export effect function writeListenerActivation(output: string, packageName: stri
   }
 }
 
-export function clockLines(makefile: string): number {
+function clockLines(makefile: string): number {
   return [...makefile.matchAll(/^\s*PRODUCT_PACKAGES\s*[:+]?=\s*(.*)$/gm)].flatMap((line) => (line[1] ?? "").split(/\s+/)).filter((token) => token === CLOCK_MODULE).length
 }
 
@@ -476,7 +471,7 @@ effect function secureCameraContractFile() {
   return path.join(directory, "aosp", "sources", "secure-camera.json")
 }
 
-export effect function loadSecureCameraContract(file?: string) {
+effect function loadSecureCameraContract(file?: string) {
   const files = try FileSystem.FileSystem
   const place = file ?? (try secureCameraContractFile())
   const bytes = try mapError(files.readFile(place), (cause) => new SecureCameraContractInvalid({ file: place, message: cause.message }))
@@ -496,7 +491,7 @@ effect function cameraGit(directory: string, module: string, args: readonly stri
   return result.stdout
 }
 
-export effect function changedPaths(porcelain: string, module: string) {
+effect function changedPaths(porcelain: string, module: string) {
   const entries = porcelain.split("\0")
   const paths: string[] = []
   for (let index = 0; index < entries.length; index += 1) {

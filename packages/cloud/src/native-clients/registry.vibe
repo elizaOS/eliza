@@ -10,8 +10,8 @@ import { Deployment, rowOf } from "../profile/profile.vibe"
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
 
 export error RegistrationInvalid { problem: string }
-export error RegistrationRefused { clientId: string }
-export error ClientNotRegistered { clientId: string }
+error RegistrationRefused { clientId: string }
+error ClientNotRegistered { clientId: string }
 
 const ReverseDns = Schema.String.check(Schema.isMaxLength(200), Schema.isPattern(/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/))
 const Fingerprint = Schema.String.check(Schema.isPattern(/^[0-9A-F]{2}(?::[0-9A-F]{2}){31}$/))
@@ -30,7 +30,6 @@ const RegistrationFieldsSchema = Schema.Struct({
   nativeGoogle: Schema.Boolean,
   enabled: Schema.Boolean
 })
-export type RegistrationFields = typeof RegistrationFieldsSchema.Encoded
 
 const environments: Readonly<Record<string, Environment | undefined>> = { production: "Production", staging: "Staging" }
 const wireEnvironment: Readonly<Record<Environment, "production" | "staging">> = { Production: "production", Staging: "staging" }
