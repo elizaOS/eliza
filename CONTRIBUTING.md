@@ -104,7 +104,8 @@ tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENT
 ## Releasing
 
 Set `version` in the root `package.json`, merge to `main`, and push the tag `v<version>` from it.
-`.github/workflows/release.yml` builds, packs with `pnpm pack`, materializes the shard prerequisites and runs `pnpm selftest --only --concurrency=1` using the same keys as CI, and attaches the tarball to a GitHub release of that tag.
+`.github/workflows/release.yml` reuses the `build` task when it runs `pnpm pack`. Then it runs the remaining shard prerequisites
+and `pnpm selftest --only --concurrency=1` with the CI cache keys and attaches the tarball to a GitHub release of that tag.
 A project installs it as [README.md, "Using it from another package"](README.md#using-it-from-another-package) says.
 ## Architecture
 
