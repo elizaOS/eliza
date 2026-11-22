@@ -6,7 +6,7 @@ device key or session, `side` only `owner`, grant chosen by `connection`'s
 selection rule: `GET /api/v1/eliza/google/gmail/{triage,search,read}` and
 `GET …/gmail/inbox-v1/{capabilities,thread,attachment,drafts,draft}`. This
 library decides what a read may answer; the shell calls Google and renders
-the wire. The reviewed operations reuse its revision
+the wire. [The reviewed operations](./mailOperations.md) reuse its revision
 check, mail cap and operation kinds.
 
 ## Story: Read my mail through the grant I chose

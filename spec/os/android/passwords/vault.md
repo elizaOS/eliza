@@ -190,7 +190,7 @@ any reveal, so a delivery already queued is refused: a generation, once
 left, never comes back. Retirement captures both the revealed password and
 the native confirmation it owns. A delayed close or reveal handle closes
 only those captured dialogs, leaving later dialogs with a new owner open.
-Stopping or destroying an Activity closes only its own native dialogs, so
+Stopping or destroying an Activity closes only its own native dialogs;
 an old Activity cannot close a replacement Activity's reveal or confirmation.
 
 ```quint

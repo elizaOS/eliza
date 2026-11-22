@@ -17,3 +17,11 @@ dependencies {
  androidTestImplementation 'androidx.test:core:1.6.1'
  androidTestImplementation 'androidx.test.ext:junit:1.3.0'
 }
+
+android.testVariants.configureEach { variant ->
+ variant.javaCompileProvider.configure {
+  source fileTree('../secure-store/src/main/java/ai/eliza/plugins/securestore/nativeonly') {
+   include 'CloudDeviceAccount.java', 'CloudPasswordBackup.java', 'JsonCredentialSlots.java', 'PasswordBackupApproval.java'
+  }
+ }
+}

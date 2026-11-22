@@ -1,6 +1,6 @@
 // spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused"; spec/agent/client/runtimeClient.md, "A stream is sent at most once and only in its generation"
 import { assert, it } from "@effect/vitest"
-import { boot, host, ready } from "./support/kernel.vibe"
+import { host, startInProcess } from "./support/kernel.vibe"
 
 module node {
   import { createServer, type ServerResponse } from "node:http"
@@ -212,8 +212,7 @@ it.live('With no bridge and no HTTP base a request fails as NoRoute and nothing 
 })
 
 it.live('A page with no bridge reaches a real agent over loopback HTTP and reads its refusal (spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
-  const booted = try boot({ http: true })
-  try ready(booted)
+  const booted = try startInProcess({ http: true })
   const port = booted.transport.kind === "http" ? booted.transport.port : 0
   const observed = try host("loopback client", () => overLoopback(port))
   try Effect.try(() => assert.deepStrictEqual(observed, {
@@ -246,8 +245,7 @@ it.live('A page streams over HTTP without credentials, and a refresh aborts the 
 })
 
 it.live('A real agent refuses an unauthenticated stream with its head, as a RuntimeRequestError (spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused")', effect () => {
-  const booted = try boot({ http: true })
-  try ready(booted)
+  const booted = try startInProcess({ http: true })
   const port = booted.transport.kind === "http" ? booted.transport.port : 0
   const observed = try host("loopback stream", () => streamRefusedByAgent(port))
   try Effect.try(() => assert.deepStrictEqual(observed, { status: 401, message: "unauthorized", code: undefined }))

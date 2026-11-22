@@ -21,11 +21,16 @@ export interface SmokeReport {
 module node {
   import { randomBytes } from "node:crypto"
 
-  export function smokeToken(): string {
-    return randomBytes(32).toString("base64url")
+  export function smokeFrame(): string {
+    return JSON.stringify({
+      version: 1,
+      token: randomBytes(32).toString("base64url"),
+      epoch: 1,
+      storageKey: randomBytes(32).toString("base64"),
+    })
   }
 }
-import { smokeToken } from node
+import { smokeFrame } from node
 
 export error SmokeNotReleased { code: number }
 
@@ -41,6 +46,7 @@ function smokeLaunch(input: SmokeInput): string {
       },
     },
     model: { backend: "none" },
+    account: { userId: "bundle-smoke-owner", organizationId: "bundle-smoke-organization" },
     embeddings: "none",
     persistMemory: false,
     callerRole: "owner",
@@ -48,8 +54,7 @@ function smokeLaunch(input: SmokeInput): string {
 }
 
 export effect function smokeBoot(input: SmokeInput) {
-  const token = try sync(smokeToken)
-  const frame = JSON.stringify({ version: 1, token, epoch: 1 })
+  const frame = try sync(smokeFrame)
   const parsed = try parseLaunch(smokeLaunch(input), frame)
   const agent = try startAgent({
     ...parsed,
