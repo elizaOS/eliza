@@ -37,16 +37,16 @@ public final class LifecycleAdapter {
 
   private final UpdateHoldFile updateHold;
   private final ChildJournal journal;
+  private final Path directory;
   private final Path stagedHold;
-  private AgentPolicy policy = new AgentPolicy(ACCOUNT, null);
+  private AgentPolicy policy;
+  private boolean reopening;
   private boolean holdSyncBlocked;
 
-  private LifecycleAdapter() throws IOException {
-    Path directory = Files.createTempDirectory("agent-lifecycle-");
+  private LifecycleAdapter(Path directory, boolean reopening) throws IOException {
+    this.directory = directory;
+    this.reopening = reopening;
     stagedHold = directory.resolve("hold.next");
-    directory.toFile().deleteOnExit();
-    directory.resolve("hold").toFile().deleteOnExit();
-    stagedHold.toFile().deleteOnExit();
     updateHold = new UpdateHoldFile(directory, path -> {
       if (holdSyncBlocked) throw new HoldSyncUnavailable();
       syncDirectory(path);
@@ -55,6 +55,20 @@ public final class LifecycleAdapter {
       @Override public OptionalLong startTime(int pid) throws IOException { throw new IOException("The portable fixture does not observe child processes"); }
       @Override public void kill(int pid) throws IOException { throw new IOException("The portable fixture does not stop child processes"); }
     }, LifecycleAdapter::syncDirectory);
+    policy = readPolicy(reopening ? null : ACCOUNT);
+  }
+
+  private AgentPolicy readPolicy(String account) throws IOException {
+    ChildJournal.LaunchState launch = journal.restoreLaunch();
+    return new AgentPolicy(account, updateHold.held(), launch.epoch(), launch.staleEpoch(), journal::reserveLaunch);
+  }
+
+  private static Path disposableDirectory() throws IOException {
+    Path directory = Files.createTempDirectory("agent-lifecycle-");
+    directory.toFile().deleteOnExit();
+    for (String name : List.of("hold", "hold.next", "child", "child.epoch"))
+      directory.resolve(name).toFile().deleteOnExit();
+    return directory;
   }
 
   private static void syncDirectory(Path path) throws IOException {
@@ -62,7 +76,11 @@ public final class LifecycleAdapter {
   }
 
   public static void main(String[] args) throws Exception {
-    LifecycleAdapter adapter = new LifecycleAdapter();
+    LifecycleAdapter adapter;
+    if (args.length == 0) adapter = new LifecycleAdapter(disposableDirectory(), false);
+    else if (args.length == 2 && List.of("fresh", "reopen").contains(args[1]))
+      adapter = new LifecycleAdapter(Path.of(args[0]), "reopen".equals(args[1]));
+    else throw new IllegalArgumentException("Expected a fixture directory and mode");
     BufferedReader input = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
     PrintStream output = new PrintStream(System.out, true, StandardCharsets.UTF_8);
     for (String line; (line = input.readLine()) != null;) {
@@ -75,9 +93,14 @@ public final class LifecycleAdapter {
   private String answer(String line) throws IOException {
     Map<String, Object> request = object(RouteGate.Json.parse(line));
     if (!request.containsKey("event") && !request.containsKey("raw")) {
-      holdSyncBlocked = false;
-      if (updateHold.held() != null) updateHold.save(null);
-      policy = new AgentPolicy(ACCOUNT, updateHold.held());
+      if (reopening) reopening = false;
+      else {
+        holdSyncBlocked = false;
+        if (updateHold.held() != null) updateHold.save(null);
+        Files.deleteIfExists(directory.resolve("child"));
+        Files.deleteIfExists(directory.resolve("child.epoch"));
+        policy = readPolicy(ACCOUNT);
+      }
       return "{\"state\":" + state(policy.state()) + ",\"out\":[]}";
     }
     boolean direct = request.containsKey("event");
@@ -88,6 +111,7 @@ public final class LifecycleAdapter {
       step = switch (text(fields.get("type"))) {
         case "holdWriteFailed" -> observeFailedAcquire(artifact(fields.get("target")), flag(fields.get("absenceConfirmed")));
         case "observeHoldGrant" -> observeHoldGrant(flag(fields.get("grantSaved")));
+        case "processRestarted" -> prepareRecreation(fields);
         case "releaseUpdateFailed" -> {
           AgentPolicy.ReleaseUpdate release = releaseEvent(fields, false);
           yield observeStagedWriteFailure(() -> updateHold.release(policy, release));
@@ -97,6 +121,18 @@ public final class LifecycleAdapter {
     }
     catch (IllegalArgumentException | ArithmeticException malformed) { step = new AgentPolicy.Step(false, policy.state(), List.of()); }
     return "{\"outcome\":\"" + (step.accepted() ? "accepted" : "refused") + "\",\"state\":" + state(step.state()) + ",\"out\":" + effects(step.effects()) + "}";
+  }
+
+  private AgentPolicy.Step prepareRecreation(Map<String, Object> event) throws IOException {
+    AgentPolicy.State live = policy.state();
+    if (event.size() != 1 || holdSyncBlocked || live.child() || live.credentialHeld() || live.credentialVersion() != 0
+        || live.attempt() != 0 || live.delivered() != 0)
+      return new AgentPolicy.Step(false, live, List.of());
+    ChildJournal.LaunchState saved = journal.restoreLaunch();
+    if (saved.staleEpoch() != 0) return new AgentPolicy.Step(false, live, List.of());
+    if (saved.epoch() != live.epoch() || !Objects.equals(updateHold.held(), live.hold()))
+      throw new IOException("The saved lifecycle facts differ from the live policy");
+    return new AgentPolicy.Step(true, live, List.of());
   }
 
   private AgentPolicy.Step observeStagedWriteFailure(HoldStep step) throws IOException {
@@ -352,6 +388,7 @@ public final class LifecycleAdapter {
   }
 
   private static String quote(String text) {
+    if (text == null) return "null";
     StringBuilder out = new StringBuilder("\"");
     for (int at = 0; at < text.length(); at++) {
       char c = text.charAt(at);
