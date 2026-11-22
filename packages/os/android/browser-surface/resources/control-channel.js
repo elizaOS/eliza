@@ -1903,7 +1903,7 @@
         (node.matches(
           "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image],input[type=password]",
         ) ||
-          /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
+          /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|sign\s*on|log\s*in|log\s*on|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
             label,
           ) ||
           commitPattern?.test(label))

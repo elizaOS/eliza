@@ -65,6 +65,7 @@ const pages: Record<string, string> = {
   [`${shop}/framed-modal`]: page(`<h1>Your account</h1><iframe id="modal-frame" src="/modal-frame" title="Account" style="position:absolute;left:0;top:0;width:100%;height:100%;border:0"></iframe>`),
   [`${shop}/modal-frame`]: page(`<form><label>Email <input id="email" type="email"></label><button type="button" id="details">Show details</button></form><div role="dialog" aria-modal="true" aria-label="Session" style="position:fixed;left:0;top:0;right:0;bottom:0;background:#fff">Your session is about to end.<button type="button" id="stay">Close</button></div>`),
   [`${shop}/shadow-consent`]: page(`<h1>Opening hours</h1><p>Our branches open at nine.</p><consent-layer></consent-layer><script>customElements.define("consent-layer", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<div id="cookie-banner" style="position:fixed;left:0;right:0;bottom:0;height:140px;background:#eee">We use cookies.<button type="button" id="reject">Reject all</button><button type="button" id="accept">Accept all</button></div>'; } });</script>`),
+  [`${shop}/sign-on`]: page(`<h1>Online banking</h1><button type="button" id="sign-on">Sign On</button><button type="button" id="log-on">Log on</button><button type="button" id="hours">Branch hours</button>`),
   [`${shop}/covered`]: page(`<iframe id="plain-frame" src="/plain-frame" title="Sign up form" style="width:400px;height:200px"></iframe><p>Below the frame are our opening hours, our address and a map of the branch offices.</p><div role="dialog" aria-label="Notice" style="position:fixed;left:0;top:0;width:440px;height:240px;background:#fff">Please read this notice<button type="button" id="close-notice">Close</button></div>`),
   [`${secure}/dashboard`]: logon("/auth/"),
   [`${secure}/auth/`]: `<form id="logon" action="/auth/logon" method="post"><bank-field id="userId" label="Username"></bank-field><bank-field id="password" label="Password" type="password"></bank-field><label>Sign in with <select id="token"><option>Password</option><option>Token</option></select></label><a id="forgot" href="/auth/forgot">Forgot username or password?</a><button type="button" id="signin">Sign in</button></form>${field}`,
@@ -729,5 +730,16 @@ describe('A snapshot says where a submit or Enter would send its form (spec/os/b
     const receipt = { origin: "https://pay.bank.example", method: "post", newWindow: true };
     expect(find(state, "Open receipt").sends).toEqual(receipt);
     expect(await sentBy(() => tab.click("#receipt"))).toEqual(receipt);
+  });
+});
+
+describe('The page keeps a sign-on or log-on control the person\'s (spec/os/browser/pageCommands.md, "A commit grant is spent once, before the page sees it, even when the command is then refused")', () => {
+  it("refuses a task click on Sign On or Log on without a grant, and presses a plain control", async () => {
+    await open(`${shop}/sign-on`);
+    for (const [label, selector] of [["Sign On", "#sign-on"], ["Log on", "#log-on"]] as const)
+      expect(await refusal(await snapshot(), "click", label, { taskPolicy: policy(selector) }), label).toBe("POLICY_BLOCKED");
+    expect(await presses()).toEqual([]);
+    expect(await act(await snapshot(), "click", "Branch hours", { taskPolicy: policy("#hours") })).toMatchObject({ dispatched: true });
+    expect(await presses()).toEqual(["hours"]);
   });
 });
