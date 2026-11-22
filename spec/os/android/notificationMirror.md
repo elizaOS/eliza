@@ -40,6 +40,7 @@ pure def purged(deleted: bool, s: MirrorState): MirrorState =
 pure def canObserveAccess(s: MirrorState, granted: bool): bool = granted != s.granted
 pure def observeAccess(s: MirrorState, granted: bool, deleted: bool): MirrorState =
   if (granted) { ...s, granted: true } else { ...purged(deleted, s), granted: false }
+pure val weight_observeAccess = 4
 pure def canPause(s: MirrorState): bool = not(s.paused)
 pure def pause(s: MirrorState, deleted: bool): MirrorState = { ...purged(deleted, s), paused: true }
 pure def canResume(s: MirrorState): bool = s.paused
@@ -60,6 +61,7 @@ pure def chooseApps(s: MirrorState, expectedRevision: int, requested: Set[str], 
   if (deleted and committed) { ...purged(deleted, s), selected: requested, changedSigners: Set(), revision: s.revision + 1 } else purged(deleted, s)
 pure def canObserveSignerChanged(s: MirrorState, app: str): bool = s.selected.contains(app) and not(s.changedSigners.contains(app))
 pure def observeSignerChanged(s: MirrorState, app: str): MirrorState = { ...s, changedSigners: s.changedSigners.union(Set(app)) }
+pure val weight_chooseApps = 8
 pure val requestedValues = Set(Set(), Set("a"), Set("a", "b"))
 pure val visibleValues = Set(Set("a", "b"), Set("b"))
 pure val appValues = Set("a", "b")
@@ -77,6 +79,7 @@ cannot act; a failed deletion or a failed commit saves nothing.
 pure def canSaveSettings(s: MirrorState, expectedRevision: int, facts: HostFacts): bool = meetsNeed(WithFocus, facts) and expectedRevision == s.revision
 pure def saveSettings(s: MirrorState, expectedRevision: int, ownerEnabled: bool, historyConsent: bool, facts: HostFacts, deleted: bool, committed: bool): MirrorState =
   if (deleted and committed) { ...purged(deleted, s), ownerEnabled: ownerEnabled, historyConsent: historyConsent, revision: s.revision + 1 } else purged(deleted, s)
+pure val weight_saveSettings = 8
 pure def stepPolicyChangeFollowsAPurge(before: MirrorState, after: MirrorState): bool =
   after.revision != before.revision implies (after.revision == before.revision + 1 and after.historyFile == NoFile and after.handles.length() == 0 and after.generation > before.generation)
 ```
@@ -170,6 +173,8 @@ pure def runCallback(s: MirrorState, source: NoticeSource, unlocked: bool, appen
   else { ...s, queue: rest, handles: rows, nextHandle: s.nextHandle + 1,
     historyFile: if (recording) KeptFile({ rows: withRecord(keptRows(s.historyFile), { app: c.app, at: now }) }) else s.historyFile }
 }
+pure val weight_enqueueCallback = 6
+pure val weight_runCallback = 6
 pure val instanceValues = Set(1, 2)
 pure def alwaysQueuedCallbacksAreIssued(s: MirrorState): bool =
   s.queue.length() <= maxQueuedCallbacks and s.queue.every(c => c.generation <= s.generation and c.instance >= 1 and c.instance < s.nextInstance)
@@ -238,6 +243,8 @@ pure def clearHistory(s: MirrorState, facts: HostFacts, deleted: bool): MirrorSt
 }
 pure def canRetryHistoryDeletion(s: MirrorState): bool = s.historyFile == UndeletedFile
 pure def retryHistoryDeletion(s: MirrorState, deleted: bool): MirrorState = { ...s, historyFile: afterDeletion(s.historyFile, deleted) }
+pure val weight_clearHistory = 3
+pure val weight_retryHistoryDeletion = 8
 pure def stepClearedOnlyWhenNoFileRemains(before: MirrorState, via: str, after: MirrorState, out: List[MirrorReport]): bool =
   out.includes(HistoryCleared) implies after.historyFile == NoFile
 pure def stepOwedDeletionBlocksHistory(before: MirrorState, after: MirrorState): bool =
