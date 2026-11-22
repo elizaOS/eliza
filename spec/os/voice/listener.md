@@ -22,8 +22,8 @@ in its own screen. Turning on and resuming need the keyguard unlocked. A
 new process needs fresh consent before listening. Renewing consent after a
 restart preserves recent crashes unless the listener has already stopped
 after errors. An explicit turn-on from off or from that stop clears the
-crash record. Resuming an enabled, consented listener clears its pause and
-lost-indicator stop.
+crash record. Resuming an enabled, consented listener clears its pause,
+recent crashes and lost-indicator stop.
 
 ```quint
 import indicatorLease as I from "./indicatorLease"
