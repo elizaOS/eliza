@@ -124,9 +124,9 @@ export function harness(
   /** An action body: the given conditions and assignments, with every other variable left as it is. */
   const frame = (conditions: string[], set: Record<string, string>) =>
     `all { ${[...conditions, ...vars.map((v) => `${v}' = ${set[v] ?? v}`)].join(", ")} }`;
-  const guarded = (params: Param[], name: string, guard: string | undefined, stateOnly: boolean, set: Record<string, string>) => {
-    if (guard && stateOnly && params.length) return `all { ${guard}, ${braces(params, name, frame([], set))} }`;
-    return braces(params, name, frame(guard ? [guard] : [], set));
+  const guarded = (params: Param[], name: string, guard: string | undefined, stateOnly: boolean, set: Record<string, string>, conditions: string[] = []) => {
+    if (guard && stateOnly && params.length) return `all { ${guard}, ${braces(params, name, frame(conditions, set))} }`;
+    return braces(params, name, frame(guard ? [guard, ...conditions] : conditions, set));
   };
   const call = (fn: string, params: string[], from = "state") => `M::${fn}(${[from, ...params].join(", ")})`;
   /** The step from `state` to `after` leaves the abstract state as it was, or is the abstract step of its name (SPEC.md, "Refinement"; gen/typescript.ts). */
@@ -178,12 +178,7 @@ export function harness(
     const law: Record<string, string> = laws.some((l) => l.name === v.name) ? { lawsHold: result } : {};
     const guard = transition && call(transition.guard!, transition.guardParams.map((name) => argument(v.params.find((p) => p.name === name)!)), argument(v.params[0]));
     const name = allowOnly ? positiveGuardEvaluation(v.name) : `eval_${v.name}`;
-    const picked = v.params.filter((p) => p.from === "pick");
-    const changes = { outcome: `Out_${v.name}(${result})`, ...law };
-    const body = allowOnly
-      ? braces(picked, v.name, frame(guard ? [guard, result] : [result], changes))
-      : guarded(picked, v.name, guard, !transition?.guardParams.length, changes);
-    return `  action ${name} = ${body}`;
+    return `  action ${name} = ${guarded(v.params.filter((p) => p.from === "pick"), v.name, guard, !transition?.guardParams.length, { outcome: `Out_${v.name}(${result})`, ...law }, allowOnly ? [result] : [])}`;
   };
   // An event of weight n is offered n times, so the simulator, which tries what it is offered in random order, picks it n times as often.
   const events = [...transitions.flatMap((t) => Array(weights.get(t.name) ?? 1).fill(t.name)), ...sampled.map((l) => l.name)];
