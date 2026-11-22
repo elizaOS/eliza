@@ -2992,13 +2992,23 @@ async function exampleCheckKeys(root: string): Promise<Map<string, string>> {
   const Schema = await import("effect/Schema");
   const plan = Schema.decodeUnknownSync(Schema.Struct({
     globalCacheInputs: Schema.Record(Schema.String, Schema.Unknown),
-    tasks: Schema.Array(Schema.Struct({ taskId: Schema.String, inputs: Schema.Record(Schema.String, Schema.String) })),
+    tasks: Schema.Array(Schema.Struct({
+      taskId: Schema.String,
+      inputs: Schema.Record(Schema.String, Schema.String),
+      command: Schema.String,
+      dependencies: Schema.Array(Schema.String),
+      envMode: Schema.String,
+      environmentVariables: Schema.Record(Schema.String, Schema.Unknown),
+      resolvedTaskDefinition: Schema.Struct({ cache: Schema.Boolean }),
+    })),
   }))(JSON.parse(planned.stdout));
   const task = plan.tasks.find(({ taskId }) => taskId === "//#selftest:examples");
   assert.ok(task);
+  if (task.dependencies.length || !task.resolvedTaskDefinition.cache) return new Map();
+  const { inputs, ...settings } = task;
   const common: [string, string][] = [];
   const examples = new Map<string, [string, string][]>();
-  for (const [file, hash] of Object.entries(task.inputs).sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [file, hash] of Object.entries(inputs).sort(([a], [b]) => a.localeCompare(b))) {
     const name = file.startsWith(`${EXAMPLES}/`) ? file.slice(EXAMPLES.length + 1).split("/", 1)[0] : undefined;
     if (!name) common.push([file, hash]);
     else {
@@ -3007,7 +3017,7 @@ async function exampleCheckKeys(root: string): Promise<Map<string, string>> {
       examples.set(name, owned);
     }
   }
-  const shared = sha(JSON.stringify(plan.globalCacheInputs), JSON.stringify(common));
+  const shared = sha(JSON.stringify(plan.globalCacheInputs), JSON.stringify(settings), JSON.stringify(common));
   return new Map([...examples].map(([name, owned]) => [name, sha(shared, JSON.stringify(owned))]));
 }
 
