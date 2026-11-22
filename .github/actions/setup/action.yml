@@ -96,8 +96,9 @@ runs:
       run: |
         version=$(node -p "require('@informalsystems/quint/dist/src/rust/binaryManager.js').QUINT_EVALUATOR_VERSION")
         echo "version=$version" >> "$GITHUB_OUTPUT"
-    - if: inputs.verification == 'true' && inputs.cache-verification == 'false'
-      uses: actions/cache@v6
+    - id: quint-cache
+      if: inputs.verification == 'true' && inputs.cache-verification == 'false'
+      uses: actions/cache/restore@v6
       with:
         path: ~/.quint/rust-evaluator-${{ steps.quint-evaluator.outputs.version }}
         key: quint-evaluator-${{ runner.os }}-${{ runner.arch }}-${{ steps.quint-evaluator.outputs.version }}
@@ -115,6 +116,11 @@ runs:
         fi
         "$evaluator_dir/quint_evaluator" --help
       shell: bash
+    - if: inputs.job == 'verify' && steps.quint-cache.outputs.cache-primary-key != '' && steps.quint-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.quint/rust-evaluator-${{ steps.quint-evaluator.outputs.version }}
+        key: ${{ steps.quint-cache.outputs.cache-primary-key }}
     # Shard A runs Bombadil with full Chromium. The workspace also needs the
     # headless shell for Playwright journeys. The other isolated shards use neither.
     - name: Install Chromium
