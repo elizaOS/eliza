@@ -7,7 +7,7 @@
  * module imports nothing, so they can import it without the native wire.
  */
 export const COMMIT_CONTROL =
-  /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
+  /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|sign\s*on|log\s*in|log\s*on|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
 
 /**
  * Runs one fixed page command in the page. The browser extension and the
@@ -461,6 +461,20 @@ export function pageCommand(
       return node.getAttribute("placeholder") || node.title || "";
     return readVisibleText(node) || node.title || "";
   };
+  const wordsOf = (node) =>
+    [
+      node.getAttribute("name"),
+      node.id,
+      node.getAttribute("placeholder"),
+      accessibleName(node),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      // "routingNumber" and "card_cvv" become separate words.
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[_.-]+/g, " ");
+  const CARD_WORDS =
+    /\b(?:card\s*(?:number|no)|credit\s+card|debit\s+card|cvv2?|cvc|csc|security\s+code|expir(?:y|ation)\s*(?:date)?|cc\s*(?:num|number|exp))\b/i;
   // Marks fields whose value is a secret. The value itself is never read.
   // The field's type and autocomplete tokens decide first. A field that the
   // page does not mark is classified by its name, its id, its placeholder and
@@ -488,17 +502,7 @@ export function pageCommand(
     if (autocomplete.includes("one-time-code")) return "one-time-code";
     if (autocomplete.some((token) => token.startsWith("cc-")))
       return "payment-card";
-    const words = [
-      node.getAttribute("name"),
-      node.id,
-      node.getAttribute("placeholder"),
-      accessibleName(node),
-    ]
-      .filter(Boolean)
-      .join(" ")
-      // "routingNumber" and "card_cvv" become separate words.
-      .replace(/([a-z])([A-Z])/g, "$1 $2")
-      .replace(/[_.-]+/g, " ");
+    const words = wordsOf(node);
     // "PIN code" is also the Indian postal code: a field that names itself a
     // postal code is an address field, not a password.
     const postal =
@@ -509,18 +513,21 @@ export function pageCommand(
       (!postal && /\bpin\b/i.test(words))
     )
       return "password";
+    if (CARD_WORDS.test(words)) return "payment-card";
     if (
       /\b(?:one\s*time\s*(?:pass)?code|verification\s+code|otp|2fa|mfa|passcode|authentication\s+code)\b/i.test(
         words,
       )
     )
-      return "one-time-code";
-    if (
-      /\b(?:card\s*(?:number|no)|credit\s+card|debit\s+card|cvv2?|cvc|csc|security\s+code|expir(?:y|ation)\s*(?:date)?|cc\s*(?:num|number|exp))\b/i.test(
-        words,
+      return ownerControls(node).some(
+        (control) =>
+          control !== node &&
+          control.matches("input,select,textarea") &&
+          (/\bcc-/i.test(control.getAttribute("autocomplete") ?? "") ||
+            CARD_WORDS.test(wordsOf(control))),
       )
-    )
-      return "payment-card";
+        ? "payment-card"
+        : "one-time-code";
     if (
       /\b(?:routing(?:\s+number)?|iban|swift|bic|sort\s+code|bank\s+account|checking\s+account|savings\s+account)\b/i.test(
         words,
@@ -535,6 +542,32 @@ export function pageCommand(
       return "government-id";
     return null;
   };
+  const submitControl = (element) =>
+    (is(element, "HTMLButtonElement") && element.type === "submit") ||
+    (is(element, "HTMLInputElement") &&
+      ["submit", "image"].includes(element.type));
+  // The request a submit sends: a submitter's form* attributes override
+  // the form's action, method, target and encoding.
+  const requestOf = (submitter, form) => {
+    const own = (attribute, value, fallback) =>
+      submitter?.hasAttribute(attribute) ? value : fallback;
+    return {
+      action: own("formaction", submitter?.formAction, form.action),
+      method: own("formmethod", submitter?.formMethod, form.method),
+      target: own(
+        "formtarget",
+        submitter?.formTarget,
+        form.hasAttribute("target")
+          ? form.target
+          : (form.ownerDocument.querySelector("base[target]")?.target ?? ""),
+      ),
+      enctype: own("formenctype", submitter?.formEnctype, form.enctype),
+    };
+  };
+  const defaultButton = (form) =>
+    [...form.getRootNode().querySelectorAll("button,input")].find(
+      (element) => element.form === form && submitControl(element),
+    ) ?? null;
   // A control whose effect the browser defines, whatever the page's words.
   // A link to the page it is on (href="#") runs only the page's handlers.
   // A disclosure (a plain button with aria-expanded) or a tab is the page's
@@ -581,6 +614,59 @@ export function pageCommand(
       ) ||
     /(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)\s?\d|\d\s?(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)/u.test(
       readVisibleText(document.body ?? document.documentElement),
+    );
+  const CODE_BOX_TYPES = ["text", "tel", "number"];
+  const CODE_WORDS = /\b(?:code|passcode|otp|one[\s-]*time|verification)\b/i;
+  const NOT_A_CODE =
+    /\b(?:zip|postal|post\s*code|area\s+code|promo|coupon|gift|referral|discount|voucher|invit(?:e|ation)|card|cvv2?|cvc2?|csc|cvn|cid|security\s+(?:code|answer)|expir(?:y|ation)|pin|pass\s*(?:word|phrase)|pwd|account\s+(?:number|no)|routing|iban|swift|bic|sort\s+code|bank|checking|savings|ssn|social\s+(?:security|insurance)|tax\s+id|itin|passport|driver'?s?\s+licen[cs]e|national\s+id|medicare)\b/i;
+  const codeBox = (box) =>
+    is(box, "HTMLInputElement") &&
+    CODE_BOX_TYPES.includes(box.type) &&
+    [null, "one-time-code"].includes(sensitivity(box)) &&
+    (box.getAttribute("autocomplete") ?? "")
+      .toLowerCase()
+      .split(/\s+/)
+      .every((token) => ["", "on", "off", "one-time-code"].includes(token)) &&
+    !NOT_A_CODE.test(wordsOf(box));
+  const ownerControls = (box) =>
+    box.form
+      ? [...box.form.elements]
+      : scan.order
+          .map(({ node }) => node)
+          .filter(
+            (control) =>
+              control.matches(
+                "button,fieldset,input,object,output,select,textarea",
+              ) && control.form === null,
+          );
+  // The last visible line of text before a control, looked for among its
+  // earlier siblings and then its ancestors' earlier siblings. It names a
+  // control that has no label ("Search" beside an empty input) and tells
+  // repeated labels apart (the row text before each "Pay").
+  const nearbyText = (node) => {
+    for (
+      let item = node, depth = 0;
+      item && item !== item.ownerDocument.body && depth < 4;
+      item = item.parentElement, depth++
+    )
+      for (
+        let sibling = item.previousSibling;
+        sibling;
+        sibling = sibling.previousSibling
+      ) {
+        const text =
+          sibling.nodeType === Node.TEXT_NODE
+            ? sibling.textContent.trim()
+            : is(sibling, "Element")
+              ? readVisibleText(sibling)
+              : "";
+        if (text) return text.split("\n").filter(Boolean).at(-1).trim();
+      }
+    return null;
+  };
+  const paysHere = (controls) =>
+    controls.some((control) =>
+      ["payment-card", "bank-account"].includes(sensitivity(control)),
     );
   if (command.subaction === "snapshot") {
     let active = document.activeElement;
@@ -669,6 +755,10 @@ export function pageCommand(
           .filter((value) => typeof value === "string" && value.length >= 4),
       ),
     ].sort((left, right) => right.length - left.length);
+    for (const code of monitor.heldCodes ?? [])
+      if (code.until > Date.now() && !secrets.includes(code.text))
+        secrets.push(code.text);
+    secrets.sort((left, right) => right.length - left.length);
     const withoutSecrets = (value) =>
       typeof value === "string"
         ? secrets.reduce(
@@ -728,31 +818,6 @@ export function pageCommand(
       custom.add(node);
       candidates.push(node);
     }
-    // The last visible line of text before a control, looked for among its
-    // earlier siblings and then its ancestors' earlier siblings. It names a
-    // control that has no label ("Search" beside an empty input) and tells
-    // repeated labels apart (the row text before each "Pay").
-    const nearbyText = (node) => {
-      for (
-        let item = node, depth = 0;
-        item && item !== item.ownerDocument.body && depth < 4;
-        item = item.parentElement, depth++
-      )
-        for (
-          let sibling = item.previousSibling;
-          sibling;
-          sibling = sibling.previousSibling
-        ) {
-          const text =
-            sibling.nodeType === Node.TEXT_NODE
-              ? sibling.textContent.trim()
-              : is(sibling, "Element")
-                ? readVisibleText(sibling)
-                : "";
-          if (text) return text.split("\n").filter(Boolean).at(-1).trim();
-        }
-      return null;
-    };
     // The form or field group the control belongs to, by its own name.
     const groupName = (group) =>
       group
@@ -847,6 +912,58 @@ export function pageCommand(
         return null;
       }
     };
+    const sendsOf = (submitter, form) => {
+      const { action, method, target } = requestOf(submitter, form);
+      if (method === "dialog")
+        return { origin: null, method, newWindow: false };
+      const origin = (() => {
+        try {
+          const url = new URL(action, form.baseURI);
+          return /^https?:$/.test(url.protocol) ? url.origin : null;
+        } catch {
+          return null;
+        }
+      })();
+      return {
+        origin,
+        method,
+        newWindow: !["", "_self", "_parent", "_top"].includes(
+          target.toLowerCase(),
+        ),
+      };
+    };
+    const implicitSends = new Map();
+    const formSends = (form) => {
+      if (!implicitSends.has(form)) {
+        const button = defaultButton(form);
+        implicitSends.set(
+          form,
+          button?.matches(":disabled") ||
+            (!button &&
+              [...form.elements].filter(
+                (field) =>
+                  is(field, "HTMLInputElement") &&
+                  [
+                    "text",
+                    "search",
+                    "url",
+                    "tel",
+                    "email",
+                    "password",
+                    "date",
+                    "month",
+                    "week",
+                    "time",
+                    "datetime-local",
+                    "number",
+                  ].includes(field.type),
+              ).length > 1)
+            ? null
+            : sendsOf(button, form),
+        );
+      }
+      return implicitSends.get(form);
+    };
     for (const node of candidates) {
       if (!node.checkVisibility({ checkVisibilityCSS: true })) continue;
       const id = String(nodes.size);
@@ -869,6 +986,8 @@ export function pageCommand(
       const semanticOwner =
         (landmark !== null && !is(landmark, "HTMLFormElement")) ||
         ownedRegions.some((region) => region.contains(node));
+      // A button that sends its form when pressed.
+      const submits = submitControl(node) && node.form !== null;
       const hint = (value) => withoutSecrets(value?.trim() || null);
       const frame = frameOf(node);
       elements.push({
@@ -922,16 +1041,17 @@ export function pageCommand(
           })(),
         ),
         form: semanticOwner
-          ? { index: -1, name: null }
+          ? { index: -1, name: null, sends: form ? formSends(form) : null }
           : form
-            ? { index: forms.indexOf(form), name: hint(groupName(form)) }
+            ? {
+                index: forms.indexOf(form),
+                name: hint(groupName(form)),
+                sends: formSends(form),
+              }
             : null,
         group: hint(groupName(node.closest("fieldset,[role=group]"))),
-        // A button that sends its form when pressed.
-        submits:
-          (is(node, "HTMLButtonElement") || is(node, "HTMLInputElement")) &&
-          node.form !== null &&
-          ["submit", "image"].includes(node.type),
+        submits,
+        sends: submits ? sendsOf(node, node.form) : null,
         pressable: custom.has(node)
           ? node.matches("[onclick]")
             ? "click-handler"
@@ -1067,6 +1187,24 @@ export function pageCommand(
         }
       const share = (root) =>
         hits.filter((hit) => within(root, hit)).length / (GRID * GRID);
+      const layered = (node) => {
+        try {
+          if (node.matches(":modal")) return true;
+        } catch {}
+        for (
+          let item = node;
+          item &&
+          item !== item.ownerDocument.body &&
+          item !== item.ownerDocument.documentElement;
+          item = item.parentElement ?? item.parentNode?.host ?? null
+        )
+          if (
+            ["fixed", "absolute", "sticky"].includes(styleOf(item).position) &&
+            !shell(item)
+          )
+            return true;
+        return false;
+      };
       const DIALOG =
         "dialog[open],[role=dialog],[role=alertdialog],[aria-modal=true]";
       const CONSENT =
@@ -1116,7 +1254,7 @@ export function pageCommand(
           )
         ) {
           const layer = layerOf(node);
-          add(layer ?? node, { overlay: !!layer || node.matches(DIALOG) });
+          add(layer ?? node, { overlay: !!layer || layered(node) });
         }
       // A sign-in wall, paywall or person check written into the page itself.
       const texts = [];
@@ -1154,7 +1292,7 @@ export function pageCommand(
             `${DIALOG},form,section,article,aside,main,[role=main]`,
           ) ?? parent;
         add(layerOf(root) ?? root, {
-          overlay: !!layerOf(root),
+          overlay: !!layerOf(root) || layered(root),
           kind,
           text: words.trim(),
         });
@@ -1251,6 +1389,7 @@ export function pageCommand(
           ...(ref !== undefined ? { ref } : {}),
           ...(rejectRef !== undefined ? { rejectRef } : {}),
           covers,
+          overlay: found.overlay,
           ...(summary ? { text: summary } : {}),
         });
       }
@@ -1282,6 +1421,18 @@ export function pageCommand(
     delete monitor.inputReadback;
     const clickReadback = monitor.clickReadback;
     delete monitor.clickReadback;
+    const codeReadback = monitor.codeReadback;
+    delete monitor.codeReadback;
+    const formatted =
+      !!inputReadback &&
+      inputReadback.node.isConnected &&
+      !sensitivity(inputReadback.node) &&
+      is(inputReadback.node, "HTMLInputElement") &&
+      ["text", "tel"].includes(inputReadback.node.type) &&
+      inputReadback.node.value !== inputReadback.text &&
+      /^\d{2,32}$/.test(inputReadback.text) &&
+      /^[\d(][\d ()/-]*$/.test(inputReadback.node.value) &&
+      inputReadback.node.value.replace(/[ ()/-]/g, "") === inputReadback.text;
     return {
       ...(policy &&
       clickReadback &&
@@ -1304,7 +1455,25 @@ export function pageCommand(
               matches:
                 inputReadback.node.isConnected &&
                 !sensitivity(inputReadback.node) &&
-                inputReadback.node.value === inputReadback.text,
+                (inputReadback.node.value === inputReadback.text || formatted),
+              ...(formatted ? { formatted: true } : {}),
+            },
+          }
+        : {}),
+      ...(policy &&
+      codeReadback &&
+      codeReadback.scope === policy.guidanceScope &&
+      codeReadback.until > Date.now()
+        ? {
+            codeReadback: {
+              targetRef: codeReadback.targetRef,
+              boxes: codeReadback.nodes.length,
+              matches: codeReadback.nodes.every(
+                (box, index) =>
+                  box.isConnected &&
+                  [null, "one-time-code"].includes(sensitivity(box)) &&
+                  box.value === codeReadback.parts[index],
+              ),
             },
           }
         : {}),
@@ -1419,20 +1588,103 @@ export function pageCommand(
     )
       return denied();
   }
-  if (policy) {
-    const named = (selector) => {
-      let scope = document;
-      const steps = selector.split(" >>> ");
-      for (let index = 0; ; index++) {
-        const matches = scope.querySelectorAll(steps[index]);
-        if (matches.length !== 1) return null;
-        if (index === steps.length - 1) return matches[0];
-        const inner =
-          matches[0].shadowRoot ?? readFrame.get(matches[0])?.document ?? null;
-        if (!inner || !partOf.has(inner)) return null;
-        scope = inner;
+  let codeBoxes = null;
+  const named = (selector) => {
+    let scope = document;
+    const steps = selector.split(" >>> ");
+    for (let index = 0; ; index++) {
+      const matches = scope.querySelectorAll(steps[index]);
+      if (matches.length !== 1) return null;
+      if (index === steps.length - 1) return matches[0];
+      const inner =
+        matches[0].shadowRoot ?? readFrame.get(matches[0])?.document ?? null;
+      if (!inner || !partOf.has(inner)) return null;
+      scope = inner;
+    }
+  };
+  const codeGroup = () => {
+    const controls = ownerControls(node);
+    const runs = [];
+    let run = null;
+    for (const control of controls) {
+      if (
+        !(
+          is(control, "HTMLInputElement") &&
+          control.maxLength === 1 &&
+          CODE_BOX_TYPES.includes(control.type) &&
+          control.ownerDocument === node.ownerDocument
+        )
+      ) {
+        run = null;
+        continue;
       }
-    };
+      if (!run) {
+        run = [];
+        runs.push(run);
+      }
+      run.push(control);
+    }
+    const boxes = runs.length === 1 ? runs[0] : [];
+    const seen = new Map(
+      [...state.nodes.values()].map((entry) => [entry.node, entry]),
+    );
+    const group = node.closest("fieldset,[role=group]");
+    const legend = group?.querySelector("legend");
+    const groupWords = group
+      ? [
+          idText(group.getAttribute("aria-labelledby"), group),
+          group.getAttribute("aria-label"),
+          legend ? readVisibleText(legend) : "",
+        ].join(" ")
+      : "";
+    const reviewed = (box) =>
+      policy.targets.some((target) => {
+        if (target.action !== "fill-code") return false;
+        try {
+          return named(target.selector) === box;
+        } catch {
+          return false;
+        }
+      });
+    const near = nearbyText(node) ?? "";
+    return boxes[0] === node &&
+      boxes.length === command.text.length &&
+      !paysHere(controls) &&
+      CODE_WORDS.test([wordsOf(node), groupWords, near].join(" ")) &&
+      !NOT_A_CODE.test([groupWords, near].join(" ")) &&
+      boxes.every(
+        (box, index) =>
+          codeBox(box) &&
+          !box.disabled &&
+          !box.readOnly &&
+          box.value === "" &&
+          seen.get(box)?.value === "" &&
+          JSON.stringify(seen.get(box).bounds) ===
+            JSON.stringify(bounds(box)) &&
+          (box.type !== "number" || /^\d$/.test(command.text[index])) &&
+          (index === 0 || reviewed(box)),
+      )
+      ? boxes
+      : null;
+  };
+  const codeTargets = () => {
+    if (
+      !is(node, "HTMLInputElement") ||
+      !/^[A-Za-z0-9]{4,12}$/.test(command.text)
+    )
+      return null;
+    if (node.maxLength === 1) return grant ? codeGroup() : null;
+    const near = nearbyText(node) ?? "";
+    return (node.autocomplete === "one-time-code" ||
+      (grant && CODE_WORDS.test([wordsOf(node), near].join(" ")))) &&
+      codeBox(node) &&
+      !NOT_A_CODE.test(near) &&
+      (node.type !== "number" || /^\d+$/.test(command.text)) &&
+      !paysHere(ownerControls(node))
+      ? [node]
+      : null;
+  };
+  if (policy) {
     // The native host supplies reviewed target permissions; DOM text cannot
     // grant an action. Re-check the actual node immediately before the effect.
     if (
@@ -1484,7 +1736,7 @@ export function pageCommand(
       (node.matches(
         "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image],input[type=password]",
       ) ||
-        /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
+        /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|sign\s*on|log\s*in|log\s*on|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
           label,
         ) ||
         commitPattern?.test(label))
@@ -1500,17 +1752,22 @@ export function pageCommand(
       return denied();
     if (
       command.subaction === "fill" &&
+      policy.protectedValueKind === "verification-code"
+    )
+      codeBoxes = codeTargets();
+    if (
+      command.subaction === "fill" &&
       (!(
-        node instanceof HTMLInputElement ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
+        is(node, "HTMLInputElement") ||
+        is(node, "HTMLTextAreaElement") ||
+        is(node, "HTMLSelectElement")
       ) ||
-        (node instanceof HTMLInputElement &&
+        (is(node, "HTMLInputElement") &&
           !["text", "email", "tel", "number", "search", "url", "date"].includes(
             node.type,
           )) ||
         // A date field takes only a real calendar day, as YYYY-MM-DD.
-        (node instanceof HTMLInputElement &&
+        (is(node, "HTMLInputElement") &&
           node.type === "date" &&
           (!/^\d{4}-\d{2}-\d{2}$/.test(command.text) ||
             command.text.startsWith("0000-") ||
@@ -1518,22 +1775,20 @@ export function pageCommand(
             new Date(`${command.text}T00:00:00Z`).toISOString().slice(0, 10) !==
               command.text)) ||
         (policy.protectedValueKind === "verification-code"
-          ? !(node instanceof HTMLInputElement) ||
-            node.autocomplete !== "one-time-code" ||
-            !/^[A-Za-z0-9]{4,12}$/.test(command.text)
+          ? codeBoxes === null
           : sensitivity(node) !== null))
     )
       return denied();
   }
   const selectedOptions =
-    command.subaction === "select" && node instanceof HTMLSelectElement
+    command.subaction === "select" && is(node, "HTMLSelectElement")
       ? [...node.options].filter(
           (option) => option.label.replace(/\s+/g, " ").trim() === command.text,
         )
       : [];
   if (
     command.subaction === "select" &&
-    (!(node instanceof HTMLSelectElement) ||
+    (!is(node, "HTMLSelectElement") ||
       node.multiple ||
       sensitivity(node) !== null ||
       selectedOptions.length !== 1 ||
@@ -1543,7 +1798,7 @@ export function pageCommand(
     return denied();
   if (
     ["fill", "select"].includes(command.subaction) &&
-    (frameOf(node) !== null || node.disabled || node.readOnly)
+    (node.disabled || node.readOnly)
   )
     return denied();
   // A control the provider disabled stays as the provider left it. A script
@@ -1693,23 +1948,7 @@ export function pageCommand(
     const grantedForm = grant
       ? (node.form ?? node.closest("form") ?? null)
       : null;
-    const submitControl = (element) =>
-      (is(element, "HTMLButtonElement") && element.type === "submit") ||
-      (is(element, "HTMLInputElement") &&
-        ["submit", "image"].includes(element.type));
     const overrides = ["formaction", "formmethod", "formtarget", "formenctype"];
-    // The request a submit sends: a submitter's form* attributes override
-    // the form's action, method, target and encoding.
-    const requestOf = (submitter, form) => {
-      const own = (attribute, value, fallback) =>
-        submitter?.hasAttribute(attribute) ? value : fallback;
-      return {
-        action: own("formaction", submitter?.formAction, form.action),
-        method: own("formmethod", submitter?.formMethod, form.method),
-        target: own("formtarget", submitter?.formTarget, form.target),
-        enctype: own("formenctype", submitter?.formEnctype, form.enctype),
-      };
-    };
     const sameRequest = (a, b) =>
       a.action === b.action &&
       a.method === b.method &&
@@ -1726,9 +1965,7 @@ export function pageCommand(
     // control is the form's default button and overrides nothing.
     const implicitAllowed =
       grantedRequest !== null &&
-      [...node.getRootNode().querySelectorAll("button,input")].find(
-        (element) => element.form === grantedForm && submitControl(element),
-      ) === node &&
+      defaultButton(grantedForm) === node &&
       !overrides.some((attribute) => node.hasAttribute(attribute));
     // The one request the grant consents besides its form's page load. A
     // declared target is matched exactly; a GET form's action by origin and
@@ -2253,47 +2490,68 @@ export function pageCommand(
         after: readVisibleText(document.body ?? document.documentElement),
       };
   } else if (command.subaction === "fill") {
-    if (
-      !(
-        node instanceof HTMLInputElement ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
-      ) ||
-      node.disabled ||
-      node.readOnly
-    )
+    const type = [
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      "HTMLSelectElement",
+    ].find((name) => is(node, name));
+    if (!type || node.disabled || node.readOnly)
       return {
         error: {
           kind: "UNSUPPORTED",
           message: "The target is not an editable form control.",
         },
       };
-    const prototype =
-      node instanceof HTMLInputElement
-        ? HTMLInputElement.prototype
-        : node instanceof HTMLTextAreaElement
-          ? HTMLTextAreaElement.prototype
-          : HTMLSelectElement.prototype;
-    Object.getOwnPropertyDescriptor(prototype, "value").set.call(
-      node,
-      command.text,
-    );
-    node.dispatchEvent(new Event("input", { bubbles: true }));
-    node.dispatchEvent(new Event("change", { bubbles: true }));
-    if (policy && !sensitivity(node))
-      monitor.inputReadback = {
-        node,
-        text: command.text,
-        targetRef: `${state.snapshotId}:0:${command.nodeId}`,
+    const view = realmOf(node);
+    const write = (box, text) => {
+      Object.getOwnPropertyDescriptor(view[type].prototype, "value").set.call(
+        box,
+        text,
+      );
+      box.dispatchEvent(new view.Event("input", { bubbles: true }));
+      box.dispatchEvent(new view.Event("change", { bubbles: true }));
+    };
+    const targetRef = `${state.snapshotId}:0:${command.nodeId}`;
+    if (codeBoxes) {
+      const parts = codeBoxes.length > 1 ? [...command.text] : [command.text];
+      for (const [index, box] of codeBoxes.entries()) {
+        if (
+          index > 0 &&
+          !(box.isConnected && codeBox(box) && !box.disabled && !box.readOnly)
+        )
+          break;
+        write(box, parts[index]);
+      }
+      const until = Date.now() + 900000;
+      monitor.heldCodes = [
+        ...(monitor.heldCodes ?? []).filter((code) => code.until > Date.now()),
+        { text: command.text, until },
+      ].slice(-4);
+      monitor.codeReadback = {
+        nodes: codeBoxes,
+        parts,
+        targetRef,
         scope: policy.guidanceScope,
+        until,
       };
+    } else {
+      write(node, command.text);
+      if (policy && !sensitivity(node))
+        monitor.inputReadback = {
+          node,
+          text: command.text,
+          targetRef,
+          scope: policy.guidanceScope,
+        };
+    }
   } else if (command.subaction === "select") {
+    const view = realmOf(node);
     Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
+      view.HTMLSelectElement.prototype,
       "selectedIndex",
     ).set.call(node, selectedOptions[0].index);
-    node.dispatchEvent(new Event("input", { bubbles: true }));
-    node.dispatchEvent(new Event("change", { bubbles: true }));
+    node.dispatchEvent(new view.Event("input", { bubbles: true }));
+    node.dispatchEvent(new view.Event("change", { bubbles: true }));
   } else if (command.subaction === "scroll") {
     node.scrollBy({
       top:

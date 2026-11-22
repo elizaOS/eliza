@@ -5,6 +5,8 @@ function installControlChannel(pageCommand, pageGuidance) {
   if (window !== window.top || !/^https?:$/.test(location.protocol)) return;
   pageCommand(null);
   const channel = globalThis.elizaSurfaceControl;
+  // randomUUID requires a secure context; getRandomValues also works on HTTP
+  // pages. The identifier is an opaque document reference, never a credential.
   const identifier = () => {
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     bytes[6] = (bytes[6] & 15) | 64;
@@ -17,6 +19,7 @@ function installControlChannel(pageCommand, pageGuidance) {
   let documentId = identifier();
   let active = true;
   let sequence = 0;
+  const spent = new Set();
   const send = (value) => channel.postMessage(JSON.stringify(value));
   channel.onmessage = (event) => {
     let request;
@@ -41,8 +44,11 @@ function installControlChannel(pageCommand, pageGuidance) {
       );
       return;
     }
+    // Consume before execution. A lost reply must never replay an effect.
     sequence = request.sequence;
     const command = request.command;
+    // Only the native observed-history entrypoint can send this command. The
+    // public controlPage whitelist excludes it; no page/model offset is accepted.
     if (command?.subaction === "native-history") {
       if (
         ![-1, 1].includes(command.offset) ||
@@ -112,10 +118,20 @@ function installControlChannel(pageCommand, pageGuidance) {
             (target) =>
               target &&
               typeof target.selector === "string" &&
-              ["click", "fill", "select", "scroll", "follow"].includes(
-                target.action,
-              ),
+              [
+                "click",
+                "fill",
+                "fill-code",
+                "select",
+                "scroll",
+                "follow",
+              ].includes(target.action),
           ) ||
+          (policy.protectedValueKind !== undefined &&
+            (policy.protectedValueKind !== "verification-code" ||
+              command.subaction !== "fill")) ||
+          // One commit of the reviewed control, with the exact value for a
+          // fill or select; this channel spends it once, before the page.
           (policy.commitGrant !== undefined &&
             (!policy.commitGrant ||
               typeof policy.commitGrant !== "object" ||
@@ -123,6 +139,7 @@ function installControlChannel(pageCommand, pageGuidance) {
               !Number.isSafeInteger(policy.commitGrant.expiresAt) ||
               typeof policy.expectedSelector !== "string" ||
               policy.commitGrant.selector !== policy.expectedSelector ||
+              // The bridge checked these; a malformed one is never ignored.
               (policy.commitGrant.requestTarget !== undefined &&
                 (!policy.commitGrant.requestTarget ||
                   typeof policy.commitGrant.requestTarget !== "object" ||
@@ -134,6 +151,10 @@ function installControlChannel(pageCommand, pageGuidance) {
                     "string")) ||
               (policy.commitGrant.formHash !== undefined &&
                 !/^[0-9a-f]{64}$/.test(policy.commitGrant.formHash)) ||
+              (command.subaction === "click"
+                ? policy.commitGrant.valueHash !== undefined
+                : typeof policy.commitGrant.valueHash !== "string" ||
+                  !/^[0-9a-f]{64}$/.test(policy.commitGrant.valueHash)) ||
               !["click", "fill", "select"].includes(command.subaction)))))
     ) {
       reject(
@@ -142,20 +163,62 @@ function installControlChannel(pageCommand, pageGuidance) {
       );
       return;
     }
-    try {
-      const snapshotId = command.subaction === "snapshot" ? identifier() : null;
-      const result = pageCommand(
-        command,
-        snapshotId,
-        command.validateOnly === true,
-      );
-      reply(snapshotId && !result.error ? { ...result, snapshotId } : result);
-    } catch {
-      reject(
-        command.subaction === "snapshot" ? "UNAVAILABLE" : "UNCERTAIN_OUTCOME",
-        "The page command did not return a result; observe before continuing.",
-      );
+    const run = () => {
+      try {
+        const snapshotId =
+          command.subaction === "snapshot" ? identifier() : null;
+        const result = pageCommand(
+          command,
+          snapshotId,
+          command.validateOnly === true,
+        );
+        reply(snapshotId && !result.error ? { ...result, snapshotId } : result);
+      } catch {
+        // Do not echo exception text: page values may be present in it. An
+        // effect can have run before an exception, so the host must read back.
+        reject(
+          command.subaction === "snapshot"
+            ? "UNAVAILABLE"
+            : "UNCERTAIN_OUTCOME",
+          "The page command did not return a result; observe before continuing.",
+        );
+      }
+    };
+    const grant = policy?.commitGrant;
+    if (!grant) {
+      run();
+      return;
     }
+    const refuse = () =>
+      reject(
+        "POLICY_BLOCKED",
+        "This commit grant was spent or does not match.",
+      );
+    if (spent.has(grant.grantId)) {
+      refuse();
+      return;
+    }
+    if (command.validateOnly !== true) spent.add(grant.grantId);
+    if (command.subaction === "click") {
+      run();
+      return;
+    }
+    Promise.resolve()
+      .then(() =>
+        crypto.subtle.digest("SHA-256", new TextEncoder().encode(command.text)),
+      )
+      .then((digest) => {
+        const hash = Array.from(new Uint8Array(digest), (byte) =>
+          byte.toString(16).padStart(2, "0"),
+        ).join("");
+        if (!active || request.documentId !== documentId)
+          reject(
+            "STALE_REF",
+            "The document or command sequence is no longer current.",
+          );
+        else if (hash !== grant.valueHash) refuse();
+        else run();
+      }, refuse);
   };
   const ready = () => send({ ready: true, documentId });
   window.addEventListener("pagehide", (event) => {
@@ -167,10 +230,13 @@ function installControlChannel(pageCommand, pageGuidance) {
   window.addEventListener("pageshow", (event) => {
     if (!event.isTrusted) return;
     active = true;
+    // A restored back/forward-cache document must not revive old commands.
     if (event.persisted) documentId = identifier();
     ready();
   });
   ready();
+  // Android may deliver the document-start message before its navigation
+  // callback. Announce again once the DOM has loaded, retaining the same ID.
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", ready, { once: true });
 }

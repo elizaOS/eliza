@@ -73,6 +73,7 @@ const connection = new NativeConnection({
         "task-action-feedback",
         "task-manual-activity",
         "task-protected-fill",
+        "task-code-boxes",
         "task-expected-target",
         "task-commit-grant",
         "task-commit-pattern",
