@@ -2853,8 +2853,7 @@ function eachCheck() {
   });
 
   test("owner generation mirrors the same artifact as the whole tree and checks its dependency closure", async () => {
-    const script = path.join(project, "vibestack/spec.ts");
-    const root = scratch({
+    const root = toolchain(scratch({
       "package.json": PACKAGE["package.json"],
       "packages/target/package.json": JSON.stringify({ name: "@repo/target" }),
       "packages/other/package.json": JSON.stringify({ name: "@repo/other" }),
@@ -2862,7 +2861,15 @@ function eachCheck() {
       "spec/target/index.md": ruleSpec('import lib.* from "../lib"\npure val targetValue = baseValue'),
       "spec/lib.md": ruleSpec("pure val baseValue = 1"),
       "spec/other/index.md": ruleSpec("pure val otherValue = 2"),
-    });
+    }), "quint", "lsc");
+    const script = path.join(root, "vibestack/spec.ts");
+    const linkDuringGeneration = (phase: string) => {
+      if (process.platform === "win32") return;
+      const shim = path.join(root, "node_modules/.bin/quint");
+      fs.unlinkSync(shim);
+      fs.writeFileSync(shim, `#!/bin/sh\nln "$0" '${path.join(root, phase)}' 2>/dev/null || true\nexec '${path.join(nodeModules, ".bin/quint")}' "$@"\n`, { mode: 0o755 });
+    };
+    linkDuringGeneration("install-during-full-generation");
     const all = await runCli(script, root, "gen");
     assert.equal(all.status, 0, all.stdout + all.stderr);
     const target = path.join(root, "packages/target/gen");
@@ -2872,6 +2879,7 @@ function eachCheck() {
     const before = fs.readFileSync(unrelated, "utf8");
     fs.rmSync(target, { recursive: true });
     fs.appendFileSync(path.join(root, "spec/other/index.md"), "\n[Missing](./missing.md)\n");
+    linkDuringGeneration("install-during-owner-generation");
     const scoped = await runCli(script, root, "gen", "--owner", "target");
     assert.equal(scoped.status, 0, scoped.stdout + scoped.stderr);
     assert.deepEqual(outputs(), expected);

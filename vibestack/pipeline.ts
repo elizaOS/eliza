@@ -119,6 +119,14 @@ async function* generating(memory: Memory, specs: Spec[], output = memory.root, 
   }
 }
 
+async function withStableInstallation<T>(attempt: () => Promise<T>): Promise<T> {
+  for (let retries = 0; ; retries++) {
+    try { return await steady(attempt); } catch (error) {
+      if (!(error instanceof InstallationChanged) || retries === 2) throw error;
+    }
+  }
+}
+
 /**
  * Run every check, cheapest first, and return what each found and the next
  * thing to do; `log` hears of each result as it arrives. Stages after a broken
@@ -140,18 +148,14 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
     const loaded = path.join(root, ".spec-cache", `run-${randomUUID()}`);
     const results: Result[] = [];
     try {
-      await steady(() => checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote));
+      await checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote);
       return { ok: results.every((r) => r.ok), results, next: nextStep(results), wrote };
     } finally {
       fs.rmSync(loaded, { recursive: true, force: true });
     }
   };
   try {
-    for (let retries = 0; ; retries++) {
-      try { return await attempt(); } catch (error) {
-        if (!(error instanceof InstallationChanged) || retries === 2) throw error;
-      }
-    }
+    return await withStableInstallation(attempt);
   } finally {
     release();
   }
@@ -707,20 +711,31 @@ async function watch(root: string) {
   await once();
 }
 
+async function generateFiles(root: string, output = root, ownerName?: string) {
+  const generated = await withStableInstallation(async () => {
+    const specs = readSpecs(root, undefined, ownerName);
+    const staged = new Map<string, string>();
+    const errors: string[] = [];
+    for await (const { spec, error } of generating({ root, fresh: false, used: new Set() }, specs, output, staged)) {
+      if (!error) continue;
+      if (!ownerName || error instanceof InstallationChanged) throw error;
+      errors.push(`${spec.file}:\n${error.message}`);
+    }
+    if (errors.length) throw new Error(errors.join("\n"));
+    return { specs, staged };
+  });
+  publishGen(output, generated.staged);
+  return generated.specs;
+}
+
 async function generateOwner(root: string, name: string) {
   const ownerDir = codeDirs(root).find((dir) => path.basename(dir) === name);
   if (!ownerDir) throw new Error(`${name}: no package owns spec/${name}/`);
   const release = lockProject(root);
   try {
-    const specs = readSpecs(root, undefined, name);
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-owner-gen-"));
     try {
-      const errors: string[] = [];
-      for await (const { spec, error } of generating({ root, fresh: false, used: new Set() }, specs, scratch)) {
-        if (error) errors.push(`${spec.file}:
-${error.message}`);
-      }
-      if (errors.length) throw new Error(errors.join("\n"));
+      const specs = await generateFiles(root, scratch, name);
       mirrorGen(root, specs, { scratch, ownerDir });
     } finally {
       fs.rmSync(scratch, { recursive: true, force: true });
@@ -771,7 +786,7 @@ export async function main(argv = process.argv.slice(2)) {
       [command, ...args] = hosted ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
     }
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {
-      await steady(() => generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]));
+      await generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]);
       return;
     }
     const options: Record<string, string[]> = { check: ["--json", "--nightly"], gen: ["--if-valid"], accept: ["unproved"], watch: [], init: [] };
@@ -792,12 +807,7 @@ export async function main(argv = process.argv.slice(2)) {
       let release = () => {};
       try {
         release = lockProject(root);
-        const specs = readSpecs(root);
-        const staged = new Map<string, string>();
-        await steady(async () => {
-          for await (const { error } of generating({ root, fresh: false, used: new Set() }, specs, root, staged)) if (error) throw error;
-        });
-        publishGen(root, staged);
+        const specs = await generateFiles(root);
         mirrorGen(root, specs);
       } catch (e) {
         if (!args.length) throw e;
