@@ -1,6 +1,7 @@
 // spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does fails as Agent"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 package ai.eliza.os.agent;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -64,6 +65,8 @@ public final class AgentPolicy {
 
   public record Step(boolean accepted, State state, List<Effect> effects) {}
 
+  @FunctionalInterface interface EpochReservation { void reserve(long epoch) throws IOException; }
+
   private Phase phase = Phase.STOPPED;
   private Cause failure, afterExitCause;
   private String error, account;
@@ -74,10 +77,18 @@ public final class AgentPolicy {
   private UpdateTarget hold;
   private Recovery recovery;
   private final List<Effect> effects = new ArrayList<>();
+  private final EpochReservation reservation;
 
   public AgentPolicy(String account, UpdateTarget hold) {
+    this(account, hold, 0, 0, epoch -> {});
+  }
+
+  AgentPolicy(String account, UpdateTarget hold, long epoch, long staleEpoch, EpochReservation reservation) {
     this.account = account;
     this.hold = hold;
+    this.epoch = epoch;
+    this.staleEpoch = staleEpoch;
+    this.reservation = reservation;
   }
 
   public static ExitClass exitClass(int code) {
@@ -143,6 +154,8 @@ public final class AgentPolicy {
   }
 
   private boolean begin(int nextAttempt, long delayMs) {
+    try { reservation.reserve(epoch + 1); }
+    catch (IOException failed) { return fail(Cause.RUNTIME, "The agent launch epoch could not be saved: " + failed.getMessage()); }
     phase = Phase.CHECKING;
     epoch++;
     attempt = nextAttempt;

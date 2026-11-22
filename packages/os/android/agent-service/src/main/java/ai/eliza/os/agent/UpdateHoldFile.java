@@ -43,7 +43,10 @@ final class UpdateHoldFile {
       AgentPolicy.Step step = policy.step(new AgentPolicy.HoldForUpdate(target));
       if (step.accepted()) {
         synchronized (LOCK) {
-          try { write(target); }
+          try {
+            journal.syncForUpdate();
+            write(target);
+          }
           catch (IOException failed) {
             try {
               if (load() == null) policy.step(new AgentPolicy.ReleaseUpdate(target.code(), target.digest(), true));
