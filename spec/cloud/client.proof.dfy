@@ -391,6 +391,8 @@ lemma AccountRouteKeyFacts()
   ensures ProofLib.DistinctBy(joinRouteGroups(signInRoutes, billingRoutes), (d: DeviceRoute) => (d.method_, d.path))
   ensures forall d :: d in joinRouteGroups(signInRoutes, billingRoutes) ==> |d.path| > 2 && d.path[2] in {Literal("service"), Literal("auth"), Literal("user"), Literal("referrals"), Literal("app-auth"), Literal("api-keys")} + {Literal("subscriptions"), Literal("subscription"), Literal("billing")}
 {
+  hide *;
+  reveal joinRouteGroups();
   SignInRouteKeyFacts();
   BillingRouteKeyFacts();
   AccountNamespacesAreDisjoint();
