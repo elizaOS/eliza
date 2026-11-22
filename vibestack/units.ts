@@ -13,7 +13,7 @@ import { defines } from "./review.ts";
 import { act } from "./action.ts";
 import type { Memory } from "./cache.ts";
 import { plainText } from "./scan.ts";
-import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, SIMULATIONS, type SrcFile } from "./util.ts";
+import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, SIMULATIONS, writeWhole, type SrcFile } from "./util.ts";
 import { effectAdapter } from "./gen/vibe.ts";
 import { reactHook } from "./gen/react.ts";
 
@@ -24,7 +24,11 @@ const ANNOTATIONS = ["backend", "pure", "requires", "ensures", "invariant", "dec
  * watches gen/ hears of what changed alone; what the generation did not write is swept away (`mirrorGen`).
  */
 const generations = new Map<string, Set<string>>();
-function put(root: string, file: string, text: string) {
+function put(root: string, file: string, text: string, staged?: Map<string, string>) {
+  if (staged) {
+    staged.set(file, text);
+    return;
+  }
   generations.get(root)?.add(file);
   let was: string | undefined;
   try { was = fs.readFileSync(file, "utf8"); } catch { was = undefined; }
@@ -35,11 +39,46 @@ function put(root: string, file: string, text: string) {
  * gen/ holds TypeScript that Node loads as ES modules, whatever the project's package.json says: a project whose
  * package.json says `"type": "commonjs"` would otherwise fail to load every generated module.
  */
-function genDir(root: string): string {
+function genDir(root: string, staged?: Map<string, string>): string {
   const dir = path.join(root, "gen");
-  fs.mkdirSync(dir, { recursive: true });
-  put(root, path.join(dir, "package.json"), `${JSON.stringify({ type: "module" })}\n`);
+  if (!staged) fs.mkdirSync(dir, { recursive: true });
+  put(root, path.join(dir, "package.json"), `${JSON.stringify({ type: "module" })}\n`, staged);
   return dir;
+}
+
+export function publishGen(root: string, staged: ReadonlyMap<string, string>) {
+  const changed = new Map<string, string | undefined>();
+  const dir = path.join(root, "gen");
+  const existed = fs.existsSync(dir);
+  let undo: string | undefined;
+  try {
+    for (const [file, text] of staged) {
+      let previous: string | undefined;
+      try { previous = fs.readFileSync(file, "utf8"); } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      if (previous === text) continue;
+      let saved: string | undefined;
+      if (previous !== undefined) {
+        undo ??= fs.mkdtempSync(path.join(dir, ".undo-"));
+        saved = path.join(undo, path.basename(file));
+        try { fs.linkSync(file, saved); } catch { fs.renameSync(file, saved); }
+      }
+      changed.set(file, saved);
+      writeWhole(file, text);
+    }
+    fs.rmSync(path.join(root, SIMULATIONS), { recursive: true, force: true });
+  } catch (error) {
+    for (const [file, previous] of changed) {
+      if (previous) fs.renameSync(previous, file);
+      else fs.rmSync(file, { force: true });
+    }
+    if (!existed) fs.rmSync(dir, { recursive: true, force: true });
+    if (undo) fs.rmSync(undo, { recursive: true, force: true });
+    throw error;
+  }
+  if (undo) fs.rmSync(undo, { recursive: true, force: true });
+  generations.set(root, new Set(staged.keys()));
 }
 
 /** Quint's errors, at their places in the Markdown: tangling keeps line numbers. */
@@ -54,8 +93,8 @@ function typeErrors(spec: Spec, ir: any, out: string, specs: Spec[]): Error {
 }
 
 /** The model of a spec, from Quint's typed IR: gen/<name>.ts and its simulation harness. `models` receives it. */
-export function generated(root: string, spec: Spec, ir: any, models: Map<string, Model>): Model {
-  const dir = genDir(root);
+export function generated(root: string, spec: Spec, ir: any, models: Map<string, Model>, staged?: Map<string, string>): Model {
+  const dir = genDir(root, staged);
   const top = new Set<string>((ir.modules?.find((m: any) => m.name === spec.name)?.declarations ?? [])
     .filter((d: any) => d.kind === "def" || d.kind === "typedef").map((d: any) => d.name));
   const assigned = new Set(spec.rules.flatMap(defines));
@@ -67,10 +106,10 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
   const origins = new Map<string, Origin>();
   for (const r of spec.rules) for (const d of r.defs) origins.set(d, { rule: r.key, line: r.line });
   const model = generate(ir, spec.name, spec.file, (d) => origins.get(d), models);
-  const write = (name: string, text: string) => put(root, path.join(dir, name), text);
+  const write = (name: string, text: string) => put(root, path.join(dir, name), text, staged);
   write(`${spec.name}.ts`, model.ts);
   write(`${spec.name}.run.qnt`, model.harness);
-  writeFaces(root, root, dir, spec, model.ts);
+  writeFaces(root, root, dir, spec, model.ts, staged);
   if (model.opaques.length) write(`${spec.name}.sim.qnt`, simulated(spec.qnt, model.opaques));
   writeConformance(model, write);
   models.set(spec.name, model);
@@ -81,11 +120,11 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
  * Into `to`, the gen/ of the package in `dir`, what gen/<name>.ts (`text`) is for its shell: the Effect adapter, whose
  * `Machine` key carries the package's name, and the React hook where the package depends on react.
  */
-function writeFaces(root: string, dir: string, to: string, spec: Spec, text: string) {
+function writeFaces(root: string, dir: string, to: string, spec: Spec, text: string, staged?: Map<string, string>) {
   const pkg = manifest(dir);
-  put(root, path.join(to, `${spec.name}.effect.vibe`), effectAdapter(spec.name, spec.file, text, namespace(dir, pkg.name)));
+  put(root, path.join(to, `${spec.name}.effect.vibe`), effectAdapter(spec.name, spec.file, text, namespace(dir, pkg.name)), staged);
   const hook = ["dependencies", "devDependencies", "peerDependencies"].some((kind) => pkg[kind]?.react) && reactHook(spec.name, spec.file, text);
-  if (hook) put(root, path.join(to, `${spec.name}.react.ts`), hook);
+  if (hook) put(root, path.join(to, `${spec.name}.react.ts`), hook, staged);
 }
 
 /**
@@ -145,11 +184,13 @@ export function mirrorGen(root: string, specs: Spec[], scope?: { scratch: string
  * generation of gen/ (`mirrorGen` ends it); gen/<name>.qnt is written for every spec, since the simulation harness
  * imports it.
  */
-export function typecheckAll(memory: Memory, specs: Spec[], output = memory.root): Map<string, Promise<any>> {
-  generations.set(output, new Set());
-  fs.rmSync(path.join(output, SIMULATIONS), { recursive: true, force: true });
-  const dir = genDir(output);
-  for (const spec of specs) put(output, path.join(dir, `${spec.name}.qnt`), spec.qnt);
+export function typecheckAll(memory: Memory, specs: Spec[], output = memory.root, staged?: Map<string, string>): Map<string, Promise<any>> {
+  if (!staged) {
+    generations.set(output, new Set());
+    fs.rmSync(path.join(output, SIMULATIONS), { recursive: true, force: true });
+  }
+  const dir = genDir(output, staged);
+  for (const spec of specs) put(output, path.join(dir, `${spec.name}.qnt`), spec.qnt, staged);
   return new Map(specs.map((spec) => {
     const ir = (async () => {
       const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-typecheck-"));
