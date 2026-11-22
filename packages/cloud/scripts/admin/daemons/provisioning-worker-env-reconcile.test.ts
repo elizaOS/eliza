@@ -39,6 +39,7 @@ const VPN_REGISTRATION_TIMEOUT_KEY = "VPN_REGISTRATION_TIMEOUT_MS";
 const CONTAINERS_SSH_KEY = "CONTAINERS_SSH_KEY";
 const STEWARD_API_URL = "STEWARD_API_URL";
 const STEWARD_PLATFORM_KEYS = "STEWARD_PLATFORM_KEYS";
+const OPERATOR_ACTIVE = "STAGING_STEWARD_PRODUCT_OPERATOR_ACTIVE";
 const AGENT_TOKEN_PRIVATE_KEY_PEM = "AGENT_TOKEN_PRIVATE_KEY_PEM";
 const AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64 = "AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64";
 const AGENT_TOKEN_PRIVATE_KEY_TRANSPORT_FIXTURE = Buffer.from(
@@ -284,7 +285,7 @@ function runAtomicReconcile(options: {
   const assignmentNames = new Set([
     ...loopEnvironmentNames,
     ...Object.keys(DELETION_AUTHORITY_DEFAULTS),
-    "STAGING_STEWARD_PRODUCT_OPERATOR_ACTIVE",
+    OPERATOR_ACTIVE,
     AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,
   ]);
   const assignments = [...assignmentNames].map(
@@ -655,41 +656,28 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
 });
 
 describe("atomic workflow block (executed verbatim)", () => {
-  it("rotates and restores the staging Steward operator while preserving a host-only singular key", () => {
-    const marker = "STAGING_STEWARD_PRODUCT_OPERATOR_ACTIVE";
-    const cutover = runAtomicReconcile({
-      seedHostFile:
-        "STEWARD_PLATFORM_KEY=legacy-singular\nSTEWARD_PLATFORM_KEYS=old-list\n",
-      values: { [STEWARD_PLATFORM_KEYS]: "rotated", [marker]: "1" },
-    });
-    const rollback = runAtomicReconcile({
-      seedHostFile: cutover.host,
-      values: { [STEWARD_PLATFORM_KEYS]: "old-list" },
-    });
-    for (const state of [cutover, rollback]) {
-      expect(
-        lookupSystemdEnvironmentValue(state.host, "STEWARD_PLATFORM_KEY"),
-      ).toBe("legacy-singular");
-      expect(state.backup).not.toContain("STEWARD_PLATFORM");
-      expect(state.backup).not.toContain(marker);
-    }
-    expect(
-      lookupSystemdEnvironmentValue(cutover.host, STEWARD_PLATFORM_KEYS),
-    ).toBe("rotated");
-    expect(lookupSystemdEnvironmentValue(cutover.host, marker)).toBe("1");
-    expect(
-      lookupSystemdEnvironmentValue(rollback.host, STEWARD_PLATFORM_KEYS),
-    ).toBe("old-list");
-    expect(rollback.host).not.toContain(marker);
-  });
-
   it("writes a supplied secret canonically and preserves unrelated settings", () => {
     const value = 'redis://new.example:6379/path?quoted="yes"&slash=\\';
     const result = runAtomicReconcile({
-      values: { [ENV_KEY]: value },
-      seedHostFile: `${ENV_KEY}=redis://stale.example:6379\nUNRELATED=preserved\n`,
+      values: {
+        [ENV_KEY]: value,
+        [STEWARD_PLATFORM_KEYS]: "rotated",
+        [OPERATOR_ACTIVE]: "1",
+      },
+      seedHostFile: `${ENV_KEY}=redis://stale.example:6379\nUNRELATED=preserved\nSTEWARD_PLATFORM_KEY=legacy\n`,
     });
     expect(lookupSystemdEnvironmentValue(result.host, ENV_KEY)).toBe(value);
+    expect(
+      lookupSystemdEnvironmentValue(result.host, STEWARD_PLATFORM_KEYS),
+    ).toBe("rotated");
+    expect(lookupSystemdEnvironmentValue(result.host, OPERATOR_ACTIVE)).toBe(
+      "1",
+    );
+    expect(
+      lookupSystemdEnvironmentValue(result.host, "STEWARD_PLATFORM_KEY"),
+    ).toBe("legacy");
+    expect(result.backup).not.toContain("STEWARD_PLATFORM");
+    expect(result.backup).not.toContain(OPERATOR_ACTIVE);
     expect(result.host.match(new RegExp(`^${ENV_KEY}=`, "gm"))).toHaveLength(1);
     expect(result.host).toContain("UNRELATED=preserved\n");
     expect(
@@ -699,9 +687,16 @@ describe("atomic workflow block (executed verbatim)", () => {
 
   it("preserves an existing value when GitHub supplies an empty setting", () => {
     const result = runAtomicReconcile({
-      values: { [ENV_KEY]: "" },
-      seedHostFile: `${ENV_KEY}=redis://hand-set.example:6379\n`,
+      values: { [ENV_KEY]: "", [STEWARD_PLATFORM_KEYS]: "original" },
+      seedHostFile: `${ENV_KEY}=redis://hand-set.example:6379\n${OPERATOR_ACTIVE}=1\nSTEWARD_PLATFORM_KEY=legacy\nSTEWARD_PLATFORM_KEYS=rotated\n`,
     });
+    expect(
+      lookupSystemdEnvironmentValue(result.host, STEWARD_PLATFORM_KEYS),
+    ).toBe("original");
+    expect(
+      lookupSystemdEnvironmentValue(result.host, "STEWARD_PLATFORM_KEY"),
+    ).toBe("legacy");
+    expect(result.host).not.toContain(OPERATOR_ACTIVE);
     expect(lookupSystemdEnvironmentValue(result.host, ENV_KEY)).toBe(
       "redis://hand-set.example:6379",
     );
