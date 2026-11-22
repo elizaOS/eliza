@@ -99,10 +99,12 @@ runs:
         fi
         "$evaluator_dir/quint_evaluator" --help
       shell: bash
-    # Studio's journeys and every test:browser drive a real Chromium.
-    - if: inputs.verification == 'true'
+    # Shard A runs Bombadil with full Chromium. The workspace also needs the
+    # headless shell for Playwright journeys. The other isolated shards use neither.
+    - name: Install Chromium
+      if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest'
       run: |
         pnpm exec playwright install-deps chromium & deps=$!
-        pnpm exec playwright install chromium
+        pnpm exec playwright install chromium ${{ inputs.job == 'selftest-a' && '--no-shell' || '' }}
         wait "$deps"
       shell: bash
