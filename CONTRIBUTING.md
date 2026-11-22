@@ -378,14 +378,12 @@ Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
 tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job and
 the commit: what a job of the same name last saved, or else another job's that holds the same.
-Turborepo shares task results through the private Cloudflare/R2 cache.
-The task entry point disables Turbo telemetry. Each `selftest:tools` task waits for the root and
-Studio test tasks so those integration journeys do not compete with it.
-Pull requests read shared results; only branch pushes receive the publishing
-credential, protected by the `turbo-cache-publish` environment's branch
-policy. A pull request keeps its own Turborepo results in the GitHub cache
-instead, which only that pull request reads, so its next push reuses them. Newer commits replace an older run of the same pull request.
-Every pushed commit can finish. Completed tasks are shared through the cache.
+CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache.
+Branch pushes save results that later pushes and pull requests can restore. A pull request's
+own saves are scoped to that pull request. Newer commits replace an older run of the same pull
+request. Every pushed commit can finish. The task entry point disables Turbo telemetry. Each
+`selftest:tools` task waits for the root and Studio test tasks so those integration journeys
+do not compete with it.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.
