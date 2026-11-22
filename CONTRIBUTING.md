@@ -344,6 +344,11 @@ outlives a reinstall, as `spec watch` does, reads the installed toolchain
 again on the next check. Simulations and proofs include the resolved package files
 and dependency links for Quint and LemmaScript. Each check shares an installation
 inventory across runs of the same tool and validates its files before publishing a batch.
+Recognized stock pnpm POSIX tools run in private copies of their declared package
+closure with the selected Node interpreter and no ambient module search. The
+simulator uses the tool-local Quint copy, which may differ from the CLI version.
+Source and private files are checked before publication. Custom launchers, Windows
+shims and Node preload options retain ordinary execution without receipt reuse.
 The first action, long actions, completed stages and the end of the check flush pending results.
 If a concurrent installation changes these files, the check discards the pending results
 and retries under the same project lock. It stops after two unsuccessful retries. A
