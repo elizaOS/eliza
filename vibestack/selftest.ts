@@ -2424,6 +2424,18 @@ function eachCheck() {
     const keys = [];
     for (const name of names) keys.push(await keyed(name));
     assert.deepEqual(keys[0], keys[1], "moving the same tools preserves proof and task results");
+    const unavailable = await exec(process.execPath, ["--input-type=module", "--eval", [
+      `const { entry, toolchainFingerprint } = await import(${JSON.stringify(path.join(project, "vibestack/cache.ts"))});`,
+      'const task = await toolchainFingerprint();',
+      'const proof = await entry(".", "prove", ["same obligation"]).then(() => "accepted", (error) => error.message);',
+      'console.log(JSON.stringify({ task, proof }));',
+    ].join("\n")], root, { ...process.env, PATH: path.join(root, "without-verifiers") });
+    assert.equal(unavailable.status, 0, unavailable.stderr);
+    const omitted = JSON.parse(unavailable.stdout);
+    assert.equal(omitted.task.dafny, null);
+    assert.equal(omitted.task.z3, null);
+    assert.notDeepEqual(omitted.task, keys[0].task);
+    assert.match(omitted.proof, /Dafny is not on PATH|the proof stage needs the Z3 solver/);
     for (const other of keys.slice(2)) {
       assert.notEqual(keys[0].proof, other.proof, "different verifier bytes invalidate a proof even at the same version");
       assert.notEqual(keys[0].tests, other.tests, "and tests, which may run proofs");
