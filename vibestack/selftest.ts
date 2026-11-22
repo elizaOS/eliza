@@ -1475,21 +1475,6 @@ function eachCheckB() {
     assert.ok(!fs.existsSync(path.join(root, "gen/traces")), text);
   });
 
-}
-
-function eachCheck() {
-  before(async () => {
-    for (const file of ["spec/index.md", "src", "test"]) fs.cpSync(path.join(EXAMPLE, file), path.join(pristine, file), { recursive: true });
-    for (const [file, text] of Object.entries(PACKAGE)) fs.writeFileSync(path.join(pristine, file), text);
-    fs.symlinkSync(nodeModules, path.join(pristine, "node_modules"), "dir");
-    for (const spec of readSpecs(pristine)) acceptReviews(pristine, spec);
-    acceptContracts(pristine);
-    const began = Date.now() - 1000;
-    const pristineCheck = await check(pristine);
-    assert.equal(pristineCheck.ok, true, pristineCheck.results.map(show).join("\n"));
-    for (const name of unused(pristine, began)) fs.rmSync(path.join(pristine, ".spec-cache", name));
-  });
-  for (const [shard, tests] of Object.entries(SHARDS)) describe(shard, { concurrency: LANES }, tests);
 
   test("event weights, fairness and bounds name real events and rules and stay outside generated code; a weight repeats its event in the simulator's choice", async () => {
     const base = "type S = { n: int }\npure val initial: S = { n: 0 }\npure def add(s: S, k: int): S = { n: s.n + k }\npure def leadsToSome(s: S, later: S): bool = later.n >= s.n\n";
@@ -1589,6 +1574,21 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual(owned.failed, ["review"], owned.text);
     assert.deepEqual((await import(path.join(deep, "gen/use.ts"))).spent, { tag: "Spent" });
   });
+}
+
+function eachCheck() {
+  before(async () => {
+    for (const file of ["spec/index.md", "src", "test"]) fs.cpSync(path.join(EXAMPLE, file), path.join(pristine, file), { recursive: true });
+    for (const [file, text] of Object.entries(PACKAGE)) fs.writeFileSync(path.join(pristine, file), text);
+    fs.symlinkSync(nodeModules, path.join(pristine, "node_modules"), "dir");
+    for (const spec of readSpecs(pristine)) acceptReviews(pristine, spec);
+    acceptContracts(pristine);
+    const began = Date.now() - 1000;
+    const pristineCheck = await check(pristine);
+    assert.equal(pristineCheck.ok, true, pristineCheck.results.map(show).join("\n"));
+    for (const name of unused(pristine, began)) fs.rmSync(path.join(pristine, ".spec-cache", name));
+  });
+  for (const [shard, tests] of Object.entries(SHARDS)) describe(shard, { concurrency: LANES }, tests);
 
   test("install creates ignored agent aliases inside the checkout and recreates them on reinstall", () => {
     const { packageManager, scripts } = JSON.parse(read("package.json"));
