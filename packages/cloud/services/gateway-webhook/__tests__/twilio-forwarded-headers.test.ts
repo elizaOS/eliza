@@ -96,6 +96,19 @@ describe("twilio webhook signature behind a proxy", () => {
     );
   });
 
+  test("keeps port 80 when forwarding an HTTPS public URL", async () => {
+    const request = webhookRequest({
+      "x-forwarded-proto": "https, http",
+      "x-forwarded-host": "gateway.eliza.cloud:80, gateway.internal",
+      "x-twilio-signature": sign(
+        "https://gateway.eliza.cloud:80/webhooks/twilio/project/agent",
+      ),
+    });
+    expect(await twilioAdapter.verifyWebhook(request, RAW_BODY, config())).toBe(
+      true,
+    );
+  });
+
   test("rejects a signature made for another URL", async () => {
     const request = webhookRequest({
       "x-forwarded-proto": "https",

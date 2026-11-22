@@ -269,11 +269,12 @@ function forwardedScheme(value: string | null): "http" | "https" | undefined {
 /** Split a forwarded authority into the parts the URL setters take. */
 function forwardedAuthority(
   value: string | null,
+  protocol: string,
 ): { hostname: string; port: string } | undefined {
   const first = firstForwardedValue(value);
   if (!first) return undefined;
   try {
-    const parsed = new URL(`http://${first}`);
+    const parsed = new URL(`${protocol}//${first}`);
     return { hostname: parsed.hostname, port: parsed.port };
   } catch {
     return undefined;
@@ -355,10 +356,11 @@ export const twilioAdapter: PlatformAdapter = {
     const forwardedProto = forwardedScheme(
       request.headers.get("x-forwarded-proto"),
     );
+    if (forwardedProto) url.protocol = `${forwardedProto}:`;
     const forwardedHost = forwardedAuthority(
       request.headers.get("x-forwarded-host"),
+      url.protocol,
     );
-    if (forwardedProto) url.protocol = `${forwardedProto}:`;
     if (forwardedHost) {
       url.hostname = forwardedHost.hostname;
       // The internal listening port is not part of the URL Twilio signed.
