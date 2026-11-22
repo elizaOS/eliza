@@ -265,6 +265,49 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
     expect(state.map((todo) => todo.id)).toEqual([electricity.id]);
   });
 
+  it.each([
+    ["delete", "Pay electricity bill", "Pay water bill", true],
+    ["complete", "Send report to Alice", "Send report to Bob", true],
+    ["cancel", "Email Bob the invoice", "Email Alice the invoice", true],
+    [
+      "complete",
+      "Finish the quarterly report for the board",
+      "finish the quarterly report",
+      false,
+    ],
+  ] as const)(
+    "%s %s by %s asks first only for a swapped word (%s)",
+    async (action, listed, target, asks) => {
+      const entityId = newEntity();
+      const todo = await seed(entityId, listed);
+      const result = await run(say(entityId, `${action} ${target}`), {
+        action,
+        target,
+      });
+      if (!asks) {
+        expect(result.effectReceipts?.[0]?.resource.id).toBe(todo.id);
+        return;
+      }
+      expect(result.text).toBe(
+        `No todo matches "${target}" exactly, so nothing was changed. Did you mean this one?\n- "${listed}" (to do, added ${todo.createdAt.toISOString().slice(0, 10)}) ref ${await todoRef(todo.id)}`,
+      );
+      expect(result.effectReceipts).toBeUndefined();
+      expect(result.data).toMatchObject({ clarificationRequired: true });
+      expect((await rows(entityId)).map((row) => [row.id, row.status])).toEqual(
+        [[todo.id, "pending"]],
+      );
+
+      const chosen = await run(say(entityId, "yes, that one"), {
+        action,
+        ref: await todoRef(todo.id),
+      });
+      expect(chosen.effectReceipts?.[0]).toMatchObject({
+        outcome: "applied",
+        resource: { id: todo.id },
+      });
+    },
+  );
+
   it("keeps update's target separate from its replacement content, and a retry replays the original rename", async () => {
     const entityId = newEntity();
     const memo = await seed(entityId, "Draft memo");
