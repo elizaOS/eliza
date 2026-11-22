@@ -453,7 +453,7 @@ open class WiFiPlugin : Plugin() {
             bridge.releaseCall(call)
             return
         }
-        awaitWifiInternet(call, ssid, call.getBoolean("secured") ?: false)
+        awaitWifiInternet(call, ssid, call.getBoolean("secured") ?: false, code == Settings.ADD_WIFI_RESULT_ALREADY_EXISTS)
     }
 
     /**
@@ -467,7 +467,7 @@ open class WiFiPlugin : Plugin() {
      * supplicant authentication error for a [secured] join resolves
      * `wrongPassword`; that report is best-effort and not sent on every build.
      */
-    private fun awaitWifiInternet(call: PluginCall, ssid: String, secured: Boolean) {
+    private fun awaitWifiInternet(call: PluginCall, ssid: String, secured: Boolean, alreadySaved: Boolean) {
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         if (manager == null) {
             call.reject("Connectivity service is unavailable on this device")
@@ -476,7 +476,7 @@ open class WiFiPlugin : Plugin() {
         }
         val reader = WiFiStateReader(context)
         // Touched only on the main thread.
-        val tracker = ApprovedJoinTracker(ssid, secured)
+        val tracker = ApprovedJoinTracker(ssid, secured, alreadySaved)
         var settled = false
         lateinit var callback: ConnectivityManager.NetworkCallback
         lateinit var timeout: Runnable
@@ -540,7 +540,7 @@ open class WiFiPlugin : Plugin() {
         }
         @Suppress("DEPRECATION")
         registerSystemReceiver(supplicant, IntentFilter(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION))
-        main.postDelayed(timeout, APPROVED_JOIN_TIMEOUT_MS)
+        main.postDelayed(timeout, if (alreadySaved) SAVED_NETWORK_OBSERVATION_MS else APPROVED_JOIN_TIMEOUT_MS)
     }
 
     private fun finishApprovedJoin(call: PluginCall, status: String) {
@@ -614,6 +614,7 @@ open class WiFiPlugin : Plugin() {
 
         /** Validation usually follows a join within seconds; a captive portal is reported at once. */
         private const val APPROVED_JOIN_TIMEOUT_MS = 30_000L
+        private const val SAVED_NETWORK_OBSERVATION_MS = 1_000L
 
         /** How long a started scan waits for its results before the cached ones are read. */
         private const val DEFAULT_SCAN_TIMEOUT_MS = 10_000L
