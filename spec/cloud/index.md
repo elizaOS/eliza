@@ -345,8 +345,10 @@ backup approval can be granted. This native proof cannot satisfy it.
 The registered approval method is enforced on the server. A native
 registration uses the backup `/native/challenge` and `/native/approve`
 endpoints and cannot open or exchange a browser backup approval. The
-native readiness response requires the exact callback and the app's
-configured Android OAuth presenters.
+native readiness response and approval routes use the exact callback from
+the app's registration, which can be on the product's own host. They
+require its configured Android OAuth presenters. Browser approval still
+uses the standalone deployment's client and callback.
 
 ```quint
 type NativePasswordBackupChecks = { activeEnrollment: bool, exactRegistration: bool, linkedOwnerAndOrganization: bool, nativeConsent: bool, additionalFactorClear: bool, exactPurpose: bool, exactState: bool, exactVerifier: bool, unspent: bool }
