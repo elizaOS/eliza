@@ -203,6 +203,8 @@ clock; exits ten minutes old or in the future drop out, and a trip is sticky.
 The new process holds neither consent nor a lease. An enabled listener
 shows a crash stop even before consent is renewed. After a reboot a timed
 pause lasts until I resume, as the monotonic clock restarted.
+The three-crash check starts from the initial state, renews consent and the
+indicator lease before each capture, and checks that every step is allowed.
 
 ```quint
 type ProcessEnd = Crash | Reboot | PackageUpdate
@@ -227,7 +229,28 @@ pure def stepRestartRetiresProcessConsent(before: ListenerService, via: str, aft
   via == "restartProcess" implies not(after.processConsent) and not(after.capturing) and after.lease == { ...I::initial, now: before.lease.now }
 pure def alwaysTrippedListenerHoldsNoMicrophone(s: ListenerService): bool = s.tripped implies not(s.capturing)
 pure def sometimesUncleanExitCounted(s: ListenerService): bool = s.recentExits.length() >= 1 and not(s.tripped)
-pure def sometimesCrashLoopTripped(s: ListenerService): bool = s.tripped and decide(s) == StoppedAfterErrors
+type CrashCycle = { admitted: bool, after: ListenerService }
+pure def capturingCrash(now: int, s: ListenerService): CrashCycle = {
+  val consent = turnOn(s, Owner, admittedGrant)
+  val acquired = acquireLease(consent, SystemUiLease, I::admittedListener, true)
+  val visible = renewLease(acquired, SystemUiLease, I::admittedListener, I::visibleRecording, true)
+  val requested = requestStart(visible)
+  val live = deliverStart(requested, false).state
+  { admitted: canTurnOn(s, Owner, admittedGrant) and canAcquireLease(consent, SystemUiLease, I::admittedListener)
+      and canRenewLease(acquired, SystemUiLease, I::admittedListener) and canRequestStart(visible)
+      and canDeliverStart(requested) and live.capturing and live.device.recordAudio,
+    after: restartProcess(live, Crash, now) }
+}
+pure def lawThreeCapturingCrashesReachTheStop(now: int): bool = {
+  val first = capturingCrash(now, observeDevice(initial, readyDevice))
+  val second = capturingCrash(now + 1000, first.after)
+  val third = capturingCrash(now + 1000, second.after)
+  first.admitted and second.admitted and third.admitted
+    and first.after.recentExits == List(now) and not(first.after.tripped)
+    and second.after.recentExits == List(now, now + 1000) and not(second.after.tripped)
+    and third.after.recentExits == List(now, now + 1000, now + 1000)
+    and third.after.tripped and decide(third.after) == StoppedAfterErrors
+}
 ```
 
 ### Wake audio never leaves the device and opens only the assistant, while unlocked
