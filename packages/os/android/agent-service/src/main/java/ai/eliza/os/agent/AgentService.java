@@ -484,8 +484,8 @@ public class AgentService extends Service {
 
   private void check(AgentPolicy.Check check) {
     AgentPolicy.State state = policy.state();
-    if (live != this || state.phase() != Phase.CHECKING || state.epoch() != check.epoch()) return;
     long epoch = check.epoch();
+    if (!checking(state, epoch)) return;
     if (state.staleEpoch() != 0 && owns(state.staleEpoch())) {
       checkAfterReap = check;
       return;
@@ -524,18 +524,39 @@ public class AgentService extends Service {
       step(new AgentPolicy.Refuse(AgentPolicy.Cause.PAYLOAD, String.join("; ", failed.errors())));
       return;
     }
-    PayloadCheck.PreparedPayload prepared = ((PayloadCheck.Ready) payload).payload();
+    launchChecked(epoch, config, ((PayloadCheck.Ready) payload).payload());
+  }
+
+  private boolean checking(AgentPolicy.State state, long epoch) {
+    return live == this && state.phase() == Phase.CHECKING && state.epoch() == epoch;
+  }
+
+  private void launchChecked(long epoch, AgentConfig config, PayloadCheck.PreparedPayload prepared) {
+    AgentPolicy.State before = policy.state();
+    if (!checking(before, epoch)) return;
+    AgentCredentials credentialSource;
     AgentCredentials.Active active;
-    String storageKey;
     try {
-      active = credentials().current();
-      storageKey = active == null ? null : credentials().storageKey(active.account());
-    } catch (Exception unreadable) {
+      credentialSource = credentials();
+      active = credentialSource.current();
+    }
+    catch (Exception unreadable) {
       step(new AgentPolicy.FailUnclassified("The device credential could not be read: " + unreadable.getMessage()));
       return;
     }
     sync(active);
-    if (live != this || policy.state().phase() != Phase.CHECKING || policy.state().epoch() != check.epoch()) return;
+    AgentPolicy.State current = policy.state();
+    if (!checking(current, epoch)) return;
+    if (!before.credentialHeld() && current.credentialHeld() && !Objects.equals(before.account(), current.account())) {
+      later(() -> settled(() -> launchChecked(epoch, config, prepared)));
+      return;
+    }
+    String storageKey;
+    try { storageKey = active == null ? null : credentialSource.storageKey(active.account()); }
+    catch (Exception unreadable) {
+      step(new AgentPolicy.FailUnclassified("The device credential could not be read: " + unreadable.getMessage()));
+      return;
+    }
     Map<String, String> variables = new LinkedHashMap<>();
     String document = null;
     String refusal = null;

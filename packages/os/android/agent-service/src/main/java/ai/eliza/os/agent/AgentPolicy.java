@@ -361,7 +361,9 @@ public final class AgentPolicy {
     if (next == null || next.isEmpty() || next.equals(account)) return false;
     account = next;
     switch (phase) {
-      case CHECKING -> begin(0, 0);
+      case CHECKING -> {
+        if (credentialHeld) begin(0, 0);
+      }
       case SPAWNED, RUNNING -> kill(AfterExit.START, null, null);
       case FAILED -> {
         if (failure == Cause.STORAGE) stopped();

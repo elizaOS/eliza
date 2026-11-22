@@ -324,7 +324,9 @@ pure def stepBudgetRenewedOnlyByStartOrStableRun(before: AgentService, via: str,
 The credential's `SignedOutNotice` and `ExpiredNotice` withdraw the key;
 a live child is killed first, and a stopped service stays stopped. The
 next `Announce` starts the agent without using the budget, unless an
-update holds it.
+update holds it. A pending check keeps its epoch when its first key
+arrives. If the key selects the account, the shell lets a queued stop or
+hold run, then reads the current key before opening that account's storage.
 
 ```quint
 pure val versionValues = Set(1, 2, 3)
@@ -338,6 +340,10 @@ pure def credentialArrived(s: AgentService, version: int, account: C::Account): 
   else if (storageFailed(s)) emit(List(), { ...keyed, review: NoReview })
   else emit(List(), keyed)
 }
+pure def stepFirstKeyKeepsTheCheckingEpoch(before: AgentService, via: str, after: AgentService, out: List[ServiceEffect]): bool =
+  (via == "credentialArrived" and before.key == NoKey and before.phase == Starting({ step: Checking })) implies
+    (after.phase == before.phase and after.epoch == before.epoch and after.attempt == before.attempt
+      and after.child == before.child and after.key != NoKey and out == List())
 pure def canCredentialWithdrawn(s: AgentService): bool = s.key != NoKey
 pure def credentialWithdrawn(s: AgentService): ServiceStep = {
   val keyless = { ...s, key: NoKey }
