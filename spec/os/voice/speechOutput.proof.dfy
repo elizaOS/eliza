@@ -159,6 +159,30 @@ lemma WorkerMapPreservesPhaseRules(before: SpeechOutput, after: SpeechOutput)
   }
 }
 
+lemma RetiringWorkersKeepsRules(before: SpeechOutput, after: SpeechOutput)
+  requires inv(before)
+  requires after.workers == retire(before.owner, before.workers)
+  ensures |before.workers| == |after.workers|
+  ensures forall i :: 0 <= i < |before.workers| ==> before.workers[i].workerId == after.workers[i].workerId
+  ensures forall w :: w in after.workers ==> w.closed
+  ensures alwaysWorkerIdsAreUnique(after)
+  ensures stepRetiredWorkerNeverStartsPlaying(before, after)
+  ensures stepNoWriteAfterRetireOrTimeout(before, after)
+  ensures stepOutputReleasedOnce(before, after)
+{
+  forall i | 0 <= i < |before.workers|
+    ensures after.workers[i].workerId == before.workers[i].workerId
+    ensures after.workers[i].phase == before.workers[i].phase
+    ensures after.workers[i].closed
+  {
+    var former := before.workers[i];
+    assert former in before.workers;
+    assert after.workers[i] == (if former.workerId == before.owner then former.(closed := true) else former);
+  }
+  WorkerMapPreservesIds(before, after);
+  WorkerMapPreservesPhaseRules(before, after);
+}
+
 lemma stopWarmup_ensures(s: SpeechOutput)
   ensures (inv(s) ==> canStopWarmup(s) ==> alwaysWarmupOnlyWhileIdle(stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> alwaysOnlyTheOwnerIsOpen(stopWarmup(s)))
@@ -173,19 +197,55 @@ lemma stopWarmup_ensures(s: SpeechOutput)
   ensures (inv(s) ==> canStopWarmup(s) ==> stepStoppedSpeechDropsItsAudio(s, "stopWarmup", stopWarmup(s), []))
 {
   if inv(s) && canStopWarmup(s) {
-    var after := stopWarmup(s);
-    forall i | 0 <= i < |s.workers|
-      ensures after.workers[i].workerId == s.workers[i].workerId
-      ensures after.workers[i].phase == s.workers[i].phase
-    {
-      assert after.workers[i] == (if s.workers[i].workerId == s.owner then s.workers[i].(closed := true) else s.workers[i]);
-    }
-    assert alwaysOnlyTheOwnerIsOpen(after);
-    WorkerMapPreservesIds(s, after);
-    WorkerMapPreservesPhaseRules(s, after);
+    RetiringWorkersKeepsRules(s, stopWarmup(s));
   }
 }
 
+lemma startSpeech_ensures(s: SpeechOutput, utteranceId: int, granted: bool)
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> alwaysWarmupOnlyWhileIdle(startSpeech(s, utteranceId, granted).state))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> alwaysOnlyTheOwnerIsOpen(startSpeech(s, utteranceId, granted).state))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> alwaysWorkerIdsAreUnique(startSpeech(s, utteranceId, granted).state))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> alwaysNoSpeechDuringCall(startSpeech(s, utteranceId, granted).state))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> alwaysSpeakingHasPositiveUtteranceId(startSpeech(s, utteranceId, granted).state))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepRetiredWorkerNeverStartsPlaying(s, startSpeech(s, utteranceId, granted).state))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepNoWriteAfterRetireOrTimeout(s, startSpeech(s, utteranceId, granted).state))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepOutputReleasedOnce(s, startSpeech(s, utteranceId, granted).state))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepFirstAudioReportedOnce(s, "startSpeech", startSpeech(s, utteranceId, granted).state, startSpeech(s, utteranceId, granted).out))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepFocusAbandonedWhenSpeechStops(s, "startSpeech", startSpeech(s, utteranceId, granted).state, startSpeech(s, utteranceId, granted).out))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepStoppedSpeechDropsItsAudio(s, "startSpeech", startSpeech(s, utteranceId, granted).state, startSpeech(s, utteranceId, granted).out))
+{
+  if inv(s) && canStartSpeech(s, utteranceId) {
+    var after := startSpeech(s, utteranceId, granted).state;
+    if s.mode.CallAudio? || !granted {
+      UnchangedWorkersKeepPhaseRules(s, after);
+    } else {
+      RetiringWorkersKeepsRules(s, after);
+    }
+  }
+}
+
+lemma audioModeChanged_ensures(s: SpeechOutput, mode: AudioMode)
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> alwaysWarmupOnlyWhileIdle(audioModeChanged(s, mode).state))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> alwaysOnlyTheOwnerIsOpen(audioModeChanged(s, mode).state))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> alwaysWorkerIdsAreUnique(audioModeChanged(s, mode).state))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> alwaysNoSpeechDuringCall(audioModeChanged(s, mode).state))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> alwaysSpeakingHasPositiveUtteranceId(audioModeChanged(s, mode).state))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepRetiredWorkerNeverStartsPlaying(s, audioModeChanged(s, mode).state))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepNoWriteAfterRetireOrTimeout(s, audioModeChanged(s, mode).state))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepOutputReleasedOnce(s, audioModeChanged(s, mode).state))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepFirstAudioReportedOnce(s, "audioModeChanged", audioModeChanged(s, mode).state, audioModeChanged(s, mode).out))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepFocusAbandonedWhenSpeechStops(s, "audioModeChanged", audioModeChanged(s, mode).state, audioModeChanged(s, mode).out))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepStoppedSpeechDropsItsAudio(s, "audioModeChanged", audioModeChanged(s, mode).state, audioModeChanged(s, mode).out))
+{
+  if inv(s) && canAudioModeChanged(s, mode) {
+    var after := audioModeChanged(s, mode).state;
+    if mode.NormalAudio? {
+      UnchangedWorkersKeepPhaseRules(s, after);
+    } else {
+      RetiringWorkersKeepsRules(s, after);
+    }
+  }
+}
 
 lemma WorkerUpdatePreservesOwnership(s: SpeechOutput, id: int, worker: WarmupWorker)
   requires inv(s)
