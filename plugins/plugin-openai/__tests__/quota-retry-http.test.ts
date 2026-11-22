@@ -7,7 +7,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { AgentRuntime, EventType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleResponseHandler, handleTextSmall } from "../models/text";
+import { handleResponseHandler, handleTextSmall, RATE_LIMIT_MAX_HOLD_MS } from "../models/text";
 
 let server: Server | undefined;
 afterEach(async () => {
@@ -255,7 +255,7 @@ describe("provider quota retry HTTP boundary", () => {
     10000
   );
 
-  it("keeps a long millisecond cooldown through aliases until the complete provider delay expires", async () => {
+  it("holds a model through aliases for at most the local hold, reporting the provider's delay", async () => {
     const now = Date.UTC(2026, 8, 6, 12);
     const clock = vi.spyOn(Date, "now").mockReturnValue(now);
     const test = await fixture("rate_limit_exceeded", true, { "retry-after-ms": "180000" });
@@ -264,17 +264,22 @@ describe("provider quota retry HTTP boundary", () => {
         statusCode: 429,
       }
     );
-    clock.mockReturnValue(now + 120_001);
+    clock.mockReturnValue(now + RATE_LIMIT_MAX_HOLD_MS - 1);
+    // A refused alias carries the provider's remaining delay for whoever schedules it.
     await expect(
       handleResponseHandler(test.runtime, {
         prompt: "Same model through streaming.",
         model: "latency-test",
         stream: true,
       })
-    ).rejects.toMatchObject({ name: "ProviderRateLimitCooldownError", statusCode: 429 });
+    ).rejects.toMatchObject({
+      name: "ProviderRateLimitCooldownError",
+      statusCode: 429,
+      retryAfterMs: 180_000 - RATE_LIMIT_MAX_HOLD_MS + 1,
+    });
     expect(test.requests()).toBe(1);
-    clock.mockReturnValue(now + 180_000);
-    await expect(handleTextSmall(test.runtime, { prompt: "After reset." })).resolves.toBe(
+    clock.mockReturnValue(now + RATE_LIMIT_MAX_HOLD_MS);
+    await expect(handleTextSmall(test.runtime, { prompt: "After the hold." })).resolves.toBe(
       "Recovered"
     );
     expect(test.requests()).toBe(2);

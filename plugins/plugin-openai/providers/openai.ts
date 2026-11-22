@@ -20,7 +20,7 @@ import {
   applyCerebrasReasoningReplay,
   type CerebrasReasoningReplay,
 } from "../utils/cerebras-reasoning";
-import { getApiKey, getBaseURL, getSetting, isCerebrasMode } from "../utils/config";
+import { getApiKey, getBaseURL, isCerebrasMode } from "../utils/config";
 
 /** Code of the error that ends an HTTP attempt its provider stopped answering. */
 export const MODEL_ATTEMPT_IDLE_TIMEOUT = "MODEL_ATTEMPT_IDLE_TIMEOUT";
@@ -49,20 +49,15 @@ export const MODEL_ATTEMPT_IDLE_TIMEOUT = "MODEL_ATTEMPT_IDLE_TIMEOUT";
 const CEREBRAS_STREAM_IDLE_TIMEOUT_MS = 60_000;
 
 /**
- * The idle bound for this client's streamed attempts:
- * `OPENAI_ATTEMPT_IDLE_TIMEOUT_SECONDS` when it is a positive number, none when
- * it is 0, otherwise the Cerebras bound on the direct Cerebras route. Other
- * routes stay unbounded unless the host sets it: a reasoning model or a local
- * server can stream nothing for minutes on a sound call.
+ * The idle bound for this client's streamed attempts: the Cerebras bound on
+ * the direct Cerebras route, none elsewhere. Other routes stay unbounded: a
+ * reasoning model or a local server can stream nothing for minutes on a sound
+ * call.
  */
 function attemptIdleTimeoutMs(
   runtime: IAgentRuntime,
   endpoint: { provider: "openrouter" } | undefined
 ): number | undefined {
-  const raw = getSetting(runtime, "OPENAI_ATTEMPT_IDLE_TIMEOUT_SECONDS");
-  const seconds = raw?.trim() ? Number(raw) : Number.NaN;
-  if (seconds === 0) return undefined;
-  if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds * 1000);
   return !endpoint && isCerebrasMode(runtime) ? CEREBRAS_STREAM_IDLE_TIMEOUT_MS : undefined;
 }
 
