@@ -606,7 +606,7 @@ export function newSpec(root: string, name = ""): string {
 const COMMANDS = [
   ["check", "[<directory>] [--json] [--nightly]", "run every stage; --json prints each result as one line of JSON, then { ok, results, next }; --nightly uses the nightly test profile"],
   ["watch", "[<directory>]", "check again whenever spec/, src/, test/ or tsconfig.json changes"],
-  ["gen", "[<directory>] [--if-valid] or --owner <name> [<directory>] or --install", "write gen/ from the spec; --install prepares a template checkout"],
+  ["gen", "[<directory>] [--if-valid] or --owner <name> [<directory>] or --install [--skip-gen-on-pack]", "write gen/ from the spec; --install prepares a template checkout"],
   ["accept", "[<directory>] [unproved]", "record what was reviewed, or the obligations that are simulated only"],
   ["new", "[<path>]", "fill an empty spec/index.md, or write a starter spec/<path>/index.md"],
   ["init", "[<directory>]", "add what a project is missing"],
@@ -722,12 +722,15 @@ ${error.message}`);
 export async function main(argv = process.argv.slice(2)) {
   let root = process.cwd();
   let [command, ...args] = argv;
-  const installing = command === "gen" && args.length === 1 && args[0] === "--install";
+  const skipGenOnPack = args.length === 2 && args[1] === "--skip-gen-on-pack";
+  const installing = command === "gen" && args[0] === "--install" && (args.length === 1 || skipGenOnPack);
   if (installing) [command, ...args] = process.env.GITHUB_ACTIONS === "true" ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
   const takes = (...allowed: string[][]) => allowed.some((a) => a.length === args.length && a.every((x, i) => x === "*" || x === args[i]));
   try {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
-    if (installing && process.env.GITHUB_ACTIONS === "true" && process.env.GITHUB_JOB === "vibestack-fixture-selftests") return;
+    const fixture = process.env.GITHUB_ACTIONS === "true" && process.env.GITHUB_JOB === "vibestack-fixture-selftests";
+    const packingTools = skipGenOnPack && process.env.npm_command === "pack" && process.env.npm_lifecycle_event === "prepare";
+    if (installing && (fixture || packingTools)) return;
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {
       await steady(() => generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]));
       return;

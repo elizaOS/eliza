@@ -2534,7 +2534,7 @@ function eachCheck() {
       'const keptAfter = await kept();',
       'const choose = () => steady(async () => [(await solver()).version, await proof()]);',
       'const bundled = "libexec/z3/bin/z3-4.12.1"; fs.mkdirSync("libexec/z3/bin", { recursive: true });',
-      'const install = (v) => fs.writeFileSync(bundled, ["#!/bin/sh", "echo Z3 version " + v, ""].join(String.fromCharCode(10)), { mode: 0o755 });',
+      'const install = (v) => { fs.writeFileSync(bundled + ".next", ["#!/bin/sh", "echo Z3 version " + v, ""].join(String.fromCharCode(10)), { mode: 0o755 }); fs.renameSync(bundled + ".next", bundled); };',
       'const fallback = await choose(); install("4.12.0"); const preferred = await choose(); install("4.12.2"); const replaced = await choose(); fs.unlinkSync(bundled);',
       'console.log(JSON.stringify({ within, after, kept: [rewritten, keptAfter], selected: [fallback, preferred, replaced, await choose()] }));',
     ].join("\n")], root, { ...process.env, XDG_CACHE_HOME: path.join(root, "cache"), PATH: `${audit}${path.delimiter}${process.env.PATH ?? ""}` });
@@ -3498,6 +3498,11 @@ function theCommandLine() {
     fs.rmSync(path.join(root, "gen/value.ts"));
     const fixtures = await prepare(true, "vibestack-fixture-selftests");
     assert.equal(fixtures.status, 0, fixtures.stderr);
+    assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    const packed = await exec(process.execPath, [script, "gen", "--install", "--skip-gen-on-pack"], root, {
+      ...process.env, GITHUB_ACTIONS: "false", npm_command: "pack", npm_lifecycle_event: "prepare",
+    });
+    assert.equal(packed.status, 0, packed.stderr);
     assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
     const installed = await prepare(true);
     assert.equal(installed.status, 0, installed.stderr);
