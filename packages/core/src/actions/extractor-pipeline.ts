@@ -8,54 +8,14 @@
  */
 
 import { ElizaError } from "../errors";
-import { isInsufficientCreditsError } from "../security/model-failure.ts";
+import { turnRateLimitResendWaitMs } from "../security/model-failure.ts";
 import { getStreamingContext } from "../streaming-context";
 import { runWithTrajectoryPurpose } from "../trajectory-context";
 import { type GenerateTextParams, ModelType } from "../types/model.js";
 import type { IAgentRuntime } from "../types/runtime.js";
-import { modelProviderErrorStatus } from "../utils/model-errors";
-import {
-	isPermanentQuotaError,
-	providerRateLimitRetryAt,
-	readProviderRateLimit,
-} from "../utils/model-retry";
 import { sleepWithAbort } from "../utils/retry";
 
 type ModelTypeValue = (typeof ModelType)[keyof typeof ModelType];
-
-/**
- * Longest wait before the one re-send of a rate-limited extractor call. A
- * token bucket refills continuously, so a refused request is admitted again
- * within seconds; a longer wait would stall the visible turn.
- */
-const RATE_LIMIT_RESEND_MAX_WAIT_MS = 5_000;
-
-/**
- * Wait before re-sending a call the provider refused with a structural 429:
- * the refusal's own hint, capped, or the cap when it carries none. Spent
- * credit, permanent quota and a used-up period allowance get none, and
- * neither does a rate limit named only in prose. Same rule as the chat
- * turn's Stage 1, planner and evaluator re-sends.
- */
-function rateLimitResendWaitMs(
-	error: unknown,
-	now = Date.now(),
-): number | undefined {
-	if (
-		modelProviderErrorStatus(error) !== 429 ||
-		isInsufficientCreditsError(error) ||
-		isPermanentQuotaError(error)
-	)
-		return undefined;
-	const reported = readProviderRateLimit(error);
-	if (reported?.scope === "period") return undefined;
-	const retryAt = providerRateLimitRetryAt(error, now);
-	const hintMs = retryAt === undefined ? reported?.retryAfterMs : retryAt - now;
-	return Math.min(
-		Math.ceil(hintMs ?? RATE_LIMIT_RESEND_MAX_WAIT_MS),
-		RATE_LIMIT_RESEND_MAX_WAIT_MS,
-	);
-}
 
 export interface ExtractorPipelineResult<TParsed> {
 	/** Parsed value from the first or repaired model call, or null when both failed. */
@@ -143,9 +103,9 @@ export async function runExtractorPipeline<TParsed>(
 			result = await send();
 		} catch (error) {
 			// error-policy:J2 An extractor call waits out a temporary rate limit
-			// once and re-sends the same request; a second refusal and every
-			// other failure propagate unchanged.
-			const waitMs = rateLimitResendWaitMs(error);
+			// once and re-sends the same request, by the chat turn's rule; a
+			// second refusal and every other failure propagate unchanged.
+			const waitMs = turnRateLimitResendWaitMs(error);
 			if (waitMs === undefined) throw error;
 			runtime.logger.warn(
 				{ src: "lifeops:extractor-pipeline", purpose, delayMs: waitMs },

@@ -33,6 +33,7 @@ import {
   logger,
   MAX_WELL_FORMED_DEPTH,
   MODEL_PROVIDER_ATTEMPTS,
+  MODEL_PROVIDER_RESENDS,
   ModelType,
   providerRetryAfterMs,
   recordLlmCall,
@@ -2801,7 +2802,10 @@ function noteRateLimitCooldown(
   );
 }
 
-/** Exhausted server/rate-limit retries shared only within the current model call. */
+/**
+ * Exhausted server/rate-limit retries, and a 429 ending a re-sent call
+ * (endResentRateLimit), shared only within the current model call.
+ */
 const exhaustedEndpointRetries = new WeakMap<object, WeakMap<object, Map<string, unknown>>>();
 
 function endpointRetryBudget(
@@ -2832,6 +2836,29 @@ function endpointRetryBudget(
       models.set(model, error);
     }
   };
+}
+
+/**
+ * Ends a model call on a 429 after its lane already re-sent the request. The
+ * error carries the re-send count, so the turn's own re-send rule (core's
+ * turnRateLimitResendWaitMs) adds none: without it, one call Cerebras kept
+ * refusing with no wait hint went out 8 times on the generate lane and 12 on
+ * the stream lanes. It is also recorded for this call when a long Retry-After
+ * ended the lane before its budget, so sibling tiers rethrow it rather than an
+ * unstamped cooldown refusal. A refused first attempt keeps the turn's re-send.
+ */
+function endResentRateLimit(
+  error: unknown,
+  retryState: ModelRetryTelemetry,
+  recordForCall: (error: unknown) => void
+): void {
+  const status =
+    (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
+    (error as { status?: number } | undefined)?.status;
+  if (retryState.retryCount === 0 || status !== 429) return;
+  // A frozen error stays unstamped (Reflect.set does not throw) and keeps one turn re-send.
+  Reflect.set(error as object, MODEL_PROVIDER_RESENDS, retryState.retryCount);
+  recordForCall(error);
 }
 
 /** Longest wait the transient lanes will spend on one retry (see waitForTransientRetry). */
@@ -3881,7 +3908,9 @@ async function generateTextAtEndpoint(
             stampStreamError(runtime, details, stalledOutput.error);
           }
           noteRateLimitCooldown(modelCooldowns, modelName, error);
-          throw stalledOutput?.error ?? error;
+          const thrown = stalledOutput?.error ?? error;
+          endResentRateLimit(thrown, retryState, onExhausted);
+          throw thrown;
         });
         const text = restoreResponseText(result.text);
         const toolCalls = restoreRecordArgToolCalls(
@@ -3987,7 +4016,15 @@ async function generateTextAtEndpoint(
     let attemptTiming: StreamAttemptTiming | undefined;
     let attemptPrefix: unknown[] = [];
     for (let attempt = 0; ; attempt++) {
-      assertModelNotCoolingDown(modelCooldowns, modelName);
+      try {
+        assertModelNotCoolingDown(modelCooldowns, modelName);
+      } catch (error) {
+        // Another call can put the model on hold while this lane waits to
+        // re-send. That refusal ends a re-sent call like a provider 429 does;
+        // unstamped, the turn re-sent it with a fresh lane (3 + 6 requests).
+        endResentRateLimit(error, retryState, onExhausted);
+        throw error;
+      }
       capturedStreamError = undefined;
       attemptPrefix = [];
       assertPreparedAttempt(details);
@@ -4112,6 +4149,7 @@ async function generateTextAtEndpoint(
           response: "",
           latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
         });
+        endResentRateLimit(capturedStreamError, retryState, onExhausted);
         throw capturedStreamError;
       }
     }
@@ -4300,6 +4338,7 @@ async function generateTextAtEndpoint(
         if (streamError && !streamIterationError && !capturedStreamError) {
           noteRateLimitCooldown(modelCooldowns, modelName, streamError);
         }
+        endResentRateLimit(streamError, retryState, onExhausted);
         settleStructuredText(streamError);
         if (streamError) throw streamError;
       })(),
@@ -4338,6 +4377,7 @@ async function generateTextAtEndpoint(
       beforeAttempt: () => assertPreparedAttempt(details),
     }).catch((error: unknown) => {
       noteRateLimitCooldown(modelCooldowns, modelName, error);
+      endResentRateLimit(error, retryState, onExhausted);
       if (NoObjectGeneratedError.isInstance(error)) {
         // generateText parses `output` itself and throws before this lane sees
         // the result. The provider billed the answer anyway: report its usage,
