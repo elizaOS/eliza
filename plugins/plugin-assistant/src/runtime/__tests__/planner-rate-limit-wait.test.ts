@@ -4,17 +4,14 @@
  * failed the whole turn after its earlier model calls had been paid for.
  */
 import {
+  MODEL_PROVIDER_RESENDS,
   type PlannerTrajectory,
   type RecordedStage,
   runWithStreamingContext,
   type TrajectoryRecorder,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  RATE_LIMIT_RETRY_MAX_WAIT_MS,
-  rateLimitRetryWaitMs,
-  runEvaluator,
-} from "../evaluator.ts";
+import { RATE_LIMIT_RETRY_MAX_WAIT_MS, runEvaluator } from "../evaluator.ts";
 import { runPlannerLoop } from "../planner-loop.ts";
 
 const ANSWER = "Created qa dinner for tomorrow at 5pm.";
@@ -29,7 +26,7 @@ const reply = () => ({
   ],
 });
 
-const rateLimited = (fields: Record<string, unknown> = {}) =>
+const rateLimited = (fields: Record<PropertyKey, unknown> = {}) =>
   Object.assign(new Error("Too Many Requests"), { status: 429, ...fields });
 /** The typed wait the Cloud gateway attaches to its 429. */
 const reportedWait = (retryAfterMs: number, scope?: string) => ({
@@ -42,7 +39,10 @@ const reportedWait = (retryAfterMs: number, scope?: string) => ({
 /** A provider that answers a token-bucket 429 with a whole-minute header. */
 const minuteHeader = { responseHeaders: { "retry-after": "60" } };
 
-/** Failures that a wait of seconds cannot clear, or that are not rate limits. */
+/**
+ * Failures that a wait of seconds cannot clear, that are not rate limits, or
+ * that the provider adapter already re-sent.
+ */
 const NOT_WAITED: Array<[string, Error]> = [
   [
     "spent credit",
@@ -53,6 +53,10 @@ const NOT_WAITED: Array<[string, Error]> = [
     Object.assign(new Error("token quota exceeded"), { status: 429 }),
   ],
   ["a used-up period allowance", rateLimited(reportedWait(10, "period"))],
+  [
+    "a refusal the provider adapter already re-sent",
+    rateLimited({ [MODEL_PROVIDER_RESENDS]: 3 }),
+  ],
   [
     "a rate limit named only in prose",
     new Error("subscription rate limit reached: session limit hit"),
@@ -141,30 +145,6 @@ function planner(
   );
   return { outcome, inputs, stages };
 }
-
-describe("rate-limit wait bound", () => {
-  it.each([
-    ["the Cloud report", rateLimited(reportedWait(1_200)), 1_200],
-    ["a provider retry delay", rateLimited({ retryAfterMs: 300 }), 300],
-    [
-      "a retry header beyond the bound",
-      rateLimited(minuteHeader),
-      RATE_LIMIT_RETRY_MAX_WAIT_MS,
-    ],
-    ["no hint", rateLimited(), RATE_LIMIT_RETRY_MAX_WAIT_MS],
-    [
-      "a wrapped provider error",
-      { lastError: rateLimited() },
-      RATE_LIMIT_RETRY_MAX_WAIT_MS,
-    ],
-  ])("waits for %s, at most the bound", (_label, error, expected) => {
-    expect(rateLimitRetryWaitMs(error)).toBe(expected);
-  });
-
-  it.each(NOT_WAITED)("does not wait for %s", (_label, error) => {
-    expect(rateLimitRetryWaitMs(error)).toBeUndefined();
-  });
-});
 
 describe("chat planner rate-limit wait", () => {
   it("re-sends the same request once after the hinted wait and completes the turn", async () => {
@@ -340,6 +320,11 @@ describe("chat evaluator rate-limit wait", () => {
 
   it.each([
     ["spent credit", {}, NOT_WAITED[0][1]],
+    [
+      "a refusal the provider adapter already re-sent",
+      {},
+      rateLimited({ [MODEL_PROVIDER_RESENDS]: 3 }),
+    ],
     ["a coding turn", { codingMode: true }, rateLimited(reportedWait(10))],
   ])(
     "fails without a wait or re-send on %s",

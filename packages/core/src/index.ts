@@ -312,6 +312,8 @@ export {
 	MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
 	type StructuredFailureCause,
 	stripReasoningBlocks,
+	TURN_RATE_LIMIT_RESEND_MAX_WAIT_MS,
+	turnRateLimitResendWaitMs,
 } from "./security/model-failure.ts";
 export {
 	cardBrand,
