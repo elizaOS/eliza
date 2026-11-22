@@ -11,7 +11,7 @@ import { explore } from "./explore.ts";
 import { ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type Proof } from "./prove.ts";
 import { bin, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
-import { contracts, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
+import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
 import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
@@ -384,7 +384,8 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
 
   // A spec that is not a valid model has nothing to reconcile yet. Everything is recorded at once, or nothing is.
   const locks = new Map(specs.map((spec) => [spec.file, lock.specs[spec.file] ?? {}]));
-  const todos = valid.filter((spec) => !isStd(spec.file)).map((spec) => ({ spec, todo: pending(root, spec, specs, locks) }));
+  const citedAt = citationLookup(root);
+  const todos = valid.filter((spec) => !isStd(spec.file)).map((spec) => ({ spec, todo: pending(root, spec, specs, locks, citedAt) }));
   const contractsToDo = pendingContracts(root, srcFiles, lock);
   const removedSpecs = pendingSpecs(root, specs, lock);
   const review = (ok: boolean, summary: string, detail = "", where?: string, rules: Result["rules"] = []) =>
@@ -724,8 +725,9 @@ export async function main() {
   const takes = (...allowed: string[][]) => allowed.some((a) => a.length === args.length && a.every((x, i) => x === "*" || x === args[i]));
   try {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
+    if (installing && process.env.GITHUB_ACTIONS === "true" && process.env.GITHUB_JOB === "vibestack-fixture-selftests") return;
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {
-      await generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]);
+      await steady(() => generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]));
       return;
     }
     const options: Record<string, string[]> = { check: ["--json", "--nightly"], gen: ["--if-valid"], accept: ["unproved"], watch: [], init: [] };
@@ -765,7 +767,9 @@ export async function main() {
         fs.rmSync(before, { recursive: true, force: true });
         if (fs.existsSync(gen)) fs.cpSync(gen, before, { recursive: true, preserveTimestamps: true });
         try {
-          for await (const { error } of generating({ root, fresh: false, used: new Set() }, specs)) if (error) throw error;
+          await steady(async () => {
+            for await (const { error } of generating({ root, fresh: false, used: new Set() }, specs)) if (error) throw error;
+          });
         } catch (e) {
           fs.rmSync(gen, { recursive: true, force: true });
           if (fs.existsSync(before)) fs.renameSync(before, gen);
