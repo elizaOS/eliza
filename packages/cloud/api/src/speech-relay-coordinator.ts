@@ -62,11 +62,6 @@ function renewalFailureCode(error: unknown): string | undefined {
   if (!error) return undefined;
   if (!(error instanceof Error)) return "unknown";
   if (
-    error.name === "InsufficientCreditsError" ||
-    error.name === "AllowanceExhaustedError"
-  )
-    return "insufficient_credits";
-  if (
     /Cannot perform I\/O on behalf of a different request/i.test(error.message)
   )
     return "cross_request_io";
@@ -798,10 +793,12 @@ export class SpeechRelayCoordinator {
         { runWithDbCacheAsync },
         { createDurableVoiceUsageStore },
         { reserveSpeechRelayAdmission },
+        { InsufficientCreditsError },
       ] = await Promise.all([
         import("@elizaos/cloud-shared/db/client"),
         import("@elizaos/cloud-shared/lib/services/voice-usage-meter"),
         import("./speech-relay-admission"),
+        import("@elizaos/cloud-shared/lib/services/credits"),
       ]);
       this.current();
       await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
@@ -888,20 +885,16 @@ export class SpeechRelayCoordinator {
               expiresAt: ledger.expiresAt,
               maxWindows,
               onRenewal: ({ phase, result, error }) => {
-                const code = renewalFailureCode(error);
-                // A credit refusal carries the amounts the gate compared.
+                // A credit refusal (including allowance exhaustion and billing
+                // holds) carries the amounts the gate compared.
                 const refusal =
-                  code === "insufficient_credits"
-                    ? (error as {
-                        required?: number;
-                        available?: number;
-                        reason?: string;
-                      })
-                    : undefined;
+                  error instanceof InsufficientCreditsError ? error : undefined;
                 logger.warn("[SpeechRelay] renewal outcome", {
                   phase,
                   result,
-                  code,
+                  code: refusal
+                    ? "insufficient_credits"
+                    : renewalFailureCode(error),
                   ...(refusal && {
                     requiredUsd: refusal.required,
                     availableUsd: refusal.available,

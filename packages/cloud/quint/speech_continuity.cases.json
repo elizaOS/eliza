@@ -16,7 +16,8 @@
   "bounds": {
     "assumptions": [
       "Three billing windows, one owner and one transport, with idempotent per-kind settlement. Safety does not assume provider success or eventual settlement. Conditional progress uses the explicit fair-completion assumptions below.",
-      "While open, a renewal settles only windows a later granted window superseded; the live window stays held. A failed superseded settlement retains that window for idempotent retry after Stop.",
+      "While open, the oldest held window that a later granted window superseded freezes at its metered share once its end passes and settles at that share, also while a renewal is in flight. The live window stays held. A failed settlement keeps its frozen share for idempotent retry by the next renewal or after Stop.",
+      "Usage is abstract units, at most CAP per window. Admission caps usage at the frozen shares plus each held window's budget. Close splits the rest over the held windows as speechWindowShare does. The invariants check that each window is charged once and within its reservation and that confirmed charges equal usage; they do not model per-kind amounts or prices.",
       "A stopped renewal returns without granting its window. Failed credit settlement retains that window for idempotent retry. An additive quota refund with unknown acknowledgement is retained without replay; confirmed independent money remains separate.",
       "A settled window abstracts matching terminal receipts; an ungranted window requires actual zero receipts. Missing, nonzero or mismatched receipts are failed settlement and retain ownership."
     ],
@@ -44,7 +45,7 @@
           "property": "FairStopConfirmsMoney",
           "expect": "holds",
           "assumptions": [
-            "Weak fairness of admission/refusal completion, stopped-renewal completion, each funded window terminal settlement, quota-result completion and confirmation.",
+            "Weak fairness of admission/refusal completion, stopped-renewal completion, each funded or frozen window terminal settlement, quota-result completion and confirmation.",
             "Terminal settlement availability is assumed for conditional progress only; provider closure and wall-clock completion are outside this model. Quota acknowledgement may remain unknown and is never replayed.",
             "The quota outcome may be permanently unknown. No transition resolves or retries it; independently terminal money allows confirmation while preserving that unknown field."
           ]

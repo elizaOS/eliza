@@ -67,12 +67,16 @@ module CloudSpeechLeaseBridge {
     s.phase.in(Set("await-mint", "minted", "live")),
     s' = s.with("phase", "closed").with("capture", false)
   }
+  // A window a later granted window superseded settles while live, once its
+  // end passed. Closed settles every allocated window still held.
+  def settleable(window: int): bool = s.allocated.contains(window) and
+    (s.phase == "closed" or (s.phase == "live" and window < s.paid))
   action settleStt(window: int): bool = all {
-    s.phase == "closed", s.allocated.contains(window),
+    settleable(window),
     s' = s.with("stt", s.stt.union(Set(window)))
   }
   action settleTts(window: int): bool = all {
-    s.phase == "closed", s.allocated.contains(window),
+    settleable(window),
     s' = s.with("tts", s.tts.union(Set(window)))
   }
   action confirm = all {
@@ -95,7 +99,12 @@ module CloudSpeechLeaseBridge {
   val RetainedSettlement = s.retired implies
     (s.phase == "closed" and s.allocated.subseteq(s.stt) and s.allocated.subseteq(s.tts))
   val ConsentResetBound = s.requests <= 2 and (s.phase == "consent" implies s.paid == 0)
-  val safety = WindowAuthority and NoForeignCapture and NoUnfundedWindow and RetainedSettlement and ConsentResetBound
+  // Live speech always runs on a held reservation: the live window and any
+  // pending renewal settle only after Stop, expiry or an owner change.
+  val LiveWindowHeld = s.phase == "live" implies
+    s.stt.union(s.tts).forall(window => window < s.paid)
+  val safety = WindowAuthority and NoForeignCapture and NoUnfundedWindow and RetainedSettlement and
+    ConsentResetBound and LiveWindowHeld
   temporal ClosedEventuallyRetires = always(s.phase == "closed" implies eventually(s.retired))
   temporal FairClosedRetires = (
     settleStt(1).weakFair(s) and settleStt(2).weakFair(s) and settleStt(3).weakFair(s) and
@@ -124,6 +133,13 @@ module CloudSpeechLeaseBridge {
   run ownerChangeRejectsLateAckTest = init.then(consent).then(mint).then(mintAck).then(ready(true))
     .then(reserve).then(grant).then(ownerChange).then(hostAck(0, 2)).then(clientAck(0, 2))
     .expect(s.host == 1 and s.client == 1 and not(s.capture))
+  run supersededWindowSettlesWhileLiveTest = init.then(consent).then(mint).then(mintAck).then(ready(true))
+    .then(reserve).then(grant).then(settleStt(1)).then(settleTts(1))
+    .expect(s.stt == Set(1) and s.tts == Set(1) and s.capture and not(s.retired) and safety)
+  run liveWindowCannotSettleTest = init.then(consent).then(mint).then(mintAck).then(ready(true))
+    .then(reserve).then(grant).then(settleStt(2).fail())
+  run pendingRenewalCannotSettleTest = init.then(consent).then(mint).then(mintAck).then(ready(true))
+    .then(reserve).then(grant).then(reserve).then(settleTts(3).fail())
   run unsupportedClientRetainsOneWindowTest = init.then(consent).then(mint).then(mintAck).then(ready(false))
     .then(hostAck(0, 2)).then(clientAck(0, 2))
     .expect(s.host == 1 and s.client == 1 and s.allocated == Set(1))
