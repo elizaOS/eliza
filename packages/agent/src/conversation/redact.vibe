@@ -89,4 +89,4 @@ module node {
     }]
   }
 }
-export { redactRoutes, redactService, type RedactResult } from node
+export { redactRoutes } from node

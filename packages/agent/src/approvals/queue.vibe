@@ -284,7 +284,7 @@ export function approvalQueue(host: ApprovalsHost): ApprovalQueue {
   }
 }
 
-export function runtimeApprovalsHost(runtime: IAgentRuntime): ApprovalsHost {
+function runtimeApprovalsHost(runtime: IAgentRuntime): ApprovalsHost {
   return {
     getCache: (key) => runtime.getCache(key),
     setCache: (key, value) => runtime.setCache(key, value),

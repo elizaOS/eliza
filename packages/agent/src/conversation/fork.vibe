@@ -181,4 +181,4 @@ module node {
     }]
   }
 }
-export { conversationModel, forkRecords, forkRoutes, forkService, forkTitle, modelIdOf, placedMessages, textDigest, type ForkRecord, type ForkRequest, type ForkResult, type Placed, type StoredMessage } from node
+export { conversationModel, forkRecords, forkRoutes, forkService, forkTitle, modelIdOf, placedMessages, textDigest, type ForkRecord, type ForkRequest, type Placed, type StoredMessage } from node

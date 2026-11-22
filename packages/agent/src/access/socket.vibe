@@ -410,4 +410,4 @@ module node {
   }
 }
 
-export { Exchanges, inboundOf, listenOnSocket, localRouteClass, parseFrame, receive, runUntilAbort, type Answer, type Connection, type Peer, type Detail, type FeedAccess, type Head, type Parsed, type Wiring } from node
+export { Exchanges, inboundOf, listenOnSocket, localRouteClass, parseFrame, receive, type Answer, type Connection, type Peer, type Detail, type FeedAccess, type Head, type Parsed, type Wiring } from node
