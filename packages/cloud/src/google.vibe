@@ -8,7 +8,7 @@ import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBi
 import { Aead, Digest, SecureRandom } from "effect/crypto"
 import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
-import { attachmentSelection, googleCalendarFeed, googleCalendarItem, googleGmailAttachment, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleAttachmentMissing, GoogleAttachmentStale, GoogleAttachmentUnsupported, GoogleReadInput, GoogleReadTooLarge, GoogleMailboxResponse, type GoogleReadApi } from "./google-read.vibe"
+import { attachmentSelection, gmailSearchInput, googleCalendarFeed, googleCalendarItem, googleGmailAttachment, googleGmailMessage, googleGmailSearch, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleAttachmentMissing, GoogleAttachmentStale, GoogleAttachmentUnsupported, GoogleReadInput, GoogleReadTooLarge, GoogleMailboxResponse, type GoogleReadApi } from "./google-read.vibe"
 
 import { boundedText, ProviderBodyTooLarge } from "./providers/bounded-body.vibe"
 import { rateLimit, RateLimited, StorageUnavailable } from "./identity-store.vibe"
@@ -826,10 +826,13 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
       const deviceTransfer = try seal(try googleConfig(env), JSON.stringify(claims), transferContext(env, account, file.organizationId))
       return body(200, { ...file, deviceTransfer })
     }
-    if (path === "/gmail/triage" || path === "/gmail/read") {
+    if (path === "/gmail/triage" || path === "/gmail/read" || path === "/gmail/search") {
+      const search = path === "/gmail/search" ? try gmailSearchInput(url) : undefined
       const { id: grant, email } = try mailGrant(db, account, selected)
       const api = googleReadApi(try accessFor(env, db, account, "mail", grant), path === "/gmail/read")
-      const result = path === "/gmail/triage" ? try googleGmailTriage(api, url, now, email) : try googleGmailMessage(api, url, email)
+      const result = search !== undefined ? try googleGmailSearch(api, search, now, email)
+        : path === "/gmail/triage" ? try googleGmailTriage(api, url, now, email)
+        : try googleGmailMessage(api, url, email)
       try mailGrant(db, account, grant)
       return body(200, { accountId: account, ...result })
     }

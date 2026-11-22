@@ -2,7 +2,7 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 import { Result } from "effect"
 import { Base64Url } from "effect/encoding"
-import { htmlMaxBytes, htmlViewOf, listCount, mailMaxBytes, needsReply, triageImportant, triageReasons, triageScore, type MailList, type TriageReason } from "../gen/cloud__services__google__mailRead.effect.vibe"
+import { htmlMaxBytes, htmlViewOf, listCount, mailMaxBytes, needsReply, searchOutcome, triageImportant, triageReasons, triageScore, type Continuation, type MailList, type TriageReason } from "../gen/cloud__services__google__mailRead.effect.vibe"
 
 export type GoogleReadApi<E, R> = (url: string, maxBytes?: number) => unknown!E!R
 export error GoogleReadInput
@@ -362,6 +362,52 @@ export effect function googleGmailTriage<E, R>(api: GoogleReadApi<E, R>, url: UR
   if (folder === "inbox") current.sort(compareMailTriage)
   return { folder, q: search.trim(), messages: current, syncedAt, mailboxHistoryId,
     nextPageToken: result.value.nextPageToken ?? null, ...(totals && { counts: totals }) }
+}
+
+const trashQuery = /(?:^|[\s({])in:(?:spam|trash|anywhere)(?=[\s)}]|$)/i
+const validSearchToken = (token: string) => token.length > 0 && token.length <= 4096 && !/[\r\n\0]/.test(token)
+
+interface GmailSearchInput {
+  readonly query: string
+  readonly limit: number
+  readonly pageToken?: string
+}
+
+// spec/cloud/services/google/mailRead.md, "A search page names the mailbox revision read before it was listed and never continues at the token it was asked with"
+export effect function gmailSearchInput(url: URL): GmailSearchInput!GoogleReadInput {
+  const query = (url.searchParams.get("query") ?? "").trim()
+  const limit = mailListCount("SearchList", url.searchParams.get("maxResults"))
+  const pageToken = url.searchParams.get("pageToken") ?? undefined
+  if (query === "" || query.length > 2048 || limit === null ||
+      (pageToken !== undefined && !validSearchToken(pageToken))) throw new GoogleReadInput()
+  return { query, limit, pageToken }
+}
+
+function searchContinuation(pageToken: string | undefined): Continuation {
+  return pageToken === undefined ? { tag: "NoContinuation" } : { tag: "ContinueAt", pageToken }
+}
+
+export effect function googleGmailSearch<E, R>(api: GoogleReadApi<E, R>, search: GmailSearchInput, syncedAt: string, selfEmail: string) {
+  const mailboxRevision = try mailboxHistory(api)
+  const params = new URLSearchParams({
+    q: search.query, maxResults: String(search.limit), includeSpamTrash: String(trashQuery.test(search.query)),
+    fields: "messages/id,nextPageToken"
+  })
+  if (search.pageToken !== undefined) params.set("pageToken", search.pageToken)
+  const page = Schema.decodeUnknownOption(MessageList)(try api(`${gmail}/messages?${params}`, 128 * 1024))
+  if (Option.isNone(page)) throw new GoogleMailboxResponse()
+  const { messages: listed = [], nextPageToken } = page.value
+  if (listed.length > search.limit || listed.some(({ id }) => !attachments.test(id)) ||
+      (nextPageToken !== undefined && !validSearchToken(nextPageToken))) throw new GoogleMailboxResponse()
+  const answer = searchOutcome(searchContinuation(search.pageToken), searchContinuation(nextPageToken), mailboxRevision)
+  if (answer.tag === "SearchRefused") throw new GoogleMailboxResponse()
+  const messages = Effect.forEach(listed, effect (entry) => {
+    return try mailCard(try readMessage(api, entry.id, "metadata"), selfEmail)
+  }, { concurrency: 4 }) catch effect (failure) => {
+    if (failure instanceof GoogleReadResponse) throw new GoogleMailboxResponse()
+    throw failure
+  }
+  return { messages, nextPageToken: nextPageToken ?? null, syncedAt, mailboxHistoryId: answer.mailboxRevision, supportsSpamTrash: true }
 }
 
 export effect function googleGmailMessage<E, R>(api: GoogleReadApi<E, R>, url: URL, selfEmail: string) {

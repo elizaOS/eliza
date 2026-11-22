@@ -3653,6 +3653,10 @@ module node {
       let revokeListing: "grant" | "session" | undefined
       let providerRequestsValid = true
       const providerCalls: string[] = []
+      const suppliedPage = "opaque+/?=%#&".padEnd(4096, "x")
+      let searchReply: { historyId: string | null; messages: string[]; nextPageToken?: string } | undefined
+      const searchCalls: unknown[][] = []
+      const searchCards: string[] = []
       const arrivalRequests: string[] = []
       const triageLimits: Array<string | null> = []
       let mailArrived = false
@@ -3672,6 +3676,21 @@ module node {
         if (url.href === "https://oauth2.googleapis.com/token" && request.method === "POST")
           return Response.json({ access_token: "fixture-access", scope: "https://www.googleapis.com/auth/gmail.readonly" })
         providerRequestsValid &&= request.headers.get("authorization") === "Bearer fixture-access"
+        if (searchReply && url.origin === "https://gmail.googleapis.com") {
+          if (url.pathname === "/gmail/v1/users/me/profile") {
+            searchCalls.push(["profile", url.searchParams.get("fields")])
+            return Response.json(searchReply.historyId === null ? {} : { historyId: searchReply.historyId })
+          }
+          if (url.pathname === "/gmail/v1/users/me/messages") {
+            const token = url.searchParams.get("pageToken")
+            searchCalls.push(["list", url.searchParams.get("q"), url.searchParams.get("maxResults"),
+              url.searchParams.get("includeSpamTrash"), token === null ? null : token === suppliedPage])
+            return Response.json({ messages: searchReply.messages.map((id) => ({ id })), nextPageToken: searchReply.nextPageToken })
+          }
+          if (url.pathname.startsWith("/gmail/v1/users/me/messages/")) {
+            searchCards.push(url.pathname.split("/").at(-1) + ":" + url.searchParams.get("format"))
+          }
+        }
         if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/profile") {
           arrivalRequests.push(url.pathname + url.search)
           return Response.json({ historyId: invalidTriageRevision ? "malformed" : "10000000000000000001" })
@@ -3719,7 +3738,8 @@ module node {
         if (url.origin === "https://gmail.googleapis.com" && ["/gmail/v1/users/me/messages/trashed-message", "/gmail/v1/users/me/messages/moved-message", "/gmail/v1/users/me/messages/moved-to-trash"].includes(url.pathname)) {
           const id = url.pathname.split("/").at(-1)
           const labelIds = id === "moved-to-trash" ? ["TRASH", "INBOX"] : [id === "trashed-message" ? "TRASH" : "INBOX"]
-          return Response.json({ id, threadId: "trash-thread", internalDate: "1760000000000", labelIds })
+          const internalDate = searchReply && id === "trashed-message" ? "1760000000001" : "1760000000000"
+          return Response.json({ id, threadId: "trash-thread", internalDate, labelIds })
         }
         if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/mail-external/attachments/plain") {
           return Response.json({ data: Buffer.from(externalText).toString("base64url") })
@@ -3897,6 +3917,45 @@ module node {
       const mimeAttachment = await get("attachment?messageId=mail-mime-over-limit&partId=2&historyId=789&grantId=" + grant, owner.access)
       const mimeFile = Schema.decodeUnknownSync(Schema.Struct({ dataBase64: Schema.String }))(await mimeAttachment.json())
       const mimeMalformed = await get("read?messageId=mail-mime-malformed&grantId=" + grant, owner.access)
+      const searchRevision = "10000000000000000011"
+      const newerRevision = "10000000000000000012"
+      const searchText = "in:anywhere subject:plan & dates"
+      searchReply = { historyId: searchRevision, messages: ["fixture-message", "trashed-message"], nextPageToken: suppliedPage }
+      const firstSearch = await client.gmailSearch({ grantId: grant, query: "  " + searchText + "  " })
+      searchReply = { historyId: newerRevision, messages: ["moved-to-trash"] }
+      const nextSearch = await client.gmailSearch({ grantId: grant, query: searchText, pageToken: suppliedPage, maxResults: 100 })
+      const searchPath = (query: Record<string, string>) => "search?" + new URLSearchParams({ grantId: grant, query: searchText, ...query })
+      const searchError = async (params: Record<string, string>) => {
+        const response = await get(searchPath(params), owner.access)
+        const failure = Schema.decodeUnknownSync(Schema.Struct({ error: Schema.String }))(await response.json())
+        return [response.status, failure.error]
+      }
+      searchReply = { historyId: newerRevision, messages: [], nextPageToken: suppliedPage }
+      const repeatedSearch = await searchError({ pageToken: suppliedPage })
+      searchReply = { historyId: newerRevision, messages: ["fixture-message", "trashed-message"] }
+      const oversizedSearch = await searchError({ query: "subject:plan", maxResults: "1" })
+      searchReply = { historyId: null, messages: ["fixture-message"] }
+      const missingSearchRevision = await searchError({})
+      searchReply = undefined
+      const beforeDeniedSearch = providerCalls.length
+      const nativeSearch = await worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + searchPath({}), { headers: ownDevice }), env)
+      const deniedSearch = [
+        (await get(searchPath({}))).status, nativeSearch.status, (await get(searchPath({}), other.access)).status,
+        (await get(searchPath({ side: "agent" }), owner.access)).status,
+      ]
+      const invalidSearch = [
+        await searchError({ query: "   " }), await searchError({ maxResults: "01" }), await searchError({ maxResults: "101" }),
+        await searchError({ pageToken: "" }), await searchError({ pageToken: "x".repeat(4097) }),
+      ]
+      const search = {
+        pages: [
+          [firstSearch.messages.map((message) => message.id), firstSearch.mailboxHistoryId, firstSearch.nextPageToken === suppliedPage, firstSearch.supportsSpamTrash],
+          [nextSearch.messages.map((message) => message.id), nextSearch.mailboxHistoryId, nextSearch.nextPageToken, nextSearch.supportsSpamTrash],
+        ],
+        providerRefusals: [repeatedSearch, oversizedSearch, missingSearchRevision],
+        denied: deniedSearch, invalid: invalidSearch, providersOnDenied: providerCalls.length - beforeDeniedSearch,
+        requests: searchCalls, cards: searchCards.sort(),
+      }
       const query = "grantId=" + grant + "&messageId=fixture-message"
       const folder = "triage?" + new URLSearchParams({ grantId: grant, folder: "trash", q: "  subject:plan & dates ", counts: "1" })
       const inbox = await client.gmailTriage({ grantId: grant })
@@ -3975,7 +4034,7 @@ module node {
       revokeListing = "grant"
       const disconnected = await get(folder, signedBackIn.access)
       return {
-        arrivalResult, triage, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
+        arrivalResult, triage, search, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
         organization, grant, manifest, mailText, html, mime: [mime, mimeAttachment.status, mimeFile.dataBase64, mimeMalformed.status],
         readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
@@ -4008,6 +4067,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       text: got.mailText,
       html: got.html,
       mime: got.mime,
+      search: got.search,
       read: [got.readStatus, got.manifest.historyId, got.manifest.bodyText, got.manifest.attachments, got.manifest.authenticationResults],
       refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
       file: [got.fileStatus, got.cache, got.file],
@@ -4043,6 +4103,22 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       mime: [[["available", "<p>HTML after the attachments</p>", "Complete plain text", ["first.txt", "last.txt"]],
         ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
         ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
+      search: {
+        pages: [
+          [["fixture-message", "trashed-message"], "10000000000000000011", true, true],
+          [["moved-to-trash"], "10000000000000000012", null, true],
+        ],
+        providerRefusals: Array.from({ length: 3 }, () => [502, "provider_invalid_response"]),
+        denied: [401, 401, 409, 403], invalid: Array.from({ length: 5 }, () => [400, "invalid_request"]), providersOnDenied: 0,
+        cards: ["fixture-message:metadata", "moved-to-trash:metadata", "trashed-message:metadata"],
+        requests: [
+          ["profile", "historyId"], ["list", "in:anywhere subject:plan & dates", "50", "true", null],
+          ["profile", "historyId"], ["list", "in:anywhere subject:plan & dates", "100", "true", true],
+          ["profile", "historyId"], ["list", "in:anywhere subject:plan & dates", "50", "true", true],
+          ["profile", "historyId"], ["list", "subject:plan", "1", "false", null],
+          ["profile", "historyId"],
+        ],
+      },
       read: [200, "789", "hello", [
         { partId: "1", name: "fixture.pdf", mimeType: "application/pdf", size: got.size, supported: true },
         { partId: "2", name: "fixture.html", mimeType: "text/html", size: 10, supported: false },
