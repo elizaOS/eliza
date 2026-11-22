@@ -114,6 +114,10 @@ export function harness(
   /** An action body: the given conditions and assignments, with every other variable left as it is. */
   const frame = (conditions: string[], set: Record<string, string>) =>
     `all { ${[...conditions, ...vars.map((v) => `${v}' = ${set[v] ?? v}`)].join(", ")} }`;
+  const guarded = (params: Param[], name: string, guard: string | undefined, stateOnly: boolean, set: Record<string, string>) => {
+    if (guard && stateOnly && params.length) return `all { ${guard}, ${braces(params, name, frame([], set))} }`;
+    return braces(params, name, frame(guard ? [guard] : [], set));
+  };
   const call = (fn: string, params: string[], from = "state") => `M::${fn}(${[from, ...params].join(", ")})`;
   /** The step from `state` to `after` leaves the abstract state as it was, or is the abstract step of its name (SPEC.md, "Refinement"; gen/typescript.ts). */
   const refined = (t: Transition, after: string) => {
@@ -131,8 +135,9 @@ export function harness(
   const action = (t: Transition) => {
     const result = call(t.name, t.params.map((p) => p.name));
     const after = t.emits ? `${result}.state` : result;
-    return `  action ${t.name} = ${braces(sentBy(t), t.name, frame(t.guard ? [call(t.guard, t.guardParams)] : [],
-      { state: after, emitted: t.emits ? `${result}.out` : "List()", refined: refines ? refined(t, after) : "", prev: "state", moved: "true", last: JSON.stringify(t.name), fairEnabled: `fairOn(${after})` }))}`;
+    const guard = t.guard && call(t.guard, t.guardParams);
+    return `  action ${t.name} = ${guarded(sentBy(t), t.name, guard, !t.guardParams.length,
+      { state: after, emitted: t.emits ? `${result}.out` : "List()", refined: refines ? refined(t, after) : "", prev: "state", moved: "true", last: JSON.stringify(t.name), fairEnabled: `fairOn(${after})` })}`;
   };
 
   /** Whether a fair event is possible in state `x0`: its guard allows it for some value the simulator tries. */
@@ -154,8 +159,8 @@ export function harness(
     // A law evaluated on a reachable state must hold there too: a false result breaks `inv`, as a picked one does.
     const result = `M::${v.name}(${args})`;
     const law: Record<string, string> = laws.some((l) => l.name === v.name) ? { lawsHold: result } : {};
-    const guard = transition ? [call(transition.guard!, transition.guardParams.map((name) => argument(v.params.find((p) => p.name === name)!)), argument(v.params[0]))] : [];
-    return `  action eval_${v.name} = ${braces(v.params.filter((p) => p.from === "pick"), v.name, frame(guard, { outcome: `Out_${v.name}(${result})`, ...law }))}`;
+    const guard = transition && call(transition.guard!, transition.guardParams.map((name) => argument(v.params.find((p) => p.name === name)!)), argument(v.params[0]));
+    return `  action eval_${v.name} = ${guarded(v.params.filter((p) => p.from === "pick"), v.name, guard, !transition?.guardParams.length, { outcome: `Out_${v.name}(${result})`, ...law })}`;
   };
   // An event of weight n is offered n times, so the simulator, which tries what it is offered in random order, picks it n times as often.
   const events = [...transitions.flatMap((t) => Array(weights.get(t.name) ?? 1).fill(t.name)), ...sampled.map((l) => l.name)];
