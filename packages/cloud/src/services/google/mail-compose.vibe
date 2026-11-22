@@ -43,7 +43,7 @@ module node {
 }
 import { base64Text, base64urlText, inspectBase64, utf8Length } from node
 
-export interface ForwardedPart {
+interface ForwardedPart {
   readonly partId: string
   readonly name: string
   readonly mimeType: string
@@ -51,31 +51,31 @@ export interface ForwardedPart {
   readonly sha256: string
 }
 
-export interface Forwarded {
+interface Forwarded {
   readonly messageId: string
   readonly historyId: string
   readonly parts: ReadonlyArray<ForwardedPart>
 }
 
-export interface ComposeContext {
+interface ComposeContext {
   readonly from: string
   readonly requestId: string
   readonly grant: { readonly accessToken: string }
   readonly forwarded: Forwarded | undefined
 }
 
-export interface AttachmentReview {
+interface AttachmentReview {
   readonly name: string
   readonly mimeType: string
   readonly size: number
   readonly sha256: string
 }
 
-export interface ForwardedReview extends AttachmentReview {
+interface ForwardedReview extends AttachmentReview {
   readonly partId: string
 }
 
-export type MailReview = {
+type MailReview = {
   readonly from: string
   readonly to: ReadonlyArray<string>
   readonly cc: ReadonlyArray<string>
