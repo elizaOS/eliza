@@ -2041,12 +2041,11 @@ function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined
 }
 function resolveStewardPlatformKey(): string | undefined {
   const env = getCloudAwareEnv();
-  const single = env.STEWARD_PLATFORM_KEY?.trim();
-  if (single) return single;
   const fromList = env.STEWARD_PLATFORM_KEYS?.split(",")
     .map((k) => k.trim())
     .find((k) => k.length > 0);
-  return fromList || undefined;
+  if (env.STAGING_STEWARD_PRODUCT_OPERATOR_ACTIVE === "1") return fromList;
+  return env.STEWARD_PLATFORM_KEY?.trim() || fromList;
 }
 function buildPlatformAgentPath(tenantId: string, agentId?: string): string {
   const base = `/platform/tenants/${encodeURIComponent(tenantId)}/agents`;

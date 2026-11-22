@@ -75,7 +75,7 @@ jobs:
           FIXTURE_EMAIL: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL }}
           FIXTURE_WALLET: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_WALLET_ADDRESS }}
           FIXTURE_SUBJECT: ${{ vars.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT }}
-          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          STEWARD_PLATFORM_KEYS: ${{ secrets.STAGING_STEWARD_PRODUCT_OPERATOR_KEY || secrets.STEWARD_PLATFORM_KEYS }}
         run: |
           node --input-type=module <<'JS'
           import { createHash } from 'node:crypto';

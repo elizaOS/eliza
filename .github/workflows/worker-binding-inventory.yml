@@ -100,7 +100,7 @@ jobs:
         if: ${{ inputs.inspect_staging_login && inputs.environment == 'staging' }}
         env:
           FIXTURE_SUBJECT: ${{ vars.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT }}
-          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          STEWARD_PLATFORM_KEYS: ${{ inputs.environment == 'staging' && secrets.STAGING_STEWARD_PRODUCT_OPERATOR_KEY || secrets.STEWARD_PLATFORM_KEYS }}
         shell: bash
         run: |
           set -euo pipefail

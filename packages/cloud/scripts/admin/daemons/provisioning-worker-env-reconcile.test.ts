@@ -284,6 +284,7 @@ function runAtomicReconcile(options: {
   const assignmentNames = new Set([
     ...loopEnvironmentNames,
     ...Object.keys(DELETION_AUTHORITY_DEFAULTS),
+    "STAGING_STEWARD_PRODUCT_OPERATOR_ACTIVE",
     AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,
   ]);
   const assignments = [...assignmentNames].map(
@@ -654,6 +655,34 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
 });
 
 describe("atomic workflow block (executed verbatim)", () => {
+  it("rotates and restores the staging Steward operator while preserving a host-only singular key", () => {
+    const marker = "STAGING_STEWARD_PRODUCT_OPERATOR_ACTIVE";
+    const cutover = runAtomicReconcile({
+      seedHostFile:
+        "STEWARD_PLATFORM_KEY=legacy-singular\nSTEWARD_PLATFORM_KEYS=old-list\n",
+      values: { [STEWARD_PLATFORM_KEYS]: "rotated", [marker]: "1" },
+    });
+    const rollback = runAtomicReconcile({
+      seedHostFile: cutover.host,
+      values: { [STEWARD_PLATFORM_KEYS]: "old-list" },
+    });
+    for (const state of [cutover, rollback]) {
+      expect(
+        lookupSystemdEnvironmentValue(state.host, "STEWARD_PLATFORM_KEY"),
+      ).toBe("legacy-singular");
+      expect(state.backup).not.toContain("STEWARD_PLATFORM");
+      expect(state.backup).not.toContain(marker);
+    }
+    expect(
+      lookupSystemdEnvironmentValue(cutover.host, STEWARD_PLATFORM_KEYS),
+    ).toBe("rotated");
+    expect(lookupSystemdEnvironmentValue(cutover.host, marker)).toBe("1");
+    expect(
+      lookupSystemdEnvironmentValue(rollback.host, STEWARD_PLATFORM_KEYS),
+    ).toBe("old-list");
+    expect(rollback.host).not.toContain(marker);
+  });
+
   it("writes a supplied secret canonically and preserves unrelated settings", () => {
     const value = 'redis://new.example:6379/path?quoted="yes"&slash=\\';
     const result = runAtomicReconcile({
