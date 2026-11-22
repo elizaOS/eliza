@@ -3,7 +3,8 @@ import type { Client } from "pg"
 import type { cloudCredential } from "./identity.vibe"
 import { canReadCloudCalendarReminder, currentAttachmentTransfer } from "../gen/cloud.effect.vibe"
 import { nativeConnectAttempts, nativeConnectStores, nativeConnectStoresAny, nativeConnectWindowSeconds } from "../gen/cloud__identity__federatedSignIn.effect.vibe"
-import { inboxPageOutcome, inboxWatchCanAnswer, inboxWatchCurrent, inboxWatchPageLimit, inboxWatchSelectionAllowed, startInboxWatch } from "../gen/cloud__services__google__mailRead.effect.vibe"
+import { inboxWatchCanAnswer } from "../gen/cloud__services__google__mailRead.effect.vibe"
+import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBinding, inboxWatchInput, observeInboxWatch, InboxHistoryInvalid, InboxWatchRequestInvalid } from "./services/google/inbox-arrival.vibe"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
 import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
@@ -48,8 +49,6 @@ error ItemChanged
 error DatabaseUnavailable
 
 const route = "/api/v1/eliza/google"
-const arrivalPath = "/gmail/inbox-v1/arrival"
-export const inboxArrivalPath = route + arrivalPath
 export const deviceAttachmentPath = "/api/v1/google-attachments/device"
 const callbackPath = route + "/connect/callback"
 const oauthCookie = "__Host-eliza-google-connect"
@@ -721,90 +720,41 @@ effect function mailGrant(db: Client, account: string, grant: string | null) {
   return rows[0]
 }
 
-schema ArrivalCursor { historyId: string; expiresAt: number }
-schema ArrivalProfile { historyId: string }
-schema ArrivalEntry { message: { id: string } }
-schema ArrivalRecord { id: string; messagesAdded?: ArrivalEntry[] }
-schema ArrivalHistory { historyId: string; history?: ArrivalRecord[]; nextPageToken?: string }
-
 interface ArrivalAuthorization {
   readonly credential: NonNullable<Awaited<ReturnType<typeof cloudCredential>>>
   readonly current: () => Promise<boolean>
 }
 
-const historyIdPattern = /^[1-9][0-9]{0,19}$/
-const historyBefore = (earlier: string, later: string) => earlier.length < later.length || (earlier.length === later.length && earlier < later)
-
-effect function arrivalPayload<A>(schema: Schema.Decoder<A>, access: string, path: string) {
+effect function arrivalPayload(access: string, path: string) {
   const response = try http("https://gmail.googleapis.com/gmail/v1/users/me" + path, { access })
   if (response.status === 401 || response.status === 403) throw new AuthorizationFailed()
   if (response.status === 404 || response.status === 410) throw new GoogleNotFound()
   if (!ok(response.status)) throw new ProviderUnavailable()
-  const text = timeout(boundedText(response, 65536), "10 seconds") catch effect () => { throw new ProviderUnavailable() }
-  const value = Schema.decodeUnknownOption(schema)(Effect.try(() => JSON.parse(text) as unknown) catch () => undefined)
-  if (Option.isNone(value)) throw new ProviderUnavailable()
-  return value.value
-}
-
-effect function inboxArrived(access: string, historyId: string) {
-  const query = new URLSearchParams({
-    startHistoryId: historyId, historyTypes: "messageAdded", labelId: "INBOX", maxResults: "25",
-    fields: "historyId,nextPageToken,history(id,messagesAdded(message(id)))",
-  })
-  const visited = new Set<string>()
-  for (let pageCount = 1; pageCount <= inboxWatchPageLimit; pageCount += 1) {
-    const page = try arrivalPayload(ArrivalHistory, access, "/history?" + query)
-    const records = page.history ?? []
-    const additions = records.flatMap((entry) => entry.messagesAdded ?? [])
-    const validPage = historyIdPattern.test(page.historyId) && !historyBefore(page.historyId, historyId) &&
-      records.every(({ id }) => historyIdPattern.test(id) && historyBefore(historyId, id) && !historyBefore(page.historyId, id)) &&
-      additions.every(({ message }) => providerId.test(message.id))
-    const token = page.nextPageToken
-    const continuation = token === undefined ? "EndOfHistory"
-      : token.length > 0 && token.length <= 2048 && !visited.has(token) ? "FreshPageToken" : "InvalidPageToken"
-    const outcome = inboxPageOutcome(pageCount, validPage, additions.length > 0, continuation)
-    if (outcome === "ArrivalFound") return true
-    if (outcome === "NoArrival") return false
-    if (outcome === "RefusePage" || token === undefined) throw new ProviderUnavailable()
-    visited.add(token)
-    query.set("pageToken", token)
-  }
-  throw new ProviderUnavailable()
+  const text = timeout(boundedText(response, inboxArrivalBodyLimit), "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+  return Effect.try(() => JSON.parse(text) as unknown) catch () => undefined
 }
 
 effect function inboxArrival(request: Request, url: URL, env: GoogleEnv, db: Client, account: string, authorization: ArrivalAuthorization) {
-  const grants = url.searchParams.getAll("grantId")
-  const cursors = url.searchParams.getAll("cursor")
-  const selected = grants[0]
-  const cursor = cursors[0]
   const { credential } = authorization
-  const caller = credential.kind === "device" ? "DeviceWatch" : "BrowserWatch"
-  if (grants.length > 1 || !inboxWatchSelectionAllowed(caller, selected !== undefined) || (selected !== undefined && !uuid.test(selected)) || cursors.length > 1 ||
-      (cursor !== undefined && (cursor.length > 1024 || !/^[a-f0-9]+$/.test(cursor)))) throw new BadRequest()
+  const { grant: selected, cursor } = try inboxWatchInput(url.searchParams, credential.kind === "device" ? "DeviceWatch" : "BrowserWatch")
   const { id: grant, organization_id: organization } = try mailGrant(db, account, selected ?? null)
   const config = try googleConfig(env)
-  const binding = encoder.encode(JSON.stringify(["cloud-google-inbox-arrival-v1", env.PUBLIC_API_ORIGIN, account, organization, grant, credential.kind, credential.hash]))
+  const binding = encoder.encode(inboxWatchBinding(env.PUBLIC_API_ORIGIN, account, organization, grant, credential))
   const now = try Clock.currentTimeMillis
   const watch = cursor === undefined ? undefined : (effect {
     const raw = try unseal(config.key, cursor, binding)
-    const decoded = Schema.decodeUnknownOption(ArrivalCursor)(Effect.try(() => JSON.parse(raw) as unknown) catch () => undefined)
-    if (Option.isNone(decoded) || !historyIdPattern.test(decoded.value.historyId) ||
-        !Number.isSafeInteger(decoded.value.expiresAt) || !inboxWatchCurrent(decoded.value, now)) throw new ConnectionUnavailable()
-    return decoded.value
+    return try decodeInboxWatch(raw, now)
   } catch () => undefined)
   if (cursor !== undefined && watch === undefined) throw new ConnectionUnavailable()
   const access = try accessFor(env, db, account, "mail", grant)
-  const historyId = watch?.historyId ?? (try arrivalPayload(ArrivalProfile, access, "/profile?fields=historyId")).historyId
-  if (!historyIdPattern.test(historyId)) throw new ProviderUnavailable()
-  const arrived = watch === undefined ? false : try inboxArrived(access, historyId)
-  const currentWatch = watch ?? startInboxWatch(historyId, now)
-  const sealed = cursor ?? (try seal(config, JSON.stringify(currentWatch), binding))
+  const answer = try observeInboxWatch(watch, now, (path) => arrivalPayload(access, path))
+  const sealed = cursor ?? (try seal(config, JSON.stringify(answer.watch), binding))
   const grantCurrent = (try mailGrant(db, account, grant)).organization_id === organization
   const callerCurrent = try tryPromise({ try: authorization.current, catch: () => new DatabaseUnavailable() })
   if (!callerCurrent) return body(401, { error: "authentication_required" })
-  if (!inboxWatchCanAnswer(currentWatch, try Clock.currentTimeMillis, grantCurrent, callerCurrent, !request.signal.aborted))
+  if (!inboxWatchCanAnswer(answer.watch, try Clock.currentTimeMillis, grantCurrent, callerCurrent, !request.signal.aborted))
     throw new ConnectionUnavailable()
-  return body(200, { cursor: sealed, arrived })
+  return body(200, { cursor: sealed, arrived: answer.arrived })
 }
 
 effect function selectedAttachment(env: GoogleEnv, db: Client, account: string, grant: string, selection: { messageId: string; partId: string; historyId: string }) {
@@ -857,7 +807,7 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
       return flowCookie(response, "", "", 0)
     }
     if (url.searchParams.has("side") && url.searchParams.get("side") !== "owner") return body(403, { error: "owner_consent_required" })
-    if (path === arrivalPath) return arrivalAuthorization === undefined
+    if (url.pathname === inboxArrivalPath) return arrivalAuthorization === undefined
       ? body(401, { error: "authentication_required" })
       : try inboxArrival(request, url, env, db, account, arrivalAuthorization)
     if (path === "/gmail/send/status") return try sentMailReceipt(url, db, account)
@@ -912,6 +862,7 @@ export function googleRequest(request: Request, env: GoogleEnv, db: Client, acco
   const routed = effect {
     const response = routeGoogle(request, env, db, account, arrivalAuthorization) catch (error) => match (error) {
       when BadRequest: body(400, { error: "invalid_request" });
+      when InboxWatchRequestInvalid: body(400, { error: "invalid_request" });
       when GoogleReadInput: body(400, { error: "invalid_request" });
       when GoogleAttachmentStale: body(409, { error: "google_item_changed" });
       when GoogleAttachmentMissing: body(404, { error: "google_item_not_found" });
@@ -925,6 +876,7 @@ export function googleRequest(request: Request, env: GoogleEnv, db: Client, acco
       when StorageUnavailable: body(503, { error: "storage_unavailable" });
       when RateLimited: body(429, { error: "rate_limited" });
       when ProviderUnavailable: body(502, { error: "google_unavailable" });
+      when InboxHistoryInvalid: body(502, { error: "google_unavailable" });
       default: body(502, { error: "google_response_invalid" });
     }
     return HttpServerResponse.toWeb(response)
