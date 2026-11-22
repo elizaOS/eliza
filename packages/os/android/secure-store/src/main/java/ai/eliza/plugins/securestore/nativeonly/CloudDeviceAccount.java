@@ -25,6 +25,11 @@ public final class CloudDeviceAccount {
  private static final Object LOCK = new Object();
  private static final long PENDING_MS = 15 * 60_000L;
  private static final long MAX_CREDENTIAL_SECONDS = 7 * 24 * 60 * 60L;
+ private static final long MAX_DEVICE_KEY_MS = 90 * 24 * 60 * 60_000L;
+ private static final String CHALLENGE = "/api/v1/auth/google/native/challenge";
+ private static final String SIGN_IN = "/api/v1/app-auth/mobile/google";
+ private static final String ACKNOWLEDGE = "/api/v1/app-auth/mobile/ack";
+ private static final String SIGN_OUT = "/api/v1/api-keys/current";
  private static final String PENDING = "pending";
  private static final String CREDENTIAL = "credential";
  private static final String REVOKE = "revoke";
@@ -134,13 +139,13 @@ public final class CloudDeviceAccount {
   JSONObject pending = beginPending("google", 120_000L);
   String state = pending.getString("state");
   try {
-   JSONObject response = new JSONObject(post("/api/v1/app-auth/mobile/google/challenge",
-       client.put("challenge", challenge(pending)).put("state", state), null, 200).body());
+   JSONObject response = new JSONObject(post(CHALLENGE,
+       client.put("codeChallenge", challenge(pending)).put("codeChallengeMethod", "S256"), null, 200).body());
    String challengeId = identifier(response, "challengeId"), nonce = response.getString("nonce");
-   long seconds = response.getLong("expiresIn");
-   if (!opaque(nonce) || seconds < 1 || seconds > 120)
+   long due = response.getLong("expiresAt"), now = System.currentTimeMillis();
+   if (!opaque(nonce) || due <= now || due > now + 120_000L || !serverClientId.equals(response.getString("serverClientId")))
     throw new IOException("Invalid Google challenge");
-   long expiry = Math.min(pending.getLong("expiresAt"), System.currentTimeMillis() + seconds * 1000);
+   long expiry = Math.min(pending.getLong("expiresAt"), due);
    return new NativeGoogleAttempt(clientId, environment, serverClientId, List.copyOf(scopes), challengeId, nonce, state, expiry);
   } catch (Exception failure) {
    clearNativeGoogle(state);
@@ -153,12 +158,37 @@ public final class CloudDeviceAccount {
    throw new IOException("Invalid Google result");
   String snapshot = pendingSnapshot(attempt.state(), "google");
   if (snapshot == null || attempt.expiresAt() <= System.currentTimeMillis()) return false;
-  JSONObject request = mobileClient(attempt.clientId(), attempt.environment())
-      .put("challengeId", attempt.challengeId()).put("idToken", idToken);
+  String verifier = new JSONObject(snapshot).getString("verifier");
+  JSONObject request = mobileClient(attempt.clientId(), attempt.environment()).put("state", attempt.state()).put("codeVerifier", verifier)
+      .put("identity", new JSONObject().put("challengeId", attempt.challengeId()).put("idToken", idToken).put("codeVerifier", verifier));
   if (serverAuthCode != null && serverAuthCode.matches("[A-Za-z0-9/_.~-]{10,2048}")) request.put("serverAuthCode", serverAuthCode);
-  JSONObject response = new JSONObject(post("/api/v1/app-auth/mobile/google", request, null, 200).body());
-  String code = response.getString("code");
-  return opaque(code) && attempt.state().equals(response.getString("state")) && exchangeCode(code, snapshot);
+  JSONObject response = new JSONObject(post(SIGN_IN, request, null, 200).body());
+  if (!"signed_in".equals(response.optString("status"))) {
+   clearNativeGoogle(attempt.state());
+   return false;
+  }
+  return keepDeviceKey(response, snapshot);
+ }
+
+ private boolean keepDeviceKey(JSONObject response, String snapshot) throws Exception {
+  JSONObject pending = new JSONObject(snapshot);
+  String secret = response.getString("secret");
+  String credentialId = identifier(response, "credentialId");
+  String accountId = identifier(response.getJSONObject("user"), "id"), organizationId = identifier(response, "organizationId");
+  long expiresAt = java.time.Instant.parse(response.getString("expiresAt")).toEpochMilli(), now = System.currentTimeMillis();
+  if (!opaque(secret) || expiresAt <= now || expiresAt > now + MAX_DEVICE_KEY_MS) throw new IOException("Invalid device key response");
+  JSONObject key = new JSONObject().put("token", secret).put("credentialId", credentialId).put("accountId", accountId)
+      .put("organizationId", organizationId).put("expiresAt", expiresAt);
+  synchronized (LOCK) {
+   if (snapshot.equals(slots.read(PENDING)) && pendingActive(pending)) {
+    slots.write(ACK, key.toString());
+    slots.remove(PENDING);
+   } else {
+    slots.write(REVOKE, new JSONObject().put("token", secret).put("credentialId", credentialId).toString());
+    return false;
+   }
+  }
+  return finishAcknowledgment();
  }
 
  public void cancelNativeGoogle(NativeGoogleAttempt attempt) throws Exception {
@@ -267,12 +297,15 @@ public final class CloudDeviceAccount {
   JSONObject credential = new JSONObject(pending);
   String token = credential.getString("token");
   if (!opaque(token)) throw new IOException("Invalid pending device credential");
-  int status = post("/api/auth/device/ack", null, token, 204, 401, 410).status();
+  String credentialId = credential.optString("credentialId", "");
+  boolean acknowledged = credentialId.isEmpty()
+      ? post("/api/auth/device/ack", null, token, 204, 401, 410).status() == 204
+      : post(ACKNOWLEDGE, new JSONObject().put("credentialId", credentialId).put("secret", token), null, 200, 400, 401, 410).status() == 200;
   synchronized (LOCK) {
    if (!pending.equals(slots.read(ACK))) return false;
-   if (status == 204) slots.write(CREDENTIAL, pending);
+   if (acknowledged) slots.write(CREDENTIAL, pending);
    slots.remove(ACK);
-   return status == 204;
+   return acknowledged;
   }
  }
 
@@ -295,9 +328,11 @@ public final class CloudDeviceAccount {
  public void clear() throws Exception {
   synchronized (LOCK) {
    slots.remove(PENDING);
-   String token = credential(), awaitingAck = slots.read(ACK);
-   if (token == null && awaitingAck != null) token = new JSONObject(awaitingAck).getString("token");
-   if (token != null && opaque(token)) slots.write(REVOKE, new JSONObject().put("token", token).toString());
+   String held = slots.read(CREDENTIAL), awaitingAck = slots.read(ACK);
+   JSONObject leaving = session() != null ? new JSONObject(held) : awaitingAck != null ? new JSONObject(awaitingAck) : null;
+   String token = leaving == null ? null : leaving.getString("token");
+   if (token != null && opaque(token))
+    slots.write(REVOKE, new JSONObject().put("token", token).put("credentialId", leaving.optString("credentialId", "")).toString());
    slots.remove(ACK);
    slots.remove(CREDENTIAL);
   }
@@ -307,9 +342,11 @@ public final class CloudDeviceAccount {
   final String pending;
   synchronized (LOCK) { pending = slots.read(REVOKE); }
   if (pending == null) return;
-  String token = new JSONObject(pending).getString("token");
+  JSONObject leaving = new JSONObject(pending);
+  String token = leaving.getString("token");
   if (!opaque(token)) throw new IOException("Invalid stored device credential");
-  post("/api/auth/device/revoke", null, token, 204);
+  if (leaving.optString("credentialId", "").isEmpty()) post("/api/auth/device/revoke", null, token, 204);
+  else send("DELETE", SIGN_OUT, null, token, 204, 401);
   synchronized (LOCK) {
    if (pending.equals(slots.read(REVOKE))) slots.remove(REVOKE);
   }

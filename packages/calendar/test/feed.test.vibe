@@ -1,0 +1,271 @@
+// spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "Story: Show one checked copy of a mapped event after a provider read"; spec/calendar/managedFeed.md, "Story: Keep each cached copy under its own source and its provider's edit time"; spec/calendar/aggregateMerge.md, "Story: See one occurrence with its precise source evidence"
+import { assert, it } from "@effect/vitest"
+import { HttpClient, HttpClientResponse } from "effect/http"
+import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
+import { managedBroker, managedFeed, mergeFeedEvents, parseBrokerEndpoint, parseManagedGoogleCalendarFeed, PurgeRefused,
+  type AggregatePorts, type CalendarLinkRecord, type FeedComponent, type ImportedSourceScope, type ManagedCacheStore } from "../src/feed/index.vibe"
+
+module node {
+  export function webResponse(body: string, status: number): Response {
+    return new Response(body, { status, headers: { "content-type": "application/json" } })
+  }
+}
+import { webResponse } from node
+
+const grant = `alpha-google:${"a".repeat(64)}`
+const otherGrant = `alpha-google:${"b".repeat(64)}`
+const endpoint = parseBrokerEndpoint("http://127.0.0.1:7777/__alpha-owner-gmail", "t".repeat(64))!
+const window = { timeMin: "2026-11-23T08:00:00.000Z", timeMax: "2026-11-24T08:00:00.000Z", timeZone: "America/Los_Angeles" }
+const syncedAt = "2026-11-22T12:00:00.000Z"
+
+const sourceOf = (grantId: string, calendarId: string): CalendarSummary => ({
+  provider: "google", side: "owner", grantId, connectorAccountId: grantId, calendarId, accountEmail: null, summary: calendarId,
+  description: null, primary: calendarId === "work", accessRole: "owner", timeZone: window.timeZone, selected: true, includeInFeed: true,
+})
+const work = sourceOf(grant, "work")
+
+const providerRow = (grantId: string, calendarId: string, externalId: string, metadata: Record<string, unknown>) => ({
+  id: `google:${calendarId}:${externalId}`, externalId, provider: "google", side: "owner", grantId, connectorAccountId: grantId, calendarId,
+  title: "Standup", startAt: "2026-11-23T17:00:00.000Z", endAt: "2026-11-23T17:30:00.000Z", metadata,
+})
+
+const feedReply = (calendar: Record<string, unknown>, events: readonly unknown[], patch: Record<string, unknown> = {}) => ({
+  feed: {
+    calendarId: calendar.calendarId, state: "complete", source: "synced", timeMin: calendar.timeMin, timeMax: calendar.timeMax, events,
+    sources: [{ key: { provider: "google", side: "owner", grantId: calendar.grantId, connectorAccountId: calendar.grantId, calendarId: calendar.calendarId }, status: "fresh", syncedAt }],
+    syncedAt, ...patch,
+  },
+})
+
+type Answer = { readonly status: number; readonly body: string }
+type Call = Readonly<Record<string, unknown>>
+
+effect function brokerFake(answer: (call: Call) => Answer!!) {
+  const calls: Call[] = []
+  const client = HttpClient.make(effect (request, url) => {
+    const text = request.body._tag === "Uint8Array" ? request.body.text ?? new TextDecoder().decode(request.body.body) : ""
+    const parsed = try orDie(Effect.try(() => JSON.parse(text) as { calendar: Call }))
+    calls.push({ ...parsed.calendar, url: url.href, authorization: request.headers.authorization })
+    const reply = try answer(parsed.calendar)
+    return HttpClientResponse.fromWeb(request, webResponse(reply.body, reply.status))
+  })
+  return { calls, layer: Layer.succeed(HttpClient.HttpClient, client) }
+}
+
+function memoryStore(log: string[]) {
+  const rows = new Map<string, CalendarEvent>()
+  const plansRemoved: string[] = []
+  const inScope = (event: CalendarEvent, scope: ImportedSourceScope) => event.provider === scope.provider && event.side === scope.side && event.grantId === scope.grantId
+  const store: ManagedCacheStore = {
+    find: (id) => sync(() => rows.get(id)),
+    save: (events) => sync(() => {
+      for (const event of events) rows.set(event.id, event)
+      log.push(`saved:${events.map((event) => event.calendarId).join(",")}`)
+    }),
+    eventsFor: (scope) => sync(() => [...rows.values()].filter((event) => inScope(event, scope))),
+    removeReminderPlans: (ids) => sync(() => { plansRemoved.push(...ids); log.push("reminders") }),
+    removeProjection: (scope) => sync(() => {
+      const gone = [...rows.values()].filter((event) => inScope(event, scope) && event.connectorAccountId === scope.connectorAccountId)
+      for (const event of gone) rows.delete(event.id)
+      log.push("removed")
+      return gone.length
+    }),
+  }
+  return { rows, plansRemoved, store }
+}
+
+const residentBase: CalendarEvent = {
+  id: "local-1", externalId: "local-1", agentId: "agent", provider: "eliza", side: "owner", calendarId: "resident", title: "Standup",
+  description: "", location: "", status: "confirmed", startAt: "2026-11-23T17:00:00.000Z", endAt: "2026-11-23T17:30:00.000Z",
+  isAllDay: false, timezone: null, htmlLink: null, conferenceLink: null, organizer: null, attendees: [], metadata: { version: "r1" },
+  syncedAt, updatedAt: "2026-11-21T09:00:00.000Z", grantId: "resident", connectorAccountId: "resident",
+}
+const resident: CalendarSummary = { ...sourceOf("resident", "resident"), provider: "eliza" }
+
+it.effect(`Read only the exact selected source and window, cache it under its own identity and its provider edit time (spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "The resident accepts only complete broker data for the exact selected source and window"; spec/calendar/managedFeed.md, "A cache write for another identity leaves the stored copy unchanged"; spec/calendar/managedFeed.md, "An event's change time is the provider's edit time, never the refresh time")`, effect () => {
+  const mode: { feed: (call: Call) => Answer; sources: Answer } = {
+    feed: (call) => ({ status: 200, body: JSON.stringify(feedReply(call, [providerRow(grant, "work", "e1", { etag: "\"2\"", updated: "2026-11-20T10:00:00.000Z" })])) }),
+    sources: { status: 200, body: JSON.stringify({ calendars: [{ ...work, managedGoogleConnectionId: "not-a-uuid" }] }) },
+  }
+  const broker = try brokerFake((call) => sync(() => call.operation === "sources" ? mode.sources : mode.feed(call)))
+  const log: string[] = []
+  const { rows, store } = memoryStore(log)
+  provide broker.layer {
+    try scoped(effect {
+      const client = managedBroker(endpoint)
+      const feed = try managedFeed({ agentId: "agent", broker: client, store })
+      const listed = try client.sources()
+      assert.deepEqual(listed.map((source) => [source.calendarId, source.grantId === source.connectorAccountId, "managedGoogleConnectionId" in source]), [["work", true, false]])
+      assert.equal(broker.calls[0]?.authorization, `Bearer ${"t".repeat(64)}`)
+
+      const read = try feed.read(work, window)
+      assert.deepEqual(read.events.map((event) => [event.id, event.agentId, event.updatedAt]), [["google:work:e1", "agent", "2026-11-20T10:00:00.000Z"]])
+      assert.deepEqual(broker.calls[1], { operation: "feed", grantId: grant, calendarId: "work", ...window, url: endpoint.url, authorization: `Bearer ${"t".repeat(64)}` })
+      assert.equal(rows.get("google:work:e1")?.calendarId, "work")
+
+      mode.feed = (call) => ({ status: 200, body: JSON.stringify(feedReply(call, [providerRow(grant, "work", "e2", { etag: "\"1\"" })])) })
+      assert.equal((try feed.read(work, window)).events[0]?.updatedAt, "")
+
+      rows.set("google:work:e3", { ...residentBase, id: "google:work:e3", provider: "google", calendarId: "personal", grantId: grant, connectorAccountId: grant })
+      mode.feed = (call) => ({ status: 200, body: JSON.stringify(feedReply(call, [providerRow(grant, "work", "e3", { created: "2026-11-01T00:00:00.000Z" })])) })
+      assert.deepEqual((try feed.read(work, window)).events, [])
+      assert.equal(rows.get("google:work:e3")?.calendarId, "personal")
+
+      const refusal = (patch: (call: Call) => Answer) => {
+        mode.feed = patch
+        return map(Effect.flip(feed.read(work, window)), (failure) => failure._tag === "ManagedCalendarUnavailable" ? [failure.stage, failure.httpStatus] : [failure._tag, null])
+      }
+      assert.deepEqual(try refusal((call) => ({ status: 200, body: JSON.stringify(feedReply({ ...call, timeMax: "2026-11-25T08:00:00.000Z" }, [])) })), ["schema", 200])
+      assert.deepEqual(try refusal((call) => ({ status: 200, body: JSON.stringify(feedReply(call, [], { state: "partial" })) })), ["schema", 200])
+      assert.deepEqual(try refusal((call) => ({ status: 200, body: JSON.stringify(feedReply(call, [providerRow(grant, "home", "e4", {})])) })), ["schema", 200])
+      assert.deepEqual(try refusal((call) => ({ status: 200, body: JSON.stringify(feedReply(call, [{ ...providerRow(grant, "work", "e5", {}), description: "x".repeat(524_288) }])) })), ["body", 200])
+      assert.deepEqual(try refusal(() => ({ status: 409, body: "{}" })), ["http", 409])
+      assert.deepEqual(try refusal(() => ({ status: 200, body: "[]" })), ["schema", 200])
+      const calls = broker.calls.length
+      assert.deepEqual(try map(Effect.flip(feed.read(sourceOf("unscoped", "work"), window)), (failure) => failure._tag === "ManagedCalendarUnavailable" && failure.stage), "scope")
+      assert.equal(broker.calls.length, calls)
+
+      mode.sources = { status: 200, body: JSON.stringify({ calendars: [{ ...work, connectorAccountId: otherGrant }] }) }
+      assert.equal(try map(Effect.flip(client.sources()), (failure) => failure.stage), "schema")
+    })
+  }
+  assert.equal(parseBrokerEndpoint("https://127.0.0.1:7777/__alpha-owner-gmail", "t".repeat(64)), undefined)
+  assert.equal(parseBrokerEndpoint("http://localhost:7777/__alpha-owner-gmail", "t".repeat(64)), undefined)
+  assert.equal(parseBrokerEndpoint("http://127.0.0.1:7777/__alpha-owner-gmail", "short"), undefined)
+  const cloudFeed = { calendarId: "work", syncedAt, events: [] }
+  assert.deepEqual(try parseManagedGoogleCalendarFeed(cloudFeed, "work"), cloudFeed)
+  assert.equal(try map(Effect.flip(parseManagedGoogleCalendarFeed({ ...cloudFeed, truncated: true }, "work")), (failure) => failure._tag), "ManagedGoogleWireInvalid")
+})
+
+it.effect(`A purge waits for the grant's admitted write, removes exactly its projection, and a later read imports again (spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "A purge drains preexisting writes for its grant before acknowledging local removal")`, effect () => {
+  const gate = try Deferred.make<void>()
+  const held = { on: true }
+  const broker = try brokerFake(effect (call) => {
+    if (call.grantId === grant && held.on) try Deferred.await(gate)
+    return { status: 200, body: JSON.stringify(feedReply(call, [providerRow(String(call.grantId), String(call.calendarId), call.grantId === grant ? "e1" : "e9", { etag: "\"1\"" })])) }
+  })
+  const log: string[] = []
+  const { rows, plansRemoved, store } = memoryStore(log)
+  provide broker.layer {
+    try scoped(effect {
+      const feed = try managedFeed({ agentId: "agent", broker: managedBroker(endpoint), store })
+      const scope = { provider: "google", side: "owner", grantId: grant, connectorAccountId: grant } as const
+      assert.equal(try map(Effect.flip(feed.purge({ ...scope, confirmAction: false })), (failure: PurgeRefused) => failure.reason), "confirmation_required")
+
+      const reading = fork feed.read(work, window)
+      while (broker.calls.length === 0) try Effect.yieldNow
+      const purging = fork feed.purge({ ...scope, confirmAction: true })
+      try Effect.yieldNow
+      const other = try feed.read(sourceOf(otherGrant, "work"), window)
+      assert.equal(other.events.length, 1)
+      assert.deepEqual(log, ["saved:work"])
+      try Deferred.succeed(gate, undefined)
+      assert.equal((try join reading).events.length, 1)
+      const receipt = try join purging
+      assert.deepEqual(log, ["saved:work", "saved:work", "reminders", "removed"])
+      assert.deepEqual([receipt.events, receipt.providerMutation, plansRemoved], [1, false, ["google:work:e1"]])
+      assert.deepEqual([...rows.values()].map((event) => event.grantId), [otherGrant])
+
+      held.on = false
+      assert.equal((try feed.read(work, window)).events.length, 1)
+      assert.equal(rows.size, 2)
+    })
+  }
+})
+
+it.effect('Pull an exact clean mapping only after a successful provider read and show it once (spec/calendar/managedFeed.md, "Story: Show one checked copy of a mapped event after a provider read"; spec/calendar/managedFeed.md, "A successful provider feed only offers pull for an exact clean mapping")', effect () => {
+  const broker = try brokerFake((call) => sync(() => ({ status: 200, body: JSON.stringify(feedReply(call, [
+    providerRow(grant, "work", "e1", { etag: "\"2\"", iCalUID: "uid-1", updated: "2026-11-22T10:00:00.000Z" }),
+  ])) })))
+  const { store } = memoryStore([])
+  const state: { local: CalendarEvent; link: CalendarLinkRecord; paused: boolean; answer: "pulled" | "refused"; pulls: number } = {
+    local: residentBase,
+    link: { id: "link-1", agentId: "agent", localEventId: "local-1", localRevision: "r1", connectorAccountId: grant, providerCalendarId: "work",
+      providerEventId: "e1", providerEtag: "\"1\"", state: "clean", pendingOperation: null },
+    paused: false,
+    answer: "pulled",
+    pulls: 0,
+  }
+  const ports: AggregatePorts = {
+    localFeed: () => sync((): FeedComponent => ({ calendar: resident, feed: {
+      calendarId: "resident", events: [state.local], source: "synced", state: "complete",
+      sources: [{ key: resident, summary: "Resident", accessRole: "owner", status: "fresh", syncedAt }], timeMin: window.timeMin, timeMax: window.timeMax, syncedAt,
+    } })),
+    links: () => sync(() => [state.link]),
+    control: () => sync(() => ({ paused: state.paused, dispatchHeld: false, destination: { connectorAccountId: grant, calendarId: "work" } })),
+    recordPolicy: () => true,
+    pull: (link) => sync(() => {
+      state.pulls += 1
+      if (state.answer === "pulled") {
+        state.local = { ...state.local, title: "Standup moved", metadata: { version: "r2" } }
+        state.link = { ...link, localRevision: "r2", providerEtag: "\"2\"" }
+      }
+      return state.answer
+    }),
+  }
+  provide broker.layer {
+    try scoped(effect {
+      const feed = try managedFeed({ agentId: "agent", broker: managedBroker(endpoint), store })
+      const first = try feed.aggregate([work], window, ports)
+      assert.equal(state.pulls, 1)
+      assert.equal(first.feed.state, "complete")
+      assert.deepEqual(first.feed.events.map((event) => [event.id, event.title]), [["local-1", "Standup moved"]])
+      const deduplication = first.feed.events[0]?.metadata.deduplication as { sources: readonly unknown[]; identityVersion: string }
+      assert.deepEqual([deduplication.sources.length, deduplication.identityVersion], [2, "canonical-linked-calendar-v1"])
+
+      try feed.aggregate([work], window, ports)
+      assert.equal(state.pulls, 1)
+
+      state.link = { ...state.link, providerEtag: "\"1\"" }
+      state.paused = true
+      try feed.aggregate([work], window, ports)
+      assert.equal(state.pulls, 1)
+
+      state.paused = false
+      state.answer = "refused"
+      const refused = try feed.aggregate([work], window, ports)
+      assert.deepEqual([state.pulls, refused.refusedPulls.map((link) => link.id), refused.feed.state], [2, ["link-1"], "complete"])
+      assert.equal(refused.feed.events.length, 2)
+    })
+  }
+})
+
+it.effect('Group copies by exact link or portable occurrence and show the ranked copy with every source (spec/calendar/aggregateMerge.md, "Story: See one occurrence with its precise source evidence"; spec/calendar/aggregateMerge.md, "Exact link revisions or portable occurrence identity determine which copies can share a row"; spec/calendar/aggregateMerge.md, "Current mapped local row or ordered provider metadata selects the visible copy")', effect () => {
+  const ics: CalendarSummary = { ...sourceOf("ics-grant", "feed"), provider: "ics", accessRole: "reader" }
+  const google = sourceOf(grant, "work")
+  const { grantId: _grant, connectorAccountId: _account, ...bare } = residentBase
+  const copy = (patch: Partial<CalendarEvent>): CalendarEvent => ({ ...bare, provider: "google", ...patch })
+  const component = (calendar: CalendarSummary, events: readonly CalendarEvent[]): FeedComponent => ({ calendar, feed: {
+    calendarId: calendar.calendarId, events, source: "synced", state: "complete", sources: [], timeMin: window.timeMin, timeMax: window.timeMax, syncedAt,
+  } })
+  const merged = mergeFeedEvents([
+    component(google, [
+      copy({ id: "g-lunch", calendarId: "work", title: "Lunch", updatedAt: "2026-11-22T00:00:00.000Z", metadata: { iCalUID: " uid-lunch " } }),
+      copy({ id: "g-moved", calendarId: "work", startAt: "2026-11-23T19:00:00.000Z", metadata: { iCalUID: "uid-series", originalStartTime: "2026-11-23T18:00:00.000Z" } }),
+      copy({ id: "g-plain", calendarId: "work", title: "Same title", metadata: {} }),
+      copy({ id: "b-tie", calendarId: "work", metadata: { iCalUID: "uid-tie" } }),
+      copy({ id: "a-tie", calendarId: "work", metadata: { iCalUID: "uid-tie" } }),
+    ]),
+    component(ics, [
+      copy({ id: "i-lunch", provider: "ics", calendarId: "feed", title: "Lunch!", updatedAt: "2026-11-21T00:00:00.000Z", metadata: { icsUid: "uid-lunch" } }),
+      copy({ id: "i-series", provider: "ics", calendarId: "feed", startAt: "2026-11-23T18:00:00.000Z", metadata: { icsUid: "uid-series" } }),
+      copy({ id: "i-allday", provider: "ics", calendarId: "feed", isAllDay: true, startAt: "2026-11-23T00:00:00.000Z", endAt: "2026-11-24T00:00:00.000Z", metadata: { icsUid: "uid-lunch" } }),
+      copy({ id: "i-plain", provider: "ics", calendarId: "feed", title: "Same title", metadata: {} }),
+    ]),
+  ], [])
+  const view = merged.map((event) => {
+    const deduplication = event.metadata.deduplication as { sources: readonly { eventId: string }[]; conflictingFields: readonly string[] } | undefined
+    return [event.id, deduplication?.sources.map((source) => source.eventId) ?? [], deduplication?.conflictingFields ?? []]
+  })
+  assert.deepEqual(view.sort((left, right) => String(left[0]).localeCompare(String(right[0]))), [
+    ["a-tie", ["a-tie", "b-tie"], []],
+    ["g-lunch", ["g-lunch", "i-lunch"], ["title"]],
+    ["g-moved", ["g-moved", "i-series"], ["startAt"]],
+    ["g-plain", [], []],
+    ["i-allday", [], []],
+    ["i-plain", [], []],
+  ])
+  const lunch = merged.find((event) => event.id === "g-lunch")
+  assert.deepEqual([lunch?.grantId, lunch?.connectorAccountId, lunch?.calendarSummary], [grant, grant, "work"])
+  assert.deepEqual(merged.map((event) => event.startAt), [...merged.map((event) => event.startAt)].sort())
+})

@@ -1,0 +1,167 @@
+// spec/os/agentService/inference.md, "Story: Embed, speak and transcribe on my phone through my app alone"
+import { assert, it } from "@effect/vitest"
+import { androidInferenceEngine, androidInferenceLayer, AndroidInferenceEngine, type EngineFailed, type EngineUnavailable, type InstalledModel } from "../src/inference/index.vibe"
+
+module host {
+  import { Buffer } from "node:buffer"
+  import { mkdtempSync } from "node:fs"
+  import { createServer, type Server, type Socket } from "node:net"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
+
+  export interface Host {
+    readonly path: string
+    readonly requests: Record<string, unknown>[]
+    hangUps: number
+    reply: ((request: Record<string, unknown>) => unknown) | undefined
+    close(): Promise<void>
+  }
+
+  /** @throws {never} */
+  function frame(value: unknown): Buffer {
+    const body = Buffer.from(JSON.stringify(value), "utf8")
+    const head = Buffer.alloc(4)
+    head.writeInt32BE(body.length)
+    return Buffer.concat([head, body])
+  }
+
+  /** @throws {never} */
+  function floats(samples: readonly number[]): string {
+    const bytes = Buffer.alloc(samples.length * 4)
+    samples.forEach((sample, index) => bytes.writeFloatLE(sample, index * 4))
+    return bytes.toString("base64")
+  }
+
+  /** @throws {never} */
+  function heard(text: string): number[] {
+    const bytes = Buffer.from(text, "base64")
+    return Array.from({ length: bytes.length / 4 }, (_, index) => bytes.readFloatLE(index * 4))
+  }
+
+  /** @throws {never} */
+  function answer(request: Record<string, unknown>): unknown {
+    switch (request.op) {
+      case "capabilities": return { ok: true, synthesis: true, transcription: true }
+      case "load": case "unload": case "warmEmbedding": return { ok: true }
+      case "embed": return { ok: true, embedding: [0.6, 0.8] }
+      case "synthesize": return { ok: true, sampleRate: 24000, pcmBase64: floats([0.25, -0.5]) }
+      case "transcribe": return { ok: true, text: ` heard ${heard(String(request.pcmBase64)).length} samples at ${String(request.sampleRate)} ` }
+      case "endOfTurn": return { ok: true, available: true, milli: String(request.transcript).endsWith(".") ? 820 : 310 }
+      default: return { ok: false, code: "OP_REFUSED", error: "the operation is not offered" }
+    }
+  }
+
+  /** A stand-in for the Android app's inference host at its socket: the native engine cannot run here. @throws {never} */
+  export async function startHost(): Promise<Host> {
+    const path = join(mkdtempSync(join(tmpdir(), "eliza-inference-")), "host.sock")
+    const state: Host = {
+      path,
+      requests: [],
+      hangUps: 0,
+      reply: undefined,
+      close: () => new Promise((resolve) => server.close(() => resolve())),
+    }
+    const serve = (socket: Socket) => {
+      let pending = Buffer.alloc(0)
+      let answered = false
+      socket.on("data", (chunk: Buffer) => {
+        pending = Buffer.concat([pending, chunk])
+        if (pending.length < 4 || pending.length < 4 + pending.readInt32BE(0)) return
+        const request = JSON.parse(pending.subarray(4, 4 + pending.readInt32BE(0)).toString("utf8")) as Record<string, unknown>
+        state.requests.push(request)
+        if (request.op === "synthesize" && String(request.text).startsWith("hold")) return
+        answered = true
+        socket.write(frame(state.reply === undefined ? answer(request) : state.reply(request)))
+      })
+      socket.on("close", () => { if (!answered) state.hangUps++ })
+      socket.on("error", () => undefined)
+    }
+    const server: Server = createServer(serve)
+    await new Promise<void>((resolve) => server.listen(path, () => resolve()))
+    return state
+  }
+}
+import { startHost } from host
+
+const bge: InstalledModel = {
+  model: {
+    name: "bge-small-en-v1.5",
+    source: { kind: "pinned", files: [{ path: "bge-small-en-v1.5-f16.gguf", sha256: "f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999" }] },
+    embedding: { space: { spaceModel: "BAAI/bge-small-en-v1.5", dimensions: 2, pooling: "ClsPooling" } },
+  },
+  directory: "/data/models/model2",
+  files: ["/data/models/model2/bge-small-en-v1.5-f16.gguf"],
+}
+const bundled: InstalledModel = { model: { name: "eliza-1-2b", source: { kind: "bundle" } }, directory: "/data/models/model1", files: ["/data/models/model1/text/eliza-1-2b.gguf"] }
+
+type Outcome<A> = { readonly value?: A; readonly failed?: string }
+
+effect function outcome<A>(program: A!(EngineUnavailable | EngineFailed)) {
+  return try (map(program, (value): Outcome<A> => ({ value })) catch (failure): Outcome<A> => ({ failed: `${failure._tag}: ${failure.reason}` }))
+}
+
+it.live("Embed, speak and transcribe through the app's inference host, and read an absent or refusing host as unavailable (spec/os/agentService/inference.md, \"Story: Embed, speak and transcribe on my phone through my app alone\"; spec/os/agentService/inference.md, \"An embedding is answered only by the verified model assigned to embeddings, as a finite vector of its dimensions\"; spec/os/agentService/inference.md, \"Speech readiness and the end-of-turn score say only what the host answered\")", () => effect {
+  const running = try promise(() => startHost())
+  const result = try ensuring(effect {
+    provide androidInferenceLayer(running.path) {
+      const engine = try AndroidInferenceEngine
+      const loaded = try outcome(engine.load(bundled))
+      const ready = try engine.speechReady()
+      const vector = try outcome(engine.embed(bge, "a note about the garden"))
+      const unpinned = try outcome(engine.embed({ ...bundled, model: { ...bundled.model, embedding: bge.model.embedding } }, "text"))
+      const spoken = try outcome(map(engine.synthesize("hello"), (pcm) => ({ sampleRate: pcm.sampleRate, samples: Array.from(pcm.samples) })))
+      const transcript = try outcome(engine.transcribe({ sampleRate: 16000, samples: new Float32Array([0.1, 0.2, 0.3]) }))
+      const complete = try engine.scoreEndOfTurn("Set a timer for ten minutes.")
+      const partial = try engine.scoreEndOfTurn("Set a timer for")
+      running.reply = (request) => request.op === "synthesize" ? { ok: false, code: "UNAVAILABLE", error: "on-device speech synthesis is not ready" } : request.op === "embed" ? { ok: false, code: "FAILED", error: "the model returned no valid vector of its dimensions" } : { ok: true, available: true, milli: 1200 }
+      const notReady = try outcome(engine.synthesize("hello"))
+      const badVector = try outcome(engine.embed(bge, "text"))
+      const outOfRange = try engine.scoreEndOfTurn("Done.")
+      running.reply = undefined
+      const interrupted = try exit(timeout(engine.synthesize("hold this reply"), "50 millis"))
+      try sleep("50 millis")
+      const sent = running.requests.map((request) => ({ ...request, pcmBase64: request.pcmBase64 === undefined ? undefined : "audio" }))
+      return { loaded, ready, vector, unpinned, spoken, transcript, complete, partial, notReady, badVector, outOfRange, interrupted: Exit.isFailure(interrupted), hangUps: running.hangUps, sent }
+    }
+  }, promise(() => running.close()))
+  const absent = androidInferenceEngine(`${running.path}.absent`)
+  const absentReady = try absent.speechReady()
+  const absentSpeech = try outcome(absent.synthesize("hello"))
+  const absentScore = try absent.scoreEndOfTurn("Done.")
+
+  const pinned = { file: "/data/models/model2/bge-small-en-v1.5-f16.gguf", sha256: "f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999", dimensions: 2, pooling: 2 }
+  try Effect.try(() => assert.deepStrictEqual(
+    { ...result, absentReady, absentSpeech: absentSpeech.failed?.split(":")[0], absentScore: absentScore.available },
+    {
+      loaded: { value: undefined },
+      ready: { synthesis: true, transcription: true },
+      vector: { value: { values: [0.6, 0.8], space: { spaceModel: "BAAI/bge-small-en-v1.5", dimensions: 2, pooling: "ClsPooling" } } },
+      unpinned: { failed: "EngineUnavailable: eliza-1-2b has no pinned digest" },
+      spoken: { value: { sampleRate: 24000, samples: [0.25, -0.5] } },
+      transcript: { value: " heard 3 samples at 16000 " },
+      complete: { available: true, complete: true, probability: 0.82 },
+      partial: { available: true, complete: false, probability: 0.31 },
+      notReady: { failed: "EngineUnavailable: on-device speech synthesis is not ready" },
+      badVector: { failed: "EngineFailed: FAILED: the model returned no valid vector of its dimensions" },
+      outOfRange: { available: false, reason: "the inference host answered no probability" },
+      interrupted: true,
+      hangUps: 1,
+      sent: [
+        { op: "load", bundleDir: "/data/models/model1", files: ["/data/models/model1/text/eliza-1-2b.gguf"], pcmBase64: undefined },
+        { op: "capabilities", pcmBase64: undefined },
+        { op: "embed", ...pinned, text: "a note about the garden", pcmBase64: undefined },
+        { op: "synthesize", text: "hello", pcmBase64: undefined },
+        { op: "transcribe", sampleRate: 16000, pcmBase64: "audio" },
+        { op: "endOfTurn", transcript: "Set a timer for ten minutes.", pcmBase64: undefined },
+        { op: "endOfTurn", transcript: "Set a timer for", pcmBase64: undefined },
+        { op: "synthesize", text: "hello", pcmBase64: undefined },
+        { op: "embed", ...pinned, text: "text", pcmBase64: undefined },
+        { op: "endOfTurn", transcript: "Done.", pcmBase64: undefined },
+        { op: "synthesize", text: "hold this reply", pcmBase64: undefined },
+      ],
+      absentReady: { synthesis: false, transcription: false },
+      absentSpeech: "EngineUnavailable",
+      absentScore: false,
+    },
+  ))
+})

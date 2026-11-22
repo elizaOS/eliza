@@ -1,0 +1,64 @@
+// spec/files/reviewPin.md, "Story: Change only the file I reviewed"; spec/files/reviewPin.md, "The review pins the identity it displayed, and a stale completion changes nothing"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
+import { cardShown, identitiesReady } from "../../gen/files__shownTargets.effect.vibe"
+import { decodeFilesOperation, describeFilesOperation, filesForm, filesNeedsIdentity, filesOperationAdmitted, filesShownTarget,
+  type FilesAgentOperation, type FilesAgentRunner, type FilesIdentity, type FilesPathOperation } from "../contract.vibe"
+
+/** A proposal as the owner reviews it: a card on the exact paths and identities, or a notice that it cannot be reviewed here. */
+export type FilesReviewItem =
+  | { readonly proposalId: string; readonly kind: "card"; readonly operation: FilesPathOperation; readonly title: string; readonly description: string }
+  | { readonly proposalId: string; readonly kind: "notice"; readonly notice: string }
+
+type Pin = { readonly digest: string; readonly operation: FilesPathOperation }
+
+/** The per-proposal reviews of one coordinator: each card is pinned to what it first showed, and a refresh never moves the pin. */
+export effect function filesReviews(runner: FilesAgentRunner, capabilities: readonly string[]) {
+  const pins = try Ref.make(new Map<string, Pin>())
+  const latest = try Ref.make(new Map<string, number>())
+
+  effect function bound(op: FilesAgentOperation): FilesPathOperation | undefined {
+    const shown = filesShownTarget(op) ? try (runner.shownPaths(op.shown) catch () => undefined) : undefined
+    const resolution = { positions: filesShownTarget(op) ? op.shown.length : 0, resolvedPaths: shown?.length ?? 0, resultsShown: shown !== undefined }
+    if (!cardShown(filesForm(op).form, resolution)) return undefined
+    const source: unknown = filesShownTarget(op) ? { ...Object.fromEntries(Object.entries(op).filter(([key]) => key !== "shown")), paths: shown } : op
+    const target = try (decodeFilesOperation(source) catch () => undefined)
+    if (target === undefined || filesShownTarget(target)) return undefined
+    if (!filesNeedsIdentity(target)) return target
+    const identities: readonly FilesIdentity[] | undefined = try (runner.reviewedIdentities(target.paths) catch () => undefined)
+    if (identities === undefined || !identitiesReady(filesForm(target).kind, target.paths.length, identities.length)) return undefined
+    const reviewed = try (decodeFilesOperation({ ...target, reviewed: identities }) catch () => undefined)
+    return reviewed !== undefined && !filesShownTarget(reviewed) ? reviewed : undefined
+  }
+
+  effect function review(proposalId: string, digest: string, input: unknown): FilesReviewItem!! {
+    const op = try (decodeFilesOperation(input) catch () => undefined)
+    if (op === undefined || !filesOperationAdmitted(op, capabilities)) {
+      return { proposalId, kind: "notice", notice: op === undefined ? "This action isn't available on this phone." : "This Files action was not negotiated with this agent." }
+    }
+    const { title } = describeFilesOperation(op)
+    const notice = { proposalId, kind: "notice", notice: `${title}: These files are not in Files.` } as const
+    const pinned = (try Ref.get(pins)).get(proposalId)
+    if (pinned !== undefined) return pinned.digest === digest ? { proposalId, kind: "card", operation: pinned.operation, ...describeFilesOperation(pinned.operation) } : notice
+    const review = ((try Ref.get(latest)).get(proposalId) ?? 0) + 1
+    try Ref.update(latest, (current) => new Map(current).set(proposalId, review))
+    const operation = try bound(op)
+    if (((try Ref.get(latest)).get(proposalId) ?? 0) !== review) return notice
+    if (operation === undefined) return notice
+    const kept = (try Ref.get(pins)).get(proposalId)
+    if (kept !== undefined) return kept.digest === digest ? { proposalId, kind: "card", operation: kept.operation, ...describeFilesOperation(kept.operation) } : notice
+    try Ref.update(pins, (current) => new Map(current).set(proposalId, { digest, operation }))
+    return { proposalId, kind: "card", operation, ...describeFilesOperation(operation) }
+  }
+
+  effect function approved(proposalId: string, digest: string): FilesPathOperation | undefined {
+    const pinned = (try Ref.get(pins)).get(proposalId)
+    return pinned?.digest === digest ? pinned.operation : undefined
+  }
+
+  effect function retain(pending: readonly string[]): void!! {
+    const keep = new Set(pending)
+    try Ref.update(pins, (current) => new Map([...current].filter(([id]) => keep.has(id))))
+    try Ref.update(latest, (current) => new Map([...current].filter(([id]) => keep.has(id))))
+  }
+
+  return { review, approved, retain }
+}

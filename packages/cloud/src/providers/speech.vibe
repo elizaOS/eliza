@@ -1,5 +1,4 @@
 // spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"; spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"
-import * as NodeSocket from "@effect/platform-node/NodeSocket"
 import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import { Socket } from "effect/socket"
@@ -8,6 +7,7 @@ import type { Millis } from "../../gen/cloud__shared__types.ts"
 import type { SpeechSettings as SpeechProfile } from "../profile/profile.schema.ts"
 import { Deployment } from "../profile/profile.vibe"
 import { ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, retryAfter } from "./llm.vibe"
+import { headerWebSocket } from "./socket.ts"
 
 export { ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable }
 
@@ -89,6 +89,16 @@ export const realtimeOpenBudget: Millis = 8_000
 export const drainBudget: Millis = 1_500
 export const maxProviderPcmBytes = 65_536
 export const realtimeSampleRate = 16_000
+
+/** Opens the speech provider's realtime socket with its handshake headers on the host's platform; the default dials with the runtime's WebSocket. */
+export service ProviderSockets {
+  static readonly key = "@elizaos/cloud/providers/ProviderSockets"
+  static readonly defaultValue = () => ({
+    open: (url: string, headers: Readonly<Record<string, string>>) =>
+      provideService(Socket.makeWebSocket(url, { headers, openTimeout: realtimeOpenBudget }), Socket.WebSocketConstructor, headerWebSocket)
+  })
+  readonly open: (url: string, headers: Readonly<Record<string, string>>) => Socket.Socket!!
+}
 
 const restVersion = "2025-04-16"
 const sttVersion = "2026-08-14"
@@ -337,18 +347,16 @@ effect function pump<A>(reader: Socket.Reader, edges: Edges<A>, closed: Deferred
 effect function connected<A>(url: string, version: string, decode: (chunk: string | Uint8Array) => Decoded<A>) {
   const settings = try speechSettings()
   const key = try orDie((try Deployment).secret(settings.apiKeyEnv))
-  provide NodeSocket.layerWebSocketConstructor {
-    const socket = try Socket.makeWebSocket(url, { headers: { "x-api-key": key, "cartesia-version": version }, openTimeout: realtimeOpenBudget })
-    const reader = socket.reader catch effect () => { throw new ProviderUnreachable() }
-    const writer = try socket.writer
-    const edges = try Queue.unbounded<A, SpeechFailure | Cause.Done>()
-    const closed = try Deferred.make<boolean>()
-    fork.scoped pump(reader, edges, closed, decode)
-    const write = effect (chunk: string | Uint8Array) => {
-      writer.write(chunk) catch effect () => { throw new ProviderUnreachable() }
-    }
-    return { settings, write, closed, edges: Stream.fromQueue(edges) }
+  const socket = try (try ProviderSockets).open(url, { "x-api-key": key, "cartesia-version": version })
+  const reader = socket.reader catch effect () => { throw new ProviderUnreachable() }
+  const writer = try socket.writer
+  const edges = try Queue.unbounded<A, SpeechFailure | Cause.Done>()
+  const closed = try Deferred.make<boolean>()
+  fork.scoped pump(reader, edges, closed, decode)
+  const write = effect (chunk: string | Uint8Array) => {
+    writer.write(chunk) catch effect () => { throw new ProviderUnreachable() }
   }
+  return { settings, write, closed, edges: Stream.fromQueue(edges) }
 }
 
 export effect function openStt(): SttLink!SpeechFailure!(Deployment | Scope.Scope) {

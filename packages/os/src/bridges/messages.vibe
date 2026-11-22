@@ -1,4 +1,4 @@
-// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Native confirmation and current ownership precede dispatch, and a cancel is refused once Android has the message"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A send is denied before any platform call unless Android allows it at review and again at dispatch"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "Story: Mark a conversation read from its notice without sending anything"; spec/os/android/messages.md, "Story: Delete one message I chose"; spec/os/android/bridge.md, "Story: Admit a bridge call only with current evidence"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"
+// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Native confirmation and current ownership precede dispatch, and a cancel is refused once Android has the message"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A send is denied before any platform call unless Android allows it at review and again at dispatch"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "Story: Mark a conversation read from its notice without sending anything"; spec/os/android/messages.md, "Story: Delete one message I chose"; spec/os/android/bridge.md, "Story: Admit a bridge call only with current evidence"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/os/android/messages.md, "Story: Name the sender of my latest text without reading it"
 import type { Admission, HandoffOutcome, HostFacts } from "../../gen/os__android__bridge.ts"
 import { admitCall } from "../../gen/os__android__bridge.effect.vibe"
 import {
@@ -21,6 +21,7 @@ import {
   operationIdOf,
   parseMessageDeleteReference,
   parseMessageDeleteResult,
+  parseLatestSender,
   parseMessages,
   parseMmsSendResult,
   parseSmsJournal,
@@ -356,6 +357,11 @@ effect function messagePage(plugin: MessagesNativePlugin, threadId: ThreadId, cu
   return { rows, next }
 }
 
+effect function latestIncomingSender(plugin: MessagesNativePlugin, includeAddress: boolean) {
+  const raw = try nativeCall(PLUGIN, "latestIncomingSender", () => plugin.latestIncomingSender(includeAddress ? { includeAddress: true } : undefined))
+  return try checked("latestIncomingSender", (value) => parseLatestSender(value, includeAddress), raw)
+}
+
 function readMark(raw: unknown): { defaultSmsApp: boolean; updated: number } | undefined {
   const data = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : undefined
   const defaultSmsApp = data?.defaultSmsApp
@@ -414,6 +420,7 @@ export function messagesClient(plugin: MessagesNativePlugin = messagesPlugin()):
     listMessages: (threadId, limit = 25, before) => settled(listMessages(plugin, threadId, limit, before)),
     threadPage: (cursor) => settled(threadPage(plugin, cursor)),
     messagePage: (threadId, cursor) => settled(messagePage(plugin, threadId, cursor)),
+    latestIncomingSender: (includeAddress = false) => settled(latestIncomingSender(plugin, includeAddress)),
     markThreadRead: (threadId, throughDate) => settled(markThreadRead(plugin, threadId, throughDate)),
     deleteMessage: (reference) => settled(deleteMessage(plugin, reference)),
     observeMessages: (onChange, onSendUpdated, onMmsSendUpdated) => settled(observeMessages(plugin, onChange, onSendUpdated, onMmsSendUpdated)),

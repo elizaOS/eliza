@@ -1,0 +1,104 @@
+// spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/workflow/execution.md, "Retirement releases host reservations without rewriting the terminal result"
+import type { WorkflowDeviceBinding, WorkflowDeviceOperation } from "../contract/device.vibe"
+import type { PhoneDeviceTarget } from "../contract/phone.vibe"
+import type { HostedNativeSelection } from "../contract/digest.vibe"
+import { decodeParentMessage, serveWorker, WorkerStepFailed, type ParentMessage, type WorkerChannel, type WorkerMessage } from "../worker/protocol.vibe"
+import type { WorkflowSql } from "./store.vibe"
+import type { ManagedGoogleReads } from "./google.vibe"
+
+/** No verified worker is installed, or it could not be started. */
+export error WorkflowWorkerUnavailable { reason: string }
+/** The enrolled phone did not perform a device step; its outcome is the receipt it returned, if any. */
+export error WorkflowDeviceFailed { code: string; message: string }
+/** The text model could not draft a step. */
+export error WorkflowModelFailed { message: string }
+/** The host could not arm or clear a schedule wakeup. */
+export error WorkflowScheduleUnavailable { cause: unknown }
+
+/** One live conversation with a worker process. */
+export interface WorkflowWorkerConnection {
+  send(message: ParentMessage): void!!
+  readonly next: (WorkerMessage | undefined)!!
+  readonly alive: boolean!!
+  readonly close: void!!
+}
+/** Starts the pinned workflow worker; each run conversation gets its own process. */
+export interface WorkflowWorkerPort {
+  open(runId: string): WorkflowWorkerConnection!WorkflowWorkerUnavailable
+}
+/** The enrolled phone a device step goes to, and the protocol it registered. */
+export interface WorkflowDeviceEnrollment extends PhoneDeviceTarget { readonly protocol: number }
+/** The reviewed device bridge: one exact operation for one bound step. */
+export interface WorkflowDevicePort {
+  readonly enrollment: (WorkflowDeviceEnrollment | undefined)!!
+  perform(binding: WorkflowDeviceBinding, target: PhoneDeviceTarget, operation: WorkflowDeviceOperation): unknown!WorkflowDeviceFailed
+}
+/** One owner-facing notice: a run result or a pending approval, naming the exact run route. */
+export interface WorkflowNotice {
+  readonly kind: "result" | "approval"
+  readonly title: string
+  readonly body: string
+  readonly deepLink: string
+  readonly groupKey: string
+  readonly route: { readonly workflowId: string; readonly runId: string; readonly versionId: string; readonly proposalId?: string; readonly expiresAt?: number }
+}
+/** The runtime's durable wakeups: each key holds at most one due instant. */
+export interface WorkflowScheduler {
+  set(key: string, dueAt: number, metadata: Readonly<Record<string, string | number>>): void!WorkflowScheduleUnavailable
+  clear(key: string): void!WorkflowScheduleUnavailable
+  readonly keys: readonly string[]!WorkflowScheduleUnavailable
+}
+
+/** The phone's reviewed native digest sources: a grant check when a source is saved and a fresh read when a digest runs. */
+export interface WorkflowNativeDigests {
+  grant(selection: HostedNativeSelection, expiresAt: number): { readonly timeZone: string }!WorkflowDeviceFailed
+  read(selection: HostedNativeSelection, at: number): string!WorkflowDeviceFailed
+}
+
+/** Everything the workflow service needs from the agent runtime it runs in. */
+export interface WorkflowHost {
+  readonly sql: WorkflowSql
+  readonly owner: string
+  readonly agentId: string
+  readonly origin: string
+  readonly worker: WorkflowWorkerPort | undefined
+  readonly device: WorkflowDevicePort | undefined
+  readonly draft: ((prompt: string) => string!WorkflowModelFailed) | undefined
+  readonly nativeDigests: WorkflowNativeDigests | undefined
+  readonly google: ManagedGoogleReads | undefined
+  readonly notify: (notice: WorkflowNotice) => void!!
+  readonly scheduler: WorkflowScheduler
+  readonly nextCron: (expression: string, after: number, timeZone: string) => number | undefined
+  readonly processStartedAt: number
+}
+
+/** A worker port that serves each run in this process over the worker protocol, for journeys that exercise the worker without a separate process. */
+export effect function inProcessWorkerPort(): WorkflowWorkerPort!! {
+  return {
+    effect open(_runId) {
+      const toWorker = try Queue.unbounded<string>()
+      const toParent = try Queue.unbounded<WorkerMessage | undefined>()
+      const channel: WorkerChannel = {
+        receive: effect {
+          const line = try Queue.take(toWorker)
+          return try decodeParentMessage(line)
+        },
+        send: (message) => asVoid(Queue.offer(toParent, structuredClone(message))),
+      }
+      const done = try Ref.make(false)
+      const fiber = fork.detached ensuring(serveWorker(channel), effect {
+        try Ref.set(done, true)
+        try Queue.offer(toParent, undefined)
+      })
+      return {
+        send: (message) => asVoid(Queue.offer(toWorker, JSON.stringify(message))),
+        next: Queue.take(toParent),
+        alive: map(Ref.get(done), (finished) => !finished),
+        close: asVoid(Fiber.interrupt(fiber)),
+      } satisfies WorkflowWorkerConnection
+    },
+  }
+}
+
+/** The step failure a closed or broken worker channel reports. */
+export const workerChannelClosed = new WorkerStepFailed({ message: "The worker channel closed", cancelled: false })

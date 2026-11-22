@@ -31,6 +31,10 @@ differ only where a spec says so.
 > As a subscriber or funded pilot, I can send a request to the deployment's model.
 > My account shows the subscription the billing provider currently recognizes.
 
+Both hosts answer it with the server's chat route, as `services/inference`
+and `services/models` specify it (`src/services/chat.vibe`,
+`src/services/models.vibe`), metered through `shared/metering`.
+
 ### A request needs an active account and sufficient funding for its quote
 
 The deployment uses the [shared hold](./shared/metering.md) to reserve the
@@ -105,7 +109,9 @@ account shown for approval receives a grant only while signed in to that
 account. Only the device proving possession of the grant’s verifier can redeem it, once. The device
 acknowledges receipt before it can use the key. Signing out stops activation
 of an unfinished grant. An active key continues to authorize inference and
-consented speech until its deadline or its own revocation.
+consented speech until its deadline or its own revocation. Before that deadline the
+key can obtain its successor without the browser for six months after the
+sign-in ([device keys](./nativeClients/deviceKeys.md)).
 
 ```quint
 pure def mayIssueAccountBoundDeviceGrant(shownAccount: str, signedInAccount: str): bool =
@@ -224,6 +230,12 @@ pure def canReadCloudCalendarReminder(activeDevice: bool, ownerMatches: bool, gr
 > As a signed-in person with a subscription or funded pilot account, I can
 > explicitly allow a bounded microphone and speech playback session. The
 > app can stop the session and never receives the voice provider's keys.
+
+Both hosts answer it with the server's speech session and relay routes, as
+`services/speechSession` and `services/speechRelay` specify them
+(`src/services/speech-session.vibe`, `src/services/speech-relay.vibe`); a
+Worker runs the relay on a socket pair (`deployment`, "Story: Serve the
+deployment from a Worker").
 
 ### Consent and an allowance are required before speech is sent
 
@@ -451,25 +463,47 @@ pure def lawReservedDecisionCandidateIsRefused(candidates: List[DecisionCandidat
   candidates.some(c => c.id == "none") implies not(decisionCandidatesFit(candidates))
 ```
 
-### A dispatch uses the current account and two available quota slots
+### A dispatch uses the current account and its available quota slots
 
 The current shared credential admission supplies the account; a supplied
 decisionExpected account must equal it. A missing provider binding makes no quota
 attempt. With a binding, the transaction admits only an active account and
-increments both the account's thirty-per-minute counter and the
-organization's two-thousand-per-day counter, or neither. An unavailable
-store refuses the dispatch. These observed SQL rows expire from their first
-admission, rather than at a calendar-aligned boundary; expiry opens a new
-row with one hit. No earlier result is authority for another request.
+counts it against the account's thirty-per-minute limit. The organization's
+daily limit is two thousand. An organization with at least five dollars of
+credits added by the operator, or with an active paid subscription of its
+own, has four thousand. A grant does not qualify. After the daily limit, a
+subscribed organization continues within its plan's standard requests a
+minute (`billing/plans`), counted by one minute counter that all its
+credentials share. Each dispatch increments the account counter and either
+the daily counter or that minute counter, or nothing. An unreadable funding
+policy applies the two-thousand limit. A cancelled or lapsed subscription
+returns the organization to its limit without resetting what it used.
+An unavailable store refuses the dispatch. These observed SQL rows expire
+from their first admission, rather than at a calendar-aligned boundary;
+expiry opens a new row with one hit. A refusal or admission names the
+counter that decided it in `X-Clef-Rate-Limit-Scope` (`organization-day` or
+`subscription-minute`). Included decisions debit no credits. No earlier
+result is authority for another request.
 
 ```quint
 type DecisionExpectedAccount = AnyCurrentDecisionAccount | ExpectedDecisionAccount({ id: str })
 type DecisionCounter = { hits: int, expiresAt: Millis }
-type DecisionCounts = { account: DecisionCounter, organization: DecisionCounter }
+type DecisionCounts = { account: DecisionCounter, organization: DecisionCounter, continuation: DecisionCounter }
 type DecisionCounterRead = DecisionStoreUnavailable | DecisionCountersRead({ counts: DecisionCounts })
-type DecisionDispatch = DecisionNotDispatched | DecisionDispatched({ counts: DecisionCounts })
+type DecisionFunding = BaseDecisionFunding | FundedDecisionFunding | SubscribedDecisionFunding({ rpm: int })
+type DecisionScope = OrganizationDayScope | SubscriptionMinuteScope
+type DecisionDispatch = DecisionNotDispatched | DecisionDispatched({ counts: DecisionCounts, scope: DecisionScope })
 pure val decisionAccountLimit = DecisionLimits::perMinute("clef:account", 30)
 pure val decisionOrganizationLimit = DecisionLimits::perWindow("clef:organization", 2000, millisPerDay)
+pure val decisionFundedOrganizationLimit = DecisionLimits::perWindow("clef:organization", 4000, millisPerDay)
+pure val decisionFundedCredits: Micros = 5 * microsPerUsd
+pure def decisionFundingOf(subscribedRpm: int, addedCredits: Micros): DecisionFunding =
+  if (subscribedRpm > 0) SubscribedDecisionFunding({ rpm: subscribedRpm })
+  else if (addedCredits >= decisionFundedCredits) FundedDecisionFunding
+  else BaseDecisionFunding
+pure def decisionDailyLimit(decisionFunding: DecisionFunding): DecisionLimits::RateLimit =
+  if (decisionFunding == BaseDecisionFunding) decisionOrganizationLimit else decisionFundedOrganizationLimit
+pure def decisionContinuationLimit(rpm: int): DecisionLimits::RateLimit = DecisionLimits::perMinute("clef:continuation", rpm)
 pure def decisionAccountMatches(accountId: str, decisionExpected: DecisionExpectedAccount): bool = match decisionExpected {
   | AnyCurrentDecisionAccount => true
   | ExpectedDecisionAccount(wanted) => wanted.id == accountId
@@ -479,44 +513,69 @@ pure def decisionCounterFits(counter: DecisionCounter, rule: DecisionLimits::Rat
   counter.hits >= 0 and counter.expiresAt >= 0 and decisionNow >= 0 and DecisionLimits::admits(decisionHeldHits(counter, decisionNow), rule)
 pure def decisionCounted(counter: DecisionCounter, rule: DecisionLimits::RateLimit, decisionNow: Millis): DecisionCounter =
   { hits: decisionHeldHits(counter, decisionNow) + 1, expiresAt: if (decisionNow >= counter.expiresAt) decisionNow + rule.windowMs else counter.expiresAt }
-pure def decisionQuotaAdmission(decisionCounters: DecisionCounterRead, decisionNow: Millis): DecisionDispatch = match decisionCounters {
-  | DecisionStoreUnavailable => DecisionNotDispatched
-  | DecisionCountersRead(read) =>
-      if (decisionCounterFits(read.counts.account, decisionAccountLimit, decisionNow) and decisionCounterFits(read.counts.organization, decisionOrganizationLimit, decisionNow))
-        DecisionDispatched({ counts: { account: decisionCounted(read.counts.account, decisionAccountLimit, decisionNow), organization: decisionCounted(read.counts.organization, decisionOrganizationLimit, decisionNow) } })
+pure def decisionContinuation(counts: DecisionCounts, decisionFunding: DecisionFunding, decisionNow: Millis): DecisionDispatch = match decisionFunding {
+  | SubscribedDecisionFunding(s) =>
+      if (decisionCounterFits(counts.continuation, decisionContinuationLimit(s.rpm), decisionNow))
+        DecisionDispatched({ counts: { ...counts, account: decisionCounted(counts.account, decisionAccountLimit, decisionNow), continuation: decisionCounted(counts.continuation, decisionContinuationLimit(s.rpm), decisionNow) }, scope: SubscriptionMinuteScope })
       else DecisionNotDispatched
+  | _ => DecisionNotDispatched
+}
+pure def decisionWithinCounts(counts: DecisionCounts, decisionFunding: DecisionFunding, decisionNow: Millis): DecisionDispatch =
+  if (not(decisionCounterFits(counts.account, decisionAccountLimit, decisionNow))) DecisionNotDispatched
+  else if (decisionCounterFits(counts.organization, decisionDailyLimit(decisionFunding), decisionNow))
+    DecisionDispatched({ counts: { ...counts, account: decisionCounted(counts.account, decisionAccountLimit, decisionNow), organization: decisionCounted(counts.organization, decisionDailyLimit(decisionFunding), decisionNow) }, scope: OrganizationDayScope })
+  else decisionContinuation(counts, decisionFunding, decisionNow)
+pure def decisionQuotaAdmission(decisionCounters: DecisionCounterRead, decisionFunding: DecisionFunding, decisionNow: Millis): DecisionDispatch = match decisionCounters {
+  | DecisionStoreUnavailable => DecisionNotDispatched
+  | DecisionCountersRead(read) => decisionWithinCounts(read.counts, decisionFunding, decisionNow)
 }
 pure def decisionDispatch(decisionView: DecisionSessions::CredentialView, accountId: str, decisionExpected: DecisionExpectedAccount,
-  decisionRequest: DecisionRequest, decisionCounters: DecisionCounterRead, decisionNow: Millis, bindingPresent: bool): DecisionDispatch =
+  decisionRequest: DecisionRequest, decisionCounters: DecisionCounterRead, decisionFunding: DecisionFunding, decisionNow: Millis, bindingPresent: bool): DecisionDispatch =
   if (bindingPresent and accountId != "" and decisionAccountMatches(accountId, decisionExpected) and decisionRequestFits(decisionRequest) and
       DecisionSessions::admitRequest(decisionView, DecisionSessions::ServiceAccess, decisionNow) == DecisionSessions::CredentialAccepted)
-    decisionQuotaAdmission(decisionCounters, decisionNow)
+    decisionQuotaAdmission(decisionCounters, decisionFunding, decisionNow)
   else DecisionNotDispatched
+pure val decisionIdleCounter: DecisionCounter = { hits: 0, expiresAt: 0 }
 pure val decisionCountersValues = Set(DecisionStoreUnavailable,
-  DecisionCountersRead({ counts: { account: { hits: 0, expiresAt: 0 }, organization: { hits: 0, expiresAt: 0 } } }),
-  DecisionCountersRead({ counts: { account: { hits: 30, expiresAt: 60000 }, organization: { hits: 0, expiresAt: 86400000 } } }),
-  DecisionCountersRead({ counts: { account: { hits: 2, expiresAt: 60000 }, organization: { hits: 2000, expiresAt: 86400000 } } }))
+  DecisionCountersRead({ counts: { account: decisionIdleCounter, organization: decisionIdleCounter, continuation: decisionIdleCounter } }),
+  DecisionCountersRead({ counts: { account: { hits: 30, expiresAt: 60000 }, organization: { hits: 0, expiresAt: 86400000 }, continuation: decisionIdleCounter } }),
+  DecisionCountersRead({ counts: { account: { hits: 2, expiresAt: 60000 }, organization: { hits: 2000, expiresAt: 86400000 }, continuation: decisionIdleCounter } }),
+  DecisionCountersRead({ counts: { account: { hits: 2, expiresAt: 60000 }, organization: { hits: 4000, expiresAt: 86400000 }, continuation: { hits: 60, expiresAt: 60000 } } }))
+pure val decisionFundingValues = Set(BaseDecisionFunding, FundedDecisionFunding, SubscribedDecisionFunding({ rpm: 60 }))
+pure val subscribedRpmValues = Set(0, 60, 120)
+pure val addedCreditsValues = Set(0, 4999999, 5000000)
 pure val decisionNowValues = Set(0, 1, 59999, 60000, 86400000)
 pure val decisionViewValues = DecisionSessions::viewValues
 pure val decisionExpectedValues = Set(AnyCurrentDecisionAccount, ExpectedDecisionAccount({ id: "owner" }), ExpectedDecisionAccount({ id: "other" }))
 
 pure def lawDifferentExpectedAccountCannotDispatch(decisionView: DecisionSessions::CredentialView, accountId: str, expectedId: str,
-  decisionRequest: DecisionRequest, decisionCounters: DecisionCounterRead, decisionNow: Millis, bindingPresent: bool): bool =
-  expectedId != accountId implies decisionDispatch(decisionView, accountId, ExpectedDecisionAccount({ id: expectedId }), decisionRequest, decisionCounters, decisionNow, bindingPresent) == DecisionNotDispatched
+  decisionRequest: DecisionRequest, decisionCounters: DecisionCounterRead, decisionFunding: DecisionFunding, decisionNow: Millis, bindingPresent: bool): bool =
+  expectedId != accountId implies decisionDispatch(decisionView, accountId, ExpectedDecisionAccount({ id: expectedId }), decisionRequest, decisionCounters, decisionFunding, decisionNow, bindingPresent) == DecisionNotDispatched
 pure def lawInactiveDecisionCredentialCannotDispatch(decisionView: DecisionSessions::CredentialView, accountId: str, decisionExpected: DecisionExpectedAccount,
-  decisionRequest: DecisionRequest, decisionCounters: DecisionCounterRead, decisionNow: Millis, bindingPresent: bool): bool =
+  decisionRequest: DecisionRequest, decisionCounters: DecisionCounterRead, decisionFunding: DecisionFunding, decisionNow: Millis, bindingPresent: bool): bool =
   DecisionSessions::admitRequest(decisionView, DecisionSessions::ServiceAccess, decisionNow) != DecisionSessions::CredentialAccepted implies
-    decisionDispatch(decisionView, accountId, decisionExpected, decisionRequest, decisionCounters, decisionNow, bindingPresent) == DecisionNotDispatched
+    decisionDispatch(decisionView, accountId, decisionExpected, decisionRequest, decisionCounters, decisionFunding, decisionNow, bindingPresent) == DecisionNotDispatched
 
-pure def lawUnavailableDecisionStoreCannotDispatch(decisionNow: Millis): bool =
-  decisionQuotaAdmission(DecisionStoreUnavailable, decisionNow) == DecisionNotDispatched
-pure def lawDecisionAdmissionCountsBothWithinTheirLimits(decisionCounters: DecisionCounterRead, decisionNow: Millis): bool = {
-  val decisionOutcome = decisionQuotaAdmission(decisionCounters, decisionNow)
+pure def lawUnavailableDecisionStoreCannotDispatch(decisionFunding: DecisionFunding, decisionNow: Millis): bool =
+  decisionQuotaAdmission(DecisionStoreUnavailable, decisionFunding, decisionNow) == DecisionNotDispatched
+pure def lawDecisionAdmissionCountsWithinTheLimits(decisionCounters: DecisionCounterRead, decisionFunding: DecisionFunding, decisionNow: Millis): bool = {
+  val decisionOutcome = decisionQuotaAdmission(decisionCounters, decisionFunding, decisionNow)
   match decisionOutcome {
-    | DecisionDispatched(admitted) => admitted.counts.account.hits > 0 and admitted.counts.account.hits <= 30 and admitted.counts.organization.hits > 0 and admitted.counts.organization.hits <= 2000
+    | DecisionDispatched(admitted) => admitted.counts.account.hits > 0 and admitted.counts.account.hits <= 30
+        and (admitted.scope == OrganizationDayScope implies (admitted.counts.organization.hits > 0 and admitted.counts.organization.hits <= 4000
+          and (decisionFunding == BaseDecisionFunding implies admitted.counts.organization.hits <= 2000)))
     | DecisionNotDispatched => true
   }
 }
+pure def lawOnlyASubscriptionContinuesPastTheDailyLimit(decisionCounters: DecisionCounterRead, decisionFunding: DecisionFunding, decisionNow: Millis): bool = {
+  val decisionOutcome = decisionQuotaAdmission(decisionCounters, decisionFunding, decisionNow)
+  match decisionOutcome {
+    | DecisionDispatched(admitted) => admitted.scope == SubscriptionMinuteScope implies (decisionFunding != BaseDecisionFunding and decisionFunding != FundedDecisionFunding)
+    | DecisionNotDispatched => true
+  }
+}
+pure def lawAGrantOrSmallFundingKeepsTheBaseLimit(addedCredits: Micros): bool =
+  addedCredits < decisionFundedCredits implies decisionDailyLimit(decisionFundingOf(0, addedCredits)) == decisionOrganizationLimit
 ```
 
 ### A choice answer names an offered candidate or no match and authorizes no browser action

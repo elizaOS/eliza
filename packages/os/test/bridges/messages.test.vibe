@@ -1,4 +1,4 @@
-// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Story: Mark a conversation read from its notice without sending anything"; spec/os/android/messages.md, "Story: Delete one message I chose"
+// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Story: Mark a conversation read from its notice without sending anything"; spec/os/android/messages.md, "Story: Delete one message I chose"; spec/os/android/messages.md, "Story: Name the sender of my latest text without reading it"
 import { assert, it } from "@effect/vitest"
 import { MalformedReply, rejectionCode } from "../../src/bridges/bridge.vibe"
 import {
@@ -47,6 +47,8 @@ module android {
     rows: Stored[]
     deleteReply: unknown
     readReply: unknown
+    senderAddress: string
+    senderReply: unknown
     composed: string[][]
   }
 
@@ -78,6 +80,8 @@ module android {
       ],
       deleteReply: undefined,
       readReply: undefined,
+      senderAddress: "+1 (555) 010-0101",
+      senderReply: undefined,
       composed: [],
       ...changes,
     }
@@ -209,6 +213,17 @@ module android {
           .sort((x, y) => y.date - x.date)
           .slice(0, limit)
         return { messages: rows.map(row), next: null }
+      },
+      latestIncomingSender: async (options) => {
+        front()
+        if (phone.senderReply !== undefined) return phone.senderReply
+        const newest = phone.rows.filter((one) => one.kind === "sms" && one.box === "inbox").sort((x, y) => y.date - x.date || y.id - x.id)[0]
+        if (newest === undefined) return { status: "empty" }
+        if (!/^[0-9+(). -]+$/.test(phone.senderAddress)) return { status: "sender-unavailable" }
+        const digits = phone.senderAddress.replace(/[^0-9]/g, "")
+        if (options?.includeAddress !== true) return digits.length >= 4 ? { status: "found", numberEnding: digits.slice(-4) } : { status: "sender-unavailable" }
+        const number = phone.senderAddress.replace(/[(). -]/g, "")
+        return /^\+?[0-9]{2,20}$/.test(number) ? { status: "found", address: number, threadId: `thread:${newest.thread}` } : { status: "sender-unavailable" }
       },
       markThreadRead: async ({ threadId, throughDate }) => {
         if (phone.readReply !== undefined) return phone.readReply
@@ -473,6 +488,41 @@ it.live("Delete exactly the settled message I chose, and confirm only a removal 
       invalid: "request refused invalid-message",
       tooMany: "request refused invalid-limit",
       remaining: ["sms:14", "mms:13", "sms:12"],
+    },
+  ))
+})
+
+it.live("Name the sender of my latest text by its last four digits, and whole with its thread only when asked (spec/os/android/messages.md, \"Story: Name the sender of my latest text without reading it\"; spec/os/android/messages.md, \"A sender lookup reads only the newest incoming row's address, and names it whole only when asked\")", () => effect {
+  const phone = device()
+  const client = messagesClient(androidTelephony(phone))
+  const suffix = try promise(() => client.latestIncomingSender())
+  const whole = try promise(() => client.latestIncomingSender(true))
+  phone.senderReply = { status: "found", address: "+15550100101" }
+  const addressNotAsked = try refusal(() => client.latestIncomingSender())
+  phone.senderReply = { status: "found", numberEnding: "0101", body: "Are you coming?" }
+  const extraField = try refusal(() => client.latestIncomingSender())
+  phone.senderReply = { status: "found", address: "+1555+0100101", threadId: "thread:1" }
+  const notDialable = try refusal(() => client.latestIncomingSender(true))
+  phone.senderReply = undefined
+  phone.senderAddress = "Carrier"
+  const named = try promise(() => client.latestIncomingSender(true))
+  phone.rows = phone.rows.filter((one) => one.box !== "inbox")
+  const empty = try promise(() => client.latestIncomingSender())
+  phone.unlocked = false
+  const locked = try refusal(() => client.latestIncomingSender())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { suffix, whole, addressNotAsked, extraField, notDialable, named, empty, locked, sent: phone.dispatched },
+    {
+      suffix: { status: "found", numberEnding: "0101" },
+      whole: { status: "found", address: "+15550100101", threadId: "thread:1" },
+      addressNotAsked: "malformed latestIncomingSender",
+      extraField: "malformed latestIncomingSender",
+      notDialable: "malformed latestIncomingSender",
+      named: { status: "sender-unavailable" },
+      empty: { status: "empty" },
+      locked: "rejected unavailable",
+      sent: [],
     },
   ))
 })

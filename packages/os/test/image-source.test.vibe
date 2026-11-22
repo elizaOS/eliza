@@ -175,7 +175,7 @@ it.live.skipIf(skipped !== null)(`Bind qualification to observed APK, package an
         certificate: signing, bytes: parseDigest(listenerDescriptor) },
       listener: { packageName: packageParts(`${name}.sense`), sha256: parseDigest(listenerDigest), signer: listenerSigner,
         buildType: "ReleaseBuild", requested: [], layout: "ZipAligned", speech: "SpeechNotPinned" },
-      wakeNames: wakeWords(["hey"]), overlay: { roles: [], microphoneToggle: false },
+      wakeNames: wakeWords(["hey"]), overlay: { roles: [], microphoneToggle: false, powerAssistant: false, powerMenuChord: false, gesturesUntouched: false },
       policyCertificate: signing, sepolicy: parseDigest(sepolicy), sdkCommit,
     }
     const record = (policy: string) => JSON.stringify({ schemaVersion: 1, qualified: true,

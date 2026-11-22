@@ -196,6 +196,49 @@ pure val rowsValues = Set(List(),
 pure val startsValues = Set(List(), List(1), List(2, 3))
 ```
 
+### A write names its scope: this event, this and following, or all
+
+A change to a repeating event names one scope: this event, this and
+following, or all. A one-off event accepts only this event. This and
+following from the series' first occurrence is the whole series. The
+scope is part of the reviewed change, so it is bound by the same digest
+as the fields, and the written fields are exactly the reviewed ones.
+
+This and following splits the series at the selected occurrence's
+original start. The parent keeps only the occurrences that begin before
+the split and the exclusions before it, and receives a new revision. For
+an edit, a new series starts at the selected occurrence with the
+reviewed fields and the parent's repeat rule. It takes the exclusions
+and the overrides at or after the split, and the exclusions are
+remapped to its new wall time as a moved series remaps them. For a
+deletion, the occurrences and overrides at or after the split go and no
+new series is made. All edits the parent from the selected occurrence's
+reviewed time; deleting all removes the parent and its overrides.
+
+```quint
+type WriteScope = InstanceScope | FollowingScope | WholeSeriesScope
+type SplitStarts = { kept: List[int], moved: List[int] }
+pure def scopeAllowed(scope: WriteScope, recurring: bool): bool = scope == InstanceScope or recurring
+pure def effectiveScope(scope: WriteScope, firstOccurrence: bool): WriteScope =
+  if (scope == FollowingScope and firstOccurrence) WholeSeriesScope else scope
+pure def keptBeforeSplit(occurrenceStart: int, splitAt: int): bool = occurrenceStart < splitAt
+pure def splitStarts(starts: List[int], splitAt: int): SplitStarts =
+  { kept: starts.select(start => keptBeforeSplit(start, splitAt)), moved: starts.select(start => not(keptBeforeSplit(start, splitAt))) }
+pure def lawOneOffTakesOnlyThisEvent(scope: WriteScope): bool =
+  scopeAllowed(scope, false) implies scope == InstanceScope
+pure def lawFollowingFromFirstIsWholeSeries(scope: WriteScope): bool =
+  scope == FollowingScope implies effectiveScope(scope, true) == WholeSeriesScope
+pure def lawInstanceStaysInstance(firstOccurrence: bool): bool =
+  effectiveScope(InstanceScope, firstOccurrence) == InstanceScope
+pure def lawSplitKeepsEveryStartOnce(starts: List[int], splitAt: int): bool =
+  val halves = splitStarts(starts, splitAt)
+  halves.kept.length() + halves.moved.length() == starts.length() and
+    halves.kept.foldl(true, (ok, start) => ok and start < splitAt) and
+    halves.moved.foldl(true, (ok, start) => ok and start >= splitAt)
+pure val splitAtValues = Set(0, 2, 3)
+pure val occurrenceStartValues = Set(1, 2, 3)
+```
+
 ### A pending deletion guards the same row until transaction settlement
 
 After a confirmed review, Calendar stages a cloned row, source

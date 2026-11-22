@@ -1,6 +1,18 @@
-// spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/update/operator.md, "One device has one operator: every journal change and device write happens under the device's install lock"
+// spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/update/operator.md, "One device has one operator: every journal change and device write happens under the device's install lock"; spec/os/image/harness.md, "Story: Run instrumentation on a device I hold alone"; spec/os/image/harness.md, "Story: Run a test in a fresh Android user that is removed afterwards"
 import { ChildProcess } from "effect/process"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import {
+  interruptionProven,
+  leaseHeld,
+  leaseStatusOf,
+  runnersAdmitted,
+  userCleanup,
+  userRunAdmitted,
+  type InterruptionReading,
+  type LeaseReading,
+  type LeaseStatus,
+} from "../../gen/os__image__harness.effect.vibe"
+import { instrumentationDeclarations } from "./apk.vibe"
 
 module node {
   import net from "node:net"
@@ -281,15 +293,27 @@ export function deviceLeasePath(deviceKey: string, stateDir: string = defaultLea
   return `${stateDir}/${deviceLeaseKey(deviceKey)}.json`
 }
 
-export function leaseActive(lease: Lease, now: number): boolean {
-  const acquired = Date.parse(lease.acquiredAt)
-  return lease.writeMarked === true || (Number.isFinite(acquired) && lease.ttlMs > 0 && now - acquired <= lease.ttlMs && processAlive(lease.pid))
-}
-
 type Snapshot =
   | { readonly kind: "missing" }
   | { readonly kind: "parsed"; readonly lease: Lease; readonly identity: string; readonly mtime: number }
   | { readonly kind: "unparsable"; readonly identity: string; readonly mtime: number }
+
+function leaseReading(found: Snapshot, now: number): LeaseReading {
+  const lease = found.kind === "parsed" ? found.lease : undefined
+  const acquired = lease === undefined ? Number.NaN : Date.parse(lease.acquiredAt)
+  return {
+    present: found.kind !== "missing",
+    parsed: lease !== undefined,
+    writeMarked: lease?.writeMarked === true,
+    withinTime: lease !== undefined && Number.isFinite(acquired) && lease.ttlMs > 0 && now - acquired <= lease.ttlMs,
+    holderAlive: lease !== undefined && processAlive(lease.pid),
+  }
+}
+
+/** Whether a parsed lease still holds its device at `now`. */
+export function leaseActive(lease: Lease, now: number): boolean {
+  return leaseHeld(leaseReading({ kind: "parsed", lease, identity: "", mtime: 0 }, now))
+}
 
 const decodeLease = Schema.decodeUnknownOption(Schema.fromJsonString(Lease))
 
@@ -377,7 +401,11 @@ effect function claim(deviceKey: string, leasePath: string, options: LeaseOption
       hostname: hostName(),
     }
     const temporary = `${leasePath}.${processId()}.${uniqueToken()}.tmp`
-    try files.writeFileString(temporary, `${JSON.stringify(lease, null, 2)}\n`, { flag: "wx", mode: 0o600 })
+    try scoped(effect {
+      const pending = try files.open(temporary, { flag: "wx", mode: 0o600 })
+      try pending.writeAll(new TextEncoder().encode(`${JSON.stringify(lease, null, 2)}\n`))
+      try pending.sync
+    })
     const link = effect {
       try files.link(temporary, leasePath)
       return true
@@ -466,6 +494,14 @@ export effect function acquireDeviceLease(deviceKey: string, options: LeaseOptio
   return try acquireRelease(claim(deviceKey, leasePath, options), (held) => releaseLease(held).pipe(Effect.provideService(FileSystem.FileSystem, files), Effect.orDie))
 }
 
+/** A device's lease as it reads now: its path, the parsed lease if any, and the first reason it does not hold the device. */
+export effect function readDeviceLease(deviceKey: string, options: { readonly stateDir?: string } = {}) {
+  const path = deviceLeasePath(deviceKey, options.stateDir ?? defaultLeaseDirectory())
+  const found = try snapshot(path)
+  const status: LeaseStatus = leaseStatusOf(leaseReading(found, try Clock.currentTimeMillis))
+  return { path, status, lease: found.kind === "parsed" ? found.lease : undefined }
+}
+
 export effect function requireCallerLease(held: DeviceLease, deviceKey: string, stateDir: string = defaultLeaseDirectory()) {
   const now = try Clock.currentTimeMillis
   const current = try snapshot(deviceLeasePath(deviceKey, stateDir))
@@ -540,6 +576,34 @@ export effect function requireInstrumentationSuccess(output: string, requestedCl
   try instrumentationCheck(!/^INSTRUMENTATION_STATUS(?:_CODE)?:/m.test(after), "Test statuses after final result")
   const result: InstrumentationResult = { passed: true, totalTests: count, started: seen.size, completed: cases.length, classes: [...covered].sort(), cases }
   return result
+}
+
+/** The one started test of a run the caller interrupted, refused unless that test was ended by a process crash with nothing passing. */
+export effect function requireInstrumentationInterruption(output: string, testClass: string, testMethod: string) {
+  try instrumentationCheck(output.length <= OUTPUT_BOUND, "Instrumentation output exceeds bound")
+  try instrumentationCheck(PACKAGE.test(testClass) && /^[A-Za-z][A-Za-z0-9_]*$/.test(testMethod), "One test class and method required")
+  const text = output.replace(/\r\n?/g, "\n")
+  const statuses = [...text.matchAll(/^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$/gm)]
+  const start = statuses[0]
+  const head = start === undefined ? text : text.slice(0, start.index ?? 0)
+  const tail = start === undefined ? "" : text.slice((start.index ?? 0) + start[0].length)
+  const fields = [...head.matchAll(/^INSTRUMENTATION_STATUS: ([A-Za-z][A-Za-z0-9_]*)=(.*)$/gm)]
+  const named = new Map(fields.map((field) => [field[1] ?? "", field[2] ?? ""]))
+  const terminals = [...tail.matchAll(/^INSTRUMENTATION_CODE: (-?\d+)\s*$/gm)]
+  const end = terminals[0]
+  const reading: InterruptionReading = {
+    marked: /FAILURES|INSTRUMENTATION_FAILED|AssumptionViolated|^OK \(/m.test(text),
+    statusCodes: statuses.map((status) => Number(status[1])),
+    identityMatches: named.size === fields.length && named.get("class") === testClass && named.get("test") === testMethod,
+    advertised: named.get("numtests") === "1" ? 1 : 0,
+    terminalBeforeStart: /^INSTRUMENTATION_(?:RESULT|CODE):/m.test(head),
+    statusAfterStart: /^INSTRUMENTATION_STATUS:/m.test(tail),
+    terminalCodes: terminals.map((terminal) => Number(terminal[1])),
+    crashResults: [...tail.matchAll(/^INSTRUMENTATION_RESULT: shortMsg=Process crashed\.\s*$/gm)].length,
+    linesAfterEnd: end !== undefined && /^INSTRUMENTATION_/m.test(tail.slice((end.index ?? 0) + end[0].length)),
+  }
+  try instrumentationCheck(interruptionProven(reading), "The run was not one started test ended by a process crash")
+  return { interrupted: true, started: 1, completed: 0, case: `${testClass}#${testMethod}` } as const
 }
 
 effect function fixtureCheck(holds: boolean, reason: string) {
@@ -657,11 +721,122 @@ export effect function rebootAndroidFixture(
   return { before, after, androidUser: fixture.androidUser }
 }
 
+export interface IsolatedUserReport {
+  user: number | null
+  ownerRestored: boolean
+  cleanupDeferred: boolean
+  removed: boolean
+  error?: string
+  cleanupError?: string
+}
+
+export interface ScenarioCleanup {
+  readonly cleaned?: boolean
+  readonly cleanupDeferred?: boolean
+}
+
+export interface IsolatedUserOptions<A extends ScenarioCleanup, E, R> {
+  readonly run: AdbRun
+  readonly serial: string
+  readonly deviceLease: DeviceLease
+  readonly stateDir?: string
+  readonly expectedAvdName: string
+  readonly homePackage: string
+  readonly name: string
+  readonly scenario: (user: number) => A!E!R
+  readonly record?: (report: IsolatedUserReport) => unknown!unknown
+  readonly waitMs?: number
+  readonly homeWaitMs?: number
+  readonly pollMs?: number
+}
+
+export error IsolatedUserKept { user: number | null; reason: string }
+
+/** Runs a scenario in a new secondary user of the caller's leased emulator, restores the owner, and removes the user only when the scenario proved its packages clean. */
+export effect function withIsolatedAndroidUser<A extends ScenarioCleanup, E, R>(options: IsolatedUserOptions<A, E, R>) {
+  const waitMs = options.waitMs ?? 15000
+  const homeWaitMs = options.homeWaitMs ?? 60000
+  const pollMs = options.pollMs ?? 150
+  try fixtureCheck([waitMs, homeWaitMs, pollMs].every((value) => Number.isSafeInteger(value) && value > 0), "Positive deadlines required")
+  try fixtureCheck(/^[A-Za-z0-9_.-]+$/.test(options.expectedAvdName) && /^[A-Za-z0-9_.-]+$/.test(options.name), "Expected AVD and test user names required")
+  const homePackage = try androidPackage(options.homePackage)
+  const call = effect (...args: readonly string[]) => (try options.run(...args)).trim()
+  const emulatorSerial = /^emulator-\d+$/.test(options.serial)
+  const callerLeaseHeld = emulatorSerial && Exit.isSuccess(try exit(requireCallerLease(options.deviceLease, `android:${options.serial}`, options.stateDir)))
+  const avdMatches = callerLeaseHeld && (try call("emu", "avd", "name")).split(/\r?\n/)[0] === options.expectedAvdName
+  const ownerForeground = avdMatches && (try call("shell", "am", "get-current-user")) === "0"
+  try fixtureCheck(userRunAdmitted({ emulatorSerial, callerLeaseHeld, avdMatches, ownerForeground }), "A test user needs the caller's lease on the named emulator with the owner in the foreground")
+  const waitUntil = effect (holds: () => boolean!(AdbFailure | FixtureRefused | InvalidDeviceInput), reason: string, limitMs: number) => {
+    const deadline = (try Clock.currentTimeMillis) + limitMs
+    while (true) {
+      if (try holds()) return
+      const now = try Clock.currentTimeMillis
+      if (now >= deadline) throw new FixtureRefused({ reason })
+      try sleep(Math.min(pollMs, deadline - now))
+    }
+  }
+  const report: IsolatedUserReport = { user: null, ownerRestored: false, cleanupDeferred: true, removed: false }
+  const record = effect () => {
+    if (options.record) try options.record({ ...report })
+  }
+  let entered = false
+  let finished: A | undefined
+  const outcome = try exit(effect {
+    const created = try call("shell", "pm", "create-user", options.name)
+    const user = Number(/^Success: created user id (\d+)$/m.exec(created)?.[1])
+    try fixtureCheck(Number.isSafeInteger(user) && user > 0, "Android did not create a secondary user")
+    report.user = user
+    try record()
+    const id = String(user)
+    try call("shell", "am", "start-user", "-w", id)
+    const home = (try call("shell", "cmd", "package", "resolve-activity", "--brief", "--user", "0", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME", "-p", homePackage)).split(/\r?\n/).at(-1) ?? ""
+    try fixtureCheck(home.startsWith(`${homePackage}/`) && /^[A-Za-z0-9_.$/]+$/.test(home), "The named Home is unavailable")
+    try fixtureCheck(/Success/.test(try call("shell", "cmd", "package", "set-home-activity", "--user", id, home)), "Home was not set for the test user")
+    try call("shell", "am", "switch-user", id)
+    try waitUntil(effect () => (try call("shell", "am", "get-current-user")) === id, "The test user did not come to the foreground", waitMs)
+    try call("shell", "input", "keyevent", "KEYCODE_WAKEUP")
+    try call("shell", "wm", "dismiss-keyguard")
+    const resumed = new RegExp(`topResumedActivity=.*\\bu${user}\\b.*${homePackage.replaceAll(".", "\\.")}/`)
+    try waitUntil(effect () => resumed.test(try call("shell", "dumpsys", "activity", "activities")), "The test user's Home did not resume", homeWaitMs)
+    entered = true
+    finished = try options.scenario(user)
+    return finished
+  })
+  if (Exit.isFailure(outcome)) report.error = String(Cause.squash(outcome.cause))
+  const cleanup = try exit(effect {
+    try call("shell", "am", "switch-user", "0")
+    try waitUntil(effect () => (try call("shell", "am", "get-current-user")) === "0", "The owner was not restored", waitMs)
+    try waitUntil(effect () => /topResumedActivity=.*\bu0\b/.test(try call("shell", "dumpsys", "activity", "activities")), "The owner's activity did not resume", waitMs)
+    report.ownerRestored = true
+    const decision = userCleanup(true, entered, finished?.cleaned === true, finished?.cleanupDeferred === true)
+    report.cleanupDeferred = decision === "KeepTestUser"
+    if (report.user === null || decision === "KeepTestUser") return
+    const id = String(report.user)
+    try call("shell", "am", "stop-user", "-w", id)
+    try waitUntil(effect () => (try call("shell", "am", "is-user-stopped", id)) === "true", "The test user did not stop", waitMs)
+    try fixtureCheck(/^Success\b/.test(try call("shell", "pm", "remove-user", "--wait", id)), "Android did not remove the test user")
+    const users = try call("shell", "pm", "list", "users")
+    try fixtureCheck(/UserInfo\{0:/.test(users) && !new RegExp(`UserInfo\\{${id}:`).test(users), "The test user remains")
+    report.removed = true
+  })
+  if (Exit.isFailure(cleanup)) {
+    report.cleanupDeferred = true
+    report.cleanupError = String(Cause.squash(cleanup.cause))
+  }
+  const recorded = try exit(record())
+  if (Exit.isFailure(outcome)) return try Effect.failCause(outcome.cause)
+  if (Exit.isFailure(cleanup)) return try Effect.failCause(cleanup.cause)
+  if (Exit.isFailure(recorded)) return try Effect.failCause(recorded.cause)
+  if (report.cleanupDeferred) throw new IsolatedUserKept({ user: report.user, reason: "The scenario did not prove its packages clean; recover the test user explicitly" })
+  return { result: outcome.value, ...report }
+}
+
 export interface IsolatedVariant {
   readonly name: string
   readonly apk: string
   readonly testApk: string
-  readonly upgrade?: { readonly apk: string; readonly testApk: string }
+  readonly additionalRunners?: readonly string[]
+  readonly upgrade?: { readonly apk: string; readonly testApk: string; readonly additionalRunners?: readonly string[] }
 }
 
 export interface CompanionApk {
@@ -693,6 +868,7 @@ export interface IsolatedTestOptions {
   readonly packageName: string
   readonly testPackage?: string
   readonly runner?: string
+  readonly additionalRunners?: readonly string[]
   readonly testClass?: string
   readonly testClasses?: readonly string[]
   readonly testMethod?: string
@@ -760,10 +936,8 @@ effect function declaredPackage(aapt: string, apk: string, timeoutMs: number) {
   return /package: name='([^']+)'/.exec(badging)?.[1]
 }
 
-effect function instrumentationTarget(aapt: string, testApk: string, timeoutMs: number) {
-  const tree = new TextDecoder().decode(try execute(aapt, ["dump", "xmltree", testApk, "AndroidManifest.xml"], timeoutMs))
-  const element = tree.split(/\n(?=\s*E: )/).filter((block) => /^\s*E: instrumentation\b/.test(block))
-  return element.map((block) => /A: android:targetPackage\([^)]*\)="([^"]+)"/.exec(block)?.[1] ?? "")
+effect function instrumentationRunners(aapt: string, testApk: string, timeoutMs: number) {
+  return instrumentationDeclarations(new TextDecoder().decode(try execute(aapt, ["dump", "xmltree", testApk, "AndroidManifest.xml"], timeoutMs)))
 }
 
 effect function admitIsolatedTest(options: IsolatedTestOptions) {
@@ -783,6 +957,13 @@ effect function admitIsolatedTest(options: IsolatedTestOptions) {
   const packageName = try androidPackage(options.packageName)
   const testPackage = try androidPackage(options.testPackage ?? `${packageName}.test`)
   const runner = try androidPackage(options.runner ?? "androidx.test.runner.AndroidJUnitRunner")
+  const reviewedRunners = effect (additional: readonly string[]) => {
+    const names = [runner, ...additional]
+    try refuse(new Set(names).size === names.length, "Duplicate instrumentation runner")
+    for (const name of names) try androidPackage(name)
+    return names
+  }
+  const defaultRunners = try reviewedRunners(options.additionalRunners ?? [])
   try refuse(options.testClass === undefined || options.testClasses === undefined, "Choose testClass or testClasses")
   const classes = options.testClasses === undefined ? (options.testClass === undefined ? [] : [options.testClass]) : [...options.testClasses]
   try refuse(classes.length > 0 && new Set(classes).size === classes.length, "Distinct test classes required")
@@ -824,7 +1005,8 @@ effect function admitIsolatedTest(options: IsolatedTestOptions) {
       try refuse(path.isAbsolute(artifacts.apk) && path.isAbsolute(artifacts.testApk), "Absolute APK paths required")
       try refuse((try declaredPackage(options.aapt, artifacts.apk, commandTimeoutMs)) === packageName, "APK identity differs from declared package")
       try refuse((try declaredPackage(options.aapt, artifacts.testApk, commandTimeoutMs)) === testPackage, "Test APK identity differs from declared package")
-      try refuse((try instrumentationTarget(options.aapt, artifacts.testApk, commandTimeoutMs)).join(",") === packageName, "Instrumentation target mismatch")
+      const reviewed = artifacts.additionalRunners === undefined ? defaultRunners : try reviewedRunners(artifacts.additionalRunners)
+      try refuse(runnersAdmitted(try instrumentationRunners(options.aapt, artifacts.testApk, commandTimeoutMs), reviewed, packageName), "Instrumentation target or runner mismatch")
     }
     const upgrade = variant.upgrade
     const appSha256 = try fileSha256(variant.apk)

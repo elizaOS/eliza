@@ -3309,6 +3309,7 @@ module node {
   import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { createCloudClient } from "../src/client/index.vibe"
   import { openBackupDatabase } from "./support/password-backup.ts"
+  import { registerClients, workerBindings } from "./support/worker.ts"
 
   export async function readMailThroughClient(baseUrl: string, token: string, messageId: string) {
     const client = (beforeTheField: boolean) => createCloudClient({ baseUrl, credential: () => token, fetch: async (input, init) => {
@@ -3358,10 +3359,7 @@ module node {
         } } }
       }
       const env = {
-        AI: { run }, DATABASE_URL: fixture.databaseUrl, CLOUD_IDENTITY_DIGEST: digest, CLOUD_ENVIRONMENT: "staging",
-        PUBLIC_API_ORIGIN: api, WEB_ORIGIN: web, CHAT_MODEL: "unused", EMBEDDING_MODEL: "unused",
-        CHAT_INPUT_MICROS_PER_1K: "1", CHAT_OUTPUT_MICROS_PER_1K: "1", EMBEDDING_INPUT_MICROS_PER_1K: "1", MAX_COMPLETION_TOKENS: "1",
-        STRIPE_SECRET_KEY: "unused", STRIPE_WEBHOOK_SECRET: "unused", STRIPE_PRICE_ID: "unused", STRIPE_PRODUCT_ID: "unused", STRIPE_PLAN: "plus_monthly",
+        ...workerBindings({ api, web, digest }), AI: { run }, DATABASE_URL: fixture.databaseUrl,
       } satisfies CloudBindings
       const worker = cloudWorker()
       const body: ClefDecisionRequest = { kind: "choice", goal: "Find opening hours", page: "Session https://example.test/?token=private",
@@ -3472,16 +3470,14 @@ module node {
           [user, clientId, createHash("sha256").update(token).digest("hex"), now, now + 86400000])
         return { authorization: "Bearer " + token }
       }
+      const attachmentClient = { clientId, androidPackage: clientId, environment: "staging", displayName: "Attachment", signInReturn: redirectUri,
+        billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AA").join(":")], enabled: true }
+      await registerClients(fixture.db, [attachmentClient])
       const ownDevice = await device(owner.account.id)
       const otherDevice = await device(other.account.id)
       const env = {
-        AI: { run: async () => { throw new Error("Unexpected inference in attachment fixture") } }, DATABASE_URL: fixture.databaseUrl, CLOUD_IDENTITY_DIGEST: digest, CLOUD_ENVIRONMENT: "staging",
-        PUBLIC_API_ORIGIN: api, WEB_ORIGIN: web, CHAT_MODEL: "unused", EMBEDDING_MODEL: "unused",
-        CHAT_INPUT_MICROS_PER_1K: "1", CHAT_OUTPUT_MICROS_PER_1K: "1", EMBEDDING_INPUT_MICROS_PER_1K: "1", MAX_COMPLETION_TOKENS: "1",
-        STRIPE_SECRET_KEY: "unused", STRIPE_WEBHOOK_SECRET: "unused", STRIPE_PRICE_ID: "unused", STRIPE_PRODUCT_ID: "unused", STRIPE_PLAN: "plus_monthly",
-        NATIVE_CLIENT_ID: clientId, NATIVE_AUTH_CALLBACK: redirectUri,
-        NATIVE_CLIENT_REGISTRY: JSON.stringify([{ clientId, androidPackage: clientId, environment: "staging", displayName: "Attachment", signInReturn: redirectUri,
-          billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AA").join(":")], enabled: true }]),
+        ...workerBindings({ api, web, digest }), AI: { run: async () => { throw new Error("Unexpected inference in attachment fixture") } }, DATABASE_URL: fixture.databaseUrl,
+        NATIVE_CLIENT_ID: clientId, NATIVE_AUTH_CALLBACK: redirectUri, NATIVE_CLIENT_REGISTRY: JSON.stringify([attachmentClient]),
         GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret", GOOGLE_CONNECT_TOKEN_KEY: key,
       } satisfies CloudBindings
       const worker = cloudWorker(undefined, providerFetch)

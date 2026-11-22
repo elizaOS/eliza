@@ -1,4 +1,4 @@
-// spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"
+// spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/index.md, "Story: Use a cloud speech session"; spec/cloud/index.md, "A speech window bounds the audio and text sent to providers"
 import { Socket } from "effect/socket"
 import {
   acceptsAudio, helloDeadline, isSttFrame, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep, speaking, stageIs, windowLength, windowTtsChars,

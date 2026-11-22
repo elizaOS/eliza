@@ -1,0 +1,135 @@
+// spec/localInference/speechRoute.md, "Story: Hear a reply on the admitted speech route"; spec/localInference/speechRoute.md, "The owner's speech key speaks first, then a usable hosted account, then this device"; spec/localInference/speechRoute.md, "A turn is heard only on the route admitted when it began"; spec/localInference/speechRoute.md, "A network route that fails before audio hands its turn to this device once and holds its key off the network"; spec/localInference/speechRoute.md, "Once audio started, or when the person cancels, the turn ends on its route and holds nothing"; spec/localInference/speechRoute.md, "A hold belongs to the key that failed, lapses at its time, and lifts when the device cannot speak"
+import {
+  Machine as SpeechRoutingMachine, audibleOf, fellBackOf, machine, routeFor, routeOf, speaking,
+  type NetworkKey, type ServiceLimit, type SpeechFailure, type SpeechRoute, type SpeechRouting,
+} from "../gen/localInference__speechRoute.effect.vibe"
+
+export { SpeechRoutingMachine }
+export type { NetworkKey, ServiceLimit, SpeechFailure, SpeechRoute, SpeechRouting }
+
+/** The device's speech route, kept in memory for the life of the process. */
+export const speechRouting = () => machine()
+
+/** Why one attempt on a route produced no speech. */
+export error SpeechAttemptFailed { failure: SpeechFailure; cause: unknown }
+
+/** Audio arrived from a route its turn does not speak on, and must not play. */
+export error MisroutedSpeech { route: SpeechRoute }
+
+/** A turn is already speaking; the next waits for it to end. */
+export error SpeechBusy
+
+/** No route spoke this turn: where it ended, why, and the network failure it fell back from. */
+export error SpeechUnavailable { route: SpeechRoute; failure: SpeechFailure; fellBackFrom: SpeechFailure | undefined }
+
+/** One attempt to speak a turn on a route; it calls `heard` before its first audio plays, and a refusal ends the attempt without playing. */
+export type SpeechAttempt<A, R> = (route: SpeechRoute, heard: () => void!MisroutedSpeech) => A!(SpeechAttemptFailed | MisroutedSpeech)!R
+
+/** A Cloud plan or rate limit as the account reports it. */
+export interface ObservedLimit {
+  readonly kind?: string
+  readonly resetsAt?: number | null
+  readonly retryAfterMs?: number
+  readonly observedAt?: number
+}
+
+const untimedRateLimitMs = 60000
+const connectFailures = new Set(["voice-stt-connect", "voice-tts-connect", "voice-stt-upload", "connect", "connection-lost", "startup-timeout", "unavailable"])
+
+/** The limit a stored Cloud refusal puts on hosted speech: until its reset or stated wait, or until a request clears it. */
+export function serviceLimitOf(limit: ObservedLimit | undefined, nowMs: number): ServiceLimit {
+  if (limit === undefined) return { tag: "NoServiceLimit" }
+  if (typeof limit.resetsAt === "number" && limit.resetsAt > nowMs) return { tag: "LimitedUntil", untilMs: limit.resetsAt }
+  const observedAt = typeof limit.observedAt === "number" ? limit.observedAt : nowMs
+  if (typeof limit.retryAfterMs === "number") return { tag: "LimitedUntil", untilMs: observedAt + limit.retryAfterMs }
+  if (limit.kind === "rate-limited") return { tag: "LimitedUntil", untilMs: observedAt + untimedRateLimitMs }
+  return limit.resetsAt == null ? { tag: "LimitedUntilCleared" } : { tag: "NoServiceLimit" }
+}
+
+/** The route failure a speech request's error stands for by its code alone, or undefined when the person cancelled it. */
+export function speechFailureOf(error: unknown): SpeechFailure | undefined {
+  if (typeof error !== "object" || error === null) return { tag: "RequestRefused" }
+  const row = error as { readonly name?: unknown; readonly code?: unknown; readonly data?: unknown }
+  if (row.name === "AbortError") return undefined
+  const code = typeof row.code === "string" ? row.code : ""
+  if (code === "speech-cleanup-unconfirmed") return { tag: "CleanupUnconfirmed" }
+  if (code === "no-speech") return { tag: "NoSpeech" }
+  const http = /^(?:voice|cloud)-http-([1-5][0-9]{2})$/.exec(code)
+  if (http !== null) {
+    const status = Number(http[1])
+    if (status === 429) {
+      const wait = typeof row.data === "object" && row.data !== null ? (row.data as { readonly retryAfterSeconds?: unknown }).retryAfterSeconds : undefined
+      return { tag: "RateLimited", retryAfterMs: typeof wait === "number" && Number.isFinite(wait) && wait > 0 ? Math.ceil(wait) * 1000 : 0 }
+    }
+    if (status >= 401 && status <= 404) return { tag: "AccountRefused" }
+    if (status === 408 || status >= 500) return { tag: "ServerFailed" }
+    return { tag: "RequestRefused" }
+  }
+  if (code === "sign-in") return { tag: "SignInNeeded" }
+  if (connectFailures.has(code) || error instanceof TypeError) return { tag: "Offline" }
+  return { tag: "RequestRefused" }
+}
+
+/** Records the account or key network speech now runs under. */
+export effect function speechKeyChanged(key: NetworkKey) {
+  const routing = try SpeechRoutingMachine
+  try Effect.ignore(routing.send({ type: "keyChanged", key }))
+}
+
+/** Records the hosted plan or rate limit now in force. */
+export effect function speechLimitChanged(limit: ServiceLimit) {
+  const routing = try SpeechRoutingMachine
+  try Effect.ignore(routing.send({ type: "limitChanged", limit }))
+}
+
+/** Lifts a network hold because this device turned out to be unable to speak. */
+export effect function deviceSpeechUnavailable() {
+  const routing = try SpeechRoutingMachine
+  try Effect.ignore(routing.send({ type: "holdLifted" }))
+}
+
+/** The route the next turn would be admitted on now. */
+export effect function nextSpeechRoute() {
+  const state = try (try SpeechRoutingMachine).get()
+  return routeFor(state.key, state.limit, state.hold, Math.max(state.clock, try Clock.currentTimeMillis))
+}
+
+/** Speaks one turn on its admitted route, on this device when a network route fails before audio, and settles the turn once. */
+export effect function speakOnRoute<A, R>(attempt: SpeechAttempt<A, R>) {
+  const routing = try SpeechRoutingMachine
+  const began = try (routing.send({ type: "beginTurn", nowMs: try Clock.currentTimeMillis }) catch effect () => { throw new SpeechBusy() })
+
+  effect function heardOn(route: SpeechRoute) {
+    const state = try routing.get()
+    if (speaking(state.turn) && audibleOf(state.turn) && routeOf(state.turn) === route) return
+    try (routing.send({ type: "audioStarted", route }) catch effect () => { throw new MisroutedSpeech({ route }) })
+  }
+
+  effect function ended(route: SpeechRoute, failure: SpeechFailure, fellBackFrom: SpeechFailure | undefined): never!SpeechUnavailable {
+    try Effect.ignore(routing.send({ type: "speechFailed" }))
+    throw new SpeechUnavailable({ route, failure, fellBackFrom })
+  }
+
+  effect function onRoute(route: SpeechRoute, fellBackFrom: SpeechFailure | undefined): A!SpeechUnavailable!R {
+    const value = try (attempt(route, () => heardOn(route)) catch effect (failed) => {
+      const failure: SpeechFailure = failed._tag === "MisroutedSpeech" ? { tag: "RequestRefused" } : failed.failure
+      const state = try routing.get()
+      if (route === "DeviceRoute" || audibleOf(state.turn)) return try ended(route, failure, fellBackFrom)
+      const next = try orDie(routing.send({ type: "networkFailed", failure, nowMs: try Clock.currentTimeMillis }))
+      if (!fellBackOf(next.turn)) throw new SpeechUnavailable({ route, failure, fellBackFrom })
+      return try onRoute("DeviceRoute", failure)
+    })
+    const state = try routing.get()
+    if (!speaking(state.turn)) return value
+    if (audibleOf(state.turn)) {
+      try orDie(routing.send({ type: "speechFinished" }))
+      return value
+    }
+    const silent: SpeechFailure = { tag: "NoSpeech" }
+    if (route === "DeviceRoute") return try ended(route, silent, fellBackFrom)
+    try orDie(routing.send({ type: "networkFailed", failure: silent, nowMs: try Clock.currentTimeMillis }))
+    throw new SpeechUnavailable({ route, failure: silent, fellBackFrom })
+  }
+
+  return try onInterrupt(onRoute(routeOf(began.turn), undefined), () => Effect.ignore(routing.send({ type: "speechCancelled" })))
+}

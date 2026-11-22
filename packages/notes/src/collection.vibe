@@ -1,0 +1,438 @@
+// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
+import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
+import { creationReturnsExisting, deleteByNameAllowed, literalEditAdmitted, noteRecordAdmitted, revisionAdmits } from "../gen/notes__records.effect.vibe"
+import { authoredNoteText, editAuthoredNoteFormat, type AuthoredNoteEdit } from "./format.vibe"
+import { lookupMatches, noteContentKey, titleAppearsAsNamedPhrase, type NoteSelector } from "./lookup.vibe"
+import { noteLimits, recordingIdPattern, type CreateRequest, type ImportReceipt, type UpdateRequest } from "./records.schema.vibe"
+import type { NoteFormat, NotesSnapshot, NotesTrashErase, NotesTrashRecordingCleanup, StickyColor, StickyNote, TrashedNote } from "./types.vibe"
+
+/** The stored collection: saved notes, Trash, client creation IDs, pending recording cleanup and one revision. */
+export interface NotesDocument {
+  schemaVersion: 1
+  revision: number
+  notes: StickyNote[]
+  trash: TrashedNote[]
+  creations: Record<string, string>
+  recordingCleanup: NotesTrashRecordingCleanup[]
+  imported?: ImportReceipt
+}
+
+/** The collection before its first commit. */
+export const emptyNotesDocument: NotesDocument = { schemaVersion: 1, revision: 0, notes: [], trash: [], creations: {}, recordingCleanup: [] }
+
+/** Why a Notes request changed nothing. */
+export type NotesRefusalCode =
+  | "NOTES_VALIDATION_FAILED" | "NOTES_NOT_FOUND" | "NOTES_AMBIGUOUS_NOTE" | "NOTES_DELETE_NAME_MISMATCH"
+  | "NOTES_EDIT_CONFLICT" | "NOTES_EDIT_REVISION_REQUIRED" | "NOTES_EDIT_TEXT_NOT_FOUND" | "NOTES_EDIT_TEXT_AMBIGUOUS"
+  | "NOTES_RICH_EDIT_REQUIRED" | "NOTES_TRASH_EXPIRED" | "NOTES_TRASH_RETENTION_DISABLED" | "NOTES_TRASH_RECORDING_UNAVAILABLE"
+  | "NOTES_FOLDER_UNKNOWN" | "NOTES_DUPLICATE_ID" | "CALENDAR_NOTE_SOURCE_CONFLICT"
+
+/** A Notes request refused before anything was written. */
+export error NotesRefused { code: NotesRefusalCode; message: string; candidateIds?: readonly string[] }
+
+/** What a request found and, when it changes the collection, the document it leads to before its revision advances. */
+export interface Change<A> {
+  readonly next: NotesDocument | undefined
+  readonly value: A
+  readonly mutation: string
+}
+
+/** A note named by its exact ID, or by an exact title or contained text. */
+export type NoteTarget = { readonly id: string } | { readonly selector: NoteSelector; readonly value: string }
+
+/** The instant a request happens at, as milliseconds and as the stored timestamp. */
+export interface Instant {
+  readonly ms: number
+  readonly iso: string
+}
+
+/** The note list filter of a read: text, exact ID, newest by a timestamp, and a date window. */
+export interface NotesQuery {
+  readonly content?: string
+  readonly noteId?: string
+  readonly latestBy?: "createdAt" | "updatedAt"
+  readonly dateRange?: { readonly field: "createdAt" | "updatedAt"; readonly start?: string; readonly end?: string }
+}
+
+const refused = (code: NotesRefusalCode, message: string, candidateIds?: readonly string[]) =>
+  new NotesRefused({ code, message, ...(candidateIds === undefined ? {} : { candidateIds }) })
+
+/** The collection as its readers see it. */
+export function snapshotOf(document: NotesDocument): NotesSnapshot {
+  return { notes: document.notes, revision: document.revision, trash: document.trash }
+}
+
+effect function requireRevision(document: NotesDocument, needsRevision: boolean, expected: number | undefined): void!NotesRefused {
+  if (revisionAdmits(needsRevision, expected !== undefined, expected ?? -1, document.revision)) return
+  if (expected === undefined) throw refused("NOTES_EDIT_REVISION_REQUIRED", "This edit needs the notesRevision of the complete read it was prepared from.")
+  throw refused("NOTES_EDIT_CONFLICT", "The notes changed since this edit was prepared. Read the note again and reconcile the requested edit; nothing changed.")
+}
+
+function wellFormedPrefix(text: string, units: number): string {
+  const cut = text.slice(0, units)
+  const last = cut.charCodeAt(cut.length - 1)
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
+}
+
+effect function contentParts(content: string, allowBlank: boolean): { title: string; body: string }!NotesRefused {
+  if (content.trim() === "" && !allowBlank) throw refused("NOTES_VALIDATION_FAILED", "content must not be empty.")
+  const first = Math.max(0, content.search(/\S/u))
+  const newline = content.indexOf("\n", first)
+  const title = wellFormedPrefix(newline < 0 ? content : content.slice(0, newline), noteLimits.title)
+  const body = content.slice(title.length)
+  if (body.length > noteLimits.body) throw refused("NOTES_VALIDATION_FAILED", `content must be at most ${noteLimits.body} characters after its first line.`)
+  return { title, body }
+}
+
+effect function checked(note: StickyNote): StickyNote!NotesRefused {
+  const authored = (note.title + note.body).trim() !== "" || authoredNoteText(note.format).trim() !== ""
+  if (!noteRecordAdmitted(note.title.length, note.body.length, authored, true)) {
+    throw refused("NOTES_VALIDATION_FAILED", authored ? "The note exceeds its title or body bound." : "Stored note content must not be empty.")
+  }
+  return note
+}
+
+/** A new note, or the one a known creation or an identical plain creation already made. */
+export effect function createIn(document: NotesDocument, request: CreateRequest, id: string, at: Instant): Change<{ note: StickyNote; replayed: boolean }>!NotesRefused {
+  const authored = authoredNoteText(request.format).trim() !== ""
+  const parts = request.content !== undefined ? try contentParts(request.content, authored)
+    : request.title !== undefined ? { title: request.title, body: request.body === undefined || request.body === "" ? "" : `\n${request.body}` }
+    : authored ? { title: "", body: "" }
+    : try Effect.fail(refused("NOTES_VALIDATION_FAILED", "content is required."))
+  const color: StickyColor = request.color ?? "yellow"
+  const createdId = request.creationId === undefined ? undefined : document.creations[request.creationId]
+  const kept = createdId === undefined ? undefined
+    : document.notes.find((note) => note.id === createdId) ?? document.trash.find((entry) => entry.note.id === createdId)?.note
+  const plain = request.format === undefined
+    ? document.notes.find((note) => note.format === undefined && note.title === parts.title && note.body === parts.body && note.color === color)
+    : undefined
+  const replay = {
+    creationKnown: createdId !== undefined,
+    createdNoteKept: kept !== undefined,
+    forceNew: request.forceNew === true || request.format !== undefined || request.creationId !== undefined,
+    plainMatch: plain !== undefined,
+  }
+  const existing = kept ?? plain
+  if (creationReturnsExisting(replay) && existing !== undefined) return { next: undefined, value: { note: existing, replayed: true }, mutation: "note:created" }
+  if (document.notes.some((note) => note.id === id) || document.trash.some((entry) => entry.note.id === id)) {
+    throw refused("NOTES_DUPLICATE_ID", `Notes generated a duplicate note id "${id}".`)
+  }
+  const note = try checked({
+    id, title: parts.title, body: parts.body, color,
+    ...(request.format === undefined ? {} : { format: structuredClone(request.format) }),
+    createdAt: at.iso, updatedAt: at.iso,
+  })
+  return {
+    next: {
+      ...document,
+      notes: [note, ...document.notes],
+      creations: request.creationId === undefined ? document.creations : { ...document.creations, [request.creationId]: id },
+    },
+    value: { note, replayed: false },
+    mutation: "note:created",
+  }
+}
+
+/** The position of the one note a target names; distinct notes that all match need the owner's choice. */
+export effect function resolveIndex(notes: readonly StickyNote[], target: NoteTarget): number!NotesRefused {
+  if ("id" in target) {
+    const index = notes.findIndex((note) => note.id === target.id)
+    if (index < 0) throw refused("NOTES_NOT_FOUND", `Note "${target.id}" was not found.`)
+    return index
+  }
+  const matches = lookupMatches(notes, target.selector, target.value)
+  const first = matches[0]
+  if (first === undefined) throw refused("NOTES_NOT_FOUND", `No note matches "${target.value.trim()}".`)
+  if (new Set(matches.map(({ note }) => noteContentKey(note))).size > 1) {
+    throw refused("NOTES_AMBIGUOUS_NOTE", `"${target.value.trim()}" matches several notes: ${matches.map(({ note }) => note.title).join(", ")}.`,
+      matches.map(({ note }) => note.id))
+  }
+  return first.index
+}
+
+const listMarker = /^(\s*)(?:(\d+)([.)]\s+)|([-*+•]\s+)?(\[[ xX]\]\s+)?)/
+const lastListDelimiter = /([,;，；、،؛])(\s*)[^,;，；、،؛]*$/
+
+function listItemSuffix(body: string, item: string): string {
+  const newline = body.includes("\r\n") ? "\r\n" : "\n"
+  const atLineStart = body === "" || body.endsWith("\n")
+  const lines = body.split(/\r?\n/).filter((line) => line.trim() !== "")
+  const last = lines.at(-1) ?? ""
+  const marker = listMarker.exec(last)
+  const prefix = marker?.[2] !== undefined ? `${marker[1] ?? ""}${Number(marker[2]) + 1}${marker[3] ?? ""}`
+    : marker?.[4] !== undefined || marker?.[5] !== undefined ? `${marker[1] ?? ""}${marker[4] ?? ""}${marker[5]?.replace(/[xX]/, " ") ?? ""}`
+    : ""
+  const delimiter = prefix === "" && !atLineStart && lines.length === 1 ? lastListDelimiter.exec(last) : null
+  if (delimiter !== null) return `${delimiter[1] ?? ""}${delimiter[2] ?? ""}${item.trim()}`
+  return `${atLineStart && body !== "" ? "" : newline}${prefix}${item.trim()}`
+}
+
+type TextEdit = { readonly action: "append"; readonly field: "body"; readonly text: string }
+  | { readonly action: "replace"; readonly field: "title" | "body"; readonly oldText: string; readonly newText: string }
+
+function editsOf(existing: StickyNote, patch: UpdateRequest): { textEdit?: TextEdit; authoredEdit?: AuthoredNoteEdit } {
+  const item = patch.authoredEdit?.action === "append" ? patch.authoredEdit.text
+    : patch.textEdit?.action === "append" && patch.textEdit.field === "item" ? patch.textEdit.text
+    : undefined
+  const plain = existing.format === undefined || existing.format.kind === "text"
+  if (item !== undefined) {
+    return plain ? { textEdit: { action: "append", field: "body", text: listItemSuffix(existing.body, item) } }
+      : { authoredEdit: { field: "checklist", action: "append", text: item } }
+  }
+  const edit = patch.textEdit
+  const textEdit: TextEdit | undefined = edit === undefined ? undefined
+    : edit.action === "append" ? { action: "append", field: "body", text: edit.text }
+    : { action: "replace", field: edit.field, oldText: edit.oldText, newText: edit.newText }
+  const authored = patch.authoredEdit
+  return {
+    ...(textEdit === undefined ? {} : { textEdit }),
+    ...(authored === undefined || authored.action === "append" ? {} : { authoredEdit: { ...authored } }),
+  }
+}
+
+function withField(note: StickyNote, field: "title" | "body", text: string): StickyNote {
+  return field === "title" ? { ...note, title: text } : { ...note, body: text }
+}
+
+function occurrences(text: string, part: string): number {
+  let count = 0
+  for (let at = text.indexOf(part); at >= 0 && count < 2; at = text.indexOf(part, at + 1)) count++
+  return count
+}
+
+/** The note after one edit, keeping every field the edit does not name. */
+export effect function applyPatch(existing: StickyNote, patch: UpdateRequest, updatedAt: string): StickyNote!NotesRefused {
+  const updated: StickyNote = { ...existing, updatedAt }
+  const { textEdit, authoredEdit } = editsOf(existing, patch)
+  if (authoredEdit !== undefined && textEdit === undefined) {
+    const format = try (editAuthoredNoteFormat(existing.format, authoredEdit) catch effect (error) => {
+      throw refused("NOTES_EDIT_CONFLICT", `Authored note edit conflicts with its current format or text: ${error.reason}`)
+    })
+    return try checked({ ...updated, format })
+  }
+  const rich = existing.format !== undefined && existing.format.kind !== "text"
+  if (rich && (authoredNoteText(existing.format).trim() !== "" || textEdit?.action === "append") && patch.format === undefined
+    && ((patch.content ?? "").trim() !== "" || (patch.body ?? "").trim() !== "" || textEdit?.field === "body")) {
+    throw refused("NOTES_RICH_EDIT_REQUIRED", "Use the note's authoredEdit field and index for rich content; body replacement cannot edit a checklist or transcript.")
+  }
+  if (textEdit !== undefined) {
+    const original = existing[textEdit.field]
+    if (textEdit.action === "append") return try checked(withField(updated, textEdit.field, original + textEdit.text))
+    const count = occurrences(original, textEdit.oldText)
+    if (!literalEditAdmitted(count)) {
+      throw count === 0
+        ? refused("NOTES_EDIT_TEXT_NOT_FOUND", "The exact old text is absent from the current note; read it before choosing another edit. Nothing changed.")
+        : refused("NOTES_EDIT_TEXT_AMBIGUOUS", "The old text matches more than once; include enough surrounding text to identify one occurrence. Nothing changed.")
+    }
+    const at = original.indexOf(textEdit.oldText)
+    return try checked(withField(updated, textEdit.field, original.slice(0, at) + textEdit.newText + original.slice(at + textEdit.oldText.length)))
+  }
+  const format: NoteFormat | undefined = patch.format === undefined ? existing.format : structuredClone(patch.format)
+  const parts = patch.content !== undefined ? try contentParts(patch.content, authoredNoteText(format).trim() !== "")
+    : { title: patch.title ?? existing.title, body: patch.body === undefined ? existing.body : patch.body === "" ? "" : `\n${patch.body}` }
+  return try checked({
+    ...updated, title: parts.title, body: parts.body,
+    ...(format === undefined ? {} : { format }),
+    ...(patch.color === undefined ? {} : { color: patch.color }),
+  })
+}
+
+function needsRevision(patch: UpdateRequest): boolean {
+  return patch.textEdit === undefined || patch.textEdit.action === "append"
+}
+
+function emptyPatch(patch: UpdateRequest): boolean {
+  return Object.values(patch).every((value) => value === undefined)
+}
+
+/** One note edited at the revision its edit was prepared from. */
+export effect function updateIn(document: NotesDocument, target: NoteTarget, patch: UpdateRequest, expectedRevision: number | undefined, at: Instant): Change<StickyNote>!NotesRefused {
+  if (emptyPatch(patch)) throw refused("NOTES_VALIDATION_FAILED", "Supply one edit: textEdit, authoredEdit, content, title, body, format or color.")
+  try requireRevision(document, needsRevision(patch), expectedRevision)
+  const index = try resolveIndex(document.notes, target)
+  const existing = document.notes[index]
+  if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
+  const updated = try applyPatch(existing, patch, at.iso)
+  return { next: { ...document, notes: document.notes.map((note, position) => position === index ? updated : note) }, value: updated, mutation: "note:updated" }
+}
+
+/** One note moved to Trash; a note named by lookup is deleted only when the owner's words name its title. */
+export effect function deleteIn(document: NotesDocument, target: NoteTarget, at: Instant, ownerWords: string | undefined): Change<StickyNote>!NotesRefused {
+  const index = try resolveIndex(document.notes, target)
+  const existing = document.notes[index]
+  if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
+  if (!("id" in target) && ownerWords !== undefined && !deleteByNameAllowed(true, titleAppearsAsNamedPhrase(ownerWords, existing.title))) {
+    throw refused("NOTES_DELETE_NAME_MISMATCH", `The closest note is "${existing.title}" — that isn't what you named, so nothing was deleted. Delete it?`, [existing.id])
+  }
+  return {
+    next: { ...document, notes: document.notes.filter((_, position) => position !== index), trash: [...document.trash, { note: structuredClone(existing), deletedAt: at.iso }] },
+    value: existing,
+    mutation: "note:deleted",
+  }
+}
+
+function trashFacts(entry: TrashedNote, retentionOn: boolean, sharedAudio: boolean, at: Instant, revision: number, reviewRevision: number, reviewDeletion: number): CanonicalTrashEntry {
+  return { retentionOn, trashed: true, sharedAudio, deletedAt: Date.parse(entry.deletedAt), now: at.ms, revision, reviewRevision, reviewDeletion }
+}
+
+/** One Trash entry put back with its original ID and content, at the revision the owner saw. */
+export effect function restoreIn(document: NotesDocument, request: { readonly id: string; readonly expectedRevision: number; readonly deletedAt?: string }, at: Instant, retentionOn: boolean): Change<StickyNote>!NotesRefused {
+  const entry = document.trash.find((row) => row.note.id === request.id)
+  const evidence = {
+    currentOwner: true, canUpdate: true, activeId: document.notes.some((note) => note.id === request.id),
+    matchesDeletion: entry !== undefined && (request.deletedAt === undefined || request.deletedAt === entry.deletedAt),
+    openedAtRevision: true, undoToast: false, readyToRestore: true,
+  }
+  if (!canonicalRestore(evidence, request.expectedRevision, document.revision) || entry === undefined) {
+    if (request.expectedRevision !== document.revision) try requireRevision(document, true, request.expectedRevision)
+    throw refused("NOTES_NOT_FOUND", `Note "${request.id}" is not in Trash.`)
+  }
+  const deletion = Date.parse(entry.deletedAt)
+  if (!canonicalRestoreOpen(trashFacts(entry, retentionOn, false, at, document.revision, request.expectedRevision, deletion))) {
+    throw refused("NOTES_TRASH_EXPIRED", "This note is past the Trash retention period.")
+  }
+  return {
+    next: { ...document, notes: [structuredClone(entry.note), ...document.notes], trash: document.trash.filter((row) => row !== entry) },
+    value: entry.note,
+    mutation: "note:restored",
+  }
+}
+
+/** Every saved note moved to Trash, at the revision the owner confirmed. */
+export effect function clearIn(document: NotesDocument, expectedRevision: number | undefined, at: Instant): Change<number>!NotesRefused {
+  try requireRevision(document, true, expectedRevision)
+  return {
+    next: { ...document, notes: [], trash: [...document.trash, ...document.notes.map((note) => ({ note: structuredClone(note), deletedAt: at.iso }))] },
+    value: document.notes.length,
+    mutation: "notes:cleared",
+  }
+}
+
+/** One note's folder set, or cleared with null, leaving its text unchanged. */
+export effect function moveIn(document: NotesDocument, target: NoteTarget, folderId: string | null, at: Instant): Change<StickyNote>!NotesRefused {
+  const index = try resolveIndex(document.notes, target)
+  const existing = document.notes[index]
+  if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
+  const { folderId: _current, ...data } = existing.format?.data ?? {}
+  const moved: StickyNote = { ...existing, updatedAt: at.iso, format: { kind: existing.format?.kind ?? "text", data: folderId === null ? data : { ...data, folderId } } }
+  return { next: { ...document, notes: document.notes.map((note, position) => position === index ? moved : note) }, value: moved, mutation: "note:moved" }
+}
+
+/** The recording a voice note owns: undefined for none, null when its attachment needs review. */
+export function noteRecordingId(note: StickyNote): string | null | undefined {
+  if (note.format?.kind !== "voice") return undefined
+  const { audio, recordingId } = note.format.data
+  if (audio === undefined) return undefined
+  if (audio === null || typeof audio !== "object" || Array.isArray(audio) || typeof audio.audioId !== "string"
+    || !recordingIdPattern.test(audio.audioId) || !recordingIdPattern.test(note.id) || audio.audioId !== recordingId) return null
+  return audio.audioId
+}
+
+function recordingReferences(note: StickyNote): string[] {
+  if (note.format?.kind !== "voice" || note.format.data.audio === undefined) return []
+  const { audio, recordingId } = note.format.data
+  const audioId = typeof audio === "object" && audio !== null && !Array.isArray(audio) ? audio.audioId : undefined
+  return [...new Set([audioId, recordingId].filter((id): id is string => typeof id === "string" && recordingIdPattern.test(id)))]
+}
+
+/** How many saved or trashed notes still reference each recording. */
+export function recordingReferenceCounts(document: NotesDocument): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>()
+  for (const note of [...document.notes, ...document.trash.map((entry) => entry.note)]) {
+    for (const id of recordingReferences(note)) counts.set(id, (counts.get(id) ?? 0) + 1)
+  }
+  return counts
+}
+
+/** Trash entries erased by the owner's reviewed erase, or by the three-day sweep when there is no review; each erased recording leaves a cleanup pending. */
+export effect function eraseIn(document: NotesDocument, review: NotesTrashErase | undefined, at: Instant, retentionOn: boolean, operationId: () => string): Change<{ erased: number; recordingCleanup: NotesTrashRecordingCleanup[] }>!NotesRefused {
+  if (review !== undefined) {
+    if (!retentionOn) throw refused("NOTES_TRASH_RETENTION_DISABLED", "Permanent Notes Trash erase is disabled for this host.")
+    try requireRevision(document, true, review.expectedRevision)
+    if (review.scope === "entry" && !document.trash.some((entry) => entry.note.id === review.id && entry.deletedAt === review.deletedAt)) {
+      throw refused("NOTES_NOT_FOUND", `Note "${review.id}" is not in Trash as reviewed.`)
+    }
+  }
+  const references = recordingReferenceCounts(document)
+  const pending = [...document.recordingCleanup]
+  const added: NotesTrashRecordingCleanup[] = []
+  const kept: TrashedNote[] = []
+  const erasedIds = new Set<string>()
+  for (const entry of document.trash) {
+    const selected = review === undefined || review.scope === "all" || entry.note.id === review.id
+    if (!selected) {
+      kept.push(entry)
+      continue
+    }
+    const audioId = noteRecordingId(entry.note)
+    const shared = audioId === null || (audioId !== undefined && (references.get(audioId) !== 1 || pending.length >= noteLimits.cleanup))
+    const deletion = review?.scope === "entry" ? Date.parse(review.deletedAt) : Date.parse(entry.deletedAt)
+    const facts = trashFacts(entry, retentionOn, shared, at, document.revision, review?.expectedRevision ?? document.revision, deletion)
+    if (review === undefined ? !canonicalSweepAllowed(facts) : !canonicalEraseAllowed(facts, true)) {
+      if (review !== undefined) throw refused("NOTES_TRASH_RECORDING_UNAVAILABLE", "This recording needs review before erasing the note.")
+      kept.push(entry)
+      continue
+    }
+    erasedIds.add(entry.note.id)
+    if (typeof audioId === "string") {
+      const cleanup = { operationId: operationId(), noteId: entry.note.id, audioId, deletedAt: entry.deletedAt }
+      pending.push(cleanup)
+      added.push(cleanup)
+    }
+  }
+  if (erasedIds.size === 0) return { next: undefined, value: { erased: 0, recordingCleanup: [] }, mutation: review === undefined ? "trash:expired" : "trash:erased" }
+  return {
+    next: {
+      ...document,
+      trash: kept,
+      recordingCleanup: pending,
+      creations: Object.fromEntries(Object.entries(document.creations).filter(([, id]) => !erasedIds.has(id))),
+    },
+    value: { erased: erasedIds.size, recordingCleanup: added },
+    mutation: review === undefined ? "trash:expired" : "trash:erased",
+  }
+}
+
+/** Whether a receipt is exactly one the collection holds as pending. */
+export function sameCleanup(a: NotesTrashRecordingCleanup, b: NotesTrashRecordingCleanup): boolean {
+  return a.operationId === b.operationId && a.noteId === b.noteId && a.audioId === b.audioId && a.deletedAt === b.deletedAt
+}
+
+/** The exact pending receipt retired; false when it was not pending. */
+export effect function acknowledgeIn(document: NotesDocument, receipt: NotesTrashRecordingCleanup): Change<boolean>!! {
+  if (!document.recordingCleanup.some((entry) => sameCleanup(entry, receipt))) return { next: undefined, value: false, mutation: "trash:recording-cleanup" }
+  return {
+    next: { ...document, recordingCleanup: document.recordingCleanup.filter((entry) => !sameCleanup(entry, receipt)) },
+    value: true,
+    mutation: "trash:recording-cleanup",
+  }
+}
+
+const offsetInstant = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/
+
+effect function bound(value: string | undefined): number | undefined!NotesRefused {
+  if (value === undefined) return undefined
+  const ms = Date.parse(value)
+  if (!offsetInstant.test(value) || !Number.isFinite(ms)) throw refused("NOTES_VALIDATION_FAILED", `dateRange bound "${value}" must be an instant with an offset.`)
+  return ms
+}
+
+/** The saved notes a read asks for: all ties of the newest, inside a start-inclusive, end-exclusive window. */
+export effect function listIn(notes: readonly StickyNote[], query: NotesQuery): StickyNote[]!NotesRefused {
+  const range = query.dateRange
+  const start = try bound(range?.start)
+  const end = try bound(range?.end)
+  if (start !== undefined && end !== undefined && start >= end) throw refused("NOTES_VALIDATION_FAILED", "dateRange start must be before its end.")
+  const content = query.content
+  const named = content === undefined || content.trim() === "" ? notes : lookupMatches(notes, "query", content).map(({ note }) => note)
+  const windowed = named.filter((note) => {
+    if (query.noteId !== undefined && note.id !== query.noteId) return false
+    if (range === undefined) return true
+    const at = Date.parse(note[range.field])
+    return (start === undefined || at >= start) && (end === undefined || at < end)
+  })
+  const latestBy = query.latestBy
+  if (latestBy === undefined || windowed.length === 0) return windowed
+  const newest = Math.max(...windowed.map((note) => Date.parse(note[latestBy])))
+  return windowed.filter((note) => Date.parse(note[latestBy]) === newest)
+}

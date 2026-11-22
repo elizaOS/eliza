@@ -67,6 +67,12 @@
       "import": "./dist/src/app-update/index.js",
       "default": "./dist/src/app-update/index.js"
     },
+    "./inference": {
+      "eliza-source": "./src/inference/index.vibe",
+      "types": "./dist/src/inference/index.d.ts",
+      "import": "./dist/src/inference/index.js",
+      "default": "./dist/src/inference/index.js"
+    },
     "./bridges/*": {
       "eliza-source": "./src/bridges/*.vibe",
       "types": "./dist/src/bridges/*.d.ts",

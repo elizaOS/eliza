@@ -1,0 +1,287 @@
+// spec/calendar/linkedReconcile.md, "Story: Bring the two versions together without overwriting an independent edit"; spec/calendar/linkedReconcile.md, "The current checkpoint distinguishes clean, changed, missing and conflicting readings"; spec/calendar/linkedReconcile.md, "A push retains its operation and uses the exact provider preconditions"; spec/calendar/linkedReconcile.md, "Story: Recover a held dispatch from evidence and resolve an explicit disagreement"; spec/calendar/linkedReconcile.md, "Recovery observes both stores before releasing a held dispatch"; spec/calendar/linkedReconcile.md, "An explicit conflict choice rereads each side and uses the observed revision"
+import {
+  chooseLinkPush, convergedLink, linkConflictResolution, linkPushNeedsStage, pushLinkCheckpoint, reconcileLinkedCalendar,
+  recoverLinkedDispatch, retainedPair, type CalendarLinkOperation, type CalendarLinkPhase, type LinkWriteEvidence,
+} from "../../gen/calendar__linkedReconcile.effect.vibe"
+import {
+  CalendarSyncRefused, LocalRefused, ProviderRefused, ProviderUncertain, digestText, linkedCalendarSemanticDigest, matchesCheckpoint,
+  type CalendarSyncAborted, type LinkedCalendarCheckpointStore, type LinkedCalendarEventRecord, type LinkedCalendarLocalPort,
+  type LinkedCalendarLocalSnapshot, type LinkedCalendarOperation, type LinkedCalendarPatch, type LinkedCalendarProviderPort,
+  type LinkedCalendarProviderSnapshot, type LinkedCalendarState,
+} from "./linked.vibe"
+
+/** What one reconciliation of a link did. */
+export type LinkedCalendarReconcileOutcome = "clean" | "dirty" | "pushed" | "pulled" | "conflicted" | "quarantined" | "paused"
+/** What recovery of a held dispatch proved. */
+export type LinkedCalendarRecoveryOutcome = "landed" | "not_landed" | "unresolved"
+/** Which version the owner kept for a conflicted link. */
+export type LinkedCalendarConflictChoice = "keep_eliza" | "keep_google"
+/** The dispatch time and settle window a recovery read waits out. */
+export interface LinkedCalendarRelease {
+  readonly dispatchedAt: number | null
+  readonly settleMs: number
+  readonly now: number
+}
+
+type Failure = CalendarSyncRefused | CalendarSyncAborted
+type WriteResult = { readonly evidence: LinkWriteEvidence; readonly written?: LinkedCalendarProviderSnapshot; readonly code?: string; readonly message?: string }
+
+const phases: Record<LinkedCalendarState, CalendarLinkPhase> = {
+  clean: "LinkClean", dirty: "LinkDirty", paused: "LinkPaused", local_only: "LinkLocalOnly",
+  conflicted: "LinkConflicted", quarantined: "LinkQuarantined",
+}
+const states: Record<CalendarLinkPhase, LinkedCalendarState> = {
+  LinkClean: "clean", LinkDirty: "dirty", LinkPaused: "paused", LinkLocalOnly: "local_only",
+  LinkConflicted: "conflicted", LinkQuarantined: "quarantined",
+}
+const toOperation: Record<CalendarLinkOperation, LinkedCalendarOperation | null> = {
+  LinkNoOperation: null, LinkCreate: "create", LinkUpdate: "update", LinkDelete: "delete",
+}
+const pending = (operation: LinkedCalendarOperation | null): CalendarLinkOperation =>
+  operation === "create" ? "LinkCreate" : operation === "update" ? "LinkUpdate" : operation === "delete" ? "LinkDelete" : "LinkNoOperation"
+
+const reason = (error: unknown) => error instanceof Error ? error.message : String(error)
+const providerDeletedMessage = "Google deleted the linked event; the Eliza event was removed and the retained link was paused."
+const cleared = { lastErrorCode: null, lastErrorMessage: null } as const
+
+/** Reconciles, recovers and resolves linked events against a checkpoint store, the resident calendar and a provider. */
+export class LinkedCalendarReconciler {
+  readonly #store: LinkedCalendarCheckpointStore
+  readonly #local: LinkedCalendarLocalPort
+  readonly #provider: LinkedCalendarProviderPort
+
+  constructor(store: LinkedCalendarCheckpointStore, local: LinkedCalendarLocalPort, provider: LinkedCalendarProviderPort) {
+    this.#store = store
+    this.#local = local
+    this.#provider = provider
+  }
+
+  effect #read(eventId: string): (LinkedCalendarLocalSnapshot | null)!CalendarSyncRefused {
+    return try tryPromise({ try: () => this.#local.get(eventId), catch: (error) => new CalendarSyncRefused({ message: reason(error) }) })
+  }
+
+  effect #localWrite<A>(write: () => Promise<A>): A!LocalRefused {
+    return try tryPromise({ try: write, catch: (error) => new LocalRefused({ message: reason(error) }) })
+  }
+
+  effect #quarantine(record: LinkedCalendarEventRecord, code: string, message: string): "quarantined"!Failure {
+    try this.#store.save(record, { state: "quarantined", lastErrorCode: code, lastErrorMessage: message })
+    return "quarantined"
+  }
+
+  effect #providerRead(record: LinkedCalendarEventRecord): (LinkedCalendarProviderSnapshot | null)!(Failure | ProviderUncertain) {
+    return try this.#provider.get(record)
+  }
+
+  /** Reconciles one link: holds, pulls, pushes, records a conflict or refreshes its checkpoint, as its current reading decides. */
+  effect reconcile(record: LinkedCalendarEventRecord): LinkedCalendarReconcileOutcome!(Failure | ProviderUncertain) {
+    const linkPhase = phases[record.state]
+    const pendingLink = pending(record.pendingOperation)
+    const held = reconcileLinkedCalendar({ ...retainedPair, linkPhase, pendingLink })
+    if (held === "KeepPausedLink") return "paused"
+    if (held === "KeepQuarantinedLink") return "quarantined"
+    if (held === "CheckConvergedLink") return try this.#settleConflict(record)
+    const local = try this.#read(record.localEventId)
+    if (local === null) {
+      const missing = reconcileLinkedCalendar({ ...retainedPair, linkPhase, pendingLink, localExists: false })
+      if (missing === "QuarantineMissingLocal") return try this.#quarantine(record, "LINKED_LOCAL_EVENT_MISSING", "The linked Eliza event no longer exists.")
+      return try this.#replayDelete(record)
+    }
+    const provider = try this.#providerRead(record)
+    const localHash = try linkedCalendarSemanticDigest(local.event)
+    const providerHash = provider === null ? null : try linkedCalendarSemanticDigest(provider.event)
+    const localChanged = !(try matchesCheckpoint(record.lastCommonSemanticHash, local.event, localHash))
+    const providerChanged = provider !== null && providerHash !== null
+      && !(try matchesCheckpoint(record.lastCommonSemanticHash, provider.event, providerHash))
+    const decision = reconcileLinkedCalendar({
+      linkPhase, pendingLink, localExists: true, providerExists: provider !== null,
+      providerDeleted: provider?.event.deleted === true, linkedProviderId: record.providerEventId !== null,
+      localChanged, providerChanged, semanticMatch: providerHash === localHash,
+      checkpointNeedsRefresh: record.state !== "clean" || record.lastCommonSemanticHash !== localHash
+        || record.localRevision !== local.revision || record.providerEtag !== (provider?.etag ?? null),
+    })
+    switch (decision) {
+      case "RecordConcurrentLinkEdit":
+        try this.#store.save(record, { state: "conflicted", pendingOperation: null, lastErrorCode: "LINKED_CALENDAR_CONCURRENT_EDIT",
+          lastErrorMessage: "Eliza and Google changed since their last common version." })
+        return "conflicted"
+      case "PullProviderDelete":
+        return try this.#pullDelete(record, local, provider)
+      case "PullProviderEdit":
+        return provider === null ? try this.#push(record, local, provider) : try this.#pullEdit(record, local, provider)
+      case "PushLocalCalendar":
+        return try this.#push(record, local, provider)
+      case "RefreshLinkedCheckpoint":
+        try this.#store.save(record, { localRevision: local.revision, providerEventId: provider?.eventId ?? record.providerEventId,
+          providerEtag: provider?.etag ?? null, lastCommonSemanticHash: localHash, state: "clean", pendingOperation: null, ...cleared })
+        return "clean"
+      case "KeepPausedLink": return "paused"
+      case "KeepQuarantinedLink": return "quarantined"
+      case "CheckConvergedLink": return try this.#settleConflict(record)
+      case "QuarantineMissingLocal":
+      case "ReplayRetainedDelete":
+      case "KeepCleanLink":
+        return "clean"
+    }
+  }
+
+  effect #settleConflict(record: LinkedCalendarEventRecord): LinkedCalendarReconcileOutcome!(Failure | ProviderUncertain) {
+    const local = try this.#read(record.localEventId)
+    const provider = local === null || local.event.deleted === true ? null : try this.#providerRead(record)
+    const localHash = local === null ? null : try linkedCalendarSemanticDigest(local.event)
+    const providerHash = provider === null ? null : try linkedCalendarSemanticDigest(provider.event)
+    if (local === null || provider === null || !convergedLink(local.event.deleted !== true, provider.event.deleted !== true, localHash === providerHash)) {
+      return "conflicted"
+    }
+    try this.#store.save(record, { localRevision: local.revision, providerEventId: provider.eventId, providerEtag: provider.etag,
+      lastCommonSemanticHash: localHash, state: "clean", pendingOperation: null, ...cleared })
+    return "clean"
+  }
+
+  effect #attempt(write: (LinkedCalendarProviderSnapshot | undefined)!(ProviderRefused | ProviderUncertain | CalendarSyncAborted)): WriteResult!! {
+    return map(write, (written): WriteResult => ({ evidence: "ExactLinkWrite", written })) catch (error) => match (error) {
+      when ProviderRefused: ({ evidence: error.outcome === "precondition_failed" ? "LinkPreconditionChanged" : "DefiniteLinkRefusal", code: error.code, message: error.message } as WriteResult);
+      when ProviderUncertain: ({ evidence: "UncertainLinkWrite", code: "LINKED_CALENDAR_UNKNOWN_PROVIDER_OUTCOME", message: error.message } as WriteResult);
+      default: ({ evidence: "UncertainLinkWrite", code: "LINKED_CALENDAR_SYNC_INTERRUPTED", message: "Calendar sync was interrupted during a provider write." } as WriteResult);
+    }
+  }
+
+  effect #checkpoint(record: LinkedCalendarEventRecord, operation: CalendarLinkOperation, result: WriteResult, localAlreadyMissing: boolean,
+    success: LinkedCalendarPatch): LinkedCalendarReconcileOutcome!Failure {
+    const next = pushLinkCheckpoint(operation, result.evidence, localAlreadyMissing)
+    const state = states[next.linkPhase]
+    const pendingOperation = toOperation[next.pendingLink]
+    try this.#store.save(record, result.evidence === "ExactLinkWrite"
+      ? { state, pendingOperation, ...cleared, ...success }
+      : { state, pendingOperation, lastErrorCode: result.code ?? null, lastErrorMessage: result.message ?? null })
+    if (result.evidence === "ExactLinkWrite") return "pushed"
+    return state === "dirty" ? "dirty" : state === "conflicted" ? "conflicted" : "quarantined"
+  }
+
+  effect #replayDelete(record: LinkedCalendarEventRecord): LinkedCalendarReconcileOutcome!(Failure | ProviderUncertain) {
+    const provider = try this.#providerRead(record)
+    const result = provider === null ? { evidence: "ExactLinkWrite" } as WriteResult
+      : try this.#attempt(map(this.#provider.delete(record), () => undefined))
+    return try this.#checkpoint(record, "LinkDelete", result, true, { providerEtag: null, lastErrorCode: "LINKED_CALENDAR_LOCAL_EVENT_DELETED",
+      lastErrorMessage: "The Eliza event was deleted and the linked Google event was removed." })
+  }
+
+  effect #pullDelete(record: LinkedCalendarEventRecord, local: LinkedCalendarLocalSnapshot, provider: LinkedCalendarProviderSnapshot | null): LinkedCalendarReconcileOutcome!Failure {
+    const removed = map(this.#localWrite(() => this.#local.delete(local.eventId, local.revision)), () => true) catch () => false
+    if (!removed) return try this.#quarantine(record, "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED", "The Eliza event changed before the provider deletion could be applied.")
+    const kept: LinkedCalendarPatch = provider === null
+      ? { providerEtag: null }
+      : { providerEventId: provider.eventId, providerEtag: provider.etag, lastCommonSemanticHash: try linkedCalendarSemanticDigest(provider.event) }
+    try this.#store.save(record, { ...kept, state: "paused", pendingOperation: null, lastErrorCode: "LINKED_CALENDAR_PROVIDER_EVENT_DELETED",
+      lastErrorMessage: providerDeletedMessage })
+    return "pulled"
+  }
+
+  effect #pullEdit(record: LinkedCalendarEventRecord, local: LinkedCalendarLocalSnapshot, provider: LinkedCalendarProviderSnapshot): LinkedCalendarReconcileOutcome!Failure {
+    const applied = this.#localWrite(() => this.#local.applyProviderEvent(local.eventId, provider.event, local.revision)) catch () => null
+    if (applied === null) return try this.#quarantine(record, "LINKED_CALENDAR_LOCAL_CAS_REJECTED", "The Eliza event changed before the provider edit could be applied.")
+    try this.#store.save(record, { localRevision: applied.revision, providerEventId: provider.eventId, providerEtag: provider.etag,
+      lastCommonSemanticHash: try linkedCalendarSemanticDigest(provider.event), state: "clean", pendingOperation: null, ...cleared })
+    return "pulled"
+  }
+
+  effect #push(record: LinkedCalendarEventRecord, local: LinkedCalendarLocalSnapshot, provider: LinkedCalendarProviderSnapshot | null): LinkedCalendarReconcileOutcome!Failure {
+    const next = chooseLinkPush(local.event.deleted === true, provider !== null)
+    const operation = toOperation[next] ?? "create"
+    const staged = linkPushNeedsStage(phases[record.state], pending(record.pendingOperation), next)
+      ? try this.#store.save(record, { state: "dirty", pendingOperation: operation, localRevision: local.revision })
+      : record
+    const result = try this.#attempt(operation === "delete"
+      ? (provider === null ? succeed(undefined) : map(this.#provider.delete(staged), () => undefined))
+      : operation === "create" ? this.#provider.create(staged, local.event) : this.#provider.update(staged, local.event))
+    const success: LinkedCalendarPatch = operation === "delete"
+      ? { providerEventId: provider?.eventId ?? staged.providerEventId, providerEtag: null, lastCommonSemanticHash: try linkedCalendarSemanticDigest(local.event) }
+      : result.written === undefined ? {}
+      : { providerEventId: result.written.eventId, providerEtag: result.written.etag, localRevision: local.revision,
+          lastCommonSemanticHash: try linkedCalendarSemanticDigest(result.written.event) }
+    return try this.#checkpoint(staged, next, result, false, success)
+  }
+
+  /** Settles a held dispatch from what both calendars now show, never sending a provider write. */
+  effect recoverDispatch(record: LinkedCalendarEventRecord, release?: LinkedCalendarRelease): LinkedCalendarRecoveryOutcome!Failure {
+    const reading = effect {
+      const local = try this.#read(record.localEventId)
+      const provider = try this.#providerRead(record)
+      return { local, provider, verified: true }
+    } catch () => ({ local: null, provider: null, verified: false })
+    const { local, provider } = reading
+    const localLive = local !== null && local.event.deleted !== true
+    const providerLive = provider !== null && provider.event.deleted !== true
+    const semanticMatch = localLive && providerLive
+      && (try linkedCalendarSemanticDigest(local.event)) === (try linkedCalendarSemanticDigest(provider.event))
+    const decision = recoverLinkedDispatch({
+      pendingLink: pending(record.pendingOperation), localLive, providerPresent: provider !== null, providerLive,
+      retainedProviderId: record.providerEventId !== null, matchingProviderId: provider !== null && provider.eventId === record.providerEventId,
+      oldEtag: record.providerEtag !== null, nextEtag: provider !== null && provider.etag !== null && provider.etag !== "",
+      sameEtag: provider !== null && provider.etag === record.providerEtag, semanticMatch,
+      settleWindowElapsed: release !== undefined && release.dispatchedAt !== null && release.now - release.dispatchedAt >= release.settleMs,
+      readsVerified: reading.verified,
+    })
+    if (decision === "LinkedUnresolved") return "unresolved"
+    if (decision === "LinkedNotLanded") {
+      try this.#store.save(record, { state: "dirty", lastErrorCode: "LINKED_CALENDAR_DISPATCH_NOT_LANDED",
+        lastErrorMessage: "Google shows the pending change never landed. It will be sent again when sync resumes." })
+      return "not_landed"
+    }
+    if (record.pendingOperation === "delete" || local === null || provider === null) {
+      try this.#store.save(record, { state: "paused", pendingOperation: null, providerEtag: null,
+        lastErrorCode: "LINKED_CALENDAR_DELETE_RECOVERED", lastErrorMessage: "Google confirmed the pending event deletion." })
+      return "landed"
+    }
+    try this.#store.save(record, { providerEventId: provider.eventId, providerEtag: provider.etag, localRevision: local.revision,
+      lastCommonSemanticHash: try linkedCalendarSemanticDigest(provider.event), state: "clean", pendingOperation: null, ...cleared })
+    return "landed"
+  }
+
+  /** Applies the owner's choice to a conflicted link at the revisions read now; any other link reconciles as usual. */
+  effect resolveConflict(record: LinkedCalendarEventRecord, choice: LinkedCalendarConflictChoice): LinkedCalendarReconcileOutcome!(Failure | ProviderUncertain) {
+    const local = try this.#read(record.localEventId)
+    const current = try this.#providerRead(record)
+    const provider = current !== null && current.event.deleted !== true ? current : null
+    const resolution = linkConflictResolution(record.state === "conflicted", local !== null, provider !== null, this.#local.restore !== undefined,
+      provider !== null && provider.etag !== null && provider.etag !== "", choice === "keep_eliza" ? "PreferResidentCalendar" : "PreferProviderCalendar")
+    switch (resolution) {
+      case "UseOrdinaryReconcile":
+        return try this.reconcile(record)
+      case "PauseEmptyLink":
+        try this.#store.save(record, { state: "paused", pendingOperation: null, providerEtag: null,
+          lastErrorCode: "LINKED_CALENDAR_BOTH_EVENTS_DELETED", lastErrorMessage: "Both the Eliza and Google events were deleted." })
+        return "paused"
+      case "StageReviewedProviderDelete":
+        return provider === null ? "conflicted" : try this.reconcile(try this.#store.save(record, { state: "dirty", pendingOperation: "delete",
+          providerEventId: provider.eventId, providerEtag: provider.etag, ...cleared }))
+      case "RestoreLocalCalendar": {
+        const restore = this.#local.restore
+        if (restore === undefined || provider === null) return try this.#quarantine(record, "LINKED_LOCAL_EVENT_MISSING", "The linked Eliza event no longer exists.")
+        const restored = this.#localWrite(() => restore.call(this.#local, record.localEventId, provider.event, record.localRevision)) catch () => null
+        if (restored === null) return try this.#quarantine(record, "LINKED_CALENDAR_LOCAL_RESTORE_REJECTED", "The Eliza event could not be restored.")
+        try this.#store.save(record, { localRevision: restored.revision, providerEventId: provider.eventId, providerEtag: provider.etag,
+          lastCommonSemanticHash: try linkedCalendarSemanticDigest(provider.event), state: "clean", pendingOperation: null, ...cleared })
+        return "pulled"
+      }
+      case "QuarantineMissingRestore":
+        return try this.#quarantine(record, "LINKED_LOCAL_EVENT_MISSING", "The linked Eliza event no longer exists.")
+      case "DeleteLocalCalendar":
+        return local === null ? "conflicted" : try this.#pullDelete(record, local, null)
+      case "StageReviewedProviderCreate": {
+        if (local === null) return "conflicted"
+        const key = `${record.idempotencyKey.split(":recreate:")[0]}:recreate:${try digestText(`${record.idempotencyKey}\n${record.updatedAt}`)}`
+        return try this.reconcile(try this.#store.save(record, { state: "dirty", pendingOperation: "create", providerEventId: null,
+          providerEtag: null, lastCommonSemanticHash: null, localRevision: local.revision, idempotencyKey: key, ...cleared }))
+      }
+      case "ReplaceLocalCalendar":
+        return local === null || provider === null ? "conflicted" : try this.#pullEdit(record, local, provider)
+      case "StageReviewedProviderUpdate":
+        return local === null || provider === null ? "conflicted" : try this.reconcile(try this.#store.save(record, { state: "dirty",
+          pendingOperation: "update", providerEventId: provider.eventId, providerEtag: provider.etag, localRevision: local.revision,
+          lastCommonSemanticHash: try linkedCalendarSemanticDigest(provider.event), ...cleared }))
+      case "QuarantineMissingLinkedRevision":
+        return try this.#quarantine(record, "LINKED_PROVIDER_REVISION_MISSING", "The provider did not supply an exact revision. No write was attempted.")
+    }
+  }
+}

@@ -1,0 +1,313 @@
+// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/os/android/files/storage.md, "A rename never replaces a different entry and reports the new path only when it happened"
+module node {
+  import { createHash, randomUUID } from "node:crypto"
+  import { lstat } from "node:fs/promises"
+
+  /** The no-follow identity token of an entry, or undefined when it is missing or a link. */
+  export async function identityOf(path: string): Promise<string | undefined> {
+    const info = await lstat(path, { bigint: true }).catch(() => undefined)
+    if (info === undefined || info.isSymbolicLink()) return undefined
+    return createHash("sha256").update([info.dev, info.ino, info.mtimeNs, info.ctimeNs, info.size, info.isDirectory()].join(":")).digest("base64url")
+  }
+
+  /** Whether an entry exists as a link, without following it. */
+  export async function linked(path: string): Promise<boolean> {
+    return (await lstat(path).catch(() => undefined))?.isSymbolicLink() === true
+  }
+
+  /** A fresh trash ID. */
+  export function trashId(): string {
+    return randomUUID()
+  }
+}
+import { identityOf, linked, trashId } from node
+import { canPrune, classifyRow, listed, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
+import { renameOutcome, validSelection, batchMax, type FilesOp, type FilesRowCheck, type FileOutcome } from "../../gen/os__android__files__storage.effect.vibe"
+import { baseName, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER,
+  type StorageEntry, type TrashEntry } from "./model.vibe"
+import { FilesVolume, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
+
+const TRASH = ".Trash-files"
+const WALK_LIMIT = 10_000
+const ANSWERS: Readonly<Record<FileOutcome, RowStatus>> = {
+  Invalid: "invalid", Missing: "missing", Changed: "changed", Unchanged: "unchanged", Admitted: "failed",
+  Copied: "copied", Moved: "moved", Trashed: "trashed", Failed: "failed",
+}
+schema JournalRow { phase: "Visible" | "Journaled" | "InTrash" | "MoveFailed" | "Expiring" | "Gone"; journal: boolean; resident: boolean; deletedAt: number }
+schema TrashRecord { name: string; origin: string; directory: boolean; size: number; mimeType: string; row: JournalRow }
+const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(TrashRecord))
+
+const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
+
+/** A volume over one directory of the local filesystem, with its Trash journal beside the files. */
+export function localVolume(root: string, name = "Internal storage") {
+  return Layer.effect(FilesVolume, effect {
+    const fs = try FileSystem.FileSystem
+    const paths = try Path.Path
+    const namespace = (try Semaphore.make(1)).withPermits(1)
+    const at = (path: string) => paths.join(root, ...path.split("/").filter((part) => part !== ""))
+    const trashFile = (id: string) => paths.join(root, TRASH, "files", id)
+    const trashInfo = (id: string) => paths.join(root, TRASH, "info", `${id}.json`)
+    const exists = (path: string) => fs.exists(path) catch () => false
+    const identity = (path: string) => promise(() => identityOf(at(path)))
+    const attempt = <A, E>(work: A!E) => map(work, () => true) catch () => false
+
+    effect function entry(path: string): StorageEntry | undefined {
+      const info = try (fs.stat(at(path)) catch () => undefined)
+      if (info === undefined) return undefined
+      const directory = info.type === "Directory"
+      return {
+        path, name: baseName(path), directory, mimeType: directory ? "" : mimeFromName(baseName(path)), size: directory ? 0 : Number(info.size),
+        modified: Option.match(info.mtime, { onNone: () => 0, onSome: (date) => date.getTime() }),
+      }
+    }
+
+    effect function children(folder: string) {
+      const names = try (fs.readDirectory(at(folder)) catch () => undefined)
+      if (names === undefined) return { entries: [] as StorageEntry[], known: false }
+      const entries: StorageEntry[] = []
+      let known = true
+      for (const child of names) {
+        if (folder === "" && child === TRASH) continue
+        const found = try entry(joinPath(folder, child))
+        if (found === undefined) known = false
+        else entries.push(found)
+      }
+      return { entries, known }
+    }
+
+    effect function walk(from: string, keep: (entry: StorageEntry) => boolean) {
+      const found: StorageEntry[] = []
+      const queue = [from]
+      let known = true
+      let visited = 0
+      while (queue.length > 0) {
+        const folder = queue.shift() ?? ""
+        const listed = try children(folder)
+        known &&= listed.known
+        for (const child of listed.entries) {
+          visited++
+          if (keep(child)) found.push(child)
+          if (child.directory) queue.push(child.path)
+        }
+        if (visited >= WALK_LIMIT) return { found, known, partial: true }
+      }
+      return { found, known, partial: false }
+    }
+
+    effect function folderPath(value: string): string!VolumeRefused {
+      const folder = validPath(value, true)
+      if (folder === undefined || folder.split("/")[0] === TRASH) throw refused("invalid", "Invalid folder")
+      const found = folder === "" ? undefined : try entry(folder)
+      if (folder !== "" && found?.directory !== true) throw refused("missing", "The folder is not there")
+      return folder
+    }
+
+    effect function selection(selected: readonly string[], reviewed: readonly string[] | undefined): void!VolumeRefused {
+      if (!validSelection({ reviewed: reviewed !== undefined, paths: selected.length, distinct: new Set(selected).size === selected.length,
+        tokens: reviewed?.length ?? 0, tokensWellFormed: (reviewed ?? []).every((token) => /^[A-Za-z0-9_-]{43}$/.test(token)) })) {
+        throw refused("invalid", `Select 1–${batchMax} distinct files`)
+      }
+    }
+
+    effect function rowCheck(op: FilesOp, raw: string, token: string | undefined, dest: string): { row: FilesRowCheck; path: string } {
+      const path = validPath(raw) ?? ""
+      const valid = path !== "" && path.split("/")[0] !== TRASH
+      const found = valid ? try entry(path) : undefined
+      const current = valid && !(try promise(() => linked(at(path))))
+      const reviewMatches = token !== undefined && found !== undefined && (try identity(path)) === token
+      return { path, row: {
+        validPath: valid, pathExists: found !== undefined, reviewRequired: token !== undefined, reviewMatches, currentOwner: current,
+        sameFolder: op === "Move" && parentOf(path) === dest, descendant: found?.directory === true && within(dest, path),
+      } }
+    }
+
+    effect function placed(dest: string, source: string, directory: boolean): string!VolumeRefused {
+      const taken = (try children(dest)).entries.map((child) => child.name)
+      const free = freeName(baseName(source), taken, directory)
+      if (free === undefined) throw refused("exists", "No free name")
+      return joinPath(dest, free)
+    }
+
+    effect function record(id: string) {
+      const raw = try (fs.readFileString(trashInfo(id)) catch () => undefined)
+      return raw === undefined ? undefined : try (decodeRecord(raw) catch () => undefined)
+    }
+
+    effect function journalOf(id: string, base: Omit<typeof TrashRecord.Type, "row">) {
+      return try machineOver(effect () => (try record(id))?.row ?? fresh, (row: TrashRow) => row.phase === "Visible" || row.phase === "Gone"
+        ? Effect.void : orDie(fs.writeFileString(trashInfo(id), JSON.stringify({ ...base, row }))))
+    }
+
+    effect function trashRow(raw: string, token: string | undefined): RowOutcome {
+      const { path, row } = try rowCheck("Trash", raw, token, "")
+      const admission = classifyRow("Trash", row)
+      if (admission !== "Admitted") return { path: raw, status: ANSWERS[admission] }
+      const origin = try entry(path)
+      if (origin === undefined) return { path, status: "missing" }
+      const id = trashId()
+      try (fs.makeDirectory(paths.join(root, TRASH, "files"), { recursive: true }) catch () => undefined)
+      try (fs.makeDirectory(paths.join(root, TRASH, "info"), { recursive: true }) catch () => undefined)
+      const journal = try journalOf(id, { name: origin.name, origin: origin.path, directory: origin.directory, size: origin.size, mimeType: origin.mimeType })
+      try orDie(journal.send({ type: "journal", op: "Trash", row, at: try Clock.currentTimeMillis }))
+      const moved = try attempt(fs.rename(at(path), trashFile(id)))
+      try orDie(journal.send({ type: "moveToTrash", acknowledged: moved }))
+      if (moved) return { path, status: "trashed", to: id }
+      try orDie(journal.send({ type: "undoFailedJournal" }))
+      try (fs.remove(trashInfo(id)) catch () => undefined)
+      return { path, status: "failed" }
+    }
+
+    effect function transferRow(op: FilesOp, raw: string, token: string | undefined, dest: string): RowOutcome {
+      const { path, row } = try rowCheck(op, raw, token, dest)
+      const admission = classifyRow(op, row)
+      if (admission === "Unchanged") return { path, status: "unchanged", to: path }
+      if (admission !== "Admitted") return { path: raw, status: ANSWERS[admission] }
+      const source = try entry(path)
+      if (source === undefined) return { path, status: "missing" }
+      const target = try (placed(dest, path, source.directory) catch () => undefined)
+      if (target === undefined) return { path, status: "failed" }
+      const written = op === "Copy" ? try attempt(fs.copy(at(path), at(target))) : try attempt(fs.rename(at(path), at(target)))
+      return written ? { path, status: op === "Copy" ? "copied" : "moved", to: target } : { path, status: "failed" }
+    }
+
+    effect function trashIds() {
+      return (try (fs.readDirectory(paths.join(root, TRASH, "info")) catch () => [] as string[]))
+        .filter((file) => file.endsWith(".json")).map((file) => file.slice(0, -".json".length))
+    }
+
+    effect function prune(id: string, kept: typeof TrashRecord.Type, now: number) {
+      const { row: _row, ...base } = kept
+      const journal = try journalOf(id, base)
+      const erased = try attempt(fs.remove(trashFile(id), { recursive: true }))
+      try orDie(journal.send({ type: "prune", at: now, erased }))
+      if (erased) try orDie(journal.send({ type: "completePrune", writeAcknowledged: try attempt(fs.remove(trashInfo(id))) }))
+    }
+
+    return {
+      effect state() {
+        return { access: "granted" as const, volumes: [{ id: "local", name, primary: true, free: 0, total: 0 }] }
+      },
+      effect requestAccess() {
+        return "granted" as const
+      },
+      effect list(path) {
+        const folder = try folderPath(path)
+        const { entries, known } = try children(folder)
+        return listing(entries, { metadataKnown: known, partial: false, failed: false })
+      },
+      effect category(category) {
+        const downloads = category === "downloads" ? try children(DOWNLOAD_FOLDER) : undefined
+        const { found, known, partial } = downloads === undefined ? try walk("", (child) => inCategory(category, child))
+          : { found: downloads.entries.filter((child) => !child.directory), known: downloads.known, partial: false }
+        return { ...listing(found, { metadataKnown: known, partial, failed: false }), count: found.length }
+      },
+      effect query(filter) {
+        const from = try folderPath(filter.folder ?? "")
+        const { found, known, partial } = try walk(from, (child) => filterMatches(filter, child))
+        return listing(found, { metadataKnown: known, partial, failed: false })
+      },
+      effect reviewedIdentities(selected) {
+        try selection(selected, undefined)
+        const tokens: string[] = []
+        for (const raw of selected) {
+          const path = validPath(raw)
+          const token = path === undefined ? undefined : try identity(path)
+          if (token === undefined) throw refused("missing", "A selected file is not there")
+          tokens.push(token)
+        }
+        return tokens
+      },
+      effect transfer({ paths: selected, dest, copy, reviewed }) {
+        try selection(selected, reviewed)
+        const folder = try folderPath(dest)
+        const outcomes: RowOutcome[] = []
+        for (const [index, path] of selected.entries()) outcomes.push(try transferRow(copy ? "Copy" : "Move", path, reviewed?.[index], folder))
+        return outcomes
+      },
+      trash: ({ paths: selected, reviewed }) => namespace(effect {
+        try selection(selected, reviewed)
+        const outcomes: RowOutcome[] = []
+        for (const [index, path] of selected.entries()) outcomes.push(try trashRow(path, reviewed?.[index]))
+        return outcomes
+      }),
+      trashList: () => namespace(effect {
+        const now = try Clock.currentTimeMillis
+        const items: TrashEntry[] = []
+        for (const id of try trashIds()) {
+          const kept = try record(id)
+          if (kept === undefined) continue
+          const resident = try exists(trashFile(id))
+          if (!resident) {
+            try (fs.remove(trashInfo(id)) catch () => undefined)
+            continue
+          }
+          if (canPrune(kept.row, now)) {
+            try prune(id, kept, now)
+            continue
+          }
+          if (listed(kept.row, now)) items.push({ id, name: kept.name, origin: kept.origin, directory: kept.directory, mimeType: kept.mimeType, size: kept.size, deletedAt: kept.row.deletedAt })
+        }
+        return items.sort((a, b) => b.deletedAt - a.deletedAt)
+      }),
+      restore: (ids) => namespace(effect {
+        const outcomes: RowOutcome[] = []
+        for (const id of ids) {
+          const kept = try record(id)
+          if (kept === undefined || !(try exists(trashFile(id)))) {
+            outcomes.push({ path: id, status: "missing" })
+            continue
+          }
+          const origin = parentOf(kept.origin)
+          const folder = validPath(origin, true) !== undefined && origin.split("/")[0] !== TRASH ? origin : ""
+          try (fs.makeDirectory(at(folder), { recursive: true }) catch () => undefined)
+          const target = try (placed(folder, kept.name, kept.directory) catch () => undefined)
+          const moved = target !== undefined && (try attempt(fs.rename(trashFile(id), at(target))))
+          if (moved) try (fs.remove(trashInfo(id)) catch () => undefined)
+          outcomes.push(moved && target !== undefined ? { path: id, status: "restored", to: target } : { path: id, status: "failed" })
+        }
+        return outcomes
+      }),
+      emptyTrash: (ids, confirmed) => namespace(effect {
+        if (!confirmed) throw refused("confirmation-required", "Confirm before deleting permanently.")
+        if (ids.length < 1 || ids.length > batchMax || new Set(ids).size !== ids.length) throw refused("invalid", "Select the Trash items to erase")
+        const known = new Set(try trashIds())
+        let count = 0
+        for (const id of ids) {
+          if (!known.has(id)) continue
+          const data = try attempt(fs.remove(trashFile(id), { recursive: true }))
+          if (data && (try attempt(fs.remove(trashInfo(id))))) count++
+        }
+        return count
+      }),
+      effect createFolder(parent, folderName) {
+        const folder = try folderPath(parent)
+        const valid = validName(folderName)
+        if (valid === undefined || valid.startsWith(".")) throw refused("invalid", "Invalid name")
+        const target = joinPath(folder, valid)
+        if (try exists(at(target))) throw refused("exists", "A file with that name is already there")
+        try mapError(fs.makeDirectory(at(target)), () => refused("failed", "The folder was not created"))
+        return target
+      },
+      effect rename(path, newName) {
+        const source = validPath(path)
+        const valid = validName(newName)
+        const target = source === undefined || valid === undefined ? undefined : joinPath(parentOf(source), valid)
+        const sourceFound = source !== undefined && (try entry(source)) !== undefined
+        const targetIsLink = target !== undefined && (try promise(() => linked(at(target))))
+        const targetExists = target !== undefined && (try exists(at(target)))
+        const targetSameFile = targetExists && source !== undefined && target !== undefined && (try identity(source)) === (try identity(target))
+        const facts = { nameValid: valid !== undefined && !valid.startsWith("."), sourceFound, targetIsLink, targetExists, targetSameFile, renamed: false }
+        if (renameOutcome({ ...facts, renamed: true }) !== "Renamed" || source === undefined || target === undefined) {
+          const outcome = renameOutcome(facts)
+          throw refused(outcome === "Collision" ? "exists" : outcome === "RenameMissing" ? "missing" : outcome === "RenameInvalid" ? "invalid" : "failed", "The file was not renamed")
+        }
+        const renamed = try attempt(fs.rename(at(source), at(target)))
+        if (renameOutcome({ ...facts, renamed }) !== "Renamed") throw refused("failed", "The file was not renamed")
+        return target
+      },
+      share: () => fail(refused("unsupported", "Sharing needs the device")),
+      open: () => fail(refused("unsupported", "Opening needs the device")),
+    } satisfies FilesVolume.Shape
+  })
+}

@@ -1,4 +1,5 @@
-// spec/core/context.md, "Context starts with complete original sources and mandatory evidence"; spec/core/context.md, "Only complete current-source selections project prior dialogue"; spec/core/context.md, "A historical evidence projection requires exact validated source binding"
+// spec/core/context.md, "Context starts with complete original sources and mandatory evidence"; spec/core/context.md, "Only complete current-source selections project prior dialogue"; spec/core/context.md, "A historical evidence projection requires exact validated source binding"; spec/core/context.md, "A note about one request leaves the view with that request"
+import { noteShown } from "../../gen/core__context.ts"
 import { failingAs, type Foreign, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { ActionParameterSchema, CompletionContextSelection } from "../types/components.vibe"
@@ -391,10 +392,48 @@ effect function keepsHistoricalEvidence(
   return binding.includedEventIds.has(requestSourceEventId)
 }
 
+function requestNoteSources(event: ContextEvent): readonly [string, ...string[]] | undefined {
+  if (event.type !== "segment" || event.source !== "message-service" || !("segment" in event)) return undefined
+  const segment = event.segment
+  if (
+    !segment
+    || typeof segment !== "object"
+    || Array.isArray(segment)
+    || !("label" in segment)
+    || (segment.label !== "runtime:interrupted_turn" && segment.label !== "runtime:historical_read_continuations")
+    || !("content" in segment)
+    || typeof segment.content !== "string"
+    || !("id" in segment)
+    || segment.id !== event.id
+  ) {
+    return undefined
+  }
+  let note: unknown
+  try {
+    note = JSON.parse(segment.content)
+  } catch {
+    return undefined
+  }
+  if (
+    !note
+    || typeof note !== "object"
+    || Array.isArray(note)
+    || !("requestSourceEventId" in note)
+    || typeof note.requestSourceEventId !== "string"
+  ) {
+    return undefined
+  }
+  const interrupted = "interrupted-turn:"
+  return segment.label === "runtime:interrupted_turn" && event.id.startsWith(interrupted)
+    ? [note.requestSourceEventId, `history:${event.id.slice(interrupted.length)}`]
+    : [note.requestSourceEventId]
+}
+
+/** Keeps historical evidence and, with `requestNotes`, interruption and read-continuation notes only while the request they describe stays in view. */
 export function selectHistoricalNavigation(
   context: ContextObject,
   includedEventIds: ReadonlySet<string>,
-  options: { historicalEffects?: boolean | "settled" } = {},
+  options: { historicalEffects?: boolean | "settled"; requestNotes?: boolean } = {},
 ): ContextObject {
   const sources = collectCompletionContextSources(context)
   if (sources.length === 0) return context
@@ -416,6 +455,11 @@ export function selectHistoricalNavigation(
   return {
     ...context,
     events: context.events.filter((event) => {
+      const noteSources = options.requestNotes ? requestNoteSources(event) : undefined
+      if (noteSources !== undefined) {
+        const [request, ...replies] = noteSources
+        return noteShown(binding.requests.has(request), includedEventIds.has(request), replies.some((id) => includedEventIds.has(id)))
+      }
       if (!isHistoricalRequestEvidenceEvent(event)) return true
       if (event.segment.label === "runtime:historical_effects" && !options.historicalEffects) return true
       return match (runSyncExit(keepsHistoricalEvidence(event, binding))) {

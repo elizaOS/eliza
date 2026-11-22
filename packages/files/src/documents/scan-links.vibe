@@ -1,0 +1,84 @@
+// spec/files/scan/links.md, "Only recognized explicit URL tokens enter the review list"; spec/files/scan/links.md, "An explicit click rechecks ownership and a late result cannot update edited text"
+module browser {
+  /** @throws {never} */
+  export function parsedUrl(text: string): URL | undefined {
+    try {
+      return new URL(text)
+    } catch {
+      return undefined
+    }
+  }
+}
+
+import { addScanLink, initial, machineOver, type LinkStatus, type ScanLinkReview } from "../../gen/files__scan__links.effect.vibe"
+import { parsedUrl } from browser
+
+const token = /(?:^|[\s([{"'])((?:https?:\/\/|www\.)[^\s<>"'`]+)/gi
+const closers: readonly (readonly [string, string])[] = [[")", "("], ["]", "["], ["}", "{"]]
+
+function trimmed(raw: string): string {
+  let text = raw.replace(/[.,;]+$/, "")
+  for (const [close, open] of closers) {
+    while (text.endsWith(close) && text.split(close).length > text.split(open).length) text = text.slice(0, -1)
+  }
+  return text
+}
+
+/** The first ten distinct explicit HTTP(S) addresses in scanned text, in encounter order; invalid tokens stay text only. */
+export function scannedLinks(text: unknown): string[] {
+  const isText = typeof text === "string"
+  const units = isText ? text.length : 0
+  let urls: string[] = []
+  if (!isText || units > 100_000) return urls
+  for (const match of text.matchAll(token)) {
+    const raw = trimmed(match[1] ?? "")
+    const url = parsedUrl(/^www\./i.test(raw) ? "https://" + raw : raw)
+    urls = addScanLink(urls, url?.href ?? "", {
+      textString: true, textUnits: units, explicitPrefix: true, boundaryRecognized: true, tokenUnits: raw.length,
+      badAuthorityStart: /^https?:\/\/[/?#]/i.test(raw), invalidCharacter: /[\\\u0000-\u001f\u007f]/.test(raw),
+      parsed: url !== undefined, permittedProtocol: url?.protocol === "https:" || url?.protocol === "http:",
+      hostname: url !== undefined && url.hostname !== "", hasCredentials: url !== undefined && (url.username !== "" || url.password !== ""),
+    })
+    if (urls.length === 10) break
+  }
+  return urls
+}
+
+/** How the scan review hands an exact address to the device, reporting whether the handler took it. */
+export type ExternalLinkPort = (url: string) => boolean!!
+
+/** What the link list shows now. */
+export interface ScanLinkView {
+  readonly urls: readonly string[]
+  readonly status: LinkStatus
+  readonly busy: boolean
+}
+
+/** A scan text's reviewed links: rebuilt on each edit, opened only by an explicit click on an exact listed address. */
+export effect function scanLinkReview(port: ExternalLinkPort, active: () => boolean) {
+  const state = try Ref.make<ScanLinkReview>(initial)
+  const links = try Ref.make<readonly string[]>([])
+  const machine = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+
+  effect function view(): ScanLinkView!! {
+    const review = try machine.get()
+    return { urls: try Ref.get(links), status: review.status, busy: review.flight !== 0 }
+  }
+
+  effect function update(text: string): ScanLinkView!! {
+    try Ref.set(links, scannedLinks(text))
+    try orDie(machine.send({ type: "refreshLinks" }))
+    return try view()
+  }
+
+  effect function open(url: string): ScanLinkView!! {
+    const exactAddress = (try Ref.get(links)).includes(url)
+    const opening = machine.send({ type: "openNativeScanLink", active: active(), exactAddress }) catch () => undefined
+    if (opening === undefined) return try view()
+    const opened = try port(url)
+    try orDie(machine.send({ type: "finishNativeScanLink", token: opening.flight, active: active(), opened }))
+    return try view()
+  }
+
+  return { view, update, open }
+}

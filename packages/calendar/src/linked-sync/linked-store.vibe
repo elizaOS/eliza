@@ -1,0 +1,155 @@
+// spec/calendar/linkedReconcile.md, "A push retains its operation and uses the exact provider preconditions"; spec/calendar/linkedSync.md, "Failed control writes preserve the previously committed row"
+import { LinkDocument, LinkRecord, SyncBinding } from "./wire.schema.vibe"
+import {
+  CalendarSyncAborted, CalendarSyncRefused, digestText, randomId,
+  type LinkedCalendarCheckpointStore, type LinkedCalendarEventRecord, type LinkedCalendarPatch,
+} from "./linked.vibe"
+
+/** The owner, connection, provider calendar, agent and local source one device sync is bound to. */
+export type CalendarSyncBinding = typeof SyncBinding.Type
+
+/** The host's durable slots, written only by compare and exchange on the value read. */
+export interface CalendarLinkStorage {
+  read(slot: string): Promise<unknown | null>
+  compareExchange(slot: string, expected: unknown | null, value: unknown): Promise<{ status: "saved" | "conflict" }>
+}
+
+/** How a store names its idempotency keys. */
+export interface CalendarLinkedStoreOptions {
+  readonly idempotencyNamespace?: string
+}
+
+/** The slot prefix every link document is kept under. */
+export const CALENDAR_LINK_SLOT_PREFIX = "calendar-linked-sync:v1:"
+/** The most local events one binding links. */
+export const CALENDAR_LINK_LIMIT = 2000
+/** The largest link document kept. */
+export const CALENDAR_LINK_DOCUMENT_BYTES = 4 * 1024 * 1024
+
+type Link = LinkedCalendarEventRecord
+type Document = typeof LinkDocument.Type
+
+const decodeDocument = Schema.decodeUnknownEffect(LinkDocument, { onExcessProperty: "error" })
+const decodeLink = Schema.decodeUnknownEffect(LinkRecord, { onExcessProperty: "error" })
+const decodeBinding = Schema.decodeUnknownEffect(SyncBinding, { onExcessProperty: "error" })
+const recreated = /^(?::recreate:[a-f0-9]{64})*$/
+
+const refused = () => new CalendarSyncRefused({ message: "Calendar sync checkpoints changed or need recovery. Existing data is retained." })
+const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length
+
+/** Durable link checkpoints for one reviewed binding, kept as one document and changed only by compare and exchange. */
+export class CalendarLinkedStore implements LinkedCalendarCheckpointStore {
+  readonly scope: string
+  readonly #sourceScope: string
+  readonly #binding: CalendarSyncBinding
+  readonly #current: () => boolean
+  readonly #storage: CalendarLinkStorage
+  readonly #namespace: string
+
+  private constructor(scope: string, sourceScope: string, binding: CalendarSyncBinding, current: () => boolean, storage: CalendarLinkStorage, namespace: string) {
+    this.scope = scope
+    this.#sourceScope = sourceScope
+    this.#binding = binding
+    this.#current = current
+    this.#storage = storage
+    this.#namespace = namespace
+  }
+
+  /** Opens the store of a binding after checking the binding and the document already kept for it. */
+  static open(input: CalendarSyncBinding, current: () => boolean, storage: CalendarLinkStorage, options: CalendarLinkedStoreOptions = {}): CalendarLinkedStore!(CalendarSyncRefused | CalendarSyncAborted) {
+    return effect {
+      const namespace = options.idempotencyNamespace ?? "calendar-sync"
+      if (!/^[^\u0000-\u001f\u007f:]{1,64}$/.test(namespace)) throw refused()
+      const binding = try mapError(decodeBinding(input), refused)
+      const scope = try digestText(JSON.stringify([binding.environment, binding.userId, binding.organizationId, binding.connectionId,
+        binding.providerAccountId, binding.calendarId, binding.agentId, binding.localSourceId, binding.localSourceRevision]))
+      const sourceScope = try digestText(JSON.stringify([binding.environment, binding.localSourceId, binding.localSourceRevision]))
+      const store = new CalendarLinkedStore(scope, sourceScope, binding, current, storage, namespace)
+      try store.#read()
+      return store
+    }
+  }
+
+  #slot(): string {
+    return CALENDAR_LINK_SLOT_PREFIX + this.scope
+  }
+
+  effect #check(): void!CalendarSyncAborted {
+    if (!this.#current()) throw new CalendarSyncAborted({ reason: "Calendar sync connection changed" })
+  }
+
+  #keyBelongs(link: Link): boolean {
+    return [`${this.#namespace}:${this.#sourceScope}:${link.localEventId}`, `${this.#namespace}:${this.scope}:${link.id}`]
+      .some((base) => link.idempotencyKey.startsWith(base) && recreated.test(link.idempotencyKey.slice(base.length)))
+  }
+
+  effect #validate(value: unknown): Link!CalendarSyncRefused {
+    const link = try mapError(decodeLink(value), refused)
+    if (link.agentId !== this.#binding.agentId || link.connectorAccountId !== this.#binding.connectionId
+      || link.providerCalendarId !== this.#binding.calendarId || !this.#keyBelongs(link)) throw refused()
+    return link
+  }
+
+  effect #read(): (Document | null)!(CalendarSyncRefused | CalendarSyncAborted) {
+    try this.#check()
+    const value = try tryPromise({ try: () => this.#storage.read(this.#slot()), catch: refused })
+    try this.#check()
+    if (value === null || value === undefined) return null
+    const document = try mapError(decodeDocument(value), refused)
+    if (document.owner !== this.scope || bytes(document) > CALENDAR_LINK_DOCUMENT_BYTES) throw refused()
+    const ids = new Set<string>()
+    const events = new Set<string>()
+    for (const row of document.links) {
+      const link = try this.#validate(row)
+      if (ids.has(link.id) || events.has(link.localEventId)) throw refused()
+      ids.add(link.id)
+      events.add(link.localEventId)
+    }
+    return structuredClone(document)
+  }
+
+  effect #exchange(before: Document | null, next: Document): boolean!(CalendarSyncRefused | CalendarSyncAborted) {
+    try this.#check()
+    const result = try tryPromise({ try: () => this.#storage.compareExchange(this.#slot(), before, next), catch: refused })
+    try this.#check()
+    return result.status === "saved"
+  }
+
+  /** Every link of the binding, as kept now. */
+  effect list(): Link[]!(CalendarSyncRefused | CalendarSyncAborted) {
+    return [...((try this.#read())?.links ?? [])]
+  }
+
+  /** The link of a local event, created dirty with a pending create under a stable key when none exists. */
+  effect link(localEventId: string, localRevision: string): Link!(CalendarSyncRefused | CalendarSyncAborted) {
+    const before = try this.#read()
+    const existing = before?.links.find((row) => row.localEventId === localEventId)
+    if (existing !== undefined) return existing
+    if ((before?.links.length ?? 0) >= CALENDAR_LINK_LIMIT) throw refused()
+    const now = DateTime.formatIso(try DateTime.now)
+    const row = try this.#validate({
+      id: randomId(), agentId: this.#binding.agentId, localEventId, connectorAccountId: this.#binding.connectionId,
+      providerCalendarId: this.#binding.calendarId, providerEventId: null, providerEtag: null, localRevision,
+      lastCommonSemanticHash: null, state: "dirty", pendingOperation: "create",
+      idempotencyKey: `${this.#namespace}:${this.#sourceScope}:${localEventId}`, lastErrorCode: null, lastErrorMessage: null,
+      createdAt: now, updatedAt: now,
+    })
+    if (try this.#exchange(before, { version: 1, owner: this.scope, links: [...(before?.links ?? []), row] })) return structuredClone(row)
+    const concurrent = (try this.#read())?.links.find((link) => link.localEventId === localEventId)
+    if (concurrent === undefined) throw refused()
+    return concurrent
+  }
+
+  /** Saves a checkpoint over the link exactly as it was read; a link changed since is refused and kept. */
+  effect save(expected: Link, patch: LinkedCalendarPatch): Link!(CalendarSyncRefused | CalendarSyncAborted) {
+    const held = try this.#validate(structuredClone(expected))
+    const before = try this.#read()
+    const actual = before?.links.find((row) => row.id === held.id)
+    if (before === null || JSON.stringify(actual) !== JSON.stringify(held)) throw refused()
+    const now = DateTime.toEpochMillis(try DateTime.now)
+    const next = try this.#validate({ ...held, ...structuredClone(patch),
+      updatedAt: new Date(Math.max(now, Date.parse(held.updatedAt) + 1)).toISOString() })
+    if (!(try this.#exchange(before, { ...before, links: before.links.map((row) => row.id === held.id ? next : row) }))) throw refused()
+    return structuredClone(next)
+  }
+}

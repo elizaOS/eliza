@@ -1,4 +1,4 @@
-// spec/core/settings.md, "Resolution preserves precedence and valid false zero and empty values"; spec/core/settings.md, "Setting and clearing align live secret and constructor slots"; spec/core/secretProfile.md, "The first query initializes the canonical signature and later changes advance it"
+// spec/core/settings.md, "Resolution preserves precedence and valid false zero and empty values"; spec/core/settings.md, "Setting and clearing align live secret and constructor slots"; spec/core/secretProfile.md, "The first query initializes the canonical signature and later changes advance it"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"
 import { Foreign, foreignSync } from "../edge.vibe"
 import { Machine, machine, type Event as SecretProfileEvent, type Rejected as SecretProfileRejected, type SecretProfile } from "../../gen/core__secretProfile.effect.vibe"
 import type { ElizaError } from "../errors.vibe"
@@ -7,7 +7,7 @@ import { CompositeEntityRecognizer, PII_ENTITY_RECOGNIZER_SERVICE, type PiiEntit
 import { locateConfiguredSecretFragmentTaint as locateFragmentTaint, type SecretFragment, type SecretFragmentTaintProfile } from "../security/fragment-redaction.vibe"
 import { DEFAULT_PSEUDONYM_BLOCKLIST, PII_SWAP_DISABLED_KINDS_SETTING, PII_SWAP_ENABLED_SETTING, PII_SWAP_EXEMPT_VALUES_SETTING, PseudonymSession, parsePiiSwapList } from "../security/pii-pseudonymizer.vibe"
 import { redactWithSecrets } from "../security/redact.vibe"
-import { parseSecretSwapExemptValues, SECRET_SWAP_ENABLED_SETTING, SECRET_SWAP_EXEMPT_VALUES_SETTING, SecretSwapSession } from "../security/secret-swap.vibe"
+import { createSecretSwapStableKey, parseSecretSwapExemptValues, pseudonymSaltFromStableKey, SECRET_SWAP_ENABLED_SETTING, SECRET_SWAP_EXEMPT_VALUES_SETTING, SECRET_SWAP_STABLE_REFERENCES_SETTING, SecretSwapSession } from "../security/secret-swap.vibe"
 import { deriveKnownSecrets } from "../security/secrets.vibe"
 import { decryptStringValue, getSalt, type UnsafeProductionSalt } from "../settings.vibe"
 import type { Agent, Character } from "../types/agent.vibe"
@@ -253,8 +253,19 @@ function toSecretStrings(values: Record<string, unknown> | undefined): Record<st
   return result
 }
 
-export effect function createSecretSwapSession(): SecretSwapSession!SettingsFailure!RuntimeKernel {
+const stableKeys = new WeakMap<object, string>()
+
+effect function swapStableKey(conversation: string | undefined): (string | undefined)!SettingsFailure!RuntimeKernel {
+  if (conversation === undefined || !(try swapEnabled(SECRET_SWAP_STABLE_REFERENCES_SETTING))) return undefined
   const { runtime } = try Host
+  const held = stableKeys.get(runtime) ?? createSecretSwapStableKey()
+  stableKeys.set(runtime, held)
+  return `${held}:${conversation}`
+}
+
+export effect function createSecretSwapSession(conversation?: string): SecretSwapSession!SettingsFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const stableKey = try swapStableKey(conversation)
   const settingsSecrets = runtime.character.settings?.secrets
   const knownSecrets = {
     ...deriveKnownSecrets(processEnv()),
@@ -262,6 +273,7 @@ export effect function createSecretSwapSession(): SecretSwapSession!SettingsFail
     ...toSecretStrings(runtime.character.secrets),
   }
   return new SecretSwapSession({
+    ...(stableKey === undefined ? {} : { stableKey }),
     knownSecrets,
     exemptValues: parseSecretSwapExemptValues(try instanceSetting(SECRET_SWAP_EXEMPT_VALUES_SETTING)),
   })
@@ -271,8 +283,9 @@ export effect function isPiiSwapEnabled(): boolean!SettingsFailure!RuntimeKernel
   return try swapEnabled(PII_SWAP_ENABLED_SETTING)
 }
 
-export effect function createPiiSwapSession(): PseudonymSession!SettingsFailure!RuntimeKernel {
+export effect function createPiiSwapSession(conversation?: string): PseudonymSession!SettingsFailure!RuntimeKernel {
   const { runtime } = try Host
+  const stableKey = try swapStableKey(conversation)
   const recognizers: PiiEntityRecognizer[] = [new RegexEntityRecognizer()]
   const nerService = try foreignSync(() => runtime.getService<Service & Partial<PiiEntityRecognizerService>>(PII_ENTITY_RECOGNIZER_SERVICE))
   const nerRecognizer = try foreignSync(() => nerService?.getRecognizer?.() ?? null)
@@ -284,6 +297,7 @@ export effect function createPiiSwapSession(): PseudonymSession!SettingsFailure!
     ...parsePiiSwapList(try instanceSetting(PII_SWAP_EXEMPT_VALUES_SETTING)),
   ]
   return new PseudonymSession({
+    ...(stableKey === undefined ? {} : { salt: pseudonymSaltFromStableKey(stableKey) }),
     recognizer: new CompositeEntityRecognizer(recognizers, { blocklist }),
     blocklist,
     disabledKinds: parsePiiSwapList(try instanceSetting(PII_SWAP_DISABLED_KINDS_SETTING)),

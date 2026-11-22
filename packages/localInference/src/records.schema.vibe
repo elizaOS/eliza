@@ -1,0 +1,41 @@
+// spec/localInference/models.md, "A download is installed only when every file matches its published digest"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"
+const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const RelativePath = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}(\/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}){0,7}$/))
+const ModelName = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9._-]{0,63}$/))
+const FileEntry = Schema.Struct({ path: RelativePath, sha256: Digest })
+
+/** A published model bundle's manifest: its files by kind, and whether its text evaluation passed. */
+export const BundleManifest = Schema.Struct({
+  id: Schema.String,
+  files: Schema.Record(Schema.String, Schema.Array(FileEntry)),
+  evals: Schema.Struct({ textEval: Schema.Struct({ passed: Schema.Boolean }) }),
+})
+
+/** What the device verified and installed: each model's files with their digests and sizes, and its evaluation result. */
+export const InstalledRecord = Schema.Struct({
+  version: Schema.Literal(1),
+  models: Schema.Array(Schema.Struct({
+    id: Schema.Literals(["model1", "model2"]),
+    evalsPassed: Schema.Boolean,
+    files: Schema.Array(Schema.Struct({ path: RelativePath, sha256: Digest, bytes: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)) })),
+  })),
+})
+
+/** The owner's slot choices, by slot name and the model's public name. */
+export const AssignmentRecord = Schema.Struct({
+  version: Schema.Literal(1),
+  assignments: Schema.Struct({
+    TEXT_SMALL: Schema.optionalKey(ModelName),
+    TEXT_LARGE: Schema.optionalKey(ModelName),
+    TEXT_EMBEDDING: Schema.optionalKey(ModelName),
+    TEXT_TO_SPEECH: Schema.optionalKey(ModelName),
+    TRANSCRIPTION: Schema.optionalKey(ModelName),
+  }),
+})
+
+/** A bundle manifest as decoded. */
+export type BundleManifest = typeof BundleManifest.Type
+/** An installed record as decoded. */
+export type InstalledRecord = typeof InstalledRecord.Type
+/** An assignment record as decoded. */
+export type AssignmentRecord = typeof AssignmentRecord.Type

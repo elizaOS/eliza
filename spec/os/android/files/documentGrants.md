@@ -131,6 +131,26 @@ pure def revoke(s: DocumentGrants, doc: int): DocumentGrants = { ...s, granted: 
 pure def sometimesRevokedSelectionNoLongerResolves(s: DocumentGrants): bool = s.entries.some(e => e.retention != Transient and not(resolves(s, e.id)))
 ```
 
+### A selection reports its size and time only as the provider answered each
+
+Describing a selection reads its name, then its size and its last-modified
+time, each in a query of its own, so a provider that lacks one column
+still reports the other. A column the provider omits, leaves empty or
+refuses is left out of the description, never reported as 0; a size of 0
+is reported only when the provider said so, and a time only when it is
+after the epoch. A revoked grant during either read fails the description
+as unavailable, as any revoked read does.
+
+```quint
+type DocumentColumn = { answered: bool, value: int }
+pure def sizeReported(column: DocumentColumn): bool = column.answered and column.value >= 0
+pure def modifiedReported(column: DocumentColumn): bool = column.answered and column.value > 0
+pure val columnValues = Set({ answered: false, value: 0 }, { answered: true, value: 0 }, { answered: true, value: -1 }, { answered: true, value: 5 })
+pure def lawAnUnansweredColumnIsNeverReported(column: DocumentColumn): bool =
+  ((sizeReported(column) or modifiedReported(column)) implies column.answered) and
+  (modifiedReported(column) implies column.value > 0) and (sizeReported(column) implies column.value >= 0)
+```
+
 ### Only retained selections survive a restart, and restore resumes the newest one still granted
 
 A restart reloads the saved registry: transient selections are gone, and a

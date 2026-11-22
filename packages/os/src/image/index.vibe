@@ -1,4 +1,4 @@
-// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/update/operator.md, "Story: Update a device by cable"
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/update/operator.md, "Story: Update a device by cable"; spec/os/image/harness.md, "Story: Run instrumentation on a device I hold alone"
 export {
   NATIVE_INSTALLS,
   NATIVE_TARGETS,
@@ -16,6 +16,7 @@ export {
   admitImageApk,
   apkReleaseBlockers,
   apkUpdateAdmission,
+  apkUpdateReceipt,
   assertAndroidArtifactSnapshotUnchanged,
   cloudVoiceAdmission,
   compareDomains,
@@ -29,7 +30,11 @@ export {
   readAndroidArtifactEntryBuffers,
   readApkBuildFlags,
   readApkSignerDigest,
+  instrumentationDeclarations,
+  integrityQuery,
+  parseAaptAttributeValue,
   readbackInventory,
+  resolveAndroidBuildTools,
   resolveAndroidSdkRoot,
   resolveJavaHome,
   snapshotAndroidArtifact,
@@ -61,11 +66,20 @@ export {
 export { otaMain } from "./ota-operator.vibe"
 export { evaluate, main, qualifyDevice, validateRequirements, verifyImage } from "./verify-device.vibe"
 export {
+  HELD_FOR_THE_RUN,
+  IsolatedUserKept,
   acquireDeviceLease,
   androidFixtureObserver,
+  deviceLeasePath,
+  readDeviceLease,
   rebootAndroidFixture,
+  requireCallerLease,
+  requireInstrumentationInterruption,
   requireInstrumentationSuccess,
   runIsolatedAndroidTest,
   startSingleDeviceAdb,
+  withIsolatedAndroidUser,
+  type DeviceLease,
+  type IsolatedUserReport,
   type SingleDeviceAdb,
 } from "./device.vibe"

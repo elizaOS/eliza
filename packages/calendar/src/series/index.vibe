@@ -1,0 +1,19 @@
+// spec/calendar/seriesScope.md, "Story: Delete the exact Calendar event or scope I selected"; spec/calendar/seriesScope.md, "Story: Change one occurrence without changing its siblings"
+export {
+  findRow, remapExclusions, removeRow, removeScoped, reviewSeries, saveEdit, saveScopedEdit, saveSeriesEdit, storedRow, InvalidSeriesTime, ScopeMismatch, SeriesChanged,
+  type CalendarRepeat, type CalendarRow, type CalendarRowFields, type CalendarWriteScope, type ReviewedRow, type ScopedEdit, type SeriesReview,
+} from "./document.vibe"
+export { occurrenceId } from "../availability/recurrence.vibe"
+export { CalendarRowRecord, RecurrenceRecord, WriteScopeRecord } from "./rows.schema.vibe"
+export { holdsRecurrence, recurrenceLines, reviewedRecurrenceLines, rowRecurrence, type CalendarRecurrence, type RowRecurrence } from "./recurrence-rule.vibe"
+export {
+  clockUsable, deleteUndoMs, deletionPending, deletionReceipt, guardPendingChanges, ownerCurrent, ownerVisible, pendingDeletions, rowMatch,
+  settleDeletions, stageDeletion, stageSeriesDeletion, trimJournal, undoDeletion, windowView, DeletionRefused, PendingDeletionBlocks,
+  type CalendarDeletion, type CalendarDocument, type DeletionClock, type DeletionDeadline, type DeletionOwner, type DeletionRefusal,
+  type JournalChange, type OwnerFacts, type PendingDeletionView,
+} from "./deletions.vibe"
+export {
+  deviceCalendar, DeviceBridgeFault,
+  type DeviceCalendar, type DeviceCalendarPort, type DeviceInspection, type DeviceRead, type DeviceRemoval, type DeviceRow, type DeviceSave,
+  type DeviceSession, type DeviceTicket, type DeviceWriteResult,
+} from "./device.vibe"

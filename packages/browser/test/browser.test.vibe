@@ -1,0 +1,163 @@
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"
+import { assert, it } from "@effect/vitest"
+import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core"
+import {
+  BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY, browserControlCapabilityAvailable,
+  browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable, parseBrowserControl, parseBrowserNavigate,
+} from "../src/contract.vibe"
+import {
+  browserDestinationMatches, browserSearchQueryMatches, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination,
+  groundBrowserSearchQuery, spokenBrowserDestination,
+} from "../src/grounding.vibe"
+import { browserPlugin } from "../src/index.vibe"
+import type { BrowserViewAsked, BrowserViewAsker, BrowserViewWait } from "../src/native-browser.vibe"
+import { observedTabCurrent, parseNativeHistoryCommand } from "../src/native-command.vibe"
+
+it.effect('Open only a destination the owner wrote in this message, spelled as written (spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal")', effect () => {
+  const grounded = [
+    groundBrowserDestination("open example.com/docs please", "https://example.com/docs"),
+    groundBrowserDestination("don't open example.com", "https://example.com/"),
+    groundBrowserDestination("Open example.com. Actually, don't open example.com", "https://example.com/"),
+    groundBrowserDestination("Open WWW.Example.com", "https://example.com"),
+    groundBrowserDestination("open example.com", "https://example.com/admin"),
+    groundBrowserDestination("I read example.com yesterday", "https://example.com"),
+    groundBrowserDestination("summarize main.py", "https://main.py"),
+    groundBrowserDestination("open example dot com", "https://example.com"),
+    groundBrowserDestination("open example.com", "https://other.com"),
+  ]
+  const direct = [
+    directBrowserDestination("open example.com"),
+    directBrowserDestination("Alpha, can you pull up example.com?", "Alpha"),
+    directBrowserDestination("I read example.com yesterday"),
+    spokenBrowserDestination("open example dot com"),
+    directBrowserDestination("open example dot com"),
+  ]
+  const searched = [
+    directBrowserSearchQuery("search the web for cheap flights please"),
+    groundBrowserSearchQuery("find me cheap   flights", "Cheap flights"),
+    groundBrowserSearchQuery("find me cheapflights", "cheap"),
+  ]
+  try Effect.try(() => {
+    assert.deepStrictEqual(grounded, [
+      "https://example.com/docs", undefined, undefined, "https://www.example.com/", "https://example.com/",
+      "https://example.com/", undefined, "https://example.com/", undefined,
+    ])
+    assert.deepStrictEqual(direct, ["https://example.com/", "https://example.com/", undefined, "https://example.com/", undefined])
+    assert.deepStrictEqual(searched, ["cheap flights", "cheap flights", undefined])
+    assert.isTrue(browserSearchQueryMatches("\"Cheap Flights\"", searched[0]))
+    assert.isTrue(browserDestinationMatches({ type: "browser_navigate", url: "example.com" }, direct[0]))
+    assert.isFalse(browserDestinationMatches({ type: "browser_search", url: "example.com" }, direct[0]))
+  })
+})
+
+it.effect(`Offer a Browser control only as negotiated and review it only on the unlocked phone (spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review")`, effect () => {
+  const tabsOnly = [BROWSER_TABS_CAPABILITY]
+  try Effect.try(() => {
+    assert.deepStrictEqual(parseBrowserControl({ type: "browser_search", query: "  cheap   flights " }), { ok: true, operation: { type: "browser_search", query: "cheap flights" } })
+    assert.deepStrictEqual(parseBrowserControl({ type: "browser_tab_new", private: false }), { ok: true, operation: { type: "browser_tab_new" } })
+    assert.deepStrictEqual(parseBrowserControl({ type: "browser_tab_new", private: true }), { ok: true, operation: { type: "browser_tab_new", private: true } })
+    assert.deepStrictEqual(
+      [{ type: "browser_tab_new", private: "yes" }, { type: "browser_history", action: "back", tab: 1 }, { type: "browser_find", text: "a\u0000b" }, { type: "browser_history", action: "close" }]
+        .map((value) => parseBrowserControl(value).ok),
+      [false, false, false, false])
+    assert.deepStrictEqual(
+      [browserControlCapabilityAvailable("browser_tab_close", tabsOnly), browserControlCapabilityAvailable("browser_find", tabsOnly), browserControlCapabilityAvailable("browser_find", [BROWSER_FIND_CAPABILITY])],
+      [true, false, true])
+    assert.deepStrictEqual(
+      [browserNavigationAvailable(true, tabsOnly), browserNavigationAvailable(true, [BROWSER_OPEN_NEW_TAB_CAPABILITY]), browserNavigationAvailable(false, [])],
+      [false, true, true])
+    assert.deepStrictEqual(parseBrowserNavigate({ type: "browser_navigate", url: "https://example.com/a", newTab: false }), { ok: true, operation: { type: "browser_navigate", url: "https://example.com/a" } })
+    assert.deepStrictEqual(
+      [{ type: "browser_navigate", url: "http://example.com" }, { type: "browser_navigate", url: "https://owner:pw@example.com" }, { type: "browser_navigate", url: "https://example.com", private: true }]
+        .map((value) => parseBrowserNavigate(value).ok),
+      [false, false, false])
+    assert.deepStrictEqual(BROWSER_CONTROL_DIRECT_TYPES, ["browser_search", "browser_tab_new", "browser_tab_switch", "browser_find", "browser_history"])
+    assert.deepStrictEqual(
+      [
+        browserControlRunsUnreviewed({ type: "browser_tab_close" }, { boundToMessage: true, wordsTyped: true }),
+        browserControlRunsUnreviewed({ type: "browser_find", text: "price" }, { boundToMessage: true, wordsTyped: false }),
+        browserControlRunsUnreviewed({ type: "browser_history", action: "back" }, { boundToMessage: true, wordsTyped: false }),
+        browserControlRunsUnreviewed({ type: "browser_history", action: "back" }, { boundToMessage: false, wordsTyped: false }),
+      ],
+      [false, false, true, false])
+    assert.isDefined(browserControlReviewNotice({ sensitive: true }))
+    assert.isUndefined(browserControlReviewNotice({ sensitive: false }))
+  })
+})
+
+const receipt = (data: unknown) => ({ ok: true, data })
+const dispatched = receipt({ dispatched: true, completed: false, requiresReadback: true })
+const replied = (result: unknown): BrowserViewAsked => ({ kind: "asked", wait: succeed<BrowserViewWait>({ kind: "Replied", reply: "Answered", answer: { success: true, result } }) })
+const browserTab = { view: "browser", revision: 4, sensitive: false, selectedObject: { kind: "browser-tab", id: "tab-a", revision: "r1" } }
+
+function turn(observation?: unknown): Memory {
+  return {
+    entityId: "00000000-0000-4000-8000-000000000001",
+    roomId: "00000000-0000-4000-8000-000000000002",
+    content: { text: "go back", metadata: { viewClientId: "client-1", ...(observation === undefined ? {} : { observation }) } },
+  } as unknown as Memory
+}
+
+function renderer(answers: BrowserViewAsked[]) {
+  const asks: unknown[] = []
+  const views: BrowserViewAsker = {
+    effect ask(request) {
+      asks.push(request.params)
+      const next: BrowserViewAsked = answers.shift() ?? { kind: "unavailable" }
+      return next
+    },
+  }
+  const runtime = { getService: (name: string) => (name === "agent_view_host" ? { views } : null) } as unknown as IAgentRuntime
+  return { asks, runtime }
+}
+
+const failureKind = (result: ActionResult) => {
+  const failure = result.data?.dispatchFailure
+  return typeof failure === "object" && failure !== null && "kind" in failure ? failure.kind : undefined
+}
+
+it.effect('Go back on the tab the turn observed and say only that the browser was asked (spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain")', effect () => {
+  const back = browserPlugin.actions?.find((action) => action.name === "BROWSER_BACK")
+  const reload = browserPlugin.actions?.find((action) => action.name === "BROWSER_RELOAD")
+  try Effect.try(() => assert.isTrue(back !== undefined && reload !== undefined))
+  const device = renderer([
+    replied(dispatched),
+    replied(dispatched),
+    replied(receipt({ dispatched: true, completed: true, requiresReadback: true })),
+    replied({ ok: false, code: "UNAVAILABLE", message: "Browser is not showing." }),
+    replied({ ok: false, code: "CLICKED_SOMETHING", message: "?" }),
+    { kind: "asked", wait: succeed<BrowserViewWait>({ kind: "Unknown" }) },
+    { kind: "refused" },
+  ])
+  const run = (message: Memory, action = back) => promise(() => action!.handler(device.runtime, message, undefined, {}))
+  const observed = try run(turn(browserTab))
+  const sensitive = try run(turn({ ...browserTab, sensitive: true, selectedObject: undefined }), reload)
+  const completed = try run(turn(browserTab))
+  const refusedFirst = try run(turn(browserTab))
+  const unknownCode = try run(turn(browserTab))
+  const lost = try run(turn(browserTab))
+  const notOffered = try run(turn(browserTab))
+  const noFeed = try run(turn(browserTab))
+  const noClient = try promise(() => back!.handler(device.runtime, { ...turn(browserTab), content: { text: "go back" } }, undefined, {}))
+  const command = parseNativeHistoryCommand({ subaction: "back" }, { id: "tab-a", revision: "r1" })
+  try Effect.try(() => {
+    assert.deepStrictEqual(device.asks.slice(0, 2), [
+      { command: { subaction: "back" }, selection: { id: "tab-a", revision: "r1" } },
+      { command: { subaction: "reload" } },
+    ])
+    assert.strictEqual(device.asks.length, 8)
+    assert.deepStrictEqual([observed.success, observed.turnComplete, observed.verifiedUserFacing, observed.data?.executionStatus], [true, true, true, "dispatched"])
+    assert.deepStrictEqual(JSON.parse(observed.text ?? "").value, { dispatched: true, completed: false, requiresReadback: false })
+    assert.isTrue(sensitive.success)
+    assert.deepStrictEqual(
+      [completed, refusedFirst, unknownCode, lost, notOffered, noFeed, noClient].map((result) => [result.success, failureKind(result)]),
+      [[false, "UNCERTAIN_OUTCOME"], [false, "UNAVAILABLE"], [false, "UNCERTAIN_OUTCOME"], [false, "UNCERTAIN_OUTCOME"], [false, "UNSUPPORTED"], [false, "UNAVAILABLE"], [false, "UNAVAILABLE"]])
+    assert.deepStrictEqual(command, { ok: true, command: { subaction: "back", selection: { id: "tab-a", revision: "r1" } } })
+    assert.isFalse(parseNativeHistoryCommand({ subaction: "click" }).ok)
+    assert.isFalse(parseNativeHistoryCommand({ subaction: "back" }, { id: "tab-a" }).ok)
+    assert.deepStrictEqual(
+      [observedTabCurrent({ id: "tab-a", revision: "r1" }, { id: "tab-a", revision: "r1" }), observedTabCurrent({ id: "tab-a", revision: "r1" }, { id: "tab-a", revision: "r2" }),
+        observedTabCurrent({ id: "tab-a", revision: "r1" }, { id: "tab-b", revision: "r1" }), observedTabCurrent(undefined, { id: "tab-b", revision: "r9" })],
+      [true, false, false, true])
+  })
+})

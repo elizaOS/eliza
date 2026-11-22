@@ -123,3 +123,30 @@ pure def dispatchProgressEnabled(s: Dispatch): bool = canAdmitRequest(s) or canR
 pure def alwaysDispatchDeadlockFree(s: Dispatch): bool = dispatchQuiescent(s) or dispatchProgressEnabled(s)
 pure def alwaysActiveDispatchHasRegistration(s: Dispatch): bool = s.phase == Admitted or s.phase == Invoking implies s.remaining.length() > 0
 ```
+
+## Story: Read what one model call sent and what it cost
+
+> As the owner's operator, I want each model-call log row to say which tool
+> schemas and output cap the request carried and what the provider counted,
+> so that I can see what crowds a long turn and when a prefix cache was used.
+
+### A model-call log row records the request parts its prompt omits and only the token counts the provider reported
+
+The row's `prompt` holds the messages only. `tools` lists each tool schema
+the request sent, in order, with its serialized length and the first twelve
+hex digits of its SHA-256, and is empty when the request sent none. `maxTokens`
+is the cap the request sent, absent when it sent none. `usage` exists only
+when the provider reported a prompt count; a completion, cache-read or
+reasoning count the provider did not report is absent, never zero, so no
+report stays distinguishable from a cache miss.
+
+```quint
+type ProviderCount = CountReported({ tokens: int }) | CountMissing
+pure def loggedTokens(c: ProviderCount): int = match c { | CountReported(x) => if (x.tokens >= 0) x.tokens else -1 | CountMissing => -1 }
+pure def usageLogged(prompt: ProviderCount): bool = match prompt { | CountReported(x) => x.tokens >= 0 | CountMissing => false }
+pure def toolsLogged(sent: int): int = if (sent < 0) 0 else sent
+pure val sentValues = Set(-1, 0, 3)
+pure def lawAMissingCountIsNeverZero(c: ProviderCount): bool = c == CountMissing implies loggedTokens(c) != 0
+pure def lawUsageNeedsAReportedPromptCount(prompt: ProviderCount): bool = usageLogged(prompt) implies prompt != CountMissing
+pure def lawEveryToolSentIsLogged(sent: int): bool = sent >= 0 implies toolsLogged(sent) == sent
+```

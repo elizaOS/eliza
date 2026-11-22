@@ -1,8 +1,8 @@
-// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A deletion removes only the selected settled row and confirms only a removal Android reported"
+// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A deletion removes only the selected settled row and confirms only a removal Android reported"; spec/os/android/messages.md, "A sender lookup reads only the newest incoming row's address, and names it whole only when asked"
 import type { Receipt } from "../../../gen/core__receipts.ts";
 import type { HandoffOutcome } from "../../../gen/os__android__bridge.ts";
 import type { CallEvidence, DeleteStatus, PartEvidence, PartState, SendAnswer } from "../../../gen/os__android__messages.ts";
-import { evidenceStatus, maxPartsPerRecipient } from "../../../gen/os__android__messages.ts";
+import { evidenceStatus, maxPartsPerRecipient, senderNumberAdmitted, senderSuffixDigits } from "../../../gen/os__android__messages.ts";
 import { normalizePhoneNumber, type PhoneNumber, type TelephonyStatus } from "./phone.ts";
 
 export type OperationId = string & { readonly __brand: "OperationId" };
@@ -190,6 +190,12 @@ export interface MessageDeleteResult {
   message: MessageDeleteReference;
 }
 
+/** What the newest incoming SMS says of its sender: a four-digit suffix, or the whole address and thread when asked for. */
+export type SmsLatestSender =
+  | { status: "found"; numberEnding: string }
+  | { status: "found"; address: PhoneNumber; threadId?: ThreadId }
+  | { status: "empty" | "sender-unavailable" };
+
 export interface ThreadReadMark {
   defaultSmsApp: boolean;
   updated: number;
@@ -207,6 +213,7 @@ export interface MessagesNativePlugin {
   composeSms(options: { recipients: string[]; body: string }): Promise<unknown>;
   listThreads(options: { limit: number; before?: number; cursor?: string }): Promise<unknown>;
   listMessages(options: { threadId: string; limit: number; before?: number; cursor?: string }): Promise<unknown>;
+  latestIncomingSender(options?: { includeAddress: true }): Promise<unknown>;
   markThreadRead(options: { threadId: string; throughDate: number }): Promise<unknown>;
   deleteMessage(options: MessageDeleteReference): Promise<unknown>;
   observeMessages(options: { enabled: boolean }): Promise<unknown>;
@@ -235,6 +242,7 @@ export interface MessagesClient {
   listMessages(threadId: ThreadId, limit?: number, before?: number): Promise<MessageRow[]>;
   threadPage(cursor?: ThreadCursor): Promise<ThreadPage>;
   messagePage(threadId: ThreadId, cursor?: MessageCursor): Promise<MessagePage>;
+  latestIncomingSender(includeAddress?: boolean): Promise<SmsLatestSender>;
   markThreadRead(threadId: ThreadId, throughDate: number): Promise<ThreadReadMark>;
   deleteMessage(reference: MessageDeleteReference): Promise<MessageDeleteResult>;
   observeMessages(
@@ -599,6 +607,28 @@ export function parseMessages(value: unknown, threadId: ThreadId, limit: number)
     });
   }
   return out;
+}
+
+/**
+ * The latest-sender reply of the request it answers: a suffix only without `includeAddress`, and with it the whole
+ * dialable address and, when Android has one, its thread.
+ * @throws {never}
+ */
+export function parseLatestSender(value: unknown, includeAddress: boolean): SmsLatestSender | undefined {
+  const data = fields(value);
+  if (!data) return undefined;
+  if (data.status === "empty" || data.status === "sender-unavailable") return fields(value, ["status"]) ? { status: data.status } : undefined;
+  if (data.status !== "found") return undefined;
+  if (!includeAddress) {
+    const ending = fields(value, ["status", "numberEnding"])?.numberEnding;
+    return typeof ending === "string" && ending.length === senderSuffixDigits && /^[0-9]+$/.test(ending) ? { status: "found", numberEnding: ending } : undefined;
+  }
+  const withThread = Object.hasOwn(data, "threadId");
+  if (!fields(value, withThread ? ["status", "address", "threadId"] : ["status", "address"])) return undefined;
+  const address = typeof data.address === "string" && /^\+?[0-9]+$/.test(data.address) && senderNumberAdmitted(data.address.replace("+", "").length) ? (data.address as PhoneNumber) : null;
+  const threadId = withThread ? threadIdOf(data.threadId) : undefined;
+  if (address === null || threadId === null) return undefined;
+  return threadId === undefined ? { status: "found", address } : { status: "found", address, threadId };
 }
 
 /** @throws {never} */

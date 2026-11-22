@@ -1,4 +1,4 @@
-// spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/modelDiagnostics.md, "Promise identity governs membership independently of the final outcome"; spec/core/registries.md, "Each extension registry preserves its own normalization and replacement policy"
+// spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/modelDiagnostics.md, "Promise identity governs membership independently of the final outcome"; spec/core/registries.md, "Each extension registry preserves its own normalization and replacement policy"; spec/core/models.md, "A model-call log row records the request parts its prompt omits and only the token counts the provider reported"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"
 import { errorText } from "../utils/errors.vibe"
 import { Machine, machine } from "../../gen/core__registries.effect.vibe"
 import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
@@ -77,6 +77,7 @@ import {
 import { captureModelLookupCaller } from "../utils/model-lookup-caller.vibe"
 import { ResponseSkeletonStreamExtractor } from "../utils/streaming.vibe"
 import { isPlainObject } from "../utils/type-guards.vibe"
+import type { ModelLogTool } from "../types/database.vibe"
 import { executeChainWithFallback, isLocalHandler, maybeReroute, resolveChain } from "./action-model-routing.vibe"
 import { getActionRoutingContext, runWithActionRoutingContext } from "./action-routing-context.vibe"
 import { stringifyForModel } from "./json-output.vibe"
@@ -102,6 +103,7 @@ import {
   NoModelProviderConfiguredError,
   type ResolvedModelRegistration,
   readReasoningTokensFromResponse,
+  readTokenUsageFromResponse,
   resolveStructuredStreamFields,
   TEXT_GENERATION_MODEL_KEYS,
 } from "./model-policy.vibe"
@@ -116,6 +118,7 @@ import {
   buildProviderAttributionsFromState,
   canonicalPromptForModelCall,
   omitUnvalidatedProviderSpans,
+  sha256Hex,
 } from "./trajectory-provider-attribution.vibe"
 
 module node {
@@ -161,8 +164,8 @@ export interface RuntimeModelDispatchHost {
   invokePipelineHooks(
     ...args: Parameters<RuntimePipelineHooks["invokePipelineHooks"]>
   ): ReturnType<RuntimePipelineHooks["invokePipelineHooks"]>
-  createSecretSwapSession(): SecretSwapSession
-  createPiiSwapSession(): PseudonymSession
+  createSecretSwapSession(conversation?: string): SecretSwapSession
+  createPiiSwapSession(conversation?: string): PseudonymSession
   initializationPending(): boolean
   _ensureServiceStarted(
     serviceType: ServiceTypeName | string,
@@ -826,6 +829,28 @@ export function freezeAdmittedModelRequest(value: unknown): void {
   visit(value)
 }
 
+function toolLogEntry(tool: unknown): ModelLogTool[] {
+  if (!isPlainObject(tool)) return []
+  const name = tool.name ?? (isPlainObject(tool.function) ? tool.function.name : undefined)
+  if (typeof name !== "string") return []
+  let text: string
+  try {
+    text = JSON.stringify(tool)
+  } catch {
+    return [{ name, chars: 0 }]
+  }
+  return [{ name, chars: text.length, hash: sha256Hex(text).slice(0, 12) }]
+}
+
+/** The request parts a logged prompt omits: each tool schema by size and digest, and the output cap when one was sent. */
+export function modelCallRequestSizes(request: unknown): { tools?: ModelLogTool[]; maxTokens?: number } {
+  if (!isPlainObject(request)) return {}
+  return {
+    tools: Array.isArray(request.tools) ? request.tools.flatMap(toolLogEntry) : [],
+    ...(typeof request.maxTokens === "number" && request.omitMaxTokens !== true ? { maxTokens: request.maxTokens } : {}),
+  }
+}
+
 export function logModelCall(
   core: DispatchCore,
   modelType: string,
@@ -835,6 +860,7 @@ export function logModelCall(
   elapsedTime: number,
   provider: string | undefined,
   response: unknown,
+  modelParams?: unknown,
 ): void {
   const resolvedProvider = provider || core.host.models().get(modelKey)?.[0]?.provider || "unknown"
   const spanMeta: InferenceTimingMeta = {
@@ -870,6 +896,8 @@ export function logModelCall(
         executionTime: elapsedTime,
         provider: resolvedProvider,
         response: responseValue,
+        ...modelCallRequestSizes(modelParams),
+        usage: readTokenUsageFromResponse(response),
       },
       type: `useModel:${modelKey}`,
     },
@@ -1468,7 +1496,31 @@ effect function finishDeliveredStream(run: DispatchRun, attempt: Attempt, stream
 }
 
 const CONTACT_REFERENCE_GUIDANCE =
-  "Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements."
+  "Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. A phone reference denotes a numeric phone target, not a contact name; an email reference denotes an email address. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements."
+
+function latestUserMessageIndex(request: Record<string, unknown>): number {
+  const messages = request.messages
+  if (!Array.isArray(messages)) return -1
+  let at = messages.length - 1
+  while (at >= 0 && !(isPlainObject(messages[at]) && messages[at].role === "user")) at--
+  const content = at < 0 ? undefined : messages[at].content
+  return typeof content === "string" || Array.isArray(content) ? at : -1
+}
+
+function appendToLatestUserMessage(request: Record<string, unknown>, line: string): void {
+  const at = latestUserMessageIndex(request)
+  if (at < 0) return
+  const messages = request.messages as Record<string, unknown>[]
+  const message = messages[at]
+  const content = typeof message.content === "string"
+    ? `${message.content}\n\n${line}`
+    : [...(message.content as unknown[]), { type: "text", text: line }]
+  request.messages = messages.map((entry, index) => index === at ? { ...message, content } : entry)
+  const segments = request.promptSegments
+  if (at === 0 && Array.isArray(segments) && segments.some((segment) => isPlainObject(segment) && !segment.stable)) {
+    request.promptSegments = [...segments, { content: `\n\n${line}`, stable: false }]
+  }
+}
 
 effect function protectModelParams(
   run: DispatchRun,
@@ -1485,7 +1537,7 @@ effect function protectModelParams(
   let systemPrompt = attachEffectiveSystemPrompt(core, textModelKey, modelParams)
   if (prepared.substituteSecrets) {
     const trajectoryCtx = getTrajectoryContext()
-    const session = trajectoryCtx?.secretSwapSession ?? core.host.createSecretSwapSession()
+    const session = trajectoryCtx?.secretSwapSession ?? core.host.createSecretSwapSession(trajectoryCtx?.roomId as string | undefined)
     stream.secret = session
     if (trajectoryCtx && !trajectoryCtx.secretSwapSession) {
       trajectoryCtx.secretSwapSession = session
@@ -1496,7 +1548,7 @@ effect function protectModelParams(
   let piiSubstitutedText = ""
   if (prepared.substitutePii) {
     const trajectoryCtx = getTrajectoryContext()
-    const session = trajectoryCtx?.piiSwapSession ?? core.host.createPiiSwapSession()
+    const session = trajectoryCtx?.piiSwapSession ?? core.host.createPiiSwapSession(trajectoryCtx?.roomId as string | undefined)
     stream.pii = session
     if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
       trajectoryCtx.piiSwapSession = session
@@ -1536,15 +1588,27 @@ effect function protectModelParams(
     const postHookSystemPrompt = resolveEffectiveSystemPrompt({ params: modelParams, fallback: systemPrompt })
     systemPrompt = postHookSystemPrompt === undefined ? undefined : stream.pii.substituteText(postHookSystemPrompt)
   }
+  const currentPromptText = stream.secret === null ? "" : try collectPiiPromptText(modelParams, systemPrompt)
+  const contactReferences = stream.secret?.entries.filter((entry) =>
+    entry.placeholder.startsWith("__ELIZA_CONTACT_") && (entry.kind === "phone" || entry.kind === "email")
+    && currentPromptText.includes(entry.placeholder)) ?? []
+  const kindsFollowMessages = stream.secret?.stable === true && isPlainObject(modelParams) && latestUserMessageIndex(modelParams) >= 0
   if (
-    stream.secret?.entries.some((entry) => entry.placeholder.startsWith("__ELIZA_CONTACT_"))
+    (contactReferences.length > 0 || kindsFollowMessages)
     && isTextGenerationModelKey(String(model.modelKey))
     && isPlainObject(modelParams)
   ) {
+    const kinds = contactReferences.length > 0
+      ? `Current contact reference kinds: ${contactReferences.map(({ placeholder, kind }) => `${placeholder}: ${kind}`).join(", ")}.`
+      : undefined
+    const guidance = CONTACT_REFERENCE_GUIDANCE + (kindsFollowMessages
+      ? " When a request carries contact references, their kinds are listed at the end of its latest user message."
+      : kinds === undefined ? "" : ` ${kinds}`)
     if (Array.isArray(modelParams.messages)) {
       modelParams.messages = dropDuplicateLeadingSystemMessage(modelParams.messages, systemPrompt)
     }
-    systemPrompt = `${systemPrompt ?? ""}\n\n${CONTACT_REFERENCE_GUIDANCE}`
+    if (kindsFollowMessages && kinds !== undefined) appendToLatestUserMessage(modelParams, kinds)
+    systemPrompt = `${systemPrompt ?? ""}\n\n${guidance}`
     modelParams.system = systemPrompt
   }
   return { modelParams, systemPrompt }
@@ -1818,6 +1882,7 @@ effect function finishCallbackStream(
     elapsedTime,
     model.provider,
     result.current,
+    request.modelParams,
   )
   if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
     try recordUseModelTrajectory(core, {
@@ -1885,6 +1950,7 @@ effect function finishResult(
     elapsedTime,
     model.provider,
     result.current,
+    request.modelParams,
   )
   const undeliveredStream = stream.shouldStream
     && !stream.handlerDelivered
@@ -2513,8 +2579,9 @@ module edge {
       elapsedTime: number,
       provider: string | undefined,
       response: unknown,
+      modelParams?: unknown,
     ): void {
-      logModelCall(this.#core, modelType, modelKey, promptContent, systemPrompt, elapsedTime, provider, response)
+      logModelCall(this.#core, modelType, modelKey, promptContent, systemPrompt, elapsedTime, provider, response, modelParams)
     }
 
     /** @throws {never} */

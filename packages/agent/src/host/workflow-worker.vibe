@@ -1,4 +1,4 @@
-// spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch"; spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"
+// spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch"; spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"; spec/agent/plugins/profile.md, "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service"
 module node {
   import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
   import { createHash } from "node:crypto"
@@ -7,6 +7,7 @@ module node {
   import { Redacted } from "effect"
   import type { ProcessValue } from "../../gen/agent__plugins__profile.ts"
   import type { LaunchDocument, LaunchFrame } from "./launch.schema.vibe"
+  import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
 
   export type WorkflowWorkerLaunch = NonNullable<LaunchDocument["workflowWorker"]>
 
@@ -80,6 +81,28 @@ module node {
     return "PlainSetting"
   }
 
+  export const workflowWorkerServiceType = "workflow-worker"
+
+  export function workflowWorkerService(installed: () => WorkflowWorkerHost | undefined): ServiceClass {
+    return class WorkflowWorker extends Service {
+      static override serviceType = workflowWorkerServiceType
+      override capabilityDescription = "The workflow worker whose executable matched the launch's pinned digest"
+
+      static override start(runtime: IAgentRuntime): Promise<Service> {
+        return Promise.resolve(new WorkflowWorker(runtime))
+      }
+
+      spawnWorker(args: readonly string[], options?: WorkerSpawnOptions): Promise<ChildProcessWithoutNullStreams> {
+        const host = installed()
+        return host === undefined ? Promise.reject(new Error("The workflow worker is installed once the agent is ready")) : host.spawnWorker(args, options)
+      }
+
+      override stop(): Promise<void> {
+        return Promise.resolve()
+      }
+    }
+  }
+
   export function workerHost(
     launch: WorkflowWorkerLaunch,
     pinned: PinnedWorker,
@@ -108,4 +131,4 @@ module node {
   }
 }
 
-export { measureWorker, workerHost, type PinnedWorker, type WorkflowWorkerLaunch, type WorkerMeasure, type WorkerSecrets, type WorkerSpawnOptions, type WorkflowWorkerHost } from node
+export { measureWorker, workerHost, workflowWorkerService, workflowWorkerServiceType, type PinnedWorker, type WorkflowWorkerLaunch, type WorkerMeasure, type WorkerSecrets, type WorkerSpawnOptions, type WorkflowWorkerHost } from node

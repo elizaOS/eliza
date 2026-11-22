@@ -1,8 +1,10 @@
-// spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; spec/agent/storage/database.md, "An empty store starts from the bundle's snapshot only at the bundle's schema version"
+// spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; spec/agent/storage/database.md, "An empty store starts from the bundle's snapshot only at the bundle's schema version"; spec/agent/storage/database.md, "Only one live process holds a data directory"; spec/agent/storage/database.md, "A conditional cache write answers false only for a value it read, and a failed write is never retried"
 import { assert, it } from "@effect/vitest"
 import { host, scratch } from "./support/kernel.vibe"
 
 module node {
+  import { mkdir, readdir, writeFile } from "node:fs/promises"
+  import { join } from "node:path"
   import type { PGlite } from "@electric-sql/pglite"
   import { createDeviceStorageSnapshot, openDeviceStorage, type DeviceStorageSnapshot } from "../src/storage/index.vibe"
   import { migrations as shipped, type Migration } from "../src/storage/schema.vibe"
@@ -45,8 +47,45 @@ module node {
     const seeded = await visit(state("seeded"), unmarked, await createDeviceStorageSnapshot(marked))
     return { shipped: v1.length, created, upgraded, refusedDestructive, afterDestructive, refusedFailing, afterFailing, refusedNewer, otherVersionSnapshot, seeded }
   }
+
+  function refusal(error: unknown): string {
+    if (typeof error !== "object" || error === null) return String(error)
+    if ("fault" in error) return String(error.fault)
+    return "code" in error && typeof error.code === "string" ? error.code : "refused"
+  }
+
+  function owned(stateDirectory: string, snapshot?: DeviceStorageSnapshot) {
+    return openDeviceStorage({ stateDirectory, persistMemory: true, account: null, embeddingDimensions: 0, ...(snapshot === undefined ? {} : { snapshot }) })
+  }
+
+  export async function reopenJourney(state: (name: string) => string) {
+    const home = state("reopen")
+    const first = await owned(home)
+    const created = await first.adapter.compareAndSetCache("consent", undefined, { step: 1 })
+    const createdAgain = await first.adapter.compareAndSetCache("consent", undefined, { step: 9 })
+    const staleExpectation = await first.adapter.compareAndSetCache("consent", { step: 0 }, { step: 9 })
+    const advanced = await first.adapter.compareAndSetCache("consent", { step: 1 }, { step: 2 })
+    const withNul = await first.adapter.setCaches([{ key: "note", value: { text: "a\u0000b" } }]).then(String, refusal)
+    const withLoneSurrogate = await first.adapter.setCaches([{ key: "note", value: { text: "\ud800" } }]).then(String, refusal)
+    const keepable = await first.adapter.setCaches([{ key: "note", value: { text: "a\u{1F600}b" } }])
+    const heldTwice = await owned(home).then(async ({ adapter }) => { await adapter.close(); return "opened" }, refusal)
+    await first.adapter.close()
+    const afterClose = await first.adapter.compareAndSetCache("consent", { step: 2 }, { step: 3 }).then(String, refusal)
+    await writeFile(join(home, "store-v4", "postmaster.pid"), "-42\n", { mode: 0o600 })
+    const second = await owned(home)
+    const reopened = (await second.adapter.getCaches(["consent"])).get("consent")
+    await second.adapter.close()
+    const interrupted = state("interrupted-seed")
+    await mkdir(join(interrupted, ".store-seed-left"), { recursive: true, mode: 0o700 })
+    await writeFile(join(interrupted, ".store-seed-left", "partial"), "half a store")
+    const seeded = await owned(interrupted, await createDeviceStorageSnapshot())
+    const seededWritable = await seeded.adapter.compareAndSetCache("consent", undefined, { step: 1 })
+    await seeded.adapter.close()
+    const leftStages = (await readdir(interrupted)).filter((name) => name.startsWith(".store-seed-"))
+    return { created, createdAgain, staleExpectation, advanced, withNul, withLoneSurrogate, keepable, heldTwice, afterClose, reopened, seededWritable, leftStages }
+  }
 }
-import { upgradeJourney } from node
+import { reopenJourney, upgradeJourney } from node
 
 it.effect('A store is upgraded one additive migration at a time, refuses destructive, failing and newer schemas, and seeds only from a matching snapshot (spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; "An empty store starts from the bundle\'s snapshot only at the bundle\'s schema version")', effect () => {
   const state = try scratch("storage-migrations")
@@ -62,4 +101,14 @@ it.effect('A store is upgraded one additive migration at a time, refuses destruc
   assert.deepStrictEqual(walked.refusedNewer, { refused: "NewerSchema" })
   assert.deepStrictEqual(walked.otherVersionSnapshot, { version: base, tables: [], cached: undefined })
   assert.deepStrictEqual(walked.seeded, { version: base + 1, tables: ["journey_seed_marker"], cached: undefined })
+}, 300_000)
+
+it.effect('A closed store reopens past a lock and a seed a gone holder left, and a conditional cache write answers false only for a value it read (spec/agent/storage/database.md, "Only one live process holds a data directory"; "An empty store starts from the bundle\'s snapshot only at the bundle\'s schema version"; "A conditional cache write answers false only for a value it read, and a failed write is never retried"; "A write whose statement failed fails as a storage fault naming its table, and text the store cannot keep is refused before anything runs")', effect () => {
+  const state = try scratch("storage-reopen")
+  const walked = try host("reopen journey", () => reopenJourney((name) => state.file(name)))
+  assert.deepStrictEqual(walked, {
+    created: true, createdAgain: false, staleExpectation: false, advanced: true,
+    withNul: "SQL_JSON_UNSUPPORTED_NUL", withLoneSurrogate: "SQL_JSON_UNSUPPORTED_SURROGATE", keepable: true,
+    heldTwice: "DirectoryInUse", afterClose: "refused", reopened: { step: 2 }, seededWritable: true, leftStages: [],
+  })
 }, 300_000)

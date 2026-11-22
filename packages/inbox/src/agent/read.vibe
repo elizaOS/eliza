@@ -1,0 +1,157 @@
+// spec/inbox/managedRead.md, "Only a bounded read is dispatched; any other request fails without a call"; spec/inbox/managedRead.md, "A read returns mail only for the current owner while permission holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { enabled, initial, machineOver, type Event, type ManagedInboxRead, type ManagedReadKind } from "../../gen/inbox__managedRead.effect.vibe"
+import type { ManagedGmailClient } from "../client/index.vibe"
+import { classifyGmailFailure, type GmailFailureKind, type MailFailure } from "../mailbox/failures.vibe"
+import { gmailReadable } from "../mailbox/grants.vibe"
+import type { GmailMessage, GoogleConnection } from "../mailbox/types.vibe"
+import { agentGmailClient } from "./cloud.vibe"
+
+/** The action name of the owner's managed inbox read. */
+export const inboxReadActionName = "INBOX_READ"
+
+/** The owner's request for a managed inbox read, as the planner gave it. */
+export interface ManagedReadRequest {
+  readonly query?: string
+  readonly limit?: number
+  readonly account?: string
+  readonly missedOnly?: boolean
+}
+
+/** What a managed inbox read answered. */
+export type ManagedReadAnswer =
+  | { readonly kind: "mail"; readonly messages: readonly GmailMessage[] }
+  | { readonly kind: "refused"; readonly reason: "missing-limit" | "account-override" | "missed-only" | "not-connected" | "owner-changed" }
+  | { readonly kind: "failed"; readonly failure: GmailFailureKind }
+
+function kindOf(request: ManagedReadRequest): ManagedReadKind {
+  if (request.account !== undefined && request.account !== "") return "AccountOverrideRead"
+  if (request.missedOnly === true) return "MissedOnlyRead"
+  if (request.limit === undefined || !Number.isSafeInteger(request.limit) || request.limit < 1 || request.limit > 50) return "MissingLimitRead"
+  return "BoundedRead"
+}
+
+const refusalOf = { MissingLimitRead: "missing-limit", AccountOverrideRead: "account-override", MissedOnlyRead: "missed-only" } as const
+
+const readable = (status: GoogleConnection) => gmailReadable({ ...status, label: "" })
+
+/** One managed read's lifecycle over its model: each step is taken only where the rules allow it. */
+export interface ManagedReadSession {
+  step(event: Event): ManagedInboxRead | undefined!!
+  state(): ManagedInboxRead!!
+}
+
+/** A managed read session starting idle, for the owner current when it begins. */
+export effect function managedReadSession(): ManagedReadSession!! {
+  const kept = try Ref.make(initial)
+  const read = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
+  return {
+    effect step(event) {
+      if (!enabled(try read.get(), event)) return undefined
+      return try orDie(read.send(event))
+    },
+    state: () => read.get(),
+  }
+}
+
+/** Reads the owner's managed inbox fresh: one bounded call for the connection current when it began, returning mail only if that connection is still current and readable. */
+export effect function managedInboxRead(client: ManagedGmailClient, request: ManagedReadRequest): ManagedReadAnswer!! {
+  const read = try managedReadSession()
+  const failed = (error: MailFailure): ManagedReadAnswer => ({ kind: "failed", failure: classifyGmailFailure(error, "read", true) })
+
+  const kind = kindOf(request)
+  if (kind !== "BoundedRead") {
+    try read.step({ type: "beginRead", kind })
+    return { kind: "refused", reason: refusalOf[kind] }
+  }
+  const before: GoogleConnection | MailFailure = client.gmailStatus() catch (error) => error
+  if ("_tag" in before) return failed(before)
+  const grantId = before.connectionId
+  if (!readable(before) || grantId === null) return { kind: "refused", reason: "not-connected" }
+  try read.step({ type: "beginRead", kind })
+
+  const search = request.query !== undefined && request.query.trim() !== "" ? request.query.trim() : "in:inbox"
+  const size = (request.limit ?? 25) <= 10 ? 10 : (request.limit ?? 25) <= 25 ? 25 : 50
+  const page = client.gmailSearch(grantId, search, size) catch (error) => error
+  if ("_tag" in page) {
+    try read.step({ type: "sourceFails" })
+    return failed(page)
+  }
+  const after: GoogleConnection | null = client.gmailStatus() catch () => null
+  if (after === null || after.connectionId !== grantId) try read.step({ type: "replaceOwner" })
+  if (after === null || !readable(after)) try read.step({ type: "revokePermission" })
+  const done = try read.step({ type: "receiveMail" })
+  if (done?.phase !== "ReadDone") return { kind: "refused", reason: after === null || after.connectionId === grantId ? "not-connected" : "owner-changed" }
+  return { kind: "mail", messages: page.messages.slice(0, request.limit ?? page.messages.length) }
+}
+
+function parameters(options: unknown): ManagedReadRequest {
+  const raw = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+  const given = typeof raw === "object" && raw !== null ? raw as Record<string, unknown> : {}
+  return {
+    ...(typeof given.query === "string" ? { query: given.query } : {}),
+    ...(typeof given.limit === "number" ? { limit: given.limit } : typeof given.limit === "string" && /^\d+$/.test(given.limit) ? { limit: Number(given.limit) } : {}),
+    ...(typeof given.account === "string" ? { account: given.account } : {}),
+    ...(given.missedOnly === true ? { missedOnly: true } : {}),
+  }
+}
+
+const refusalText = {
+  "missing-limit": "Say how many messages to read, from 1 to 50.",
+  "account-override": "Inbox reads use the Gmail account connected on this phone; another account cannot be named here.",
+  "missed-only": "Missed-mail reads are not available. Search the Inbox instead.",
+  "not-connected": "Gmail is not connected with read access. Connect Gmail in Inbox, then ask again.",
+  "owner-changed": "The Gmail account changed while reading, so no mail is shown. Ask again to read the current account.",
+} as const
+
+const failureText: Record<GmailFailureKind, string> = {
+  offline: "Gmail could not be reached. Try again when the phone is online.",
+  revoked: "Gmail access needs authorization again. Reconnect Gmail in Inbox.",
+  stale: "The mailbox changed while reading. Ask again.",
+  gone: "That mail is no longer in Gmail.",
+  unavailable: "Gmail is unavailable right now. Try again shortly.",
+  refused: "That mail could not be read.",
+  rejected: "Gmail refused this search. Try a simpler one.",
+}
+
+function line(message: GmailMessage): string {
+  return `${message.unread ? "[unread] " : ""}${message.from} — ${message.subject || "(no subject)"} (${message.receivedAt}) [id ${message.id}]`
+}
+
+function resultOf(answer: ManagedReadAnswer): ActionResult {
+  switch (answer.kind) {
+    case "refused": return { success: false, text: refusalText[answer.reason], data: { refusal: answer.reason } }
+    case "failed": return { success: false, text: failureText[answer.failure], data: { failure: answer.failure } }
+    case "mail": return {
+      success: true,
+      text: answer.messages.length === 0 ? "No messages match." : answer.messages.map(line).join("\n"),
+      data: {
+        messages: answer.messages.map((message) => ({
+          id: message.id, threadId: message.threadId, from: message.from, subject: message.subject, snippet: message.snippet,
+          receivedAt: message.receivedAt, unread: message.unread,
+        })),
+      },
+    }
+  }
+}
+
+async function handle(runtime: IAgentRuntime, _message: Memory, options: unknown): Promise<ActionResult> {
+  const client = agentGmailClient(runtime)
+  if (client === undefined) return { success: false, text: "Gmail is available only when this agent uses the cloud.", data: { refusal: "no-cloud" } }
+  return resultOf(await runPromise(managedInboxRead(client, parameters(options))))
+}
+
+/** The owner's managed inbox read: a fresh, bounded search of the connected Gmail account. */
+export const inboxReadAction: Action = {
+  name: inboxReadActionName,
+  description: "Read or search the owner's connected Gmail mailbox: a fresh, bounded list of messages (sender, subject, time, unread) for the connected account only. Never sends or changes mail.",
+  similes: ["READ_EMAIL", "CHECK_EMAIL", "SEARCH_EMAIL", "LIST_INBOX"],
+  parameters: [
+    { name: "limit", required: true, schema: { type: "number" }, description: "How many messages to read, from 1 to 50." },
+    { name: "query", required: false, schema: { type: "string" }, description: 'A Gmail search such as "in:inbox", "in:sent", "is:unread" or "from:ana@example.com". Defaults to the Inbox.' },
+  ],
+  roleGate: { minRole: "OWNER" },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  validate: async (runtime) => agentGmailClient(runtime) !== undefined,
+  handler: async (runtime, message, _state, options) => handle(runtime, message, options),
+}

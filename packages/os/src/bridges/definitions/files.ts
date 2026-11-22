@@ -95,7 +95,7 @@ export interface ElizaFilesPlugin {
   storageRequestAccess(input?: { settings?: boolean }): Promise<FilesResult>;
   storageList(input: OnVolume & { path: string }): Promise<FilesResult & { entries?: readonly StorageEntry[]; truncated?: boolean }>;
   storageCategory(input: { category: FilesCategory; countOnly?: boolean }): Promise<
-    FilesResult & { entries?: readonly StorageEntry[]; count?: number; truncated?: boolean; folders?: readonly CategoryFolder[] }
+    FilesResult & { entries?: readonly StorageEntry[]; count?: number; bytes?: number; truncated?: boolean; folders?: readonly CategoryFolder[] }
   >;
   storageQuery(input: {
     text?: string;

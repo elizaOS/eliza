@@ -1,0 +1,275 @@
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference"; spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"
+import { assert, it } from "@effect/vitest"
+import { readReminderPresentation, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
+import { collectFacts, runCheckin, checkinReport } from "../src/checkin.vibe"
+import { ownerActivity, setDossier } from "../src/dossier.vibe"
+import { restoreEarlier } from "../src/evaluators/pages.vibe"
+import { commitEvaluatorProgress, evidenceOf, sourceOf, stageEvaluatorOutput, stagedOutput } from "../src/evaluators/progress.vibe"
+import { runEvaluators } from "../src/evaluators/runner.vibe"
+import { followupIndex, followupTick } from "../src/followups.vibe"
+import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
+import { heardReply, replyKind } from "../src/replies.vibe"
+import { answerReminder, createReminder, deliverReminder, reminderKind, reminderReply } from "../src/reminders.vibe"
+import { createRoutine, deleteRoutine, updateRoutine } from "../src/routines.vibe"
+import { ownerCalendarZone, ownerClockAt, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
+import { changeTodos, currentTodos } from "../src/todos.vibe"
+import { ports, portsLayer, rowsOf, type Ports } from "./support/ports.vibe"
+
+const check = (answer: object) => JSON.stringify({ requested: true, clock: "utc", destination: null, alert: "alert", ...answer })
+const plan = { title: "Call the dentist", due: { kind: "in", minutes: 20 }, destination: null, alert: null }
+const asked = (messageId: string) => ({ plan, messageId, text: "remind me in 20 minutes to call the dentist", roomId: undefined })
+const outcomeOf = (result: ActionResult) => ({ success: result.success, text: result.text, outcome: result.data?.outcome })
+const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
+
+it.effect('Create the reminder I asked for, once, at the planned time with the delivery the message chose (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message")', effect () => {
+  const seen = ports()
+  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }))
+  provide portsLayer(seen) {
+    const first = try createReminder(asked("m1"))
+    const again = try createReminder(asked("m1"))
+    const reply = reminderReply(first)
+    try equal({ success: reply.success, heardInFull: reply.userFacingText?.startsWith('I\'ll remind you: "Call the dentist" in 20 minutes, at Sun, Nov 22, 10:20'), phase: first.kind === "settled" ? first.intent.reminderPhase : first.kind }, {
+      success: true, heardInFull: true, phase: "ReminderSaved",
+    })
+    try equal(reminderReply(again).success, true)
+    const rows = rowsOf(seen, reminderKind)
+    try equal(rows.map((row) => ({ trigger: row.trigger, destination: row.metadata.destination, alert: row.metadata.alert, clock: row.metadata.clock })), [
+      { trigger: { kind: "once", atIso: new Date(seen.now + 20 * 60_000).toISOString() }, destination: "device", alert: "alert", clock: "UtcClock" },
+    ])
+  }
+})
+
+it.effect('A plan alone never saves a reminder: a message that did not ask, or a check that cannot run, writes nothing (spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing")', effect () => {
+  const seen = ports()
+  seen.answers.push(check({ requested: false }))
+  provide portsLayer(seen) {
+    const declined = reminderReply(try createReminder({ ...asked("m2"), text: "my sister said she'd remind me to call the dentist" }))
+    const unverified = reminderReply(try createReminder(asked("m3")))
+    const past = { ...asked("m4"), plan: { ...plan, due: { kind: "at", instant: "2026-11-22T14:00:00Z" }, alert: "alert" } }
+    seen.answers.push(check({}))
+    const late = reminderReply(try createReminder(past))
+    try equal([declined, unverified, late].map(outcomeOf).map(({ outcome }) => outcome), ["OWNER_REMINDER_INTENT_MISMATCH", "OWNER_REMINDER_INTENT_UNVERIFIED", "REMINDER_TIME_PASSED"])
+    try equal(rowsOf(seen, reminderKind).length, 0)
+  }
+})
+
+it.effect('A save that failed and then succeeded is reported saved, and one that never proved itself is not (spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record")', effect () => {
+  const seen = ports()
+  seen.answers.push(check({}), check({}))
+  provide portsLayer(seen) {
+    seen.schedulerFailures = 1
+    const recovered = reminderReply(try createReminder(asked("m5")))
+    seen.schedulerFailures = 2
+    const lost = reminderReply(try createReminder(asked("m6")))
+    try equal([recovered.success, lost.success, lost.text], [true, false, "I couldn't confirm the reminder was saved. Check your reminders before relying on it."])
+    try equal(recovered.userFacingEffectReceiptIds?.length, 1)
+  }
+})
+
+it.effect('A fired reminder reaches the owner as the exact presentation issued for it, and can be dismissed by its title (spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that")', effect () => {
+  const seen = ports()
+  seen.answers.push(check({}))
+  provide portsLayer(seen) {
+    try createReminder(asked("m7"))
+    const [row] = rowsOf(seen, reminderKind)
+    const delivered = try deliverReminder(row)
+    const shown = seen.presented[0]?.presentation
+    try equal({ delivered, trusted: readReminderPresentation(shown) === shown, chatText: shown?.chatText, copy: readReminderPresentation(JSON.parse(JSON.stringify(shown))) },
+      { delivered: { kind: "delivered" }, trusted: true, chatText: "Call the dentist", copy: null })
+    const dismissed = try answerReminder({ op: "dismiss", target: "call the dentist" }, "m8")
+    try equal([dismissed.success, seen.tasks.get(row.taskId)?.status], [true, "Dismissed"])
+  }
+})
+
+it.effect('A goal checks in on its cadence, a dismissed check-in stays gone, and an answer sets its review state (spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked")', effect () => {
+  const seen = ports()
+  provide portsLayer(seen) {
+    try changeGoal({ op: "create", title: "Run a 10k", cadence: "daily" }, "g1")
+    try equal(rowsOf(seen, goalCheckinKind).map((row) => row.trigger), [
+      { kind: "cron", expression: "0 9 * * *", tz: "America/New_York" }, { kind: "cron", expression: "0 18 * * *", tz: "America/New_York" },
+    ])
+    try changeGoal({ op: "dismiss_checkin", target: "run a 10k", slot: "morning" }, "g2")
+    try changeGoal({ op: "update", target: "Run a 10k", status: "paused" }, "g3")
+    try changeGoal({ op: "update", target: "Run a 10k", status: "active" }, "g4")
+    const live = rowsOf(seen, goalCheckinKind).filter((row) => row.status === "Scheduled")
+    try equal(live.map((row) => row.metadata.slot), [2])
+    try equal(try deliverGoalCheckin(live[0]), { kind: "delivered" })
+    const answered = try changeGoal({ op: "checkin", target: "Run a 10k", progress: "on_track", note: "ran 5k" }, "g5")
+    const [goal] = try listGoals()
+    try equal([answered.success, goal?.goal.reviewState, goal?.record.log.map(({ note }) => note)], [true, "OnTrack", ["ran 5k"]])
+  }
+})
+
+it.effect('To-dos change once per request, never on a guess between two items, and clear only after the owner confirms (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once")', effect () => {
+  const seen = ports()
+  provide portsLayer(seen) {
+    try changeTodos({ op: "create", content: "buy milk" }, "t1", "add buy milk")
+    try changeTodos({ op: "create", content: "buy milk" }, "t1", "add buy milk")
+    const duplicate = try changeTodos({ op: "create", content: "buy milk" }, "t2", "add buy milk")
+    try changeTodos({ op: "create", content: "buy milk" }, "t3", "yes")
+    const ambiguous = try changeTodos({ op: "complete", target: "buy milk" }, "t4", "done with milk")
+    const byRef = try changeTodos({ op: "complete", target: "t-1" }, "t5", "done with the first")
+    try equal([duplicate, ambiguous, byRef].map(outcomeOf).map(({ success, outcome }) => [success, outcome ?? null]), [[false, "duplicate"], [false, "ambiguous"], [false, "ambiguous"]])
+    try changeTodos({ op: "create", content: "call mom" }, "t6", "add call mom")
+    try changeTodos({ op: "complete", target: "call mom" }, "t7", "called mom")
+    const preview = try changeTodos({ op: "clear" }, "t8", "clear my list")
+    try changeTodos({ op: "create", content: "water plants" }, "t9", "add water plants")
+    const cleared = try changeTodos({ op: "clear" }, "t10", "yes")
+    try equal([preview.data?.outcome, cleared.success, (try currentTodos()).todos.map(({ content }) => content)], ["preview", true, ["water plants"]])
+  }
+})
+
+it.effect('The owner\'s stated zone runs their clock, a trip overrides it only during the trip, and a statement naming no zone changes nothing (spec/assistant/timezone.md, "Story: Run my day on my own clock")', effect () => {
+  const seen = ports()
+  provide portsLayer(seen) {
+    const stated = try stateOwnerZone("my timezone is pacific time")
+    const ignored = try stateOwnerZone("my time zone is whatever the laptop says")
+    try recordTravel(seen.now - 1, seen.now + 86_400_000, "Europe/Berlin")
+    const travelling = try ownerClockAt(seen.now)
+    const back = try ownerClockAt(seen.now + 2 * 86_400_000)
+    try equal([stated.zone, ignored.changed, travelling, back, try ownerCalendarZone()], ["America/Los_Angeles", false, "Europe/Berlin", "America/Los_Angeles", "America/Los_Angeles"])
+  }
+})
+
+it.effect('A routine created twice with one key is created once, and a change or deletion answers what was saved (spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client")', effect () => {
+  const seen = ports()
+  provide portsLayer(seen) {
+    const first = try createRoutine({ idempotencyKey: "create-1", title: "Stretch", windows: ["afternoon"] })
+    const repeat = try createRoutine({ idempotencyKey: "create-1", title: "Stretch", windows: ["afternoon"] })
+    const id = first.routine?.id ?? ""
+    const paused = try updateRoutine(id, { status: "paused" })
+    const repeatAfterPause = try createRoutine({ idempotencyKey: "create-1", title: "Stretch", windows: ["afternoon"] })
+    const deleted = try deleteRoutine(id)
+    try equal([first.created, repeat.created, rowsOf(seen, "personal-assistant.routine").length, paused?.status, repeatAfterPause.routine?.status, deleted], [true, false, 1, "paused", "paused", true])
+  }
+})
+
+it.effect('A check-in stores a summary only when the model wrote one for today (spec/assistant/checkin.md, "Story: Summarize my day only from a real answer")', effect () => {
+  const seen = ports()
+  provide portsLayer(seen) {
+    seen.answers.push("Summary for 2026-11-21: nothing new.")
+    const wrongDay = try runCheckin("morning")
+    seen.answers.push("Good morning. No open to-dos today, November 22.")
+    const stored = try runCheckin("morning")
+    const kept = try checkinReport("2026-11-22", "morning")
+    try equal([wrongDay.stored, wrongDay.result, stored.stored, kept?.summary], [false, "WrongDaySummary", true, "Good morning. No open to-dos today, November 22."])
+  }
+})
+
+it.effect('A brief cue is heard only while work is pending, and an answer about a duration is heard whole (spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after")', effect () => {
+  const cues = ["On it.", "One sec.", "One sec — let me check your calendar.", "On it. Let me check your reminders.", "One moment. One sec."]
+  const answers = ["One second is 1,000 milliseconds.", "Just a second ago the timer finished.", "On it — the alarm is set for seven tomorrow.", "One moment after sunrise is enough."]
+  try equal({ cues: cues.map(replyKind), answers: answers.map(replyKind) }, { cues: cues.map(() => "CueReply"), answers: answers.map(() => "AnswerReply") })
+  try equal([heardReply("WorkPending", "On it."), heardReply("WorkSettled", "On it."), heardReply("WorkPending", answers[0]), heardReply("WorkSettled", answers[0])], ["On it.", undefined, undefined, answers[0]])
+})
+
+const hour = 3_600_000
+
+it.effect('Follow-ups wait for open approvals, stop once answered, and retire one resolved approval per tick (spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered")', effect () => {
+  const seen = ports()
+  seen.approvals = [{ id: "a1", state: "pending", action: "calendar.update", reason: "Move the dentist" }, { id: "a2", state: "pending", action: "sms.send", reason: "Text Sam" }]
+  provide portsLayer(seen) {
+    const opened = try followupTick()
+    seen.now += hour
+    const reminded = try followupTick()
+    seen.approvals = undefined
+    seen.now += 3 * hour
+    const unread = try followupTick()
+    seen.approvals = [{ id: "a1", state: "done", action: "calendar.update", reason: "" }, { id: "a2", state: "approved", action: "sms.send", reason: "" }]
+    const first = try followupTick()
+    seen.approvals = [{ id: "a2", state: "rejected", action: "sms.send", reason: "" }]
+    const second = try followupTick()
+    try equal({
+      opened: opened.delivered, reminded: reminded.delivered, unread: [unread.readFailed, unread.delivered],
+      first: [first.retired, first.delivered, first.held], second: second.retired, left: (try followupIndex()).followups.length,
+    }, { opened: [], reminded: ["a1", "a2"], unread: [true, []], first: [["a1"], [], ["a2"]], second: ["a2"], left: 0 })
+  }
+})
+
+it.effect('The daily dossier fires once per owner day, only after the owner\'s own foreground or unlock signal (spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up")', effect () => {
+  const seen = ports()
+  seen.answers.push("Your day: nothing scheduled.", "Your day: still nothing.")
+  provide portsLayer(seen) {
+    const enabled = try setDossier(true, 360, false)
+    const other = try ownerActivity("other", true)
+    const unlocked = try ownerActivity("unlock", true)
+    const again = try ownerActivity("foreground", true)
+    seen.now += 24 * hour
+    const tomorrow = try ownerActivity("foreground", true)
+    const unchanged = try setDossier(true, 360, false)
+    try equal([enabled.changed, other.kind, unlocked.kind, again.kind, tomorrow.kind, tomorrow.control.fires, unchanged.changed, seen.presented.length],
+      [true, "ignored", "fired", "ignored", "fired", 2, false, 2])
+  }
+})
+
+const evaluatorRuntime = (answer: () => Promise<string>) => ({ agentId: "agent-1", useModel: answer }) as unknown as IAgentRuntime
+const turn = { id: "m-1" as UUID, entityId: "owner-1" as UUID, roomId: "room-1" as UUID, content: { text: "I moved to Lisbon" }, createdAt: 3 } satisfies Memory
+
+it.effect('Evaluators run in priority order, a failing processor leaves its peers running, and local output survives a failed model call (spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorRunner.md, "Story: Prepare the evaluator batch without blocking peer callbacks")', effect () => {
+  const ran: string[] = []
+  const evaluators: RegisteredEvaluator[] = [
+    {
+      name: "facts", description: "facts", schema: { type: "object" }, shouldRun: async () => true, prompt: () => "Extract facts.",
+      processors: [
+        { name: "first", process: async () => { ran.push("facts:first"); throw new Error("store refused") } },
+        { name: "second", process: async ({ output }) => { ran.push(`facts:second:${JSON.stringify(output)}`); return { success: true } } },
+      ],
+    },
+    {
+      name: "links", description: "links", priority: 50, schema: { type: "object" }, shouldRun: async () => true, prompt: () => "",
+      resolveOutputWhen: () => true, resolveOutput: () => ({ link: "lisbon" }),
+      processors: [{ name: "keep", process: async () => { ran.push("links:keep"); return { success: true } } }],
+    },
+    { name: "quiet", description: "quiet", schema: { type: "object" }, shouldRun: async () => false, prompt: () => "" },
+  ]
+  const seen = ports()
+  provide portsLayer(seen) {
+    const answered = try runEvaluators({ runtime: evaluatorRuntime(async () => JSON.stringify({ facts: { city: "Lisbon" } })), message: turn, state: { values: {}, data: {}, text: "" }, options: {}, evaluators, postTurn: false })
+    const unanswered = try runEvaluators({ runtime: evaluatorRuntime(async () => { throw new Error("no model") }), message: turn, state: { values: {}, data: {}, text: "" }, options: {}, evaluators, postTurn: false })
+    try equal({
+      ran, active: answered.activeEvaluators, processed: answered.processedEvaluators, failedProcessor: answered.errors.map((error) => error.processorName ?? ""),
+      afterModelFailure: unanswered.processedEvaluators,
+    }, {
+      ran: ["links:keep", "facts:first", 'facts:second:{"city":"Lisbon"}', "links:keep"], active: ["links", "facts"], processed: ["links"], failedProcessor: ["first"],
+      afterModelFailure: ["links"],
+    })
+  }
+})
+
+it.effect('A staged evaluator output is kept with its binding until every reducer succeeded, and a different output for the same batch is refused (spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference")', effect () => {
+  const seen = ports()
+  const scope = { agentId: "agent-1", roomId: "room-1", entityId: "owner-1", evaluator: "facts", schemaVersion: 1 }
+  const observed = [sourceOf(turn)]
+  const evidence = evidenceOf("batch-1", turn, [turn], [], [])
+  provide portsLayer(seen) {
+    const staged = try stageEvaluatorOutput(scope, observed, evidence, '{"city":"Lisbon"}', "binding-1")
+    const conflicting = try stageEvaluatorOutput(scope, observed, evidence, '{"city":"Porto"}', "binding-2")
+    const resumed = try stagedOutput(scope)
+    const failed = try commitEvaluatorProgress(scope, false, 0)
+    const committed = try commitEvaluatorProgress(scope, true, 0)
+    try equal([staged.kind, conflicting.kind === "refused" ? conflicting.failure : "kept", resumed?.output, failed.kind, committed.kind, try stagedOutput(scope)],
+      ["kept", "ProgressConflict", '{"city":"Lisbon"}', "refused", "kept", undefined])
+  }
+})
+
+it('An evaluator restores only whole earlier records before a visible cursor, once (spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response")', () => {
+  const messages = ["first", "second", "third"].map((text, index) => ({ ...turn, id: `m-${index}` as UUID, content: { text }, createdAt: index }))
+  const restored = restoreEarlier(messages, "m-2", ["m-2"], [], 0, 10_000)
+  const repeated = restoreEarlier(messages, "m-2", ["m-2"], ["m-2"], 0, 10_000)
+  assert.deepStrictEqual([restored.status, restored.records.map(({ id }) => id), repeated.status], ["PageAccepted", ["m-0", "m-1"], "InvalidCursor"])
+})
+
+it.effect('A check-in mentions a calendar event changed recently by its provider, never one only refreshed on the device (spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently")', effect () => {
+  const seen = ports()
+  const old = new Date(seen.now - 72 * hour).toISOString()
+  const recent = new Date(seen.now - 2 * hour).toISOString()
+  seen.events = [
+    { title: "Refreshed only", startAt: seen.now + 48 * hour, synced: true, metadataValid: true, providerEditedAt: old, providerCreatedAt: old, copyUpdatedAt: seen.now - 60_000 },
+    { title: "Moved by the provider", startAt: seen.now + 48 * hour, synced: true, metadataValid: true, providerEditedAt: recent, providerCreatedAt: old, copyUpdatedAt: seen.now - 60_000 },
+    { title: "Unreadable", startAt: seen.now + 48 * hour, synced: true, metadataValid: false, providerEditedAt: recent, providerCreatedAt: old, copyUpdatedAt: seen.now },
+  ]
+  provide portsLayer(seen) {
+    const { facts, partial } = try collectFacts(seen.now, "America/New_York")
+    try equal([facts.includes("Refreshed only"), facts.includes("Moved by the provider (changed recently)"), facts.includes("Unreadable"), partial], [false, true, false, true])
+  }
+})

@@ -296,3 +296,57 @@ pure def lawRowInASendIsNeverDeleted(allowed: bool, reply: DeleteReply, after: R
 pure def lawRefusalNeverDispatches(seen: RowSeen, reply: DeleteReply, after: RowSeen): bool =
   not(deleteDispatched(false, seen)) and deleteStatus(false, seen, reply, after) == DeleteRefused
 ```
+
+## Story: Name the sender of my latest text without reading it
+
+> As the person, I want the assistant to tell me who sent my newest text,
+> and to draft a reply to exactly that sender in exactly that conversation,
+> without the phone handing over what the message says.
+
+### A sender lookup reads only the newest incoming row's address, and names it whole only when asked
+
+The lookup is a read with the SMS grant on the unlocked phone in front,
+fenced again before it is published. It asks the Inbox for the newest
+incoming row, newest date first and the row ID breaking ties, and projects
+only its address, with its thread when the whole address is asked for;
+it never requests a body and never sees an outgoing row. An empty Inbox
+answers empty, and an address that is not a dial-shaped number answers
+sender-unavailable. Without the ask it names only the last four digits.
+With the ask (the agent's `sms.latest-sender.v2`) it names the whole
+dialable number, its separators removed and 2 to 20 digits after an
+optional `+`, and Android's thread when the row has one, so that a reply
+draft goes to that sender in that conversation; a draft is still reviewed
+and sent as above.
+
+```quint
+type SenderAsk = AskSenderSuffix | AskSenderAddress
+type NewestIncoming = NoIncomingText | SenderNotDialShaped | SenderDialShaped({ digits: int, plusOnlyFirst: bool, thread: int })
+type SenderAnswer = SenderInboxEmpty | SenderNotNamed | SenderSuffixNamed | SenderAddressNamed({ withThread: bool }) | SenderNotRead
+pure val senderCall: BridgeCall = { need: WhileUnlocked, needsGrant: true, needsFeature: false }
+pure val senderSuffixDigits = 4
+pure def senderNumberAdmitted(digits: int): bool = digits >= 2 and digits <= 20
+pure def senderAnswer(presence: PluginPresence, facts: HostFacts, ask: SenderAsk, newest: NewestIncoming, fenceHolds: bool): SenderAnswer =
+  if (admitCall(presence, senderCall, facts) != CallAdmitted or not(fenceHolds)) SenderNotRead
+  else match newest {
+    | NoIncomingText => SenderInboxEmpty
+    | SenderNotDialShaped => SenderNotNamed
+    | SenderDialShaped(s) =>
+      if (ask == AskSenderAddress) (if (s.plusOnlyFirst and senderNumberAdmitted(s.digits)) SenderAddressNamed({ withThread: s.thread > 0 }) else SenderNotNamed)
+      else if (s.digits >= senderSuffixDigits) SenderSuffixNamed
+      else SenderNotNamed
+  }
+pure def senderAddressNamed(answer: SenderAnswer): bool = match answer { | SenderAddressNamed(_) => true | _ => false }
+pure def senderNamed(answer: SenderAnswer): bool = answer == SenderSuffixNamed or senderAddressNamed(answer)
+pure val newestValues = Set(NoIncomingText, SenderNotDialShaped,
+  SenderDialShaped({ digits: 3, plusOnlyFirst: true, thread: 0 }), SenderDialShaped({ digits: 11, plusOnlyFirst: true, thread: 42 }),
+  SenderDialShaped({ digits: 11, plusOnlyFirst: false, thread: 7 }), SenderDialShaped({ digits: 21, plusOnlyFirst: true, thread: 1 }),
+  SenderDialShaped({ digits: 1, plusOnlyFirst: true, thread: 0 }))
+pure val digitsValues = Set(1, 2, 4, 20, 21)
+pure def lawASenderIsNamedOnlyWhenTheReadIsAdmittedAndStillFenced(presence: PluginPresence, facts: HostFacts, ask: SenderAsk, newest: NewestIncoming, fenceHolds: bool): bool =
+  senderNamed(senderAnswer(presence, facts, ask, newest, fenceHolds)) implies (admitCall(presence, senderCall, facts) == CallAdmitted and fenceHolds)
+pure def lawOnlyTheAskNamesTheWholeAddress(presence: PluginPresence, facts: HostFacts, newest: NewestIncoming, fenceHolds: bool): bool =
+  not(senderAddressNamed(senderAnswer(presence, facts, AskSenderSuffix, newest, fenceHolds))) and
+    senderAnswer(presence, facts, AskSenderAddress, newest, fenceHolds) != SenderSuffixNamed
+pure def lawAWholeAddressIsADialableNumber(digits: int): bool =
+  senderAddressNamed(senderAnswer(PluginRegistered, { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }, AskSenderAddress, SenderDialShaped({ digits: digits, plusOnlyFirst: true, thread: 0 }), true)) iff senderNumberAdmitted(digits)
+```

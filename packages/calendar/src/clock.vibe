@@ -1,0 +1,178 @@
+// spec/calendar/readClock.md, "Story: See and create times in the zone I am asking about"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/readClock.md, "Display shifts the canonical instant by the zone's offset on that date"; spec/calendar/readClock.md, "An all-day event keeps its civil date; a timed event uses the viewer's day"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"
+import { correctedYear, displayDayShift, mustAskBeforeCreate, type YearCue } from "../gen/calendar__readClock.effect.vibe"
+
+/** A wall-clock reading in one zone, to the second. */
+export interface ZonedDateParts {
+  readonly year: number
+  readonly month: number
+  readonly day: number
+  readonly hour: number
+  readonly minute: number
+  readonly second: number
+}
+
+/** A civil date without a time. */
+export type LocalDate = Pick<ZonedDateParts, "year" | "month" | "day">
+
+const minuteMs = 60_000
+const dayMs = 86_400_000
+const offsetSampleHours = [-48, -36, -24, -12, 0, 12, 24, 36, 48]
+const formatters = new Map<string, Intl.DateTimeFormat | undefined>()
+
+function formatter(timeZone: string): Intl.DateTimeFormat | undefined {
+  if (formatters.has(timeZone)) return formatters.get(timeZone)
+  let made: Intl.DateTimeFormat | undefined
+  try {
+    made = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit" })
+  } catch {
+    made = undefined
+  }
+  formatters.set(timeZone, made)
+  return made
+}
+
+/** Whether Intl supports the zone and its name is a nonempty, NUL-free string of at most 128 UTF-16 units. */
+export function knownTimeZone(name: unknown): name is string {
+  return typeof name === "string" && name !== "" && name.length <= 128 && !name.includes("\0") && formatter(name) !== undefined
+}
+
+/** The zone the device reports, with a bare zero offset read as UTC. */
+export function deviceTimeZone(): string {
+  const zone = new Intl.DateTimeFormat().resolvedOptions().timeZone
+  return zone === "+00:00" || zone === "-00:00" || !knownTimeZone(zone) ? "UTC" : zone
+}
+
+/** The wall-clock parts of an instant in a zone, or undefined for an unsupported zone or an invalid instant. */
+export function getZonedDateParts(date: Date, timeZone: string): ZonedDateParts | undefined {
+  const format = formatter(timeZone)
+  if (format === undefined || !Number.isFinite(date.getTime())) return undefined
+  const parts = Object.fromEntries(format.formatToParts(date).map((part) => [part.type, Number(part.value)]))
+  const read = { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour, minute: parts.minute, second: parts.second }
+  return Object.values(read).every((value) => Number.isInteger(value)) ? read : undefined
+}
+
+function wallMs(parts: ZonedDateParts): number {
+  const date = new Date(0)
+  date.setUTCFullYear(parts.year, parts.month - 1, parts.day)
+  date.setUTCHours(parts.hour, parts.minute, parts.second, 0)
+  return date.getTime()
+}
+
+/** The zone's offset from UTC, in minutes, at an instant, or undefined for an unsupported zone. */
+export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number | undefined {
+  const parts = getZonedDateParts(date, timeZone)
+  return parts === undefined ? undefined : Math.round((wallMs(parts) - Math.floor(date.getTime() / 1000) * 1000) / minuteMs)
+}
+
+function sameParts(left: ZonedDateParts | undefined, right: ZonedDateParts): boolean {
+  return left !== undefined && left.year === right.year && left.month === right.month && left.day === right.day
+    && left.hour === right.hour && left.minute === right.minute && left.second === right.second
+}
+
+/** The instant a wall time names in a zone: the earliest at a fold and forward through a gap, or with `reject` only an unambiguous existing time. */
+export function buildUtcDateFromLocalParts(timeZone: string, parts: ZonedDateParts, disambiguation: "compatible" | "reject" = "compatible"): Date | undefined {
+  const base = wallMs(parts)
+  if (!Number.isFinite(base) || formatter(timeZone) === undefined) return undefined
+  const offsets = new Set(offsetSampleHours.map((hours) => getTimeZoneOffsetMinutes(new Date(base + hours * 3_600_000), timeZone) ?? 0))
+  const candidates = [...offsets].map((offset) => new Date(base - offset * minuteMs)).filter((at) => Number.isFinite(at.getTime()))
+  const exact = candidates.filter((at) => sameParts(getZonedDateParts(at, timeZone), parts)).sort((a, b) => a.getTime() - b.getTime())
+  if (disambiguation === "reject") return exact.length === 1 ? exact[0] : undefined
+  if (exact.length > 0) return exact[0]
+  const forward = candidates.flatMap((at) => {
+    const seen = getZonedDateParts(at, timeZone)
+    const delta = seen === undefined ? Number.NaN : wallMs(seen) - base
+    return Number.isFinite(delta) && delta > 0 ? [{ at, delta }] : []
+  }).sort((a, b) => a.delta - b.delta || a.at.getTime() - b.at.getTime())
+  return forward[0]?.at
+}
+
+/** The civil date a number of days after another. */
+export function addDaysToLocalDate(date: LocalDate, days: number): LocalDate {
+  const moved = new Date(0)
+  moved.setUTCFullYear(date.year, date.month - 1, date.day + days)
+  moved.setUTCHours(12, 0, 0, 0)
+  return { year: moved.getUTCFullYear(), month: moved.getUTCMonth() + 1, day: moved.getUTCDate() }
+}
+
+/** The weekday of a civil date, Sunday zero. */
+export function weekdayOfLocalDate(date: LocalDate): number {
+  return new Date(wallMs({ ...date, hour: 12, minute: 0, second: 0 })).getUTCDay()
+}
+
+/** The first instant of a civil date in a zone: the first midnight at a fold, the start of the actual day at a gap, the following day for a skipped date. */
+export function startOfCivilDay(date: LocalDate, timeZone: string): number | undefined {
+  const target = Date.UTC(date.year, date.month - 1, date.day)
+  const dayOf = (at: number) => {
+    const parts = getZonedDateParts(new Date(at), timeZone)
+    return parts === undefined ? Number.NaN : Date.UTC(parts.year, parts.month - 1, parts.day)
+  }
+  let guess = buildUtcDateFromLocalParts(timeZone, { ...date, hour: 0, minute: 0, second: 0 })?.getTime()
+  if (guess === undefined) return undefined
+  while (dayOf(guess) < target) guess += minuteMs
+  while (dayOf(guess - minuteMs) === target) guess -= minuteMs
+  return Number.isFinite(dayOf(guess)) ? guess : undefined
+}
+
+/** Where a request's zone comes from; a zone the planner proposed is never one of them. */
+export interface ZoneSources {
+  readonly explicit?: string
+  readonly client?: string
+  readonly owner: string
+}
+
+/** The zone a read is about: a supported zone the request states, else the client's, else the owner's. */
+export function requestTimeZone(sources: ZoneSources): string {
+  return knownTimeZone(sources.explicit) ? sources.explicit : createTimeZone(sources)
+}
+
+/** The zone a create is placed in: the client's supported zone, else the owner's. */
+export function createTimeZone(sources: Omit<ZoneSources, "explicit">): string {
+  return knownTimeZone(sources.client) ? sources.client : sources.owner
+}
+
+/** A stored UTC instant as the wall time of a zone on that date, with the offset applied. */
+export function displayWallTime(instant: string, timeZone: string): (ZonedDateParts & { readonly offsetMinutes: number }) | undefined {
+  const at = new Date(instant)
+  const parts = getZonedDateParts(at, timeZone)
+  const offsetMinutes = getTimeZoneOffsetMinutes(at, timeZone)
+  return parts === undefined || offsetMinutes === undefined ? undefined : { ...parts, offsetMinutes }
+}
+
+/** The UTC instant a new event stores for the wall time it was asked for in a zone, so it reads back as that wall time. */
+export function createdUtcInstant(wall: ZonedDateParts, timeZone: string): string | undefined {
+  return buildUtcDateFromLocalParts(timeZone, wall)?.toISOString()
+}
+
+/** The civil date an event is shown on: an all-day event's own date, a timed event's day in the viewer's zone. */
+export function displayDay(event: { readonly startAt: string; readonly isAllDay: boolean }, viewerTimeZone: string): string | undefined {
+  const at = Date.parse(event.startAt)
+  const offset = getTimeZoneOffsetMinutes(new Date(at), viewerTimeZone)
+  if (!Number.isFinite(at) || offset === undefined) return undefined
+  const utcDay = Math.floor(at / dayMs) * dayMs
+  const shift = displayDayShift(Math.floor((at - utcDay) / minuteMs), offset, event.isAllDay)
+  return new Date(utcDay + shift * dayMs).toISOString().slice(0, 10)
+}
+
+/** What a create request says about its year: a trailing year, a stated year, "next", "this year" or nothing. */
+export function yearCueOf(text: string): { readonly cue: YearCue; readonly statedYear: number; readonly trailingYear: number } {
+  const folded = text.normalize("NFKC").toLowerCase()
+  const trailing = /\b(\d{4})\s*[.!?]?\s*$/.exec(folded)
+  const stated = /\b(19|20|21)\d{2}\b/.exec(folded)
+  const cue: YearCue = /\bnext\b/.test(folded) ? "NextYearCue" : stated !== null ? "StatedYearCue" : /\bthis year\b/.test(folded) ? "ThisYearCue" : "NoYearCue"
+  return { cue, statedYear: stated === null ? 0 : Number(stated[0]), trailingYear: trailing === null ? 0 : Number(trailing[1]) }
+}
+
+/** The year a create uses from its request text, never the year an extractor guessed. */
+export function createYear(text: string, currentYear: number): number {
+  const { cue, statedYear, trailingYear } = yearCueOf(text)
+  return correctedYear(cue, statedYear, trailingYear, currentYear)
+}
+
+/** Whether a create's start is already past in its zone, so the owner must confirm it before anything is stored. */
+export function createNeedsConfirmation(startAt: string, now: Date, timeZone: string): boolean {
+  const start = getZonedDateParts(new Date(startAt), timeZone)
+  const today = getZonedDateParts(now, timeZone)
+  if (start === undefined || today === undefined) return true
+  return mustAskBeforeCreate(start.year, today.year, Date.parse(startAt) < now.getTime())
+}

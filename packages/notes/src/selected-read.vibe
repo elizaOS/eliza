@@ -9,7 +9,7 @@ const TitleQuery = Schema.Struct({
   text: Schema.String.check(Schema.isMaxLength(256), Schema.makeFilter((text) => text.trim() !== "" && !text.includes("\0"))),
 })
 schema LatestQuery { kind: "latest"; by: "created" | "updated" }
-const NotesTarget = Schema.Struct({ sourceId: Id, sourceRevision: Revision, noteId: Id, revision: Revision })
+export const NotesTarget = Schema.Struct({ sourceId: Id, sourceRevision: Revision, noteId: Id, revision: Revision })
 const ReadOperation = Schema.Union([
   Schema.Struct({ type: Schema.Literal("notes_query"), query: Schema.Union([TitleQuery, LatestQuery]) }),
   Schema.Struct({ type: Schema.Literal("notes_read_selected"), target: NotesTarget }),

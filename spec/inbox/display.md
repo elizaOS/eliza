@@ -1,0 +1,54 @@
+# Showing mail as inert text
+
+Mail is shown as text. Links found in it are data that is never fetched
+or rendered as HTML, and the next page of a list may be read ahead once,
+in memory only. [Mailbox reads](./reads.md) own the pages and caches this
+reads ahead into.
+
+## Story: Read mail without its links or pages acting on their own
+
+> As the owner, I want links in mail to be plain and honest about where
+> they go, and paging to feel quick without the phone polling Gmail.
+
+### Only an absolute web link without credentials is kept, and its shown text is plain
+
+A link is kept only when it parses as an absolute `https` or `http` URL of
+at most 2,048 characters with a host and no user name or password. Its text
+has control characters replaced, runs of space collapsed and is at most 200
+characters, or is the host when empty. Plain-text `https` URLs in a body
+become at most 50 distinct links, trimmed of trailing punctuation except a
+closing bracket that closes one in the URL. A link whose text names a
+different site than its destination is marked.
+
+```quint
+type LinkFacts = { units: int, absolute: bool, webScheme: bool, hasHost: bool, hasCredentials: bool }
+pure def linkKept(facts: LinkFacts): bool =
+  facts.units <= 2048 and facts.absolute and facts.webScheme and facts.hasHost and not(facts.hasCredentials)
+pure def textMismatch(namesHost: bool, sameSite: bool): bool = namesHost and not(sameSite)
+pure val okLink: LinkFacts = { units: 20, absolute: true, webScheme: true, hasHost: true, hasCredentials: false }
+pure val factsValues = Set(okLink, { ...okLink, webScheme: false }, { ...okLink, hasCredentials: true }, { ...okLink, units: 2049 })
+pure def lawCredentialLinksAreDropped(facts: LinkFacts): bool = facts.hasCredentials implies not(linkKept(facts))
+pure def lawOnlyWebLinksAreKept(facts: LinkFacts): bool = linkKept(facts) implies facts.webScheme and facts.absolute
+```
+
+### A page is read ahead once at a time, kept briefly, and never retried
+
+At most one speculative read of a next page runs at a time; preparing
+another cancels it. A finished page is kept for thirty seconds, for at most
+eight lists, and taken once; an expired or cancelled page is read again only
+when the owner pages. Nothing polls and nothing retries on its own.
+
+```quint
+type AheadSlot = { pending: int, ready: int }
+pure val aheadTtlMs: int = 30000
+pure val aheadLists: int = 8
+pure def aheadUsable(readAt: int, now: int): bool = readAt <= now and now - readAt < aheadTtlMs
+pure def aheadAdmit(slot: AheadSlot): AheadSlot =
+  { pending: 0, ready: if (slot.ready + 1 > aheadLists) aheadLists else slot.ready + 1 }
+pure val slotValues = Set({ pending: 0, ready: 0 }, { pending: 1, ready: 8 }, { pending: 1, ready: 3 })
+pure val readAtValues = Set(0, 1000, 30000)
+pure val nowValues = Set(0, 29999, 30000, 31000)
+pure def lawAheadStaysBounded(slot: AheadSlot): bool =
+  slot.ready >= 0 and slot.ready <= aheadLists implies aheadAdmit(slot).ready <= aheadLists and aheadAdmit(slot).pending == 0
+pure def lawExpiredPageIsNotUsed(readAt: int, now: int): bool = now - readAt >= aheadTtlMs implies not(aheadUsable(readAt, now))
+```

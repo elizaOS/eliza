@@ -1,5 +1,5 @@
-// spec/agent/voice/session.md, "A barge-in is confirmed only by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"
-import { bargeInHoldMs, canStart, type Duplex, type InputMode, type ShownPhase, type VoiceSession as SessionState } from "../../gen/agent__voice__session.effect.vibe"
+// spec/agent/voice/session.md, "A barge-in is confirmed only by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"; spec/agent/voice/session.md, "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
+import { canStart, defaultVoiceProfile, type Duplex, type InputMode, type ShownPhase, type VoiceProfile, type VoiceSession as SessionState } from "../../gen/agent__voice__session.effect.vibe"
 import { mayBecomeNonSpeechVoiceTranscript } from "./heuristics.vibe"
 import type { RecognizerPort, VoiceSessionPorts } from "./ports.vibe"
 import { VoiceSession } from "./session.vibe"
@@ -14,7 +14,7 @@ export interface LiveVoiceSessionOptions extends VoiceSessionPorts {
 }
 
 export interface LiveVoiceSession {
-  start(mode?: InputMode, duplex?: Duplex): void
+  start(mode?: InputMode, duplex?: Duplex, profile?: VoiceProfile): void
   stop(): void
   readonly phase: ShownPhase
   readonly state: SessionState
@@ -76,7 +76,7 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions): LiveVo
   const holdIfSpeaking = (turn: Turn) => {
     if (current !== turn || turn.ended || turn.held || turn.annotation || turn.startedAtMs === undefined) return
     const heldMs = clock.now() - turn.startedAtMs
-    if (heldMs < bargeInHoldMs) return
+    if (heldMs < session.state.profile.bargeInHoldMs) return
     turn.held = true
     recognizer.onHold(heldMs)
   }
@@ -84,7 +84,7 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions): LiveVo
     const turn: Turn = { id, startedAtMs, ended: false, lastSeq: 0, annotation: false, held: false }
     current = turn
     recognizer.onSpeechStart()
-    if (startedAtMs !== undefined) clock.after(bargeInHoldMs, () => holdIfSpeaking(turn))
+    if (startedAtMs !== undefined) clock.after(session.state.profile.bargeInHoldMs, () => holdIfSpeaking(turn))
     return turn
   }
   const ongoing = (id: string): Turn | undefined => {
@@ -135,11 +135,11 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions): LiveVo
   }
 
   return {
-    start(mode: InputMode = "ConversationMode", duplex: Duplex = "FullDuplex") {
-      if (!canStart(session.state)) return
+    start(mode: InputMode = "ConversationMode", duplex: Duplex = "FullDuplex", profile: VoiceProfile = defaultVoiceProfile) {
+      if (!canStart(session.state, profile)) return
       if (unsubscribe === undefined) unsubscribe = subscribe(receive)
       current = undefined
-      session.start(mode, duplex)
+      session.start(mode, duplex, profile)
     },
     stop() {
       const close = unsubscribe

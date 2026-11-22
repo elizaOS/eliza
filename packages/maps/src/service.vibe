@@ -1,0 +1,134 @@
+// spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/cloud/services/maps.md, "Every operation except capabilities and viewport needs an idempotency key and runs over one hold of the calling credential"
+import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent"
+import { readCloudError } from "@elizaos/cloud/client"
+import { cloudMapsFailure } from "./client/cloud-provider.vibe"
+import { boundedText, Coordinate, MapsFailure, place, route, TravelMode, type Place, type Route } from "./client/contracts.vibe"
+import type { AgentPlaceRef } from "./client/device-navigation.vibe"
+
+module node {
+  /** @throws {never} */
+  export function idempotencyKey(): string {
+    return globalThis.crypto.randomUUID()
+  }
+}
+import { idempotencyKey } from node
+
+/** The owner's Cloud link as a plugin reaches it: the agent's `cloud` service, which never shows a plugin the credential. */
+export interface MapsCloudLink {
+  request(request: CloudLinkRequest): Promise<CloudLinkReply>
+}
+
+/** The provider id the agent's places carry; the phone reads them again from its own Cloud provider. */
+export const agentCloudProvider = "eliza-cloud"
+
+const Text = (limit: number) => Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, limit)))
+const Capabilities = Schema.Union([
+  Schema.Struct({ available: Schema.Literal(false) }),
+  Schema.Struct({
+    available: Schema.Literal(true),
+    providerId: Text(80),
+    attribution: Text(2000),
+    capabilities: Schema.Struct({ modes: Schema.Array(TravelMode), alternatives: Schema.Boolean, traffic: Schema.Literals(["none", "live"]) }),
+  }),
+])
+const Places = Schema.Struct({ providerId: Text(80), attribution: Text(2000), places: Schema.Array(Schema.Unknown).check(Schema.isMaxLength(100)) })
+const Detail = Schema.Struct({ providerId: Text(80), attribution: Text(2000), place: Schema.Unknown })
+const Routes = Schema.Struct({ providerId: Text(80), attribution: Text(2000), routes: Schema.Array(Schema.Unknown).check(Schema.isMinLength(1), Schema.isMaxLength(3)) })
+
+/** Places Cloud found, with the attribution their provider requires. */
+export interface PlaceResults {
+  readonly providerId: string
+  readonly attribution: string
+  readonly places: readonly Place[]
+}
+
+/** Routes Cloud planned, recommended first, with the attribution their provider requires. */
+export interface RouteResults {
+  readonly providerId: string
+  readonly attribution: string
+  readonly routes: readonly Route[]
+}
+
+/** What the connected Cloud Maps deployment serves, or undefined when it serves no maps. */
+export interface MapsOffer {
+  readonly providerId: string
+  readonly attribution: string
+  readonly modes: readonly TravelMode[]
+  readonly alternatives: boolean
+}
+
+/** A Cloud place as the agent's provider-neutral place. */
+export function agentPlace(found: Place): AgentPlaceRef {
+  return {
+    provider: agentCloudProvider,
+    providerPlaceId: found.id,
+    name: found.name,
+    coordinates: found.coordinate,
+    ...(found.address === undefined ? {} : { formattedAddress: found.address }),
+    categories: [...(found.categories ?? [])],
+  }
+}
+
+const unreachable = () => new MapsFailure({ code: "offline", message: "Cloud Maps is unreachable. Check the connection." })
+
+/** Maps reads over the owner's Cloud link: every metered call carries a fresh idempotency key, every answer is checked, and a refusal keeps Cloud's own reason. */
+export function mapsService(link: MapsCloudLink) {
+  effect function call<A>(request: Omit<CloudLinkRequest, "signal" | "idempotencyKey">, schema: Schema.Codec<A>, metered: boolean): A!MapsFailure {
+    const reply = try tryPromise({
+      try: (signal) => link.request({ ...request, signal, ...(metered ? { idempotencyKey: idempotencyKey() } : {}) }),
+      catch: unreachable,
+    })
+    const now = try Clock.currentTimeMillis
+    if (reply.kind === "changes-off") throw new MapsFailure({ code: "unauthorized", message: "Cloud refused this Maps request." })
+    if (reply.kind === "refused") {
+      const body = JSON.stringify(reply.body ?? null)
+      const refused = try tryPromise({
+        try: () => readCloudError({ status: reply.status, headers: { get: () => null }, text: () => Promise.resolve(body) }, now),
+        catch: unreachable,
+      })
+      throw cloudMapsFailure(refused.failure, now)
+    }
+    return try mapError(Schema.decodeUnknownEffect(schema)(reply.body), () => new MapsFailure({ code: "invalid-response", message: "Cloud Maps sent an invalid response." }))
+  }
+
+  effect function offer(): (MapsOffer | undefined)!MapsFailure {
+    const answer = try call({ method: "GET", path: "/api/v1/maps/capabilities" }, Capabilities, false)
+    if (!answer.available) return undefined
+    return { providerId: answer.providerId, attribution: answer.attribution, modes: answer.capabilities.modes, alternatives: answer.capabilities.alternatives }
+  }
+
+  effect function search(query: string, near?: Coordinate, limit?: number): PlaceResults!MapsFailure {
+    const text = query.trim()
+    if (!boundedText(text, 300)) throw new MapsFailure({ code: "unsupported", message: "Search text is too long or empty." })
+    const answer = try call({
+      method: "POST", path: "/api/v1/maps/places/search",
+      body: { query: text, ...(near === undefined ? {} : { near }), ...(limit === undefined ? {} : { limit: Math.max(1, Math.min(20, Math.round(limit))) }) },
+    }, Places, true)
+    const places: Place[] = []
+    for (const item of answer.places) places.push(try place(item, answer.providerId))
+    return { providerId: answer.providerId, attribution: answer.attribution, places }
+  }
+
+  effect function detail(id: string): (Place | null)!MapsFailure {
+    if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/.test(id)) return null
+    const answer = try call({ method: "POST", path: "/api/v1/maps/places/details", body: { id } }, Detail, true)
+    return answer.place === null ? null : try place(answer.place, answer.providerId)
+  }
+
+  effect function routes(from: Coordinate, to: Coordinate, mode: TravelMode, alternatives: boolean): RouteResults!MapsFailure {
+    const answer = try call({ method: "POST", path: "/api/v1/maps/routes", body: { from, to, mode, ...(alternatives ? { alternatives: true } : {}) } }, Routes, true)
+    if (!alternatives && answer.routes.length > 1) throw new MapsFailure({ code: "invalid-response", message: "The Maps route response is invalid." })
+    const planned: Route[] = []
+    for (const item of answer.routes) {
+      const checked = try route(item, answer.providerId)
+      if (checked.mode !== mode) throw new MapsFailure({ code: "invalid-response", message: "The Maps route response is invalid." })
+      planned.push(checked)
+    }
+    return { providerId: answer.providerId, attribution: answer.attribution, routes: planned }
+  }
+
+  return { offer, search, detail, routes }
+}
+
+/** Maps reads over the owner's Cloud link. */
+export type MapsService = ReturnType<typeof mapsService>

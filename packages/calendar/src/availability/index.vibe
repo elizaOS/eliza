@@ -1,0 +1,10 @@
+// spec/calendar/availability.md, "Story: Share only the occupied time in my reviewed calendars"; spec/calendar/availability.md, "Story: Read the reviewed local source with its actual calendar rules"
+export { AvailabilityEventRow, AvailabilityOperation, AvailabilityResult, AvailabilitySourceRow, Instant, ZoneName } from "./availability.schema.vibe"
+export { AvailabilityRefused, CALENDAR_AVAILABILITY_CAPABILITY, CALENDAR_AVAILABILITY_MAX_BUSY, CALENDAR_AVAILABILITY_MAX_CALENDARS, CALENDAR_AVAILABILITY_MAX_MS,
+  calendarAvailability, calendarEventOverlapsRange, canonicalAvailability, describeAvailabilityResult, sameAvailabilityResult,
+  validateCalendarAvailabilityOperation, validateCalendarAvailabilityResult, type CalendarAvailabilityEvent, type CalendarAvailabilityOperation,
+  type CalendarAvailabilityResult } from "./projection.vibe"
+export { AvailabilityUnavailable, deviceAvailabilitySources, readDeviceAvailability, sameZoneRules, type AvailabilityReadRequest, type DeviceCalendarPort,
+  type DeviceCalendarRow, type DeviceInstanceRow, type DeviceReaderContext, type ReadAnswer, type SourcesAnswer } from "./device-reader.vibe"
+export { documentAvailability, expandDocumentCalendar, occurrenceId, repeatingRow, seriesOccurrences, seriesOccursAt, seriesZone,
+  type DocumentRange } from "./recurrence.vibe"

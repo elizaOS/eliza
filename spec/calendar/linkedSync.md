@@ -106,7 +106,9 @@ incrementing the control revision. Pause may win a race after
 claim, retaining the claim until exact settlement or recovery.
 
 Recovery must be paused with a pending token and a verified
-current destination. A token still active in this process blocks
+current destination. Control publishes an opaque reference to a
+pending dispatch, never its token, and a recovery names the reference
+the owner reviewed: that dispatch is the captured token. A token still active in this process blocks
 recovery. The mapped link must belong to that destination. The
 provider recovery read waits out a settle window after the dispatch and
 checks exact provider evidence. An unresolved read leaves control paused and pending.

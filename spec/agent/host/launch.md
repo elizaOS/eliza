@@ -141,20 +141,50 @@ pure def retentionAdmitted(r: Retention): bool = match r {
 }
 ```
 
+### Local embeddings boot only when the device serves them: no operator endpoint or chosen hosted service takes precedence, and the local inference plugin is listed
+
+An operator endpoint is an `EMBEDDING_BASE_URL` in `environment`, or an
+`EMBEDDING_PROVIDER` other than empty or `local`. A hosted service is chosen
+by a cloud launch whose `environment` sets `ELIZAOS_CLOUD_USE_EMBEDDINGS` on.
+Either one owns embeddings ahead of the device, so a launch that asks for
+`local` embeddings while one of them takes precedence contradicts itself, as
+does one that asks for them without listing `@elizaos/plugin-local-inference`;
+both are configuration errors at boot, before anything is opened. That
+plugin checks the dimension against the model it holds.
+
+```quint
+type EmbeddingServer = OperatorServed | HostedServed | DeviceServed
+pure val deviceEmbeddingsPlugin = "@elizaos/plugin-local-inference"
+pure def embeddingServer(operatorEndpoint: bool, cloudBackend: bool, hostedChosen: bool): EmbeddingServer =
+  if (operatorEndpoint) OperatorServed else if (cloudBackend and hostedChosen) HostedServed else DeviceServed
+pure def localEmbeddingsBoot(asked: bool, server: EmbeddingServer, listed: bool): bool = not(asked) or (server == DeviceServed and listed)
+pure def lawAnOperatorEndpointTakesPrecedence(cloudBackend: bool, hostedChosen: bool, listed: bool): bool =
+  not(localEmbeddingsBoot(true, embeddingServer(true, cloudBackend, hostedChosen), listed))
+pure def lawTheDeviceServesWhenNothingElseIsChosenAndThePluginIsListed(cloudBackend: bool): bool =
+  localEmbeddingsBoot(true, embeddingServer(false, cloudBackend, false), true)
+pure def lawALaunchWithoutLocalEmbeddingsIsNeverRefusedHere(server: EmbeddingServer, listed: bool): bool = localEmbeddingsBoot(false, server, listed)
+```
+
 ### A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error
 
 A configuration error is decided first; a backend that needs a credential
-and has none in the frame is then refused as a credential error. Both are
-decided before the store opens. A launch with no backend needs no
-credential.
+and has none in the frame, or an own-key launch whose key is longer than
+the 1,024 characters the own-key slot takes, is then refused as a
+credential error. Both are decided before the store opens, so binding never
+meets a key its slot refuses. A launch with no backend needs no credential.
 
 ```quint
 type BootFailure = Config | Credential | Storage | Agent
 type LaunchVerdict = LaunchAdmitted | LaunchRefused({ cause: BootFailure })
 pure def launchVerdict(doc: LaunchDocument, f: LaunchFrame): LaunchVerdict =
   if (not(documentAdmitted(doc)) or not(frameAdmitted(f))) LaunchRefused({ cause: Config })
-  else if (needsCredential(doc.backend) and not(hasCredential(f.credential))) LaunchRefused({ cause: Credential })
+  else if (needsCredential(doc.backend) and not(credentialFits(doc.backend, f.credential))) LaunchRefused({ cause: Credential })
   else LaunchAdmitted
+pure val ownKeyMaxUnits = 1024
+pure def isOwnKey(b: Backend): bool = match b { | OwnKeyBackend(_) => true | _ => false }
+pure def credentialUnits(c: FrameCredential): int = match c { | Keyed(k) => k.units | NoCredential => 0 }
+pure def credentialFits(b: Backend, c: FrameCredential): bool =
+  hasCredential(c) and (not(isOwnKey(b)) or credentialUnits(c) <= ownKeyMaxUnits)
 pure val docValues = {
   val good: LaunchDocument = { schema: 1, character: { name: "Agent", nameUnits: 5, systemBlank: false },
     policy: { actionsAllowed: Set("REPLY"), pluginsLoad: List(), productPlugin: NoProductPlugin },
@@ -170,14 +200,19 @@ pure val docValues = {
     { ...good, environment: List({ key: "NODE_OPTIONS", keyKind: ReservedKey, singleLine: true }) })
 }
 pure val fValues = Set(
-  { version: 1, token: "t", epoch: 1, credential: Keyed({ version: 1, value: "k" }), storageKey: StorageKey({ key: "s" }) },
+  { version: 1, token: "t", epoch: 1, credential: Keyed({ version: 1, value: "k", units: 64 }), storageKey: StorageKey({ key: "s" }) },
+  { version: 1, token: "t", epoch: 1, credential: Keyed({ version: 1, value: "k", units: 2048 }), storageKey: NoStorageKey },
   { version: 1, token: "t", epoch: 2, credential: NoCredential, storageKey: NoStorageKey },
-  { version: 2, token: "t", epoch: 1, credential: Keyed({ version: 1, value: "k" }), storageKey: NoStorageKey },
-  { version: 1, token: "t", epoch: 1, credential: Keyed({ version: 0, value: "k" }), storageKey: NoStorageKey })
+  { version: 2, token: "t", epoch: 1, credential: Keyed({ version: 1, value: "k", units: 64 }), storageKey: NoStorageKey },
+  { version: 1, token: "t", epoch: 1, credential: Keyed({ version: 0, value: "k", units: 64 }), storageKey: NoStorageKey })
 pure def lawRefusedDocumentIsAConfigErrorWhateverTheFrame(doc: LaunchDocument, f: LaunchFrame): bool =
   not(documentAdmitted(doc)) implies launchVerdict(doc, f) == LaunchRefused({ cause: Config })
 pure def lawKeylessCloudOrOwnKeyLaunchIsACredentialError(doc: LaunchDocument, f: LaunchFrame): bool =
   (documentAdmitted(doc) and frameAdmitted(f) and needsCredential(doc.backend) and not(hasCredential(f.credential))) implies launchVerdict(doc, f) == LaunchRefused({ cause: Credential })
+pure def lawAnOwnKeyLongerThanItsSlotIsACredentialError(doc: LaunchDocument, f: LaunchFrame): bool =
+  (documentAdmitted(doc) and frameAdmitted(f) and isOwnKey(doc.backend) and credentialUnits(f.credential) > ownKeyMaxUnits) implies launchVerdict(doc, f) == LaunchRefused({ cause: Credential })
+pure def lawAnAdmittedOwnKeyLaunchFitsItsSlot(doc: LaunchDocument, f: LaunchFrame): bool =
+  (launchVerdict(doc, f) == LaunchAdmitted and isOwnKey(doc.backend)) implies (hasCredential(f.credential) and credentialUnits(f.credential) <= ownKeyMaxUnits)
 pure def lawLaunchWithoutBackendNeedsNoCredential(doc: LaunchDocument, f: LaunchFrame): bool =
   (documentAdmitted(doc) and frameAdmitted(f) and doc.backend == NoBackend) implies launchVerdict(doc, f) == LaunchAdmitted
 ```
@@ -196,14 +231,17 @@ The credential is the cloud device key for a cloud launch and the owner's
 provider key for an own-key launch; the storage key seals the task store.
 The frame is admitted only at version 1 with a positive epoch and, when a
 credential is given, a positive credential version; the schema refuses an
-empty token, credential or storage key. Nothing secret arrives in a file or
+empty token or storage key, and a credential that is not 8 to 16,384
+visible ASCII characters ([model binding](../models/binding.md) bounds each
+slot). `units` is the credential's length in characters, which the shell
+counts; it says nothing else about the value. Nothing secret arrives in a file or
 the environment.
 
 ```quint
 type SecretLaunchToken = str
 type SecretCredential = str
 type SecretStorageKey = str
-type FrameCredential = Keyed({ version: int, value: SecretCredential }) | NoCredential
+type FrameCredential = Keyed({ version: int, value: SecretCredential, units: int }) | NoCredential
 type FrameStorageKey = StorageKey({ key: SecretStorageKey }) | NoStorageKey
 type LaunchFrame = { version: int, token: SecretLaunchToken, epoch: int, credential: FrameCredential, storageKey: FrameStorageKey }
 pure def hasCredential(c: FrameCredential): bool = match c { | Keyed(_) => true | NoCredential => false }

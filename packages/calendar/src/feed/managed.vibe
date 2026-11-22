@@ -1,0 +1,262 @@
+// spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "A purge drains preexisting writes for its grant before acknowledging local removal"; spec/calendar/managedFeed.md, "Story: Show one checked copy of a mapped event after a provider read"; spec/calendar/managedFeed.md, "A successful provider feed only offers pull for an exact clean mapping"
+import type { HttpClient } from "effect/http"
+import { canCancelManagedRead, canRequestManagedPurge, machine, Machine, managedReadPermit, shouldOfferManagedPull } from "../../gen/calendar__managedFeed.effect.vibe"
+import type { CalendarEvent, CalendarFeed, CalendarSummary } from "../model.vibe"
+import { ManagedCalendarUnavailable, type FeedWindow, type ManagedCalendarBroker } from "./broker.vibe"
+import { CacheStoreFailed, writeFeedCache, type ImportedSourceScope, type ManagedCacheStore } from "./cache.vibe"
+import { assembleFeed, civilDateOf, type CalendarLinkRecord, type FeedComponent } from "./merge.vibe"
+
+/** A read whose request was cancelled before it held a successful receipt. */
+export error ManagedReadCancelled { calendarId: string }
+
+/** Why a purge of imported data returned no receipt. */
+export error PurgeRefused { reason: "confirmation_required" | "removal_failed" }
+
+/** The owner's request to remove one grant's imported projection, confirmed immediately before deletion. */
+export interface PurgeRequest extends ImportedSourceScope {
+  readonly confirmAction: boolean
+}
+
+/** What a committed purge removed; it never touches the provider. */
+export interface PurgeReceipt extends ImportedSourceScope {
+  readonly events: number
+  readonly providerMutation: false
+  readonly purgedAt: string
+}
+
+/** What linked sync control shows the pull pass: its pause, its held dispatch and its destination. */
+export interface LinkedControlView {
+  readonly paused: boolean
+  readonly dispatchHeld: boolean
+  readonly destination: { readonly connectorAccountId: string; readonly calendarId: string } | null
+}
+
+/** The host's resident feed, link records, sync control and the reconciler's pull of one link. */
+export interface AggregatePorts {
+  readonly localFeed: (window: FeedWindow) => FeedComponent!CacheStoreFailed
+  readonly links: () => readonly CalendarLinkRecord[]!CacheStoreFailed
+  readonly control: () => LinkedControlView!CacheStoreFailed
+  readonly recordPolicy: () => boolean
+  readonly pull: (link: CalendarLinkRecord) => ("pulled" | "refused")!CacheStoreFailed
+}
+
+/** An aggregate read: the merged feed, and each pull the reconciler refused. */
+export interface AggregateRead {
+  readonly feed: CalendarFeed
+  readonly refusedPulls: readonly CalendarLinkRecord[]
+}
+
+/** The resident's managed feed: exact broker reads into the cache, grant purges, and the aggregate with mapped pulls. */
+export interface ManagedFeed {
+  read(source: CalendarSummary, window: FeedWindow, signal?: AbortSignal): CalendarFeed!(ManagedCalendarUnavailable | ManagedReadCancelled | CacheStoreFailed)!HttpClient.HttpClient
+  purge(request: PurgeRequest): PurgeReceipt!PurgeRefused
+  aggregate(sources: readonly CalendarSummary[], window: FeedWindow, ports: AggregatePorts, signal?: AbortSignal): AggregateRead!(ManagedReadCancelled | CacheStoreFailed)!HttpClient.HttpClient
+}
+
+/** Everything the managed feed needs from its host. */
+export interface ManagedFeedOptions {
+  readonly agentId: string
+  readonly broker: ManagedCalendarBroker
+  readonly store: ManagedCacheStore
+}
+
+type Slot = {
+  readonly grantId: string
+  readonly calendarId: string
+  readonly lock: Semaphore.Semaphore
+  machine: Machine.Shape
+  active: Deferred.Deferred<void> | undefined
+}
+
+/** Whether an event overlaps a window: a timed event by instant, an all-day event by civil date in the window's zone. */
+export function intersectsWindow(event: CalendarEvent, window: FeedWindow): boolean {
+  if (!event.isAllDay) return Date.parse(event.startAt) < Date.parse(window.timeMax) && Date.parse(event.endAt) > Date.parse(window.timeMin)
+  const first = civilDateOf(window.timeMin, window.timeZone)
+  const last = civilDateOf(new Date(Date.parse(window.timeMax) - 1).toISOString(), window.timeZone)
+  const start = civilDateOf(event.startAt, null)
+  const end = civilDateOf(event.endAt, null)
+  return first !== undefined && last !== undefined && start !== undefined && end !== undefined && start <= last && end > first
+}
+
+/** The links a healthy provider feed of one source may pull: exact clean mappings to the current destination whose provider copy moved or vanished. */
+export function mappedPullOffers(input: {
+  readonly source: CalendarSummary
+  readonly feed: CalendarFeed
+  readonly window: FeedWindow
+  readonly links: readonly CalendarLinkRecord[]
+  readonly locals: readonly CalendarEvent[]
+  readonly control: LinkedControlView
+  readonly recordPolicy: boolean
+}): CalendarLinkRecord[] {
+  const { source, control } = input
+  const destination = control.destination
+  const currentDestination = destination !== null && destination.connectorAccountId === source.connectorAccountId && destination.calendarId === source.calendarId
+  return input.links.filter((link) => {
+    if (link.connectorAccountId !== source.connectorAccountId) return false
+    const remote = link.providerEventId === null ? undefined : input.feed.events.find((event) => event.externalId === link.providerEventId)
+    const local = input.locals.find((event) => event.id === link.localEventId)
+    return shouldOfferManagedPull({
+      recordPolicy: input.recordPolicy, paused: control.paused, dispatchHeld: control.dispatchHeld, currentDestination,
+      cleanMapping: link.state === "clean" && link.pendingOperation === null,
+      retainedProviderEvent: link.providerEventId !== null && link.providerEventId !== "",
+      sameDestination: destination !== null && link.connectorAccountId === destination.connectorAccountId && link.providerCalendarId === destination.calendarId,
+      remoteVisible: remote !== undefined,
+      etagMatches: remote !== undefined && link.providerEtag !== null && remote.metadata.etag === link.providerEtag,
+      localIntersectsWindow: local !== undefined && intersectsWindow(local, input.window),
+    })
+  })
+}
+
+/** The managed feed over its host, with four shared read permits, one read at a time per calendar and a purge fence per grant. */
+export effect function managedFeed(options: ManagedFeedOptions): ManagedFeed!!Scope.Scope {
+  const scope = try Scope.Scope
+  const permits = try Semaphore.make(4)
+  const registered = try Ref.make(0)
+  const grantLocks = new Map<string, Semaphore.Semaphore>()
+  const slots = new Map<string, Slot>()
+
+  effect function freshMachine(): Machine.Shape!! {
+    return Context.get(try orDie(Layer.buildWithScope(machine(), scope)), Machine)
+  }
+
+  effect function grantLock(grantId: string): Semaphore.Semaphore!! {
+    const known = grantLocks.get(grantId)
+    if (known !== undefined) return known
+    const made = try Semaphore.make(1)
+    grantLocks.set(grantId, made)
+    return made
+  }
+
+  effect function slotFor(grantId: string, calendarId: string): Slot!! {
+    const key = JSON.stringify([grantId, calendarId])
+    const known = slots.get(key)
+    if (known !== undefined) return known
+    const made: Slot = { grantId, calendarId, lock: try Semaphore.make(1), machine: try freshMachine(), active: undefined }
+    slots.set(key, made)
+    return made
+  }
+
+  effect function cancel(slot: Slot): void!! {
+    if (canCancelManagedRead(try slot.machine.get())) try orDie(slot.machine.send({ type: "cancelManagedRead" }))
+  }
+
+  effect function register(slot: Slot): Deferred.Deferred<void>!! {
+    const fence = try grantLock(slot.grantId)
+    return try fence.withPermits(1)(effect {
+      const held = try Ref.get(registered)
+      try orDie(slot.machine.send({ type: "registerManagedRead", permitAvailable: managedReadPermit(held) }))
+      try Ref.set(registered, held + 1)
+      const settled = try Deferred.make<void>()
+      slot.active = settled
+      return settled
+    })
+  }
+
+  effect function release(slot: Slot, settled: Deferred.Deferred<void>): void!! {
+    const state = try slot.machine.get()
+    if (state.readPhase === "ManagedBrokerReading") {
+      try cancel(slot)
+      try orDie(slot.machine.send({ type: "receiveManagedFeed", brokerAccepted: false }))
+    }
+    try Ref.update(registered, (count) => count - 1)
+    if (slot.active === settled) slot.active = undefined
+    try Deferred.succeed(settled, undefined)
+  }
+
+  effect function readRegistered(slot: Slot, source: CalendarSummary, window: FeedWindow, signal: AbortSignal | undefined) {
+    const fetched = try exit(options.broker.feed(source, window, options.agentId))
+    if (signal?.aborted === true) try cancel(slot)
+    const received = try orDie(slot.machine.send({ type: "receiveManagedFeed", brokerAccepted: Exit.isSuccess(fetched) }))
+    if (Exit.isFailure(fetched)) return try Effect.failCause(fetched.cause)
+    if (received.readPhase !== "ManagedCacheWriting") throw new ManagedReadCancelled({ calendarId: source.calendarId })
+    const settled = try Effect.uninterruptible(effect {
+      const written = try exit(writeFeedCache(options.store, fetched.value.events))
+      if (signal?.aborted === true) try cancel(slot)
+      const after = try orDie(slot.machine.send({ type: "settleManagedWrite", durableCache: Exit.isSuccess(written) }))
+      return { written, after }
+    })
+    if (Exit.isFailure(settled.written)) return try Effect.failCause(settled.written.cause)
+    if (!settled.after.successfulRead) throw new ManagedReadCancelled({ calendarId: source.calendarId })
+    const feed: CalendarFeed = { ...fetched.value, events: settled.written.value.written }
+    return feed
+  }
+
+  effect function read(source: CalendarSummary, window: FeedWindow, signal?: AbortSignal) {
+    if (!options.broker.acceptsGrant(source.grantId)) throw new ManagedCalendarUnavailable({ operation: "feed", stage: "scope", httpStatus: null })
+    const slot = try slotFor(source.grantId, source.calendarId)
+    return try slot.lock.withPermits(1)(permits.withPermits(1)(effect {
+      const settled = try register(slot)
+      return try ensuring(readRegistered(slot, source, window, signal), release(slot, settled))
+    }))
+  }
+
+  effect function removeImported(request: PurgeRequest): number!CacheStoreFailed {
+    const scope = { provider: request.provider, side: request.side, grantId: request.grantId, connectorAccountId: request.connectorAccountId }
+    const exact = (try options.store.eventsFor(scope)).filter((event) => event.connectorAccountId === request.connectorAccountId)
+    try options.store.removeReminderPlans(exact.map((event) => event.id))
+    return try options.store.removeProjection(scope)
+  }
+
+  effect function purge(request: PurgeRequest): PurgeReceipt!PurgeRefused {
+    if (request.confirmAction !== true) throw new PurgeRefused({ reason: "confirmation_required" })
+    const fence = try grantLock(request.grantId)
+    return try fence.withPermits(1)(effect {
+      const owned = [...slots.values()].filter((slot) => slot.grantId === request.grantId)
+      for (const slot of owned) {
+        if (!canRequestManagedPurge(try slot.machine.get(), true)) slot.machine = try freshMachine()
+        try orDie(slot.machine.send({ type: "requestManagedPurge", confirmed: true }))
+      }
+      for (const slot of owned) {
+        const active = slot.active
+        if (active !== undefined) try Deferred.await(active)
+      }
+      const removed = try exit(removeImported(request))
+      for (const slot of owned) try orDie(slot.machine.send({ type: "settleManagedPurge", durableRemoval: Exit.isSuccess(removed) }))
+      if (Exit.isFailure(removed)) throw new PurgeRefused({ reason: "removal_failed" })
+      const now = try Clock.currentTimeMillis
+      const receipt: PurgeReceipt = {
+        provider: request.provider, side: request.side, grantId: request.grantId, connectorAccountId: request.connectorAccountId,
+        events: removed.value, providerMutation: false, purgedAt: new Date(now).toISOString(),
+      }
+      return receipt
+    })
+  }
+
+  effect function component(source: CalendarSummary, window: FeedWindow, signal: AbortSignal | undefined): FeedComponent!(ManagedReadCancelled | CacheStoreFailed)!HttpClient.HttpClient {
+    const feed = read(source, window, signal) catch effect (failure) => {
+      if (!(failure instanceof ManagedCalendarUnavailable)) throw failure
+      const scope = { provider: source.provider, side: source.side, grantId: source.grantId, connectorAccountId: source.connectorAccountId }
+      const cached = (try options.store.eventsFor(scope)).filter((event) => event.calendarId === source.calendarId && intersectsWindow(event, window))
+      const key = { provider: source.provider, side: source.side, grantId: source.grantId, connectorAccountId: source.connectorAccountId, calendarId: source.calendarId }
+      const fallback: CalendarFeed = {
+        calendarId: source.calendarId, events: cached, source: "cache", state: cached.length > 0 ? "partial" : "unavailable",
+        sources: [{ key, summary: source.summary, accessRole: source.accessRole, status: cached.length > 0 ? "stale" : "error", syncedAt: null }],
+        timeMin: window.timeMin, timeMax: window.timeMax, syncedAt: null,
+      }
+      return fallback
+    }
+    return { calendar: source, feed }
+  }
+
+  effect function aggregate(sources: readonly CalendarSummary[], window: FeedWindow, ports: AggregatePorts, signal?: AbortSignal) {
+    const managed = try all(sources.map((source) => component(source, window, signal)), { concurrency: "unbounded" })
+    const local = try ports.localFeed(window)
+    const control = try ports.control()
+    const links = try ports.links()
+    const offers = managed.filter(({ feed }) => feed.state === "complete").flatMap(({ calendar, feed }) => mappedPullOffers({
+      source: calendar, feed, window, links, locals: local.feed.events, control, recordPolicy: ports.recordPolicy(),
+    }))
+    const refusedPulls: CalendarLinkRecord[] = []
+    let pulled = false
+    for (const link of offers) {
+      if ((try ports.pull(link)) === "pulled") pulled = true
+      else refusedPulls.push(link)
+    }
+    const resident = pulled ? try ports.localFeed(window) : local
+    const current = pulled ? try ports.links() : links
+    const result: AggregateRead = { feed: assembleFeed([resident, ...managed], current, window), refusedPulls }
+    return result
+  }
+
+  return { read, purge, aggregate }
+}

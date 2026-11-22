@@ -1,0 +1,235 @@
+// spec/calendar/aggregateMerge.md, "Story: See one occurrence with its precise source evidence"; spec/calendar/aggregateMerge.md, "Exact link revisions or portable occurrence identity determine which copies can share a row"; spec/calendar/aggregateMerge.md, "Current mapped local row or ordered provider metadata selects the visible copy"; spec/calendar/managedFeed.md, "A successful provider feed only offers pull for an exact clean mapping"
+import { calendarChallengerWins, calendarMergeGroup, calendarMergeOutput, canonicalMappingPairs, type CalendarRank, type CompleteCalendarLink,
+  type PortableCalendarOccurrence, type RankedCalendarRow } from "../../gen/calendar__aggregateMerge.effect.vibe"
+import { managedAggregateState } from "../../gen/calendar__managedFeed.effect.vibe"
+import type { LinkedCalendarEventRecord, LinkedCalendarOperation, LinkedCalendarState } from "../linked-sync/linked.vibe"
+import type { CalendarEvent, CalendarFeed, CalendarFeedState, CalendarProvider, CalendarSummary } from "../model.vibe"
+
+/** Where a linked event stands in its reconciliation. */
+export type CalendarLinkState = LinkedCalendarState
+
+/** The provider operation a dirty link still owes. */
+export type CalendarLinkOperation = LinkedCalendarOperation
+
+/** One link between a resident event at an exact revision and a provider event at an exact etag. */
+export type CalendarLinkRecord = Pick<LinkedCalendarEventRecord, "id" | "agentId" | "localEventId" | "localRevision" | "connectorAccountId"
+  | "providerCalendarId" | "providerEventId" | "providerEtag" | "state" | "pendingOperation">
+
+/** One source's feed in a merge, with the calendar it was read from. */
+export interface FeedComponent {
+  readonly calendar: CalendarSummary
+  readonly feed: CalendarFeed
+}
+
+/** The exact source of one copy in a merged row. */
+export interface MergedSourceReference {
+  readonly eventId: string
+  readonly provider: CalendarProvider
+  readonly side: CalendarEvent["side"]
+  readonly grantId: string
+  readonly connectorAccountId: string
+  readonly calendarId: string
+}
+
+type Candidate = { readonly event: CalendarEvent; readonly calendar: CalendarSummary }
+type Pairing = { readonly link: CompleteCalendarLink; readonly remote: PortableCalendarOccurrence; readonly pendingUpdate: boolean }
+
+const uidKeys = ["iCalUID", "iCalUId", "icalUid", "icsUid"]
+const occurrenceKeys = ["originalStartTime", "icsRecurrenceId", "originalStart"]
+const comparedFields = ["title", "status", "startAt", "endAt", "location", "description"] as const
+const noLink: CompleteCalendarLink = { cleanLink: false, pending: false, dirtyUpdate: false, localAgentAndRevision: false, exactProviderSnapshot: false, linkKey: "" }
+const noOccurrence: PortableCalendarOccurrence = { uid: "", occurrenceKey: "", allDay: false, conversionSucceeded: false }
+
+function firstText(metadata: Readonly<Record<string, unknown>>, keys: readonly string[]): string {
+  for (const key of keys) {
+    const value = metadata[key]
+    if (typeof value === "string" && value.trim() !== "") return value.trim()
+  }
+  return ""
+}
+
+function instantText(value: string): string | undefined {
+  const stamp = Date.parse(value)
+  return Number.isFinite(stamp) ? new Date(stamp).toISOString() : undefined
+}
+
+/** The civil date of an instant or date token in a zone, UTC when no zone is given; undefined when either cannot be read. */
+export function civilDateOf(value: string, zone: string | null): string | undefined {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const stamp = Date.parse(value)
+  if (!Number.isFinite(stamp)) return undefined
+  if (zone === null || zone === "") return new Date(stamp).toISOString().slice(0, 10)
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(stamp))
+    const part = (type: string) => parts.find((piece) => piece.type === type)?.value
+    const [year, month, day] = [part("year"), part("month"), part("day")]
+    return year !== undefined && month !== undefined && day !== undefined ? `${year}-${month}-${day}` : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** An event's portable occurrence identity: its first nonblank UID, and its original occurrence as an instant or, all day, a civil date. */
+export function portableOccurrence(event: CalendarEvent): PortableCalendarOccurrence {
+  const occurrence = firstText(event.metadata, occurrenceKeys) || event.startAt
+  const normalized = event.isAllDay ? civilDateOf(occurrence, event.timezone) : instantText(occurrence)
+  return { uid: firstText(event.metadata, uidKeys), occurrenceKey: normalized ?? "", allDay: event.isAllDay, conversionSucceeded: normalized !== undefined }
+}
+
+function finite(value: number): number {
+  return Number.isFinite(value) ? value : 0
+}
+
+function sequenceOf(event: CalendarEvent): number {
+  for (const key of ["icsSequence", "sequence"]) {
+    const value = event.metadata[key]
+    if (typeof value === "number" && Number.isFinite(value)) return value
+    if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value)
+  }
+  return 0
+}
+
+function accessRank(role: string): number {
+  switch (role.toLowerCase()) {
+    case "owner": return 5
+    case "writer": return 4
+    case "reader": return 3
+    case "freebusyreader": return 2
+    case "none": return 0
+    default: return 1
+  }
+}
+
+function providerRank(provider: CalendarProvider): number {
+  switch (provider) {
+    case "eliza":
+    case "google":
+    case "microsoft": return 3
+    case "apple_calendar":
+    case "device": return 2
+    case "ics": return 1
+  }
+}
+
+function rankOf({ event, calendar }: Candidate): CalendarRank {
+  return {
+    touched: finite(Date.parse(event.updatedAt)), sequenceRank: sequenceOf(event), ownerSide: event.side === "owner",
+    accessRank: accessRank(calendar.accessRole), providerRank: providerRank(event.provider), synced: finite(Date.parse(event.syncedAt)),
+  }
+}
+
+function withSource(event: CalendarEvent, calendar: CalendarSummary): CalendarEvent {
+  const accountEmail = event.accountEmail ?? calendar.accountEmail ?? undefined
+  return {
+    ...event,
+    grantId: event.grantId ?? calendar.grantId,
+    connectorAccountId: event.connectorAccountId ?? calendar.connectorAccountId,
+    calendarSummary: event.calendarSummary ?? calendar.summary,
+    ...(accountEmail === undefined ? {} : { accountEmail }),
+  }
+}
+
+function referenceOf({ event, calendar }: Candidate): MergedSourceReference {
+  return {
+    eventId: event.id, provider: event.provider, side: event.side, grantId: event.grantId ?? calendar.grantId,
+    connectorAccountId: event.connectorAccountId ?? calendar.connectorAccountId, calendarId: event.calendarId,
+  }
+}
+
+function exactSourceKey(candidate: Candidate): string {
+  const reference = referenceOf(candidate)
+  return JSON.stringify([reference.provider, reference.side, reference.grantId, reference.connectorAccountId, reference.calendarId, reference.eventId])
+}
+
+function referenceOrder(reference: MergedSourceReference): string {
+  return [reference.provider, reference.side, reference.grantId, reference.calendarId, reference.eventId].join("\u0000")
+}
+
+function pairings(events: readonly CalendarEvent[], links: readonly CalendarLinkRecord[]): ReadonlyMap<string, Pairing> {
+  const paired = new Map<string, Pairing>()
+  for (const record of links) {
+    const local = events.find((event) => event.provider === "eliza" && event.side === "owner" && event.agentId === record.agentId
+      && event.id === record.localEventId && event.metadata.version === record.localRevision)
+    const remote = events.find((event) => event.provider === "google" && event.side === "owner" && event.agentId === record.agentId
+      && event.connectorAccountId === record.connectorAccountId && event.calendarId === record.providerCalendarId
+      && record.providerEventId !== null && event.externalId === record.providerEventId
+      && record.providerEtag !== null && event.metadata.etag === record.providerEtag)
+    if (local === undefined || remote === undefined) continue
+    const link: CompleteCalendarLink = {
+      cleanLink: record.state === "clean", pending: record.pendingOperation !== null,
+      dirtyUpdate: record.state === "dirty" && record.pendingOperation === "update",
+      localAgentAndRevision: true, exactProviderSnapshot: true, linkKey: record.id,
+    }
+    if (!canonicalMappingPairs(link)) continue
+    const pairing = { link, remote: portableOccurrence(remote), pendingUpdate: link.dirtyUpdate }
+    paired.set(local.id, pairing)
+    paired.set(remote.id, pairing)
+  }
+  return paired
+}
+
+/** One row per occurrence across every component, each the visible copy with its source evidence, sorted by start then event ID. */
+export function mergeFeedEvents(components: readonly FeedComponent[], links: readonly CalendarLinkRecord[]): CalendarEvent[] {
+  const paired = pairings(components.flatMap(({ feed }) => feed.events), links)
+  const linkedLocal = new Set(links.flatMap((link) => paired.has(link.localEventId) ? [link.localEventId] : []))
+  const groups = new Map<string, Candidate[]>()
+  for (const { calendar, feed } of components) {
+    for (const raw of feed.events) {
+      const candidate: Candidate = { event: withSource(raw, calendar), calendar }
+      const pairing = paired.get(raw.id)
+      const group = calendarMergeGroup(pairing?.link ?? noLink, pairing?.remote ?? noOccurrence, portableOccurrence(candidate.event), exactSourceKey(candidate))
+      const key = JSON.stringify([group.groupKind, group.firstIdentity, group.secondIdentity, group.allDay])
+      const members = groups.get(key)
+      if (members === undefined) groups.set(key, [candidate])
+      else members.push(candidate)
+    }
+  }
+  const row = (candidate: Candidate): RankedCalendarRow => ({ linkedLocal: linkedLocal.has(candidate.event.id), rank: rankOf(candidate) })
+  return [...groups.values()].map((group) => {
+    const winner = group.slice(1).reduce((current, challenger) =>
+      calendarChallengerWins(row(current), row(challenger), challenger.event.id.localeCompare(current.event.id) < 0) ? challenger : current, group[0])
+    const pairing = paired.get(winner.event.id)
+    const output = calendarMergeOutput(group.length, linkedLocal.has(winner.event.id), pairing?.pendingUpdate === true)
+    if (!output.recordSources) return winner.event
+    const conflictingFields = output.recordConflicts
+      ? comparedFields.filter((field) => new Set(group.map(({ event }) => String(event[field]))).size > 1) : []
+    return {
+      ...winner.event,
+      metadata: {
+        ...winner.event.metadata,
+        deduplication: {
+          identityVersion: linkedLocal.has(winner.event.id) ? "canonical-linked-calendar-v1" : "rfc5545-uid-recurrence-id-v2",
+          authoritativeSource: referenceOf(winner),
+          sources: group.map(referenceOf).sort((left, right) => referenceOrder(left).localeCompare(referenceOrder(right))),
+          conflictingFields,
+          ...(output.preserveSnapshots && pairing !== undefined
+            ? { pendingUpdate: { linkId: pairing.link.linkKey, snapshots: group.map(({ event }) => event) } } : {}),
+        },
+      },
+    }
+  }).sort((left, right) => left.startAt.localeCompare(right.startAt) || left.id.localeCompare(right.id))
+}
+
+const aggregateStates = {
+  ManagedAggregateComplete: "complete",
+  ManagedAggregatePartial: "partial",
+  ManagedAggregateUnavailable: "unavailable",
+} as const satisfies Record<string, CalendarFeedState>
+
+/** The merged feed over a window: complete only when every listed source is fresh and every component complete. */
+export function assembleFeed(components: readonly FeedComponent[], links: readonly CalendarLinkRecord[], window: { readonly timeMin: string; readonly timeMax: string }): CalendarFeed {
+  const health = components.flatMap(({ feed }) => feed.sources)
+  const state = managedAggregateState(health.every((source) => source.status === "fresh"),
+    components.every(({ feed }) => feed.state === "complete"), health.some((source) => source.status !== "error"))
+  const synced = components.map(({ feed }) => feed.syncedAt)
+  return {
+    calendarId: "all",
+    events: mergeFeedEvents(components, links),
+    source: components.every(({ feed }) => feed.source === "synced") ? "synced" : "cache",
+    state: aggregateStates[state],
+    sources: health,
+    timeMin: window.timeMin,
+    timeMax: window.timeMax,
+    syncedAt: synced.length === 0 || synced.some((stamp) => stamp === null) ? null : synced.filter((stamp) => stamp !== null).sort()[0] ?? null,
+  }
+}

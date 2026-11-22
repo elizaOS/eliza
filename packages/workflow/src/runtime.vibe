@@ -1,0 +1,219 @@
+// spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"; spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/core/occurrenceWindow.md, "An occurrence more than thirty minutes past its scheduled instant is missed, and stays missed"
+import { agentProcessStartedAtMs, computeNextCronRunAtMs, ModelType, NotificationService, type IAgentRuntime, type Task, type UUID } from "@elizaos/core"
+import { cloudServiceType, type CloudLinkService } from "@elizaos/agent"
+import { createCloudClient } from "@elizaos/cloud/client"
+import type { HostedNativeSelection } from "./contract/digest.vibe"
+import type { ManagedGoogleReads } from "./service/google.vibe"
+import type { PhoneDeviceTarget } from "./contract/phone.vibe"
+import type { WorkflowDeviceBinding, WorkflowDeviceOperation } from "./contract/device.vibe"
+import type { ParentMessage, WorkerMessage } from "./worker/protocol.vibe"
+import {
+  WorkflowDeviceFailed, WorkflowModelFailed, WorkflowScheduleUnavailable, WorkflowWorkerUnavailable,
+  type WorkflowDeviceEnrollment, type WorkflowHost, type WorkflowNotice, type WorkflowWorkerConnection, type WorkflowWorkerPort,
+} from "./service/host.vibe"
+
+/** The runtime service a host registers to hand the plugin its pinned workflow worker. */
+export const WORKFLOW_WORKER_SERVICE = "workflow-worker"
+/** The runtime service a host registers to bridge reviewed device steps to the enrolled phone. */
+export const WORKFLOW_DEVICE_SERVICE = "workflow-device"
+/** The runtime service a host registers for reviewed native digest sources. */
+export const WORKFLOW_NATIVE_DIGEST_SERVICE = "workflow-native-digests"
+/** The task name of a workflow schedule wakeup. */
+export const WORKFLOW_SCHEDULE_TASK = "WORKFLOW_SCHEDULE"
+const scheduleTag = "workflow-schedule"
+
+module node {
+  import type { ChildProcessWithoutNullStreams } from "node:child_process"
+  import { createInterface } from "node:readline"
+  import type { IDatabaseAdapter } from "@elizaos/core"
+  import type { WorkflowQuery, WorkflowSql } from "./service/store.vibe"
+
+  export interface WorkerHostService {
+    spawnWorker(args: readonly string[], options?: { readonly env?: Readonly<Record<string, string>>; readonly signal?: AbortSignal }): Promise<ChildProcessWithoutNullStreams>
+  }
+
+  export interface ChildLines {
+    send(line: string): void
+    next(): Promise<string | undefined>
+    alive(): boolean
+    close(): void
+  }
+
+  export async function openChild(host: WorkerHostService, runId: string): Promise<ChildLines> {
+    const child = await host.spawnWorker(["run", runId])
+    const reader = createInterface({ input: child.stdout, crlfDelay: Infinity })
+    const lines = reader[Symbol.asyncIterator]()
+    child.stderr.resume()
+    let exited = false
+    child.once("exit", () => { exited = true })
+    return {
+      send: (line) => { if (!exited) child.stdin.write(line + "\n") },
+      next: async () => {
+        const read = await lines.next()
+        return read.done === true ? undefined : read.value
+      },
+      alive: () => !exited && child.exitCode === null && child.signalCode === null,
+      close: () => {
+        reader.close()
+        if (!exited) child.kill("SIGKILL")
+      },
+    }
+  }
+
+  function connection(value: object): WorkflowQuery {
+    if (!("query" in value) || typeof value.query !== "function") throw new TypeError("The workflow store needs a SQL connection")
+    return value as WorkflowQuery
+  }
+
+  export function adapterSql(adapter: IDatabaseAdapter): WorkflowSql {
+    return { transaction: (work) => adapter.transaction(async (tx) => await work(connection(await tx.getConnection()))) }
+  }
+
+  export interface LinkRequest {
+    readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+    readonly path: string
+    readonly body?: unknown
+    readonly idempotencyKey?: string
+    readonly ifMatch?: string
+    readonly signal?: AbortSignal
+  }
+  export type LinkReply = { readonly kind: "answered" | "refused"; readonly status: number; readonly body: unknown } | { readonly kind: "changes-off" }
+
+  const methods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
+
+  export function linkFetch(request: (call: LinkRequest) => Promise<LinkReply>): typeof globalThis.fetch {
+    return async (input, init) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url)
+      const method = (init?.method ?? "GET").toUpperCase()
+      if (!methods.has(method)) return new Response(JSON.stringify({ error: "method" }), { status: 405 })
+      const headers = new Headers(init?.headers)
+      const body = typeof init?.body === "string" && init.body !== "" ? JSON.parse(init.body) as unknown : undefined
+      const reply = await request({
+        method: method as LinkRequest["method"], path: url.pathname + url.search, ...(body === undefined ? {} : { body }),
+        ...(headers.get("idempotency-key") === null ? {} : { idempotencyKey: headers.get("idempotency-key") ?? "" }),
+        ...(headers.get("if-match") === null ? {} : { ifMatch: headers.get("if-match") ?? "" }),
+        ...(init?.signal === undefined || init.signal === null ? {} : { signal: init.signal }),
+      })
+      if (reply.kind === "changes-off") return new Response(JSON.stringify({ error: "changes-off" }), { status: 403, headers: { "content-type": "application/json" } })
+      return new Response(JSON.stringify(reply.body ?? null), { status: reply.status, headers: { "content-type": "application/json" } })
+    }
+  }
+
+  export function workerHostOf(value: unknown): WorkerHostService | undefined {
+    return typeof value === "object" && value !== null && "spawnWorker" in value && typeof value.spawnWorker === "function" ? value as WorkerHostService : undefined
+  }
+}
+import { adapterSql, linkFetch, openChild, workerHostOf } from node
+
+function managedGoogle(runtime: IAgentRuntime): ManagedGoogleReads | undefined {
+  const link = serviceWith<CloudLinkService>(runtime, cloudServiceType, ["request"])
+  if (link === undefined) return undefined
+  return createCloudClient({ baseUrl: "https://cloud.link.local", credential: () => "linked", fetch: linkFetch((call) => link.request(call)) })
+}
+
+/** The device bridge a host registers as a runtime service. */
+export interface WorkflowDeviceService {
+  enrollment(): Promise<WorkflowDeviceEnrollment | undefined>
+  perform(binding: WorkflowDeviceBinding, target: PhoneDeviceTarget, operation: WorkflowDeviceOperation): Promise<unknown>
+}
+/** The native digest bridge a host registers as a runtime service. */
+export interface WorkflowNativeDigestService {
+  grant(selection: HostedNativeSelection, expiresAt: number): Promise<{ readonly timeZone: string }>
+  read(selection: HostedNativeSelection, at: number): Promise<string>
+}
+
+function serviceWith<A>(runtime: IAgentRuntime, name: string, methods: readonly string[]): A | undefined {
+  const found: unknown = runtime.getService(name)
+  return typeof found === "object" && found !== null && methods.every((method) => method in found && typeof Reflect.get(found, method) === "function") ? found as A : undefined
+}
+
+function workerPort(runtime: IAgentRuntime): WorkflowWorkerPort | undefined {
+  const service = workerHostOf(runtime.getService(WORKFLOW_WORKER_SERVICE))
+  if (service === undefined) return undefined
+  return {
+    effect open(runId) {
+      const child = try tryPromise({ try: () => openChild(service, runId), catch: (cause) => new WorkflowWorkerUnavailable({ reason: String(cause) }) })
+      return {
+        send: (message: ParentMessage) => sync(() => child.send(JSON.stringify(message))),
+        next: map(promise(() => child.next()), (line) => {
+          if (line === undefined) return undefined
+          try {
+            return JSON.parse(line) as WorkerMessage
+          } catch {
+            return undefined
+          }
+        }),
+        alive: sync(() => child.alive()),
+        close: sync(() => child.close()),
+      } satisfies WorkflowWorkerConnection
+    },
+  }
+}
+
+function taskKey(task: Task): string | undefined {
+  const key = task.metadata?.workflowScheduleKey
+  return typeof key === "string" ? key : undefined
+}
+
+/** The workflow host over a running agent runtime and the services its host registered. */
+export function runtimeWorkflowHost(runtime: IAgentRuntime): WorkflowHost {
+  const device = serviceWith<WorkflowDeviceService>(runtime, WORKFLOW_DEVICE_SERVICE, ["enrollment", "perform"])
+  const native = serviceWith<WorkflowNativeDigestService>(runtime, WORKFLOW_NATIVE_DIGEST_SERVICE, ["grant", "read"])
+  const unavailable = (cause: unknown) => new WorkflowScheduleUnavailable({ cause })
+  const tasks = <A>(call: () => Promise<A>) => tryPromise({ try: call, catch: unavailable })
+  const scheduled = () => tasks(() => runtime.getTasks({ tags: [scheduleTag] }))
+  return {
+    sql: adapterSql(runtime.adapter),
+    owner: String(runtime.agentId),
+    agentId: String(runtime.agentId),
+    origin: "agent:local",
+    worker: workerPort(runtime),
+    device: device === undefined ? undefined : {
+      enrollment: Effect.orElseSucceed(tryPromise(() => device.enrollment()), () => undefined),
+      perform: (binding, target, operation) => tryPromise({ try: () => device.perform(binding, target, operation), catch: (cause) => new WorkflowDeviceFailed({ code: "DEVICE_STEP_FAILED", message: String(cause) }) }),
+    },
+    draft: (prompt) => tryPromise({
+      try: async () => {
+        const text: unknown = await runtime.useModel(ModelType.TEXT_LARGE, { prompt })
+        if (typeof text !== "string") throw new Error("Model draft was not text")
+        return text
+      },
+      catch: (cause) => new WorkflowModelFailed({ message: String(cause) }),
+    }),
+    google: managedGoogle(runtime),
+    nativeDigests: native === undefined ? undefined : {
+      grant: (selection, expiresAt) => tryPromise({ try: () => native.grant(selection, expiresAt), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
+      read: (selection, at) => tryPromise({ try: () => native.read(selection, at), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
+    },
+    effect notify(notice: WorkflowNotice) {
+      const found = runtime.getService(NotificationService.serviceType)
+      if (!(found instanceof NotificationService)) return
+      void (tryPromise(() => found.notify({
+        title: notice.title, body: notice.body, category: "workflow", source: "workflow", deepLink: notice.deepLink, groupKey: notice.groupKey,
+        data: { kind: notice.kind, ...notice.route },
+        ...(notice.route.expiresAt === undefined ? {} : { expiresAt: notice.route.expiresAt }),
+      })) catch () => undefined)
+    },
+    scheduler: {
+      effect set(key, dueAt, metadata) {
+        const held = (try scheduled()).filter((task) => taskKey(task) === key && task.id !== undefined)
+        const [kept, ...surplus] = held
+        if (surplus.length > 0) try tasks(() => runtime.deleteTasks(surplus.flatMap((task) => task.id === undefined ? [] : [task.id])))
+        const fields = { dueAt, metadata: { ...metadata, workflowScheduleKey: key } }
+        if (kept?.id === undefined) {
+          try tasks(() => runtime.createTasks([{ name: WORKFLOW_SCHEDULE_TASK, description: "Admit the next occurrence of a reviewed workflow schedule", tags: ["queue", scheduleTag], ...fields }]))
+        } else {
+          const id: UUID = kept.id
+          try tasks(() => runtime.updateTasks([{ id, task: fields }]))
+        }
+      },
+      effect clear(key) {
+        const ids = (try scheduled()).flatMap((task) => taskKey(task) === key && task.id !== undefined ? [task.id] : [])
+        if (ids.length > 0) try tasks(() => runtime.deleteTasks(ids))
+      },
+      keys: map(scheduled(), (found) => found.flatMap((task) => taskKey(task) ?? [])),
+    },
+    nextCron: (expression, after, timeZone) => computeNextCronRunAtMs(expression, after, timeZone) ?? undefined,
+    processStartedAt: agentProcessStartedAtMs(),
+  }
+}

@@ -34,9 +34,14 @@ export interface BundledEntry {
 
 export error BundleEntryRefused { packageName: string; reason: string }
 
-export effect function bundledPluginMap(entries: readonly BundledEntry[]) {
+function hostedEntry(packageName: string): AgentPlugin {
+  return { name: packageName, description: "A bundled module whose plugin the host builds with the device services it supplies" }
+}
+
+export effect function bundledPluginMap(entries: readonly BundledEntry[], hosted: ReadonlySet<string> = new Set()) {
   const plugins = new Map<string, AgentPlugin>()
-  for (const { packageName, plugin } of entries) {
+  for (const { packageName, plugin: exported } of entries) {
+    const plugin = !isAgentPlugin(exported) && hosted.has(packageName) ? hostedEntry(packageName) : exported
     if (!isAgentPlugin(plugin)) throw new BundleEntryRefused({ packageName, reason: "The package does not export an agent plugin" })
     if (plugin.name !== packageName) throw new BundleEntryRefused({ packageName, reason: `The plugin is named ${plugin.name}` })
     if (plugins.has(packageName)) throw new BundleEntryRefused({ packageName, reason: "The package is bundled twice" })

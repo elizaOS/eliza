@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent within a budget"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent within a budget"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.AgentPolicy.Effect;
@@ -503,9 +503,11 @@ public class AgentService extends Service {
     PayloadCheck.PreparedPayload prepared = ((PayloadCheck.Ready) payload).payload();
     AgentCredentials.Active active;
     String storageKey;
+    LaunchFrame.Credential framed;
     try {
       active = credentials().current();
       storageKey = active == null ? null : credentials().storageKey(active.account());
+      framed = config.ownKey() ? credentials().providerKey() : config.needsAccount() ? LaunchFrame.Credential.of(active) : null;
     } catch (Exception unreadable) {
       step(new AgentPolicy.FailUnclassified("The device credential could not be read: " + unreadable.getMessage()));
       return;
@@ -533,7 +535,7 @@ public class AgentService extends Service {
     try {
       Path launch = writeLaunch(document);
       Path agentSocket = directories.prepareSocket();
-      byte[] frame = LaunchFrame.first(launchToken, epoch, LaunchFrame.Credential.of(active), storageKey).encode();
+      byte[] frame = LaunchFrame.first(launchToken, epoch, framed, storageKey).encode();
       AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
         directories.runtime().resolve("agent.log"));
       spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
@@ -669,6 +671,8 @@ public class AgentService extends Service {
   }
 
   private void push(AgentPolicy.PushCredential push) {
+    AgentConfig launched = loaded;
+    if (launched == null || !launched.needsAccount()) return;
     AgentCredentials.Active active;
     try { active = credentials().current(); }
     catch (Exception unreadable) {

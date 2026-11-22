@@ -1,0 +1,289 @@
+// spec/files/scan/review.md, "Page batches meet every image, count and size limit"; spec/files/scan/review.md, "The document serializes edits, export and explicit draft operations"; spec/files/scan/review.md, "An automatic cleanup removes only this review's captured draft revision"; spec/files/scan/review.md, "A PDF export holds a page snapshot until its result is known"; spec/files/scan/review.md, "A captured page reaches Photos only by explicit Keep"
+module browser {
+  /** @throws {never} */
+  export function reviewId(): string {
+    return crypto.randomUUID()
+  }
+}
+
+import {
+  allowsKeep, allowsScanBatch, allowsScanPage, canBeginDraftAction, canBeginEdit, canBeginExport, canEndDraftAction, canSettleAutoCleanup,
+  initial, machineOver, Rejected, type ScanBatch, type ScanDocument as ScanState, type ScanExport, type ScanFormat, type ScanKeep, type ScanSource,
+} from "../../gen/files__scan__review.effect.vibe"
+import { decodedImage, imageAdmitted } from "./images.vibe"
+import { scanExportRetryable } from "./scan-pdf.vibe"
+import type { createScanDraftStore, ScanDraft } from "./scan-draft.vibe"
+import type { ScanTextLine } from "./scan-text-layer.vibe"
+import { reviewId } from browser
+
+/** One page of a scan document: a stable identity, its image and its reviewed text, if any. */
+export interface ScanPage {
+  readonly id: number
+  readonly image: Blob
+  readonly textLayer: readonly ScanTextLine[] | null
+}
+
+/** The device draft store the document saves to and restores from. */
+export type ScanDraftPort = ReturnType<typeof createScanDraftStore>
+
+/** What the host's exporter answered; `status` decides whether the pages stay editable. */
+export interface ScanExportResult {
+  readonly status: string
+  readonly message: string
+}
+
+/** Whether each control may act now. */
+export interface ScanDocumentControls {
+  readonly addPage: boolean
+  readonly export: boolean
+  readonly pages: readonly { readonly earlier: boolean; readonly later: boolean; readonly edit: boolean }[]
+  readonly saveDraft: boolean
+  readonly loadDraft: boolean
+  readonly deleteDraft: boolean
+  readonly keep: boolean
+}
+
+/** The document as the review shows it. */
+export interface ScanDocumentSnapshot {
+  readonly pages: readonly ScanPage[]
+  readonly state: ScanState
+  readonly controls: ScanDocumentControls
+}
+
+/** A page edit, draft action or export the document's rules or the device store refused. */
+export error ScanDocumentRefused { reason: "busy" | "page" | "slot" | "draft" | "closed" }
+
+/** What a Keep of an unsaved page answered. */
+export interface ScanKeepOutcome { readonly status: "saved" | "failed" | "unknown"; readonly message: string }
+
+/** The host's library port for an unsaved page, keyed by the review's operation identity. */
+export type ScanKeepPort = (image: Blob, operationId: string) => ScanKeepOutcome!!
+
+const formats: Readonly<Record<string, ScanFormat>> = { "image/jpeg": "ScanJpeg", "image/png": "ScanPng", "image/webp": "ScanWebp" }
+const keepStates: Readonly<Record<ScanKeepOutcome["status"], ScanKeep>> = { saved: "KeepSaved", failed: "KeepFailed", unknown: "KeepUnknown" }
+
+function batchOf(pages: readonly ScanPage[]): ScanBatch {
+  return { count: pages.length, bytes: pages.reduce((total, page) => total + page.image.size, 0), pagesValidated: pages.every((page) => imageAdmitted(page.image)) }
+}
+
+function exportVerdict(status: string): ScanExport {
+  if (scanExportRetryable(status)) return "ExportRetryable"
+  if (status === "reviewed") return "ExportReviewed"
+  return status === "exported" || status === "saved" ? "ExportConfirmed" : "ExportUnknown"
+}
+
+/** Options for one scan review. */
+export interface ScanDocumentOptions {
+  readonly first?: Blob
+  readonly drafts?: ScanDraftPort
+  readonly autosave?: boolean
+  readonly keepPort?: ScanKeepPort
+  readonly native?: boolean
+}
+
+/** One scan review: ordered pages, one in-flight edit, draft action or export at a time, exact-revision drafts and explicit Keep. */
+export effect function createScanDocument(options: ScanDocumentOptions = {}) {
+  const state = try Ref.make<ScanState>(initial)
+  const machine = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+  const pages = try Ref.make<readonly ScanPage[]>([])
+  const draftIds = try Ref.make<ReadonlyMap<number, string>>(new Map())
+  const serial = try Ref.make(0)
+  const saves = try Semaphore.make(1)
+  const review = reviewId()
+  const autosave = options.autosave === true && options.drafts !== undefined
+
+  effect function nextNumber(): number!! {
+    return try Ref.updateAndGet(serial, (n) => n + 1)
+  }
+
+  effect function remember(revision: string): number!! {
+    const number = try nextNumber()
+    try Ref.update(draftIds, (ids) => new Map([...ids, [number, revision]]))
+    return number
+  }
+
+  effect function storedRevision(): string | undefined!! {
+    const current = try machine.get()
+    return (try Ref.get(draftIds)).get(current.draftRevision)
+  }
+
+  effect function cleanup(): void!! {
+    const current = try machine.get()
+    if (!canSettleAutoCleanup(current) || options.drafts === undefined) return
+    const expected = (try Ref.get(draftIds)).get(current.cleanupRevision)
+    const committed = expected !== undefined
+      && (timeout(map(options.drafts.deleteScanDraft(expected), () => true), "10 seconds") catch () => false)
+    try orDie(machine.send({ type: "settleAutoCleanup", stored: committed ? current.cleanupRevision : 0, committed }))
+  }
+
+  effect function saveAutomatically(): void!! {
+    if (options.drafts === undefined) return
+    const drafts = options.drafts
+    try saves.withPermits(1)(effect {
+      const before = try machine.get()
+      if (!before.autoQueued) return
+      const snapshot = try Ref.get(pages)
+      const expected = try storedRevision()
+      const saved = snapshot.length === 0 || before.closed ? undefined
+        : (drafts.saveScanDraft(snapshot.map((page) => page.image), expected, snapshot.map((page) => page.textLayer)) catch () => undefined)
+      const revision = saved === undefined ? 0 : try remember(saved.revision)
+      try orDie(machine.send({ type: "settleAutoSave", stored: before.draftRevision, revision, committed: saved !== undefined }))
+    })
+    try cleanup()
+  }
+
+  effect function edit(change: (current: readonly ScanPage[]) => readonly ScanPage[] | undefined): readonly ScanPage[]!ScanDocumentRefused {
+    try mapError(machine.send({ type: "beginEdit" }), () => new ScanDocumentRefused({ reason: "busy" }))
+    const next = change(try Ref.get(pages))
+    const batch = next === undefined ? undefined : batchOf(next)
+    if (next === undefined || batch === undefined || !allowsScanBatch(batch)) {
+      try orDie(machine.send({ type: "cancelEdit" }))
+      throw new ScanDocumentRefused({ reason: next === undefined ? "slot" : "page" })
+    }
+    try Ref.set(pages, next)
+    try orDie(machine.send({ type: "finishEdit", batch, autosave }))
+    if (autosave) fork.detached saveAutomatically()
+    return next
+  }
+
+  effect function put(image: Blob, index?: number): ScanPage!ScanDocumentRefused {
+    const size = try mapError(scoped(map(decodedImage(image), ({ width, height }) => ({ width, height }))), () => new ScanDocumentRefused({ reason: "page" }))
+    if (!allowsScanPage({ format: formats[image.type] ?? "ScanUnsupported", bytes: image.size, ...size })) throw new ScanDocumentRefused({ reason: "page" })
+    const page: ScanPage = { id: try nextNumber(), image, textLayer: null }
+    try edit((current) => index === undefined ? [...current, page]
+      : index >= 0 && index < current.length ? current.map((old, at) => (at === index ? page : old)) : undefined)
+    return page
+  }
+
+  effect function move(index: number, delta: -1 | 1) {
+    return try edit((current) => {
+      const target = index + delta
+      if (index < 0 || target < 0 || index >= current.length || target >= current.length) return undefined
+      const next = [...current]
+      next[index] = current[target]
+      next[target] = current[index]
+      return next
+    })
+  }
+
+  effect function remove(index: number): ScanPage!ScanDocumentRefused {
+    const before = try Ref.get(pages)
+    try edit((current) => (index >= 0 && index < current.length ? current.filter((_, at) => at !== index) : undefined))
+    return before[index] as ScanPage
+  }
+
+  effect function setTextLayers(layers: readonly (readonly ScanTextLine[] | null)[]) {
+    return try edit((current) => (layers.length === current.length ? current.map((page, at) => ({ ...page, textLayer: layers[at] })) : undefined))
+  }
+
+  effect function exportPages(exporter: (images: readonly Blob[], layers: readonly (readonly ScanTextLine[] | null)[]) => ScanExportResult!unknown) {
+    try mapError(machine.send({ type: "beginExport" }), () => new ScanDocumentRefused({ reason: "busy" }))
+    const snapshot = try Ref.get(pages)
+    const result: ScanExportResult = exporter(snapshot.map((page) => page.image), snapshot.map((page) => page.textLayer))
+      catch () => ({ status: "unverified", message: "The export could not be confirmed." })
+    machine.send({ type: "finishExport", result: exportVerdict(result.status) }) catch () => undefined
+    try cleanup()
+    return result
+  }
+
+  effect function exportFinished(status: string): void!! {
+    const current = try machine.get()
+    if (current.flight === "ExportingPages") {
+      machine.send({ type: "finishExport", result: exportVerdict(status) }) catch () => undefined
+      try cleanup()
+    }
+  }
+
+  effect function settled(): void!! {
+    try saveAutomatically()
+  }
+
+  effect function draftAction<A>(action: (drafts: ScanDraftPort) => A!ScanDocumentRefused): A!ScanDocumentRefused {
+    if (options.drafts === undefined) throw new ScanDocumentRefused({ reason: "draft" })
+    const drafts = options.drafts
+    try settled()
+    try mapError(machine.send({ type: "beginDraftAction" }), () => new ScanDocumentRefused({ reason: "busy" }))
+    return try ensuring(action(drafts), effect {
+      if (canEndDraftAction(try machine.get())) try orDie(machine.send({ type: "endDraftAction" }))
+    })
+  }
+
+  effect function saveDraft(): boolean!ScanDocumentRefused {
+    return try draftAction(effect (drafts) => {
+      const snapshot = try Ref.get(pages)
+      const current = try machine.get()
+      const saved = drafts.saveScanDraft(snapshot.map((page) => page.image), try storedRevision(), snapshot.map((page) => page.textLayer)) catch () => undefined
+      if (saved === undefined) return false
+      const revision = try remember(saved.revision)
+      return (machine.send({ type: "saveExplicitDraft", stored: current.draftRevision, revision, committed: true }) catch () => undefined) !== undefined
+    })
+  }
+
+  effect function loadDraft(confirm: () => boolean!!): "loaded" | "none" | "kept"!ScanDocumentRefused {
+    return try draftAction(effect (drafts) => {
+      const draft: ScanDraft | undefined = try mapError(drafts.readScanDraft(), () => new ScanDocumentRefused({ reason: "draft" }))
+      if (draft === undefined) return "none"
+      const restored: ScanPage[] = []
+      for (const [at, image] of draft.pages.entries()) restored.push({ id: try nextNumber(), image, textLayer: draft.textLayers?.[at] ?? null })
+      const batch = batchOf(restored)
+      const approved = (try Ref.get(pages)).length === 0 || (try confirm())
+      if (!approved) return "kept"
+      const revision = try remember(draft.revision)
+      try mapError(machine.send({ type: "adoptStoredPages", batch, revision, approved }), () => new ScanDocumentRefused({ reason: "draft" }))
+      try Ref.set(pages, restored)
+      return "loaded"
+    })
+  }
+
+  effect function deleteDraft(confirm: () => boolean!!): boolean!ScanDocumentRefused {
+    return try draftAction(effect (drafts) => {
+      const current = try machine.get()
+      const expected = try storedRevision()
+      if (expected === undefined || !(try confirm())) return false
+      const committed = map(drafts.deleteScanDraft(expected), () => true) catch () => false
+      return committed && (machine.send({ type: "deleteDraft", stored: current.draftRevision, approved: true, committed }) catch () => undefined) !== undefined
+    })
+  }
+
+  effect function openKeep(source: ScanSource) {
+    return try machine.send({ type: "openKeepReview", source, hasPort: options.keepPort !== undefined, native: options.native === true })
+  }
+
+  effect function keep(image: Blob): ScanKeepOutcome | undefined!! {
+    const port = options.keepPort
+    const current = try machine.get()
+    if (port === undefined || !allowsKeep(current.keep)) return undefined
+    const running = try orDie(machine.send({ type: "requestKeep" }))
+    const outcome = try port(image, `${review}:${running.keep.operation}`)
+    try orDie(machine.send({ type: "resolveKeep", keepResult: keepStates[outcome.status] ?? "KeepUnknown" }))
+    return outcome
+  }
+
+  effect function close(): readonly ScanPage[]!! {
+    const open = try Ref.get(pages)
+    machine.send({ type: "closeKeepReview" }) catch () => undefined
+    machine.send({ type: "closeScan" }) catch () => undefined
+    try Ref.set(pages, [])
+    return open
+  }
+
+  effect function snapshot(): ScanDocumentSnapshot!! {
+    const current = try machine.get()
+    const list = try Ref.get(pages)
+    const editing = canBeginEdit(current)
+    const drafting = canBeginDraftAction(current) && options.drafts !== undefined
+    return {
+      pages: list, state: current,
+      controls: {
+        addPage: editing && list.length < 20, export: canBeginExport(current),
+        pages: list.map((_, at) => ({ earlier: editing && at > 0, later: editing && at < list.length - 1, edit: editing })),
+        saveDraft: drafting && list.length > 0, loadDraft: drafting, deleteDraft: drafting && current.draftKind !== "NoDraft", keep: allowsKeep(current.keep),
+      },
+    }
+  }
+
+  if (options.first !== undefined) try put(options.first)
+  return { snapshot, put, move, remove, setTextLayers, exportPages, exportFinished, saveDraft, loadDraft, deleteDraft, settled, openKeep, keep, close, changes: machine.changes }
+}
+
+export { Rejected }

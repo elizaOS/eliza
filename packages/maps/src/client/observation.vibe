@@ -1,0 +1,109 @@
+// spec/maps/observation.md, "A search observation validates only against the source it captured"; spec/maps/observation.md, "A cancelled locate cannot restore its origin or replace a later fix"
+import { initial as screenOpened, machineOver, type Event, type MapsObservation, type SearchSource } from "../../gen/maps__observation.effect.vibe"
+
+module browser {
+  /** @throws {never} */
+  export function observationId(): string {
+    return `maps_${globalThis.crypto.randomUUID()}`
+  }
+}
+import { observationId } from browser
+
+/** What a Maps search shows: its query, area, results, provider and readiness. */
+export interface MapsSearchSource {
+  readonly query: string
+  readonly area: string
+  readonly results: readonly string[]
+  readonly provider: string
+  readonly ready: boolean
+}
+
+/** The identity envelope of a captured search observation; it carries no location data. */
+export interface MapsSelectedObject {
+  readonly kind: "map-search"
+  readonly id: string
+  readonly revision: string
+}
+
+function interned(): (value: string) => number {
+  const table = new Map<string, number>()
+  return (value) => {
+    if (value === "") return 0
+    const known = table.get(value)
+    if (known !== undefined) return known
+    table.set(value, table.size + 1)
+    return table.size
+  }
+}
+
+effect function session() {
+  const kept = try Ref.make<MapsObservation>(screenOpened)
+  return { id: observationId(), machine: try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next)) }
+}
+
+/** What the agent may observe of the Maps screen: a captured search validates only while the screen still shows that exact source, and an old locate never overrides a later one. */
+export effect function mapsObservation() {
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+  const query = interned()
+  const area = interned()
+  const results = interned()
+  const provider = interned()
+  const current = try Ref.make(try session())
+
+  const numbered = (source: MapsSearchSource): SearchSource => ({
+    query: query(source.query), area: area(source.area), results: results(source.results.join("\u0000")), provider: provider(source.provider), ready: source.ready,
+  })
+
+  effect function send(event: Event): MapsObservation!! {
+    const { machine } = try Ref.get(current)
+    return machine.send(event) catch effect () => try machine.get()
+  }
+
+  effect function observe(): (MapsSelectedObject | undefined)!! {
+    return try serialize(effect {
+      const { id, machine } = try Ref.get(current)
+      const before = try machine.get()
+      const after = before.search.captured ? before : try send({ type: "captureObservation" })
+      return after.search.captured && after.search.live ? { kind: "map-search" as const, id, revision: String(after.search.receiptRevision) } : undefined
+    })
+  }
+
+  effect function validate(target: { readonly kind: string; readonly id: string; readonly revision?: string }): boolean!! {
+    return try serialize(effect {
+      const { id, machine } = try Ref.get(current)
+      if (target.kind !== "map-search" || target.id !== id || !(try machine.get()).search.captured) return false
+      const after = try send({ type: "validateObservation" })
+      return after.search.lastAccepted && target.revision === String(after.search.receiptRevision)
+    })
+  }
+
+  effect function renew(source: MapsSearchSource): void!! {
+    try serialize(effect {
+      const { machine } = try Ref.get(current)
+      if ((try machine.get()).search.live) try send({ type: "closeScreen" })
+      try Ref.set(current, try session())
+      try send({ type: "publishSource", nextSource: numbered(source) })
+    })
+  }
+
+  const locate = (event: Event) => serialize(send(event))
+
+  return {
+    publish: (source: MapsSearchSource) => serialize(send({ type: "publishSource", nextSource: numbered(source) })),
+    observe,
+    validate,
+    renew,
+    close: () => serialize(send({ type: "closeScreen" })),
+    state: effect () => try (try Ref.get(current)).machine.get(),
+    cancelLocate: () => locate({ type: "cancelLocate" }),
+    locateAgain: () => locate({ type: "locateAgain" }),
+    typeOrigin: () => locate({ type: "typeOrigin" }),
+    acceptFix: () => locate({ type: "acceptFix" }),
+    cleanupDone: () => locate({ type: "cleanupDone" }),
+    cleanupFailed: () => locate({ type: "cleanupFailed" }),
+    leaveMaps: () => locate({ type: "leaveMaps" }),
+  }
+}
+
+/** What the agent may observe of one Maps screen. */
+export type MapsObservationPort = Effect.Success<ReturnType<typeof mapsObservation>>

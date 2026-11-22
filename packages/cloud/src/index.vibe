@@ -5,6 +5,7 @@ import { startProblem, type IdentityRead, type StartProblem } from "../gen/cloud
 import { checkCatalog, CatalogMismatch } from "./billing/plans.vibe"
 import { cloudServer, listening, sweepsLayer } from "./http/server.vibe"
 import { applySeed } from "./operator/admin.vibe"
+import { nodePageTemplates } from "./pages/node-templates.vibe"
 import { deploymentLayer, Deployment, parseEnvironment, parseProfile, ProfileInvalid, requireSecrets, specProfile, type SecretMissing, type CloudEnvironment, type CloudProfile } from "./profile/profile.vibe"
 import { DatabaseIdentityMismatch, DatabaseUnreadable, migrate, observeIdentity, parseStoreLocation, storeLayer, type DatabaseIdentity, type StoreFailure, type StoreLocationInvalid, type StoreLocation } from "./store/store.vibe"
 
@@ -78,7 +79,8 @@ export function cloudLayer(options: CloudLayerOptions) {
     deploymentLayer(options.profile, options.environment),
     storeLayer(options.store),
     FetchHttpClient.layer,
-    NodeFileSystem.layer
+    NodeFileSystem.layer,
+    nodePageTemplates
   )
   const serving = Layer.mergeAll(cloudServer(), sweepsLayer()).pipe(Layer.provideMerge(startupChecks(options)))
   return serving.pipe(Layer.provideMerge(listening(options.port, options.host)), Layer.provideMerge(platform))

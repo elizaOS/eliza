@@ -1,0 +1,317 @@
+// spec/maps/relay.md, "A queued command waits for the phone's current offer and survives a new offer it never reached"; spec/maps/relay.md, "A lapsed lease redelivers the same command a bounded number of times, and the phone runs it at most once"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer"
+import { commandBudget } from "../gen/maps__navigation.effect.vibe"
+import { canRedeliverCommand, initial as idleRelay, machineOver, type Event, type Machine, type MapsRelay } from "../gen/maps__relay.effect.vibe"
+import {
+  DeviceNavigationFailure, DeviceNavigationMapsCode, MapsDeviceNavigationStatus,
+  type AgentPlaceRef, type DeviceNavigationOperation,
+} from "./client/device-navigation.vibe"
+import type { TravelMode } from "./client/contracts.vibe"
+import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
+
+module node {
+  /** @throws {never} */
+  export function commandId(): string {
+    return globalThis.crypto.randomUUID()
+  }
+}
+import { commandId } from node
+
+/** A phone message the relay cannot accept; the host route answers it as a client error. */
+export error RelayRefused { reason: string }
+
+const Uuid = Schema.String.check(Schema.isPattern(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i))
+const RelayMessage = Schema.Struct({
+  phase: Schema.Literals(["open", "poll", "result", "retire"]),
+  conversationId: Uuid,
+  offerId: Uuid,
+  id: Schema.optionalKey(Uuid),
+  status: Schema.optionalKey(Schema.Unknown),
+  failed: Schema.optionalKey(Schema.Struct({ code: DeviceNavigationMapsCode, message: Schema.optionalKey(Schema.String) })),
+})
+const decodeMessage = Schema.decodeUnknownEffect(RelayMessage, { onExcessProperty: "error" })
+const decodeStatus = Schema.decodeUnknownEffect(MapsDeviceNavigationStatus, { onExcessProperty: "error" })
+
+/** What the relay answers the phone: protocol 1 and at most one request. */
+export interface RelayReply {
+  readonly protocol: 1
+  readonly request: { readonly id: string; readonly expiresAt: number; readonly operation: DeviceNavigationOperation } | null
+}
+
+/** How long the relay waits: a delivery's lease before redelivery, a command's lifetime, a live offer's last poll, an idle offer and one poll. */
+export interface RelayLimits {
+  readonly leaseMs: number
+  readonly commandMs: number
+  readonly liveMs: number
+  readonly idleMs: number
+  readonly pollMs: number
+}
+
+const defaultLimits: RelayLimits = { leaseMs: 2_500, commandMs: 30_000, liveMs: 2_000, idleMs: 30_000, pollMs: 1_000 }
+
+/** The agent's view of the phone's navigation, as Maps actions use it. */
+export interface MapsDeviceNavigation {
+  available(): boolean!!
+  select(place: AgentPlaceRef): MapsDeviceNavigationStatus!DeviceNavigationFailure
+  start(request: { readonly destination: AgentPlaceRef; readonly travelMode: TravelMode }): MapsDeviceNavigationStatus!DeviceNavigationFailure
+  reroute(): MapsDeviceNavigationStatus!DeviceNavigationFailure
+  stop(): MapsDeviceNavigationStatus!DeviceNavigationFailure
+}
+
+interface Pending {
+  readonly id: string
+  readonly expiresAt: number
+  readonly operation: DeviceNavigationOperation
+  readonly done: Deferred.Deferred<MapsDeviceNavigationStatus, DeviceNavigationFailure>
+  readonly turnActive: () => boolean
+  deliveredAt: number
+}
+
+interface Offer {
+  readonly id: string
+  readonly number: number
+  readonly conversationId: string
+  seenAt: number
+}
+
+interface Scope {
+  readonly machine: Machine.Shape
+  offer?: Offer
+  pending?: Pending
+  offers: number
+  wake: Deferred.Deferred<void>
+}
+
+const failureText: Partial<Record<DeviceNavigationMapsCode, string>> = {
+  MAPS_DEVICE_UNAVAILABLE: "Maps could not be shown on the phone right now. Nothing was changed on the map.",
+  MAPS_INVALID_INPUT: "The phone could not use that place or travel mode.",
+  MAPS_NOT_FOUND: "Cloud Maps on the phone found no such place or route.",
+  MAPS_UNSUPPORTED_REGION: "Cloud Maps on the phone does not plan that route here.",
+  MAPS_PROVIDER_CHANGED: "The Maps account on the phone changed. Nothing was changed on the map.",
+  MAPS_BUDGET_EXHAUSTED: "The Maps allowance for this period is used up. Nothing was changed on the map.",
+  MAPS_PROVIDER_REJECTED: "Cloud refused this Maps request. Nothing was changed on the map.",
+}
+
+function phoneLine(code: DeviceNavigationMapsCode, message: string | undefined): string {
+  const line = message?.trim() ?? ""
+  if (line !== "" && line.length <= 300 && !/[\u0000-\u001f\u007f]/.test(line)) return line
+  return failureText[code] ?? "The phone could not complete this Maps request. Check Maps on the phone."
+}
+
+const statesFor: Record<DeviceNavigationOperation["kind"], readonly MapsDeviceNavigationStatus["state"][]> = {
+  select: ["selected"],
+  stop: ["stopped"],
+  reroute: ["navigating", "awaiting-location"],
+  start: ["navigating", "awaiting-location", "awaiting-confirmation"],
+}
+
+const unreached = () => new DeviceNavigationFailure({ code: "MAPS_DEVICE_UNAVAILABLE", message: "The phone navigation request did not complete. Check the phone before trying again." })
+const idle: RelayReply = { protocol: 1, request: null }
+
+/** The agent host's side of the phone navigation relay: one outstanding command per device scope, redelivered to the same offer after a lapsed lease, abandoned when the offer it reached is replaced, and answered by at most one receipt. */
+export effect function mapsNavigationRelay(limits: RelayLimits = defaultLimits) {
+  const scopes = new Map<string, Scope>()
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+
+  effect function scopeOf(key: string): Scope!! {
+    const known = scopes.get(key)
+    if (known !== undefined) return known
+    const kept = try Ref.make<MapsRelay>(idleRelay)
+    const made: Scope = { machine: try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next)), offers: 0, wake: try Deferred.make<void>() }
+    scopes.set(key, made)
+    return made
+  }
+
+  effect function send(scope: Scope, event: Event): MapsRelay!! {
+    return scope.machine.send(event) catch effect () => try scope.machine.get()
+  }
+
+  effect function finish(scope: Scope, value: Exit.Exit<MapsDeviceNavigationStatus, DeviceNavigationFailure>): void!! {
+    const pending = scope.pending
+    scope.pending = undefined
+    if (pending !== undefined) try Deferred.done(pending.done, value)
+  }
+
+  effect function abandon(scope: Scope): void!! {
+    const now = try scope.machine.get()
+    if (now.phase === "Queued" || now.phase === "Leased") try send(scope, { type: "abandonCommand" })
+    try finish(scope, Exit.fail(unreached()))
+  }
+
+  effect function wake(scope: Scope): void!! {
+    const previous = scope.wake
+    scope.wake = try Deferred.make<void>()
+    try Deferred.succeed(previous, undefined)
+  }
+
+  effect function sweep(now: number): void!! {
+    for (const [key, scope] of scopes) {
+      if (scope.offer !== undefined && now - scope.offer.seenAt > limits.idleMs) {
+        try abandon(scope)
+        scope.offer = undefined
+        scopes.delete(key)
+      }
+    }
+  }
+
+  effect function deliverable(scope: Scope, now: number): RelayReply!! {
+    const pending = scope.pending
+    const state = try scope.machine.get()
+    if (pending === undefined) return idle
+    if (!pending.turnActive() || pending.expiresAt <= now) {
+      try abandon(scope)
+      return idle
+    }
+    const request = { protocol: 1 as const, request: { id: pending.id, expiresAt: pending.expiresAt, operation: pending.operation } }
+    if (state.phase === "Queued") {
+      try send(scope, { type: "deliverCommand" })
+      pending.deliveredAt = now
+      return request
+    }
+    if (state.phase === "Leased" && now - pending.deliveredAt >= limits.leaseMs && canRedeliverCommand(state)) {
+      try send(scope, { type: "redeliverCommand" })
+      pending.deliveredAt = now
+      return request
+    }
+    return idle
+  }
+
+  effect function statusFor(operation: DeviceNavigationOperation, raw: unknown): MapsDeviceNavigationStatus!RelayRefused {
+    const status = try mapError(decodeStatus(raw), () => new RelayRefused({ reason: "Invalid navigation status" }))
+    if (!statesFor[operation.kind].includes(status.state) || (status.route !== undefined && status.state !== "awaiting-confirmation")) {
+      throw new RelayRefused({ reason: "Invalid navigation status" })
+    }
+    return status
+  }
+
+  effect function handle(key: string, input: unknown): RelayReply!RelayRefused {
+    const message = try mapError(decodeMessage(input), () => new RelayRefused({ reason: "Invalid navigation request" }))
+    const answer = try serialize(effect {
+      const now = try Clock.currentTimeMillis
+      try sweep(now)
+      const scope = try scopeOf(key)
+      const offer = scope.offer
+      const same = offer !== undefined && offer.id === message.offerId && offer.conversationId === message.conversationId
+      switch (message.phase) {
+        case "retire": {
+          if (same) {
+            try abandon(scope)
+            scope.offer = undefined
+            try wake(scope)
+          }
+          return { kind: "reply" as const, reply: idle }
+        }
+        case "open": {
+          if (message.id !== undefined || message.status !== undefined || message.failed !== undefined) throw new RelayRefused({ reason: "Invalid navigation poll" })
+          if (!same) {
+            scope.offers += 1
+            const opened = try send(scope, { type: "openOffer", offer: scope.offers })
+            if (opened.phase === "Abandoned" || (offer !== undefined && offer.conversationId !== message.conversationId)) try abandon(scope)
+            try wake(scope)
+            scope.offer = { id: message.offerId, number: scope.offers, conversationId: message.conversationId, seenAt: now }
+          } else if (offer !== undefined) offer.seenAt = now
+          return { kind: "reply" as const, reply: idle }
+        }
+        case "poll": {
+          if (message.id !== undefined || message.status !== undefined || message.failed !== undefined) throw new RelayRefused({ reason: "Invalid navigation poll" })
+          if (!same || offer === undefined) throw new RelayRefused({ reason: "Navigation offer unavailable" })
+          offer.seenAt = now
+          const ready = try deliverable(scope, now)
+          return ready.request === null ? { kind: "wait" as const, scope, offer, wake: scope.wake } : { kind: "reply" as const, reply: ready }
+        }
+        case "result": {
+          const pending = scope.pending
+          const state = try scope.machine.get()
+          if (!same || offer === undefined || pending === undefined || pending.id !== message.id || state.phase !== "Leased" || state.leasedTo !== offer.number
+            || !pending.turnActive() || pending.expiresAt <= now) {
+            throw new RelayRefused({ reason: "Navigation request retired" })
+          }
+          offer.seenAt = now
+          if (message.failed !== undefined && message.status !== undefined) throw new RelayRefused({ reason: "Invalid navigation result" })
+          const settled: Exit.Exit<MapsDeviceNavigationStatus, DeviceNavigationFailure> = message.failed !== undefined
+            ? Exit.fail(new DeviceNavigationFailure({ code: message.failed.code, message: phoneLine(message.failed.code, message.failed.message) }))
+            : Exit.succeed(try statusFor(pending.operation, message.status))
+          try send(scope, { type: "phoneRuns" })
+          try send(scope, { type: "receiptArrives" })
+          try finish(scope, settled)
+          return { kind: "reply" as const, reply: idle }
+        }
+      }
+    })
+    if (answer.kind === "reply") return answer.reply
+    try timeoutOption(Deferred.await(answer.wake), limits.pollMs)
+    return try serialize(effect {
+      if (answer.scope.offer !== answer.offer) throw new RelayRefused({ reason: "Navigation offer retired" })
+      return try deliverable(answer.scope, try Clock.currentTimeMillis)
+    })
+  }
+
+  effect function dispatch(key: string, conversationId: string, turnActive: () => boolean, operation: DeviceNavigationOperation): MapsDeviceNavigationStatus!DeviceNavigationFailure {
+    const queued = try serialize(effect {
+      const now = try Clock.currentTimeMillis
+      const scope = try scopeOf(key)
+      const offer = scope.offer
+      const state = try scope.machine.get()
+      if (!turnActive() || offer === undefined || offer.conversationId !== conversationId || now - offer.seenAt > limits.liveMs
+        || state.phase === "Queued" || state.phase === "Leased") throw unreached()
+      try send(scope, { type: "queueCommand" })
+      const pending: Pending = { id: commandId(), expiresAt: now + limits.commandMs, operation, done: try Deferred.make<MapsDeviceNavigationStatus, DeviceNavigationFailure>(), turnActive, deliveredAt: 0 }
+      scope.pending = pending
+      try wake(scope)
+      return { scope, pending }
+    })
+    const settled = try timeoutOption(Deferred.await(queued.pending.done), commandBudget(limits.commandMs))
+    if (settled._tag === "Some") return settled.value
+    try serialize(effect { if (queued.scope.pending === queued.pending) try abandon(queued.scope) })
+    throw unreached()
+  }
+
+  return {
+    handle,
+    state: effect (key: string) => try (try scopeOf(key)).machine.get(),
+    scopeFor: (conversationId: string): string | undefined => {
+      for (const [key, scope] of scopes) if (scope.offer?.conversationId === conversationId) return key
+      return undefined
+    },
+    navigation: (key: string, conversationId: string, turnActive: () => boolean): MapsDeviceNavigation => ({
+      available: () => serialize(effect {
+        const scope = scopes.get(key)
+        const offer = scope?.offer
+        const now = try Clock.currentTimeMillis
+        const state = scope === undefined ? undefined : try scope.machine.get()
+        return turnActive() && offer !== undefined && offer.conversationId === conversationId && now - offer.seenAt <= limits.liveMs
+          && state !== undefined && state.phase !== "Queued" && state.phase !== "Leased"
+      }),
+      select: (place) => dispatch(key, conversationId, turnActive, { kind: "select", place }),
+      start: (request) => dispatch(key, conversationId, turnActive, { kind: "start", request }),
+      reroute: () => dispatch(key, conversationId, turnActive, { kind: "reroute" }),
+      stop: () => dispatch(key, conversationId, turnActive, { kind: "stop" }),
+    }),
+  }
+}
+
+/** The agent host's phone navigation relay. */
+export type MapsNavigationRelay = Effect.Success<ReturnType<typeof mapsNavigationRelay>>
+
+/** The path the phone's relay client calls on the agent host. */
+export const mapsNavigationPath = "/api/client-devices/maps-navigation"
+
+function scopeKey(input: Pick<RouteInput, "headers">): string {
+  return input.headers.get("x-eliza-device-id") ?? "owner"
+}
+
+/** The agent host route of the relay: protocol 1 answers, and a message the relay cannot accept answers 409 with its reason. */
+export function mapsNavigationRoute(relay: MapsNavigationRelay): LocalRoute {
+  return {
+    method: "POST",
+    path: mapsNavigationPath,
+    maxBodyBytes: 8192,
+    handler: (input) => runPromise(map(Effect.result(relay.handle(scopeKey(input), input.body)), (answer) =>
+      Result.isSuccess(answer) ? { status: 200, body: answer.success } : { status: 409, body: { error: answer.failure.reason } })),
+  }
+}
+
+/** The phone navigation of the conversation a turn belongs to, while that phone holds an open offer for it. */
+export function conversationNavigation(relay: MapsNavigationRelay, conversationId: string, turnActive: () => boolean): MapsDeviceNavigation | undefined {
+  const key = relay.scopeFor(conversationId)
+  return key === undefined ? undefined : relay.navigation(key, conversationId, turnActive)
+}

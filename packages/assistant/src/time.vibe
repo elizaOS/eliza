@@ -1,0 +1,65 @@
+// spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/scheduledDossiers.md, "Only the owner's own foreground or unlock activity is admitted, once per owner day"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"
+module node {
+  function offsetAt(instant: number, zone: string): number {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+      timeZone: zone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+    }).formatToParts(new Date(instant)).map((part) => [part.type, part.value]))
+    return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second)) - Math.floor(instant / 1000) * 1000
+  }
+
+  /** @throws {never} */
+  export function zonedInstant(date: string, time: string, zone: string): number | undefined {
+    const day = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(date)
+    const clock = /^([01]\d|2[0-3]):([0-5]\d)$/u.exec(time)
+    if (day === null || clock === null) return undefined
+    try {
+      const wall = Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3]), Number(clock[1]), Number(clock[2]))
+      const guess = wall - offsetAt(wall, zone)
+      const instant = wall - offsetAt(guess, zone)
+      return instant + offsetAt(instant, zone) === wall ? instant : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function wallText(instant: number, zone: string): string {
+    try {
+      return new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(instant))
+    } catch {
+      return new Date(instant).toISOString()
+    }
+  }
+
+  /** @throws {never} */
+  export function offsetInstant(text: string): number | undefined {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/u.test(text)) return undefined
+    const instant = Date.parse(text)
+    return Number.isFinite(instant) ? instant : undefined
+  }
+
+  /** @throws {never} */
+  export function civilDate(instant: number, zone: string): string {
+    try {
+      return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(instant))
+    } catch {
+      return new Date(instant).toISOString().slice(0, 10)
+    }
+  }
+
+  /** @throws {never} */
+  export function longDate(date: string): string {
+    return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric", year: "numeric" })
+  }
+
+  /** @throws {never} */
+  export function localMinutes(instant: number, zone: string): number {
+    try {
+      return Math.floor((Math.floor(instant / 1000) * 1000 + offsetAt(instant, zone)) / 60_000)
+    } catch {
+      return Math.floor(instant / 60_000)
+    }
+  }
+}
+
+export { civilDate, localMinutes, longDate, offsetInstant, wallText, zonedInstant } from node

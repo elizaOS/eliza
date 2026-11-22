@@ -1,0 +1,79 @@
+// spec/inbox/handoff.md, "An agent's new email reaches only the requesting phone's composer"; spec/inbox/outgoing.md, "A send keeps the request identity of the owner turn that asked for it"
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type Memory } from "@elizaos/core"
+import { composeAnswer } from "../../gen/inbox__handoff.effect.vibe"
+import { canonicalUuid } from "../mailbox/digest.vibe"
+
+/** The action name of the hand-off of a new email to the requesting phone's composer. */
+export const inboxComposeActionName = "INBOX_COMPOSE_EMAIL"
+
+/** The unsent new email the phone's composer opens; its request identity becomes the send's. */
+export interface EmailDraftHandoff {
+  readonly version: 1
+  readonly requestMessageId: string
+  readonly to: readonly string[]
+  readonly subject: string
+  readonly body: string
+}
+
+const richerFields = ["accountId", "connectorAccountId", "from", "cc", "bcc", "attachments", "sendAt", "sendAtMs", "at"] as const
+const threadFields = ["thread", "threadId", "inReplyToId", "channelId", "worldId"] as const
+const address = /^[^\s@]{1,64}@[^\s@]{1,189}$/
+
+function given(options: unknown): Readonly<Record<string, unknown>> {
+  const raw = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+  return typeof raw === "object" && raw !== null ? raw as Record<string, unknown> : {}
+}
+
+const named = (value: unknown) => Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== "" && value !== false
+
+function recipients(value: unknown): string[] {
+  const listed = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : []
+  return listed.flatMap((entry) => typeof entry === "string" && address.test(entry.trim()) ? [entry.trim()] : [])
+}
+
+/** What the agent answers an owner's request to draft a new email: the phone's composer, Inbox, or no hand-off. */
+export function emailDraftAnswer(message: Memory, options: unknown): ActionResult | undefined {
+  const parameters = given(options)
+  const to = recipients(parameters.to)
+  const body = typeof parameters.body === "string" ? parameters.body : ""
+  const answer = composeAnswer({
+    ownerTurn: typeof message.id === "string" && canonicalUuid(message.id),
+    composerAvailable: message.content.source === "device",
+    gmailSource: true,
+    threaded: threadFields.some((field) => named(parameters[field])),
+    richerFields: richerFields.some((field) => named(parameters[field])),
+  })
+  switch (answer) {
+    case "ComposeNotOffered": return undefined
+    case "ComposeInInbox": return { success: false, text: "Open Inbox to prepare this email with those details.", data: { handoff: "inbox" } }
+    case "ComposeOnPhone": {
+      if (to.length === 0 || body.trim() === "") return { success: false, text: "Say who the email is to and what it should say.", data: { handoff: "incomplete" } }
+      const emailDraft = {
+        version: 1, requestMessageId: (message.id ?? "").toLowerCase(), to, subject: typeof parameters.subject === "string" ? parameters.subject : "", body,
+      } satisfies EmailDraftHandoff
+      const text = "Here’s the draft."
+      return {
+        success: true, text, userFacingText: text, verifiedUserFacing: true,
+        values: { mode: "local-compose", targetId: "inbox", emailDraft: { ...emailDraft, to: [...emailDraft.to] } },
+        data: { actionName: inboxComposeActionName },
+      }
+    }
+  }
+}
+
+/** Hands an unsent new email to the requesting phone's own composer; nothing is sent and no provider draft is made. */
+export const inboxComposeAction: Action = {
+  name: inboxComposeActionName,
+  description: "Draft a new email for the owner to review and send from their phone's Inbox composer: explicit recipient addresses, a subject and the text. It sends nothing; replies, copies, attachments and scheduled sends are made in Inbox.",
+  similes: ["DRAFT_EMAIL", "WRITE_EMAIL", "COMPOSE_EMAIL"],
+  parameters: [
+    { name: "to", required: true, schema: { type: "array", items: { type: "string" } }, description: "Recipient email addresses." },
+    { name: "subject", required: false, schema: { type: "string" }, description: "The subject line." },
+    { name: "body", required: true, schema: { type: "string" }, description: "The email text, written as the owner." },
+  ],
+  roleGate: { minRole: "OWNER" },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  validate: async (_runtime, message) => message.content.source === "device",
+  handler: async (_runtime, message, _state, options) =>
+    emailDraftAnswer(message, options) ?? { success: false, text: "Open Inbox on the phone to write this email.", data: { handoff: "none" } },
+}

@@ -1,0 +1,181 @@
+// spec/workflow/intents.md, "Story: Preserve the owner’s pending action across transport uncertainty"; spec/workflow/intents.md, "A committed revision is the only receipt that can unlock its action"; spec/workflow/intents.md, "Reconciliation reads the definition before the retained submission receipt"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import { recoveryDecision, type RecoveryDecision } from "../../gen/workflow__intents.effect.vibe"
+import { workflowUuid } from "../contract/phone.vibe"
+
+/** The captured agent account a store is scoped to. */
+export interface WorkflowIntentOwner { readonly origin: string; readonly ownerId: string; readonly agentId: string }
+/** Every pending intent of a store, by key. */
+export interface WorkflowIntentArchive { readonly entries: Readonly<Record<string, string>> }
+/** The installed key namespace of pending workflow requests. */
+export const DEFAULT_WORKFLOW_INTENT_PREFIX = "eliza.workflow.pending.v1:"
+
+/** The pending request changed since it was read; nothing was written. */
+export error WorkflowIntentConflict { get message() { return "Workflow request changed. Refresh its receipt before trying again." } }
+/** The stored history is unreadable or belongs to another agent; every key stays locked. */
+export error WorkflowIntentUnreadable { reason: string }
+/** The store did not confirm a write; the outcome is unknown and every key stays locked. */
+export error WorkflowIntentUnconfirmed { cause: unknown }
+
+/** Host persistence: `edit` applies its update atomically to the stored archive. */
+export interface WorkflowIntentBackend {
+  read(): WorkflowIntentArchive!WorkflowIntentUnconfirmed
+  edit(update: (archive: WorkflowIntentArchive) => WorkflowIntentArchive | WorkflowIntentConflict): WorkflowIntentArchive!(WorkflowIntentUnconfirmed | WorkflowIntentConflict)
+}
+
+/** The key of one owner's pending request. */
+export function workflowIntentKey(owner: WorkflowIntentOwner, id: string, keyPrefix = DEFAULT_WORKFLOW_INTENT_PREFIX): string {
+  return keyPrefix + JSON.stringify([owner.origin, owner.ownerId, owner.agentId, id])
+}
+
+/** The key namespace of one owner: every key of theirs starts with it. */
+export function workflowIntentOwnerPrefix(owner: WorkflowIntentOwner, keyPrefix = DEFAULT_WORKFLOW_INTENT_PREFIX): string {
+  return keyPrefix + JSON.stringify([owner.origin, owner.ownerId, owner.agentId]).slice(0, -1) + ","
+}
+
+/** What reconciling a retained submission decides, from the definition read before its receipt. */
+export function workflowRecovery(input: {
+  readonly currentOwner: boolean; readonly canReconcile: boolean; readonly receiptValid: boolean; readonly receiptRun: boolean
+  readonly ownVersion: string; readonly observedBeforeReceipt: string
+}): RecoveryDecision {
+  return recoveryDecision(input.currentOwner, input.canReconcile, input.receiptValid, input.receiptRun, input.ownVersion === input.observedBeforeReceipt ? 1 : 2, 1)
+}
+
+/** Nonsecret pending requests scoped to one captured agent account. */
+export interface WorkflowIntentStore {
+  readonly ownerPrefix: string
+  key(id: string): string
+  locked(key: string): boolean!!
+  stale(): boolean!!
+  pendingLifecycle(): string[]!!
+  load(): Record<string, string>!(WorkflowIntentUnconfirmed | WorkflowIntentUnreadable)
+  read(key: string): (string | null)!(WorkflowIntentUnconfirmed | WorkflowIntentUnreadable)
+  admit(key: string, intent: Readonly<Record<string, unknown>>): string!(WorkflowIntentUnconfirmed | WorkflowIntentUnreadable | WorkflowIntentConflict)
+  acknowledge(key: string, expected: string): void!(WorkflowIntentUnconfirmed | WorkflowIntentUnreadable | WorkflowIntentConflict)
+  invalidate(): void!!
+}
+
+/** Opens one owner's store over host persistence; `onChange` hears every committed change and cannot undo it. */
+export effect function workflowIntentStore(owner: WorkflowIntentOwner, backend: WorkflowIntentBackend, options: { readonly keyPrefix?: string; readonly onChange?: () => void } = {}) {
+  const keyPrefix = options.keyPrefix ?? DEFAULT_WORKFLOW_INTENT_PREFIX
+  const ownerPrefix = workflowIntentOwnerPrefix(owner, keyPrefix)
+  const epoch = try Ref.make(0)
+  const cached = try Ref.make<Record<string, string> | undefined>(undefined)
+
+  effect function check(key: string): void!WorkflowIntentUnreadable {
+    if (!key.startsWith(ownerPrefix)) throw new WorkflowIntentUnreadable({ reason: "Workflow intent belongs to another agent" })
+  }
+
+  effect function validate(archive: WorkflowIntentArchive): Record<string, string>!WorkflowIntentUnreadable {
+    if (typeof archive !== "object" || archive === null || typeof archive.entries !== "object" || archive.entries === null || Array.isArray(archive.entries)
+      || Object.keys(archive).some((key) => key !== "entries")) throw new WorkflowIntentUnreadable({ reason: "Workflow request history needs recovery" })
+    for (const [key, raw] of Object.entries(archive.entries)) {
+      try check(key)
+      if (typeof raw !== "string") throw new WorkflowIntentUnreadable({ reason: "Workflow request history needs recovery" })
+    }
+    return { ...archive.entries }
+  }
+
+  effect function invalidate(): void!! {
+    try Ref.update(epoch, (value) => value + 1)
+    try Ref.set(cached, undefined)
+  }
+
+  effect function load() {
+    const mine = try Ref.updateAndGet(epoch, (value) => value + 1)
+    const entries = try validate(try backend.read())
+    if ((try Ref.get(epoch)) === mine) try Ref.set(cached, entries)
+    return entries
+  }
+
+  effect function replace(key: string, expected: string | null, next: string | null) {
+    try check(key)
+    const committed = (backend.edit((archive) => {
+      const entries = { ...archive.entries }
+      if ((entries[key] ?? null) !== expected) return new WorkflowIntentConflict()
+      if (next === null) delete entries[key]
+      else entries[key] = next
+      return { entries }
+    }) catch effect (error) => {
+      try invalidate()
+      throw error
+    })
+    const entries = (validate(committed) catch effect (error) => {
+      try invalidate()
+      throw error
+    })
+    try Ref.update(epoch, (value) => value + 1)
+    try Ref.set(cached, entries)
+    try sync(() => { try { options.onChange?.() } catch {} })
+  }
+
+  return {
+    ownerPrefix,
+    key: (id: string) => workflowIntentKey(owner, id, keyPrefix),
+    effect locked(key: string) {
+      const snapshot = try Ref.get(cached)
+      return !key.startsWith(ownerPrefix) || snapshot === undefined || Object.hasOwn(snapshot, key)
+    },
+    effect stale() { return (try Ref.get(cached)) === undefined },
+    effect pendingLifecycle() {
+      const suffix = ":lifecycle"
+      return Object.keys((try Ref.get(cached)) ?? {}).filter((key) => key.endsWith(suffix)).flatMap((key) => {
+        try {
+          const parts: unknown = JSON.parse(key.slice(keyPrefix.length, -suffix.length))
+          return Array.isArray(parts) && parts.length === 4 && typeof parts[3] === "string" ? [parts[3]] : []
+        } catch {
+          return []
+        }
+      })
+    },
+    load,
+    effect read(key: string) {
+      try check(key)
+      return (try load())[key] ?? null
+    },
+    effect admit(key: string, intent: Readonly<Record<string, unknown>>) {
+      const raw = JSON.stringify({ ...intent, intentRevision: try workflowUuid() })
+      try replace(key, null, raw)
+      return raw
+    },
+    effect acknowledge(key: string, expected: string) { try replace(key, expected, null) },
+    invalidate,
+  } satisfies WorkflowIntentStore
+}
+
+/** A backend over Effect's KeyValueStore, one entry per key; edits are atomic within this process. */
+export effect function keyValueIntentBackend(ownerPrefix: string) {
+  const store = try KeyValueStore.KeyValueStore
+  const index = `${ownerPrefix}#index`
+  const serial = (try Semaphore.make(1)).withPermits(1)
+  const unconfirmed = (cause: unknown) => new WorkflowIntentUnconfirmed({ cause })
+
+  effect function snapshot(): WorkflowIntentArchive!WorkflowIntentUnconfirmed {
+    const listed = try mapError(store.get(index), unconfirmed)
+    const keys: unknown = listed === undefined ? [] : try Effect.try({ try: () => JSON.parse(listed) as unknown, catch: unconfirmed })
+    if (!Array.isArray(keys) || keys.some((key) => typeof key !== "string")) throw new WorkflowIntentUnconfirmed({ cause: "Workflow intent index is unreadable" })
+    const entries: Record<string, string> = {}
+    for (const key of [...keys].sort()) {
+      const raw = try mapError(store.get(key), unconfirmed)
+      if (raw !== undefined) entries[key] = raw
+    }
+    return { entries }
+  }
+
+  return {
+    read: () => serial(snapshot()),
+    edit: (update) => serial(effect {
+      const before = try snapshot()
+      const after = update(before)
+      if (after instanceof WorkflowIntentConflict) throw after
+      for (const key of Object.keys(before.entries)) if (!Object.hasOwn(after.entries, key)) try mapError(store.remove(key), unconfirmed)
+      for (const [key, raw] of Object.entries(after.entries)) if (before.entries[key] !== raw) try mapError(store.set(key, raw), unconfirmed)
+      try mapError(store.set(index, JSON.stringify(Object.keys(after.entries).sort())), unconfirmed)
+      const confirmed = try snapshot()
+      if (JSON.stringify(confirmed.entries) !== JSON.stringify(Object.fromEntries(Object.entries(after.entries).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)))) {
+        throw new WorkflowIntentUnconfirmed({ cause: "Workflow intent save unconfirmed" })
+      }
+      return confirmed
+    }),
+  } satisfies WorkflowIntentBackend
+}

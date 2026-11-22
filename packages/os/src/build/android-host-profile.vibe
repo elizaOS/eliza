@@ -124,7 +124,7 @@ type ProfileOne = typeof ProfileOneSchema.Type
 type RawField = { readonly name: string; readonly type: string; readonly value: unknown }
 
 export type OsModuleName = "agent-service" | "runtime-files" | "sign-in" | "secure-store" | "system" | "camera" | "browser-surface" | "calendar" | "contacts" | "reminders"
-  | "action-journal" | "notifications" | "messages" | "phone" | "passwords" | "media" | "filesystem" | "location" | "wifi" | "voice-io" | "app-update"
+  | "action-journal" | "notifications" | "messages" | "phone" | "passwords" | "media" | "filesystem" | "location" | "wifi" | "network-policy" | "voice-io" | "local-inference" | "app-update"
 export type SourceKind = "java" | "kotlin" | "assets" | "res" | "jniLibs"
 export type HostRootName = "consumer" | "dependencies"
 
@@ -388,8 +388,10 @@ const UPSTREAM_TABLE: readonly ModuleRoot[] = [
     ["packages/host/native-host", "secure-store", false],
     ["plugins/plugin-native-secure-store/android-nativeonly", "secure-store", false],
     ["plugins/plugin-native-secure-store/android", "secure-store", true],
+    ["plugins/plugin-local-inference/native/android", "local-inference", true],
+    ["packages/app/platforms/android/app/src/main/elizavoice-jni", "local-inference", false],
   ] as const).map(([prefix, movedTo, keepsPath]) => ({ prefix: prefix.split("/"), movedTo, keepsPath })),
-  ...["action-journal", "browser-surface", "calendar", "camera", "contacts", "filesystem", "location", "media", "messages", "notifications", "passwords", "phone", "reminders", "system", "wifi"]
+  ...["action-journal", "browser-surface", "calendar", "camera", "contacts", "filesystem", "location", "media", "messages", "notifications", "passwords", "phone", "reminders", "system", "wifi", "network-policy"]
     .map((module) => ({ prefix: ["plugins", `plugin-native-${module}`, "android"], movedTo: module, keepsPath: true })),
   ...osModuleNames.map((module) => ({ prefix: ["packages", "os", "android", module], movedTo: module, keepsPath: true })),
 ]

@@ -1,0 +1,112 @@
+// spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"
+import type { CloudClient } from "@elizaos/cloud/client"
+import type { HostedLiveSelection } from "../contract/digest.vibe"
+import { phoneWorkflowBytes, workflowSha } from "../contract/phone.vibe"
+import { WorkflowRefused } from "./workflows.vibe"
+
+/** The managed Google reads a live digest source uses, from the owner's cloud client. */
+export type ManagedGoogleReads = Pick<CloudClient, "googleStatus" | "calendarCalendars" | "gmailSearch" | "calendarFeed">
+/** One Google account a live digest source may read. */
+export interface LiveGoogleAccount { readonly accountId: string; readonly accountRevision: string; readonly label: string; readonly kinds: readonly ("email" | "calendar")[] }
+
+type Bag = Record<string, unknown>
+const unavailableText = "Selected hosted Google source is unavailable; reconnect or review its owner and read grant"
+const readTimeout = "30 seconds"
+
+effect function unavailable(): never!WorkflowRefused {
+  throw new WorkflowRefused({ status: 409, message: unavailableText, code: "HOSTED_SOURCE_NOT_SAVED" })
+}
+
+function identity(value: unknown, maximum = 256): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= maximum && Array.from(value).every((char) => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127)
+}
+
+effect function call<A>(work: () => Promise<A>): A!WorkflowRefused {
+  return try Effect.catch(timeout(tryPromise({ try: work, catch: () => new WorkflowRefused({ status: 409, message: unavailableText }) }), readTimeout), () => unavailable())
+}
+
+/** Parses a live Google selection; anything else is refused before it is saved or read. */
+export effect function validateHostedGoogleSelection(value: unknown): HostedLiveSelection!WorkflowRefused {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return try unavailable()
+  const v = value as Bag
+  const window = v.windowHours
+  const items = v.maxItems
+  const valid = Object.keys(v).every((key) => ["provider", "accountId", "accountRevision", "kind", "windowHours", "maxItems", "calendarId"].includes(key))
+    && v.provider === "google" && identity(v.accountId) && v.accountId !== "default" && typeof v.accountRevision === "string" && /^[a-f0-9]{64}$/.test(v.accountRevision)
+    && (v.kind === "email" || v.kind === "calendar") && typeof window === "number" && Number.isInteger(window) && window >= 1 && window <= 168
+    && typeof items === "number" && Number.isInteger(items) && items >= 1 && items <= 25
+    && (v.kind === "calendar" ? identity(v.calendarId) && v.calendarId !== "primary" : v.calendarId === undefined)
+  if (!valid) return try unavailable()
+  return {
+    provider: "google", accountId: v.accountId as string, accountRevision: v.accountRevision as string, kind: v.kind as "email" | "calendar",
+    windowHours: window as number, maxItems: items as number, ...(v.kind === "calendar" ? { calendarId: v.calendarId as string } : {}),
+  }
+}
+
+/** The owner's managed Google account, when connected, with the kinds its granted capabilities read. */
+export effect function liveGoogleAccounts(google: ManagedGoogleReads): LiveGoogleAccount[]!WorkflowRefused {
+  const status = try call(() => google.googleStatus())
+  if (!status.configured || !status.connected) return []
+  const capabilities = [...status.grantedCapabilities].sort()
+  const kinds: ("email" | "calendar")[] = [
+    ...(capabilities.includes("google.gmail.triage") || capabilities.includes("google.gmail.mailbox") ? ["email" as const] : []),
+    ...(capabilities.includes("google.calendar.read") ? ["calendar" as const] : []),
+  ]
+  if (kinds.length === 0) return []
+  const accountRevision = try workflowSha({ connectionId: status.connectionId, email: status.identity?.email ?? null, capabilities, linkedAt: status.linkedAt, mode: status.mode })
+  return [{ accountId: `cloud:${status.connectionId ?? "google"}`, accountRevision, label: status.identity?.email ?? "Selected Google account", kinds }]
+}
+
+/** Refuses unless the selection still names the connected account at its reviewed revision with the kind it reads. */
+export effect function assertHostedGoogleSource(google: ManagedGoogleReads, selection: HostedLiveSelection): HostedLiveSelection!WorkflowRefused {
+  const account = (try liveGoogleAccounts(google)).find((candidate) => candidate.accountId === selection.accountId && candidate.accountRevision === selection.accountRevision)
+  if (account === undefined || !account.kinds.includes(selection.kind)) return try unavailable()
+  return selection
+}
+
+/** The readable calendars of a reviewed account, at most 50. */
+export effect function liveGoogleCalendars(google: ManagedGoogleReads, input: unknown) {
+  if (typeof input !== "object" || input === null || Array.isArray(input) || Object.keys(input).some((key) => key !== "accountId" && key !== "accountRevision")) return try unavailable()
+  const v = input as Bag
+  const selection = try validateHostedGoogleSelection({ provider: "google", accountId: v.accountId, accountRevision: v.accountRevision, kind: "calendar", calendarId: "calendar-list", windowHours: 1, maxItems: 1 })
+  try assertHostedGoogleSource(google, selection)
+  const rows = (try call(() => google.calendarCalendars())).filter((row) => row.read && identity(row.calendarId) && row.calendarId !== "primary")
+  try assertHostedGoogleSource(google, selection)
+  return { truncated: rows.length > 50, calendars: rows.slice(0, 50).map((row) => ({ calendarId: row.calendarId, label: row.label.slice(0, 256) || "Calendar", timeZone: "" })) }
+}
+
+effect function field(value: unknown, maximum: number): string!WorkflowRefused {
+  if (typeof value === "string" && value.length > maximum) throw new WorkflowRefused({ status: 422, message: "Selected Google input exceeds the reviewed field limit" })
+  return typeof value === "string" ? value : ""
+}
+
+/** Reads a live Google source for one occurrence: inbox metadata and snippets, or the selected calendar's events, bounded and labelled as possibly truncated. */
+export effect function readHostedGoogleSource(google: ManagedGoogleReads, input: HostedLiveSelection, at: number): string!WorkflowRefused {
+  const selection = try assertHostedGoogleSource(google, input)
+  const span = selection.windowHours * 3_600_000
+  const items: Bag[] = []
+  let truncated = false
+  if (selection.kind === "email") {
+    const page = try call(() => google.gmailSearch({ query: `in:inbox after:${Math.floor((at - span) / 1000)}`, maxResults: selection.maxItems }))
+    if (page.messages.length > selection.maxItems) return try unavailable()
+    truncated = page.messages.length >= selection.maxItems || page.nextPageToken !== null
+    for (const message of page.messages) {
+      items.push({ id: try field(message.id, 256), subject: try field(message.subject, 256), snippet: try field(message.snippet, 512), receivedAt: try field(message.receivedAt, 64) })
+    }
+  } else {
+    const feed = try call(() => google.calendarFeed({ calendarId: selection.calendarId, timeMin: new Date(at).toISOString(), timeMax: new Date(at + span).toISOString() }))
+    truncated = feed.events.length > selection.maxItems
+    for (const event of feed.events.slice(0, selection.maxItems)) {
+      items.push({ id: try field(event.externalId, 256), title: try field(event.title, 256), start: try field(event.startAt, 64), end: try field(event.endAt, 64), status: try field(event.status, 32) })
+    }
+  }
+  try assertHostedGoogleSource(google, selection)
+  const projection = {
+    sourceType: "live_selected_google_read", kind: selection.kind, observedAt: new Date(at).toISOString(), accountId: selection.accountId,
+    ...(selection.calendarId === undefined ? {} : { calendarId: selection.calendarId }), windowHours: selection.windowHours,
+    scope: selection.kind === "email" ? "inbox metadata and snippets only; no message bodies" : "selected calendar events only", possiblyTruncated: truncated, items,
+  }
+  const encoded = JSON.stringify(projection)
+  if (encoded.length > 6000 || phoneWorkflowBytes(projection) > 12000) throw new WorkflowRefused({ status: 422, message: "Selected Google input exceeds the reviewed transfer limit" })
+  return encoded
+}

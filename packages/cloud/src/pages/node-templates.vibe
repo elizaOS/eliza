@@ -1,0 +1,27 @@
+// spec/cloud/returnPages.md, "Story: Bring me back to the app when its link did not open"; spec/cloud/returnPages.md, "Story: Tell a payer the checkout ended"
+import { PageTemplates } from "./templates.vibe"
+
+module node {
+  import { readFile } from "node:fs/promises"
+  import { renderedTemplate } from "./rendered.ts"
+
+  const packageRoot = new URL("../../", import.meta.url)
+  const built = new Map<string, Promise<string | undefined>>()
+
+  /** @throws {never} */
+  export function builtTemplate(file: string): Promise<string | undefined> {
+    const known = built.get(file) ?? (async () => {
+      for (const base of ["pages/", "dist/pages/"]) {
+        const text = await readFile(new URL(base + file, packageRoot), "utf8").catch(() => undefined)
+        if (text !== undefined) return text
+      }
+      return renderedTemplate(file)
+    })()
+    built.set(file, known)
+    return known
+  }
+}
+import { builtTemplate } from node
+
+/** The return pages `serve` reads from the package's build output, rendered without the stylesheet when there is none. */
+export const nodePageTemplates = Layer.succeed(PageTemplates, { read: builtTemplate })

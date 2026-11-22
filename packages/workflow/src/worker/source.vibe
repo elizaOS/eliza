@@ -1,0 +1,220 @@
+// spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"; spec/workflow/sourcePublication.md, "Only the reservation owner can publish or release an incomplete write"
+import { initial, machineOver } from "../../gen/workflow__sourcePublication.effect.vibe"
+
+/** How long a waiter looks for a peer's publication before leaving its reservation intact. */
+export const SOURCE_WAIT_MS = 5000
+
+/** The source could not be published or imported exactly; nothing incomplete is visible. */
+export error SourceRefused { reason: string }
+
+module node {
+  import { constants } from "node:fs"
+  import { lstat, mkdir, open, readFile, realpath, rename, rm, stat } from "node:fs/promises"
+  import { randomUUID } from "node:crypto"
+  import { join } from "node:path"
+
+  export interface Identity { readonly dev: number; readonly ino: number; readonly uid: number; readonly mode: number }
+
+  const uid = () => typeof process.getuid === "function" ? process.getuid() : -1
+
+  function missing(error: unknown): boolean {
+    return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+  }
+
+  export async function parentAdmitted(directory: string): Promise<boolean> {
+    try {
+      const info = await lstat(directory)
+      return await realpath(directory) === directory && info.isDirectory() && (uid() < 0 || info.uid === uid()) && (info.mode & 0o022) === 0
+    } catch {
+      return false
+    }
+  }
+
+  export async function existing(file: string, bytes: Uint8Array): Promise<"absent" | "exact" | "incompatible"> {
+    try {
+      const info = await lstat(file)
+      if (!info.isFile() || (uid() >= 0 && info.uid !== uid()) || (info.mode & 0o077) !== 0 || info.size !== bytes.byteLength) return "incompatible"
+      return Buffer.compare(await readFile(file), Buffer.from(bytes)) === 0 ? "exact" : "incompatible"
+    } catch (error) {
+      if (missing(error)) return "absent"
+      return "incompatible"
+    }
+  }
+
+  export async function reserve(directory: string, name: string): Promise<Identity | undefined> {
+    const path = join(directory, `${name}.reservation`)
+    try {
+      await mkdir(path, { mode: 0o700 })
+      const info = await lstat(path)
+      return { dev: info.dev, ino: info.ino, uid: info.uid, mode: info.mode }
+    } catch {
+      return undefined
+    }
+  }
+
+  export async function reservationIntact(directory: string, name: string, held: Identity): Promise<boolean> {
+    try {
+      const info = await lstat(join(directory, `${name}.reservation`))
+      return info.isDirectory() && info.dev === held.dev && info.ino === held.ino && info.uid === held.uid && info.mode === held.mode
+    } catch {
+      return false
+    }
+  }
+
+  export async function stage(directory: string, name: string, bytes: Uint8Array): Promise<string | undefined> {
+    const temporary = join(directory, `${name}.${randomUUID()}.tmp`)
+    try {
+      const handle = await open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600)
+      try {
+        await handle.writeFile(bytes)
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+      return temporary
+    } catch {
+      await rm(temporary, { force: true }).catch(() => undefined)
+      return undefined
+    }
+  }
+
+  export async function stillAbsent(file: string): Promise<boolean> {
+    try {
+      await lstat(file)
+      return false
+    } catch (error) {
+      return missing(error)
+    }
+  }
+
+  export async function publish(temporary: string, file: string): Promise<boolean> {
+    try {
+      await rename(temporary, file)
+      return true
+    } catch {
+      await rm(temporary, { force: true }).catch(() => undefined)
+      return false
+    }
+  }
+
+  export async function discard(temporary: string): Promise<void> {
+    await rm(temporary, { force: true }).catch(() => undefined)
+  }
+
+  export async function syncDirectory(directory: string): Promise<boolean> {
+    try {
+      const handle = await open(directory, constants.O_RDONLY)
+      try {
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  export async function release(directory: string, name: string, held: Identity): Promise<boolean> {
+    const path = join(directory, `${name}.reservation`)
+    if (!await reservationIntact(directory, name, held)) return false
+    try {
+      await rm(path, { recursive: false, force: false })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  export async function waitForPeer(file: string, bytes: Uint8Array, deadline: number): Promise<boolean> {
+    while (Date.now() < deadline) {
+      if (await existing(file, bytes) === "exact") return true
+      await new Promise((done) => setTimeout(done, 50))
+    }
+    return await existing(file, bytes) === "exact"
+  }
+
+  export async function readExact(file: string, maximum: number): Promise<Uint8Array | undefined> {
+    try {
+      const info = await stat(file)
+      if (!info.isFile() || info.size > maximum || (uid() >= 0 && info.uid !== uid()) || (info.mode & 0o077) !== 0) return undefined
+      return new Uint8Array(await readFile(file))
+    } catch {
+      return undefined
+    }
+  }
+
+  export function sourceFile(directory: string, name: string): string {
+    return join(directory, name)
+  }
+}
+import { discard, existing, parentAdmitted, publish, readExact, release, reservationIntact, reserve, sourceFile, stage, stillAbsent, syncDirectory, waitForPeer } from node
+
+effect function io<A>(call: () => Promise<A>): A!! {
+  return try promise(call)
+}
+
+/** The custody state of one publication, changed only by the events the publication rules allow. */
+export effect function sourcePublication() {
+  const state = try Ref.make(initial)
+  return try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+}
+
+/**
+ * Publishes reviewed source bytes under `name` in a private caller-owned directory: an equal file is reused after a
+ * directory sync, an incompatible one is refused, and otherwise only the reservation owner renames a complete synced file.
+ */
+export effect function publishWorkflowSource(directory: string, name: string, bytes: Uint8Array, sourceKey: string): "published" | "existing"!SourceRefused {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name) || sourceKey === "") throw new SourceRefused({ reason: "Invalid source name" })
+  const publication = try sourcePublication()
+  const send = (event: Parameters<typeof publication.send>[0]) => mapError(publication.send(event), () => new SourceRefused({ reason: "The source publication is out of step" }))
+  const file = sourceFile(directory, name)
+  const admitted = try io(() => parentAdmitted(directory))
+  if (!admitted) throw new SourceRefused({ reason: "The source directory is not private to this worker" })
+  const found = try io(() => existing(file, bytes))
+  if (found === "incompatible") throw new SourceRefused({ reason: "A different source is already published" })
+  if (found === "exact") {
+    if (!(try io(() => syncDirectory(directory)))) throw new SourceRefused({ reason: "The source directory could not be synchronized" })
+    return "existing"
+  }
+  const custody = 1
+  const held = try io(() => reserve(directory, name))
+  if (held === undefined) {
+    const deadline = (try Clock.currentTimeMillis) + SOURCE_WAIT_MS
+    if (try io(() => waitForPeer(file, bytes, deadline))) return "existing"
+    throw new SourceRefused({ reason: "Another publisher holds this source" })
+  }
+  try send({ type: "reserveSource", parentAdmitted: true, custody })
+  const releaseHeld = effect {
+    const intact = try io(() => reservationIntact(directory, name, held))
+    if (intact && (try publication.get()).reservation > 0) (send({ type: "releaseSource", custody, inodeExact: intact }) catch () => undefined)
+    try io(() => release(directory, name, held))
+  }
+  return try ensuring(effect {
+    const temporary = try io(() => stage(directory, name, bytes))
+    if (temporary === undefined) throw new SourceRefused({ reason: "The source could not be staged" })
+    try send({ type: "stageSource", custody, sourceKey, temporarySynced: true })
+    const inodeExact = try io(() => reservationIntact(directory, name, held))
+    const absent = try io(() => stillAbsent(file))
+    if (!inodeExact || !absent) {
+      try io(() => discard(temporary))
+      throw new SourceRefused({ reason: "The source reservation changed before publication" })
+    }
+    if (!(try io(() => publish(temporary, file)))) throw new SourceRefused({ reason: "The source could not be published" })
+    try send({ type: "renameSource", custody, inodeExact, stillAbsent: absent })
+    const fileExact = (try io(() => existing(file, bytes))) === "exact"
+    const parentSynced = try io(() => syncDirectory(directory))
+    if (!fileExact || !parentSynced) throw new SourceRefused({ reason: "The published source could not be confirmed" })
+    try send({ type: "syncSource", fileExact, parentSynced })
+    return "published" as const
+  }, orDie(releaseHeld))
+}
+
+/** Imports published source only when it is complete and exactly the reviewed bytes. */
+export effect function importWorkflowSource(directory: string, name: string, expected: Uint8Array): Uint8Array!SourceRefused {
+  const bytes = try io(() => readExact(sourceFile(directory, name), expected.byteLength))
+  if (bytes === undefined || bytes.byteLength !== expected.byteLength || !bytes.every((byte, index) => byte === expected[index])) {
+    throw new SourceRefused({ reason: "The published source is not the reviewed source" })
+  }
+  return bytes
+}

@@ -16,7 +16,8 @@ export type CloudReply =
   | { readonly kind: "drop" }
   | { readonly kind: "hang" }
   | { readonly kind: "partial"; readonly chunks: readonly string[] }
-  | { readonly kind: "held"; readonly gate: Promise<void>; readonly reply: CloudReply };
+  | { readonly kind: "held"; readonly gate: Promise<void>; readonly reply: CloudReply }
+  | { readonly kind: "tools"; readonly content: string; readonly calls: readonly { readonly name: string; readonly arguments: unknown }[] };
 
 export interface CloudCall {
   readonly method: string;
@@ -63,6 +64,7 @@ export const unavailable = (retryAfterSeconds: number): CloudReply => refusal(50
 export const dropped = (): CloudReply => ({ kind: "drop" });
 export const partial = (...chunks: string[]): CloudReply => ({ kind: "partial", chunks });
 export const echoImages = (): CloudReply => ({ kind: "images" });
+export const toolCalls = (content: string, ...calls: { name: string; arguments: unknown }[]): CloudReply => ({ kind: "tools", content, calls });
 export const held = (gate: Promise<void>, reply: CloudReply): CloudReply => ({ kind: "held", gate, reply });
 export const answerJson = (body: unknown, status = 200): RouteReply => ({ kind: "json", status, body });
 export const answerStatus = (status: number): RouteReply => ({ kind: "status", status });
@@ -169,6 +171,23 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
         response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: chunk }, finish_reason: null }] })}\n\n`);
       }
       response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage })}\n\n`);
+      response.end("data: [DONE]\n\n");
+      return;
+    }
+    case "tools": {
+      const model = modelOf(body);
+      const calls = reply.calls.map(({ name, arguments: args }, index) => ({ id: `call-${index}`, type: "function", function: { name, arguments: JSON.stringify(args) } }));
+      const usage = { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 };
+      if (!streams(body)) {
+        return json(response, 200, {
+          id: "chatcmpl-fake", object: "chat.completion", model,
+          choices: [{ index: 0, message: { role: "assistant", content: reply.content || null, tool_calls: calls }, finish_reason: "tool_calls" }], usage,
+        });
+      }
+      response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store" });
+      if (reply.content) response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: reply.content }, finish_reason: null }] })}\n\n`);
+      response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { tool_calls: calls.map((call, index) => ({ index, ...call })) }, finish_reason: null }] })}\n\n`);
+      response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }], usage })}\n\n`);
       response.end("data: [DONE]\n\n");
       return;
     }

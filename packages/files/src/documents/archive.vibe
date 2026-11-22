@@ -1,0 +1,132 @@
+// spec/files/archive.md, "Only the current reviewed selection is handed to download"; spec/files/archive.md, "A multi-file download holds exactly the selected bytes in selection order under distinct names"
+import { allowedSelection, archiveEntries, canRetireDownload, initial, machineOver, type ExportFlight } from "../../gen/files__archive.effect.vibe"
+import { blobOf } from "./images.vibe"
+
+export type ArchiveRefusal = "too-many" | "unsafe-path" | "too-large"
+
+const archiveText: Readonly<Record<ArchiveRefusal, string>> = {
+  "too-many": "Choose fewer than 65,535 files.",
+  "unsafe-path": "Choose files with distinct relative archive paths.",
+  "too-large": "Choose a smaller selection.",
+}
+
+/** A selection the stored ZIP writer cannot hold exactly. */
+export error ArchiveRefused { reason: ArchiveRefusal; message: string }
+
+const refused = (reason: ArchiveRefusal) => new ArchiveRefused({ reason, message: archiveText[reason] })
+
+/** One archive entry: a relative path (a trailing slash names a folder) and its exact bytes. */
+export interface ArchiveFile {
+  readonly path: string
+  readonly bytes: Uint8Array<ArrayBuffer>
+}
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff
+  for (const byte of bytes) {
+    crc ^= byte
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}
+
+function safePath(path: string): boolean {
+  return path !== "" && !/[\\\0]/.test(path) && !/^[a-z]:/i.test(path) && path.split("/").every((part) => part.trim() !== "" && ![".", ".."].includes(part.trim()))
+}
+
+/** A stored (uncompressed) ZIP of exactly these entries, in order, with portable relative paths only. */
+export effect function fileArchive(files: readonly ArchiveFile[]): Blob!ArchiveRefused {
+  if (files.length >= 0xffff) throw refused("too-many")
+  const parts: Uint8Array<ArrayBuffer>[] = [], central: Uint8Array<ArrayBuffer>[] = [], paths = new Set<string>()
+  let offset = 0, centralSize = 0
+  for (const file of files) {
+    const path = file.path.endsWith("/") ? file.path.slice(0, -1) : file.path
+    if (!safePath(path) || paths.has(path)) throw refused("unsafe-path")
+    paths.add(path)
+    const name = new TextEncoder().encode(file.path)
+    if (name.length > 65535 || file.bytes.length > 0xffffffff) throw refused("too-large")
+    const crc = crc32(file.bytes)
+    const header = new Uint8Array(30), h = new DataView(header.buffer)
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x800, true); h.setUint16(12, 33, true)
+    h.setUint32(14, crc, true); h.setUint32(18, file.bytes.length, true); h.setUint32(22, file.bytes.length, true); h.setUint16(26, name.length, true)
+    const record = new Uint8Array(46), c = new DataView(record.buffer)
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x800, true); c.setUint16(14, 33, true)
+    c.setUint32(16, crc, true); c.setUint32(20, file.bytes.length, true); c.setUint32(24, file.bytes.length, true); c.setUint16(28, name.length, true)
+    c.setUint32(42, offset, true)
+    parts.push(header, name, file.bytes)
+    central.push(record, name)
+    offset += 30 + name.length + file.bytes.length
+    centralSize += 46 + name.length
+    if (offset + centralSize > 0xffffffff) throw refused("too-large")
+  }
+  const end = new Uint8Array(22), e = new DataView(end.buffer)
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true)
+  e.setUint32(12, centralSize, true); e.setUint32(16, offset, true)
+  return blobOf([...parts, ...central, end], "application/zip")
+}
+
+/** One reviewed media file as it was read for review. */
+export interface SelectedMedia {
+  readonly source: string
+  readonly name: string
+  readonly mimeType: string
+  readonly bytes: Uint8Array<ArrayBuffer>
+}
+
+const extension = (media: SelectedMedia) => {
+  const dot = media.name.lastIndexOf(".")
+  return dot > 0 && /^\.[A-Za-z0-9]{1,8}$/.test(media.name.slice(dot)) ? media.name.slice(dot).toLowerCase() : ""
+}
+
+/** A multi-file download: each selected file's bytes in selection order, named by its position counting from one. */
+export effect function mediaArchive(selection: readonly SelectedMedia[]): Blob!ArchiveRefused {
+  const entries = archiveEntries(selection.map((media) => ({ source: media.source, bytes: media.source })))
+  return try fileArchive(entries.map((entry, at) => ({ path: `${entry.position}${extension(selection[at])}`, bytes: selection[at].bytes })))
+}
+
+/** What the shell reads, rechecks and hands over for one download. */
+export interface DownloadPorts {
+  readonly read: (sources: readonly string[]) => readonly SelectedMedia[] | undefined!!
+  readonly reread: (selection: readonly SelectedMedia[]) => boolean!!
+  readonly ownerCurrent: () => boolean
+  readonly visible: () => boolean
+  readonly deliver: (file: Blob, name: string) => void!!
+}
+
+/** How a download request ended: handed over (not confirmed saved) or refused. */
+export type DownloadOutcome = { readonly kind: "requested"; readonly name: string } | { readonly kind: "refused" }
+
+/** Downloads of the owner's reviewed media: one at a time, the newest request current, handed over only after a matching re-read. */
+export effect function mediaDownloads(ports: DownloadPorts) {
+  const state = try Ref.make<ExportFlight>(initial)
+  const flight = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+  const batches = try Ref.make(0)
+
+  effect function download(sources: readonly string[]): DownloadOutcome!! {
+    const batchId = try Ref.updateAndGet(batches, (n) => n + 1)
+    const distinct = new Set(sources).size === sources.length
+    if (!allowedSelection(sources.length, distinct)) return { kind: "refused" }
+    const begun = flight.send({ type: "beginDownload", batchId, count: sources.length, distinct, ownerCurrent: ports.ownerCurrent() }) catch () => undefined
+    if (begun === undefined) return { kind: "refused" }
+    const exportId = begun.ticket
+    const selection = try ports.read(sources)
+    const valid = selection !== undefined && selection.length === sources.length && selection.every((media, at) => media.source === sources[at] && /^(?:image|video)\//.test(media.mimeType))
+    const read = flight.send({ type: "finishBatch", exportId, payloadValid: valid }) catch () => undefined
+    if (read?.phase !== "BuildingExport" || selection === undefined) return { kind: "refused" }
+    const file = selection.length === 1 ? blobOf([selection[0].bytes], selection[0].mimeType) : mediaArchive(selection) catch () => undefined
+    const built = flight.send({ type: "finishEncoding", exportId, encoded: file !== undefined }) catch () => undefined
+    if (built?.phase !== "DownloadReady" || file === undefined) return { kind: "refused" }
+    const rereadMatches = try ports.reread(selection)
+    const checked = flight.send({ type: "checkAndRequest", exportId, batchId, rereadMatches, ownerCurrent: ports.ownerCurrent(), visible: ports.visible() }) catch () => undefined
+    if (checked?.dispatched !== true) return { kind: "refused" }
+    const name = selection.length === 1 ? selection[0].name : "Download.zip"
+    try ports.deliver(file, name)
+    return { kind: "requested", name }
+  }
+
+  effect function retire(): void!! {
+    if (canRetireDownload(try flight.get())) try orDie(flight.send({ type: "retireDownload" }))
+  }
+
+  return { download, retire, state: () => flight.get() }
+}

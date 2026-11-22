@@ -1,0 +1,259 @@
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"
+import {
+  type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type GenerateTextParams, type GenerateTextResult,
+  type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
+  buildPlannerToolsFromActions, executePlannedToolCall, ModelType, stableStringify,
+} from "@elizaos/core"
+import {
+  acknowledges, failedOpen, keepsPlanning, maxPlanSteps, nextMove, offered, openOutcomes,
+  type PlanStep, type StepOutcome,
+} from "../../gen/agent__conversation__planning.ts"
+import { composeReply, draftOf } from "./reply-text.vibe"
+
+type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
+
+const toolNamePattern = /^[A-Za-z0-9_-]{1,64}$/
+const toolMessageLimit = 4_000
+const answerNow = "Note from the agent host, not the person: no further work will run in this turn. Answer the person's latest message now with what this turn holds."
+const messageServiceActions = new Set(["REPLY", "IGNORE", "NONE"])
+
+/** One tool call the turn ran, with its settled result and the text the action meant the owner to see. */
+export interface PlannedStep {
+  readonly action: string
+  readonly params: Record<string, unknown>
+  readonly result: ActionResult
+  readonly shown: readonly string[]
+  readonly outcomes: readonly PlanStep[]
+}
+
+/** What one planned turn hands back: the reply to store, every step it ran and the text last streamed. */
+export interface PlannedTurn {
+  readonly reply: string
+  readonly steps: readonly PlannedStep[]
+  readonly streamed: string
+}
+
+/** The model, conversation, authority and display hooks one planned turn runs with. */
+export interface PlanInput {
+  readonly runtime: AgentRuntime
+  readonly message: Memory
+  readonly state: State
+  readonly roles: readonly RoleGateRole[]
+  readonly actionGate: (action: { name: string }) => string | undefined
+  readonly system: string
+  readonly messages: readonly ChatMessage[]
+  readonly signal: AbortSignal
+  readonly maxTokens: number
+  readonly onStreamChunk?: StreamChunkCallback
+  readonly onReplyRestart?: (fullText: string) => void
+  readonly onPlanningAcknowledgment?: (text: string) => void | Promise<void>
+  readonly onActivityStatus?: (activity: { actionName: string; label: string }) => void | Promise<void>
+  readonly onStepResult?: (result: ActionResult) => void
+}
+
+/** The registered actions this turn may offer the model: allowed by the launch's gate, valid for this message, and nameable as a tool. */
+export async function offeredActions(runtime: AgentRuntime, message: Memory, state: State, actionGate: PlanInput["actionGate"]): Promise<Action[]> {
+  const registered = runtime.actions.filter(({ name }) => !messageServiceActions.has(name) && toolNamePattern.test(name))
+  const allowed = new Set(offered(registered.map(({ name }) => name), registered.flatMap((action) => actionGate(action) === undefined ? [action.name] : [])))
+  const checked = await Promise.all(registered.filter(({ name }) => allowed.has(name)).map(async (action) => {
+    try {
+      return await action.validate(runtime, message, state) ? [action] : []
+    } catch {
+      return []
+    }
+  }))
+  return checked.flat()
+}
+
+function outcomeOf(receipt: EffectReceipt): StepOutcome {
+  switch (receipt.outcome) {
+    case "applied": return "Applied"
+    case "preview": return "Proposed"
+    case "noop": return "NoEffect"
+    case "failed": return "Failed"
+    case "rolled_back": return "Failed"
+  }
+}
+
+function canonical(value: unknown): string {
+  try {
+    return stableStringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function notStarted(result: ActionResult): boolean {
+  const data = result.data as { executionStatus?: unknown } | undefined
+  return data?.executionStatus === "not_started" && (result.effectReceipts ?? []).length === 0
+}
+
+/** The plan entries one settled result contributes: one per effect receipt, or one keyed by the action and its parameters. */
+export function planStepsOf(action: string, params: Record<string, unknown>, result: ActionResult): PlanStep[] {
+  const receipts = result.effectReceipts ?? []
+  if (receipts.length > 0) {
+    return receipts.map((receipt) => ({
+      action, outcome: outcomeOf(receipt), operation: `${action}\u0000${receipt.operation}\u0000${receipt.resource.kind}\u0000${receipt.resource.id}`,
+    }))
+  }
+  const operation = `${action}\u0000${canonical(params)}`
+  if (!result.success || result.error !== undefined) return [{ action, outcome: notStarted(result) ? "Rejected" : "Failed", operation }]
+  return [{ action, outcome: "NoEffect", operation }]
+}
+
+function paramsOf(call: ToolCall): Record<string, unknown> {
+  if (typeof call.arguments !== "string") return { ...call.arguments }
+  try {
+    const parsed: unknown = JSON.parse(call.arguments)
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? { ...parsed } : {}
+  } catch {
+    return {}
+  }
+}
+
+function errorText(error: ActionResult["error"]): string | undefined {
+  if (error === undefined) return undefined
+  return typeof error === "string" ? error : error.message
+}
+
+function toolMessage(result: ActionResult): string {
+  const summary = {
+    success: result.success,
+    text: result.userFacingText ?? result.text,
+    error: errorText(result.error),
+    effects: (result.effectReceipts ?? []).map(({ operation, outcome, resource }) => ({ operation, outcome, resource: resource.kind })),
+    data: result.data,
+  }
+  let text: string
+  try {
+    text = JSON.stringify(summary)
+  } catch {
+    text = JSON.stringify({ success: summary.success, text: summary.text, error: summary.error })
+  }
+  return text.length > toolMessageLimit ? `${text.slice(0, toolMessageLimit)}…` : text
+}
+
+function answerOf(value: unknown): { text: string; toolCalls: ToolCall[] } {
+  if (typeof value === "string") return { text: value, toolCalls: [] }
+  if (typeof value !== "object" || value === null) return { text: "", toolCalls: [] }
+  const answer = value as Partial<GenerateTextResult>
+  return { text: typeof answer.text === "string" ? answer.text : "", toolCalls: Array.isArray(answer.toolCalls) ? answer.toolCalls : [] }
+}
+
+function replyText(call: ToolCall): string | undefined {
+  const text = paramsOf(call).text
+  return typeof text === "string" && text.trim() ? text : undefined
+}
+
+function shownBy(result: ActionResult, captured: readonly string[]): string[] {
+  if (result.verifiedUserFacing === true && result.userFacingText?.trim()) return [result.userFacingText.trim()]
+  return captured.map((text) => text.trim()).filter(Boolean)
+}
+
+function failureNotice(step: PlannedStep): string {
+  return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
+}
+
+function entryKey({ action, outcome, operation }: PlanStep): string {
+  return `${action}\u0000${outcome}\u0000${operation}`
+}
+
+/** Composes the reply from the steps' own text, the model's prose and every failure the turn still holds open. */
+export function settleReply(steps: readonly PlannedStep[], prose: string | undefined): string {
+  const plan = steps.flatMap(({ outcomes }) => outcomes)
+  const open = openOutcomes(plan)
+  const failed = failedOpen(plan)
+  const delivered = steps.filter(({ outcomes }) => outcomes.some(({ outcome }) => outcome === "Applied" || outcome === "Proposed" || outcome === "NoEffect"))
+  const toolText = [...new Set(delivered.flatMap(({ shown }) => shown))].join("\n\n")
+  const ownCopy = open.some(({ outcome }) => outcome === "Proposed")
+  const composed = composeReply(toolText || undefined, prose, ownCopy)
+  const failedKeys = new Set(failed.map(entryKey))
+  const notices = [...new Set(steps.filter(({ outcomes }) => outcomes.some((entry) => failedKeys.has(entryKey(entry)))).map(failureNotice))]
+    .filter((notice) => !composed.includes(notice))
+  return [composed, ...notices].filter((part) => part.trim()).join("\n\n")
+}
+
+/** Runs one turn's planning loop: the model calls offered actions as tools until it answers, and the reply is composed from what the turn proved. */
+export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
+  const { runtime, message, state, roles, signal } = input
+  const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions)
+  const conversation: ChatMessage[] = [...input.messages]
+  const steps: PlannedStep[] = []
+  let taken = 0
+  let displayed = false
+  let streamed = ""
+  let prose: string | undefined
+  plan: while (true) {
+    signal.throwIfAborted()
+    const restartFirst = displayed
+    let restarted = false
+    streamed = ""
+    const onStreamChunk = input.onStreamChunk
+    const answered = answerOf(await runtime.useModel(ModelType.TEXT_LARGE, {
+      system: input.system, messages: conversation, maxTokens: input.maxTokens, signal,
+      ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
+      ...(onStreamChunk === undefined ? {} : {
+        stream: true,
+        onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
+          streamed = accumulated ?? streamed + chunk
+          if (restartFirst && !restarted) {
+            restarted = true
+            input.onReplyRestart?.(streamed)
+            return
+          }
+          return onStreamChunk(chunk, messageId, accumulated)
+        },
+      }),
+    }))
+    signal.throwIfAborted()
+    taken += 1
+    if (restartFirst && !restarted) input.onReplyRestart?.("")
+    displayed = streamed.length > 0
+    const reply = answered.toolCalls.find(({ name }) => name === "REPLY")
+    const work = answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name))
+    const draft = draftOf(answered.text)
+    if (work.length > 0) {
+      if (acknowledges(draft, work.length)) await input.onPlanningAcknowledgment?.(answered.text.trim())
+      else if (displayed) {
+        input.onReplyRestart?.("")
+        displayed = false
+      }
+      conversation.push({ role: "assistant", content: answered.text || null, toolCalls: work })
+      for (const call of work) {
+        signal.throwIfAborted()
+        await input.onActivityStatus?.({ actionName: call.name, label: call.name })
+        const params = paramsOf(call)
+        const captured: string[] = []
+        const result = await executePlannedToolCall(runtime, {
+          message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),
+          callback: async (content) => {
+            if (content.text?.trim()) captured.push(content.text)
+            return []
+          },
+        }, { id: call.id, name: call.name, params }, { abortSignal: signal })
+        input.onStepResult?.(result)
+        steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
+        conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
+      }
+    }
+    if (reply !== undefined) {
+      prose = replyText(reply) ?? (draft === "Answer" ? answered.text : undefined)
+      break plan
+    }
+    if (keepsPlanning(taken, work.length, false)) continue plan
+    if (work.length > 0) break plan
+    switch (nextMove(draft, 0, maxPlanSteps - taken)) {
+      case "Deliver":
+        prose = answered.text
+        break plan
+      case "AskAgain":
+        conversation.push({ role: "assistant", content: answered.text })
+        conversation.push({ role: "user", content: answerNow })
+        continue plan
+      case "GiveUp":
+      case "RunTools":
+        break plan
+    }
+  }
+  return { reply: settleReply(steps, prose), steps, streamed }
+}

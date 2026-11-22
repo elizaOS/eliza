@@ -4,7 +4,7 @@ import { loopbackAllowed, usesLoopback } from "../../gen/cloud__deployment.effec
 import { refused, type Refused } from "../http/refusal.vibe"
 import { json, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment, rowOf } from "../profile/profile.vibe"
-import { Store, toInt, toText } from "../store/store.vibe"
+import { Store, toInt, toText } from "../store/connection.vibe"
 
 export type DeliveryContext = Deployment | Store | HttpClient.HttpClient
 

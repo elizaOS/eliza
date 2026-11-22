@@ -34,7 +34,7 @@ type OperationType =
   | PhotoLibrarySearch | PhotoLibraryInspect | PhotoLibrarySelect | PhotoLibraryReview
   | PhotosFilter | PhotosOpen | PhotosAlbumCreate | PhotosShare
   | SmsSend | MmsSend | PhoneDial | PhoneCall | ContactCreate | ContactUpdate | ContactDelete | SmsCompose | SmsReplySelected
-  | MessagesReadSelected | VoicemailReadSelected | VoicemailDeleteSelected | ClockHandoff
+  | MessagesReadSelected | VoicemailReadSelected | VoicemailDeleteSelected | SmsLatestSender | ClockHandoff
   | ReadSelectedNotes | ReadCalendarRange | ReadSelectedReminders | PostNotification | SpeakText
   | CreateNote | CreateReminder | OpenView | BrowserNavigate
 type Family = CalendarFamily | ReminderFamily | ReminderCreateFamily | CameraFamily | FilesFamily | ReviewFamily | MapsFamily | NotesFamily
@@ -57,7 +57,7 @@ pure def wireType(t: OperationType): str = match t {
   | SmsSend => "sms_send" | MmsSend => "mms_send" | PhoneDial => "phone_dial" | PhoneCall => "phone_call" | ContactCreate => "contact_create"
   | ContactUpdate => "contact_update" | ContactDelete => "contact_delete" | SmsCompose => "sms_compose" | SmsReplySelected => "sms_reply_selected"
   | MessagesReadSelected => "messages_read_selected" | VoicemailReadSelected => "voicemail_read_selected"
-  | VoicemailDeleteSelected => "voicemail_delete_selected" | ClockHandoff => "clock_handoff"
+  | VoicemailDeleteSelected => "voicemail_delete_selected" | SmsLatestSender => "sms_latest_sender" | ClockHandoff => "clock_handoff"
   | ReadSelectedNotes => "read_selected_notes" | ReadCalendarRange => "read_calendar_range" | ReadSelectedReminders => "read_selected_reminders"
   | PostNotification => "post_notification" | SpeakText => "speak_text"
   | CreateNote => "create_note" | CreateReminder => "create_reminder" | OpenView => "open_view" | BrowserNavigate => "browser_navigate"
@@ -80,7 +80,7 @@ pure def family(t: OperationType): Family = match t {
   | SmsSend => TelephonyFamily | MmsSend => TelephonyFamily | PhoneDial => TelephonyFamily | PhoneCall => TelephonyFamily
   | ContactCreate => TelephonyFamily | ContactUpdate => TelephonyFamily | ContactDelete => TelephonyFamily | SmsCompose => TelephonyFamily
   | SmsReplySelected => TelephonyFamily | MessagesReadSelected => TelephonyFamily | VoicemailReadSelected => TelephonyFamily
-  | VoicemailDeleteSelected => TelephonyFamily | ClockHandoff => ClockFamily
+  | VoicemailDeleteSelected => TelephonyFamily | SmsLatestSender => TelephonyFamily | ClockHandoff => ClockFamily
   | ReadSelectedNotes => WorkflowFamily | ReadCalendarRange => WorkflowFamily | ReadSelectedReminders => WorkflowFamily
   | PostNotification => WorkflowFamily | SpeakText => WorkflowFamily
   | CreateNote => BaseFamily | CreateReminder => BaseFamily | OpenView => BaseFamily | BrowserNavigate => BaseFamily
@@ -92,8 +92,16 @@ pure def lawOneWireTypeIsOneOperation(a: OperationType, b: OperationType): bool 
 ### Each operation has one capability need, which a clock-only device meets only for the Clock handoff
 
 `versionTwo` marks a reminder read or edit whose target or timing is
-version two, a named reminder edit that sets alert minutes, and a Clock
-handoff that carries its own repeat days. The base and workflow operations
+version two, a named reminder edit that sets alert minutes, a Clock
+handoff that carries its own repeat days, a latest-sender read that asks
+for the sender's whole address, and a voice-note recording offered under
+`notes.record.v1`, which needs neither folders nor a local Notes record;
+without it a recording still runs under the pair `notes.organize.v1` and
+`notes.local-record.v1`. It also marks a Photos album or share that names
+`{selected: true}` in place of library IDs: the one item the owner has open
+in the Photos viewer, which the phone resolves at review, so the agent
+never needs or guesses that item's ID. That form needs
+`photos.view-selected.v1` beside the library and view capabilities. The base and workflow operations
 need any capability other than the Clock handoff, so a device that
 advertised only the Clock handoff never receives them.
 
@@ -117,15 +125,20 @@ pure def familyNeed(f: Family, t: OperationType, versionTwo: bool): Need = match
       else { required: Set(NamedTargetV1), oneOf: Set(RemindersLocalRecordV1, RemindersLocalRecordV2) }
   | MapsFamily => needOne(MapsSelectedReadV1)
   | NotesFamily => needOne(NotesLocalRecordV1)
-  | NotesOrganizeFamily => if (t == NotesListFilter) needOne(NotesListFilterV1) else needAll(NotesOrganizeV1, NotesLocalRecordV1)
+  | NotesOrganizeFamily =>
+      if (t == NotesListFilter) needOne(NotesListFilterV1) else if (t == NotesRecord and versionTwo) needOne(NotesRecordV1)
+      else needAll(NotesOrganizeV1, NotesLocalRecordV1)
   | NotesQueryFamily => needAll(NotesQueryV1, NotesLocalRecordV1)
   | PhotoLibraryFamily => needOne(PhotosLibraryV1)
-  | PhotosViewFamily => needAll(PhotosLibraryV1, PhotosViewV1)
+  | PhotosViewFamily =>
+      if (versionTwo and (t == PhotosAlbumCreate or t == PhotosShare)) { required: Set(PhotosLibraryV1).union(Set(PhotosViewV1)).union(Set(PhotosViewSelectedV1)), oneOf: Set() }
+      else needAll(PhotosLibraryV1, PhotosViewV1)
   | TelephonyFamily =>
       if (t == SmsSend) needOne(SmsSendV1) else if (t == MmsSend) needOne(MmsSendV1) else if (t == PhoneDial) needOne(PhoneDialV1)
       else if (t == PhoneCall) needOne(PhoneCallV1) else if (t == SmsCompose or t == SmsReplySelected) needOne(SmsComposeV1)
       else if (t == MessagesReadSelected) needOne(MessagesReadV1) else if (t == VoicemailReadSelected) needOne(VoicemailReadV1)
-      else if (t == VoicemailDeleteSelected) needOne(VoicemailDeleteV1) else needOne(ContactsWriteV1)
+      else if (t == VoicemailDeleteSelected) needOne(VoicemailDeleteV1) else if (t == SmsLatestSender) smsLatestSenderNeed(versionTwo)
+      else needOne(ContactsWriteV1)
   | ClockFamily => clockHandoffNeed(versionTwo)
   | WorkflowFamily => anyButClock
   | BaseFamily => anyButClock
@@ -134,6 +147,14 @@ pure val negValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: S
   Negotiated({ capabilities: Set(ClockHandoffV1, ClockHandoffV2) }), Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV1, NotesLocalRecordV1) }),
   Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV2, CalendarAgendaReadV1, NotesQueryV1, NotesLocalRecordV1) }))
 pure def clockOnly(neg: Negotiation): bool = allCapabilities.forall(c => negotiatedHas(neg, c) implies (c == ClockHandoffV1 or c == ClockHandoffV2))
+pure def recordingAlone(neg: Negotiation): bool = negotiatedHas(neg, NotesRecordV1)
+pure def lawRecordingRunsUnderItsOwnCapabilityAlone(t: OperationType): bool =
+  t == NotesRecord implies meets(Negotiated({ capabilities: Set(NotesRecordV1) }), operationNeed(t, true))
+pure def lawTheLegacyPairStillRecords(neg: Negotiation): bool =
+  (negotiatedHas(neg, NotesOrganizeV1) and negotiatedHas(neg, NotesLocalRecordV1)) implies meets(neg, operationNeed(NotesRecord, recordingAlone(neg)))
+pure def lawTheOpenPhotoFormNeedsItsCapability(t: OperationType, neg: Negotiation): bool =
+  ((t == PhotosAlbumCreate or t == PhotosShare) and meets(neg, operationNeed(t, true))) implies
+    (negotiatedHas(neg, PhotosViewSelectedV1) and negotiatedHas(neg, PhotosLibraryV1) and negotiatedHas(neg, PhotosViewV1))
 pure def lawEveryOperationNamesANeed(t: OperationType, versionTwo: bool): bool =
   namesSome(operationNeed(t, versionTwo).required) or namesSome(operationNeed(t, versionTwo).oneOf)
 pure def lawAClockOnlyDeviceReceivesOnlyClockHandoffs(t: OperationType, versionTwo: bool, neg: Negotiation): bool =
@@ -144,6 +165,32 @@ pure def lawNewerReminderTimingIsNeverDowngraded(t: OperationType, neg: Negotiat
   ((family(t) == ReminderFamily or t == ReminderNamed) and meets(neg, operationNeed(t, true))) implies negotiatedHas(neg, RemindersLocalRecordV2)
 ```
 
+### A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability
+
+When the owner says "this photo" while the turn's [observation](../conversation/turnContext.md)
+shows the Photos view, an album or share targets the open item: as
+`{selected: true}` when the request negotiated `photos.view-selected.v1`,
+so no ID leaves the phone, and otherwise by the observed selected object's
+library ID, but only when that ID is a library ID and the request
+negotiated `photos.library.v1` and `photos.view.v1`. The target carries no
+turn-scoped state, so a task that continues on a later turn proposes the
+same item again from that turn's observation.
+
+```quint
+type PhotoTarget = NoPhotoTarget | OpenPhoto | ShownLibraryId
+pure def shownPhotoTarget(photosView: bool, sensitive: bool, shownId: bool, neg: Negotiation): PhotoTarget =
+  if (not(photosView) or sensitive) NoPhotoTarget
+  else if (negotiatedHas(neg, PhotosViewSelectedV1) and negotiatedHas(neg, PhotosLibraryV1) and negotiatedHas(neg, PhotosViewV1)) OpenPhoto
+  else if (shownId and negotiatedHas(neg, PhotosLibraryV1) and negotiatedHas(neg, PhotosViewV1)) ShownLibraryId
+  else NoPhotoTarget
+pure def lawAShownLibraryIdNeedsTheLibraryCapability(photosView: bool, sensitive: bool, shownId: bool, neg: Negotiation): bool =
+  shownPhotoTarget(photosView, sensitive, shownId, neg) == ShownLibraryId implies (shownId and negotiatedHas(neg, PhotosLibraryV1))
+pure def lawTheOpenPhotoFormIsOfferedOnlyWhenNegotiated(photosView: bool, sensitive: bool, shownId: bool, neg: Negotiation): bool =
+  shownPhotoTarget(photosView, sensitive, shownId, neg) == OpenPhoto implies negotiatedHas(neg, PhotosViewSelectedV1)
+pure def lawASensitiveScreenNamesNoPhoto(photosView: bool, shownId: bool, neg: Negotiation): bool =
+  shownPhotoTarget(photosView, true, shownId, neg) == NoPhotoTarget
+```
+
 ### A proposal is valid only when its shape, its need and its binding all hold
 
 `shapeValid` is the family schema's verdict: exactly the operation's own
@@ -151,6 +198,11 @@ keys, every field within the bounds of its owning spec. A workflow read or
 presentation needs a workflow binding, except that a calendar range read may
 instead be a standalone agenda read bound to the owner's message, which also
 needs the agenda capability. No other operation may carry an agenda binding.
+A voice-note recording takes its version from the negotiation: the
+recording-only form exactly when the request negotiated `notes.record.v1`.
+A photo capture takes its version from the negotiation too: version two
+exactly when the request negotiated `camera.capture-library-id.v1`, so its
+receipt may name the saved photo's library ID.
 The proposal, decide and claim requests each validate against their own
 negotiation.
 
@@ -160,7 +212,14 @@ type Proposal = { opType: OperationType, versionTwo: bool, binding: ReadBinding,
 pure def bindingAdmitted(prop: Proposal, neg: Negotiation): bool =
   if (prop.binding == AgendaBinding) prop.opType == ReadCalendarRange and negotiatedHas(neg, CalendarAgendaReadV1)
   else family(prop.opType) != WorkflowFamily or prop.binding == WorkflowBinding
-pure def validate(prop: Proposal, neg: Negotiation): bool = prop.shapeValid and meets(neg, operationNeed(prop.opType, prop.versionTwo)) and bindingAdmitted(prop, neg)
+pure def proposalVersion(prop: Proposal, neg: Negotiation): bool =
+  if (prop.opType == NotesRecord) recordingAlone(neg)
+  else if (prop.opType == CameraCapturePhoto) negotiatedHas(neg, CameraLibraryIdV1)
+  else prop.versionTwo
+pure def lawARecordingIsValidUnderEitherForm(prop: Proposal, neg: Negotiation): bool =
+  (prop.opType == NotesRecord and prop.shapeValid and prop.binding == NoBinding and
+    (negotiatedHas(neg, NotesRecordV1) or (negotiatedHas(neg, NotesOrganizeV1) and negotiatedHas(neg, NotesLocalRecordV1)))) implies validate(prop, neg)
+pure def validate(prop: Proposal, neg: Negotiation): bool = prop.shapeValid and meets(neg, operationNeed(prop.opType, proposalVersion(prop, neg))) and bindingAdmitted(prop, neg)
 pure val propValues: Set[Proposal] = Set(
   { opType: ReadCalendarRange, versionTwo: false, binding: AgendaBinding, shapeValid: true },
   { opType: ReadSelectedNotes, versionTwo: false, binding: NoBinding, shapeValid: true },
@@ -171,7 +230,8 @@ pure val propValues: Set[Proposal] = Set(
   { opType: ClockHandoff, versionTwo: true, binding: NoBinding, shapeValid: true },
   { opType: FilesOpen, versionTwo: false, binding: NoBinding, shapeValid: true },
   { opType: SmsReplySelected, versionTwo: false, binding: WorkflowBinding, shapeValid: true },
-  { opType: SmsSend, versionTwo: false, binding: NoBinding, shapeValid: true })
+  { opType: SmsSend, versionTwo: false, binding: NoBinding, shapeValid: true },
+  { opType: NotesRecord, versionTwo: false, binding: NoBinding, shapeValid: true })
 pure def lawAWorkflowOperationIsBound(prop: Proposal, neg: Negotiation): bool =
   (validate(prop, neg) and family(prop.opType) == WorkflowFamily) implies (prop.binding == WorkflowBinding or (prop.opType == ReadCalendarRange and prop.binding == AgendaBinding))
 pure def lawAStandaloneAgendaReadNegotiatedTheAgenda(prop: Proposal, neg: Negotiation): bool =
@@ -196,7 +256,7 @@ pure def directEligible(t: OperationType): bool =
 pure def mayRunDirectly(prop: Proposal, boundToCurrentMessage: bool): bool =
   directEligible(prop.opType) and prop.binding == NoBinding and boundToCurrentMessage
 pure def sendsSharesOrDeletes(t: OperationType): bool =
-  (family(t) == TelephonyFamily and t != SmsReplySelected and t != MessagesReadSelected and t != VoicemailReadSelected)
+  (family(t) == TelephonyFamily and t != SmsReplySelected and t != MessagesReadSelected and t != VoicemailReadSelected and t != SmsLatestSender)
   or family(t) == ClockFamily or t == FilesShare or t == FilesTrash or t == PhotosShare or t == PhotoLibraryReview
   or t == NotesDelete or t == CalendarDelete or t == ReminderCancel
 pure def lawNothingThatSendsSharesOrDeletesRunsDirectly(prop: Proposal, boundToCurrentMessage: bool): bool =
@@ -221,6 +281,11 @@ MMS send, or a contact SMS, names the journal key of its claim, so a lost
 response reconciles against one native row and never sends twice. A
 failure the device reports as never dispatched, with no result, is admitted
 for any operation.
+A latest-sender result is the answer of the newest incoming SMS: the last
+four digits, or the whole dialable address and its thread when the
+operation asked for it, never the other form; an empty Inbox or a sender
+that is no dialable number is still an applied read, and a read the phone
+could not run reports failed.
 
 ```quint
 type ReportedOutcome = ReportsApplied | ReportsFailed | ReportsUnknown
@@ -260,6 +325,49 @@ pure def lawPhoneEvidenceIsMissingOnlyFromAnUnknownReceipt(t: OperationType, r: 
   (receiptAdmitted(t, r, claimKey) and evidenceOf(t) == OutcomeEvidence and r.result == NoResult and not(notDispatchedFailure(r))) implies r.reported == ReportsUnknown
 pure def lawASimSendNamesItsClaim(t: OperationType, r: DeviceReceipt, claimKey: str): bool =
   (receiptAdmitted(t, r, claimKey) and sharesSimJournal(t) and not(notDispatchedFailure(r))) implies r.operationId == claimKey
+```
+
+### A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it
+
+The reply to an applied latest-sender read is written from its result,
+never by the model: the whole address, or the number's last four digits,
+or that the Inbox holds no incoming SMS, or that the newest sender has no
+readable number; a read the phone could not run says it could not be read.
+The model's guidance for proposing the read follows the negotiation: with
+`sms.latest-sender.v2` it may ask for the whole address and then propose
+an `sms_compose` draft to that exact number, which the owner sends;
+otherwise it learns that only the suffix comes back, and that no message
+body, history, MMS or cloud inbox is read.
+
+```quint
+type SenderRead = SenderAddress | SenderEnding | InboxEmpty | SenderNotDialable | SenderUnreadable
+type SenderAnswer = SaysAddress | SaysEnding | SaysNoMessages | SaysNoNumber | SaysReadFailed
+type SenderGuidance = AddressThenDraft | SuffixOnly
+pure def senderAnswer(read: SenderRead): SenderAnswer = match read {
+  | SenderAddress => SaysAddress | SenderEnding => SaysEnding | InboxEmpty => SaysNoMessages
+  | SenderNotDialable => SaysNoNumber | SenderUnreadable => SaysReadFailed }
+pure def senderGuidance(n: Negotiation): SenderGuidance = if (negotiatedHas(n, SmsLatestSenderV2)) AddressThenDraft else SuffixOnly
+pure def lawOnlyAnAddressReadSaysTheAddress(read: SenderRead): bool = (senderAnswer(read) == SaysAddress) iff (read == SenderAddress)
+pure def lawTheDraftFollowUpNeedsTheNewerRead(n: Negotiation): bool = senderGuidance(n) == AddressThenDraft implies meets(n, smsLatestSenderNeed(true))
+```
+
+### A captured photo's library ID reaches the agent only when the request negotiated it
+
+A capture receipt names the saved photo's media ID and may name its library
+ID, an image ID of the photo library. The library ID is part of the result
+only for a capture validated as version two; otherwise a receipt that names
+one is an invalid result, so the device leaves it out and the photo is
+still saved. A selected-item album or share result counts exactly one
+target.
+
+```quint
+pure def libraryIdAdmitted(versionTwo: bool, namesLibraryId: bool): bool = not(namesLibraryId) or versionTwo
+pure def photoTargets(selected: bool, ids: int): int = if (selected) 1 else ids
+pure def lawALibraryIdNeedsTheNegotiatedCapture(neg: Negotiation): bool =
+  libraryIdAdmitted(proposalVersion({ opType: CameraCapturePhoto, versionTwo: false, binding: NoBinding, shapeValid: true }, neg), true)
+    implies negotiatedHas(neg, CameraLibraryIdV1)
+pure def lawACaptureWithoutTheIdIsAlwaysAdmitted(versionTwo: bool): bool = libraryIdAdmitted(versionTwo, false)
+pure def lawTheOpenPhotoIsOneTarget(ids: int): bool = photoTargets(true, ids) == 1
 ```
 
 ### Only an applied receipt settles applied, and only a trusted refusal settles that nothing ran

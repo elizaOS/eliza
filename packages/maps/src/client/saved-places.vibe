@@ -1,0 +1,133 @@
+// spec/maps/savedPlaces.md, "A saved list is changed only when it reads back, and a change counts only once it is confirmed"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import { maySaveTo, savedChangeDone, savedPlacesLimit } from "../../gen/maps__savedPlaces.effect.vibe"
+import { boundedText, Coordinate, MapsFailure } from "./contracts.vibe"
+
+module browser {
+  /** @throws {never} */
+  export function freshId(): string {
+    return globalThis.crypto.randomUUID()
+  }
+}
+import { freshId } from browser
+
+const Label = Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 300)))
+const Identity = Schema.Struct({ providerId: Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 80))), providerPlaceId: Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 512))) })
+
+/** One saved place: a label, a coordinate and, for a provider place, its provider identity. */
+export const SavedPlace = Schema.Struct({
+  id: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9-]{1,80}$/)),
+  label: Label,
+  coordinate: Coordinate,
+  providerId: Schema.optionalKey(Identity.fields.providerId),
+  providerPlaceId: Schema.optionalKey(Identity.fields.providerPlaceId),
+  savedAt: Schema.Finite.check(Schema.isGreaterThan(0)),
+}).check(Schema.makeFilter((saved: { readonly providerId?: string; readonly providerPlaceId?: string }) => (saved.providerId === undefined) === (saved.providerPlaceId === undefined)))
+/** One saved place. */
+export type SavedPlace = typeof SavedPlace.Type
+
+const Stored = Schema.Struct({
+  version: Schema.Literal(1),
+  items: Schema.Array(SavedPlace).check(
+    Schema.isMaxLength(savedPlacesLimit),
+    Schema.makeFilter((items: readonly SavedPlace[]) => new Set(items.map((item) => item.id)).size === items.length),
+  ),
+})
+const decodeStored = Schema.decodeUnknownEffect(Schema.fromJsonString(Stored))
+
+/** One saved place as the agent's read-only saved-places port receives it. */
+export interface HostSavedPlace {
+  readonly id: string
+  readonly label: string
+  readonly coordinates: Coordinate
+  readonly provider?: string
+  readonly providerPlaceId?: string
+  readonly savedAt: number
+}
+
+/** What a save names: a label, a coordinate and optionally the provider place it came from. */
+export interface SavedPlaceInput {
+  readonly label: string
+  readonly coordinate: Coordinate
+  readonly providerId?: string
+  readonly providerPlaceId?: string
+}
+
+const unreadable = () => new MapsFailure({ code: "storage", message: "Saved places could not be read. Existing data has not been replaced." })
+const unconfirmed = () => new MapsFailure({ code: "storage", message: "Saved places could not be confirmed on this device." })
+
+function samePlace(saved: SavedPlace, input: SavedPlaceInput, at: Coordinate): boolean {
+  return input.providerId !== undefined
+    ? saved.providerId === input.providerId && saved.providerPlaceId === input.providerPlaceId
+    : saved.providerId === undefined && saved.coordinate.latitude === at.latitude && saved.coordinate.longitude === at.longitude
+}
+
+/** The saved places kept under `key` in the KeyValueStore the program provides. */
+export effect function savedPlaces(key: string) {
+  const store = try KeyValueStore.KeyValueStore
+
+  effect function read(): (readonly SavedPlace[])!MapsFailure {
+    const raw = try mapError(store.get(key), unreadable)
+    if (raw === undefined) return []
+    if (raw.length > 300_000) throw unreadable()
+    return (try mapError(decodeStored(raw), unreadable)).items
+  }
+
+  effect function write(items: readonly SavedPlace[], existing: boolean, count: number): (readonly SavedPlace[])!MapsFailure {
+    if (!maySaveTo({ readable: true, existing, count, confirmed: false })) {
+      throw new MapsFailure({ code: "storage", message: "Remove a saved place before adding another." })
+    }
+    const value = JSON.stringify({ version: 1, items })
+    try mapError(store.set(key, value), unconfirmed)
+    const confirmed = (try mapError(store.get(key), unconfirmed)) === value
+    if (!savedChangeDone({ readable: true, existing, count, confirmed })) throw unconfirmed()
+    return items
+  }
+
+  effect function save(input: SavedPlaceInput): SavedPlace!MapsFailure {
+    const identity = input.providerId === undefined && input.providerPlaceId === undefined
+      || Schema.is(Identity)({ providerId: input.providerId, providerPlaceId: input.providerPlaceId })
+    if (!boundedText(input.label, 300) || !identity) {
+      throw new MapsFailure({ code: "invalid-response", message: "A name and valid place identity are required." })
+    }
+    const at = try mapError(Schema.decodeUnknownEffect(Coordinate)(input.coordinate), () => new MapsFailure({ code: "invalid-response", message: "The coordinate is invalid." }))
+    const items = try read()
+    const existing = items.find((saved) => samePlace(saved, input, at))
+    const item: SavedPlace = {
+      id: existing?.id ?? freshId(),
+      label: input.label.trim(),
+      coordinate: at,
+      savedAt: try Clock.currentTimeMillis,
+      ...(input.providerId !== undefined && input.providerPlaceId !== undefined ? { providerId: input.providerId, providerPlaceId: input.providerPlaceId } : {}),
+    }
+    try write(existing === undefined ? [...items, item] : items.map((saved) => saved.id === existing.id ? item : saved), existing !== undefined, items.length)
+    return item
+  }
+
+  effect function rename(id: string, label: string): (readonly SavedPlace[])!MapsFailure {
+    if (!boundedText(label, 300)) throw new MapsFailure({ code: "invalid-response", message: "A saved-place name is required." })
+    const items = try read()
+    if (!items.some((saved) => saved.id === id)) throw new MapsFailure({ code: "unavailable", message: "This saved place no longer exists." })
+    return try write(items.map((saved) => saved.id === id ? { ...saved, label: label.trim() } : saved), true, items.length)
+  }
+
+  effect function remove(id: string): (readonly SavedPlace[])!MapsFailure {
+    const items = try read()
+    return try write(items.filter((saved) => saved.id !== id), true, items.length)
+  }
+
+  effect function list(): (readonly HostSavedPlace[])!MapsFailure {
+    return (try read()).map((saved) => ({
+      id: saved.id,
+      label: saved.label,
+      coordinates: { ...saved.coordinate },
+      savedAt: saved.savedAt,
+      ...(saved.providerId === undefined ? {} : { provider: saved.providerId, providerPlaceId: saved.providerPlaceId }),
+    }))
+  }
+
+  return { namespace: key, read, save, rename, remove, host: { namespace: key, list } }
+}
+
+/** The saved places of one phone list. */
+export type SavedPlaces = Effect.Success<ReturnType<typeof savedPlaces>>

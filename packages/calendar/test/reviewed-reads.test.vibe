@@ -1,0 +1,89 @@
+// spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/readClock.md, "Story: See and create times in the zone I am asking about"
+import { assert, it } from "@effect/vitest"
+import { machine } from "../gen/calendar__reviewedReads.effect.vibe"
+import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
+  requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
+import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, NamedReadRefused, executeNamedCalendarRead, namedCalendarReadTarget, namedReadWindow,
+  type NamedCalendarReadContext, type NamedCalendarReadProvider } from "../src/client/named-read.vibe"
+
+const selected = { kind: "calendar-event", accountId: "device-home", sourceRevision: "a".repeat(64), id: "evt-1", revision: "b".repeat(64) }
+const context: NamedCalendarReadContext = { view: "calendar", owner: "alice", selectedObject: selected }
+const read = { type: "calendar_named", action: "read", name: " dentist " } as const
+const capabilities = [CALENDAR_NAMED_READ_CAPABILITY, CALENDAR_CAPABILITY]
+const fields = { title: "Ｄentist check-up", description: "", location: "", start: "2026-05-04T16:00:00.000Z", end: "2026-05-04T17:00:00.000Z", timeZone: "UTC" }
+const record = { version: 1, kind: "calendar_read_selected", sourceId: "device-home", eventId: "evt-1", revision: selected.revision, fields }
+
+function share() {
+  const controls = { status: "applied", result: record as unknown, feedComplete: true, cancelled: [] as string[], afterRead: () => {} }
+  const provider: NamedCalendarReadProvider = {
+    executeAgent: () => {
+      controls.afterRead()
+      return Effect.succeed({ status: controls.status, result: controls.result, feedComplete: controls.feedComplete })
+    },
+    cancelAgent: ({ operationId }) => Effect.sync(() => { controls.cancelled.push(operationId) }),
+  }
+  return { controls, provider }
+}
+
+it.effect('Share only the exact current Calendar information I reviewed (spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed")', effect () => {
+  provide machine() {
+    const { controls, provider } = share()
+    let active = context
+    const run = (op: unknown = read, ctx = context, caps: readonly string[] = capabilities) =>
+      executeNamedCalendarRead(provider, op, "op-1", ctx, caps, () => active)
+    const shared = try run()
+    assert.deepStrictEqual(shared, {
+      status: "succeeded", summary: "Shared the matching event you chose. Its requested update still requires a separate review.",
+      foregroundResult: { version: 1, kind: "calendar_named", action: "read", name: read.name, basis: "owner-chosen",
+        operation: { type: "calendar_read_selected", target: namedCalendarReadTarget(context) }, record },
+    })
+    assert.strictEqual((try run({ ...read, name: "plumber" })).summary, "The selected event does not match the requested name. Nothing was shared or changed.")
+    const refusedSummary = "The event was not shared. Its selection, access or review changed; nothing was changed."
+    controls.feedComplete = false
+    assert.strictEqual((try run()).summary, refusedSummary)
+    controls.feedComplete = true
+    controls.status = "denied"
+    assert.strictEqual((try run()).summary, refusedSummary)
+    controls.status = "applied"
+    controls.result = { ...record, revision: "c".repeat(64) }
+    assert.strictEqual((try run()).summary, refusedSummary)
+    controls.result = record
+    controls.afterRead = () => { active = { ...context, owner: "bob" } }
+    assert.strictEqual((try run()).summary, refusedSummary)
+    controls.afterRead = () => {}
+    active = context
+    assert.strictEqual((try run(read, { ...context, sensitive: true })).summary, "Choose the exact matching event in Calendar before sharing it. Nothing was shared or changed.")
+    assert.strictEqual((try run(read, { ...context, view: "notes" })).status, "failed")
+    const refusal = try Effect.flip(run(read, context, [CALENDAR_NAMED_READ_CAPABILITY]))
+    assert.isTrue(refusal instanceof NamedReadRefused && refusal.reason === "capability_unavailable")
+    assert.strictEqual((try run()).status, "succeeded")
+    assert.deepStrictEqual(namedReadWindow(10_500), { startMs: 9_000, endMs: 11_000 })
+  }
+})
+
+it.effect('See and create times in the zone I am asking about (spec/calendar/readClock.md, "Story: See and create times in the zone I am asking about")', effect () => {
+  const la = "America/Los_Angeles"
+  assert.strictEqual(requestTimeZone({ explicit: "Bogus/Zone", client: "Europe/London", owner: "UTC" }), "Europe/London")
+  assert.strictEqual(requestTimeZone({ explicit: "Asia/Tokyo", client: "Europe/London", owner: "UTC" }), "Asia/Tokyo")
+  assert.strictEqual(requestTimeZone({ owner: la }), la)
+  assert.strictEqual(createTimeZone({ client: "Europe/London", owner: la }), "Europe/London")
+  const winter = displayWallTime("2026-01-15T19:00:00.000Z", la)
+  const summer = displayWallTime("2026-07-15T19:00:00.000Z", la)
+  assert.deepStrictEqual([winter?.hour, winter?.offsetMinutes, summer?.hour, summer?.offsetMinutes], [11, -480, 12, -420])
+  assert.strictEqual(createdUtcInstant({ year: 2026, month: 1, day: 15, hour: 11, minute: 0, second: 0 }, la), "2026-01-15T19:00:00.000Z")
+  assert.strictEqual(createdUtcInstant({ year: 2026, month: 3, day: 8, hour: 2, minute: 30, second: 0 }, la), "2026-03-08T10:30:00.000Z")
+  assert.strictEqual(createdUtcInstant({ year: 2026, month: 11, day: 1, hour: 1, minute: 30, second: 0 }, la), "2026-11-01T08:30:00.000Z")
+  assert.strictEqual(buildUtcDateFromLocalParts(la, { year: 2026, month: 11, day: 1, hour: 1, minute: 30, second: 0 }, "reject"), undefined)
+  assert.strictEqual(startOfCivilDay({ year: 2026, month: 3, day: 8 }, la), Date.parse("2026-03-08T08:00:00.000Z"))
+  assert.strictEqual(startOfCivilDay({ year: 2011, month: 12, day: 30 }, "Pacific/Apia"), Date.parse("2011-12-30T10:00:00.000Z"))
+  assert.deepStrictEqual([
+    displayDay({ startAt: "2026-01-15T03:00:00.000Z", isAllDay: false }, la),
+    displayDay({ startAt: "2026-01-15T00:00:00.000Z", isAllDay: true }, la),
+    displayDay({ startAt: "2026-01-15T12:00:00.000Z", isAllDay: false }, "Pacific/Kiritimati"),
+  ], ["2026-01-14", "2026-01-15", "2026-01-16"])
+  assert.deepStrictEqual([createYear("lunch on March 3 2028", 2026), createYear("lunch next March 3", 2026), createYear("lunch on March 3", 2026),
+    createYear("March 3 2027 at noon", 2026)], [2028, 2027, 2026, 2027])
+  const now = new Date("2026-06-01T12:00:00.000Z")
+  assert.deepStrictEqual([createNeedsConfirmation("2026-01-01T10:00:00.000Z", now, "UTC"), createNeedsConfirmation("2026-06-02T10:00:00.000Z", now, "UTC"),
+    createNeedsConfirmation("2025-12-31T10:00:00.000Z", now, "UTC")], [true, false, true])
+})

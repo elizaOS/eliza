@@ -6,7 +6,9 @@ record and, on the calendar, the civil day in view) and `metadata.voiceUi`
 (what the voice renderer shows and how it takes completed actions). Each
 part is untrusted data about that one message: opaque identifiers, never
 record contents, never an instruction, and no device, provider, navigation
-or record permission. Each part is accepted whole or not at all. Every
+or record permission. Each part is accepted whole or not at all. An observation may also carry
+the phone's last known position, which a client sends only while the
+platform's location permission is granted and the owner has location on. Every
 other key of `metadata` is stored with the message and decoded by nothing
 here. Actions and providers (device-action admission, actions on the
 selected record, the current-time provider) read an accepted part only
@@ -39,6 +41,7 @@ from these wire forms (any other key is an unknown field):
 | `timeZone` | optional; at most 64 characters, `[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+){0,3}`, known to the platform |
 | `selectedObject` | `{kind, id, revision?, accountId?, sourceRevision?, occurrenceId?, timingVersion?}`: `kind` as `view`; `id` `[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,511}`; `accountId`, `sourceRevision`, `occurrenceId` `[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,255}`; `revision` that form or an entity tag `(W/)?"[!#-~]+"`, at most 256 characters; `timingVersion` 2 |
 | `calendarDay` | `{date, timeZone}`: `date` `YYYY-MM-DD`, a real civil date from 1970 on; `timeZone` as above |
+| `location` | `{latitude, longitude, accuracyMeters?, capturedAt}`: `latitude` a number from −90 to 90; `longitude` from −180 to 180; `accuracyMeters` from 0 to 1,000,000; `capturedAt` epoch milliseconds, a safe integer, 0 or more |
 
 The size is the UTF-8 length of the JSON of the decoded observation, keys
 in the table's order, `sensitive` always written as a boolean, and only the
@@ -50,7 +53,8 @@ type Sensitivity = SensitivityUnstated | Sensitive | NotSensitive
 type ZoneFact = NoZone | Zone({ zoneName: str }) | UnknownZone
 type RecordFact = NoSelectedRecord | SelectedRecord | MalformedRecord
 type DayFact = NoDay | Day({ dayZone: str, dayBytes: int }) | MalformedDay
-type ObservationFacts = { unknownField: bool, view: ViewName, revision: int, sensitivity: Sensitivity, zone: ZoneFact, selection: RecordFact, day: DayFact, bytesWithoutDay: int }
+type LocationFact = NoLocation | Located({ locationBytes: int }) | MalformedLocation
+type ObservationFacts = { unknownField: bool, view: ViewName, revision: int, sensitivity: Sensitivity, zone: ZoneFact, selection: RecordFact, day: DayFact, location: LocationFact, coreBytes: int }
 pure val observationMaxBytes = 2048
 pure val maxSafeInteger = 9007199254740991
 pure val calendarView: ViewName = View({ viewName: "calendar" })
@@ -60,12 +64,15 @@ pure def dayAccepted(day: DayFact, view: ViewName, sensitivity: Sensitivity, zon
   | Day(d) => d.dayBytes > 0 and view == calendarView and sensitivity == NotSensitive and zone == Zone({ zoneName: d.dayZone })
 }
 pure def dayBytesOf(day: DayFact): int = match day { | Day(d) => d.dayBytes | _ => 0 }
+pure def locationAccepted(location: LocationFact): bool = match location { | NoLocation => true | MalformedLocation => false | Located(p) => p.locationBytes > 0 }
+pure def locationBytesOf(location: LocationFact): int = match location { | Located(p) => p.locationBytes | _ => 0 }
 pure def observationAccepted(o: ObservationFacts): bool =
   not(o.unknownField) and o.view != MalformedView and o.revision >= 0 and o.revision <= maxSafeInteger and o.zone != UnknownZone and o.selection != MalformedRecord and
-  not(o.sensitivity == Sensitive and o.selection != NoSelectedRecord) and dayAccepted(o.day, o.view, o.sensitivity, o.zone) and o.bytesWithoutDay + dayBytesOf(o.day) <= observationMaxBytes
-pure def withoutOptionalFields(o: ObservationFacts): ObservationFacts = { ...o, day: NoDay }
+  not(o.sensitivity == Sensitive and o.selection != NoSelectedRecord) and dayAccepted(o.day, o.view, o.sensitivity, o.zone) and locationAccepted(o.location) and
+  o.coreBytes + dayBytesOf(o.day) + locationBytesOf(o.location) <= observationMaxBytes
+pure def withoutOptionalFields(o: ObservationFacts): ObservationFacts = { ...o, day: NoDay, location: NoLocation }
 pure val oValues: Set[ObservationFacts] = {
-  val base = { unknownField: false, view: View({ viewName: "calendar" }), revision: 3, sensitivity: NotSensitive, zone: Zone({ zoneName: "Europe/Berlin" }), selection: SelectedRecord, day: Day({ dayZone: "Europe/Berlin", dayBytes: 60 }), bytesWithoutDay: 400 }
+  val base = { unknownField: false, view: View({ viewName: "calendar" }), revision: 3, sensitivity: NotSensitive, zone: Zone({ zoneName: "Europe/Berlin" }), selection: SelectedRecord, day: Day({ dayZone: "Europe/Berlin", dayBytes: 60 }), location: NoLocation, coreBytes: 400 }
   List(
     base,
     { ...base, sensitivity: Sensitive, day: NoDay },
@@ -75,8 +82,12 @@ pure val oValues: Set[ObservationFacts] = {
     { ...base, day: Day({ dayZone: "America/New_York", dayBytes: 60 }) },
     { ...base, zone: NoZone },
     { ...base, day: MalformedDay },
-    { ...base, bytesWithoutDay: 2000 },
-    { ...base, unknownField: true }
+    { ...base, coreBytes: 2000 },
+    { ...base, unknownField: true },
+    { ...base, location: Located({ locationBytes: 90 }) },
+    { ...base, sensitivity: Sensitive, selection: NoSelectedRecord, day: NoDay, location: Located({ locationBytes: 90 }) },
+    { ...base, location: MalformedLocation },
+    { ...base, coreBytes: 1950, location: Located({ locationBytes: 90 }) }
   ).foldl(Set(), (acc, o) => acc.union(Set(o)))
 }
 pure def lawASensitiveScreenSharesNoRecordAndNoDay(o: ObservationFacts): bool =
@@ -85,11 +96,32 @@ pure def lawACivilDayNeedsTheCalendarInAKnownZone(o: ObservationFacts): bool =
   o.day != NoDay implies (not(observationAccepted({ ...o, view: View({ viewName: "notes" }) })) and not(observationAccepted({ ...o, sensitivity: SensitivityUnstated })) and not(observationAccepted({ ...o, zone: NoZone })))
 pure def lawTheCalendarDayIsAcceptedInItsOwnZone(o: ObservationFacts): bool = {
   val zone = o.zone
-  (observationAccepted(withoutOptionalFields(o)) and o.view == calendarView and o.sensitivity == NotSensitive and o.bytesWithoutDay < observationMaxBytes) implies
-    match zone { | Zone(z) => observationAccepted({ ...o, day: Day({ dayZone: z.zoneName, dayBytes: observationMaxBytes - o.bytesWithoutDay }) }) | _ => true }
+  (observationAccepted(withoutOptionalFields(o)) and o.view == calendarView and o.sensitivity == NotSensitive and o.coreBytes < observationMaxBytes) implies
+    match zone { | Zone(z) => observationAccepted({ ...o, location: NoLocation, day: Day({ dayZone: z.zoneName, dayBytes: observationMaxBytes - o.coreBytes }) }) | _ => true }
 }
 pure def lawWithoutOptionalFieldsTheObservationStaysAccepted(o: ObservationFacts): bool =
   observationAccepted(o) implies observationAccepted(withoutOptionalFields(o))
+```
+
+### A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes
+
+A position says where the phone is, not what its screen shows, so a
+sensitive screen keeps it; a malformed one drops the whole observation, as
+any malformed field does. It is shown to the model with the rest of the
+accepted observation, labelled untrusted data about the device, and so
+reaches the bound backend, which may be hosted inference (Eliza Cloud or
+the owner's own provider). The agent never asks the device for it.
+
+```quint
+pure val locationBytesValues = Set(1, 90, 2048)
+pure def lawALocationIsKeptOnAnyScreen(o: ObservationFacts, locationBytes: int): bool = {
+  val core = withoutOptionalFields(o)
+  (observationAccepted(core) and locationBytes > 0 and o.coreBytes + locationBytes <= observationMaxBytes) implies
+    observationAccepted({ ...core, location: Located({ locationBytes: locationBytes }) })
+}
+pure def lawAMalformedLocationDropsTheObservation(o: ObservationFacts): bool = not(observationAccepted({ ...o, location: MalformedLocation }))
+pure def lawALocationCountsWithinTheBound(o: ObservationFacts): bool =
+  observationAccepted(o) implies o.coreBytes + locationBytesOf(o.location) <= observationMaxBytes
 ```
 
 ### A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity
@@ -158,7 +190,7 @@ pure def lawAPathFromAnotherHostIsRefused(rest: List[int]): bool =
 
 ### Optional fields go only to the process instance the client compared for this turn
 
-An optional field (today the civil day) is a format the agent process
+An optional field (today the civil day and the location) is a format the agent process
 understands, never a permission. A client learns the process instance once
 per verified connection from the non-empty `serverInstanceId` of an
 authenticated `GET /api/status`, compared exactly as returned. A turn that

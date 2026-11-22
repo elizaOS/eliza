@@ -13,7 +13,9 @@ state, and when a pushed credential takes effect.
 
 Text and image description use the cloud client's chat completion (an image
 description is a chat completion with an image part); the own-key handler
-classifies its HTTP failures into the same refusal vocabulary. HTTP, the
+classifies its HTTP failures into the same refusal vocabulary: a spent quota
+is insufficient credits, and a timeout, a conflict or an overloaded bad
+request without a validation complaint is a provider issue. HTTP, the
 credential value and the client stay in the shell (`models/*.vibe`); the
 credential lives in memory only and appears in no state here. Source: the
 develop cloud plugin's text and image handlers, the pinned embedded host's
@@ -134,6 +136,34 @@ pure def transient(e: C::CloudError): bool = match e { | CloudNetwork => true | 
 pure def rateLimited(e: C::CloudError): bool = match e { | CloudRateLimited(_) => true | _ => false }
 pure def lawOnlyTransientRefusalsAreRetried(e: C::CloudError): bool = (M::retryable(outcomeOf(e)) and outcomeOf(e) != M::ExhaustedBudget) iff transient(e)
 pure def lawRateLimitExhaustsTheProvider(e: C::CloudError): bool = rateLimited(e) iff outcomeOf(e) == M::ExhaustedBudget
+```
+
+### A tool call, a structured answer and the token use reach the caller as one result
+
+A call that offers tools, names the tool to use or asks for a schema gets one
+result: the text, every tool call with its arguments, the finish reason and
+the token use. Any other call gets the text alone. Tool results follow the
+call that asked for them; a result no call asked for is sent as the person's
+text. An answer with neither text nor a tool call is a provider issue.
+
+```quint
+type ChatAsk = { offersTools: bool, choosesTool: bool, asksSchema: bool }
+type ChatAnswer = { textBlank: bool, toolCalls: int }
+type ChatReturn = AnswerText | AnswerResult | AnswerProviderIssue
+pure def wantsResult(ask: ChatAsk): bool = ask.offersTools or ask.choosesTool or ask.asksSchema
+pure def chatReturn(ask: ChatAsk, answer: ChatAnswer): ChatReturn =
+  if (answer.textBlank and answer.toolCalls == 0) AnswerProviderIssue
+  else if (wantsResult(ask)) AnswerResult
+  else AnswerText
+pure val askValues = Set({ offersTools: false, choosesTool: false, asksSchema: false }, { offersTools: true, choosesTool: false, asksSchema: false },
+  { offersTools: true, choosesTool: true, asksSchema: false }, { offersTools: false, choosesTool: false, asksSchema: true })
+pure val answerValues = Set({ textBlank: true, toolCalls: 0 }, { textBlank: true, toolCalls: 1 }, { textBlank: false, toolCalls: 0 }, { textBlank: false, toolCalls: 2 })
+pure def lawAnEmptyAnswerIsAProviderIssue(ask: ChatAsk, answer: ChatAnswer): bool =
+  (answer.textBlank and answer.toolCalls == 0) iff chatReturn(ask, answer) == AnswerProviderIssue
+pure def lawOnlyAToolOrSchemaCallGetsTheResult(ask: ChatAsk, answer: ChatAnswer): bool =
+  chatReturn(ask, answer) != AnswerProviderIssue implies (chatReturn(ask, answer) == AnswerResult iff wantsResult(ask))
+pure def lawToolCallsAreNeverDroppedForText(ask: ChatAsk, answer: ChatAnswer): bool =
+  (answer.toolCalls > 0 and not(wantsResult(ask))) implies chatReturn(ask, answer) == AnswerText
 ```
 
 ## Story: Keep the account state honest
@@ -271,6 +301,47 @@ pure val stValues = Set(Usable, Failing({ failure: CredentialInvalid({ version: 
 pure val tValues = Set(0, 5, 10)
 pure def lawWarmReadyOnlyWhenATextCallWouldStart(backend: Backend, st: AccountState, t: int): bool =
   warmAnswer(backend, st, t) == WarmReady implies (servedByBackend(backend, TextSmall) and not(limitedAt(st, t)))
+```
+
+## Story: Hold only the key the host admitted for this backend
+
+> As the owner, I want the key I gave for one provider used only for that
+> provider and dropped when I sign out, so that no other provider, plugin,
+> log or reply ever sees it.
+
+### A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts
+
+A cloud launch holds the cloud device key and an own-key launch the
+owner's provider key; a launch with no backend holds none, so a frame
+credential given to it is dropped before the binding and reaches no
+plugin. A key is a bearer credential: visible ASCII only (no space,
+control character or line break), at least 8 characters, at most 16,384
+for a cloud device key and 1,024 for an own provider key. The launch frame
+refuses a credential outside the widest bound, the launch verdict refuses an
+own-key launch whose key exceeds its slot's as a credential error before
+binding ([launch](../host/launch.md)), and a push whose credential is
+not a cloud device key is malformed. A pushed key replaces only the cloud
+slot. Sign-out and an account change are new launches: the host stops this
+process, and the key, held in memory only, ends with it; a push naming
+another account is refused and keeps the held key. No status, route
+answer, receipt or log line carries a key: the push answers with its
+version and the account state alone.
+
+```quint
+type KeySlot = CloudDeviceKey | OwnProviderKey | NoKeySlot
+type KeyShape = { units: int, visibleAscii: bool }
+pure def keySlot(b: Backend): KeySlot = match b { | CloudBackend(_) => CloudDeviceKey | OwnKeyBackend(_) => OwnProviderKey | NoBackend => NoKeySlot }
+pure def maxKeyUnits(slot: KeySlot): int = match slot { | CloudDeviceKey => 16384 | OwnProviderKey => ownKeyMaxUnits | NoKeySlot => 0 }
+pure def keyAdmitted(slot: KeySlot, shape: KeyShape): bool =
+  slot != NoKeySlot and shape.visibleAscii and shape.units >= 8 and shape.units <= maxKeyUnits(slot)
+pure def holdsKey(b: Backend, given: bool, shape: KeyShape): bool = given and keyAdmitted(keySlot(b), shape)
+pure val shapeValues = Set({ units: 8, visibleAscii: true }, { units: 7, visibleAscii: true }, { units: 64, visibleAscii: false },
+  { units: 1024, visibleAscii: true }, { units: 1025, visibleAscii: true }, { units: 16385, visibleAscii: true })
+pure val slotValues = Set(CloudDeviceKey, OwnProviderKey, NoKeySlot)
+pure def lawALaunchWithoutBackendHoldsNoKey(shape: KeyShape): bool = not(holdsKey(NoBackend, true, shape))
+pure def lawAKeyWithSpaceOrControlIsNeverHeld(slot: KeySlot, units: int): bool = not(keyAdmitted(slot, { units: units, visibleAscii: false }))
+pure def lawAnOwnKeyNeverTakesACloudSizedKey(shape: KeyShape): bool = shape.units > 1024 implies not(keyAdmitted(OwnProviderKey, shape))
+pure def lawEachSlotIsWithinTheFrameBound(slot: KeySlot, shape: KeyShape): bool = keyAdmitted(slot, shape) implies shape.units <= 16384
 ```
 
 ## Story: Give plugins the owner's cloud link

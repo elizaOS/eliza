@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
+// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"; spec/os/signIn/cloudRequests.md, "A cancel disconnects only the page's own call still in flight, which then settles once as cancelled"
 package ai.eliza.plugins.signin;
 
 import android.content.ActivityNotFoundException;
@@ -30,6 +30,7 @@ public class ElizaCloudPlugin extends Plugin {
     GRANT_UNKNOWN = "grant-unknown", GRANT_UNREADABLE = "grant-unreadable", LINK_REFUSED = "link-refused", NO_BROWSER = "no-browser";
 
   private static final String TAG = "ElizaCloud";
+  private static final String CALL_NAME = "[A-Za-z0-9-]{8,64}";
   private static final int WORKERS = 4;
 
   private final ExecutorService workers = Executors.newFixedThreadPool(WORKERS);
@@ -69,18 +70,25 @@ public class ElizaCloudPlugin extends Plugin {
     String method = call.getString("method"), target = call.getString("target");
     Map<String, String> headers = headers(call.getObject("headers", new JSObject()));
     Object body = call.getData().opt("body");
+    String name = call.getString("id");
     if (environment == null) { call.reject(UNKNOWN_ENVIRONMENT, UNKNOWN_ENVIRONMENT); return; }
-    if (method == null || target == null || headers == null || body != null && body != JSONObject.NULL && !(body instanceof String)) {
+    if (method == null || target == null || headers == null || body != null && body != JSONObject.NULL && !(body instanceof String)
+        || name != null && !name.matches(CALL_NAME)) {
       call.reject(INVALID_REQUEST, INVALID_REQUEST);
       return;
     }
     byte[] bytes = body instanceof String text ? text.getBytes(StandardCharsets.UTF_8) : null;
     run(call, () -> {
-      switch (requests.send(environment.apiOrigin, custody(getContext(), environment), method.toUpperCase(Locale.ROOT), target, headers, bytes)) {
+      switch (requests.send(name, environment.apiOrigin, custody(getContext(), environment), method.toUpperCase(Locale.ROOT), target, headers, bytes)) {
         case CloudRequests.Answered answered -> call.resolve(answered(answered));
         case CloudRequests.Failed failed -> call.reject(wire(failed.failure()), wire(failed.failure()));
       }
     });
+  }
+
+  @PluginMethod public void cancel(PluginCall call) {
+    String name = call.getString("id");
+    call.resolve(new JSObject().put("cancelled", requests != null && name != null && requests.cancel(name)));
   }
 
   @PluginMethod public void readGrant(PluginCall call) {

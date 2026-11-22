@@ -91,7 +91,8 @@ pure def sometimesRowsShown(s: ContactsState): bool = s.rowsShown
 ### A grant change retires every read and hides what the withdrawn grant allowed
 
 Contacts rows and a caller's cached name both disappear when `READ_CONTACTS`
-is withdrawn; the cached name stays cached for a later refresh.
+is withdrawn; the call screen's next refresh without the grant also forgets
+the cached name and photo and cancels every caller read still running.
 
 ```quint
 pure def grantsChanged(s: ContactsState, readGranted: bool, writeGranted: bool): ContactsState = {
@@ -214,12 +215,17 @@ pure def sometimesUncertainWriteSettledByAnExplicitRead(s: ContactsState): bool 
 
 ### A caller's name is shown only while the call service, the call and the read grant are all current
 
-When Telecom names nobody (a name equal to the number names nobody), the
-call service looks the number up in Contacts off the main thread, once per
-call and number. The answer is cached and shown only if the service is still
-live, the call is still registered and `READ_CONTACTS` is still held; a later
-refresh from the cache checks the grant again. Removing the call or
-destroying the service drops the cached name.
+The call service looks the number up in Contacts off the main thread, once
+per call and number, for the contact's name and its Contacts thumbnail; a
+name Telecom gives is shown over the contact's (a name equal to the number
+names nobody), and a caller with neither a name nor a photo shows a person
+icon. The answer is cached and shown only if the service is still live, the
+call screen is still started, the call is still the same registered call
+with the same number and `READ_CONTACTS` is still held; a later refresh from
+the cache checks the grant again, and one without it forgets the cache.
+Stopping the call screen cancels its running reads. Removing the call or
+destroying the service drops the cached name and photo. A host may leave Hold
+out of its call controls without changing what Telecom allows.
 
 ```quint
 pure def canStartCallService(s: ContactsState): bool = not(s.callServiceLive)
@@ -234,8 +240,10 @@ pure def canCallerNameFound(s: ContactsState, callId: int): bool = s.callService
 pure def callerNameFound(s: ContactsState, callId: int): ContactsState = { ...s, call: InCall({ callId: callId, nameCached: true, nameShown: true }) }
 pure def refreshCaller(s: ContactsState): ContactsState = {
   val slot = s.call
-  { ...s, call: match slot { | InCall(c) => InCall({ callId: c.callId, nameCached: c.nameCached, nameShown: c.nameCached and s.grants.readGranted }) | NoCall => NoCall } }
+  { ...s, call: match slot { | InCall(c) => InCall({ callId: c.callId, nameCached: c.nameCached and s.grants.readGranted, nameShown: c.nameCached and s.grants.readGranted }) | NoCall => NoCall } }
 }
+pure def stepARefreshWithoutTheGrantForgetsTheCaller(before: ContactsState, via: str, after: ContactsState): bool =
+  (via == "refreshCaller" and not(before.grants.readGranted)) implies not(nameCachedIn(after.call))
 pure val callIdValues = Set(1, 2)
 pure def nameCachedIn(slot: CallerSlot): bool = match slot { | InCall(c) => c.nameCached | NoCall => false }
 pure def nameShownIn(slot: CallerSlot): bool = match slot { | InCall(c) => c.nameShown | NoCall => false }

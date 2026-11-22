@@ -85,3 +85,35 @@ pure def lawProtectedReplyIsRedacted(s: Secrets, placeholder: str): bool = (alwa
 pure def lawOverlappingProtectedReplyIsRedacted(s: Secrets, placeholder: str): bool = alwaysSecretMapsAreBijective(s) and s.entries.some(entry => entry.placeholder == placeholder and s.protectedTexts.some(protectedText => overlaps(entry.characters, protectedText.characters))) implies declassifyReplyToken(s, placeholder) == "[redacted credential]"
 pure def sometimesSecretLearned(s: Secrets): bool = s.entries.length() > 0 and s.protectedValues.size() > 0
 ```
+
+### A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote
+
+When the host turns on `ELIZA_SECRET_SWAP_STABLE_REFERENCES`, the runtime
+holds one random key in memory for its life, never stored or logged, and
+each conversation's sessions derive from that key and the conversation's
+room both the nonce and each value's number, from a keyed SHA-256 of the
+value rather than the order a session met it, so an earlier turn's text
+stays byte-identical and a provider can reuse the prompt prefix. The
+conversation's pseudonym salt is a digest under its own label. A call
+outside a conversation, or with the setting off, draws a fresh nonce and
+numbers values in order. Because a reference now outlives its session,
+restoration and the unresolved check accept only references the current
+session wrote into text: one that arrives in input the session did not
+write stays text. With stable references, a request with a user message
+carries the same contact-reference guidance in its system prompt every
+time and lists the kinds of the contact references it shows at the end of
+its latest user message.
+
+```quint
+type ReferenceSource = FreshNonce | ConversationKey({ derived: str })
+pure def referenceNonce(source: ReferenceSource, fresh: str): str = match source { | ConversationKey(k) => k.derived | FreshNonce => fresh }
+pure def referenceNumber(source: ReferenceSource, order: int, digested: int): int = match source { | ConversationKey(k) => digested | FreshNonce => order }
+pure def referenceRestorable(written: Set[str], reference: str): bool = written.contains(reference)
+pure val sourceValues = Set(FreshNonce, ConversationKey({ derived: "k1" }))
+pure def lawAStableNumberIgnoresTheOrderValuesArrive(derived: str, earlier: int, later: int, digested: int): bool =
+  referenceNumber(ConversationKey({ derived: derived }), earlier, digested) == referenceNumber(ConversationKey({ derived: derived }), later, digested)
+pure def lawAStableNonceIsTheSameInEverySession(derived: str, one: str, other: str): bool =
+  referenceNonce(ConversationKey({ derived: derived }), one) == referenceNonce(ConversationKey({ derived: derived }), other)
+pure def lawOnlyAWrittenReferenceRestores(written: Set[str], reference: str): bool =
+  referenceRestorable(written, reference) implies written.contains(reference)
+```

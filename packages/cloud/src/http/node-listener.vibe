@@ -1,0 +1,14 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+module node {
+  import { createServer } from "node:http"
+  import { NodeHttpServer } from "@effect/platform-node"
+
+  /** @throws {never} */
+  export function listening(port: number, host: string) {
+    return NodeHttpServer.layer(() => createServer(), { port, host, gracefulShutdownTimeout: 5_000 })
+  }
+}
+import { listening } from node
+
+/** The Node HTTP server `elizaos-cloud serve` listens with; a Worker answers through its fetch handler instead. */
+export { listening }

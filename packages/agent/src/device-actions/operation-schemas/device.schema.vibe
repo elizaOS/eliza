@@ -1,15 +1,7 @@
-// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"
-module node {
-  import { createHash } from "node:crypto"
-
-  export function revisionOf(fields: readonly unknown[]): string {
-    return createHash("sha256").update(JSON.stringify(fields)).digest("hex")
-  }
-}
-
-import type { OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
+// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"
+import { libraryIdAdmitted, photoTargets, type OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import { supportedViews } from "../capabilities.vibe"
-import { revisionOf } from node
+import { digestOf as revisionOf } from "./digest.vibe"
 import type { Evidence, FamilySchemas, OperationSchema, WireOperation } from "./family.vibe"
 import { civilDay, day, isoInstant, knownZone, realDate, utf8Bytes, zonedWall } from "./personal.schema.vibe"
 import { telephonyOperations } from "./telephony.vibe"
@@ -29,13 +21,15 @@ const CameraCapture = Schema.Struct({ type: Schema.Literal("camera_capture_photo
 export const CameraReceipt = Schema.Struct({
   version: Schema.Literal(1), kind: Schema.Literal("camera_capture_photo"), operationId,
   mediaId: Schema.String.check(Schema.isPattern(/^[1-9][0-9]{0,24}$/)),
+  libraryId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^(?:lib:i:[1-9][0-9]{0,18}:[0-9]{1,19}|m:(?!(?:external|internal):)[A-Za-z0-9_-]{1,80}:i:[1-9][0-9]{0,18})$/))),
   width: bounded(1, 65_536), height: bounded(1, 65_536), mime: Schema.Literal("image/jpeg")
 })
 const capture = {
   operation: CameraCapture,
   result: CameraReceipt,
   classify: () => ({ opType: "CameraCapturePhoto", versionTwo: false }),
-  evidence: (result, _operation, receipt) => receipt.operationId === result.operationId ? applied : undefined
+  evidence: (result, _operation, receipt) =>
+    receipt.operationId === result.operationId && libraryIdAdmitted(receipt.versionTwo, result.libraryId !== undefined) ? applied : undefined
 } satisfies OperationSchema<typeof CameraCapture.Type, typeof CameraReceipt.Type>
 
 function fileName(value: string): boolean {
@@ -303,8 +297,18 @@ const AlbumName = Schema.String.check(Schema.makeFilter(noControl)).pipe(Schema.
   Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
   SchemaTransformation.transform({ decode: (value) => value.trim(), encode: (value) => value })
 ))
-const PhotosAlbumCreate = Schema.Struct({ type: Schema.Literal("photos_album_create"), name: AlbumName, ids: MediaIds(200) })
-const PhotosShare = Schema.Struct({ type: Schema.Literal("photos_share"), ids: MediaIds(100) })
+const OpenItem = { ids: Schema.optionalKey(Schema.Array(MediaId).check(Schema.isMaxLength(0))), selected: Schema.Literal(true) }
+const PhotosAlbumCreate = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("photos_album_create"), name: AlbumName, ids: MediaIds(200) }),
+  Schema.Struct({ type: Schema.Literal("photos_album_create"), name: AlbumName, ...OpenItem }),
+])
+const PhotosShare = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("photos_share"), ids: MediaIds(100) }),
+  Schema.Struct({ type: Schema.Literal("photos_share"), ...OpenItem }),
+])
+const openItem = (operation: { readonly selected?: true }) => operation.selected === true
+const targetsOf = (operation: { readonly ids?: readonly string[]; readonly selected?: true }) =>
+  photoTargets(openItem(operation), operation.ids?.length ?? 0)
 
 const PhotosFilterResult = Schema.Struct({ kind: Schema.Literal("photos_filter"), shown: MediaCount, more: Schema.Boolean })
 const PhotosOpenResult = Schema.Struct({ kind: Schema.Literal("photos_open"), opened: Schema.Boolean })
@@ -313,9 +317,10 @@ const photosReviewResult = <K extends string>(kind: K, maximum: number) => Schem
 })
 
 function photoOperation<Op extends WireOperation, Result>(
-  operation: Schema.Decoder<Op>, result: Schema.Decoder<Result>, opType: OperationType, matches: (result: Result, operation: Op) => boolean
+  operation: Schema.Decoder<Op>, result: Schema.Decoder<Result>, opType: OperationType, matches: (result: Result, operation: Op) => boolean,
+  versionTwo: (operation: Op) => boolean = () => false,
 ): OperationSchema<Op, Result> {
-  return { operation, result, classify: () => ({ opType, versionTwo: false }), evidence: (value, proposed) => matches(value, proposed) ? applied : undefined }
+  return { operation, result, classify: (op) => ({ opType, versionTwo: versionTwo(op) }), evidence: (value, proposed) => matches(value, proposed) ? applied : undefined }
 }
 
 const photoOperations = {
@@ -329,9 +334,9 @@ const photoOperations = {
   photos_filter: photoOperation(PhotosFilter, PhotosFilterResult, "PhotosFilter", () => true),
   photos_open: photoOperation(PhotosOpen, PhotosOpenResult, "PhotosOpen", (result) => result.opened),
   photos_album_create: photoOperation(PhotosAlbumCreate, photosReviewResult("photos_album_create", 200), "PhotosAlbumCreate", (result, operation) =>
-    result.count + result.missing === operation.ids.length),
+    result.count + result.missing === targetsOf(operation), openItem),
   photos_share: photoOperation(PhotosShare, photosReviewResult("photos_share", 100), "PhotosShare", (result, operation) =>
-    result.count + result.missing === operation.ids.length)
+    result.count + result.missing === targetsOf(operation), openItem)
 } satisfies FamilySchemas
 
 const viewAndFileOperations = {

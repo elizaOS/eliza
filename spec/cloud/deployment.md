@@ -305,3 +305,92 @@ pure def lawAnAcceptedProfileServesCompleteDocuments(p: Profile, environment: En
   profileAccepted(p) implies (d.name != "" and documentComplete(d.terms) and documentComplete(d.privacy))
 }
 ```
+
+## Story: Serve the deployment from a Worker
+
+> As the operator of a product deployment on Cloudflare Workers, I want the
+> Worker to answer the same routes, from the same handlers and the same
+> reviewed profile, as `elizaos-cloud serve` does, so that my app signs in,
+> renews its key, subscribes, speaks, maps and reads Google the same way on
+> either host.
+
+The Worker (`@elizaos/cloud/worker`) reads its profile from the
+`CLOUD_PROFILE` binding (the profile's JSON) and its environment from
+`CLOUD_ENVIRONMENT`, its secrets from the Worker's other bindings, and its
+database from Hyperdrive. Each request gets one connection to the database,
+held until the answer's body ends. It never migrates and never seeds:
+`elizaos-cloud migrate` and `elizaos-cloud client apply` (`operator`) prepare
+the database first. Its bindings `PUBLIC_API_ORIGIN`, `WEB_ORIGIN` and
+`CLOUD_IDENTITY_DIGEST`, which its Worker-only routes read, repeat the profile's API origin, web origin and database
+digest, and its `NATIVE_CLIENT_REGISTRY` binding, when set, repeats the
+database's registrations. Its return pages are the package's built pages
+(`dist/pages`, with their compiled stylesheet) bound as the Worker's static
+assets `ASSETS`, with the Worker run first so no template is served bare;
+`serve` reads the same files from the package.
+
+### A Worker serves only after the server's own start checks pass and its bindings agree with its profile
+
+The first request of an isolate runs the start checks of `serve` for a
+Postgres store without a seed: the profile, the database identity, loopback
+delivery, the secrets and, with billing on, the payment catalog. Until they
+pass, and while a binding disagrees with the profile, every request is
+answered `503 service_unavailable`, retryable.
+
+```quint
+type WorkerStart = WorkerServes | WorkerBindingsDisagree | WorkerRefused({ problem: StartProblem })
+pure def workerStart(p: Profile, environment: Environment, read: IdentityRead, bindingsAgree: bool, catalog: CatalogObservation): WorkerStart = {
+  val problem = startProblem(p, environment, PostgresStore, read, false, catalog)
+  if (not(bindingsAgree)) WorkerBindingsDisagree
+  else if (problem == NoProblem) WorkerServes
+  else WorkerRefused({ problem: problem })
+}
+pure val bindingsAgreeValues = Set(true, false)
+pure def lawAWorkerServesOnlyWhereTheServerWouldStart(p: Profile, environment: Environment, read: IdentityRead, bindingsAgree: bool, catalog: CatalogObservation): bool =
+  workerStart(p, environment, read, bindingsAgree, catalog) == WorkerServes implies (bindingsAgree and canServe(p, environment, PostgresStore, read, false, catalog))
+pure def lawAWorkerNeverOpensTheOtherEnvironmentsDatabase(p: Profile, environment: Environment, read: IdentityRead, bindingsAgree: bool, catalog: CatalogObservation): bool =
+  workerStart(p, environment, read, bindingsAgree, catalog) == WorkerServes implies read != ReadDigest({ digest: rowOf(p, otherEnvironment(environment)).databaseDigest })
+```
+
+### A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve
+
+The table is every route `serve` mounts. The relay socket
+(`services/speechRelay`) runs the same route on the server half of a Worker
+socket pair, answered `101` once the route upgrades and kept running after
+that answer with its own database connection; the provider's realtime sockets
+are dialed by fetch upgrade, the Worker's way to send handshake headers. The
+Worker-only routes are the device enrollment
+under `/api/auth/` with the native Google challenge, password backup,
+bounded decisions, the device's calendar reminders and selected Google
+attachments, a product's own `/api/product/` routes and `/health`. A path in
+neither is answered by the table's return page fallback, or `404 not_found`.
+CORS and refusals are the table's for its routes.
+
+```quint
+type WorkerAnswer = FromServerTable | FromWorkerOnly | FromServerFallback
+pure def workerAnswer(inTable: bool, workerOnly: bool): WorkerAnswer =
+  if (inTable) FromServerTable else if (workerOnly) FromWorkerOnly else FromServerFallback
+pure val inTableValues = Set(true, false)
+pure val workerOnlyValues = Set(true, false)
+pure def lawATableRouteIsNeverShadowed(inTable: bool, workerOnly: bool): bool =
+  inTable implies workerAnswer(inTable, workerOnly) == FromServerTable
+pure def lawAWorkerOnlyRouteNeverReplacesTheTable(inTable: bool, workerOnly: bool): bool =
+  workerAnswer(inTable, workerOnly) == FromWorkerOnly implies (workerOnly and not(inTable))
+```
+
+### A scheduled tick runs each sweep whose period ends within the tick
+
+The Worker's cron fires once a minute, on the minute. Each tick runs, one at
+a time, every sweep of the served table whose period divides a time within
+the minute before the tick, so a sweep of a whole number of minutes runs once
+per period, and one of a minute or less at every tick.
+
+```quint
+pure val sweepTick: Millis = millisPerMinute
+pure def sweepDue(scheduledAt: Millis, everyMs: Millis): bool = everyMs > 0 and scheduledAt % everyMs < sweepTick
+pure val scheduledAtValues = Set(0, 60000, 300000, 3540000, 3600000)
+pure val everyMsValues = Set(30000, 60000, 300000, 3600000)
+pure def lawAWholeMinuteSweepRunsAtItsPeriodOnly(scheduledAt: Millis, everyMs: Millis): bool =
+  (everyMs >= sweepTick and everyMs % sweepTick == 0 and scheduledAt % sweepTick == 0) implies (sweepDue(scheduledAt, everyMs) iff scheduledAt % everyMs == 0)
+pure def lawAShortSweepRunsAtEveryTick(scheduledAt: Millis, everyMs: Millis): bool =
+  (everyMs > 0 and everyMs <= sweepTick) implies sweepDue(scheduledAt, everyMs)
+```

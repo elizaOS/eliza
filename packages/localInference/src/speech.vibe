@@ -1,0 +1,24 @@
+// spec/localInference/speechRoute.md, "The owner's speech key speaks first, then a usable hosted account, then this device"; spec/localInference/speechRoute.md, "Once audio started, or when the person cancels, the turn ends on its route and holds nothing"
+import { EngineUnavailable, InferenceEngine } from "./engine.vibe"
+import { decodeWav, encodeWav } from "./wav.ts"
+
+/** Speech input the device's engines cannot take. */
+export error SpeechInputRefused { reason: "empty-text" | "not-wav" | "no-audio" }
+
+/** Synthesizes text on this device as a 16-bit WAV file. */
+export effect function speakLocally(text: string) {
+  const engine = try InferenceEngine
+  if (text.trim() === "") throw new SpeechInputRefused({ reason: "empty-text" })
+  if (!(try engine.speechReady()).synthesis) throw new EngineUnavailable({ capability: "synthesis", reason: "on-device speech synthesis is not ready" })
+  return encodeWav(try engine.synthesize(text))
+}
+
+/** Transcribes a mono 16-bit WAV recording on this device. */
+export effect function transcribeLocally(audio: Uint8Array) {
+  const engine = try InferenceEngine
+  const pcm = decodeWav(audio)
+  if (pcm === undefined) throw new SpeechInputRefused({ reason: "not-wav" })
+  if (pcm.samples.length === 0) throw new SpeechInputRefused({ reason: "no-audio" })
+  if (!(try engine.speechReady()).transcription) throw new EngineUnavailable({ capability: "transcription", reason: "on-device transcription is not ready" })
+  return (try engine.transcribe(pcm)).trim()
+}

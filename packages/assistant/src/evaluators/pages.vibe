@@ -1,0 +1,38 @@
+// spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/evaluatorEvidencePages.md, "The preceding page includes only whole records before its cursor"; spec/assistant/evaluatorEvidencePages.md, "Restoration checks visibility and repeats before reading another page"
+import type { Memory } from "@elizaos/core"
+import { previousPage, restorationDecision, type EvidencePage, type EvidencePageStatus, type EvidenceRow } from "../../gen/assistant__evaluatorEvidencePages.effect.vibe"
+
+export type { EvidencePage, EvidencePageStatus, EvidenceRow }
+
+const transportFields = new Set(["recovery", "recoveryToken", "transport", "clientMessageId"])
+
+function modelFacing(message: Memory): string {
+  const content = Object.fromEntries(Object.entries(message.content).filter(([name]) => !transportFields.has(name)))
+  return JSON.stringify({ id: message.id, entityId: message.entityId, createdAt: message.createdAt, content })
+}
+
+/** The room's messages in authoritative order, each charged by the UTF-8 bytes of its model-facing record. */
+export function evidenceRows(messages: readonly Memory[]): EvidenceRow[] {
+  return [...messages].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)).map((message) => {
+    const body = modelFacing(message)
+    return { identity: message.id ?? "", body, bytes: new TextEncoder().encode(body).length }
+  })
+}
+
+/** What an evaluator's request for earlier context came to: the restored whole records, or why none were. */
+export interface Restoration {
+  readonly status: EvidencePageStatus
+  readonly records: readonly Memory[]
+  readonly hasEarlier: boolean
+}
+
+/** Restores the whole records before a visible cursor within the byte budget, refusing a missing, repeated or exhausted cursor. */
+export function restoreEarlier(messages: readonly Memory[], cursor: string, visible: readonly string[], requested: readonly string[], referenceBytes: number, maxBytes: number): Restoration {
+  const rows = evidenceRows(messages)
+  const page: EvidencePage = previousPage(rows, cursor, maxBytes)
+  const restoredBytes = page.rows.reduce((sum, row) => sum + row.bytes, 0)
+  const status = restorationDecision(cursor, [...visible], [...requested], page, referenceBytes + restoredBytes, maxBytes)
+  if (status !== "PageAccepted") return { status, records: [], hasEarlier: false }
+  const kept = new Set(page.rows.map((row) => row.identity))
+  return { status, records: messages.filter((message) => kept.has(message.id ?? "")), hasEarlier: page.hasEarlier }
+}

@@ -1,4 +1,4 @@
-// spec/agent/voice/session.md, "A barge-in is confirmed only by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"; spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"
+// spec/agent/voice/session.md, "A barge-in is confirmed only by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"; spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/session.md, "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
 import { assert, it } from "@effect/vitest"
 import { createLiveVoiceSession, parseVoiceTranscriptEnvelope } from "../src/voice/live-session.vibe"
 import type { CaptureEvents, HeardBody, SpeakerEvents, VoiceSessionPorts, VoiceTurn } from "../src/voice/ports.vibe"
@@ -263,5 +263,40 @@ it.effect('A barge-in is confirmed only by an accepted transcript or a 700 ms ho
   try Effect.try(() => {
     assert.deepStrictEqual([h.aborted, pending[0]?.signal.aborted, h.live.state.lastEnd, h.spoken.length],
       [["room-1"], true, "TurnAborted", 0])
+  })
+})
+
+const profileRule = "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
+
+it.effect(`An open-mic profile submits without gaps, confirms a barge-in after its 400 ms hold, sends no heard report on Stop, and an out-of-bounds profile refuses Start (spec/agent/voice/session.md, "${profileRule}")`, () => effect {
+  const refused = harness()
+  refused.live.start("ConversationMode", "FullDuplex", { shortGapMs: 500, longGapMs: 100, bargeInHoldMs: 700, stopReport: "StopReportsHeard" })
+  const openMic = { shortGapMs: 0, longGapMs: 0, bargeInHoldMs: 400, stopReport: "StopReportsNone" } as const
+  const h = harness()
+  h.live.start("ConversationMode", "FullDuplex", openMic)
+  h.captures[0]?.opened({ echoCancelled: true })
+  try promise(() => h.say("turn-1", "What is on my calendar today?"))
+  try promise(() => h.advance(1))
+  const submitted = { sent: h.sent.length, cause: h.live.state.cause, turn: h.live.state.turn }
+  h.emit({ turnId: "turn-2", phase: "speech-start" })
+  try promise(() => h.advance(399))
+  const beforeHold = h.counts.stops
+  try promise(() => h.advance(1))
+  const afterHold = { stops: h.counts.stops, lastEnd: h.live.state.lastEnd }
+  h.emit({ turnId: "turn-2", phase: "speech-end" })
+  h.emit({ turnId: "turn-2", phase: "final", text: "Never mind." })
+  try promise(() => h.advance(1))
+  const heardBeforeStop = h.heard.length
+  const playingAgain = h.live.state.turn
+  h.live.stop()
+  try promise(() => h.advance(2000))
+  try Effect.try(() => {
+    assert.deepStrictEqual({ captures: refused.captures.length, life: refused.live.state.life }, { captures: 0, life: "Idle" })
+    assert.deepStrictEqual(submitted, { sent: 1, cause: "LongGapSubmit", turn: "Playing" })
+    assert.strictEqual(beforeHold, 0)
+    assert.deepStrictEqual(afterHold, { stops: 1, lastEnd: "ReplyCut" })
+    assert.strictEqual(playingAgain, "Playing")
+    assert.deepStrictEqual({ heard: h.heard.length, reserved: h.live.state.receipts.filter((receipt) => receipt.reply === h.live.state.reply).length }, { heard: heardBeforeStop, reserved: 0 })
+    assert.deepStrictEqual(h.live.state.profile, openMic)
   })
 })

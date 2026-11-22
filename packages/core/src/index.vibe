@@ -997,7 +997,10 @@ export {
   parseSecretSwapExemptValues,
   SECRET_SWAP_ENABLED_SETTING,
   SECRET_SWAP_EXEMPT_VALUES_SETTING,
+  SECRET_SWAP_STABLE_REFERENCES_SETTING,
   SECRET_SWAP_UNBOUNDED,
+  createSecretSwapStableKey,
+  pseudonymSaltFromStableKey,
   type SecretSwapEntry,
   SecretSwapSession,
   type SecretSwapSessionOptions,
@@ -1272,3 +1275,16 @@ export {
   resolveStateDir,
   resolveUserPath,
 } from "./utils/state-dir.vibe"
+export {
+  HISTORY_CONTINUITY_SOURCES,
+  HISTORY_WINDOW_KEEP_SOURCES,
+  HISTORY_WINDOW_MAX_SOURCES,
+  HISTORY_WINDOW_STANDING_SOURCES,
+  historyWindowNotice,
+  searchHistory,
+  windowHistory,
+  type HistoryReview,
+  type HistorySearch,
+  type HistorySource,
+  type HistoryWindow,
+} from "./runtime/history-window.vibe"

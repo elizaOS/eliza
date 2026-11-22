@@ -28,6 +28,18 @@
       "import": "./dist/src/client/index.js",
       "default": "./dist/src/client/index.js"
     },
+    "./operations": {
+      "eliza-source": "./src/device-actions/operations.vibe",
+      "types": "./dist/src/device-actions/operations.d.ts",
+      "import": "./dist/src/device-actions/operations.js",
+      "default": "./dist/src/device-actions/operations.js"
+    },
+    "./device-actions": {
+      "eliza-source": "./src/device-actions/operations.vibe",
+      "types": "./dist/src/device-actions/operations.d.ts",
+      "import": "./dist/src/device-actions/operations.js",
+      "default": "./dist/src/device-actions/operations.js"
+    },
     "./launch": {
       "eliza-source": "./src/host/launch.schema.vibe",
       "types": "./dist/src/host/launch.schema.d.ts",
@@ -57,6 +69,12 @@
       "types": "./dist/src/voice/index.d.ts",
       "import": "./dist/src/voice/index.js",
       "default": "./dist/src/voice/index.js"
+    },
+    "./cli": {
+      "eliza-source": "./src/cli.vibe",
+      "types": "./dist/src/cli.d.ts",
+      "import": "./dist/src/cli.js",
+      "default": "./dist/src/cli.js"
     }
   },
   "scripts": {

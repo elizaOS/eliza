@@ -1,0 +1,49 @@
+// spec/inbox/drafts.md, "Story: Open a provider draft without losing my saved draft"; spec/inbox/drafts.md, "Opening another provider draft first shelves the saved draft"
+import { openedDraft, openWarns, type OpenedDraft } from "../../gen/inbox__drafts.effect.vibe"
+import type { MailFailure } from "./failures.vibe"
+import type { GmailDraftContent } from "./types.vibe"
+
+/** The saved local draft of the current owner and the provider draft it was opened from, if any. */
+export interface SavedLocalDraft {
+  readonly draftId: string
+  readonly provider?: { readonly draftId: string; readonly providerDigest: string }
+}
+
+/** A failure of the host's draft slot or shelf storage. */
+export error DraftSlotFailed { cause: unknown }
+
+/** The composer's saved slot and shelf, and whether its owner is still current. */
+export interface ProviderDraftPorts<S extends SavedLocalDraft> {
+  readonly current: () => boolean
+  saved(): S | null!DraftSlotFailed
+  shelve(saved: S): boolean!DraftSlotFailed
+  clearSlot(saved: S): boolean!DraftSlotFailed
+  mountSaved(saved: S): void!!
+  mountProvider(content: GmailDraftContent): void!!
+}
+
+/** The provider draft read the composer may open. */
+export interface ProviderDraftReader {
+  gmailDraftContent(grantId: string, draftId: string): GmailDraftContent!MailFailure
+}
+
+/** What opening a provider draft did, and whether the saved copy opened is the earlier one. */
+export interface ProviderDraftOpening {
+  readonly opened: OpenedDraft
+  readonly warns: boolean
+}
+
+/** Opens a provider draft: the same reference opens the saved copy, and another first shelves the saved draft and clears its slot, so its bytes are never lost. */
+export effect function openProviderDraft<S extends SavedLocalDraft>(reader: ProviderDraftReader, grantId: string, draftId: string, ports: ProviderDraftPorts<S>): ProviderDraftOpening!(MailFailure | DraftSlotFailed) {
+  const content = try reader.gmailDraftContent(grantId, draftId)
+  const saved = try ports.saved()
+  const sameReference = saved !== null && saved.provider?.draftId === draftId
+  const earlier = sameReference && saved.provider?.providerDigest !== content.providerDigest
+  const shelved = saved === null || sameReference ? true : try ports.shelve(saved)
+  const slotCleared = saved === null || sameReference ? true : shelved && (try ports.clearSlot(saved))
+  const facts = { current: ports.current(), sameReference, earlier, shelved: !sameReference && shelved, slotCleared: !sameReference && slotCleared }
+  const opened = openedDraft(facts)
+  if (opened === "SavedDraftOpened" && saved !== null) try ports.mountSaved(saved)
+  if (opened === "ProviderDraftOpened") try ports.mountProvider(content)
+  return { opened, warns: openWarns(facts) }
+}

@@ -1,11 +1,11 @@
-// spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write"; spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"; spec/core/adapterOwnership.md, "Registration captures object references and rollback preserves close ordering"; spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"
+// spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write"; spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"; spec/agent/storage/database.md, "A conditional cache write answers false only for a value it read, and a failed write is never retried"; spec/core/adapterOwnership.md, "Registration captures object references and rollback preserves close ordering"; spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/agent/storage/database.md, "A write whose statement failed fails as a storage fault naming its table, and text the store cannot keep is refused before anything runs"
 module node {
   import { randomUUID } from "node:crypto"
   import { readdir } from "node:fs/promises"
   import { PGlite, type Transaction } from "@electric-sql/pglite"
   import { vector } from "@electric-sql/pglite/vector"
   import {
-    DatabaseAdapter, filterMemoryReadByAccessContext, rerankMemories,
+    DatabaseAdapter, ElizaError, encodeCacheCasValue, filterMemoryReadByAccessContext, logger, rerankMemories,
     type Agent, type Entity, type IDatabaseAdapter, type Log, type Memory, type MemoryEmbeddingUpdate, type Relationship, type Room, type Task,
     type UUID, type World,
   } from "@elizaos/core"
@@ -22,6 +22,21 @@ module node {
     embeddingDimensions: number
     snapshot?: DeviceStorageSnapshot
     migrations?: readonly Migration[]
+  }
+
+  function refuseUnkeepableText(serialized: string): void {
+    for (let index = 0; index < serialized.length; index += 1) {
+      if (serialized.charCodeAt(index) !== 0x5c) continue
+      if (serialized.charCodeAt(index + 1) !== 0x75) {
+        index += 1
+        continue
+      }
+      const hex = serialized.slice(index + 2, index + 6)
+      if (hex === "0000") throw new ElizaError("The value holds NUL, which the device store cannot keep; remove it before retrying the write", { code: "SQL_JSON_UNSUPPORTED_NUL", severity: "fatal" })
+      const unit = Number.parseInt(hex, 16)
+      if (unit >= 0xd800 && unit <= 0xdfff) throw new ElizaError("The value holds a lone UTF-16 surrogate, which the device store cannot keep; repair the text before retrying the write", { code: "SQL_JSON_UNSUPPORTED_SURROGATE", severity: "fatal" })
+      index += 5
+    }
   }
 
   type DB = PGlite | Transaction
@@ -95,10 +110,7 @@ module node {
     close(): Promise<void> {
       if (!(this.db instanceof PGlite)) return Promise.reject(new Error("Cannot close a transaction as a store"))
       const db = this.db
-      this.closing ??= Promise.allSettled(this.running).then(async () => {
-        await db.close()
-        await this.release?.()
-      })
+      this.closing ??= Promise.allSettled(this.running).then(() => db.close()).finally(async () => { await this.release?.() })
       return this.closing
     }
 
@@ -147,7 +159,11 @@ module node {
            FROM jsonb_to_recordset($2::jsonb) AS item(key text, data jsonb, "createdAt" bigint, "tableName" text)
            ON CONFLICT (collection,key) ${mode === "create" ? "DO NOTHING" : "DO UPDATE SET data=EXCLUDED.data, table_name=EXCLUDED.table_name"}
            RETURNING key`
-      const result = await this.dispatch(() => this.db.query<{ key: UUID }>(sql, [collection, JSON.stringify(rows)]))
+      const serialized = JSON.stringify(rows)
+      refuseUnkeepableText(serialized)
+      const result = await this.dispatch(() => this.db.query<{ key: UUID }>(sql, [collection, serialized]).catch((cause: unknown) => {
+        throw new ElizaError(`The ${collection} write failed`, { code: "DB_UPSERT_FAILED", cause, context: { table: collection, agentId: this.agentId, mode, rows: rows.length } })
+      }))
       return result.rows.map((row) => row.key)
     }
 
@@ -457,6 +473,27 @@ module node {
 
     deleteCaches(keys: string[]): Promise<boolean> { return this.remove("cache", keys) }
 
+    async compareAndSetCache<A>(key: string, expected: unknown, replacement: A): Promise<boolean> {
+      const value = encodeCacheCasValue(replacement)
+      const seen = expected === undefined ? undefined : encodeCacheCasValue(expected)
+      refuseUnkeepableText(value)
+      const result = await this.dispatch(() => (seen === undefined
+        ? this.db.query<{ key: string }>(
+          `INSERT INTO device_records (collection,key,data,created_at,table_name)
+           VALUES ('cache', $1, jsonb_build_object('value', $2::jsonb), $3, NULL)
+           ON CONFLICT (collection,key) DO NOTHING RETURNING key`,
+          [key, value, Date.now()],
+        )
+        : this.db.query<{ key: string }>(
+          `UPDATE device_records SET data = jsonb_build_object('value', $2::jsonb)
+           WHERE collection = 'cache' AND key = $1 AND data->'value' = $3::jsonb RETURNING key`,
+          [key, value, seen],
+        )).catch((cause: unknown) => {
+        throw new ElizaError("Cache compare-and-set failed", { code: "CACHE_CAS_FAILED", cause, context: { key } })
+      }))
+      return result.rows.length === 1
+    }
+
     async publishMessageContentSegments(input: Parameters<NonNullable<IDatabaseAdapter["publishMessageContentSegments"]>>[0]): ReturnType<NonNullable<IDatabaseAdapter["publishMessageContentSegments"]>> {
       const db = this.db
       if (db instanceof PGlite) {
@@ -620,7 +657,8 @@ module node {
       if (options.embeddingDimensions > 0) await sizeVectors(db, options.embeddingDimensions)
       return { agentId: state.agentId, adapter: new DeviceAdapter(db, state.agentId, options.embeddingDimensions, state.release) }
     } catch (error) {
-      await db?.close()
+      await db?.close().catch((cause: unknown) =>
+        logger.warn({ src: "agent:storage", error: String(cause) }, "The refused device store did not close"))
       await state.release?.()
       throw error
     }

@@ -1,21 +1,19 @@
 // spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Google sign-in for backup returns to the protected approval page"
 import type { Client } from "pg"
 import { browserGoogleReturn, mayIssueAccountBoundDeviceGrant, type BrowserGooglePurpose } from "../gen/cloud.effect.vibe"
-import type { JWTVerifyGetKey } from "jose"
 import { Digest, Mac, SecureRandom } from "effect/crypto"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/http"
 
 import {
   accessCookie, refreshCookie, accessDigest, deviceDigest, digestCredential, readCookie, newSecret,
-  authQuery as query, accountTransaction, identityTx, browserAccount, signInWithProof, openSignInFamily, renewBrowserSession, logoutBrowserSession,
+  authQuery as query, accountTransaction, identityTx, browserAccount, signInWithProof, renewBrowserSession, logoutBrowserSession,
   rateLimit, RateLimited, StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
 } from "./identity-store.vibe"
 
 import { endKey, inspectKey } from "./native-clients/grants.vibe"
 
-import { browserNativeRegistration, mobileRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
-import { googleServerClientId, verifyNativeGoogle } from "./native-google.vibe"
-import { connectSignedInGoogle, nativeGoogleScopes, type GoogleEnv } from "./google.vibe"
+import { browserNativeRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
+import type { GoogleEnv } from "./google.vibe"
 import { ownsPasswordBackupPath, passwordBackupApprovalPath, passwordBackupRequest } from "./password-backup.vibe"
 
 export type IdentityEnv = NativeRegistryEnv & GoogleEnv & {
@@ -45,8 +43,6 @@ schema SmsInput { phone: string; code?: string }
 schema GoogleToken { access_token: string }
 schema GoogleProfile { sub: string; email?: string; email_verified?: boolean }
 schema DeviceAuthorization { challenge: string; state: string; expectedAccountId?: string }
-schema NativeGoogleChallenge { clientId: string; environment: string; redirectUri: string; challenge: string; state: string }
-schema NativeGoogleCompletion { clientId: string; environment: string; redirectUri: string; challengeId: string; idToken: string; serverAuthCode?: string }
 schema DeviceExchange { code: string; verifier: string }
 schema SmsReceipt { status: string; to?: string; channel?: string; service_sid?: string }
 schema BlooioReceipt { id: string; channel_id: string; status: string; channel_type?: string; to?: string; direction?: string; dry_run?: boolean }
@@ -57,10 +53,6 @@ const browserGoogleFlow = /^([a-f0-9]{64})\.([a-f0-9]{64})(?:\.(password_backup)
 const codeSeconds = 10 * 60
 const smsCodeSeconds = 5 * 60
 const deviceGrantSeconds = 2 * 60
-const nativeGoogleStart = "/api/v1/app-auth/mobile/google/challenge"
-const nativeGoogleFinish = "/api/v1/app-auth/mobile/google"
-const nativeGoogleSeconds = 120
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const s256 = /^[A-Za-z0-9_-]{43}$/
 const callbackPath = "/api/auth/google/callback"
 const encoder = new TextEncoder()
@@ -410,14 +402,6 @@ effect function otp(request: Request, env: IdentityEnv, db: Client, provider: De
   return try requestCode(env, db, provider, input.address)
 }
 
-export function nativeGooglePath(path: string) {
-  return path === nativeGoogleStart || path === nativeGoogleFinish
-}
-
-function nativeGoogleAudience(env: IdentityEnv): string | null {
-  return env.GOOGLE_CLIENT_SECRET && env.GOOGLE_CLIENT_ID && googleServerClientId.test(env.GOOGLE_CLIENT_ID) ? env.GOOGLE_CLIENT_ID : null
-}
-
 effect function issueDeviceCode(db: Client, proof: { accountId: string; sessionKey: string; clientId: string; challenge: string }) {
   const now = try Clock.currentTimeMillis
   const code = try token()
@@ -435,69 +419,6 @@ effect function issueDeviceCode(db: Client, proof: { accountId: string; sessionK
   `, [key, proof.accountId, proof.clientId, codeHash, now + deviceGrantSeconds * 1000, now, proof.sessionKey, proof.challenge])
   if (!rowCount) throw new Unauthorized()
   return code
-}
-
-effect function nativeGoogle(request: Request, env: IdentityEnv, db: Client, starting: boolean, keys?: JWTVerifyGetKey) {
-  if (request.headers.has("origin")) return json(403, { error: "forbidden_origin" })
-  const raw = try readJson(request)
-  const input = starting
-    ? Schema.decodeUnknownOption(NativeGoogleChallenge, { onExcessProperty: "error" })(raw)
-    : Schema.decodeUnknownOption(NativeGoogleCompletion, { onExcessProperty: "error" })(raw)
-  if (input._tag === "None") throw new InvalidRequest()
-  const { clientId, environment, redirectUri } = input.value
-  const admitted = mobileRegistration(env, clientId, environment, redirectUri)
-  if (admitted.kind === "refused") return json(admitted.status, { error: admitted.error })
-  const audience = nativeGoogleAudience(env)
-  if (!audience) return json(503, { error: "google_not_configured" })
-  if (!admitted.registration.nativeGoogle || browserNativeRegistration(env)?.clientId !== admitted.registration.clientId) {
-    return json(400, { error: "invalid_client" })
-  }
-  const ip = request.headers.get("cf-connecting-ip") ?? "local"
-  const now = try Clock.currentTimeMillis
-  if ("challenge" in input.value) {
-    const { challenge, state } = input.value
-    if (!s256.test(challenge) || !pkceText.test(state)) throw new InvalidRequest()
-    try rateLimit(db, "google:native:challenge", ip, 10, 60)
-    const challengeId = try (try SecureRandom.SecureRandom).uuidV4()
-    const nonce = try token()
-    const nonceHash = try digestCredential(nonce)
-    try query(db, "DELETE FROM cloud_native_google_challenges WHERE expires_at <= $1", [now])
-    try query(db, `
-      INSERT INTO cloud_native_google_challenges (key,client_id,environment,redirect_uri,audience,nonce_digest,challenge,state,expires_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-    `, [challengeId, clientId, environment, redirectUri, audience, nonceHash, challenge, state, now + nativeGoogleSeconds * 1000])
-    return json(200, { challengeId, nonce, expiresIn: nativeGoogleSeconds })
-  }
-  const { challengeId, idToken } = input.value
-  if (!uuid.test(challengeId) || idToken.length > 7500 || idToken.split(".").length !== 3) throw new InvalidRequest()
-  try rateLimit(db, "google:native:verify", ip, 10, 60)
-  const pending = try query(db, `
-    SELECT key FROM cloud_native_google_challenges
-    WHERE key = $1 AND client_id = $2 AND environment = $3 AND redirect_uri = $4 AND audience = $5 AND expires_at > $6
-  `, [challengeId, clientId, environment, redirectUri, audience, now])
-  if (pending.rows.length === 0) throw new Unauthorized()
-  const verified = verifyNativeGoogle(idToken, audience, keys) catch effect () => { throw new Unauthorized() }
-  const nonceHash = try digestCredential(verified.nonce)
-  const signedIn = try accountTransaction(db, effect {
-    const verifiedAt = try Clock.currentTimeMillis
-    const { rows } = try query<{ challenge: string; state: string }>(db, `
-      DELETE FROM cloud_native_google_challenges
-      WHERE key = $1 AND client_id = $2 AND environment = $3 AND redirect_uri = $4 AND audience = $5
-        AND nonce_digest = $6 AND expires_at > $7
-      RETURNING challenge,state
-    `, [challengeId, clientId, environment, redirectUri, audience, nonceHash, verifiedAt])
-    const proof = rows[0]
-    if (!proof) throw new Unauthorized()
-    const family = try openSignInFamily(db, verified.identity)
-    const code = try issueDeviceCode(db, {
-      accountId: family.account.id, sessionKey: family.key, clientId: admitted.registration.clientId, challenge: proof.challenge
-    })
-    return { code, state: proof.state, accountId: family.account.id }
-  })
-  const { serverAuthCode } = input.value
-  if (serverAuthCode === undefined) return json(200, { code: signedIn.code, state: signedIn.state })
-  const connected = try connectSignedInGoogle(env, db, signedIn.accountId, verified.identity.subject, serverAuthCode)
-  return json(200, { code: signedIn.code, state: signedIn.state, google: { connected } })
 }
 
 effect function authorizeDevice(request: Request, env: IdentityEnv, db: Client) {
@@ -599,26 +520,10 @@ effect function revokeDevice(request: Request, db: Client) {
   return empty()
 }
 
-effect function handleIdentity(request: Request, env: IdentityEnv, db: Client, keys?: JWTVerifyGetKey) {
+effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
   const url = try Effect.try({ try: () => new URL(request.url), catch: () => new InvalidRequest() })
   if (request.method === "GET") {
     switch (url.pathname) {
-      case "/api/v1/app-auth/mobile/config": {
-        const id = url.searchParams.get("clientId")
-        const environment = url.searchParams.get("environment")
-        const redirect = url.searchParams.get("redirectUri")
-        const matched = mobileRegistration(env, id, environment, redirect)
-        if (matched.kind === "refused") return json(matched.status, { error: matched.error })
-        const registered = matched.registration
-        const configured = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)
-        return json(200, {
-          clientId: registered.clientId, environment, redirectUri: redirect, codeChallengeMethod: "S256",
-          credentialTtlMs: registered.credentialTtl, methods: { google: configured, email: emailReady(env), sms: smsReady(env) },
-          google: { configured, serverClientId: configured ? env.GOOGLE_CLIENT_ID : "",
-            nativeSignIn: registered.nativeGoogle && nativeGoogleAudience(env) !== null &&
-              browserNativeRegistration(env)?.clientId === registered.clientId, scopes: nativeGoogleScopes(env) }
-        })
-      }
       case "/api/auth/providers":
         return json(200, { google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET), email: emailReady(env), sms: smsReady(env) })
       case "/api/auth/session": {
@@ -641,7 +546,6 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client, k
     }
   }
   if (request.method === "POST") {
-    if (nativeGooglePath(url.pathname)) return try nativeGoogle(request, env, db, url.pathname === nativeGoogleStart, keys)
     if (url.pathname === "/api/auth/device/exchange") return try exchangeDevice(request, env, db)
     if (url.pathname === "/api/auth/device/ack") return try acknowledgeDevice(request, env, db)
     if (url.pathname === "/api/auth/device/revoke") return try revokeDevice(request, db)
@@ -673,10 +577,10 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client, k
   return json(404, { error: "not_found" })
 }
 
-export function identityRequest(request: Request, env: IdentityEnv, db: Client, keys?: JWTVerifyGetKey): Promise<Response> {
+export function identityRequest(request: Request, env: IdentityEnv, db: Client): Promise<Response> {
   if (ownsPasswordBackupPath(new URL(request.url).pathname)) return passwordBackupRequest(request, env, db)
   return runPromise(Effect.provide(effect {
-    const response = handleIdentity(request, env, db, keys) catch (error) => match (error) {
+    const response = handleIdentity(request, env, db) catch (error) => match (error) {
       when InvalidRequest: json(400, { error: "invalid_request" });
       when Unauthorized: json(401, { error: "verification_failed" });
       when RateLimited: json(429, { error: "rate_limited" });

@@ -1,0 +1,79 @@
+// spec/files/reviewedOperations.md, "Story: Keep every batch outcome, including the ones I cannot be sure of"; spec/files/reviewedOperations.md, "A retired batch dispatches nothing new, and an unknown chunk is never confirmed"
+import { mayDispatchChunk, settleChunk, type ChunkOutcome } from "../../gen/files__reviewedOperations.effect.vibe"
+import { parentOf } from "./model.vibe"
+import { FilesVolume, VolumeRefused, type RowOutcome } from "./volume.vibe"
+
+/** A batch change of the owner's files, applied in chunks the device answers one at a time. */
+export type BatchChange =
+  | { readonly kind: "trash"; readonly paths: readonly string[]; readonly reviewed?: readonly string[] }
+  | { readonly kind: "move"; readonly paths: readonly string[]; readonly dest: string; readonly reviewed?: readonly string[] }
+  | { readonly kind: "copy"; readonly paths: readonly string[]; readonly dest: string }
+
+/** How one chunk settled: its rows, and for a confirmed chunk the way to undo it. */
+export type ChunkReport = {
+  readonly outcome: ChunkOutcome
+  readonly rows: readonly RowOutcome[]
+  readonly undo?: BatchUndo
+  readonly refusal?: VolumeRefused
+}
+export type BatchUndo = { readonly kind: "restore"; readonly ids: readonly string[] } | { readonly kind: "moveBack"; readonly moves: readonly { readonly from: string; readonly to: string }[] }
+export type BatchReport = { readonly chunks: readonly ChunkReport[]; readonly stopped: "finished" | "retired" | "unknown" | "refused" }
+
+/** Rows a single device call carries. */
+export const CHUNK_ROWS = 50
+
+function chunked(change: BatchChange): BatchChange[] {
+  const pieces: BatchChange[] = []
+  for (let start = 0; start < change.paths.length; start += CHUNK_ROWS) {
+    const paths = change.paths.slice(start, start + CHUNK_ROWS)
+    const reviewed = change.kind === "copy" ? undefined : change.reviewed?.slice(start, start + CHUNK_ROWS)
+    pieces.push({ ...change, paths, ...(reviewed === undefined ? {} : { reviewed }) })
+  }
+  return pieces
+}
+
+function undoOf(change: BatchChange, rows: readonly RowOutcome[]): BatchUndo | undefined {
+  if (change.kind === "trash") {
+    const ids = rows.flatMap((row) => row.status === "trashed" && row.to !== undefined ? [row.to] : [])
+    return ids.length === 0 ? undefined : { kind: "restore", ids }
+  }
+  if (change.kind === "copy") return undefined
+  const moves = rows.flatMap((row) => row.status === "moved" && row.to !== undefined ? [{ from: row.to, to: parentOf(row.path) }] : [])
+  return moves.length === 0 ? undefined : { kind: "moveBack", moves }
+}
+
+/** Runs a batch until it finishes, its view retires it, a chunk is refused, or a chunk's outcome is unknown; nothing unknown is retried. */
+export effect function runBatch(change: BatchChange, retired: () => boolean) {
+  const volume = try FilesVolume
+  const chunks: ChunkReport[] = []
+  const pieces = chunked(change)
+  for (const [index, piece] of pieces.entries()) {
+    if (!mayDispatchChunk(retired(), false, false)) return { chunks, stopped: "retired" } satisfies BatchReport
+    const answered = try exit(piece.kind === "trash" ? volume.trash(piece)
+      : volume.transfer({ paths: piece.paths, dest: piece.dest, copy: piece.kind === "copy", ...(piece.kind === "move" && piece.reviewed !== undefined ? { reviewed: piece.reviewed } : {}) }))
+    const rows = Exit.isSuccess(answered) ? answered.value : []
+    const refusal = Exit.isFailure(answered) ? Cause.squash(answered.cause) : undefined
+    const outcome: ChunkOutcome = refusal !== undefined ? "ChunkRefused" : rows.some((row) => row.status === "unknown") ? "ChunkUnknown" : "ChunkConfirmed"
+    const settled = settleChunk(outcome, retired(), index === pieces.length - 1)
+    const undo = settled.undoKept ? undoOf(piece, rows) : undefined
+    chunks.push({ outcome, rows, ...(undo === undefined ? {} : { undo }), ...(refusal instanceof VolumeRefused ? { refusal } : {}) })
+    if (!settled.batchContinues) {
+      const stopped = outcome === "ChunkUnknown" ? "unknown" : outcome === "ChunkRefused" ? "refused" : index === pieces.length - 1 ? "finished" : "retired"
+      return { chunks, stopped } satisfies BatchReport
+    }
+  }
+  return { chunks, stopped: "finished" } satisfies BatchReport
+}
+
+/** Undoes every confirmed chunk of a batch, newest first, and answers the rows each undo touched. */
+export effect function undoBatch(report: BatchReport) {
+  const volume = try FilesVolume
+  const undone: RowOutcome[] = []
+  for (const chunk of [...report.chunks].reverse()) {
+    const undo = chunk.outcome === "ChunkConfirmed" ? chunk.undo : undefined
+    if (undo === undefined) continue
+    if (undo.kind === "restore") undone.push(...(try volume.restore(undo.ids)))
+    else for (const move of undo.moves) undone.push(...(try volume.transfer({ paths: [move.from], dest: move.to, copy: false })))
+  }
+  return undone
+}

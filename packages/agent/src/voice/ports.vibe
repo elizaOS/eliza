@@ -31,9 +31,16 @@ export interface VoiceTurn {
   readonly clientMessageId: string
 }
 
+export interface VoiceReplyAction {
+  readonly kind: string
+  readonly validatedCard: boolean
+  readonly verbatimAsked: boolean
+}
+
 export interface VoiceReply {
   readonly messageId: string
   readonly text: string
+  readonly action?: VoiceReplyAction
 }
 
 export interface TurnPort {

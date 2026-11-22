@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
@@ -45,8 +45,8 @@ public final class DeviceCredentialStore implements CredentialReader {
     @Override public String toString() { return "Pending[attempt=" + attempt + ", credentialId=" + credentialId + "]"; }
   }
 
-  public record Owed(int version, String value, int tries) {
-    @Override public String toString() { return "Owed[version=" + version + ", tries=" + tries + "]"; }
+  public record Owed(int version, String value, int tries, String successor) {
+    @Override public String toString() { return "Owed[version=" + version + ", tries=" + tries + ", successor=" + successor + "]"; }
   }
 
   public enum Outcome { ACCEPTED, REFUSED }
@@ -147,6 +147,15 @@ public final class DeviceCredentialStore implements CredentialReader {
     return attempt;
   }
 
+  public int beginRenewal() {
+    synchronized (lock) {
+      advance();
+      if (!CredentialPolicy.canBeginRenewal(state)) return 0;
+      commit(new Step(CredentialPolicy.beginRenewal(state), List.of()));
+      return state.generation();
+    }
+  }
+
   public Kept tokenAnswered(int attempt, Token token) {
     synchronized (lock) {
       advance();
@@ -237,7 +246,7 @@ public final class DeviceCredentialStore implements CredentialReader {
     synchronized (lock) {
       advance();
       List<Owed> out = new ArrayList<>();
-      for (Duty d : state.duties()) if (d.tries() > 0) out.add(new Owed(d.version(), keyOf(d.version()), d.tries()));
+      for (Duty d : state.duties()) if (d.tries() > 0) out.add(new Owed(d.version(), keyOf(d.version()), d.tries(), d.successor()));
       return out;
     }
   }

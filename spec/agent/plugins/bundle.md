@@ -3,9 +3,10 @@
 What a product ships to run the agent on a device: `agent.mjs`, one ESM
 bundle for Node 26 (pure JavaScript and WASM), the PGlite assets beside it, a
 PGlite snapshot already migrated to the bundle's schema, and `manifest.json`.
-`buildAgentBundle({plugins, productPlugin, outDir, sourceCommit, sourceRoot})`
+`buildAgentBundle({plugins, productPlugin, profiles, outDir, sourceCommit, sourceRoot, entry?})`
 of `@elizaos/agent/bundle` makes them; `readBundleManifest(dir)` reads the
-manifest back. The build itself (bundler, digests, snapshot, load smoke) is
+manifest back, and `residentLoadList(manifest, variant, chosen)` derives a
+device variant's load list from its profile groups. The build itself (bundler, digests, snapshot, load smoke) is
 the shell; this spec states which builds may succeed and which manifests may
 be read. In the manifest, `NoProductPlugin` and `NoWorker` are an absent key,
 `NamedProductPlugin(p)` is `productPlugin: p.name`, `WorkerSha256(w)` is
@@ -240,4 +241,110 @@ pure def manifestReadable(m: BundleManifest, bundleBytesSha256: str): bool =
   m.localInference == m.plugins.includes(localInferencePlugin) and workerPinned(m.workflowWorker) == m.plugins.includes(workflowPlugin) and actionsWellFormed(m.actions)
 pure def lawBuiltBundleManifestIsReadable(b: Build, bundleSha256: str, sourceCommit: str): bool =
   (buildVerdict(b) == Built and bundleSha256 != "" and sourceCommit != "") implies manifestReadable(manifestOf(b, bundleSha256, sourceCommit), bundleSha256)
+```
+
+## Story: Declare which bundled plugins each device variant may load
+
+> As the maker of a product that ships one bundle to an AOSP image and to
+> stock Android, I want the manifest to record which bundled plugins belong
+> to which resident profile, so that each variant's launch lists exactly the
+> plugins it may run and never one that needs the image's privileges.
+
+### Profile groups name only bundled plugins, each in one group
+
+A build may declare four groups, as the device producer's resident profiles
+do: `core` (loads on every device), `views` (view plugins for every device),
+`aospOnly` (plugins that need the AOSP image's capabilities, in load order)
+and `optional` (loaded only when the product chooses them, such as a model
+provider). In the manifest, `NoProfiles` is an absent `profiles` key and
+each group is a list of plugin names. A group names only plugins in
+`plugins`, never the product plugin, and no plugin appears twice across the
+groups; a build whose groups break this is refused as `InputsMalformed`, and
+a manifest whose groups break it is unreadable. Groups are a producer
+declaration: the plugin plan (`profile.md`) reads only the launch's load list
+and never the manifest's groups, so no group grants loading by itself, and
+storage is never grouped because it always loads first.
+
+```quint
+type ProfileGroups = { core: List[str], views: List[str], aospOnly: List[str], optional: List[str] }
+pure def groupedPlugins(groups: ProfileGroups): List[str] = groups.core.concat(groups.views).concat(groups.aospOnly).concat(groups.optional)
+pure def profilesWellFormed(groups: ProfileGroups, carried: List[str]): bool = {
+  val grouped = groupedPlugins(groups)
+  grouped.every(n => carried.includes(n) and grouped.select(m => m == n).length() == 1)
+}
+pure val groupsValues = Set(
+  { core: List("a"), views: List("v"), aospOnly: List("p", "t"), optional: List("o") },
+  { core: List("a"), views: List(), aospOnly: List("a"), optional: List() },
+  { core: List("x"), views: List(), aospOnly: List(), optional: List("o") },
+  { core: List(), views: List(), aospOnly: List(), optional: List() })
+pure val carriedValues = Set(List("a", "v", "p", "t", "o"), List("a"))
+```
+
+### A variant's load list is its core, view and, on an AOSP image, AOSP-only plugins in group order, then the optional plugins the product chose
+
+`residentLoadList` keeps each group's order, so AOSP-only plugins load in
+the order the producer declared. On stock Android the AOSP-only group is
+left out whatever the product chose. The result is a load list for the
+launch's policy (`host/launch.md`): every entry is bundled and named once.
+
+```quint
+type DeviceVariant = AospImage | StockAndroid
+pure def variantLoadList(groups: ProfileGroups, variant: DeviceVariant, chosen: Set[str]): List[str] =
+  groups.core.concat(groups.views).concat(if (variant == AospImage) groups.aospOnly else List()).concat(groups.optional.select(n => chosen.contains(n)))
+pure val chosenValues = Set(Set(), Set("o"), Set("o", "a"))
+pure def lawDerivedLoadListNamesOnlyCarriedPluginsOnce(groups: ProfileGroups, carried: List[str], variant: DeviceVariant, chosen: Set[str]): bool = {
+  val load = variantLoadList(groups, variant, chosen)
+  profilesWellFormed(groups, carried) implies load.every(n => carried.includes(n) and load.select(m => m == n).length() == 1)
+}
+pure def lawStockAndroidNeverLoadsAnAospOnlyPlugin(groups: ProfileGroups, carried: List[str], chosen: Set[str]): bool =
+  profilesWellFormed(groups, carried) implies not(variantLoadList(groups, StockAndroid, chosen).some(n => groups.aospOnly.includes(n)))
+pure def lawOptionalPluginLoadsOnlyWhenChosen(groups: ProfileGroups, carried: List[str], variant: DeviceVariant, chosen: Set[str]): bool =
+  profilesWellFormed(groups, carried) implies groups.optional.every(n => variantLoadList(groups, variant, chosen).includes(n) iff chosen.contains(n))
+```
+
+## Story: Start the agent from my own entry with my device's services
+
+> As the maker of a product, I want my own entry module to start the agent
+> with modules my device host provides, so that a plugin that needs the
+> device (an inference engine on a socket) runs inside the bundle I ship.
+
+### A consumer entry ships only as a named package's code inside the source root, and passes the same load smoke as the generated entry
+
+`entry` names a module inside the source root that calls `runAgentCli`
+from `@elizaos/agent/cli` with the bundled plugins, the product plugin and
+any host modules. Its bytes are an input like any other, so the input rule
+above refuses an entry outside the source root or outside a named package;
+the bundle is still built only when its load smoke loaded every listed
+plugin. Without `entry` the generated entry imports each listed package.
+
+```quint
+type BundleEntry = GeneratedEntry | ConsumerEntry({ insideSource: bool, named: bool })
+pure def entryAdmitted(e: BundleEntry, smokeLoadedAll: bool): bool = smokeLoadedAll and (match e {
+  | GeneratedEntry => true
+  | ConsumerEntry(c) => c.insideSource and c.named })
+pure val eValues = Set(GeneratedEntry, ConsumerEntry({ insideSource: true, named: true }), ConsumerEntry({ insideSource: false, named: true }), ConsumerEntry({ insideSource: true, named: false }))
+pure def lawAConsumerEntryOutsideANamedSourcePackageIsRefused(insideSource: bool, named: bool, smokeLoadedAll: bool): bool =
+  not(insideSource and named) implies not(entryAdmitted(ConsumerEntry({ insideSource: insideSource, named: named }), smokeLoadedAll))
+pure def lawEveryEntryNeedsTheLoadSmoke(e: BundleEntry): bool = not(entryAdmitted(e, false))
+```
+
+### A host module is named only for a bundled package that is not an agent module, and runs with its entry's services over the resident's platform layer
+
+`hostModules` maps a bundled package name to a module factory;
+`hostServices(host)` builds, once per factory call, the layer of device
+services those factories need (for example `androidInferenceLayer(socket)`
+from `@elizaos/os/inference`), itself given the resident's platform layer
+(file system, path, child processes). A factory needs nothing beyond those
+services and the platform layer, so no host module starts with a missing
+service.
+
+```quint
+pure def hostModuleAdmitted(name: str, bundled: Set[str], builtins: Set[str]): bool = bundled.contains(name) and not(builtins.contains(name))
+pure def hostModulesAdmitted(names: Set[str], bundled: Set[str], builtins: Set[str]): bool = names.forall(n => hostModuleAdmitted(n, bundled, builtins))
+pure val namesValues = Set(Set(), Set("@elizaos/plugin-local-inference"), Set("@elizaos/agent/views"))
+pure val builtinsValues = Set(Set("@elizaos/agent/views"))
+pure def lawAHostModuleIsABundledPackage(names: Set[str], bundled: Set[str], builtins: Set[str]): bool =
+  hostModulesAdmitted(names, bundled, builtins) implies names.subseteq(bundled)
+pure def lawAHostModuleNeverReplacesAnAgentModule(names: Set[str], bundled: Set[str], builtins: Set[str]): bool =
+  hostModulesAdmitted(names, bundled, builtins) implies names.intersect(builtins).size() == 0
 ```

@@ -1,0 +1,291 @@
+// spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedReconcile.md, "Story: Bring the two versions together without overwriting an independent edit"; spec/calendar/syncSettlement.md, "Story: Resume sync in the foreground only from a current opt-in read"
+import { assert, it } from "@effect/vitest"
+import {
+  CalendarLinkedStore, CalendarSyncController, LinkedCalendarReconciler, calendarSyncSettingsSlot, chooseLinkDestination, createCalendarSyncHost,
+  googleCalendarSyncPort, linkedCalendarControl,
+  readGoogleCalendarSyncDestination, type CalendarLinkStorage, type CalendarSyncBinding, type CalendarSyncClient, type CalendarSyncRequest,
+  type LinkedCalendarLocalPort, type LinkedCalendarSemanticEvent,
+} from "../src/linked-sync/index.vibe"
+
+const grant = "11111111-1111-4111-8111-111111111111"
+const binding: CalendarSyncBinding = {
+  environment: "staging", userId: "owner", organizationId: "org", connectionId: grant, providerAccountId: "google-account",
+  calendarId: "primary", agentId: "agent", localSourceId: "resident", localSourceRevision: "source-1",
+}
+const lunch: LinkedCalendarSemanticEvent = {
+  title: "Lunch", description: "", location: "Cafe", startAt: "2026-12-01T12:00:00.000Z", endAt: "2026-12-01T13:00:00.000Z",
+  timeZone: "UTC", isAllDay: false, attendees: [{ email: "ada@example.com", optional: false }],
+}
+
+function memoryStorage(): CalendarLinkStorage & { readonly slots: Map<string, unknown> } {
+  const slots = new Map<string, unknown>()
+  return {
+    slots,
+    read: async (slot) => structuredClone(slots.get(slot) ?? null),
+    async compareExchange(slot, expected, value) {
+      if (JSON.stringify(slots.get(slot) ?? null) !== JSON.stringify(expected)) return { status: "conflict" }
+      slots.set(slot, structuredClone(value))
+      return { status: "saved" }
+    },
+  }
+}
+
+function fakeGoogle() {
+  const events = new Map<string, { eventId: string; etag: string; key: string; event: LinkedCalendarSemanticEvent }>()
+  let next = 0
+  const envelope = (body: Record<string, unknown>) => ({ version: 1, calendarId: binding.calendarId, providerExactlyOnce: false, ...body })
+  const snapshot = (row: { eventId: string; etag: string; event: LinkedCalendarSemanticEvent }) =>
+    ({ eventId: row.eventId, etag: row.etag, visibility: "private", remindersDisabled: true, event: row.event })
+  const refused = (outcome: "precondition_failed" | "not_accepted") =>
+    Object.assign(new Error("refused"), { status: 412, data: { code: "CALENDAR_SYNC_REFUSED", outcome } })
+  const client: CalendarSyncClient = {
+    async googleCalendarSync(input: CalendarSyncRequest) {
+      switch (input.kind) {
+        case "capabilities":
+          return envelope({ accountId: binding.providerAccountId, read: true, write: true, conditionalWrites: true, idempotentCreate: true,
+            accountEmail: "owner@example.com", calendarLabel: "Owner" })
+        case "get": {
+          const reference = input.reference
+          const row = "eventId" in reference ? events.get(reference.eventId) : [...events.values()].find((item) => item.key === reference.idempotencyKey)
+          return envelope({ event: row === undefined ? null : snapshot(row) })
+        }
+        case "create": {
+          const existing = [...events.values()].find((item) => item.key === input.idempotencyKey)
+          const row = existing ?? { eventId: `g${++next}`, etag: "e1", key: input.idempotencyKey, event: input.event }
+          events.set(row.eventId, row)
+          return envelope({ event: snapshot(row) })
+        }
+        case "update": {
+          const row = events.get(input.eventId)
+          if (row === undefined || row.etag !== input.expectedEtag) throw refused("precondition_failed")
+          const updated = { ...row, etag: `${row.etag}+`, event: input.event }
+          events.set(row.eventId, updated)
+          return envelope({ event: snapshot(updated) })
+        }
+        case "delete": {
+          const row = events.get(input.eventId)
+          if (row === undefined || row.etag !== input.expectedEtag) throw refused("precondition_failed")
+          events.delete(input.eventId)
+          return envelope({ deleted: true })
+        }
+      }
+    },
+  }
+  const edit = (eventId: string, change: Partial<LinkedCalendarSemanticEvent>) => {
+    const row = events.get(eventId)
+    if (row !== undefined) events.set(eventId, { ...row, etag: `${row.etag}!`, event: { ...row.event, ...change } })
+  }
+  return { client, events, edit }
+}
+
+function residentCalendar() {
+  const rows = new Map<string, { revision: number; event: LinkedCalendarSemanticEvent }>()
+  const local: LinkedCalendarLocalPort = {
+    get: async (eventId) => {
+      const row = rows.get(eventId)
+      return row === undefined ? null : { eventId, revision: String(row.revision), event: row.event }
+    },
+    async applyProviderEvent(eventId, event, expectedRevision) {
+      const row = rows.get(eventId)
+      if (row === undefined || String(row.revision) !== expectedRevision) throw new Error("changed")
+      rows.set(eventId, { revision: row.revision + 1, event })
+      return { eventId, revision: String(row.revision + 1), event }
+    },
+    async delete(eventId, expectedRevision) {
+      if (String(rows.get(eventId)?.revision) !== expectedRevision) throw new Error("changed")
+      rows.delete(eventId)
+    },
+  }
+  const write = (eventId: string, event: LinkedCalendarSemanticEvent) => rows.set(eventId, { revision: (rows.get(eventId)?.revision ?? 0) + 1, event })
+  return { rows, local, write }
+}
+
+it.effect('Link my resident calendar to a verified provider destination (spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches")', effect () => {
+  const google = fakeGoogle()
+  const resident = residentCalendar()
+  resident.write("lunch", lunch)
+  const storage = memoryStorage()
+  const opted = new Map<string, boolean>()
+  const controller = new CalendarSyncController(async () => ({
+    reviewIdentity: "owner", binding, client: google.client, local: resident.local, storage, current: () => true,
+    events: async () => [...resident.rows].map(([id, row]) => ({ id, revision: String(row.revision) })),
+  }), {
+    read: (scope) => succeed(opted.get(scope) === true),
+    write: (scope, enabled) => sync(() => { opted.set(scope, enabled) }),
+  })
+
+  const destination = try readGoogleCalendarSyncDestination(google.client, { grantId: grant, calendarId: "primary" }, () => true)
+  assert.deepEqual(destination, { providerAccountId: "google-account", accountEmail: "owner@example.com", calendarLabel: "Owner" })
+  const unsafe: CalendarSyncClient = { googleCalendarSync: async () => ({ version: 1, calendarId: "primary", accountId: "a", read: true, write: false,
+    conditionalWrites: true, idempotentCreate: true, providerExactlyOnce: false }) }
+  assert.equal((try Effect.flip(readGoogleCalendarSyncDestination(unsafe, { grantId: grant, calendarId: "primary" }, () => true)))._tag, "CalendarSyncRefused")
+
+  const candidates = [
+    { connectorAccountId: "google-account", providerCalendarId: "primary", side: "owner" as const, accessRole: "owner", primary: true, accountEmail: "owner@example.com" },
+    { connectorAccountId: "google-account", providerCalendarId: "shared", side: "owner" as const, accessRole: "reader", primary: false, accountEmail: "owner@example.com" },
+  ]
+  assert.equal(chooseLinkDestination(null, candidates, "owner@example.com").choice, "SelectPrimary")
+  assert.equal(chooseLinkDestination({ connectorAccountId: "google-account", providerCalendarId: "shared" }, candidates, "owner@example.com").choice, "RefuseDestination")
+
+  assert.equal((try Effect.flip(controller.sync()))._tag, "CalendarSyncAborted")
+  const review = try controller.review()
+  assert.deepEqual(review.events, [{ id: "lunch", revision: "1" }])
+  try controller.enable(review)
+  assert.deepEqual(try controller.sync(), { clean: 0, pushed: 1, pulled: 0, conflicted: 0, quarantined: 0, paused: 0, dirty: 0 })
+  assert.deepEqual([...google.events.values()].map((row) => row.event.title), ["Lunch"])
+  assert.equal((try controller.sync()).clean, 1)
+
+  google.edit("g1", { location: "Park" })
+  assert.equal((try controller.sync()).pulled, 1)
+  assert.equal(resident.rows.get("lunch")?.event.location, "Park")
+
+  google.edit("g1", { title: "Lunch with Ada" })
+  resident.write("lunch", { ...lunch, location: "Park", title: "Team lunch" })
+  assert.equal((try controller.sync()).conflicted, 1)
+  assert.equal((try controller.sync()).conflicted, 1)
+
+  const store = try CalendarLinkedStore.open(binding, () => true, storage)
+  const [conflicted] = try store.list()
+  const engine = new LinkedCalendarReconciler(store, resident.local, try googleCalendarSyncPort(google.client, binding, () => true))
+  assert.equal(try engine.resolveConflict(conflicted, "keep_google"), "pulled")
+  assert.equal(resident.rows.get("lunch")?.event.title, "Lunch with Ada")
+
+  resident.rows.delete("lunch")
+  assert.equal((try controller.sync()).pushed, 1)
+  assert.equal(google.events.size, 0)
+  const [settled] = try store.list()
+  assert.deepEqual([settled.state, settled.pendingOperation], ["paused", null])
+
+  try controller.pause()
+  assert.equal((try Effect.flip(controller.sync()))._tag, "CalendarSyncAborted")
+})
+
+it.effect('Recover a held dispatch from evidence (spec/calendar/linkedReconcile.md, "Story: Recover a held dispatch from evidence and resolve an explicit disagreement"; spec/calendar/linkedReconcile.md, "Recovery observes both stores before releasing a held dispatch")', effect () => {
+  const google = fakeGoogle()
+  const resident = residentCalendar()
+  resident.write("standup", { ...lunch, title: "Standup" })
+  const storage = memoryStorage()
+  const store = try CalendarLinkedStore.open(binding, () => true, storage)
+  const port = try googleCalendarSyncPort(google.client, binding, () => true)
+  const engine = new LinkedCalendarReconciler(store, resident.local, port)
+  const linked = try store.link("standup", "1")
+  assert.equal(try engine.reconcile(linked), "pushed")
+  const [clean] = try store.list()
+  resident.write("standup", { ...lunch, title: "Standup moved" })
+  const held = try store.save(clean, { state: "quarantined", pendingOperation: "update", localRevision: "2" })
+  assert.equal(try engine.recoverDispatch(held, { dispatchedAt: 0, settleMs: 5000, now: 1000 }), "unresolved")
+  assert.equal(try engine.recoverDispatch(held, { dispatchedAt: 0, settleMs: 5000, now: 6000 }), "not_landed")
+  const [dirty] = try store.list()
+  assert.deepEqual([dirty.state, dirty.pendingOperation, dirty.providerEtag], ["dirty", "update", "e1"])
+  assert.equal(try engine.reconcile(dirty), "pushed")
+  assert.equal(google.events.get("g1")?.event.title, "Standup moved")
+})
+
+it.effect('Pause, resume or recover without replacing a newer sync decision (spec/calendar/linkedSync.md, "Story: Pause, resume or recover without replacing a newer sync decision"; spec/calendar/linkedSync.md, "A control transition checks revision and writes its receipt atomically"; spec/calendar/linkedSync.md, "Failed control writes preserve the previously committed row"; spec/calendar/linkedSync.md, "Report sync only after a current control and mapping readback")', effect () => {
+  const storage = memoryStorage()
+  const destination = { connectorAccountId: "google-account", providerCalendarId: "primary" }
+  const booted: string[] = []
+  const ports = {
+    agentId: "agent", storage, authority: () => true,
+    verifyDestination: async () => ({ ownerSource: true, writable: true, sameSource: true, sameSelectionVersion: true, approvedEmail: true }),
+    recoverDispatch: async () => ({ linkExact: true, outcome: "unresolved" as const }),
+    bootstrap: async (target: { readonly providerCalendarId: string }) => { booted.push(target.providerCalendarId) },
+  }
+  const control = try linkedCalendarControl(ports)
+  const selected = try control.commit({ operation: "select", expectedRevision: 0, idempotencyKey: "select-1", destination })
+  assert.deepEqual(selected.control, { revision: 1, paused: true, destination, conflictCount: 0, pendingLinkId: null, pendingDispatchReference: null })
+  assert.equal((try control.commit({ operation: "select", expectedRevision: 0, idempotencyKey: "select-1", destination })).receipt.replayed, true)
+  assert.equal((try Effect.flip(control.commit({ operation: "pause", expectedRevision: 0, idempotencyKey: "select-1" }))).code, "LINKED_CALENDAR_OPERATION_KEY_CONFLICT")
+  const resumed = try control.commit({ operation: "resume", expectedRevision: 1, idempotencyKey: "resume-1" })
+  assert.deepEqual([resumed.control.revision, resumed.control.paused, booted], [2, false, ["primary"]])
+  assert.equal((try Effect.flip(control.commit({ operation: "select", expectedRevision: 0, idempotencyKey: "select-1", destination }))).code, "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
+  assert.equal(try control.report(2), "synced")
+  assert.equal(try control.report(1), "changed")
+
+  const token = try control.acquireDispatch(2, "link-1", destination)
+  assert.equal((try Effect.flip(control.acquireDispatch(2, "link-2", destination))).code, "LINKED_CALENDAR_DISPATCH_REJECTED")
+  assert.equal(try control.report(2), "syncing")
+  const paused = try control.commit({ operation: "pause", expectedRevision: 2, idempotencyKey: "pause-1" })
+  assert.deepEqual([paused.control.paused, paused.control.pendingLinkId], [true, "link-1"])
+  assert.equal((try Effect.flip(control.commit({ operation: "resume", expectedRevision: 3, idempotencyKey: "resume-2" }))).code, "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
+  assert.equal((try Effect.flip(control.commit({ operation: "recover", expectedRevision: 3, idempotencyKey: "recover-1", dispatchReference: paused.control.pendingDispatchReference ?? "" }))).code, "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
+  try control.settleDispatch(token)
+  assert.equal((try control.read()).pendingLinkId, null)
+  assert.equal((try control.read()).revision, 3)
+
+  try control.commit({ operation: "resume", expectedRevision: 3, idempotencyKey: "resume-3" })
+  try control.acquireDispatch(4, "link-2", destination)
+  const restarted = try linkedCalendarControl({ ...ports, recoverDispatch: async () => ({ linkExact: true, outcome: "landed" as const }) })
+  assert.equal((try restarted.read()).pendingLinkId, "link-2")
+  try restarted.commit({ operation: "pause", expectedRevision: 4, idempotencyKey: "pause-2" })
+  const held = (try restarted.read()).pendingDispatchReference ?? ""
+  assert.equal((try Effect.flip(restarted.commit({ operation: "recover", expectedRevision: 5, idempotencyKey: "recover-stale", dispatchReference: "an earlier dispatch" }))).code,
+    "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
+  const recovered = try restarted.commit({ operation: "recover", expectedRevision: 5, idempotencyKey: "recover-2", dispatchReference: held })
+  assert.deepEqual([recovered.control.revision, recovered.control.paused, recovered.control.pendingLinkId], [6, true, null])
+})
+
+it.effect('Keep a link local or move it only while sync is drained (spec/calendar/linkedSync.md, "Story: Keep a link local or move it to the selected destination only while sync is drained"; spec/calendar/linkedSync.md, "A mapping edit commits only while paused with no admitted dispatch, against the exact revision"; spec/calendar/linkedSync.md, "A mapping receipt replays only the same request at its committed revision")', effect () => {
+  const storage = memoryStorage()
+  const first = { connectorAccountId: "google-account", providerCalendarId: "primary" }
+  const second = { connectorAccountId: "google-account", providerCalendarId: "work" }
+  const control = try linkedCalendarControl({
+    agentId: "agent", storage, authority: () => true,
+    verifyDestination: async () => ({ ownerSource: true, writable: true, sameSource: true, sameSelectionVersion: true, approvedEmail: true }),
+    recoverDispatch: async () => ({ linkExact: true, outcome: "unresolved" }), bootstrap: async () => {},
+  })
+  try control.commit({ operation: "select", expectedRevision: 0, idempotencyKey: "select-1", destination: first })
+  const mapping = { linkId: "link-1", localEventId: "local-1", destination: first, providerEventId: "g1", handoffKey: "k", localOnly: false, staged: false, state: "clean" as const }
+  try control.recordMapping(mapping)
+  try control.commit({ operation: "select", expectedRevision: 1, idempotencyKey: "select-2", destination: second })
+  const rebound = try control.editMapping({ operation: "rebind", linkId: "link-1", expectedRevision: 2, reviewed: mapping, destination: second })
+  assert.equal(rebound.revision, 3)
+  assert.equal((try control.editMapping({ operation: "rebind", linkId: "link-1", expectedRevision: 2, reviewed: mapping, destination: second })).revision, 3)
+  assert.equal((try Effect.flip(control.editMapping({ operation: "retain_local", linkId: "link-1", expectedRevision: 2, reviewed: mapping, destination: null }))).code,
+    "LINKED_CALENDAR_MAPPING_EDIT_REJECTED")
+  try control.commit({ operation: "resume", expectedRevision: 3, idempotencyKey: "resume-1" })
+  assert.equal((try Effect.flip(control.editMapping({ operation: "rebind", linkId: "link-1", expectedRevision: 2, reviewed: mapping, destination: second }))).code,
+    "LINKED_CALENDAR_MAPPING_REPLAY_REFUSED")
+})
+
+it.effect('Resume sync in the foreground only from a current opt-in read (spec/calendar/syncSettlement.md, "Story: Resume sync in the foreground only from a current opt-in read"; spec/calendar/syncSettlement.md, "Stopping or hiding retires the generation and cancels its running pass"; spec/calendar/syncSettlement.md, "Only a current enabled opt-in starts a pass, and a stale read changes nothing visible")', effect () => {
+  const google = fakeGoogle()
+  const resident = residentCalendar()
+  resident.write("lunch", lunch)
+  const storage = memoryStorage()
+  let visible = true
+  const host = try createCalendarSyncHost({
+    prepare: async () => ({ reviewIdentity: "owner", binding, client: google.client, local: resident.local, storage, current: () => true,
+      events: async () => [...resident.rows].map(([id, row]) => ({ id, revision: String(row.revision) })) }),
+    settings: calendarSyncSettingsSlot(storage, "calendar-sync-settings"),
+    target: () => ({ environment: binding.environment, userId: binding.userId, organizationId: binding.organizationId,
+      connectionId: binding.connectionId, calendarId: binding.calendarId, agentId: binding.agentId }),
+    identity: () => "owner",
+    foreground: () => visible,
+    source: async () => ({ revision: binding.localSourceRevision }),
+    storage,
+  })
+  const following = try host.start()
+  assert.equal(google.events.size, 0)
+  try host.enable(try host.review())
+  assert.equal(google.events.size, 1)
+  assert.equal(host.snapshot().enabled, true)
+
+  google.edit("g1", { location: "Park" })
+  visible = false
+  try following.visibilityChanged()
+  assert.equal(resident.rows.get("lunch")?.event.location, "Cafe")
+  visible = true
+  try following.visibilityChanged()
+  assert.equal(resident.rows.get("lunch")?.event.location, "Park")
+  assert.equal(host.snapshot().status, "Synced: 0 sent to Google, 1 received, 0 unchanged.")
+
+  try host.pause()
+  google.edit("g1", { location: "Office" })
+  visible = false
+  try following.visibilityChanged()
+  visible = true
+  try following.visibilityChanged()
+  assert.equal(resident.rows.get("lunch")?.event.location, "Park")
+  try following.stop()
+})

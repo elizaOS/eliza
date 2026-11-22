@@ -1,0 +1,139 @@
+// spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms"
+import type { Action, ActionResult, Provider } from "@elizaos/core"
+import { Machine, Rejected, matching, stored, type Event, type Todo, type TodoStatus, type Todos } from "../gen/assistant__todos.effect.vibe"
+import { Facts, onAgent, readRecord, writeRecord } from "./host.vibe"
+import { appliedReceipt, attributed, failedReceipt, previewReceipt, unchangedReceipt } from "./replies.vibe"
+import { requestOf } from "./reminders.vibe"
+import { TodoRequest } from "./requests.schema.vibe"
+
+const listKey = "todos"
+const questionKey = "todos:duplicate-question"
+const questionLifetime = 5 * 60_000
+const todoActionName = "TODO"
+
+const statusOf = { start: "TodoInProgress", complete: "TodoCompleted", cancel: "TodoCancelled", reopen: "TodoPending" } as const satisfies Record<string, TodoStatus>
+const statusWords: Readonly<Record<string, string>> = { start: "in progress", complete: "completed", cancel: "cancelled", reopen: "open again" }
+const marks: Readonly<Record<TodoStatus, string>> = { TodoPending: "[ ]", TodoInProgress: "[→]", TodoCompleted: "[x]", TodoCancelled: "[-]" }
+const affirmative = /^\s*(?:yes|yeah|yep|yup|sure|ok(?:ay)?|confirm(?:ed)?|do it|go ahead|please do)\b/iu
+
+/** Whether the owner's message affirms what they were asked. */
+export function affirms(text: string): boolean {
+  return affirmative.test(text)
+}
+
+/** The owner's to-do list as stored. */
+export effect function currentTodos() {
+  provide stored(listKey) {
+    return try (try Machine).get()
+  }
+}
+
+/** The to-do list as the owner reads it: one line per item with its mark and its short reference. */
+export function renderTodos(todos: readonly Todo[], includeClosed: boolean): string {
+  const shown = todos.filter((todo) => includeClosed || todo.todoStatus === "TodoPending" || todo.todoStatus === "TodoInProgress")
+  return shown.length === 0 ? "" : ["# Current todos", ...shown.map((todo) => `- ${marks[todo.todoStatus]} ${todo.content} (t-${todo.todoId})`)].join("\n")
+}
+
+function contentOf(list: Todos, target: string): string {
+  const ref = /^t-(\d+)$/u.exec(target.trim())
+  const byRef = ref === null ? undefined : list.todos.find((todo) => todo.todoId === Number(ref[1]))
+  return byRef?.content ?? target.trim()
+}
+
+const decodeRequest = Schema.decodeUnknownOption(TodoRequest, { onExcessProperty: "error" })
+const decodeQuestion = Schema.decodeUnknownOption(Schema.Struct({ content: Schema.String, at: Schema.Number }))
+
+/** Changes the owner's to-do list as one message asked, once per message and item. */
+export effect function changeTodos(input: unknown, messageId: string, text: string) {
+  const decoded = decodeRequest(input)
+  if (Option.isNone(decoded)) return { success: false, text: "Say what to add or which to-do to change.", data: { outcome: "TODO_REQUEST_INVALID" } } satisfies ActionResult
+  const request = decoded.value
+  const at = try (try Facts).now()
+  provide stored(listKey) {
+    const list = try Machine
+    const before = try list.get()
+    if (request.op === "list") return { success: true, text: renderTodos(before.todos, true) || "Your to-do list is empty.", data: { todos: before.todos } } satisfies ActionResult
+    const content = request.op === "create" ? request.content.trim() : request.op === "clear" ? "" : contentOf(before, request.target)
+    const key = `${messageId}:${request.op}:${content}`
+    const facts = { operation: `todo.${request.op}`, kind: request.op === "clear" ? "todo-list" : "todo", id: request.op === "clear" ? listKey : content, key, at }
+    const target = `${facts.kind}:${facts.id}`
+    const asked = try readRecord(questionKey, decodeQuestion)
+    const affirmed = affirms(text) && (request.op === "clear" || (asked !== undefined && asked.content === content && at - asked.at <= questionLifetime))
+    const event: Event = request.op === "create" ? { type: "createTodo", key, content, affirmed }
+      : request.op === "delete" ? { type: "deleteTodo", key, content }
+      : request.op === "clear" ? (before.clearPreviewed ? { type: "confirmClear", key, affirmed } : { type: "previewClear", key })
+      : { type: "setTodoStatus", key, content, status: statusOf[request.op] }
+    const replay = before.mutations.some((mutation) => mutation.key === key)
+    const after = list.send(event) catch (refused) => refused
+    if (after instanceof Rejected) {
+      const receipt = failedReceipt(facts, "TODO_IDEMPOTENCY_CONFLICT", "rejected")
+      return attributed([{ actionName: todoActionName, success: false, receipts: [receipt] }], target, { done: "", notDone: "That request was already used for a different change, so nothing was changed.", unproven: "" })
+    }
+    if (replay) {
+      return attributed([{ actionName: todoActionName, success: true, receipts: [appliedReceipt(facts, true)] }], target, { done: "Reused the change this request already made.", notDone: "", unproven: "" }, { todos: after.todos })
+    }
+    switch (after.lastOutcome) {
+      case "Duplicate": {
+        try writeRecord(questionKey, { content, at })
+        return { success: false, effectReceipts: [unchangedReceipt(facts, "duplicate")], text: `"${content}" is already on your list. Add another copy anyway? Reply yes to confirm or no to cancel.`, data: { outcome: "duplicate", awaitingUserInput: true } } satisfies ActionResult
+      }
+      case "Missed": {
+        const candidates = matching(before, content)
+        return {
+          success: false, effectReceipts: [unchangedReceipt(facts, candidates.length === 0 ? "no_match" : "ambiguous")],
+          text: candidates.length === 0 ? `No to-do says "${content}", so nothing was changed.`
+            : `${candidates.length} to-dos say "${content}", so nothing was changed. Which one did you mean: ${candidates.map((todo) => `t-${todo.todoId}`).join(", ")}?`,
+          data: { outcome: candidates.length === 0 ? "not_found" : "ambiguous", candidates: candidates.map((todo) => todo.todoId), awaitingUserInput: candidates.length > 0 },
+        } satisfies ActionResult
+      }
+      default: break
+    }
+    if (event.type === "previewClear") {
+      const count = after.previewIds.length
+      return { success: true, effectReceipts: [previewReceipt(facts)], text: count === 0 ? "Your to-do list is already empty." : `This clears ${count} ${count === 1 ? "to-do" : "to-dos"}. Reply yes to clear them, or anything else to keep them.`, data: { outcome: "preview", previewIds: after.previewIds, awaitingUserInput: count > 0 } } satisfies ActionResult
+    }
+    if (event.type === "confirmClear" && !event.affirmed) {
+      return { success: true, effectReceipts: [unchangedReceipt(facts, "cancelled")], text: "Kept your to-do list as it was.", data: { outcome: "cancelled" } } satisfies ActionResult
+    }
+    const done = event.type === "createTodo" ? `Added "${content}".` : event.type === "deleteTodo" ? `Deleted "${content}".`
+      : event.type === "confirmClear" ? `Cleared ${before.todos.length - after.todos.length} to-dos.`
+      : `"${content}" is now ${statusWords[request.op]}.`
+    return attributed([{ actionName: todoActionName, success: true, receipts: [appliedReceipt(facts)] }], target, { done, notDone: "", unproven: "" }, { todos: after.todos })
+  }
+}
+
+function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
+  const given = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+  return typeof given === "object" && given !== null ? Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null)) : {}
+}
+
+/** Adds, changes, deletes, lists and clears the owner's to-dos. */
+export const todosAction: Action = {
+  name: todoActionName,
+  description: "The owner's to-do list: create, start, complete, cancel, reopen, delete, list or clear. A change names the item by its text or its t-N reference and applies only when exactly one item matches; clearing asks first.",
+  similes: ["TODOS", "CREATE_TODO", "ADD_TODO", "COMPLETE_TODO", "FINISH_TODO", "CANCEL_TODO", "DELETE_TODO", "LIST_TODOS", "CLEAR_TODOS"],
+  parameters: [
+    { name: "op", required: true, description: "create, start, complete, cancel, reopen, delete, list or clear.", schema: { type: "string", enum: ["create", "start", "complete", "cancel", "reopen", "delete", "list", "clear"] } },
+    { name: "content", required: false, description: "For create: the to-do's text.", schema: { type: "string" } },
+    { name: "target", required: false, description: "For a change: the to-do's exact text or its t-N reference.", schema: { type: "string" } },
+  ],
+  tags: ["domain:todos", "capability:write", "effect:receipt-required"],
+  roleGate: { minRole: "OWNER" },
+  validate: async () => true,
+  handler: async (runtime, message, _state, options) => {
+    const { messageId, text } = requestOf(message)
+    return onAgent(runtime, Effect.catch(changeTodos(parametersOf(options), messageId, text), (failed) => Effect.succeed({ success: false, text: "The to-do list could not be changed.", data: { outcome: failed._tag } } satisfies ActionResult)))
+  },
+}
+
+/** The owner's open to-dos, for the planner to name the right one. */
+export const currentTodosProvider: Provider = {
+  name: "CURRENT_TODOS",
+  description: "The owner's open to-dos, with their t-N references.",
+  dynamic: true,
+  private: true,
+  get: async (runtime) => {
+    const list = await onAgent(runtime, Effect.orElseSucceed(currentTodos(), () => undefined))
+    return { text: list === undefined ? "" : renderTodos(list.todos, false), data: { todos: list?.todos ?? [] } }
+  },
+}

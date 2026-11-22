@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"
+// spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "A cancel disconnects only the page's own call still in flight, which then settles once as cancelled"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CloudRequestPolicy.Attach;
@@ -21,6 +21,7 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class CloudRequests {
   public record Custody(DeviceCredentialStore credentials, AccountSession session) {}
@@ -30,7 +31,7 @@ public final class CloudRequests {
   public record Failed(Failure failure) implements Outcome {}
 
   public enum Failure {
-    NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, REAUTH_REQUIRED, REPLY_TOO_LARGE, NETWORK;
+    NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, REAUTH_REQUIRED, REPLY_TOO_LARGE, NETWORK, NAME_IN_USE, CANCELLED;
     static Failure of(Refusal refusal) {
       return switch (refusal) {
         case NO_ORIGIN -> NO_ORIGIN;
@@ -46,15 +47,45 @@ public final class CloudRequests {
   private static final int TIMEOUT_MS = 30_000;
   private static final int UNAUTHORIZED = 401;
 
+  private static final class Call {
+    volatile HttpURLConnection connection;
+    volatile boolean cancelled;
+  }
+
   private final CloudRequestPolicy policy;
   private final LargeBodyGrant grants;
+  private final Map<String, Call> calls = new ConcurrentHashMap<>();
 
   public CloudRequests(CloudRequestPolicy policy, LargeBodyGrant grants) {
     this.policy = policy;
     this.grants = grants;
   }
 
+  public boolean cancel(String name) {
+    Call call = name == null ? null : calls.get(name);
+    if (call == null || call.cancelled) return false;
+    call.cancelled = true;
+    HttpURLConnection connection = call.connection;
+    if (connection != null) connection.disconnect();
+    return true;
+  }
+
   public Outcome send(String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body) {
+    return send(null, apiOrigin, custody, method, target, headers, body);
+  }
+
+  public Outcome send(String name, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body) {
+    Call call = new Call();
+    if (name != null && calls.putIfAbsent(name, call) != null) return new Failed(Failure.NAME_IN_USE);
+    try {
+      Outcome outcome = sent(call, apiOrigin, custody, method, target, headers, body);
+      return call.cancelled ? new Failed(Failure.CANCELLED) : outcome;
+    } finally {
+      if (name != null) calls.remove(name, call);
+    }
+  }
+
+  private Outcome sent(Call call, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body) {
     DeviceCredentialStore store = custody.credentials();
     CredentialReader.Credential key = store.current();
     int version = key == null ? 0 : key.version();
@@ -79,6 +110,8 @@ public final class CloudRequests {
     HttpURLConnection connection = null;
     try {
       connection = (HttpURLConnection) URI.create(apiOrigin + target).toURL().openConnection();
+      call.connection = connection;
+      if (call.cancelled) return new Failed(Failure.CANCELLED);
       connection.setInstanceFollowRedirects(false);
       connection.setUseCaches(false);
       connection.setConnectTimeout(TIMEOUT_MS);

@@ -1,121 +1,34 @@
-// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "Story: Sign in to the Cloud"
-import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch } from "./worker-platform.ts"
-import type { Client } from "pg"
-import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
-import { sweepUsage } from "./worker-metering.vibe"
-import { identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
-import { nativeAssetLinks } from "./native-registry.vibe"
-import { ownsPasswordBackupPath } from "./password-backup.vibe"
-export { nativeAssetLinks }
-export { SpeechRelayCoordinator } from "./speech-relay.vibe"
-import { speechRequest, speechRoute, speechWebSocket, type SpeechEnv } from "./speech.vibe"
-import { deviceAttachmentPath, googleRequest, reminderSchedule, type GoogleEnv } from "./google.vibe"
-import { billingRequest, refreshPaidAccess, stripeWebhook, stripeWebhookRoute, sweepSubscriptions, type BillingEnv } from "./billing.vibe"
-import { CLEF_DECISIONS_PATH } from "./clef-decisions.vibe"
-import { clefRequest, type ClefEnv } from "./clef-worker.vibe"
-import { inferenceRequest, limitedBody, type InferenceEnv } from "./inference.vibe"
+// spec/cloud/deployment.md, "Story: Serve the deployment from a Worker"; spec/cloud/deployment.md, "A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve"
+import { workerFetch } from "./worker-platform.ts"
+import { relayFromTable, serveFromTable, sweepTable, workerReady, type ProfileBindings } from "./worker/canonical.vibe"
+import { ownsWorkerOnly, workerOnlyRequest, type DeploymentExtension, type LegacyBindings, type WorkerPorts } from "./worker/legacy.vibe"
+import { answerOf, opensRelay } from "./worker/routes.vibe"
 
-export type CloudBindings = ClefEnv & IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase
-type DeploymentExtension<E extends CloudBindings> = (request: Request, env: E, db: Client, account: string) => Promise<Response>
+export type { DeploymentExtension }
 
-async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension: DeploymentExtension<E> | undefined, providerFetch: typeof fetch) {
-  const path = new URL(request.url).pathname
-  if (path === stripeWebhookRoute && request.method === "POST") {
-    const bytes = await limitedBody(request, 256 * 1024)
-    return bytes ? stripeWebhook(request, bytes, env, db) : WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
-  }
-  if (path === "/health" && request.method === "GET") {
-    await db.query("SELECT 1 FROM accounts, sessions, device_grants, subscriptions, holds, usage_records LIMIT 0")
-    return WorkerResponse.json({ status: "ready" })
-  }
-  if (ownsPasswordBackupPath(path)) return identityRequest(request, env, db)
-  if (path.startsWith("/api/auth/") || path === "/api/v1/app-auth/mobile/config" || nativeGooglePath(path)) {
-    if (request.method === "POST") {
-      const bytes = await limitedBody(request, 8192)
-      if (!bytes) return WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
-      request = withRequestBody(request, bytes)
-    }
-    return identityRequest(request, env, db)
-  }
-  if (path === deviceAttachmentPath) {
-    if (request.method !== "POST") return WorkerResponse.json({ error: "method_not_allowed" }, { status: 405 })
-    if (!request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 401 })
-    const owner = await inferenceAccount(request, db, env)
-    if (!owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
-    const bytes = await limitedBody(request, 8704)
-    if (!bytes) return WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
-    const response = await googleRequest(withRequestBody(request, bytes), env, db, owner, providerFetch)
-    if (response.ok && await inferenceAccount(request, db, env) !== owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
-    return response
-  }
-  const decisions = path === CLEF_DECISIONS_PATH
-  const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"
-  if (path === speechRoute + "/ws") return speechWebSocket(request, env, db)
-  const speech = path.startsWith(speechRoute + "/")
-  const billing = path.startsWith("/api/v1/billing/")
-  const reminders = path === "/api/v1/calendar-reminders/device"
-  const google = path.startsWith("/api/v1/eliza/google/")
-  const nativeConnect = path === "/api/v1/eliza/google/connect/native"
-  if (!reminders && !decisions && !inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
-  const account = reminders || decisions || inference || speech || nativeConnect ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
-  if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
-  if ((reminders || nativeConnect) && !request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 403 })
-  if (reminders) return reminderSchedule(request, env, db, account)
-  if (decisions) return clefRequest(request, env, db, account)
-  if (inference || path === speechRoute + "/session") await refreshPaidAccess(env, db, account)
-  if (speech) return speechRequest(request, env, db, account)
-  if (inference) return inferenceRequest(request, env, db, account, workerFetch)
-  if (google) {
-    const response = await googleRequest(request, env, db, account, providerFetch)
-    if (response.ok && request.method === "GET" && path.startsWith("/api/v1/eliza/google/gmail/") && await sessionAccount(request, db) !== account)
-      return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
-    return response
-  }
-  if (billing) return billingRequest(request, env, db, account)
-  if (extension) return extension(request, env, db, account)
-  return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
+/** The part of a Worker's execution context that keeps work running after the answer. */
+export interface WorkerExecution {
+  waitUntil(work: Promise<unknown>): void
 }
 
-export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>, providerFetch = workerFetch) {
+/** Every binding a deployment's Worker reads: the profile, its database, its secrets and the Worker-only routes' own. */
+export type CloudBindings = LegacyBindings & ProfileBindings
+
+/** The deployment's whole Cloud API as a Worker: the server's route table, the Worker-only routes and the scheduled sweeps. */
+export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>, providerFetch: typeof fetch = workerFetch) {
+  const ports: WorkerPorts<E> = { extension, providerFetch }
   return {
-    scheduled(_event: unknown, env: E) {
-      return withCloudDatabase(env, async (db) => {
-        await sweepUsage(db)
-        await sweepSubscriptions(env, db)
-      })
+    scheduled(event: { readonly scheduledTime: number }, env: E): Promise<void> {
+      return sweepTable(env, event.scheduledTime)
     },
-    async fetch(request: Request, env: E): Promise<Response> {
-      if (new URL(request.url).origin === env.PUBLIC_API_ORIGIN && new URL(request.url).pathname === "/.well-known/assetlinks.json" && request.method === "GET") return nativeAssetLinks(env)
-      const origin = request.headers.get("origin")
-      if (origin && origin !== env.WEB_ORIGIN && origin !== env.PUBLIC_API_ORIGIN) {
-        return WorkerResponse.json({ error: "forbidden_origin" }, { status: 403 })
-      }
-      const cors = new WorkerHeaders({ Vary: "Origin", "Cache-Control": "no-store" })
-      if (origin) {
-        cors.set("Access-Control-Allow-Origin", origin)
-        cors.set("Access-Control-Allow-Credentials", "true")
-      }
+    async fetch(request: Request, env: E, execution?: WorkerExecution): Promise<Response> {
       const path = new URL(request.url).pathname
-      if (request.method === "OPTIONS") {
-        cors.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        cors.set("Access-Control-Allow-Headers", path === CLEF_DECISIONS_PATH
-          ? "Authorization, Content-Type, X-Eliza-Account"
-          : "Authorization, Content-Type, Idempotency-Key")
-        return new WorkerResponse(null, { status: 204, headers: cors })
+      if (opensRelay(request.method, path)) {
+        return relayFromTable(request, env, (work) => execution === undefined ? void work.then(() => undefined, () => undefined) : execution.waitUntil(work))
       }
-      if (request.method !== "GET" && !origin && !request.headers.has("authorization") &&
-          path !== stripeWebhookRoute && path !== "/api/auth/device/exchange" && !nativeGooglePath(path) && !ownsPasswordBackupPath(path)) {
-        return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })
-      }
-      try {
-        const result = await withCloudDatabase(env, (db) => route(request, env, db, extension, providerFetch))
-        if (result.status === 101) return result
-        const headers = new WorkerHeaders(result.headers)
-        for (const [key, value] of cors) headers.set(key, value)
-        return new WorkerResponse(result.body, { status: result.status, headers })
-      } catch {
-        return WorkerResponse.json({ error: "service_unavailable" }, { status: 503, headers: cors })
-      }
+      const answer = answerOf(request.method, path, (owned) => ownsWorkerOnly(owned, ports))
+      if (answer !== "FromWorkerOnly") return serveFromTable(request, env)
+      return (await workerReady(env)) ?? workerOnlyRequest(request, env, ports)
     }
   }
 }

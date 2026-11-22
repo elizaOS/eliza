@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
 package ai.eliza.plugins.signin;
 
 import java.util.ArrayList;
@@ -14,6 +14,7 @@ public final class CredentialPolicy {
   public static final int SIGN_OUT_ATTEMPTS = 3;
   public static final int RESET_ATTEMPTS = 1;
   public static final int START_ATTEMPTS = 1;
+  public static final long RENEWAL_LEAD_MS = 10 * 86_400_000L;
 
   public record Account(String userId, String organizationId) {
     public static final Account NONE = new Account("", "");
@@ -32,7 +33,7 @@ public final class CredentialPolicy {
     record Acknowledging(int attempt, int version, String credentialId, Account account, long lapsesAt) implements Attempt {}
   }
 
-  public record Duty(int version, long lapsesAt, int tries) {}
+  public record Duty(int version, long lapsesAt, int tries, String successor) {}
 
   public sealed interface Session {
     record NoSession() implements Session {}
@@ -118,12 +119,12 @@ public final class CredentialPolicy {
 
   public static boolean isSignedIn(State s) { return activeVersion(s) >= 1; }
 
-  static List<Duty> keyDuty(Custody c, int tries) {
-    return c instanceof Custody.Active a ? List.of(new Duty(a.version(), a.keyExpiresAt(), tries)) : List.of();
+  static List<Duty> keyDuty(Custody c, int tries, String successor) {
+    return c instanceof Custody.Active a ? List.of(new Duty(a.version(), a.keyExpiresAt(), tries, successor)) : List.of();
   }
 
   static List<Duty> pendingDuty(Attempt p, int tries) {
-    return p instanceof Attempt.Acknowledging k ? List.of(new Duty(k.version(), k.lapsesAt(), tries)) : List.of();
+    return p instanceof Attempt.Acknowledging k ? List.of(new Duty(k.version(), k.lapsesAt(), tries, "")) : List.of();
   }
 
   private static List<Duty> concat(List<Duty> a, List<Duty> b) {
@@ -141,6 +142,19 @@ public final class CredentialPolicy {
   public static State beginSignIn(State s) {
     int next = s.generation() + 1;
     return new State(s.now(), next, s.lastVersion(), s.custody(), new Attempt.Exchanging(next), concat(s.duties(), pendingDuty(s.attempt(), SIGN_OUT_ATTEMPTS)), s.session());
+  }
+
+  public static boolean renewalDue(State s) {
+    return s.custody() instanceof Custody.Active a && s.now() >= a.keyExpiresAt() - RENEWAL_LEAD_MS && s.now() < a.keyExpiresAt();
+  }
+
+  public static boolean canBeginRenewal(State s) {
+    return s.attempt() instanceof Attempt.NoAttempt && renewalDue(s);
+  }
+
+  public static State beginRenewal(State s) {
+    int next = s.generation() + 1;
+    return new State(s.now(), next, s.lastVersion(), s.custody(), new Attempt.Exchanging(next), s.duties(), s.session());
   }
 
   public static boolean canTokenAnswered(State s, int attempt, String credentialId, Account account, long keyExpiresAt) {
@@ -161,7 +175,7 @@ public final class CredentialPolicy {
   public static Step acknowledged(State s, int attempt, String credentialId, long keyExpiresAt) {
     if (!(s.attempt() instanceof Attempt.Acknowledging k)) return Step.of(s);
     State next = new State(s.now(), s.generation(), s.lastVersion(), new Custody.Active(k.version(), k.credentialId(), k.account(), keyExpiresAt),
-      NO_ATTEMPT, concat(s.duties(), keyDuty(s.custody(), SIGN_OUT_ATTEMPTS)), NO_SESSION);
+      NO_ATTEMPT, concat(s.duties(), keyDuty(s.custody(), SIGN_OUT_ATTEMPTS, k.credentialId())), NO_SESSION);
     return new Step(next, List.of(new Notice.Announce(k.version(), k.account())));
   }
 
@@ -185,7 +199,7 @@ public final class CredentialPolicy {
 
   static Step endedBy(int tries, State s) {
     State next = new State(s.now(), s.generation() + 1, s.lastVersion(), SIGNED_OUT, NO_ATTEMPT,
-      concat(concat(s.duties(), keyDuty(s.custody(), tries)), pendingDuty(s.attempt(), tries)), NO_SESSION);
+      concat(concat(s.duties(), keyDuty(s.custody(), tries, "")), pendingDuty(s.attempt(), tries)), NO_SESSION);
     return new Step(next, s.custody() instanceof Custody.SignedOut ? List.of() : List.of(new Notice.SignedOutNotice()));
   }
 
@@ -202,7 +216,7 @@ public final class CredentialPolicy {
     List<Duty> out = new ArrayList<>();
     for (Duty d : s.duties()) {
       if (settled) { if (d.version() != version) out.add(d); }
-      else out.add(d.version() == version && d.tries() > 0 ? new Duty(d.version(), d.lapsesAt(), d.tries() - 1) : d);
+      else out.add(d.version() == version && d.tries() > 0 ? new Duty(d.version(), d.lapsesAt(), d.tries() - 1, d.successor()) : d);
     }
     return s.withDuties(out);
   }
@@ -222,7 +236,7 @@ public final class CredentialPolicy {
 
   public static State restart(State s) {
     List<Duty> duties = new ArrayList<>();
-    for (Duty d : s.duties()) duties.add(new Duty(d.version(), d.lapsesAt(), START_ATTEMPTS));
+    for (Duty d : s.duties()) duties.add(new Duty(d.version(), d.lapsesAt(), START_ATTEMPTS, d.successor()));
     return new State(s.now(), s.generation(), s.lastVersion(), s.custody(), pendingVersion(s) >= 1 ? s.attempt() : NO_ATTEMPT, duties, NO_SESSION);
   }
 
@@ -276,7 +290,8 @@ public final class CredentialPolicy {
     StringBuilder duties = new StringBuilder("[");
     for (Duty d : s.duties()) {
       if (duties.length() > 1) duties.append(',');
-      duties.append("{\"version\":").append(d.version()).append(",\"lapsesAt\":").append(d.lapsesAt()).append(",\"tries\":").append(d.tries()).append('}');
+      duties.append("{\"version\":").append(d.version()).append(",\"lapsesAt\":").append(d.lapsesAt()).append(",\"tries\":").append(d.tries())
+        .append(",\"successor\":").append(CredentialJson.quote(d.successor())).append('}');
     }
     String session = s.session() instanceof Session.Held t
       ? "{\"tag\":\"Session\",\"version\":" + t.version() + ",\"until\":" + t.until() + ",\"accessExpiresAt\":" + t.accessExpiresAt()
@@ -319,7 +334,8 @@ public final class CredentialPolicy {
     List<Duty> duties = new ArrayList<>();
     for (Object row : CredentialJson.list(s.get("duties"), "duties")) {
       Map<String, Object> d = CredentialJson.object(row, "duty");
-      duties.add(new Duty(CredentialJson.small(d, "version"), CredentialJson.whole(d, "lapsesAt"), CredentialJson.small(d, "tries")));
+      duties.add(new Duty(CredentialJson.small(d, "version"), CredentialJson.whole(d, "lapsesAt"), CredentialJson.small(d, "tries"),
+        d.get("successor") instanceof String successor ? successor : ""));
     }
     Map<String, Object> x = CredentialJson.object(s.get("session"), "session");
     Session session = switch (CredentialJson.text(x, "tag")) {

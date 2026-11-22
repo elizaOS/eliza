@@ -6,6 +6,8 @@ import { AGENT_EXIT_CODES, exitCode, readLaunch, LaunchCredentialMissing } from 
 import { LaunchDocumentRejected } from "./host/launch.schema.vibe"
 import { startAgent, AgentBootFailed } from "./host/process.vibe"
 import { bundledPluginMap, BundleEntryRefused, type BundledEntry } from "./plugins/profile.vibe"
+import type { ModuleContext, ModuleFactory } from "./host/module.vibe"
+import type { ServiceClass } from "@elizaos/core"
 import { smokeBoot, SmokeNotReleased } from "./bundle/smoke.vibe"
 
 const crashed = 2
@@ -51,41 +53,76 @@ module node {
 }
 import { bundledSnapshot, exitOnUncaught, publishBundleActions, reserveStdout } from node
 
-export interface AgentCli {
+type PlatformServices = Layer.Success<typeof NodeServices.layer>
+
+/** Where the resident runs, handed to a bundle entry's host services when they are built. */
+export interface ResidentHost {
+  readonly stateDirectory: string
+}
+
+interface AgentCliEntries {
   readonly bundled: readonly BundledEntry[]
   readonly productPlugin?: string | undefined
+  readonly runtimeServices?: (host: ResidentHost) => readonly ServiceClass[]
+}
+
+/** What a bundle entry hands the agent CLI: its bundled plugins, the product plugin, and host modules with the device services they need over the resident's platform layer. */
+export type AgentCli<R = never> = AgentCliEntries & (
+  | { readonly hostModules?: ReadonlyMap<string, ModuleFactory<PlatformServices>>; readonly hostServices?: undefined }
+  | { readonly hostModules: ReadonlyMap<string, ModuleFactory<R | PlatformServices>>; readonly hostServices: (host: ResidentHost) => Layer.Layer<R, never, PlatformServices> }
+)
+
+function hostedNames<R>(cli: AgentCli<R>): ReadonlySet<string> {
+  return new Set(cli.hostModules?.keys() ?? [])
+}
+
+function residentModules<R>(cli: AgentCli<R>, host: ResidentHost): ReadonlyMap<string, ModuleFactory<never>> | undefined {
+  if (cli.hostModules === undefined) return undefined
+  if (cli.hostServices === undefined) {
+    return new Map([...cli.hostModules].map(([name, factory]): [string, ModuleFactory<never>] =>
+      [name, (context: ModuleContext) => Effect.provide(factory(context), NodeServices.layer)]))
+  }
+  const services = Layer.provide(cli.hostServices(host), NodeServices.layer)
+  return new Map([...cli.hostModules].map(([name, factory]): [string, ModuleFactory<never>] =>
+    [name, (context: ModuleContext) => Effect.provide(Effect.provide(factory(context), services), NodeServices.layer)]))
 }
 
 let released: number | undefined
 
-effect function serve(cli: AgentCli) {
+effect function serve<R>(cli: AgentCli<R>) {
   const input = try readLaunch()
-  const bundled = try bundledPluginMap(cli.bundled)
+  const hostModules = residentModules(cli, { stateDirectory: input.stateDirectory })
+  const runtimeServices = cli.runtimeServices?.({ stateDirectory: input.stateDirectory })
+  const bundled = try bundledPluginMap(cli.bundled, hostedNames(cli))
   const snapshot = try tryPromise({
     try: () => bundledSnapshot(import.meta.url),
     catch: () => new AgentBootFailed({ phase: "Storage" }),
   })
   const agent = try acquireRelease(
-    startAgent({ ...input, bundled, ...(snapshot === undefined ? {} : { snapshot }) }),
+    startAgent({ ...input, bundled, ...(hostModules === undefined ? {} : { hostModules }), ...(runtimeServices === undefined ? {} : { runtimeServices }), ...(snapshot === undefined ? {} : { snapshot }) }),
     (agent) => map(promise(() => agent.stop()), (code) => { released = code }),
   )
   try sync(() => publishBundleActions(agent.runtime.actions))
   try never
 }
 
-effect function smoke(cli: AgentCli, arguments_: readonly string[]) {
+effect function smoke<R>(cli: AgentCli<R>, arguments_: readonly string[]) {
   const [, stateFlag, stateDirectory] = arguments_
   if (arguments_.length !== 3 || stateFlag !== "--state" || !stateDirectory) throw new LaunchDocumentRejected()
   const writeLine = try sync(reserveStdout)
-  const bundled = try bundledPluginMap(cli.bundled)
+  const bundled = try bundledPluginMap(cli.bundled, hostedNames(cli))
+  const hostModules = residentModules(cli, { stateDirectory })
+  const runtimeServices = cli.runtimeServices?.({ stateDirectory })
   const report = try smokeBoot({
     bundled, stateDirectory, productPlugin: cli.productPlugin,
+    ...(hostModules === undefined ? {} : { hostModules }),
+    ...(runtimeServices === undefined ? {} : { runtimeServices }),
     plugins: [...bundled.keys()].filter((name) => name !== cli.productPlugin),
   })
   try promise(() => writeLine(JSON.stringify(report)))
 }
 
-effect function main(cli: AgentCli) {
+effect function main<R>(cli: AgentCli<R>) {
   const io = try Stdio
   const arguments_ = try io.args
   if (arguments_[0] === "smoke") return try smoke(cli, arguments_)
@@ -104,7 +141,8 @@ function exitWith(gone: Exit.Exit<unknown, unknown>): number {
   return crashed
 }
 
-export function runAgentCli(cli: AgentCli): void {
+/** Runs the agent process for a bundle entry: `serve` with a launch, or the load smoke, then exits with the agent's code. */
+export function runAgentCli<R = never>(cli: AgentCli<R>): void {
   exitOnUncaught(crashed)
   NodeRuntime.runMain(Effect.provide(Effect.scoped(main(cli)), NodeServices.layer), {
     disableErrorReporting: true,

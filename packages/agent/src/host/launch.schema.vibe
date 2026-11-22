@@ -1,4 +1,4 @@
-// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/views.md, "Views are declared once at boot with distinct ids, paths and names, and never change after"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/views.md, "Views are declared once at boot with distinct ids, paths and names, and never change after"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"
 const Name = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50), Schema.isTrimmed())
 const Nonblank = Schema.String.check(Schema.isPattern(/\S/))
 const PositiveInteger = Schema.Int.check(Schema.isGreaterThan(0))
@@ -13,6 +13,7 @@ const Zone = Schema.String.check(Schema.makeFilter((name) => {
   catch { return false }
 }))
 const Secret = Schema.RedactedFromValue(Nonblank)
+const BearerKey = Schema.RedactedFromValue(Schema.String.check(Schema.isPattern(/^[\x21-\x7e]{8,16384}$/)))
 const View = Schema.Struct({
   id: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_-]{0,63}$/)),
   label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80), Schema.isTrimmed(), Schema.isPattern(/^[^\p{Cc}]*$/u)),
@@ -79,7 +80,7 @@ export const LaunchFrame = Schema.Struct({
   version: Schema.Literal(1),
   token: Secret,
   epoch: PositiveInteger,
-  credential: Schema.optionalKey(Schema.Struct({ version: PositiveInteger, value: Secret })),
+  credential: Schema.optionalKey(Schema.Struct({ version: PositiveInteger, value: BearerKey })),
   storageKey: Schema.optionalKey(Secret),
 })
 

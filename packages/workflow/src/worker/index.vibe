@@ -1,0 +1,7 @@
+// spec/workflow/worker.md, "Story: Run workflows from the reviewed source and signed device assets"; spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"
+export * from "./artifact.vibe"
+export * from "./source.vibe"
+export {
+  decodeParentMessage, encodeWorkerMessage, modelDraftPrompt, serveWorker, TYPED_STEPS_NODE, WORKFLOW_STEP_MAX_BYTES, WorkerStepFailed,
+  type ParentMessage, type WorkerChannel, type WorkerMessage, type WorkerResume, type WorkerStart, type WorkerStepResult,
+} from "./protocol.vibe"

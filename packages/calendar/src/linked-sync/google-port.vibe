@@ -1,0 +1,227 @@
+// spec/calendar/linkedReconcile.md, "A push retains its operation and uses the exact provider preconditions"; spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"
+import { ProviderEventWire, SyncCapabilities, SyncEnvelope, SyncRefusal } from "./wire.schema.vibe"
+import {
+  CalendarSyncAborted, CalendarSyncRefused, ProviderRefused, ProviderUncertain, linkedCalendarSemanticText,
+  type LinkedCalendarEventRecord, type LinkedCalendarProviderPort, type LinkedCalendarProviderSnapshot, type LinkedCalendarSemanticEvent,
+} from "./linked.vibe"
+import type { CalendarSyncBinding } from "./linked-store.vibe"
+
+/** The exact Google account and calendar a sync request is for. */
+export interface CalendarSyncSelection {
+  readonly grantId: string
+  readonly calendarId: string
+  readonly accountId: string
+}
+
+/** One request of the Cloud's `calendar/sync-v1` protocol. */
+export type CalendarSyncRequest =
+  | { readonly kind: "capabilities"; readonly selection: Omit<CalendarSyncSelection, "accountId"> }
+  | { readonly kind: "get"; readonly selection: CalendarSyncSelection; readonly reference: { readonly eventId: string } | { readonly idempotencyKey: string } }
+  | { readonly kind: "create"; readonly selection: CalendarSyncSelection; readonly idempotencyKey: string; readonly event: LinkedCalendarSemanticEvent }
+  | { readonly kind: "update"; readonly selection: CalendarSyncSelection; readonly eventId: string; readonly expectedEtag: string; readonly event: LinkedCalendarSemanticEvent }
+  | { readonly kind: "delete"; readonly selection: CalendarSyncSelection; readonly eventId: string; readonly expectedEtag: string }
+
+/** The host's transport to the Cloud sync protocol; a refusal rejects with `{ status, data }`. */
+export interface CalendarSyncClient {
+  googleCalendarSync(input: CalendarSyncRequest, signal: AbortSignal): Promise<unknown>
+}
+
+/** How the provider port canonicalizes recurrence lines it reads back. */
+export interface GoogleCalendarSyncPortOptions {
+  readonly canonicalRecurrence?: (lines: readonly string[], allDay: boolean) => string[]
+}
+
+/** The verified account and calendar a link writes to. */
+export interface GoogleCalendarSyncDestination {
+  readonly providerAccountId: string
+  readonly accountEmail: string
+  readonly calendarLabel: string
+}
+
+/** The HTTP shape of one sync request. */
+export type CalendarSyncHttp =
+  | { readonly path: string; readonly method: "GET" | "DELETE" }
+  | { readonly path: string; readonly method: "POST" | "PATCH"; readonly body: Record<string, unknown> }
+
+const syncPath = "/api/v1/eliza/google/calendar/sync-v1/"
+const grantPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const text = (value: unknown, max = 2048): value is string =>
+  typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value)
+const refuse = (message: string) => new CalendarSyncRefused({ message })
+const query = (values: Record<string, string>) => new URLSearchParams(values).toString()
+
+/** The path, method and body of a sync request, refusing a request without its exact selection and preconditions. */
+export effect function calendarSyncHttp(input: CalendarSyncRequest): CalendarSyncHttp!CalendarSyncRefused {
+  const selection = { ...input.selection }
+  if (!grantPattern.test(selection.grantId) || !text(selection.calendarId, 1024)
+    || (input.kind !== "capabilities" && !text(input.selection.accountId))) throw refuse("Review the selected Google account and calendar.")
+  switch (input.kind) {
+    case "capabilities":
+      return { path: `${syncPath}capabilities?${query(selection)}`, method: "GET" }
+    case "get": {
+      const reference: Record<string, string> = { ...input.reference }
+      if (Object.keys(reference).length !== 1 || !Object.values(reference).every((value) => text(value))) {
+        throw refuse("An exact Calendar event reference is required.")
+      }
+      return { path: `${syncPath}event?${query({ ...input.selection, ...reference })}`, method: "GET" }
+    }
+    case "create":
+      if (!text(input.idempotencyKey)) throw refuse("A stable Calendar operation key is required.")
+      return { path: `${syncPath}event`, method: "POST", body: { ...input.selection, idempotencyKey: input.idempotencyKey, event: structuredClone(input.event) } }
+    case "update":
+    case "delete": {
+      if (!text(input.eventId, 1024) || !text(input.expectedEtag, 1024) || input.expectedEtag === "*") throw refuse("An exact Google event revision is required.")
+      if (input.kind === "update") {
+        return { path: `${syncPath}event`, method: "PATCH", body: { ...input.selection, eventId: input.eventId, expectedEtag: input.expectedEtag, event: structuredClone(input.event) } }
+      }
+      return { path: `${syncPath}event?${query({ ...input.selection, eventId: input.eventId, expectedEtag: input.expectedEtag })}`, method: "DELETE" }
+    }
+  }
+}
+
+const decodeEvent = Schema.decodeUnknownEffect(ProviderEventWire)
+const decodeCapabilities = Schema.decodeUnknownEffect(SyncCapabilities)
+const decodeEnvelope = Schema.decodeUnknownEffect(SyncEnvelope)
+const refusal = Schema.decodeUnknownOption(SyncRefusal)
+
+function civilRoundTrips(date: string): boolean {
+  const stamp = Date.parse(date)
+  return Number.isFinite(stamp) && new Date(stamp).toISOString().slice(0, 10) === date
+}
+
+effect function eventSnapshot(value: unknown, canonical: (lines: readonly string[], allDay: boolean) => string[]): LinkedCalendarProviderSnapshot!ProviderUncertain {
+  const incomplete = () => new ProviderUncertain({ message: "Google returned an incomplete Calendar event. Nothing was applied." })
+  const wire = try mapError(decodeEvent(value), incomplete)
+  const { event } = wire
+  const start = Date.parse(event.startAt)
+  const end = Date.parse(event.endAt)
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw incomplete()
+  if (event.isAllDay && (!civilRoundTrips(event.startAt) || !civilRoundTrips(event.endAt))) {
+    throw new ProviderUncertain({ message: "Google returned invalid all-day dates." })
+  }
+  if (!event.isAllDay) {
+    const zone = event.timeZone
+    try Effect.try({ try: () => new Intl.DateTimeFormat("en-US", { timeZone: zone }).format(), catch: () => new ProviderUncertain({ message: "Google returned an event without its timezone." }) })
+  }
+  return {
+    eventId: wire.eventId,
+    etag: wire.etag,
+    event: {
+      title: event.title, description: event.description, location: event.location, startAt: event.startAt, endAt: event.endAt,
+      timeZone: event.timeZone, isAllDay: event.isAllDay, attendees: event.attendees.map(({ email, optional }) => ({ email, optional })),
+      ...(event.recurrence === undefined ? {} : { recurrence: canonical(event.recurrence, event.isAllDay) }),
+    },
+  }
+}
+
+/** The verified destination of a capabilities response, refusing a calendar that cannot be synced safely or named exactly. */
+export effect function readGoogleCalendarSyncCapabilities(raw: unknown, calendarId: string): GoogleCalendarSyncDestination!CalendarSyncRefused {
+  const unsafe = () => refuse("This Google calendar does not support safe sync.")
+  const caps = try mapError(decodeCapabilities(raw), unsafe)
+  if (caps.calendarId !== calendarId || !caps.read || !caps.write || !caps.conditionalWrites || !caps.idempotentCreate) throw unsafe()
+  if (caps.accountEmail === undefined || !/^[^\s@]+@[^\s@]+$/.test(caps.accountEmail) || caps.calendarLabel === undefined || caps.calendarLabel.trim() === "") {
+    throw refuse("Google account and calendar names could not be verified. Review the connection before syncing.")
+  }
+  return { providerAccountId: caps.accountId, accountEmail: caps.accountEmail, calendarLabel: caps.calendarLabel }
+}
+
+effect function send(client: CalendarSyncClient, input: CalendarSyncRequest): unknown!(ProviderRefused | ProviderUncertain) {
+  return try tryPromise({
+    try: (signal) => client.googleCalendarSync(input, signal),
+    catch: (error) => {
+      const failure = typeof error === "object" && error !== null ? error as { status?: unknown; data?: unknown } : {}
+      const refused = [400, 403, 409, 412, 413, 429].includes(typeof failure.status === "number" ? failure.status : 0) ? refusal(failure.data) : Option.none()
+      return Option.isSome(refused)
+        ? new ProviderRefused({ outcome: refused.value.outcome, code: refused.value.code, message: refused.value.error ?? "Calendar change was refused." })
+        : new ProviderUncertain({ message: error instanceof Error ? error.message : "Calendar sync did not answer." })
+    },
+  })
+}
+
+/** Reads the capabilities of an owner-selected Google calendar and verifies its destination, while the selection is still current. */
+export effect function readGoogleCalendarSyncDestination(client: CalendarSyncClient, selection: { readonly grantId: string; readonly calendarId: string },
+  current: () => boolean): GoogleCalendarSyncDestination!(CalendarSyncRefused | CalendarSyncAborted) {
+  const raw = send(client, { kind: "capabilities", selection: { grantId: selection.grantId, calendarId: selection.calendarId } })
+    catch effect (error) => { throw refuse(error.message) }
+  if (!current()) throw new CalendarSyncAborted({ reason: "Calendar sync context changed" })
+  return try readGoogleCalendarSyncCapabilities(raw, selection.calendarId)
+}
+
+/** A provider port over one bound Google calendar: exact event identity, etag preconditions, response checks and readback. */
+export effect function googleCalendarSyncPort(client: CalendarSyncClient, input: CalendarSyncBinding, current: () => boolean,
+  options: GoogleCalendarSyncPortOptions = {}): LinkedCalendarProviderPort!(CalendarSyncRefused | CalendarSyncAborted | ProviderRefused | ProviderUncertain) {
+  const binding = { ...input }
+  const canonical = options.canonicalRecurrence ?? ((lines: readonly string[]) => [...lines])
+  const selection: CalendarSyncSelection = { grantId: binding.connectionId, calendarId: binding.calendarId, accountId: binding.providerAccountId }
+
+  effect function check(row?: LinkedCalendarEventRecord): void!CalendarSyncAborted {
+    if (!current() || (row !== undefined && (row.agentId !== binding.agentId || row.connectorAccountId !== binding.connectionId
+      || row.providerCalendarId !== binding.calendarId))) throw new CalendarSyncAborted({ reason: "Calendar sync owner changed" })
+  }
+
+  effect function call(request: CalendarSyncRequest): Record<string, unknown>!(CalendarSyncAborted | ProviderRefused | ProviderUncertain) {
+    try check()
+    try mapError(calendarSyncHttp(request), (error) => new ProviderRefused({ outcome: "not_accepted", code: "CALENDAR_SYNC_REQUEST_INVALID", message: error.message }))
+    const raw = try send(client, request)
+    try check()
+    const unavailable = () => new ProviderUncertain({ message: "Calendar sync protocol is unavailable. Nothing was applied." })
+    const envelope = try mapError(decodeEnvelope(raw), unavailable)
+    if (envelope.calendarId !== binding.calendarId || typeof raw !== "object" || raw === null) throw unavailable()
+    return raw as Record<string, unknown>
+  }
+
+  effect function read(data: Record<string, unknown>, expectedEventId: string | null): LinkedCalendarProviderSnapshot!ProviderUncertain {
+    const snapshot = try eventSnapshot(data.event, canonical)
+    if (expectedEventId !== null && snapshot.eventId !== expectedEventId) throw new ProviderUncertain({ message: "Google returned a different Calendar event. Nothing was applied." })
+    return snapshot
+  }
+
+  effect function written(data: Record<string, unknown>, requested: LinkedCalendarSemanticEvent, expectedEventId: string | null): LinkedCalendarProviderSnapshot!ProviderUncertain {
+    const snapshot = try read(data, expectedEventId)
+    if (linkedCalendarSemanticText(snapshot.event) !== linkedCalendarSemanticText(requested)) {
+      throw new ProviderUncertain({ message: "Google stored a different Calendar event than requested. Check the event before retrying." })
+    }
+    return snapshot
+  }
+
+  const caps = try call({ kind: "capabilities", selection: { grantId: selection.grantId, calendarId: selection.calendarId } })
+  if (caps.accountId !== binding.providerAccountId || caps.read !== true || caps.write !== true || caps.idempotentCreate !== true || caps.conditionalWrites !== true) {
+    throw refuse("Review Google Calendar sync access in Settings.")
+  }
+
+  effect function exact(row: LinkedCalendarEventRecord): { eventId: string; expectedEtag: string }!ProviderRefused {
+    if (row.providerEventId === null || row.providerEtag === null) {
+      throw new ProviderRefused({ outcome: "not_accepted", code: "CALENDAR_SYNC_REVISION_REQUIRED", message: "Refresh this Google event before changing it." })
+    }
+    return { eventId: row.providerEventId, expectedEtag: row.providerEtag }
+  }
+
+  return {
+    effect get(row) {
+      try check(row)
+      const data = call({ kind: "get", selection, reference: row.providerEventId !== null ? { eventId: row.providerEventId } : { idempotencyKey: row.idempotencyKey } })
+        catch effect (error) => match (error) { when ProviderRefused: throw new ProviderUncertain({ message: error.message }); default: throw error; }
+      return data.event === null ? null : try read(data, row.providerEventId)
+    },
+    effect create(row, event) {
+      try check(row)
+      const data = try call({ kind: "create", selection, idempotencyKey: row.idempotencyKey, event })
+      const created = typeof data.event === "object" && data.event !== null ? data.event as { visibility?: unknown; remindersDisabled?: unknown } : {}
+      if (created.visibility !== "private" || created.remindersDisabled !== true) {
+        throw new ProviderUncertain({ message: "Google create privacy could not be confirmed. Check the event before retrying." })
+      }
+      return try written(data, event, row.providerEventId)
+    },
+    effect update(row, event) {
+      try check(row)
+      const target = try exact(row)
+      return try written(try call({ kind: "update", selection, ...target, event }), event, row.providerEventId)
+    },
+    effect delete(row) {
+      try check(row)
+      const target = try exact(row)
+      const data = try call({ kind: "delete", selection, ...target })
+      if (data.deleted !== true) throw new ProviderUncertain({ message: "Google deletion could not be confirmed." })
+    },
+  }
+}

@@ -8,14 +8,24 @@ preflight and its runner resolve the owner's clock with the one definition
 below, from the facts as they stand at that tick, so they never disagree.
 
 A statement is modeled as the zone the shared zone resolver maps it to:
-an IANA zone, the zone an alias such as "pacific" names, or nothing when
-the statement names no zone the resolver knows.
+an IANA zone, the zone an alias such as "pacific" names, or the words
+themselves when they name no zone the resolver knows. Whether a name is a
+zone the resolver knows is the host's IANA database, which the spec does
+not model: any IANA zone the host knows can be stored, not only the zones
+the simulator tries.
 
 ## Story: Run my day on my own clock
 
 > As an owner, I want my reminders and check-ins to follow the time zone I
 > told the agent, and the zone I am travelling in while I travel, and
 > never a zone guessed from something I said that was not a zone.
+
+### Whether a name is a zone is the host's zone database to say, and the empty name never is
+
+```quint
+const knownZone: (str) => bool
+pure def lawTheEmptyNameIsNoZone(namedZone: str): bool = namedZone == "" implies not(knownZone(namedZone))
+```
 
 ### A stated zone replaces the stored zone only when the resolver knows it
 
@@ -24,17 +34,16 @@ A statement that names no known zone leaves the stored zone as it was.
 ```quint
 type OwnerTimezone = { storedZone: str }
 pure val initial: OwnerTimezone = { storedZone: "" }
-pure val knownZones = Set("Europe/Berlin", "America/New_York", "America/Los_Angeles")
 pure val namedZoneValues = Set("", "America/New_York", "America/Los_Angeles", "whatever the laptop says")
 pure def stateTimezone(s: OwnerTimezone, namedZone: str): OwnerTimezone =
-  if (knownZones.contains(namedZone)) { storedZone: namedZone } else s
-pure def alwaysStoredZoneIsKnown(s: OwnerTimezone): bool = s.storedZone == "" or knownZones.contains(s.storedZone)
+  if (knownZone(namedZone)) { storedZone: namedZone } else s
+pure def alwaysStoredZoneIsKnown(s: OwnerTimezone): bool = s.storedZone == "" or knownZone(s.storedZone)
 pure val storedZoneValues = Set("", "Europe/Berlin")
 pure def lawUnknownStatementKeepsTheStoredZone(storedZone: str, namedZone: str): bool =
-  not(knownZones.contains(namedZone)) implies stateTimezone({ storedZone: storedZone }, namedZone).storedZone == storedZone
+  not(knownZone(namedZone)) implies stateTimezone({ storedZone: storedZone }, namedZone).storedZone == storedZone
 pure def lawKnownStatementReplacesTheStoredZone(storedZone: str, namedZone: str): bool =
-  knownZones.contains(namedZone) implies stateTimezone({ storedZone: storedZone }, namedZone).storedZone == namedZone
-pure def sometimesZoneStated(s: OwnerTimezone): bool = s.storedZone == "America/Los_Angeles"
+  knownZone(namedZone) implies stateTimezone({ storedZone: storedZone }, namedZone).storedZone == namedZone
+pure def sometimesZoneStated(s: OwnerTimezone): bool = s.storedZone != ""
 ```
 
 ### The calendar reads the stored zone, or the agent's zone when none is stored
@@ -42,7 +51,7 @@ pure def sometimesZoneStated(s: OwnerTimezone): bool = s.storedZone == "America/
 ```quint
 pure def calendarZone(s: OwnerTimezone, agentZone: str): str = if (s.storedZone != "") s.storedZone else agentZone
 pure def lawCalendarFollowsTheStatedZone(namedZone: str, agentZone: str): bool =
-  calendarZone(stateTimezone(initial, namedZone), agentZone) == (if (knownZones.contains(namedZone)) namedZone else agentZone)
+  calendarZone(stateTimezone(initial, namedZone), agentZone) == (if (knownZone(namedZone)) namedZone else agentZone)
 ```
 
 ### At a tick, the owner's clock is the travel zone while travelling, else the first zone known

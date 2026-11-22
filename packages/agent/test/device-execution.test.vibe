@@ -1,8 +1,8 @@
-// spec/agent/deviceActions/execution.md, "Story: Approve a device operation on the screen that reviewed it"; spec/agent/deviceActions/execution.md, "Story: Preserve a device result when the screen retires"
+// spec/agent/deviceActions/execution.md, "Story: Approve a device operation on the screen that reviewed it"; spec/agent/deviceActions/execution.md, "Story: Preserve a device result when the screen retires"; spec/agent/deviceActions/execution.md, "A journal write whose answer was lost counts only when a reread finds exactly that entry, and is never written again"
 import { assert, it } from "@effect/vitest"
 import type { ReviewOutcome } from "../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
-import { DeviceExecution, NOT_DISPATCHED, type DeviceReceipt, type DeviceAgent, type DeviceExecutionPorts, type DeviceProposal, type DeviceReview, type ExecutorCall, type JournalIdentity, type ScreenCheck } from "../src/client/device-execution.vibe"
+import { DeviceExecution, NOT_DISPATCHED, type DeviceReceipt, type DeviceAgent, type DeviceExecutionPorts, type DeviceJournal, type DeviceProposal, type DeviceReview, type ExecutorCall, type JournalIdentity, type ScreenCheck } from "../src/client/device-execution.vibe"
 import { notDispatchedCode, readOperation, receiptOutcome, type CheckedOperation, type DeviceOperation } from "../src/device-actions/operations.schema.vibe"
 import { changeEnrollment, offerRequest, openRequest, recordRequestDecision, recordRequestClaim, recordRequestReceipt, type RequestTerms } from "../src/device-actions/store.vibe"
 import { openDeviceStorage } from "../src/storage/index.vibe"
@@ -85,10 +85,10 @@ function agentOver(rig: Rig): DeviceAgent {
   }
 }
 
-effect function deviceFor(rig: Rig) {
+effect function deviceFor(rig: Rig, wrap: (journal: DeviceJournal) => DeviceJournal = (journal) => journal) {
   const journal = try host("open the journal", () => fileJournal(rig.directory))
   const ports: DeviceExecutionPorts<DeviceOperation> = {
-    identity, journal, agent: agentOver(rig),
+    identity, journal: wrap(journal), agent: agentOver(rig),
     validate: (operation) => readOperation(operation)?.operation,
     execute: (_operation, call) => {
       rig.device.calls.push(call)
@@ -218,4 +218,22 @@ it.live('An unknown result stays unknown until the owner confirms a review the j
   assert.strictEqual(try host("confirm the unresolved review", () => execution.confirmReview("uncertain", "ReviewedUnresolved")), "sent")
   assert.deepStrictEqual(try phase(rig, "uncertain"), { tag: "Reviewed", reviewed: "ReviewedUnresolved" })
   assert.strictEqual(rig.device.calls.length, 1)
+})
+
+it.live('A journal write that committed but lost its answer counts once and the operation still runs once (spec/agent/deviceActions/execution.md, "A journal write whose answer was lost counts only when a reread finds exactly that entry, and is never written again")', effect () => {
+  const rig = try rigged("device-execution-lost-write")
+  let losses = 1
+  const device = try deviceFor(rig, (journal) => ({
+    ...journal,
+    edit: async (proposalId, expectedRevision, next) => {
+      const kept = await journal.edit(proposalId, expectedRevision, next)
+      losses -= 1
+      if (losses >= 0) throw new Error("The journal answer was lost")
+      return kept
+    },
+  }))
+  const proposal = try offered(rig, "proposal-lost")
+  const approved = try host("approve while a journal answer is lost", () => device.execution.approve(proposal, reviewed))
+  assert.deepStrictEqual([approved, rig.device.calls.length], [{ kind: "settled", result: { tag: "Applied" }, synced: true }, 1])
+  assert.deepStrictEqual(try phase(rig, "proposal-lost"), { tag: "Receipted", reported: "ReportedApplied" })
 })

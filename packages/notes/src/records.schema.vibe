@@ -1,0 +1,140 @@
+// spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
+import { authoredNoteText, parseNoteFormat } from "./format.vibe"
+import { STICKY_COLORS, type NoteFormat } from "./types.vibe"
+
+/** A stable lowercase note ID or an RFC-shaped UUID, as installed records carry. */
+export const noteIdPattern = /^(?:[a-z][a-z0-9-]{2,127}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$/
+
+/** The recording and owner identity bound of the device's recording store. */
+export const recordingIdPattern = /^[A-Za-z0-9_-]{1,100}$/
+
+/** The longest title and body a note keeps. */
+export const noteLimits = { title: 240, body: 20_001, content: 20_241, trash: 10_000, cleanup: 10_000, creationId: 200 } as const
+
+/** A note ID. */
+export const NoteId = Schema.String.check(Schema.isPattern(noteIdPattern))
+
+/** A UTC instant written as an ISO timestamp. */
+export const Instant = Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/))
+
+/** A collection revision. */
+export const Revision = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+
+/** One of the four note colors. */
+export const Color = Schema.Literals(STICKY_COLORS)
+
+/** A rich note format that is bounded plain JSON of a known kind. */
+export const Format = Schema.declare((value: unknown): value is NoteFormat => parseNoteFormat(value) !== undefined)
+
+/** One stored note: bounded fields and authored content that is not blank. */
+export const NoteRow = Schema.Struct({
+  id: NoteId,
+  title: Schema.String.check(Schema.isMaxLength(noteLimits.title)),
+  body: Schema.String.check(Schema.isMaxLength(noteLimits.body)),
+  color: Color,
+  format: Schema.optionalKey(Format),
+  createdAt: Instant,
+  updatedAt: Instant,
+}).check(Schema.makeFilter((note) => (note.title + note.body).trim() !== "" || authoredNoteText(note.format).trim() !== ""))
+
+/** One Trash row. */
+export const TrashRow = Schema.Struct({ note: NoteRow, deletedAt: Instant })
+
+/** A pending recording cleanup receipt, bound to its erase operation. */
+export const CleanupReceipt = Schema.Struct({
+  operationId: Schema.String.check(Schema.isPattern(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/)),
+  noteId: NoteId.check(Schema.isPattern(recordingIdPattern)),
+  audioId: Schema.String.check(Schema.isPattern(recordingIdPattern)),
+  deletedAt: Instant,
+})
+
+/** The owner's reviewed erase: all of Trash or one exact entry, at the revision the owner saw. */
+export const TrashErase = Schema.Union([
+  Schema.Struct({ scope: Schema.Literal("all"), expectedRevision: Revision }),
+  Schema.Struct({ scope: Schema.Literal("entry"), expectedRevision: Revision, id: NoteId, deletedAt: Instant }),
+])
+
+/** A restore of one Trash entry at the revision the owner saw. */
+export const RestoreRequest = Schema.Struct({ id: NoteId, expectedRevision: Revision, deletedAt: Schema.optionalKey(Instant) })
+
+/** The receipt of the one-time import of the earlier Notes document. */
+export const ImportReceipt = Schema.Struct({
+  source: Schema.Literal("notes-state"),
+  schemaVersion: Schema.Literals([1, 2, 3]),
+  sourceRevision: Revision,
+  sourceDigest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+  notes: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  trash: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  importedAt: Instant,
+})
+
+/** The stored collection document: one schema, unique IDs across notes and Trash, bounded Trash and cleanup. */
+export const StoredDocument = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  revision: Revision,
+  notes: Schema.Array(NoteRow),
+  trash: Schema.Array(TrashRow).check(Schema.isMaxLength(noteLimits.trash)),
+  creations: Schema.Record(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.creationId)), NoteId),
+  recordingCleanup: Schema.Array(CleanupReceipt).check(Schema.isMaxLength(noteLimits.cleanup)),
+  imported: Schema.optionalKey(ImportReceipt),
+}).check(Schema.makeFilter((document) => {
+  const ids = [...document.notes.map((note) => note.id), ...document.trash.map((entry) => entry.note.id)]
+  const known = new Set(ids)
+  return known.size === ids.length && Object.values(document.creations).every((id) => known.has(id))
+}))
+
+/** A creation from a capability or route: complete content, or a separate title and body. */
+export const CreateRequest = Schema.Struct({
+  content: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.content))),
+  title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.title))),
+  body: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.body - 1))),
+  format: Schema.optionalKey(Format),
+  color: Schema.optionalKey(Color),
+  forceNew: Schema.optionalKey(Schema.Boolean),
+  creationId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.creationId))),
+})
+
+const TextReplace = Schema.Struct({
+  action: Schema.optionalKey(Schema.Literal("replace")),
+  field: Schema.Literals(["title", "body"]),
+  oldText: Schema.String.check(Schema.isMinLength(1)),
+  newText: Schema.String,
+})
+const TextAppend = Schema.Struct({
+  action: Schema.Literal("append"),
+  field: Schema.Literals(["body", "item"]),
+  text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.body)),
+})
+const AuthoredReplace = Schema.Struct({
+  action: Schema.optionalKey(Schema.Literal("replace")),
+  field: Schema.Literals(["checklist", "voice-line", "voice-summary", "voice-action", "link-clip"]),
+  index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  expectedText: Schema.String,
+  text: Schema.optionalKey(Schema.String),
+  done: Schema.optionalKey(Schema.Boolean),
+})
+const AuthoredAppend = Schema.Struct({
+  action: Schema.Literal("append"),
+  field: Schema.Literal("checklist"),
+  text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.body)),
+})
+
+/** One edit of an existing note: a literal edit, an authored edit, or field replacements. */
+export const UpdateRequest = Schema.Struct({
+  textEdit: Schema.optionalKey(Schema.Union([TextReplace, TextAppend])),
+  authoredEdit: Schema.optionalKey(Schema.Union([AuthoredReplace, AuthoredAppend])),
+  content: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.content))),
+  title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.title))),
+  body: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.body - 1))),
+  format: Schema.optionalKey(Format),
+  color: Schema.optionalKey(Color),
+})
+
+/** A decoded import receipt. */
+export type ImportReceipt = typeof ImportReceipt.Type
+/** A decoded stored document. */
+export type StoredDocument = typeof StoredDocument.Type
+/** A decoded creation request. */
+export type CreateRequest = typeof CreateRequest.Type
+/** A decoded edit request. */
+export type UpdateRequest = typeof UpdateRequest.Type

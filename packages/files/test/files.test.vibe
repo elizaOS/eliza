@@ -1,0 +1,226 @@
+// spec/files/reviewedOperations.md, "Story: Act only on the file revision I reviewed"; spec/files/reviewedOperations.md, "Story: Keep every batch outcome, including the ones I cannot be sure of"; spec/files/requests.md, "Story: Open the file I asked for, and only from what I was shown"; spec/files/requests.md, "Story: Claim an empty or complete folder only when the listing knows"; spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import type { ElizaFilesPlugin } from "@elizaos/os/bridges/files"
+import { FilesVolume, filesReviews, filesView, nativeVolume, runBatch, undoBatch, type OpenPorts } from "../src/client.vibe"
+import { FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY, FILES_SHOWN_TARGET_GUIDANCE, FilesOperationRefused, filesOperationAdmitted, filesToolSurface, type FilesAgentRunner } from "../src/contract.vibe"
+import { localVolume } from "../src/storage/local-volume.vibe"
+import { workspace } from "../src/workspace.vibe"
+
+const check = (assertion: () => void) => Effect.try(assertion)
+const both = [FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY]
+const on = <A, E, R>(layer: Layer.Layer<FilesVolume, never, R>, work: A!E!FilesVolume) => Effect.provide(work, layer)
+
+effect function storage(files: Readonly<Record<string, string>>) {
+  const fs = try FileSystem.FileSystem
+  const path = try Path.Path
+  const root = try fs.makeTempDirectoryScoped({ prefix: "files-volume-" })
+  for (const [name, text] of Object.entries(files)) {
+    try fs.makeDirectory(path.dirname(path.join(root, name)), { recursive: true })
+    try fs.writeFileString(path.join(root, name), text)
+  }
+  return { root, fs, at: (name: string) => path.join(root, name) }
+}
+
+function fakeDevice(answer: (paths: readonly string[], call: number) => readonly { path: string; status: string; to?: string }[] | undefined, listed: { truncated?: boolean; entries?: boolean }) {
+  let calls = 0
+  const ready = <A>(extra: A) => Promise.resolve({ status: "ready" as const, ...extra })
+  const entry = { path: "Download/a.pdf", name: "a.pdf", directory: false, mimeType: "application/pdf", size: 3, modified: 1 }
+  const outcomes = (paths: readonly string[]) => {
+    const rows = answer(paths, calls++)
+    return rows === undefined ? Promise.reject(new Error("bridge lost")) : ready({ outcomes: rows })
+  }
+  const plugin = {
+    storageList: () => ready({ ...(listed.entries === false ? {} : { entries: [entry] }), ...(listed.truncated === undefined ? {} : { truncated: listed.truncated }) }),
+    storageQuery: () => ready({ entries: [entry], truncated: listed.truncated }),
+    storageTrash: ({ paths }: { paths: readonly string[] }) => outcomes(paths),
+    storageTransfer: ({ paths }: { paths: readonly string[] }) => outcomes(paths),
+    storageRestore: ({ ids }: { ids: readonly string[] }) => ready({ outcomes: ids.map((id) => ({ path: id, status: "restored", to: `Download/${id}` })) }),
+  } as unknown as ElizaFilesPlugin
+  return { plugin, calls: () => calls }
+}
+
+it.effect('Act only on the file revision I reviewed (spec/files/reviewedOperations.md, "Story: Act only on the file revision I reviewed"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const { root, fs, at } = try storage({ "Download/lease.pdf": "lease", "Download/memo.txt": "memo", "Download/keep.txt": "keep", "Archive/lease.pdf": "older" })
+      provide localVolume(root) {
+        const volume = try FilesVolume
+        const reviewed = try volume.reviewedIdentities(["Download/lease.pdf", "Download/memo.txt"])
+        try fs.writeFileString(at("Download/memo.txt"), "memo changed after review")
+        const trashed = try volume.trash({ paths: ["Download/lease.pdf", "Download/memo.txt"], reviewed })
+        const moved = try volume.transfer({ paths: ["Download/keep.txt", "Archive/lease.pdf"], dest: "Download", copy: false })
+        const copied = try volume.transfer({ paths: ["Archive/lease.pdf"], dest: "Download", copy: true })
+        const intoItself = try volume.transfer({ paths: ["Archive"], dest: "Archive", copy: true })
+        const listed = try volume.trashList()
+        const restored = try volume.restore(listed.map((item) => item.id))
+        const unconfirmed = try Effect.flip(volume.emptyTrash(["x"], false))
+        try check(() => {
+          assert.equal(trashed[0].status, "trashed")
+          assert.match(trashed[0].to ?? "", /^[0-9a-f-]{36}$/)
+          assert.deepEqual(trashed[1], { path: "Download/memo.txt", status: "changed" })
+          assert.deepEqual(moved, [{ path: "Download/keep.txt", status: "unchanged", to: "Download/keep.txt" }, { path: "Archive/lease.pdf", status: "moved", to: "Download/lease.pdf" }])
+          assert.deepEqual(copied, [{ path: "Archive/lease.pdf", status: "missing" }])
+          assert.deepEqual(intoItself, [{ path: "Archive", status: "invalid" }])
+          assert.deepEqual(listed.map(({ name, origin }) => ({ name, origin })), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
+          assert.deepEqual(restored, [{ path: listed[0].id, status: "restored", to: "Download/lease (1).pdf" }])
+          assert.equal(unconfirmed.status, "confirmation-required")
+        })
+        const again = try volume.trash({ paths: ["Download/lease (1).pdf"] })
+        try TestClock.adjust("31 days")
+        const expired = try volume.trashList()
+        try check(() => {
+          assert.equal(again[0].status, "trashed")
+          assert.deepEqual(expired, [])
+        })
+        assert.equal(try fs.exists(at(`.Trash-files/info/${again[0].to}.json`)), false)
+      }
+    })
+  }
+})
+
+it.effect('Claim an empty or complete folder only when the listing knows (spec/files/requests.md, "Story: Claim an empty or complete folder only when the listing knows"; spec/files/requests.md, "An empty or complete claim needs a full, known listing")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const { root } = try storage({ "Empty/.keep": "" })
+      const local = try on(localVolume(root), effect { return try ((try FilesVolume).list("Download") catch () => undefined) })
+      const empty = try on(localVolume(root), effect { return try (try FilesVolume).query({ text: "nothing" }) })
+      const partial = try on(nativeVolume(fakeDevice(() => [], { truncated: true }).plugin), effect { return try (try FilesVolume).list("Download") })
+      const unknown = try on(nativeVolume(fakeDevice(() => [], { entries: false }).plugin), effect { return try (try FilesVolume).list("Download") })
+      const filtered = try on(nativeVolume(fakeDevice(() => [], { truncated: true }).plugin), effect { return try (try FilesVolume).query({ text: "nothing" }) })
+      try check(() => {
+        assert.equal(local, undefined)
+        assert.deepEqual({ complete: empty.complete, empty: empty.empty, rows: empty.entries.length }, { complete: true, empty: true, rows: 0 })
+        assert.deepEqual({ complete: partial.complete, empty: partial.empty, rows: partial.entries.length }, { complete: false, empty: false, rows: 1 })
+        assert.deepEqual({ complete: unknown.complete, empty: unknown.empty }, { complete: false, empty: false })
+        assert.deepEqual({ complete: filtered.complete, empty: filtered.empty, rows: filtered.entries.length }, { complete: false, empty: false, rows: 0 })
+      })
+    })
+  }
+})
+
+it.effect('Keep every batch outcome, including the ones I cannot be sure of (spec/files/reviewedOperations.md, "Story: Keep every batch outcome, including the ones I cannot be sure of"; spec/files/reviewedOperations.md, "A retired batch dispatches nothing new, and an unknown chunk is never confirmed")', effect () => {
+  const paths = Array.from({ length: 120 }, (_, index) => `Download/${index}.txt`)
+  const device = fakeDevice((chunk, call) => call === 0 ? chunk.map((path) => ({ path, status: "trashed", to: `id-${path.slice(9, -4)}` }))
+    : call === 1 ? chunk.slice(1).map((path) => ({ path, status: "trashed", to: `id-${path}` })) : undefined, {})
+  const report = try on(nativeVolume(device.plugin), runBatch({ kind: "trash", paths }, () => false))
+  const undone = try on(nativeVolume(device.plugin), undoBatch(report))
+  let left = false
+  const retiring = fakeDevice((chunk) => { left = true; return chunk.map((path) => ({ path, status: "moved", to: `Archive/${path.slice(9)}` })) }, {})
+  const retired = try on(nativeVolume(retiring.plugin), runBatch({ kind: "move", paths, dest: "Archive" }, () => left))
+  try check(() => {
+    assert.deepEqual(report.chunks.map((chunk) => chunk.outcome), ["ChunkConfirmed", "ChunkUnknown"])
+    assert.equal(report.stopped, "unknown")
+    assert.equal(report.chunks[1].undo, undefined)
+    assert.deepEqual(report.chunks[1].rows[0], { path: "Download/50.txt", status: "unknown" })
+    assert.equal(device.calls(), 2)
+    assert.equal(undone.length, 50)
+    assert.deepEqual(retired.chunks.map((chunk) => [chunk.outcome, chunk.undo?.kind]), [["ChunkConfirmed", "moveBack"]])
+    assert.equal(retired.stopped, "retired")
+    assert.equal(retiring.calls(), 1)
+  })
+})
+
+it.effect('Open the file I asked for, and only from what I was shown (spec/files/requests.md, "Story: Open the file I asked for, and only from what I was shown"; spec/files/requests.md, "A granted selection opens only for the current request; a late one is released"; spec/files/requests.md, "The view\'s reload never retires the request")', effect () => {
+  const view = try filesView()
+  const released: string[] = []
+  const ports = (during: { access?: () => void; select?: () => void } = {}): OpenPorts => ({
+    commitView: () => succeed(true),
+    access: () => sync(() => { during.access?.(); return true }),
+    select: () => sync(() => { during.select?.(); return true }),
+    release: (path) => sync(() => { released.push(path) }),
+  })
+  const cold = try view.open({ path: "Download/lease.pdf" }, ports())
+  try view.show({ text: "lease" }, { entries: [{ path: "Download/lease.pdf", name: "lease.pdf", directory: false, mimeType: "application/pdf", size: 5, modified: 1 }], complete: true, empty: false })
+  const shown = try view.open({ shown: 1 }, ports())
+  const missing = try view.open({ shown: 2 }, ports())
+  const late = try view.open({ path: "Download/lease.pdf" }, { ...ports(), select: () => effect {
+    try view.leave()
+    return true
+  } })
+  const after = try view.open({ shown: 1 }, ports())
+  try check(() => {
+    assert.deepEqual(cold, { kind: "opened", path: "Download/lease.pdf" })
+    assert.deepEqual(shown, { kind: "opened", path: "Download/lease.pdf" })
+    assert.deepEqual(missing, { kind: "refused", reason: "not_shown" })
+    assert.deepEqual(late, { kind: "refused", reason: "not_current" })
+    assert.deepEqual(after, { kind: "refused", reason: "not_shown" })
+    assert.deepEqual(released, ["Download/lease.pdf"])
+  })
+})
+
+it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const { root } = try storage({ "Download/lease.pdf": "lease", "Download/lease notes.txt": "notes" })
+      provide localVolume(root) {
+        const volume = try FilesVolume
+        const view = try filesView()
+        try view.enter()
+        try view.show({ text: "lease" }, try volume.query({ text: "lease" }))
+        const runner: FilesAgentRunner = {
+          reviewedIdentities: (paths) => mapError(volume.reviewedIdentities(paths), (refusal) => new FilesOperationRefused({ input: paths, reason: refusal.message })),
+          shownPaths: (shown) => mapError(view.shownPaths(shown), () => new FilesOperationRefused({ input: shown, reason: "not shown" })),
+          run: () => succeed({ status: "succeeded", summary: "" }),
+        }
+        const reviews = try filesReviews(runner, both)
+        const trash = try reviews.review("p1", "d1", { type: "files_trash", shown: [2, 1] })
+        const share = try reviews.review("p2", "d2", { type: "files_share", shown: [1] })
+        const unresolved = try reviews.review("p3", "d3", { type: "files_trash", shown: [3] })
+        const unnegotiated = try (try filesReviews(runner, [FILES_CAPABILITY])).review("p4", "d4", { type: "files_share", shown: [1] })
+        const replaced = try reviews.review("p1", "d1-changed", { type: "files_trash", shown: [1] })
+        const executed = try reviews.approved("p1", "d1")
+        const reviewedPaths = executed !== undefined && "paths" in executed ? executed.paths : []
+        const outcome = executed?.type === "files_trash" && "paths" in executed ? try volume.trash(executed) : []
+        const shownNow = try view.shownPaths([2, 1])
+        try check(() => {
+          assert.equal(trash.kind, "card")
+          assert.equal(trash.kind === "card" && trash.title, "Move 2 items to Trash")
+          assert.deepEqual(reviewedPaths, [...shownNow])
+          assert.equal(executed !== undefined && "reviewed" in executed && executed.reviewed?.length, 2)
+          assert.deepEqual(share.kind === "card" && share.operation, { type: "files_share", paths: reviewedPaths.slice(1) })
+          assert.deepEqual(unresolved, { proposalId: "p3", kind: "notice", notice: "Move 1 item to Trash: These files are not in Files." })
+          assert.deepEqual(unnegotiated, { proposalId: "p4", kind: "notice", notice: "This Files action was not negotiated with this agent." })
+          assert.equal(replaced.kind, "notice")
+          assert.deepEqual(outcome.map((row) => row.status), ["trashed", "trashed"])
+          assert.equal(filesOperationAdmitted({ type: "files_open", shown: 1 }, [FILES_CAPABILITY]), true)
+          assert.equal(filesOperationAdmitted({ type: "files_share", paths: ["a"] }, []), false)
+          assert.deepEqual(filesToolSurface([FILES_CAPABILITY]).guidance, [])
+          assert.deepEqual(filesToolSurface(both).guidance, [FILES_SHOWN_TARGET_GUIDANCE])
+          assert.equal(filesToolSurface([]).schemas.length, 0)
+          assert.equal(filesToolSurface(both).schemas.length - filesToolSurface([FILES_CAPABILITY]).schemas.length, 3)
+        })
+      }
+    })
+  }
+})
+
+it.effect('Keep the agent\'s working files inside its workspace (spec/files/workspace.md, "Story: Keep the agent\'s working files inside its workspace"; spec/files/workspace.md, "A call touches a file only when its real location is inside the workspace, and a write never follows a link")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const fs = try FileSystem.FileSystem
+      const path = try Path.Path
+      const state = try fs.makeTempDirectoryScoped({ prefix: "files-workspace-" })
+      const outside = try fs.makeTempDirectoryScoped({ prefix: "files-outside-" })
+      const files = workspace(path.join(state, "workspace"))
+      try files.write("notes/today.md", "# Today")
+      try fs.writeFileString(path.join(outside, "secret.txt"), "secret")
+      try fs.symlink(outside, path.join(state, "workspace", "escape"))
+      const refusals = try.all [
+        Effect.flip(files.read("../secret.txt")),
+        Effect.flip(files.read("/etc/passwd")),
+        Effect.flip(files.read("escape/secret.txt")),
+        Effect.flip(files.write("escape/planted.txt", "x")),
+        Effect.flip(files.write("", "x")),
+      ]
+      const read = try files.read("./notes//today.md")
+      const listed = try files.list("")
+      try check(() => {
+        assert.equal(read, "# Today")
+        assert.deepEqual(refusals.map((refusal) => refusal.reason), ["invalid_path", "invalid_path", "outside_workspace", "outside_workspace", "invalid_path"])
+        assert.deepEqual([...listed].sort((a, b) => a.name.localeCompare(b.name)), [{ name: "escape", type: "directory" }, { name: "notes", type: "directory" }])
+      })
+      assert.equal(try fs.exists(path.join(outside, "planted.txt")), false)
+    })
+  }
+})

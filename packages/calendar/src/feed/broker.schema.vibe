@@ -1,0 +1,110 @@
+// spec/calendar/managedFeed.md, "The resident accepts only complete broker data for the exact selected source and window"
+const Text = Schema.String
+const NullableText = Schema.NullOr(Schema.String)
+const Instant = Schema.String.check(Schema.makeFilter((value) => Number.isFinite(Date.parse(value))))
+
+/** A managed owner grant as the private broker scopes it. */
+export const ScopedGrant = Schema.String.check(Schema.isPattern(/^alpha-google:[a-f0-9]{64}$/))
+
+/** One row of the broker's source catalog. */
+export const BrokerSource = Schema.Struct({
+  provider: Schema.Literal("google"),
+  side: Schema.Literal("owner"),
+  grantId: ScopedGrant,
+  connectorAccountId: ScopedGrant,
+  calendarId: Text.check(Schema.isMinLength(1)),
+  summary: Text,
+  accessRole: Schema.Literals(["reader", "writer", "owner"]),
+  accountEmail: Schema.optionalKey(NullableText),
+  description: Schema.optionalKey(NullableText),
+  primary: Schema.optionalKey(Schema.Boolean),
+  timeZone: Schema.optionalKey(NullableText),
+  managedGoogleConnectionId: Schema.optionalKey(Schema.Unknown),
+})
+
+/** A host connection reference the broker may attach to a source; any other value is dropped, never the source. */
+export const ManagedConnectionReference = Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/))
+
+/** One attendee of a broker event. */
+export const BrokerAttendee = Schema.Struct({
+  email: NullableText,
+  displayName: NullableText,
+  responseStatus: NullableText,
+  self: Schema.Boolean,
+  organizer: Schema.Boolean,
+  optional: Schema.Boolean,
+})
+
+/** One event of a broker feed, before the resident sets its own agent ID. */
+export const BrokerEvent = Schema.Struct({
+  id: Text.check(Schema.isMinLength(1)),
+  externalId: Text,
+  provider: Schema.Literal("google"),
+  side: Schema.Literal("owner"),
+  grantId: Text,
+  calendarId: Text,
+  title: Text,
+  startAt: Instant,
+  endAt: Instant,
+  connectorAccountId: Schema.optionalKey(Text),
+  description: Schema.optionalKey(Text),
+  location: Schema.optionalKey(Text),
+  status: Schema.optionalKey(Text),
+  isAllDay: Schema.optionalKey(Schema.Boolean),
+  timezone: Schema.optionalKey(NullableText),
+  htmlLink: Schema.optionalKey(NullableText),
+  conferenceLink: Schema.optionalKey(NullableText),
+  organizer: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
+  attendees: Schema.optionalKey(Schema.Array(BrokerAttendee)),
+  metadata: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+  recurrence: Schema.optionalKey(Schema.NullOr(Schema.Array(Text))),
+  recurringEventId: Schema.optionalKey(NullableText),
+  syncedAt: Schema.optionalKey(Text),
+  calendarSummary: Schema.optionalKey(Text),
+  accountEmail: Schema.optionalKey(Text),
+})
+
+/** The one health row a broker feed carries for its source. */
+export const BrokerHealth = Schema.Struct({
+  key: Schema.Struct({
+    provider: Schema.Literal("google"),
+    side: Schema.Literal("owner"),
+    grantId: Text,
+    connectorAccountId: Text,
+    calendarId: Text,
+  }),
+  summary: Schema.optionalKey(Text),
+  accessRole: Schema.optionalKey(Text),
+  status: Schema.Literals(["fresh", "stale", "error"]),
+  syncedAt: Schema.optionalKey(NullableText),
+})
+
+/** The envelope of a broker feed reply; its events and health are checked row by row. */
+export const BrokerFeedEnvelope = Schema.Struct({
+  feed: Schema.Struct({
+    calendarId: Text,
+    state: Text,
+    source: Text,
+    timeMin: Text,
+    timeMax: Text,
+    events: Schema.Array(Schema.Unknown),
+    sources: Schema.Array(Schema.Unknown),
+    syncedAt: Instant,
+  }),
+})
+
+/** The envelope of a broker source catalog reply; its rows are checked one by one. */
+export const BrokerSourcesEnvelope = Schema.Struct({ calendars: Schema.Array(Schema.Unknown) })
+
+/** The broker's proof that a connected calendar can take conditional, idempotent writes. */
+export const BrokerWriteCapabilities = Schema.Struct({
+  version: Schema.Literal(1),
+  grantId: ScopedGrant,
+  calendarId: Text,
+  accountId: Text,
+  read: Schema.Literal(true),
+  write: Schema.Literal(true),
+  idempotentCreate: Schema.Literal(true),
+  conditionalWrites: Schema.Literal(true),
+  providerExactlyOnce: Schema.Literal(false),
+})

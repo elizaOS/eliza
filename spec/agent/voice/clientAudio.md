@@ -282,3 +282,64 @@ pure def lawAFinalTextAfterAnEditIsHandedBack(g: DraftGuard): bool = draftOutcom
 pure def lawARetiredCaptureIsIgnored(g: DraftGuard, isFinal: bool): bool =
   draftOutcome(beginDraft(beginDraft(g)), ticketFor(g), isFinal) == DraftIgnored and draftOutcome(invalidateDraft(beginDraft(g)), ticketFor(g), isFinal) == DraftIgnored
 ```
+
+## Story: Have my words recognised on this device while I speak
+
+> As a person talking to the agent with on-device recognition, I want the
+> audio my screen captures recognised by the device's own transcriber, so
+> that my words become a turn without leaving the phone.
+
+### A live session recognises each segment once, from its speech start through the speech end or close that ends it, and at most four sessions are open
+
+`POST /api/asr/local-inference/live` (Root) takes `{sessionId, roomId?,
+frames?, vad?, close?}`: `sessionId` is 1 to 128 characters after
+trimming; each frame is `{pcm16, sampleRate, channels, samples,
+timestamp}` with base64 little-endian PCM16 at 16,000 Hz mono and an even
+byte length; each VAD edge is `{type: "speech-start" | "speech-end",
+timestampMs?}`. Anything else is 400 and changes no session. Within one
+request the session applies its speech-start edges, then its frames, then
+its speech-end edges, so a request that carries an utterance's last audio
+and its speech end recognises that audio. Audio outside a segment is
+dropped, and a segment keeps at most 120 seconds of samples. A segment is
+recognised once, by the device's local transcription model, as one mono
+PCM16 WAV; the answer is `{ok, sessionId, mode: "batch", framesReceived,
+final?, closed?}` with `final = {turnId, text, mode,
+asrFinalFromSpeechEndMs}` when the request ended a segment. The session
+publishes `speech-start`, `speech-end`, `final` and, on a failed
+recognition, `error` on the `voice-transcript` event stream
+([event feeds](../conversation/events.md)) for the screen's live session;
+a failed recognition answers 502 `ASR_FAILED`. A fifth session is 429
+`LIVE_ASR_SESSIONS_FULL`; no local transcription model is 503
+`LIVE_ASR_UNAVAILABLE`; a session idle for 60 seconds, or closed, is
+disposed with its segment, and a session opened on another runtime is
+reopened on the current one. `GET /api/asr/local-inference/live/status`
+answers `{ready, streaming: false, sessions, maxSessions}`.
+
+```quint
+type LiveSegment = NoSegment | Speaking({ kept: int })
+type LiveStep = { segment: LiveSegment, recognised: int }
+pure val maxLiveSessions = 4
+pure val liveIdleMs = 60000
+pure val maxSegmentSamples = 1920000
+pure def admitsSession(open: int, known: bool): bool = known or open < maxLiveSessions
+pure def keptAfter(kept: int, added: int): int = if (kept + added > maxSegmentSamples) maxSegmentSamples else kept + added
+pure def liveRequest(segment: LiveSegment, started: bool, added: int, ended: bool, closing: bool): LiveStep = {
+  val opened = match segment { | NoSegment => if (started) Speaking({ kept: 0 }) else NoSegment | Speaking(x) => Speaking({ kept: x.kept }) }
+  val fed = match opened { | NoSegment => NoSegment | Speaking(x) => Speaking({ kept: keptAfter(x.kept, added) }) }
+  match fed {
+    | NoSegment => { segment: NoSegment, recognised: -1 }
+    | Speaking(x) => if (ended or closing) { segment: NoSegment, recognised: x.kept } else { segment: fed, recognised: -1 }
+  }
+}
+pure val addedValues = Set(0, 160, 1920000, 2000000)
+pure val openValues = Set(0, 3, 4, 5)
+pure def lawAnUtterancesLastAudioIsRecognisedWithItsSpeechEnd(added: int): bool =
+  added >= 0 implies liveRequest(NoSegment, true, added, true, false).recognised == keptAfter(0, added)
+pure def lawAudioOutsideASegmentIsNeverRecognised(added: int, ended: bool, closing: bool): bool =
+  liveRequest(NoSegment, false, added, ended, closing).recognised == -1
+pure def lawASegmentIsRecognisedOnlyWhenItEnds(added: int): bool =
+  liveRequest(Speaking({ kept: 0 }), false, added, false, false).recognised == -1
+pure def lawASegmentNeverKeepsMoreThanItsBound(added: int): bool =
+  added >= 0 implies keptAfter(0, added) <= maxSegmentSamples
+pure def lawAtMostFourSessionsAreOpen(open: int): bool = open >= maxLiveSessions implies not(admitsSession(open, false))
+```

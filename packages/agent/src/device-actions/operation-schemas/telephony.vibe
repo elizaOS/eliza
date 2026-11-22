@@ -1,15 +1,12 @@
-// spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "Only an applied receipt settles applied, and only a trusted refusal settles that nothing ran"
-module node {
-  import { createHash } from "node:crypto"
-
-  export function bindingHash(operation: object): string {
-    return createHash("sha256").update(JSON.stringify(operation)).digest("hex")
-  }
-}
-
-import { bindingHash } from node
+// spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "Only an applied receipt settles applied, and only a trusted refusal settles that nothing ran"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
+import { digestOf } from "./digest.vibe"
 import type { OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import type { Evidence, FamilySchemas, OperationSchema, ReceiptContext, WireOperation } from "./family.vibe"
+
+/** The digest a SIM send receipt carries: the SHA-256 of the operation fields it was asked to send, in wire order. */
+export function bindingHash(operation: object): string | undefined {
+  return digestOf(operation)
+}
 
 const applied: Evidence = { shows: "ReportsApplied", nothingSubmitted: false }
 const failed: Evidence = { shows: "ReportsFailed", nothingSubmitted: false }
@@ -194,6 +191,31 @@ const Voicemail = Schema.Union([
   }),
   Schema.Struct({ kind: Schema.Literal("voicemail-read"), status: NoSelection })
 ])
+const SmsLatestSender = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("sms_latest_sender") }),
+  Schema.Struct({ type: Schema.Literal("sms_latest_sender"), includeAddress: Schema.Literal(true) })
+])
+const ThreadId = Schema.String.check(Schema.isPattern(/^thread:[1-9][0-9]{0,17}$/))
+const senderKind = { kind: Schema.Literal("sms-latest-sender") }
+const LatestSender = Schema.Union([
+  Schema.Struct({ ...senderKind, status: Schema.Literal("found"), numberEnding: Schema.String.check(Schema.isPattern(/^[0-9]{4}$/)) }),
+  Schema.Struct({ ...senderKind, status: Schema.Literal("found"), address: PhoneNumber, threadId: Schema.optionalKey(ThreadId) }),
+  Schema.Struct({ ...senderKind, status: Schema.Literals(["empty", "sender-unavailable", "unavailable"]) })
+])
+
+/** A latest-sender result as the device reports it: the number's last four digits, the whole address with its thread, or why there is none. */
+export type LatestSenderResult = typeof LatestSender.Type
+
+/** Decodes an untrusted latest-sender result, or `undefined` when it is not one. */
+export const readLatestSender = Schema.decodeUnknownOption(LatestSender, { onExcessProperty: "error" })
+
+function senderEvidence(result: typeof LatestSender.Type, operation: typeof SmsLatestSender.Type): Evidence | undefined {
+  const asked = "includeAddress" in operation
+  if ("numberEnding" in result) return asked ? undefined : applied
+  if ("address" in result) return asked ? applied : undefined
+  return result.status === "unavailable" ? failed : applied
+}
+
 const VoicemailDeleted = Schema.Struct({
   kind: Schema.Literal("voicemail-delete"), status: Schema.Literals(["deleted", "none-selected", "unavailable", "cancelled", "failed"])
 })
@@ -213,5 +235,9 @@ export const telephonyOperations = {
   sms_reply_selected: outcome(SmsReply, SmsReplied, "SmsReplySelected", (result) => result.status === "drafted" ? applied : noSubmission),
   messages_read_selected: outcome(MessagesRead, MessagesTail, "MessagesReadSelected", (result) => result.status === "read" ? applied : failed),
   voicemail_read_selected: outcome(VoicemailRead, Voicemail, "VoicemailReadSelected", (result) => result.status === "read" ? applied : failed),
-  voicemail_delete_selected: outcome(VoicemailDelete, VoicemailDeleted, "VoicemailDeleteSelected", (result) => result.status === "deleted" ? applied : failed)
+  voicemail_delete_selected: outcome(VoicemailDelete, VoicemailDeleted, "VoicemailDeleteSelected", (result) => result.status === "deleted" ? applied : failed),
+  sms_latest_sender: {
+    operation: SmsLatestSender, result: LatestSender, evidence: senderEvidence,
+    classify: (operation: typeof SmsLatestSender.Type) => ({ opType: "SmsLatestSender", versionTwo: "includeAddress" in operation }),
+  }
 } satisfies FamilySchemas
