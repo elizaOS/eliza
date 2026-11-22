@@ -115,6 +115,10 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `1c40171`](https://github.com/lalalune/vibestack/commit/1c40171d189e9a450a37cfe25e0c831efe550852).
+Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
+and workspace and CI integration.
+
 | File | Role |
 |---|---|
 | `vibestack/spec.ts`, `vibestack/pipeline.ts` | the `spec` command, and the pipeline it runs |
