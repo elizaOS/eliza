@@ -120,6 +120,10 @@ async function* generating(memory: Memory, specs: Spec[], output = memory.root, 
   }
 }
 
+// One sequence even when an application loads more than one copy of the tools.
+const CHECK_RUN = Symbol.for("vibestack.checkRun");
+const checkRuns = globalThis as typeof globalThis & { [CHECK_RUN]?: number };
+
 /**
  * Run every check, cheapest first, and return what each found and the next
  * thing to do; `log` hears of each result as it arrives. Stages after a broken
@@ -135,10 +139,14 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
   const fromTests = process.env.SPEC_TESTS ? path.relative(process.env.SPEC_TESTS, fs.realpathSync(root)) : undefined;
   if (fromTests !== undefined && fromTests.split(path.sep)[0] !== ".." && !path.isAbsolute(fromTests)) throw new Error("a test script cannot run spec check or accept: the check already runs the tests");
   const release = lockProject(root);
-  // Node caches imported modules by path, so each run loads its generated code from a directory of its own, out of gen/.
-  const loaded = path.join(root, ".spec-cache", `run-${Date.now()}`);
+  // Separate module instances in this process, with repeatable paths for Node's on-disk compile cache across processes.
+  const run = (checkRuns[CHECK_RUN] ?? 0) + 1;
+  checkRuns[CHECK_RUN] = run;
+  const loaded = path.join(root, ".spec-cache", `run-${run}`);
   const phases = observePhases(root);
   try {
+    // A stopped process may have left this directory behind. The project lock excludes any other active check.
+    fs.rmSync(loaded, { recursive: true, force: true });
     const results: Result[] = [];
     const wrote = new Map<string, string>();
     await steady(() => checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote, phases?.start));
