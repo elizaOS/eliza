@@ -34,6 +34,7 @@ import {
   deriveMobileAppAuthS256Challenge,
   isValidMobileAppAuthCodeVerifier,
   MobileAppAuthProtocolError,
+  type MobileAppAuthRegistration,
   sha256Hex,
   validateMobileAppAuthClientBinding,
   validateMobileAppAuthPkceBinding,
@@ -69,13 +70,14 @@ const expirySeconds = 300;
 const prefixedSecret = /^pbackup_([a-zA-Z0-9_-]{43})$/;
 const revisionTag = /^"([1-9][0-9]{0,9})"$/;
 
-type Approval = PasswordBackupScope & {
-  clientId: string;
-  environment: string;
-  redirectUri: string;
-  expiresAt: number;
-  device?: Device & { proofBinding: string };
-};
+type Approval = PasswordBackupScope &
+  Pick<
+    MobileAppAuthRegistration,
+    "clientId" | "environment" | "redirectUri"
+  > & {
+    expiresAt: number;
+    device?: Device & { proofBinding: string };
+  };
 
 type Device = {
   apiKeyId: string;

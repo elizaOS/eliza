@@ -11,7 +11,12 @@ test("Cloud rechecks the registered native Google identity for backup without cr
   const { accounts, refreshTokens } = await import("../db/schema-auth");
   const { tenants, tenantAppClients } = await import("../db/schema");
   const { eq } = await import("drizzle-orm");
-  const f = await openNativeBackupSteward();
+  let updateWhileFetching: (() => Promise<void>) | undefined;
+  const f = await openNativeBackupSteward({
+    beforeGoogleKeys: async () => {
+      await updateWhileFetching?.();
+    },
+  });
   const registration = {
     packageName: f.packageName,
     redirectUri: f.redirectUri,
@@ -129,7 +134,16 @@ test("Cloud rechecks the registered native Google identity for backup without cr
       verified: true,
       serverClientId: f.serverClientId,
     });
-    await f.db.db.delete(accounts).where(eq(accounts.userId, f.ownerId));
+    const { clearOidcJwksCacheForTests } = await import("../auth/oidc");
+    clearOidcJwksCacheForTests();
+    let changed = false;
+    updateWhileFetching = async () => {
+      await f.db.db.delete(accounts).where(eq(accounts.userId, f.ownerId));
+      changed = true;
+    };
+    const rotated = { ...proof, idToken: await f.googleIdToken(nonce) };
+    expect((await request("verify", rotated)).ok).toBe(false);
+    expect(changed).toBe(true);
     expect((await request("current", current)).ok).toBe(false);
     expect(await sessions()).toEqual(before);
   } finally {

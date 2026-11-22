@@ -6,6 +6,7 @@ export async function openNativeBackupSteward(
     packageName?: string;
     redirectUri?: string;
     environment?: "production" | "staging";
+    beforeGoogleKeys?: () => Promise<void>;
   } = {},
 ) {
   const packageName = options.packageName ?? "test.grace.backup";
@@ -46,8 +47,10 @@ export async function openNativeBackupSteward(
   const fetchBefore = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : input.toString();
-    if (url === "https://www.googleapis.com/oauth2/v3/certs")
+    if (url === "https://www.googleapis.com/oauth2/v3/certs") {
+      await options.beforeGoogleKeys?.();
       return Response.json({ keys: [jwk] });
+    }
     return fetchBefore(input, init);
   }) as typeof fetch;
   const { clearOidcJwksCacheForTests } = await import(
