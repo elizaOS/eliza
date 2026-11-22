@@ -36,7 +36,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -752,7 +751,7 @@ public class AgentService extends Service {
       return;
     }
     AgentSocketClient.CredentialPush body = new AgentSocketClient.CredentialPush(active.version(), active.value(),
-      Instant.ofEpochMilli(active.expiresAt()).toString(), new AgentSocketClient.Account(active.account().userId(), active.account().organizationId()));
+      active.expiresAt(), new AgentSocketClient.Account(active.account().userId(), active.account().organizationId()));
     work.execute(() -> {
       try {
         AgentSocketClient.PushResult result = CHANNEL.pushCredential(body);

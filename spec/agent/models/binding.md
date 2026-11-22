@@ -247,10 +247,12 @@ pure def sometimesLimitClearedByAnAnswer(s: ModelBinding): bool =
 
 `PUT /api/host/cloud-credential {version, credential, expiresAt, account}`
 is Root only: `credential` is the cloud device key and `expiresAt` its
-expiry. The shell swaps the key behind the cloud client's credential getter,
-in memory only; calls in flight go on, and every refusal is 409 with its
-reason. A new sign-in of the same account after the key expired or was
-revoked pushes this way; another account is a new launch.
+expiry as a nonnegative integer of milliseconds since the Unix epoch.
+The shell swaps the key behind the cloud client's credential getter in
+memory only. Calls in flight go on. Malformed requests receive 400 and
+refused pushes receive 409 with their reason. A new sign-in of the same
+account after the key expired or was revoked pushes this way; another
+account is a new launch.
 
 ```quint
 type PushVerdict = PushAccepted | PushNotCloud | PushStaleVersion | PushOtherAccount

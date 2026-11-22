@@ -111,6 +111,11 @@ it.live('Keep the account state honest: a refused key blocks until a newer push,
   assert.deepStrictEqual(try warm(agent), [200, { warm: "blocked" }])
   assert.strictEqual(cloud.calls.length, calls)
 
+  const isoExpiry = try call(agent, {
+    method: "PUT", path: "/api/host/cloud-credential",
+    body: { version: 2, credential: "device-key-2", expiresAt: "2099-01-01T00:00:00.000Z", account },
+  })
+  assert.deepStrictEqual(jsonOf(isoExpiry), [400, { error: "malformed" }])
   assert.deepStrictEqual(try push(agent, 2, "device-key-2"), [200, { version: 2, accountState: "usable" }])
   assert.deepInclude(try status(agent), { blocked: false, canRespond: true })
   assert.deepStrictEqual(try warm(agent), [200, { warm: "ready" }])
