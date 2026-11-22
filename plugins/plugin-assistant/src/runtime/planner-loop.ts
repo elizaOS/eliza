@@ -217,6 +217,7 @@ import {
   TURN_SCOPE_ARG,
   trajectoryStepsToMessages,
 } from "./planner-rendering.ts";
+import { containsRenderedCardBlock } from "./rendered-card-blocks.ts";
 
 export {
   looksLikeActionEnvelopeJson,
@@ -11248,6 +11249,12 @@ function combinedVerifiedToolTextAndProse(
   // Widget payloads ([CHOICE]/[FORM] interaction blocks) are grammar the
   // client renders; appended prose would corrupt the block contract.
   if (parseInteractionBlocks(verified).blocks.length > 0) return undefined;
+  // A client-rendered card block ([MAPSCARD]{json}[/MAPSCARD]) makes the
+  // verified text the action's own presentation, not command output: fencing
+  // it shows literal ``` lines around the card's list, and evaluator prose
+  // appended after it re-narrates the same places or route (Pixel v620,
+  // "find coffee near the Ferry Building"). The verified text stands alone.
+  if (containsRenderedCardBlock(verified)) return undefined;
   const prose = modelText.trim();
   // Combining must preserve the same user-safety boundary as selecting model
   // text directly; evaluator channels can contain serialized tool invocations.
