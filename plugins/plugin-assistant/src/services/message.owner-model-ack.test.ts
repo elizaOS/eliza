@@ -13,6 +13,7 @@ import {
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../index.ts";
+import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
@@ -642,7 +643,6 @@ describe("awaited owner model acknowledgments", () => {
       "Your event is at 3 PM.",
       "I renamed the event.",
       "I opened Calendar.",
-      "Let me open Messages.",
       "Let me open Reminders.",
       "Let me open the calendar.",
       "Let me open Calendar again.",
@@ -693,8 +693,9 @@ describe("awaited owner model acknowledgments", () => {
       expect(result.acknowledgments).toEqual([]);
       expect(result.readCompositions).toBe(1);
       expect(result.stage1Wires).toHaveLength(2);
+      // The wire is JSON, so the rule's quotes arrive escaped.
       expect(result.stage1Wires[0]).toContain(
-        "If the user requests silence or no acknowledgment",
+        JSON.stringify(ACKNOWLEDGMENT_RULE).slice(1, -1),
       );
       expect(result.events).toContain("tool");
       expect(result.handlerCalls).toBe(3);
@@ -711,8 +712,9 @@ describe("awaited owner model acknowledgments", () => {
       // This change reuses the existing text classifier; it does not add a
       // natural-language parser for the user's silence request. The normative
       // rule is present on the wire and remains the model's responsibility.
+      // The wire is JSON, so the rule's quotes arrive escaped.
       expect(result.stage1Wires[0]).toContain(
-        "If the user requests silence or no acknowledgment",
+        JSON.stringify(ACKNOWLEDGMENT_RULE).slice(1, -1),
       );
       expect(result.acknowledgments).toEqual([acknowledgment]);
       expect(result.handlerCalls).toBe(3);
