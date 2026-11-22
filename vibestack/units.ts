@@ -209,7 +209,7 @@ export function proofUnits(root: string, models: Model[], srcFiles: SrcFile[] = 
   };
   const asDependency = (name: string, docs: boolean) => withoutObligations(rendered(name, `${name}_`, docs));
   /** A module after what it needs, in its own names; `docs` keeps the doc comments, which the cache key leaves out. */
-  const bundle = (m: Model, docs: boolean) => [...needs(m).map((n) => asDependency(n, docs)), rendered(m.name, "", docs)];
+  const bundle = (m: Model, docs: boolean) => [...needs(m).map((n) => asDependency(n, docs)), m.render("", docs)];
   /** The definitions whose `_ensures` lemma a module's own unit proves (gen/typescript.ts). */
   const proving = (m: Model) => [...m.laws.map((l) => l.name), ...(m.stateType ? [...m.transitions.map((t) => t.name), "step", "initialHolds"] : [])];
   /** Modules placed beside a unit, each with the prefix the unit spells it with: their text with their obligations, and those lemmas. */
