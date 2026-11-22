@@ -38,16 +38,18 @@ function silenceExplicitTimeout(): void {
 it("reports an unparseable OLLAMA_BASE_URL instead of silently treating it as unset", () => {
   silenceExplicitTimeout();
   delete process.env.OLLAMA_API_ENDPOINT;
-  process.env.OLLAMA_BASE_URL = "http://";
+  process.env.OLLAMA_BASE_URL =
+    "http://ollama:fixture-password@[broken?token=fixture-token";
   const warn = vi.fn();
 
   // A typo must not break chat, so the local timeout is still the answer...
   expect(resolveChatGenerationTimeoutMs({ warn })).toBe(LOCAL_DEFAULT_MS);
   // ...but it must no longer be indistinguishable from "nothing configured".
   expect(warn).toHaveBeenCalledTimes(1);
-  const [entry, message] = warn.mock.calls[0];
-  expect(JSON.stringify([entry, message])).toContain("OLLAMA_BASE_URL");
-  expect(JSON.stringify([entry, message])).toContain("http://");
+  const warning = JSON.stringify(warn.mock.calls[0]);
+  expect(warning).toContain("OLLAMA_BASE_URL");
+  expect(warning).not.toContain("fixture-password");
+  expect(warning).not.toContain("fixture-token");
 });
 
 it("keeps an unset endpoint silent and still honours a usable remote one", () => {

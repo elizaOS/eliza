@@ -1434,22 +1434,17 @@ function isRemoteOllamaEndpointConfigured(
     const normalized = raw.replace(/\/api\/?$/i, "");
     const host = new URL(normalized).hostname.toLowerCase();
     return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
-  } catch (error) {
+  } catch {
     // error-policy:J3 an operator-supplied endpoint that cannot be parsed is
     // broken configuration, not "no remote endpoint configured". Swallowing it
     // dropped the generation timeout to the local default, so the failure read
     // as "Chat generation timed out after 180000ms" instead of naming the typo.
     // A typo must not fail chat, so the local fallback stays; the bad value is
     // reported once instead of looking identical to an unset variable.
-    if (!reportedUnparsableOllamaEndpoints.has(raw)) {
+    if (logger && !reportedUnparsableOllamaEndpoints.has(raw)) {
       reportedUnparsableOllamaEndpoints.add(raw);
-      logger?.warn(
-        {
-          src: "eliza-api",
-          envVar,
-          endpoint: raw,
-          error: getErrorMessage(error),
-        },
+      logger.warn(
+        { src: "eliza-api", envVar },
         "Ollama endpoint is not a parsable URL; using the local chat generation timeout",
       );
     }
