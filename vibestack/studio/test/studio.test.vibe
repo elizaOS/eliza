@@ -75,7 +75,24 @@ const APP = `require("node:http").createServer((_, res) => res.end("door app")).
 describe.concurrent("Studio through its server, its files and a browser", () => {
   it.live('a spec is published with its origins, checked, and synced by an agent (spec/index.md, "Story: Edit, then publish"; spec/index.md, "Story: Sync with an agent")', effect () => { provide services { try scoped(effect {
     const fs = try FileSystem.FileSystem
-    const root = try scratch({ "spec/door.md": try fs.readFileString(`${TOOLS}/fixtures/door.md`),
+    const root = try scratch({ "spec/door.md": `# Door
+
+## Domain
+
+### Door
+
+\`\`\`quint
+type Door = { opened: int }
+\`\`\`
+
+## Story: Use the door
+
+### Opening a door increases its count by one
+
+\`\`\`quint
+pure def lawOpeningIncreasesTheCount(opened: int): bool = opened + 1 > opened
+\`\`\`
+`,
       "packages/kit/package.json": "{}", "packages/kit/design.md": "", "packages/kit/generated/stories/catalog.json": JSON.stringify({ version: 1, components: [
         { id: "kit-bell", name: "Bell", source: { file: "src/Bell.tsx", line: 1 }, model: { spec: "spec/door.md" }, design: ["design.md#bell"] }] }) })
     const { get, post, project, settled } = try studioOn(root)
