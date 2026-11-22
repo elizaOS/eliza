@@ -184,7 +184,14 @@ export function speechFake(): SpeechFake {
       const form = await formOf(request);
       const file = form.get("file");
       if (!(file instanceof Blob)) return { status: 400, body: { error: "file missing" } };
-      transcribed.push({ audio: new Uint8Array(await file.arrayBuffer()), mimeType: file.type, model: String(form.get("model")), language: form.get("language") === null ? null : String(form.get("language")) });
+      const model = form.get("model");
+      const language = form.get("language");
+      transcribed.push({
+        audio: new Uint8Array(await file.arrayBuffer()),
+        mimeType: file.type,
+        model: model instanceof File ? Object.prototype.toString.call(model) : String(model),
+        language: language instanceof File ? Object.prototype.toString.call(language) : language,
+      });
       if (scripted !== undefined) return scripted;
       const words = spokenTranscript.split(" ").map((word, index) => ({ word, start: index * 0.4, end: index * 0.4 + 0.3 }));
       return { status: 200, body: { text: spokenTranscript, duration: transcriptDurationSeconds, words } };
