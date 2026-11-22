@@ -1146,6 +1146,26 @@ it("refuses a search for words the user did not type, and an unnegotiated Browse
     await f.pg.close();
   }
 });
+// v620 (Pixel, 8 tabs open): "close all the browser tabs" became one card that
+// closed only the tab showing. A phone that cannot close every tab refuses with
+// a reason the agent can tell the owner; nothing is queued in its place.
+it("refuses closing every tab on a phone that closes one at a time, never narrowing it", async () => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, { capabilities: ["browser.tabs.v1"] });
+    await expect(
+      f.run("close all the browser tabs", false, true, undefined, "current", {
+        type: "browser_tab_close",
+        all: true,
+      }),
+    ).rejects.toThrow(
+      "This phone's Browser closes one tab at a time and cannot close all tabs at once. Nothing was closed.",
+    );
+    expect(f.enqueue).not.toHaveBeenCalled();
+  } finally {
+    await f.pg.close();
+  }
+});
 const generic = "do that in the browser";
 it.each([
   [
@@ -1188,12 +1208,18 @@ it.each([
     false,
     "close the bbc tab",
   ],
+  [
+    { type: "browser_tab_close", all: true },
+    "browser.tabs.v1 browser.tabs.close-all.v1",
+    false,
+    "close all the browser tabs",
+  ],
 ] as const)(
   "queues the negotiated Browser control %o",
   async (operation, capability, handoff, request) => {
     const f = await fixture();
     try {
-      Object.assign(f.credential, { capabilities: [capability] });
+      Object.assign(f.credential, { capabilities: capability.split(" ") });
       for (const direct of [true, false]) {
         const result = await f.run(
           request,

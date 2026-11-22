@@ -178,7 +178,7 @@ const declarations = [
   [
     "DEVICE_BROWSER_TAB_CLOSE",
     "browser_tab_close",
-    "Close a tab in this phone's Browser (browser.tabs.v1). target is a word of the tab's title or site as the owner said it; leave it out to close the tab that is showing. Closing a tab is always reviewed by the owner. You never receive the list of tabs.",
+    "Close a tab in this phone's Browser (browser.tabs.v1). target is a word of the tab's title or site as the owner said it; leave it out to close the tab that is showing. When the owner asks to close all or every tab, set all true (browser.tabs.close-all.v1) instead: the phone lists the tabs on one review card. Never close only the showing tab for a request about several or all tabs. Closing a tab is always reviewed by the owner. You never receive the list of tabs.",
   ],
   [
     "DEVICE_BROWSER_TAB_NEW",

@@ -2862,6 +2862,9 @@ describe("browser control operations", () => {
     operation: Record<string, unknown>,
     negotiated = capabilities,
     policy = false,
+    browserTabsClosing?: (
+      proposalId: string,
+    ) => { title: string; host?: string; private?: boolean }[] | null,
   ) {
     const fixture = fixtureServer(operation);
     const request = async (path: string, body: unknown, s: AbortSignal) => {
@@ -2892,7 +2895,7 @@ describe("browser control operations", () => {
         },
         profile: { ...profile, assistantName: "Alpha" },
       },
-      { currentRequestBrowserPolicy: policy },
+      { currentRequestBrowserPolicy: policy, browserTabsClosing },
     );
     return {
       ...fixture,
@@ -2981,6 +2984,126 @@ describe("browser control operations", () => {
       ).toMatchObject({ status: "succeeded" });
       expect(f.effects()).toBe(1);
     }
+  });
+
+  // v620 (Pixel, 8 tabs open): "close all the browser tabs" showed "Close tab —
+  // Closes the tab that is showing in Browser." Closing every tab is one card
+  // that lists, from the phone, exactly what will close; the agent never sees it.
+  it("lists every tab a close-all card will close, on one reviewed card", async () => {
+    const operation = { type: "browser_tab_close", all: true };
+    const asked: string[] = [];
+    const f = browserControlFixture(
+      operation,
+      [...capabilities, "browser.tabs.close-all.v1"],
+      false,
+      (proposalId) => {
+        asked.push(proposalId);
+        return [
+          { title: "BBC News - Home", host: "www.bbc.com" },
+          { title: "Example Domain", host: "example.com" },
+          { title: "Bank", host: "bank.example", private: true },
+        ];
+      },
+    );
+    const [card] = await f.actions.pending(homeContext, signal());
+    expect(card).toMatchObject({
+      title: "Close 3 tabs",
+      description:
+        "• BBC News - Home (www.bbc.com)\n• Example Domain (example.com)\n• 1 private tab\n\nCloses every tab listed here. The agent does not see your tabs.",
+    });
+    expect(JSON.stringify(card)).not.toContain("Bank");
+    // The phone binds the list it shows to this proposal.
+    expect(new Set(asked)).toEqual(new Set(["proposal"]));
+    expect(await run(f)).toEqual([]);
+    expect(f.effects()).toBe(0);
+    expect(
+      await f.actions.approve("proposal", homeContext, signal()),
+    ).toMatchObject({ status: "succeeded" });
+    expect(f.effects()).toBe(1);
+  });
+
+  // Adversarial review: a card that cannot say which tabs close, or a list
+  // that no longer holds when the owner approves, closes nothing.
+  it("never offers or approves a close-all card without the phone's list", async () => {
+    const operation = { type: "browser_tab_close", all: true };
+    const negotiated = [...capabilities, "browser.tabs.close-all.v1"];
+    for (const [lister, notice] of [
+      [
+        undefined,
+        "Close all tabs: Browser couldn't list its open tabs for this request, or they changed after they were listed. Nothing was closed. Ask again.",
+      ],
+      [
+        () => null,
+        "Close all tabs: Browser couldn't list its open tabs for this request, or they changed after they were listed. Nothing was closed. Ask again.",
+      ],
+      [
+        () => [],
+        "Close all tabs: No tabs are open to close. Nothing was closed.",
+      ],
+    ] as const) {
+      const f = browserControlFixture(operation, negotiated, false, lister);
+      const review = await f.actions.pendingReview(homeContext, signal());
+      expect(review).toEqual([
+        { proposalId: "proposal", proposal: null, notice },
+      ]);
+      await expect(
+        f.actions.approve("proposal", homeContext, signal()),
+      ).rejects.toThrow();
+      expect(f.effects()).toBe(0);
+    }
+    // A card whose list the phone withdrew on a later review cannot be
+    // approved, and approving never reads (so never binds) a list itself.
+    let listed = true,
+      reads = 0;
+    const changed = browserControlFixture(operation, negotiated, false, () => {
+      reads++;
+      return listed ? [{ title: "Example Domain", host: "example.com" }] : null;
+    });
+    expect(await changed.actions.pending(homeContext, signal())).toHaveLength(
+      1,
+    );
+    listed = false;
+    expect(
+      (await changed.actions.pendingReview(homeContext, signal()))[0].proposal,
+    ).toBeNull();
+    const before = reads;
+    await expect(
+      changed.actions.approve("proposal", homeContext, signal()),
+    ).rejects.toThrow();
+    expect(reads).toBe(before);
+    expect(changed.effects()).toBe(0);
+  });
+
+  it("keeps closing one tab one tab, never every tab", async () => {
+    for (const operation of [
+      { type: "browser_tab_close" },
+      { type: "browser_tab_close", target: "bbc" },
+    ]) {
+      let asked = 0;
+      const f = browserControlFixture(
+        operation,
+        [...capabilities, "browser.tabs.close-all.v1"],
+        false,
+        () => {
+          asked++;
+          return [{ title: "Example Domain", host: "example.com" }];
+        },
+      );
+      const [card] = await f.actions.pending(homeContext, signal());
+      expect(card).toMatchObject({ title: "Close tab" });
+      expect(asked).toBe(0);
+    }
+  });
+
+  it("never offers a close-all card on a phone that closes one tab at a time", async () => {
+    const f = browserControlFixture({ type: "browser_tab_close", all: true });
+    const review = await f.actions.pendingReview(homeContext, signal());
+    expect(review[0].proposal).toBeNull();
+    expect(review[0].notice).toBe("This action isn't available on this phone.");
+    await expect(
+      f.actions.approve("proposal", homeContext, signal()),
+    ).rejects.toThrow();
+    expect(f.effects()).toBe(0);
   });
 
   it("searches without a review only when the whole current message is that search", async () => {

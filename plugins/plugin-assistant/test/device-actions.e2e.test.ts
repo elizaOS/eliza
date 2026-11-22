@@ -2086,6 +2086,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "camera.capture-library-id.v1",
           "browser.search.v1",
           "browser.tabs.v1",
+          "browser.tabs.close-all.v1",
           "browser.find.v1",
           "browser.history.v1",
           "browser.open-new-tab.v1",
