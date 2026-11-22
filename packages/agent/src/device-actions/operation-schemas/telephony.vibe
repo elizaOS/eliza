@@ -17,8 +17,8 @@ const noSubmission: Evidence = { shows: "ReportsFailed", nothingSubmitted: true 
 const uncertain: Evidence = { shows: "ReportsUnknown", nothingSubmitted: false }
 const integer = (minimum: number, maximum: number) => Schema.Int.check(Schema.isBetween({ minimum, maximum }))
 const count = integer(0, Number.MAX_SAFE_INTEGER)
-const safeText = (value: string) => value.isWellFormed() && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value)
-const safeBody = (value: string) => value.isWellFormed() && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value)
+const safeText = (value: string) => value.isWellFormed() && !/[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(value)
+const safeBody = (value: string) => safeText(value.replace(/[\t\n\r]/g, " "))
 const BodyText = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum), Schema.makeFilter(safeBody))
 const Query = Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(128), Schema.makeFilter(safeText))
 const Label = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128), Schema.makeFilter(safeText))
