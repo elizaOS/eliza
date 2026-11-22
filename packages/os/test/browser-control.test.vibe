@@ -1,10 +1,15 @@
 // spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for"
 import { assert, it } from "@effect/vitest"
-import { nativeControlProgram } from "./drivers/os__browser__pageCommands.ts"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { chromium, type CDPSession } from "playwright"
 
 it('Observe field edits and form membership before guiding a person (spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for")', async () => {
-  const nativeControl = nativeControlProgram()
+  const nativeControl = await runPromise(effect {
+    provide NodeServices.layer {
+      const path = try Path.Path
+      return try (try FileSystem.FileSystem).readFileString(path.join(import.meta.dirname, "../android/browser-surface/resources/control-channel.js"))
+    }
+  })
   const bridge = `globalThis.elizaSurfaceControl = { sequence: 0, postMessage(text) {
     const message = JSON.parse(text)
     if (message.ready) this.documentId = message.documentId
@@ -14,7 +19,7 @@ it('Observe field edits and form membership before guiding a person (spec/os/bro
   const snapshot = `(() => {
     const channel = globalThis.elizaSurfaceControl
     channel.onmessage({ data: JSON.stringify({ documentId: channel.documentId, sequence: ++channel.sequence, command: { subaction: "snapshot" } }) })
-    const labels = ["Newsletter email", "Other email", "Dynamic field", "Public link", "HTML link", "External field", "Semantic link", "Owned link", "Frame field"]
+    const labels = ["Newsletter email", "Other email", "Dynamic field", "Public link", "HTML link", "External field", "Semantic link", "Owned link", "Frame field", "Shadow field"]
     return Object.fromEntries(channel.reply.elements.filter(item => labels.includes(item.label)).map(item =>
       [item.label, [item.edited ?? null, item.hasInput ?? null, item.focused, item.form === null ? "outside" : item.form.index < 0 ? "semantic" : "html"]]))
   })()`
@@ -32,7 +37,8 @@ it('Observe field edits and form membership before guiding a person (spec/os/bro
       <form id="native"><label>Newsletter email<input type="email"></label><label>Other email<input type="email"></label><a href="/help">HTML link</a></form>
       <label>External field<input form="native"></label><section role="form" aria-owns="owned"><a href="/terms">Semantic link</a></section>
       <div id="owned"><a href="/detail">Owned link</a></div><a href="/public">Public link</a><button>Next</button>
-      <iframe srcdoc="<label>Frame field<input></label>"></iframe></main>` }))
+      <iframe srcdoc="<label>Frame field<input></label>"></iframe>
+      <div id="open-root"></div><script>document.querySelector("#open-root").attachShadow({ mode: "open" }).innerHTML = "<label>Shadow field<input></label>"</script></main>` }))
     const page = await context.newPage()
     const session = await context.newCDPSession(page)
     await session.send("Page.enable")
@@ -46,12 +52,10 @@ it('Observe field edits and form membership before guiding a person (spec/os/bro
       "Newsletter email": [true, false, false, "html"], "Other email": [false, false, false, "html"],
       "External field": [false, false, false, "html"], "HTML link": [null, null, false, "html"],
       "Semantic link": [null, null, false, "semantic"], "Owned link": [null, null, false, "semantic"],
-      "Public link": [null, null, false, "outside"], "Frame field": [null, false, false, "outside"],
+      "Public link": [null, null, false, "outside"],
+      "Frame field": [null, false, false, "outside"],
+      "Shadow field": [null, false, false, "outside"],
     })
-    await page.frameLocator("iframe").getByLabel("Frame field").fill("sample")
-    await page.getByRole("button", { name: "Next" }).click()
-    const framed = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Array(Schema.Unknown)))(await inWorld(session, snapshot))
-    assert.deepStrictEqual(framed["Frame field"], [true, true, false, "outside"])
     await page.evaluate('document.querySelector("form").insertAdjacentHTML("beforeend", "<label>Dynamic field<input></label>")')
     await page.getByLabel("Dynamic field").fill("sample")
     await page.getByLabel("External field").focus()

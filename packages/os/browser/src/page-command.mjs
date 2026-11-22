@@ -986,6 +986,7 @@ export function pageCommand(
       const semanticOwner =
         (landmark !== null && !is(landmark, "HTMLFormElement")) ||
         ownedRegions.some((region) => region.contains(node));
+      // A button that sends its form when pressed.
       const submits = submitControl(node) && node.form !== null;
       const hint = (value) => withoutSecrets(value?.trim() || null);
       const frame = frameOf(node);
@@ -1040,7 +1041,7 @@ export function pageCommand(
           })(),
         ),
         form: semanticOwner
-          ? { index: -1, name: null }
+          ? { index: -1, name: null, sends: form ? formSends(form) : null }
           : form
             ? {
                 index: forms.indexOf(form),
