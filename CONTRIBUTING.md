@@ -331,6 +331,8 @@ Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
 tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job and
 the commit: what a job of the same name last saved, or else another job's that holds the same.
+Nightly jobs restore the pinned Quint evaluator and run with fresh verification
+results.
 Turborepo shares task results through the private Cloudflare/R2 cache.
 The task entry point disables Turbo telemetry. On a shared machine, each `selftest:tools` task waits for the root and
 Studio tests. In CI, the verify job owns those integration tests. Each dedicated shard runs with Turbo's
