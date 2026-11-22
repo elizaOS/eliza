@@ -15,7 +15,7 @@ outputs:
     description: What the spec cache holds, for the step that saves it at the end of a job.
     value: ${{ steps.spec-cache.outputs.path }}
   spec-cache-key:
-    description: The key to save the spec cache under, unique to this run attempt; empty without verification.
+    description: The key to save the spec cache under, unique to this run attempt and present when verification results are restored.
     value: ${{ steps.spec-cache.outputs.key }}
   turbo-cache-key:
     description: The key for Turborepo's local cache on pull requests and local-only branch pushes, unique to this run attempt.
