@@ -377,7 +377,7 @@ function packageGraph(exe: string, name: string) {
     if (!observations.has(file)) observations.set(file, fileStamp(file));
     return observations.get(file) !== "";
   };
-  const contents = (root: string) => {
+  const contents = (root: string, isolated = false) => {
     const files: { name: string; file?: string; target?: string }[] = [];
     const signature = createHash("sha256");
     const record = (file: string) => {
@@ -387,6 +387,7 @@ function packageGraph(exe: string, name: string) {
     };
     const walk = (dir: string, ancestors: Set<string>) => {
       record(dir);
+      if (isolated && dir !== root && observed(path.join(dir, "node_modules"))) throw new Error("an isolated package has nested ambient modules");
       const real = fs.realpathSync(dir);
       if (ancestors.has(real)) return;
       const parents = new Set(ancestors).add(real);
@@ -496,14 +497,9 @@ function packageGraph(exe: string, name: string) {
     };
     for (const [index] of graph.entries()) {
       const target = path.join(view, "packages", String(index));
-      if (contents(target) !== expected[index]) throw new Error("an isolated package differs from its source");
+      if (contents(target, true) !== expected[index]) throw new Error("an isolated package differs from its source");
       const modules = path.join(target, "node_modules");
       modulesMatch(modules, dependencies[index].filter(([, dependency]) => dependency !== null).map(([name]) => name));
-      for (const dir of fs.readdirSync(target, { recursive: true, withFileTypes: true }).filter((dir) => dir.isDirectory())) {
-        const at = path.join(dir.parentPath, dir.name);
-        if (at === modules || at.startsWith(modules + path.sep)) continue;
-        if (observeLocation(path.join(at, "node_modules"))) throw new Error("an isolated package has nested ambient modules");
-      }
       for (const [name, dependency] of dependencies[index]) if (dependency !== null) {
         const link = path.join(modules, name);
         if (!observeLocation(link) || fs.realpathSync(link) !== path.join(view, "packages", String(dependency))) throw new Error("an isolated dependency differs from its source");
