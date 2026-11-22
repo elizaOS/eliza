@@ -581,7 +581,7 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
       try registered(cloud, undefined, effect (tx: Tx, now: number) => { return (try registerClient(tx, try decodeRegistration(two), now)).clientId }),
       try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try registerClient(tx, try decodeRegistration({ ...two, clientId: "com.example.three", signInReturn: "https://api.staging.example.com/apps/three", billingReturn: `${web}/apps/three/billing`, androidPackage: "com.example.three" }), now) }),
       try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try registerClient(tx, try decodeRegistration({ ...two, clientId: "com.example.four", androidPackage: "com.example.one", signInReturn: `${web}/apps/four/sign-in`, billingReturn: `${web}/apps/four/billing` }), now) }),
-      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try decodeRegistration({ ...two, signInReturn: `${web}/apps/two/sign-in?next=1` }) }),
+      try registered(cloud, undefined, effect () => { return try decodeRegistration({ ...two, signInReturn: `${web}/apps/two/sign-in?next=1` }) }),
       try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try updateClient(tx, try decodeRegistration({ ...two, clientId: "com.example.unknown", androidPackage: "com.example.unknown" }), now) })
     ]
     const admitted = try cloud.call(configPath("com.example.one", "staging", signInOne))
