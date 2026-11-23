@@ -1650,6 +1650,9 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const tile = try cloud.call("/api/v1/maps/tiles/3/4/2", { headers: { ...caller.headers, "idempotency-key": "osm-tile-1" } })
     const usage = try sql(cloud, "SELECT r.operation, r.status, u.quote, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key ORDER BY u.settled_at, r.hold_key", [])
     const route = (walked.body as { readonly routes: ReadonlyArray<{ readonly distanceMeters: number; readonly durationSeconds: number; readonly traffic: string; readonly steps: ReadonlyArray<{ readonly maneuver?: string }> }> }).routes[0]
+    const walkedRequest = try Effect.try(() => JSON.parse(osm.calls[4]?.body ?? "{}"))
+    const walkedProfile = try Schema.decodeUnknownEffect(Schema.Struct({ profile: Schema.String }))(walkedRequest)
+    try check(() => assert.equal(walkedProfile.profile, "foot"))
     const place = (reversed.body as { readonly place: { readonly id: string; readonly name: string } }).place
     const detail = (detailed.body as { readonly place: { readonly website?: string; readonly openingHours?: string; readonly phone?: string } }).place
     const offered = capabilities.body as { readonly providerId: string; readonly tiles?: unknown; readonly capabilities: { readonly map: boolean; readonly placeLookup: boolean; readonly modes: ReadonlyArray<string>; readonly traffic: string; readonly transit: string } }
