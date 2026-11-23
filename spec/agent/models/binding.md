@@ -214,8 +214,8 @@ No handler adds an output cap of its own: a call that names none, or asks
 to omit it, sends neither `max_tokens` nor `max_completion_tokens`, and the
 model's own maximum applies. A caller's `reasoning` hint is `low` (bounded
 reasoning) or `off`. The older `providerOptions.eliza.thinking` supplies the
-hint if the caller omits `reasoning`. Planning rounds, turn evaluators and
-SMS reply drafts request `off`. A hint becomes `reasoning_effort`
+hint if the caller omits `reasoning`. SMS reply drafts request `off`.
+A hint becomes `reasoning_effort`
 only for a Cerebras model that documents the value, on the cloud and on an
 own-key endpoint whose host is `cerebras.ai` or under it: `low` is `low` on
 `qwen-3.8-27b` and `gpt-oss-120b`; `off` is `none` on `qwen-3.8-27b`,
