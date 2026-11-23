@@ -125,7 +125,9 @@ the phone for a review it does not need, is refused before dispatch.
 Otherwise a `VIEWS` call is refused before it runs, and a view is proposed
 with `open_view` only when the installation's
 [enabled-view profile](./capabilities.md) as it is now enables it, and
-the proposal binds that profile's revision. Either refusal is of a call
+the proposal binds that profile's revision; the Phone, Messages and
+Contacts views are among its views only where the device negotiated
+`views.telephony.v1`. Either refusal is of a call
 the message serves in the other place
 ([planning](../conversation/planning.md)): the model reads where, and the
 owner hears no failure for it, so a message whose model tried the wrong

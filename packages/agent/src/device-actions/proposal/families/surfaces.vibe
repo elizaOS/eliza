@@ -4,7 +4,7 @@ import { meets, negotiatedHas, revisionOf } from "../../../../gen/agent__deviceA
 import { operationNeed, type OperationType } from "../../../../gen/agent__deviceActions__operations.effect.vibe"
 import { captureVerdict, mapsVerdict, noteAvailable, noteVerdict, openViewAvailable, openViewVerdict, photoCommandRouted, surfaceBound, viewsShowsOnDevice, type SurfaceVerdict } from "../../../../gen/agent__deviceActions__surfaces.effect.vibe"
 import type { Observation } from "../../../conversation/turn-context.schema.vibe"
-import { openViewAllowed, supportedViews, viewProfileWire } from "../../capabilities.vibe"
+import { openViewAllowed, opensTelephonyView, supportedViews, viewProfileWire } from "../../capabilities.vibe"
 import { CalendarSource, type MapsReadSelected } from "../../operation-schemas/personal.schema.vibe"
 import { readOperation, type CheckedOperation, type DeviceOperation, type DeviceOperationType } from "../../operations.schema.vibe"
 import { photosDecision, photosViewGuidance } from "../../photos-view.vibe"
@@ -132,7 +132,14 @@ const forms: readonly ProposalForm[] = [
     types: ["create_note"], guidance: noteGuidance, offered: needed("CreateNote"), now: noteNow,
     schema: branch("create_note", ["title", "body"], { title: text("The note's title, 1 to 256 characters"), body: text("The note's text, at most 32000 characters") }),
   },
-  { types: ["open_view"], offered: needed("OpenView"), now: openViewNow, schema: branch("open_view", ["view"], { view: { type: "string", enum: [...supportedViews] } }) },
+  {
+    types: ["open_view"], offered: needed("OpenView"), now: openViewNow,
+    schema: branch("open_view", ["view"], { view: { type: "string", enum: supportedViews.filter((view) => !opensTelephonyView(view)) } }),
+  },
+  {
+    types: ["open_view"], offered: needed("OpenView", true), now: openViewNow,
+    schema: branch("open_view", ["view"], { view: { type: "string", enum: supportedViews.filter(opensTelephonyView) } }),
+  },
   {
     types: ["maps_read_selected"], guidance: mapsGuidance, offered: needed("MapsReadSelected"),
     schema: branch("maps_read_selected", ["target"], {
