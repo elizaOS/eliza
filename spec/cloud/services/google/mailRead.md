@@ -405,8 +405,10 @@ the phone's background mail check) takes `grantId`, which it requires,
 `startHistoryId` (1 to 20 digits, no leading zero), `pageToken` (1 to 4,096
 characters, only beside the start it continues), `maxResults` (1 to 100,
 50 when omitted) and `side`, only `owner`. Any other parameter, or one given
-twice, is `400 invalid_request`. The grant needs a Gmail read scope, as
-triage does.
+twice, is `400 invalid_request`. The cloud checks that the named grant
+belongs to the current user and organization before contacting Google.
+A grant belonging to another owner returns `404 not_found`. Reading history
+needs a Gmail triage scope.
 
 ```quint
 type HistoryAsk = { grantNamed: bool, started: bool, startDigits: bool, continued: bool, tokenWithinBound: bool, eachKnownOnce: bool }
@@ -452,11 +454,13 @@ repeats the token asked with. Rows out of order or past the revision, more
 rows than asked for, a change Google did not classify, an added message
 read back as another, a repeated token, over 2,000 events or over 100 added
 messages are `502 provider_invalid_response`, and the cloud reads no
-message for a page it will refuse. The cloud reads the grant
-again after Google answers; a grant disconnected, or without Gmail read
-access by then, is `409 google_reauth_required` and nothing Google returned
-is answered. The cloud keeps no checkpoint: the phone commits one after it
-has stored the page.
+message for a page it will refuse. After Google answers, the cloud checks the
+caller's credential again. It also checks that the grant still belongs to
+the same user, organization and Google account and still has Gmail triage
+access. A dead credential gets `401 authentication_required`. An ended or
+changed grant gets `409 google_reauth_required`. In either case, the cloud
+withholds the Google reply. The cloud keeps no checkpoint. The phone commits
+one after it has stored the page.
 
 ```quint
 type HistoryRead = { started: bool, expired: bool, consistent: bool, continues: bool, freshContinuation: bool, events: int, additions: int, grantCurrent: bool }

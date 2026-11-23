@@ -1,9 +1,10 @@
 // spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle"
 import { historyAnswer, historyAskAccepted, historyCount, type HistoryAsk, type RequestedCount } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { refused, Refused } from "../../http/refusal.vibe"
-import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
+import { recheckServiceAccess, signed } from "../../http/request-auth.vibe"
+import { json, type Route, type RouteContext } from "../../http/routes.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
-import { readGrantStatus, useMailReadGrant } from "./grant-access.vibe"
+import { readGrantStatus, useOwnedMailReadGrant } from "./grant-access.vibe"
 import { historyBefore, historyId as revisionPattern } from "./inbox-arrival.vibe"
 import { googleRefused } from "./mail-read.vibe"
 
@@ -158,13 +159,18 @@ effect function observe(accessToken: string, start: string | undefined, token: s
 
 effect function historyRoute(context: RouteContext) {
   const ask = try askOf(context.query)
-  const owner = ownerOf(context.caller)
+  const owner = signed(context.caller)
   if (owner === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
   const side = context.query.get("side")
-  const grant = try useMailReadGrant(owner, ask.grantId, side, "TriageSurface")
+  const grant = try useOwnedMailReadGrant(owner, ask.grantId, side, "TriageSurface")
   const observed = try observe(grant.accessToken, ask.start, ask.token, ask.maxResults)
-  const status = try readGrantStatus(owner, grant.connectionId, side, try Clock.currentTimeMillis)
-  const grantCurrent = status.connected && status.connectionId === grant.connectionId && status.grantedCapabilities.includes("google.gmail.triage")
+  const status = readGrantStatus(owner, grant.connectionId, side, try Clock.currentTimeMillis) catch effect (failure) => {
+    if (failure._tag === "Refused" && failure.refusal.code === "NotFound") return undefined
+    throw failure
+  }
+  try recheckServiceAccess(context.request.headers.authorization, owner)
+  const grantCurrent = status !== undefined && status.connected && status.connectionId === grant.connectionId &&
+    status.identity?.id === grant.subject && status.grantedCapabilities.includes("google.gmail.triage")
   const answer = historyAnswer({ ...observed.read, grantCurrent })
   const base = { version: 1, grantId: ask.grantId, startHistoryId: ask.start ?? null, historyId: null, checkpoint: null, nextPageToken: null, events: [], backfillRequired: true }
   switch (answer.tag) {
