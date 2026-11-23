@@ -1314,9 +1314,10 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     const lines = try Effect.try(() => String(timed.body).trim().split("\n").map((line) => JSON.parse(line) as { readonly type: string; readonly sequence?: number; readonly alignment?: { readonly characters: ReadonlyArray<string> } }))
     const anonymous = try cloud.call("/api/v1/voice/tts", { json: { text: "Hello" } })
     const foreignVoice = try tts({ text: "Hello", voiceId: "voice-elsewhere" })
-    try sync(() => speech.script({ kind: "refuse", status: 422 }, { kind: "refuse", status: 503, retryAfterSeconds: 7 }))
+    try sync(() => speech.script({ kind: "refuse", status: 422 }, { kind: "refuse", status: 503, retryAfterSeconds: 7 }, { kind: "refuse", status: 503 }))
     const rejected = try tts({ text: "Rejected" })
     const busy = try tts({ text: "Busy" })
+    const down = try tts({ text: "Busy" })
 
     const heard = try stt({ languageCode: "en-US", provider: "speech" })
     const otherProvider = try stt({ provider: "elsewhere" })
@@ -1334,6 +1335,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         foreignVoice: [foreignVoice.status, (foreignVoice.body as { readonly error: string }).error],
         rejected: [rejected.status, (rejected.body as { readonly error: string }).error],
         busy: [busy.status, (busy.body as { readonly error: string }).error, Number(busy.headers["retry-after"]) >= 7],
+        down: [down.status, (down.body as { readonly error: string }).error, down.headers["retry-after"]],
         heard: [heard.status, heard.body, heard.headers["x-eliza-stt-provider"]],
         sentHeard: speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length]),
         otherProvider: [otherProvider.status, (otherProvider.body as { readonly error: string }).error],
@@ -1357,6 +1359,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         foreignVoice: [400, "invalid_request"],
         rejected: [502, "provider_invalid_response"],
         busy: [503, "provider_unavailable", true],
+        down: [503, "provider_unavailable", "1"],
         heard: [200, { transcript: spokenTranscript, duration_ms: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) }, "speech"],
         sentHeard: [["audio/wav", "ink-whisper", "en", recordingBytes]],
         otherProvider: [400, "invalid_request"],
@@ -1366,6 +1369,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
           ["speech", 396, 396, "known"],
           ["speech", 216, 216, "known"],
           ["speech", 288, 0, "known"],
+          ["speech", 144, 144, "unknown"],
           ["speech", 144, 144, "unknown"],
           ["speech", 120, 360, "known"]
         ]
