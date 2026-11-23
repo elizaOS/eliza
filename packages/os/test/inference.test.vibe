@@ -97,7 +97,7 @@ const bundled: InstalledModel = { model: { name: "eliza-1-2b", source: { kind: "
 type Outcome<A> = { readonly value?: A; readonly failed?: string }
 
 effect function outcome<A>(program: A!(EngineUnavailable | EngineFailed)) {
-  return try (map(program, (value): Outcome<A> => ({ value })) catch (failure): Outcome<A> => ({ failed: `${failure._tag}: ${failure.reason}` }))
+  return (map(program, (value): Outcome<A> => ({ value })) catch (failure): Outcome<A> => ({ failed: `${failure._tag}: ${failure.reason}` }))
 }
 
 it.live("Embed, speak and transcribe through the app's inference host, and read an absent or refusing host as unavailable (spec/os/agentService/inference.md, \"Story: Embed, speak and transcribe on my phone through my app alone\"; spec/os/agentService/inference.md, \"An embedding is answered only by the verified model assigned to embeddings, as a finite vector of its dimensions\"; spec/os/agentService/inference.md, \"Speech readiness and the end-of-turn score say only what the host answered\")", () => effect {
