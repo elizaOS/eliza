@@ -2,6 +2,12 @@
 
 The [Android camera session](../os/android/camera.md) owns Android camera resource exclusion. The cross-platform contract includes device selection, preview, photo capture, video recording, per-camera controls and document scan constraints.
 
+On Android 10 and later, a gallery save can include `libraryId` in the photo
+receipt. Its form is `m:<volume>:i:<id>`, using the saved image row's own
+MediaStore volume and row ID. The save can succeed without an ID if that row
+identity is unavailable. The [agent's receipt contract](../agent/deviceActions/operations.md)
+governs when the ID reaches the agent.
+
 ## Story: Take a picture or record a clip through the current camera view
 
 > As the person, I want a result only from my current preview and a separate reviewed save.

@@ -1,15 +1,21 @@
 package ai.eliza.plugins.camera
 
 import android.content.ContentProvider
+import android.content.ContentUris
 import android.content.ContentValues
 import android.database.Cursor
+import android.database.MatrixCursor
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.provider.BaseColumns
 import android.provider.MediaStore
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import org.json.JSONArray
@@ -27,11 +33,18 @@ class GalleryFailureProvider : ContentProvider() {
         var initialPending: Int? = null
         var finalPending: Int? = null
         var deleted = 0
+        var row: Array<Any?>? = null
     }
     private fun file() = File(requireNotNull(context).cacheDir, "gallery-provider-fixture.bin")
     override fun onCreate() = true
     override fun getType(uri: Uri) = "image/jpeg"
-    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, order: String?): Cursor? = null
+    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, order: String?): Cursor? {
+        if (mode == "query-error") throw IllegalStateException("Intentional fixture query failure")
+        val values = row ?: return null
+        return MatrixCursor(requireNotNull(projection)).apply {
+            addRow(projection.map { if (it == MediaStore.MediaColumns.VOLUME_NAME) values[1] else values[0] })
+        }
+    }
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
         events.add("insert")
         initialPending = values?.getAsInteger(MediaStore.Images.Media.IS_PENDING)
@@ -106,5 +119,75 @@ class GalleryImageWriterInstrumentedTest {
                 putString("nativeArtifactBase64", Base64.encodeToString(receipts.toString().toByteArray(), Base64.NO_WRAP))
             })
         }
+    }
+
+    // spec/nativeCamera/index.md, "Story: Take a picture or record a clip through the current camera view"
+    @Test fun savedPhotoLibraryIdNamesTheRowsOwnVolume() {
+        org.junit.Assume.assumeTrue(android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+        val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
+        val collection = Uri.parse("content://${GalleryFailureProvider.AUTHORITY}/images")
+        GalleryFailureProvider.mode = "success"
+        val bytes = byteArrayOf(1, 4, 9, 16)
+        val saved = GalleryImageWriter(resolver, collection).save(bytes, "jpeg")
+        try {
+            GalleryFailureProvider.row = arrayOf(42L, "external_primary")
+            assertEquals("m:external_primary:i:42", savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = arrayOf(7L, "1a2b-3c4d")
+            assertEquals("m:1a2b-3c4d:i:7", savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = arrayOf(42L, "external")
+            assertNull(savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = arrayOf(42L, null)
+            assertNull(savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = null
+            assertNull(savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.mode = "query-error"
+            GalleryFailureProvider.row = arrayOf(42L, "external_primary")
+            assertNull(savedImageLibraryId(resolver, saved))
+            assertArrayEquals(bytes, requireNotNull(resolver.openInputStream(saved)).use { it.readBytes() })
+        } finally {
+            GalleryFailureProvider.mode = "success"
+            GalleryFailureProvider.row = null
+            resolver.delete(saved, null, null)
+        }
+
+        val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+        val jpeg = try {
+            ByteArrayOutputStream().use { encoded ->
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 80, encoded))
+                encoded.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+        val mediaStoreUri = GalleryImageWriter(resolver).save(jpeg, "jpeg")
+        val receipt = try {
+            val primaryVolume = MediaStore.VOLUME_EXTERNAL_PRIMARY
+            val primaryRow = ContentUris.withAppendedId(MediaStore.Images.Media.getContentUri(primaryVolume), ContentUris.parseId(mediaStoreUri))
+            val columns = arrayOf(BaseColumns._ID, MediaStore.MediaColumns.VOLUME_NAME, MediaStore.MediaColumns.IS_PENDING)
+            val rowId = requireNotNull(resolver.query(primaryRow, columns, null, null, null)).use { row ->
+                assertTrue(row.moveToFirst())
+                assertEquals(primaryVolume, row.getString(1))
+                assertEquals(0, row.getInt(2))
+                row.getLong(0)
+            }
+            val libraryId = savedImageLibraryId(resolver, mediaStoreUri)
+            assertEquals("m:$primaryVolume:i:$rowId", libraryId)
+            val savedBytes = requireNotNull(resolver.openInputStream(primaryRow)).use { it.readBytes() }
+            assertArrayEquals(jpeg, savedBytes)
+            val decoded = requireNotNull(BitmapFactory.decodeByteArray(savedBytes, 0, savedBytes.size))
+            try {
+                assertEquals(2, decoded.width)
+                assertEquals(2, decoded.height)
+            } finally {
+                decoded.recycle()
+            }
+            JSONObject().put("volume", primaryVolume).put("rowId", rowId).put("libraryId", libraryId).put("bytes", savedBytes.size)
+        } finally {
+            assertEquals(1, resolver.delete(mediaStoreUri, null, null))
+        }
+        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+            putString("nativeArtifactName", "camera-gallery-media-store-row.json")
+            putString("nativeArtifactBase64", Base64.encodeToString(receipt.put("deleted", true).toString().toByteArray(), Base64.NO_WRAP))
+        })
     }
 }
