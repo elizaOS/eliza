@@ -495,7 +495,13 @@ function testRules(checking: string, dir: string, specs: Spec[]): Reported<"test
   if (fs.existsSync(path.join(root, "src"))) {
     const scripts = packageScripts(root);
     const checked = new Set(citations(checking, [dir]).filter((c) => c.at.startsWith(`${dir}test/`)).map((c) => c.spec));
-    const unchecked = specs.filter((s) => s.stories.length && !isStd(s.file) && (owner(checking, s.file) ?? "") === dir.slice(0, -1) && !checked.has(s.file)
+    const owned = new Map<string, boolean>();
+    const belongs = (file: string) => {
+      const area = file.match(/^spec\/[^/]*\//)?.[0] ?? "";
+      if (!owned.has(area)) owned.set(area, (owner(checking, file) ?? "") === dir.slice(0, -1));
+      return owned.get(area);
+    };
+    const unchecked = specs.filter((s) => s.stories.length && !isStd(s.file) && belongs(s.file) && !checked.has(s.file)
       && !fs.existsSync(path.join(root, "test/drivers", `${s.name}.ts`)) && !fs.existsSync(path.join(root, "test/traces", `${s.name}.jsonl`)) && !(`driver:${s.name}` in scripts));
     if (unchecked.length) said.push([true, "tests", `note: no test or driver checks ${unchecked.map((s) => s.file).join(", ")}; a story that leaves the verified core needs a journey that cites it`]);
   }
