@@ -11,7 +11,7 @@ import { main as qualify, qualifyDevice } from "../src/image/device-qualificatio
 import { readOnlyCommands } from "../src/image/device-qualification-facts.vibe"
 import { verifyImage } from "../src/image/verify-device.vibe"
 import { listenerPermissions, prepareListenerSystemui, verifyListenerSystemui } from "../src/image/listener.vibe"
-import { captureCommand } from "../src/image/device.vibe"
+import { AdbFailed, captureCommand, rebootAndroidFixture } from "../src/image/device.vibe"
 import {
   HELD_FOR_THE_RUN, acquireDeviceLease, instrumentationDeclarations, leaseStateDirectory, readDeviceLease,
   requireInstrumentationInterruption, requireInstrumentationSuccess, withIsolatedAndroidUser,
@@ -869,13 +869,33 @@ it.live('Run a scenario in a fresh Android user and keep the user when the scena
       const afterClean = { current: phone.current, users: [...phone.users] }
       const kept = try exit(withIsolatedAndroidUser({ ...options, scenario: (user: number) => effect { return { cleaned: false, user } } }))
       const wrongAvd = try exit(withIsolatedAndroidUser({ ...options, expectedAvdName: "other_avd", scenario: (user: number) => effect { return { cleaned: true, user } } }))
+      const boot = { id: "11111111-1111-1111-1111-111111111111", offline: 0 }
+      const rebooting = effect (...args: readonly string[]) => {
+        const command = args.join(" ")
+        if (command === "reboot") {
+          boot.id = "22222222-2222-2222-2222-222222222222"
+          boot.offline = 2
+          return ""
+        }
+        if (command.startsWith("shell ") && boot.offline > 0) {
+          boot.offline--
+          throw new AdbFailed({ args, code: 1, stderr: "error: device offline" })
+        }
+        if (command === "shell cat /proc/sys/kernel/random/boot_id") return boot.id
+        if (command === "shell getprop sys.boot_completed") return "1"
+        if (command === "shell am get-current-user") return "10"
+        if (command === "shell am get-started-user-state 10") return "RUNNING_UNLOCKED"
+        return try run(...args)
+      }
+      const rebooted = try rebootAndroidFixture({ run: rebooting, serial, androidUser: 10, deviceLease, stateDir: `${work}/leases` }, { expectedAvdName: "fixture_avd", timeoutMs: 1000, pollMs: 1 })
       try Effect.try(() => assert.deepStrictEqual({
         clean: [clean.result.user, clean.removed, clean.cleanupDeferred, clean.ownerRestored], afterClean,
-        kept: kept._tag, keptUsers: phone.users, current: phone.current, wrongAvd: wrongAvd._tag, reports: reports.length,
+        kept: kept._tag, keptUsers: phone.users, current: phone.current, wrongAvd: wrongAvd._tag, reports: reports.length, rebooted,
         removals: phone.calls.filter((call) => call.startsWith("shell pm remove-user")),
       }, {
         clean: [10, true, false, true], afterClean: { current: "0", users: ["0"] },
         kept: "Failure", keptUsers: ["0", "11"], current: "0", wrongAvd: "Failure", reports: 4,
+        rebooted: { before: "11111111-1111-1111-1111-111111111111", after: "22222222-2222-2222-2222-222222222222", androidUser: 10 },
         removals: ["shell pm remove-user --wait 10"],
       }))
     })
