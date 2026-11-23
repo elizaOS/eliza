@@ -147,6 +147,12 @@ export default {
     "packages/plugin-inbox": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
+    "packages/plugin-native-browser-surface": {
+      "entry": ["resources/read-page.js"]
+    },
+    "packages/plugin-network": {
+      "ignoreDependencies": ["@mockoon/cli"]
+    },
     "packages/plugin-notes": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
