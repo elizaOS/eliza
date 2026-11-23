@@ -96,17 +96,17 @@ function changesOf(list: HistoryList, start: string, maxResults: number, asked: 
       for (const change of row[field] ?? []) {
         const labelIds = labelsOf(change.labelIds ?? change.message.labelIds)
         const id = `${row.id}:${type}:${change.message.id}`
-        consistent &&= providerId.test(change.message.id) && providerId.test(change.message.threadId) && labelIds !== undefined && !seen.has(id)
+        consistent = consistent && providerId.test(change.message.id) && providerId.test(change.message.threadId) && labelIds !== undefined && !seen.has(id)
         seen.add(id)
         events.push({ id, historyId: row.id, type, messageId: change.message.id, threadId: change.message.threadId, labelIds: labelIds ?? [] })
       }
     }
-    consistent &&= seen.size > 0 || (row.messages ?? []).length === 0
+    consistent = consistent && (seen.size > 0 || (row.messages ?? []).length === 0)
   }
   const added = new Map<string, string>()
   for (const event of events) {
     if (event.type !== "message-added") continue
-    consistent &&= (added.get(event.messageId) ?? event.threadId) === event.threadId
+    consistent = consistent && (added.get(event.messageId) ?? event.threadId) === event.threadId
     added.set(event.messageId, event.threadId)
   }
   const continues = next !== null
@@ -145,8 +145,8 @@ effect function observe(accessToken: string, start: string | undefined, token: s
   if (list === undefined) throw refused("ProviderInvalidResponse")
   const page = changesOf(list, start, maxResults, token)
   if (historyAnswer({ ...page.read, grantCurrent: true }).tag !== "HistoryPage") return page
-  const labels = try Effect.forEach([...page.added], effect ([messageId, threadId]) => {
-    return [messageId, try currentLabels(accessToken, messageId, threadId)] as const
+  const labels = try Effect.forEach([...page.added], effect (entry: readonly [string, string]) => {
+    return [entry[0], try currentLabels(accessToken, entry[0], entry[1])] as const
   }, { concurrency: 8 })
   const current = new Map(labels)
   const events = page.events.map((event) => {
