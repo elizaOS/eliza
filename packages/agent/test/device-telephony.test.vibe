@@ -1,12 +1,13 @@
-// spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"
+// spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "Story: Hear what my phone did with a call, text or contact change, as far as it shows"
 import { assert, it } from "@effect/vitest"
 import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vibe"
 
 module node {
+  import { setTimeout as wait } from "node:timers/promises"
   import type { AgentRuntime } from "@elizaos/core"
-  import { text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+  import { held, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
   import { deviceClient, type DeviceClient } from "./support/device.ts"
 
   export const proposeTool = "PROPOSE_DEVICE_ACTION"
@@ -33,15 +34,31 @@ module node {
     return ((await client.call("GET", "/api/client-devices/proposals")).json as { proposals: readonly Proposal[] }).proposals
   }
 
-  async function deliverSender(client: DeviceClient, read: Proposal): Promise<string | undefined> {
-    const at = `/api/client-devices/proposals/${read.id}`
-    await client.call("POST", `${at}/decision`, { digest: read.digest, decision: "approve" })
-    const claimed = (await client.call("POST", `${at}/claim`, { digest: read.digest })).json as { proposal: Proposal }
+  const sameOperation = (operation: unknown) => ({ payload }: Proposal) => JSON.stringify(payload.operation) === JSON.stringify(operation)
+
+  async function applied(client: DeviceClient, proposal: Proposal, operationId: string, result: unknown): Promise<string> {
+    const at = `/api/client-devices/proposals/${proposal.id}`
+    await client.call("POST", `${at}/decision`, { digest: proposal.digest, decision: "approve" })
+    const claimed = (await client.call("POST", `${at}/claim`, { digest: proposal.digest })).json as { proposal: Proposal }
     const attemptId = claimed.proposal.execution?.attemptId ?? ""
-    const result = { kind: "sms-latest-sender", status: "found", address: "+14155550124" }
-    await client.call("POST", `${at}/receipt`, { digest: read.digest, attemptId, receipt: { outcome: "applied", operationId: "sender-1", result } })
-    const completed = await client.call("POST", `${at}/read-completion`, { ...read.readReplyOrigin, proposalId: read.id, digest: read.digest, attemptId })
+    await client.call("POST", `${at}/receipt`, { digest: proposal.digest, attemptId, receipt: { outcome: "applied", operationId, result } })
+    return attemptId
+  }
+
+  async function deliverSender(client: DeviceClient, read: Proposal): Promise<string | undefined> {
+    const attemptId = await applied(client, read, "sender-1", { kind: "sms-latest-sender", status: "found", address: "+14155550124" })
+    const completed = await client.call("POST", `/api/client-devices/proposals/${read.id}/read-completion`, { ...read.readReplyOrigin, proposalId: read.id, digest: read.digest, attemptId })
     return (completed.json as { reply?: { text?: string } }).reply?.text
+  }
+
+  async function offeredDuringTurn(client: DeviceClient, operation: unknown): Promise<Proposal> {
+    const deadline = Date.now() + 25_000
+    for (;;) {
+      const offered = (await proposals(client)).find(sameOperation(operation))
+      if (offered !== undefined) return offered
+      if (Date.now() >= deadline) throw new Error("The turn never offered its proposal")
+      await wait(20)
+    }
   }
 
   export async function telephonyFromChat(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
@@ -58,6 +75,13 @@ module node {
     }
 
     const handedThrough = await ask("call 415-555-0100", call("6505715862"))
+    const heldReply = await ask("did you set that call up?", call("4155550100"))
+    const heldCall = { reply: heldReply.reply, requests: (await proposals(client)).filter(sameOperation(call("4155550100"))).map(({ state }) => state) }
+    const separatedCall = await ask("can you call 415-555-0161 when you get a sec", call("415-555-0161"))
+    const separatedSend = await ask("send an SMS to +1 415 555 0162 saying hi", { type: "sms_send", recipients: ["+1 415 555 0162"], body: "hi", subscriptionId: 1 })
+    const separatedContact = await ask("save Ana as a contact with 415-555-0163", {
+      type: "contact_create", contact: { displayName: "Ana", phoneNumbers: ["415-555-0163"], emailAddresses: [] },
+    })
     const ownerDialForm = await ask("could you ring +44 (0)20 7946 0958 after lunch", call("+442079460958"))
     const invented = await ask("can you call 415-555-0100 when you get a sec", call("6505715862"))
     const noNumber = await ask("call the pharmacy back", call("6505715862"))
@@ -94,10 +118,27 @@ module node {
 
     cloud.script(toolCalls("", propose(call("4155550143"))), text("Okay."))
     const unbound = (await client.call("POST", path, { text: "call 415-555-0143" })).json as Turn
-    const reviewedCall = (await proposals(client)).find(({ payload }) => JSON.stringify(payload.operation) === JSON.stringify(call("4155550143")))
+    const reviewedCall = (await proposals(client)).find(sameOperation(call("4155550143")))
+
+    const placed = call("4155550144")
+    const callStarted = Promise.withResolvers<void>()
+    cloud.script(toolCalls("", propose(placed)), held(callStarted.promise, toolCalls("", propose(placed))), text("Your phone started that call."))
+    const beforeRepeat = cloud.calls.length
+    const repeating = client.call("POST", path, { text: "call 415-555-0144", metadata: direct })
+    try {
+      await applied(client, await offeredDuringTurn(client, placed), "call-1", { kind: "phone-call", status: "placed", contact: false })
+    } finally {
+      callStarted.resolve()
+    }
+    await repeating
+    const repeatedCall = {
+      toldModel: cloud.calls.slice(beforeRepeat).some(({ body }) => JSON.stringify(body).includes(
+        "Retrieved the historical receipt without acting on the phone again. The owner approved and the phone started the call. This does not show whether it was answered.")),
+      requests: (await proposals(client)).filter(sameOperation(placed)).map(({ state }) => state),
+    }
 
     const asked = await ask("Who sent my latest text?", { type: "sms_latest_sender" })
-    const senderRead = (await proposals(client)).find(({ payload }) => JSON.stringify(payload.operation) === JSON.stringify(asked.operation))
+    const senderRead = (await proposals(client)).find(sameOperation(asked.operation))
     const delivered = senderRead === undefined ? undefined : await deliverSender(client, senderRead)
     const toThem = await ask("Draft a text to them saying I'm on my way", { type: "sms_compose", query: "6505715862", body: "I'm on my way" })
 
@@ -108,9 +149,9 @@ module node {
       /Copy this reference verbatim as the number[^"]*__ELIZA_CONTACT_\w+__/.test(JSON.stringify(body)))
 
     return {
-      handedThrough, ownerDialForm, invented, noNumber, callBack, unnamed, bodyNumber, keypad, emergency, writtenEmergency,
+      handedThrough, heldCall, separated: { call: separatedCall, send: separatedSend, contact: separatedContact }, ownerDialForm, invented, noNumber, callBack, unnamed, bodyNumber, keypad, emergency, writtenEmergency,
       contactNumber, draft, unclear, composedNumber, contactUpdate, contactDelete, contactNoNumber, simSendToName, threadReply,
-      draftToNobody, draftToTwoNumbers, callEveryone, partial, compound,
+      draftToNobody, draftToTwoNumbers, callEveryone, partial, compound, repeatedCall,
       unbound: { reply: unbound.text.split("\n\n").at(-1), carriesMessage: reviewedCall === undefined ? undefined : reviewedCall.payload.requestMessageId !== undefined },
       asked, delivered, toThem, copyReference: { reply: swapped.reply, toldReference },
     }
@@ -124,7 +165,7 @@ const numberNotWritten = "I didn't set that up, because that number isn't one yo
 const numberNotSaved = "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use."
 const askRecipient = "Which person should receive this draft? Give one recipient."
 
-it.live(`A call, dial, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, and the sender is read only as asked (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner is told to dial it themselves"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers the owner wrote"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request")`, effect () => {
+it.live(`A call, dial, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, the sender is read only as asked, and a settled request is answered from its result (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "Story: Hear what my phone did with a call, text or contact change, as far as it shows"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner is told to dial it themselves"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers the owner wrote"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered from its stored result, and only a latest-sender read in fixed words"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -137,6 +178,12 @@ it.live(`A call, dial, text or contact change goes only to the recipient the own
   const observed = try host("telephony from chat", () => telephonyFromChat(agent.agent.runtime, socket, agent.frame.token, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed, {
     handedThrough: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "4155550100" } } },
+    heldCall: { reply: review, requests: ["pending"] },
+    separated: {
+      call: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "4155550161" } } },
+      send: { reply: review, operation: { type: "sms_send", recipients: ["+14155550162"], body: "hi", subscriptionId: 1 } },
+      contact: { reply: review, operation: { type: "contact_create", contact: { displayName: "Ana", phoneNumbers: ["4155550163"], emailAddresses: [] } } },
+    },
     ownerDialForm: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "+442079460958" } } },
     invented: { reply: numberNotWritten, operation: undefined },
     noNumber: {
@@ -177,6 +224,7 @@ it.live(`A call, dial, text or contact change goes only to the recipient the own
       operation: undefined,
     },
     partial: { reply: "Would you like the last four digits of the SMS sender’s number? Other partial numbers are unavailable.", operation: undefined },
+    repeatedCall: { toldModel: true, requests: ["done"] },
     compound: [JSON.stringify({ type: "phone_call", target: { kind: "contact", query: "dad" } }), JSON.stringify({ type: "phone_call", target: { kind: "number", number: "4155550142" } })],
     unbound: { reply: review, carriesMessage: false },
     asked: { reply: review, operation: { type: "sms_latest_sender", includeAddress: true } },
