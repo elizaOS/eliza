@@ -13,7 +13,7 @@ import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { migrate, Store, StoreFailure, type Tx } from "../src/store/store.vibe"
-import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import { organization, testCloud, type Answer, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
 import { periodRows } from "../src/shared/metering.vibe"
@@ -1980,8 +1980,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
   it.live('Hear about new mail while the phone is idle: a baseline, ordered pages with current labels, a reset, refusals before Google, and nothing once the grant is gone (spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle")', () => scoped(effect {
     const google = try sync(() => googleFakeState())
     const now = try Clock.currentTimeMillis
-    const historyRead = Promise.withResolvers<void>()
-    const releaseHistory = Promise.withResolvers<void>()
+    let historyRead = Promise.withResolvers<void>()
+    let releaseHistory = Promise.withResolvers<void>()
     let provider = "pages"
     const added = (id: string, thread: string) => ({ message: { id, threadId: thread } })
     const cloud = try testCloud({ mount: (fakes) => {
@@ -2006,6 +2006,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       })
     } })
     const device = try signedCaller(cloud, "mail-history")
+    const other = try signedCaller(cloud, "mail-history-other")
     const grant = "5f0c2b7e-8d1a-4c3e-9b6f-2a7d4e1c9b30"
     const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
     const refresh = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
@@ -2029,14 +2030,25 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       cloud.call(`${path}?startHistoryId=1000`, { headers: device.headers }), history("&maxResults=101"), history("&maxResults=0"), history("&pageToken=more"),
       history("&startHistoryId=0100"), history("&startHistoryId=1000&startHistoryId=1001"), history("&unexpected=1"), history("&side=agent"), cloud.call(`${path}?grantId=${grant}`)
     ])
+    const otherOrganization = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
+    try sql(cloud, "UPDATE accounts SET organization_id = $1 WHERE key = $2", [device.organizationId, other.userId])
+    const otherUser = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
     const providerCallsOnRefusal = cloud.fakes.seen.length - beforeRefusals
 
-    provider = "held"
-    const reading = try forkChild(history("&startHistoryId=1000"))
-    try timeout(promise(() => historyRead.promise), "5 seconds")
-    const disconnected = try cloud.call("/api/v1/eliza/google/disconnect", { headers: device.headers, json: { grantId: grant } })
-    try sync(() => releaseHistory.resolve())
-    const lostDuringRead = try Fiber.join(reading)
+    const heldRead = (end: () => Answer!!) => effect {
+      historyRead = Promise.withResolvers<void>()
+      releaseHistory = Promise.withResolvers<void>()
+      provider = "held"
+      const reading = try forkChild(history("&startHistoryId=1000"))
+      try timeout(promise(() => historyRead.promise), "5 seconds")
+      const ended = try end()
+      try sync(() => releaseHistory.resolve())
+      return [ended, try Fiber.join(reading)] as const
+    }
+    const [disconnected, lostDuringRead] = try heldRead(() => cloud.call("/api/v1/eliza/google/disconnect", { headers: device.headers, json: { grantId: grant } }))
+    const relinked = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
+    try cloud.inside(linkedGrant(cloud, device, grant, relinked, scopes, now - 1000))
+    const [revoked, revokedDuringRead] = try heldRead(() => cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: device.headers }))
     try check(() => {
       assert.deepStrictEqual([baseline.status, first.status, second.status, expired.status, baseline.headers["cache-control"]], [200, 200, 200, 200, "no-store"])
       assert.deepStrictEqual([baseline.body, expired.body], [
@@ -2055,8 +2067,10 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       assert.deepStrictEqual(asked, [["1000", "50", null], ["1000", "50", "more"], ["900", "50", null]])
       assert.deepStrictEqual([errorOf(reordered), readAfterReordered], [[502, "provider_invalid_response"], ["history"]])
       assert.deepStrictEqual(refusals.map((answer) => answer.status), [400, 400, 400, 400, 400, 400, 400, 400, 401])
+      assert.deepStrictEqual([errorOf(otherUser), errorOf(otherOrganization)], [[404, "not_found"], [404, "not_found"]])
       assert.equal(providerCallsOnRefusal, 0)
       assert.deepStrictEqual([disconnected.status, errorOf(lostDuringRead)], [200, [409, "google_reauth_required"]])
+      assert.deepStrictEqual([revoked.status, errorOf(revokedDuringRead)], [204, [401, "authentication_required"]])
     })
   }))
 
