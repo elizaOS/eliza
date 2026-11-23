@@ -1,5 +1,6 @@
 // spec/agent/host/launch.md, "Text goes to the owner's cloud account, the owner's own key, or nowhere"
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:https";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -74,13 +75,14 @@ const ownKeyPrefix = "/own-key/v1";
 
 const execute = promisify(execFile);
 
+// Each fake names its certificate uniquely: certificates trusted together under one subject make the TLS client pick the wrong one for a second live fake.
 async function selfSigned(directory: string): Promise<{ key: string; cert: string; caFile: string }> {
   const config = join(directory, "leaf.cnf");
   const keyFile = join(directory, "leaf.key");
   const caFile = join(directory, "leaf.pem");
   await writeFile(config, [
     "[req]", "prompt = no", "distinguished_name = subject", "x509_extensions = ext",
-    "[subject]", "CN = localhost",
+    "[subject]", `CN = cloud-fake-${randomUUID()}`,
     "[ext]", "basicConstraints = critical, CA:TRUE", "keyUsage = critical, digitalSignature, keyCertSign",
     "extendedKeyUsage = serverAuth", "subjectAltName = DNS:localhost, IP:127.0.0.1", "",
   ].join("\n"));
