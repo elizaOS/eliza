@@ -49,9 +49,9 @@ export const mapsPlugin: AgentPlugin = {
 
 export default mapsPlugin
 
-export { createMapsPlugin, mapsPluginName, nearbyPlaceKind, phonePositionProvider, type MapsPluginPorts } from "./plugin.vibe"
+export { createMapsPlugin, mapsPluginName, phonePositionProvider, type MapsPluginPorts } from "./plugin.vibe"
 export { agentCloudProvider, agentPlace, mapsService, type MapsCloudLink, type MapsOffer, type MapsService, type PlaceResults, type RouteResults } from "./service.vibe"
 export { conversationNavigation, mapsNavigationPath, mapsNavigationRelay, mapsNavigationRoute, RelayRefused, type MapsDeviceNavigation, type MapsNavigationRelay, type RelayLimits, type RelayReply } from "./relay.vibe"
 export { appendMapsCard, MapsCard, mapsCardMarker, recognizedMapsCards, serializeMapsCard, withoutMapsCards, type MapsCardPlace } from "./cards.vibe"
 export { agentSaves, AgentSavedPlace, type AgentSavedPlaceStore, type AgentSaves, type SaveOutcome, type StoredSaves } from "./saves.vibe"
-export { choicePosition, registerMapsRouting, requestShape, routeOf } from "./routing.vibe"
+export { choicePosition, nearbyPlaceKind, registerMapsRouting, requestShape, routeOf } from "./routing.vibe"
