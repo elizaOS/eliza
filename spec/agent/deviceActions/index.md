@@ -388,8 +388,10 @@ never runs it without its card, whatever the operation and the owner's
 owner's message, so its identity, its read completion and the outcomes a
 later turn learns are the same. The choice is kept with the request, and
 the review routes serve the key only where it was kept. An open request of
-the same operation is returned for a repeat only when it carries the
-message the same way.
+the same operation is returned for a repeat in another message only when
+neither carries a message: one that carries its message runs without its
+card only for that message, so a later message that asks again, such as
+"take a picture" said twice, is a request of its own.
 
 The reply follows the choice. A pending request that carries the message
 is answered in its family's words as the handoff it is ("Opening
@@ -402,7 +404,8 @@ an approved or running one only tells the model its state.
 type ProposalGrounding = GroundedAsAsked | GroundedForReview | GroundedOnScreen
 pure def carriesRequestMessage(grounding: ProposalGrounding, directRequest: bool, turnLive: bool): bool =
   turnLive and (grounding == GroundedOnScreen or (directRequest and grounding == GroundedAsAsked))
-pure def returnsOpenRequest(keptCarries: bool, proposedCarries: bool, sameOperation: bool): bool = sameOperation and keptCarries == proposedCarries
+pure def returnsOpenRequest(keptCarries: bool, proposedCarries: bool, sameOperation: bool): bool =
+  sameOperation and not(keptCarries) and not(proposedCarries)
 pure def lawAProposalForReviewCarriesNoMessage(directRequest: bool, turnLive: bool): bool =
   not(carriesRequestMessage(GroundedForReview, directRequest, turnLive))
 pure def lawOnlyADirectRequestCarriesTheMessageAsAsked(turnLive: bool): bool =
@@ -411,6 +414,9 @@ pure def lawAnEndedTurnCarriesNoMessage(grounding: ProposalGrounding, directRequ
   not(carriesRequestMessage(grounding, directRequest, false))
 pure def lawARepeatNeverReturnsADifferentlyBoundRequest(sameOperation: bool): bool =
   not(returnsOpenRequest(true, false, sameOperation)) and not(returnsOpenRequest(false, true, sameOperation))
+pure def lawARequestThatCarriesItsMessageIsNeverReturnedToAnother(proposedCarries: bool, sameOperation: bool): bool =
+  not(returnsOpenRequest(true, proposedCarries, sameOperation))
+pure def lawAReviewedRepeatReturnsTheOpenRequest(sameOperation: bool): bool = returnsOpenRequest(false, false, sameOperation) == sameOperation
 ```
 
 ### A proposal's identity is its request message and its operation, so a repeat returns the same request
@@ -418,9 +424,9 @@ pure def lawARepeatNeverReturnsADifferentlyBoundRequest(sameOperation: bool): bo
 The proposal id is derived from the owner's message and a digest of the
 grounded operation, never from the model. Proposing it again returns the
 request already kept under that id; an open request of the same
-conversation for the same operation, carrying the message the same way, is
-returned too. A family's refusal is held while a request is kept for the
-exact operation the model proposed: re-proposing it only retrieves that
+conversation for the same operation is returned too when neither carries a
+message. A family's refusal is held while a request is kept that way for
+the exact operation the model proposed: re-proposing it only retrieves that
 request, its stored receipt or the same review, and never creates a new
 one. A request that already settled is reported from its stored receipt
 and is never dispatched again, in its family's words: what the model may

@@ -14,7 +14,6 @@ import { cameraWords } from "../surfaces/camera-request.ts"
 
 type Refusal = Extract<Grounding, { readonly kind: "Refused" }>
 
-
 const text = (description: string): ActionParameterSchema => ({ type: "string", description })
 const libraryIds = (maximum: number): ActionParameterSchema => ({
   type: "array", items: { type: "string" }, description: `1 to ${maximum} distinct library ids the phone returned; never guessed`,
@@ -182,11 +181,5 @@ export const surfacesFamily: DeviceProposalFamily = {
     forOwner: "Opening Camera to take the photo.",
     forModel: "The requesting phone takes this requested photo right after this reply once Camera is showing, with no review. No photo has been taken yet; do not claim that one was taken or saved.",
   } : undefined,
-  settledText: (operation) => {
-    switch (operation.type) {
-      case "camera_capture_photo": return { forOwner: "Your phone already took that photo." }
-      case "create_note": return { forOwner: `Your phone already saved the note “${operation.title}”.` }
-      default: return undefined
-    }
-  },
+  settledText: () => undefined,
 }

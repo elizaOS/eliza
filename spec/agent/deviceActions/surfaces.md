@@ -29,6 +29,14 @@ direct-request preference (`agentActionMode` `direct-request-v1` in its
 grounded the operation as the owner asked; anything else is
 [grounded for review](./index.md), so the phone shows its card.
 
+A capture that carries the message is answered as the handoff it is: the
+owner hears "Opening Camera to take the photo." and the model learns that
+the phone takes it right after the reply, with no review, and that no photo
+has been taken yet. Every other pending request of this family asks the
+owner to review it on the phone. A request that already settled is answered
+by the model from its stored result, which is historical and never a current
+read; the family adds no sentence of its own.
+
 ```quint
 type SurfaceVerdict = SurfaceGrounded | SurfaceReviewed | SurfaceRefused
 pure def surfaceBound(directRequests: bool, verdict: SurfaceVerdict): bool = directRequests and verdict == SurfaceGrounded
@@ -51,7 +59,10 @@ take a photo?", "take a photo of the whiteboard", "summarize the page I
 have open") does not. A capture for any other message is still proposed,
 grounded for review, so the owner gets the phone's Take photo card; a
 capture is never refused for its words. A second capture in the same turn,
-grounded the same way, is that same request ([proposal identity](./index.md)).
+grounded the same way, is that same request ([proposal identity](./index.md)),
+so one message takes one photo; a photo asked for again in a later message is
+a request of its own, since a capture that runs without its card runs only
+for the message that asked for it.
 The capture names no lens: the [camera](../../os/android/camera.md) has no
 lens capability, so the phone uses the camera that is showing.
 

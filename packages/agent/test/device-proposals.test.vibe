@@ -96,8 +96,8 @@ module node {
     const afterRefusal = (await proposals(client)).length
 
     cloud.script(toolCalls("", reminder("Milk")), text("Okay."))
-    const heldTurn = await say("Did that go out?")
-    const afterHeld = (await proposals(client)).length
+    const askedAgain = await say("Did that go out?")
+    const afterAskedAgain = (await proposals(client)).length
 
     cloud.script(text("Sure."))
     await client.host("POST", path, { text: "Remind me to call mom" })
@@ -111,6 +111,9 @@ module node {
     cloud.script(toolCalls("", reminder("Mom")), text("Done."))
     await say("Remind me to call mom")
     const mom = (await proposals(client)).find(titled("Mom"))
+    cloud.script(toolCalls("", reminder("Mom")), text("Okay."))
+    const heldTurn = await say("Did that go out?")
+    const afterHeld = (await proposals(client)).length
     const uncertain = mom === undefined ? undefined : await review(client, mom, { outcome: "unknown", operationId: "reminder-2" })
     const reconcile = (body: object) => client.call("POST", `/api/client-devices/proposals/${mom?.id}/reconciliation`, body)
     const extraField = await reconcile({ digest: mom?.digest, attemptId: uncertain?.attemptId, review: "not_applied", confirmed: true })
@@ -141,7 +144,8 @@ module node {
         requestMessageId: asked.userMessageId, operation: { type: "create_reminder", title: "Milk", dueAt },
       },
       refusalReply: refusedTurn.text.includes("Tell me what to remind you of."), afterRefusal,
-      held: { reply: heldTurn.text.includes("Review the reminder “Milk” on your phone."), afterHeld },
+      askedAgain: { refused: askedAgain.text.includes("Tell me what to remind you of."), afterAskedAgain },
+      held: { reply: heldTurn.text.includes("Review the reminder “Mom” on your phone."), afterHeld },
       hostOnlyOffered: hostOnlyTools.includes(proposeTool),
       applied: applied?.state,
       outcomeNote: {
@@ -183,7 +187,8 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
     proposalReply: "Review the reminder “Milk” on your phone.",
     milk: { state: "pending", payload: expectedPayload },
     refusalReply: true, afterRefusal: 1,
-    held: { reply: true, afterHeld: 1 },
+    askedAgain: { refused: true, afterAskedAgain: 1 },
+    held: { reply: true, afterHeld: 2 },
     hostOnlyOffered: false,
     applied: "done",
     outcomeNote: { afterHistory: true, inSystem: false },
