@@ -56,7 +56,7 @@ effect function tryGoogle(runtime: AgentRuntime) {
   return (result as unknown as { data: { attempts: Record<string, CloudLinkReply> } }).data.attempts
 }
 
-it.live('Answer with the backend the host chose: cloud streams and answers whole, describes an image, retries an outage once; own-key answers; none registers nothing (spec/agent/models/binding.md, "Story: Answer with the backend the host chose")', effect () => {
+it.live('Answer with the backend the host chose: cloud streams and answers whole, describes an image, retries an outage once; own-key answers and describes an image; none registers nothing (spec/agent/models/binding.md, "Story: Answer with the backend the host chose")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try cloudAgent(cloud)
   try Effect.sync(() => cloud.script(text("Hel", "lo"), text("Whole."), echoImages(), unavailable(1), text("After the outage.")))
@@ -86,7 +86,10 @@ it.live('Answer with the backend the host chose: cloud streams and answers whole
   assert.deepStrictEqual(owned, { kind: "answered", answer: "Own answer." })
   assert.strictEqual(cloud.calls.at(-1)?.path, "/own-key/v1/chat/completions")
   assert.strictEqual(cloud.calls.at(-1)?.authorization, `Bearer ${cloud.ownKey}`)
-  assert.strictEqual(own.agent.runtime.getModel(ModelType.IMAGE_DESCRIPTION), undefined)
+  try Effect.sync(() => cloud.script(text("Title: A cat", "\nA cat on a mat.")))
+  const ownDescribed = try host("own-key image description", () => own.agent.runtime.useModel(ModelType.IMAGE_DESCRIPTION, { imageUrl: "https://example.test/cat.png", prompt: "Describe it." }))
+  assert.deepStrictEqual([ownDescribed, cloud.calls.at(-1)?.path, (cloud.calls.at(-1)?.body as { model?: unknown }).model],
+    [{ title: "A cat", description: "Title: A cat\nA cat on a mat." }, "/own-key/v1/chat/completions", "large"])
   assert.strictEqual(own.agent.runtime.getService("cloud"), null)
   assert.deepInclude(try status(own), { backend: "own-key", canRespond: true })
 

@@ -68,8 +68,9 @@ pure def sometimesBoundWithoutBackend(s: ModelBinding): bool = s.phase == Bound 
 ### No text handler is ever served by a model on the device
 
 `TEXT_SMALL` and `TEXT_LARGE` come from the backend, `IMAGE_DESCRIPTION`
-only from the cloud, and `TEXT_EMBEDDING` only from `localInference` when
-the launch asks for local embeddings.
+from the backend too (the cloud's image model, or the own key's large
+model), and `TEXT_EMBEDDING` only from `localInference` when the launch asks
+for local embeddings.
 
 ```quint
 type ModelHandler = TextSmall | TextLarge | ImageDescription | TextEmbedding
@@ -78,7 +79,7 @@ pure def isCloud(backend: Backend): bool = match backend { | CloudBackend(_) => 
 pure def handlerSource(backend: Backend, embeddings: Embeddings, handler: ModelHandler): HandlerSource =
   if (handler == TextEmbedding) (if (embeddings == NoEmbeddings) NotRegistered else FromLocalInference)
   else if (isCloud(backend)) FromCloud
-  else if (isOwnKey(backend) and handler != ImageDescription) FromOwnKey
+  else if (isOwnKey(backend)) FromOwnKey
   else NotRegistered
 pure val backendValues = Set(NoBackend,
   CloudBackend({ baseUrl: "https://cloud.example", baseUrlShape: HttpsOrigin, smallModel: "", largeModel: "", imageModel: "" }),
@@ -86,8 +87,8 @@ pure val backendValues = Set(NoBackend,
 pure val embeddingsValues = Set(NoEmbeddings, LocalEmbeddings({ dimensions: 384 }))
 pure def lawNoTextHandlerFromALocalModel(backend: Backend, embeddings: Embeddings, handler: ModelHandler): bool =
   handler != TextEmbedding implies handlerSource(backend, embeddings, handler) != FromLocalInference
-pure def lawImageDescriptionOnlyFromTheCloud(backend: Backend, embeddings: Embeddings): bool =
-  handlerSource(backend, embeddings, ImageDescription) != NotRegistered iff isCloud(backend)
+pure def lawImageDescriptionOnlyFromTheBackend(backend: Backend, embeddings: Embeddings): bool =
+  handlerSource(backend, embeddings, ImageDescription) != NotRegistered iff (isCloud(backend) or isOwnKey(backend))
 ```
 
 ### A model call starts only for a handler the backend serves, with the credential the binding holds
@@ -126,7 +127,10 @@ registration, so the transport never re-sends it; the refusal carries the
 time left until the account's retry time, and the turn that made the call
 waits for that, at most five seconds, and sends it once more
 ([planning](../conversation/planning.md)). A refused request is a bad
-request; every other refusal ends the call.
+request; every other refusal ends the call. Both attempts of one call carry
+the same `Idempotency-Key`, fresh for each call, so a connection lost after
+the cloud dispatched the first attempt is answered `409 already_dispatched`
+instead of running and charging the generation again.
 
 ```quint
 import models as M from "../../core/models"
@@ -218,6 +222,9 @@ own-key endpoint whose host is `cerebras.ai` or under it: `low` is `low` on
 reads the model id without a `cerebras/` or `openai/` prefix and without a
 `:` suffix. Any other model, any other endpoint, or no hint sends no effort,
 and the hint itself never reaches the wire.
+Planning rounds, turn evaluators and reply drafts ask with the hint `off`:
+a model that reasons by default would otherwise spend the call's tokens and
+time thinking.
 
 ```quint
 type ThinkingHint = NoThinkingHint | ThinkingLow | ThinkingOff
