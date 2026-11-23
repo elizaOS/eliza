@@ -1274,7 +1274,7 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
   }), 60_000)
 })
 describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
-  it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\")", () => scoped(effect {
+  it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\"; spec/cloud/services/speech.md, \"Story: Pay once for each batch speech request\")", () => scoped(effect {
     const speech = try sync(() => speechFake())
     const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
     const caller = try signedCaller(cloud, "speaker")
@@ -1294,6 +1294,17 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     const rejected = try tts({ text: "Rejected" })
     const busy = try tts({ text: "Busy" })
 
+    const keyed = (key: string, text: string) => cloud.call("/api/v1/voice/tts", { json: { text }, headers: { ...caller.headers, "idempotency-key": key } })
+    const synthesizedBeforeKeys = speech.synthesized.length
+    const firstKeyed = try keyed("utterance-1", "Table at seven")
+    const retriedKeyed = try keyed("utterance-1", "Table at seven")
+    const otherWords = try keyed("utterance-1", "Table at eight")
+    try sync(() => speech.script({ kind: "refuse", status: 422 }))
+    const refusedKeyed = try keyed("utterance-2", "Refused words")
+    const retriedRefusal = try keyed("utterance-2", "Refused words")
+    const malformedKey = try keyed("not a key", "Hello")
+    const synthesizedWithKeys = speech.synthesized.length - synthesizedBeforeKeys
+
     const heard = try stt({ languageCode: "en-US", provider: "speech" })
     const otherProvider = try stt({ provider: "elsewhere" })
     const otherLanguage = try stt({ languageCode: "fr" })
@@ -1310,6 +1321,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         foreignVoice: [foreignVoice.status, (foreignVoice.body as { readonly error: string }).error],
         rejected: [rejected.status, (rejected.body as { readonly error: string }).error],
         busy: [busy.status, (busy.body as { readonly error: string }).error, Number(busy.headers["retry-after"]) >= 7],
+        keyed: [firstKeyed.status, retriedKeyed.status, retriedKeyed.body === firstKeyed.body, otherWords.status, refusedKeyed.status, retriedRefusal.status, (retriedRefusal.body as { readonly error: string }).error, malformedKey.status, (malformedKey.body as { readonly error: string }).error, synthesizedWithKeys],
         heard: [heard.status, heard.body, heard.headers["x-eliza-stt-provider"]],
         sentHeard: speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length]),
         otherProvider: [otherProvider.status, (otherProvider.body as { readonly error: string }).error],
@@ -1333,6 +1345,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         foreignVoice: [400, "invalid_request"],
         rejected: [502, "provider_invalid_response"],
         busy: [503, "provider_unavailable", true],
+        keyed: [200, 200, true, 200, 502, 409, "idempotency_conflict", 400, "invalid_request", 4],
         heard: [200, { transcript: spokenTranscript, duration_ms: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) }, "speech"],
         sentHeard: [["audio/wav", "ink-whisper", "en", recordingBytes]],
         otherProvider: [400, "invalid_request"],
@@ -1343,6 +1356,9 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
           ["speech", 216, 216, "known"],
           ["speech", 288, 0, "known"],
           ["speech", 144, 144, "unknown"],
+          ["speech", 504, 504, "known"],
+          ["speech", 504, 504, "known"],
+          ["speech", 468, 0, "known"],
           ["speech", 100, 250, "known"]
         ]
       }
