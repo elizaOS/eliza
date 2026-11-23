@@ -30,7 +30,7 @@ hold, through `M::markDispatched`) and, for a dispatched request,
 
 > As an account owner, I want each maps request answered once and paid for
 > once, at what the provider billed when that is known and at its quote when
-> the reply was lost, so that a repeated request never costs me twice.
+> the provider charge is unknown, so that a repeated request never costs me twice.
 
 ### A deployment answers capabilities always, and any other operation only when its provider serves it
 
@@ -171,8 +171,9 @@ price is the sum over the billed calls. An answered request, and one refused
 price, 0 when nothing was billed. A request with an unclear call is a lost
 reply and is charged its quote. It answers `502 provider_invalid_response`
 when the provider answered with a 4xx status the table does not name, such
-as a 400, and `503 provider_unavailable` after a redirect, a timeout or a
-network failure. A refusal decided before dispatch releases the hold. An
+as an unclassified 400, and `503 provider_unavailable` after a redirect, a timeout or a
+network failure. A complete Google Place Details 400 keeps its typed
+refusal even when the charge is unknown. A refusal decided before dispatch releases the hold. An
 observed price above the quote is an adapter fault: it is charged at the
 quote and logged as an error.
 
@@ -188,7 +189,7 @@ charged its quote, and it answers `502 provider_invalid_response`.
 
 ```quint
 type CallBilling = CallBilled | CallNotBilled | CallUnclear
-type MapsOutcome = MapsAnswered | MapsRefused({ code: RefusalCode }) | ReplyLost
+type MapsOutcome = MapsAnswered | MapsRefused({ code: RefusalCode }) | MapsUnpricedRefusal({ code: RefusalCode }) | ReplyLost
 type MapsSettlement = ChargeObserved({ actual: Micros }) | ChargeQuote | ReleaseUncharged
 pure def billingOf(status: int): CallBilling =
   if (status == 200 or status == 404) CallBilled
@@ -212,30 +213,60 @@ pure def lawAnUnclearAnswerIsInvalidOnlyForAStatusTheTableDoesNotName(status: in
   unclearAnswerIsInvalid(status) implies (billingOf(status) == CallUnclear and status != 401 and status != 403 and status != 404 and status != 429)
 pure val statusValues = Set(200, 302, 400, 401, 404, 429, 500)
 pure val geocodeStatusValues = Set("OK", "ZERO_RESULTS", "UNKNOWN_ERROR", "OVER_QUERY_LIMIT", "INVALID_REQUEST", "")
-pure def isProviderRefusal(code: RefusalCode): bool = Set(NoRoute, UnsupportedMode, UnsupportedRegion, ProviderInvalidResponse, ProviderUnavailable).contains(code)
+pure def isProviderRefusal(code: RefusalCode): bool = Set(InvalidRequest, NoRoute, UnsupportedMode, UnsupportedRegion, ProviderInvalidResponse, ProviderUnavailable).contains(code)
 pure def observedWithin(quote: Micros, observed: Micros): Micros = if (observed < 0) 0 else M::minOf(observed, quote)
+pure def chargesQuote(reply: MapsOutcome): bool = match reply {
+  | MapsUnpricedRefusal(_) => true
+  | ReplyLost => true
+  | _ => false
+}
 pure def settlementOf(dispatched: bool, reply: MapsOutcome, quote: Micros, observed: Micros): MapsSettlement =
   if (not(dispatched)) ReleaseUncharged
-  else if (reply == ReplyLost) ChargeQuote
+  else if (chargesQuote(reply)) ChargeQuote
   else ChargeObserved({ actual: observedWithin(quote, observed) })
 pure def applySettlement(h: M::Hold, settlement: MapsSettlement, creditFree: Micros): M::Hold = match settlement {
   | ChargeObserved(c) => M::settleKnown(h, c.actual, creditFree)
   | ChargeQuote => M::settleUnknown(h)
   | ReleaseUncharged => M::release(h)
 }
-pure val replyValues = Set(MapsAnswered, MapsRefused({ code: NoRoute }), MapsRefused({ code: ProviderUnavailable }), ReplyLost)
+pure val replyValues = Set(MapsAnswered, MapsRefused({ code: NoRoute }), MapsRefused({ code: ProviderUnavailable }), MapsUnpricedRefusal({ code: InvalidRequest }), MapsUnpricedRefusal({ code: ProviderInvalidResponse }), ReplyLost)
 pure val observedValues = Set(-1, 0, 1, 3, 9)
 pure def lawADispatchedRequestIsChargedOnceWithinItsQuote(lane: M::FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros, reply: MapsOutcome, observed: Micros, creditFree: Micros): bool = {
   val sent = M::markDispatched(M::reserve(M::initial, mapsHoldKey("c1", "r1"), quote, lane, allowanceAvailable, creditAvailable, 0), 0)
   val closed = applySettlement(sent, settlementOf(true, reply, quote, observed), creditFree)
   (M::fundable(lane, quote, allowanceAvailable, creditAvailable) and creditFree >= 0) implies
-    (closed.phase == M::Settled and closed.charged >= 0 and closed.charged <= quote and closed.uncollected == 0 and (reply == ReplyLost implies closed.charged == quote))
+    (closed.phase == M::Settled and closed.charged >= 0 and closed.charged <= quote and closed.uncollected == 0 and (chargesQuote(reply) implies closed.charged == quote))
 }
 pure def lawAnUndispatchedRequestIsChargedNothing(lane: M::FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros, reply: MapsOutcome, observed: Micros, creditFree: Micros): bool = {
   val held = M::reserve(M::initial, mapsHoldKey("c1", "r1"), quote, lane, allowanceAvailable, creditAvailable, 0)
   val ended = applySettlement(held, settlementOf(false, reply, quote, observed), creditFree)
   M::fundable(lane, quote, allowanceAvailable, creditAvailable) implies (ended.phase == M::Released and ended.charged == 0)
 }
+```
+
+### Only an unreasoned Google Place Details argument refusal identifies an unusable place ID
+
+Google Place Details can refuse a provider ID with HTTP 400 and an
+`INVALID_ARGUMENT` status. An envelope with that status and no
+configuration reason or `ErrorInfo` becomes `400 invalid_request`.
+An unreadable envelope, other status or stated reason becomes a provider
+response error. Requests that Cloud constructs itself, such as routes
+and search, retain the provider-error path. The provider charge for a
+Google 400 is unknown, so the refusal is retained for replay and the
+quote is charged once. A Google identifier that fails local validation
+returns `400 invalid_request` with no outbound call or charge. A Google
+404 is a successful lookup with no place.
+
+```quint
+type GoogleDetailsBadRequest = GooglePlaceRejected | GoogleDetailsFault
+pure def googleDetailsBadRequest(invalidArgument: bool, unreasoned: bool): GoogleDetailsBadRequest =
+  if (invalidArgument and unreasoned) GooglePlaceRejected else GoogleDetailsFault
+pure def lawAReasonedGoogleRefusalIsAProviderFault(invalidArgument: bool): bool =
+  googleDetailsBadRequest(invalidArgument, false) == GoogleDetailsFault
+pure def lawAnUnreasonedGoogleArgumentRefusalRejectsThePlaceId(unreasoned: bool): bool =
+  (googleDetailsBadRequest(true, unreasoned) == GooglePlaceRejected) == unreasoned
+pure def lawAnUnpricedRefusalKeepsTheQuotedCharge(quote: Micros, observed: Micros): bool =
+  settlementOf(true, MapsUnpricedRefusal({ code: InvalidRequest }), quote, observed) == ChargeQuote
 ```
 
 ### A repeated key reaches no provider and moves no money: it repeats the outcome kept for it, or is refused
@@ -348,4 +379,34 @@ pure def tileSessionFresh(expiresAt: Millis, now: Millis): bool = expiresAt - ti
 pure val expiresAtValues = Set(0, 3600000, 3600001, 7200000)
 pure def lawAFreshTileSessionOutlivesItsMargin(expiresAt: Millis, now: Millis): bool =
   tileSessionFresh(expiresAt, now) implies expiresAt > now + tileSessionRenewMargin
+```
+
+## Story: Get a route result when the endpoints coincide
+
+> As the owner, I want directions to report that I am already at the
+> destination when the provider returns a zero-distance route, so that
+> I can tell I chose the same place.
+
+### A well-formed zero-distance Google route can omit intermediate points
+
+Google's wire shape may omit a zero distance. When the decoded polyline
+has one point, use it at both ends of a zero-distance route. When it has
+no points, use the requested endpoints. Preserve an ordinary polyline.
+Reject a malformed encoding or a nonzero route with fewer than two points.
+
+```quint
+type GoogleGeometry = KeepPolyline | DuplicatePoint | UseEndpoints | InvalidPolyline
+pure def googleGeometry(decoded: bool, coordinateCount: int, zeroDistance: bool): GoogleGeometry =
+  if (not(decoded) or coordinateCount < 0) InvalidPolyline
+  else if (coordinateCount >= 2) KeepPolyline
+  else if (not(zeroDistance)) InvalidPolyline
+  else if (coordinateCount == 1) DuplicatePoint
+  else UseEndpoints
+pure val coordinateCountValues = Set(-1, 0, 1, 2, 5)
+pure def lawAnInvalidEncodingNeverProducesARoute(coordinateCount: int, zeroDistance: bool): bool =
+  googleGeometry(false, coordinateCount, zeroDistance) == InvalidPolyline
+pure def lawOnlyZeroDistanceCanProvideMissingGeometry(coordinateCount: int): bool =
+  coordinateCount < 2 implies googleGeometry(true, coordinateCount, false) == InvalidPolyline
+pure def lawAZeroDistanceRouteUsesThePointOrRequestedEndpoints(zeroDistance: bool): bool =
+  zeroDistance implies (googleGeometry(true, 0, zeroDistance) == UseEndpoints and googleGeometry(true, 1, zeroDistance) == DuplicatePoint)
 ```

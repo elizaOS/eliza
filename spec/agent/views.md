@@ -210,6 +210,27 @@ pure val bindingValues = Set(
 pure val claimIdValues = Set("k1", "k2", "")
 ```
 
+### A lost navigation claim releases the renderer after a short lease
+
+The host starts a ten-second lease once it grants a navigation claim.
+If the exact claim is still pending when the lease elapses, the host
+abandons that request. The waiter sees `Unknown`, a late result is
+refused, and a subsequent request may use the renderer. The lease
+never abandons an interaction or a superseding request.
+
+```quint
+pure val navigationClaimLeaseMs = 10000
+pure def navigationLeaseHolds(w: Waiter, claimId: str): bool =
+  w.kind == Navigation and pending(w) and claimId != "" and claimIdOf(w.claim) == claimId
+pure def lawLeaseNeverHoldsAnInteraction(w: Waiter, claimId: str): bool =
+  w.kind == Interaction implies not(navigationLeaseHolds(w, claimId))
+pure def lawLeaseRequiresAnExactPendingClaim(w: Waiter, claimId: str): bool =
+  navigationLeaseHolds(w, claimId) implies pending(w) and isClaimed(w.claim) and claimIdOf(w.claim) == claimId
+pure val wValues = Set(noWaiter,
+  { ...noWaiter, req: V::request(V::initial, "r1", "c1", "i1", "chat"), kind: Navigation, claim: Claimed({ claimId: "k1" }) },
+  { ...noWaiter, req: V::request(V::initial, "r2", "c1", "i1", "chat"), claim: Claimed({ claimId: "k2" }) })
+```
+
 ### A result is accepted once, with its claim id, and a navigation result says whether it switched
 
 The shell decodes a navigation's `{success, result: {switched}}` into
@@ -302,16 +323,11 @@ pure val grantValues = Set(
 ### A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again
 
 The shell abandons the request when its wait ends, its client's renderer
-disconnects, or publishing its frame throws. A claimed navigation's wait
-also ends `navigationClaimLeaseMs` after its claim: the renderer may have
-lost the claim reply, and nobody else can answer that claim, so it would
-otherwise keep the client busy for the whole `navigationWaitMs`. The
-agent's wait then sees the outcome `Unknown`, never a failure or a
-success, and the request is not offered again; a late result for it is not
-accepted.
+disconnects, or publishing its frame throws. The agent's wait then sees the
+outcome `Unknown`, never a failure or a success, and the request is not
+offered again.
 
 ```quint
-pure val navigationClaimLeaseMs = 10000
 pure def canAbandonRequest(h: ViewHost, requestId: str): bool = known(h, requestId) and isOpen(h, waiterAt(h, requestId))
 pure def abandonRequest(h: ViewHost, requestId: str): ViewHost = {
   val w = waiterAt(h, requestId)

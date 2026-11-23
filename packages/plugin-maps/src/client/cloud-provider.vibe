@@ -21,6 +21,19 @@ export interface CloudMapsAccount {
   readonly client: MapsCloud
 }
 
+export function isInvalidPlaceIdBody(body: unknown): boolean {
+  return typeof body === "object" && body !== null && "error" in body && body.error === "invalid_request"
+}
+
+function isInvalidPlaceId(error: unknown): boolean {
+  if (!(error instanceof CloudError) || error.failure.tag !== "CloudRefused" || error.failure.code !== "InvalidRequest" || typeof error.cause !== "string") return false
+  try {
+    return isInvalidPlaceIdBody(JSON.parse(error.cause))
+  } catch {
+    return false
+  }
+}
+
 type Capabilities = Awaited<ReturnType<MapsCloud["mapsCapabilities"]>>
 type Offer = Extract<Capabilities, { readonly available: true }>
 
@@ -227,8 +240,15 @@ export effect function cloudMaps(configure: (config: ProviderConfig, provider?: 
       },
       detail: effect (id) => {
         if (!placeIdPattern.test(id)) return null
-        const answer = try read((client, signal) => client.mapsPlaceDetails({ id }, { signal }))
-        return answer.place === null ? null : try place(answer.place, providerId)
+        const answer = try read(async (client, signal) => {
+          try {
+            return await client.mapsPlaceDetails({ id }, { signal })
+          } catch (error: unknown) {
+            if (isInvalidPlaceId(error)) return null
+            throw error
+          }
+        })
+        return answer === null || answer.place === null ? null : try place(answer.place, providerId)
       },
       route: effect (from, to, mode) => {
         const [first] = try routes(from, to, mode, false)

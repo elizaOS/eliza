@@ -1,7 +1,7 @@
 // spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/cloud/services/maps.md, "Every operation except capabilities and viewport needs an idempotency key and runs over one hold of the calling credential"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"
 import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent"
 import { readCloudError } from "@elizaos/cloud/client"
-import { cloudMapsFailure } from "./client/cloud-provider.vibe"
+import { cloudMapsFailure, isInvalidPlaceIdBody } from "./client/cloud-provider.vibe"
 import { boundedText, type Coordinate, MapsFailure, place, route, TravelMode, type Place, type Route } from "./client/contracts.vibe"
 import type { AgentPlaceRef } from "./client/device-navigation.vibe"
 import { isMapsSelectionHandle } from "./routing.vibe"
@@ -82,11 +82,14 @@ export function agentPlace(found: Place): AgentPlaceRef {
 const unreachable = () => new MapsFailure({ code: "offline", message: "Cloud Maps is unreachable. Check the connection." })
 
 export function mapsService(link: MapsCloudLink) {
-  effect function call<A>(request: Omit<CloudLinkRequest, "signal" | "idempotencyKey">, schema: Schema.Codec<A>, metered: boolean): A!MapsFailure {
-    const reply = try tryPromise({
+  effect function send(request: Omit<CloudLinkRequest, "signal" | "idempotencyKey">, metered: boolean): CloudLinkReply!MapsFailure {
+    return try tryPromise({
       try: (signal) => link.request({ ...request, signal, ...(metered ? { idempotencyKey: idempotencyKey() } : {}) }),
       catch: unreachable,
     })
+  }
+
+  effect function decode<A>(reply: CloudLinkReply, schema: Schema.Codec<A>): A!MapsFailure {
     const now = try Clock.currentTimeMillis
     if (reply.kind === "changes-off") throw new MapsFailure({ code: "unauthorized", message: "Cloud refused this Maps request." })
     if (reply.kind === "refused") {
@@ -98,6 +101,10 @@ export function mapsService(link: MapsCloudLink) {
       throw cloudMapsFailure(refused.failure, now)
     }
     return try mapError(Schema.decodeUnknownEffect(schema)(reply.body), () => new MapsFailure({ code: "invalid-response", message: "Cloud Maps sent an invalid response." }))
+  }
+
+  effect function call<A>(request: Omit<CloudLinkRequest, "signal" | "idempotencyKey">, schema: Schema.Codec<A>, metered: boolean): A!MapsFailure {
+    return try decode(try send(request, metered), schema)
   }
 
   effect function offer(): (MapsOffer | undefined)!MapsFailure {
@@ -130,7 +137,9 @@ export function mapsService(link: MapsCloudLink) {
 
   effect function detail(id: string): (Place | null)!MapsFailure {
     if (isMapsSelectionHandle(id) || !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/.test(id)) return null
-    const answer = try call({ method: "POST", path: "/api/v1/maps/places/details", body: { id } }, Detail, true)
+    const reply = try send({ method: "POST", path: "/api/v1/maps/places/details", body: { id } }, true)
+    if (reply.kind === "refused" && reply.status === 400 && isInvalidPlaceIdBody(reply.body)) return null
+    const answer = try decode(reply, Detail)
     return answer.place === null ? null : try place(answer.place, answer.providerId)
   }
 

@@ -38,7 +38,7 @@ interface Call {
 
 const KeptAnswerSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("answered"), body: Schema.Unknown }),
-  Schema.Struct({ kind: Schema.Literal("refused"), code: Schema.Literals(["NoRoute", "UnsupportedMode", "UnsupportedRegion", "ProviderInvalidResponse", "ProviderUnavailable"]) })
+  Schema.Struct({ kind: Schema.Literal("refused"), code: Schema.Literals(["InvalidRequest", "NoRoute", "UnsupportedMode", "UnsupportedRegion", "ProviderInvalidResponse", "ProviderUnavailable"]) })
 ])
 type KeptAnswer = typeof KeptAnswerSchema.Type
 
@@ -72,7 +72,7 @@ function credentialOf(caller: Signed): string {
 function outcomeOf(reply: MapsReply<Answer>): MapsOutcome {
   switch (reply.kind) {
     case "answered": return { tag: "MapsAnswered" }
-    case "refused": return { tag: "MapsRefused", code: reply.code }
+    case "refused": return { tag: reply.observedMicros === null ? "MapsUnpricedRefusal" : "MapsRefused", code: reply.code }
     case "unknown": return { tag: "ReplyLost" }
     default: {
       const _exhaustive: never = reply
@@ -96,7 +96,8 @@ function meteringOf(settlement: MapsSettlement): Settlement {
 function statusOf(outcome: MapsOutcome): string {
   switch (outcome.tag) {
     case "MapsAnswered": return "answered"
-    case "MapsRefused": return "refused"
+    case "MapsRefused":
+    case "MapsUnpricedRefusal": return "refused"
     case "ReplyLost": return "lost"
     default: {
       const _exhaustive: never = outcome
@@ -237,7 +238,7 @@ effect function metered(context: RouteContext, entered: Entered, call: Call): Ti
   const reply = try call.run
   const now = try Clock.currentTimeMillis
   const outcome = outcomeOf(reply)
-  const observed = reply.kind === "unknown" ? 0 : reply.observedMicros
+  const observed = reply.kind === "unknown" ? 0 : reply.observedMicros ?? 0
   if (observed > quote) {
     try annotateLogs(logError("a maps provider observed more than its quote"), { holdKey: ticket.key, operation: call.op, observed, quote })
   }

@@ -1,13 +1,14 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
 import { assert, it } from "@effect/vitest"
-import type { ActionResult, Memory, UUID } from "@elizaos/core"
+import type { ActionResult, EffectReceipt, Memory, UUID } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
-import { call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { call, cloudFake, deviceKey, host, scratch, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
+import type { AgentPlugin } from "../src/host/module.vibe"
 import type { Scratch } from "./support/scratch.ts"
 import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
 
@@ -229,6 +230,110 @@ it.live('The boundary refuses a malformed body, client id or voice view context,
 
 const planning = 'spec/agent/conversation/planning.md'
 
+const placeRetryFixture = {
+  name: "place-retry-fixture",
+  description: "A read action which needs a place name.",
+  actions: [{
+    name: "LOOK_UP_PLACE",
+    description: "Look up one place by name or provider identifier.",
+    parameters: [{ name: "place", required: true, schema: { type: "string" }, description: "The place name or identifier." }],
+    validate: async () => true,
+    handler: async (_runtime, _message, _state, options) => {
+      const params = options?.parameters
+      return typeof params === "object" && params !== null && "place" in params && params.place === "Coit Tower"
+        ? { success: true, text: "Coit Tower" }
+        : { success: false, error: "MAPS_SELECTION_HANDLE", text: "Retry with the place name.", transcriptVisibility: "internal", data: { coachingFailure: true } }
+    },
+  }],
+} satisfies AgentPlugin
+
+it.live(`A planner-only refusal keeps a bundled reply from ending the owner turn (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [placeRetryFixture.name], allowed: ["REPLY", "IGNORE", "NONE", "LOOK_UP_PLACE"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map<string, AgentPlugin>([[placeRetryFixture.name, placeRetryFixture]]),
+  })
+  const { id } = try conversation(agent)
+  try Effect.sync(() => cloud.script(
+    toolCalls("", { name: "LOOK_UP_PLACE", arguments: { place: "screen-selection" } }, { name: "REPLY", arguments: { text: "Already found it." } }),
+    toolCalls("", { name: "LOOK_UP_PLACE", arguments: { place: "Coit Tower" } }),
+    text("I found Coit Tower."),
+  ))
+  const answer = replyOf(try send(agent, id, { text: "Find Coit Tower." }))
+  try Effect.try(() => {
+    assert.strictEqual(answer.text, "I found Coit Tower.")
+    assert.deepStrictEqual(answer.actionResults.map(({ action }) => action), ["LOOK_UP_PLACE"])
+  })
+}, 120_000)
+
+const receiptFixture = {
+  name: "receipt-fixture",
+  description: "Return recorded outcomes without doing external work.",
+  actions: [{
+    name: "RECORDED_CHANGE",
+    description: "Return the recorded outcome for a fixture change.",
+    parameters: [
+      { name: "target", required: true, schema: { type: "string" }, description: "A fixture record." },
+      { name: "key", required: true, schema: { type: "string" }, description: "The retry key." },
+      { name: "phase", required: true, schema: { type: "string", enum: ["failed", "uncertain", "replayed"] }, description: "The fixture outcome." },
+    ],
+    validate: async () => true,
+    handler: async (_runtime, _message, _state, options): Promise<ActionResult> => {
+      const params = options?.parameters
+      if (typeof params !== "object" || params === null || !("target" in params) || !("key" in params) || !("phase" in params)
+        || typeof params.target !== "string" || typeof params.key !== "string") return { success: false }
+      const { target, key, phase } = params
+      const base = { receiptId: `fixture:${target}`, operation: "save", resource: { kind: "fixture", id: target },
+        artifacts: [], idempotency: { key, replayed: phase === "replayed" }, observedAt: "2026-11-23T00:00:00.000Z" }
+      const receipt: EffectReceipt = phase === "replayed"
+        ? { ...base, outcome: "noop", reason: "Prior commit observed by retry key." }
+        : { ...base, outcome: "failed", failure: { code: "FIXTURE_CHANGE_FAILED", retryable: true, acceptance: phase === "uncertain" ? "unknown" : "rejected" } }
+      return { success: phase === "replayed", text: `Recorded outcome for ${target}.`, effectReceipts: [receipt] }
+    },
+  }],
+} satisfies AgentPlugin
+
+const claim = (quote: string, change: "None" | "Occurred" | "DidNotOccur", receiptId: string | null = null, failedResult: number | null = null) =>
+  ({ quote, change, receiptId, failedResult, supported: true })
+
+const review = (...claims: ReturnType<typeof claim>[]) => text(JSON.stringify({ grounded: true, claims }))
+
+it.live(`The owner hears an unrelated failure and an uncertain outcome after a retry is confirmed (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [receiptFixture.name], allowed: ["REPLY", "IGNORE", "NONE", "RECORDED_CHANGE"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map<string, AgentPlugin>([[receiptFixture.name, receiptFixture]]),
+  })
+  const { id } = try conversation(agent)
+  const change = (target: string, key: string, phase: string) => ({ name: "RECORDED_CHANGE", arguments: { target, key, phase } })
+  const falseFailure = "The first change failed."
+  const falseCertainty = "The third change did not take effect."
+  const supported = "The retry was confirmed. I couldn’t do the second change."
+  try Effect.sync(() => cloud.script(toolCalls("",
+    change("first", "retry", "failed"),
+    change("second", "second", "failed"),
+    change("third", "third", "uncertain"),
+    change("confirmed-alias", "retry", "replayed"),
+  ), text(`${falseFailure} ${falseCertainty} ${supported}`),
+    review(claim(falseFailure, "DidNotOccur", "fixture:first", 1), claim(falseCertainty, "DidNotOccur", "fixture:third", 3),
+      claim("The retry was confirmed.", "Occurred", "fixture:confirmed-alias"), claim("I couldn’t do the second change.", "DidNotOccur", "fixture:second", 2)),
+    text(supported),
+    review(claim("The retry was confirmed.", "Occurred", "fixture:confirmed-alias"), claim("I couldn’t do the second change.", "DidNotOccur", "fixture:second", 2))))
+  const answer = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body: { text: "What happened to those changes?" } })
+  try Effect.try(() => {
+    assert.propertyVal(answer, "status", 200)
+    const body = "text" in answer ? answer.text : ""
+    assert.include(body, supported)
+    assert.include(body, "Recorded outcome for second.")
+    assert.include(body, "I couldn’t confirm whether all of the RECORDED_CHANGE work took effect.")
+    assert.notInclude(body, falseFailure)
+    assert.notInclude(body, falseCertainty)
+    assert.strictEqual(completions(cloud), 5)
+  })
+}, 120_000)
+
 it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
@@ -253,19 +358,19 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const unrendered = replyOf(try send(agent, id, { text: "Show me home here." }))
   const declined = completionsSent().at(-1)?.messages.find(({ role }) => role === "tool")?.content
 
-  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!")))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!"), text("unavailable review")))
   const failed = replyOf(try send(agent, id, { text: "Add two plus two." }))
 
   try Effect.sync(() => cloud.script(toolCalls("",
     { name: "CALCULATE", arguments: { expression: "8 + 9", stray: true } },
     { name: "CALCULATE", arguments: { expression: "12 * 3" } },
-  ), text("The second result is 36.")))
+  ), text("The second result is 36."), review(claim("The second result is 36.", "None"))))
   const separate = replyOf(try send(agent, id, { text: "Calculate 8 plus 9 and 12 times 3." }))
 
   try Effect.sync(() => cloud.script(
     toolCalls("", { name: "CALCULATE", arguments: { expression: "8 + 9", stray: true } }),
     toolCalls("", { name: "CALCULATE", arguments: { expression: "8 + 9" } }),
-    text("The result is 17."),
+    text("The result is 17."), review(claim("The result is 17.", "None")),
   ))
   const corrected = replyOf(try send(agent, id, { text: "Calculate 8 plus 9." }))
 
@@ -282,7 +387,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     toolResult: grounded?.messages.some(({ role, content }) => role === "tool" && typeof content === "string" && content.includes("1123324")),
     solved: solved.text,
     actions: solved.actionResults.map(({ action }) => action),
-    failureReported: failed.text.startsWith("Done!") && failed.text.length > "Done!".length,
+    failureReported: !failed.text.includes("Done!") && failed.text.length > 0,
     separate: separate.text,
     corrected: corrected.text,
     refusalStatuses: [separate, corrected].map(({ actionResults }) => actionResults.map(({ data }) => data.executionStatus)),

@@ -1,16 +1,18 @@
 // spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request refuses the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
 import {
-  type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
+  type Action, type ActionParameterSchema, type ActionResult, type AgentContext, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
+  activeCommittedEffectReceipts, effectReceiptIdentity, mergeEffectReceipts, runWithSuppressedModelStream, sameEffectEvidence,
   buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import {
-  acknowledges, actionNoteSent, callAdmission, callRunsFirst, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
+  acceptsPlannedReply, acknowledges, actionNoteSent, callAdmission, callRunsFirst, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, receiptlessFailure, resendWait, toolActivity,
   turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
 import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
+import { needsReplyReview, reviewRecoveredProse } from "./reply-grounding.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -42,6 +44,7 @@ export interface PlanInput {
   readonly system: string
   readonly messages: readonly ChatMessage[]
   readonly signal: AbortSignal
+  readonly actionContext: (action: Action | undefined) => Promise<{ state: State; activeContexts: readonly AgentContext[] }>
   readonly onStreamChunk?: StreamChunkCallback
   readonly onReplyRestart?: (fullText: string) => void
   readonly onPlanningAcknowledgment?: (text: string) => void | Promise<void>
@@ -162,8 +165,8 @@ function outcomeOf(receipt: EffectReceipt): StepOutcome {
   switch (receipt.outcome) {
     case "applied": return "Applied"
     case "preview": return "Proposed"
-    case "noop": return "NoEffect"
-    case "failed": return "Failed"
+    case "noop": return receipt.idempotency.replayed ? "Applied" : "NoEffect"
+    case "failed": return receipt.failure.acceptance === "unknown" ? "Uncertain" : "Failed"
     case "rolled_back": return "Failed"
   }
 }
@@ -186,11 +189,13 @@ function planStepsOf(action: string, params: Record<string, unknown>, result: Ac
   if (receipts.length > 0) {
     return receipts.map((receipt) => ({
       outcome: outcomeOf(receipt),
-      identity: { tag: "ReceiptOperation", key: `${action}\u0000${receipt.operation}\u0000${receipt.resource.kind}\u0000${receipt.resource.id}` },
+      identity: { tag: "ReceiptOperation", key: canonical([receipt.operation, receipt.resource.kind, receipt.resource.id]) },
     }))
   }
   const identity = { tag: "RequestAttempt", key: `${action}\u0000${canonical(params)}` } as const
-  if (!result.success || result.error !== undefined) return [{ outcome: notStarted(result) ? "Rejected" : "Failed", identity }]
+  if (!result.success || result.error !== undefined) {
+    return [{ outcome: receiptlessFailure(false, !result.success && result.data?.coachingFailure === true, notStarted(result)), identity }]
+  }
   return [{ outcome: "NoEffect", identity }]
 }
 
@@ -215,7 +220,10 @@ function toolMessage(result: ActionResult): string {
     text: result.text ?? result.userFacingText,
     ...(result.userFacingText === undefined || result.userFacingText === result.text ? {} : { userFacingText: result.userFacingText }),
     error: errorText(result.error),
-    effects: (result.effectReceipts ?? []).map(({ operation, outcome, resource }) => ({ operation, outcome, resource: resource.kind })),
+    effects: (result.effectReceipts ?? []).map((receipt) => ({
+      operation: receipt.operation, outcome: receipt.outcome, resource: receipt.resource.kind,
+      ...(receipt.outcome === "failed" ? { acceptance: receipt.failure.acceptance } : {}),
+    })),
     data: result.data,
   }
   let text: string
@@ -283,12 +291,17 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
   return captured.map((text) => text.trim()).filter(Boolean)
 }
 
+function coachingResult(result: ActionResult): boolean {
+  return plannerOnlyCoaching(result.transcriptVisibility === "internal", result.data?.coachingFailure === true, result.success, (result.effectReceipts?.length ?? 0) > 0)
+}
+
 function failureNotice(step: PlannedStep): string {
   if (step.outcomes.some(({ outcome }) => outcome === "Rejected")) {
     if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return unavailableNotice
     const words = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
     return words || `A ${step.action} call did not start.`
   }
+  if ((step.result.effectReceipts?.length ?? 0) > 1) return `Some of the ${step.action} work did not complete.`
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
 
@@ -311,7 +324,31 @@ function entryKey({ outcome, identity }: PlanStep): string {
   return `${outcome}\u0000${identity.tag}\u0000${identity.key}`
 }
 
-function settleReply(steps: readonly PlannedStep[], prose: string | undefined): string {
+function selectReplySteps(steps: readonly PlannedStep[]): PlannedStep[] {
+  const committed = activeCommittedEffectReceipts(mergeEffectReceipts(...steps.map(({ result }) => result.effectReceipts)))
+  const activeIds = new Set(committed.map(({ receiptId }) => receiptId))
+  const identities = committed.map(effectReceiptIdentity)
+  return steps.map((step) => {
+    const receipts = step.result.effectReceipts ?? []
+    const supportingIds = new Set<string>()
+    const outcomes = step.outcomes.filter(({ outcome }, index) => {
+      const receipt = receipts[index]
+      if (receipt === undefined) return true
+      const retained = outcome === "Applied" ? activeIds.has(receipt.receiptId)
+        : !identities.some((active) => sameEffectEvidence(effectReceiptIdentity(receipt), active))
+      if (retained && (outcome === "Applied" || outcome === "Proposed" || outcome === "NoEffect")) supportingIds.add(receipt.receiptId)
+      return retained
+    })
+    const boundIds = step.result.verifiedUserFacing === true ? step.result.userFacingEffectReceiptIds : undefined
+    const show = boundIds !== undefined && boundIds.length > 0
+      ? boundIds.every((id) => supportingIds.has(id))
+      : supportingIds.size === receipts.length
+    return { ...step, outcomes, shown: show ? step.shown : [] }
+  })
+}
+
+function settleReply(attempts: readonly PlannedStep[], prose: string | undefined): string {
+  const steps = selectReplySteps(attempts)
   const plan = steps.flatMap(({ outcomes }) => outcomes)
   const open = openOutcomes(plan)
   const failed = failedOpen(plan)
@@ -322,11 +359,14 @@ function settleReply(steps: readonly PlannedStep[], prose: string | undefined): 
   const failedKeys = new Set(failed.map(entryKey))
   const notices = [...new Set(steps.filter(({ outcomes }) => outcomes.some((entry) => failedKeys.has(entryKey(entry)))).map(failureNotice))]
     .filter((notice) => !composed.includes(notice))
-  return [composed, ...notices].filter((part) => part.trim()).join("\n\n")
+  const uncertain = [...new Set(steps.filter(({ outcomes }) => outcomes.some(({ outcome }) => outcome === "Uncertain"))
+    .map(({ action }) => `I couldn’t confirm whether all of the ${action} work took effect.`))]
+  const reply = [composed, ...notices, ...uncertain].filter((part) => part.trim()).join("\n\n")
+  return reply
 }
 
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
-  const { runtime, message, state, roles, signal } = input
+  const { runtime, message, roles, signal } = input
   const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions.toSorted(byName).map((action) => forTurn(runtime, message, action)))
   const conversation: ChatMessage[] = [...input.messages]
   const steps: PlannedStep[] = []
@@ -337,6 +377,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let displayed = false
   let streamed = ""
   let prose: string | undefined
+  let coached = false
   const execute = async (call: ToolCall): Promise<ActionResult> => {
     signal.throwIfAborted()
     const params = paramsOf(call)
@@ -349,14 +390,16 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     }
     await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name)) })
     const captured: string[] = []
+    const context = await input.actionContext(named.get(call.name))
+    signal.throwIfAborted()
     const result = await executePlannedToolCall(runtime, {
-      message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),
+      message, ...context, userRoles: roles, previousResults: steps.map(({ result }) => result),
       callback: async (content) => {
         if (content.text?.trim()) captured.push(content.text)
         return []
       },
     }, { id: call.id, name: call.name, params }, { abortSignal: signal })
-    if (!plannerOnlyCoaching(result.transcriptVisibility === "internal", result.data?.coachingFailure === true, result.success, (result.effectReceipts?.length ?? 0) > 0)) {
+    if (!coachingResult(result)) {
       await input.onStepResult?.(result)
       steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
     }
@@ -373,10 +416,11 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const restartFirst = displayed
     let restarted = false
     streamed = ""
-    const onStreamChunk = input.onStreamChunk
+    const reviewPending = needsReplyReview(steps)
+    const onStreamChunk = reviewPending ? undefined : input.onStreamChunk
     let said: unknown
     try {
-      said = await sentAtMostTwice(() => runtime.useModel(ModelType.TEXT_LARGE, {
+      const infer = () => runtime.useModel(ModelType.TEXT_LARGE, {
         system: input.system, messages: conversation, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
         ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
         ...(onStreamChunk === undefined ? {} : {
@@ -391,7 +435,8 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
             return onStreamChunk(chunk, messageId, accumulated)
           },
         }),
-      }), signal)
+      })
+      said = await sentAtMostTwice(() => reviewPending ? runWithSuppressedModelStream(infer) : infer(), signal)
     } catch (error: unknown) {
       if (signal.aborted || !stoppedAtOutputLimit(error)) throw error
       prose = cutOffReply
@@ -406,6 +451,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const work = answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name))
     const draft = draftOf(answered.text, instruction, work.length)
     let cutOff = false
+    let coaching = false
     if (work.length > 0) {
       if (acknowledges(draft, work.length, steps.length)) await input.onPlanningAcknowledgment?.(answered.text.trim())
       if (displayed) {
@@ -414,11 +460,14 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       }
       conversation.push({ role: "assistant", content: answered.text || null, toolCalls: work })
       for (const call of work) {
-        cutOff ||= stoppedAtModelMaximum(await execute(call))
+        const result = await execute(call)
+        coaching ||= coachingResult(result)
+        coached ||= coaching
+        cutOff ||= stoppedAtModelMaximum(result)
         if (cutOff) break
       }
     }
-    if (reply !== undefined) {
+    if (reply !== undefined && acceptsPlannedReply(true, coaching)) {
       prose = replyText(reply) ?? (draft === "Answer" ? answered.text : undefined)
       break plan
     }
@@ -437,5 +486,8 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         break plan
     }
   }
-  return { reply: settleReply(steps, prose), steps, streamed }
+  const needsReview = prose !== undefined && needsReplyReview(steps)
+  const reviewed = needsReview && prose !== undefined ? await reviewRecoveredProse(runtime, prose, conversation, steps, signal) : prose
+  const reply = settleReply(steps, reviewed)
+  return { reply: reply || (needsReview ? "I couldn’t verify a reply about what happened." : coached ? "I couldn’t complete that request." : ""), steps, streamed }
 }
