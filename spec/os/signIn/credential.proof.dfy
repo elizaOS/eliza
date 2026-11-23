@@ -1,5 +1,5 @@
 lemma lawMailLeaseUpgradeKeepsTheOwner_ensures(s: DeviceCredential, expected: MailLeaseUpgrade, attempt: int, credentialId: string, keyExpiresAt: int)
-  ensures lawMailLeaseUpgradeKeepsTheOwner(s, expected, attempt, credentialId, keyExpiresAt)
+  ensures (lawMailLeaseUpgradeKeepsTheOwner(s, expected, attempt, credentialId, keyExpiresAt) == true)
 {
   var after := mailLeaseUpgradeAcknowledged(expected, attempt, credentialId, keyExpiresAt, s);
   if mailLeaseUpgradeMayAcknowledge(s, expected) && canAcknowledged(s, attempt, credentialId, keyExpiresAt) {
