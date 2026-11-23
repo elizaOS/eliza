@@ -254,29 +254,31 @@ type InitializationTurn =
   | { readonly kind: "lead"; readonly attempt: Deferred.Deferred<void, LifecycleFailure>; readonly modeled: boolean }
 
 export effect function initialize(options?: { skipMigrations?: boolean }): void!LifecycleFailure!RuntimeKernel {
-  const { cells } = try Lifecycle
-  const turn = try SynchronizedRef.modifyEffect(cells, effect (current: LifecycleCells): readonly [InitializationTurn, LifecycleCells]!!Lifecycle => {
-    if (current.initializationAttempt) return [{ kind: "join", attempt: current.initializationAttempt }, current] as const
-    const attempt = Deferred.makeUnsafe<void, LifecycleFailure>()
-    const modeled = try accepted({ type: "beginInitialization" })
-    return [
-      { kind: "lead", attempt, modeled },
-      { ...current, initializationAttempt: attempt, retriedInitializationFailed: modeled ? current.retriedInitializationFailed : false },
-    ] as const
+  return try uninterruptibleMask((restore) => effect {
+    const { cells } = try Lifecycle
+    const turn = try SynchronizedRef.modifyEffect(cells, effect (current: LifecycleCells): readonly [InitializationTurn, LifecycleCells]!!Lifecycle => {
+      if (current.initializationAttempt) return [{ kind: "join", attempt: current.initializationAttempt }, current] as const
+      const attempt = Deferred.makeUnsafe<void, LifecycleFailure>()
+      const modeled = try accepted({ type: "beginInitialization" })
+      return [
+        { kind: "lead", attempt, modeled },
+        { ...current, initializationAttempt: attempt, retriedInitializationFailed: modeled ? current.retriedInitializationFailed : false },
+      ] as const
+    })
+    if (turn.kind === "join") return try restore(Deferred.await(turn.attempt))
+    const outcome = try Effect.exit(restore(initializeCore(options)))
+    const ok = Exit.isSuccess(outcome)
+    if (turn.modeled) try accepted({ type: "completeInitialization", ok })
+    try SynchronizedRef.update(cells, (current) => ({
+      ...current,
+      initializationAttempt: undefined,
+      retriedInitializationFailed: turn.modeled ? current.retriedInitializationFailed : !ok,
+    }))
+    try Deferred.done(turn.attempt, outcome)
+    const { released } = try lifecyclePayload()
+    try Deferred.succeed(released, undefined)
+    return try outcome
   })
-  if (turn.kind === "join") return try Deferred.await(turn.attempt)
-  const outcome = try exit(initializeCore(options))
-  const ok = Exit.isSuccess(outcome)
-  if (turn.modeled) try accepted({ type: "completeInitialization", ok })
-  try SynchronizedRef.update(cells, (current) => ({
-    ...current,
-    initializationAttempt: undefined,
-    retriedInitializationFailed: turn.modeled ? current.retriedInitializationFailed : !ok,
-  }))
-  try Deferred.done(turn.attempt, outcome)
-  const { released } = try lifecyclePayload()
-  try Deferred.succeed(released, undefined)
-  return try outcome
 }
 
 export effect function isInitializationPending(): boolean!!RuntimeKernel {
