@@ -12,7 +12,7 @@ import { CALENDAR_AVAILABILITY_CAPABILITY } from "../availability/projection.vib
 import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, namedCalendarReadTarget } from "../client/named-read.vibe"
 import { addDaysToLocalDate, getZonedDateParts, knownTimeZone, startOfCivilDay, type LocalDate } from "../clock.vibe"
 import {
-  asksToDeleteInWords, compiled, declinesInWords, deleteWords, eventNamedInWords, localInstant, namesAZone, parseExplicitLocalDate, parseStatedClockTimes, statedLengths, statedShift,
+  asksToDeleteInWords, compiled, declinesInWords, deleteWords, destinationMarker, eventNamedInWords, localInstant, namesAZone, parseExplicitLocalDate, parseStatedClockTimes, statedLengths, statedShift,
   wordsInWords, zoneNamedIn,
   type StatedClockTime, type StatedClockTimes, type StatedShift,
 } from "../request-time.vibe"
@@ -44,7 +44,6 @@ const otherWords = /\b(?:if|unless|or|actually|instead|except|cancel|delete|neve
 const fieldNouns = /\b(?:location|place|venue|address|description|notes?|body)\b/iu
 const fieldWords = /^[\s"“'‘]*(?:(?:please|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need|would\s+like|['’]d\s+like)\s+to\s+)?(?:change|set|update|edit|move)\b[\s\S]*?\b(location|place|venue|address|description|notes?)\b(?:\s+(?:of|for)\b[\s\S]*?)?\s+(?:to|as)\s+(.+)$/iu
 const eventNoun = /\bcalendar\s+(?:event|meeting|appointment)s?\b/giu
-const destinationMarker = /\b(?:to|(?:for|until|till)(?=\s+(?:today|tonight|tomorrow|(?:this|next)\s+(?:week(?:end)?|month|morning|afternoon|evening|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b|(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?\b|(?:tues|wednes|thurs|satur)day\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?=\s+\d|\s*$)|noon\b|midnight\b|\d{1,2}(?:[:/.-]\d|\s*(?:a\.?m\b|p\.?m\b)|(?:st|nd|rd|th)\b|\s*$|\s+(?:a\.?m\b|p\.?m\b|o['’]clock\b)))))\b/i
 const renameWords = [
   /^[\s"“'‘]*(?:(?:please|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need|would\s+like|['’]d\s+like)\s+to\s+)?(?:rename|retitle)\b[\s\S]*?\bto\s+(.+)$/iu,
   /^[\s"“'‘]*(?:(?:please|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need|would\s+like|['’]d\s+like)\s+to\s+)?(?:change|set|update)\s+(?:the\s+|its\s+)?(?:title|name)\s+to\s+(.+)$/iu,

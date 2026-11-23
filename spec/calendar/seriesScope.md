@@ -250,23 +250,28 @@ request names. With none, the owner's own words choose it when they name
 exactly one: this one only ("just this one", "only this occurrence"),
 this and following ("this and all following", "from this one on"), or
 all ("the whole series", "every occurrence", "stop it repeating"). When
-they name none, or more than one, nothing is changed and the reply asks
-whether to change just this occurrence, this and every following
-occurrence, or the whole series. An event that does not repeat is never
-asked about and changes as this event.
+they name none, a delete the reply had asked the owner to confirm keeps
+the scope it was asked with, so the owner's yes is not asked again.
+Otherwise nothing is changed and the reply names the occurrence it found,
+by its day and time, and asks whether to change just that occurrence,
+that and every following occurrence, or the whole series. An event that
+does not repeat is never asked about and changes as this event.
 
 ```quint
-type ScopeChoice = ScopeAsSent | ScopeFromWords | AskWhichOccurrences
-pure def scopeChoice(recurring: bool, scopeSent: bool, scopesWorded: int): ScopeChoice =
+type ScopeChoice = ScopeAsSent | ScopeFromWords | ScopeHeld | AskWhichOccurrences
+pure def scopeChoice(recurring: bool, scopeSent: bool, scopesWorded: int, scopeHeld: bool): ScopeChoice =
   if (scopeSent or not(recurring)) ScopeAsSent
   else if (scopesWorded == 1) ScopeFromWords
+  else if (scopesWorded == 0 and scopeHeld) ScopeHeld
   else AskWhichOccurrences
-pure def lawAOneOffEventIsNeverAskedAbout(scopeSent: bool, scopesWorded: int): bool =
-  scopeChoice(false, scopeSent, scopesWorded) == ScopeAsSent
+pure def lawAOneOffEventIsNeverAskedAbout(scopeSent: bool, scopesWorded: int, scopeHeld: bool): bool =
+  scopeChoice(false, scopeSent, scopesWorded, scopeHeld) == ScopeAsSent
 pure def lawAnUnsaidScopeAsks(scopesWorded: int): bool =
-  scopesWorded != 1 implies scopeChoice(true, false, scopesWorded) == AskWhichOccurrences
-pure def lawASentScopeIsKept(recurring: bool, scopesWorded: int): bool =
-  scopeChoice(recurring, true, scopesWorded) == ScopeAsSent
+  scopesWorded != 1 implies scopeChoice(true, false, scopesWorded, false) == AskWhichOccurrences
+pure def lawASentScopeIsKept(recurring: bool, scopesWorded: int, scopeHeld: bool): bool =
+  scopeChoice(recurring, true, scopesWorded, scopeHeld) == ScopeAsSent
+pure def lawTheOwnersWordsOutrankAHeldScope(scopeHeld: bool): bool =
+  scopeChoice(true, false, 1, scopeHeld) == ScopeFromWords
 pure val scopesWordedValues = Set(0, 1, 2, 3)
 ```
 

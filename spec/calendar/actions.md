@@ -318,42 +318,106 @@ pure def lawOnlyAGuestOfTheEventIsRemoved(addsWritten: bool, removalsNamed: bool
 
 ### A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty
 
-A change that names its event by words, not by id, looks from one year
-before now to five years after it unless the request gives the range, on
-the calendar named or on every listed calendar. The occurrences of one
-repeating event count as one event: the earliest that has not ended, else
-the latest. Exactly one event is the target. More than one asks which.
-None, when every calendar was read, says the event was not found. None,
-when a calendar could not be read, says that instead, since the event may
-be there, and changes nothing.
+A change that names its event by words, not by id, looks on the calendar
+named or on every listed calendar. A range the request gives, at most 370
+days, is read once. Otherwise the lookup reads from one day back to 60
+days ahead, then a year at a time to five years ahead, then the year
+back. The first read that holds a match decides and nothing later is
+read. A span that could not be read whole, when the first read was whole,
+is read again at half its length, down to 45 days. What is still unread,
+and everything past 16 reads, counts as unread and never as empty.
+
+The occurrences of one repeating event count as one event. Exactly one
+event, read fresh from its own calendar, is the target. More than one
+asks which. One whose own calendar was not read fresh, or none while
+something could not be read, says the calendars could not be read, since
+the event may be there or may have changed, and changes nothing. None,
+when everything was read, says the event was not found.
+
+When the owner's own words state the event's day, the target is the match
+that starts on that day, read on that day itself: for an update, a day
+stated before where the event is going ("move Thursday's standup to
+3pm"); for a delete, any day stated. Words inside a matched title state
+no day. When no match starts on that day, an update of the only match
+whose day follows its name, with no "on", "from", "of" or possessive
+before it ("move Dentist tomorrow at 10am"), takes the day as where the
+event is going; any other request changes nothing and asks which, naming
+each candidate's day.
+
+With no day stated, an event with one occurrence read is that
+occurrence. Of several, a change of the whole series, and a change whose
+scope is still to be asked, takes the earliest that has not ended, else
+the latest, and the scope question names its day; a change of one
+occurrence, or of one and those following, asks which occurrence.
 
 ```quint
 type ChangeTarget = TargetFound | TargetAmbiguous | TargetUnread | TargetMissing
+type LookupStep = LookupDecides | LookupAdvances | LookupShrinks | LookupUnread
+type OffDay = DayIsDestination | DayHoldsNone
+type OccurrenceChoice = TheOnlyOccurrence | TheNextOccurrence | AskWhichDay
 pure val lookupDaysBack: int = 365
 pure val lookupDaysAhead: int = 1825
-pure def changeTarget(matchedEvents: int, readComplete: bool): ChangeTarget =
-  if (matchedEvents == 1) TargetFound
-  else if (matchedEvents > 1) TargetAmbiguous
-  else if (not(readComplete)) TargetUnread
+pure val lookupNearBack: int = 1
+pure val lookupNearAhead: int = 60
+pure val lookupSpanDays: int = 365
+pure val lookupSmallestSpan: int = 45
+pure val lookupReadLimit: int = 16
+pure def lookupStep(matchedEvents: int, readWhole: bool, firstReadWhole: bool, spanDays: int): LookupStep =
+  if (matchedEvents > 0) LookupDecides
+  else if (readWhole) LookupAdvances
+  else if (firstReadWhole and spanDays >= 2 * lookupSmallestSpan) LookupShrinks
+  else LookupUnread
+pure def changeTarget(matchedEvents: int, everythingRead: bool, matchReadFresh: bool): ChangeTarget =
+  if (matchedEvents > 1) TargetAmbiguous
+  else if (matchedEvents == 1 and matchReadFresh) TargetFound
+  else if (matchedEvents == 1 or not(everythingRead)) TargetUnread
   else TargetMissing
-pure def lawAnUnreadCalendarIsNeverCalledEmpty(matchedEvents: int): bool =
-  changeTarget(matchedEvents, false) != TargetMissing
-pure def lawOnlyOneMatchIsTheTarget(matchedEvents: int, readComplete: bool): bool =
-  changeTarget(matchedEvents, readComplete) == TargetFound iff matchedEvents == 1
+pure def offDay(moving: bool, matchedEvents: int, dayFollowsName: bool, dayMarksTheEvent: bool): OffDay =
+  if (moving and matchedEvents == 1 and dayFollowsName and not(dayMarksTheEvent)) DayIsDestination else DayHoldsNone
+pure def occurrenceChoice(occurrencesRead: int, scopeSaid: bool, wholeSeries: bool): OccurrenceChoice =
+  if (occurrencesRead <= 1) TheOnlyOccurrence
+  else if (wholeSeries or not(scopeSaid)) TheNextOccurrence
+  else AskWhichDay
+pure def lawAMatchEndsTheLookup(readWhole: bool, firstReadWhole: bool, spanDays: int): bool =
+  lookupStep(1, readWhole, firstReadWhole, spanDays) == LookupDecides
+pure def lawAnUnreadSpanIsNeverPassedAsEmpty(firstReadWhole: bool, spanDays: int): bool =
+  lookupStep(0, false, firstReadWhole, spanDays) != LookupAdvances
+pure def lawASpanNeverShrinksBelowTheSmallest(matchedEvents: int, readWhole: bool, firstReadWhole: bool, spanDays: int): bool =
+  lookupStep(matchedEvents, readWhole, firstReadWhole, spanDays) == LookupShrinks implies spanDays >= 2 * lookupSmallestSpan
+pure def lawAnUnreadCalendarIsNeverCalledEmpty(matchedEvents: int, matchReadFresh: bool): bool =
+  changeTarget(matchedEvents, false, matchReadFresh) != TargetMissing
+pure def lawOnlyOneFreshMatchIsTheTarget(matchedEvents: int, everythingRead: bool, matchReadFresh: bool): bool =
+  changeTarget(matchedEvents, everythingRead, matchReadFresh) == TargetFound iff (matchedEvents == 1 and matchReadFresh)
+pure def lawADayThatMarksTheEventIsNeverWhereItGoes(moving: bool, matchedEvents: int, dayFollowsName: bool): bool =
+  offDay(moving, matchedEvents, dayFollowsName, true) == DayHoldsNone
+pure def lawADeleteNeverTakesItsDayAsADestination(matchedEvents: int, dayFollowsName: bool, dayMarksTheEvent: bool): bool =
+  offDay(false, matchedEvents, dayFollowsName, dayMarksTheEvent) == DayHoldsNone
+pure def lawOneOccurrenceOfSeveralIsNeverGuessed(occurrencesRead: int): bool =
+  occurrencesRead > 1 implies occurrenceChoice(occurrencesRead, true, false) == AskWhichDay
 pure val matchedEventsValues = Set(0, 1, 2)
+pure val spanDaysValues = Set(45, 89, 90, 365)
+pure val occurrencesReadValues = Set(0, 1, 2)
 ```
 
 ### A new event with a start and no end lasts the asked minutes, else one hour
 
 A create that gives a start and no end ends after the length the request
-gives, a whole number of minutes from 5 to 480; with no length, a timed
-event lasts one hour and an all-day event one day. A stated end is kept
-as sent, and a length outside those bounds is refused before anything is
-saved.
+gives: any whole number of minutes from 1 to 44640, which is 31 days.
+With no length, a timed event lasts one hour and an all-day event one
+day. A stated end is kept as sent and the length is not read. Any other
+length is refused before anything is saved, and the reply asks for the
+end instead.
 
 ```quint
+type CreateLength = KeepEnd | UseLength | DefaultLength | RefuseLength
 pure val defaultEventMs: int = 3600000
 pure val allDayEventMs: int = 86400000
+pure val longestLengthMinutes: int = 44640
+pure def createLength(endGiven: bool, lengthSent: bool, lengthWhole: bool, lengthMinutes: int): CreateLength =
+  if (endGiven) KeepEnd
+  else if (not(lengthSent)) DefaultLength
+  else if (lengthWhole and lengthMinutes >= 1 and lengthMinutes <= longestLengthMinutes) UseLength
+  else RefuseLength
 pure def createEndMs(startMs: int, endGiven: bool, endMs: int, lengthMinutes: int, wholeDay: bool): int =
   if (endGiven) endMs
   else if (lengthMinutes > 0) startMs + lengthMinutes * 60000
@@ -363,6 +427,13 @@ pure def lawAStatedEndIsKept(startMs: int, endMs: int, lengthMinutes: int, whole
   createEndMs(startMs, true, endMs, lengthMinutes, wholeDay) == endMs
 pure def lawAnOpenEndedEventEndsAfterItStarts(startMs: int, endMs: int, lengthMinutes: int, wholeDay: bool): bool =
   createEndMs(startMs, false, endMs, lengthMinutes, wholeDay) > startMs
+pure def lawAStatedEndNeedsNoLength(lengthSent: bool, lengthWhole: bool, lengthMinutes: int): bool =
+  createLength(true, lengthSent, lengthWhole, lengthMinutes) == KeepEnd
+pure def lawAnAdmittedLengthIsWholeAndBounded(lengthSent: bool, lengthWhole: bool, lengthMinutes: int): bool =
+  createLength(false, lengthSent, lengthWhole, lengthMinutes) == UseLength implies lengthWhole and lengthMinutes >= 1 and lengthMinutes <= longestLengthMinutes
+pure def lawASentLengthIsUsedOrRefused(lengthWhole: bool, lengthMinutes: int): bool =
+  createLength(false, true, lengthWhole, lengthMinutes) != DefaultLength
+pure val lengthMinutesValues = Set(-1, 0, 1, 30, 44640, 44641)
 ```
 
 ### A chat create or move that overlaps a commitment is refused, naming it
