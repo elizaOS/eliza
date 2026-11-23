@@ -2,18 +2,23 @@ package ai.eliza.plugins.securestore.nativeonly;
 
 import android.content.Context;
 import android.net.Uri;
-import android.util.Base64;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -25,6 +30,22 @@ public final class CloudDeviceAccount {
  private static final Object LOCK = new Object();
  private static final long PENDING_MS = 15 * 60_000L;
  private static final long MAX_CREDENTIAL_SECONDS = 7 * 24 * 60 * 60L;
+ private static final long MAX_LEASE_SECONDS = 90 * 24 * 60 * 60L;
+ private static final long MAX_ACCESS_SECONDS = 15 * 60L;
+ private static final long ACCESS_MARGIN_MS = 30_000L;
+ private static final int MAX_DUTIES = 4;
+ private static final int MAIL_REQUEST_BYTES = 32_768;
+ private static final int MAIL_RESPONSE_BYTES = 4 * ((8 * 1024 * 1024 + 2) / 3) + 16_384;
+ private static final Pattern LEASE_REFRESH = Pattern.compile("eliza_lease_refresh_[A-Za-z0-9_-]{54}");
+ private static final Pattern LEASE_ACCESS = Pattern.compile("eliza_lease_[A-Za-z0-9_-]{43}");
+ private static final String SEGMENT = "/[A-Za-z0-9_-]{1,256}";
+ private static final Map<String, Pattern> MAIL_ROUTES = Map.of(
+     "GET", Pattern.compile("/api/v1/eliza/(?:google/(?:status|accounts|calendar/feed|gmail/(?:search|read|contacts|inbox-v1/(?:drafts|draft|attachment|operations" + SEGMENT + ")))|connections/sessions" + SEGMENT + ")"),
+     "POST", Pattern.compile("/api/v1/eliza/(?:google/(?:disconnect|connect/initiate|calendar/events|gmail/(?:drafts|inbox-v1/operations(?:" + SEGMENT + "/dispatch)?))|connections/google/sessions)"),
+     "PATCH", Pattern.compile("/api/v1/eliza/google/calendar/events" + SEGMENT),
+     "DELETE", Pattern.compile("/api/v1/eliza/(?:google/(?:gmail/drafts|calendar/events)|connections/sessions)" + SEGMENT));
+ private static final Object LEASE = new Object();
+ private static Access access;
  private static final String PENDING = "pending";
  private static final String CREDENTIAL = "credential";
  private static final String REVOKE = "revoke";
@@ -36,13 +57,19 @@ public final class CloudDeviceAccount {
  public record Session(String token, String accountId, String organizationId) {
   @Override public String toString() { return "CloudDeviceAccount.Session"; }
  }
+ public record MailResponse(int status, String body) {
+  @Override public String toString() { return "CloudDeviceAccount.MailResponse(" + status + ")"; }
+ }
+ private record Access(String token, long expiresAt, String mintedBy) {
+  @Override public String toString() { return "CloudDeviceAccount.Access"; }
+ }
 
  public CloudDeviceAccount(Context host, String browserOrigin, String cloudOrigin, String callbackPath) {
   browser = Uri.parse(origin(browserOrigin).toString());
   cloud = origin(cloudOrigin);
   if (!callbackPath.matches("(?:/[a-z][a-z0-9-]*)+")) throw new IllegalArgumentException("Invalid callback path");
   callback = browser.buildUpon().path(callbackPath).build();
-  slots = new JsonCredentialSlots(new File(host.getNoBackupFilesDir(), "eliza-cloud-device-account"), "eliza-cloud-device-account.v1", slot -> 1024);
+  slots = new JsonCredentialSlots(new File(host.getNoBackupFilesDir(), "eliza-cloud-device-account"), "eliza-cloud-device-account.v1", slot -> 2048);
  }
 
  static URI origin(String input) {
@@ -236,16 +263,34 @@ public final class CloudDeviceAccount {
   long seconds = response.getLong("expiresIn");
   String accountId = identifier(response, "accountId"), organizationId = identifier(response, "organizationId");
   if (!opaque(token) || seconds < 1 || seconds > MAX_CREDENTIAL_SECONDS) throw new IOException("Invalid device credential response");
+  JSONObject offered = response.optJSONObject("lease");
+  long now = System.currentTimeMillis();
+  JSONObject credential = new JSONObject().put("token", token).put("accountId", accountId).put("organizationId", organizationId)
+      .put("issuedAt", now).put("expiresAt", now + seconds * 1000);
+  if (offered != null) credential.put("lease", new JSONObject().put("refresh", leaseRefresh(offered, "refresh"))
+      .put("refreshExpiresAt", now + leaseSeconds(offered, "refreshExpiresIn", MAX_LEASE_SECONDS) * 1000));
   synchronized (LOCK) {
    if (snapshot.equals(slots.read(PENDING)) && pendingActive(pending)) {
-    slots.write(ACK, new JSONObject().put("token", token).put("accountId", accountId).put("organizationId", organizationId).put("expiresAt", System.currentTimeMillis() + seconds * 1000).toString());
+    slots.write(ACK, credential.toString());
     slots.remove(PENDING);
    } else {
-    slots.write(REVOKE, new JSONObject().put("token", token).toString());
+    oweRevocation(duty(credential));
     return false;
    }
   }
   return finishAcknowledgment();
+ }
+
+ private static String leaseRefresh(JSONObject document, String key) throws Exception {
+  String value = document.getString(key);
+  if (!LEASE_REFRESH.matcher(value).matches()) throw new IOException("Invalid device lease");
+  return value;
+ }
+
+ private static long leaseSeconds(JSONObject document, String key, long max) throws Exception {
+  long seconds = document.getLong(key);
+  if (seconds < 1 || seconds > max) throw new IOException("Invalid device lease lifetime");
+  return seconds;
  }
 
  public boolean isDeviceOnly() throws Exception {
@@ -270,10 +315,25 @@ public final class CloudDeviceAccount {
   int status = post("/api/auth/device/ack", null, token, 204, 401, 410).status();
   synchronized (LOCK) {
    if (!pending.equals(slots.read(ACK))) return false;
-   if (status == 204) slots.write(CREDENTIAL, pending);
+   if (status == 204) promote(credential);
    slots.remove(ACK);
    return status == 204;
   }
+ }
+
+ private void promote(JSONObject acknowledged) throws Exception {
+  String stored = slots.read(CREDENTIAL);
+  JSONObject current = stored == null ? null : new JSONObject(stored);
+  String replaces = acknowledged.optString("replaces", null);
+  acknowledged.remove("replaces");
+  if (replaces == null) {
+   if (current != null) oweRevocation(duty(current));
+   slots.write(CREDENTIAL, acknowledged.toString());
+  } else if (current != null && replaces.equals(current.getString("token"))) {
+   for (String key : List.of("token", "issuedAt", "expiresAt")) current.put(key, acknowledged.get(key));
+   slots.write(CREDENTIAL, current.toString());
+   oweRevocation(new JSONObject().put("token", replaces));
+  } else oweRevocation(new JSONObject().put("token", acknowledged.getString("token")));
  }
 
  public String credential() throws Exception {
@@ -295,24 +355,210 @@ public final class CloudDeviceAccount {
  public void clear() throws Exception {
   synchronized (LOCK) {
    slots.remove(PENDING);
-   String token = credential(), awaitingAck = slots.read(ACK);
-   if (token == null && awaitingAck != null) token = new JSONObject(awaitingAck).getString("token");
-   if (token != null && opaque(token)) slots.write(REVOKE, new JSONObject().put("token", token).toString());
-   slots.remove(ACK);
-   slots.remove(CREDENTIAL);
+   for (String slot : List.of(ACK, CREDENTIAL)) {
+    String stored = slots.read(slot);
+    if (stored != null) oweRevocation(duty(new JSONObject(stored)));
+    slots.remove(slot);
+   }
   }
  }
 
+ private static JSONObject duty(JSONObject credential) throws Exception {
+  JSONObject duty = new JSONObject().put("token", credential.getString("token"));
+  JSONObject lease = credential.optJSONObject("lease");
+  if (lease != null) duty.put("lease", newest(lease));
+  return duty;
+ }
+
+ private void oweRevocation(JSONObject duty) throws Exception {
+  JSONArray owed = duties();
+  for (int index = 0; index < owed.length(); index++) if (sameDuty(owed.getJSONObject(index), duty)) return;
+  owed.put(duty);
+  while (owed.length() > MAX_DUTIES) owed.remove(0);
+  slots.write(REVOKE, new JSONObject().put("duties", owed).toString());
+ }
+
+ private static boolean sameDuty(JSONObject left, JSONObject right) throws Exception {
+  return left.getString("token").equals(right.getString("token"))
+      && Objects.equals(left.optString("lease", null), right.optString("lease", null));
+ }
+
+ private JSONArray duties() throws Exception {
+  String stored = slots.read(REVOKE);
+  if (stored == null) return new JSONArray();
+  JSONObject document = new JSONObject(stored);
+  return document.has("duties") ? document.getJSONArray("duties") : new JSONArray().put(document);
+ }
+
  public void retryRevocation() throws Exception {
-  final String pending;
-  synchronized (LOCK) { pending = slots.read(REVOKE); }
-  if (pending == null) return;
-  String token = new JSONObject(pending).getString("token");
-  if (!opaque(token)) throw new IOException("Invalid stored device credential");
-  post("/api/auth/device/revoke", null, token, 204);
-  synchronized (LOCK) {
-   if (pending.equals(slots.read(REVOKE))) slots.remove(REVOKE);
+  while (true) {
+   final JSONObject duty;
+   synchronized (LOCK) {
+    JSONArray owed = duties();
+    if (owed.length() == 0) return;
+    duty = owed.getJSONObject(0);
+   }
+   String token = duty.getString("token"), lease = duty.optString("lease", null);
+   if (!opaque(token) || (lease != null && !LEASE_REFRESH.matcher(lease).matches())) throw new IOException("Invalid stored device credential");
+   if (lease == null || post("/api/auth/device/revoke", null, lease, 204, 401).status() != 204)
+    post("/api/auth/device/revoke", null, token, 204, 401);
+   synchronized (LOCK) {
+    JSONArray owed = duties();
+    for (int index = 0; index < owed.length(); index++) if (sameDuty(owed.getJSONObject(index), duty)) owed.remove(index--);
+    if (owed.length() == 0) slots.remove(REVOKE);
+    else slots.write(REVOKE, new JSONObject().put("duties", owed).toString());
+   }
   }
+ }
+
+ private static String newest(JSONObject lease) throws Exception {
+  return lease.has("offered") ? lease.getString("offered") : lease.getString("refresh");
+ }
+
+ private static long newestExpiry(JSONObject lease) throws Exception {
+  return lease.has("offered") ? lease.getLong("offeredExpiresAt") : lease.getLong("refreshExpiresAt");
+ }
+
+ private JSONObject stored() throws Exception {
+  synchronized (LOCK) {
+   String stored = slots.read(CREDENTIAL);
+   return stored == null ? null : new JSONObject(stored);
+  }
+ }
+
+ public String leaseAccess() throws Exception {
+  synchronized (LEASE) {
+   JSONObject credential = stored();
+   JSONObject lease = credential == null ? null : credential.optJSONObject("lease");
+   if (lease == null) return null;
+   String presented = newest(lease);
+   if (access != null && access.mintedBy().equals(presented) && access.expiresAt() - ACCESS_MARGIN_MS > System.currentTimeMillis())
+    return access.token();
+   if (newestExpiry(lease) <= System.currentTimeMillis()) {
+    clear();
+    return null;
+   }
+   Exchange reply = post("/api/auth/device/lease", null, presented, 200, 401);
+   if (reply.status() == 401) {
+    clear();
+    return null;
+   }
+   JSONObject pair = new JSONObject(reply.body());
+   String token = pair.getString("access"), next = leaseRefresh(pair, "refresh");
+   if (!LEASE_ACCESS.matcher(token).matches()) throw new IOException("Invalid device lease");
+   long now = System.currentTimeMillis();
+   long accessExpiresAt = now + leaseSeconds(pair, "accessExpiresIn", MAX_ACCESS_SECONDS) * 1000;
+   long nextExpiresAt = now + leaseSeconds(pair, "refreshExpiresIn", MAX_LEASE_SECONDS) * 1000;
+   synchronized (LOCK) {
+    JSONObject current = stored();
+    JSONObject held = current == null ? null : current.optJSONObject("lease");
+    if (held == null || !presented.equals(newest(held))) throw new IOException("Device account changed during a lease refresh");
+    long presentedExpiresAt = newestExpiry(held);
+    current.put("lease", new JSONObject().put("refresh", presented).put("refreshExpiresAt", presentedExpiresAt)
+        .put("offered", next).put("offeredExpiresAt", nextExpiresAt));
+    slots.write(CREDENTIAL, current.toString());
+   }
+   access = new Access(token, accessExpiresAt, next);
+   return token;
+  }
+ }
+
+ private void accessWorked(String token) throws Exception {
+  synchronized (LEASE) {
+   if (access == null || !access.token().equals(token)) return;
+   synchronized (LOCK) {
+    JSONObject current = stored();
+    JSONObject held = current == null ? null : current.optJSONObject("lease");
+    if (held == null || !access.mintedBy().equals(held.optString("offered", null))) return;
+    current.put("lease", new JSONObject().put("refresh", held.getString("offered")).put("refreshExpiresAt", held.getLong("offeredExpiresAt")));
+    slots.write(CREDENTIAL, current.toString());
+   }
+  }
+ }
+
+ private void accessRefused(String token) {
+  synchronized (LEASE) {
+   if (access != null && access.token().equals(token)) access = null;
+  }
+ }
+
+ public MailResponse mailRequest(String method, String route, JSONObject query, JSONObject body, String idempotencyKey, String ifMatch) throws Exception {
+  Pattern allowed = MAIL_ROUTES.get(method);
+  if (allowed == null || route == null || !allowed.matcher(route).matches()) throw new IllegalArgumentException("Route is not a mail route");
+  if (idempotencyKey != null && !idempotencyKey.matches("[A-Za-z0-9_-]{8,128}")) throw new IllegalArgumentException("Invalid idempotency key");
+  if (ifMatch != null && !ifMatch.matches("[\\x21-\\x7e]{1,256}")) throw new IllegalArgumentException("Invalid entity tag");
+  StringBuilder target = new StringBuilder(route);
+  if (query != null) {
+   char separator = '?';
+   TreeSet<String> keys = new TreeSet<>();
+   query.keys().forEachRemaining(keys::add);
+   for (String key : keys) {
+    Object value = query.get(key);
+    if (!key.matches("[A-Za-z][A-Za-z0-9_]{0,63}") || !(value instanceof String || value instanceof Number || value instanceof Boolean))
+     throw new IllegalArgumentException("Invalid mail query");
+    target.append(separator).append(key).append('=').append(URLEncoder.encode(String.valueOf(value), "UTF-8").replace("+", "%20"));
+    separator = '&';
+   }
+  }
+  if (target.length() > 8192) throw new IllegalArgumentException("Mail query is too long");
+  byte[] bytes = body == null ? null : body.toString().getBytes(StandardCharsets.UTF_8);
+  if (bytes != null && bytes.length > MAIL_REQUEST_BYTES) throw new IllegalArgumentException("Mail request is too large");
+  Map<String, String> headers = new LinkedHashMap<>();
+  if (idempotencyKey != null) headers.put("Idempotency-Key", idempotencyKey);
+  if (ifMatch != null) headers.put("If-Match", ifMatch);
+  Exchange answer = null;
+  for (int attempt = 0; attempt < 2; attempt++) {
+   String token = leaseAccess();
+   if (token == null) {
+    if (answer != null) break;
+    throw new IllegalStateException("No mail lease is held");
+   }
+   answer = transfer(method, target.toString(), bytes, token, headers, MAIL_RESPONSE_BYTES);
+   if (answer.status() != 401) {
+    accessWorked(token);
+    break;
+   }
+   accessRefused(token);
+  }
+  return new MailResponse(answer.status(), answer.body());
+ }
+
+ public boolean renewIfDue() throws Exception {
+  if (awaitingAcknowledgment()) return finishAcknowledgment();
+  synchronized (LEASE) {
+   JSONObject credential = stored();
+   JSONObject lease = credential == null ? null : credential.optJSONObject("lease");
+   if (lease == null) return false;
+   long now = System.currentTimeMillis(), expiresAt = credential.getLong("expiresAt");
+   long issuedAt = credential.optLong("issuedAt", expiresAt - MAX_CREDENTIAL_SECONDS * 1000);
+   if (now < issuedAt + (expiresAt - issuedAt) / 2) return false;
+   if (newestExpiry(lease) <= now) {
+    clear();
+    return false;
+   }
+   Exchange reply = post("/api/auth/device/renew", null, newest(lease), 200, 401);
+   if (reply.status() == 401) {
+    clear();
+    return false;
+   }
+   JSONObject renewed = new JSONObject(reply.body());
+   String token = renewed.getString("token");
+   long seconds = renewed.getLong("expiresIn");
+   if (!opaque(token) || seconds < 1 || seconds > MAX_CREDENTIAL_SECONDS) throw new IOException("Invalid device credential response");
+   synchronized (LOCK) {
+    JSONObject current = stored();
+    String replaces = credential.getString("token");
+    JSONObject pending = new JSONObject().put("token", token).put("accountId", credential.getString("accountId"))
+        .put("organizationId", credential.getString("organizationId")).put("issuedAt", now).put("expiresAt", now + seconds * 1000)
+        .put("replaces", replaces);
+    if (current == null || !replaces.equals(current.getString("token"))) {
+     oweRevocation(new JSONObject().put("token", token));
+     return false;
+    }
+    slots.write(ACK, pending.toString());
+   }
+  }
+  return finishAcknowledgment();
  }
 
  private record Exchange(int status, String body) {
@@ -324,30 +570,37 @@ public final class CloudDeviceAccount {
  }
 
  private Exchange send(String method, String path, JSONObject body, String bearer, int expected, int... retires) throws Exception {
+  Exchange answer = transfer(method, path, body == null ? null : body.toString().getBytes(StandardCharsets.UTF_8), bearer, Map.of(), 4096);
+  for (int retired : retires) if (answer.status() == retired) return answer;
+  if (answer.status() != expected) throw new IOException("Device account request was refused");
+  return answer;
+ }
+
+ private Exchange transfer(String method, String path, byte[] body, String bearer, Map<String, String> headers, int limit) throws IOException {
   HttpURLConnection connection = (HttpURLConnection) cloud.resolve(path).toURL().openConnection();
   connection.setInstanceFollowRedirects(false);
+  connection.setUseCaches(false);
   connection.setConnectTimeout(8000);
   connection.setReadTimeout(10000);
   connection.setRequestMethod(method);
   connection.setRequestProperty("Accept", "application/json");
   if (bearer != null) connection.setRequestProperty("Authorization", "Bearer " + bearer);
+  headers.forEach(connection::setRequestProperty);
   try {
    if (body != null) {
-    byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
     connection.setDoOutput(true);
     connection.setRequestProperty("Content-Type", "application/json");
-    connection.setFixedLengthStreamingMode(bytes.length);
-    try (var output = connection.getOutputStream()) { output.write(bytes); }
+    connection.setFixedLengthStreamingMode(body.length);
+    try (var output = connection.getOutputStream()) { output.write(body); }
    }
    int status = connection.getResponseCode();
-   for (int retired : retires) if (status == retired) return new Exchange(status, "");
-   if (status != expected) throw new IOException("Device account request was refused");
-   if (status == 204) return new Exchange(status, "");
-   try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-    byte[] chunk = new byte[512];
+   InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+   if (stream == null) return new Exchange(status, "");
+   try (InputStream input = stream; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+    byte[] chunk = new byte[8192];
     int count;
     while ((count = input.read(chunk)) != -1) {
-     if (output.size() + count > 4096) throw new IOException("Device account response is too large");
+     if (output.size() + count > limit) throw new IOException("Device account response is too large");
      output.write(chunk, 0, count);
     }
     return new Exchange(status, new String(output.toByteArray(), StandardCharsets.UTF_8));
@@ -368,6 +621,6 @@ public final class CloudDeviceAccount {
   return base64Url(bytes);
  }
  private static String base64Url(byte[] bytes) {
-  return Base64.encodeToString(bytes, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+  return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
  }
 }
