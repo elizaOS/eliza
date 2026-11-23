@@ -5,6 +5,7 @@ import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
 import type { Action, ActionResult, ContextDefinition, Memory, NotesRequestOperation, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
 import type { NoteTarget, NotesQuery } from "./collection.vibe"
 import { notesDeviceFamily } from "./device-proposals.vibe"
+import { json } from "./format.vibe"
 import { notesNamedIn, ownerRequestText } from "./lookup.vibe"
 import { findNoteFolder, noteFolderId, readNoteFolders } from "./organize.vibe"
 import { noteIdPattern } from "./records.schema.vibe"
@@ -18,19 +19,11 @@ import { projectNoteForModel, reconstructNoteContent, type NotesSnapshot, type S
 module edge {
   import { randomUUID } from "node:crypto"
   /** @throws {never} */
-  export function json(value: unknown): string {
-    try {
-      return JSON.stringify(value) ?? "null"
-    } catch {
-      return "null"
-    }
-  }
-  /** @throws {never} */
   export function newRequestId(): string {
     return randomUUID()
   }
 }
-import { json, newRequestId } from edge
+import { newRequestId } from edge
 
 /** The name the Notes module and plugin register under. */
 export const notesModuleName = "@elizaos/plugin-notes"
@@ -229,13 +222,12 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction({
       name: "NOTES_DELETE",
       operation: "delete",
-      description: "Move one note to Recently deleted. noteId deletes that exact note. A lookup by content deletes only when the owner's own words name the note's title; otherwise the closest note comes back as a candidate and nothing is deleted.",
+      description: "Move one note to Recently deleted. noteId deletes that exact note; an ID the owner did not type, for a note whose title the owner named, deletes by that title and asks which one when several notes share it. A lookup by content deletes only when the owner's own words name the note's title; otherwise the closest note comes back as a candidate and nothing is deleted.",
       parameters: [idParameter("Exact note ID from a current record."), contentParameter("The note's title or text.")],
       run: effect (params, message) => {
         const target = targetOf(params, "noteId", "content")
         if (typeof target === "string") return missingTarget(target)
-        const words = "id" in target ? undefined : try ownerRequestText(message)
-        const deleted = try notes.delete(target, words)
+        const deleted = try notes.delete(target, try ownerRequestText(message))
         return noteResult("Moved to Recently deleted", deleted.value, deleted.snapshot.revision)
       },
     }),

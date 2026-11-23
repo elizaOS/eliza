@@ -1,6 +1,6 @@
 // spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
 import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
-import { creationReturnsExisting, deleteByNameAllowed, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, revisionAdmits } from "../gen/notes__records.effect.vibe"
+import { creationReturnsExisting, deleteByNameAllowed, idDeleteByTitle, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, revisionAdmits } from "../gen/notes__records.effect.vibe"
 import { authoredNoteText, editAuthoredNoteFormat, type AuthoredNoteEdit } from "./format.vibe"
 import { lookupMatches, noteContentKey, titleAppearsAsNamedPhrase, type NoteSelector } from "./lookup.vibe"
 import { noteLimits, recordingIdPattern, type CreateRequest, type ImportReceipt, type UpdateRequest } from "./records.schema.vibe"
@@ -256,12 +256,14 @@ export effect function updateIn(document: NotesDocument, target: NoteTarget, pat
   return { next: { ...document, notes: document.notes.map((note, position) => position === index ? updated : note) }, value: updated, mutation: "note:updated" }
 }
 
-/** One note moved to Trash; a note named by lookup is deleted only when the owner's words name its title. */
+/** One note moved to Trash; a note named by lookup, or by an ID the owner did not type for a note whose title they named, is deleted by that title only when the owner's words name it. */
 export effect function deleteIn(document: NotesDocument, target: NoteTarget, at: Instant, ownerWords: string | undefined): Change<StickyNote>!NotesRefused {
-  const index = try resolveIndex(document.notes, target)
+  const named = "id" in target && ownerWords !== undefined ? document.notes.find((note) => note.id === target.id && titleAppearsAsNamedPhrase(ownerWords, note.title)) : undefined
+  const resolved: NoteTarget = named !== undefined && ownerWords !== undefined && idDeleteByTitle(ownerWords.includes(named.id), true) ? { selector: "title", value: named.title } : target
+  const index = try resolveIndex(document.notes, resolved)
   const existing = document.notes[index]
   if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
-  if (!("id" in target) && ownerWords !== undefined && !deleteByNameAllowed(true, titleAppearsAsNamedPhrase(ownerWords, existing.title))) {
+  if (!("id" in resolved) && ownerWords !== undefined && !deleteByNameAllowed(true, titleAppearsAsNamedPhrase(ownerWords, existing.title))) {
     throw refused("NOTES_DELETE_NAME_MISMATCH", `The closest note is "${existing.title}" — that isn't what you named, so nothing was deleted. Delete it?`, [existing.id])
   }
   return {

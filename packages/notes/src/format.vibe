@@ -11,8 +11,19 @@ module edge {
       return Number.POSITIVE_INFINITY
     }
   }
+
+  /** @throws {never} */
+  export function json(value: unknown): string {
+    try {
+      return JSON.stringify(value) ?? "null"
+    } catch {
+      return "null"
+    }
+  }
 }
-import { encodedUnits } from edge
+import { encodedUnits, json } from edge
+
+export { json }
 
 /** A rich format that is not bounded plain JSON of a known kind. */
 export error NoteFormatRefused { field: string; reason: string }
