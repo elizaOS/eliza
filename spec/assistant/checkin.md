@@ -124,3 +124,46 @@ pure def lawNoNightCheckinComesUntilChosen(slot: CheckinSlot): bool =
 pure def lawAChosenCheckinIsKept(slot: CheckinSlot, setting: CheckinSetting): bool =
   setting != CheckinUnset implies checkinSchedule(slot, setting) == setting
 ```
+
+## Story: Brief me on my morning, evening or week when I ask
+
+> As an owner, I want a brief of my morning, my evening or my week when I
+> ask for one, told only from what my calendar, to-dos, goals and
+> reminders hold, and told plainly when one of them could not be read.
+
+### A brief is the kind the owner named, else the morning one before five in the evening and the evening one from then
+
+A morning or evening brief covers today and a weekly brief the seven days
+from today, unless the owner names today, tomorrow or this week. A brief
+that names no kind is the morning brief before 17:00 on the owner's clock
+and the evening brief from then. The brief holds the calendar events of
+its days, the open to-dos, the active goals with how they are going, and
+the reminders due in its days; only the evening brief recaps the day,
+with the goal check-ins the owner answered today. The planner tells it
+from those facts alone, and a source that could not be read is said to be
+unchecked.
+
+```quint
+type BriefKind = MorningBrief | EveningBrief | WeeklyBrief
+type BriefAsked = AskedMorning | AskedEvening | AskedWeekly | AskedNoKind
+type BriefPeriod = PeriodToday | PeriodTomorrow | PeriodThisWeek | PeriodUnstated
+pure val eveningStartMinute = 1020
+pure val minuteOfDayValues = Set(0, 600, 1019, 1020, 1439)
+pure def briefKind(asked: BriefAsked, minuteOfDay: int): BriefKind =
+  if (asked == AskedMorning) MorningBrief
+  else if (asked == AskedEvening) EveningBrief
+  else if (asked == AskedWeekly) WeeklyBrief
+  else if (minuteOfDay >= eveningStartMinute) EveningBrief
+  else MorningBrief
+pure def briefPeriod(kind: BriefKind, asked: BriefPeriod): BriefPeriod =
+  if (asked != PeriodUnstated) asked else if (kind == WeeklyBrief) PeriodThisWeek else PeriodToday
+pure def recapsTheDay(kind: BriefKind): bool = kind == EveningBrief
+pure def lawANamedBriefKeepsItsKind(minuteOfDay: int): bool =
+  briefKind(AskedMorning, minuteOfDay) == MorningBrief and briefKind(AskedEvening, minuteOfDay) == EveningBrief and briefKind(AskedWeekly, minuteOfDay) == WeeklyBrief
+pure def lawAnUnnamedBriefFollowsTheClock(minuteOfDay: int): bool =
+  briefKind(AskedNoKind, minuteOfDay) == (if (minuteOfDay >= eveningStartMinute) EveningBrief else MorningBrief)
+pure def lawAStatedPeriodIsKept(kind: BriefKind, asked: BriefPeriod): bool = asked != PeriodUnstated implies briefPeriod(kind, asked) == asked
+pure def lawAWeeklyBriefCoversTheWeek(kind: BriefKind): bool =
+  briefPeriod(kind, PeriodUnstated) == (if (kind == WeeklyBrief) PeriodThisWeek else PeriodToday)
+pure def lawOnlyTheEveningBriefRecapsTheDay(kind: BriefKind): bool = recapsTheDay(kind) iff kind == EveningBrief
+```

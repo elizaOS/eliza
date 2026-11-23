@@ -3,6 +3,7 @@ import { assert, it } from "@effect/vitest"
 import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
 import { reminderProposalFamily } from "../src/device-proposals.vibe"
 import { readReminderPresentation, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
+import { composeBrief } from "../src/brief.vibe"
 import { checkinKind, collectFacts, reconcileCheckins, runCheckin, checkinReport, setCheckinTimes } from "../src/checkin.vibe"
 import { ownerActivity, setDossier } from "../src/dossier.vibe"
 import { restoreEarlier } from "../src/evaluators/pages.vibe"
@@ -396,6 +397,30 @@ it.effect('Check-ins come at the times I chose: the morning one at eight until I
       ],
       rows: [["morning", cron("30 7 * * *"), "Scheduled"], ["night", cron("45 21 * * *"), "Dismissed"], ["night", cron("0 22 * * *"), "Scheduled"]],
     })
+  }
+})
+
+it.effect('Brief me on my morning, evening or week: an unnamed brief follows my clock, a weekly one covers seven days, and only the evening one recaps the day (spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/checkin.md, "A brief is the kind the owner named, else the morning one before five in the evening and the evening one from then")', effect () => {
+  const seen = ports()
+  seen.answers.push(check({}))
+  const event = (title: string, startAt: number) => ({ title, startAt, synced: false, metadataValid: true, providerEditedAt: undefined, providerCreatedAt: undefined, copyUpdatedAt: seen.now })
+  seen.events = [event("Dentist", Date.UTC(2026, 10, 22, 19, 0)), event("Flight to Lisbon", Date.UTC(2026, 10, 26, 13, 0))]
+  provide portsLayer(seen) {
+    try createReminder(asked("b1"))
+    try changeTodos({ op: "create", content: "buy milk" }, "b2", "add buy milk")
+    try changeGoal({ op: "create", title: "Run a 10k", cadence: "daily" }, "b3")
+    const morning = try composeBrief(undefined, undefined, "brief me")
+    const weekly = try composeBrief("compose_weekly", undefined, "how does it look")
+    seen.now = Date.UTC(2026, 10, 22, 23, 0)
+    const evening = try composeBrief(undefined, undefined, "brief me")
+    const tomorrow = try composeBrief("compose_morning", "tomorrow", "what's on tomorrow")
+    const holds = (text: string | undefined) => ["Dentist", "Flight to Lisbon", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "# Done today"].filter((fact) => text?.includes(fact) === true)
+    try equal([morning, weekly, evening, tomorrow].map((brief) => [brief.data?.kind, brief.data?.period, holds(brief.text)]), [
+      ["morning", "today", ["Dentist", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist"]],
+      ["weekly", "this week", ["Dentist", "Flight to Lisbon", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist"]],
+      ["evening", "today", ["Dentist", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "# Done today"]],
+      ["morning", "tomorrow", ["buy milk", "Run a 10k: no check-in answered yet"]],
+    ])
   }
 })
 

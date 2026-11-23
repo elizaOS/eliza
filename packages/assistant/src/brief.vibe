@@ -1,0 +1,97 @@
+// spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/checkin.md, "A brief is the kind the owner named, else the morning one before five in the evening and the evening one from then"; spec/assistant/checkin.md, "Story: Check in on me at the times I chose"
+import type { Action, ActionResult } from "@elizaos/core"
+import { briefKind, briefPeriod, recapsTheDay, type BriefAsked, type BriefKind, type BriefPeriod } from "../gen/assistant__checkin.effect.vibe"
+import { setCheckinTimes } from "./checkin.vibe"
+import { listGoals } from "./goals.vibe"
+import { Calendar, Facts, onAgent } from "./host.vibe"
+import { liveReminders, requestOf } from "./reminders.vibe"
+import { civilDate, localMinutes, longDate, wallText, zonedInstant } from "./time.vibe"
+import { ownerClockAt } from "./timezone.vibe"
+import { currentTodos, renderTodos } from "./todos.vibe"
+
+const briefActionName = "BRIEF"
+const dayMs = 86_400_000
+const asks = { compose_morning: "AskedMorning", compose_evening: "AskedEvening", compose_weekly: "AskedWeekly" } as const satisfies Record<string, BriefAsked>
+const periods = { today: "PeriodToday", tomorrow: "PeriodTomorrow", this_week: "PeriodThisWeek" } as const satisfies Record<string, BriefPeriod>
+const kindWords: Readonly<Record<BriefKind, string>> = { MorningBrief: "morning", EveningBrief: "evening", WeeklyBrief: "weekly" }
+const periodWords: Readonly<Record<BriefPeriod, string>> = { PeriodToday: "today", PeriodTomorrow: "tomorrow", PeriodThisWeek: "this week", PeriodUnstated: "today" }
+const progressWords: Readonly<Record<string, string>> = { OnTrack: "on track", AtRisk: "at risk", NeedsAttention: "needs attention", ReviewIdle: "no check-in answered yet" }
+
+function askedIn(action: unknown, text: string): BriefAsked {
+  if (typeof action === "string" && Object.hasOwn(asks, action)) return asks[action as keyof typeof asks]
+  if (/\bweek(?:ly)?\b/iu.test(text)) return "AskedWeekly"
+  if (/\bmorning\b/iu.test(text)) return "AskedMorning"
+  if (/\b(?:evening|tonight)\b/iu.test(text)) return "AskedEvening"
+  return "AskedNoKind"
+}
+
+const periodAsked = (period: unknown): BriefPeriod => typeof period === "string" && Object.hasOwn(periods, period) ? periods[period as keyof typeof periods] : "PeriodUnstated"
+const nextDate = (date: string, days: number) => civilDate(Date.parse(`${date}T12:00:00Z`) + days * dayMs, "UTC")
+
+function window(period: BriefPeriod, now: number, zone: string): { readonly from: string; readonly startAt: number; readonly endAt: number } {
+  const today = civilDate(now, zone)
+  const from = period === "PeriodTomorrow" ? nextDate(today, 1) : today
+  const until = nextDate(from, period === "PeriodThisWeek" ? 7 : 1)
+  const midnight = (date: string) => zonedInstant(date, "00:00", zone) ?? Date.parse(`${date}T00:00:00Z`)
+  return { from, startAt: midnight(from), endAt: midnight(until) }
+}
+
+/** The owner's brief, as facts for the planner to tell: the kind they named or the clock gives, over the days it covers. */
+export effect function composeBrief(action: unknown, period: unknown, text: string) {
+  const now = try (try Facts).now()
+  const zone = try ownerClockAt(now)
+  const kind = briefKind(askedIn(action, text), localMinutes(now, zone) % 1440)
+  const covers = briefPeriod(kind, periodAsked(period))
+  const { from, startAt, endAt } = window(covers, now, zone)
+  const due = (at: number) => at >= startAt && at < endAt
+  const events = ((try Calendar).events(startAt, endAt) catch () => undefined)?.filter((event) => due(event.startAt))
+  const todos = renderTodos((try currentTodos()).todos, false)
+  const goals = (try listGoals()).filter(({ goal }) => goal.status === "GoalActive")
+  const reminders = (try liveReminders()).filter((task) => task.trigger.kind === "once" && due(Date.parse(task.trigger.atIso)))
+  const todayStart = window("PeriodToday", now, zone).startAt
+  const answered = goals.flatMap(({ record }) => record.log.filter((entry) => entry.at >= todayStart && entry.at <= now).map((entry) => ({ title: record.title, ...entry })))
+  const sections = [
+    events === undefined ? "# Calendar\nThe calendar could not be read; say it was not checked."
+      : events.length === 0 ? "# Calendar\nNo events." : ["# Calendar", ...[...events].sort((a, b) => a.startAt - b.startAt).map((event) => `- ${event.title}, ${wallText(event.startAt, zone)}`)].join("\n"),
+    todos || "# Current todos\nNo open to-dos.",
+    goals.length === 0 ? "# Goals\nNo active goals." : ["# Goals", ...goals.map(({ record, goal }) => `- ${record.title}: ${progressWords[goal.reviewState] ?? goal.reviewState}`)].join("\n"),
+    reminders.length === 0 ? "# Reminders\nNone due." : ["# Reminders", ...reminders.map((task) => `- ${task.promptInstructions}${task.trigger.kind === "once" ? `, ${wallText(Date.parse(task.trigger.atIso), zone)}` : ""}`)].join("\n"),
+    ...(recapsTheDay(kind)
+      ? [answered.length === 0 ? "# Done today\nNo goal check-ins answered today." : ["# Done today", ...answered.map(({ title, progress, note }) => `- ${title}: ${progress.replace("_", " ")}${note === "" ? "" : ` (${note})`}`)].join("\n")]
+      : []),
+  ]
+  const days = covers === "PeriodThisWeek" ? `the week from ${longDate(from)}` : `${periodWords[covers]}, ${longDate(from)}`
+  return {
+    success: true,
+    text: [`Tell the owner their ${kindWords[kind]} brief for ${days}, on ${zone} time, from these facts only; name nothing they do not hold.`, ...sections].join("\n\n"),
+    data: { kind: kindWords[kind], period: periodWords[covers], zone, calendarRead: events !== undefined },
+  } satisfies ActionResult
+}
+
+function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
+  const given = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+  return typeof given === "object" && given !== null ? given as Record<string, unknown> : {}
+}
+
+/** Briefs the owner on their morning, evening or week, and sets when the daily check-ins come. */
+export const briefAction: Action = {
+  name: briefActionName,
+  description: "Brief the owner on their morning, evening or week from their calendar, to-dos, goals and reminders (compose_morning, compose_evening, compose_weekly; leave action out for an unnamed daily brief), or set when the daily morning and night check-ins come (schedule_checkins, each HH:MM on the owner's clock or off).",
+  similes: ["BRIEF_ME", "MORNING_BRIEF", "EVENING_BRIEF", "WEEKLY_BRIEF", "DAILY_DIGEST", "CHECKIN_TIMES"],
+  parameters: [
+    { name: "action", required: false, description: "compose_morning, compose_evening, compose_weekly or schedule_checkins.", schema: { type: "string", enum: ["compose_morning", "compose_evening", "compose_weekly", "schedule_checkins"] } },
+    { name: "period", required: false, description: "For a brief: today, tomorrow or this_week, only when the owner named one.", schema: { type: "string", enum: ["today", "tomorrow", "this_week"] } },
+    { name: "morning", required: false, description: "For schedule_checkins: the morning check-in time as HH:MM, or off.", schema: { type: "string" } },
+    { name: "night", required: false, description: "For schedule_checkins: the night check-in time as HH:MM, or off.", schema: { type: "string" } },
+  ],
+  tags: ["domain:briefing", "capability:read", "capability:compose"],
+  roleGate: { minRole: "OWNER" },
+  validate: async () => true,
+  handler: async (runtime, message, _state, options) => {
+    const given = parametersOf(options)
+    const { messageId, text } = requestOf(message)
+    const unprepared = (failed: { readonly _tag: string }) => Effect.succeed({ success: false, text: "The brief could not be prepared.", data: { outcome: failed._tag } } satisfies ActionResult)
+    if (given.action === "schedule_checkins") return onAgent(runtime, Effect.catch(setCheckinTimes({ morning: given.morning, night: given.night }, `checkins:${messageId}`), unprepared))
+    return onAgent(runtime, Effect.catch(composeBrief(given.action, given.period, text), unprepared))
+  },
+}
