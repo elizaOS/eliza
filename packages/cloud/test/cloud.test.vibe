@@ -3859,6 +3859,13 @@ module node {
       const webHeaders = { origin: web, cookie: "__Host-eliza-session=" + owner.access }
       const webNoGrant = await arrival(webHeaders)
       const webBaseline = await decision(await arrival(webHeaders, undefined, true))
+      const beforeCompatibilityRefusals = providerCalls.length
+      const canonicalBearer = await arrival({ ...webHeaders, authorization: "Bearer " + owner.access }, undefined, true)
+      const invalidBearer = await arrival({ ...webHeaders, authorization: "Bearer unavailable" }, undefined, true)
+      const unknownGrant = await worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/inbox-v1/arrival?grantId=20415263-7485-96a7-b8c9-dbecefd0a1b2", {
+        headers: webHeaders,
+      }), env)
+      const compatibilityRefusals = [canonicalBearer.status, invalidBearer.status, unknownGrant.status, providerCalls.length === beforeCompatibilityRefusals]
       const beforeBaseline = Date.now()
       const baseline = await decision(await arrival(ownDevice))
       const afterBaseline = Date.now()
@@ -3921,6 +3928,7 @@ module node {
         baseline: [baseline.status, baseline.cache, baseline.body.arrived, !cursor.includes("10000000000000000001") && cursor.length > 20, webBaseline.status, webBaseline.body.arrived],
         polling: [emptyArrival.body.cursor === cursor, emptyArrival.body.arrived, freshArrival.body.cursor === cursor, freshArrival.body.arrived],
         denied: [webNoGrant, replayAcrossCredentials, foreignArrival, anonymousArrival, fabricatedArrival, expiredArrival, providerRevokedArrival, malformedHistory, deviceRevokedArrival].map(({ status }) => status),
+        compatibilityRefusals,
         timerAndGrant: [claims.expiresAt >= beforeBaseline + 300000 && claims.expiresAt <= afterBaseline + 300000,
           elapsedWatch.status, replacedGrant.status, directWithoutCredential.status, deniedBeforeProvider],
         requests,
@@ -3933,6 +3941,7 @@ module node {
       }
       const client = createCloudClient({ baseUrl: api, credential: () => owner.access, fetch: (input, init) => {
         const request = new Request(input, init)
+        request.headers.delete("authorization")
         request.headers.set("cookie", "__Host-eliza-session=" + owner.access)
         return worker.fetch(request, env)
       } })
@@ -4117,6 +4126,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
         baseline: [200, "no-store", false, true, 200, false],
         polling: [true, false, true, true],
         denied: [400, 409, 409, 401, 409, 404, 409, 502, 401],
+        compatibilityRefusals: [404, 401, 409, true],
         exposedOnlyHistory: true,
         timerAndGrant: [true, 409, 409, 401, true],
         failureControls: [502, 2, 502, 8, false, true],

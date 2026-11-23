@@ -49,6 +49,7 @@ error ItemChanged
 error DatabaseUnavailable
 
 const route = "/api/v1/eliza/google"
+export const selectedAttachmentPath = route + "/gmail/attachment"
 export const deviceAttachmentPath = "/api/v1/google-attachments/device"
 const callbackPath = route + "/connect/callback"
 const oauthCookie = "__Host-eliza-google-connect"
@@ -807,7 +808,7 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
     if (path === "/status") return try status(db, env, account)
     const selected = url.searchParams.get("grantId")
     const now = new Date(try Clock.currentTimeMillis).toISOString()
-    if (path === "/gmail/attachment") {
+    if (url.pathname === selectedAttachmentPath) {
       const selection = attachmentSelection(url.searchParams)
       if (!selected || !uuid.test(selected) || !selection) throw new BadRequest()
       const file = try selectedAttachment(env, db, account, selected, selection)
@@ -854,9 +855,9 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
   return body(404, { error: "route_not_found" })
 }
 
-export function googleRequest(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch, arrivalAuthorization?: ArrivalAuthorization): Promise<Response> {
+export function googleResponse(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch, arrivalAuthorization?: ArrivalAuthorization): Promise<HttpServerResponse.HttpServerResponse> {
   const routed = effect {
-    const response = routeGoogle(request, env, db, account, arrivalAuthorization) catch (error) => match (error) {
+    return routeGoogle(request, env, db, account, arrivalAuthorization) catch (error) => match (error) {
       when BadRequest: body(400, { error: "invalid_request" });
       when InboxWatchRequestInvalid: body(400, { error: "invalid_request" });
       when GoogleReadInput: body(400, { error: "invalid_request" });
@@ -877,8 +878,11 @@ export function googleRequest(request: Request, env: GoogleEnv, db: Client, acco
       when InboxHistoryInvalid: body(502, { error: "google_unavailable" });
       default: body(502, { error: "google_response_invalid" });
     }
-    return HttpServerResponse.toWeb(response)
   }
   return runPromise(Effect.provideService(Effect.provide(routed, providerLayer), FetchHttpClient.Fetch, send),
     arrivalAuthorization === undefined ? undefined : { signal: request.signal })
+}
+
+export function googleRequest(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch, arrivalAuthorization?: ArrivalAuthorization): Promise<Response> {
+  return googleResponse(request, env, db, account, send, arrivalAuthorization).then((response) => HttpServerResponse.toWeb(response))
 }
