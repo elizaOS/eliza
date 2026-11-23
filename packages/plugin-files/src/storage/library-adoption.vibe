@@ -1,0 +1,299 @@
+// spec/files/library.md, "A browser library changes format only from the exact complete source"
+module browser {
+  import { joinPath, validName, validPath } from "./model.vibe"
+  import { upgradeAnswer } from "../../gen/files__library.effect.vibe"
+
+  type LegacyLibraryRow = {
+    readonly id: string
+    readonly parentId: string
+    readonly name: string
+    readonly mimeType: string
+    readonly directory: boolean
+    readonly size: number
+    readonly revision: string
+    readonly createdAt?: number
+    readonly modifiedAt?: number
+    readonly bytes?: ArrayBuffer
+    readonly blob?: Blob
+  }
+
+  type WorkflowReceipt = {
+    readonly id: string
+    readonly fingerprint: string
+    readonly result: { readonly id: string; readonly name: string; readonly sha256: string }
+  }
+
+  type InstalledTrashRecord = {
+    readonly name: string
+    readonly origin: string
+    readonly directory: boolean
+    readonly size: number
+    readonly mimeType: string
+    readonly deletedAt: number
+  }
+
+  type AdoptedTrashRecord = Omit<InstalledTrashRecord, "deletedAt"> & {
+    readonly row: { readonly phase: "InTrash" | "Journaled"; readonly journal: true; readonly resident: boolean; readonly deletedAt: number }
+  }
+
+  const trashId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
+  const operationId = /^[a-zA-Z0-9_-]{1,120}$/
+  const sha256 = /^[0-9a-f]{64}$/
+  export const BROWSER_TRASH_FOLDER = ".Trash-files"
+  export const BROWSER_RECEIPT_FOLDER = ".Workflow-receipts"
+  export const LIBRARY_BLOCKED = "Close other tabs for this app and retry Files."
+
+  export class LibraryOpenFailure extends Error {}
+
+  export type InstalledLibrary = { readonly trashFolder: string; readonly trashKey: string }
+
+  function object(value: unknown): Record<string, unknown> | undefined {
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+  }
+
+  function nonnegativeInteger(value: unknown): value is number {
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+  }
+
+  function installedRow(raw: unknown): LegacyLibraryRow | undefined {
+    const row = object(raw)
+    if (row === undefined) return undefined
+    const { id, parentId, name, mimeType, directory, size, revision, createdAt, modifiedAt, bytes, blob } = row
+    if (typeof id !== "string" || id === "" || id === "root" || typeof parentId !== "string" || parentId === ""
+        || typeof name !== "string" || name === "" || typeof mimeType !== "string" || typeof directory !== "boolean"
+        || !nonnegativeInteger(size) || typeof revision !== "string" || revision === ""
+        || (createdAt !== undefined && !nonnegativeInteger(createdAt)) || (modifiedAt !== undefined && !nonnegativeInteger(modifiedAt))
+        || (bytes !== undefined && !(bytes instanceof ArrayBuffer)) || (blob !== undefined && !(blob instanceof Blob))) return undefined
+    if (!directory && (bytes?.byteLength ?? blob?.size) !== size) return undefined
+    return { id, parentId, name, mimeType, directory, size, revision,
+      ...(createdAt === undefined ? {} : { createdAt }), ...(modifiedAt === undefined ? {} : { modifiedAt }),
+      ...(bytes === undefined ? {} : { bytes }), ...(blob === undefined ? {} : { blob }) }
+  }
+
+  function installedTree(rows: readonly LegacyLibraryRow[]): boolean {
+    const byId = new Map(rows.map((row) => [row.id, row]))
+    const siblings = new Map<string, Set<string>>()
+    const reachesRoot = new Set(["root"])
+    if (byId.size !== rows.length) return false
+    for (const row of rows) {
+      const names = siblings.get(row.parentId) ?? new Set<string>()
+      if (names.has(row.name)) return false
+      names.add(row.name)
+      siblings.set(row.parentId, names)
+      const ancestry = new Set<string>()
+      let parent = row.parentId
+      while (!reachesRoot.has(parent)) {
+        const folder = byId.get(parent)
+        if (folder?.directory !== true || ancestry.has(parent)) return false
+        ancestry.add(parent)
+        parent = folder.parentId
+      }
+      for (const ancestor of ancestry) reachesRoot.add(ancestor)
+    }
+    return true
+  }
+
+  function sameInstalledRow(a: LegacyLibraryRow, b: LegacyLibraryRow): boolean {
+    if (a.id !== b.id || a.parentId !== b.parentId || a.name !== b.name || a.mimeType !== b.mimeType || a.directory !== b.directory
+        || a.size !== b.size || a.revision !== b.revision || a.createdAt !== b.createdAt || a.modifiedAt !== b.modifiedAt) return false
+    if (a.bytes !== undefined && b.bytes !== undefined) {
+      const expected = new Uint8Array(a.bytes)
+      const current = new Uint8Array(b.bytes)
+      return expected.length === current.length && expected.every((byte, index) => byte === current[index])
+    }
+    // Old writers give payload changes a new revision. Blob values themselves are immutable.
+    return a.bytes === undefined && b.bytes === undefined && a.blob?.size === b.blob?.size && a.blob?.type === b.blob?.type
+  }
+
+  function installedTrash(raw: string | null, children: readonly LegacyLibraryRow[]): ReadonlyMap<string, AdoptedTrashRecord> | undefined {
+    const records = raw === null ? {} : object(json(raw))
+    if (records === undefined) return undefined
+    const payloads = new Map(children.map((child) => [child.name, child]))
+    if (payloads.size !== children.length) return undefined
+    const adopted = new Map<string, AdoptedTrashRecord>()
+    for (const [id, value] of Object.entries(records)) {
+      const record = object(value)
+      if (!trashId.test(id) || record === undefined) return undefined
+      const { name, origin, directory, size, mimeType, deletedAt } = record
+      if (typeof name !== "string" || validName(name) !== name || typeof origin !== "string" || validPath(origin, true) !== origin
+          || typeof directory !== "boolean" || !nonnegativeInteger(size) || typeof mimeType !== "string" || !nonnegativeInteger(deletedAt)) return undefined
+      const fullOrigin = joinPath(origin, name)
+      if (validPath(fullOrigin) !== fullOrigin) return undefined
+      const child = payloads.get(id)
+      if (child !== undefined && (child.directory !== directory || (!directory && child.size !== size))) return undefined
+      adopted.set(id, { name, origin: fullOrigin, directory, size, mimeType,
+        row: { phase: child === undefined ? "Journaled" : "InTrash", journal: true, resident: child !== undefined, deletedAt } })
+      payloads.delete(id)
+    }
+    return payloads.size === 0 ? adopted : undefined
+  }
+
+  function installedReceipt(raw: unknown): WorkflowReceipt | undefined {
+    const receipt = object(raw)
+    const result = object(receipt?.result)
+    if (receipt === undefined || result === undefined || typeof receipt.id !== "string" || !operationId.test(receipt.id)
+        || typeof receipt.fingerprint !== "string" || typeof result.id !== "string" || result.id === ""
+        || typeof result.name !== "string" || result.name === "" || typeof result.sha256 !== "string" || !sha256.test(result.sha256)) return undefined
+    const fingerprint = json(receipt.fingerprint)
+    if (!Array.isArray(fingerprint) || fingerprint.length !== 3 || typeof fingerprint[0] !== "string"
+        || typeof fingerprint[1] !== "string" || fingerprint[2] !== result.sha256) return undefined
+    return { id: receipt.id, fingerprint: receipt.fingerprint,
+      result: { id: result.id, name: result.name, sha256: result.sha256 } }
+  }
+
+  type InstalledSnapshot = {
+    readonly rows: readonly LegacyLibraryRow[]
+    readonly receipts: readonly WorkflowReceipt[]
+  }
+
+  function installedSnapshot(entries: readonly unknown[], receipts: readonly unknown[]): InstalledSnapshot {
+    const rows = entries.map(installedRow)
+    if (!rows.every((row) => row !== undefined) || !installedTree(rows)) throw new LibraryOpenFailure("The installed file library could not be read.")
+    const checkedReceipts = receipts.map(installedReceipt)
+    if (!checkedReceipts.every((receipt) => receipt !== undefined)) throw new LibraryOpenFailure("The installed workflow receipts could not be read.")
+    return { rows, receipts: checkedReceipts }
+  }
+
+  function snapshotMatches(before: InstalledSnapshot, current: InstalledSnapshot): boolean {
+    return before.rows.length === current.rows.length && before.rows.every((row, index) => sameInstalledRow(row, current.rows[index]!))
+      && JSON.stringify(before.receipts) === JSON.stringify(current.receipts)
+  }
+
+  function json(raw: string): unknown {
+    try { return JSON.parse(raw) as unknown }
+    catch { return undefined }
+  }
+
+  export function openInstalled(databaseName: string, legacy: InstalledLibrary): Promise<IDBDatabase> {
+    if (navigator.locks === undefined) return Promise.reject(new LibraryOpenFailure("Open Files in a browser that supports storage locks."))
+    return navigator.locks.request(`browser-files-trash:${legacy.trashKey}`, async () => {
+      const db = await openSource(databaseName)
+      if (db.version === 3) return db
+      const oldVersion = db.version
+      let source: InstalledSnapshot
+      let journal: string | null
+      try {
+        if (oldVersion > 3 || !db.objectStoreNames.contains("entries")) throw new LibraryOpenFailure("This file library format is not supported.")
+        source = await new Promise<InstalledSnapshot>((resolve, reject) => {
+          const tx = db.transaction(sourceStores(db))
+          tx.onabort = () => reject(tx.error ?? new Error("The installed file library could not be read."))
+          readSource(tx, resolve, reject)
+        })
+        journal = localStorage.getItem(legacy.trashKey)
+      } finally {
+        db.close()
+      }
+      const plan = await conversionRows(source, legacy, journal)
+      return upgrade(databaseName, oldVersion, legacy, source, journal, plan)
+    })
+  }
+
+  function openSource(databaseName: string): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(databaseName)
+      let blocked = false
+      request.onblocked = () => {
+        blocked = true
+        reject(new LibraryOpenFailure(LIBRARY_BLOCKED))
+      }
+      request.onupgradeneeded = () => {
+        if (blocked) request.transaction?.abort()
+        else request.result.createObjectStore("entries", { keyPath: "id" })
+      }
+      request.onsuccess = () => {
+        const db = request.result
+        db.onversionchange = () => db.close()
+        if (blocked) db.close()
+        else resolve(db)
+      }
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  function sourceStores(db: IDBDatabase): string[] {
+    return db.objectStoreNames.contains("workflowReceipts") ? ["entries", "workflowReceipts"] : ["entries"]
+  }
+
+  function readSource(tx: IDBTransaction, ready: (source: InstalledSnapshot) => void, failed: (cause: unknown) => void) {
+    const rows = tx.objectStore("entries").getAll()
+    const receipts = tx.objectStoreNames.contains("workflowReceipts") ? tx.objectStore("workflowReceipts").getAll() : undefined
+    function read() {
+      if (rows.readyState !== "done" || (receipts !== undefined && receipts.readyState !== "done")) return
+      try { ready(installedSnapshot(rows.result, receipts?.result ?? [])) }
+      catch (cause) { failed(cause) }
+    }
+    rows.onsuccess = read
+    if (receipts !== undefined) receipts.onsuccess = read
+  }
+
+  function folder(name: string): LegacyLibraryRow {
+    return { id: crypto.randomUUID(), parentId: "root", name, mimeType: "", directory: true, size: 0, revision: crypto.randomUUID() }
+  }
+
+  function sidecar(parentId: string, name: string, value: unknown): LegacyLibraryRow {
+    const bytes = new TextEncoder().encode(JSON.stringify(value)).buffer
+    return { id: crypto.randomUUID(), parentId, name, mimeType: "application/json", directory: false, size: bytes.byteLength, revision: crypto.randomUUID(), bytes }
+  }
+
+  async function conversionRows(source: InstalledSnapshot, legacy: InstalledLibrary, journal: string | null): Promise<readonly LegacyLibraryRow[]> {
+    const root = source.rows.filter((row) => row.parentId === "root")
+    const oldTrash = root.find((row) => row.name === legacy.trashFolder)
+    if ((oldTrash !== undefined && !oldTrash.directory) || root.some((row) => row.name === BROWSER_TRASH_FOLDER || row.name === BROWSER_RECEIPT_FOLDER))
+      throw new LibraryOpenFailure("The installed file library uses a reserved folder name.")
+    const adopted = installedTrash(journal, oldTrash === undefined ? [] : source.rows.filter((row) => row.parentId === oldTrash.id))
+    if (adopted === undefined) throw new LibraryOpenFailure("The installed Trash journal could not be read.")
+    const rows: LegacyLibraryRow[] = []
+    for (const { blob, ...row } of source.rows) {
+      const name = row.id === oldTrash?.id ? BROWSER_TRASH_FOLDER : row.name
+      const bytes = row.bytes ?? await blob?.arrayBuffer()
+      rows.push({ ...row, name, ...(bytes === undefined ? {} : { bytes }) })
+    }
+    if (adopted.size > 0) {
+      const trash = oldTrash ?? folder(BROWSER_TRASH_FOLDER)
+      if (oldTrash === undefined) rows.push(trash)
+      for (const [id, record] of adopted) rows.push(sidecar(trash.id, `${id}.json`, record))
+    }
+    if (source.receipts.length > 0) {
+      const receipts = folder(BROWSER_RECEIPT_FOLDER)
+      rows.push(receipts)
+      for (const { id, fingerprint, result } of source.receipts) rows.push(sidecar(receipts.id, `${id}.json`, { fingerprint, result }))
+    }
+    if (!installedTree(rows)) throw new LibraryOpenFailure("The installed file library changed while it was being prepared.")
+    return rows
+  }
+
+  function upgrade(databaseName: string, oldVersion: number, legacy: InstalledLibrary, source: InstalledSnapshot,
+      journal: string | null, plan: readonly LegacyLibraryRow[]): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(databaseName, 3)
+      let failure: unknown
+      request.onblocked = () => {
+        failure = new LibraryOpenFailure(LIBRARY_BLOCKED)
+        reject(failure)
+      }
+      request.onupgradeneeded = (event) => {
+        const tx = request.transaction!
+        if (failure !== undefined) { tx.abort(); return }
+        const refuse = (cause: unknown) => { failure = cause; tx.abort() }
+        if (event.oldVersion !== oldVersion) { refuse(new LibraryOpenFailure("The installed file library changed. Retry Files.")); return }
+        readSource(tx, (current) => {
+          const matches = snapshotMatches(source, current) && localStorage.getItem(legacy.trashKey) === journal
+          if (upgradeAnswer("InstalledLibrary", { fenced: true, snapshotMatches: matches, rowsReadable: true,
+            trashReadable: true, receiptsReadable: true }) !== "AdoptInstalledLibrary") {
+            refuse(new LibraryOpenFailure("The installed file library changed. Retry Files."))
+            return
+          }
+          const files = tx.objectStore("entries")
+          for (const row of plan) files.put(row)
+        }, refuse)
+      }
+      request.onsuccess = () => {
+        if (failure === undefined) resolve(request.result)
+        else request.result.close()
+      }
+      request.onerror = () => reject(failure ?? request.error)
+    })
+  }
+}
+import { BROWSER_RECEIPT_FOLDER, BROWSER_TRASH_FOLDER, LIBRARY_BLOCKED, LibraryOpenFailure, openInstalled, type InstalledLibrary } from browser
+export { BROWSER_RECEIPT_FOLDER, BROWSER_TRASH_FOLDER, LIBRARY_BLOCKED, LibraryOpenFailure, openInstalled, type InstalledLibrary }

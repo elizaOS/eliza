@@ -42,9 +42,9 @@ import { batchMax, type FileOutcome, type FilesOp, type FilesRowCheck } from "..
 import { fileArchive } from "../documents/archive.vibe"
 import { downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry } from "./model.vibe"
 import { allocateLibraryId, deletePlan, insertPlan, LibraryStore, LIBRARY_ROOT, childrenOf, newId, placePlan, subtreeOf, type LibraryPlan, type LibraryRefusal, type LibraryRow } from "./library.vibe"
+import { BROWSER_RECEIPT_FOLDER, BROWSER_TRASH_FOLDER as TRASH } from "./library-adoption.vibe"
 import { checkSelection, FilesVolume, succeeded, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
 
-const TRASH = ".Trash-files"
 const WALK_LIMIT = 5_000
 const ANSWERS: Readonly<Record<FileOutcome, RowStatus>> = {
   Invalid: "invalid", Missing: "missing", Changed: "changed", Unchanged: "unchanged", Admitted: "failed",
@@ -60,7 +60,8 @@ const visible = (rows: readonly LibraryRow[], folderId: string) => childrenOf(ro
 
 function visiblePath(raw: string, allowRoot = false): string | undefined {
   const path = validPath(raw, allowRoot)
-  return path?.split("/")[0] === TRASH ? undefined : path
+  const first = path?.split("/")[0]
+  return first === TRASH || first === BROWSER_RECEIPT_FOLDER ? undefined : path
 }
 
 function rowAt(rows: readonly LibraryRow[], path: string): LibraryRow | undefined {
@@ -87,7 +88,7 @@ function nameClash(rows: readonly LibraryRow[], row: LibraryRow, name: string): 
 function entryOf(rows: readonly LibraryRow[], path: string, row: LibraryRow): StorageEntry {
   return {
     path, name: row.name, directory: row.directory, mimeType: row.directory ? "" : row.mimeType || "application/octet-stream",
-    size: row.directory ? 0 : row.size, modified: row.modifiedAt, ...(row.directory ? { children: visible(rows, row.id).length } : {}),
+    size: row.directory ? 0 : row.size, modified: row.modifiedAt ?? 0, ...(row.directory ? { children: visible(rows, row.id).length } : {}),
   }
 }
 
@@ -514,6 +515,13 @@ export effect function librarySelections() {
   const library = try LibraryStore
   const bound = try Ref.make(new Map<string, { readonly id: string; readonly revision: string }>())
 
+  effect function bind(row: LibraryRow | undefined): SelectedFile!VolumeRefused {
+    if (row === undefined || row.directory || row.bytes === undefined) throw refused("missing", "Choose a file.")
+    const selectionId = try allocateId
+    try Ref.update(bound, (map) => new Map(map).set(selectionId, { id: row.id, revision: row.revision }))
+    return { selectionId, name: row.name, mimeType: row.mimeType, size: row.size }
+  }
+
   effect function current(selectionId: string, limit: number): (LibraryRow & { readonly bytes: Uint8Array<ArrayBuffer> })!VolumeRefused {
     const binding = (try Ref.get(bound)).get(selectionId)
     const all = try mapError(library.rows(), (failure) => refused("unavailable", failure.message))
@@ -528,11 +536,19 @@ export effect function librarySelections() {
     effect select(path: string): SelectedFile!VolumeRefused {
       const at = visiblePath(path)
       const all = try mapError(library.rows(), (failure) => refused("unavailable", failure.message))
-      const row = at === undefined ? undefined : rowAt(all, at)
-      if (row === undefined || row.directory || row.bytes === undefined) throw refused("missing", "Choose a file.")
-      const selectionId = try allocateId
-      try Ref.update(bound, (map) => new Map(map).set(selectionId, { id: row.id, revision: row.revision }))
-      return { selectionId, name: row.name, mimeType: row.mimeType, size: row.size }
+      return try bind(at === undefined ? undefined : rowAt(all, at))
+    },
+    effect selectId(id: string): SelectedFile!VolumeRefused {
+      const all = try mapError(library.rows(), (failure) => refused("unavailable", failure.message))
+      const byId = new Map(all.map((row) => [row.id, row]))
+      const source = byId.get(id)
+      let row = source
+      for (let depth = 0; row !== undefined && depth < all.length; depth++) {
+        if (row.name.startsWith(".")) break
+        if (row.parentId === LIBRARY_ROOT) return try bind(source)
+        row = byId.get(row.parentId)
+      }
+      throw refused("missing", "Choose a file.")
     },
     effect readText(selectionId: string): SelectedText!VolumeRefused {
       const row = try current(selectionId, Number.MAX_SAFE_INTEGER)

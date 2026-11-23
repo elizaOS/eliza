@@ -1,0 +1,168 @@
+// spec/files/library.md, "Story: Keep my existing browser files when Files is upgraded"; spec/files/library.md, "A browser library changes format only from the exact complete source"
+import { assert, it } from "@effect/vitest"
+import { indexedLibrary, LibraryStore } from "../src/storage/library.vibe"
+import { librarySelections, libraryVolume } from "../src/storage/library-volume.vibe"
+import { saveWorkflowAttachment, workflowFiles } from "../src/storage/library-workflow.vibe"
+import { FilesVolume } from "../src/storage/volume.vibe"
+
+module browser {
+  export const trashId = "dbd8428c-4f77-4db9-b463-1bf66be80869"
+  const operationId = "installed-receipt"
+  export const step = { operationId, name: "receipt.txt", mimeType: "text/plain", dataBase64: "cGFpZA==" }
+
+  export function fixture() {
+    const databaseName = `files-installed-${crypto.randomUUID()}`
+    return { databaseName, old: { trashFolder: ".Trash-alpha", trashKey: `${databaseName}-trash` } }
+  }
+
+  export function holdDatabase(name: string, version: number): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const opened = indexedDB.open(name, version)
+      opened.onupgradeneeded = () => opened.transaction?.abort()
+      opened.onsuccess = () => resolve(opened.result)
+      opened.onerror = () => reject(opened.error)
+    })
+  }
+
+  export async function readVersion(name: string, version: number): Promise<number> {
+    const db = await holdDatabase(name, version)
+    db.close()
+    return db.version
+  }
+
+  export async function seed(name: string, key: string, corrupt: boolean) {
+    const bytes = new TextEncoder().encode("paid")
+    const hash = await crypto.subtle.digest("SHA-256", bytes)
+    const sha256 = Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("")
+    const receipt = { id: "deleted-legacy-file", name: "receipt (2).txt", sha256 }
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const opened = indexedDB.open(name, 2)
+      opened.onupgradeneeded = () => {
+        opened.result.createObjectStore("entries", { keyPath: "id" })
+        opened.result.createObjectStore("workflowReceipts", { keyPath: "id" })
+      }
+      opened.onsuccess = () => resolve(opened.result)
+      opened.onerror = () => reject(opened.error)
+    })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(["entries", "workflowReceipts"], "readwrite")
+        const store = tx.objectStore("entries")
+        store.put({ id: "installed-folder", revision: "folder-revision", parentId: "root", name: "Archive", mimeType: "", directory: true, size: 0 })
+        store.put({ id: "installed-trash", revision: "trash-revision", parentId: "root", name: ".Trash-alpha", mimeType: "", directory: true, size: 0 })
+        store.put({ id: "linked-file", revision: "linked-revision", parentId: "root", name: "earlier.txt", mimeType: "text/plain",
+          directory: false, size: 4, blob: new Blob([bytes]) })
+        store.put({ id: "trashed-file", revision: "payload-revision", parentId: "installed-trash", name: trashId, mimeType: "text/plain",
+          directory: false, size: 0, createdAt: 100, bytes: new ArrayBuffer(0) })
+        tx.objectStore("workflowReceipts").put({ id: operationId, fingerprint: JSON.stringify([step.name, step.mimeType, sha256]), result: receipt })
+        tx.oncomplete = () => resolve()
+        tx.onabort = () => reject(tx.error)
+      })
+    } finally {
+      db.close()
+    }
+    const journal = corrupt ? "{unreadable" : JSON.stringify({ [trashId]: {
+      name: "empty.txt", origin: "Archive", directory: false, size: 0, mimeType: "text/plain", deletedAt: Date.now(),
+    } })
+    localStorage.setItem(key, journal)
+    return { receipt, journal }
+  }
+
+  export function readJournal(key: string) { return localStorage.getItem(key) }
+
+  export function changeDuringBlobRead(name: string): () => void {
+    const read = Blob.prototype.arrayBuffer
+    const restore = () => { Blob.prototype.arrayBuffer = read }
+    Blob.prototype.arrayBuffer = async function (this: Blob) {
+      restore()
+      const db = await holdDatabase(name, 2)
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction("entries", "readwrite")
+          tx.objectStore("entries").put({ id: "linked-file", revision: "later-revision", parentId: "root", name: "earlier.txt", mimeType: "text/plain",
+            directory: false, size: 4, bytes: new TextEncoder().encode("kept").buffer })
+          tx.oncomplete = () => resolve()
+          tx.onabort = () => reject(tx.error)
+        })
+      } finally {
+        db.close()
+      }
+      return read.call(this)
+    }
+    return restore
+  }
+}
+import { changeDuringBlobRead, fixture, holdDatabase, readVersion, seed, readJournal, step, trashId } from browser
+
+it.effect('Keep the installed IDs, deleted-output receipt and Trash origin (spec/files/library.md, "Story: Keep my existing browser files when Files is upgraded")', effect () => {
+  const { databaseName, old } = try Effect.try(fixture)
+  const { receipt, journal } = try Effect.promise(() => seed(databaseName, old.trashKey, false))
+  const tab = indexedLibrary(databaseName, old)
+  try Effect.provide(effect {
+    const store = try LibraryStore
+    const volume = try FilesVolume
+    const selections = try librarySelections()
+    const linked = try selections.selectId("linked-file")
+    assert.deepEqual(try selections.readText(linked.selectionId), { kind: "read", text: "paid", mimeType: "text/plain", bytes: 4 })
+    const before = try store.rows()
+    assert.equal(before.find((row) => row.id === "linked-file")?.revision, "linked-revision")
+    assert.equal(before.find((row) => row.id === "trashed-file")?.revision, "payload-revision")
+    assert.equal((try volume.trashList()).find((item) => item.id === trashId)?.name, "empty.txt")
+    const restored = try volume.restore([trashId])
+    assert.equal(restored[0]?.status, "restored")
+    const file = (try store.rows()).find((row) => row.id === "trashed-file")
+    assert.equal(file?.parentId, "installed-folder")
+    assert.equal(file?.bytes?.byteLength, 0)
+    assert.equal(file?.createdAt, 100)
+    assert.equal((try workflowFiles(false)).files.find((row) => row.id === "linked-file")?.modifiedAt, null)
+    assert.deepEqual(try saveWorkflowAttachment(step), receipt)
+    assert.equal((try Effect.flip(saveWorkflowAttachment({ ...step, dataBase64: "dW5wYWlk" }))).status, "changed")
+    assert.equal((try store.rows()).some((row) => row.id === receipt.id || row.name === step.name), false)
+    assert.equal(try Effect.try(() => readJournal(old.trashKey)), journal)
+    assert.equal(try Effect.promise(() => readVersion(databaseName, 3)), 3)
+  }, libraryVolume()).pipe(Effect.provide(tab))
+})
+
+it.effect('Leave the version and journal untouched when adoption cannot read the old Trash (spec/files/library.md, "A browser library changes format only from the exact complete source")', effect () => {
+  const { databaseName, old } = try Effect.try(fixture)
+  const { journal } = try Effect.promise(() => seed(databaseName, old.trashKey, true))
+  const tab = indexedLibrary(databaseName, old)
+  try Effect.provide(effect {
+    const store = try LibraryStore
+    assert.equal((try Effect.flip(store.rows())).message, "The installed Trash journal could not be read.")
+    assert.equal(try Effect.promise(() => readVersion(databaseName, 2)), 2)
+    assert.equal(try Effect.try(() => readJournal(old.trashKey)), journal)
+  }, tab)
+})
+
+it.effect('A blocked older tab cannot let an abandoned upgrade commit later (spec/files/library.md, "A browser library changes format only from the exact complete source")', effect () => {
+  const { databaseName, old } = try Effect.try(fixture)
+  try Effect.promise(() => seed(databaseName, old.trashKey, false))
+  const tab = indexedLibrary(databaseName, old)
+  try Effect.provide(effect {
+    const store = try LibraryStore
+    const held = try Effect.promise(() => holdDatabase(databaseName, 2))
+    const attempted = try Effect.ensuring(Effect.flip(store.rows()), Effect.sync(() => held.close()))
+    assert.equal(attempted.message, "Close other tabs for this app and retry Files.")
+    assert.equal(try Effect.promise(() => readVersion(databaseName, 2)), 2)
+    assert.equal((try store.rows()).find((row) => row.id === "linked-file")?.revision, "linked-revision")
+    assert.equal(try Effect.promise(() => readVersion(databaseName, 3)), 3)
+  }, tab)
+})
+
+it.effect('An old writer settling during Blob preparation is kept when adoption retries (spec/files/library.md, "A browser library changes format only from the exact complete source")', effect () => {
+  const { databaseName, old } = try Effect.try(fixture)
+  try Effect.promise(() => seed(databaseName, old.trashKey, false))
+  const tab = indexedLibrary(databaseName, old)
+  try Effect.provide(effect {
+    const store = try LibraryStore
+    const restore = try Effect.try(() => changeDuringBlobRead(databaseName))
+    const attempted = try Effect.ensuring(Effect.flip(store.rows()), Effect.sync(restore))
+    assert.equal(attempted.message, "The installed file library changed. Retry Files.")
+    assert.equal(try Effect.promise(() => readVersion(databaseName, 2)), 2)
+    assert.equal((try store.rows()).find((row) => row.id === "linked-file")?.revision, "later-revision")
+    const selections = try librarySelections()
+    const file = try selections.selectId("linked-file")
+    assert.deepEqual(try selections.readText(file.selectionId), { kind: "read", text: "kept", mimeType: "text/plain", bytes: 4 })
+  }, tab)
+})
