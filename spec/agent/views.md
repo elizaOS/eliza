@@ -143,9 +143,13 @@ pure val viewIdValues = Set("chat", "notes", "files")
 A navigation the renderer already claimed is being applied, so a second
 one could commit out of order; the client must wait for its result. The
 superseded navigation's wait ends with the outcome `Superseded`. A client's
-only pending navigation is therefore its latest.
+only pending navigation is therefore its latest. Before it prepares, the
+shell waits up to `navigationBusyWaitMs` for the client's claimed
+navigation to end, so a turn that arrives just after the renderer's report
+is prepared rather than refused.
 
 ```quint
+pure val navigationBusyWaitMs = 4000
 pure def openNavigationOf(h: ViewHost, clientId: str): str =
   if (h.openNavigation.keys().contains(clientId)) h.openNavigation.get(clientId) else ""
 pure def busy(h: ViewHost, clientId: str): bool = {
@@ -299,9 +303,12 @@ pure val grantValues = Set(
 The shell abandons the request when its wait ends, its client's renderer
 disconnects, or publishing its frame throws. The agent's wait then sees the
 outcome `Unknown`, never a failure or a success, and the request is not
-offered again.
+offered again. A claimed navigation's wait runs out `navigationClaimLeaseMs`
+after its claim: a renderer that lost the claim's reply can neither apply
+nor answer it, and its client must not stay unable to navigate.
 
 ```quint
+pure val navigationClaimLeaseMs = 10000
 pure def canAbandonRequest(h: ViewHost, requestId: str): bool = known(h, requestId) and isOpen(h, waiterAt(h, requestId))
 pure def abandonRequest(h: ViewHost, requestId: str): ViewHost = {
   val w = waiterAt(h, requestId)

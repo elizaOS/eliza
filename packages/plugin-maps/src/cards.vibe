@@ -11,17 +11,14 @@ module browser {
 }
 import { allowedMapsUri } from browser
 
-/** The bracket name of a Maps chat card, which reply processing recognizes as a widget marker rather than an invocation. */
 export const mapsCardMarker = "MAPSCARD"
 
-/** A card renders at most this many search results; the rest stay paginated. */
 export const mapsCardMaxPlaces = 10
 
 const Text = (limit: number) => Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, limit)))
 const Uri = Schema.String.check(Schema.makeFilter(allowedMapsUri))
 const Nonnegative = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
 
-/** A place as a card shows it: display-safe fields only. */
 export const MapsCardPlace = Schema.Struct({
   name: Text(300),
   latitude: Schema.Finite.check(Schema.isBetween({ minimum: -90, maximum: 90 })),
@@ -31,17 +28,13 @@ export const MapsCardPlace = Schema.Struct({
   formattedAddress: Schema.optionalKey(Text(1000)),
   categories: Schema.Array(Text(80)).check(Schema.isMaxLength(32)),
 })
-/** A place as a card shows it. */
 export type MapsCardPlace = typeof MapsCardPlace.Type
 
 const Attribution = Schema.NullOr(Text(2000))
 
-/** One alternative of a planned route, in the provider's order. */
 export const MapsCardRouteOption = Schema.Struct({ distanceMeters: Nonnegative, durationSeconds: Nonnegative, recommended: Schema.Boolean })
-/** One alternative of a planned route. */
 export type MapsCardRouteOption = typeof MapsCardRouteOption.Type
 
-/** A Maps chat card: a place, search results, a route with its alternatives, a navigation or share handoff, or a request for the phone's own location. */
 export const MapsCard = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("place"), place: MapsCardPlace, attribution: Attribution }),
   Schema.Struct({
@@ -62,7 +55,6 @@ export const MapsCard = Schema.Union([
     query: Schema.optionalKey(Text(500)), destination: Schema.optionalKey(MapsCardPlace), travelMode: Schema.optionalKey(TravelMode),
   }),
 ])
-/** A Maps chat card. */
 export type MapsCard = typeof MapsCard.Type
 
 const decodeCard = Schema.decodeUnknownOption(Schema.fromJsonString(MapsCard))
@@ -86,14 +78,12 @@ function fenceAfter(open: Fence | undefined, line: string): Fence | undefined {
   return character === open.character && run.length >= open.length && rest === "" ? undefined : open
 }
 
-/** One card found in reply text, with the lines it spans. */
 export interface RecognizedMapsCard {
   readonly card: MapsCard
   readonly start: number
   readonly end: number
 }
 
-/** The valid Maps cards of a reply that stand outside every Markdown fence; a card inside a fence is the reply's literal content. */
 export function recognizedMapsCards(text: string): readonly RecognizedMapsCard[] {
   const lines = text.split(/\r?\n/)
   const found: RecognizedMapsCard[] = []
@@ -113,7 +103,6 @@ export function recognizedMapsCards(text: string): readonly RecognizedMapsCard[]
   return found
 }
 
-/** The reply text with its recognized cards taken out, for surfaces without the Maps widget. */
 export function withoutMapsCards(text: string): string {
   const cards = recognizedMapsCards(text)
   if (cards.length === 0) return text
@@ -122,12 +111,10 @@ export function withoutMapsCards(text: string): string {
   return lines.filter((_, index) => !hidden.has(index)).join("\n").replace(/\n{3,}/g, "\n\n").trim()
 }
 
-/** A card as its wire marker. */
 export function serializeMapsCard(card: MapsCard): string {
   return `[${mapsCardMarker}]\n${JSON.stringify(card)}\n[/${mapsCardMarker}]`
 }
 
-/** The text with the card appended after a blank line, outside any fence the text left open, so the card is always recognized. */
 export function appendMapsCard(text: string, card: MapsCard): string {
   const marker = serializeMapsCard(card)
   const body = text.replace(/\s+$/, "")

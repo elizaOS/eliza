@@ -7,13 +7,10 @@ import { answerOf, opensRelay } from "./worker/routes.vibe"
 export { nativeAssetLinks } from "./native-registry.vibe"
 export type { DeploymentExtension }
 
-/** The part of a Worker's execution context that keeps work running after the answer. */
 export type WorkerExecution = WorkerLifetime
 
-/** Every binding a deployment's Worker reads: the profile, its database, its secrets and the Worker-only routes' own. */
 export type CloudBindings = LegacyBindings & ProfileBindings
 
-/** The deployment's whole Cloud API as a Worker: the server's route table, the Worker-only routes and the scheduled sweeps. */
 export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>, providerFetch: typeof fetch = workerFetch) {
   const ports: WorkerPorts<E> = { extension, providerFetch }
   return {

@@ -157,7 +157,11 @@ public abstract class SmsComposeActivity extends Activity {
      outcome = record == null ? "not-sent" : record.status();
     }
     final String status = outcome;
-    main.post(() -> { sending = false; notice.setText(label(status)); });
+    main.post(() -> {
+     sending = false;
+     if (java.util.Set.of("not-sent", "cancelled", "denied").contains(status) && id.equals(operationId)) { operationId = null; reviewedBinding = null; }
+     notice.setText(label(status));
+    });
    });
   } catch (java.util.concurrent.RejectedExecutionException closed) { sending = false; notice.setText(label("not-sent")); }
  }

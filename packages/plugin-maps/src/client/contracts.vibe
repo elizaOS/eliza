@@ -8,9 +8,9 @@ module browser {
 }
 import { webAddress } from browser
 
+// eslint-disable-next-line no-control-regex -- Maps display text allows tab and line breaks and rejects the listed C0 controls.
 const controlCharacters = /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/
 
-/** Whether a value is non-blank text of at most `limit` characters with no control characters. */
 export function boundedText(value: unknown, limit: number): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= limit && !controlCharacters.test(value)
 }
@@ -20,34 +20,22 @@ const Between = (minimum: number, maximum: number) => Schema.Finite.check(Schema
 const Meters = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
 const Instant = Text(40).check(Schema.makeFilter((value: string) => Number.isFinite(Date.parse(value))))
 
-/** Every travel mode, in the order the screen offers them. */
 export const travelModes = ["drive", "walk", "bicycle", "transit"] as const
-/** The travel modes a route is planned for. */
 export const TravelMode = Schema.Literals(travelModes)
-/** A travel mode. */
 export type TravelMode = typeof TravelMode.Type
 
-/** The provider-neutral turn vocabulary of a route step. */
 export const Maneuver = Schema.Literals(["depart", "continue", "slight-left", "left", "sharp-left", "slight-right", "right", "sharp-right", "keep-left", "keep-right", "u-turn", "roundabout", "arrive"])
-/** A turn of a route step. */
 export type Maneuver = typeof Maneuver.Type
-/** Whether a value is a known maneuver. */
 export const isManeuver = Schema.is(Maneuver)
 
-/** A point on the earth in degrees. */
 export const Coordinate = Schema.Struct({ latitude: Between(-90, 90), longitude: Between(-180, 180) })
-/** A point on the earth in degrees. */
 export type Coordinate = typeof Coordinate.Type
 
-/** Why a Maps request did not complete. */
 export const MapsFailureCode = Schema.Literals(["unconfigured", "unavailable", "permission-denied", "timeout", "cancelled", "offline", "rate-limited", "unauthorized", "invalid-response", "unsupported", "storage"])
-/** Why a Maps request did not complete. */
 export type MapsFailureCode = typeof MapsFailureCode.Type
 
-/** A typed Maps refusal with the sentence the owner reads. */
 export error MapsFailure { code: MapsFailureCode; message: string }
 
-/** What a connected provider serves. */
 export interface ProviderCapabilities {
   readonly map: boolean
   readonly search: boolean
@@ -59,18 +47,15 @@ export interface ProviderCapabilities {
   readonly alternatives: boolean
 }
 
-/** The capabilities of no provider. */
 export const unavailableCapabilities: ProviderCapabilities = {
   map: false, search: false, placeDetails: false, modes: [], traffic: "none", transit: "none",
   offline: { map: false, search: false, routing: false }, alternatives: false,
 }
 
-/** The provider the screen is connected to, if any. */
 export type ProviderConfig =
   | { readonly status: "unconfigured" }
   | { readonly status: "configured"; readonly providerId: string; readonly connectionId: string; readonly revision: string; readonly capabilities: ProviderCapabilities }
 
-/** At most this many category labels are kept from one place. */
 export const placeCategoryLimit = 32
 
 const PlaceWire = Schema.Struct({
@@ -88,7 +73,6 @@ const PlaceWire = Schema.Struct({
 })
 const decodePlaceWire = Schema.decodeUnknownEffect(PlaceWire)
 
-/** A place a provider returned, with its provenance. */
 export interface Place {
   readonly providerId: string
   readonly id: string
@@ -103,7 +87,6 @@ export interface Place {
   readonly fetchedAt: number
 }
 
-/** One public-transport ride from the provider's published timetables. */
 export const TransitDetails = Schema.Struct({
   line: Text(100),
   vehicle: Text(50),
@@ -115,10 +98,8 @@ export const TransitDetails = Schema.Struct({
   stopCount: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   color: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^#[0-9a-fA-F]{6}$/))),
 })
-/** One public-transport ride. */
 export type TransitDetails = typeof TransitDetails.Type
 
-/** One step of a route, from its maneuver to the next one. */
 export const RouteStep = Schema.Struct({
   instruction: Text(2000),
   coordinate: Coordinate,
@@ -126,10 +107,8 @@ export const RouteStep = Schema.Struct({
   maneuver: Schema.optionalKey(Maneuver),
   transit: Schema.optionalKey(TransitDetails),
 })
-/** One step of a route. */
 export type RouteStep = typeof RouteStep.Type
 
-/** A route a provider planned, with its provenance. */
 export const Route = Schema.Struct({
   providerId: Text(80),
   id: Text(512),
@@ -145,10 +124,8 @@ export const Route = Schema.Struct({
   traffic: Schema.Literals(["none", "approximated", "live"]),
   staticDurationSeconds: Schema.optionalKey(Meters),
 })
-/** A route a provider planned. */
 export type Route = typeof Route.Type
 
-/** A Maps provider as the screen uses it: every call can be interrupted and fails typed. */
 export interface MapsProvider {
   readonly providerId: string
   readonly connectionId: string
@@ -158,7 +135,6 @@ export interface MapsProvider {
   routes(from: Coordinate, to: Coordinate, mode: TravelMode): (readonly Route[])!MapsFailure
 }
 
-/** What a screen section shows while a read is pending, settled or refused. */
 export interface ResultState<T> {
   readonly phase: "idle" | "loading" | "ready" | "empty" | "error"
   readonly value: T
@@ -167,7 +143,6 @@ export interface ResultState<T> {
 
 const invalid = (message: string) => new MapsFailure({ code: "invalid-response", message })
 
-/** A real coordinate, or an invalid-response refusal. */
 export effect function coordinate(value: unknown): Coordinate!MapsFailure {
   return try mapError(Schema.decodeUnknownEffect(Coordinate)(value), () => invalid("The coordinate is invalid."))
 }
@@ -183,7 +158,6 @@ function categoriesOf(labels: readonly unknown[]): string[] {
   return kept
 }
 
-/** A provider place with its identity, provenance and contact fields checked, from the expected provider when one is named. */
 export effect function place(value: unknown, expectedProvider?: string): Place!MapsFailure {
   const wire = try mapError(decodePlaceWire(value), () => invalid("The place identity or provenance is invalid."))
   const now = try Clock.currentTimeMillis
@@ -195,20 +169,17 @@ export effect function place(value: unknown, expectedProvider?: string): Place!M
   return { ...fields, ...(labels.length > 0 ? { categories: labels } : {}) }
 }
 
-/** Validated transit ride details, or an invalid-response refusal. */
 export effect function transitDetails(value: unknown): TransitDetails!MapsFailure {
   const ride = try mapError(Schema.decodeUnknownEffect(TransitDetails)(value), () => invalid("A transit ride is invalid."))
   return ride.color === undefined ? ride : { ...ride, color: ride.color.toLowerCase() }
 }
 
-/** A provider route with its geometry and steps checked, from the expected provider when one is named. */
 export effect function route(value: unknown, expectedProvider?: string): Route!MapsFailure {
   const planned = try mapError(Schema.decodeUnknownEffect(Route)(value), () => invalid("The Maps route response is invalid."))
   if (expectedProvider !== undefined && planned.providerId !== expectedProvider) throw invalid("The Maps route response is invalid.")
   return planned
 }
 
-/** The provider of a configured connection, or the refusal that says why there is none. */
 export effect function configuredProvider(config: ProviderConfig, provider?: MapsProvider): MapsProvider!MapsFailure {
   if (config.status === "unconfigured") throw new MapsFailure({ code: "unconfigured", message: "Connect a Maps provider to search places and plan routes." })
   if (provider === undefined || !boundedText(config.revision, 100) || !/^conn_[A-Za-z0-9_-]{16,}$/.test(config.connectionId)
@@ -218,21 +189,18 @@ export effect function configuredProvider(config: ProviderConfig, provider?: Map
   return provider
 }
 
-/** What the Cloud Maps connection reports about its last start. */
 export interface MapsDiagnostics {
   readonly configured: boolean
   readonly error: MapsFailureCode | ""
   readonly message: string
 }
 
-/** Why Maps cannot search or route: a failed Cloud start keeps its own message, and only a host without a provider is told to connect one. */
 export function mapsUnavailableMessage(diagnostics?: MapsDiagnostics, unconfiguredText?: string): string {
   if (diagnostics === undefined || !diagnostics.configured) return unconfiguredText ?? "Connect a Maps provider to search places and plan routes."
   if (diagnostics.error !== "") return diagnostics.message === "" ? "Cloud Maps could not start." : diagnostics.message
   return "Maps is not ready yet."
 }
 
-/** A refusal as a Maps failure: a Maps failure keeps its own code, anything else is unavailable. */
 export function failure(error: unknown): MapsFailure {
   return error instanceof MapsFailure ? error : new MapsFailure({ code: "unavailable", message: "Maps could not complete this request." })
 }

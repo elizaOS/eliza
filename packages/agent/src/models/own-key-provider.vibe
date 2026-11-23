@@ -2,7 +2,6 @@
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
 import { Refused, describeImage, generateText, listModels, registerTwice, type Binding } from "./chat.vibe"
 
-/** The own-key endpoint and the two model ids the launch named for it. */
 export interface OwnKeyModels {
   readonly baseUrl: string
   readonly small: string
@@ -19,7 +18,6 @@ export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, o
   }, { streamable: true })
 }
 
-/** Confirms the own key lists both launch models. */
 export effect function probeOwnKey(own: OwnKeyModels, key: Redacted.Redacted<string>) {
   const listed = try listModels(own.baseUrl, key)
   if (!listed.includes(own.small) || !listed.includes(own.large)) throw new Refused({ cloud: { tag: "CloudProviderIssue" } })

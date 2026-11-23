@@ -53,34 +53,26 @@ module edge {
 }
 import { isoOf, newUuid, priorNotesFile, readPriorNotes, run, sourceHash } from edge
 
-/** The service type the Notes service registers under. */
 const notesServiceType = "notes"
 
-/** The service type a host registers to prove that a device recording was erased. */
 const notesRecordingCleanupVerifierServiceType = "notes-recording-cleanup-verifier"
 
-/** The setting whose value 3 turns on three-day Trash. */
 const notesTrashRetentionSetting = "ELIZA_NOTES_TRASH_RETENTION_DAYS"
 
-/** The event stream a committed Notes change is published on. */
 export const notesStateUpdatedEvent = "notes:state-updated"
 
-/** Resolves true only once the host has confirmed this exact recording is gone. */
 interface NotesRecordingCleanupVerifier {
   verifyRecordingCleanup(receipt: NotesTrashRecordingCleanup, signal?: AbortSignal): Promise<boolean>
 }
 
-/** A verifier call; any answer other than a literal true proves nothing. */
 export type VerifyRecordingCleanup = (receipt: NotesTrashRecordingCleanup, signal?: AbortSignal) => Promise<unknown>
 
-/** A calendar draft's reference to the exact note it was made from. */
 export interface NoteSourceReference {
   readonly agentId: string
   readonly noteId: string
   readonly contentHash: string
 }
 
-/** What the Notes collection needs from the agent that hosts it. */
 export interface NotesHost {
   readonly agentId: string
   readonly storage: NotesStorage
@@ -94,10 +86,8 @@ export interface NotesHost {
   published?(snapshot: NotesSnapshot, mutation: string): void
 }
 
-/** Every Notes failure a caller can meet. */
 export type NotesFailure = NotesRefused | NotesUnavailable
 
-/** The owner's Notes collection: reads, reviewed changes, Trash and recording cleanup. */
 export interface NotesCollection {
   readonly threeDayTrash: boolean
   snapshot(): NotesSnapshot!NotesFailure
@@ -130,7 +120,6 @@ effect function optionalRevision(value: unknown): (number | undefined)!NotesRefu
   return value === undefined ? undefined : try mapError(revisionValue(value), () => invalid("expectedRevision"))
 }
 
-/** The owner's Notes collection over the host's storage. */
 export function notesCollection(host: NotesHost): NotesCollection {
   effect function at(): Instant!NotesUnavailable {
     const ms = try host.now
@@ -258,14 +247,12 @@ function isVerifier(value: unknown): value is NotesRecordingCleanupVerifier {
   return typeof value === "object" && value !== null && "verifyRecordingCleanup" in value && typeof value.verifyRecordingCleanup === "function"
 }
 
-/** Options a host supplies when it loads Notes. */
 export interface NotesOptions {
   readonly stateDirectory?: string
   readonly verifyRecordingCleanup?: VerifyRecordingCleanup
   readonly publish?: (snapshot: NotesSnapshot, mutation: string) => void
 }
 
-/** The Notes host over an agent runtime: its cache, its clock, its retention setting and the verifier service it registers. */
 export function runtimeNotesHost(runtime: IAgentRuntime, options: NotesOptions = {}): NotesHost {
   const retention = runtime.getSetting(notesTrashRetentionSetting)
   const agentId = String(runtime.agentId)
@@ -287,7 +274,6 @@ export function runtimeNotesHost(runtime: IAgentRuntime, options: NotesOptions =
   }
 }
 
-/** The runtime service class that exposes one Notes collection to routes, actions and other plugins. */
 export function notesServiceClass(notes: NotesCollection): ServiceClass {
   return class NotesService extends Service {
     static override serviceType = notesServiceType

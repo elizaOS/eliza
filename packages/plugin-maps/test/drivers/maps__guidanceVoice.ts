@@ -20,7 +20,7 @@ interface Screen {
 }
 
 const screens = new Map<string, Screen>();
-const ticks = () => until(() => new Promise((resolve) => setTimeout(() => resolve(true), 1)));
+const ticks = () => Effect.runPromise(Effect.sleep(1));
 
 function screen(key: string): Screen {
   const known = screens.get(key);

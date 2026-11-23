@@ -49,8 +49,29 @@ module node {
   export async function loadModule(file: string): Promise<unknown> {
     return import(pathToFileURL(file).href)
   }
+
+  type Listener = (...values: unknown[]) => unknown
+  interface Advisory { createProtectionAdvisory(api: unknown): { setOwner(owner: string): Promise<unknown> } }
+
+  export async function markBesideUndrawableTab(advisory: unknown): Promise<{ readonly reply: unknown; readonly marked: unknown }> {
+    const page = "https://shop.example/"
+    const listeners = new Map<string, Listener>()
+    const event = (name: string) => ({ addListener: (listener: Listener) => listeners.set(name, listener) })
+    const drawn: { nonce?: unknown; marked?: unknown }[] = []
+    const api = {
+      runtime: { id: "extension", getURL: (name: string) => `chrome-extension://extension/${name}`, onMessage: event("message") },
+      storage: { local: { get: async () => ({}) } },
+      tabs: { query: async () => [{ id: 1, url: page }, { id: 2, url: "https://discarded.example/" }], get: async (id: number) => ({ id, url: id === 1 ? page : "https://discarded.example/" }), onRemoved: event("removed") },
+      webNavigation: { onCommitted: event("committed"), onHistoryStateUpdated: event("history"), getFrame: async ({ tabId }: { tabId: number }) => (tabId === 1 ? { documentId: "page", url: page } : null) },
+      scripting: { executeScript: async ({ args }: { args: [{ nonce?: unknown; marked?: unknown }] }) => { drawn.push(args[0]); return [{ frameId: 0, documentId: "page" }] } },
+    }
+    await (advisory as Advisory).createProtectionAdvisory(api).setOwner("owner")
+    const reply = await new Promise((respond) =>
+      listeners.get("message")?.({ type: "protection-acknowledge", nonce: drawn.at(-1)?.nonce, marked: true }, { id: "extension", frameId: 0, documentId: "page", url: page, tab: { id: 1 } }, respond))
+    return { reply, marked: drawn.at(-1)?.marked }
+  }
 }
-import { assetsProblem, composeProtection, hostPlatform, json, loadModule, sha256 } from node
+import { assetsProblem, composeProtection, hostPlatform, json, loadModule, markBesideUndrawableTab, sha256 } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -192,7 +213,7 @@ it.effect(`Build the protection module with esbuild and embed its complete inven
     const text = (name: string) => new TextDecoder().decode(composed[name] ?? new Uint8Array())
     const manifest = json(text("manifest.json"))
     assert.deepInclude(manifest, { web_accessible_resources: [{ resources: ["warning.html"], matches: ["<all_urls>"] }] })
-    assert.include(typeof manifest === "object" && manifest !== null && "permissions" in manifest && Array.isArray(manifest.permissions) ? manifest.permissions : [], "declarativeNetRequest")
+    assert.includeMembers(typeof manifest === "object" && manifest !== null && "permissions" in manifest && Array.isArray(manifest.permissions) ? manifest.permissions : [], ["declarativeNetRequest", "unlimitedStorage"], "spent request identities are kept without a storage quota")
     assert.notInclude(text("warning.html"), "{{", "every warning slot is filled")
     assert.include(text("licenses.html"), "tldts")
     assert.include(text("protection.mjs"), "installBrowserProtection({chrome:globalThis.chrome")
@@ -201,6 +222,7 @@ it.effect(`Build the protection module with esbuild and embed its complete inven
     try writeAssets(staged, composed)
     const advisory = try promise(() => loadModule(path.join(staged, "advisory.mjs")))
     assert.isTrue(typeof advisory === "object" && advisory !== null && "createProtectionAdvisory" in advisory && typeof advisory.createProtectionAdvisory === "function", "the esbuild advisory bundle loads and exports its entry")
+    assert.deepStrictEqual(try promise(() => markBesideUndrawableTab(advisory)), { reply: { accepted: true }, marked: true }, "a saved mark is reported saved though another tab cannot be redrawn")
 
     const checkout = try pinnedCheckout("browser-protection-checkout")
     try pinHead(checkout.root)

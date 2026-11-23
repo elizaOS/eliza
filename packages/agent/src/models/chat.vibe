@@ -20,7 +20,6 @@ interface Sink {
   readonly onStreamChunk?: StreamChunkCallback
 }
 
-/** One decoded chat completion: its text, tool calls, finish reason, token use and replayable reasoning. */
 interface Reply {
   readonly text: string
   readonly toolCalls: ToolCall[]
@@ -490,7 +489,6 @@ function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProvi
   return answer.form === "AnswerResult" ? resultOf(answer.reply) : answer.reply.text
 }
 
-/** Serves a text handler: the reply text, or one result with tool calls, finish reason and token use when the call offers tools or asks for a schema. */
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
   return (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
     Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, runtime.agentId, params), params, askOf(params)), returned), FetchHttpClient.layer),
@@ -498,7 +496,6 @@ export function generateText(binding: Binding, endpoint: Endpoint, handler: Chat
   )
 }
 
-/** Serves image description as a chat completion with the image as its one part. */
 export function describeImage(binding: Binding, endpoint: Endpoint) {
   return (_runtime: IAgentRuntime, params: { imageUrl: string; prompt?: string; signal?: AbortSignal; stream?: boolean; onStreamChunk?: StreamChunkCallback } | string): Promise<{ title: string; description: string }> => {
     const input = typeof params === "string" ? { imageUrl: params } : params
@@ -511,7 +508,6 @@ export function describeImage(binding: Binding, endpoint: Endpoint) {
   }
 }
 
-/** Lists the model ids an endpoint offers to the credential. */
 export effect function listModels(baseUrl: string, credential: Redacted.Redacted<string>) {
   const request = HttpClientRequest.setHeader(HttpClientRequest.get(baseUrl + "/models"), "authorization", "Bearer " + Redacted.value(credential))
   const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" })
@@ -525,7 +521,6 @@ export effect function listModels(baseUrl: string, credential: Redacted.Redacted
 
 type Handler = Parameters<IAgentRuntime["registerModel"]>[1]
 
-/** Registers each handler twice so core retries a transient refusal once. */
 export function registerTwice(runtime: IAgentRuntime, provider: string, handlers: Readonly<Record<string, unknown>>, metadata: ModelRegistrationMetadata): void {
   for (const [modelType, handler] of Object.entries(handlers)) {
     const serve = handler as Handler

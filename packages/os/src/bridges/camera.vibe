@@ -76,7 +76,6 @@ export const CAMERA_PERMISSION_DENIED = "CAMERA_PERMISSION_DENIED"
 export const MICROPHONE_DENIED = "MICROPHONE_DENIED"
 export const PREVIEW_STOPPED = "PREVIEW_STOPPED"
 
-/** The viewfinder controls a session admits beside a running recording. */
 export const RECORDING_CONTROLS = ["zoom", "torch"] as const satisfies readonly CameraRecordingControl[]
 
 const RECORDING_CONTROL_KIND: Readonly<Record<CameraRecordingControl, RecordingControlKind>> = { zoom: "ZoomControl", torch: "TorchControl" }

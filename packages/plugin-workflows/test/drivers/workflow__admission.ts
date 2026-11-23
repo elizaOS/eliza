@@ -15,7 +15,7 @@ export const driver: Driver & AsyncDisposable = {
   },
   async dispatch(key: string, event: Event, by?: unknown) {
     const { service } = await open();
-    return outcome(service.admissionStep(id(key), event, String(by ?? "")));
+    return outcome(service.admissionStep(id(key), event, typeof by === "string" ? by : ""));
   },
   async observe(key: string) {
     const { service } = await open();

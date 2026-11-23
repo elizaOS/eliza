@@ -145,7 +145,7 @@ module node {
         using reply = message.reply
         using callback = message.callback
         if (state.type !== "pending") {
-          using value = vm.unwrapResult(state)
+          using _value = vm.unwrapResult(state)
           throw new Error("The workflow guest did not wait for its context call")
         }
         servicing = true

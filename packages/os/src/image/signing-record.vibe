@@ -200,7 +200,6 @@ effect function readReference(root: string, reference: string) {
   return (tryPromise(() => readArtifact(path.join(root, reference), 4 * 1024 * 1024)) catch () => undefined)
 }
 
-/** The consistency problems of a release's qualification gate record against the descriptor's pinned source lock and the channel; none means consistent, not passed. */
 export effect function qualificationGateProblems(review: GateReview) {
   const raw = object(review.record)
   const recorded = object(raw.gates)

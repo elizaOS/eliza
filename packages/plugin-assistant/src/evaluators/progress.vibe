@@ -2,11 +2,10 @@
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { hashStableJson, type Memory } from "@elizaos/core"
 import {
-  Machine, canCapture, canCommitProgress, canFinishReconciliation, canPrepareReconciliation, canRetireProgress, canRetireReducers, canStageOutput, staleObserved, stored,
+  Machine, canCapture, canCommitProgress, canStageOutput, stored,
   type Evidence, type EvaluatorProgress, type ProgressFailure, type SourceRevision,
 } from "../../gen/assistant__evaluatorProgress.effect.vibe"
 
-/** Who an evaluator's durable progress belongs to. */
 export interface ProgressScope {
   readonly agentId: string
   readonly roomId: string
@@ -19,19 +18,16 @@ const progressKey = ({ agentId, roomId, entityId, evaluator, schemaVersion }: Pr
   `evaluator-progress:${agentId}:${roomId}:${entityId}:${encodeURIComponent(evaluator)}:v${schemaVersion}`
 const outputKey = (scope: ProgressScope, binding: string) => `${progressKey(scope)}:output:${binding}`
 
-/** A message's identity and the stable hash of its complete canonical record. */
 export function sourceOf(message: Memory): SourceRevision {
   return { sourceId: message.id ?? "", revision: hashStableJson({ id: message.id, entityId: message.entityId, roomId: message.roomId, createdAt: message.createdAt, content: message.content }) }
 }
 
-/** The evidence of one batch: the trigger, the sources selected, the references restored and the sources removed since. */
 export function evidenceOf(evidenceId: string, trigger: Memory, selected: readonly Memory[], references: readonly Memory[], removed: readonly string[]): Evidence {
   return { evidenceId, trigger: sourceOf(trigger), selected: selected.map(sourceOf), references: references.map(sourceOf), removed: [...removed] }
 }
 
 const bytesOf = (text: string) => new TextEncoder().encode(text).length
 
-/** What staging or committing an evaluator's output came to. */
 type ProgressAnswer =
   | { readonly kind: "kept"; readonly state: EvaluatorProgress }
   | { readonly kind: "refused"; readonly failure: ProgressFailure; readonly state: EvaluatorProgress }
@@ -43,7 +39,6 @@ effect function writes(key: string, value: string) {
   return Effect.as(store.set(key, value), true) catch () => false
 }
 
-/** The output a previous run staged and did not commit, with its binding, so a resumed batch applies it without new inference. */
 export effect function stagedOutput(scope: ProgressScope) {
   provide stored(progressKey(scope)) {
     const pending = (try (try Machine).get()).record.pending
@@ -54,7 +49,6 @@ export effect function stagedOutput(scope: ProgressScope) {
   }
 }
 
-/** Captures the batch's evidence against the sources as they stand, then stages the validated output before any effect; a staged output is kept, never replaced. */
 export effect function stageEvaluatorOutput(scope: ProgressScope, observed: readonly SourceRevision[], evidence: Evidence, output: string, binding: string) {
   provide stored(progressKey(scope)) {
     const progress = try Machine
@@ -68,7 +62,6 @@ export effect function stageEvaluatorOutput(scope: ProgressScope, observed: read
   }
 }
 
-/** Acknowledges the staged evidence only when every reducer succeeded, moving the checkpoint when one is given. */
 export effect function commitEvaluatorProgress(scope: ProgressScope, effectsSucceeded: boolean, checkpoint: number) {
   provide stored(progressKey(scope)) {
     const progress = try Machine
@@ -78,23 +71,5 @@ export effect function commitEvaluatorProgress(scope: ProgressScope, effectsSucc
     const committed = answer(try orDie(progress.send({ type: "commitProgress", handle: state.snapshot.handle, effectsSucceeded, checkpoint, durable: true })))
     if (committed.kind === "kept" && binding !== "") (try KeyValueStore.KeyValueStore).remove(outputKey(scope, binding)) catch () => undefined
     return committed
-  }
-}
-
-/** Retires evidence that was edited or removed: the audit is prepared first, then the reducers retire, then the progress, then the audit is recorded. */
-effect function reconcileEvaluatorEvidence(scope: ProgressScope, observed: readonly SourceRevision[], retire: (reprocess: readonly string[]) => boolean!unknown) {
-  provide stored(progressKey(scope)) {
-    const progress = try Machine
-    const refreshed = try orDie(progress.send({ type: "refreshSources", observed: [...observed] }))
-    if (!canPrepareReconciliation(refreshed)) return { kind: "kept", state: refreshed } satisfies ProgressAnswer
-    const affected = [...new Set(staleObserved(refreshed).map((source) => source.sourceId))]
-    const prepared = try orDie(progress.send({ type: "prepareReconciliation", durable: true }))
-    if (prepared.failure !== "NoProgressFailure" || !canRetireReducers(prepared, affected)) return answer(prepared)
-    const effectsSucceeded = retire(affected) catch () => false
-    const reduced = try orDie(progress.send({ type: "retireReducers", reprocess: affected, effectsSucceeded }))
-    if (!canRetireProgress(reduced)) return answer(reduced)
-    const retired = try orDie(progress.send({ type: "retireProgress", durable: true }))
-    if (!canFinishReconciliation(retired)) return answer(retired)
-    return answer(try orDie(progress.send({ type: "finishReconciliation", durable: true })))
   }
 }
