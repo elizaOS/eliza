@@ -75,7 +75,14 @@ module node {
   }
 
   function operationOf(parameters: unknown): unknown {
-    return typeof parameters === "object" && parameters !== null && "operation" in parameters ? parameters.operation : undefined
+    const written = typeof parameters === "object" && parameters !== null && "operation" in parameters ? parameters.operation : undefined
+    if (typeof written !== "string") return written
+    try {
+      const parsed: unknown = JSON.parse(written)
+      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : written
+    } catch {
+      return written
+    }
   }
 
   function parametersOf(options: Parameters<Action["handler"]>[3]): unknown {
