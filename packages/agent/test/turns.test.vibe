@@ -61,7 +61,7 @@ module node {
     return id
   }
 
-  export async function seedHistory(runtime: AgentRuntime, asked: Memory, marker: string) {
+  export async function seedDeferredHistory(runtime: AgentRuntime, asked: Memory, marker: string) {
     for (let index = 0; index < 64; index += 1) {
       await runtime.createMessageMemory({
         ...asked, id: `00000000-0000-4000-8000-${String(index + 1000).padStart(12, "0")}` as UUID,
@@ -118,7 +118,7 @@ module node {
     return text
   }
 }
-import { completions, cutTurn, lastTurnPrompt, localDay, overlapping, roomMessages, seedHistory, storeNotice } from node
+import { completions, cutTurn, lastTurnPrompt, localDay, overlapping, roomMessages, seedDeferredHistory, seedHistory, storeNotice } from node
 
 const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 
@@ -289,7 +289,7 @@ it.live(`Restore original history alone and preserve one settled calculation (${
   const original = try host("seeded conversation", () => agent.agent.runtime.getMemoryById(first.userMessageId as UUID))
   if (original === null) return try Effect.die(new Error("The owner message was not stored"))
   const marker = "Pebble tundra."
-  try host("store original history", () => seedHistory(agent.agent.runtime, original, marker))
+  try host("store original history", () => seedDeferredHistory(agent.agent.runtime, original, marker))
   const restore = (scope: string) => ({ name: "RESTORE_CONTEXT", arguments: { scope, reason: "The earlier details are needed." } })
   const calculate = (expression: string) => ({ name: "CALCULATE", arguments: { expression } })
   const discarded = "This mixed draft must stay out of the reply."
