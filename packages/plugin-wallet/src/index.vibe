@@ -9,6 +9,24 @@ export error WalletTransportFailed { cause: unknown }
 
 const walletTtlMs = 60000
 
+function configuredOwner(runtime: IAgentRuntime): string | undefined {
+  const character = runtime.character
+  return "ownerEntityId" in character && typeof character.ownerEntityId === "string" && character.ownerEntityId !== ""
+    ? character.ownerEntityId : undefined
+}
+
+function isConfiguredOwner(runtime: IAgentRuntime, message: Memory): boolean {
+  const owner = configuredOwner(runtime)
+  return owner !== undefined && owner === message.entityId
+}
+
+effect function journalDirectory(runtime: IAgentRuntime) {
+  return try Effect.try({
+    try: () => walletJournalDirectory(resolveStateDir(), runtime.agentId),
+    catch: (cause) => new WalletTransportFailed({ cause }),
+  })
+}
+
 function setting(runtime: IAgentRuntime, key: string): string {
   const value = runtime.getSetting(key)
   return typeof value === "string" ? value.trim() : ""
@@ -105,7 +123,7 @@ effect function submitWalletTransfer(runtime: IAgentRuntime, wallet: WalletCusto
     throw new WalletRequestInvalid({ reason: "The signing request differs from the approved transfer." })
   }
   const intent = reviewed.intent
-  const directory = walletJournalDirectory(resolveStateDir(), runtime.agentId)
+  const directory = try journalDirectory(runtime)
   const existing = try journalEntry(directory, intent.intentId)
   if (existing !== undefined) return { status: "unresolved", state: existing, operationRef: existing.operationRef }
   const now = try Clock.currentTimeMillis
@@ -174,8 +192,8 @@ export interface WalletOwnerDecision {
 export type WalletOwnerReviewResult = WalletDecisionOutcome
 
 export effect function bindWalletOwnerReview(runtime: IAgentRuntime, newReview: WalletOwnerReviewInput, authenticateOwner: () => Promise<string | undefined>) {
-  const ownerId = runtime.character.ownerEntityId
-  if (ownerId === undefined || ownerId === "" || newReview.requestId.trim() === "") throw new WalletRequestInvalid({ reason: "The wallet owner or review identity is missing." })
+  const ownerId = configuredOwner(runtime)
+  if (ownerId === undefined || newReview.requestId.trim() === "") throw new WalletRequestInvalid({ reason: "The wallet owner or review identity is missing." })
   const owner = try tryPromise({ try: () => authenticateOwner(), catch: (cause) => new WalletTransportFailed({ cause }) })
   if (owner !== ownerId) throw new WalletRequestInvalid({ reason: "The local wallet review is available only to the authenticated owner." })
   const configuration = try walletConfiguration(runtime, newReview.family)
@@ -186,7 +204,10 @@ export effect function bindWalletOwnerReview(runtime: IAgentRuntime, newReview: 
     const maximumFee = try feeLimit(runtime)
     const commitment = transferCommitment(wallet, transfer, maximumFee)
     const intent: WalletIntent = {
-      intentId: walletDigest([runtime.agentId, ownerId, newReview.requestId, commitment]),
+      intentId: try Effect.try({
+        try: () => walletDigest([runtime.agentId, ownerId, newReview.requestId, commitment]),
+        catch: (cause) => new WalletTransportFailed({ cause }),
+      }),
       commitment, account: wallet.account, chainId: wallet.chainId, family: wallet.family,
       backend: "LocalSigner", operation: "AssetTransfer", intentMode: "WalletExecution",
     }
@@ -224,11 +245,11 @@ export effect function bindWalletOwnerReview(runtime: IAgentRuntime, newReview: 
 }
 
 effect function runWallet(runtime: IAgentRuntime, message: Memory, options: unknown) {
-  if (runtime.character.ownerEntityId !== message.entityId) throw new WalletRequestInvalid({ reason: "Only the configured wallet owner may use this wallet." })
+  if (!isConfiguredOwner(runtime, message)) throw new WalletRequestInvalid({ reason: "Only the configured wallet owner may use this wallet." })
   const subaction = parameter(options, "subaction")
   const family = parameter(options, "chain")
   const configuration = try walletConfiguration(runtime, family)
-  const directory = walletJournalDirectory(resolveStateDir(), runtime.agentId)
+  const directory = try journalDirectory(runtime)
   const wallet = try tryPromise({ try: () => openWallet(configuration), catch: (cause) => new WalletTransportFailed({ cause }) })
   return try ensuring(effect {
     if (subaction === "balance") return try walletBalance(wallet, runtime, parameter(options, "token"), family)
@@ -282,7 +303,7 @@ export const walletAction: Action = {
     { name: "recipient", description: "The receiving wallet address.", requiredForSubactions: ["transfer"], schema: { type: "string" } },
     { name: "intentId", description: "The original transfer identity for reconciliation.", requiredForSubactions: ["reconcile"], schema: { type: "string" } },
   ],
-  validate: (runtime, message) => Promise.resolve(runtime.character.ownerEntityId === message.entityId),
+  validate: (runtime, message) => Promise.resolve(isConfiguredOwner(runtime, message)),
   handler: (runtime, message, _state, options) => runPromise(runWallet(runtime, message, options)),
 }
 

@@ -16,9 +16,7 @@ module node {
   const run = promisify(execFile)
   export const captureIdentity = randomUUID
 
-  export function hasDesktopCapture(): boolean {
-    return platform === "darwin"
-  }
+  export const hasDesktopCapture = platform === "darwin"
 
   export async function captureNative(source: CaptureSource, camera: string, ocr: boolean, signal: AbortSignal) {
     const directory = await mkdtemp(join(tmpdir(), "eliza-vision-"))
@@ -89,7 +87,7 @@ export effect function observeVision(runtime: IAgentRuntime, source: CaptureSour
   const mode = visionMode(runtime)
   const camera = readSetting(runtime, "VISION_CAMERA_INPUT")
   const cameraConnected = camera !== ""
-  const screenConnected = hasDesktopCapture()
+  const screenConnected = hasDesktopCapture
   const protectedScreen = source === "ScreenSource" ? try screenIsProtected(runtime) : false
   if (!sourceAllowed(mode, source, cameraConnected, screenConnected, protectedScreen)) {
     throw new VisionRefused({ reason: "The selected visual source is disabled, unavailable, or protected." })
@@ -134,7 +132,9 @@ function parameter(options: unknown, key: string): unknown {
 }
 
 function owner(runtime: IAgentRuntime, message: Memory): boolean {
-  return runtime.character.ownerEntityId === message.entityId
+  const character = runtime.character
+  return "ownerEntityId" in character && typeof character.ownerEntityId === "string" &&
+    character.ownerEntityId !== "" && character.ownerEntityId === message.entityId
 }
 
 export const visionAction: Action = {
