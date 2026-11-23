@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
-import { cutOffReply, unavailableNotice } from "../gen/agent__conversation__planning.ts"
+import { cutOffReply, maxPlanSteps, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
@@ -138,7 +138,7 @@ effect function send(agent: InProcess, id: string, body: object, headers?: Reado
 const replyOf = (answer: { readonly body: unknown }) => answer.body as Reply
 const stamp = /^\[message_at=[^\]]+\] /
 
-it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix and live wait, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again")', effect () => {
+it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix and live wait, a turn that failed for no named cause is a provider issue I can retry, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const state = try scratch("turns")
   const first = try cloudAgent(cloud, state)
@@ -157,6 +157,11 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   try Effect.sync(() => cloud.script(held(gate.promise, text("Slow answer."))))
   const overlap = try host("overlapping sends", () => overlapping(first.transport.kind === "socket" ? first.transport.path : "", first.frame.token, cloud, id, gate.resolve))
   const afterOverlap = completions(cloud)
+
+  try Effect.sync(() => cloud.script(...Array.from({ length: maxPlanSteps }, () => toolCalls("", { name: "IGNORE", arguments: {} }))))
+  const unnamed = try send(first, id, { text: "Say something.", clientMessageId: "m-5" })
+  const unnamedAgain = try send(first, id, { text: "Say something.", clientMessageId: "m-5" })
+  const storedUnnamed = try host("stored unnamed failure", () => first.agent.runtime.getMemoryById(replyOf(unnamed).messageId as UUID))
 
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const unfunded = try send(first, id, { text: "Answer me.", clientMessageId: "m-3" })
@@ -190,6 +195,10 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
     assert.deepStrictEqual(
       { owner: owner.status, text: replyOf(owner).text, joinedSame: replyOf(joined).messageId === replyOf(owner).messageId, busy: answerOf(overlap.busy), otherBody: answerOf(overlap.otherBody), calls: afterOverlap },
       { owner: 200, text: "Slow answer.", joinedSame: true, busy: { status: 429, body: { error: "ROOM_BUSY" } }, otherBody: { status: 409, body: { error: "CHAT_IDEMPOTENCY_CONFLICT" } }, calls: 3 })
+    assert.deepStrictEqual({
+      status: unnamed.status, text: replyOf(unnamed).text, failureKind: replyOf(unnamed).failureKind, planAction: replyOf(unnamed).planAction,
+      replayed: replyOf(unnamedAgain).messageId === replyOf(unnamed).messageId, stored: storedUnnamed?.content.failureKind,
+    }, { status: 200, text: "", failureKind: "provider_issue", planAction: "retry", replayed: true, stored: "provider_issue" })
     assert.deepStrictEqual({ status: unfunded.status, failureKind: replyOf(unfunded).failureKind, planAction: replyOf(unfunded).planAction, stored: storedFailure?.content.failureKind },
       { status: 200, failureKind: "insufficient_credits", planAction: "funding", stored: "insufficient_credits" })
     const wait = replyOf(limited).retryAfterMs ?? -1
