@@ -295,8 +295,9 @@ pure def lawOneTabClosesAreProposedAsAsked(form: TabCloseForm, negotiated: Negot
 
 ### A refused Browser proposal tells me how to ask, and never says anything opened
 
-A refused open answers the owner with how to ask for an address, as the
-open command it takes such as "open nytimes.com", when the message has
+A refused open answers the owner with how to ask for an address, with a
+plain example address such as example.com that reads aloud as an ordinary
+sentence, with no quotes and no command phrase, when the message has
 none, and only that the address was not opened when it has one; a refused search asks for the words to search for; a refused close of
 every tab says the phone closes one tab at a time and nothing closed; a
 refused reload of a page the phone withheld says the page was not reloaded

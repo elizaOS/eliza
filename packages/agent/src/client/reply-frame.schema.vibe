@@ -24,6 +24,7 @@ export schema DoneFrame {
   readonly failureKind?: Schema.NonEmptyString
   readonly planAction?: PlanAction
   readonly retryAfterMs?: ProviderWait
+  readonly cutOffEffect?: "applied"
   readonly action?: VoiceActionLabel
 }
 export schema ErrorFrame { readonly type: "error"; readonly code: Schema.NonEmptyString; readonly message: string }

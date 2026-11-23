@@ -196,6 +196,18 @@ pure def billingOf(status: int): CallBilling =
   else if (status == 401 or status == 403 or status == 429 or status >= 500) CallNotBilled
   else CallUnclear
 pure def unclearAnswerIsInvalid(status: int): bool = status >= 400 and status <= 499 and billingOf(status) == CallUnclear
+pure def placeIdRefused(op: MapsOperation, status: int, refusesTheArgument: bool): bool =
+  op == PlaceDetails and status == 400 and refusesTheArgument
+pure def lostReplyRefusal(op: MapsOperation, status: int, refusesTheArgument: bool): RefusalCode =
+  if (placeIdRefused(op, status, refusesTheArgument)) InvalidRequest
+  else if (unclearAnswerIsInvalid(status)) ProviderInvalidResponse
+  else ProviderUnavailable
+pure def lawOnlyAPlaceIdTheProviderRefusesIsTheCallersFault(op: MapsOperation, status: int, refusesTheArgument: bool): bool =
+  lostReplyRefusal(op, status, refusesTheArgument) == InvalidRequest implies (op == PlaceDetails and status == 400 and refusesTheArgument)
+pure def lawARefusedPlaceIdIsStillALostReply(op: MapsOperation, status: int, refusesTheArgument: bool): bool =
+  placeIdRefused(op, status, refusesTheArgument) implies (billingOf(status) == CallUnclear and unclearAnswerIsInvalid(status))
+pure def lawAnotherOperationsUnnamed4xxIsTheProvidersFault(op: MapsOperation, status: int, refusesTheArgument: bool): bool =
+  (op != PlaceDetails and unclearAnswerIsInvalid(status)) implies lostReplyRefusal(op, status, refusesTheArgument) == ProviderInvalidResponse
 pure val unbilledGeocodeStatuses = Set("OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT", "REQUEST_DENIED", "UNKNOWN_ERROR")
 pure def geocodeBillingOf(status: int, geocodeStatus: str): CallBilling =
   if (billingOf(status) == CallNotBilled or ((status == 200 or status == 400 or status == 404) and unbilledGeocodeStatuses.contains(geocodeStatus))) CallNotBilled

@@ -10,10 +10,11 @@ import { osmAttribution, osmMapsProvider } from "./maps-osm.vibe"
 export type MapsSettings = typeof MapsSettingsSchema.Type
 type GoogleSettings = Extract<MapsSettings, { readonly provider: "google" }>
 export type ProviderRefusal = "InvalidRequest" | "NoRoute" | "UnsupportedMode" | "UnsupportedRegion" | "ProviderInvalidResponse" | "ProviderUnavailable"
+export type LostReplyRefusal = "ProviderInvalidResponse" | "ProviderUnavailable"
 export type MapsReply<A> =
   | { readonly kind: "answered"; readonly value: A; readonly observedMicros: Micros }
   | { readonly kind: "refused"; readonly code: ProviderRefusal; readonly observedMicros: Micros | null }
-  | { readonly kind: "unknown"; readonly cause: string; readonly code: ProviderRefusal }
+  | { readonly kind: "unknown"; readonly cause: string; readonly code: LostReplyRefusal }
 export interface MapsTile { readonly bytes: Uint8Array; readonly contentType: "image/png" | "image/jpeg" | "image/webp"; readonly attribution: string }
 export type MapsContext = HttpClient.HttpClient | Deployment
 
@@ -79,7 +80,7 @@ export function describeMaps(settings: MapsSettings | undefined, operator: strin
 error Refused { code: ProviderRefusal }
 error UnpricedRefusal { code: "InvalidRequest" | "ProviderInvalidResponse" }
 error Rejected { status: number }
-error Lost { cause: string; code: ProviderRefusal }
+error Lost { cause: string; code: LostReplyRefusal }
 type Stop = Refused | UnpricedRefusal | Rejected | Lost
 type Meter = { observed: Micros }
 type Got = { readonly status: number; readonly bytes: Uint8Array; readonly contentType: string | undefined }

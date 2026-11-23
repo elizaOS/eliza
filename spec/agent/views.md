@@ -176,7 +176,10 @@ It prepares with a fresh UUID, refuses unless the returned binding is
 exactly its own, and returns `values {mode: "show", viewId, viewPath,
 viewType: "gui", label, completedActionDelivered: false,
 completedActionHandoffId, navigationPrepared: true, navigationBinding}`
-and no other key (core views parses them).
+and no other key (core views parses them). The turn's completed action
+includes the validated prepared handoff in its reply's action data, so the
+renderer can claim the request using that exact binding. A refusal carries
+no prepared handoff.
 
 ```quint
 pure def targets(h: ViewHost, target: str): List[DeclaredView] = h.views.select(d => namesOf(d).includes(target))

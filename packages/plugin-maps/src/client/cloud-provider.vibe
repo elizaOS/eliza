@@ -1,4 +1,4 @@
-// spec/maps/cloudConnection.md, "The newest qualifying coverage read can install the Cloud provider"; spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/requests.md, "No request starts while a pause is in effect"; spec/maps/requests.md, "Only a refusal of the current request sets the pause"; spec/maps/attribution.md, "Moving the view or asking again hides the shown attribution"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"
+// spec/maps/cloudConnection.md, "The newest qualifying coverage read can install the Cloud provider"; spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/requests.md, "No request starts while a pause is in effect"; spec/maps/requests.md, "Only a refusal of the current request sets the pause"; spec/maps/attribution.md, "Moving the view or asking again hides the shown attribution"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner's words, naming the place a start could not look up"
 import { CloudError, type CloudClient, type CloudFailure } from "@elizaos/cloud/client"
 import { cloudReadMayReturn, cloudReadMayStart, initial as neverConnected, machineOver as connectionOver, signedOut, type CloudReadKind, type CoverageReply, type MapsBinding } from "../../gen/maps__cloudConnection.effect.vibe"
 import { canRequest, initial as unpaused, machineOver as requestsOver, type MapRequests } from "../../gen/maps__requests.effect.vibe"
@@ -93,6 +93,9 @@ export function insideCloudCoverage(coverage: Pick<CloudMapsCoverage, "regions">
 
 const dayMs = 86_400_000
 
+/** What the owner hears for an answer from Cloud Maps that cannot be used. */
+export const unusableMapsAnswer = "Maps got an answer it couldn't use. Try again in a moment."
+
 export function cloudMapsFailure(failure: CloudFailure, now: number): MapsFailure {
   const refused = (code: MapsFailure["code"], message: string) => new MapsFailure({ code, message })
   switch (failure.tag) {
@@ -108,7 +111,7 @@ export function cloudMapsFailure(failure: CloudFailure, now: number): MapsFailur
       return refused("rate-limited", `Maps request limit reached. ${wait}`)
     }
     case "CloudUnavailable": return refused("unavailable", "Cloud Maps is temporarily unavailable. Try again later.")
-    case "CloudProviderIssue": return refused("invalid-response", "Cloud Maps sent an invalid response.")
+    case "CloudProviderIssue": return refused("invalid-response", unusableMapsAnswer)
     case "CloudNetwork": return refused("offline", "Cloud Maps is unreachable. Check the connection.")
     case "CloudRefused": switch (failure.code) {
       case "NoRoute": return refused("unsupported", "No route is available between these places.")
@@ -120,7 +123,8 @@ export function cloudMapsFailure(failure: CloudFailure, now: number): MapsFailur
       case "IdempotencyConflict":
       case "AlreadyDispatched": return refused("unavailable", "This Maps request could not be confirmed. It will not retry automatically.")
       case "BillingStateConflict": return refused("unavailable", "Your plan changed. Try the Maps request again.")
-      case "ProviderInvalidResponse": return refused("invalid-response", "Cloud Maps sent an invalid response.")
+      case "ProviderInvalidResponse": return refused("invalid-response", unusableMapsAnswer)
+      case "InvalidRequest": return refused("unsupported", "Cloud Maps could not use this request.")
       case "RateLimited": return refused("rate-limited", "Maps request limit reached. Try again later.")
       default: return refused("unavailable", "Cloud Maps could not complete this request.")
     }

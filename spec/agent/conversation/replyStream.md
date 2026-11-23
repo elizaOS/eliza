@@ -12,8 +12,8 @@ framing and its heartbeats. The frames are:
 | `acknowledgment` | `{text}`: the turn's brief cue that it heard the request ([planning](./planning.md)), at most once, never part of the text; shown and spoken |
 | `status` | `{activity}`: what the turn is doing, display only |
 | `tool` | `{name, label}`: a tool the turn runs and its label for the owner, `Using <app>` or `Working` ([planning](./planning.md)), display only |
-| `reply_ready` | `{fullText, actionResults}`: the settled reply before it is stored |
-| `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, planAction?, retryAfterMs?}`, the fix and live wait of [turns](./turns.md) |
+| `reply_ready` | `{fullText, actionResults}`: the stored reply ahead of the terminal frame |
+| `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, planAction?, retryAfterMs?, cutOffEffect?}`, with the fix, live wait and negotiated effect marker of [turns](./turns.md) |
 | `error` | `{code, message}`: the turn left no reply |
 
 One machine follows one request. The turn itself (admission, deadline,
@@ -161,10 +161,12 @@ pure def stepFramesRebuildTheText(before: ReplyStream, after: ReplyStream, out: 
 
 ### A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark
 
-Draft and action-callback text is provisional; model text is not. A voice
-client never speaks provisional text, so an append can only keep or add
-the mark: a client that ORs the mark over appends and one that reads it
-per frame agree.
+Resident chat sends model text, action callbacks and corrected previews as
+provisional until the turn settles. A tool call or reply check can still
+change the preview. A voice client never speaks provisional text, so an
+append can only keep or add the mark: a client that ORs the mark over
+appends and one that reads it per frame agree. The terminal reply carries
+the settled text and clears the mark.
 
 ```quint
 pure def canAppendText(s: ReplyStream, units: List[int]): bool = s.role == Streams and isOpen(s.phase) and units.length() > 0
@@ -250,9 +252,12 @@ pure def sometimesAcknowledgedThenTool(s: ReplyStream): bool = s.ack == AckSent 
 
 ### The early reply is written at most once, and a stream that announced it ends with an answered done carrying the same action results
 
-`reply_ready` lets a voice client speak a plain reply with no action
-results before it is stored, so a failed turn never announces one, and an
-announcement still waiting when the terminal comes is never written.
+`reply_ready` lets a voice client speak a stored plain reply with no action
+results while delivery cleanup settles. A reply whose write failed has no
+announcement. Replies with action results wait for the terminal so the host
+can check any renderer-bound result at egress. Task presentations also wait because their
+choices and revision are checked again after storage. An announcement
+still waiting when the terminal comes is never written.
 
 ```quint
 pure def announcedResults(r: Readiness): int = match r { | ReadyPending(x) => x.results | ReadySent(x) => x.results | NotReady => -1 }
@@ -278,7 +283,9 @@ A stored reply ends with `done`, its failure kind included (account
 failure, `timeout` or `aborted`); a turn that left no reply ends with
 `error` (`ASSISTANT_RESPONSE_UNAVAILABLE`, or a server failure). The
 terminal replaces whatever text was still waiting, and the response ends
-once it has left.
+once it has left. The client returns the failure as soon as it reads a
+complete `error` event, even if the transport has yet to close. After
+`done` it still checks that no further events arrive before EOF.
 
 ```quint
 pure def canFinish(s: ReplyStream, reply: int, kind: T::ReplyKind, results: int): bool =

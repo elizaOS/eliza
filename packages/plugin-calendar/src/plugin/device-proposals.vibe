@@ -150,7 +150,7 @@ const unreached: Readonly<Record<ProposalReach, string>> = {
 
 function form(key: FormKey, schema: ActionParameterSchema, type: DeviceOperation["type"], guidance: string): ProposalForm {
   return {
-    types: [type], schema, guidance, offered: (device) => has(device, ...needOf[key]),
+    types: [type], schema, guidance: [guidance], offered: (device) => has(device, ...needOf[key]),
     now: { unavailable: unreached[reachOf[key]], available: (turn) => admitted(turn, key) },
   }
 }
@@ -555,7 +555,7 @@ export const calendarProposalFamily: DeviceProposalFamily = {
   name: "calendar",
   types: ["calendar_read_next", "calendar_create_local", "calendar_create", "calendar_read_selected", "calendar_update", "calendar_delete", "calendar_availability", "calendar_named"],
   forms,
-  guidance: () => "Phone-native Calendar data uses these device reviews. A next-event read works from any screen; a named event, availability check or new event the phone resolves itself works from Home or Calendar; an operation on an exact event or calendar needs it selected on the phone. Other Calendar requests, and any turn with an app Calendar selection, use the CALENDAR action; a phone capability never redirects an app record.",
+  guidance: () => ["Phone-native Calendar data uses these device reviews. A next-event read works from any screen; a named event, availability check or new event the phone resolves itself works from Home or Calendar; an operation on an exact event or calendar needs it selected on the phone. Other Calendar requests, and any turn with an app Calendar selection, use the CALENDAR action; a phone capability never redirects an app record."],
   ground: (proposed, turn) => succeed(groundCalendar(proposed.operation, turn)),
   proposedText: proposedCalendarText,
   settledText: settledCalendarText,
