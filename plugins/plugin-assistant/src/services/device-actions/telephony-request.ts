@@ -16,12 +16,17 @@ export type AuthoredTelephonyRequest = "call" | "text" | "sender";
 const target = (names: "{0,2}" | "{0,2}?") =>
   String.raw`(?:\+?[\d(][\d\s().-]{5,}\d|\d{3,6}|[\p{L}][\p{L}'’.-]*(?:\s+[\p{L}][\p{L}'’.-]*)${names})`;
 const TARGET = target("{0,2}");
-// Words after the callee that only say how or when: "call mom again", "call
-// Sam back", "call Maya right now, please". They never name anyone.
-const TRAILING = String.raw`(?:,?\s+(?:please|now|right\s+now|right\s+away|again|back|asap|for\s+me))`;
+const CALLBACK_WORDS = "again|back";
+const CALLBACK_WORD = new RegExp("^(?:" + CALLBACK_WORDS + ")$", "iu");
+const LOWERCASE_CALLBACK_SUFFIX = new RegExp(
+  "(?:\\s+(?:" + CALLBACK_WORDS + "))+$",
+  "u",
+);
+const TRAILING = String.raw`(?:,?\s+(?:please|now|right\s+now|right\s+away|${CALLBACK_WORDS}|asap|for\s+me))`;
+const TRAILING_WORD = new RegExp(TRAILING + "$", "iu");
 const COURTESY = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`;
 const CALL = new RegExp(
-  `${COURTESY}(?:call|ring|phone|dial)\\s+(${TARGET})${TRAILING}*[.!?]*$`,
+  `${COURTESY}(?:call|ring|phone|dial)\\s+(${TARGET})(${TRAILING}*)[.!?]*$`,
   "iu",
 );
 const textCommand = (recipient: string) =>
@@ -136,6 +141,20 @@ export type AuthoredTelephonyTarget =
   | { kind: "number"; number: string }
   | { kind: "contact"; query: string };
 
+export function isWrittenCallbackName(word: string): boolean {
+  return CALLBACK_WORD.test(word) && word !== word.toLowerCase();
+}
+
+function stripTimingSuffixes(targetText: string): string {
+  let written = targetText.replace(/[.!?]+$/u, "");
+  let suffix = TRAILING_WORD.exec(written);
+  while (suffix && !isWrittenCallbackName(suffix[0].trim())) {
+    written = written.slice(0, suffix.index);
+    suffix = TRAILING_WORD.exec(written);
+  }
+  return written;
+}
+
 /**
  * The recipient of a whole-message call or text command ("call 415-555-0100",
  * "text my mom saying ..."), taken from the owner's own words: a written
@@ -152,17 +171,21 @@ export function authoredTelephonyTarget(
   if (!request) return;
   // A greedy name also takes a trailing "please", "again", "back" or "right
   // now", and "Maya's mobile" names Maya: the address book has no "Maya's".
-  const written = (request === "call" ? CALL : TEXT_RECIPIENT)
-    .exec(text.trim())?.[1]
-    ?.replace(/[.!?]+$/u, "")
-    .replace(new RegExp(`${TRAILING}+$`, "iu"), "")
+  const matched = (request === "call" ? CALL : TEXT_RECIPIENT).exec(
+    text.trim(),
+  );
+  const captured = matched?.[1];
+  if (!captured) return { request };
+  const numeric = /^[+\d(]/.test(captured);
+  const trailer = numeric ? "" : (matched?.[2] ?? "");
+  const written = stripTimingSuffixes(captured + trailer)
     .replace(
       /['’]s\s+(?:cell(?:\s+phone)?|mobile(?:\s+phone)?|phone|work(?:\s+phone)?|home(?:\s+phone)?|office|landline)(?:\s+(?:number|line))?$/iu,
       "",
     )
     .trim();
   if (!written) return { request };
-  if (/^[+\d(]/.test(written)) {
+  if (numeric) {
     try {
       return {
         request,
@@ -178,7 +201,7 @@ export function authoredTelephonyTarget(
   const query = written
     .replace(/^(?:my|our)\s+/iu, "")
     .replace(/[.!?]+$/u, "")
-    .replace(/(?:\s+(?:back|again))+$/u, "")
+    .replace(LOWERCASE_CALLBACK_SUFFIX, "")
     .replace(
       /['’]s\s+(?:cellphone|cell|mobile|phone|number|landline)(?:\s+(?:phone|number))?$/iu,
       "",
