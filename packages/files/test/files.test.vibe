@@ -6,6 +6,52 @@ import { FilesVolume, filesReviews, filesView, nativeVolume, runBatch, undoBatch
 import { FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY, FILES_SHOWN_TARGET_GUIDANCE, FilesOperationRefused, filesOperationAdmitted, filesToolSurface, type FilesAgentRunner } from "../src/contract.vibe"
 import { localVolume } from "../src/storage/local-volume.vibe"
 import { workspace } from "../src/workspace.vibe"
+import { plugin } from "../src/index.vibe"
+import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { filesProposalFamily } from "../src/device-proposals.vibe"
+
+module node {
+  import { Effect } from "effect"
+  import { AgentRuntime, stringToUuid } from "@elizaos/core"
+  import { negotiation, readOperation, validate, type DeviceTurn, type Grounding } from "@elizaos/agent/device-actions"
+  import { filesProposalFamily } from "../src/device-proposals.vibe"
+
+  const asked = "Trash the first two files"
+
+  function chatTurn(runtime: AgentRuntime, capabilities: readonly string[]): DeviceTurn {
+    const negotiated = negotiation(true, capabilities.join(","))
+    const id = stringToUuid(`files-chat:${capabilities.join(",")}`)
+    return {
+      runtime, by: { agentId: runtime.agentId, actorId: "owner", connector: runtime.agentId }, negotiation: negotiated, capabilities,
+      message: { id, entityId: id, roomId: id, content: { text: asked } }, ownerText: asked,
+      observation: { view: "files", revision: 1, sensitive: false }, completedActionNavigation: false,
+      conversationId: "files-chat", requestId: "files-chat-1", assistantName: "Eliza", swapped: [], startedAt: 0, timeZone: undefined,
+      signal: new AbortController().signal,
+      admit: (operation) => validate(operation, negotiated, "NoBinding"),
+      earlier: () => Effect.succeed([]),
+    }
+  }
+
+  export async function proposeFiles(runtime: AgentRuntime, capabilities: readonly string[], operation: unknown): Promise<Grounding | undefined> {
+    const checked = readOperation(operation)
+    return checked === undefined ? undefined : Effect.runPromise(filesProposalFamily.ground(checked, chatTurn(runtime, capabilities)))
+  }
+
+  export function offeredForms(runtime: AgentRuntime, capabilities: readonly string[]): number {
+    const turn = chatTurn(runtime, capabilities)
+    return filesProposalFamily.forms.filter((form) => form.offered(turn)).length
+  }
+
+  export function guidanceFor(runtime: AgentRuntime, capabilities: readonly string[]): string | undefined {
+    return filesProposalFamily.guidance(chatTurn(runtime, capabilities))
+  }
+
+  export function chatRuntime(): AgentRuntime {
+    return new AgentRuntime({ character: { name: "Eliza", bio: [] } })
+  }
+}
+
+import { chatRuntime, guidanceFor, offeredForms, proposeFiles } from node
 
 const check = (assertion: () => void) => Effect.try(assertion)
 const both = [FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY]
@@ -163,7 +209,7 @@ it.effect('Open the file I asked for, and only from what I was shown (spec/files
   })
 })
 
-it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none")', effect () => {
+it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed only within the Files bounds and as the peer negotiated it"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none")', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const { root } = try storage({ "Download/lease.pdf": "lease", "Download/lease notes.txt": "notes" })
@@ -177,8 +223,16 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
           shownPaths: (shown) => mapError(view.shownPaths(shown), () => new FilesOperationRefused({ input: shown, reason: "not shown" })),
           run: () => succeed({ status: "succeeded", summary: "" }),
         }
+        const runtime = try Effect.try(() => chatRuntime())
+        try tryPromise(async () => plugin.init?.({}, runtime))
+        const rival = try Effect.flip(registerDeviceProposalFamily(runtime, { ...filesProposalFamily, name: "notes" }))
+        const chat = (capabilities: readonly string[], operation: unknown) => tryPromise(() => proposeFiles(runtime, capabilities, operation))
+        const asked = try chat(both, { type: "files_trash", shown: [2, 1] })
+        const unnegotiatedAsk = try chat([FILES_CAPABILITY], { type: "files_share", shown: [1] })
+        const chosenIdentity = try chat(both, { type: "files_move", paths: ["Download/lease.pdf/"], dest: "Archive", reviewed: ["a".repeat(43)] })
+        const hiddenFolder = try chat(both, { type: "files_folder_create", parent: "Download", name: ".cache" })
         const reviews = try filesReviews(runner, both)
-        const trash = try reviews.review("p1", "d1", { type: "files_trash", shown: [2, 1] })
+        const trash = try reviews.review("p1", "d1", asked?.kind === "Grounded" ? asked.operation : undefined)
         const share = try reviews.review("p2", "d2", { type: "files_share", shown: [1] })
         const unresolved = try reviews.review("p3", "d3", { type: "files_trash", shown: [3] })
         const unnegotiated = try (try filesReviews(runner, [FILES_CAPABILITY])).review("p4", "d4", { type: "files_share", shown: [1] })
@@ -203,6 +257,15 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
           assert.deepEqual(filesToolSurface(both).guidance, [FILES_SHOWN_TARGET_GUIDANCE])
           assert.equal(filesToolSurface([]).schemas.length, 0)
           assert.equal(filesToolSurface(both).schemas.length - filesToolSurface([FILES_CAPABILITY]).schemas.length, 3)
+          assert.deepEqual({
+            rival: rival._tag, asked, unnegotiated: unnegotiatedAsk?.kind, chosenIdentity, hiddenFolder: hiddenFolder?.kind,
+            forms: [offeredForms(runtime, []), offeredForms(runtime, [FILES_CAPABILITY]), offeredForms(runtime, both)],
+            guided: guidanceFor(runtime, both)?.includes(FILES_SHOWN_TARGET_GUIDANCE),
+          }, {
+            rival: "FamilyConflict", asked: { kind: "Grounded", operation: { type: "files_trash", shown: [2, 1] } }, unnegotiated: "Refused",
+            chosenIdentity: { kind: "Grounded", operation: { type: "files_move", paths: ["Download/lease.pdf"], dest: "Archive" } }, hiddenFolder: "Refused",
+            forms: [0, 6, 9], guided: true,
+          })
         })
       }
     })
