@@ -57,23 +57,43 @@ pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool =
 
 The system prompt is the character's alone: its system text, bio, style
 and message examples. The offered tools are sent in the order of their
-names. The history follows, then the person's latest message, and only
-after it what this turn adds: the screen context, the task the turn runs
-for and the note that older history is not shown, each labelled as a note
-from the agent host. A provider reuses a request's prompt cache up to its
-first changed byte, and the cached prefix is the tools, then the system
-prompt, then the messages, so a part that changes with the turn placed
-before the history costs every message after it.
+names, each in the form the turn gives it (below), so they change only
+when what the turn offers does. The history follows, then the person's
+latest message, and only after it what this turn adds: the screen
+context, the device outcomes of this conversation's earlier requests, the
+task the turn runs for and the note that older history is not shown,
+each labelled as a note from the agent host. A provider reuses a
+request's prompt cache up to its first changed byte, and the cached prefix
+is the tools, then the system prompt, then the messages, so a part that
+changes with the turn placed before the history costs every message after
+it.
 
 ```quint
-type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | TaskNote | WindowNotice
+type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice
 pure def promptPosition(p: PromptPart): int = match p {
-  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | TaskNote => 5 | WindowNotice => 6
+  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | DeviceNote => 5 | TaskNote => 6 | WindowNotice => 7
 }
-pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == TaskNote or p == WindowNotice
-pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, TaskNote, WindowNotice)
+pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == DeviceNote or p == TaskNote or p == WindowNotice
+pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, DeviceNote, TaskNote, WindowNotice)
 pure def lawNothingPerTurnPrecedesTheHistory(p: PromptPart): bool = changesPerTurn(p) implies promptPosition(p) > promptPosition(PriorHistory)
 pure def lawTheConstantPartsLead(p: PromptPart): bool = not(changesPerTurn(p)) implies promptPosition(p) <= promptPosition(PriorHistory)
+```
+
+### An action may narrow its tool to the turn, never beyond its registered form
+
+An action may give the turn its own description and, for parameters it
+registered, a narrower schema: the device proposal tool offers only the
+operation forms this turn's device negotiated. A narrowed schema for a
+parameter the action never registered is dropped, and the action's handler
+still checks its arguments against everything its registered form allows.
+
+```quint
+pure def turnNarrowed(registered: Set[str], narrowed: Set[str]): Set[str] = registered.intersect(narrowed)
+pure val narrowedValues = Set(Set(), Set("operation"), Set("operation", "extra"))
+pure def lawATurnNarrowsOnlyRegisteredParameters(registered: Set[str], narrowed: Set[str]): bool =
+  turnNarrowed(registered, narrowed).subseteq(registered)
+pure def lawEveryRegisteredParameterTheTurnNamesIsNarrowed(registered: Set[str], narrowed: Set[str]): bool =
+  registered.forall(p => narrowed.contains(p) implies turnNarrowed(registered, narrowed).contains(p))
 ```
 
 ### The model reads what was said in the conversation, in a window taken once for the whole turn
@@ -140,7 +160,8 @@ pure def lawWithoutACutOffPlanningGoesOn(taken: int, calls: int, terminal: bool)
 
 A later `Applied` step with the same operation key closes an earlier
 failure or proposal of it. A pre-dispatch refusal had no effect, so any
-later `Applied` or `NoEffect` step of the same action closes it. A later
+later `Applied`, `NoEffect` or `Proposed` step of the same action closes it:
+a refused proposal the model corrects is reported only as the proposal. A later
 failure of an operation replaces its earlier open outcome. What stays open
 is what the reply must report: each open failure as that action's failure,
 each open proposal as awaiting the owner, whatever the model's prose
@@ -149,15 +170,15 @@ claims.
 ```quint
 pure def supersedes(later: PlanStep, earlier: PlanStep): bool =
   (later.outcome == Applied and later.operation == earlier.operation) or
-  (earlier.outcome == Rejected and later.actionName == earlier.actionName and (later.outcome == Applied or later.outcome == NoEffect))
+  (earlier.outcome == Rejected and later.actionName == earlier.actionName and (later.outcome == Applied or later.outcome == NoEffect or later.outcome == Proposed))
 pure def opens(o: StepOutcome): bool = o == Failed or o == Rejected or o == Proposed
 pure def settleStep(held: List[PlanStep], entry: PlanStep): List[PlanStep] =
-  if (opens(entry.outcome)) held.select(p => p.operation != entry.operation).append(entry)
+  if (opens(entry.outcome)) held.select(p => p.operation != entry.operation and not(supersedes(entry, p))).append(entry)
   else held.select(p => not(supersedes(entry, p)))
 pure def openOutcomes(steps: List[PlanStep]): List[PlanStep] = steps.foldl(List(), (held, entry) => settleStep(held, entry))
 pure def failedOpen(steps: List[PlanStep]): List[PlanStep] = openOutcomes(steps).select(p => p.outcome == Failed or p.outcome == Rejected)
 pure val earlierValues = Set({ actionName: "SEND", outcome: Failed, operation: "send:a" }, { actionName: "SEND", outcome: Rejected, operation: "send:x" }, { actionName: "SEND", outcome: Proposed, operation: "send:a" })
-pure val laterValues = Set({ actionName: "SEND", outcome: Applied, operation: "send:a" }, { actionName: "SEND", outcome: Applied, operation: "send:b" }, { actionName: "NOTE", outcome: Applied, operation: "note:a" }, { actionName: "SEND", outcome: NoEffect, operation: "send:y" })
+pure val laterValues = Set({ actionName: "SEND", outcome: Applied, operation: "send:a" }, { actionName: "SEND", outcome: Applied, operation: "send:b" }, { actionName: "NOTE", outcome: Applied, operation: "note:a" }, { actionName: "SEND", outcome: NoEffect, operation: "send:y" }, { actionName: "SEND", outcome: Proposed, operation: "send:z" })
 pure val stepsValues = Set(List(), List({ actionName: "NOTE", outcome: Failed, operation: "note:a" }))
 pure def lawTheLatestFailureIsReported(steps: List[PlanStep], earlier: PlanStep): bool =
   earlier.outcome == Failed implies failedOpen(steps.append(earlier)).includes(earlier)
@@ -167,6 +188,8 @@ pure def lawASuccessOfAnotherOperationKeepsTheFailure(steps: List[PlanStep], ear
   (earlier.outcome == Failed and later.operation != earlier.operation) implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
 pure def lawARefusalBeforeDispatchIsClosedByTheSameActionSucceeding(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
   (earlier.outcome == Rejected and later.actionName == earlier.actionName and later.outcome == Applied) implies not(failedOpen(steps.append(earlier).append(later)).includes(earlier))
+pure def lawALaterProposalOfTheSameActionClosesARefusal(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
+  (earlier.outcome == Rejected and later.actionName == earlier.actionName and later.outcome == Proposed) implies not(openOutcomes(steps.append(earlier).append(later)).includes(earlier))
 ```
 
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole

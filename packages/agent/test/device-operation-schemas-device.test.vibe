@@ -55,6 +55,12 @@ const samples: Record<string, unknown> = {
   CreateReminder: { type: "create_reminder", title: "Call Sam", dueAt: "2026-11-22T09:00:00Z" },
   OpenView: { type: "open_view", view: "photos" },
   BrowserNavigate: { type: "browser_navigate", url: "example.com/menu" },
+  BrowserSearch: { type: "browser_search", query: " weather  in Paris " },
+  BrowserTabNew: { type: "browser_tab_new", private: false },
+  BrowserTabSwitch: { type: "browser_tab_switch", target: "news" },
+  BrowserTabClose: { type: "browser_tab_close", all: true },
+  BrowserFind: { type: "browser_find", text: "opening hours" },
+  BrowserHistory: { type: "browser_history", action: "back" },
 }
 
 function checked(input: unknown): CheckedOperation {
@@ -80,6 +86,18 @@ it("Propose only operations the device can check: every media, files, telephony,
   assert.isTrue(Option.isNone(encodeBrowser({ ...browser, url: "http://example.com/menu" })))
   assert.deepStrictEqual(checked({ type: "files_open", path: "Download/" }).operation, { type: "files_open", path: "Download" })
   assert.strictEqual((checked(samples.FilesFilter).operation as { text: string }).text, "lease")
+  assert.deepStrictEqual(checked(samples.BrowserSearch).operation, { type: "browser_search", query: "weather in Paris" })
+  assert.deepStrictEqual(checked(samples.BrowserTabNew).operation, { type: "browser_tab_new" })
+  assert.isUndefined(readOperation({ type: "browser_tab_close", target: "news", all: true }))
+  const shownShare = { type: "files_share", shown: [1, 2] }
+  assert.isTrue(checked(shownShare).versionTwo)
+  assert.isFalse(checked(samples.FilesShare).versionTwo)
+  assert.isUndefined(validate(shownShare, negotiation(true, "files.browser.v1"), "NoBinding"))
+  assert.isDefined(validate(shownShare, negotiation(true, "files.browser.v1,files.shown-target.v1"), "NoBinding"))
+  assert.isUndefined(validate({ type: "browser_tab_close", all: true }, negotiation(true, "browser.tabs.v1"), "NoBinding"))
+  assert.isDefined(validate({ type: "browser_tab_close", all: true }, negotiation(true, "browser.tabs.v1,browser.tabs.close-all.v1"), "NoBinding"))
+  assert.isUndefined(validate({ type: "browser_navigate", url: "example.com", newTab: true }, negotiation(true, "files.browser.v1"), "NoBinding"))
+  assert.isDefined(validate({ type: "browser_navigate", url: "example.com", newTab: true }, negotiation(true, "browser.open-new-tab.v1"), "NoBinding"))
 })
 
 it("Propose only operations the device can check: a proposal with a stray key or a field outside its bounds is refused", () => {
@@ -156,7 +174,8 @@ it("Propose only operations the device can check: only a reversible local operat
   assert.isTrue(mayRunDirectly(checked(samples.FilesOpen), "NoBinding", true))
   assert.isTrue(mayRunDirectly(checked(samples.SmsReplySelected), "NoBinding", true))
   assert.isFalse(mayRunDirectly(checked(samples.FilesOpen), "NoBinding", false))
-  for (const type of ["SmsSend", "PhoneCall", "ContactDelete", "FilesShare", "PhotosShare", "PhotoLibraryReview", "VoicemailDeleteSelected"])
+  assert.isTrue(mayRunDirectly(checked(samples.BrowserHistory), "NoBinding", true))
+  for (const type of ["SmsSend", "PhoneCall", "ContactDelete", "FilesShare", "PhotosShare", "PhotoLibraryReview", "VoicemailDeleteSelected", "BrowserTabClose"])
     assert.isFalse(mayRunDirectly(checked(samples[type]), "NoBinding", true), type)
 })
 

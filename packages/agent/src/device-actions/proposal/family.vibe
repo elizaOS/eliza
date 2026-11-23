@@ -1,0 +1,75 @@
+// spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
+import type { ActionParameterSchema, IAgentRuntime, Memory, UUID } from "@elizaos/core"
+import type { Negotiation } from "../../../gen/agent__deviceActions__capabilities.effect.vibe"
+import type { SessionOwner } from "../../../gen/core__sessions.effect.vibe"
+import type { Observation } from "../../conversation/turn-context.schema.vibe"
+import type { CheckedOperation, DeviceOperation, DeviceOperationType } from "../operations.schema.vibe"
+import type { DeviceStoreUnavailable } from "../store.vibe"
+
+export type FamilyName = "telephony" | "browser" | "surfaces" | "files" | "calendar" | "reminders" | "notes"
+
+export interface SwappedValue { readonly placeholder: string; readonly value: string; readonly kind: string }
+
+export interface EarlierRequest {
+  readonly proposalId: string
+  readonly requestMessageId: UUID
+  readonly operation: DeviceOperation
+  readonly result: unknown
+  readonly settledAt: number
+}
+
+export interface DeviceTurn {
+  readonly runtime: IAgentRuntime
+  readonly by: SessionOwner
+  readonly negotiation: Negotiation
+  readonly capabilities: readonly string[]
+  readonly message: Memory & { readonly id: UUID }
+  readonly ownerText: string
+  readonly observation: typeof Observation.Type | undefined
+  readonly completedActionNavigation: boolean
+  readonly conversationId: string
+  readonly requestId: string
+  readonly assistantName: string
+  readonly swapped: readonly SwappedValue[]
+  readonly startedAt: number
+  readonly timeZone: string | undefined
+  readonly signal: AbortSignal
+  admit(operation: unknown): CheckedOperation | undefined
+  earlier(types: readonly DeviceOperationType[], limit: number): (readonly EarlierRequest[])!DeviceStoreUnavailable
+}
+
+export type Grounding =
+  | { readonly kind: "Grounded"; readonly operation: DeviceOperation }
+  | { readonly kind: "Refused"; readonly code: string; readonly forModel: string; readonly forOwner: string }
+
+export interface ProposalForm {
+  readonly types: readonly [DeviceOperationType, ...DeviceOperationType[]]
+  readonly schema: ActionParameterSchema
+  readonly guidance?: string
+  offered(turn: DeviceTurn): boolean
+}
+
+export interface DeviceProposalFamily {
+  readonly name: FamilyName
+  readonly types: readonly DeviceOperationType[]
+  readonly forms: readonly ProposalForm[]
+  guidance(turn: DeviceTurn): string | undefined
+  ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable
+  proposedText(operation: DeviceOperation): string
+  settledText(operation: DeviceOperation, result: unknown): string | undefined
+  continueAfterRead?(read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "message" | "negotiation" | "startedAt" | "timeZone">): (DeviceOperation | undefined)!DeviceStoreUnavailable
+}
+
+export function unoffered(name: FamilyName): DeviceProposalFamily {
+  return {
+    name, types: [], forms: [],
+    guidance: () => undefined,
+    ground: () => succeed<Grounding>({
+      kind: "Refused", code: "DEVICE_FAMILY_UNOFFERED",
+      forModel: `The ${name} operations are not offered on this phone. No device proposal was created.`,
+      forOwner: "I can't do that on your phone yet.",
+    }),
+    proposedText: () => "Review this request on your phone before it can run.",
+    settledText: () => undefined,
+  }
+}

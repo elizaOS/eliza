@@ -1,11 +1,11 @@
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
 import {
-  type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type GenerateTextParams, type GenerateTextResult,
+  type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
   buildPlannerToolsFromActions, executePlannedToolCall, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, sleepWithAbort, stableStringify,
 } from "@elizaos/core"
 import {
-  acknowledges, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait,
+  acknowledges, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, turnNarrowed,
   type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
@@ -49,6 +49,29 @@ export interface PlanInput {
   readonly onPlanningAcknowledgment?: (text: string) => void | Promise<void>
   readonly onActivityStatus?: (activity: { actionName: string; label: string }) => void | Promise<void>
   readonly onStepResult?: (result: ActionResult) => void | Promise<void>
+}
+
+/** What an action offers the model on one turn: its description, and a narrower schema for parameters it registered. */
+export interface TurnToolForm {
+  readonly description: string
+  readonly parameters: Readonly<Record<string, ActionParameterSchema>>
+}
+
+/** The turn-scoped tool form of an action that registered one. */
+export const turnToolForms = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => TurnToolForm | undefined>()
+
+function forTurn(runtime: AgentRuntime, message: Memory, action: Action): Action {
+  const form = turnToolForms.get(action)?.(runtime, message)
+  if (form === undefined) return action
+  const registered = action.parameters ?? []
+  const narrowed = new Set(turnNarrowed(registered.map(({ name }) => name), Object.keys(form.parameters)))
+  return {
+    ...action, description: form.description,
+    parameters: registered.map((parameter) => {
+      const schema = form.parameters[parameter.name]
+      return narrowed.has(parameter.name) && schema !== undefined ? { ...parameter, schema } : parameter
+    }),
+  }
 }
 
 /** The registered actions this turn may offer the model: allowed by the launch's gate, valid for this message, and nameable as a tool. */
@@ -213,7 +236,7 @@ function settleReply(steps: readonly PlannedStep[], prose: string | undefined): 
 /** Runs one turn's planning loop: the model calls offered actions as tools until it answers, and the reply is composed from what the turn proved. */
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
   const { runtime, message, state, roles, signal } = input
-  const tools: ToolDefinition[] = actions.length === 0 ? [] : [...buildPlannerToolsFromActions(actions)].sort(byName)
+  const tools: ToolDefinition[] = actions.length === 0 ? [] : [...buildPlannerToolsFromActions(actions.map((action) => forTurn(runtime, message, action)))].sort(byName)
   const conversation: ChatMessage[] = [...input.messages]
   const steps: PlannedStep[] = []
   let taken = 0
