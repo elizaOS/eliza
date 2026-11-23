@@ -55,7 +55,7 @@ import deployment as D from "../deployment"
 type EndCause = NeverExchanged | NeverAcknowledged | SelfRevoked | Superseded | LeaseReused
 type GrantPhase = Unissued | CodeIssued | Exchanged | Active({ ackedAt: Millis, keyExpiresAt: Millis }) | LegacyActive({ keyExpiresAt: Millis }) | Expired | Ended({ endedBy: EndCause })
 type GoogleLink = NoServerCode | WithServerCode
-type GrantOrigin = NotConnected | Connected | NativeGoogle({ serverCode: GoogleLink }) | LegacyGrant | Renewed({ fromKey: str })
+type GrantOrigin = NotConnected | Connected | NativeGoogle({ serverCode: GoogleLink }) | LegacyGrant | Renewed({ fromKey: str }) | LegacyRenewed({ fromKey: str })
 type ClientBinding = { clientId: str, environment: D::Environment, signInReturn: N::ReturnUrl }
 type GrantClient = UnrecordedClient | BoundClient(ClientBinding)
 type Grant = { phase: GrantPhase, origin: GrantOrigin, client: GrantClient, codeExpiresAt: Millis, credentialTtl: Millis, credentialId: str, epoch: int, now: Millis }
@@ -169,7 +169,8 @@ pure def tokenOutcome(g: Grant, client: N::ClientCheck, binding: G::CodeBinding,
 pure def canToken(g: Grant, client: N::ClientCheck, binding: G::CodeBinding, credentialId: str, deviceEpoch: int): bool =
   tokenOutcome(g, client, binding, deviceEpoch) == Granted and credentialId != ""
 pure def token(g: Grant, client: N::ClientCheck, binding: G::CodeBinding, credentialId: str, deviceEpoch: int): GrantStep =
-  if (g.phase == CodeIssued) { state: { ...g, phase: Exchanged, credentialId: credentialId }, out: List(MintSealedKey, OfferLease) }
+  if (g.phase == CodeIssued) { state: { ...g, phase: Exchanged, credentialId: credentialId },
+    out: if (isRenewal(g)) List(MintSealedKey) else List(MintSealedKey, OfferLease) }
   else { state: g, out: List(AnswerFromSealedCopy) }
 pure def tokenAnswer(g: Grant): TokenAnswer = { credentialId: g.credentialId, expiresAt: g.now + g.credentialTtl, acknowledgeBy: g.codeExpiresAt }
 pure val clientValues = Set(N::ClientAdmitted, N::ClientRefused({ fault: N::WrongRedirect }))
@@ -226,9 +227,14 @@ pure def ackOutcome(g: Grant, client: N::ClientCheck, proofMatches: bool, device
 pure def endedByRevocation(cause: EndCause): bool = Set(SelfRevoked, Superseded, LeaseReused).contains(cause)
 pure def canAck(g: Grant, client: N::ClientCheck, proofMatches: bool, deviceEpoch: int): bool = ackOutcome(g, client, proofMatches, deviceEpoch) == Granted
 pure def ack(g: Grant, client: N::ClientCheck, proofMatches: bool, deviceEpoch: int): GrantStep =
-  if (g.phase == Exchanged) { state: { ...g, phase: Active({ ackedAt: g.now, keyExpiresAt: g.now + g.credentialTtl }) }, out: List(EraseSealedCopy, if (isRenewal(g)) SupersedePredecessor else ActivateLease) }
+  if (g.phase == Exchanged) { state: { ...g, phase: Active({ ackedAt: g.now, keyExpiresAt: g.now + g.credentialTtl }) },
+    out: if (isLeaseRenewal(g)) List(EraseSealedCopy, SupersedePredecessor)
+      else if (isLegacyRenewal(g)) List(EraseSealedCopy)
+      else List(EraseSealedCopy, ActivateLease) }
   else { state: g, out: List() }
-pure def isRenewal(g: Grant): bool = { val o = g.origin  match o { | Renewed(r) => true | _ => false } }
+pure def isLeaseRenewal(g: Grant): bool = { val o = g.origin  match o { | Renewed(r) => true | _ => false } }
+pure def isLegacyRenewal(g: Grant): bool = { val o = g.origin  match o { | LegacyRenewed(r) => true | _ => false } }
+pure def isRenewal(g: Grant): bool = isLeaseRenewal(g) or isLegacyRenewal(g)
 pure def ackAnswer(g: Grant): AckAnswer = { val p = g.phase  { credentialId: g.credentialId, expiresAt: match p { | Active(a) => a.keyExpiresAt | LegacyActive(a) => a.keyExpiresAt | _ => 0 } } }
 pure def isActivePhase(g: Grant): bool = { val p = g.phase  match p { | Active(a) => true | LegacyActive(a) => true | _ => false } }
 pure def isLive(g: Grant): bool = { val p = g.phase  match p { | Active(a) => g.now < a.keyExpiresAt | LegacyActive(a) => g.now < a.keyExpiresAt | _ => false } }
@@ -247,7 +253,8 @@ pure def lawEveryExchangeAndAcknowledgementRefusalIsFinal(g: Grant, client: N::C
 }
 pure val gValues: Set[Grant] = {
   val live: Grant = { phase: Active({ ackedAt: 0, keyExpiresAt: 86400000 }), origin: Connected, client: BoundClient({ clientId: "app.one", environment: D::Staging, signInReturn: { origin: "https://www.staging.example.com", path: "/apps/conformance-1/sign-in" } }), codeExpiresAt: 300000, credentialTtl: 86400000, credentialId: "k1", epoch: 0, now: 0 }
-  Set(live, { ...live, phase: Exchanged }, { ...live, phase: Expired }, { ...live, phase: Ended({ endedBy: SelfRevoked }) }, { ...live, phase: CodeIssued, credentialId: "" }, { ...live, epoch: 1 })
+  Set(live, { ...live, phase: Exchanged }, { ...live, phase: Exchanged, origin: LegacyRenewed({ fromKey: "g1" }) },
+    { ...live, phase: CodeIssued, credentialId: "", origin: LegacyRenewed({ fromKey: "g1" }) }, { ...live, phase: Expired }, { ...live, phase: Ended({ endedBy: SelfRevoked }) }, { ...live, phase: CodeIssued, credentialId: "" }, { ...live, epoch: 1 })
 }
 pure def sometimesKeyActive(g: Grant): bool = isLive(g) and g.origin == Connected
 ```
@@ -567,9 +574,31 @@ pure def stepARepeatedRenewalMintsNothing(before: Grant, via: str, after: Grant,
   via == "renewAgain" implies (after == before and out == List(AnswerFromSealedCopy))
 ```
 
+### A renewal issued before mail leases can finish with proof while its predecessor is live
+
+The migration records which renewals were issued before mail leases from
+their original sign-in time and recorded predecessor. Their exchange and
+acknowledgement retain the original deadline, proof, and client checks.
+The shell also checks that the recorded predecessor still serves the same
+owner, client and device epoch under the account lock. An expired or
+revoked predecessor refuses completion. Exchange issues only the pending
+key, and acknowledgement makes it active without transferring a lease or
+ending its predecessor. The existing revoke duty can then end the
+predecessor while naming this acknowledged successor. Obtaining a mail
+lease requires the existing explicit upgrade sign-in. Only a lease can
+start a new renewal.
+
+```quint
+pure def lawLegacyRenewalCompletionDoesNotIssueALease(g: Grant, client: N::ClientCheck, binding: G::CodeBinding, credentialId: str, proofMatches: bool, deviceEpoch: int): bool =
+  isLegacyRenewal(g) implies (
+    not(token(g, client, binding, credentialId, deviceEpoch).out.includes(OfferLease))
+    and not(ack(g, client, proofMatches, deviceEpoch).out.includes(ActivateLease))
+    and not(ack(g, client, proofMatches, deviceEpoch).out.includes(SupersedePredecessor)))
+```
+
 ### A renewed key's acknowledgement ends the key it replaces and moves its lease to it
 
-The acknowledgement of a renewed key emits `SupersedePredecessor`: in the
+The acknowledgement of a key renewed by its lease emits `SupersedePredecessor`: in the
 same transaction the shell ends the old key as `Superseded` and moves the
 lease to the new grant. The replaced key then answers `credential_revoked`.
 
@@ -600,6 +629,6 @@ keeps its lease.
 pure def stepALeaseFollowsItsKey(before: Grant, via: str, after: Grant, out: List[GrantEffect]): bool =
   (out.includes(OfferLease) iff (out.includes(MintSealedKey) and not(isRenewal(after))))
   and (out.includes(ActivateLease) iff (via == "ack" and before.phase == Exchanged and not(isRenewal(before))))
-  and (out.includes(SupersedePredecessor) iff (via == "ack" and before.phase == Exchanged and isRenewal(before)))
+  and (out.includes(SupersedePredecessor) iff (via == "ack" and before.phase == Exchanged and isLeaseRenewal(before)))
   and (out.includes(EndLease) iff (via == "selfRevoke" or (via == "lapse" and before.phase == Exchanged)))
 ```

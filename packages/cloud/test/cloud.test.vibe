@@ -557,6 +557,57 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     }
   }))
 
+  it.live("Finish an issued pre-lease renewal with its original proof and deadline (spec/cloud/nativeClients/deviceKeys.md, \"A renewal issued before mail leases can finish with proof while its predecessor is live\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(1_000_000))
+    provide Clock.Clock = clock.clock {
+      const cloud = try testCloud()
+      try seeded(cloud)
+      const owner = try signedIn(cloud, "legacy-completion@example.com")
+      const predecessor = try device(cloud, owner.accessToken, "Previous tablet")
+      const previousId = predecessor.credential.credentialId
+      try sql(cloud, "DELETE FROM sessions s USING device_grants d WHERE s.grant_key = d.key AND d.credential_id = $1", [previousId])
+      try sql(cloud, "UPDATE device_grants SET sign_in_at = issued_at WHERE credential_id = $1", [previousId])
+
+      const oldCode = effect (deviceName: string) => {
+        const opened = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(owner.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName } })
+        const code = (opened.body as { readonly code: string }).code
+        try sql(cloud, `
+          UPDATE device_grants SET sign_in_at = issued_at,
+            renewed_from = (SELECT key FROM device_grants WHERE credential_id = $2),
+            state = jsonb_set(state, '{origin}', '{"tag":"Renewed"}'::jsonb)
+          WHERE code_digest = $1
+        `, [tokenDigest(code), previousId])
+        return { ...binding, grantType: "authorization_code", code, state, codeVerifier: verifier }
+      }
+      const activeCode = try oldCode("Issued renewal")
+      const expiringCode = try oldCode("Expiring renewal")
+      try sql(cloud, "DELETE FROM schema_migrations WHERE name IN ('0126_normalize_renewed_device_grants.sql', '0127_legacy_device_renewal_origin.sql')", [])
+      try cloud.inside(migrate({ digest: testDatabaseIdentity, environment: "staging", now: 1_000_000 }))
+
+      const first = try cloud.call("/api/v1/app-auth/mobile/token", { json: activeCode })
+      const recovered = try cloud.call("/api/v1/app-auth/mobile/token", { json: activeCode })
+      const key = first.body as { readonly credentialId: string; readonly secret: string; readonly lease?: unknown }
+      const wrong = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: key.credentialId, secret: key.secret, state: "a".repeat(43) } })
+      const completed = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: key.credentialId, secret: key.secret } })
+      const before = try cloud.call("/api/v1/user", { headers: bearer(predecessor.credential.secret) })
+      const after = try cloud.call("/api/v1/user", { headers: bearer(key.secret) })
+      const keyOnlyRenewal = try cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(key.secret) })
+      const stateRow = (try sql(cloud, `
+        SELECT d.phase, d.sealed_copy, d.state->'origin'->>'tag' AS origin, s.key AS lease
+        FROM device_grants d LEFT JOIN sessions s ON s.grant_key = d.key
+        WHERE d.credential_id = $1
+      `, [key.credentialId]))[0]
+      try sync(() => clock.set(1_300_000))
+      const late = try cloud.call("/api/v1/app-auth/mobile/token", { json: expiringCode })
+      try check(() => assert.deepStrictEqual(
+        [first.status, recovered.status, recovered.body, key.lease, wrong.status, completed.status, before.status, after.status,
+          keyOnlyRenewal.status, stateRow?.phase, stateRow?.sealed_copy, stateRow?.origin, stateRow?.lease, late.status, ...refusal(late.body)],
+        [200, 200, first.body, undefined, 401, 200, 200, 200, 401, "active", null, "LegacyRenewed", null, 401, "authentication_required", "credential_expired"]
+      ))
+    }
+  }))
+
   it.live("Keep pre-lease renewal duties through enrollment and sign-out (spec/cloud/nativeClients/deviceKeys.md, \"Signing out ends only the presenting key\")", () => scoped(effect {
     const cloud = try testCloud()
     try seeded(cloud)
@@ -574,7 +625,7 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
         UPDATE device_grants SET sign_in_at = issued_at,
           renewed_from = (SELECT key FROM device_grants WHERE credential_id = $2),
           state = CASE WHEN $2::text IS NULL THEN state ELSE jsonb_set(state, '{origin}',
-            jsonb_build_object('tag', 'Renewed', 'fromKey', (SELECT key FROM device_grants WHERE credential_id = $2))) END
+            jsonb_build_object('tag', 'LegacyRenewed', 'fromKey', (SELECT key FROM device_grants WHERE credential_id = $2))) END
         WHERE credential_id = $1
       `, [credentialId, from])
     }

@@ -180,10 +180,29 @@ export effect function openGrant(tx: Tx, opening: Opening) {
   return { key: opening.grantKey, code, codeExpiresAt: stepped.state.codeExpiresAt, out: stepped.out.out }
 }
 
-const grantColumns = "g.key, g.state, g.phase, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.sealed_lease, g.issued_at, g.key_expires_at, g.renewed_from, a.organization_id, a.status, a.device_epoch"
+const grantColumns = "g.key, g.state, g.phase, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.sealed_lease, g.issued_at, g.key_expires_at, g.renewed_from, g.sign_in_at, a.organization_id, a.status, a.device_epoch"
 
 effect function grantBy(tx: Tx, column: "code_digest" | "credential_id" | "key", value: string) {
   return (try tx.query(`SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.${column} = $1 FOR UPDATE OF a, g`, [value]))[0]
+}
+
+effect function finishLegacyRenewal(tx: Tx, row: Row, grant: Grant, now: number) {
+  const origin = grant.origin
+  if (origin.tag !== "LegacyRenewed") return
+  if (row.sign_in_at == null || toText(row.renewed_from) !== origin.fromKey || grant.client.tag !== "BoundClient") {
+    throw refused("AuthenticationRequired", "CredentialRevoked")
+  }
+  const predecessor = (try tx.query(`
+    SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id
+    WHERE g.key = $1 AND g.user_id = $2 AND g.client_id = $3 AND g.device_epoch = $4
+    FOR UPDATE OF g
+  `, [origin.fromKey, row.user_id, row.client_id, row.grant_epoch]))[0]
+  if (predecessor === undefined) throw refused("AuthenticationRequired", "CredentialRevoked")
+  const key = inspectKey(predecessor, now) catch effect () => { throw refused("ServiceUnavailable", "NoReason", now + 5000) }
+  if (key.reason !== "NoReason") throw refused("AuthenticationRequired", key.reason)
+  if (key.authority.tag !== "GrantAuthority" || !grantBindingMatches(key.authority.grant, grant.client)) {
+    throw refused("AuthenticationRequired", "CredentialRevoked")
+  }
 }
 
 effect function current(row: Row, now: number) {
@@ -220,6 +239,7 @@ effect function mint(tx: Tx, row: Row, body: typeof TokenBody.Type) {
   const admitted = try storedAdmission(tx, before)
   const at = try Clock.currentTimeMillis
   const ready = try currentGrant(before, at)
+  try finishLegacyRenewal(tx, row, ready, at)
   const proof = sameText(s256(body.codeVerifier), toText(row.code_challenge) ?? "") && sameText(tokenDigest(body.state), toText(row.state_digest) ?? "")
   const binding: CodeBinding = !bindingMatches(ready, body) ? "RedirectDiffers" : proof ? "BindingMatches" : "VerifierDiffers"
   const outcome = tokenOutcome(ready, admitted.check, binding, toInt(row.device_epoch))
@@ -324,6 +344,7 @@ export effect function acknowledgeGrant(tx: Tx, body: typeof AckBody.Type) {
     && (body.codeVerifier === undefined || (pkceText.test(body.codeVerifier) && sameText(s256(body.codeVerifier), toText(row.code_challenge) ?? "")))
   const now = try Clock.currentTimeMillis
   const ready = try currentGrant(before, now)
+  try finishLegacyRenewal(tx, row, ready, now)
   const outcome = ackOutcome(ready, admitted.check, proofMatches, toInt(row.device_epoch))
   if (outcome.tag === "GrantRefused") throw new Refused({ refusal: outcome.refusal })
   const stepped = stepGrant(tx, toText(row.key) ?? "", { type: "ack", client: admitted.check, proofMatches, deviceEpoch: toInt(row.device_epoch) },
@@ -432,7 +453,7 @@ export effect function sweepGrants(): void!!Store {
 }
 
 effect function renewedAgain(tx: Tx, fromKey: string, deviceEpoch: number, now: number) {
-  const pending = (try tx.query("SELECT key FROM device_grants WHERE renewed_from = $1 AND phase = 'exchanged' AND code_expires_at > $2 ORDER BY issued_at DESC LIMIT 1", [fromKey, now]))[0]
+  const pending = (try tx.query("SELECT key FROM device_grants WHERE renewed_from = $1 AND sign_in_at IS NULL AND phase = 'exchanged' AND code_expires_at > $2 ORDER BY issued_at DESC LIMIT 1", [fromKey, now]))[0]
   if (pending === undefined) return undefined
   const row = try grantBy(tx, "key", toText(pending.key) ?? "")
   if (row === undefined) return undefined
