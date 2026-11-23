@@ -305,7 +305,7 @@ export function hostedDigests(service: WorkflowService) {
       const receipt = try digestMutation(definitionKey, spec, source)
       return { workflowId: String(receipt.workflowId), spec, source }
     })
-    if ("replayed" in prepared) return { execution: service.runView(prepared.replayed) }
+    if (prepared.replayed !== undefined) return { execution: service.runView(prepared.replayed) }
     const definition = try service.definitionOf(prepared.workflowId)
     const at = try now
     const runnable = try runSpec(definition.row, prepared.spec, prepared.source, at)

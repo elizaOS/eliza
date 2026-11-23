@@ -1123,7 +1123,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
           try launch(restarted.id)
         } else if (restarted !== row) try persist(restarted)
       }
-      const held = host.scheduler.keys catch () => []
+      const held: readonly string[] = host.scheduler.keys catch () => []
       for (const stored of try db(store.definitions(owner))) {
         if (!held.includes(scheduleKey(stored.row)) || !scheduleWanted(stored.row)) try arm(stored.row)
         if (stored.row.lifecycleState.removed && !stored.row.lifecycleState.cleaned) (cleanup(stored.row.id) catch () => undefined)
