@@ -1471,7 +1471,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     fun settle(target: String?) {
                         if (settled) return
                         settled = true
-                        catcher.post { catcher.stopLoading(); catcher.destroy() }
+                        mainHandler.post { catcher.stopLoading(); catcher.destroy() }
                         val current = surfaces[id]
                         if (target == null || current !== surface || !isLive(surface)) return
                         if (handOff(id, surface, target, true)) return
@@ -1499,7 +1499,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                         override fun shouldInterceptRequest(v: WebView, request: WebResourceRequest): WebResourceResponse? {
                             if (!request.isForMainFrame) return null
                             val target = request.url.toString()
-                            v.post { settle(target) }
+                            mainHandler.post { settle(target) }
                             return WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(),
                                 ByteArrayInputStream(ByteArray(0)))
                         }
@@ -1511,7 +1511,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                         }
                     }
                     // about:blank windows written by script never name an address; drop them.
-                    catcher.postDelayed({ settle(null) }, 3000)
+                    mainHandler.postDelayed({ settle(null) }, 3000)
                     (resultMsg.obj as WebView.WebViewTransport).webView = catcher
                     resultMsg.sendToTarget()
                     return true
