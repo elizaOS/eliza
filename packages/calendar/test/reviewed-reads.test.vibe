@@ -83,6 +83,9 @@ it.effect('See and create times in the zone I am asking about (spec/calendar/rea
   ], ["2026-01-14", "2026-01-15", "2026-01-16"])
   assert.deepStrictEqual([createYear("lunch on March 3 2028", 2026), createYear("lunch next March 3", 2026), createYear("lunch on March 3", 2026),
     createYear("March 3 2027 at noon", 2026)], [2028, 2027, 2026, 2027])
+  assert.deepStrictEqual(["2027년 1월 5일", "내년 1월 5일", "올해 1월 5일", "请安排明年 1月 5日", "2027年 1月 5日", "今年 1月 5日", "12027년 1월 5일", "국내년 1월 5일",
+    "내년 January 5, 2028", "2027년 12/25", "내년 12/25", "明年 12-25", "今年 12/25", "국내년 12/25"].map((text) => createYear(text, 2026)),
+    [2027, 2027, 2026, 2027, 2027, 2026, 2026, 2026, 2028, 2027, 2027, 2027, 2026, 2026])
   const now = new Date("2026-06-01T12:00:00.000Z")
   assert.deepStrictEqual([createNeedsConfirmation("2026-01-01T10:00:00.000Z", now, "UTC"), createNeedsConfirmation("2026-06-02T10:00:00.000Z", now, "UTC"),
     createNeedsConfirmation("2025-12-31T10:00:00.000Z", now, "UTC")], [true, false, true])

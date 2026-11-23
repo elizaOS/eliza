@@ -80,7 +80,10 @@ pure val utcMinuteValues = Set(0, 1439)
 
 When a create names a date, a trailing year wins. Otherwise a stated
 numeric year or "next" chooses the coming year, and a date with no year
-or "this year" chooses the current year. The year the extractor guessed
+or "this year" chooses the current year. A year named before the month
+or a numeric date counts the same way: "2027년" and "2027年" state 2027,
+"내년" and "明年" say next, and "올해" and "今年" say this year. A marker
+inside a longer word or number, as in "국내년" or "12027년", is no cue. The year the extractor guessed
 is never used on its own. The wall clock and duration stay as
 extracted. A start that is already past must be confirmed by the owner
 before anything is stored; a future start is ready.

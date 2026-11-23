@@ -154,12 +154,15 @@ export function displayDay(event: { readonly startAt: string; readonly isAllDay:
   return new Date(utcDay + shift * dayMs).toISOString().slice(0, 10)
 }
 
+const nextYearWord = /\bnext\b|(?<![\p{L}\p{M}\p{N}_])내년|明年/u
+const thisYearWord = /\bthis year\b|(?<![\p{L}\p{M}\p{N}_])올해|今年/u
+
 /** What a create request says about its year: a trailing year, a stated year, "next", "this year" or nothing. */
 export function yearCueOf(text: string): { readonly cue: YearCue; readonly statedYear: number; readonly trailingYear: number } {
   const folded = text.normalize("NFKC").toLowerCase()
   const trailing = /\b(\d{4})\s*[.!?]?\s*$/.exec(folded)
   const stated = /\b(19|20|21)\d{2}\b/.exec(folded)
-  const cue: YearCue = /\bnext\b/.test(folded) ? "NextYearCue" : stated !== null ? "StatedYearCue" : /\bthis year\b/.test(folded) ? "ThisYearCue" : "NoYearCue"
+  const cue: YearCue = nextYearWord.test(folded) ? "NextYearCue" : stated !== null ? "StatedYearCue" : thisYearWord.test(folded) ? "ThisYearCue" : "NoYearCue"
   return { cue, statedYear: stated === null ? 0 : Number(stated[0]), trailingYear: trailing === null ? 0 : Number(trailing[1]) }
 }
 
