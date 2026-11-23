@@ -3,7 +3,8 @@ import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
 import { act, completed, violated, type Input } from "./action.ts";
-import { InstallationChanged, traceInstallation, entry, evaluatorForCheck, remembered, type Memory } from "./cache.ts";
+import { InstallationChanged } from "./installed.ts";
+import { traceInstallation, entry, evaluatorForCheck, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { positiveGuardEvaluation, positiveGuardProbe, simulated, witnessAction, witnessFile } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
@@ -496,6 +497,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       if (model.stateType) tested = conformanceFound(model, spec, traces, journeys);
     } catch (e) {
       if (e instanceof InstallationChanged) traceInstallation("caught-in-simulation", { file: spec.file, location: e.stack?.split("\n").slice(1, 7) });
+      if (e instanceof InstallationChanged) throw e;
       const mismatch = (e as Error).message.startsWith("TypeScript and Quint disagree");
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
     }

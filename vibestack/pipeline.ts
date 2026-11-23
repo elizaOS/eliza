@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { evaluatorIdentity } from "./installed.ts";
+import { evaluatorIdentity, InstallationChanged } from "./installed.ts";
 // The spec pipeline and command line, which spec.ts runs. Parsing, review, generation, simulation and proof each have one implementation.
 import { spawn } from "node:child_process";
 import { channel } from "node:diagnostics_channel";
@@ -16,7 +16,7 @@ import { abandonedProof, ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, typ
 import { bin, run, startAttached } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { traceInstallation, cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
+import { traceInstallation, cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, owner, specOwnerPaths, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";

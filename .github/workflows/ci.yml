@@ -1,6 +1,7 @@
-name: Trace a verifier installation change
+name: Identify the writer of a checked verifier file
 on:
-  workflow_dispatch:
+  push:
+    branches: [codex/trace-verified-input-hardlinks-1123]
 permissions:
   contents: read
 jobs:
@@ -39,12 +40,76 @@ jobs:
             pnpm --version
             node -p 'require("node:os").availableParallelism()'
           } > "$dir/host.txt"
+          test -x /usr/bin/strace
+          touch "$dir/control-source"
+          cat > "$dir/file-observer.py" <<'OBSERVER'
+          import ast, datetime, hashlib, json, os, pathlib, re, sys, time
+          tmp=pathlib.Path(os.environ['RUNNER_TEMP'])/'measurement'
+          root=pathlib.Path.cwd()
+          patterns=['node_modules/.pnpm/protobufjs@*/node_modules/@types/node/package.json','node_modules/.pnpm/zod@*/node_modules/zod/package.json']
+          files=[file for pat in patterns for file in root.glob(pat)]+[tmp/'control-source']
+          watch={}
+          for path in files:
+              if not path.is_file():continue
+              st=path.stat()
+              key=(st.st_dev,st.st_ino)
+              digest=hashlib.sha512(path.read_bytes()).hexdigest()
+              item=watch.setdefault(key,{'inode':list(key),'paths':set(),'digest':digest,'nlink':st.st_nlink})
+              item['paths'].add(str(path)); item['paths'].add(str(path.resolve()))
+          def record(d): print(json.dumps(d),flush=True)
+          record({'kind':'inputs','inputs':[{**x,'paths':sorted(x['paths'])} for x in watch.values()]})
+          assert any('protobufjs' in p for x in watch.values() for p in x['paths'])
+          aliases={p:k for k,item in watch.items() for p in item['paths']}
+          needles={'/node_modules/@types/node/package.json','/node_modules/zod/package.json','/control-source','/control-alias'}
+          for item in watch.values():needles.add(item['digest'][2:])
+          def family(pid):
+              out=[];seen=set()
+              while pid>1 and pid not in seen and len(out)<12:
+                  seen.add(pid);p=pathlib.Path('/proc')/str(pid)
+                  try:
+                      name=(p/'comm').read_text().strip()
+                      par=int(next(l for l in (p/'status').read_text().splitlines() if l.startswith('PPid:')).split()[1])
+                      cwd=os.readlink(p/'cwd');out.append({'pid':pid,'name':name,'cwd':cwd});pid=par
+                  except (OSError,StopIteration,ValueError):break
+              return out
+          for line in sys.stdin:
+              if not any(n in line for n in needles):continue
+              match=re.match(r'^\s*(?:\[pid\s+(\d+)\]|(\d+))\s+(\d+\.\d+)\s+(linkat|link|unlinkat|unlink)\(',line)
+              if not match:continue
+              pid=int(match.group(1) or match.group(2))
+              paths=[]
+              for text in re.findall(r'"(?:[^"\\]|\\.)*"',line):
+                  try: name=ast.literal_eval(text)
+                  except (ValueError,SyntaxError):continue
+                  if not os.path.isabs(name):
+                      try:name=os.path.join(os.readlink('/proc/'+str(pid)+'/cwd'),name)
+                      except OSError:pass
+                  paths.append(name)
+              matches=set()
+              for p in paths:
+                  if p in aliases:matches.add(aliases[p])
+                  try:
+                      st=os.stat(p);key=(st.st_dev,st.st_ino)
+                      if key in watch:matches.add(key)
+                  except OSError:pass
+                  for key,x in watch.items():
+                      if x['digest'][2:] in p:matches.add(key)
+              if not matches:continue
+              ok=bool(re.search(r'= 0(?:\s|$)',line))
+              if ok and match.group(4).startswith('link') and len(matches)==1 and paths:
+                  aliases[paths[-1]]=next(iter(matches));needles.add(paths[-1])
+              record({'kind':'file-event','epoch':match.group(3),'pid':pid,'operation':match.group(4),'success':ok,'paths':paths,'matchingInodes':[list(k) for k in sorted(matches)],'family':family(pid)})
+          OBSERVER
+          mkfifo "$dir/file-events"
+          nohup python3 "$dir/file-observer.py" <"$dir/file-events" >"$dir/mutations.ndjson" 2>"$dir/observer-errors" &
           date +%s > "$dir/start"
           cat > "$dir/measure.sh" <<'SHELL'
           set -u
           dir="$RUNNER_TEMP/measurement"
           args=()
           if [[ "$SLOTS" == cpu ]]; then args+=(--concurrency=100%); fi
+          ln "$dir/control-source" "$dir/control-alias"
+          rm "$dir/control-alias"
           /usr/bin/time -v -o "$dir/time.txt" node vibestack/spec.ts tasks build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples --continue=dependencies-successful --summarize --log-order=stream "${args[@]}" > "$dir/product.log" 2>&1
           echo "$?" > "$dir/exit"
           SHELL
@@ -65,7 +130,7 @@ jobs:
           done
           SHELL
           nohup bash "$dir/sample.sh" </dev/null >/dev/null 2>&1 &
-          nohup bash "$dir/measure.sh" </dev/null >/dev/null 2>&1 &
+          nohup /usr/bin/strace -f -ttt -qq -z --seccomp-bpf -s 512 -e trace=link,linkat,unlink,unlinkat -o "$dir/file-events" bash "$dir/measure.sh" </dev/null >/dev/null 2>&1 &
           echo "$!" > "$dir/worker.pid"
           cat > "$dir/checkpoint.sh" <<'SHELL'
           set -eu
@@ -81,6 +146,7 @@ jobs:
           done
           mkdir -p "$dir/checkpoint"
           cp "$dir/host.txt" "$dir/checkpoint/"
+          cp "$dir/mutations.ndjson" "$dir/observer-errors" "$dir/checkpoint/"
           if [[ -f "$dir/pressure.txt" ]]; then cp "$dir/pressure.txt" "$dir/checkpoint/"; fi
           if [[ -f "$dir/product.log" ]]; then
             grep -E 'cache (hit|miss)|cache bypass|Test Files|Tests  | Tasks:| Time:| Failed:|command finished with error' "$dir/product.log" | tail -350 > "$dir/checkpoint/progress.txt" || true
@@ -133,6 +199,7 @@ jobs:
             ${{ runner.temp }}/measurement/checkpoint
             ${{ runner.temp }}/measurement/product.log
             ${{ runner.temp }}/measurement/identity.ndjson
+            ${{ runner.temp }}/measurement/mutations.ndjson
             .turbo/runs/*.json
           include-hidden-files: true
           retention-days: 7

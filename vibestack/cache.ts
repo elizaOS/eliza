@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { gunzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import { sha, tokenize, writeWhole } from "./util.ts";
-import { evaluatorIdentity, packageLocation, packageRoots } from "./installed.ts";
+import { evaluatorIdentity, InstallationChanged, packageLocation, packageRoots } from "./installed.ts";
 import { NEEDS_DAFNY, findBin, exec, onPath, stamp } from "./run.ts";
 
 /** Load an operator's publishing credential only for the exact cache endpoint it belongs to. */
@@ -142,10 +142,6 @@ const PUBLISH_INTERVAL_MS = 1_000;
 
 function includePrograms(check: Check) {
   for (const program of check.programs.values()) if (program?.id) check.verify.add(program);
-}
-
-export class InstallationChanged extends Error {
-  constructor() { super("a tool installation changed during this check; run the check again"); }
 }
 
 function publishChecked(complete = false) {
