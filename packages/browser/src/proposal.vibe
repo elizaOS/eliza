@@ -173,5 +173,5 @@ export const browserProposalFamily: DeviceProposalFamily = {
   guidance: (turn) => browserControlCapabilityAvailable("browser_tab_new", turn.capabilities) ? TABS_GUIDANCE : undefined,
   ground,
   proposedText: (operation, { direct }) => direct ? directText(operation) : undefined,
-  settledText: () => ({ forOwner: "Your phone's Browser already took that request. It never told me how the page looks." }),
+  settledText: () => undefined,
 }
