@@ -1,16 +1,21 @@
 package ai.eliza.plugins.camera
 
 import android.content.ContentProvider
+import android.content.ContentUris
 import android.content.ContentValues
 import android.database.Cursor
 import android.database.MatrixCursor
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.provider.BaseColumns
 import android.provider.MediaStore
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import org.json.JSONArray
@@ -144,5 +149,45 @@ class GalleryImageWriterInstrumentedTest {
             GalleryFailureProvider.row = null
             resolver.delete(saved, null, null)
         }
+
+        val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+        val jpeg = try {
+            ByteArrayOutputStream().use { encoded ->
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 80, encoded))
+                encoded.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+        val mediaStoreUri = GalleryImageWriter(resolver).save(jpeg, "jpeg")
+        val receipt = try {
+            val primaryVolume = MediaStore.VOLUME_EXTERNAL_PRIMARY
+            val primaryRow = ContentUris.withAppendedId(MediaStore.Images.Media.getContentUri(primaryVolume), ContentUris.parseId(mediaStoreUri))
+            val columns = arrayOf(BaseColumns._ID, MediaStore.MediaColumns.VOLUME_NAME, MediaStore.MediaColumns.IS_PENDING)
+            val rowId = requireNotNull(resolver.query(primaryRow, columns, null, null, null)).use { row ->
+                assertTrue(row.moveToFirst())
+                assertEquals(primaryVolume, row.getString(1))
+                assertEquals(0, row.getInt(2))
+                row.getLong(0)
+            }
+            val libraryId = savedImageLibraryId(resolver, mediaStoreUri)
+            assertEquals("m:$primaryVolume:i:$rowId", libraryId)
+            val savedBytes = requireNotNull(resolver.openInputStream(primaryRow)).use { it.readBytes() }
+            assertArrayEquals(jpeg, savedBytes)
+            val decoded = requireNotNull(BitmapFactory.decodeByteArray(savedBytes, 0, savedBytes.size))
+            try {
+                assertEquals(2, decoded.width)
+                assertEquals(2, decoded.height)
+            } finally {
+                decoded.recycle()
+            }
+            JSONObject().put("volume", primaryVolume).put("rowId", rowId).put("libraryId", libraryId).put("bytes", savedBytes.size)
+        } finally {
+            assertEquals(1, resolver.delete(mediaStoreUri, null, null))
+        }
+        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+            putString("nativeArtifactName", "camera-gallery-media-store-row.json")
+            putString("nativeArtifactBase64", Base64.encodeToString(receipt.put("deleted", true).toString().toByteArray(), Base64.NO_WRAP))
+        })
     }
 }
