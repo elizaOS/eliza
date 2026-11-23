@@ -1,4 +1,4 @@
-# Phone calls, dial handoff and call log
+# Phone calls, call controls, dial handoff and call log
 
 The phone module (`packages/os/android/phone/`, from
 `plugins/plugin-native-phone/android` and the call-log and placement parts of
@@ -13,9 +13,11 @@ is [voicemail](./voicemail.md)'s. The operations `PhoneDial` and `PhoneCall`,
 their shape checks and the capabilities `phone.dial.v1` and `phone.call.v1`
 are the agent's ([operations](../../agent/deviceActions/operations.md),
 [capabilities](../../agent/deviceActions/capabilities.md)); this spec keeps
-the Android device check, what a handoff and a placement may report, and the
-call-log read. Calls are admitted as [the bridge](./bridge.md) says and pages
-follow [keyset paging](./paging.md).
+the Android device check, what the call screen offers for a call, which
+keypad tone may sound and which calls alert, what a handoff and a placement
+may report, and the call-log read. Calls are admitted as
+[the bridge](./bridge.md) says and pages follow
+[keyset paging](./paging.md).
 
 ## Story: Show my calls truthfully
 
@@ -92,6 +94,93 @@ Whatever updates the remaining calls keep queuing.
 pure val fair_dropRetiredUpdate = "weak"
 pure def leadsToRetiredUpdateDropped(s: CallService, later: CallService): bool =
   s.queued.forall(c => s.calls.contains(c) or not(later.queued.contains(c)))
+```
+
+## Story: Control a call only with what it can do
+
+> As the person, I want the call screen to offer only the controls that can
+> work for the call in front of me, a keypad tone that never outlives its
+> call, and an alert only while my phone rings, so that no control misleads
+> me and a connected call stays quiet.
+
+### A call offers Answer and Decline only while it rings, and each other control only when it can work
+
+The screen acts on the Telecom call it shows. A ringing call offers Answer
+and Decline and nothing else, and a call that is ending or has ended offers
+nothing. Every other call offers End; Mute only once Telecom has reported an
+audio state; Speaker only with that state and with both the speaker and an
+earpiece or wired route supported; Hold only for a call Telecom says can be
+held; and the keypad only while the call is connected, because tones go only
+into a connected call.
+
+```quint
+type CallStage = RingingCall | DialingCall | ConnectedCall | HeldCall | EndedCall
+type CallControls = { offersAnswer: bool, offersDecline: bool, offersEnd: bool, offersMute: bool, offersKeypad: bool, offersSpeaker: bool, offersHold: bool }
+pure val noControls: CallControls = { offersAnswer: false, offersDecline: false, offersEnd: false, offersMute: false, offersKeypad: false, offersSpeaker: false, offersHold: false }
+pure def callControls(stage: CallStage, audioKnown: bool, speakerRoutable: bool, holdable: bool): CallControls =
+  if (stage == RingingCall) { ...noControls, offersAnswer: true, offersDecline: true }
+  else if (stage == EndedCall) noControls
+  else { ...noControls, offersEnd: true, offersMute: audioKnown, offersKeypad: stage == ConnectedCall, offersSpeaker: audioKnown and speakerRoutable, offersHold: holdable }
+pure def lawARingingCallOffersOnlyAnswerAndDecline(audioKnown: bool, speakerRoutable: bool, holdable: bool): bool =
+  callControls(RingingCall, audioKnown, speakerRoutable, holdable) == { ...noControls, offersAnswer: true, offersDecline: true }
+pure def lawAnEndedCallOffersNothing(audioKnown: bool, speakerRoutable: bool, holdable: bool): bool =
+  callControls(EndedCall, audioKnown, speakerRoutable, holdable) == noControls
+pure def lawOnlyALiveCallOffersEnd(stage: CallStage, audioKnown: bool, speakerRoutable: bool, holdable: bool): bool =
+  callControls(stage, audioKnown, speakerRoutable, holdable).offersEnd == (stage != RingingCall and stage != EndedCall)
+pure def lawTheKeypadNeedsAConnectedCall(stage: CallStage, audioKnown: bool, speakerRoutable: bool, holdable: bool): bool =
+  callControls(stage, audioKnown, speakerRoutable, holdable).offersKeypad == (stage == ConnectedCall)
+pure def lawMuteAndSpeakerNeedAReportedAudioState(stage: CallStage, speakerRoutable: bool, holdable: bool): bool =
+  not(callControls(stage, false, speakerRoutable, holdable).offersMute) and not(callControls(stage, false, speakerRoutable, holdable).offersSpeaker)
+```
+
+### A keypad tone belongs to one call, and its deadline never stops a newer tone
+
+One tone sounds at a time. A key press first releases the tone that was
+sounding and then asks Telecom to play the new one into the call on screen;
+if Telecom refuses, because the call is gone, no tone is owned. Each
+accepted tone is given a turn of its own and a deadline that names it, so a
+deadline stops only its own tone and an older one never cuts a newer key
+short. The tone is also released when another call is selected, when its
+call stops being connected and when the screen stops; a tone already
+released is not released again.
+
+```quint
+type KeypadTone = { toneCall: str, turn: int }
+pure val noTone: KeypadTone = { toneCall: "", turn: 0 }
+pure def toneSounding(tone: KeypadTone): bool = tone != noTone
+pure def pressKey(callId: str, telecomPlays: bool, issued: int): KeypadTone =
+  if (telecomPlays and issued > 0) { toneCall: callId, turn: issued } else noTone
+pure def toneDeadline(tone: KeypadTone, turn: int): KeypadTone = if (tone.turn == turn) noTone else tone
+pure def retainTone(tone: KeypadTone, shownCall: str, connected: bool): KeypadTone =
+  if (connected and shownCall == tone.toneCall) tone else noTone
+pure val toneValues = Set(noTone, { toneCall: "call1", turn: 1 }, { toneCall: "call2", turn: 2 })
+pure val shownCallValues = Set("call1", "call2")
+pure val issuedValues = Set(0, 1, 2, 3)
+pure val turnValues = Set(0, 1, 2)
+pure def lawAnOlderDeadlineNeverStopsANewerTone(callId: str, issued: int, turn: int): bool =
+  issued != turn implies toneDeadline(pressKey(callId, true, issued), turn) == pressKey(callId, true, issued)
+pure def lawADeadlineStopsItsOwnTone(callId: str, issued: int): bool =
+  toneDeadline(pressKey(callId, true, issued), issued) == noTone
+pure def lawARefusedKeyOwnsNoTone(callId: str, issued: int): bool =
+  pressKey(callId, false, issued) == noTone
+pure def lawAToneNeverOutlivesItsConnectedCallOnScreen(tone: KeypadTone, shownCall: str, connected: bool): bool =
+  toneSounding(retainTone(tone, shownCall, connected)) implies (connected and shownCall == tone.toneCall)
+pure def lawAReleasedToneIsNotReleasedAgain(shownCall: str, connected: bool, turn: int): bool =
+  not(toneSounding(retainTone(noTone, shownCall, connected))) and not(toneSounding(toneDeadline(noTone, turn)))
+```
+
+### Only a ringing call alerts, and every other call uses the quiet channel
+
+The service keeps two notice channels. The host's own channel carries only
+a ringing call, with its full-screen call screen; it has no sound of its
+own, because Telecom plays the ringtone. A quiet channel derived from it
+carries an outgoing, connected or held call and neither sounds nor
+vibrates.
+
+```quint
+type CallChannel = AlertingChannel | QuietChannel
+pure def callChannel(stage: CallStage): CallChannel = if (stage == RingingCall) AlertingChannel else QuietChannel
+pure def lawOnlyARingingCallAlerts(stage: CallStage): bool = (callChannel(stage) == AlertingChannel) == (stage == RingingCall)
 ```
 
 ## Story: Hand an approved number to my phone
