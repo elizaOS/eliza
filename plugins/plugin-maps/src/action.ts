@@ -570,10 +570,11 @@ export interface AnchoredPlaceQuery {
 
 /**
  * Words after "near" that mean the owner's own position, not a named place:
- * "near me", "close to where I am right now", "around midnight near me".
+ * "near me", "near by", "close to where I am right now", "around midnight
+ * near me".
  */
 const OWN_POSITION =
-  /^(?:me|here|us|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:me|here|us|myself)\b(?=[,\s]+(?:that|which|who|where|for|to|with|and|so|if|in|at|on|by|open|right|now|tonight|today|please|thanks|thank)\b)|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu;
+  /^(?:me|here|us|by|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:me|here|us|myself)\b(?=[,\s]+(?:that|which|who|where|for|to|with|and|so|if|in|at|on|by|open|right|now|tonight|today|please|thanks|thank)\b)|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu;
 
 /**
  * Courtesy and timing after the place ("near the Ferry Building please",
