@@ -148,3 +148,73 @@ pure val dispatchReceipt: HistoryReceipt = { delivered: true, answer: AnswerRece
 pure val receiptValues = Set(dispatchReceipt, { ...dispatchReceipt, delivered: false }, { ...dispatchReceipt, completed: true }, { ...dispatchReceipt, readbackAsked: false },
   { ...dispatchReceipt, answer: AnswerRefusal, typedCode: true }, { ...dispatchReceipt, answer: AnswerRefusal }, { ...dispatchReceipt, answer: AnswerMissing }, { ...dispatchReceipt, answer: AnswerFailed })
 ```
+
+## Story: Propose a Browser control in my own words
+
+> As the owner, I want a Browser request I type in chat to reach my phone as
+> one control in my own words, so that the agent never searches for words I
+> did not type, never closes fewer tabs than I asked, and tells me how to ask
+> when it cannot.
+
+### A search carries only words I typed in this message, spelled as I typed them
+
+A proposed search runs only on whole words of the owner's current message:
+the query the model proposed must appear there, letter case and spacing
+aside, and the search carries the owner's own spelling of it. Words the model
+added, reordered or reworded, and a message that cannot be read, ground no
+search, and nothing is proposed.
+
+```quint
+type SearchWords = { readable: bool, typedAsWholeWords: bool, typedSpelling: str }
+pure def groundedSearch(words: SearchWords): str = if (words.readable and words.typedAsWholeWords) words.typedSpelling else ""
+pure def lawASearchIsOnlyTypedWords(words: SearchWords): bool = groundedSearch(words) != "" implies (words.typedAsWholeWords and groundedSearch(words) == words.typedSpelling)
+pure def lawAnUnreadableMessageGroundsNoSearch(words: SearchWords): bool = not(words.readable) implies groundedSearch(words) == ""
+pure val typedWords: SearchWords = { readable: true, typedAsWholeWords: true, typedSpelling: "cheap flights" }
+pure val wordsValues = Set(typedWords, { ...typedWords, typedAsWholeWords: false }, { ...typedWords, readable: false })
+```
+
+### Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed
+
+A proposal to close every tab, on a phone that negotiated tab controls but
+not `browser.tabs.close-all.v1`, is refused before anything is kept, with
+the reason that this phone closes one tab at a time, so the agent can tell
+the owner and offer the tab that is showing or a tab they name. It is never
+proposed as a close of the tab that is showing. Each other close the phone
+negotiated is proposed as it was asked.
+
+```quint
+type CloseAnswer = CloseProposed | CloseEveryRefused | CloseUnavailable
+pure def closeAnswer(form: TabCloseForm, negotiated: Negotiated, closeAllNegotiated: bool): CloseAnswer =
+  if (closeFormOffered(form, negotiated, closeAllNegotiated)) CloseProposed
+  else if (form == CloseEvery and controlOffered(TabCloseControl, negotiated)) CloseEveryRefused
+  else CloseUnavailable
+pure def lawCloseEveryIsRefusedOnAOneTabPhone(negotiated: Negotiated): bool =
+  controlOffered(TabCloseControl, negotiated) implies closeAnswer(CloseEvery, negotiated, false) == CloseEveryRefused
+pure def lawCloseEveryIsProposedOnlyAsCloseEvery(negotiated: Negotiated, closeAllNegotiated: bool): bool =
+  closeAnswer(CloseEvery, negotiated, closeAllNegotiated) == CloseProposed implies closeFormOffered(CloseEvery, negotiated, closeAllNegotiated)
+pure def lawOneTabClosesAreProposedAsAsked(form: TabCloseForm, negotiated: Negotiated, closeAllNegotiated: bool): bool =
+  (form != CloseEvery and controlOffered(TabCloseControl, negotiated)) implies closeAnswer(form, negotiated, closeAllNegotiated) == CloseProposed
+```
+
+### A refused Browser proposal tells me how to ask, and never says anything opened
+
+A refused open answers the owner with how to ask for an address when the
+message has none, and only that the address was not opened when it has
+one; a refused search asks for the words to search for; a refused close of
+every tab says the phone closes one tab at a time and nothing closed. The
+model learns that no proposal was created and nothing ran.
+
+```quint
+type BrowserRefusal = DestinationNotRequested | SearchNotTyped | CloseEveryUnavailable
+type RefusalReply = AskForAddress | SayAddressNotOpened | AskForSearchWords | SayOneTabAtATime
+pure def refusalReply(refusal: BrowserRefusal, addressInWords: bool): RefusalReply =
+  match refusal {
+    | DestinationNotRequested => if (addressInWords) SayAddressNotOpened else AskForAddress
+    | SearchNotTyped => AskForSearchWords
+    | CloseEveryUnavailable => SayOneTabAtATime
+  }
+pure def lawARefusedOpenAsksOnlyWithoutAnAddress(addressInWords: bool): bool =
+  (refusalReply(DestinationNotRequested, addressInWords) == AskForAddress) iff not(addressInWords)
+pure def lawOnlyARefusedOpenSpeaksOfAnAddress(refusal: BrowserRefusal, addressInWords: bool): bool =
+  (refusalReply(refusal, addressInWords) == AskForAddress or refusalReply(refusal, addressInWords) == SayAddressNotOpened) implies refusal == DestinationNotRequested
+```
