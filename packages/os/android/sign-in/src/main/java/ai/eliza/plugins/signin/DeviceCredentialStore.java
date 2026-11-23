@@ -56,7 +56,7 @@ public final class DeviceCredentialStore implements CredentialReader {
     @Override public String toString() { return "Pending[attempt=" + attempt + ", credentialId=" + credentialId + "]"; }
   }
 
-  public record Owed(int version, String value, String lease, int tries) {
+  public record Owed(int version, String value, String lease, int tries, String successor) {
     @Override public String toString() { return "Owed[version=" + version + ", tries=" + tries + ", lease=" + (lease != null) + "]"; }
   }
 
@@ -363,7 +363,7 @@ public final class DeviceCredentialStore implements CredentialReader {
     synchronized (lock) {
       advance();
       List<Owed> out = new ArrayList<>();
-      for (Duty d : state.duties()) if (d.tries() > 0) out.add(new Owed(d.version(), keyOf(d.version()), d.lease() ? leaseOf(d.version()) : null, d.tries()));
+      for (Duty d : state.duties()) if (d.tries() > 0) out.add(new Owed(d.version(), keyOf(d.version()), d.lease() ? leaseOf(d.version()) : null, d.tries(), d.successor()));
       return out;
     }
   }
