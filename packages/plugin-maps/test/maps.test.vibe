@@ -889,7 +889,7 @@ it.live('Share a place only once I agree, and hear where Maps works: the asking 
   }))
 })
 
-it.live('Ask for directions to the place on my phone\'s map: a selection handle alone is sent back to the planner with nothing looked up, a handle beside the place\'s name is found by name, a place id Cloud refuses falls back to the name, a choice reply still continues, the place shown on the phone carries its provider id, and an answer Maps cannot use names the place (spec/maps/routing.md, "Story: Ask for directions to the place on my phone\'s map"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/maps/routing.md, "A place id Cloud refuses or no longer knows falls back to the place\'s name"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner\'s words, naming the place a start could not look up")', effect () => {
+it.live('Ask for directions to the place on my phone\'s map: a selection handle alone is sent back to the planner with nothing looked up, a handle beside the place\'s name is found by name, a place id Cloud refuses falls back to the name, a choice reply still continues, "where am I" with a handle still answers, the place shown on the phone carries its provider id, and an answer Maps cannot use names the place (spec/maps/routing.md, "Story: Ask for directions to the place on my phone\'s map"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/maps/routing.md, "A place id Cloud refuses or no longer knows falls back to the place\'s name"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner\'s words, naming the place a start could not look up")', effect () => {
   const { link, bodies } = linkFake()
   const handle = "maps_3b0f6a52-6a4e-4c1b-9d55-0d1f2e3a4b5c"
   const phone: MapsDeviceNavigation = {
@@ -932,6 +932,7 @@ it.live('Ask for directions to the place on my phone\'s map: a selection handle 
   const brokenSearch = try act("MAPS_PLACE", "find Broken Plaza", { query: "Broken Plaza" })
   const fromHere = try act("MAPS_ROUTE", "how far is Coit Tower from here", { originPlaceId: handle, destination: "Coit Tower", useCurrentLocation: true })
   const atPoint = try act("MAPS_PLACE", "what is at 37.8024, -122.4058", { placeId: handle, latitude: 37.8024, longitude: -122.4058 })
+  const whereAmI = try act("MAPS_PLACE", "where am I", { placeId: handle, useCurrentLocation: true })
   const handleSentToCloud = bodies.some((made) => made.path === "/api/v1/maps/places/details" && (made.body as { readonly id: string }).id === handle)
   try Effect.try(() => assert.deepStrictEqual({
     handleOnly: [select, save, share, start, place, toIt, fromIt].map(sentBack), lookedUpForHandles, handleSentToCloud,
@@ -939,7 +940,8 @@ it.live('Ask for directions to the place on my phone\'s map: a selection handle 
     refusedWithName: [refusedWithName.success, placeOf(refusedWithName)], refusedAlone: said(refusedAlone),
     asked: [asked.success, (asked.data as { readonly choice?: string }).choice], picked: said(picked),
     broken: said(broken), brokenSearch: said(brokenSearch),
-    placedOtherwise: [fromHere, atPoint].map((result) => (result.data as { readonly coachingFailure?: boolean } | undefined)?.coachingFailure === true),
+    placedOtherwise: [fromHere, atPoint, whereAmI].map((result) => (result.data as { readonly coachingFailure?: boolean } | undefined)?.coachingFailure === true),
+    whereAmI: said(whereAmI),
   }, {
     handleOnly: [
       [false, "MAPS_SELECTION_HANDLE", "internal", "placeId", true], [false, "MAPS_SELECTION_HANDLE", "internal", "placeId", true],
@@ -953,6 +955,7 @@ it.live('Ask for directions to the place on my phone\'s map: a selection handle 
     asked: [false, "destination"], picked: [true, "The route to Far Pharmacy is on your phone. Press Start on the phone to begin guidance."],
     broken: [false, "Maps couldn't look up Broken Plaza right now, so the route isn't planned. Try again in a moment."],
     brokenSearch: [false, "Maps got an answer it couldn't use. Try again in a moment."],
-    placedOtherwise: [false, false],
+    placedOtherwise: [false, false, false],
+    whereAmI: [false, "Your phone didn't report a recent position with this message, so I can't tell where you are."],
   }))
 })

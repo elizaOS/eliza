@@ -151,15 +151,16 @@ A screen selection handle identifies an observation of the Maps screen:
 selected object's id. It is never a place Cloud knows. When it is offered
 as a provider place ID, starting place ID or destination ID, Maps uses
 what else the request gives for that place: its name or address,
-coordinates or "near me" for a search, "from here" for a route's start,
-or an already bound answer to an open Maps question. When the handle is
-the only target, nothing is looked up or changed and the planner receives
-a coaching request (`MAPS_SELECTION_HANDLE`) to name the place from the
-conversation, asking the owner only when no place was named; the owner
-hears nothing of it ([planning](../agent/conversation/planning.md)). The
-handle never reaches the provider. A place shown on the phone's map is
-reported with its provider, provider place id and name, so a later
-"directions to it" can pass a real id.
+coordinates, "near me" or "where am I" for a search, "from here" for a
+route's start, or an already bound answer to an open Maps question. When
+the handle is the only target, nothing is looked up or changed and the
+planner receives a coaching request (`MAPS_SELECTION_HANDLE`) to name
+the place from the conversation, asking the owner only when no place was
+named; the owner hears nothing of it
+([planning](../agent/conversation/planning.md)). The handle never reaches
+the provider. A place shown on the phone's map is reported with its
+provider, provider place id and name, so a later "directions to it" can
+pass a real id.
 
 ```quint
 type SelectionTarget = UsePlaceId | UsePlaceName | AskPlannerForPlace
