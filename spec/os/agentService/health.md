@@ -133,16 +133,14 @@ pure def lawAcceptedConnectClearsRefusals(w: HealthWatch, child: JournaledChild,
 
 ### The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s
 
-The lifecycle allows `restartBudget` restarts in a row and resets the count
-after `stableRunMs` of running; within that budget the delay never exceeds
-16 s, and the table's tail caps any longer count at 60 s.
+The lifecycle restarts after every crash and resets the count after
+`stableRunMs` of running; the table's tail caps every longer count at 60 s,
+so a crash loop starts the agent at most once a minute.
 
 ```quint
-pure val restartBudget = 5
 pure val stableRunMs = 300000
 pure def restartDelay(n: int): int = List(1000, 2000, 4000, 8000, 16000, 32000, 60000).nthOr(n, 60000)
 pure val nValues = Set(0, 1, 2, 3, 4, 5, 6, 7, 8)
 pure def lawDelayGrowsAndIsCapped(n: int): bool =
   n >= 0 implies (restartDelay(n) >= 1000 and restartDelay(n) <= 60000 and restartDelay(n) <= restartDelay(n + 1))
-pure def lawBudgetDelaysStayShort(n: int): bool = (n >= 0 and n < restartBudget) implies restartDelay(n) <= 16000
 ```

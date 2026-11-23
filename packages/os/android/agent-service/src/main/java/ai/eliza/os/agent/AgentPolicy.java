@@ -10,7 +10,7 @@ public final class AgentPolicy {
   public static final long READY_TIMEOUT_MS = 60_000L;
 
   public enum Phase { STOPPED, CHECKING, SPAWNED, RUNNING, STOPPING, FAILED }
-  public enum Cause { PAYLOAD, STORAGE, CONFIG, CREDENTIAL, AGENT, CRASHED, RUNTIME }
+  public enum Cause { PAYLOAD, STORAGE, CONFIG, CREDENTIAL, AGENT, RUNTIME }
   public enum AfterExit { STOP, START, RESTART, FAIL }
   public enum ExitClass { CLEAN, RELEASE_FAILED, CONFIG, CREDENTIAL, STORAGE, AGENT, CRASH }
 
@@ -198,8 +198,7 @@ public final class AgentPolicy {
   }
 
   private boolean crash() {
-    if (attempt < HealthPolicy.RESTART_BUDGET) return begin(attempt + 1, HealthPolicy.restartDelay(attempt));
-    return fail(Cause.CRASHED, "restarted " + HealthPolicy.RESTART_BUDGET + " times without a stable run");
+    return begin(attempt == Integer.MAX_VALUE ? attempt : attempt + 1, HealthPolicy.restartDelay(attempt));
   }
 
   private boolean startable() {
@@ -249,7 +248,7 @@ public final class AgentPolicy {
   }
 
   private boolean refuse(Cause cause, String reason) {
-    if (phase != Phase.CHECKING || staleEpoch != 0 || cause == Cause.AGENT || cause == Cause.CRASHED || cause == Cause.RUNTIME) return false;
+    if (phase != Phase.CHECKING || staleEpoch != 0 || cause == Cause.AGENT || cause == Cause.RUNTIME) return false;
     if (cause == Cause.STORAGE && !reaped) return false;
     if (cause == Cause.CREDENTIAL && credentialHeld) return false;
     return fail(cause, reason);
