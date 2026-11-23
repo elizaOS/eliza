@@ -279,6 +279,13 @@ type StandaloneUpgrade = StandaloneSignedOut | LegacyDeviceKey(UpgradeKey)
   | UpgradedDeviceKey({ active: UpgradeKey, retired: UpgradeKey })
 type UpgradeExchange = NoLeaseReply | LeaseReply(UpgradeKey)
 type UpgradePrompt = NoUpgradePrompt | UpgradeRequired | UpgradeSignInPending | UpgradeAcknowledgmentPending
+pure val priorValues: Set[UpgradeKey] = Set(
+  { owner: { userId: "first", organizationId: "home" }, version: 1 },
+  { owner: { userId: "first", organizationId: "home" }, version: 2 },
+  { owner: { userId: "first", organizationId: "other" }, version: 2 },
+  { owner: { userId: "second", organizationId: "home" }, version: 2 })
+pure val replacementValues = priorValues
+pure val keyValues = priorValues
 pure def legacyDeviceKey(key: UpgradeKey): StandaloneUpgrade =
   LegacyDeviceKey({ owner: key.owner, version: key.version })
 pure def upgradePrompt(s: StandaloneUpgrade): UpgradePrompt = match s {
