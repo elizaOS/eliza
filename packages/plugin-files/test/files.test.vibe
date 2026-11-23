@@ -221,7 +221,7 @@ it.effect('Open the file I asked for, and only from what I was shown (spec/files
 it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none")', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
-      const { root } = try storage({ "Download/lease.pdf": "lease", "Download/lease notes.txt": "notes" })
+      const { root, fs, at } = try storage({ "Download/lease.pdf": "lease", "Download/lease notes.txt": "notes", "Download/move-this.txt": "memo", "Archive/.keep": "" })
       provide localVolume(root) {
         const volume = try FilesVolume
         const view = try filesView()
@@ -256,6 +256,13 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
         const reviewedPaths = executed !== undefined && "paths" in executed ? executed.paths : []
         const outcome = executed?.type === "files_trash" && "paths" in executed ? try volume.trash(executed) : []
         const shownNow = try view.shownPaths([2, 1])
+        try view.show({ text: "move-this" }, try volume.query({ text: "move-this" }))
+        const move = try reviews.review("p5", "d5", { type: "files_move", shown: [1], dest: "Archive" })
+        try view.show({ text: "no results" }, try volume.query({ text: "no results" }))
+        const approvedMove = try reviews.approved("p5", "d5")
+        const moved = approvedMove?.type === "files_move"
+          ? try volume.transfer({ paths: approvedMove.paths, dest: approvedMove.dest, copy: false, ...(approvedMove.reviewed === undefined ? {} : { reviewed: approvedMove.reviewed }) })
+          : []
         try check(() => {
           assert.equal(trash.kind, "card")
           assert.equal(trash.kind === "card" && trash.title, "Move 2 items to Trash")
@@ -266,6 +273,10 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
           assert.deepEqual(unnegotiated, { proposalId: "p4", kind: "notice", notice: "This Files action was not negotiated with this agent." })
           assert.equal(replaced.kind, "notice")
           assert.deepEqual(outcome.map((row) => row.status), ["trashed", "trashed"])
+          assert.equal(move.kind === "card" && move.description, "move-this.txt → Archive")
+          assert.deepEqual(approvedMove?.type === "files_move" && approvedMove.paths, ["Download/move-this.txt"])
+          assert.equal(approvedMove?.type === "files_move" && approvedMove.reviewed?.length, 1)
+          assert.deepEqual(moved, [{ path: "Download/move-this.txt", status: "moved", to: "Archive/move-this.txt" }])
           assert.equal(filesOperationAdmitted({ type: "files_open", shown: 1 }, [FILES_CAPABILITY]), true)
           assert.equal(filesOperationAdmitted({ type: "files_share", paths: ["a"] }, []), false)
           assert.deepEqual(filesToolSurface([FILES_CAPABILITY]).guidance, [])
@@ -300,6 +311,8 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
             forms: [0, 6, 9], guided: true,
           })
         })
+        assert.equal(try fs.readFileString(at("Archive/move-this.txt")), "memo")
+        assert.isFalse(try fs.exists(at("Download/move-this.txt")))
       }
     })
   }
