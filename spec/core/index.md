@@ -12,6 +12,15 @@ The baseline records the [public surface](./baseline/core-public-surface.json),
 retains, and the [compatibility decisions](./baseline/compatibility-decisions.json)
 on retained failure behavior.
 
+The baseline describes `packages/core` of develop at
+`elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`, the commit this
+version started from. Its source records (file hashes, behavior contracts,
+import graph, fixtures and legacy models) stay at that commit and are never
+moved to a later develop commit. A later develop change this version keeps
+is ported as a rule of the spec that owns its behavior, and the public
+surface and consumer imports change only with the exports that port adds or
+removes.
+
 | Cluster | Specifications |
 | --- | --- |
 | Turn | [End-to-end turn](./journey.md), [state composition](./stateComposition.md), [context](./context.md), [action planning](./actionPlanning.md), [actions](./execution.md), [action receipts](./actionReceipts.md), [receipts](./receipts.md), [receipt binding registry](./receiptBindings.md), [confirmation](./confirmation.md), [response fields](./responseFields.md), [response evaluators](./responseEvaluation.md), [turn controllers](./turnControllers.md), [terminal ownership](./terminal.md), [outbound style rewriting](./outboundStyle.md), [chat pre-handlers](./chatPreHandlers.md) |
