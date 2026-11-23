@@ -96,9 +96,86 @@ function opaqueText(value: unknown): string | undefined {
  * (clientDevice `selectedObject.id`, `maps_<uuid>`) is shaped like an id but
  * names an on-screen selection; sent to Cloud it is refused, so it is no id.
  */
-function providerPlaceId(params: Params): string | undefined {
-  const id = opaqueText(params.placeId);
+function providerPlaceId(
+  params: Params,
+  key: "placeId" | "originPlaceId" | "destinationPlaceId" = "placeId",
+): string | undefined {
+  const id = opaqueText(params[key]);
   return id && !isMapsSelectionHandle(id) ? id : undefined;
+}
+
+/**
+ * The id field that holds the phone's selection handle while the request
+ * names its place in no other way. The agent cannot read the selection, so
+ * the planner, which saw the place named ("show me Coit Tower", then
+ * "directions to it"), has to restate it; asking the owner would make them
+ * repeat a place they already named.
+ */
+function selectionHandleOnly(
+  params: Params,
+  action: MapsSubaction | "navigation-start",
+  settled: ReadonlySet<"originQuery" | "destinationQuery"> = new Set(),
+): HandleField | undefined {
+  const handle = (key: string) => {
+    const id = opaqueText(params[key]);
+    return id !== undefined && isMapsSelectionHandle(id);
+  };
+  if (action === "route") {
+    if (
+      handle("originPlaceId") &&
+      !settled.has("originQuery") &&
+      !text(params.originQuery) &&
+      !flag(params.useCurrentLocation) &&
+      params.originLatitude === undefined
+    )
+      return { field: "originPlaceId", nameField: "originQuery" };
+    if (
+      handle("destinationPlaceId") &&
+      !settled.has("destinationQuery") &&
+      !text(params.destinationQuery) &&
+      params.destinationLatitude === undefined
+    )
+      return { field: "destinationPlaceId", nameField: "destinationQuery" };
+    return undefined;
+  }
+  // MAPS_PLACE takes its name in `query`; the place-taking operations in `placeQuery`.
+  const nameField = action === "place" ? "query" : "placeQuery";
+  return handle("placeId") &&
+    !text(params[nameField]) &&
+    opaqueText(params.savedPlaceId) === undefined &&
+    params.latitude === undefined &&
+    params.longitude === undefined
+    ? { field: "placeId", nameField }
+    : undefined;
+}
+
+type HandleField = {
+  field: "placeId" | "originPlaceId" | "destinationPlaceId";
+  nameField: "query" | "placeQuery" | "originQuery" | "destinationQuery";
+};
+
+/**
+ * A planner-only refusal of a selection handle; nothing is said to the owner.
+ * It coaches the retry and leaves no broken state, so the retry's result, not
+ * this refusal, owns the turn's reply.
+ */
+function selectionHandleRefusal(
+  actionName: string,
+  action: string,
+  { field, nameField }: HandleField,
+): ActionResult {
+  return {
+    success: false,
+    text: `${field} was the phone's on-screen selection handle (clientDevice selectedObject id), which is not a place id; nothing was looked up or changed. Call ${actionName} again with the place the owner means, by name or address, in ${nameField}, taken from the conversation (such as the place just shown on the map). Ask the owner only when no place was named.`,
+    error: "MAPS_SELECTION_HANDLE",
+    data: {
+      actionName,
+      action,
+      reason: "selection_handle",
+      field,
+      coachingFailure: true,
+    },
+  };
 }
 
 function flag(value: unknown): boolean {
@@ -608,6 +685,36 @@ function openChoice(
   return choice?.operation === operation ? choice : undefined;
 }
 
+/** True when this turn's reply picks a place from the operation's open question. */
+function picksOpenChoice(
+  service: MapsService,
+  message: Memory,
+  operation: MapsSubaction | PlaceChoiceOperation,
+): boolean {
+  if (operation === "place") return false;
+  const choice = openChoice(
+    service,
+    message,
+    operation as PlaceChoiceOperation,
+  );
+  return !!choice && !!chosenPlace(choice, replyText(message));
+}
+
+/** Route endpoints an earlier route turn already settled and this turn keeps. */
+function settledEndpoints(
+  service: MapsService,
+  message: Memory,
+  operation: MapsSubaction,
+): ReadonlySet<"originQuery" | "destinationQuery"> {
+  if (operation !== "route") return new Set();
+  const resolved = openChoice(service, message, "route")?.resolved ?? {};
+  return new Set(
+    (["originQuery", "destinationQuery"] as const).filter(
+      (field) => resolved[field] !== undefined,
+    ),
+  );
+}
+
 /** Records the question a reply asked, so the owner's answer binds to it. */
 function rememberChoice(
   service: MapsService,
@@ -1071,6 +1178,23 @@ async function execute(
     };
   }
   const service = getMapsService(runtime);
+  const handleField =
+    action === "saved" || action === "coverage"
+      ? undefined
+      : selectionHandleOnly(
+          params,
+          action,
+          settledEndpoints(service, message, action),
+        );
+  // A reply that picks from this operation's open question ("the first one")
+  // names its place even when the planner restates none.
+  if (handleField && !picksOpenChoice(service, message, action)) {
+    return selectionHandleRefusal(
+      `MAPS_${action.toUpperCase()}`,
+      action,
+      handleField,
+    );
+  }
   try {
     switch (action) {
       case "place": {
@@ -1388,8 +1512,11 @@ async function execute(
             ? place
             : null;
         };
-        const originPlaceId = opaqueText(params.originPlaceId);
-        const destinationPlaceId = opaqueText(params.destinationPlaceId);
+        const originPlaceId = providerPlaceId(params, "originPlaceId");
+        const destinationPlaceId = providerPlaceId(
+          params,
+          "destinationPlaceId",
+        );
         let origin = pending
           ? ((pending.field === "originQuery"
               ? picked
@@ -2268,6 +2395,14 @@ async function executeNavigation(
           action,
           await service.requireDeviceNavigation().reroute(),
         ),
+      );
+    }
+    const handleField = selectionHandleOnly(params, "navigation-start");
+    if (handleField && !picksOpenChoice(service, message, "navigation-start")) {
+      return selectionHandleRefusal(
+        "MAPS_NAVIGATION_START",
+        action,
+        handleField,
       );
     }
     const device = service.requireDeviceNavigation();

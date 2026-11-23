@@ -1069,12 +1069,132 @@ describe("directions to a place the phone selected", () => {
     expect(replies).toEqual([result?.userFacingText]);
   });
 
-  it("asks where to go when the selection handle is the only destination given", async () => {
+  /*
+   * Device case (alpha.v626): "directions to it" after the place was shown;
+   * the planner passed only the handle and the owner was asked "Where should
+   * navigation go?" about a place they had just named.
+   */
+  it("sends a handle-only destination back to the planner to name the place, saying nothing to the owner", async () => {
     const { service, requests, starts } = setup(providerInvalid);
-    const { result } = await navigate(service, { placeId: SELECTION_HANDLE });
+    const { result, replies } = await navigate(service, {
+      placeId: SELECTION_HANDLE,
+    });
     expect(requests).toEqual([]);
     expect(starts).toEqual([]);
-    expect(result?.userFacingText).toMatch(/^Where should navigation go\?/);
+    expect(replies).toEqual([]);
+    expect(result).toMatchObject({
+      success: false,
+      error: "MAPS_SELECTION_HANDLE",
+      data: { reason: "selection_handle", field: "placeId" },
+    });
+    expect(result?.userFacingText).toBeUndefined();
+    expect(result?.text).toMatch(
+      /Call MAPS_NAVIGATION_START again .* in placeQuery/,
+    );
+    expect(result?.data).toMatchObject({ coachingFailure: true });
+  });
+
+  it("refuses a handle as a route endpoint without sending it to Cloud", async () => {
+    const { service, requests } = setup(providerInvalid);
+    const replies: string[] = [];
+    const result = await mapsAction.handler(
+      runtimeWith(service),
+      message({ text: "directions from the Ferry Building to it" }),
+      undefined,
+      {
+        parameters: {
+          action: "route",
+          originQuery: "Ferry Building",
+          destinationPlaceId: SELECTION_HANDLE,
+        },
+      },
+      async (content) => {
+        replies.push(String(content.text));
+        return [];
+      },
+    );
+    expect(requests).toEqual([]);
+    expect(replies).toEqual([]);
+    expect(result).toMatchObject({
+      success: false,
+      error: "MAPS_SELECTION_HANDLE",
+      data: { field: "destinationPlaceId" },
+    });
+    expect(result?.text).toMatch(
+      /Call MAPS_ROUTE again .* in destinationQuery/,
+    );
+    expect(result?.data).toMatchObject({ coachingFailure: true });
+  });
+
+  async function maps(
+    service: MapsService,
+    parameters: Record<string, string>,
+  ) {
+    const replies: string[] = [];
+    const result = await mapsAction.handler(
+      runtimeWith(service),
+      message({ text: "what's the address of it?" }),
+      undefined,
+      { parameters: { ...parameters } },
+      async (content) => {
+        replies.push(String(content.text));
+        return [];
+      },
+    );
+    return { result, replies };
+  }
+
+  it("looks a place up by its query when the planner also passes the handle", async () => {
+    const { service, requests } = setup(providerInvalid);
+    const { result } = await maps(service, {
+      action: "place",
+      placeId: SELECTION_HANDLE,
+      query: "Coit Tower",
+    });
+    expect(requests.map(({ path }) => path)).toEqual([
+      "/api/v1/maps/places/search",
+    ]);
+    expect(result?.success).toBe(true);
+  });
+
+  it("names the promoted action and its own name field in the refusal", async () => {
+    const { service, requests } = setup(providerInvalid);
+    const place = await maps(service, {
+      action: "place",
+      placeId: SELECTION_HANDLE,
+    });
+    expect(place.replies).toEqual([]);
+    expect(place.result?.text).toMatch(/Call MAPS_PLACE again .* in query,/);
+    const select = await maps(service, {
+      action: "select",
+      placeId: SELECTION_HANDLE,
+    });
+    expect(select.replies).toEqual([]);
+    expect(select.result?.text).toMatch(
+      /Call MAPS_SELECT again .* in placeQuery/,
+    );
+    expect(requests).toEqual([]);
+  });
+
+  it("ignores a handle beside a named route endpoint", async () => {
+    const { service, requests } = setup(providerInvalid);
+    await mapsAction.handler(
+      runtimeWith(service),
+      message({ text: "directions from the Ferry Building to Coit Tower" }),
+      undefined,
+      {
+        parameters: {
+          action: "route",
+          originQuery: "Ferry Building",
+          destinationQuery: "Coit Tower",
+          destinationPlaceId: SELECTION_HANDLE,
+        },
+      },
+      async () => [],
+    );
+    expect(
+      requests.some(({ path }) => path === "/api/v1/maps/places/details"),
+    ).toBe(false);
   });
 
   it("looks a place id Cloud refuses up by name instead", async () => {
