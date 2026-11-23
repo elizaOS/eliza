@@ -120,8 +120,8 @@ jobs:
           import path from "node:path";
           const source = path.join(process.env.RUNNER_TEMP, "simulation-receipts");
           const cache = ".spec-cache";
-          const candidates = fs.globSync("simulations-*/*", { cwd: source })
-            .filter((file) => /^simulations-\d+\/(?:action|simulate)-[a-f0-9]{24}\.json\.(?:zst|gz)$/.test(file) && fs.lstatSync(path.join(source, file)).isFile());
+          const candidates = fs.globSync(["*", "simulations-*/*"], { cwd: source })
+            .filter((file) => /^(?:simulations-\d+\/)?(?:action|simulate)-[a-f0-9]{24}\.json\.(?:zst|gz)$/.test(file) && fs.lstatSync(path.join(source, file)).isFile());
           fs.mkdirSync(cache, { recursive: true });
           let imported = 0;
           for (const [key, files] of Map.groupBy(candidates, (file) => path.basename(file, path.extname(file)))) {
