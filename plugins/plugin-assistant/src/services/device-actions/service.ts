@@ -3349,14 +3349,22 @@ export class DeviceActionService {
     });
   }
   /** Bounded durable outcomes; conversation/actor disclosure is checked by the context reader. */
-  async recentCompletedNotes(c: DeviceCredential): Promise<ApprovalRequest[]> {
+  async recentCompletedConversationActions(
+    c: DeviceCredential,
+  ): Promise<ApprovalRequest[]> {
+    const operationTypes = [
+      "create_note",
+      "notes_update",
+      "notes_delete",
+      "sms_send",
+    ];
     return this.access(c, async (queue, row) =>
       (
         await queue.list({
           subjectUserId: c.subjectUserId,
           state: "done",
           action: "device_action",
-          operationTypes: ["create_note", "notes_update", "notes_delete"],
+          operationTypes,
           limit: 32,
         })
       ).filter((request) => {
@@ -3373,9 +3381,7 @@ export class DeviceActionService {
           payload.enrollmentId === row.enrollment_id &&
           !payload.workflow &&
           !!payload.requestMessageId &&
-          ["create_note", "notes_update", "notes_delete"].includes(
-            payload.operation.type,
-          ) &&
+          operationTypes.includes(payload.operation.type) &&
           deviceOperationSupportedByCapabilities(
             payload.operation.type,
             c.capabilities,

@@ -569,8 +569,8 @@ it("lists all open work but only the newest fifty settled proposals", async () =
   }
 });
 
-it("finds recent note receipts behind many newer non-note completions", async () => {
-  const f = await fixture(["notes.local-record.v1"]);
+it("finds recent Notes and SMS receipts behind newer unrelated completions", async () => {
+  const f = await fixture(["notes.local-record.v1", "sms.send.v1"]);
   try {
     const start = Date.now() - 3_600_000;
     const notes = [];
@@ -592,8 +592,18 @@ it("finds recent note receipts behind many newer non-note completions", async ()
         new Date(start + 10_000 + i * 1000),
         randomUUID(),
       );
-    const found = await f.service.recentCompletedNotes(f.credential);
-    expect(found.map((row) => row.id).sort()).toEqual([...notes].sort());
+    const sms = await insertRow(
+      f,
+      "done",
+      SMS,
+      new Date(start + 20_000),
+      randomUUID(),
+    );
+    await insertRow(f, "pending", SMS, new Date(start + 25_000), randomUUID());
+    const found = await f.service.recentCompletedConversationActions(
+      f.credential,
+    );
+    expect(found.map((row) => row.id).sort()).toEqual([...notes, sms].sort());
   } finally {
     await f.pg.close();
   }
