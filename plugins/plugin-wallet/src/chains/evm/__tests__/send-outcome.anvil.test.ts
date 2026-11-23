@@ -35,7 +35,7 @@ const ANVIL_URL = `http://127.0.0.1:${ANVIL_PORT}`;
 const TOKEN = "0x00000000000000000000000000000000000e1a20" as Address;
 const TOKEN_CODE = "0x601260005260206000f3" as Hex;
 
-type SendMode = "pass" | "delay" | "reject" | "duplicate";
+type SendMode = "pass" | "delay" | "reject" | "duplicate" | "internal" | "generic";
 let sendMode: SendMode = "pass";
 let anvil: ChildProcess | undefined;
 let proxy: http.Server | undefined;
@@ -69,7 +69,10 @@ function startProxy(): Promise<string> {
           JSON.stringify({
             jsonrpc: "2.0",
             id,
-            error: { code: -32000, message: "insufficient funds for gas * price + value" },
+            error: {
+              code: -32000,
+              message: "insufficient funds for gas * price + value (private-provider-fixture)",
+            },
           })
         );
         return;
@@ -87,6 +90,17 @@ function startProxy(): Promise<string> {
       // example the Eliza Cloud RPC before its public fallback) sends it
       // again: the client gets the node's answer to the second copy.
       if (isSend && sendMode === "duplicate") text = await forward();
+      if (isSend && (sendMode === "internal" || sendMode === "generic")) {
+        const { id } = JSON.parse(body) as { id: number };
+        text = JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: sendMode === "internal" ? -32603 : -32000,
+            message: "An upstream request failed after forwarding",
+          },
+        });
+      }
       // The node has the transaction now; only its answer is late.
       if (isSend && sendMode === "delay") await new Promise((r) => setTimeout(r, 5_000));
       if (res.destroyed) return;
@@ -316,33 +330,37 @@ describe.skipIf(!HAS_ANVIL)("EVM send outcome after the node accepted the transa
     expect(confirmed?.values?.walletActionSucceeded).toBe(false);
   }, 30_000);
 
-  it("reports a transfer whose send answer says the node already has it as unconfirmed", async () => {
-    const runtime = createRuntime();
-    const service = routerFor(runtime);
-    const before = await settled();
+  it.each(["duplicate", "internal", "generic"] as const)(
+    "reports the mined transfer as unconfirmed after a %s response",
+    async (mode) => {
+      const runtime = createRuntime();
+      const service = routerFor(runtime);
+      const before = await settled();
 
-    sendMode = "duplicate";
-    const result = await service.routeWalletAction({
-      subaction: "transfer",
-      chain: "foundry",
-      fromToken: "ETH",
-      amount: "1",
-      recipient: ANVIL_ADDRESS_2,
-      mode: "execute",
-      dryRun: false,
-    });
-    const after = await settled();
+      sendMode = mode;
+      const result = await service.routeWalletAction({
+        subaction: "transfer",
+        chain: "foundry",
+        fromToken: "ETH",
+        amount: "1",
+        recipient: ANVIL_ADDRESS_2,
+        mode: "execute",
+        dryRun: false,
+      });
+      const after = await settled();
 
-    expect(after.recipientWei - before.recipientWei).toBe(parseEther("1"));
-    expect(after.nonce).toBe(before.nonce + 1);
-    expect(result.ok).toBe(true);
-    const metadata = metadataOf(result);
-    expect(metadata.confirmationStatus).toBe("unconfirmed");
-    expect(metadata.sendUncertain).toBe(true);
-    const hash = (result.ok ? result.result.transactionHash : undefined) as Hex;
-    const mined = await chainClient.getTransaction({ hash });
-    expect(mined.to?.toLowerCase()).toBe(ANVIL_ADDRESS_2.toLowerCase());
-  }, 30_000);
+      expect(after.recipientWei - before.recipientWei).toBe(parseEther("1"));
+      expect(after.nonce).toBe(before.nonce + 1);
+      expect(result.ok).toBe(true);
+      const metadata = metadataOf(result);
+      expect(metadata.confirmationStatus).toBe("unconfirmed");
+      expect(metadata.sendUncertain).toBe(true);
+      const hash = (result.ok ? result.result.transactionHash : undefined) as Hex;
+      const mined = await chainClient.getTransaction({ hash });
+      expect(mined.to?.toLowerCase()).toBe(ANVIL_ADDRESS_2.toLowerCase());
+    },
+    30_000
+  );
 
   it("still reports a transfer the node rejected as failed, so a retry is safe", async () => {
     const runtime = createRuntime();
@@ -365,7 +383,11 @@ describe.skipIf(!HAS_ANVIL)("EVM send outcome after the node accepted the transa
     expect(after.recipientWei).toBe(before.recipientWei);
     expect(result.ok).toBe(false);
     expect(result.ok ? "" : result.error).toBe("EXECUTION_FAILED");
-    expect(result.ok ? "" : result.detail).toContain("insufficient funds");
+    const detail = result.ok ? "" : result.detail;
+    expect(detail).toContain("insufficient funds");
+    expect(detail).not.toContain("private-provider-fixture");
+    expect(detail).not.toContain(proxyUrl);
+    expect(detail).not.toContain("eth_sendRawTransaction");
   }, 30_000);
 
   it("reports a transfer with a prompt answer as submitted, not unconfirmed", async () => {

@@ -19,14 +19,14 @@ module EvmTransactionSend {
     s' = { ...s, phase: "send", signed: true, hashKnown: true }
   }
   // "answered": the node returned the hash.
-  // "refused": the node answered with a JSON-RPC refusal; nothing landed.
-  // "lostAfterAccept": the node took the transaction, the answer was lost
-  //   (timeout, network error, gateway 5xx).
+  // "refused": request admission or the node definitively refused the send.
+  // "lostAfterAccept": the node took the transaction but the answer was lost.
+  // "opaqueRpcAfterAccept": a gateway returned an error after the node took it.
   // "lostBeforeAccept": the request never reached the node; same client view.
   // "alreadyKnown": a gateway sent the transaction twice and returns the
   //   node's "already known" / "nonce too low" answer to the second copy.
   action Send = {
-    nondet outcome = Set("answered", "refused", "lostAfterAccept", "lostBeforeAccept", "alreadyKnown").oneOf()
+    nondet outcome = Set("answered", "refused", "lostAfterAccept", "opaqueRpcAfterAccept", "lostBeforeAccept", "alreadyKnown").oneOf()
     all {
       s.phase == "send", s.signed,
       if (outcome == "refused")

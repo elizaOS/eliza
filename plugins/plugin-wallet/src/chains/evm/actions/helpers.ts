@@ -166,23 +166,29 @@ export function buildSendTxParams(params: {
   return txParams as SendTransactionParameters;
 }
 
-/**
- * True when the node answered `eth_sendRawTransaction` with a JSON-RPC error
- * that refuses the transaction. Only then is a retry safe. "Already known"
- * and "nonce too low" can mean this same transaction already reached the
- * node (for example through the Eliza Cloud RPC before its public fallback),
- * so they are not a refusal.
- */
-function isNodeRejection(error: unknown): boolean {
-  if (!(error instanceof BaseError)) return false;
-  const rpcError = error.walk((cause) => cause instanceof RpcRequestError);
-  if (!rpcError) return false;
-  return !/already known|known transaction|already imported|nonce too low/i.test(error.message);
+function rpcSendError(error: unknown): RpcRequestError | undefined {
+  const cause = error instanceof BaseError
+    ? error.walk((value) => value instanceof RpcRequestError)
+    : undefined;
+  return cause instanceof RpcRequestError ? cause : undefined;
+}
+
+function rejectedSendReason(error: RpcRequestError | undefined): string | undefined {
+  if (!error) return undefined;
+  const { code, details } = error;
+  // JSON-RPC request admission failures precede the send.
+  if (code === -32700 || code === -32600 || code === -32601 || code === -32602) {
+    return "invalid RPC request";
+  }
+  if (code !== -32000 && code !== -32003) return undefined;
+  // Nodes reuse these codes for duplicates and arbitrary server errors.
+  return /^(insufficient funds|intrinsic gas too (?:low|high)|invalid sender|fee cap less than block base fee)\b/i
+    .exec(details)?.[1]?.toLowerCase();
 }
 
 export interface EvmSendOutcome {
   readonly hash: Hash;
-  /** The node did not answer the send, so it may or may not have the transaction. */
+  /** The send has no conclusive answer, so the node may still have the transaction. */
   readonly sendUncertain: boolean;
 }
 
@@ -190,9 +196,8 @@ export interface EvmSendOutcome {
  * Signs locally, then sends the raw transaction. The hash of the signed bytes
  * is known before the send, so a send whose answer is lost (RPC timeout, network error, gateway
  * 5xx) is returned as uncertain with that hash instead of thrown: the node may
- * already hold the transaction, and a caller that reports a failure invites a
- * retry that signs the next nonce and pays twice. A JSON-RPC refusal from the
- * node and any error before the send still throw.
+ * already hold the transaction. A definite refusal or a failure before the
+ * send still throws.
  */
 export async function sendEvmTransaction(
   walletClient: WalletClient,
@@ -208,14 +213,15 @@ export async function sendEvmTransaction(
     const hash = await walletClient.sendRawTransaction({ serializedTransaction });
     return { hash, sendUncertain: false };
   } catch (error) {
-    if (isNodeRejection(error)) throw error;
-    // The node gave no hash, so report the hash of the signed bytes.
-    const hash = keccak256(serializedTransaction);
+    const rpcError = rpcSendError(error);
+    const refusal = rejectedSendReason(rpcError);
+    if (refusal) throw new Error(`EVM node rejected the transaction: ${refusal}`);
     // error-policy:J2 the signed transaction may be on the node; its outcome is unknown.
-    // shortMessage leaves out the RPC URL and request body that viem adds to message.
+    const hash = keccak256(serializedTransaction);
+    const rpcCode = rpcError?.code;
     logger.warn(
-      { hash, error: error instanceof BaseError ? error.shortMessage : String(error) },
-      "[plugin-wallet] EVM send got no answer; outcome unconfirmed"
+      { hash, ...(Number.isInteger(rpcCode) ? { rpcCode } : {}) },
+      "[plugin-wallet] EVM send outcome unconfirmed"
     );
     return { hash, sendUncertain: true };
   }
