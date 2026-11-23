@@ -203,6 +203,17 @@ in is positioned fixed, absolute or sticky, other than the site's own
 full-page frame) or part of the page itself (`overlay`). Dispatching an input
 consumes the observation, so the next input needs a new read.
 
+A local host can request a statement-region read from the native surface
+after observing the document. The request names that same document. An
+ordinary task snapshot does not expose this option. The native read reports
+ordered visible text fragments under disjoint structural region keys in the
+main document, without reading frames or text inside forms, editable
+regions, or navigation. Body and main are scopes for finding regions. A
+covering blocker, a sensitive or unrecognized input, or an observation
+that exceeds its size limits supplies no region fragments. The read stays
+local to the requesting host and reports the same document and revision
+witnesses as the ordinary observation.
+
 ```quint
 pure def canSettleRead(s: SurfaceReceiver): bool = s.phase == ReceiverReading
 pure def settleRead(s: SurfaceReceiver, snapshotRef: str, completeForOrigin: bool): SurfaceReceiver =

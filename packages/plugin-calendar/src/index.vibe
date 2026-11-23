@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"
 import type { IAgentRuntime, Plugin } from "@elizaos/core"
-import { calendarAction, calendarActionName, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk } from "./plugin/actions.vibe"
+import { calendarAction, calendarActionName, calendarAsk, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk } from "./plugin/actions.vibe"
 import type { CalendarHost } from "./plugin/host.vibe"
 import { linkedCalendarRoutes } from "./plugin/linked-routes.vibe"
 import { calendarRoutes, type CalendarRoute } from "./plugin/routes.vibe"
@@ -26,7 +26,7 @@ export {
 } from "./plugin/host.vibe"
 export { cacheKeyValueStore, cacheStoreLayer, type CalendarCache } from "./plugin/runtime-store.vibe"
 export { calendarRoutes, type CalendarRoute, type CalendarRouteInput, type CalendarRouteReply } from "./plugin/routes.vibe"
-export { calendarAction, calendarActionName, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk }
+export { calendarAction, calendarActionName, calendarAsk, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk }
 export { CalendarApprovalExecutorService, CalendarService, calendarApprovalExecutorServiceType, calendarServiceType }
 export type { CalendarEventFacts } from "./plugin/service.vibe"
 export { linkedCalendarRoutes, type LinkedRouteContext } from "./plugin/linked-routes.vibe"

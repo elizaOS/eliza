@@ -14,6 +14,7 @@ import { testProfile } from "../support/profile.ts"
 
 const minuteMs = 60_000
 const model: Model = { id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true, defaultMaxTokens: { tag: "OutputDefaultOf", tokens: 4096 }, inputPer1K: 1000, outputPer1K: 2000 }
+const shortModel: Model = { ...model, id: "test-chat-short", defaultMaxTokens: { tag: "OutputDefaultOf", tokens: 500 } }
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -28,7 +29,8 @@ function chatProbe(reached: Array<string>): Route {
     handler: (context) => effect {
       reached.push(context.caller.kind)
       const body = try chatBody(context)
-      return json({ ...(try quote(body, model)), image: hasImage(body) })
+      const selected = body.model === shortModel.id ? shortModel : model
+      return json({ ...(try quote(body, selected)), image: hasImage(body) })
     }
   }
 }
@@ -104,7 +106,8 @@ describe("WP5 Inference: chat admission", () => {
         reasoning_effort: "low",
         response_format: { type: "json_schema", json_schema: { name: "title", strict: true, schema: closedSchema } }
       })),
-      defaultOutput: outcome(try send({ model: "test-chat", messages: [user] }))
+      defaultOutput: outcome(try send({ model: "test-chat", messages: [user] })),
+      shortDefaultOutput: outcome(try send({ model: shortModel.id, messages: [user] }))
     }
     try check(() => assert.deepStrictEqual(answers, {
       unsupportedField: "400 invalid_request unsupported_field",
@@ -117,9 +120,10 @@ describe("WP5 Inference: chat admission", () => {
       openStrictSchema: "400 invalid_request",
       notJson: "400 invalid_request",
       accepted: { counts: { inputTokens: 10, outputTokens: 64 }, micros: 166, image: true },
-      defaultOutput: { counts: { inputTokens: 10, outputTokens: 4096 }, micros: 9842, image: false }
+      defaultOutput: { counts: { inputTokens: 10, outputTokens: 4096 }, micros: 9842, image: false },
+      shortDefaultOutput: { counts: { inputTokens: 10, outputTokens: 500 }, micros: 1212, image: false }
     }))
-    try check(() => assert.deepStrictEqual(reached.length, 11))
+    try check(() => assert.deepStrictEqual(reached.length, 12))
   }))
 
   it.live("Limit chat ingress to 600 requests a minute from one address before authentication (spec/cloud/shared/rateLimit.md, \"Story: Refuse excess requests with a usable retry time\")", () => scoped(effect {

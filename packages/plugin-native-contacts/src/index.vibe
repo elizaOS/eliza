@@ -1,0 +1,20 @@
+// spec/nativeContacts/index.md, "Story: Read or add contacts only within my device permissions"
+export { addressBookPlugin, contactsClient, contactsPlugin, createAddressBookClient, createContactNames } from "@elizaos/os/bridges/contacts"
+export type * from "@elizaos/os/bridges/definitions/contacts"
+
+import { ADDRESS_BOOK_DEFAULT_PAGE } from "@elizaos/os/bridges/contacts"
+import type { AddressBookClient, ContactPageAsk } from "@elizaos/os/bridges/definitions/contacts"
+import { mayUseContacts, validContactsPage } from "../gen/nativeContacts.effect.vibe"
+
+export error NativeContactsUnavailable
+
+export effect function readNativeContacts(device: AddressBookClient, ask: ContactPageAsk) {
+  const status = try tryPromise(() => device.status())
+  if (!status.available || !mayUseContacts(status, "BrowseContacts")) throw new NativeContactsUnavailable()
+  const page = try tryPromise(() => device.list(ask))
+  const maxRows = ask.limit ?? ADDRESS_BOOK_DEFAULT_PAGE
+  if (!Number.isSafeInteger(maxRows) || !validContactsPage({ maxRows, returnedRows: page.contacts.length, hasContinuation: page.next !== null })) {
+    throw new NativeContactsUnavailable()
+  }
+  return page
+}
