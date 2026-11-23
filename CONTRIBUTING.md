@@ -490,6 +490,10 @@ public packages only because fork pull requests can read it.
 Verification and release install both Chromium executables. In CI and nightly
 runs, shard A needs full Chromium for Bombadil. The other self-test shards
 run without a browser.
+The precompute jobs skip the root install’s build and generation during the
+canonical `ci.yml` preparation in its workspace. Other workflows, manual
+commands and nested packages keep their declared install work.
+
 CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache, only those a job
 of the same name saved.
 The hosted Eliza verify job uses each package's own `gen/` files to key the root

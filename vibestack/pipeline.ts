@@ -1050,17 +1050,20 @@ export async function main(argv = process.argv.slice(2)) {
       const hosted = process.env.GITHUB_ACTIONS === "true";
       const job = hosted ? process.env.GITHUB_JOB : undefined;
       const fixture = job === "vibestack-fixture-selftests";
-      const prerequisites = job === "simulate" ? [] : installTasks.filter((task) => !fixture || task === "//#build");
+      const preparing = process.env.npm_lifecycle_event === "prepare";
+      const precomputeInstall = preparing && job === "vibestack-precompute-simulations" && process.env.npm_command === "install"
+        && process.env.GITHUB_WORKSPACE === root
+        && process.env.GITHUB_WORKFLOW_REF?.startsWith(`${process.env.GITHUB_REPOSITORY}/.github/workflows/ci.yml@`);
+      const prerequisites = precomputeInstall ? [] : installTasks.filter((task) => !fixture || task === "//#build");
       if (prerequisites.length) {
         const code = await runTasks(root, prerequisites);
         if (code !== 0) { process.exitCode = code ?? 1; return; }
       }
-      const preparing = process.env.npm_lifecycle_event === "prepare";
       const packingTools = preparing && skipGenOnPack && process.env.npm_command === "pack";
       const nightlyCheck = preparing && hosted && process.env.npm_command === "install"
         && process.env.GITHUB_JOB === "vibestack-nightly-check" && process.env.GITHUB_WORKSPACE === root
         && process.env.GITHUB_WORKFLOW_REF?.startsWith(`${process.env.GITHUB_REPOSITORY}/.github/workflows/fuzz.yml@`);
-      if (fixture || job === "simulate" || packingTools || nightlyCheck) return;
+      if (fixture || precomputeInstall || packingTools || nightlyCheck) return;
       [command, ...args] = hosted ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
     }
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {

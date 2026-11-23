@@ -42,7 +42,7 @@ jobs:
 
   verify:
     name: ${{ matrix.name }}
-    needs: simulate
+    needs: vibestack-precompute-simulations
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     strategy:
@@ -318,7 +318,7 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: true
 
-  simulate:
+  vibestack-precompute-simulations:
     name: simulate-${{ matrix.shard }}
     runs-on: ubuntu-latest
     strategy:
