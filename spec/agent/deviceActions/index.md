@@ -357,9 +357,11 @@ wire type may first prepare it, as telephony restores the digits of a
 number the owner wrote with separators, and the operation must then match
 one of the offered forms exactly, not only by its type, and be available
 on this message. One that matches no offered form is refused before the
-family grounds it, as a step of the turn: the model reads that nothing was
-created, so it may correct it, and the owner hears that it could not be
-prepared. One that is not the routed request's on a routed message, or
+family grounds it as coaching for the planner
+([planning](../conversation/planning.md)): the model reads that nothing
+was created, so it may correct it or answer without it, and it is no step
+of the turn, so a corrected proposal is reported alone and the owner hears
+no failure for the attempt the model corrected. One that is not the routed request's on a routed message, or
 whose form this message does not allow, is a call the message serves in
 another place: the planner refuses it before dispatch
 ([planning](../conversation/planning.md)), the model reads which it was
@@ -381,12 +383,12 @@ conversation and message, for ten minutes. Each operation of a compound
 request is its own proposal: a photo kept for its review card never holds
 back the text the same message asked for. A family may name the operation
 the owner's whole message is a strict command for, as the Browser does for
-"open example.com" and the surfaces do for "take a picture"; where exactly
-one family names one and it matches a form available on this message
-(only the routed forms while a [whole-message route](./surfaces.md) owns
-the request), the tool names that proposal as the turn's call to run
-before the model's choice, and it is proposed, grounded and admitted as
-any other.
+"open example.com" or "show my open tabs" and the surfaces do for "take a
+picture"; where exactly one family names one and it matches a form
+available on this message (only the routed forms while a
+[whole-message route](./surfaces.md) owns the request), the tool names that
+proposal as the turn's call to run before the model's choice, and it is
+proposed, grounded and admitted as any other.
 
 ```quint
 type GroundingVerdict = FamilyGrounded | FamilyRefused

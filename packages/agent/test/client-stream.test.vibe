@@ -5,6 +5,7 @@ import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "../src/client/stream-reader.vibe"
+import { cueRule } from "../src/conversation/reply-text.vibe"
 
 module node {
   import { registerDirectActionRoutingRule, sleepWithAbort, type Action } from "@elizaos/core"
@@ -250,6 +251,16 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   const answer = try turn("Hi")
   try Effect.sync(() => cloud.script(text("Sure.")))
   const assentWithoutWork = try turn("Remember that I like tea")
+  try Effect.sync(() => cloud.script(toolCalls("Let me open Maps.", agenda), text("The nearest coffee is on Main Street.")))
+  const openAsPart = try turn("Open Maps and find coffee nearby")
+  try Effect.sync(() => cloud.script(toolCalls("Maps is open.", agenda), text("Maps is open.")))
+  const navigationOnly = try turn("Open Maps.")
+  try Effect.sync(() => cloud.script(toolCalls("Opened your calendar.", agenda), text("Opened your calendar.")))
+  const calendarOnly = try turn("Open my calendar")
+  const system = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions")
+    .map(({ body }) => (body as { messages: { role: string; content?: unknown }[] }).messages[0])
+    .map((message) => message?.role === "system" && typeof message.content === "string" ? message.content : "")
+
   try Effect.sync(() => cloud.script(toolCalls("", show), text("Shown."), toolCalls("", show), text("Shown."), toolCalls("", show), text("Shown.")))
   const sharedSelected = try turn("Show my agenda for today")
   const sharedBothSelected = try turn("Show my agenda and my journal")
@@ -275,7 +286,11 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     acknowledgedBeforeTools: acknowledgments.length === 0, cueLeftTheText: true, sameWhenSplit: true,
   })
   try Effect.try(() => assert.deepStrictEqual({
-    instruction, question, politeAsk, answer, assentWithoutWork, sharedSelected, sharedBothSelected, sharedUnselected, coached, directFast, directSlow, directQuiet, directStopped,
+    exemptionInRule: [cueRule.includes("A request whose only work is opening one app gets no cue"), cueRule.includes("\"Let me open Maps.\"")],
+    ruleInEverySystemPrompt: system.length > 0 && system.every((content) => content.includes(cueRule)),
+  }, { exemptionInRule: [true, true], ruleInEverySystemPrompt: true }))
+  try Effect.try(() => assert.deepStrictEqual({
+    instruction, question, politeAsk, answer, assentWithoutWork, openAsPart, navigationOnly, calendarOnly, sharedSelected, sharedBothSelected, sharedUnselected, coached, directFast, directSlow, directQuiet, directStopped,
   }, {
     instruction: {
       done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
@@ -299,5 +314,11 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     directSlow: direct(["acknowledgment:One sec."]),
     directQuiet: direct([]),
     directStopped: { acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"] },
+    openAsPart: {
+      done: done("The nearest coffee is on Main Street."), asked: 2, acknowledgments: ["acknowledgment:Let me open Maps."], tools: ["tool:AGENDA_READ:Using Agenda"],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+    },
+    navigationOnly: { done: done("Maps is open."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    calendarOnly: { done: done("Opened your calendar."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
   }))
 }, 120_000)
