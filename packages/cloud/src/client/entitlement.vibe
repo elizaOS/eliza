@@ -56,6 +56,8 @@ export type EntitlementCheck =
   | "WrongVersion"
   | "WrongIssuer"
   | "WrongAudience"
+  | "WrongSubject"
+  | "WrongOrganization"
   | "LifetimeTooLong"
   | "IssuedInFuture"
   | "Expired"
@@ -66,6 +68,8 @@ export interface EntitlementExpectation {
   readonly keys: ReadonlyArray<EntitlementKey>
   readonly issuer: string
   readonly audience: string
+  readonly userId: string
+  readonly organizationId: string
   readonly now: Millis
 }
 
@@ -130,6 +134,8 @@ export async function verifyEntitlement(token: string, expected: EntitlementExpe
   if (claims.ver < entitlementVersion) throw invalid("WrongVersion")
   if (claims.iss !== expected.issuer) throw invalid("WrongIssuer")
   if (claims.aud !== expected.audience) throw invalid("WrongAudience")
+  if (claims.sub !== expected.userId) throw invalid("WrongSubject")
+  if (claims.org !== expected.organizationId) throw invalid("WrongOrganization")
   if (claims.exp <= claims.iat || claims.exp - claims.iat > maxEntitlementLifetimeSeconds) throw invalid("LifetimeTooLong")
   if (claims.iat * millisPerSecond > expected.now + clockSkewSeconds * millisPerSecond) throw invalid("IssuedInFuture")
   if (claims.exp * millisPerSecond <= expected.now) throw invalid("Expired")

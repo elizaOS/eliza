@@ -1,0 +1,66 @@
+// spec/nativeActivityTracker/index.md, "Story: Observe my desktop activity while my collector is running"
+import * as ChildProcess from "effect/process/ChildProcess"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import { initial, mayPublishCollectorLine, startCollector, type CollectorLine } from "../gen/nativeActivityTracker.effect.vibe"
+
+module nodePlatform {
+  import { platform } from "node:process"
+
+  export const isDarwin = platform === "darwin"
+}
+import { isDarwin } from nodePlatform
+
+const At = Schema.Number.check(Schema.isFinite())
+const Focus = Schema.Struct({
+  ts: At,
+  event: Schema.Literals(["activate", "deactivate"]),
+  bundleId: Schema.String,
+  appName: Schema.String,
+  windowTitle: Schema.optionalKey(Schema.String),
+})
+const Idle = Schema.Struct({ ts: At, event: Schema.Literal("hid_idle"), idleSeconds: At })
+const CollectorEvent = Schema.fromJsonString(Schema.Union([Focus, Idle]))
+
+export type ActivityObservation = typeof CollectorEvent.Type
+export error CollectorUnavailable { binaryPath: string }
+export error CollectorExited { exitCode: number }
+
+function collectorLine(observation: ActivityObservation): CollectorLine {
+  const rounded = Math.floor(observation.ts)
+  if (observation.event === "hid_idle") return {
+    tag: "IdleSample",
+    sampledAtMs: rounded,
+    idleMs: Math.round(observation.idleSeconds * 1000),
+  }
+  if (observation.event === "activate") return {
+    tag: "Activated",
+    observedAtMs: rounded,
+    bundleId: observation.bundleId,
+    appName: observation.appName,
+  }
+  return {
+    tag: "Deactivated",
+    deactivatedAtMs: rounded,
+    closedBundleId: observation.bundleId,
+    closedAppName: observation.appName,
+  }
+}
+
+export function isSupportedPlatform(): boolean {
+  return isDarwin
+}
+
+export effect function* observeActivity(binaryPath: string, args: readonly string[] = []) {
+  if (!isSupportedPlatform() || binaryPath === "") throw new CollectorUnavailable({ binaryPath })
+  const spawner = try ChildProcessSpawner
+  const child = try spawner.spawn(ChildProcess.make(binaryPath, [...args], { stdin: "ignore", stderr: "ignore" }))
+  const running = startCollector(initial, "MacCollector", true)
+  for try (const line of Stream.splitLines(Stream.decodeText(child.stdout))) {
+    const decoded = Schema.decodeUnknownOption(CollectorEvent)(line)
+    if (Option.isNone(decoded)) continue
+    const value = decoded.value
+    if (mayPublishCollectorLine(running, running.generation, collectorLine(value))) yield value
+  }
+  const exitCode: number = try child.exitCode
+  if (exitCode !== 0) throw new CollectorExited({ exitCode })
+}

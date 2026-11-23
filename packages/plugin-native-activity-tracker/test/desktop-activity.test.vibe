@@ -1,0 +1,17 @@
+// spec/nativeActivityTracker/index.md, "Story: Observe my desktop activity while my collector is running"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { isSupportedPlatform, observeActivity } from "../src/index.vibe"
+
+it.effect.skipIf(!isSupportedPlatform())('Observe valid desktop focus and idle events through the running collector (spec/nativeActivityTracker/index.md, "Story: Observe my desktop activity while my collector is running")', effect () => {
+  provide NodeServices.layer {
+    const path = try Path.Path
+    const fixture = path.join(import.meta.dirname, "fixtures", "desktop-activity.ndjson")
+    const activity = try Stream.runCollect(observeActivity("/bin/cat", [fixture]))
+    try Effect.try(() => assert.deepStrictEqual(activity, [
+      { ts: 1714000000000, event: "activate", bundleId: "com.apple.TextEdit", appName: "TextEdit", windowTitle: "Untitled" },
+      { ts: 1714000020000, event: "hid_idle", idleSeconds: 1.25 },
+      { ts: 1714000030000, event: "deactivate", bundleId: "", appName: "" },
+    ]))
+  }
+})

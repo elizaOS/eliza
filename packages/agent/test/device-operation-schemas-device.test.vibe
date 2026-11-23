@@ -63,6 +63,7 @@ const samples: Record<string, unknown> = {
   BrowserTabNew: { type: "browser_tab_new", private: false },
   BrowserTabSwitch: { type: "browser_tab_switch", target: "news" },
   BrowserTabClose: { type: "browser_tab_close", all: true },
+  BrowserTabsShow: { type: "browser_tabs_show" },
   BrowserFind: { type: "browser_find", text: "opening hours" },
   BrowserHistory: { type: "browser_history", action: "back" },
 }
@@ -120,6 +121,8 @@ it("Propose only operations the device can check: a proposal with a stray key or
     { type: "sms_reply_selected", body: "   " },
     { type: "browser_navigate", url: "ftp://example.com" },
     { type: "browser_navigate", url: "https://user:pw@example.com" },
+    { type: "browser_tabs_show", target: "bbc" },
+    { type: "browser_tabs_show", all: true },
     { type: "open_view", view: "terminal" },
     { type: "create_reminder", title: "Call", dueAt: "2026-11-22 09:00" },
     { ...range, end: "2026-11-30T00:00:00.000Z" },
@@ -148,6 +151,13 @@ it("Propose only operations the device can check: each operation needs its own c
   assert.strictEqual(validate(whole, negotiation(true, "sms.latest-sender.v2"), "NoBinding")?.versionTwo, true)
   assert.strictEqual(readOperation({ type: "sms_latest_sender", includeAddress: false }), undefined)
   assert.isTrue(mayRunDirectly(checked(whole), "NoBinding", true))
+  const newTab = { type: "browser_navigate", url: "example.com/menu", newTab: true }
+  assert.isDefined(validate(samples.BrowserNavigate, negotiation(true, "files.browser.v1"), "NoBinding"))
+  assert.isUndefined(validate(newTab, negotiation(true, "files.browser.v1"), "NoBinding"))
+  assert.isDefined(validate(newTab, negotiation(true, "browser.open-new-tab.v1"), "NoBinding"))
+  assert.isUndefined(validate(samples.BrowserTabsShow, negotiation(true, "browser.tabs.v1"), "NoBinding"))
+  assert.isDefined(validate(samples.BrowserTabsShow, negotiation(true, "browser.tabs.show.v1"), "NoBinding"))
+  assert.isUndefined(validate(samples.BrowserTabSwitch, negotiation(true, "browser.tabs.show.v1"), "NoBinding"))
 })
 
 it("Propose only operations the device can check: a targeted text, a draft in the sender's thread, a contact change by value and a dial to a contact need their newer capability, and a draft never reports a send", () => {
@@ -232,7 +242,7 @@ it("Propose only operations the device can check: a keypad, a contact search or 
     ["ReportedApplied", "refused", "ReportedApplied", "refused", "ReportedApplied", "ReportedUnknown", "ReportedApplied"])
 })
 
-it("Propose only operations the device can check: an album or share names the open photo only under photos.view-selected.v1, and a capture's library ID needs its capability", () => {
+it("Propose only operations the device can check: an album or share names the open photo only under photos.view-selected.v1, and a capture's library ID and lens each need their capability", () => {
   const view = "photos.library.v1,photos.view.v1"
   const openShare = { type: "photos_share", selected: true }
   const openAlbum = { type: "photos_album_create", name: "Trip", ids: [], selected: true }
@@ -254,6 +264,12 @@ it("Propose only operations the device can check: an album or share names the op
   assert.strictEqual(settled("camera.capture-photo.v1,camera.capture-library-id.v1", saved), "ReportedApplied")
   const { libraryId: _left, ...withoutId } = saved
   assert.strictEqual(settled("camera.capture-photo.v1", withoutId), "ReportedApplied")
+  const front = { type: "camera_capture_photo", lens: "front" }
+  assert.isUndefined(validate(front, negotiation(true, "camera.capture-photo.v1"), "NoBinding"))
+  assert.isUndefined(validate(front, negotiation(true, "camera.capture-lens.v1"), "NoBinding"))
+  assert.strictEqual(validate(front, negotiation(true, "camera.capture-photo.v1,camera.capture-lens.v1"), "NoBinding")?.versionTwo, false)
+  assert.strictEqual(validate({ type: "camera_capture_photo", lens: "back" }, negotiation(true, "camera.capture-photo.v1,camera.capture-lens.v1,camera.capture-library-id.v1"), "NoBinding")?.versionTwo, true)
+  assert.strictEqual(readOperation({ type: "camera_capture_photo", lens: "wide" }), undefined)
 })
 
 it("Propose only operations the device can check: only a reversible local operation bound to the owner's message runs directly", () => {
@@ -261,6 +277,8 @@ it("Propose only operations the device can check: only a reversible local operat
   assert.isTrue(mayRunDirectly(checked(samples.SmsReplySelected), "NoBinding", true))
   assert.isFalse(mayRunDirectly(checked(samples.FilesOpen), "NoBinding", false))
   assert.isTrue(mayRunDirectly(checked(samples.BrowserHistory), "NoBinding", true))
+  assert.isTrue(mayRunDirectly(checked(samples.BrowserTabsShow), "NoBinding", true))
+  assert.isFalse(mayRunDirectly(checked(samples.BrowserTabsShow), "NoBinding", false))
   for (const type of ["SmsSend", "PhoneCall", "ContactDelete", "FilesShare", "PhotosShare", "PhotoLibraryReview", "VoicemailDeleteSelected", "BrowserTabClose"])
     assert.isFalse(mayRunDirectly(checked(samples[type]), "NoBinding", true), type)
 })
@@ -316,6 +334,9 @@ it("Learn exactly what the device did: reads carry a result exactly when applied
   assert.strictEqual(outcome(samples.CameraCapturePhoto, { outcome: "applied", operationId: "n1" }), "refused")
   assert.strictEqual(outcome(samples.FilesOpen, { outcome: "applied", operationId: "n1" }), "ReportedApplied")
   assert.strictEqual(outcome(samples.FilesOpen, { outcome: "applied", operationId: "n1", result: { shown: 1 } }), "refused")
+  assert.strictEqual(outcome(samples.BrowserTabsShow, { outcome: "applied", operationId: "n1" }), "ReportedApplied")
+  for (const result of [{ tabs: [{ title: "BBC News", url: "https://bbc.co.uk/news" }] }, { count: 3 }])
+    assert.strictEqual(outcome(samples.BrowserTabsShow, { outcome: "applied", operationId: "n1", result }), "refused", JSON.stringify(result))
   assert.strictEqual(outcome(samples.SpeakText, { outcome: "applied", operationId: "n1" }), "ReportedApplied")
   assert.strictEqual(outcome(samples.PhotosShare, { outcome: "applied", operationId: "n1", result: { kind: "photos_share", status: "review_opened", count: 1, missing: 0 } }), "ReportedApplied")
   assert.strictEqual(outcome(samples.PhotosShare, { outcome: "applied", operationId: "n1", result: { kind: "photos_share", status: "review_opened", count: 2, missing: 0 } }), "refused")

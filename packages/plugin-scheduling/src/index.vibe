@@ -1,0 +1,30 @@
+// spec/scheduling/index.md, "Story: Automatically run an eligible task without consuming its anchor during a manual run"
+import { classifyAnchor, classifyManualRun, nextAnchor, type AnchorState } from "../gen/scheduling.effect.vibe"
+import type { ScheduledTask } from "../gen/agent__schedule__scheduledTasks.effect.vibe"
+
+export error AnchorStoreUnavailable { reason: string }
+
+export service ScheduleAnchors {
+  read(taskId: string): (AnchorState | undefined)!AnchorStoreUnavailable
+  compareAndSwap(taskId: string, seenTaskRevision: number, current: AnchorState, replacement: AnchorState): boolean!AnchorStoreUnavailable
+}
+
+export interface AnchorClaim {
+  readonly task: ScheduledTask
+  readonly taskId: string
+  readonly taskRevision: number
+  readonly anchorRevision: number
+  readonly manual: boolean
+}
+
+export effect function claimScheduledTask(request: AnchorClaim) {
+  const now = try Clock.currentTimeMillis
+  if (request.manual) return classifyManualRun(request.task, request.taskRevision, now)
+  const anchors = try ScheduleAnchors
+  const anchor = try anchors.read(request.taskId)
+  if (anchor === undefined) return "AnchorIneligible" as const
+  const decision = classifyAnchor(request.task, request.taskId, anchor, request.taskRevision, request.anchorRevision, request.manual, now)
+  if (decision !== "ClaimAnchor") return decision
+  const applied = try anchors.compareAndSwap(request.taskId, request.taskRevision, anchor, nextAnchor(anchor, decision))
+  return applied ? decision : "ClaimRaced" as const
+}

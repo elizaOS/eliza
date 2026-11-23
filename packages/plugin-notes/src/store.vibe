@@ -1,4 +1,5 @@
 // spec/notes/records.md, "The earlier document is imported once, exactly, and never over the collection"; spec/notes/trash.md, "An erase that may or may not have committed never reports success"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"
+import { sameJson } from "./json-equality.vibe"
 import { canonicalDocument, eraseOutcome, notesSchemaVersion, type EraseCommit } from "../gen/notes__trash.effect.vibe"
 import { committedRevision, importSettled, importStep } from "../gen/notes__records.effect.vibe"
 import { emptyNotesDocument, NotesRefused, snapshotOf, type Change, type NotesDocument } from "./collection.vibe"
@@ -7,23 +8,6 @@ import { noteLimits, StoredDocument } from "./records.schema.vibe"
 import type { NotesSnapshot } from "./types.vibe"
 
 module edge {
-  function canonical(value: unknown): string {
-    if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]"
-    if (value !== null && typeof value === "object") {
-      const record = value as Record<string, unknown>
-      return "{" + Object.keys(record).filter((key) => record[key] !== undefined).sort()
-        .map((key) => JSON.stringify(key) + ":" + canonical(record[key])).join(",") + "}"
-    }
-    return JSON.stringify(value) ?? "null"
-  }
-  /** @throws {never} */
-  export function sameJson(a: unknown, b: unknown): boolean {
-    try {
-      return canonical(a) === canonical(b)
-    } catch {
-      return false
-    }
-  }
   /** @throws {never} */
   export function plain(value: unknown): unknown {
     try {
@@ -33,7 +17,7 @@ module edge {
     }
   }
 }
-import { plain, sameJson } from edge
+import { plain } from edge
 
 export interface NotesStorage {
   get(): Promise<unknown>

@@ -37,9 +37,9 @@ type Capability =
   | RemindersLocalRecordV1 | RemindersLocalRecordV2 | RemindersCreateV1 | PhotosLibraryV1 | PhotosViewV1 | CameraCapturePhotoV1
   | FilesBrowserV1 | MapsSelectedReadV1 | ClockHandoffV1 | ClockHandoffV2 | SmsSendV1 | MmsSendV1 | SmsComposeV1
   | MessagesReadV1 | PhoneDialV1 | PhoneCallV1 | ContactsWriteV1 | VoicemailReadV1 | VoicemailDeleteV1
-  | SmsLatestSenderV1 | SmsLatestSenderV2 | NotesRecordV1 | PhotosViewSelectedV1 | CameraLibraryIdV1
+  | SmsLatestSenderV1 | SmsLatestSenderV2 | NotesRecordV1 | PhotosViewSelectedV1 | CameraLibraryIdV1 | CameraCaptureLensV1
   | SmsComposeV2 | ContactsWriteV2 | ContactsShowV1 | ContactsReadV1 | ContactsLookupV1 | PhoneKeypadV1
-  | BrowserSearchV1 | BrowserTabsV1 | BrowserTabsCloseAllV1 | BrowserFindV1 | BrowserHistoryV1 | BrowserOpenNewTabV1 | FilesShownTargetV1 | TelephonyViewsV1
+  | BrowserSearchV1 | BrowserTabsV1 | BrowserTabsCloseAllV1 | BrowserTabsShowV1 | BrowserFindV1 | BrowserHistoryV1 | BrowserOpenNewTabV1 | FilesShownTargetV1 | TelephonyViewsV1
 pure def capabilityName(c: Capability): str = match c {
   | CalendarLocalEventV1 => "calendar.local-event.v1" | CalendarCreateV1 => "calendar.create.v1" | CalendarNextReadV1 => "calendar.next-read.v1"
   | CalendarAgendaReadV1 => "calendar.agenda-read.v1" | CalendarAvailabilityReadV1 => "calendar.availability-read.v1"
@@ -52,10 +52,11 @@ pure def capabilityName(c: Capability): str = match c {
   | SmsComposeV1 => "sms.compose.v1" | MessagesReadV1 => "messages.read.v1" | PhoneDialV1 => "phone.dial.v1" | PhoneCallV1 => "phone.call.v1"
   | ContactsWriteV1 => "contacts.write.v1" | VoicemailReadV1 => "voicemail.read.v1" | VoicemailDeleteV1 => "voicemail.delete.v1"
   | SmsLatestSenderV1 => "sms.latest-sender.v1" | SmsLatestSenderV2 => "sms.latest-sender.v2" | NotesRecordV1 => "notes.record.v1"
-  | PhotosViewSelectedV1 => "photos.view-selected.v1" | CameraLibraryIdV1 => "camera.capture-library-id.v1"
+  | PhotosViewSelectedV1 => "photos.view-selected.v1" | CameraLibraryIdV1 => "camera.capture-library-id.v1" | CameraCaptureLensV1 => "camera.capture-lens.v1"
   | SmsComposeV2 => "sms.compose.v2" | ContactsWriteV2 => "contacts.write.v2" | ContactsShowV1 => "contacts.show.v1"
   | ContactsReadV1 => "contacts.read.v1" | ContactsLookupV1 => "contacts.lookup.v1" | PhoneKeypadV1 => "phone.keypad.v1"
   | BrowserSearchV1 => "browser.search.v1" | BrowserTabsV1 => "browser.tabs.v1" | BrowserTabsCloseAllV1 => "browser.tabs.close-all.v1"
+  | BrowserTabsShowV1 => "browser.tabs.show.v1"
   | BrowserFindV1 => "browser.find.v1" | BrowserHistoryV1 => "browser.history.v1" | BrowserOpenNewTabV1 => "browser.open-new-tab.v1"
   | FilesShownTargetV1 => "files.shown-target.v1" | TelephonyViewsV1 => "views.telephony.v1"
 }
@@ -65,8 +66,8 @@ pure val allCapabilities: Set[Capability] = Set(
   RemindersLocalRecordV2, RemindersCreateV1, PhotosLibraryV1, PhotosViewV1, CameraCapturePhotoV1, FilesBrowserV1,
   MapsSelectedReadV1, ClockHandoffV1, ClockHandoffV2, SmsSendV1, MmsSendV1, SmsComposeV1, MessagesReadV1, PhoneDialV1,
   PhoneCallV1, ContactsWriteV1, VoicemailReadV1, VoicemailDeleteV1, SmsLatestSenderV1, SmsLatestSenderV2, NotesRecordV1,
-  PhotosViewSelectedV1, CameraLibraryIdV1, SmsComposeV2, ContactsWriteV2, ContactsShowV1, ContactsReadV1, ContactsLookupV1,
-  PhoneKeypadV1, BrowserSearchV1, BrowserTabsV1, BrowserTabsCloseAllV1, BrowserFindV1, BrowserHistoryV1,
+  PhotosViewSelectedV1, CameraLibraryIdV1, CameraCaptureLensV1, SmsComposeV2, ContactsWriteV2, ContactsShowV1, ContactsReadV1, ContactsLookupV1,
+  PhoneKeypadV1, BrowserSearchV1, BrowserTabsV1, BrowserTabsCloseAllV1, BrowserTabsShowV1, BrowserFindV1, BrowserHistoryV1,
   BrowserOpenNewTabV1, FilesShownTargetV1, TelephonyViewsV1)
 pure def isCapabilityName(name: str): bool = allCapabilities.exists(c => capabilityName(c) == name)
 pure def lawTheVocabularyListsEveryCapability(c: Capability): bool = allCapabilities.contains(c)

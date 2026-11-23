@@ -1,6 +1,8 @@
 // spec/os/build/androidHost.md, "An os module comes from the closed list once, whole or as a subset of its main or androidTest sources, with the os modules it needs"
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,4 +28,10 @@ export function engineDir(): string {
   const head = execFileSync("git", ["-C", dir, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   if (head !== engineLock.engine.commit) throw new Error(`engine checkout is at ${head}; engine.lock.json pins ${engineLock.engine.commit}`);
   return dir;
+}
+
+export function engineBuildCache(engine: string): string {
+  const root = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
+  const checkout = createHash("sha256").update(engineLock.engine.commit).update("\0").update(path.resolve(engine)).digest("hex");
+  return path.join(root, "elizavoice-android", checkout);
 }

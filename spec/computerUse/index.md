@@ -1,0 +1,40 @@
+# Computer use sessions
+
+## Story: Control an authorized computer session
+
+> As the owner, I can inspect and control a session I selected. A request for a previously closed session cannot affect the current computer or browser tab.
+
+### A command is scoped to one session generation, surface and authorized operation
+
+The shell binds the device, browser or approved remote connector to a session. It validates the initiating principal, screenshot and clipboard access, tab identifiers, and the requested operation before dispatching it to the bound host.
+
+```quint
+type ComputerSurface = LocalDesktop | BrowserSurface | MobileDevice | RemoteDesktop
+type ComputerOperation = ReadScreen | ClickTarget | TypeText | WindowControl | ClipboardRead | ClipboardWrite
+type ComputerSession = { sessionId: str, ownerId: str, sessionEpoch: int, surface: ComputerSurface, operations: Set[ComputerOperation], open: bool }
+type ComputerCommand = { callerId: str, forSession: str, expectedEpoch: int, forSurface: ComputerSurface, operation: ComputerOperation }
+pure def computerCommandAllowed(session: ComputerSession, command: ComputerCommand): bool =
+  session.open and session.sessionId != "" and session.ownerId != "" and session.sessionId == command.forSession and
+  session.ownerId == command.callerId and session.sessionEpoch == command.expectedEpoch and
+  session.surface == command.forSurface and session.operations.contains(command.operation)
+pure def lawClosedSessionRefusesCommands(session: ComputerSession, command: ComputerCommand): bool =
+  not(session.open) implies not(computerCommandAllowed(session, command))
+pure def lawGenerationMismatchRefusesCommands(session: ComputerSession, command: ComputerCommand): bool =
+  session.sessionEpoch != command.expectedEpoch implies not(computerCommandAllowed(session, command))
+```
+
+### A pending operation accepts only the observation for its own identifier and session generation
+
+The remote or local shell authenticates the observation source. Cancelled or stale operations leave the latest observed session state untouched.
+
+```quint
+type OperationObservation = { observedSession: str, observedEpoch: int, operationId: str }
+pure def acceptsComputerObservation(session: ComputerSession, currentOperation: str, observation: OperationObservation): bool =
+  session.open and currentOperation != "" and observation.operationId == currentOperation and
+  observation.observedSession == session.sessionId and observation.observedEpoch == session.sessionEpoch
+pure def lawStaleOperationCannotProduceObservation(session: ComputerSession, currentOperation: str, observation: OperationObservation): bool =
+  observation.operationId != currentOperation implies not(acceptsComputerObservation(session, currentOperation, observation))
+pure val sessionValues = Set({ sessionId: "desk-1", ownerId: "owner", sessionEpoch: 2, surface: LocalDesktop, operations: Set(ReadScreen, ClickTarget), open: true }, { sessionId: "desk-1", ownerId: "owner", sessionEpoch: 3, surface: BrowserSurface, operations: Set(ReadScreen), open: false })
+pure val commandValues = Set({ callerId: "owner", forSession: "desk-1", expectedEpoch: 2, forSurface: LocalDesktop, operation: ReadScreen }, { callerId: "other", forSession: "desk-1", expectedEpoch: 1, forSurface: RemoteDesktop, operation: ClipboardRead })
+pure val observationValues = Set({ observedSession: "desk-1", observedEpoch: 2, operationId: "capture-1" }, { observedSession: "desk-1", observedEpoch: 1, operationId: "old" })
+```

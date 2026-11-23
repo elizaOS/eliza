@@ -53,7 +53,7 @@ import {
   assertVulkanMaliMitigation,
 } from "./build-helpers/verify-fused-symbols.ts";
 
-import { engineDir, moduleDir } from "./engine.ts";
+import { engineBuildCache, engineDir, moduleDir } from "./engine.ts";
 const DEFAULT_LLAMA_CPP_CACHE_DIR = path.join(os.homedir(), ".cache", "eliza-android-agent");
 
 function log(msg) {
@@ -369,6 +369,7 @@ if (!existsSync(toolchain)) die(`NDK cmake toolchain missing: ${toolchain}`);
 log(`NDK: ${ndk}`);
 
 const forkSrc = engineDir();
+const cacheRoot = engineBuildCache(forkSrc);
 if (!existsSync(path.join(forkSrc, "tools/omnivoice/CMakeLists.txt"))) {
   die(
     `fork omnivoice CMakeLists missing under ${forkSrc} — run git submodule update --init --recursive`,
@@ -379,7 +380,7 @@ const { buildDir, versionScript, configureFlags } = elizaVoiceBuildFlags({
   abi,
   variant,
   ffiExportsOnly,
-  cacheRoot: path.join(os.homedir(), ".cache", "elizavoice-android"),
+  cacheRoot,
 });
 mkdirSync(buildDir, { recursive: true });
 // --ffi-exports-only: the version script keeps eliza_inference_* global and
@@ -426,7 +427,7 @@ if (arm64SimdFlags.length > 0) {
 const espeakPrefix = await ensureEspeakNg({
   dir:
     espeakArg ||
-    path.join(os.homedir(), ".cache", "elizavoice-android", "espeak-ng"),
+    path.join(cacheRoot, "espeak-ng"),
   abi,
   ndk,
   forkSrc,

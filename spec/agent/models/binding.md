@@ -68,8 +68,9 @@ pure def sometimesBoundWithoutBackend(s: ModelBinding): bool = s.phase == Bound 
 ### No text handler is ever served by a model on the device
 
 `TEXT_SMALL` and `TEXT_LARGE` come from the backend, `IMAGE_DESCRIPTION`
-only from the cloud, and `TEXT_EMBEDDING` only from `localInference` when
-the launch asks for local embeddings.
+from the backend too (the cloud's image model, or the own key's large
+model), and `TEXT_EMBEDDING` only from `localInference` when the launch asks
+for local embeddings.
 
 ```quint
 type ModelHandler = TextSmall | TextLarge | ImageDescription | TextEmbedding
@@ -78,7 +79,7 @@ pure def isCloud(backend: Backend): bool = match backend { | CloudBackend(_) => 
 pure def handlerSource(backend: Backend, embeddings: Embeddings, handler: ModelHandler): HandlerSource =
   if (handler == TextEmbedding) (if (embeddings == NoEmbeddings) NotRegistered else FromLocalInference)
   else if (isCloud(backend)) FromCloud
-  else if (isOwnKey(backend) and handler != ImageDescription) FromOwnKey
+  else if (isOwnKey(backend)) FromOwnKey
   else NotRegistered
 pure val backendValues = Set(NoBackend,
   CloudBackend({ baseUrl: "https://cloud.example", baseUrlShape: HttpsOrigin, smallModel: "", largeModel: "", imageModel: "" }),
@@ -86,8 +87,8 @@ pure val backendValues = Set(NoBackend,
 pure val embeddingsValues = Set(NoEmbeddings, LocalEmbeddings({ dimensions: 384 }))
 pure def lawNoTextHandlerFromALocalModel(backend: Backend, embeddings: Embeddings, handler: ModelHandler): bool =
   handler != TextEmbedding implies handlerSource(backend, embeddings, handler) != FromLocalInference
-pure def lawImageDescriptionOnlyFromTheCloud(backend: Backend, embeddings: Embeddings): bool =
-  handlerSource(backend, embeddings, ImageDescription) != NotRegistered iff isCloud(backend)
+pure def lawImageDescriptionOnlyFromTheBackend(backend: Backend, embeddings: Embeddings): bool =
+  handlerSource(backend, embeddings, ImageDescription) != NotRegistered iff (isCloud(backend) or isOwnKey(backend))
 ```
 
 ### A model call starts only for a handler the backend serves, with the credential the binding holds
@@ -122,11 +123,14 @@ The handlers read a refusal as the cloud client's `CloudError`; the own-key
 handler classifies its HTTP failures into the same variants. Core retries
 `RefusedConnection` and `RetryEnvelope` on the second registration. A rate
 limit is core's exhausted budget, which removes the provider's remaining
-registration, so the transport never re-sends it; the refusal carries the
-time left until the account's retry time, and the turn that made the call
-waits for that, at most five seconds, and sends it once more
-([planning](../conversation/planning.md)). A refused request is a bad
-request; every other refusal ends the call.
+registration; a refused request is a bad request; every other refusal ends
+the call. Both attempts of one call carry the same `Idempotency-Key`, fresh
+for each call, so a connection lost after the cloud dispatched the first
+attempt is answered `409 already_dispatched` instead of running and charging
+the generation again; for a rate limit, the transport never re-sends it;
+the refusal carries the time left until the account's retry time, and the turn
+that made the call waits for that, at most five seconds, and sends it once more
+([planning](../conversation/planning.md)).
 
 ```quint
 import models as M from "../../core/models"
@@ -176,7 +180,9 @@ A call that offers tools, names the tool to use or asks for a schema gets one
 result: the text, every tool call with its arguments, the finish reason and
 the token use. Any other call gets the text alone. Tool results follow the
 call that asked for them; a result no call asked for is sent as the person's
-text. An answer with neither text nor a tool call is a provider issue. A
+text. An answer with neither text nor a tool call is a provider issue. A call
+sends an output cap only when the caller or its admitted lease sets one;
+otherwise the backend owns the output limit. A
 streamed call asks for its token use (`stream_options.include_usage`), which
 the provider sends in a last chunk without choices, and a call that is not
 streamed sends no stream options. The token use carries the prompt tokens

@@ -7,7 +7,6 @@ export { type ActionResultFrame, type ReplyFrame } from "./conversation/stream.v
 export { publishEventServiceType, type PublishEventService } from "./conversation/events.vibe"
 export { deviceConversation, type TurnReply } from "./conversation/turns.vibe"
 export { offeredActions, offeredOnlyWhere } from "./conversation/planning.vibe"
-export { readTurnContext } from "./conversation/turn-context.schema.vibe"
 export { cloudServiceType, type CloudLinkReply, type CloudLinkRequest, type CloudLinkService, type GoogleAdmission, type GoogleChange } from "./models/cloud-link.vibe"
 export { scheduledTasksServiceType, type FireResult, type ScheduledTasksApi, type VerbRequest, type VerbResult } from "./schedule/scheduled-task-routes.vibe"
 export { type Created, type DeliveryPort, type NewTask, type ScheduledTaskView } from "./schedule/scheduled-tasks.vibe"
@@ -15,6 +14,7 @@ export {
   createScheduledTask, getScheduledTask, listScheduledTasks, NoScheduledTask, scheduledTaskByKey, scheduledTaskKeeping, ScheduleStoreUnavailable, StaleRevision, TaskIdTaken,
   type NewScheduledTask, type ScheduledTaskDetails, type StoredTask,
 } from "./schedule/store.vibe"
+export { readTurnContext, type TurnContext } from "./conversation/turn-context.schema.vibe"
 export {
   workflowDeviceOffer, WorkflowStepRefused,
   type WorkflowDeviceOffer, type WorkflowOfferTiming, type WorkflowStep, type WorkflowStepDevice, type WorkflowStepTarget,

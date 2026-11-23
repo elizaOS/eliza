@@ -236,6 +236,8 @@ export interface GenerateTextParams {
 
   voiceOutput?: "user-visible" | "internal"
 
+  reasoning?: "low" | "off"
+
   priority?: LocalInferencePriority
   user?: string
 

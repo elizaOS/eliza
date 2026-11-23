@@ -1,0 +1,199 @@
+// spec/pdf/index.md, "Story: Read text and metadata from a PDF"; spec/pdf/index.md, "Story: Extract a complete document while my request is active"
+import { ModelType, Service, ServiceType, type IAgentRuntime, type Plugin } from "@elizaos/core"
+import { Machine, machine, normalizedPdfLast, type PdfReadMode, type TextRun } from "../gen/pdf.effect.vibe"
+
+module node {
+  import { getDocumentProxy, renderPageAsImage } from "unpdf"
+
+  export const openPdf = getDocumentProxy
+
+  export function renderPdfPage(pdf: Awaited<ReturnType<typeof getDocumentProxy>>, pageNumber: number, scale: number) {
+    return renderPageAsImage(pdf, pageNumber, { canvasImport: () => import("@napi-rs/canvas"), scale, toDataURL: true })
+  }
+
+  export function pngBytes(dataUrl: string): Uint8Array {
+    return Uint8Array.from(Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"))
+  }
+}
+import { openPdf, pngBytes, renderPdfPage } from node
+
+export error PdfExtractionFailed { reason: string; cause?: unknown }
+
+export interface PdfReadOptions {
+  readonly startPage?: number
+  readonly endPage?: number
+  readonly signal?: AbortSignal
+  readonly assertActive?: () => void | Promise<void>
+  readonly renderScale?: number
+  readonly ocrPage?: (input: { pageNumber: number; pngBytes: Uint8Array }) => Promise<string>
+  readonly onPageComplete?: (page: PdfReadPage) => void | Promise<void>
+  readonly visionPrompt?: string
+}
+
+export interface PdfReadPage {
+  readonly pageNumber: number
+  readonly width: number
+  readonly height: number
+  readonly nativeText: string
+  readonly visionText: string
+  readonly ocrText: string | null
+  readonly text: string
+  readonly method: "native" | "vision" | "native+vision" | "blank"
+  readonly hasVisualContent: boolean
+}
+
+export interface PdfDocumentExtraction {
+  readonly pageCount: number
+  readonly pages: readonly PdfReadPage[]
+  readonly text: string
+}
+
+function textRun(item: unknown): TextRun[] {
+  if (typeof item !== "object" || item === null || !("str" in item) || typeof item.str !== "string") return []
+  return [{ letters: item.str, hardBreak: "hasEOL" in item && item.hasEOL === true }]
+}
+
+function joinRuns(runs: readonly TextRun[]): string {
+  return runs.map((run) => run.letters + (run.hardBreak ? "\n" : "")).join("")
+}
+
+function hasHeader(input: Uint8Array): boolean {
+  const header = [37, 80, 68, 70, 45]
+  return input.subarray(0, 1024).some((_byte, offset) => header.every((byte, i) => input[offset + i] === byte))
+}
+
+effect function ensureCurrent(options: PdfReadOptions) {
+  if (options.signal?.aborted) throw new PdfExtractionFailed({ reason: "PDF extraction was cancelled." })
+  if (options.assertActive !== undefined) {
+    const assertActive = options.assertActive
+    try tryPromise({ try: async () => { await assertActive() }, catch: (cause) => new PdfExtractionFailed({ reason: "PDF access expired.", cause }) })
+  }
+  if (options.signal?.aborted) throw new PdfExtractionFailed({ reason: "PDF extraction was cancelled." })
+}
+
+effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: PdfReadOptions, mode: PdfReadMode) {
+  if (!hasHeader(bytes)) throw new PdfExtractionFailed({ reason: "The input is not a PDF." })
+  try ensureCurrent(options)
+  const document = try tryPromise({
+    try: () => openPdf(Uint8Array.from(bytes)),
+    catch: (cause) => new PdfExtractionFailed({ reason: "The PDF could not be opened.", cause }),
+  })
+  return try ensuring(effect {
+    const pageCount = document.numPages
+    const complete = mode === "CompleteDocument"
+    const first = complete ? 1 : options.startPage ?? 1
+    const last = complete ? pageCount : options.endPage ?? pageCount
+    const scale = options.renderScale ?? 2
+    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || !Number.isFinite(scale) || scale <= 0) {
+      throw new PdfExtractionFailed({ reason: "PDF extraction settings are invalid." })
+    }
+    const pages: PdfReadPage[] = []
+    const documentRef = "active"
+    provide machine() {
+      const read = try Machine
+      try read.send({ type: "beginPdfRead", kind: mode, document: documentRef, first, lastPage: last, pageCount, authorized: true })
+      for (let pageNumber = first; pageNumber <= normalizedPdfLast(last, pageCount); pageNumber++) {
+        try ensureCurrent(options)
+        const page = try tryPromise({
+          try: () => document.getPage(pageNumber),
+          catch: (cause) => new PdfExtractionFailed({ reason: `PDF page ${pageNumber} could not be opened.`, cause }),
+        })
+        const parsed = try tryPromise({
+          try: () => page.getTextContent(),
+          catch: (cause) => new PdfExtractionFailed({ reason: `Text on PDF page ${pageNumber} could not be read.`, cause }),
+        })
+        const nativeText = joinRuns(parsed.items.flatMap(textRun))
+        const viewport = try Effect.try({
+          try: () => page.getViewport({ scale: 1 }),
+          catch: (cause) => new PdfExtractionFailed({ reason: "PDF page geometry was invalid.", cause }),
+        })
+        let ocrText: string | null = null
+        let visionText = ""
+        let hasVisualContent = false
+        let method: PdfReadPage["method"] = "native"
+        if (complete) {
+          try ensureCurrent(options)
+          const operations = try tryPromise({
+            try: () => page.getOperatorList(),
+            catch: (cause) => new PdfExtractionFailed({ reason: "PDF page operations could not be read.", cause }),
+          })
+          hasVisualContent = operations.fnArray.some((code) => code === 83 || code === 85 || code === 86 || code === 87 || code === 88)
+          const image = try tryPromise({
+            try: () => renderPdfPage(document, pageNumber, scale),
+            catch: (cause) => new PdfExtractionFailed({ reason: "PDF page rendering failed.", cause }),
+          })
+          if (typeof image !== "string" || !image.startsWith("data:image/")) throw new PdfExtractionFailed({ reason: "Rendered PDF page was not an image." })
+          try ensureCurrent(options)
+          const ocrPage = options.ocrPage
+          if (ocrPage !== undefined) {
+            const recognized = try tryPromise({
+              try: () => ocrPage({ pageNumber, pngBytes: pngBytes(image) }),
+              catch: (cause) => new PdfExtractionFailed({ reason: "PDF page OCR failed.", cause }),
+            })
+            ocrText = recognized.trim() || null
+          }
+          try ensureCurrent(options)
+          const observation = try tryPromise({
+            try: (signal) => runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+              imageUrl: image, signal, stream: false,
+              prompt: `Transcribe all visible text on PDF page ${pageNumber} in reading order and account for the supplied text evidence. Use [BLANK PAGE] only for a visually blank page.\nNative text: ${nativeText}\nOCR: ${ocrText ?? ""}\n${options.visionPrompt ?? ""}`,
+            }),
+            catch: (cause) => new PdfExtractionFailed({ reason: "PDF page visual transcription failed.", cause }),
+          })
+          try ensureCurrent(options)
+          visionText = observation.description.trim()
+          if (visionText === "" || (visionText === "[BLANK PAGE]" && (nativeText.trim() !== "" || ocrText !== null || (operations.fnArray.length > 0 && ocrPage === undefined)))) {
+            throw new PdfExtractionFailed({ reason: "PDF page visual transcription lacked matching evidence." })
+          }
+          method = visionText === "[BLANK PAGE]" ? "blank" : nativeText.trim() === "" ? "vision" : "native+vision"
+        }
+        const result: PdfReadPage = {
+          pageNumber, width: viewport.width, height: viewport.height, nativeText, visionText, ocrText, hasVisualContent, method,
+          text: [nativeText, ocrText ?? "", visionText === "[BLANK PAGE]" ? "" : visionText].filter((part) => part !== "").join("\n\n"),
+        }
+        try read.send({ type: "recordPdfPage", document: documentRef, pageNumber, visualSucceeded: !complete || visionText !== "", authorized: true })
+        pages.push(result)
+        if (options.onPageComplete !== undefined) {
+          const onPage = options.onPageComplete
+          try tryPromise({ try: async () => { await onPage(result) }, catch: (cause) => new PdfExtractionFailed({ reason: "PDF page delivery failed.", cause }) })
+        }
+      }
+      try ensureCurrent(options)
+      try read.send({ type: "publishPdfRead", authorized: true })
+      return { pageCount, pages, text: pages.map((page) => page.text).join("\n\n") } satisfies PdfDocumentExtraction
+    }
+  }, tryPromise(() => document.destroy()).pipe(Effect.ignore))
+}
+
+export class PdfService extends Service {
+  static override serviceType = ServiceType.PDF
+  override capabilityDescription = "Extracts native or complete visual PDF text."
+
+  static override start(runtime: IAgentRuntime): Promise<PdfService> {
+    return Promise.resolve(new PdfService(runtime))
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+
+  extractCompleteDocument(input: Uint8Array, options: PdfReadOptions = {}): Promise<PdfDocumentExtraction> {
+    return runPromise(extractPdf(this.runtime, input, { ...options }, "CompleteDocument"), { signal: options.signal })
+  }
+
+  extractText(input: Uint8Array, options: PdfReadOptions = {}): Promise<PdfDocumentExtraction> {
+    return runPromise(extractPdf(this.runtime, input, { ...options }, "NativeText"), { signal: options.signal })
+  }
+
+  async convertPdfToText(input: Uint8Array): Promise<string> {
+    return (await this.extractText(input)).text
+  }
+}
+
+export const plugin: Plugin = {
+  name: "@elizaos/plugin-pdf",
+  description: "Native PDF text extraction and authorized visual transcription of complete documents.",
+  services: [PdfService],
+}
+
+export default plugin

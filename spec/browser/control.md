@@ -1,9 +1,10 @@
 # Browser controls from chat
 
 The controls the agent proposes for the browser on the owner's phone: a web
-search, a new, switched or closed tab, find in page, page history and
-opening a typed address. [Request grounding](./requestGrounding.md) decides
-which address or search words a message grounds, and
+search, a new, switched or closed tab, the phone's own list of open tabs
+shown, find in page, page history and opening a typed address.
+[Request grounding](./requestGrounding.md) decides which address or search
+words a message grounds, and
 [remote control](./remoteControl.md) binds a history command to the tab the
 turn observed. The phone keeps the tab list, titles, addresses and page
 content; the agent learns only whether a control was sent.
@@ -16,8 +17,10 @@ content; the agent learns only whether a control was sent.
 ### Each control needs its group's capability, and a new-tab open needs its own
 
 A search needs `browser.search.v1`; opening, switching and closing a tab
-need `browser.tabs.v1`; find needs `browser.find.v1`; back, forward, reload
-and stop need `browser.history.v1`. A phone that did not advertise a group is
+need `browser.tabs.v1`, and closing every tab needs its own capability too
+(below); showing the phone's own list of open tabs needs
+`browser.tabs.show.v1`, on its own and without `browser.tabs.v1`; find needs `browser.find.v1`; back, forward, reload and stop need
+`browser.history.v1`. A phone that did not advertise a group is
 never offered or sent its controls. Opening a typed address in a tab of its
 own needs `browser.open-new-tab.v1`: without it the phone is never sent a
 new-tab open, and an address asked for in a new tab opens as it always has,
@@ -25,15 +28,16 @@ in the phone's own earlier tab, replacing that page. A private tab is asked
 for explicitly, opens empty, and is never where an address is placed.
 
 ```quint
-type BrowserControl = SearchControl | TabNewControl | TabSwitchControl | TabCloseControl | FindControl | HistoryControl
-type ControlFamily = SearchFamily | TabsFamily | FindFamily | HistoryFamily
-type Negotiated = { searchCapability: bool, tabsCapability: bool, findCapability: bool, historyCapability: bool, newTabCapability: bool }
+type BrowserControl = SearchControl | TabNewControl | TabSwitchControl | TabCloseControl | TabListControl | FindControl | HistoryControl
+type ControlFamily = SearchFamily | TabsFamily | TabListFamily | FindFamily | HistoryFamily
+type Negotiated = { searchCapability: bool, tabsCapability: bool, tabListCapability: bool, findCapability: bool, historyCapability: bool, newTabCapability: bool, closeAllCapability: bool }
 pure def controlFamily(control: BrowserControl): ControlFamily =
   match control {
     | SearchControl => SearchFamily
     | TabNewControl => TabsFamily
     | TabSwitchControl => TabsFamily
     | TabCloseControl => TabsFamily
+    | TabListControl => TabListFamily
     | FindControl => FindFamily
     | HistoryControl => HistoryFamily
   }
@@ -41,20 +45,24 @@ pure def familyNegotiated(family: ControlFamily, negotiated: Negotiated): bool =
   match family {
     | SearchFamily => negotiated.searchCapability
     | TabsFamily => negotiated.tabsCapability
+    | TabListFamily => negotiated.tabListCapability
     | FindFamily => negotiated.findCapability
     | HistoryFamily => negotiated.historyCapability
   }
 pure def controlOffered(control: BrowserControl, negotiated: Negotiated): bool = familyNegotiated(controlFamily(control), negotiated)
 pure def navigationOffered(newTab: bool, negotiated: Negotiated): bool = not(newTab) or negotiated.newTabCapability
 pure def lawOfferedControlWasNegotiated(control: BrowserControl, negotiated: Negotiated): bool =
-  controlOffered(control, negotiated) implies (negotiated.searchCapability or negotiated.tabsCapability or negotiated.findCapability or negotiated.historyCapability)
+  controlOffered(control, negotiated) implies (negotiated.searchCapability or negotiated.tabsCapability or negotiated.tabListCapability or negotiated.findCapability or negotiated.historyCapability)
 pure def lawTabControlsShareTheTabsCapability(negotiated: Negotiated): bool =
   not(negotiated.tabsCapability) implies not(controlOffered(TabNewControl, negotiated) or controlOffered(TabSwitchControl, negotiated) or controlOffered(TabCloseControl, negotiated))
 pure def lawNewTabNeedsItsCapability(negotiated: Negotiated): bool =
   not(negotiated.newTabCapability) implies (not(navigationOffered(true, negotiated)) and navigationOffered(false, negotiated))
-pure val nothingNegotiated: Negotiated = { searchCapability: false, tabsCapability: false, findCapability: false, historyCapability: false, newTabCapability: false }
+pure def lawTheTabListNeedsItsOwnCapability(negotiated: Negotiated): bool = controlOffered(TabListControl, negotiated) iff negotiated.tabListCapability
+pure val nothingNegotiated: Negotiated = { searchCapability: false, tabsCapability: false, tabListCapability: false, findCapability: false, historyCapability: false, newTabCapability: false, closeAllCapability: false }
 pure val negotiatedValues = Set(nothingNegotiated, { ...nothingNegotiated, searchCapability: true }, { ...nothingNegotiated, tabsCapability: true, newTabCapability: true },
-  { searchCapability: true, tabsCapability: true, findCapability: true, historyCapability: true, newTabCapability: false })
+  { ...nothingNegotiated, tabListCapability: true },
+  { searchCapability: true, tabsCapability: true, tabListCapability: false, findCapability: true, historyCapability: true, newTabCapability: false, closeAllCapability: false },
+  { ...nothingNegotiated, tabsCapability: true, closeAllCapability: true }, { ...nothingNegotiated, closeAllCapability: true })
 ```
 
 ### Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs
@@ -108,7 +116,8 @@ pure def lawUntypedWordsAreReviewed(request: ControlRequest): bool = needsTypedW
 pure def lawLockedPhoneRefusesReview(sensitiveScreen: bool): bool = sensitiveScreen implies not(reviewAdmitted(sensitiveScreen))
 pure val directHistory: ControlRequest = { control: HistoryControl, boundToMessage: true, wordsTyped: false }
 pure val requestValues = Set(directHistory, { ...directHistory, boundToMessage: false }, { ...directHistory, control: TabCloseControl }, { ...directHistory, control: SearchControl },
-  { ...directHistory, control: SearchControl, wordsTyped: true }, { ...directHistory, control: FindControl, wordsTyped: true }, { ...directHistory, control: TabNewControl })
+  { ...directHistory, control: SearchControl, wordsTyped: true }, { ...directHistory, control: FindControl, wordsTyped: true }, { ...directHistory, control: TabNewControl },
+  { ...directHistory, control: TabListControl })
 ```
 
 ### A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command
@@ -202,24 +211,56 @@ pure val wordsValues = Set(typedWords, { ...typedWords, typedAsWholeWords: false
 
 A grounded search is bound to the owner's current message only when that
 whole message is the search and its words are the query; a tab switch or a
-find only when the owner typed its words in that message; a new tab, a tab
-close and a history move whenever they are grounded. Any other is offered
-unbound to the message, so the phone shows its review card before it runs:
-the phone's answer to words the model chose would tell the agent about the
-owner's tabs or page. A tab close is reviewed however it is bound.
+find only when the owner typed its words in that message; showing the tab
+list only when the whole message asks to see it; a new tab, a tab close and a
+history move whenever they are grounded. The phone shows a review card
+before it runs an unbound proposal. A tab close always waits for review.
 
 ```quint
 type ProposedControl = { control: BrowserControl, wholeMessage: bool, wordsTyped: bool }
 pure def controlBound(proposed: ProposedControl): bool =
   if (proposed.control == SearchControl) proposed.wholeMessage and proposed.wordsTyped
+  else if (proposed.control == TabListControl) proposed.wholeMessage
   else not(needsTypedWords(proposed.control)) or proposed.wordsTyped
 pure def lawUntypedWordsAreNeverBound(proposed: ProposedControl): bool =
   (needsTypedWords(proposed.control) and not(proposed.wordsTyped)) implies not(controlBound(proposed))
 pure def lawOnlyMyWholeMessageSearchIsBound(proposed: ProposedControl): bool =
   (proposed.control == SearchControl and controlBound(proposed)) implies proposed.wholeMessage
+pure def lawOnlyMyWholeMessageTabListIsBound(proposed: ProposedControl): bool =
+  (proposed.control == TabListControl and controlBound(proposed)) implies proposed.wholeMessage
 pure val typedSearch: ProposedControl = { control: SearchControl, wholeMessage: true, wordsTyped: true }
 pure val proposedValues = Set(typedSearch, { ...typedSearch, wholeMessage: false }, { ...typedSearch, wordsTyped: false }, { ...typedSearch, control: FindControl, wholeMessage: false },
-  { ...typedSearch, control: TabSwitchControl, wordsTyped: false }, { ...typedSearch, control: HistoryControl, wordsTyped: false }, { ...typedSearch, control: TabCloseControl, wordsTyped: false })
+  { ...typedSearch, control: TabSwitchControl, wordsTyped: false }, { ...typedSearch, control: HistoryControl, wordsTyped: false }, { ...typedSearch, control: TabCloseControl, wordsTyped: false },
+  { ...typedSearch, control: TabListControl, wordsTyped: false }, { ...typedSearch, control: TabListControl, wholeMessage: false, wordsTyped: false })
+```
+
+### My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice
+
+When the owner's whole message asks only to see the open Browser tabs, it is
+the turn's first call to show the phone's own list of open tabs, before the
+model is asked; it is bound to that message and runs without the owner's
+review. Such a message may open with a greeting ("hey", "hi", "ok", "okay")
+and the assistant's name, Eliza where the character has none, followed by a
+space, a comma or a colon, and may ask with "please", "can you", "could you"
+or "let me" before it or ", please" after it; it then shows, lists or lets
+the owner see their (open) (browser) tabs or tab list, optionally "open" or
+"in the browser", or asks what or which tabs they have open or are open, or
+what their open tabs are. A request that also asks for something else, a
+negated one, one about another app, a name joined to the next word, or a
+request about anything other than the open tabs is not one, and is left to
+the model. The call runs first only where the phone negotiated
+`browser.tabs.show.v1`. The phone keeps the list, its titles, addresses and
+count; the agent learns only that the phone was asked to show it, and never
+says which tabs are open or how many.
+
+```quint
+pure def tabListAskedFirst(wholeMessageAsks: bool, tabListNegotiated: bool): bool = wholeMessageAsks and tabListNegotiated
+pure def lawOnlyAWholeMessageAskShowsTabsFirst(wholeMessageAsks: bool, tabListNegotiated: bool): bool =
+  tabListAskedFirst(wholeMessageAsks, tabListNegotiated) implies wholeMessageAsks
+pure def lawTheTabListIsAskedFirstOnlyWhereNegotiated(tabListNegotiated: bool): bool = tabListAskedFirst(true, tabListNegotiated) iff tabListNegotiated
+pure def lawAnAskedTabListRunsWithoutReview(wholeMessageAsks: bool, tabListNegotiated: bool): bool =
+  tabListAskedFirst(wholeMessageAsks, tabListNegotiated) implies
+    runsUnreviewed({ control: TabListControl, boundToMessage: controlBound({ control: TabListControl, wholeMessage: true, wordsTyped: false }), wordsTyped: false })
 ```
 
 ### Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed
