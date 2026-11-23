@@ -36,6 +36,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 import javax.crypto.KeyGeneratorSpi;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -47,6 +49,7 @@ public final class CloudDeviceAccountJourney {
   private static final SecureRandom RANDOM = new SecureRandom();
   private static final String ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   private static final long LEASE_SECONDS = 90L * 24 * 60 * 60;
+  private static final long DAY_MS = 24L * 60 * 60 * 1000;
   private static final String SERVER_CLIENT = "123456-journey.apps.googleusercontent.com";
   private static final String ACCOUNT = "11111111-2222-4333-8444-555555555555";
   private static final String ORGANIZATION = "66666666-7777-4888-9999-000000000000";
@@ -104,7 +107,9 @@ public final class CloudDeviceAccountJourney {
     String refresh, access, offeredRefresh, offeredAccess;
     final List<String> spent = new ArrayList<>();
     boolean ended;
+    long refreshExpiresAt;
     Grant grant;
+    boolean live(long now) { return !ended && !grant.ended && now < refreshExpiresAt; }
   }
 
   private record Reply(int status, String body, String location, boolean drop) {
@@ -121,11 +126,12 @@ public final class CloudDeviceAccountJourney {
     final List<String> paths = new ArrayList<>();
     int keySeconds;
     long leaseDelayMs;
-    boolean dropNextLease, expireNextAccess, deviceEpochMoved, cookieOrOrigin;
+    boolean dropNextLease, expireNextAccess, deviceEpochMoved, cookieOrOrigin, refuseRenewal;
     int reuses;
+    LongSupplier clock = System::currentTimeMillis;
 
     synchronized Reply answer(String method, String path, String query, String bearer, String body, Map<String, String> headers) throws Exception {
-      long now = System.currentTimeMillis();
+      long now = clock.getAsLong();
       paths.add(method + " " + path);
       switch (path) {
         case "/api/auth/device/exchange" -> {
@@ -161,15 +167,17 @@ public final class CloudDeviceAccountJourney {
         case "/api/v1/api-keys/current" -> {
           Grant grant = grant(bearer);
           if (grant == null || grant.ended) return Reply.refused("credential_revoked");
+          if (grant.family != null && grant.family.grant == grant && grant.family.live(now))
+            return Reply.json(403, new JSONObject().put("error", "access_denied").put("reason", "device_key_not_allowed"));
           grant.ended = true;
           if (grant.family != null && grant.family.grant == grant) grant.family.ended = true;
           return new Reply(204, "", null, false);
         }
         case "/api/auth/device/lease", "/api/auth/device/renew", "/api/v1/app-auth/mobile/lease", "/api/v1/app-auth/mobile/renew" -> {
           boolean renew = path.endsWith("/renew"), canonical = path.startsWith("/api/v1/");
-          if (!renew) leasePresented.add(bearer);
+          if (!renew && !"DELETE".equals(method)) leasePresented.add(bearer);
           Family family = family(bearer);
-          if (family == null || !family.grant.acknowledged) return Reply.refused("credential_unknown");
+          if (family == null || !family.grant.acknowledged || now >= family.refreshExpiresAt) return Reply.refused("credential_unknown");
           if (family.ended || family.grant.ended || deviceEpochMoved) return Reply.refused("credential_revoked");
           if (family.spent.contains(bearer)) {
             reuses++;
@@ -178,6 +186,13 @@ public final class CloudDeviceAccountJourney {
             return Reply.refused("credential_revoked");
           }
           if (bearer.equals(family.offeredRefresh)) commit(family);
+          if ("DELETE".equals(method)) {
+            family.ended = true;
+            family.grant.ended = true;
+            revokes.add("lease sign-out 204");
+            return new Reply(204, "", null, false);
+          }
+          if (renew && refuseRenewal) return Reply.json(403, new JSONObject().put("error", "client_disabled"));
           if (renew) {
             Grant grant = new Grant(secret("eliza_mobile_", 43), now + 7L * 24 * 60 * 60 * 1000, family.grant);
             grants.add(grant);
@@ -185,6 +200,7 @@ public final class CloudDeviceAccountJourney {
           }
           family.offeredRefresh = secret("eliza_lease_refresh_", 54);
           family.offeredAccess = secret("eliza_lease_", 43);
+          family.refreshExpiresAt = now + LEASE_SECONDS * 1000;
           if (leaseDelayMs > 0) Thread.sleep(leaseDelayMs);
           Reply pair = Reply.json(200, new JSONObject().put("access", family.offeredAccess).put("accessExpiresIn", 900)
               .put("refresh", family.offeredRefresh).put("refreshExpiresIn", LEASE_SECONDS));
@@ -199,6 +215,8 @@ public final class CloudDeviceAccountJourney {
           if (grant != null) {
             if (grant.ended || !grant.acknowledged || deviceEpochMoved) reply = Reply.refused("credential_revoked");
             else if (grant.expiresAt <= now) reply = Reply.refused("credential_expired");
+            else if (grant.family != null && grant.family.grant == grant && grant.family.live(now))
+              reply = Reply.json(403, new JSONObject().put("error", "access_denied").put("reason", "device_key_not_allowed"));
             else {
               grant.ended = true;
               if (grant.family != null && grant.family.grant == grant) grant.family.ended = true;
@@ -237,6 +255,7 @@ public final class CloudDeviceAccountJourney {
       Grant grant = new Grant(secret("eliza_mobile_", 43), now + keySeconds * 1000L, null);
       Family family = new Family();
       family.refresh = secret("eliza_lease_refresh_", 54);
+      family.refreshExpiresAt = now + LEASE_SECONDS * 1000;
       family.grant = grant;
       grant.family = family;
       grants.add(grant);
@@ -315,6 +334,11 @@ public final class CloudDeviceAccountJourney {
   private static int duties(File directory) throws Exception {
     String stored = new JsonCredentialSlots(directory, "eliza-cloud-device-account.v1", (slot) -> 2048).read("revoke");
     return stored == null ? 0 : new JSONObject(stored).getJSONArray("duties").length();
+  }
+
+  private static boolean nativeSignIn(CloudDeviceAccount account) throws Exception {
+    CloudDeviceAccount.NativeGoogleAttempt attempt = account.prepareNativeGoogle("com.example.consumer", "staging");
+    return account.finishNativeGoogle(attempt, "header.payload.signature", null);
   }
 
   private static int status(CloudDeviceAccount account) throws Exception {
@@ -444,6 +468,55 @@ public final class CloudDeviceAccountJourney {
     seen.put("nativeSignedOut", new JSONArray().put(nativeLast.ended).put(nativeLast.family.ended).put(duties(slots)));
     seen.put("nativeNeverUsedWorkerRoutes", cloud.paths.subList(nativeFrom, cloud.paths.size()).stream().noneMatch((item) -> item.contains(" /api/auth/")));
     seen.put("cookieOrOrigin", cloud.cookieOrOrigin);
+
+    AtomicLong now = new AtomicLong(System.currentTimeMillis());
+    cloud.clock = now::get;
+    cloud.keySeconds = 7 * 24 * 60 * 60;
+    File tabletHome = Files.createTempDirectory("cloud-device-tablet").toFile();
+    File tabletSlots = new File(tabletHome, "eliza-cloud-device-account");
+    CloudDeviceAccount tablet = new CloudDeviceAccount(new Context() {
+      @Override public File getNoBackupFilesDir() { return tabletHome; }
+    }, "https://app.example.test", "https://cloud.example.test", "/android/auth/callback", now::get);
+    seen.put("tabletSignedIn", nativeSignIn(tablet));
+    int keptFrom = cloud.paths.size(), reusesBefore = cloud.reuses;
+    boolean signedInThroughout = true;
+    int renewals = 0;
+    for (int day = 4; day <= 200; day += 4) {
+      now.addAndGet(4 * DAY_MS);
+      if (tablet.renewIfDue()) renewals++;
+      tablet.retryRevocation();
+      signedInThroughout &= tablet.session() != null;
+    }
+    List<String> leaseAndRenew = cloud.paths.subList(keptFrom, cloud.paths.size()).stream()
+        .filter((item) -> item.equals("POST /api/v1/app-auth/mobile/lease") || item.equals("POST /api/v1/app-auth/mobile/renew")).toList();
+    boolean leaseBeforeEveryRenewal = leaseAndRenew.size() == 2 * renewals;
+    for (int index = 0; leaseBeforeEveryRenewal && index < leaseAndRenew.size(); index += 2)
+      leaseBeforeEveryRenewal = leaseAndRenew.get(index).endsWith("/lease") && leaseAndRenew.get(index + 1).endsWith("/renew");
+    seen.put("kept200Days", new JSONArray().put(renewals).put(signedInThroughout).put(leaseBeforeEveryRenewal).put(cloud.reuses - reusesBefore).put(duties(tabletSlots)));
+
+    cloud.refuseRenewal = true;
+    now.addAndGet(4 * DAY_MS);
+    boolean renewedWhileRefused = tablet.renewIfDue();
+    boolean keptWhileLive = tablet.session() != null && tablet.expiredAccount() == null;
+    now.addAndGet(4 * DAY_MS);
+    tablet.renewIfDue();
+    CloudDeviceAccount.ExpiredAccount expired = tablet.expiredAccount();
+    int owedAfterRefusal = duties(tabletSlots);
+    tablet.retryRevocation();
+    seen.put("refusedRenewal", new JSONArray().put(renewedWhileRefused).put(keptWhileLive).put(tablet.session() == null)
+        .put(expired != null && ACCOUNT.equals(expired.accountId())).put(owedAfterRefusal).put(duties(tabletSlots)));
+    cloud.refuseRenewal = false;
+
+    seen.put("tabletSignedInAgain", nativeSignIn(tablet) && tablet.expiredAccount() == null);
+    now.addAndGet(91 * DAY_MS);
+    CloudDeviceAccount.ExpiredAccount lapsed = tablet.leaseAccess() == null ? tablet.expiredAccount() : null;
+    tablet.retryRevocation();
+    nativeSignIn(tablet);
+    cloud.deviceEpochMoved = true;
+    boolean revokedSignsOut = tablet.leaseAccess() == null && tablet.expiredAccount() == null && tablet.session() == null;
+    cloud.deviceEpochMoved = false;
+    tablet.retryRevocation();
+    seen.put("lapsedOrRevoked", new JSONArray().put(lapsed != null && ACCOUNT.equals(lapsed.accountId())).put(revokedSignsOut).put(duties(tabletSlots)));
 
     server.stop(0);
     System.out.println(new JSONObject(seen));

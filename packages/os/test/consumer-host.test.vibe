@@ -107,7 +107,7 @@ it.effect('Build and register only the plugins my host selected: a parent pnpm w
   }
 })
 
-it.effect('The packaged device account keeps mail on a lease the agent never holds: it rotates the lease once for every waiting reader, presents the same refresh again after a lost reply, renews its key only past half its life, signs out completely when the lease is revoked, and keeps the lease of a native Google key on the canonical routes (spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device out"; spec/cloud/identity/sessions.md, "Story: Stay signed in")', effect () => {
+it.effect('The packaged device account keeps mail on a lease the agent never holds: it rotates the lease once for every waiting reader, presents the same refresh again after a lost reply, renews its key only past half its life and only through a fresh lease refresh, keeps a tablet signed in for 200 days without a mail read, signs out completely when the lease is revoked, asks for one sign-in keeping the account when the lease lapsed or a renewal is refused for good once the key has expired, and keeps the lease of a native Google key on the canonical routes, signing it out through the lease (spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device out"; spec/cloud/identity/sessions.md, "Story: Stay signed in")', effect () => {
   const seen = try tryPromise(() => walkDeviceAccount())
   try Effect.try(() => assert.deepStrictEqual(seen, {
     signedIn: true,
@@ -135,5 +135,10 @@ it.effect('The packaged device account keeps mail on a lease the agent never hol
     nativeSignedOut: [true, true, 0],
     nativeNeverUsedWorkerRoutes: true,
     cookieOrOrigin: false,
+    tabletSignedIn: true,
+    kept200Days: [50, true, true, 0, 0],
+    refusedRenewal: [false, true, true, true, 1, 0],
+    tabletSignedInAgain: true,
+    lapsedOrRevoked: [true, true, 0],
   }))
 }, 300_000)
