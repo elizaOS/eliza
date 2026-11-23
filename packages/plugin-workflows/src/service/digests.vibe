@@ -32,7 +32,7 @@ effect function nativeSelection(value: unknown): HostedNativeSelection!WorkflowR
   }
 }
 
-export function hostedDigests(service: WorkflowService) {
+function digestSources(service: WorkflowService) {
   const { host, store, owner, lock, now, db } = service
 
   effect function sourceOf(id: string): DigestSourceRecord!WorkflowRefused {
@@ -107,6 +107,14 @@ export function hostedDigests(service: WorkflowService) {
       return { id, revoked: true }
     })
   }
+
+  return { sourceOf, sources, saveSource, revokeSource }
+}
+
+export function hostedDigests(service: WorkflowService) {
+  const { host, store, owner, lock, now, db } = service
+
+  const { sourceOf, sources, saveSource, revokeSource } = digestSources(service)
 
   effect function digestDefinitions(): { readonly row: DefinitionRow; readonly spec: DigestSpec }[]!WorkflowRefused {
     return (try db(store.definitions(owner))).flatMap((stored) => stored.row.origin === "digest" && stored.row.hostedDigest !== undefined ? [{ row: stored.row, spec: stored.row.hostedDigest }] : [])

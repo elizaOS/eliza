@@ -154,6 +154,67 @@ module node {
     return close
   }
 
+  async function connectStream(httpOrigin: string | undefined, input: StreamRequest, route: Route, signal: AbortSignal): Promise<Wire> {
+    const body = input.body === undefined ? {} : { body: input.body }
+    if (route === "Bridge" && input.bridge) {
+      if (!input.bridge.requestStream) throw new Error("NoRoute")
+      const frames = input.bridge.requestStream({ path: input.path, method: "POST", ...body }, signal)[Symbol.asyncIterator]()
+      const close = closeOnce(signal, frames)
+      try {
+        const first = await frames.next()
+        if (first.done || first.value?.kind !== "head") throw new Error("TransportFailed")
+        const head = decodeHead(first.value)
+        return {
+          ...head, close, chunks: {
+            async next() {
+              const frame = await frames.next()
+              if (frame.done) throw new Error("TransportFailed")
+              const item = decodeStreamFrame(frame.value)
+              switch (item.kind) {
+                case "chunk": return { done: false, value: item.data }
+                case "end": return { done: true, value: undefined }
+                case "head":
+                case "error":
+                case "aborted": throw new Error("TransportFailed")
+              }
+            },
+          },
+        }
+      } catch (error) {
+        close()
+        throw error
+      }
+    }
+    if (route !== "Http" || !httpOrigin) throw new Error("NoRoute")
+    const url = new URL(input.path, httpOrigin)
+    if (url.origin !== httpOrigin) throw new Error("InvalidPath")
+    const response = await fetch(url, {
+      method: "POST", signal, credentials: "omit", redirect: "manual",
+      ...(input.body === undefined ? {} : { body: JSON.stringify(input.body), headers: { "Content-Type": "application/json" } }),
+    })
+    const reader = response.body?.getReader()
+    const chunks: AsyncIterator<Uint8Array> = {
+      async next() {
+        const read = reader ? await reader.read() : { done: true as const, value: undefined }
+        return read.done ? { done: true, value: undefined } : { done: false, value: read.value }
+      },
+      async return() {
+        if (reader !== undefined) {
+          try { await reader.cancel() } finally { reader.releaseLock() }
+        }
+        return { done: true, value: undefined }
+      },
+    }
+    const close = closeOnce(signal, chunks)
+    try {
+      const head = decodeHead({ status: response.status, headers: Object.fromEntries(response.headers) })
+      return { ...head, chunks, close }
+    } catch (error) {
+      close()
+      throw error
+    }
+  }
+
   export function createRuntimeJsonClient(options: RuntimeClientOptions) {
     for (const duration of [options.startupTimeoutMs, options.pollMs, options.requestTimeoutMs]) {
       if (!Number.isSafeInteger(duration) || duration <= 0 || duration > 2_147_483_647) throw new RangeError("Invalid runtime client duration")
@@ -288,67 +349,6 @@ module node {
       }
     }
 
-    async function connect(input: StreamRequest, route: Route, signal: AbortSignal): Promise<Wire> {
-      const body = input.body === undefined ? {} : { body: input.body }
-      if (route === "Bridge" && input.bridge) {
-        if (!input.bridge.requestStream) throw new Error("NoRoute")
-        const frames = input.bridge.requestStream({ path: input.path, method: "POST", ...body }, signal)[Symbol.asyncIterator]()
-        const close = closeOnce(signal, frames)
-        try {
-          const first = await frames.next()
-          if (first.done || first.value?.kind !== "head") throw new Error("TransportFailed")
-          const head = decodeHead(first.value)
-          return {
-            ...head, close, chunks: {
-              async next() {
-                const frame = await frames.next()
-                if (frame.done) throw new Error("TransportFailed")
-                const item = decodeStreamFrame(frame.value)
-                switch (item.kind) {
-                  case "chunk": return { done: false, value: item.data }
-                  case "end": return { done: true, value: undefined }
-                  case "head":
-                  case "error":
-                  case "aborted": throw new Error("TransportFailed")
-                }
-              },
-            },
-          }
-        } catch (error) {
-          close()
-          throw error
-        }
-      }
-      if (route !== "Http" || !httpOrigin) throw new Error("NoRoute")
-      const url = new URL(input.path, httpOrigin)
-      if (url.origin !== httpOrigin) throw new Error("InvalidPath")
-      const response = await fetch(url, {
-        method: "POST", signal, credentials: "omit", redirect: "manual",
-        ...(input.body === undefined ? {} : { body: JSON.stringify(input.body), headers: { "Content-Type": "application/json" } }),
-      })
-      const reader = response.body?.getReader()
-      const chunks: AsyncIterator<Uint8Array> = {
-        async next() {
-          const read = reader ? await reader.read() : { done: true as const, value: undefined }
-          return read.done ? { done: true, value: undefined } : { done: false, value: read.value }
-        },
-        async return() {
-          if (reader !== undefined) {
-            try { await reader.cancel() } finally { reader.releaseLock() }
-          }
-          return { done: true, value: undefined }
-        },
-      }
-      const close = closeOnce(signal, chunks)
-      try {
-        const head = decodeHead({ status: response.status, headers: Object.fromEntries(response.headers) })
-        return { ...head, chunks, close }
-      } catch (error) {
-        close()
-        throw error
-      }
-    }
-
     function body(id: number, wire: Wire, live: AbortSignal, stop: AbortController): AsyncIterable<Uint8Array> {
       let taken = false
       let finished = false
@@ -395,7 +395,7 @@ module node {
       const deadline = AbortSignal.any([live, AbortSignal.timeout(options.requestTimeoutMs)])
       let wire: Wire | undefined
       try {
-        const connected = await abortable(deadline, () => connect(input, route, live))
+        const connected = await abortable(deadline, () => connectStream(httpOrigin, input, route, live))
         wire = connected
         if (wire.status >= 200 && wire.status < 300) {
           input.opened = { status: wire.status, headers: wire.headers, body: body(id, wire, live, stop) }
