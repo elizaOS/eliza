@@ -291,10 +291,10 @@ outcome after it is shown. The reply and receipt carry no tab titles,
 addresses, identifiers, private flags or count.
 
 ```quint
-pure def tabsOverviewClaimed(wholeMessage: bool, negotiated: bool, sensitive: bool): bool =
-  wholeMessage and negotiated and not(sensitive)
-pure def lawOverviewNeverClaimsAnUnqualifiedRequest(wholeMessage: bool, negotiated: bool, sensitive: bool): bool =
-  tabsOverviewClaimed(wholeMessage, negotiated, sensitive) implies (wholeMessage and negotiated and not(sensitive))
+pure def tabsOverviewClaimed(wholeMessage: bool, overviewNegotiated: bool, sensitive: bool): bool =
+  wholeMessage and overviewNegotiated and not(sensitive)
+pure def lawOverviewNeverClaimsAnUnqualifiedRequest(wholeMessage: bool, overviewNegotiated: bool, sensitive: bool): bool =
+  tabsOverviewClaimed(wholeMessage, overviewNegotiated, sensitive) implies (wholeMessage and overviewNegotiated and not(sensitive))
 pure def lawOverviewNeedsItsOwnNegotiation(negotiated: Negotiated): bool =
   controlOffered(TabsShowControl, negotiated) == negotiated.tabsShowCapability
 pure def lawOnlyMyWholeMessageCanBindAnOverview(proposed: ProposedControl): bool =
