@@ -159,10 +159,16 @@ it.live("Host a runtime from construction to close and restart (spec/core/runtim
 
   // spec/core/runtime.md, "Initialization releases waiters on success and failure"
   const waiterStates: string[] = []
-  for concurrent (const caller of ["host", "waiter", "waiter"]) {
+  const agentReads = { phase: 0, counts: [0, 0] }
+  const readAgents = a.getAgentsByIds.bind(a)
+  try Effect.try(() => { a.getAgentsByIds = (ids) => { agentReads.counts[agentReads.phase] += 1; return readAgents(ids) } })
+  for concurrent (const caller of ["host", "host", "waiter", "waiter"]) {
     try host(() => caller === "host" ? runtime.initialize({ skipMigrations: true }) : runtime.initPromise.then(() => { waiterStates.push(runtime.getLifecycleState()) }))
   }
+  agentReads.phase = 1
   try host(() => runtime.initialize({ skipMigrations: true }))
+  try Effect.try(() => Reflect.deleteProperty(a, "getAgentsByIds"))
+  try Effect.try(() => assert.strictEqual(agentReads.counts[0], agentReads.counts[1]))
   const stored = {
     agents: (try host(() => a.getAgentsByIds([agentId]))).map((agent) => agent.name),
     entities: (try host(() => a.getEntitiesByIds([agentId]))).map((entity) => entity.names),
