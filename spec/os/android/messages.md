@@ -1,4 +1,4 @@
-# Text messages: reviewed sends, receipts, notices and deletion
+# Text messages: reviewed sends, receipts, incoming messages, notices and deletion
 
 The messages module (`packages/os/android/messages/`, from
 `plugins/plugin-native-messages/android`). A host that declares telephony
@@ -11,8 +11,9 @@ their shape checks and the capabilities `sms.send.v1`, `mms.send.v1` and
 [capabilities](../../agent/deviceActions/capabilities.md)); a request for the
 default SMS role is [system](./system.md)'s. This spec keeps what Android must
 confirm before a send, what the send journal answers, what a status may
-claim, what a new-message notice action may write, and what a deletion of a
-message or a conversation may stage in the
+claim, what the default SMS app stores and announces for an incoming text or
+picture message, what a new-message notice action may write, and what a
+deletion of a message or a conversation may stage in the
 [deletion journal](./deferredDeletion.md) and report. Carrier delivery is never inferred. Calls and voicemail are
 [phone](./phone.md)'s and [voicemail](./voicemail.md)'s. A new-message
 notice is this module's own: it is posted for an incoming message, not for
@@ -217,6 +218,109 @@ pure def lawDeliveredNeedsEveryReportAndNeverMms(e: SendEvidence): bool =
 pure def lawFailedPartIsNeverHidden(e: SendEvidence): bool =
   e.parts.some(p => p.sentState == PartFailed) implies evidenceStatus(e) == SendFailed
 pure def lawRestartNeverReadsSubmitted(e: SendEvidence): bool = evidenceStatus(afterRestart(e)) != SendSubmitted
+```
+
+## Story: Keep every message I receive
+
+> As the person, with this app as my SMS app, I want every text and picture
+> message that reaches my phone stored once in its conversation and
+> announced, so that none is lost, stored twice or announced without being
+> there.
+
+### An incoming text is stored before it is announced, and only while the app holds the SMS role
+
+Android delivers an incoming text only to the default SMS app, which must
+store it. The receiver joins the parts Android delivered, takes the first
+part's sender and time, and hands the store to the module's one worker. The
+row goes to the Inbox unread before its notice is asked for, so a notice
+Android did not confirm leaves the text stored, and a text that has no
+sender or that the provider refused has no notice. Without the role
+nothing is stored or announced: Android's SMS app keeps the text. The
+broadcast is finished whether the worker stored the text, refused it or
+never ran.
+
+```quint
+type IncomingText = TextNotOurs | TextNotStored | TextStoredUnannounced | TextStoredAndAnnounced
+pure def incomingText(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, providerStored: bool, noticeConfirmed: bool): IncomingText =
+  if (not(smsRoleHeld)) TextNotOurs
+  else if (not(senderKnown) or not(workerRan) or not(providerStored)) TextNotStored
+  else if (noticeConfirmed) TextStoredAndAnnounced
+  else TextStoredUnannounced
+pure def textKept(outcome: IncomingText): bool = outcome == TextStoredUnannounced or outcome == TextStoredAndAnnounced
+pure def lawATextIsKeptExactlyWhenTheRoleHolderStoredIt(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, providerStored: bool, noticeConfirmed: bool): bool =
+  textKept(incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, noticeConfirmed)) iff (smsRoleHeld and senderKnown and workerRan and providerStored)
+pure def lawOnlyAStoredTextIsAnnounced(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, providerStored: bool, noticeConfirmed: bool): bool =
+  incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, noticeConfirmed) == TextStoredAndAnnounced implies (providerStored and noticeConfirmed)
+pure def lawAnUnconfirmedNoticeNeverLosesTheText(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, providerStored: bool): bool =
+  textKept(incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, false)) == textKept(incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, true))
+```
+
+### A picture message is downloaded once for its transaction, stored whole or not at all, and answered only once stored
+
+A WAP push is acted on only by the default SMS app, and only when it is a
+message notification that names its transaction and its content location;
+delivery and read reports are not stored, since MMS delivery is never
+claimed. A notification whose transaction is already stored starts no
+download and is answered "retrieved" again, so a carrier that missed the
+first answer stops repeating it. A new one starts one download into a
+private file. The file is stored only when Android reported the download
+done, the role is still held, the file is a retrieved message of at most
+`maxIncomingMmsBytes` and its transaction is not stored yet: the message
+row with its addresses and every part, or, if one of them fails, nothing,
+so the carrier's repeat can store it whole. The carrier is answered
+"retrieved" only for a stored message, the private file is removed in every
+case, and the notice follows the stored row as it does for a text.
+
+```quint
+type WapPush = PushNotANotice | PushNewTransaction | PushStoredTransaction
+type PushWork = PushIgnored | PushDownloaded | PushAnsweredAgain
+type MmsKept = MmsNotStored | MmsAlreadyStored | MmsStored
+pure val maxIncomingMmsBytes = 2097152
+pure def pushWork(smsRoleHeld: bool, wapPush: WapPush): PushWork =
+  if (not(smsRoleHeld) or wapPush == PushNotANotice) PushIgnored
+  else if (wapPush == PushStoredTransaction) PushAnsweredAgain
+  else PushDownloaded
+pure def keepDownloadedMms(smsRoleHeld: bool, downloadDone: bool, retrievedWithinSize: bool, transactionStored: bool, rowsWritten: bool): MmsKept =
+  if (not(smsRoleHeld) or not(downloadDone) or not(retrievedWithinSize)) MmsNotStored
+  else if (transactionStored) MmsAlreadyStored
+  else if (rowsWritten) MmsStored
+  else MmsNotStored
+pure def carrierAnswered(pushed: PushWork, kept: MmsKept): bool = pushed == PushAnsweredAgain or (pushed == PushDownloaded and kept == MmsStored)
+pure def lawARepeatedNotificationNeverDownloads(smsRoleHeld: bool): bool = pushWork(smsRoleHeld, PushStoredTransaction) != PushDownloaded
+pure def lawOnlyTheRoleHolderDownloadsOrStores(wapPush: WapPush, downloadDone: bool, retrievedWithinSize: bool, transactionStored: bool, rowsWritten: bool): bool =
+  pushWork(false, wapPush) == PushIgnored and keepDownloadedMms(false, downloadDone, retrievedWithinSize, transactionStored, rowsWritten) == MmsNotStored
+pure def lawAPictureMessageIsStoredWholeAndOnce(smsRoleHeld: bool, downloadDone: bool, retrievedWithinSize: bool, transactionStored: bool, rowsWritten: bool): bool =
+  keepDownloadedMms(smsRoleHeld, downloadDone, retrievedWithinSize, transactionStored, rowsWritten) == MmsStored iff
+    (smsRoleHeld and downloadDone and retrievedWithinSize and not(transactionStored) and rowsWritten)
+pure def lawTheCarrierIsAnsweredOnlyForAStoredMessage(smsRoleHeld: bool, downloadDone: bool, retrievedWithinSize: bool, transactionStored: bool, rowsWritten: bool): bool =
+  carrierAnswered(PushDownloaded, keepDownloadedMms(smsRoleHeld, downloadDone, retrievedWithinSize, transactionStored, rowsWritten)) implies (rowsWritten and not(transactionStored))
+```
+
+### A conversation has one notice, and a newer message replaces it without losing the texts it showed
+
+A notice is tagged with its conversation's whole thread ID, or with the
+message's own row when the provider names no thread, so two conversations
+whose IDs share a hash never share a notice or a tap. A new message builds
+the replacement from the texts the published notice shows and its own,
+retires the older notice's Mark read action and asks Android to publish it;
+the replacement counts only once Android shows it, within
+`noticeConfirmSeconds`. One that is not confirmed has its own action
+retired too ([below](#story-mark-a-conversation-read-from-its-notice-without-sending-anything)),
+and its message stays stored. The lock screen shows only "New message";
+the sender's contact name or number and the texts show once unlocked. Reply
+is offered only for a well-formed sender and Mark read only for a known
+conversation.
+
+```quint
+type ConversationNotice = { texts: int, offersReply: bool, offersMarkRead: bool }
+pure val noticeConfirmSeconds = 3
+pure def replacementNotice(shownTexts: int, senderWellFormed: bool, threadKnown: bool): ConversationNotice =
+  { texts: (if (shownTexts > 0) shownTexts else 0) + 1, offersReply: senderWellFormed, offersMarkRead: threadKnown }
+pure val shownTextsValues = Set(-1, 0, 1, 5)
+pure def lawAReplacementKeepsEveryTextAlreadyShown(shownTexts: int, senderWellFormed: bool, threadKnown: bool): bool =
+  replacementNotice(shownTexts, senderWellFormed, threadKnown).texts >= 1 and replacementNotice(shownTexts, senderWellFormed, threadKnown).texts > shownTexts
+pure def lawMarkReadIsOfferedOnlyForAKnownConversation(shownTexts: int, senderWellFormed: bool, threadKnown: bool): bool =
+  replacementNotice(shownTexts, senderWellFormed, threadKnown).offersMarkRead == threadKnown
 ```
 
 ## Story: Mark a conversation read from its notice without sending anything
