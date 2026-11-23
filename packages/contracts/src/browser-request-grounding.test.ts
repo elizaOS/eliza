@@ -1408,3 +1408,45 @@ describe("web search query", () => {
     expect(groundBrowserSearchQuery(text, proposed)).toBe(expected);
   });
 });
+
+describe("a link of the Browser page the request carried", () => {
+  const links = ["https://one.example/story", "https://two.example/post?id=2"];
+  const ground = (proposed: string, pageLinks = links) =>
+    groundBrowserDestination(
+      "Open the second story.",
+      proposed,
+      "Eliza",
+      pageLinks,
+    );
+  it("grounds exactly one of the page's links, without a fragment", () => {
+    expect(ground("https://two.example/post?id=2")).toBe(
+      "https://two.example/post?id=2",
+    );
+    expect(ground("https://one.example/story#top")).toBe(
+      "https://one.example/story",
+    );
+  });
+  it("refuses a link when the owner says not to open its address", () => {
+    expect(
+      groundBrowserDestination(
+        "Do not open https://two.example/post?id=2.",
+        "https://two.example/post?id=2",
+        "Eliza",
+        links,
+      ),
+    ).toBeUndefined();
+  });
+  it.each([
+    "https://two.example/post?id=3",
+    "https://two.example/post",
+    "https://one.example/story/",
+    "http://one.example:8080/story",
+    "javascript:alert(1)",
+    "",
+  ])("refuses %s", (proposed) => {
+    expect(ground(proposed)).toBeUndefined();
+  });
+  it("grounds nothing without page links", () => {
+    expect(ground("https://one.example/story", [])).toBeUndefined();
+  });
+});
