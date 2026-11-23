@@ -56,10 +56,10 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
     if (body.stream === true) {
       const upstream = stream(provider, payload) catch effect (failure) => {
         try settle(ticket.key, failureSettlement(failure))
-        throw providerRefusal(failure, try Clock.currentTimeMillis)
+        throw providerRefusal(failure, provider, false, try Clock.currentTimeMillis)
       }
       const bodyStream = meteredChatStream({
-        upstream, publicModelId: model.id, quoted: priced.counts, holdKey: ticket.key,
+        upstream, provider, publicModelId: model.id, quoted: priced.counts, holdKey: ticket.key,
         price: (counts) => callCostFor(model, counts),
         finishHold: (settlement) => Effect.asVoid(Effect.provideService(settle(ticket.key, settlement), Store, store)),
         includeUsage: body.stream_options?.include_usage === true
@@ -68,7 +68,7 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
     }
     const answer = complete(provider, payload) catch effect (failure) => {
       try settle(ticket.key, failureSettlement(failure))
-      throw providerRefusal(failure, try Clock.currentTimeMillis)
+      throw providerRefusal(failure, provider, false, try Clock.currentTimeMillis)
     }
     try settle(ticket.key, completionSettlement(try priceUsage(model, answer.usage)))
     return json({ ...answer.json, model: model.id }, { headers })

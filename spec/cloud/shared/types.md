@@ -115,7 +115,10 @@ type Sealed = { purpose: SealPurpose, keyId: int }
 Every refusal is answered with the status of its code and the body
 `{error, errorDescription, retryable, retryAt?, resetsAt?, reason?}`, both
 times in epoch milliseconds. No spec refuses with a code outside this list,
-and a spec that builds a refusal states that it is `wellFormed`.
+and a spec that builds a refusal states that it is `wellFormed`. A chat
+completion that its provider refused with a `400` adds to that body the
+provider's own listed `code?` and `param?` and its `providerMessage?`
+([inference](../services/inference.md)).
 
 ### Each refusal code answers with the HTTP status of its class
 

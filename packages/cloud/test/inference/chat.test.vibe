@@ -1,4 +1,4 @@
-// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
+// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"; spec/cloud/services/inference.md, "A refused call is retried when its provider can take it again, and a Cerebras rate limit within four seconds"; spec/cloud/services/inference.md, "A provider's 400 keeps only its listed code and parameter and a short message for the caller"
 import { assert, describe, it } from "@effect/vitest"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import { addCredits } from "../../src/billing/funds.vibe"
@@ -6,7 +6,7 @@ import { parseProfile } from "../../src/profile/profile.vibe"
 import { setModelPrice } from "../../src/services/models.vibe"
 import { Store, storeLayer } from "../../src/store/store.vibe"
 import { testCloud, type TestCloud } from "../support/cloud.vibe"
-import { llmFake, replyText, upstreamModel, type LlmFake } from "../support/llm-fake.ts"
+import { cerebrasBaseUrl, cerebrasRoute, llmFake, parserError, replyText, upstreamModel, type LlmFake } from "../support/llm-fake.ts"
 import { signedCaller } from "../support/caller.vibe"
 import { testProfile } from "../support/profile.ts"
 
@@ -29,13 +29,15 @@ effect function chatCloud(additionalOffers = false) {
     const staging = profile.environments.staging
     const inference = {
       ...staging.inference,
+      providers: [...staging.inference.providers, { id: "cerebras", baseUrl: cerebrasBaseUrl, apiKeyEnv: "LLM_API_KEY" }],
       models: [...staging.inference.models,
         { id: "wide-chat", provider: "llm", upstreamModel: secondUpstream, vision: true, defaultMaxTokens: 8192 },
-        { id: "legacy-chat", provider: "llm", upstreamModel: upstreamModel, vision: true }],
+        { id: "legacy-chat", provider: "llm", upstreamModel: upstreamModel, vision: true },
+        { id: "cerebras-chat", provider: "cerebras", upstreamModel: upstreamModel, vision: false, defaultMaxTokens: 4096 }],
     }
     return { ...profile, environments: { ...profile.environments, staging: { ...staging, inference } } }
   }
-  const cloud = try testCloud({ edit, mount: (fakes) => fakes.mount("/llm/", llm.handler) })
+  const cloud = try testCloud({ edit, mount: (fakes) => fakes.mount("/llm/", llm.handler), fetch: (fakes) => cerebrasRoute(fakes.url) })
   const profile = try parseProfile(try sync(() => edit(testProfile(cloud.fakes.url))))
   const settings = profile.environments.staging.inference
   if (settings === undefined) return try Effect.die("the test profile offers no inference")
@@ -108,9 +110,19 @@ describe("WP5 Inference: chat completions", () => {
     const callsBeforeAdmission = llm.bodies.length
     const whole = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
     const again = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
-    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "reject", status: 400 }, { kind: "reject", status: 401 }))
+    const overQuota = { error: { message: "Over quota", type: "insufficient_quota", code: "insufficient_quota", param: "tools[0].function.parameters.PRIVATE" } }
+    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "refuse", retryAfterSeconds: 59 },
+      { kind: "reject", status: 400, body: parserError }, { kind: "reject", status: 400, body: overQuota }, { kind: "reject", status: 422, body: parserError },
+      { kind: "reject", status: 400 }, { kind: "reject", status: 401 }))
     const refusedByProvider = try chat(request)
     const unreadable = try chat(request)
+    const cerebrasAsked = try Clock.currentTimeMillis
+    const cerebrasLimited = try chat({ ...request, model: "cerebras-chat" })
+    const cerebrasAnswered = try Clock.currentTimeMillis
+    const cerebrasRetryAt = (cerebrasLimited.body as { readonly retryAt?: number }).retryAt ?? 0
+    const unparsed = try chat(request)
+    const quotaRejected = try chat(request)
+    const unserved = try chat(request)
     const rejectedByProvider = try chat(request)
     const providerAuthFailed = try chat(request)
     const planning = {
@@ -121,7 +133,7 @@ describe("WP5 Inference: chat completions", () => {
     const legacy = try chat({ ...request, ...planning, model: "legacy-chat", max_completion_tokens: 64 })
     const wide = try chat({ ...unbounded, model: "wide-chat", stream: true })
     const answer = whole.body as { readonly model: string; readonly choices: ReadonlyArray<{ readonly message: { readonly content: string } }> }
-    const usage = try settledCount(cloud, "org-owner", 7)
+    const usage = try settledCount(cloud, "org-owner", 11)
     const holds = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = 'org-owner' ORDER BY phase", [])
     const funds = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = 'org-owner'", [])
     const brokeUsage = try usageRows(cloud, "org-broke")
@@ -136,11 +148,14 @@ describe("WP5 Inference: chat completions", () => {
         whole: [whole.status, answer.model, answer.choices[0]?.message.content, whole.headers["cache-control"], status(again)],
         upstream: llm.bodies.map((body) => [body.model, body.stream ?? false, body.max_tokens, body.max_completion_tokens]),
         idempotencyForwarded: llm.headers.some((headers) => headers["idempotency-key"] !== undefined),
-        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[5]?.[field]])),
+        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[9]?.[field]])),
         refusedByProvider: status(refusedByProvider),
         unreadable: status(unreadable),
         rejectedByProvider: status(rejectedByProvider),
         providerAuthFailed: status(providerAuthFailed),
+        cerebrasLimited: [status(cerebrasLimited), cerebrasRetryAt > cerebrasAsked && cerebrasRetryAt <= cerebrasAnswered + 4_000],
+        rejections: [unparsed, quotaRejected, unserved].map((reply) => [reply.status, reply.body]),
+        failedGenerationKept: [unparsed, quotaRejected, unserved].some((reply) => JSON.stringify(reply.body).includes("PRIVATE")),
         usage,
         brokeUsage,
         holds: holds.map((row) => row.phase),
@@ -154,18 +169,24 @@ describe("WP5 Inference: chat completions", () => {
         unfunded: [402, "insufficient_credits", undefined],
         callsBeforeAdmission: 0,
         whole: [200, "test-chat", replyText, "no-store", [409, "already_dispatched", undefined]],
-        upstream: [[upstreamModel, false, undefined, undefined], [upstreamModel, false, 16, undefined],
-          [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
+        upstream: [[upstreamModel, false, undefined, undefined], ...Array.from({ length: 8 }, () => [upstreamModel, false, 16, undefined]),
           [upstreamModel, false, undefined, 64], ["upstream-wide", true, undefined, undefined]],
         idempotencyForwarded: false,
         planningForwarded: planning,
-        refusedByProvider: [503, "provider_unavailable", "7"],
-        unreadable: [502, "provider_invalid_response", undefined],
+        refusedByProvider: [429, "rate_limited", "7"],
+        unreadable: [503, "provider_unavailable", "5"],
         rejectedByProvider: [400, "invalid_request", undefined],
         providerAuthFailed: [503, "provider_unavailable", "5"],
-        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["known", 166, 31], ["known", 19673, 31]],
+        cerebrasLimited: [[429, "rate_limited", "4"], true],
+        rejections: [
+          [400, { error: "invalid_request", errorDescription: "Invalid request.", retryable: false, code: "parser_error", param: "tool_calls", providerMessage: parserError.message }],
+          [400, { error: "invalid_request", errorDescription: "Invalid request.", retryable: false, providerMessage: "Over quota" }],
+          [400, { error: "invalid_request", errorDescription: "Invalid request.", retryable: false }]
+        ],
+        failedGenerationKept: false,
+        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ...Array.from({ length: 6 }, () => ["known", 50, 0]), ["known", 166, 31], ["known", 19673, 31]],
         brokeUsage: [],
-        holds: ["settled", "settled", "settled", "settled", "settled", "settled", "settled"],
+        holds: Array.from({ length: 11 }, () => "settled"),
         balance: 1_000_000 - 31 * 3 - 50
       }
     ))

@@ -1,4 +1,5 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { FetchHttpClient } from "effect/http"
 import { cloudLayer, prepare } from "../../src/index.vibe"
 import { Store } from "../../src/store/store.vibe"
 import type { CloudContext } from "../../src/http/routes.vibe"
@@ -33,6 +34,7 @@ export interface TestCloudOptions {
   readonly host?: string
   readonly store?: StoreChoice
   readonly seed?: string
+  readonly fetch?: (fakes: FakeServer) => typeof globalThis.fetch
 }
 
 export effect function fakeServer() {
@@ -52,7 +54,8 @@ export effect function testCloud(options: TestCloudOptions = {}) {
     ? (try acquireRelease(promise(() => serveDatabase(choice.setup)), (database) => promise(() => database.close()))).url
     : "pglite"
   const prepared = try prepare({ profile, environment: options.environment ?? "staging", store, seed: options.seed, port: 0, host: options.host ?? "127.0.0.1" })
-  const built = try Layer.build(cloudLayer(prepared).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))))
+  const network = options.fetch === undefined ? Layer.empty : Layer.succeed(FetchHttpClient.Fetch, options.fetch(fakes))
+  const built = try Layer.build(cloudLayer(prepared).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))), Layer.provide(network)))
   const { address } = Context.get(built, HttpServer.HttpServer)
   const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
   return {

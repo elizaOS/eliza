@@ -1,4 +1,4 @@
-// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A provider's 400 keeps only its listed code and parameter and a short message for the caller"
 import { assert, describe, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { createCloudClient, type ChatChunk } from "../../src/client/index.vibe"
@@ -11,7 +11,7 @@ import { Store } from "../../src/store/connection.vibe"
 import { Deployment, deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
 import { complete, stream, type LlmFailure, type LlmProvider } from "../../src/providers/llm.vibe"
 import { startFakeServer } from "../support/fakes.ts"
-import { contentFrames, doneFrame, llmFake, replyText, streamText, upstreamModel, usage, wholeAnswer } from "../support/llm-fake.ts"
+import { contentFrames, doneFrame, llmFake, parserError, replyText, streamText, upstreamModel, usage, wholeAnswer } from "../support/llm-fake.ts"
 import { secrets, testProfile } from "../support/profile.ts"
 import { testCloud, type TestCloud } from "../support/cloud.vibe"
 import { signedCaller } from "../support/caller.vibe"
@@ -24,7 +24,7 @@ effect function check(run: () => void) {
 effect function outcome<A, R>(program: A!LlmFailure!R): unknown!!R {
   return match (try exit(program)) {
     when Exit.Success(let value): value;
-    when Exit.Failure(let cause): Cause.findErrorOption(cause).map((error) => error._tag === "ProviderRefused" ? [error._tag, error.status, error.retryAfter] : [error._tag]).getOrElse(() => Cause.hasInterruptsOnly(cause) ? "interrupted" : "defect");
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).map((error) => error._tag === "ProviderRefused" ? [error._tag, error.status, error.retryAfter, error.sent] : [error._tag]).getOrElse(() => Cause.hasInterruptsOnly(cause) ? "interrupted" : "defect");
   }
 }
 
@@ -62,30 +62,51 @@ function bytesOf(text: string): number[] {
 }
 
 describe("WP5 Inference: provider adapter", () => {
-  it.live("Send one call per request to the provider and pass its answer through (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\")", () => scoped(effect {
+  it.live("Send one call per request to the provider and pass its answer through (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\"; spec/cloud/services/inference.md, \"A provider's 400 keeps only its listed code and parameter and a short message for the caller\")", () => scoped(effect {
     const { llm, provider, layer } = try adapter()
+    const cacheKey = "PROMPT_CACHE_KEY_SENTINEL"
+    const keyed = { ...request, prompt_cache_key: cacheKey }
     provide layer {
-      try sync(() => llm.script({ kind: "whole" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "refuse" }))
+      try sync(() => llm.script({ kind: "whole" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "refuse" },
+        { kind: "reject", status: 400, body: { ...parserError, message: `  ${cacheKey} ${"x".repeat(1_000)}` } },
+        { kind: "reject", status: 400, body: { error: { message: "Too long", code: "context_length_exceeded", param: "messages" } } },
+        { kind: "reject", status: 500, body: parserError }))
       const whole = try complete(provider, request)
       const refused = try outcome(complete(provider, request))
       const invalid = try outcome(complete(provider, request))
       const refusedStream = try outcome(stream(provider, request))
+      const unparsed = try outcome(stream(provider, keyed))
+      const tooLong = try outcome(complete(provider, request))
+      const failed = try outcome(complete(provider, request))
       try check(() => assert.deepStrictEqual(
         {
           whole: [whole.json, whole.usage],
           refused,
           invalid,
           refusedStream,
+          unparsed,
+          tooLong,
+          failed,
           sent: llm.bodies,
           authorization: llm.headers.map((headers) => [headers.authorization, headers["idempotency-key"]])
         },
         {
           whole: [wholeAnswer, usage],
-          refused: ["ProviderRefused", 429, 7_000],
+          refused: ["ProviderRefused", 429, 7_000, undefined],
           invalid: ["ProviderInvalidResponse"],
-          refusedStream: ["ProviderRefused", 429, undefined],
-          sent: [request, request, request, { ...request, stream: true, stream_options: { include_usage: true } }],
-          authorization: Array.from({ length: 4 }, () => [`Bearer ${secrets.LLM_API_KEY}`, undefined])
+          refusedStream: ["ProviderRefused", 429, undefined, undefined],
+          unparsed: ["ProviderRefused", 400, undefined, {
+            code: { tag: "FieldSent", value: "parser_error" },
+            param: { tag: "FieldSent", value: "tool_calls" },
+            message: { tag: "FieldSent", value: `[REDACTED_PROMPT_CACHE_KEY] ${"x".repeat(172)}` }
+          }],
+          tooLong: ["ProviderRefused", 400, undefined, {
+            code: { tag: "FieldSent", value: "context_length_exceeded" }, param: { tag: "FieldSent", value: "messages" }, message: { tag: "FieldSent", value: "Too long" }
+          }],
+          failed: ["ProviderRefused", 500, undefined, undefined],
+          sent: [request, request, request, { ...request, stream: true, stream_options: { include_usage: true } },
+            { ...keyed, stream: true, stream_options: { include_usage: true } }, request, request],
+          authorization: Array.from({ length: 7 }, () => [`Bearer ${secrets.LLM_API_KEY}`, undefined])
         }
       ))
     }
@@ -167,7 +188,11 @@ async function openChat(base: string, headers: Readonly<Record<string, string>>,
 const cloudFrames = contentFrames.map((frame) => frame.replaceAll(upstreamModel, chatRequest.model))
 const cloudStream = streamText.replaceAll(upstreamModel, chatRequest.model)
 
-const streamError = 'data: {"error":"provider_invalid_response","errorDescription":"Provider invalid response.","retryable":false}\n\n'
+const streamError = 'data: {"error":"provider_unavailable","errorDescription":"Provider unavailable.","retryable":true,"retryAt":0}\n\n'
+
+function timeless(body: unknown): string {
+  return String(body).replace(/"retryAt":\d+/g, '"retryAt":0')
+}
 
 it.live("Fund chat once and stream live complete frames, even when delivery ends early (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\"; spec/cloud/index.md, \"A streamed answer sends complete OpenAI frames and settles the same hold\")", () => scoped(effect {
   const llm = try sync(() => llmFake())
@@ -239,9 +264,9 @@ it.live("Fund chat once and stream live complete frames, even when delivery ends
     assert.deepStrictEqual({ answer: first.body, results: worked.map((result) => result.status).sort(), duplicate: code(duplicate) },
       { answer: { ...wholeAnswer, model: chatRequest.model }, results: [200, 409], duplicate: [409, "already_dispatched"] })
     const errorEnd = streamError + doneFrame
-    assert.deepStrictEqual([streamed.headers["content-type"], streamed.body, noUsage.body, truncated.body, malformedFrame.body, oversizedFrame.body, code(refused), usageNotAsked.body, reportedBeforeFailure.body],
+    assert.deepStrictEqual([streamed.headers["content-type"], streamed.body, noUsage.body, timeless(truncated.body), timeless(malformedFrame.body), timeless(oversizedFrame.body), code(refused), usageNotAsked.body, timeless(reportedBeforeFailure.body)],
       ["text/event-stream", cloudStream, cloudFrames.join("") + doneFrame, cloudFrames.join("") + errorEnd, cloudFrames[0] + errorEnd, errorEnd,
-        [503, "provider_unavailable"], cloudFrames.join("") + doneFrame, cloudFrames.join("") + errorEnd])
+        [429, "rate_limited"], cloudFrames.join("") + doneFrame, cloudFrames.join("") + errorEnd])
     assert.isAbove(Number(refused.headers["retry-after"]), 0)
     assert.deepStrictEqual([live.status, live.type, partial.startsWith(cloudFrames[0] ?? ""), beforeCancel?.phase, llm.aborted, decoded],
       [200, "text/event-stream", true, "dispatched", 2, [replyText, 1, "assistant", true]])
