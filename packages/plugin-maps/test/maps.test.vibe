@@ -448,12 +448,17 @@ layer(mapsChatFixture, { excludeTestServices: true, timeout: "3 minutes" })("Map
     try observed.publish({ query: "Coit Tower", area: "San Francisco", results: ["Coit Tower"], provider: "google", ready: true })
     const selectedObject = try observed.observe()
     if (selectedObject === undefined) return try die("The Maps screen has no selection handle")
-    try Effect.try(() => chat.script(mapsToolCall("MAPS_PLACE", { query: "Coit Tower", placeId: selectedObject.id }), { content: "Here is Coit Tower." }))
+    try Effect.try(() => chat.script(
+      mapsToolCall("MAPS_PLACE", { query: selectedObject.id }),
+      mapsToolCall("MAPS_PLACE", { query: "Coit Tower", placeId: selectedObject.id }),
+      { content: "Here is Coit Tower." },
+    ))
     const opened = try tryPromise(() => chat.post("/api/conversations", {}))
     const { conversation } = try Schema.decodeUnknownEffect(Schema.Struct({ conversation: Schema.Struct({ id: Schema.String }) }))(opened.body)
     const path = `/api/conversations/${conversation.id}/messages`
     const first = try tryPromise(() => chat.post(path, { text: "Show me Coit Tower on the map." }))
     if (first.status !== 200) return try die("Showing the original place was refused")
+    const placeRetry = chat.prompts.at(-2)
     try Effect.try(() => chat.script(
       mapsToolCall("MAPS_NAVIGATION_START", { placeId: selectedObject.id }),
       mapsToolCall("MAPS_NAVIGATION_START", { placeId: selectedObject.id, destination: "Coit Tower" }),
@@ -463,12 +468,13 @@ layer(mapsChatFixture, { excludeTestServices: true, timeout: "3 minutes" })("Map
       text: "Directions to it.", metadata: { observation: { view: "maps", revision: 1, sensitive: false, selectedObject } },
     }))
     if (sent.status !== 200) return try die("The directions turn was refused")
-    const answer = try Schema.decodeUnknownEffect(Schema.Struct({
+    const readAnswer = Schema.decodeUnknownEffect(Schema.Struct({
       text: Schema.String,
       actionResults: Schema.Array(Schema.Struct({
         action: Schema.String, data: Schema.Struct({ card: Schema.optionalKey(Schema.Struct({ kind: Schema.String })) }),
       })),
-    }))(sent.body)
+    }))
+    const answer = try readAnswer(sent.body)
     const planningRequest = try Schema.decodeUnknownEffect(Schema.Struct({
       messages: Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.optionalKey(Schema.Unknown) })),
     }))(chat.prompts.at(-3))
@@ -476,7 +482,11 @@ layer(mapsChatFixture, { excludeTestServices: true, timeout: "3 minutes" })("Map
       const prompts = chat.prompts.slice(-3).map((body) => JSON.stringify(body))
       const sentDetails = bodies.filter(({ path }) => path.endsWith("/places/details"))
       const searches = bodies.filter(({ path }) => path.endsWith("/places/search"))
+      const firstPrompt = JSON.stringify(placeRetry)
+      const firstAnswer = JSON.stringify(first.body)
       assert.deepStrictEqual({
+        placeCoached: firstPrompt?.includes("MAPS_SELECTION_HANDLE") && firstPrompt?.includes("query"),
+        placeHidden: firstAnswer?.includes("MAPS_SELECTION_HANDLE") === false && firstAnswer?.includes(selectedObject.id) === false,
         sawSelection: prompts[0]?.includes(selectedObject.id),
         priorPlace: planningRequest.messages.some(({ role, content }) => role === "user" && content === "Show me Coit Tower on the map."),
         coached: prompts[1]?.includes("MAPS_SELECTION_HANDLE") && prompts[1]?.includes("destination"),
@@ -487,10 +497,22 @@ layer(mapsChatFixture, { excludeTestServices: true, timeout: "3 minutes" })("Map
         named: answer.text.includes("Coit Tower"),
         falseFailure: /did not start|did not complete|MAPS_SELECTION_HANDLE/iu.test(answer.text),
       }, {
-        sawSelection: true, priorPlace: true, coached: true, lookupsOfHandle: 0, searches: [{ query: "Coit Tower" }, { query: "Coit Tower", limit: 5 }],
+        placeCoached: true, placeHidden: true, sawSelection: true, priorPlace: true, coached: true, lookupsOfHandle: 0, searches: [{ query: "Coit Tower" }, { query: "Coit Tower", limit: 5 }],
         actions: ["MAPS_NAVIGATION_START"], route: "handoff", named: true, falseFailure: false,
       })
     })
+    try Effect.try(() => chat.script(
+      mapsToolCall("MAPS_NAVIGATION_START", { destination: selectedObject.id, placeId: "tower" }),
+      { content: "Here are directions to Coit Tower." },
+    ))
+    const sentById = try tryPromise(() => chat.post(path, { text: "Use that selection one more time." }))
+    if (sentById.status !== 200) return try die("Directions using the provider place ID were refused")
+    const byId = try readAnswer(sentById.body)
+    try Effect.try(() => assert.deepStrictEqual({
+      details: bodies.filter(({ path }) => path.endsWith("/places/details")).map(({ body }) => body),
+      route: byId.actionResults[0]?.data.card?.kind ?? recognizedMapsCards(byId.text)[0]?.card.kind,
+      leakedSelection: bodies.some(({ body }) => JSON.stringify(body)?.includes(selectedObject.id) === true),
+    }, { details: [{ id: "tower" }], route: "handoff", leakedSelection: false }))
   })
 })
 
