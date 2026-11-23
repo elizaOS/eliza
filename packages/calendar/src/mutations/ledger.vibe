@@ -1,4 +1,4 @@
-// spec/calendar/mutationLedger.md, "Story: Run a reviewed Calendar change at most once and know what happened"; spec/calendar/mutationLedger.md, "A claim takes a fresh token only from an approved or retryable request"; spec/calendar/mutationLedger.md, "Only the live claim's token can record a receipt, and a stale token changes no row"; spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"; spec/calendar/mutationLedger.md, "Reconciliation settles an ambiguous attempt from evidence or the owner's word"; spec/calendar/mutationLedger.md, "A replay needs a durable receipt, and a recorded receipt never changes"
+// spec/calendar/mutationLedger.md, "Story: Run a reviewed Calendar change at most once and know what happened"; spec/calendar/mutationLedger.md, "A claim takes a fresh token only from an approved or retryable request"; spec/calendar/mutationLedger.md, "Only the live claim's token can record a receipt, and a stale token changes no row"; spec/calendar/mutationLedger.md, "A restart quarantines an executing claim instead of retrying it"; spec/calendar/mutationLedger.md, "Reconciliation settles an ambiguous attempt from evidence or the owner's word"; spec/calendar/mutationLedger.md, "A replay needs a durable receipt, and a recorded receipt never changes"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"
 import type { CalendarWriteScope } from "../series/document.vibe"
 import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
@@ -6,8 +6,14 @@ import { Machine, awaitingReconciliation, stored, type MutationLedger } from "..
 import { sameSourceKey, type CalendarEvent, type CalendarEventFields, type CalendarSourceKey } from "../model.vibe"
 import { FailureRecord, ReceiptRow, RequestRow } from "./records.schema.vibe"
 
-/** The three reviewed Calendar changes. */
-export type CalendarMutationOperation = "schedule_event" | "modify_event" | "cancel_event"
+/** The four reviewed Calendar changes: a create, an edit, a removal, and an invitee's answer to an invitation. */
+export type CalendarMutationOperation = "schedule_event" | "modify_event" | "cancel_event" | "respond_invitation"
+
+/** An invitee's answer to an invitation. */
+export type CalendarInvitationResponse = "accepted" | "tentative" | "declined"
+
+/** What an answer covers: this event or the whole series, never this and following. */
+export type CalendarAnswerScope = Exclude<CalendarWriteScope, "this_and_following">
 
 /** The exact event a modify or cancel was reviewed against, with the provider version it saw. */
 export interface CalendarMutationTarget {
@@ -21,6 +27,7 @@ export type CalendarMutationPayload =
   | { readonly action: "schedule_event"; readonly account: string; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null }
   | { readonly action: "modify_event"; readonly account: string; readonly target: CalendarMutationTarget; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields }
   | { readonly action: "cancel_event"; readonly account: string; readonly target: CalendarMutationTarget; readonly scope: CalendarWriteScope }
+  | { readonly action: "respond_invitation"; readonly account: string; readonly target: CalendarMutationTarget; readonly scope: CalendarAnswerScope; readonly response: CalendarInvitationResponse }
 
 /** One reviewed change under its approval id, with the digest of the payload the owner reviewed. */
 export interface CalendarMutationRequest {

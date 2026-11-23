@@ -1,22 +1,34 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"
 import { sha256Hex } from "@elizaos/core"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { eventVisible, writeRoute } from "../../gen/calendar__actions.effect.vibe"
+import { eventVisible, invitationVerdict, writeRoute } from "../../gen/calendar__actions.effect.vibe"
 import { sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceKey, type CalendarSummary } from "../model.vibe"
-import { calendarMutationLedger, CalendarLedgerUnavailable, type CalendarMutationOutcome, type CalendarMutationPayload, type CalendarMutationRequest } from "../mutations/ledger.vibe"
-import { providerMutationPort, reviewDigest } from "../mutations/provider-port.vibe"
+import {
+  calendarMutationLedger, CalendarLedgerUnavailable,
+  type CalendarAnswerScope, type CalendarInvitationResponse, type CalendarMutationOutcome, type CalendarMutationPayload, type CalendarMutationRequest,
+} from "../mutations/ledger.vibe"
+import { invitationChangeOf, providerMutationPort, reviewDigest } from "../mutations/provider-port.vibe"
 import { PayloadRecord } from "../mutations/records.schema.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
 import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
-import { eventInWindow, eventVersion, residentCalendar, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
+import { eventInWindow, eventVersion, ownerRole, residentCalendar, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
 import { cacheKeyValueStore, type CalendarCache } from "./runtime-store.vibe"
+
+/** The approval queue's name for a change: an answer is a modify, and a decline is a cancel, as the queue knows them. */
+export type CalendarApprovalAction = "schedule_event" | "modify_event" | "cancel_event"
+
+/** The approval queue's name for a reviewed change. */
+export function approvalAction(payload: CalendarMutationPayload): CalendarApprovalAction {
+  if (payload.action !== "respond_invitation") return payload.action
+  return payload.response === "declined" ? "cancel_event" : "modify_event"
+}
 
 /** The approval a provider change waits in, as the agent's owner approval queue takes it. */
 export interface CalendarApprovalRow {
   readonly id: string
   readonly subjectUserId: string
   readonly requestedBy: string
-  readonly action: CalendarMutationPayload["action"]
+  readonly action: CalendarApprovalAction
   readonly payload: { readonly change: CalendarMutationPayload; readonly digest: string }
   readonly reason: string
   readonly expiresAt: string
@@ -70,12 +82,18 @@ export type CalendarChangeRequest =
   | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly reviewFirst?: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "update"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly askedBy: string; readonly askId: string }
+  | { readonly kind: "respond"; readonly target: CalendarFound; readonly scope: CalendarAnswerScope; readonly response: CalendarInvitationResponse; readonly askedBy: string; readonly askId: string }
 
 /** What a change came to: applied now through the ledger, queued for approval, or refused before anything ran. */
 export type CalendarChangeResult =
   | { readonly kind: "ran"; readonly request: CalendarMutationRequest; readonly outcome: CalendarMutationOutcome }
   | { readonly kind: "queued"; readonly request: CalendarMutationRequest; readonly approvalId: string }
-  | { readonly kind: "refused"; readonly reason: "no_account" | "foreign_account" | "not_writable" | "no_provider" | "approvals_unavailable" }
+  | { readonly kind: "refused"; readonly reason: CalendarRefusal }
+
+/** Why a change was refused before anything ran. */
+export type CalendarRefusal =
+  | "no_account" | "foreign_account" | "not_writable" | "no_provider" | "approvals_unavailable"
+  | "organizer_unknown" | "not_invitee" | "invitee_edit" | "answers_unsupported" | "answer_scope"
 
 /** What a calendar host needs from the agent: its durable cache, its id, and the owner approval queue when it runs. */
 export interface CalendarHostOptions {
@@ -202,11 +220,23 @@ export effect function calendarHost(options: CalendarHostOptions) {
     const row = (try listed(account)).found.find(({ row }) => sameSourceKey(row, source))
     const route = writeRoute(source.provider === "eliza" ? "ResidentProvider" : "AccountProvider", source.connectorAccountId === account.accountId && row !== undefined, row !== undefined && writableRow(row.row), asked.kind === "create" && asked.reviewFirst === true)
     if (route === "RefuseWrite") return { kind: "refused", reason: source.connectorAccountId === account.accountId ? "not_writable" : "foreign_account" }
-    const payload: CalendarMutationPayload = asked.kind === "create"
-      ? { action: "schedule_event", account: account.accountId, source, fields: asked.fields, recurrence: asked.recurrence }
-      : asked.kind === "update"
-        ? { action: "modify_event", account: account.accountId, target: { source, eventId: asked.target.event.id, expectedVersion: eventVersion(asked.target.event) }, scope: asked.scope, fields: asked.fields }
-        : { action: "cancel_event", account: account.accountId, target: { source, eventId: asked.target.event.id, expectedVersion: eventVersion(asked.target.event) }, scope: asked.scope }
+    let payload: CalendarMutationPayload
+    if (asked.kind === "create") {
+      payload = { action: "schedule_event", account: account.accountId, source, fields: asked.fields, recurrence: asked.recurrence }
+    } else {
+      const target = { source, eventId: asked.target.event.id, expectedVersion: eventVersion(asked.target.event) }
+      const change = invitationChangeOf(asked.kind === "update" ? "modify_event" : asked.kind === "delete" ? "cancel_event" : "respond_invitation")
+      const role = ownerRole(asked.target.event, row?.row.accountEmail ?? null)
+      const verdict = invitationVerdict(change, role, provider.respond !== undefined, asked.scope === "this_and_following")
+      if (verdict === "RefuseRole") return { kind: "refused", reason: role === "UnknownRole" ? "organizer_unknown" : change === "AnswerInvitation" ? "not_invitee" : "invitee_edit" }
+      if (verdict === "RefuseUnsupported") return { kind: "refused", reason: "answers_unsupported" }
+      if (verdict === "RefuseScope") return { kind: "refused", reason: "answer_scope" }
+      const scope = asked.scope === "series" ? "series" : "instance"
+      payload = asked.kind === "update" ? { action: "modify_event", account: account.accountId, target, scope: asked.scope, fields: asked.fields }
+        : asked.kind === "respond" ? { action: "respond_invitation", account: account.accountId, target, scope, response: asked.response }
+        : verdict === "RunAsDecline" ? { action: "respond_invitation", account: account.accountId, target, scope, response: "declined" }
+        : { action: "cancel_event", account: account.accountId, target, scope: asked.scope }
+    }
     const digest = reviewDigest(payload)
     const request: CalendarMutationRequest = { id: `calendar-${sha256Hex(`${asked.askId}\n${digest}`).slice(0, 40)}`, digest, payload }
     if (route === "ApplyNow") return { kind: "ran", request, outcome: try Effect.provide(ledger.run(request, port), rows) }
@@ -214,7 +244,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
     if (approvals === undefined) return { kind: "refused", reason: "approvals_unavailable" }
     const now = try Clock.currentTimeMillis
     const filed = tryPromise(() => approvals.request({
-      id: request.id, subjectUserId: asked.askedBy, requestedBy: options.agentId, action: payload.action,
+      id: request.id, subjectUserId: asked.askedBy, requestedBy: options.agentId, action: approvalAction(payload),
       payload: { change: payload, digest }, reason: `Calendar ${payload.action.replace("_", " ")} reviewed in chat`,
       expiresAt: new Date(now + approvalLifetimeMs).toISOString(),
     })) catch () => undefined
@@ -225,7 +255,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
     const held = record.payload
     const change = decodePayload(held.change)
     const digest = held.digest
-    if (Option.isNone(change) || typeof digest !== "string" || change.value.action !== record.action) {
+    if (Option.isNone(change) || typeof digest !== "string" || approvalAction(change.value) !== record.action) {
       return { result: "ChangeInvalidated", text: "The approved calendar change is not one the calendar can run.", failure: { code: "CALENDAR_APPROVAL_MALFORMED", retryable: false, acceptance: "not_accepted" } }
     }
     const outcome = Effect.provide(ledger.run({ id: record.id, digest, payload: change.value }, port), rows) catch () => undefined

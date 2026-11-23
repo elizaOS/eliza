@@ -90,7 +90,8 @@ function parametersOf(options: unknown): Parameters | undefined {
   return Option.isSome(decoded) ? decoded.value : undefined
 }
 
-const receiptOperation = { schedule_event: "calendar.event.create", modify_event: "calendar.event.update", cancel_event: "calendar.event.delete" } as const
+const receiptOperation = { schedule_event: "calendar.event.create", modify_event: "calendar.event.update", cancel_event: "calendar.event.delete", respond_invitation: "calendar.event.respond" } as const
+const answered = { accepted: "Accepted", tentative: "Answered maybe to", declined: "Declined" } as const
 
 /** The applied effect receipt of one ledgered calendar change: its event and the provider version the change produced. */
 export function calendarEffectReceipt(request: CalendarMutationRequest, receipt: CalendarMutationReceipt, replayed: boolean): AppliedEffectReceipt {
@@ -144,6 +145,11 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
       not_writable: "That calendar can't be written from this account.",
       no_provider: "That calendar's provider isn't connected.",
       approvals_unavailable: "The approval queue isn't available, so I can't ask you to approve that change.",
+      organizer_unknown: "The calendar doesn't say whether you organize that event or were invited, so I can't change it.",
+      not_invitee: "Only an invitee can answer that invitation.",
+      invitee_edit: "You were invited to that event, so only its organizer can change it. I can decline it for you instead.",
+      answers_unsupported: "That calendar's provider can't answer invitations.",
+      answer_scope: "An invitation is answered for this event or the whole series, not this and following.",
     }[result.reason]
     return failed(subaction, text, { refusal: result.reason })
   }
@@ -156,6 +162,10 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
   const effectReceipts = [calendarEffectReceipt(request, receipt, outcome.replayed)]
   if (receipt.operation === "schedule_event" && receipt.event !== null) {
     return { success: true, text: `Created ${line(receipt.event, zone)}.`, effectReceipts, data: { subaction, event: receipt.event, requestId: request.id } }
+  }
+  if (request.payload.action === "respond_invitation" && receipt.event !== null) {
+    return { success: true, text: `${answered[request.payload.response]} ${line(receipt.event, zone)}.`, effectReceipts,
+      data: { subaction, targetEvent: receipt.target, event: receipt.event, response: request.payload.response, requestId: request.id } }
   }
   if (receipt.operation === "modify_event" && receipt.event !== null) {
     return { success: true, text: `Updated ${line(receipt.event, zone)}.`, effectReceipts, data: { subaction, targetEvent: receipt.target, event: receipt.event, requestId: request.id } }
@@ -320,7 +330,7 @@ function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
 /** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all, applied at once on the agent's own calendar and through the owner's approval on a connected provider calendar, or on any calendar when the owner asked to review a new event before it is saved.",
+  description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), applied at once on the agent's own calendar and through the owner's approval on a connected provider calendar, or on any calendar when the owner asked to review a new event before it is saved.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CALENDAR_CHECK_AVAILABILITY", "CALENDAR_PROPOSE_TIMES", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [

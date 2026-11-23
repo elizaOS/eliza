@@ -231,6 +231,57 @@ pure def lawRecurrenceMismatchIsUnconfirmed(written: bool, readBack: bool, sameS
   createOutcome(written, readBack, sameSource, false) != CreatedAndRead
 ```
 
+### Only an invitee answers an invitation, and an invitee's delete is a decline
+
+The owner's role on an event comes from the event as read: organizer
+when its organizer is the owner (the organizer marked as the owner's
+own, the owner's attendee marked organizer, or an organizer address
+equal to the calendar's account address), invitee when the owner is an
+attendee who does not organize it, and unknown otherwise. Every event of
+the resident calendar is the owner's own. Accepting, answering tentative
+and declining answer an invitation, and only an invitee may answer. An
+invitee's delete is a decline: it answers declined and leaves the
+organizer's event in place. An invitee's edit of the event, an
+organizer's answer, and any change while the role is unknown are
+refused. An answer covers this event or the whole series, never this and
+following. It changes nothing else of the event, goes through the
+owner's approval and the ledger with its reviewed digest like any
+provider change, and is reported only when the event reads back from the
+same calendar with the owner's answer and its fields unchanged. The role
+is checked again on the event read just before the provider call. A
+provider that cannot answer invitations, as the Cloud's managed Google
+calendar, refuses an answer before reading or changing anything there.
+
+```quint
+type OwnerRole = OrganizerRole | InviteeRole | UnknownRole
+type InvitationChange = EditEvent | DeleteEvent | AnswerInvitation
+type InvitationVerdict = RunAsAsked | RunAsDecline | RefuseRole | RefuseUnsupported | RefuseScope
+pure def invitationVerdict(change: InvitationChange, role: OwnerRole, answers: bool, followingScope: bool): InvitationVerdict =
+  if (role == UnknownRole) RefuseRole
+  else if (change == AnswerInvitation and role != InviteeRole) RefuseRole
+  else if (change == EditEvent and role == InviteeRole) RefuseRole
+  else if (role == OrganizerRole) RunAsAsked
+  else if (followingScope) RefuseScope
+  else if (not(answers)) RefuseUnsupported
+  else if (change == DeleteEvent) RunAsDecline
+  else RunAsAsked
+pure def lawOnlyInviteeAnswers(role: OwnerRole, answers: bool, followingScope: bool): bool =
+  invitationVerdict(AnswerInvitation, role, answers, followingScope) == RunAsAsked implies role == InviteeRole
+pure def lawInviteeDeleteNeverRemoves(answers: bool, followingScope: bool): bool =
+  invitationVerdict(DeleteEvent, InviteeRole, answers, followingScope) != RunAsAsked
+pure def lawInviteeNeverEdits(answers: bool, followingScope: bool): bool =
+  invitationVerdict(EditEvent, InviteeRole, answers, followingScope) == RefuseRole
+pure def lawUnknownRoleChangesNothing(change: InvitationChange, answers: bool, followingScope: bool): bool =
+  invitationVerdict(change, UnknownRole, answers, followingScope) == RefuseRole
+pure def lawAnswerNeedsAnsweringProvider(change: InvitationChange, role: OwnerRole, followingScope: bool): bool =
+  val verdict = invitationVerdict(change, role, false, followingScope)
+  verdict != RunAsDecline and (change == AnswerInvitation implies verdict != RunAsAsked)
+pure def lawAnswerNeverFollows(change: InvitationChange, answers: bool): bool =
+  invitationVerdict(change, InviteeRole, answers, true) != RunAsAsked and invitationVerdict(change, InviteeRole, answers, true) != RunAsDecline
+pure def lawOrganizerChangesAsAsked(answers: bool, followingScope: bool): bool =
+  invitationVerdict(EditEvent, OrganizerRole, answers, followingScope) == RunAsAsked and invitationVerdict(DeleteEvent, OrganizerRole, answers, followingScope) == RunAsAsked
+```
+
 ### A change's result names its target as read before the change and the version it produced
 
 An update or a delete reports the event it changed as it was read before

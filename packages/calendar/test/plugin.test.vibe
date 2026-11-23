@@ -25,14 +25,22 @@ const owner: CalendarAccount = { agentId: "agent", ownerId: "owner", accountId: 
 const stranger: CalendarAccount = { agentId: "agent", ownerId: "owner", accountId: "other@example.com" }
 const work = { provider: "google", side: "owner", grantId: "grant", connectorAccountId: owner.accountId, calendarId: "work" } as const
 
-function googleCalendar() {
+function googleCalendar(answers = true) {
   const events = new Map<string, CalendarEvent>()
   const scopes: string[] = []
   const health = { complete: true }
   let made = 0
   const mine = (account: CalendarAccount) => account.accountId === owner.accountId
   const refuse = (code: string) => new CalendarWriteNotAccepted({ failure: { code, message: code, retryable: false } })
+  const respond: NonNullable<CalendarProviderPort["respond"]> = effect (_account, _source, eventId, _scope, response, expected) => {
+    const found = events.get(eventId)
+    if (found === undefined || found.metadata.etag !== expected) throw refuse("precondition_failed")
+    const changed = { ...found, attendees: found.attendees.map((attendee) => attendee.self ? { ...attendee, responseStatus: response } : attendee), metadata: { ...found.metadata, etag: `${expected}+` } }
+    events.set(eventId, changed)
+    return changed
+  }
   const port: CalendarProviderPort = {
+    ...(answers ? { respond } : {}),
     provider: "google",
     recurrenceLines: false,
     effect sources(account) {
@@ -50,7 +58,7 @@ function googleCalendar() {
         id: `g-${made}`, externalId: `g-${made}`, agentId: "agent", provider: "google", side: "owner", calendarId: "work",
         title: fields.title, description: fields.description, location: fields.location, status: "confirmed",
         startAt: fields.startAt, endAt: fields.endAt, isAllDay: fields.isAllDay, timezone: fields.timeZone, htmlLink: null, conferenceLink: null,
-        organizer: null, attendees: [], metadata: { etag: `etag-${made}`, key }, syncedAt: "2030-01-01T00:00:00.000Z", updatedAt: "2030-01-01T00:00:00.000Z",
+        organizer: { self: true, email: owner.accountId }, attendees: [], metadata: { etag: `etag-${made}`, key }, syncedAt: "2030-01-01T00:00:00.000Z", updatedAt: "2030-01-01T00:00:00.000Z",
         connectorAccountId: owner.accountId, grantId: "grant",
       }
       events.set(event.id, event)
@@ -229,6 +237,56 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   google.health.complete = false
   const stale = try asked("Do I have 20 minutes tomorrow morning?", morning)
   assert.deepStrictEqual([stale.success, at(stale.data, "availability"), at(stale.data, "slots")], [false, "unknown", undefined])
+})
+
+it.effect(`Answer an invitation only as its invitee (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline")`, effect () => {
+  const filed: CalendarApprovalRow[] = []
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
+  const google = googleCalendar()
+  try host.register(google.port)
+  try host.bindAccount(owner)
+  const invite: CalendarEvent = {
+    id: "invite", externalId: "invite", agentId: "agent", provider: "google", side: "owner", calendarId: "work", title: "Planning", description: "", location: "",
+    status: "confirmed", startAt: "2030-03-05T18:00:00.000Z", endAt: "2030-03-05T19:00:00.000Z", isAllDay: false, timezone: "UTC", htmlLink: null, conferenceLink: null,
+    organizer: { email: "boss@example.com", self: false }, attendees: [{ email: owner.accountId, displayName: null, responseStatus: "needsAction", self: true, organizer: false, optional: false }],
+    metadata: { etag: "inv-1" }, syncedAt: "2030-01-01T00:00:00.000Z", updatedAt: "2030-01-01T00:00:00.000Z", connectorAccountId: owner.accountId, grantId: "grant",
+  }
+  google.events.set(invite.id, invite)
+  const mine = () => google.events.get(invite.id)?.attendees[0]?.responseStatus
+  const ask = { by: "owner-entity", id: "message-1", text: "" }
+  const run = effect (row: CalendarApprovalRow | undefined) => row === undefined ? "missing" : (try host.executeApproval({ id: row.id, action: row.action, payload: row.payload })).failure?.code ?? "ran"
+
+  const edit = try runCalendarAction(host, ask, { subaction: "update_event", eventId: invite.id, title: "Mine now" })
+  assert.deepStrictEqual([edit.success, at(edit.data, "refusal"), filed.length], [false, "invitee_edit", 0])
+  const declined = try runCalendarAction(host, { ...ask, id: "message-2" }, { subaction: "delete_event", eventId: invite.id })
+  const decline = filed.at(-1)
+  assert.deepStrictEqual([declined.success, decline?.action, decline?.payload.change], [true, "cancel_event",
+    { action: "respond_invitation", account: owner.accountId, target: { source: work, eventId: invite.id, expectedVersion: "inv-1" }, scope: "instance", response: "declined" }])
+  assert.deepStrictEqual([try run(decline), mine(), google.events.get(invite.id)?.title], ["ran", "declined", "Planning"])
+
+  const routes = calendarRoutes(async () => host)
+  const answer = (eventId: string, body: Record<string, unknown>) => {
+    const route = routes.find((row) => row.method === "POST" && row.path === "/api/lifeops/calendar/events/{eventId}/response")
+    return tryPromise(() => route === undefined ? Promise.reject(new Error("There is no invitation answer route"))
+      : route.handler({ parameters: new Map([["eventId", eventId]]), query: new Map(), body }))
+  }
+  const accepted = try answer(invite.id, { responseStatus: "accepted", expectedProviderVersion: "inv-1+", idempotencyKey: "answer-1" })
+  const acceptance = filed.at(-1)
+  assert.deepStrictEqual([accepted.status, at(accepted.body, "approvalRequestId"), acceptance?.action, at(acceptance?.payload.change, "response")], [202, acceptance?.id, "modify_event", "accepted"])
+  assert.strictEqual((try answer(invite.id, { responseStatus: "tentative", recurrenceScope: "this_and_following", expectedProviderVersion: "inv-1+", idempotencyKey: "answer-2" })).status, 400)
+  const unanswering = googleCalendar(false)
+  try host.register(unanswering.port)
+  assert.deepStrictEqual([try run(acceptance), mine()], ["CALENDAR_INVITATION_RESPONSE_UNSUPPORTED", "declined"])
+  unanswering.events.set(invite.id, google.events.get(invite.id) ?? invite)
+  const unsupported = try answer(invite.id, { responseStatus: "tentative", expectedProviderVersion: "inv-1+", idempotencyKey: "answer-3" })
+  assert.deepStrictEqual([unsupported.status, at(unsupported.body, "code")], [501, "CALENDAR_ANSWERS_UNSUPPORTED"])
+  try host.register(google.port)
+  const tentative = try answer(invite.id, { responseStatus: "tentative", recurrenceScope: "series", expectedProviderVersion: "inv-1+", idempotencyKey: "answer-4" })
+  assert.deepStrictEqual([tentative.status, try run(filed.at(-1)), mine()], [202, "ran", "tentative"])
+
+  const own = try runCalendarAction(host, { ...ask, id: "message-3" }, { subaction: "create_event", title: "Focus", startAt: "2030-03-06T18:00:00Z", endAt: "2030-03-06T19:00:00Z" })
+  const organizer = try answer(String(at(own.data, "event", "id")), { responseStatus: "accepted", expectedProviderVersion: String(at(own.data, "event", "metadata", "etag")), idempotencyKey: "answer-5" })
+  assert.deepStrictEqual([organizer.status, at(organizer.body, "code")], [403, "CALENDAR_NOT_INVITEE"])
 })
 
 it.effect(`Change my calendar only as I asked and know it happened, from the owner's client (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened")`, effect () => {
