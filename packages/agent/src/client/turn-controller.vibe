@@ -22,6 +22,7 @@ schema BufferedReply {
   readonly failureKind?: Schema.NonEmptyString
   readonly planAction?: PlanAction
   readonly retryAfterMs?: ProviderWait
+  readonly cutOffEffect?: "applied"
 }
 schema StopAnswer { readonly aborted: boolean; readonly roomId: string; readonly reason: string; readonly outcome: "stopped" | "nothingRunning" | "uncertain" }
 schema RefusedRequest { readonly name: "RuntimeRequestError"; readonly status: Schema.Int; readonly message: string; readonly code?: string }
