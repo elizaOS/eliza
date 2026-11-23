@@ -1,0 +1,37 @@
+// spec/trajectoryLogger/index.md, "Story: Inspect the phases of an agent turn"
+import { phaseOfRecord, showProgress, type TraceKind, type TurnPhase, type TurnProgress } from "../gen/trajectoryLogger.effect.vibe"
+
+export interface TrajectoryRecord {
+  readonly id: string
+  readonly kind: TraceKind
+  readonly label: string
+}
+
+export interface TrajectorySnapshot {
+  readonly runId: string
+  readonly active: boolean
+  readonly records: readonly TrajectoryRecord[]
+  readonly progress: TurnProgress
+}
+
+export interface TrajectoryInspection {
+  readonly runId: string
+  readonly status: TurnProgress
+  readonly groups: Readonly<Record<TurnPhase, readonly TrajectoryRecord[]>>
+}
+
+export function describeTrajectory(snapshot: TrajectorySnapshot): TrajectoryInspection {
+  const groups: Record<TurnPhase, TrajectoryRecord[]> = {
+    HandlePhase: [],
+    PlanPhase: [],
+    ActionPhase: [],
+    EvaluatePhase: [],
+    UnknownPhase: [],
+  }
+  for (const record of snapshot.records) groups[phaseOfRecord(record.kind)].push(record)
+  return {
+    runId: snapshot.runId,
+    status: showProgress(snapshot.progress, snapshot.active),
+    groups,
+  }
+}

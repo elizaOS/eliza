@@ -1,0 +1,24 @@
+// spec/todos/index.md, "Story: Read my to-do list from the dashboard or the agent"
+import { findOwnerTodo, listOwnerTodos, type TodoListFilter, type TodoViewRow } from "../gen/todos.effect.vibe"
+
+export error TodoStoreUnavailable { reason: string }
+export error MultipleTodoRows { ownerId: string; todoId: number }
+
+export service TodoStore {
+  list(ownerId: string): TodoViewRow[]!TodoStoreUnavailable
+  find(ownerId: string, todoId: number): TodoViewRow[]!TodoStoreUnavailable
+}
+
+export effect function listTodos(ownerId: string, filter: TodoListFilter) {
+  if (ownerId === "") return []
+  const store = try TodoStore
+  return listOwnerTodos(try store.list(ownerId), ownerId, filter)
+}
+
+export effect function findTodo(ownerId: string, todoId: number) {
+  if (ownerId === "" || !Number.isSafeInteger(todoId) || todoId < 1) return undefined
+  const store = try TodoStore
+  const rows = findOwnerTodo(try store.find(ownerId, todoId), ownerId, todoId)
+  if (rows.length > 1) throw new MultipleTodoRows({ ownerId, todoId })
+  return rows[0]
+}
