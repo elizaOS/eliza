@@ -149,11 +149,11 @@ const greeting = manual("Morning note", [
   { id: "line", kind: "Write", operation: "compose_draft", source: "text", prefix: "Say: ", suffix: "!" },
 ])
 
-effect function saved(rig: Harness, draft: PhoneWorkflowSpec) {
+effect function saved(rig: Harness, draft: PhoneWorkflowSpec, copy = "") {
   const spec = try validatePhoneWorkflowSpec(draft)
   const catalog = try rig.client.phoneCatalog()
   const validated = try rig.client.validatePhone(spec, catalog)
-  const mutationId = "11111111-1111-4111-8111-" + (try workflowSha([spec.name])).slice(0, 12)
+  const mutationId = "11111111-1111-4111-8111-" + (try workflowSha([spec.name, copy])).slice(0, 12)
   const receipt = try rig.client.savePhone(validated.spec, catalog, { mutationId, specDigest: validated.specDigest, compilerRevision: catalog.compilerRevision })
   return { catalog, receipt, mutationId, specDigest: validated.specDigest }
 }
@@ -256,6 +256,41 @@ it.live('Remove a workflow only when its runs are settled and restore it safely 
   const back = try rig.client.detail(receipt.workflowId)
   try check(() => assert.deepStrictEqual([back.removed, back.active, back.versionId], [false, false, restored.versionId]))
   try check(() => assert.deepStrictEqual(phone.performed, []))
+})
+
+it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name")', effect () => {
+  const rig = try harness({ draft: () => JSON.stringify({ name: "Drafted", description: "Drafts a summary", source: generatedSource }) })
+  const morning = (try saved(rig, greeting)).receipt
+  const garden = (try saved(rig, manual("Garden digest", greeting.steps))).receipt
+  try saved(rig, manual("Twin", greeting.steps))
+  try saved(rig, manual("Twin", greeting.steps), "second")
+  const runtime = {} as IAgentRuntime
+  workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
+  const say = (words: string, parameters: Record<string, unknown>) =>
+    promise(() => workflowAction.handler(runtime, { content: { text: words } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
+  const code = (result: ActionResult) => result.success ? "applied" : (result.data as { readonly code?: string } | undefined)?.code
+
+  const conflict = try say("rename the workflow Morning note to Evening note", { action: "remove", workflowName: "Morning note" })
+  const renamed = try say("rename the workflow Morning note to Evening note", { action: "rename", workflowName: "Garden digest", name: "Something else" })
+  const partial = try say("delete the Garden workflow", { action: "remove", workflowId: garden.workflowId })
+  const descriptive = try say("delete the new workflow", { action: "remove", workflowName: "Garden" })
+  const mispaired = try say("pause it", { action: "deactivate", workflowId: morning.workflowId, workflowName: "Garden digest" })
+  const twins = try say("run Twin", { action: "run", workflowName: "Twin" })
+  const taken = try say("create a workflow called Garden digest", { action: "create", name: "Fresh" })
+  const created = try say("create a workflow called Fresh one", { action: "create", name: "Something else" })
+  const unknown = try say("show me the Payroll workflow", { action: "get", workflowName: "Payroll" })
+  const names = ((try rig.service.list(false)) as { readonly name: string }[]).map(({ name }) => name).sort()
+  try check(() => assert.deepStrictEqual({
+    codes: [conflict, renamed, partial, descriptive, mispaired, twins, taken, created, unknown].map(code),
+    twins: (twins.data as { readonly matches?: readonly unknown[] } | undefined)?.matches?.length,
+    confirm: partial.userFacingText,
+    names,
+  }, {
+    codes: ["WORKFLOW_REQUEST_CONFLICT", "applied", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_REF_MISMATCH", "WORKFLOW_AMBIGUOUS", "WORKFLOW_NAME_TAKEN", "applied", "WORKFLOW_NOT_FOUND"],
+    twins: 2,
+    confirm: "Do you mean “Garden digest”? I left it unchanged.",
+    names: ["Evening note", "Fresh one", "Garden digest", "Twin", "Twin"],
+  }))
 })
 
 it.live('Decide one reviewed approval once and run its device step only as reviewed (spec/workflow/approvals.md, "Story: Decide one reviewed approval once and run its device step only as reviewed"; spec/workflow/runScope.md, "Story: A reviewed calendar read stays inside its run\'s scope")', effect () => {

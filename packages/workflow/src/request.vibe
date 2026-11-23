@@ -1,0 +1,206 @@
+// spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner's words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"
+import { incomingMessagePersistenceSnapshot, unwrapUserMessageText, type Memory } from "@elizaos/core"
+import { bindToCommand, resolveWorkflow, type CommandBinding, type ProposedWorkflowChange, type WorkflowCommand } from "../gen/workflow__lifecycle.effect.vibe"
+import type { WorkflowRefused, WorkflowService } from "./service/workflows.vibe"
+
+module edge {
+  const courtesy = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
+  const end = String.raw`(?:,?\s+(?:please|for\s+me))?[.!?]*$`
+  const name = String.raw`["“'‘]?([\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`
+  const descriptiveWord = "(?:this|that|these|those|it|one|ones|the|my|last|latest|newest|new|old|oldest|older|newer|first|second|other|another|current|same|previous|recent|most|earlier|above|below|only|just|made|created|added)"
+  const describesNotNames = new RegExp(`^${descriptiveWord}(?:\\s+${descriptiveWord})*$`, "iu")
+  const pronounClause = /^(?:i|we|you|they|it)(?:['’](?:ve|d|ll|m|re|s))?\s+(?:just|recently|earlier|already|today|yesterday|made|make|created|create|added|add|set|setup|built|build|wrote|write|have|had|did|do|was|were|is|are|asked|told|mentioned|named|called|started|use|used|got|showed|saw)\b/iu
+  const notAName = /\b(?:that|which|who|to|and|then|also|but|or|if|when|whenever|unless|every|each|daily|weekly|at|on|for|with|from|after|before|until|not|don['’]?t|never)\b/iu
+  const create = new RegExp(`${courtesy}(?:(?:create|make|add|set\\s+up|build)\\s+(?:(?:a|an|another|one)\\s+)?(?:new\\s+)?|start\\s+(?:(?:a|another)\\s+)?new\\s+)workflow\\s+(?:called|named|titled)\\s+${name}${end}`, "iu")
+  const rename = new RegExp(`${courtesy}rename\\s+(?:(?:the|my)\\s+)?(?:workflow\\s+(?:called\\s+|named\\s+)?${name}|${name}\\s+workflow)\\s+to\\s+${name}${end}`, "iu")
+  const remove = new RegExp(`${courtesy}(?:delete|remove)\\s+(?:(?:the|my)\\s+)?(?:workflow\\s+(?:called\\s+|named\\s+)?${name}|${name}\\s+workflow)${end}`, "iu")
+  const list = new RegExp(`${courtesy}(?:list|(show)(?:\\s+me)?|what\\s+are)\\s+(?:(?:all\\s+)?(?:of\\s+)?(?:my|the)\\s+)?workflows${end}`, "iu")
+  const whatDoIHave = new RegExp(`${courtesy}what\\s+workflows\\s+do\\s+i\\s+have${end}`, "iu")
+
+  export type AuthoredWorkflowRequest =
+    | { readonly op: "create"; readonly name: string }
+    | { readonly op: "rename"; readonly workflowName: string; readonly name: string }
+    | { readonly op: "remove"; readonly workflowName: string }
+    | { readonly op: "list" }
+
+  function nameOf(value: string | undefined): string | undefined {
+    const trimmed = value?.trim().replace(/[.]+$/u, "")
+    if (!trimmed || trimmed.length > 80 || notAName.test(trimmed)) return undefined
+    if (/^(?:the|my|a|an)$/iu.test(trimmed) || /^workflows?$/iu.test(trimmed)) return undefined
+    return describesNotNames.test(trimmed) || pronounClause.test(trimmed) ? undefined : trimmed
+  }
+
+  /** @throws {never} */
+  export function authoredWorkflowRequest(text: string): AuthoredWorkflowRequest | undefined {
+    const request = text.trim()
+    if (!request || request.length > 200) return undefined
+    const created = create.exec(request)
+    if (created) {
+      const named = nameOf(created[1])
+      return named ? { op: "create", name: named } : undefined
+    }
+    const renamed = rename.exec(request)
+    if (renamed) {
+      const current = nameOf(renamed[1] ?? renamed[2])
+      const next = nameOf(renamed[3])
+      return current && next ? { op: "rename", workflowName: current, name: next } : undefined
+    }
+    const removed = remove.exec(request)
+    if (removed) {
+      const named = nameOf(removed[1] ?? removed[2])
+      return named ? { op: "remove", workflowName: named } : undefined
+    }
+    return list.test(request) || whatDoIHave.test(request) ? { op: "list" } : undefined
+  }
+
+  /** @throws {never} */
+  export function normalizeWorkflowName(value: string): string {
+    return value.normalize("NFKC").toLowerCase().replace(/[“”"‘’']/g, "").replace(/\s+/g, " ").trim()
+  }
+
+  function withoutFiller(value: string): string {
+    const bare = value.replace(/(?<![\p{L}\p{N}])(?:the|my|workflows?|automations?)(?![\p{L}\p{N}])/gu, " ").replace(/\s+/g, " ").trim()
+    return bare || value
+  }
+
+  /** @throws {never} */
+  export function nameMatchTier(stored: string, reference: string): "full" | "partial" | undefined {
+    const name = normalizeWorkflowName(stored)
+    const given = normalizeWorkflowName(reference)
+    if (!name || !given) return undefined
+    const query = withoutFiller(given)
+    if (name === given || withoutFiller(name) === query) return "full"
+    const plural = /\p{L}{4,}$/u.test(query) ? "(?:e?s)?" : ""
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    try {
+      return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}${plural}(?![\\p{L}\\p{N}])`, "u").test(name) ? "partial" : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function createdOn(createdAt: string, timeZone: string | undefined): string | undefined {
+    const at = Date.parse(createdAt)
+    if (!Number.isFinite(at)) return undefined
+    try {
+      return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: timeZone ?? "UTC" }).format(at)
+    } catch {
+      return undefined
+    }
+  }
+}
+import { authoredWorkflowRequest, createdOn, nameMatchTier, normalizeWorkflowName, type AuthoredWorkflowRequest } from edge
+
+export { authoredWorkflowRequest, normalizeWorkflowName, type AuthoredWorkflowRequest }
+
+/** A workflow as the WORKFLOW action reads it. */
+export type WorkflowView = {
+  readonly id: string; readonly name: string; readonly active: boolean; readonly versionId: string; readonly createdAt: string; readonly updatedAt: string
+  readonly removed: boolean; readonly origin: string; readonly steps: readonly { readonly label: string }[]
+}
+
+/** A reference that names no one workflow: what the planner and the owner are told, and the workflows it could mean. */
+export error WorkflowReferenceRefused { code: string; text: string; userFacingText: string; retryable: boolean; data: Record<string, unknown> }
+
+/** How a reference is looked up: among removed workflows for a restore, strictly for a remove or rename, from the owner's own words, in the owner's zone. */
+export interface ReferenceOptions {
+  readonly removed: boolean
+  readonly strict: boolean
+  readonly ownerWords: boolean
+  readonly timeZone: string | undefined
+}
+
+/** The owner's own words this turn: the request the host bound to it, else the message's text without its envelopes. */
+export effect function ownerWords(message: Memory): string!! {
+  const bound = try (Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => null)
+  return bound === null ? "" : unwrapUserMessageText(bound ?? message)
+}
+
+const commands: Readonly<Record<AuthoredWorkflowRequest["op"], WorkflowCommand>> = {
+  create: "CreateCommand", rename: "RenameCommand", remove: "RemoveCommand", list: "ListCommand",
+}
+
+function commandNames(command: AuthoredWorkflowRequest | undefined): Readonly<Record<string, string>> {
+  switch (command?.op) {
+    case "create": return { name: command.name }
+    case "rename": return { workflowName: command.workflowName, name: command.name }
+    case "remove": return { workflowName: command.workflowName }
+    case "list":
+    case undefined: return {}
+  }
+}
+
+/** Whether the owner's whole-message command lets the planner's change run, and the names it runs with. */
+export function commandBinding(words: string, proposed: ProposedWorkflowChange): { readonly binding: CommandBinding; readonly names: Readonly<Record<string, string>> } {
+  const command = authoredWorkflowRequest(words)
+  return { binding: bindToCommand(command === undefined ? "NoCommand" : commands[command.op], proposed), names: commandNames(command) }
+}
+
+function quoted(workflows: readonly WorkflowView[], timeZone: string | undefined): string {
+  const counts = new Map<string, number>()
+  for (const workflow of workflows) counts.set(normalizeWorkflowName(workflow.name), (counts.get(normalizeWorkflowName(workflow.name)) ?? 0) + 1)
+  return workflows.map((workflow) => {
+    if ((counts.get(normalizeWorkflowName(workflow.name)) ?? 0) < 2) return `“${workflow.name}”`
+    const when = createdOn(workflow.createdAt, timeZone)
+    return `“${workflow.name}” (${workflow.active ? "on" : "off"}${when === undefined ? "" : `, created ${when}`})`
+  }).join(", ")
+}
+
+const identities = (workflows: readonly WorkflowView[]) => workflows.map(({ id, name, active }) => ({ id, name, active }))
+
+function refusal(code: string, text: string, userFacingText: string, data: Record<string, unknown>, retryable = true) {
+  return new WorkflowReferenceRefused({ code, text, userFacingText, retryable, data })
+}
+
+/** The one workflow a reference names, by the planner's ID or by name in tiers, or why it names none. */
+export effect function resolveWorkflowReference(
+  service: WorkflowService, reference: { readonly workflowId?: string; readonly workflowName?: string }, options: ReferenceOptions,
+): WorkflowView!(WorkflowRefused | WorkflowReferenceRefused) {
+  const { workflowId, workflowName } = reference
+  const loaded = workflowId === undefined ? undefined : (try (service.detail(workflowId) catch effect (refused) => {
+    if (refused.status !== 404) throw refused
+    return undefined
+  })) as WorkflowView | undefined
+  const all = (try service.list(options.removed)) as WorkflowView[]
+  const source = workflowName ?? workflowId
+  const tiered = source === undefined ? [] : all.map((workflow) => ({ workflow, tier: nameMatchTier(workflow.name, source) }))
+  const full = tiered.filter(({ tier }) => tier === "full").map(({ workflow }) => workflow)
+  const partial = tiered.filter(({ tier }) => tier === "partial").map(({ workflow }) => workflow)
+  const named = workflowName !== undefined && options.ownerWords
+  const chosen = loaded !== undefined && !named ? loaded
+    : full.length === 1 ? full[0]
+    : full.length > 1 ? full.find(({ id }) => id === loaded?.id)
+    : loaded ?? partial[0]
+  const resolution = resolveWorkflow(loaded !== undefined, workflowName !== undefined, source !== undefined, options.ownerWords,
+    loaded !== undefined && (workflowName === undefined || nameMatchTier(loaded.name, workflowName) !== undefined),
+    full.length, full.some(({ id }) => id === loaded?.id), partial.length, options.strict)
+  if (resolution === "RefResolved" && chosen !== undefined) return chosen
+  const kind = options.removed ? "removed workflow" : "workflow"
+  const listed = quoted(all, options.timeZone)
+  switch (resolution) {
+    case "RefMismatch":
+      throw refusal("WORKFLOW_REF_MISMATCH",
+        `workflowId resolves to “${loaded?.name ?? ""}”, not “${workflowName ?? ""}”. Nothing was changed. Re-check the id or pass workflowName only.`,
+        `I found “${loaded?.name ?? ""}”, not “${workflowName ?? ""}”. Which workflow do you mean?`, {})
+    case "RefMissing":
+      throw refusal("WORKFLOW_MISSING_TARGET",
+        all.length > 0 ? `workflowId or workflowName is required. Your ${kind}s: ${listed}.` : `workflowId or workflowName is required. There are no ${kind}s.`,
+        all.length > 0 ? `Which ${kind} do you mean? You have: ${listed}.` : `You have no ${kind}s.`, { workflows: identities(all) })
+    case "RefAmbiguous": {
+      const matched = full.length > 0 ? full : partial
+      throw refusal("WORKFLOW_AMBIGUOUS",
+        `Several ${kind}s match “${source ?? ""}”: ${quoted(matched, options.timeZone)}. Nothing was changed. Ask which one, then pass its workflowId.`,
+        `More than one ${kind} matches that: ${quoted(matched, options.timeZone)}. Which one?`, { matches: identities(matched) })
+    }
+    case "RefConfirmFirst":
+      throw refusal("WORKFLOW_CONFIRM_TARGET",
+        `No ${kind} is named “${source ?? ""}”; it is only part of the name ${quoted(partial, options.timeZone)}. Nothing was changed. Ask the owner whether they mean that one before changing it; do not retry in this turn.`,
+        `Do you mean ${quoted(partial, options.timeZone)}? I left it unchanged.`, { matches: identities(partial) }, false)
+    case "RefResolved":
+    case "RefNotFound":
+      throw refusal("WORKFLOW_NOT_FOUND",
+        all.length > 0 ? `No ${kind} matched “${source ?? ""}”. Your ${kind}s: ${listed}. Pass workflowId or a workflowName fragment.` : `No ${kind} matched “${source ?? ""}”. There are no ${kind}s.`,
+        all.length > 0 ? `I could not find a ${kind} matching “${source ?? ""}”. You have: ${listed}.` : `You have no ${kind}s.`, { workflows: identities(all) })
+  }
+}
