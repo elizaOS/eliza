@@ -145,14 +145,12 @@ const decodeRecordRequest = Schema.decodeUnknownEffect(Schema.Struct({
   androidRelease: Schema.optionalKey(label),
 }), { onExcessProperty: "error" })
 
-/** The signing options an untrusted JSON request names, refused unless every field is the shape `signRelease` takes. */
 export effect function signReleaseRequest(raw: unknown, dryRun: boolean) {
   const request = try mapError(decodeSignRequest(raw), (cause) => new SigningRefused({ reason: `Invalid signing request: ${cause.message}` }))
   const options: SignReleaseOptions = { ...request, dryRun }
   return options
 }
 
-/** Writes the compatibility record of already signed outputs that an untrusted JSON request names, into a new owner-only file. */
 export effect function writeReleaseRecord(raw: unknown) {
   const files = try FileSystem.FileSystem
   const request = try mapError(decodeRecordRequest(raw), (cause) => new SigningRefused({ reason: `Invalid release record request: ${cause.message}` }))
