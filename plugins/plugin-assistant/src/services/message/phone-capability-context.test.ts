@@ -664,6 +664,8 @@ describe("model acknowledgment authoring grammar", () => {
     "On it.",
     "One sec.",
   ];
+  // Offered only for an action or change; on a question they sound like yes.
+  const offeredForInstruction = ["Sure.", "Sure, one sec."];
   const forbidden = ["Calling...", "Opening...", "Setting..."];
   // The sources the rule lets stand in for "your calendar".
   const sources = [
@@ -680,6 +682,24 @@ describe("model acknowledgment authoring grammar", () => {
     expect(ACKNOWLEDGMENT_RULE).toContain(`"${cue}"`);
     expect(replyIsClaimSafeAcknowledgment(cue)).toBe(true);
   });
+  it.each(offeredForInstruction)(
+    "offers assent only where the grammar speaks it, for an instruction: %s",
+    (cue) => {
+      expect(ACKNOWLEDGMENT_RULE).toContain(`"${cue}"`);
+      expect(replyIsClaimSafeAcknowledgment(cue, { assent: true })).toBe(true);
+      expect(replyIsClaimSafeAcknowledgment(cue, { assent: false })).toBe(
+        false,
+      );
+    },
+  );
+  it("keeps assent off questions and lookups", () => {
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      'For a lookup or any question: "Let me check."',
+    );
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      "Never start with Sure or Yeah when the user asked a question",
+    );
+  });
   it.each(forbidden)(
     "quotes as forbidden only forms the grammar drops: %s",
     (form) => {
@@ -691,7 +711,9 @@ describe("model acknowledgment authoring grammar", () => {
     const quoted = [...ACKNOWLEDGMENT_RULE.matchAll(/"([^"]+)"/gu)].map(
       (match) => match[1],
     );
-    expect(new Set(quoted)).toEqual(new Set([...offered, ...forbidden]));
+    expect(new Set(quoted)).toEqual(
+      new Set([...offered, ...offeredForInstruction, ...forbidden]),
+    );
   });
   it.each(sources)(
     "speaks the lookup cue for each listed source: %s",

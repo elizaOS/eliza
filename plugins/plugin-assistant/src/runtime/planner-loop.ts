@@ -12873,10 +12873,19 @@ function userSafeRefusalCandidate(
 // whole reply, or when one of the grammar's separators leads into more
 // progress ("One sec, let me check."). Answers that open with the same words
 // ("Just a second, your dentist is Thursday.", "One second is 1,000
-// milliseconds.", "On it — the alarm is set.") stay answers.
+// milliseconds.", "On it — the alarm is set.") stay answers. Assent ("Sure",
+// "Yeah") opens progress only before a wait cue or more progress ("Sure, one
+// sec."); "Sure, you're free Friday." stays an answer. Bare "Sure." is not
+// listed: the Stage-1 text these openers screen as a final answer comes from
+// non-pending turns, where "Sure." is a yes. looksLikeProgressOnlyReply reads
+// it as an acknowledgement through the grammar instead.
 const WAIT_CUE = "(?:on it|(?:one|just a) (?:sec(?:ond)?|moment))";
-const WAIT_CUE_OPENER = `${WAIT_CUE}(?=(?:[.!…]+\\s+${WAIT_CUE}){0,2}[.!…]*\\s*$|\\s*(?:,|[.!…]+|[—–:;]|\\s-)\\s*(?:let me|i(?:'|’)ll|i will|i(?:'|’)m going to|i am going to|checking|looking|pulling|digging|searching|reading|taking a look|having a look)\\b)`;
-export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN = `calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|${WAIT_CUE_OPENER}|let me|i(?:'|’)ll|i will`;
+const PROGRESS_CUE_SEPARATOR = "\\s*(?:,|[.!…]+|[—–:;]|\\s-)\\s*";
+const PROGRESS_CUE_LEAD =
+  "let me|i(?:'|’)ll|i will|i(?:'|’)m going to|i am going to|checking|looking|pulling|digging|searching|reading|taking a look|having a look";
+const WAIT_CUE_OPENER = `${WAIT_CUE}(?=(?:[.!…]+\\s+${WAIT_CUE}){0,2}[.!…]*\\s*$|${PROGRESS_CUE_SEPARATOR}(?:${PROGRESS_CUE_LEAD})\\b)`;
+const ASSENT_CUE_OPENER = `(?:sure|yeah)(?=${PROGRESS_CUE_SEPARATOR}(?:${WAIT_CUE_OPENER}|${PROGRESS_CUE_LEAD})\\b)`;
+export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN = `calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|${WAIT_CUE_OPENER}|${ASSENT_CUE_OPENER}|let me|i(?:'|’)ll|i will`;
 
 // Bare opener screen (no final-answer-only extensions) for text where a
 // progress-shaped opener is disqualifying but "Okay, …" openings are

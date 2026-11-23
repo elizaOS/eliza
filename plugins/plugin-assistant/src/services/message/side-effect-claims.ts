@@ -927,8 +927,12 @@ const ACKNOWLEDGMENT_DATA_TOKEN =
 // Friday?"), "okay", "ok" and "alright" say it is fine, "no problem" says
 // nothing is wrong, "got it" says it arrived and "good question" gives an
 // opinion. "Hang tight" and "hang on" advise waiting ("Should I leave now?")
-// and "will do" agrees ("Will you...?"). Only "Sure!" is read, and only to
-// open a reply whose next sentence names the work after a lead.
+// and "will do" agrees ("Will you...?"). "Sure" and "yeah" say yes too, so
+// they are read alone or before more acknowledgement only when the caller
+// knows the request was an instruction ("Text Sam I'm late."), never a
+// question. Otherwise only "Sure!" is read, and only to open a reply whose
+// next sentence names the work after a lead.
+const ACKNOWLEDGMENT_ASSENT = /^(?:sure|yeah)(?:$|, |[.!…]+ | ?[—–:;] ?| - )/u;
 const ACKNOWLEDGMENT_WAIT_CUE =
   "(?:on it|(?:one|just a) (?:sec|second|moment))";
 // Owner-bound containers or a relative-day scope exist regardless of lookup
@@ -1031,6 +1035,39 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
   "u",
 );
 
+// Fillers that may precede the request's first word. They are skipped so a
+// question behind them is still seen ("Hey, am I free Friday").
+const REQUEST_LEAD_IN =
+  /^(?:(?:hey|hi|hello|ok|okay|alright|so|please|oh|um|uh|well|yo|and|also|but|then)\b|\p{L}+,)[\s,.!…—–-]*/iu;
+// Wh-words and auxiliaries open a question even without a question mark,
+// which a voice transcript often drops ("am I free Friday"). Contractions
+// are read with their apostrophes removed ("what's", "don't").
+const REQUEST_QUESTION_OPENER =
+  /^(?:(?:what|when|where|who|whom|whose|why|how|which)(?:s|re|d|ll|ve)?|am|is|are|was|were|do|does|did|can|could|will|would|should|shall|may|might|have|has|had|must|isnt|arent|wasnt|werent|dont|doesnt|didnt|cant|cannot|couldnt|wont|wouldnt|shouldnt|shant|havent|hasnt|hadnt|mustnt|aint)$/u;
+
+/**
+ * True when the user's request reads as an instruction ("Text Sam I'm late",
+ * "Set an alarm for seven"), so a bare "Sure." before the work agrees to do it
+ * rather than answering. False for an empty request, any question mark, and
+ * a request whose first word, after lead-ins such as "hey", "ok", "so",
+ * "please" or a name and comma, is a wh-word or an auxiliary. A polite
+ * question ("Can you text Sam") is a question here: "Sure." would answer it
+ * before anything is done.
+ */
+export function requestIsInstruction(request: string | undefined): boolean {
+  let text = (request ?? "").trim();
+  if (!text || text.includes("?")) return false;
+  for (let previous = ""; previous !== text; ) {
+    previous = text;
+    text = text.replace(REQUEST_LEAD_IN, "");
+  }
+  const first = /^[\p{L}'‘’ʼ]+/u
+    .exec(text)?.[0]
+    .toLowerCase()
+    .replace(/['‘’ʼ]/gu, "");
+  return first !== undefined && !REQUEST_QUESTION_OPENER.test(first);
+}
+
 /**
  * True when a short model-authored reply may be shown and spoken before
  * pending tools as their acknowledgement. The wording stays the model's own;
@@ -1045,6 +1082,12 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  *   or intent in base form, or an optional "I'm" and a look-up verb's gerund
  *   ("Checking…"), then up to two of now, for you, real quick, quickly.
  * The reply may open with "Sure!" when the sentence after it has a lead.
+ * With `assent` (the request was an instruction, see
+ * {@link requestIsInstruction}), the reply may instead be "Sure" or "Yeah"
+ * alone, or either one and a comma, dash, colon, semicolon or sentence break
+ * before one or two sentences of the above ("Sure, one sec.", "Yeah. Let me
+ * check your calendar."). Without it, bare assent answers a question ("Am I
+ * free Friday?" "Sure.") and is dropped.
  *
  * Look-up verbs and their objects:
  * - check (base form: object optional), look into, dig into: a container
@@ -1083,7 +1126,10 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  * characters, and passes the completed-effect and empty-state detectors.
  * Callers still run the planned-reply egress checks on an accepted one.
  */
-export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
+export function replyIsClaimSafeAcknowledgment(
+  reply: string,
+  options: { assent?: boolean } = {},
+): boolean {
   const text = reply.trim();
   if (!text || text.length > ACKNOWLEDGMENT_MAX_LENGTH) return false;
   if (
@@ -1099,11 +1145,19 @@ export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
     .replace(/[‘’ʼ]/gu, "'")
     .replace(/ ?, ?/gu, ", ")
     .replace(/[.!…]+$/u, "");
-  const assent = words.startsWith("sure! ");
-  const sentences = words.slice(assent ? "sure! ".length : 0).split(/[.!…]+ /u);
+  const instructionAssent = options.assent
+    ? ACKNOWLEDGMENT_ASSENT.exec(words)?.[0]
+    : undefined;
+  const assent =
+    instructionAssent ?? (words.startsWith("sure! ") ? "sure! " : "");
+  const rest = words.slice(assent.length);
+  const sentences = rest ? rest.split(/[.!…]+ /u) : [];
   return (
+    (sentences.length > 0 || instructionAssent !== undefined) &&
     sentences.length <= (assent ? 2 : 3) &&
-    (!assent || ACKNOWLEDGMENT_AFTER_ASSENT.test(sentences[0] ?? "")) &&
+    (!assent ||
+      instructionAssent !== undefined ||
+      ACKNOWLEDGMENT_AFTER_ASSENT.test(sentences[0] ?? "")) &&
     sentences.every(
       (sentence) =>
         ACKNOWLEDGMENT_WAIT_SENTENCE.test(sentence) ||
