@@ -352,10 +352,10 @@ export effect function createCalendarSyncHost(options: CalendarSyncHostOptions) 
     running = true
     status = progress
     changed()
-    const reported = action catch effect (error) => {
+    const reported = Effect.catch(action, effect (error) => {
       status = calendarSyncFailureMessage(error)
       throw error
-    }
+    })
     return try onExit(reported, (result) => sync(() => {
       if (Exit.isSuccess(result)) status = success(result.value)
       running = false

@@ -724,7 +724,13 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
   }
 
   it.live("Sign a device in with its Google account in one call and link the managed Google connection (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\"; spec/cloud/identity/federatedSignIn.md, \"Story: Sign in with the device's Google account\")", () => scoped(effect {
-    const { cloud, google } = try nativeCloud(undefined, native)
+    const windowMs = 600_000
+    const boundary = Math.floor(Date.now() / windowMs) * windowMs
+    const firstAt = boundary - 1000
+    const retryAt = firstAt + windowMs
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(firstAt))
+    const { cloud, google } = try provideService(nativeCloud(undefined, native), Clock.Clock, clock.clock)
     const opened = try challenge(cloud)
     const idToken = try promise(() => google.idToken(person, { audience: "google-server-client", nonce: opened.nonce }))
     const serverAuthCode = try sync(() => google.serverAuthCode(person, scopes))
@@ -767,20 +773,28 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     const noRefresh = try connect(try sync(() => google.serverAuthCode(person, scopes, { refreshToken: false })))
     const onlySend = try connect(try sync(() => google.serverAuthCode(person, ["openid", "https://www.googleapis.com/auth/gmail.send"])))
     const untouched = try sql(cloud, "SELECT key, subject, email FROM google_connections", [])
+    try sync(() => clock.set(boundary))
     const linked = try connect(try sync(() => google.serverAuthCode(person, scopes)))
     const firstReplay = try connect("4/invalid-authorization-code")
     const secondReplay = try connect("4/invalid-authorization-code")
     const callsBeforeLimit = google.tokenRequests.length
     const overLimit = try connect(try sync(() => google.serverAuthCode(person, scopes)))
+    const callsAfterLimit = google.tokenRequests.length
+    try sync(() => clock.set(retryAt))
+    const afterExpiry = try connect(try sync(() => google.serverAuthCode(person, scopes)))
+    const callsAfterExpiry = google.tokenRequests.length
     try sql(cloud, "DELETE FROM native_clients WHERE client_id=$1", [native.clientId])
     const noLongerRegistered = try connect(try sync(() => google.serverAuthCode(otherPerson, scopes)))
     try check(() => {
       assert.deepStrictEqual([wrongSubject.status, noRefresh.status, onlySend.status, firstReplay.status, secondReplay.status], [409, 409, 409, 409, 409])
       assert.deepStrictEqual(untouched, connections)
       assert.equal(linked.status, 200)
-      assert.equal(overLimit.status, 429)
+      assert.deepStrictEqual([overLimit.status, (overLimit.body as { readonly retryAt?: number }).retryAt, overLimit.headers["retry-after"], callsAfterLimit],
+        [429, retryAt, "599", callsBeforeLimit])
+      assert.equal(afterExpiry.status, 200)
       assert.equal(noLongerRegistered.status, 400)
-      assert.equal(google.tokenRequests.length, callsBeforeLimit)
+      assert.equal(callsAfterExpiry, callsBeforeLimit + 1)
+      assert.equal(google.tokenRequests.length, callsAfterExpiry)
     })
   }), 60_000)
 
@@ -3845,15 +3859,24 @@ module node {
       const webHeaders = { origin: web, cookie: "__Host-eliza-session=" + owner.access }
       const webNoGrant = await arrival(webHeaders)
       const webBaseline = await decision(await arrival(webHeaders, undefined, true))
+      const beforeCompatibilityRefusals = providerCalls.length
+      const canonicalBearer = await arrival({ ...webHeaders, authorization: "Bearer " + owner.access }, undefined, true)
+      const invalidBearer = await arrival({ ...webHeaders, authorization: "Bearer unavailable" }, undefined, true)
+      const unknownGrant = await worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/inbox-v1/arrival?grantId=20415263-7485-96a7-b8c9-dbecefd0a1b2", {
+        headers: webHeaders,
+      }), env)
+      const compatibilityRefusals = [canonicalBearer.status, invalidBearer.status, unknownGrant.status, providerCalls.length === beforeCompatibilityRefusals]
       const beforeBaseline = Date.now()
       const baseline = await decision(await arrival(ownDevice))
       const afterBaseline = Date.now()
+      const callerHash = createHash("sha256").update(ownDevice.authorization.slice("Bearer ".length)).digest("hex")
+      const admission = (await fixture.db.query<{ count: string }>("SELECT state->>'count' AS count FROM rate_windows WHERE key = $1",
+        [`device-key|${callerHash}`])).rows[0]?.count
       const cursor = baseline.body.cursor
       const emptyArrival = await decision(await arrival(ownDevice, cursor))
       mailArrived = true
       const freshArrival = await decision(await arrival(ownDevice, cursor))
       const organization = (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id
-      const callerHash = createHash("sha256").update(ownDevice.authorization.slice("Bearer ".length)).digest("hex")
       const binding = Buffer.from(JSON.stringify(["cloud-google-inbox-arrival-v1", api, owner.account.id, organization, grant, "device", callerHash]))
       const sealed = Buffer.from(cursor, "hex")
       const open = createDecipheriv("aes-256-gcm", Buffer.from(key, "hex"), sealed.subarray(0, 12))
@@ -3905,8 +3928,10 @@ module node {
       const cancelled = await arrival(ownDevice, cursor, false, abortArrival.signal)
       const arrivalResult = {
         baseline: [baseline.status, baseline.cache, baseline.body.arrived, !cursor.includes("10000000000000000001") && cursor.length > 20, webBaseline.status, webBaseline.body.arrived],
+        deviceAdmissionCount: Number(admission),
         polling: [emptyArrival.body.cursor === cursor, emptyArrival.body.arrived, freshArrival.body.cursor === cursor, freshArrival.body.arrived],
         denied: [webNoGrant, replayAcrossCredentials, foreignArrival, anonymousArrival, fabricatedArrival, expiredArrival, providerRevokedArrival, malformedHistory, deviceRevokedArrival].map(({ status }) => status),
+        compatibilityRefusals,
         timerAndGrant: [claims.expiresAt >= beforeBaseline + 300000 && claims.expiresAt <= afterBaseline + 300000,
           elapsedWatch.status, replacedGrant.status, directWithoutCredential.status, deniedBeforeProvider],
         requests,
@@ -3919,6 +3944,7 @@ module node {
       }
       const client = createCloudClient({ baseUrl: api, credential: () => owner.access, fetch: (input, init) => {
         const request = new Request(input, init)
+        request.headers.delete("authorization")
         request.headers.set("cookie", "__Host-eliza-session=" + owner.access)
         return worker.fetch(request, env)
       } })
@@ -4081,7 +4107,7 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Read complete mail text, open the selected named attachment and watch for new mail (spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately")', () => effect {
+it.live('Read complete mail text, open the selected named attachment and watch for new mail (spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up")', () => effect {
   const got = try tryPromise(() => readSelectedAttachment())
   try check(() => assert.deepStrictEqual(
     {
@@ -4101,8 +4127,10 @@ it.live('Read complete mail text, open the selected named attachment and watch f
     {
       arrivals: {
         baseline: [200, "no-store", false, true, 200, false],
+        deviceAdmissionCount: 1,
         polling: [true, false, true, true],
         denied: [400, 409, 409, 401, 409, 404, 409, 502, 401],
+        compatibilityRefusals: [404, 401, 409, true],
         exposedOnlyHistory: true,
         timerAndGrant: [true, 409, 409, 401, true],
         failureControls: [502, 2, 502, 8, false, true],

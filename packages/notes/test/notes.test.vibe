@@ -156,11 +156,12 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   const reference = notes.sourceReference(groceries)
   try notes.assertSourceReference(reference)
   assert.equal(try code(notes.assertSourceReference({ ...reference, agentId: "another-agent" })), "CALENDAR_NOTE_SOURCE_CONFLICT")
-  try notes.update({ id: "note-1" }, { textEdit: { field: "title", oldText: "Groceries", newText: "Shopping" } })
-  assert.equal(try code(notes.assertSourceReference(reference)), "CALENDAR_NOTE_SOURCE_CONFLICT")
   const plan = { notesRequestEffect: "read_only", notesRequestInterpretation: { status: "explicit", operations: ["get"] }, contexts: ["notes"], intents: ["read"] }
   const namedRead = (text: string) => promise(async () => namedNoteReadEvaluator(notes).evaluate({ messageHandler: { processMessage: "RESPOND", plan, thought: "" }, message: message(text) } as never))
   assert.isUndefined(try namedRead("read my groceries note"))
+  try notes.update({ id: "note-1" }, { textEdit: { field: "title", oldText: "Groceries", newText: "Shopping" } })
+  assert.equal(try code(notes.assertSourceReference(reference)), "CALENDAR_NOTE_SOURCE_CONFLICT")
+  assert.deepEqual(try namedRead("read my groceries note"), { requiresTool: true, clearReply: true, deterministicToolCall: { name: "NOTES_GET", params: { noteId: draft.value.note.id } } })
   assert.deepEqual(try namedRead("read my shopping note"), { requiresTool: true, clearReply: true, deterministicToolCall: { name: "NOTES_GET", params: { noteId: "note-1" } } })
   assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:created", "note:deleted", "note:moved", "note:updated"])
 })
@@ -184,8 +185,8 @@ it.effect('Restore a deleted note exactly, at the revision the owner saw (spec/n
 })
 
 it.effect('Import the earlier notes once, exactly, and never over the collection (spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/records.md, "The earlier document is imported once, exactly, and never over the collection")', effect () => {
-  const saved = { id: "trip-plan", title: "Trip", body: "\npack the tent", color: "green", createdAt: "2026-10-01T08:00:00.000Z", updatedAt: "2026-10-02T08:00:00.000Z" }
-  const gone = { id: "old-list", title: "Old list", body: "", color: "yellow", createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z" }
+  const saved: StickyNote = { id: "trip-plan", title: "Trip", body: "\npack the tent", color: "green", createdAt: "2026-10-01T08:00:00.000Z", updatedAt: "2026-10-02T08:00:00.000Z" }
+  const gone: StickyNote = { id: "old-list", title: "Old list", body: "", color: "yellow", createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z" }
   const earlier = {
     schemaVersion: 3, revision: 7, persistedAt: "2026-10-02T08:00:00.000Z", notes: [saved],
     trash: [{ note: gone, deletedAt: "2026-10-03T08:00:00.000Z" }], noteRevisions: { "trip-plan": 7 }, noteCreations: { "workflow-step": "trip-plan" },
@@ -198,7 +199,9 @@ it.effect('Import the earlier notes once, exactly, and never over the collection
   assert.isUndefined(f.kept.value)
   const imported = try notes.snapshot()
   assert.deepEqual(imported, { notes: [saved], revision: 8, trash: [{ note: gone, deletedAt: "2026-10-03T08:00:00.000Z" }] })
-  assert.deepEqual((f.kept.value as { imported?: unknown }).imported, {
+  const persisted = try promise(() => f.storage.get())
+  const receipt = typeof persisted === "object" && persisted !== null && "imported" in persisted ? persisted.imported : undefined
+  assert.deepEqual(receipt, {
     source: "notes-state", schemaVersion: 3, sourceRevision: 7, sourceDigest: "a".repeat(64), notes: 1, trash: 1, importedAt: "2026-11-20T10:00:00.000Z",
   })
   const replay = try notes.create({ content: "Trip\npack the tent", creationId: "workflow-step" })

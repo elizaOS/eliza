@@ -21,7 +21,7 @@ module node {
   }
 }
 import { identityOf, linked, trashId } from node
-import { canPrune, classifyRow, listed, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
+import { apply, canPrune, classifyRow, listed, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
 import { renameOutcome, validSelection, batchMax, type FilesOp, type FilesRowCheck, type FileOutcome } from "../../gen/os__android__files__storage.effect.vibe"
 import { baseName, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER,
   type StorageEntry, type TrashEntry } from "./model.vibe"
@@ -48,12 +48,12 @@ export function localVolume(root: string, name = "Internal storage") {
     const at = (path: string) => paths.join(root, ...path.split("/").filter((part) => part !== ""))
     const trashFile = (id: string) => paths.join(root, TRASH, "files", id)
     const trashInfo = (id: string) => paths.join(root, TRASH, "info", `${id}.json`)
-    const exists = (path: string) => fs.exists(path) catch () => false
+    const exists = (path: string) => Effect.catch(fs.exists(path), () => Effect.succeed(false))
     const identity = (path: string) => promise(() => identityOf(at(path)))
-    const attempt = <A, E>(work: A!E) => map(work, () => true) catch () => false
+    const attempt = <A, E>(work: A!E) => Effect.match(work, { onSuccess: () => true, onFailure: () => false })
 
-    effect function entry(path: string): StorageEntry | undefined {
-      const info = try (fs.stat(at(path)) catch () => undefined)
+    effect function entry(path: string): (StorageEntry | undefined)!! {
+      const info = (fs.stat(at(path)) catch () => undefined)
       if (info === undefined) return undefined
       const directory = info.type === "Directory"
       return {
@@ -63,7 +63,7 @@ export function localVolume(root: string, name = "Internal storage") {
     }
 
     effect function children(folder: string) {
-      const names = try (fs.readDirectory(at(folder)) catch () => undefined)
+      const names = (fs.readDirectory(at(folder)) catch () => undefined)
       if (names === undefined) return { entries: [] as StorageEntry[], known: false }
       const entries: StorageEntry[] = []
       let known = true
@@ -110,7 +110,7 @@ export function localVolume(root: string, name = "Internal storage") {
       }
     }
 
-    effect function rowCheck(op: FilesOp, raw: string, token: string | undefined, dest: string): { row: FilesRowCheck; path: string } {
+    effect function rowCheck(op: FilesOp, raw: string, token: string | undefined, dest: string): { row: FilesRowCheck; path: string }!! {
       const path = validPath(raw) ?? ""
       const valid = path !== "" && path.split("/")[0] !== TRASH
       const found = valid ? try entry(path) : undefined
@@ -130,8 +130,8 @@ export function localVolume(root: string, name = "Internal storage") {
     }
 
     effect function record(id: string) {
-      const raw = try (fs.readFileString(trashInfo(id)) catch () => undefined)
-      return raw === undefined ? undefined : try (decodeRecord(raw) catch () => undefined)
+      const raw = (fs.readFileString(trashInfo(id)) catch () => undefined)
+      return raw === undefined ? undefined : (decodeRecord(raw) catch () => undefined)
     }
 
     effect function journalOf(id: string, base: Omit<typeof TrashRecord.Type, "row">) {
@@ -139,40 +139,41 @@ export function localVolume(root: string, name = "Internal storage") {
         ? Effect.void : orDie(fs.writeFileString(trashInfo(id), JSON.stringify({ ...base, row }))))
     }
 
-    effect function trashRow(raw: string, token: string | undefined): RowOutcome {
+    effect function trashRow(raw: string, token: string | undefined): RowOutcome!! {
       const { path, row } = try rowCheck("Trash", raw, token, "")
       const admission = classifyRow("Trash", row)
       if (admission !== "Admitted") return { path: raw, status: ANSWERS[admission] }
       const origin = try entry(path)
       if (origin === undefined) return { path, status: "missing" }
-      const id = trashId()
-      try (fs.makeDirectory(paths.join(root, TRASH, "files"), { recursive: true }) catch () => undefined)
-      try (fs.makeDirectory(paths.join(root, TRASH, "info"), { recursive: true }) catch () => undefined)
+      const id = (Effect.try(trashId) catch () => undefined)
+      if (id === undefined) return { path, status: "failed" }
+      fs.makeDirectory(paths.join(root, TRASH, "files"), { recursive: true }) catch () => undefined
+      fs.makeDirectory(paths.join(root, TRASH, "info"), { recursive: true }) catch () => undefined
       const journal = try journalOf(id, { name: origin.name, origin: origin.path, directory: origin.directory, size: origin.size, mimeType: origin.mimeType })
       try orDie(journal.send({ type: "journal", op: "Trash", row, at: try Clock.currentTimeMillis }))
       const moved = try attempt(fs.rename(at(path), trashFile(id)))
       try orDie(journal.send({ type: "moveToTrash", acknowledged: moved }))
       if (moved) return { path, status: "trashed", to: id }
       try orDie(journal.send({ type: "undoFailedJournal" }))
-      try (fs.remove(trashInfo(id)) catch () => undefined)
+      fs.remove(trashInfo(id)) catch () => undefined
       return { path, status: "failed" }
     }
 
-    effect function transferRow(op: FilesOp, raw: string, token: string | undefined, dest: string): RowOutcome {
+    effect function transferRow(op: FilesOp, raw: string, token: string | undefined, dest: string): RowOutcome!! {
       const { path, row } = try rowCheck(op, raw, token, dest)
       const admission = classifyRow(op, row)
       if (admission === "Unchanged") return { path, status: "unchanged", to: path }
       if (admission !== "Admitted") return { path: raw, status: ANSWERS[admission] }
       const source = try entry(path)
       if (source === undefined) return { path, status: "missing" }
-      const target = try (placed(dest, path, source.directory) catch () => undefined)
+      const target = (placed(dest, path, source.directory) catch () => undefined)
       if (target === undefined) return { path, status: "failed" }
       const written = op === "Copy" ? try attempt(fs.copy(at(path), at(target))) : try attempt(fs.rename(at(path), at(target)))
       return written ? { path, status: op === "Copy" ? "copied" : "moved", to: target } : { path, status: "failed" }
     }
 
     effect function trashIds() {
-      return (try (fs.readDirectory(paths.join(root, TRASH, "info")) catch () => [] as string[]))
+      return (fs.readDirectory(paths.join(root, TRASH, "info")) catch (): string[] => [])
         .filter((file) => file.endsWith(".json")).map((file) => file.slice(0, -".json".length))
     }
 
@@ -180,8 +181,8 @@ export function localVolume(root: string, name = "Internal storage") {
       const { row: _row, ...base } = kept
       const journal = try journalOf(id, base)
       const erased = try attempt(fs.remove(trashFile(id), { recursive: true }))
-      try orDie(journal.send({ type: "prune", at: now, erased }))
-      if (erased) try orDie(journal.send({ type: "completePrune", writeAcknowledged: try attempt(fs.remove(trashInfo(id))) }))
+      const pruned = try orDie(journal.send({ type: "prune", at: now, erased }))
+      if (erased) try orDie(apply(pruned, { type: "completePrune", writeAcknowledged: try attempt(fs.remove(trashInfo(id))) }))
     }
 
     return {
@@ -239,7 +240,7 @@ export function localVolume(root: string, name = "Internal storage") {
           if (kept === undefined) continue
           const resident = try exists(trashFile(id))
           if (!resident) {
-            try (fs.remove(trashInfo(id)) catch () => undefined)
+            fs.remove(trashInfo(id)) catch () => undefined
             continue
           }
           if (canPrune(kept.row, now)) {
@@ -260,10 +261,10 @@ export function localVolume(root: string, name = "Internal storage") {
           }
           const origin = parentOf(kept.origin)
           const folder = validPath(origin, true) !== undefined && origin.split("/")[0] !== TRASH ? origin : ""
-          try (fs.makeDirectory(at(folder), { recursive: true }) catch () => undefined)
-          const target = try (placed(folder, kept.name, kept.directory) catch () => undefined)
+          fs.makeDirectory(at(folder), { recursive: true }) catch () => undefined
+          const target = (placed(folder, kept.name, kept.directory) catch () => undefined)
           const moved = target !== undefined && (try attempt(fs.rename(trashFile(id), at(target))))
-          if (moved) try (fs.remove(trashInfo(id)) catch () => undefined)
+          if (moved) (fs.remove(trashInfo(id)) catch () => undefined)
           outcomes.push(moved && target !== undefined ? { path: id, status: "restored", to: target } : { path: id, status: "failed" })
         }
         return outcomes

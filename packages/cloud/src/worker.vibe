@@ -26,7 +26,7 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
         return relayFromTable(request, env, (work) => execution === undefined ? void work.then(() => undefined, () => undefined) : execution.waitUntil(work))
       }
       const answer = answerOf(request.method, path, (owned) => ownsWorkerOnly(owned, ports))
-      if (answer !== "FromWorkerOnly") return serveFromTable(request, env, execution)
+      if (answer !== "FromWorkerOnly") return serveFromTable(request, env, providerFetch, execution)
       return (await workerReady(env)) ?? workerOnlyRequest(request, env, ports)
     }
   }

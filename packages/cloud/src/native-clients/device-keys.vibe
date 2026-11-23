@@ -368,7 +368,7 @@ effect function ack(context: RouteContext) {
   return json(acknowledged.answer)
 }
 
-export effect function signOutKey(tx: Tx, grantKey: string, namedSuccessor: string) {
+effect function signOutKey(tx: Tx, grantKey: string, namedSuccessor: string) {
   const row = try grantBy(tx, "key", grantKey)
   if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
   const now = try Clock.currentTimeMillis

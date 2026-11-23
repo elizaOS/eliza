@@ -45,7 +45,7 @@ public final class LaunchProjection {
       LaunchFrame first = LaunchFrame.first((String) frame.get("token"), ((BigDecimal) frame.get("epoch")).longValueExact(),
         held == null ? null : new LaunchFrame.Credential(((BigDecimal) held.get("version")).longValueExact(), (String) held.get("value")),
         (String) frame.get("storageKey"));
-      LaunchFrame next = first.next(LaunchFrame.newToken(), first.credentialVersion() == 0 ? null : new LaunchFrame.Credential(first.credentialVersion() + 1, "rotated"), null);
+      LaunchFrame next = first.next(LaunchFrame.newToken(), first.credentialVersion() == 0 ? null : new LaunchFrame.Credential(first.credentialVersion() + 1, "rotated-device-key"), null);
       answer.put("frame", new String(first.encode(), StandardCharsets.UTF_8));
       answer.put("shown", first.toString());
       answer.put("next", new String(next.encode(), StandardCharsets.UTF_8));

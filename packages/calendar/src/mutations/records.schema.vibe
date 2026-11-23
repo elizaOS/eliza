@@ -55,7 +55,7 @@ export const EventRecord = Schema.Struct({
 
 /** The exact fields an owner reviews for a create or an update. */
 export const FieldsRecord = Schema.Struct({
-  title: Schema.String.check(Schema.isMaxLength(500), Schema.makeFilter((title) => title.trim() !== "" && !title.includes("\0"))),
+  title: Schema.String.check(Schema.isMaxLength(500), Schema.isPattern(/^\s*[^\s\u0000][^\u0000]*$/)),
   description: Text,
   location: Schema.String.check(Schema.isMaxLength(2_000)),
   startAt: Schema.String,

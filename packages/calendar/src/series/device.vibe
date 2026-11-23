@@ -144,12 +144,11 @@ export effect function deviceCalendar(port: DeviceCalendarPort, session: DeviceS
       const { captured: before, active: now } = selections(captured, active())
       const route = manualInspectionRoute(before, now, inspectStatus(inspected))
       if (route === "IgnoreInspection") return { status: "ignored" }
-      if (route === "RefreshRows" || inspected.status !== "ready") return { status: "refresh" }
       if (route === "OpenExternal") {
         port.openExternal({ id: row.id, begin: row.begin, end: row.end }) catch () => undefined
         return { status: "external" }
       }
-      if (inspected.eventId === undefined || inspected.sourceId === undefined) return { status: "refresh" }
+      if (route === "RefreshRows" || inspected.status !== "ready" || inspected.eventId === undefined || inspected.sourceId === undefined) return { status: "refresh" }
       const ticket: DeviceTicket = { eventId: inspected.eventId, sourceId: inspected.sourceId, sourceRevision: inspected.sourceRevision, eventRevision: inspected.eventRevision }
       return try (port.removeScoped(ticket) |> Effect.matchEffect(%, {
         onSuccess: (reply) => adopt(captured, replies[reply], reply),

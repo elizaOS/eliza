@@ -103,7 +103,7 @@ export effect function filesView() {
       if ((try Ref.get(request)) === mine) try Ref.set(view, facts(next))
     })
     effect function send(event: Event): FileRequest!! {
-      return try serialize(machine.send(event) catch (rejected) => rejected.state)
+      return try serialize(Effect.catch(machine.send(event), (rejected) => Effect.succeed(rejected.state)))
     }
     return try ensuring(effect {
       let state = try send({ type: "beginRequest" })

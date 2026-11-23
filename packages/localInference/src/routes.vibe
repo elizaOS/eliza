@@ -20,13 +20,15 @@ const unknownModel = refused(404, "unknown-model")
 
 /** The owner's model routes and the end-of-turn score, over the device's models and engine. */
 export function localInferenceRoutes(models: LocalModelsApi, engine: InferenceEngine.Shape): readonly LocalRoute[] {
-  const answer = <E extends { readonly _tag: string }>(work: void!E, signal: AbortSignal, status = 200) => runPromise(effect {
-    try work
-    return { status, body: try models.view() } satisfies Answer
-  } catch (failure) => match (failure._tag) {
-    when "Rejected": refused(409, "not-allowed");
-    when "AssignmentsUnreadable": refused(409, "assignments-unreadable");
-    default: refused(500, failure._tag);
+  const answer = <E extends { readonly _tag: string }>(work: void!E, signal: AbortSignal, status = 200): Promise<Answer> => runPromise(effect {
+    return (effect {
+      try work
+      return { status, body: try models.view() } satisfies Answer
+    } catch (failure) => match (failure._tag) {
+      when "Rejected": refused(409, "not-allowed");
+      when "AssignmentsUnreadable": refused(409, "assignments-unreadable");
+      default: refused(500, failure._tag);
+    })
   }, { signal })
 
   const chosen = (body: unknown) => Option.getOrUndefined(Option.flatMap(decodeModelChoice(body), (choice) => Option.fromNullishOr(modelNamed(choice.modelId, models.catalog))))

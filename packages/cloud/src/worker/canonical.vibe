@@ -16,6 +16,7 @@ import { Store } from "../store/connection.vibe"
 import { observeIdentity } from "../store/identity.vibe"
 import { WorkerRequest, WorkerResponse, type WorkerLifetime } from "../worker-platform.ts"
 import { clientStore, closeCloudDatabase, openCloudDatabase, type WorkerDatabase } from "../worker-store.vibe"
+import { legacyGmailResponse, type LegacyBindings } from "./legacy.vibe"
 import { dueSweeps, relayRoutes, workerRoutes } from "./routes.vibe"
 import { dialSocket, socketPair } from "./sockets.ts"
 import type { Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
@@ -27,7 +28,7 @@ export type ProfileBindings = WorkerDatabase & NativeRegistryEnv & {
 }
 
 /** The Worker cannot serve yet: its profile, bindings, database, secrets or catalog fail a start check. */
-export error WorkerUnready { problem: string }
+error WorkerUnready { problem: string }
 
 interface Prepared {
   readonly profile: CloudProfile
@@ -121,7 +122,7 @@ effect function start(env: ProfileBindings, ready: Prepared) {
 effect function connected(env: ProfileBindings) {
   const opened = tryPromise({ try: () => openCloudDatabase(env, "safe"), catch: () => new WorkerUnready({ problem: "the database is unreachable or is not this environment's" }) })
   const db = try acquireRelease(opened, (held) => promise(() => closeCloudDatabase(held)))
-  return try clientStore(db)
+  return { db, store: try clientStore(db) }
 }
 
 function clientAddress(request: HttpServerRequest.HttpServerRequest): Option.Option<string> {
@@ -129,7 +130,7 @@ function clientAddress(request: HttpServerRequest.HttpServerRequest): Option.Opt
   return forwarded === undefined || forwarded === "" ? request.remoteAddress : Option.some(forwarded)
 }
 
-effect function served(env: ProfileBindings, lifetime?: WorkerLifetime): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | Scope.Scope) {
+effect function served(source: Request, env: ProfileBindings & LegacyBindings, providerFetch: typeof fetch, lifetime?: WorkerLifetime): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | Scope.Scope) {
   if (lifetime !== undefined) {
     const scope = try Scope.Scope
     const completed = try Deferred.make<void>()
@@ -139,12 +140,15 @@ effect function served(env: ProfileBindings, lifetime?: WorkerLifetime): HttpSer
   const now = try Clock.currentTimeMillis
   const answered = effect {
     const ready = try preparedFor(env)
-    const store = try connected(env)
+    const { db, store } = try connected(env)
     const request = try HttpServerRequest.HttpServerRequest
     const seen = request.modify({ remoteAddress: clientAddress(request) })
     provide platformLayer(env, ready, store) {
       try start(env, ready)
-      return try Effect.interruptible(provideService(respond(workerRoutes, returnPageRoute), HttpServerRequest.HttpServerRequest, seen))
+      return try Effect.interruptible(provideService(respond(workerRoutes, returnPageRoute, (route) => tryPromise({
+        try: () => legacyGmailResponse(source, route.path, env, db, providerFetch),
+        catch: () => refused("ServiceUnavailable", "NoReason", now + 5000),
+      })), HttpServerRequest.HttpServerRequest, seen))
     }
   }
   return answered catch effect (unready) => {
@@ -160,7 +164,7 @@ function unreadyAnswer(now: number): Response {
 effect function relayed(request: Request, env: ProfileBindings, answer: Deferred.Deferred<Response>) {
   const relaying = scoped(effect {
     const ready = try preparedFor(env)
-    const store = try connected(env)
+    const { store } = try connected(env)
     provide platformLayer(env, ready, store) {
       try start(env, ready)
       const pair = socketPair()
@@ -193,7 +197,7 @@ export function workerReady(env: ProfileBindings): Promise<Response | undefined>
   if (started.has(env)) return Promise.resolve(undefined)
   const checked = scoped(effect {
     const ready = try preparedFor(env)
-    const store = try connected(env)
+    const { store } = try connected(env)
     provide platformLayer(env, ready, store) {
       try start(env, ready)
     }
@@ -209,8 +213,8 @@ export function workerReady(env: ProfileBindings): Promise<Response | undefined>
 }
 
 /** Answers one request from the server's route table, holding its database connection until the answer's body ends. */
-export function serveFromTable(request: Request, env: ProfileBindings, lifetime?: WorkerLifetime): Promise<Response> {
-  return HttpEffect.toWebHandler(served(env, lifetime))(request)
+export function serveFromTable(request: Request, env: ProfileBindings & LegacyBindings, providerFetch: typeof fetch, lifetime?: WorkerLifetime): Promise<Response> {
+  return HttpEffect.toWebHandler(served(request, env, providerFetch, lifetime))(request)
 }
 
 /** Runs, one at a time, every sweep of the served table due at this scheduled tick. */
@@ -219,7 +223,7 @@ export function sweepTable(env: ProfileBindings, scheduledAt: number): Promise<v
   const ticked = scoped(effect {
     if (due.length === 0) return
     const ready = try preparedFor(env)
-    const store = try connected(env)
+    const { store } = try connected(env)
     provide platformLayer(env, ready, store) {
       try start(env, ready)
       for (const sweep of due) {

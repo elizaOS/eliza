@@ -2,7 +2,7 @@
 import type { WorkflowDeviceBinding, WorkflowDeviceOperation } from "../contract/device.vibe"
 import type { PhoneDeviceTarget } from "../contract/phone.vibe"
 import type { HostedNativeSelection } from "../contract/digest.vibe"
-import { decodeParentMessage, serveWorker, WorkerStepFailed, type ParentMessage, type WorkerChannel, type WorkerMessage } from "../worker/protocol.vibe"
+import { decodeParentMessage, serveWorker, type ParentMessage, type WorkerChannel, type WorkerMessage } from "../worker/protocol.vibe"
 import type { WorkflowSql } from "./store.vibe"
 import type { ManagedGoogleReads } from "./google.vibe"
 
@@ -99,6 +99,3 @@ export effect function inProcessWorkerPort(): WorkflowWorkerPort!! {
     },
   }
 }
-
-/** The step failure a closed or broken worker channel reports. */
-export const workerChannelClosed = new WorkerStepFailed({ message: "The worker channel closed", cancelled: false })

@@ -25,7 +25,7 @@ const journalEvent = Schema.Struct({
   observed: Schema.optionalKey(Schema.Unknown),
   note: Schema.optionalKey(Schema.String),
 })
-export type JournalEvent = typeof journalEvent.Type
+type JournalEvent = typeof journalEvent.Type
 const contents = Schema.Struct({
   schema: Schema.Literal(1),
   kind: Schema.Literal("aosp-ota-update-journal"),

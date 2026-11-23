@@ -32,7 +32,7 @@ export interface Attempt {
 }
 
 /** The record a receipt names, as a claim targets it. */
-export function receiptTarget(receipt: EffectReceipt): string {
+function receiptTarget(receipt: EffectReceipt): string {
   return `${receipt.resource.kind}:${receipt.resource.id}`
 }
 

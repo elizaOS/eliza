@@ -133,15 +133,18 @@ export effect function createScanDocument(options: ScanDocumentOptions = {}) {
   }
 
   effect function edit(change: (current: readonly ScanPage[]) => readonly ScanPage[] | undefined): readonly ScanPage[]!ScanDocumentRefused {
-    try mapError(machine.send({ type: "beginEdit" }), () => new ScanDocumentRefused({ reason: "busy" }))
-    const next = change(try Ref.get(pages))
-    const batch = next === undefined ? undefined : batchOf(next)
-    if (next === undefined || batch === undefined || !allowsScanBatch(batch)) {
-      try orDie(machine.send({ type: "cancelEdit" }))
-      throw new ScanDocumentRefused({ reason: next === undefined ? "slot" : "page" })
-    }
-    try Ref.set(pages, next)
-    try orDie(machine.send({ type: "finishEdit", batch, autosave }))
+    const next = try saves.withPermits(1)(effect {
+      try mapError(machine.send({ type: "beginEdit" }), () => new ScanDocumentRefused({ reason: "busy" }))
+      const changed = change(try Ref.get(pages))
+      const batch = changed === undefined ? undefined : batchOf(changed)
+      if (changed === undefined || batch === undefined || !allowsScanBatch(batch)) {
+        try orDie(machine.send({ type: "cancelEdit" }))
+        throw new ScanDocumentRefused({ reason: changed === undefined ? "slot" : "page" })
+      }
+      try Ref.set(pages, changed)
+      try orDie(machine.send({ type: "finishEdit", batch, autosave }))
+      return changed
+    })
     if (autosave) fork.detached saveAutomatically()
     return next
   }

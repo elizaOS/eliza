@@ -1,4 +1,5 @@
 // spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
+import { SchemaGetter } from "effect"
 import { authoredNoteText, parseNoteFormat } from "./format.vibe"
 import { STICKY_COLORS, type NoteFormat } from "./types.vibe"
 
@@ -23,11 +24,37 @@ export const Revision = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 /** One of the four note colors. */
 export const Color = Schema.Literals(STICKY_COLORS)
 
-/** A rich note format that is bounded plain JSON of a known kind. */
-export const Format = Schema.declare((value: unknown): value is NoteFormat => parseNoteFormat(value) !== undefined)
+const FormatText = Schema.String.check(Schema.isMaxLength(128))
+const FormatSeed = Schema.Struct({
+  kind: Schema.Literals(["text", "list", "voice", "link"]),
+  folderId: Schema.optionalKey(FormatText),
+  title: FormatText,
+  entries: Schema.Array(Schema.Struct({ t: FormatText, done: Schema.Boolean })).check(Schema.isMaxLength(8)),
+})
 
-/** One stored note: bounded fields and authored content that is not blank. */
-export const NoteRow = Schema.Struct({
+function sampledFormat({ kind, folderId, title, entries }: typeof FormatSeed.Type): NoteFormat {
+  const data = {
+    text: {},
+    list: { items: entries.map(({ t, done }) => ({ t, done })) },
+    voice: { lines: entries.map(({ t }) => ({ s: "speaker", t })), summary: [title], actions: entries.map(({ t, done }) => ({ t, done })) },
+    link: { clips: [title, ...entries.map(({ t }) => t)] },
+  } satisfies Record<NoteFormat["kind"], NoteFormat["data"]>
+  return { kind, data: { ...data[kind], ...(folderId === undefined ? {} : { folderId }) } }
+}
+
+/** A rich note format that is bounded plain JSON of a known kind. */
+export const Format = Schema.declare((value: unknown): value is NoteFormat => parseNoteFormat(value) !== undefined, {
+  toCodecArbitrary: () => Schema.link<NoteFormat>()(FormatSeed, { decode: SchemaGetter.transform(sampledFormat), encode: SchemaGetter.forbiddenEncoding }),
+})
+
+function sampled<Wire extends Schema.Constraint, Seed extends Schema.Constraint>(wire: Wire, seed: Seed, build: (value: Seed["Type"]) => Wire["Type"]) {
+  const domain = Schema.declare(Schema.is(Schema.toType(wire)), {
+    toCodecArbitrary: () => Schema.link<Wire["Type"]>()(seed, { decode: SchemaGetter.transform(build), encode: SchemaGetter.forbiddenEncoding }),
+  })
+  return Schema.decodeTo(domain)(wire)
+}
+
+const NoteWire = Schema.Struct({
   id: NoteId,
   title: Schema.String.check(Schema.isMaxLength(noteLimits.title)),
   body: Schema.String.check(Schema.isMaxLength(noteLimits.body)),
@@ -36,6 +63,21 @@ export const NoteRow = Schema.Struct({
   createdAt: Instant,
   updatedAt: Instant,
 }).check(Schema.makeFilter((note) => (note.title + note.body).trim() !== "" || authoredNoteText(note.format).trim() !== ""))
+
+const NoteSeed = Schema.Struct({
+  ...NoteWire.fields,
+  title: FormatText,
+  body: FormatText,
+  contentIn: Schema.Literals(["title", "body", "format"]),
+  words: FormatText.check(Schema.isPattern(/\S/)),
+})
+
+/** One stored note: bounded fields and authored content that is not blank. */
+export const NoteRow = sampled(NoteWire, NoteSeed, ({ contentIn, words, ...note }): typeof NoteWire.Type => {
+  if (contentIn === "title") return { ...note, title: words }
+  if (contentIn === "body") return { ...note, body: words }
+  return { ...note, title: "", body: "", format: { kind: "list", data: { items: [{ t: words, done: false }] } } }
+})
 
 /** One Trash row. */
 export const TrashRow = Schema.Struct({ note: NoteRow, deletedAt: Instant })
@@ -68,13 +110,13 @@ export const ImportReceipt = Schema.Struct({
   importedAt: Instant,
 })
 
-/** The stored collection document: one schema, unique IDs across notes and Trash, bounded Trash and cleanup. */
-export const StoredDocument = Schema.Struct({
+const CreationKey = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.creationId))
+const DocumentWire = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   revision: Revision,
   notes: Schema.Array(NoteRow),
   trash: Schema.Array(TrashRow).check(Schema.isMaxLength(noteLimits.trash)),
-  creations: Schema.Record(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.creationId)), NoteId),
+  creations: Schema.Record(CreationKey, NoteId),
   recordingCleanup: Schema.Array(CleanupReceipt).check(Schema.isMaxLength(noteLimits.cleanup)),
   imported: Schema.optionalKey(ImportReceipt),
 }).check(Schema.makeFilter((document) => {
@@ -82,6 +124,23 @@ export const StoredDocument = Schema.Struct({
   const known = new Set(ids)
   return known.size === ids.length && Object.values(document.creations).every((id) => known.has(id))
 }))
+
+const DocumentSeed = Schema.Struct({
+  ...DocumentWire.fields,
+  notes: Schema.Array(NoteRow).check(Schema.isMaxLength(4)),
+  trash: Schema.Array(TrashRow).check(Schema.isMaxLength(4)),
+  creations: Schema.Array(CreationKey).check(Schema.isMaxLength(8)),
+  recordingCleanup: Schema.Array(CleanupReceipt).check(Schema.isMaxLength(4)),
+})
+
+/** The stored collection document: one schema, unique IDs across notes and Trash, bounded Trash and cleanup. */
+export const StoredDocument = sampled(DocumentWire, DocumentSeed, ({ notes, trash, creations, ...document }) => {
+  const saved = notes.map((note, index) => ({ ...note, id: `note-${index}` }))
+  const deleted = trash.map((row, index) => ({ ...row, note: { ...row.note, id: `trash-${index}` } }))
+  const ids = [...saved.map((note) => note.id), ...deleted.map((row) => row.note.id)]
+  const references = ids.length === 0 ? {} : Object.fromEntries(creations.map((key, index) => [key, ids[index % ids.length]]))
+  return { ...document, notes: saved, trash: deleted, creations: references }
+})
 
 /** A creation from a capability or route: complete content, or a separate title and body. */
 export const CreateRequest = Schema.Struct({

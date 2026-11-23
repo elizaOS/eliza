@@ -25,6 +25,12 @@ const ZoneSeed = Schema.Literals(["UTC", "America/Los_Angeles", "America/New_Yor
 export const Instant = sampled(Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/), Schema.makeFilter(roundTrips)),
   between(0, lastInstant), instantText)
 
+export function sampledWireInstant(wire: Schema.Codec<string, string>, { allowDateOnly = true }: { readonly allowDateOnly?: boolean } = {}) {
+  const formats = allowDateOnly ? ["Z", "+05:30", "-07:00", "date"] as const : ["Z", "+05:30", "-07:00"] as const
+  return sampled(wire, Schema.Struct({ instant: Instant, format: Schema.Literals(formats) }),
+    ({ instant, format }) => format === "date" ? instant.slice(0, 10) : instant.slice(0, -1) + format)
+}
+
 /** A zone Intl supports, nonempty, at most 128 UTF-16 units and free of NUL. */
 export const ZoneName = sampled(Schema.String.check(Schema.makeFilter((name: string) => knownTimeZone(name))), ZoneSeed, (zone) => zone)
 

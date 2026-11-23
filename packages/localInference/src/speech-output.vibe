@@ -32,7 +32,7 @@ export effect function publishReply<C, E, R>(slot: PlaybackSlot<C>, prepare: C!E
     try Effect.ignore(output.send({ type: "publishSpeech" }))
   }
   const published = effect {
-    admitted = try (map(output.send({ type: "admitSpeech", replace: options.replace }), () => true) catch () => false)
+    admitted = (map(output.send({ type: "admitSpeech", replace: options.replace }), () => true) catch () => false)
     if (!admitted) return "busy" satisfies Publication
     const clip = try prepare
     uninterruptible {

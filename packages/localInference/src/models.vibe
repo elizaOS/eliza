@@ -119,7 +119,7 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
   const modelsDirectory = path.join(root, "models")
   const installedFile = path.join(root, "installed.json")
   const assignmentsFile = path.join(root, "assignments.json")
-  try (fs.makeDirectory(modelsDirectory, { recursive: true }) catch effect (cause) => { throw new ModelStoreUnavailable({ reason: String(cause) }) })
+  fs.makeDirectory(modelsDirectory, { recursive: true }) catch effect (cause) => { throw new ModelStoreUnavailable({ reason: String(cause) }) }
 
   const files = new Map<CatalogId, readonly InstalledFile[]>()
   const fibers = new Map<CatalogId, Fiber.Fiber<void, never>>()
@@ -128,13 +128,13 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
   const failed = (model: CatalogModel, reason: string) => new DownloadFailed({ model: model.name, reason })
 
   effect function readText(file: string) {
-    if (!(try (fs.exists(file) catch () => false))) return undefined
-    return try (fs.readFileString(file) catch () => "")
+    if (!(fs.exists(file) catch () => false)) return undefined
+    return (fs.readFileString(file) catch () => "")
   }
 
   effect function present(directory: string, list: readonly InstalledFile[]) {
     for (const file of list) {
-      const info = try (fs.stat(path.join(directory, file.path)) catch () => undefined)
+      const info = (fs.stat(path.join(directory, file.path)) catch () => undefined)
       if (info === undefined || Number(info.size) !== file.bytes) return false
     }
     return true
@@ -189,10 +189,10 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
   effect function fetchPlan(model: CatalogModel) {
     const source = model.source
     if (source.kind === "pinned") return { files: source.files, evalsPassed: true }
-    const response = try (http.execute(HttpClientRequest.get(source.manifestUrl)) catch effect () => { throw failed(model, "the manifest is unreachable") })
+    const response = (http.execute(HttpClientRequest.get(source.manifestUrl)) catch effect () => { throw failed(model, "the manifest is unreachable") })
     if (response.status !== 200) throw failed(model, `the manifest answered ${response.status}`)
-    const text = try (response.text catch effect () => { throw failed(model, "the manifest did not arrive whole") })
-    const manifest = try (decodeManifest(text) catch effect () => { throw failed(model, "the manifest is malformed") })
+    const text = (response.text catch effect () => { throw failed(model, "the manifest did not arrive whole") })
+    const manifest = (decodeManifest(text) catch effect () => { throw failed(model, "the manifest is malformed") })
     const digests = new Map<string, string>()
     for (const entry of Object.values(manifest.files).flat()) {
       const seen = digests.get(entry.path)
@@ -206,8 +206,8 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
   effect function fetchFile(model: CatalogModel, file: PublishedFile, directory: string) {
     const target = path.join(directory, file.path)
     const partial = `${target}.part`
-    try (fs.makeDirectory(path.dirname(target), { recursive: true }) catch effect () => { throw failed(model, "the model directory cannot be created") })
-    const response = try (http.execute(HttpClientRequest.get(file.url)) catch effect () => { throw failed(model, `${file.path} is unreachable`) })
+    fs.makeDirectory(path.dirname(target), { recursive: true }) catch effect () => { throw failed(model, "the model directory cannot be created") }
+    const response = (http.execute(HttpClientRequest.get(file.url)) catch effect () => { throw failed(model, `${file.path} is unreachable`) })
     if (response.status !== 200) throw failed(model, `${file.path} answered ${response.status}`)
     const digest = sha256()
     let bytes = 0
@@ -215,24 +215,24 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
       digest.update(chunk)
       bytes += chunk.byteLength
     }))
-    try (Stream.run(counted, fs.sink(partial)) catch effect () => { throw failed(model, `${file.path} did not arrive whole`) })
+    Stream.run(counted, fs.sink(partial)) catch effect () => { throw failed(model, `${file.path} did not arrive whole`) }
     if (digest.hex() !== file.sha256) {
-      try (fs.remove(partial) catch () => undefined)
+      fs.remove(partial) catch () => undefined
       return undefined
     }
-    try (fs.rename(partial, target) catch effect () => { throw failed(model, `${file.path} cannot be stored`) })
+    fs.rename(partial, target) catch effect () => { throw failed(model, `${file.path} cannot be stored`) }
     return { path: file.path, sha256: file.sha256, bytes } satisfies InstalledFile
   }
 
   effect function discard(model: CatalogModel) {
     const directory = directoryOf(model)
     if (model.source.kind === "bundle") {
-      try (fs.remove(directory, { recursive: true }) catch () => undefined)
+      fs.remove(directory, { recursive: true }) catch () => undefined
       return
     }
     for (const file of model.source.files) {
-      try (fs.remove(path.join(directory, `${file.path}.part`)) catch () => undefined)
-      if (!installed(try models.get(), model.id)) try (fs.remove(path.join(directory, file.path)) catch () => undefined)
+      fs.remove(path.join(directory, `${file.path}.part`)) catch () => undefined
+      if (!installed(try models.get(), model.id)) (fs.remove(path.join(directory, file.path)) catch () => undefined)
     }
   }
 
@@ -255,7 +255,7 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
 
   effect function settleAbandoned(model: CatalogModel) {
     if (modelOf(try models.get(), model.id).install === "Downloading") {
-      try (change({ type: "cancelDownload", modelId: model.id }) catch () => undefined)
+      change({ type: "cancelDownload", modelId: model.id }) catch () => undefined
     }
     if (!installed(try models.get(), model.id)) files.delete(model.id)
     try discard(model)
@@ -267,9 +267,9 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
     const verified: InstalledFile[] = []
     for (const file of model.source.files) {
       const target = path.join(directory, file.path)
-      const info = try (fs.stat(target) catch () => undefined)
+      const info = (fs.stat(target) catch () => undefined)
       if (info === undefined) return
-      if ((try (digestOf(target) catch () => "")) !== file.sha256) {
+      if ((digestOf(target) catch () => "") !== file.sha256) {
         try logWarning("A staged model does not match its published digest and stays absent", { model: model.name, file: file.path })
         return
       }
@@ -280,11 +280,11 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
     try change({ type: "finishDownload", modelId: model.id, digestMatches: true, evalsPassed: true })
   }
 
-  for (const model of Object.values(catalog)) try (adoptStaged(model) catch () => undefined)
+  for (const model of Object.values(catalog)) (adoptStaged(model) catch () => undefined)
   const opened = try models.get()
   const embedder = Object.values(catalog).find((model) => model.embedding !== undefined && installed(opened, model.id))
   if (embedder !== undefined && assignedTo(opened, "EmbeddingSlot") === "" && canAssignModel(opened, "EmbeddingSlot", embedder.id)) {
-    try (change({ type: "assignModel", slot: "EmbeddingSlot", modelId: embedder.id }) catch () => undefined)
+    change({ type: "assignModel", slot: "EmbeddingSlot", modelId: embedder.id }) catch () => undefined
   }
 
   return {
@@ -336,8 +336,8 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
     },
     effect activate(id) {
       try change({ type: "activateModel", modelId: id })
-      const loaded = try (map(engine.load(installedOf(id)), () => true) catch () => false)
-      const settled = try (models.send({ type: "finishLoading", loaded }) catch effect () => {
+      const loaded = (map(engine.load(installedOf(id)), () => true) catch () => false)
+      const settled = (models.send({ type: "finishLoading", loaded }) catch effect () => {
         try engine.unload()
         return try models.get()
       })
@@ -354,9 +354,9 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
       if (before.active === id) try engine.unload()
       try changed(event)
       const directory = directoryOf(catalog[id])
-      for (const file of files.get(id) ?? []) try (fs.remove(path.join(directory, file.path)) catch () => undefined)
+      for (const file of files.get(id) ?? []) (fs.remove(path.join(directory, file.path)) catch () => undefined)
       files.delete(id)
-      if (catalog[id].source.kind === "bundle") try (fs.remove(directory, { recursive: true }) catch () => undefined)
+      if (catalog[id].source.kind === "bundle") (fs.remove(directory, { recursive: true }) catch () => undefined)
     }),
     repairAssignments: () => lock.withPermits(1)(effect {
       const text = try readText(assignmentsFile)
