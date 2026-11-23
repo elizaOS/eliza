@@ -224,16 +224,23 @@ it.live('A named move through owner chat moves both copies in one revision and r
   const beforeFragment = try state()
   if (!("json" in beforeFragment)) return try Effect.die(new Error("The checklist snapshot did not load"))
   const { data: { revision } } = beforeFragment.json as { data: NotesSnapshot }
+  const append = (text: string) => toolCalls("", { name: "NOTES_UPDATE", arguments: { content: "Filming checklist", expectedRevision: revision,
+    textEdit: { action: "append", field: "item", text } } })
   try sync(() => model.script(
-    toolCalls("", { name: "NOTES_UPDATE", arguments: { content: "Filming checklist", expectedRevision: revision,
-      textEdit: { action: "append", field: "item", text: "once" } } }),
+    append("once"),
     modelText('{"notesRequestEffect":{"classification":"unresolved","operations":[]}}'),
     modelText("What would you like me to do with your filming checklist?"), modelText('{"grounded":true,"claims":[]}'),
   ))
   const fragment = try call(agent, { method: "POST", path, body: { text: "Once in my filming checklist.", metadata } })
   const afterFragment = try state()
+  try sync(() => model.script(
+    append("Pack tripod"), modelText('{"notesRequestEffect":{"classification":"mutation_requested","operations":["patch"]}}'),
+    modelText("I added Pack tripod to the Filming checklist."),
+  ))
+  const explicit = try call(agent, { method: "POST", path, body: { text: "Add Pack tripod to my filming checklist.", metadata } })
+  const afterExplicit = try state()
   try Effect.try(() => {
-    for (const answer of [before, accepted, replay, afterMove, refused, afterRead, checklist, beforeFragment, fragment, afterFragment])
+    for (const answer of [before, accepted, replay, afterMove, refused, afterRead, checklist, beforeFragment, fragment, afterFragment, explicit, afterExplicit])
       assert.propertyVal(answer, "status", 200)
     const bodyOf = (answer: typeof accepted) => {
       return "json" in answer ? answer.json : undefined
@@ -252,8 +259,13 @@ it.live('A named move through owner chat moves both copies in one revision and r
     const refusedActions = (bodyOf(refused) as { actionResults: Array<{ data: { executionStatus?: string } }> }).actionResults
     assert.deepStrictEqual(refusedActions.map(({ data }) => data.executionStatus), ["not_started"])
     const ambiguous = (bodyOf(fragment) as { actionResults: Array<{ data: { executionStatus?: string; code?: string } }> }).actionResults
-    assert.deepStrictEqual(ambiguous.map(({ data }) => [data.executionStatus, data.code]), [["not_started", "REQUEST_OPERATION_UNRESOLVED"]])
+    assert.deepStrictEqual(ambiguous.map(({ data }) => [data.executionStatus, data.code]), [["not_started", "REQUEST_OPERATION_UNRESOLVED"]],
+      `Unexpected ambiguous Notes result: ${JSON.stringify(ambiguous)}`)
     assert.deepStrictEqual(stateOf(afterFragment), stateOf(beforeFragment))
+    const edited = stateOf(afterExplicit)
+    const list = edited.notes.find(({ title }) => title === "Filming checklist")?.format
+    assert.strictEqual(edited.revision, revision + 1)
+    assert.deepStrictEqual(list?.kind === "list" ? list.data.items : undefined, [{ t: "Charge camera", done: false }, { t: "Pack tripod", done: false }])
   })
 }, 120_000)
 
