@@ -144,10 +144,10 @@ const observed = (id: string) =>
     outcome: "noop",
     reason: "Observed without changes.",
   });
-const REJECTED = "Rejected by the owner on the phone; it never ran.";
+const REJECTED = "Rejected by the owner; it never ran.";
 const EXPIRED = "Expired; it never ran.";
 const ENDED_PROPOSAL =
-  "a later proposal state takes its place. Rejected or expired means the owner declined it or it expired, and it never ran; that final state answers whether the request happened, and the scope's current-state limit does not apply to it.";
+  "a later proposal state takes its place. A reason that says it never ran means the owner declined it or it expired: that answers whether the request ran, not what the resource holds now.";
 const navigation = (index: number) => ({
   actionName: "VIEWS_SHOW",
   success: true,

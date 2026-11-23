@@ -46,7 +46,7 @@ const reason = (value: ApprovalRequest) => {
 describe("ended proposal receipts", () => {
   it("states a rejection or expiry first and that it never ran", () => {
     expect(reason(request("rejected"))).toBe(
-      "Rejected by the owner on the phone; it never ran.",
+      "Rejected by the owner; it never ran.",
     );
     expect(reason(request("expired"))).toBe("Expired; it never ran.");
   });

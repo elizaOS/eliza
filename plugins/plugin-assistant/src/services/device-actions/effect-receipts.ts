@@ -259,14 +259,15 @@ export function deviceActionEffectReceipts(
   ];
 }
 
-/** A proposal that ended unrun says so first: only the phone's review rejects
- * a device action, and it rejects or expires only one that was never claimed,
- * so a rejected or expired request with no execution never ran. The receipt
+/** A proposal that ended unrun says so first. The phone's review and the
+ * owner's resolve-request action reject only a pending or never-claimed
+ * proposal, and expiry closes only never-claimed ones, so a rejected or
+ * expired request with no execution never ran. The receipt
  * stays a noop: its outcome is the core proof discriminant every receipt
  * reader switches on, and a later step reads the state from this reason. */
 function endedProposalReason(request: ApprovalRequest) {
   if (!request.execution && request.state === "rejected")
-    return "Rejected by the owner on the phone; it never ran.";
+    return "Rejected by the owner; it never ran.";
   if (!request.execution && request.state === "expired")
     return "Expired; it never ran.";
   return (

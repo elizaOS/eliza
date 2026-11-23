@@ -96,7 +96,7 @@ describe("historical outcome wire", () => {
 
 	it("prints one fixed legend per record kind that says each rule once", () => {
 		const effects =
-			"row=[requestSourceEventId,[[actionName,success,receipt],...]]; receipt=[shape,[operation,[resourceKind,resourceId],outcome]]; shape 1 adds reason, 2 adds [commitKind], 3 adds [failureCode,failureRetryable,failureAcceptance]; other receipts are objects. history:hN names history source hN. Values are exact. A preview records a proposal, not its completion; a later proposal state takes its place. Rejected or expired means the owner declined it or it expired, and it never ran; that final state answers whether the request happened, and the scope's current-state limit does not apply to it.";
+			"row=[requestSourceEventId,[[actionName,success,receipt],...]]; receipt=[shape,[operation,[resourceKind,resourceId],outcome]]; shape 1 adds reason, 2 adds [commitKind], 3 adds [failureCode,failureRetryable,failureAcceptance]; other receipts are objects. history:hN names history source hN. Values are exact. A preview records a proposal, not its completion; a later proposal state takes its place. A reason that says it never ran means the owner declined it or it expired: that answers whether the request ran, not what the resource holds now.";
 		const navigation =
 			"row=[requestSourceEventId,[[success,receipt],...]]; receipt is the recorded navigation object. history:hN names history source hN. Values are exact.";
 		const position =
@@ -326,7 +326,7 @@ describe("historical outcome wire", () => {
 		const legend = JSON.parse(folded[0].content);
 		expect(legend.scope).toBe(SCOPE);
 		expect(legend.encoding).toContain(
-			"a later proposal state takes its place. Rejected or expired means the owner declined it or it expired, and it never ran; that final state answers whether the request happened, and the scope's current-state limit does not apply to it.",
+			"a later proposal state takes its place. A reason that says it never ran means the owner declined it or it expired: that answers whether the request ran, not what the resource holds now.",
 		);
 		expect(folded.map((segment) => segment.content).join("\n")).not.toContain(
 			"Authoritative later proposal state",

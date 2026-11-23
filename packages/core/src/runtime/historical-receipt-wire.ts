@@ -251,7 +251,7 @@ const SOURCE_ENCODING = "history:hN names history source hN. Values are exact.";
  * means: a recorded end is a past outcome, never a claim about a resource's
  * current state. */
 const PROPOSAL_ENCODING =
-	"A preview records a proposal, not its completion; a later proposal state takes its place. Rejected or expired means the owner declined it or it expired, and it never ran; that final state answers whether the request happened, and the scope's current-state limit does not apply to it.";
+	"A preview records a proposal, not its completion; a later proposal state takes its place. A reason that says it never ran means the owner declined it or it expired: that answers whether the request ran, not what the resource holds now.";
 const POSITION_ENCODING =
 	"Each [id,row] segment with this id holds one row under this scope at its own chronological position.";
 
