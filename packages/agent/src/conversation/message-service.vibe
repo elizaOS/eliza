@@ -123,8 +123,9 @@ async function searchConversation(runtime: IAgentRuntime, message: Memory, query
   const inView = new Set([...window.shown, ...window.recalled].map(({ id }) => id))
   const found = searchHistory([...await sourcesOf(runtime, message, stored.slice(historyReadCount)), ...sources], query, ({ id }) => inView.has(id))
   const asked = JSON.stringify(query)
-  const text = found.match === "MatchedAsWritten" ? `These messages of this conversation hold ${asked}, oldest first.`
-    : found.match === "MatchedByWords" ? `No message of this conversation holds ${asked} as written; these best share its words, oldest first.`
+  const leftOut = found.leftOut === 0 ? "" : ` Not shown: ${found.leftOut} more ${found.leftOut === 1 ? "match" : "matches"}; search narrower words for the rest.`
+  const text = found.match === "MatchedAsWritten" ? `These messages of this conversation hold ${asked}, oldest first.${leftOut}`
+    : found.match === "MatchedByWords" ? `No message of this conversation holds ${asked} as written; these best share its words, oldest first.${leftOut}`
     : `No message of this conversation holds ${asked} or shares enough of its words.`
   return { success: true, text, data: { messages: found.matches.map(({ fromUser, text: said }) => ({ role: fromUser ? "user" : "assistant", text: said })) } }
 }

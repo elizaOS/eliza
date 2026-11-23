@@ -59,16 +59,16 @@ it('A recalled exchange stays out of the shown history, and what a request says 
   }, { recalled: ["m60", "m61"], inHistory: false, sameHistory: true })
 })
 
-it('A search returns what the conversation holds as written before what shares its words, at most five, those out of view first (spec/core/context.md, "A search of the conversation finds what it holds as written, else what best shares the words of the query")', () => {
+it('A search returns what the conversation holds as written before what shares its words, at most five, those out of view first, and counts the rest (spec/core/context.md, "A search of the conversation finds what it holds as written, else what best shares the words of the query")', () => {
   const rows: Row[] = Array.from({ length: 9 }, (_, index) => ({ id: `m${index}`, fromUser: index % 2 === 0, text: `The gate code is ${index}.` }))
   const inView = ({ id }: Row) => id === "m7" || id === "m8"
   const found = (query: string) => {
-    const { matches, match } = searchHistory(rows, query, inView)
-    return { match, ids: matches.map(({ id }) => id) }
+    const { matches, match, leftOut } = searchHistory(rows, query, inView)
+    return { match, ids: matches.map(({ id }) => id), leftOut }
   }
   assert.deepStrictEqual([found(" GATE code "), found("code for the gate"), found("boiler")], [
-    { match: "MatchedAsWritten", ids: ["m2", "m3", "m4", "m5", "m6"] },
-    { match: "MatchedByWords", ids: ["m2", "m3", "m4", "m5", "m6"] },
-    { match: "MatchedNothing", ids: [] },
+    { match: "MatchedAsWritten", ids: ["m2", "m3", "m4", "m5", "m6"], leftOut: 4 },
+    { match: "MatchedByWords", ids: ["m2", "m3", "m4", "m5", "m6"], leftOut: 4 },
+    { match: "MatchedNothing", ids: [], leftOut: 0 },
   ])
 })
