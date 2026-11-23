@@ -259,7 +259,10 @@ pure def sometimesLinkCapturedBesideWaitingSignIn(s: BrowserReturns): bool = isW
 
 `CloudDeviceAccount` exposes the upgrade state to its consumer host. The host
 shows the prompt on its existing account surfaces and starts the normal browser
-sign-in when the owner chooses to continue. The state contains no token.
+sign-in when the owner chooses to continue. The existing native registration
+configuration must advertise the mail lease before a new attempt starts or a
+returned proof is exchanged. Without that capability the owner can continue to
+open hosted mail and calendar in the browser. The state contains no token.
 
 ### Only the current owner can complete the upgrade, and cancellation keeps the current device account
 

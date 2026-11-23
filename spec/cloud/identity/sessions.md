@@ -482,6 +482,8 @@ exchange can recover the same key and lease with the original unacknowledged
 proof. An interrupted renewal returns the same pending successor to that
 lease. Acknowledgment or expiry clears the saved response. An installation
 without that optional binding can continue to issue its original device keys.
+The existing native configuration response advertises `mailLease` for the
+registered standalone browser sign-in client when that binding is valid.
 The canonical mobile endpoints use the deployment's existing sealing keyring.
 
 ### A mail or calendar route admits a session or a device lease, and refuses the device key

@@ -792,12 +792,14 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client, k
         if (matched.kind === "refused") return json(matched.status, { error: matched.error })
         const registered = matched.registration
         const configured = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)
+        const browserEnrollment = browserNativeRegistration(env)?.clientId === registered.clientId
         return json(200, {
           clientId: registered.clientId, environment, redirectUri: redirect, codeChallengeMethod: "S256",
           credentialTtlMs: registered.credentialTtl, methods: { google: configured, email: emailReady(env), sms: smsReady(env) },
+          mailLease: browserEnrollment && leaseSealKey(env) !== undefined,
           google: { configured, serverClientId: configured ? env.GOOGLE_CLIENT_ID : "",
-            nativeSignIn: registered.nativeGoogle && nativeGoogleAudience(env) !== null &&
-              browserNativeRegistration(env)?.clientId === registered.clientId, scopes: nativeGoogleScopes(env) }
+            nativeSignIn: registered.nativeGoogle && nativeGoogleAudience(env) !== null && browserEnrollment,
+            scopes: nativeGoogleScopes(env) }
         })
       }
       case "/api/auth/providers":

@@ -51,6 +51,7 @@ public final class CloudDeviceAccountJourney {
   private static final SecureRandom RANDOM = new SecureRandom();
   private static final String ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   private static final long LEASE_SECONDS = 90L * 24 * 60 * 60;
+  private static final String CLIENT_ID = "com.example.consumer";
   private static final String SERVER_CLIENT = "123456-journey.apps.googleusercontent.com";
   private static final String ACCOUNT = "11111111-2222-4333-8444-555555555555";
   private static final String ORGANIZATION = "66666666-7777-4888-9999-000000000000";
@@ -134,6 +135,7 @@ public final class CloudDeviceAccountJourney {
     String exchangeAccount = ACCOUNT, exchangeOrganization = ORGANIZATION;
     int reuses;
     volatile HeldRefusal heldRefusal;
+    Object advertisedMailLease = true;
 
     synchronized Reply answer(String method, String path, String query, String bearer, String body, Map<String, String> headers) throws Exception {
       long now = System.currentTimeMillis();
@@ -147,8 +149,10 @@ public final class CloudDeviceAccountJourney {
           return Reply.json(200, response);
         }
         case "/api/v1/app-auth/mobile/config" -> {
-          return Reply.json(200, new JSONObject().put("google", new JSONObject().put("nativeSignIn", true).put("serverClientId", SERVER_CLIENT)
-              .put("scopes", new JSONArray().put("openid"))));
+          return Reply.json(200, new JSONObject().put("clientId", CLIENT_ID).put("environment", "staging")
+              .put("redirectUri", "https://app.example.test/android/auth/callback").putOpt("mailLease", advertisedMailLease)
+              .put("google", new JSONObject().put("nativeSignIn", true).put("serverClientId", SERVER_CLIENT)
+                .put("scopes", new JSONArray().put("openid"))));
         }
         case "/api/v1/auth/google/native/challenge" -> {
           return Reply.json(200, new JSONObject().put("challengeId", java.util.UUID.randomUUID().toString()).put("nonce", secret("", 43))
@@ -354,22 +358,44 @@ public final class CloudDeviceAccountJourney {
     cloud.keySeconds = 60;
     cloud.offerLease = false;
     boolean enrolled = googleEnrollment
-        ? account.finishNativeGoogle(account.prepareNativeGoogle("com.example.consumer", "staging"), "header.payload.signature", null)
+        ? account.finishNativeGoogle(account.prepareNativeGoogle(CLIENT_ID, "staging"), "header.payload.signature", null)
         : signIn(account);
     if (!enrolled || account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.REQUIRED) {
       throw new AssertionError("Legacy sign-in did not request a mail lease upgrade");
     }
     String original = account.session().token();
-    Uri canceled = account.beginLeaseUpgrade();
+    for (Object priorConfig : new Object[] { null, false, "true" }) {
+      cloud.advertisedMailLease = priorConfig;
+      if (account.leaseUpgradeAvailable(CLIENT_ID, "staging") || !"email".equals(account.hostedView("email").getEncodedFragment()))
+        throw new AssertionError("A host without lease support did not keep the browser path");
+      try {
+        account.beginLeaseUpgrade(CLIENT_ID, "staging");
+        throw new AssertionError("The device asked for an unsupported upgrade");
+      } catch (IllegalStateException expected) {
+        if (account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.REQUIRED)
+          throw new AssertionError("The unsupported upgrade left a pending attempt");
+      }
+    }
+    cloud.advertisedMailLease = true;
+    if (!account.leaseUpgradeAvailable(CLIENT_ID, "staging") || account.leaseUpgradeAvailable("com.other.consumer", "staging"))
+      throw new AssertionError("The offer was not scoped to the exact registration");
+    Uri outdated = account.beginLeaseUpgrade(CLIENT_ID, "staging");
+    cloud.advertisedMailLease = false;
+    int exchanges = Collections.frequency(cloud.paths, "POST /api/auth/device/exchange");
+    if (finishBrowserSignIn(account, outdated) || exchanges != Collections.frequency(cloud.paths, "POST /api/auth/device/exchange")
+        || !original.equals(account.session().token()) || account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.REQUIRED)
+      throw new AssertionError("A rollback did not restore the previous account and hosted view");
+    cloud.advertisedMailLease = true;
+    Uri canceled = account.beginLeaseUpgrade(CLIENT_ID, "staging");
     if (account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.SIGN_IN_PENDING
-        || !canceled.toString().equals(account.beginLeaseUpgrade().toString())) {
+        || !canceled.toString().equals(account.beginLeaseUpgrade(CLIENT_ID, "staging").toString())) {
       throw new AssertionError("Repeated presses did not keep the same browser attempt");
     }
     account.cancelLeaseUpgrade(canceled);
     if (finishBrowserSignIn(account, canceled) || !original.equals(account.session().token())) {
       throw new AssertionError("A canceled upgrade changed the current account");
     }
-    Uri withoutLease = account.beginLeaseUpgrade();
+    Uri withoutLease = account.beginLeaseUpgrade(CLIENT_ID, "staging");
     account.cancelLeaseUpgrade(canceled);
     if (account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.SIGN_IN_PENDING
         || finishBrowserSignIn(account, withoutLease)) {
@@ -377,20 +403,20 @@ public final class CloudDeviceAccountJourney {
     }
     cloud.offerLease = true;
     cloud.exchangeAccount = ORGANIZATION;
-    if (finishBrowserSignIn(account, account.beginLeaseUpgrade()) || !original.equals(account.session().token())
+    if (finishBrowserSignIn(account, account.beginLeaseUpgrade(CLIENT_ID, "staging")) || !original.equals(account.session().token())
         || cloud.latest().grant.acknowledged || account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.REQUIRED) {
       throw new AssertionError("A different account completed the upgrade");
     }
     cloud.exchangeAccount = ACCOUNT;
     cloud.exchangeOrganization = ACCOUNT;
-    if (finishBrowserSignIn(account, account.beginLeaseUpgrade()) || !original.equals(account.session().token())
+    if (finishBrowserSignIn(account, account.beginLeaseUpgrade(CLIENT_ID, "staging")) || !original.equals(account.session().token())
         || cloud.latest().grant.acknowledged) {
       throw new AssertionError("A different organization completed the upgrade");
     }
     cloud.exchangeOrganization = ORGANIZATION;
     cloud.dropNextAcknowledgment = true;
     try {
-      finishBrowserSignIn(account, account.beginLeaseUpgrade());
+      finishBrowserSignIn(account, account.beginLeaseUpgrade(CLIENT_ID, "staging"));
       throw new AssertionError("The acknowledgment should have been lost");
     } catch (IOException expected) {
       if (!original.equals(account.session().token()) || cloud.grant(original).ended
@@ -572,7 +598,7 @@ public final class CloudDeviceAccountJourney {
 
     cloud.keySeconds = 6;
     int nativeFrom = cloud.paths.size();
-    CloudDeviceAccount.NativeGoogleAttempt attempt = account.prepareNativeGoogle("com.example.consumer", "staging");
+    CloudDeviceAccount.NativeGoogleAttempt attempt = account.prepareNativeGoogle(CLIENT_ID, "staging");
     seen.put("nativeSignedIn", account.finishNativeGoogle(attempt, "header.payload.signature", null));
     long nativeAt = System.currentTimeMillis();
     String nativeKey = account.session().token();

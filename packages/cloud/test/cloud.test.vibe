@@ -4008,18 +4008,40 @@ module node {
       }
       const ownDevice = await device(owner.account.id)
       const otherDevice = await device(other.account.id)
+      const nativeRegistration = { clientId, androidPackage: clientId, environment: "staging", displayName: "Attachment", signInReturn: redirectUri,
+        billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AA").join(":")], enabled: true }
       const env = {
         AI: { run: async () => { throw new Error("Unexpected inference in attachment fixture") } }, DATABASE_URL: fixture.databaseUrl, CLOUD_IDENTITY_DIGEST: digest, CLOUD_ENVIRONMENT: "staging",
         PUBLIC_API_ORIGIN: api, WEB_ORIGIN: web, CHAT_MODEL: "unused", EMBEDDING_MODEL: "unused",
         CHAT_INPUT_MICROS_PER_1K: "1", CHAT_OUTPUT_MICROS_PER_1K: "1", EMBEDDING_INPUT_MICROS_PER_1K: "1", MAX_COMPLETION_TOKENS: "1",
         STRIPE_SECRET_KEY: "unused", STRIPE_WEBHOOK_SECRET: "unused", STRIPE_PRICE_ID: "unused", STRIPE_PRODUCT_ID: "unused", STRIPE_PLAN: "plus_monthly",
         NATIVE_CLIENT_ID: clientId, NATIVE_AUTH_CALLBACK: redirectUri,
-        NATIVE_CLIENT_REGISTRY: JSON.stringify([{ clientId, androidPackage: clientId, environment: "staging", displayName: "Attachment", signInReturn: redirectUri,
-          billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AA").join(":")], enabled: true }]),
+        NATIVE_CLIENT_REGISTRY: JSON.stringify([nativeRegistration]),
         GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret", GOOGLE_CONNECT_TOKEN_KEY: key,
         DEVICE_LEASE_SEAL_KEY: "A".repeat(43) + "=",
       } satisfies CloudBindings
       const worker = cloudWorker(undefined, providerFetch)
+      const configPath = (id: string, redirect: string) => api + "/api/v1/app-auth/mobile/config?" +
+        new URLSearchParams({ clientId: id, environment: "staging", redirectUri: redirect })
+      const offersMailLease = async (binding: CloudBindings, id = clientId, redirect = redirectUri) => {
+        const response = await worker.fetch(new Request(configPath(id, redirect)), binding)
+        const config = Schema.decodeUnknownSync(Schema.Struct({ mailLease: Schema.Boolean }))(await response.json())
+        return [response.status, config.mailLease]
+      }
+      const { DEVICE_LEASE_SEAL_KEY: _sealKey, ...withoutLeaseKey } = env
+      const otherClient = "com.example.other"
+      const otherRedirect = web + "/other/auth/callback"
+      const anotherRegistration = { ...env, NATIVE_CLIENT_REGISTRY: JSON.stringify([
+        nativeRegistration,
+        { clientId: otherClient, androidPackage: otherClient, environment: "staging", displayName: "Other", signInReturn: otherRedirect,
+          billingReturn: web + "/other/billing", certFingerprints: [Array(32).fill("BB").join(":")], enabled: true },
+      ]) }
+      assert.deepStrictEqual([
+        await offersMailLease(env),
+        await offersMailLease(withoutLeaseKey),
+        await offersMailLease({ ...env, DEVICE_LEASE_SEAL_KEY: "invalid" }),
+        await offersMailLease(anotherRegistration, otherClient, otherRedirect),
+      ], [[200, true], [200, false], [200, false], [200, false]])
       const get = (path: string, cookie?: string) => worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + path, {
         headers: cookie ? { origin: web, cookie: "__Host-eliza-session=" + cookie } : { origin: web },
       }), env)

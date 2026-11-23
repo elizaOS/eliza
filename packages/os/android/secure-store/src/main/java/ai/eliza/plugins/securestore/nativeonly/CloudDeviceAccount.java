@@ -150,11 +150,32 @@ public final class CloudDeviceAccount {
   return new JSONObject().put("clientId", clientId).put("environment", environment).put("redirectUri", callback.toString());
  }
 
+ private JSONObject mobileConfiguration(JSONObject client) throws Exception {
+  String query = new Uri.Builder().appendQueryParameter("clientId", client.getString("clientId"))
+      .appendQueryParameter("environment", client.getString("environment"))
+      .appendQueryParameter("redirectUri", client.getString("redirectUri")).build().getEncodedQuery();
+  return new JSONObject(send("GET", "/api/v1/app-auth/mobile/config?" + query, null, null, 200).body());
+ }
+
+ public boolean leaseUpgradeAvailable(String clientId, String environment) {
+  try { return offersMailLease(mobileClient(clientId, environment)); }
+  catch (Exception unavailable) { return false; }
+ }
+
+ private boolean offersMailLease(JSONObject client) throws Exception {
+  JSONObject config = mobileConfiguration(client);
+  return Boolean.TRUE.equals(config.opt("mailLease")) && sameRegistration(client, config);
+ }
+
+ private static boolean sameRegistration(JSONObject left, JSONObject right) {
+  return left.optString("clientId").equals(right.optString("clientId"))
+      && left.optString("environment").equals(right.optString("environment"))
+      && left.optString("redirectUri").equals(right.optString("redirectUri"));
+ }
+
  public NativeGoogleAttempt prepareNativeGoogle(String clientId, String environment) throws Exception {
   JSONObject client = mobileClient(clientId, environment);
-  String query = new Uri.Builder().appendQueryParameter("clientId", clientId).appendQueryParameter("environment", environment)
-      .appendQueryParameter("redirectUri", callback.toString()).build().getEncodedQuery();
-  JSONObject config = new JSONObject(send("GET", "/api/v1/app-auth/mobile/config?" + query, null, null, 200).body());
+  JSONObject config = mobileConfiguration(client);
   JSONObject google = config.optJSONObject("google");
   if (google == null || !google.optBoolean("nativeSignIn")) return null;
   String serverClientId = google.getString("serverClientId");
@@ -249,19 +270,31 @@ public final class CloudDeviceAccount {
   }
  }
 
- public Uri beginLeaseUpgrade() throws Exception {
+ public Uri beginLeaseUpgrade(String clientId, String environment) throws Exception {
+  JSONObject upgrade = mobileClient(clientId, environment);
   synchronized (LOCK) {
    LeaseUpgradeStatus status = leaseUpgradeStatus();
-   if (status == LeaseUpgradeStatus.SIGN_IN_PENDING) return browserStart(record(PENDING));
+   if (status == LeaseUpgradeStatus.SIGN_IN_PENDING) return existingLeaseUpgrade(upgrade);
    if (status != LeaseUpgradeStatus.REQUIRED || slots.read(ACK) != null) {
     throw new IllegalStateException("An existing device account without a mail lease is required");
    }
-   JSONObject current = stored();
-   JSONObject pending = newPending("browser", PENDING_MS)
-       .put("upgrade", new JSONObject().put("credential", digest(current.getString("token"))));
+   upgrade.put("credential", digest(stored().getString("token")));
+  }
+  if (!offersMailLease(upgrade)) throw new IllegalStateException("The host does not offer mail leases");
+  synchronized (LOCK) {
+   if (!matchesUpgrade(stored(), upgrade) || slots.read(ACK) != null)
+    throw new IllegalStateException("The device account changed");
+   if (leaseUpgradeStatus() == LeaseUpgradeStatus.SIGN_IN_PENDING) return existingLeaseUpgrade(upgrade);
+   JSONObject pending = newPending("browser", PENDING_MS).put("upgrade", upgrade);
    slots.write(PENDING, pending.toString());
    return browserStart(pending);
   }
+ }
+
+ private Uri existingLeaseUpgrade(JSONObject registration) throws Exception {
+  JSONObject pending = record(PENDING);
+  if (!sameRegistration(registration, pending.getJSONObject("upgrade"))) throw new IllegalStateException("The enrollment registration changed");
+  return browserStart(pending);
  }
 
  public void cancelLeaseUpgrade(Uri start) throws Exception {
@@ -333,6 +366,15 @@ public final class CloudDeviceAccount {
 
  private boolean exchangeCode(String code, String snapshot) throws Exception {
   JSONObject pending = new JSONObject(snapshot);
+  JSONObject upgrade = pending.optJSONObject("upgrade");
+  if (upgrade != null && (!callback.toString().equals(upgrade.optString("redirectUri"))
+      || !leaseUpgradeAvailable(upgrade.optString("clientId"), upgrade.optString("environment")))) {
+   synchronized (LOCK) {
+    if (snapshot.equals(slots.read(PENDING))) slots.remove(PENDING);
+   }
+   return false;
+  }
+  if (upgrade != null && !snapshot.equals(pendingSnapshot(pending.getString("state"), "browser"))) return false;
   String verifier = pending.getString("verifier");
   JSONObject request = new JSONObject().put("code", code).put("verifier", verifier);
   JSONObject response = new JSONObject(post("/api/auth/device/exchange", request, null, 200).body());
