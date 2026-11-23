@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { evaluatorIdentity } from "./installed.ts";
+import { evaluatorIdentity, InstallationChanged } from "./installed.ts";
 // The spec pipeline and command line, which spec.ts runs. Parsing, review, generation, simulation and proof each have one implementation.
 import { spawn } from "node:child_process";
 import { channel } from "node:diagnostics_channel";
@@ -16,7 +16,7 @@ import { abandonedProof, ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, typ
 import { bin, run, startAttached } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
+import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, collectGarbage, evaluatorForCheck, isActionEntry, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, owner, specOwnerPaths, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
@@ -126,6 +126,94 @@ async function withStableInstallation<T>(attempt: () => Promise<T>): Promise<T> 
     try { return await steady(attempt); } catch (error) {
       if (!(error instanceof InstallationChanged) || retries === 2) throw error;
     }
+  }
+}
+
+const canSimulate = (model: Model) => !!model.stateType || !!model.laws.length || !!model.evals.length;
+
+/** Warm the normal simulation actions for these module names in a disposable project, using a snapshot from readSpecs. */
+export async function precomputeSimulations(root: string, specs: Spec[], targets: readonly string[]): Promise<Result[]> {
+  return (await precomputedSimulations(root, specs, targets)).results;
+}
+
+interface SimulationPreparation { results: Result[]; seedDirectory?: string }
+
+/** Prepare the selected simulations and, when complete, a compact seed for a trusted job's ordinary check. */
+export async function prepareSimulationReceipts(root: string, specs: Spec[], targets: readonly string[], seedParent: string): Promise<SimulationPreparation> {
+  const { results, receipts } = await precomputedSimulations(root, specs, targets, true);
+  return receipts ? { results, seedDirectory: writeSimulationSeed(seedParent, receipts) } : { results };
+}
+
+function writeSimulationSeed(parent: string, receipts: ReadonlyMap<string, Uint8Array>): string {
+  const owned = fs.mkdtempSync(path.join(path.resolve(parent), "simulation-receipts-"));
+  const writing = path.join(owned, "writing");
+  const seed = path.join(owned, "seed");
+  try {
+    fs.mkdirSync(writing);
+    for (const [name, bytes] of receipts) fs.writeFileSync(path.join(writing, name), bytes, { flag: "wx" });
+    fs.renameSync(writing, seed);
+    return seed;
+  } catch (error) {
+    fs.rmSync(owned, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function precomputedSimulations(root: string, specs: Spec[], targets: readonly string[], capture = false): Promise<{ results: Result[]; receipts?: Map<string, Uint8Array> }> {
+  const requested = new Set(targets);
+  if (!requested.size) return { results: [] };
+  const byName = new Map(specs.map((spec) => [spec.name, spec]));
+  const selected = new Map<string, Spec>();
+  const include = (name: string) => {
+    if (selected.has(name)) return;
+    const spec = byName.get(name);
+    if (!spec) throw new Error(`no spec has the module name "${name}"`);
+    for (const imported of spec.imports) include(imported);
+    selected.set(name, spec);
+  };
+  for (const name of requested) include(name);
+
+  const release = lockProject(root);
+  try {
+    return await withStableInstallation(async () => {
+      const memory: Memory = { root, fresh: false, used: new Set() };
+      const receipts = capture ? { typechecks: new Map<string, Uint8Array>(), simulations: new Map<string, Uint8Array>() } : undefined;
+      const generation: Memory = receipts ? { ...memory, captureReceipt: ({ name, bytes }) => {
+        if (isActionEntry(name)) receipts.typechecks.set(name, bytes);
+      } } : memory;
+      const simulators: Memory = receipts ? { ...memory, captureReceipt: ({ name, bytes }) => {
+        if (name.startsWith("simulate-")) receipts.simulations.set(name, bytes);
+      } } : memory;
+      const loaded = fs.mkdtempSync(path.join(root, ".spec-cache", "precompute-"));
+      const started = new Map<string, Promise<Simulation>>();
+      const { seed } = profile("normal");
+      try {
+        fs.writeFileSync(path.join(loaded, "package.json"), '{"type":"module"}\n');
+        for await (const { spec, model, error } of generating(generation, [...selected.values()], root, new Map())) {
+          if (!model) throw error;
+          const file = path.join(loaded, `${spec.name}.ts`);
+          fs.writeFileSync(file, model.ts);
+          if (!requested.has(spec.name) || !canSimulate(model)) continue;
+          const domain = await import(pathToFileURL(file).href);
+          const result = simulation(simulators, spec, specs, model, domain, seed);
+          void result.catch(() => {});
+          started.set(spec.name, result);
+        }
+        const simulations = await allDone([...requested].map((name) => started.get(name)).filter((result) => result !== undefined));
+        certifyInstallation();
+        const results = simulations.flatMap(({ said }) => said);
+        return receipts && receipts.typechecks.size === selected.size &&
+          receipts.simulations.size === started.size && results.every((row) => row.ok) &&
+          (!started.size || evaluatorForCheck(root) === evaluatorIdentity(root))
+          ? { results, receipts: new Map([...receipts.typechecks, ...receipts.simulations]) }
+          : { results };
+      } finally {
+        await Promise.allSettled(started.values());
+        fs.rmSync(loaded, { recursive: true, force: true });
+      }
+    });
+  } finally {
+    release();
   }
 }
 
@@ -405,7 +493,7 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     valid.push(spec);
     const parts = [[model.transitions.length, "transitions"], [model.always.length, "always"], [model.steps.length, "step"], [model.leadsTo.length, "leadsTo"], [model.sometimes.length, "sometimes"], [model.laws.length, "laws"], [model.opaques.length, "opaque"]];
     report({ ok: true, stage: "model", summary: `${spec.file}: ${parts.filter(([n]) => n).map((p) => p.join(" ")).join(", ") || "definitions only"}`, detail: "", where: spec.file });
-    if (!model.stateType && !model.laws.length && !model.evals.length) continue;
+    if (!canSimulate(model)) continue;
     if (observe && !simulations.length) simulatedAll = observe("simulation");
     const simulated = simulation(memory, spec, specs, model, domain, seed);
     // Report a rejected simulation in the same order as other results.
@@ -879,8 +967,12 @@ export async function main(argv = process.argv.slice(2)) {
         const code = await runTasks(root, prerequisites);
         if (code !== 0) { process.exitCode = code ?? 1; return; }
       }
-      const packingTools = skipGenOnPack && process.env.npm_command === "pack" && process.env.npm_lifecycle_event === "prepare";
-      if (fixture || packingTools) return;
+      const preparing = process.env.npm_lifecycle_event === "prepare";
+      const packingTools = preparing && skipGenOnPack && process.env.npm_command === "pack";
+      const nightlyCheck = preparing && hosted && process.env.npm_command === "install"
+        && process.env.GITHUB_JOB === "vibestack-nightly-check" && process.env.GITHUB_WORKSPACE === root
+        && process.env.GITHUB_WORKFLOW_REF?.startsWith(`${process.env.GITHUB_REPOSITORY}/.github/workflows/fuzz.yml@`);
+      if (fixture || packingTools || nightlyCheck) return;
       [command, ...args] = hosted ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
     }
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {

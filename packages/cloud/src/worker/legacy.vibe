@@ -88,6 +88,9 @@ async function reminders(request: Request, env: LegacyBindings, db: Client) {
   const account = await inferenceAccount(request, db, env)
   if (!account) return refusal(401, "authentication_required")
   if (!request.headers.has("authorization")) return refusal(403, "device_required")
+  const unserved = await db.query(`SELECT 1 WHERE EXISTS (SELECT 1 FROM google_connections WHERE user_id = $1 AND status <> 'Pending')
+    AND NOT EXISTS (SELECT 1 FROM cloud_google_connections WHERE account_id = $1 AND calendar)`, [account])
+  if (unserved.rows.length > 0) return refusal(409, "google_connection_unavailable")
   return reminderSchedule(request, env, db, account)
 }
 

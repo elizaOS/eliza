@@ -10,7 +10,7 @@ module node {
   import type { DeviceTurn } from "./proposal/family.vibe"
   import { offerProposal } from "./proposal/offer.vibe"
   import type { TurnOffer } from "./proposal/turn.vibe"
-  import { retireRequest } from "./store.vibe"
+  import { enrollment, retireRequest } from "./store.vibe"
 
   const AgendaSource = Schema.Struct({ clientDevice: Schema.Struct({ calendarAgendaSource: Schema.Unknown }) })
   const agendaSource = Schema.decodeUnknownOption(AgendaSource)
@@ -18,6 +18,7 @@ module node {
   const decision = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({
     kind: Schema.Literals(["read_agenda", "reply"]),
   })), { onExcessProperty: "error" })
+  const capability = "calendar.agenda-read.v1"
 
   export function agendaOffer(runtime: AgentRuntime): TurnOffer {
     return async (turn: DeviceTurn) => {
@@ -29,6 +30,8 @@ module node {
       const calendarAgendaSource = source.value
       const { observation } = readTurnContext(message)
       if (observation?.view !== "calendar" || observation.sensitive || observation.calendarDay === undefined) return undefined
+      const enrolled = await Effect.runPromise(enrollment(runtime.adapter))
+      if (!enrolled.bridge.devices.some(({ id, capabilities }) => id === turn.by.connector && capabilities.includes(capability))) return undefined
       const { date, timeZone } = observation.calendarDay
       const wallDay = Date.parse(`${date}T00:00:00.000Z`)
       const operation: AgendaOperation = {

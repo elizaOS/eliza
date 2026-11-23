@@ -32,7 +32,7 @@ module node {
   import { DatabaseSync } from "node:sqlite"
   import { Redacted, Result } from "effect"
   import { ElizaError, validateInteractiveTask, validateTaskEvent, type InteractiveTask, type TaskEvent } from "@elizaos/core"
-  import { processAlive, processStart } from "../host/process-owner.vibe"
+  import { isError, processAlive, processStart } from "../host/process-owner.vibe"
   import { deriveTaskKeys, isPrivateFile, privateDirectory, storageCorrupt, type TaskKeys } from "./sealing.vibe"
   import type { KeyRead } from "../../gen/agent__tasks__store.ts"
 
@@ -99,10 +99,6 @@ module node {
     readonly ino: number
   }
 
-  function errorCode(error: unknown): unknown {
-    return typeof error === "object" && error !== null && "code" in error ? error.code : undefined
-  }
-
   const heldOwners = new Set<string>()
 
   function holderGone(path: string): boolean {
@@ -133,7 +129,7 @@ module node {
         heldOwners.add(owner)
         return identity
       } catch (error) {
-        if (errorCode(error) !== "EEXIST") throw error
+        if (!isError(error, "EEXIST")) throw error
       }
       if (!holderGone(path)) return undefined
       renameSync(staged, path)

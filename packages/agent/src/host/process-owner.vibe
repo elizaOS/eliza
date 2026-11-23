@@ -3,7 +3,7 @@ module node {
   import { readFileSync } from "node:fs"
   import { userInfo } from "node:os"
 
-  function isError(error: unknown, code: string): boolean {
+  export function isError(error: unknown, code: string): boolean {
     return typeof error === "object" && error !== null && "code" in error && error.code === code
   }
 
@@ -34,4 +34,4 @@ module node {
     return uid
   }
 }
-export { processAlive, processOwnerUid, processStart } from node
+export { isError, processAlive, processOwnerUid, processStart } from node

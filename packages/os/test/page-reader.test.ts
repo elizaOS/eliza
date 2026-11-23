@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 import { Schema } from "effect";
 import { chromium, type Browser, type CDPSession, type Locator, type Page, type Request } from "playwright";
 import ts from "typescript";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { createCommandHandler } from "../browser/src/command-handler.mjs";
 import { nativeControlProgram } from "./drivers/os__browser__pageCommands.ts";
 
@@ -527,12 +527,14 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     const frame = fields(Schema.decodeUnknownSync(Schema.Array(Fields))(fields(again.result).frames)[0]);
     expect(Schema.decodeUnknownSync(Schema.Array(Fields))(frame.childFrames).map((child) => child.read)).toEqual([true, false]);
     expect(text(frame.text)).not.toContain("Partner words");
-    let unanswered: unknown;
-    const hung = handle({ type: "command", id: "hung-1", command: { subaction: "snapshot", id: "2" } }, { send: (value) => { unanswered = value; } }, () => true);
-    expect(await send({ type: "command", id: "read-3", command: { subaction: "snapshot", id: "1", taskContext } })).toMatchObject({ ok: true });
-    await hung;
-    expect(unanswered).toMatchObject({ id: "hung-1", ok: false, error: { kind: "INCOMPLETE_SNAPSHOT", reason: "page-unresponsive" } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const hung = send({ type: "command", id: "hung-1", command: { subaction: "snapshot", id: "2" } });
+    await vi.waitFor(() => expect(held).toHaveLength(1));
+    await vi.advanceTimersByTimeAsync(10_000);
+    vi.useRealTimers();
     held.splice(0);
+    expect(await hung).toMatchObject({ ok: false, error: { kind: "INCOMPLETE_SNAPSHOT", reason: "page-unresponsive" } });
+    expect(await send({ type: "command", id: "read-3", command: { subaction: "snapshot", id: "1", taskContext } })).toMatchObject({ ok: true });
     await open(`${shop}/static-dialog`);
     const noticeId = crypto.randomUUID();
     const notice = Schema.decodeUnknownSync(Read)(await call(pageCommand, [{ subaction: "snapshot" }, noticeId]));

@@ -19,13 +19,13 @@ import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.t
 import { periodRows } from "../src/shared/metering.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { stepRow } from "../src/store/rows.vibe"
-import { verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
+import { resignedEntitlement, verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
 import { decodeRegistration, disableClient, readClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
 import { seedClients } from "../src/operator/clients.vibe"
 import { deviceKey, openAccount, printed } from "./support/operator.vibe"
 import { operator } from "./support/operator.vibe"
 import { chooseFor } from "../src/services/models.vibe"
-import { forwardScriptHash } from "../src/pages/forward-script.ts"
+import { forwardScript, forwardScriptHash } from "../src/pages/forward-script.ts"
 import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
@@ -245,6 +245,10 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
     const signIn = try cloud.call("/apps/fixture/sign-in?code=private-code&state=private-state", { headers: web })
     const html = String(signIn.body)
     const connect = try cloud.call("/apps/fixture/connect", { headers: web })
+    const billingPage = String((try cloud.call("/apps/fixture/billing", { headers: web })).body)
+    const billingReturn = "https://www.staging.example.com/apps/fixture/billing"
+    const forwarded = [`${billingReturn}?session_id=cs_test_a1&result=success`, `${billingReturn}?result=cancel`, `${billingReturn}?result=elsewhere&cancelled=1`]
+      .map((address) => forwardedHref(forwardScript, billingPage, address))
     const elsewhere = try cloud.call("/apps/fixture/elsewhere", { headers: web })
     const onApi = try cloud.call("/apps/fixture/sign-in")
     const paid = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=paid")
@@ -261,6 +265,7 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
         script: /script-src '(sha256-[^']+)'/.exec(signIn.headers["content-security-policy"] ?? "")?.[1],
         framing: /frame-ancestors 'none'/.test(signIn.headers["content-security-policy"] ?? ""),
         connect: [connect.status, /data-purpose="([^"]*)"/.exec(String(connect.body))?.[1]],
+        forwarded,
         missing: [elsewhere.status, (elsewhere.body as { readonly error?: string }).error, onApi.status, payerOnWeb.status],
         payer: [paid.status, String(paid.body).includes("Check the subscription"), other.status, String(other.body).includes("Checkout closed")],
         payerScript: [/script-src/.test(paid.headers["content-security-policy"] ?? ""), /<script/.test(String(paid.body)), paid.headers["cache-control"]]
@@ -275,6 +280,11 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
         script: forwardScriptHash,
         framing: true,
         connect: [200, "ConnectPurpose"],
+        forwarded: [
+          "intent://www.staging.example.com/apps/fixture/billing?session_id=cs_test_a1&result=success#Intent;scheme=https;package=com.example.fixture;end",
+          "intent://www.staging.example.com/apps/fixture/billing?result=cancel#Intent;scheme=https;package=com.example.fixture;end",
+          "intent://www.staging.example.com/apps/fixture/billing#Intent;scheme=https;package=com.example.fixture;end"
+        ],
         missing: [404, "not_found", 404, 404],
         payer: [200, true, 200, true],
         payerScript: [false, false, "no-store"]
@@ -1304,9 +1314,10 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     const lines = try Effect.try(() => String(timed.body).trim().split("\n").map((line) => JSON.parse(line) as { readonly type: string; readonly sequence?: number; readonly alignment?: { readonly characters: ReadonlyArray<string> } }))
     const anonymous = try cloud.call("/api/v1/voice/tts", { json: { text: "Hello" } })
     const foreignVoice = try tts({ text: "Hello", voiceId: "voice-elsewhere" })
-    try sync(() => speech.script({ kind: "refuse", status: 422 }, { kind: "refuse", status: 503, retryAfterSeconds: 7 }))
+    try sync(() => speech.script({ kind: "refuse", status: 422 }, { kind: "refuse", status: 503, retryAfterSeconds: 7 }, { kind: "refuse", status: 503 }))
     const rejected = try tts({ text: "Rejected" })
     const busy = try tts({ text: "Busy" })
+    const down = try tts({ text: "Busy" })
 
     const keyed = (key: string, text: string) => cloud.call("/api/v1/voice/tts", { json: { text }, headers: { ...caller.headers, "idempotency-key": key } })
     const synthesizedBeforeKeys = speech.synthesized.length
@@ -1335,6 +1346,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         foreignVoice: [foreignVoice.status, (foreignVoice.body as { readonly error: string }).error],
         rejected: [rejected.status, (rejected.body as { readonly error: string }).error],
         busy: [busy.status, (busy.body as { readonly error: string }).error, Number(busy.headers["retry-after"]) >= 7],
+        down: [down.status, (down.body as { readonly error: string }).error, down.headers["retry-after"]],
         keyed: [firstKeyed.status, retriedKeyed.status, retriedKeyed.body === firstKeyed.body, otherWords.status, refusedKeyed.status, retriedRefusal.status, (retriedRefusal.body as { readonly error: string }).error, malformedKey.status, (malformedKey.body as { readonly error: string }).error, synthesizedWithKeys],
         heard: [heard.status, heard.body, heard.headers["x-eliza-stt-provider"]],
         sentHeard: speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length]),
@@ -1359,6 +1371,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         foreignVoice: [400, "invalid_request"],
         rejected: [502, "provider_invalid_response"],
         busy: [503, "provider_unavailable", true],
+        down: [503, "provider_unavailable", "1"],
         keyed: [200, 200, true, 200, 502, 409, "idempotency_conflict", 400, "invalid_request", 4],
         heard: [200, { transcript: spokenTranscript, duration_ms: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) }, "speech"],
         sentHeard: [["audio/wav", "ink-whisper", "en", recordingBytes]],
@@ -1370,10 +1383,11 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
           ["speech", 216, 216, "known"],
           ["speech", 288, 0, "known"],
           ["speech", 144, 144, "unknown"],
+          ["speech", 144, 144, "unknown"],
           ["speech", 504, 504, "known"],
           ["speech", 504, 504, "known"],
           ["speech", 468, 0, "known"],
-          ["speech", 100, 250, "known"]
+          ["speech", 120, 360, "known"]
         ]
       }
     ))
@@ -2712,10 +2726,11 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     const signed = (answer.body as { readonly entitlement: string }).entitlement
     const expected = { keys: parseEntitlementKeys(published.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription", now }
     const checked = try promise(() => checkEntitlement(signed, expected))
+    const laterVersion = try promise(() => verifyOnDevice(resignedEntitlement(signed, { ver: 4 }, secrets.CLOUD_ENTITLEMENT_KEY ?? ""), expected))
     const otherAudience = try promise(() => verifyOnDevice(signed, { ...expected, audience: "another-service" }).then(() => "verified", (error: unknown) => error instanceof EntitlementInvalid ? error.check : `threw ${String(error)}`))
     try check(() => assert.deepStrictEqual(
-      { user: checked.userId, organization: checked.organizationId, plan: checked.plan, lifetime: checked.expiresAt - checked.issuedAt, otherAudience },
-      { user: "user-verified", organization: "org-verified", plan: { id: "free", name: "Free", status: "none" }, lifetime: 1_800_000, otherAudience: "WrongAudience" }
+      { user: checked.userId, organization: checked.organizationId, plan: checked.plan, lifetime: checked.expiresAt - checked.issuedAt, laterVersion: laterVersion.ver, otherAudience },
+      { user: "user-verified", organization: "org-verified", plan: { id: "free", name: "Free", status: "none" }, lifetime: 1_800_000, laterVersion: 4, otherAudience: "WrongAudience" }
     ))
   }))
 
@@ -2824,6 +2839,9 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
     try sql(cloud, `INSERT INTO cloud_google_connections (account_id, id, subject, email, mail, calendar, send_mail, refresh_cipher)
       VALUES ($1, $2, $3, 'worker-conn-leaving@example.test', true, false, true, $4)`, [owner.userId, connectionId, legacySubject, cipher])
     const key = try deviceKey(cloud, owner.userId, { deviceName: "Phone", createdAt: now - 1000, expiresAt: now + 86_400_000 })
+    try sql(cloud, "INSERT INTO cloud_sign_in_identities (provider, provider_subject, account_id) VALUES ('google', 'google-leaving', $1)", [owner.userId])
+    try sql(cloud, `INSERT INTO oauth_attempts (key, state, revision, client_id, redirect_uri, expires_at, updated_at, route, pending, google_subject, verified_email, given_name)
+      VALUES ('attempt-leaving', '{}'::jsonb, 1, 'google-web-client', 'https://app.example.test/return', $1, $1, 'browser', false, 'google-leaving', 'user-leaving@example.com', 'Lee')`, [now - 1000])
     const entitlement = effect () => {
       const answer = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${key}` } })
       return [answer.status, (answer.body as { readonly reason?: string }).reason]
@@ -2874,7 +2892,7 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
     const idle = try sweep()
     const again = try printed(operator(cloud, [...remove, "--confirmed-with-owner"]))
     const erased = try status()
-    const left = try sql(cloud, "SELECT (SELECT count(*) FROM sessions WHERE user_id = $1)::int AS sessions, (SELECT count(*) FROM device_grants WHERE user_id = $1)::int AS devices, (SELECT count(*) FROM google_connections WHERE user_id = $1)::int AS google, (SELECT count(*) FROM cloud_google_connections WHERE account_id = $1)::int AS worker_google, (SELECT count(*) FROM cloud_sign_in_identities WHERE account_id = $1)::int AS identities, (SELECT count(*) FROM credit_entries WHERE organization_id = $2)::int AS ledger", [owner.userId, owner.organizationId])
+    const left = try sql(cloud, "SELECT (SELECT count(*) FROM sessions WHERE user_id = $1)::int AS sessions, (SELECT count(*) FROM device_grants WHERE user_id = $1)::int AS devices, (SELECT count(*) FROM google_connections WHERE user_id = $1)::int AS google, (SELECT count(*) FROM cloud_google_connections WHERE account_id = $1)::int AS worker_google, (SELECT count(*) FROM cloud_sign_in_identities WHERE account_id = $1)::int AS identities, (SELECT count(*) FROM credit_entries WHERE organization_id = $2)::int AS ledger, (SELECT count(*) FROM oauth_attempts WHERE google_subject = 'google-leaving')::int AS attempts, (SELECT name FROM organizations WHERE id = $2) AS organization", [owner.userId, owner.organizationId])
     const googleTargets = try sql(cloud, "SELECT target FROM deletion_receipts WHERE user_id=$1 AND step='revoke_google' ORDER BY target", [owner.userId])
     const outside = try Effect.try(() => ({
       stripe: [providers.subscriptionStatus(subscribed.subscriptionId), providers.cancelCalls(cloud.fakes, subscribed.subscriptionId),
@@ -2903,7 +2921,7 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
         googleTargets: [JSON.stringify({ kind: "google-layered", key: connectionId }), JSON.stringify({ kind: "google-worker", key: connectionId }), JSON.stringify({ kind: "google-worker", key: connectionId })],
         preserved: true,
         erased: { status: "erased", email: null, phone: null, name: null, device_epoch: 1 },
-        left: { sessions: 0, devices: 0, google: 0, worker_google: 0, identities: 0, ledger: 1 },
+        left: { sessions: 0, devices: 0, google: 0, worker_google: 0, identities: 0, ledger: 1, attempts: 0, organization: "Deleted account" },
         again: [true, ["user user-leaving: already requested; deletion erased at erase_data, 0 of 12 attempts, no provider call"], []]
       }
     ))
@@ -3220,6 +3238,10 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
     const paid = try entitlementClaims(cloud, token, keys)
     try sql(cloud, "UPDATE subscriptions SET status = 'past_due' WHERE key = 'org-entitled'", [])
     const pastDue = try entitlementClaims(cloud, token, keys)
+    try sql(cloud, "UPDATE subscriptions SET status = 'unpaid' WHERE key = 'org-entitled'", [])
+    const unpaidAnswer = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
+    const unpaidAt = try Clock.currentTimeMillis
+    const unpaid = try promise(() => verifyOnDevice((unpaidAnswer.body as { readonly entitlement: string }).entitlement, { keys: parseEntitlementKeys(published.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription", now: unpaidAt }))
     try sql(cloud, "UPDATE subscriptions SET plan_key = 'gold' WHERE key = 'org-entitled'", [])
     const unreadable = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
 
@@ -3231,7 +3253,8 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
         free,
         granted: [granted.plan, granted.planEndsAt, granted.exp, granted.allowance],
         paid: [paid.plan, paid.planEndsAt, paid.exp, paid.allowance],
-        pastDue: pastDue.plan,
+        pastDue: [pastDue.plan, pastDue.allowance],
+        unpaid: [unpaid.plan, unpaid.plan_allowance],
         unreadable: [unreadable.status, (unreadable.body as { readonly error: string }).error]
       },
       {
@@ -3240,7 +3263,8 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
         free: { status: 200, kid: "entitlement-1", plan: { id: "free", name: "Free", status: "none" }, planEndsAt: null, allowance: null, ver: 3, sub: "user-entitled", org: "org-entitled", services: ["inference", "speech", "maps"], lifetime: 1800, exp: free.exp },
         granted: [{ id: "plus_monthly", name: "Plus", status: "active" }, seconds(grantEnds), seconds(grantEnds), null],
         paid: [{ id: "pro_monthly", name: "Pro", status: "active" }, seconds(periodEnd), seconds(resetsAt), { unit: "usd_micros", granted: 90_000_000, remaining: 90_000_000, periodStart: seconds(now - 1000), resetsAt: seconds(resetsAt) }],
-        pastDue: { id: "pro_monthly", name: "Pro", status: "past_due" },
+        pastDue: [{ id: "pro_monthly", name: "Pro", status: "past_due" }, null],
+        unpaid: [{ id: "pro_monthly", name: "Pro", status: "canceled" }, null],
         unreadable: [503, "service_unavailable"]
       }
     ))
@@ -3656,6 +3680,17 @@ module node {
   import { mimeBoundaryPayload } from "./support/fakes/google-gmail.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
   import { registerClients, workerBindings } from "./support/worker.ts"
+
+  export function forwardedHref(script: string, html: string, address: string): string {
+    const attributes: Record<string, string> = {
+      "data-purpose": /data-purpose="([^"]*)"/.exec(html)?.[1] ?? "",
+      href: (/href="(intent:[^"]*)"/.exec(html)?.[1] ?? "").replaceAll("&amp;", "&")
+    }
+    const link = { getAttribute: (name: string) => attributes[name] ?? null, setAttribute: (name: string, value: string) => { attributes[name] = value } }
+    const at = new URL(address)
+    new Function("document", "location", "history", script)({ getElementById: () => link }, { hash: at.hash, search: at.search, pathname: at.pathname }, { replaceState: () => undefined })
+    return attributes.href ?? ""
+  }
 
   export async function readMailThroughClient(baseUrl: string, token: string, messageId: string) {
     const client = (beforeTheField: boolean) => createCloudClient({ baseUrl, credential: () => token, fetch: async (input, init) => {
@@ -4160,7 +4195,16 @@ module node {
       const signedBackIn = await signIn("attachment-owner@example.test")
       revokeListing = "grant"
       const disconnected = await get(folder, signedBackIn.access)
+      const schedule = async () => {
+        const answer = await worker.fetch(new Request(api + "/api/v1/calendar-reminders/device", { headers: otherDevice }), env)
+        return [answer.status, await answer.json()]
+      }
+      const unconnectedSchedule = await schedule()
+      await fixture.db.query(`INSERT INTO google_connections (key, state, revision, organization_id, user_id, subject, email, status, tokens, linked_at)
+        SELECT 'other-google', '{}'::jsonb, 1, organization_id, key, 'other-google-subject', 'attachment-other@example.test', 'Active', 'sealed', 1 FROM accounts WHERE key = $1`, [other.account.id])
+      const reconnectedSchedule = await schedule()
       return {
+        reminders: [unconnectedSchedule, reconnectedSchedule],
         arrivalResult, triage, search, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
         organization, grant, manifest, mailText, html, mime: [mime, mimeAttachment.status, mimeFile.dataBase64, mimeMalformed.status],
@@ -4174,7 +4218,7 @@ module node {
   }
 
 }
-import { decideForSignedInAccount, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment } from node
+import { decideForSignedInAccount, forwardedHref, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment } from node
 
 it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideForSignedInAccount())
@@ -4186,7 +4230,7 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Read complete mail text, open the selected named attachment and watch for new mail (spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up")', () => effect {
+it.live('Read complete mail text, open the selected named attachment and watch for new mail (spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up"; spec/cloud/index.md, "A device reminder follows the reviewed event occurrence")', () => effect {
   const got = try tryPromise(() => readSelectedAttachment())
   try check(() => assert.deepStrictEqual(
     {
@@ -4202,6 +4246,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       triage: got.triage,
       mailboxes: [got.mailboxes, got.deniedFolders, got.signedOut, got.disconnected],
       device: [got.refused, got.beforeDeviceRead, got.deviceStatus, got.deviceReceipt, got.changed, got.revoked],
+      reminders: got.reminders,
     },
     {
       arrivals: {
@@ -4268,6 +4313,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       },
       mailboxes: [[[200, true, "inbox", "", ["fixture-message", "automated-message"], null, "page-two"], [200, true, "trash", "subject:plan & dates", ["trashed-message"], { inboxUnread: 52, drafts: 7 }, "page-two"]], [409, 400], 401, 409],
       device: [[401, 409, 409], 1, 200, got.file, 409, 401],
+      reminders: [[200, { reminders: [], nextPage: null }], [409, { error: "google_connection_unavailable" }]],
     },
   ))
 }, 120_000)

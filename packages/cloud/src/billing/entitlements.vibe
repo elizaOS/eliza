@@ -1,5 +1,5 @@
 // spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"
-import { hasAllowance, termsOf } from "../../gen/cloud__billing__plans.effect.vibe"
+import { termsOf } from "../../gen/cloud__billing__plans.effect.vibe"
 import { spendableAt } from "../../gen/cloud__billing__allowance.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
 import { refused } from "../http/refusal.vibe"
@@ -8,7 +8,7 @@ import { newId } from "../shared/sealing.vibe"
 import { periodRows } from "../shared/metering.vibe"
 import { loadRow, type RowCorrupt } from "../store/rows.vibe"
 import { Store, type StoreFailure, toText, type Tx } from "../store/connection.vibe"
-import { readPolicy, type PolicyUnreadable, type Policy } from "./policy.vibe"
+import { fundingOf, readPolicy, type PolicyUnreadable, type Policy } from "./policy.vibe"
 import { wirePlanKey } from "./plans.vibe"
 
 module node {
@@ -41,7 +41,7 @@ const entitlementVersion = 3
 const entitlementLifetimeSeconds = 30 * 60
 const entitlementKeysMaxAgeSeconds = 60
 
-type PlanStatus = "active" | "past_due" | "none"
+type PlanStatus = "active" | "past_due" | "canceled" | "none"
 type EntitledService = Extract<Capability, "inference" | "speech" | "maps">
 
 interface PlanAllowanceClaim {
@@ -85,7 +85,7 @@ function seconds(millis: number): number {
 
 function planStatus(policy: Policy): PlanStatus {
   switch (policy.source) {
-    case "subscription": return policy.status === "Active" ? "active" : "past_due"
+    case "subscription": return policy.status === "Active" ? "active" : policy.status === "Unpaid" ? "canceled" : "past_due"
     case "grant": return "active"
     case "free": return "none"
     default: {
@@ -96,7 +96,7 @@ function planStatus(policy: Policy): PlanStatus {
 }
 
 effect function allowanceClaim(tx: Tx, organizationId: string, policy: Policy, now: number): (PlanAllowanceClaim | null)!(StoreFailure | RowCorrupt) {
-  if (!hasAllowance(policy.planKey)) return null
+  if (fundingOf(policy).inference !== "AllowanceThenCredits") return null
   const row = (try tx.query(
     "SELECT key FROM allowance_periods WHERE organization_id = $1 AND status = 'open' AND period_start <= $2 AND $2 < period_end ORDER BY period_end LIMIT 1",
     [organizationId, now]
