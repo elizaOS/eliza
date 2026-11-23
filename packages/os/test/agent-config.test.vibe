@@ -2,6 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { decodeLaunchDocument, decodeLaunchFrame } from "@elizaos/agent/launch"
+import { ownKeyMaxUnits } from "../gen/agent__host__launch.ts"
 import { AGENT_ASSETS, AgentConfigRefused, admitAgentBytes, admitAgentData, type AgentFile } from "../src/build/agent-config.vibe"
 import { scratch, writeTree } from "./support/scratch.vibe"
 
@@ -24,7 +25,7 @@ module node {
   }
 
   export type Answer =
-    | { readonly kind: "refused"; readonly reason: string }
+    | { readonly kind: "refused"; readonly cause: "Config"; readonly reason: string }
     | {
       readonly kind: "admitted"
       readonly service: string
@@ -44,7 +45,6 @@ module node {
     const out = execFileSync(java, ["-cp", compileAdapter(MAIN), MAIN], { input: asks.map((ask) => JSON.stringify(ask)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
     return out.trim().split("\n").map((line) => JSON.parse(line) as Answer)
   }
-
   /** @throws {Error} */
   export function launchOutcome(cli: string, root: string, frame: string): { readonly exit: number | null; readonly stateCreated: boolean } {
     const invoke = `import { runAgentCli } from ${JSON.stringify(cli)}; runAgentCli({ bundled: [] });`
@@ -78,11 +78,12 @@ const CHARACTER = { name: "Agent", system: "Answer briefly." }
 const POLICY = { schema: 1, actions: { allowed: ["REPLY"] }, plugins: { load: ["inbox"] } }
 const ACCOUNT = { userId: "user-1", organizationId: "org-1" }
 const WORKER = { runtimeDir: "agent/workflow-worker", executable: "worker.mjs", sha256: "a".repeat(64) }
+const OWN_KEY_HOST = { ...HOST, model: { backend: "own-key", ownKeyBaseUrl: "https://own.example/v1", ownKeySmall: "small", ownKeyLarge: "large" } }
 
 const files = (host: object, character: object = CHARACTER, policy: object = POLICY): Files =>
   ({ host: JSON.stringify(host), character: JSON.stringify(character), policy: JSON.stringify(policy) })
 
-const OWN_KEY = files({ ...HOST, model: { backend: "own-key", ownKeyBaseUrl: "https://own.example/v1", ownKeySmall: "small", ownKeyLarge: "large" } })
+const credentialFrame = (units: number) => ({ token: "launch-token", epoch: 1, credential: { version: 1, value: "k".repeat(units) } })
 
 const ADMITTED: readonly { readonly name: string; readonly files: Files; readonly ask: Omit<Ask, AgentFile> }[] = [
   {
@@ -111,7 +112,7 @@ const ADMITTED: readonly { readonly name: string; readonly files: Files; readonl
   },
   {
     name: "own key without a signed-in account",
-    files: OWN_KEY,
+    files: files(OWN_KEY_HOST),
     ask: { frame: { token: "launch-token", epoch: 1 } },
   },
   {
@@ -124,9 +125,9 @@ const ADMITTED: readonly { readonly name: string; readonly files: Files; readonl
     ask: { account: ACCOUNT },
   },
   {
-    name: "own key longer than the Agent credential slot",
-    files: OWN_KEY,
-    ask: { frame: { token: "launch-token", epoch: 1, credential: { version: 1, value: "k".repeat(2048) } } },
+    name: "own-key launch without a provider credential while signed in",
+    files: files(OWN_KEY_HOST),
+    ask: { account: ACCOUNT, frame: { token: "launch-token", epoch: 1 } },
   },
 ]
 
@@ -164,9 +165,21 @@ effect function admittedAnswer(answer: Answer | undefined) {
   return answer
 }
 
-it.effect('Start my agent with my character, policy and model: the service and the build admit the same files, and the agent accepts every ready launch with a fitting credential (spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Each data file is at most 256 KiB, and the host and policy files are schema 1"; spec/os/agentService/config.md, "The host file names a qualified service class and notification words of 1 to 200 characters"; spec/os/agentService/config.md, "The renderer\'s route list is admitted whole by the route gate\'s own rule"; spec/os/agentService/config.md, "The character, policy and launch settings are admitted exactly as the agent admits them"; spec/os/agentService/config.md, "The launch carries the active key\'s account and the staged worker, and never an agent id"; spec/os/agentService/config.md, "A ready launch is admitted unless its backend needs a fitting credential and the frame lacks one"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all")', effect () => {
+it.effect('Start my agent with my character, policy and model: the service and the build admit the same files, and the agent admits only ready launches with the required credential (spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Each data file is at most 256 KiB, and the host and policy files are schema 1"; spec/os/agentService/config.md, "The host file names a qualified service class and notification words of 1 to 200 characters"; spec/os/agentService/config.md, "The renderer\'s route list is admitted whole by the route gate\'s own rule"; spec/os/agentService/config.md, "The character, policy and launch settings are admitted exactly as the agent admits them"; spec/os/agentService/config.md, "The launch carries the active key\'s account and the staged worker, and never an agent id"; spec/os/agentService/config.md, "A ready launch is admitted unless its backend needs a fitting credential and the frame lacks one"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all")', effect () => {
   provide NodeServices.layer {
-    const answers = try Effect.try(() => project([...ADMITTED.map((entry) => ({ ...entry.files, ...entry.ask })), ...REFUSED.map((entry) => entry.files)]))
+    const provider = { ...files(OWN_KEY_HOST), account: ACCOUNT }
+    const invalidProvider = { ...files({ ...OWN_KEY_HOST, schema: 2 }), account: ACCOUNT }
+    const oversized = credentialFrame(ownKeyMaxUnits + 1)
+    const answers = try Effect.try(() => project([
+      ...ADMITTED.map((entry) => ({ ...entry.files, ...entry.ask })),
+      ...REFUSED.map((entry) => entry.files),
+      { ...provider, frame: credentialFrame(ownKeyMaxUnits - 1) },
+      { ...provider, frame: credentialFrame(ownKeyMaxUnits) },
+      { ...provider, frame: oversized },
+      { ...invalidProvider, frame: oversized },
+      invalidProvider,
+      { ...files({ ...HOST, cloud: { baseUrl: "https://cloud.example" } }), account: ACCOUNT, frame: oversized },
+    ]))
     for (const [index, entry] of ADMITTED.entries()) {
       const answer = try admittedAnswer(answers[index])
       const built = try buildVerdict(entry.files)
@@ -178,7 +191,7 @@ it.effect('Start my agent with my character, policy and model: the service and t
       assert.deepStrictEqual(document.account, entry.ask.account, entry.name)
       assert.deepStrictEqual(document.workflowWorker, entry.ask.workflowWorker, entry.name)
     }
-    const [full, record, ownKey, keyless, oversizedOwnKey] = ADMITTED.map((_, index) => answers[index])
+    const [full, record, ownKey, keyless, missingOwnKey] = ADMITTED.map((_, index) => answers[index])
     const fullAnswer = try admittedAnswer(full)
     assert.deepStrictEqual([fullAnswer.rendererGroups, fullAnswer.nativeGroups, fullAnswer.needsAccount], [1, 1, true])
     const fullDocument = try decodeLaunchDocument(fullAnswer.document)
@@ -206,16 +219,33 @@ it.effect('Start my agent with my character, policy and model: the service and t
     const keyFree = try decodeLaunchFrame(((try admittedAnswer(ownKey)).frame ?? "").trimEnd())
     assert.deepStrictEqual([keyFree.epoch, keyFree.credential, keyFree.storageKey], [1, undefined, undefined])
 
-    const oversized = try admittedAnswer(oversizedOwnKey)
-    const launchRoot = try scratch("oversized-own-key")
-    try writeTree(launchRoot, { "launch.json": oversized.document })
+    const missingProvider = try admittedAnswer(missingOwnKey)
+    const launchRoot = try scratch("missing-own-key")
+    try writeTree(launchRoot, { "launch.json": missingProvider.document })
     const agentCli = import.meta.resolve("@elizaos/agent/cli")
-    assert.deepStrictEqual(try Effect.try(() => launchOutcome(agentCli, launchRoot, oversized.frame ?? "")), { exit: 77, stateCreated: false })
+    assert.deepStrictEqual(try Effect.try(() => launchOutcome(agentCli, launchRoot, missingProvider.frame ?? "")), { exit: 77, stateCreated: false })
 
     for (const [index, entry] of REFUSED.entries()) {
       assert.strictEqual(answers[ADMITTED.length + index]?.kind, "refused", `the service admitted ${entry.name}`)
       assert.isString(try buildVerdict(entry.files), `the build admitted ${entry.name}`)
     }
+    const [below, at, over, badConfig, badConfigWithoutKey, cloud] = answers.slice(ADMITTED.length + REFUSED.length)
+    const admittedFrames = [below, at, cloud]
+    const expectedUnits = [ownKeyMaxUnits - 1, ownKeyMaxUnits, ownKeyMaxUnits + 1]
+    for (const [index, admitted] of admittedFrames.entries()) {
+      const answer = try admittedAnswer(admitted)
+      const wire = answer.frame ?? ""
+      const frame = try decodeLaunchFrame(wire.trimEnd())
+      assert.deepStrictEqual([frame.credential?.version, wire.match(/k{2,}/)?.[0].length], [1, expectedUnits[index]])
+    }
+    assert.deepStrictEqual(
+      [over, badConfig].map((answer) => answer?.kind === "refused" ? [answer.cause, Object.keys(answer).sort()] : answer?.kind),
+      [["Config", ["cause", "kind", "reason"]], ["Config", ["cause", "kind", "reason"]]],
+    )
+    assert.deepStrictEqual(badConfig, badConfigWithoutKey)
+    const providerReason = over?.kind === "refused" ? over.reason : ""
+    assert.isNotEmpty(providerReason)
+    assert.notStrictEqual(providerReason, badConfig?.kind === "refused" ? badConfig.reason : "")
   }
 }, 180_000)
 

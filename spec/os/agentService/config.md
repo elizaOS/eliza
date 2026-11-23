@@ -184,26 +184,48 @@ pure val providerVersionValues = Set(0, 1, 2)
 
 ### A ready launch is admitted unless its backend needs a fitting credential and the frame lacks one
 
-For a launch the service judged ready and an admitted frame, the agent
-returns its credential error when the backend needs a credential and the
-frame lacks one that fits. This includes a missing credential and a provider
-key longer than the own-key slot’s 1,024-character limit. Otherwise the agent admits the launch.
-An admitted frame never makes the agent refuse a ready launch as a
-configuration error.
+The service refuses an oversized own-key provider key as invalid launch
+configuration and keeps the active device key. It does this before
+writing or spawning the launch. Discovered by simulation: the Agent
+refuses an own-key launch when its frame carries more than 1,024 units
+in the provider key slot.
+
+For a launch that proceeds with an admitted frame, the Agent returns
+its credential error when the backend needs a credential and the
+frame lacks one that fits. Otherwise the Agent admits the launch.
+An admitted frame never makes the Agent refuse a ready launch as
+a configuration error.
 
 ```quint
+type FinalFrame = FrameReady({ launch: AgentLaunch, frame: Launch::LaunchFrame }) | FrameWithheld({ cause: Launch::BootFailure })
+pure def oversizedOwnKey(b: Launch::Backend, c: Launch::FrameCredential): bool =
+  Launch::isOwnKey(b) and Launch::hasCredential(c) and not(Launch::credentialFits(b, c))
+pure def finalFrame(v: StartVerdict, f: Launch::LaunchFrame): FinalFrame = match v {
+  | LaunchReady(r) =>
+      if (oversizedOwnKey(r.launch.document.backend, f.credential))
+        FrameWithheld({ cause: Launch::Config })
+      else FrameReady({ launch: r.launch, frame: f })
+  | LaunchWithheld(w) => FrameWithheld({ cause: w.cause })
+}
 pure def readyLaunchMatchesCredential(doc: Launch::LaunchDocument, f: Launch::LaunchFrame): bool = {
   val b = doc.backend
   val expected = if (Launch::needsCredential(b) and not(Launch::credentialFits(b, f.credential)))
     Launch::LaunchRefused({ cause: Launch::Credential }) else Launch::LaunchAdmitted
   Launch::launchVerdict(doc, f) == expected
 }
-pure def readyVerdictMatchesCredential(v: StartVerdict, f: Launch::LaunchFrame): bool = match v {
-  | LaunchReady(r) => readyLaunchMatchesCredential(r.launch.document, f)
-  | _ => true
+pure def lawReadyLaunchFollowsFrameCredential(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool = {
+  val v = startVerdict(d, cred, worker)
+  Launch::frameAdmitted(f) implies (match v {
+    | LaunchReady(r) => {
+        val oversized = oversizedOwnKey(r.launch.document.backend, f.credential)
+        match finalFrame(v, f) {
+          | FrameWithheld(w) => oversized and w.cause == Launch::Config
+          | FrameReady(ready) => not(oversized) and readyLaunchMatchesCredential(ready.launch.document, ready.frame)
+        }
+      }
+    | LaunchWithheld(_) => true
+  })
 }
-pure def lawReadyLaunchFollowsFrameCredential(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool =
-  Launch::frameAdmitted(f) implies readyVerdictMatchesCredential(startVerdict(d, cred, worker), f)
 pure val workerValues = Set(RP::NoLaunchWorker, RP::NamedWorker({ runtimeDir: "files/worker", executable: "worker", sha256: "w1" }))
 pure val credValues = {
   val active = { ...C::initial, lastVersion: 1, custody: C::Active({ version: 1, credentialId: "c1", account: { userId: "user1", organizationId: "org1" }, keyExpiresAt: 1000 }) }
