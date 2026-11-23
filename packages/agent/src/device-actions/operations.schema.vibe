@@ -8,10 +8,11 @@ import type { ReceiptOutcome } from "../../gen/agent__deviceActions.effect.vibe"
 import type { FamilySchemas, OperationOf, OperationSchema } from "./operation-schemas/family.vibe"
 import { personalFamilies } from "./operation-schemas/personal.schema.vibe"
 import { deviceOperations } from "./operation-schemas/device.schema.vibe"
+import { browserOperations } from "./operation-schemas/browser.vibe"
 
 export type { Classification, Evidence, FamilySchemas, OperationSchema } from "./operation-schemas/family.vibe"
 
-const families = { ...personalFamilies, ...deviceOperations } satisfies FamilySchemas
+const families = { ...personalFamilies, ...deviceOperations, ...browserOperations } satisfies FamilySchemas
 
 export type DeviceOperation = OperationOf<typeof families>
 export type DeviceOperationType = DeviceOperation["type"]
