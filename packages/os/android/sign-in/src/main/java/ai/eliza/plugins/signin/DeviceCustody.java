@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
@@ -19,7 +19,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class DeviceCustody implements SignInCustody {
-  private record Authority(DeviceCredentialStore store, DeviceKeyClient client, AccountSession session) {}
+  private record Authority(DeviceCredentialStore store, DeviceKeyClient client, AccountSession session, DeviceLease lease) {}
 
   private static final Map<String, Authority> AUTHORITIES = new HashMap<>();
   private static final ExecutorService DUTIES = Executors.newSingleThreadExecutor();
@@ -72,7 +72,7 @@ public final class DeviceCustody implements SignInCustody {
 
   public static CloudRequests.Custody cloud(Context context, String apiOrigin) {
     Authority authority = authority(context, apiOrigin);
-    return new CloudRequests.Custody(authority.store(), authority.session());
+    return new CloudRequests.Custody(authority.store(), authority.session(), authority.lease());
   }
 
   public static void reset(Context context, SignInRegistration registration) {
@@ -95,9 +95,11 @@ public final class DeviceCustody implements SignInCustody {
     }, DeviceCredentialStore.authorityDigest(apiOrigin), System::currentTimeMillis);
     DeviceKeyClient client = new DeviceKeyClient(URI.create(apiOrigin), store, Thread::sleep);
     store.onVerifyAccount(() -> DUTIES.execute(client::verifyAccount));
-    Authority created = new Authority(store, client, new AccountSession(store, client));
+    store.onRenewKey(() -> DUTIES.execute(client::renew));
+    Authority created = new Authority(store, client, new AccountSession(store, client), new DeviceLease(store, client, () -> DUTIES.execute(client::renewIfDue)));
     AUTHORITIES.put(apiOrigin, created);
     DUTIES.execute(client::settleDuties);
+    DUTIES.execute(client::renewIfDue);
     return created;
   }
 
@@ -153,16 +155,8 @@ public final class DeviceCustody implements SignInCustody {
   }
 
   @Override public Held held(Environment environment) {
-    Authority authority = authority(environment);
-    CredentialReader.Credential current = authority.store().current();
+    CredentialReader.Credential current = authority(environment).store().current();
     if (current == null) return null;
-    if (CredentialPolicy.renewalDue(authority.store().state())) {
-      Binding binding = binding(environment);
-      DUTIES.execute(() -> {
-        authority.client().renewKey(binding);
-        authority.client().settleDuties();
-      });
-    }
     return new Held(current.version(), current.credentialId(), current.value(), current.account(), current.keyExpiresAt());
   }
 
