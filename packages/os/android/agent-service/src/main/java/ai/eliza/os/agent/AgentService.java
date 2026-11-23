@@ -610,15 +610,10 @@ public class AgentService extends Service {
   }
 
   private static Map<String, String> brokerEnvironment(AgentConfig config) {
-    GoogleBroker broker = googleBroker;
-    if (!config.needsAccount() || broker == null) return Map.of();
-    try {
-      return broker.open().environment();
-    } catch (IOException | RuntimeException unavailable) {
-      Log.w(TAG, "The mail and calendar broker could not open, so the agent starts without managed Google reads", unavailable);
-      return Map.of();
-    }
+    return GoogleBroker.launchEnvironment(config.needsAccount(), googleBroker, unavailable ->
+      Log.w(TAG, "The mail and calendar broker could not open, so the agent starts without managed Google reads", unavailable));
   }
+
 
   private boolean owns(long launchEpoch) { return child != null && child.epoch == launchEpoch; }
 

@@ -3,6 +3,7 @@ package ai.eliza.os.agent;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 public interface GoogleBroker {
@@ -24,4 +25,15 @@ public interface GoogleBroker {
   }
 
   Endpoint open() throws IOException;
+
+  /** The process environment a launch is handed: the broker's address and bearer for a cloud launch whose broker opened, and nothing otherwise. */
+  static Map<String, String> launchEnvironment(boolean needsAccount, GoogleBroker broker, Consumer<Exception> unavailable) {
+    if (!needsAccount || broker == null) return Map.of();
+    try {
+      return broker.open().environment();
+    } catch (IOException | RuntimeException failed) {
+      unavailable.accept(failed);
+      return Map.of();
+    }
+  }
 }
