@@ -1,4 +1,4 @@
-// spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/routines.md, "A creation with an idempotency key creates at most one definition"
+// spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/routines.md, "A creation with an idempotency key creates at most one definition"; spec/assistant/routines.md, "A request from the conversation changes the one routine it names, and none when it names none or several"
 
 const Text = (most: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(most))
 const Minutes = (least: number, most: number) => Schema.Int.check(Schema.isBetween({ minimum: least, maximum: most }))
@@ -84,11 +84,13 @@ export const TodoRequest = Schema.Union([
 /** A to-do change the owner asks for. */
 export type TodoRequest = typeof TodoRequest.Type
 
+const RoutineWindows = Schema.Array(Schema.Literals(["morning", "afternoon", "evening", "night"])).check(Schema.isMinLength(1), Schema.isMaxLength(4))
+
 /** A routine the owner's client creates. */
 export const RoutineCreate = Schema.Struct({
   idempotencyKey: Text(256),
   title: Text(200),
-  windows: Schema.Array(Schema.Literals(["morning", "afternoon", "evening", "night"])).check(Schema.isMinLength(1), Schema.isMaxLength(4)),
+  windows: RoutineWindows,
 })
 /** A routine the owner's client creates. */
 export type RoutineCreate = typeof RoutineCreate.Type
@@ -102,3 +104,13 @@ export type RoutineUpdate = typeof RoutineUpdate.Type
 export const OccurrenceAnswer = Schema.Struct({ op: Schema.Literals(["complete", "skip", "snooze", "mute", "unmute"]) })
 /** An answer to a routine's current occurrence. */
 export type OccurrenceAnswer = typeof OccurrenceAnswer.Type
+
+/** A routine change the owner asks for in conversation. */
+export const RoutineRequest = Schema.Union([
+  Schema.Struct({ op: Schema.Literal("create"), title: Text(200), windows: RoutineWindows }),
+  Schema.Struct({ op: Schema.Literals(["pause", "resume", "archive", "delete"]), target: Text(200) }),
+  Schema.Struct({ op: OccurrenceAnswer.fields.op, target: Text(200) }),
+  Schema.Struct({ op: Schema.Literal("list") }),
+])
+/** A routine change the owner asks for in conversation. */
+export type RoutineRequest = typeof RoutineRequest.Type

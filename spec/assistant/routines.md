@@ -136,3 +136,26 @@ pure def alwaysReplyIsTheSavedDefinition(s: Routines): bool =
   (s.replied == DefinitionSaved implies s.repliedStatus == s.definition) and (s.replied == DefinitionDeleted implies s.definition == DefinitionAbsent)
 pure def sometimesDeletedAfterChange(s: Routines): bool = s.replied == DefinitionDeleted and s.definitions > 0
 ```
+
+## Story: Keep my habits from the conversation
+
+> As the owner, I want to add, pause, resume, delete and answer a routine
+> by telling the assistant, and a request that names no routine, or
+> several, to change nothing.
+
+### A request from the conversation changes the one routine it names, and none when it names none or several
+
+A routine is named by its id or its whole title, ignoring case. A routine
+added from a message is keyed by that message, so a repeated message adds
+it once, as "A creation with an idempotency key creates at most one
+definition" says. Pausing, resuming and archiving change its status, and
+completing, skipping, snoozing, muting and unmuting answer its occurrence
+as the owner's client does.
+
+```quint
+type RoutineNamed = NoRoutineNamed | OneRoutineNamed | SeveralRoutinesNamed
+pure def routineNamed(matches: int): RoutineNamed =
+  if (matches == 1) OneRoutineNamed else if (matches < 1) NoRoutineNamed else SeveralRoutinesNamed
+pure def lawOnlyOneNamedRoutineChanges(matches: int): bool = (routineNamed(matches) == OneRoutineNamed) iff (matches == 1)
+pure def lawSeveralNamedRoutinesAreAQuestion(matches: int): bool = (routineNamed(matches) == SeveralRoutinesNamed) iff (matches > 1)
+```

@@ -1,4 +1,4 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"
 import { Service, type EvaluatorRunResult, type IAgentRuntime, type Provider } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
 import { checkinKind, deliverCheckin } from "./checkin.vibe"
@@ -9,7 +9,7 @@ import { deliverFollowupTick, followupTickCron, followupTickKind } from "./follo
 import { deliverGoalCheckin, goalCheckinKind, ownerGoalsAction, ownerGoalsProvider } from "./goals.vibe"
 import { Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminderKind } from "./reminders.vibe"
-import { deliverRoutine, routineKind, routineRoutes } from "./routines.vibe"
+import { deliverRoutine, ownerRoutinesAction, ownerRoutinesProvider, routineKind, routineRoutes } from "./routines.vibe"
 import { ownerClockAt, ownerTimezoneEvaluator } from "./timezone.vibe"
 import { currentTodosProvider, todosAction } from "./todos.vibe"
 import { ownerTravelEvaluator } from "./travel.vibe"
@@ -104,8 +104,8 @@ export const personalAssistantPlugin = {
   init: (_config: Record<string, string>, runtime: IAgentRuntime) => {
     running = runtime
   },
-  actions: [ownerRemindersAction, ownerGoalsAction, todosAction],
-  providers: [ownerRemindersProvider, ownerGoalsProvider, currentTodosProvider, ownerClockProvider],
+  actions: [ownerRemindersAction, ownerGoalsAction, todosAction, ownerRoutinesAction],
+  providers: [ownerRemindersProvider, ownerGoalsProvider, currentTodosProvider, ownerRoutinesProvider, ownerClockProvider],
   evaluators: [ownerTimezoneEvaluator, ownerTravelEvaluator],
   services: [PersonalAssistantService, PersonalAssistantEvaluators],
   routes: [...routineRoutes(() => running), ...dossierRoutes(() => running)],
