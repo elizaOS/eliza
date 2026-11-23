@@ -62,11 +62,12 @@ lemma lawTheVocabularyListsEveryCapability_ensures(c: Capability)
     case BrowserSearchV1 => assert allCapabilities[43] == c;
     case BrowserTabsV1 => assert allCapabilities[44] == c;
     case BrowserTabsCloseAllV1 => assert allCapabilities[45] == c;
-    case BrowserFindV1 => assert allCapabilities[46] == c;
-    case BrowserHistoryV1 => assert allCapabilities[47] == c;
-    case BrowserOpenNewTabV1 => assert allCapabilities[48] == c;
-    case FilesShownTargetV1 => assert allCapabilities[49] == c;
-    case TelephonyViewsV1 => assert allCapabilities[50] == c;
+    case BrowserTabsShowV1 => assert allCapabilities[46] == c;
+    case BrowserFindV1 => assert allCapabilities[47] == c;
+    case BrowserHistoryV1 => assert allCapabilities[48] == c;
+    case BrowserOpenNewTabV1 => assert allCapabilities[49] == c;
+    case FilesShownTargetV1 => assert allCapabilities[50] == c;
+    case TelephonyViewsV1 => assert allCapabilities[51] == c;
   }
 }
 
