@@ -20,6 +20,7 @@ import {
   type Chain,
   type Hash,
   type Hex,
+  isHash,
   keccak256,
   type SendTransactionParameters,
   type WalletClient,
@@ -175,8 +176,9 @@ export interface EvmSendOutcome {
 /**
  * Signs locally, then sends the raw transaction. The hash of the signed bytes
  * is known before the send. An RPC error can come from a gateway or a fallback
- * after an upstream node accepted the same signed bytes. Return an uncertain
- * outcome with the hash after a send error. Errors before the send still throw.
+ * after an upstream node accepted the same signed bytes. Return the local
+ * hash as uncertain unless the provider acknowledges those bytes. Errors
+ * before the send still throw.
  */
 export async function sendEvmTransaction(
   walletClient: WalletClient,
@@ -186,18 +188,24 @@ export async function sendEvmTransaction(
   const client: WalletClient = {
     ...walletClient,
     async sendRawTransaction(request) {
+      const hash = keccak256(request.serializedTransaction);
+      let failure = "RPC did not acknowledge the signed transaction hash";
       try {
-        return await walletClient.sendRawTransaction(request);
+        const acknowledged = await walletClient.sendRawTransaction(request);
+        if (
+          typeof acknowledged === "string" &&
+          isHash(acknowledged) &&
+          acknowledged.toLowerCase() === hash
+        ) {
+          return hash;
+        }
       } catch (error) {
-        const hash = keccak256(request.serializedTransaction);
-        sendUncertain = true;
-        // error-policy:J2 the signed transaction may be on the node; its outcome is unknown.
-        logger.warn(
-          { hash, error: error instanceof BaseError ? error.shortMessage : "Unknown RPC error" },
-          "[plugin-wallet] EVM send outcome unconfirmed"
-        );
-        return hash;
+        failure = error instanceof BaseError ? error.shortMessage : "Unknown RPC error";
       }
+      // error-policy:J2 the signed transaction may be on the node; its outcome is unknown.
+      sendUncertain = true;
+      logger.warn({ hash, error: failure }, "[plugin-wallet] EVM send outcome unconfirmed");
+      return hash;
     },
   };
   const hash = await sendTransaction(client, params);

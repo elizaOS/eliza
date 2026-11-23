@@ -6,7 +6,7 @@
  * 10^18, and keep the 18-decimal behaviour unchanged.
  */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import type { Chain, PublicClient, WalletClient } from "viem";
+import { type Chain, keccak256, type PublicClient, type WalletClient } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { mainnet, tempo } from "viem/chains";
 import { describe, expect, it, vi } from "vitest";
@@ -40,7 +40,7 @@ describe("TransferAction.transfer native value", () => {
     const walletClient = {
       account: { ...ACCOUNT, signTransaction },
       prepareTransactionRequest: async (params: unknown) => params,
-      sendRawTransaction: async () => "0xabc" as const,
+      sendRawTransaction: async () => keccak256("0x02"),
     };
     const walletProvider = {
       getWalletClient: () => walletClient as unknown as WalletClient,

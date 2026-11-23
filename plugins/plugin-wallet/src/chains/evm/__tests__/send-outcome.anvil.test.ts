@@ -35,7 +35,23 @@ const ANVIL_URL = `http://127.0.0.1:${ANVIL_PORT}`;
 const TOKEN = "0x00000000000000000000000000000000000e1a20" as Address;
 const TOKEN_CODE = "0x601260005260206000f3" as Hex;
 
-type SendMode = "pass" | "delay" | "reject" | "duplicate" | "gateway-error";
+type SendMode =
+  | "pass"
+  | "delay"
+  | "reject"
+  | "duplicate"
+  | "gateway-error"
+  | "missing-hash"
+  | "null-hash"
+  | "invalid-hash"
+  | "different-hash"
+  | "uppercase-hash";
+const invalidAcknowledgements: Partial<Record<SendMode, { readonly result?: Hex | null }>> = {
+  "missing-hash": {},
+  "null-hash": { result: null },
+  "invalid-hash": { result: "0x1234" },
+  "different-hash": { result: `0x${"a".repeat(64)}` },
+};
 let sendMode: SendMode = "pass";
 let anvil: ChildProcess | undefined;
 let proxy: http.Server | undefined;
@@ -94,6 +110,16 @@ function startProxy(): Promise<string> {
           id,
           error: { code: -32603, message: "Upstream response timed out" },
         });
+      }
+      const invalidAcknowledgement = invalidAcknowledgements[sendMode];
+      if (isSend && invalidAcknowledgement !== undefined) {
+        const { id } = JSON.parse(body) as { id: number };
+        text = JSON.stringify({ jsonrpc: "2.0", id, ...invalidAcknowledgement });
+      }
+      if (isSend && sendMode === "uppercase-hash") {
+        const answer = JSON.parse(text) as { result: Hex };
+        answer.result = `0x${answer.result.slice(2).toUpperCase()}`;
+        text = JSON.stringify(answer);
       }
       // The node has the transaction now; only its answer is late.
       if (isSend && sendMode === "delay") await new Promise((r) => setTimeout(r, 5_000));
@@ -324,8 +350,15 @@ describe.skipIf(!HAS_ANVIL)("EVM send outcome after the node accepted the transa
     expect(confirmed?.values?.walletActionSucceeded).toBe(false);
   }, 30_000);
 
-  it.each(["duplicate", "gateway-error"] as const)(
-    "keeps a mined transfer unconfirmed after a %s RPC error",
+  it.each([
+    "duplicate",
+    "gateway-error",
+    "missing-hash",
+    "null-hash",
+    "invalid-hash",
+    "different-hash",
+  ] as const)(
+    "keeps a mined transfer unconfirmed after a %s RPC response",
     async (mode) => {
       const runtime = createRuntime();
       const service = routerFor(runtime);
@@ -380,21 +413,29 @@ describe.skipIf(!HAS_ANVIL)("EVM send outcome after the node accepted the transa
     expect(metadata.sendUncertain).toBe(true);
   }, 30_000);
 
-  it("reports a transfer with a prompt answer as submitted, not unconfirmed", async () => {
-    const runtime = createRuntime();
-    const service = routerFor(runtime);
-    const result = await service.routeWalletAction({
-      subaction: "transfer",
-      chain: "foundry",
-      fromToken: "ETH",
-      amount: "1",
-      recipient: ANVIL_ADDRESS_2,
-      mode: "execute",
-      dryRun: false,
-    });
-    expect(result.ok).toBe(true);
-    const metadata = metadataOf(result);
-    expect(metadata.confirmationStatus).toBeUndefined();
-    expect(metadata.sendUncertain).toBeUndefined();
-  }, 30_000);
+  it.each(["pass", "uppercase-hash"] as const)(
+    "reports the transfer as submitted after a matching %s acknowledgement",
+    async (mode) => {
+      const runtime = createRuntime();
+      const service = routerFor(runtime);
+      sendMode = mode;
+      const result = await service.routeWalletAction({
+        subaction: "transfer",
+        chain: "foundry",
+        fromToken: "ETH",
+        amount: "1",
+        recipient: ANVIL_ADDRESS_2,
+        mode: "execute",
+        dryRun: false,
+      });
+      expect(result.ok).toBe(true);
+      const metadata = metadataOf(result);
+      expect(metadata.confirmationStatus).toBeUndefined();
+      expect(metadata.sendUncertain).toBeUndefined();
+      const hash = (result.ok ? result.result.transactionHash : undefined) as Hex;
+      const mined = await chainClient.getTransaction({ hash });
+      expect(mined.hash).toBe(hash);
+    },
+    30_000
+  );
 });
