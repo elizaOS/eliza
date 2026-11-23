@@ -4763,7 +4763,14 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
   try write("packages/core/src/catalog/curated/connectors/charlie.json", { id: "charlie", name: "Charlie", kind: "connector", subtype: "email", render: { group: "connector" }, channels: ["telegram"] })
   try write("packages/core/src/catalog/curated/notes.txt", { id: "ignored" })
 
-  const catalogRun = try host(() => runNode({ script: generateInChild, args: [JSON.stringify(authoredFeatures)], cwd: sourceDir, vibe: true, timeoutMs: 120_000 }))
+  const catalogProject = `${sourceDir}/tsconfig.catalog-test.json`
+  try host(() => writeJsonAtomic(catalogProject, {
+    extends: "./tsconfig.build.json", include: [], files: ["src/catalog/generate.vibe", "src/utils/atomic-json.vibe"],
+  }))
+  const catalogRun = try host(() => runNode({
+    script: generateInChild, args: [JSON.stringify(authoredFeatures)], cwd: sourceDir,
+    env: { VIBELANG_PROJECT: catalogProject }, vibe: true, timeoutMs: 120_000,
+  }))
   const report = try Effect.try({ try: () => JSON.parse(catalogRun.status === 0 ? catalogRun.stdout : "") as unknown, catch: () => catalogRun })
   const snapshots = try Schema.decodeUnknownEffect(Schema.Struct({ base: Schema.Unknown, features: Schema.Unknown, duplicate: Schema.Unknown, broken: Schema.Unknown, retiredApp: Schema.Unknown, conflict: Schema.Unknown }))(report)
   const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
