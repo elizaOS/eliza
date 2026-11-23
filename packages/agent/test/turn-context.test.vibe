@@ -1,9 +1,7 @@
 // spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"
 import { assert, it } from "@effect/vitest"
-import {
-  comparePeer, decodeBrowserPage, decodeObservation, decodeVoiceUiContext, encodeTurnContext, learnPeer, notLearned, readTurnContext,
-  sendsOptionalFields, statusRead, statusReadFailed, type Observation, type PeerSupport, type TurnContext,
-} from "../src/conversation/turn-context.schema.vibe"
+import { decodeBrowserPage, decodeObservation, decodeVoiceUiContext, encodeTurnContext, readTurnContext, type Observation, type TurnContext } from "../src/conversation/turn-context.schema.vibe"
+import { comparePeer, learnPeer, notLearned, sendsOptionalFields, statusRead, statusReadFailed, type PeerSupport } from "../src/client/index.vibe"
 import { call, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 const calendar: Observation = {
