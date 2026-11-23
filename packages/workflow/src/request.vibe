@@ -1,13 +1,17 @@
-// spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner's words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"
+// spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner's words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"
 import { incomingMessagePersistenceSnapshot, unwrapUserMessageText, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { readTurnContext } from "@elizaos/agent"
-import { bindToCommand, resolveWorkflow, type CommandBinding, type ProposedWorkflowChange, type WorkflowCommand } from "../gen/workflow__lifecycle.effect.vibe"
+import {
+  bindToCommand, referenceAnswer, resolveWorkflow, searchKeeps, searchScore,
+  type CommandBinding, type ProposedWorkflowChange, type ReferenceOp, type WorkflowCommand,
+} from "../gen/workflow__lifecycle.effect.vibe"
 import type { WorkflowRefused, WorkflowService } from "./service/workflows.vibe"
 
 module edge {
   const courtesy = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
   const end = String.raw`(?:,?\s+(?:please|for\s+me))?[.!?]*$`
-  const name = String.raw`["“'‘]?([\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`
+  const name = String.raw`(["“'‘]?[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`
+  const closingQuote: Readonly<Partial<Record<string, RegExp>>> = { '"': /["”]$/u, "“": /["”]$/u, "'": /['’]$/u, "‘": /['’]$/u }
   const descriptiveWord = "(?:this|that|these|those|it|one|ones|the|my|last|latest|newest|new|old|oldest|older|newer|first|second|other|another|current|same|previous|recent|most|earlier|above|below|only|just|made|created|added)"
   const describesNotNames = new RegExp(`^${descriptiveWord}(?:\\s+${descriptiveWord})*$`, "iu")
   const pronounClause = /^(?:i|we|you|they|it)(?:['’](?:ve|d|ll|m|re|s))?\s+(?:just|recently|earlier|already|today|yesterday|made|make|created|create|added|add|set|setup|built|build|wrote|write|have|had|did|do|was|were|is|are|asked|told|mentioned|named|called|started|use|used|got|showed|saw)\b/iu
@@ -24,8 +28,12 @@ module edge {
     | { readonly op: "remove"; readonly workflowName: string }
     | { readonly op: "list" }
 
+  const fullStop = /[.]+$/u
+
   function nameOf(value: string | undefined): string | undefined {
-    const trimmed = value?.trim().replace(/[.]+$/u, "")
+    const written = value?.trim().replace(fullStop, "")
+    const closing = written === undefined ? undefined : closingQuote[written.charAt(0)]
+    const trimmed = (closing === undefined || written === undefined ? written : written.slice(1).replace(closing, ""))?.replace(fullStop, "")
     if (!trimmed || trimmed.length > 80 || notAName.test(trimmed)) return undefined
     if (/^(?:the|my|a|an)$/iu.test(trimmed) || /^workflows?$/iu.test(trimmed)) return undefined
     return describesNotNames.test(trimmed) || pronounClause.test(trimmed) ? undefined : trimmed
@@ -119,14 +127,14 @@ import { authoredWorkflowRequest, createdOn, firstValidZone, nameMatchTier, norm
 export { normalizeWorkflowName }
 
 export type WorkflowView = {
-  readonly id: string; readonly name: string; readonly active: boolean; readonly versionId: string; readonly createdAt: string; readonly updatedAt: string
-  readonly removed: boolean; readonly origin: string; readonly steps: readonly { readonly label: string }[]
+  readonly id: string; readonly name: string; readonly description: string; readonly active: boolean; readonly versionId: string; readonly createdAt: string; readonly updatedAt: string
+  readonly removed: boolean; readonly origin: string; readonly steps: readonly { readonly id: string; readonly label: string }[]
 }
 
 export error WorkflowReferenceRefused { code: string; text: string; userFacingText: string; retryable: boolean; data: Record<string, unknown> }
 
 export interface ReferenceOptions {
-  readonly removed: boolean
+  readonly op: ReferenceOp
   readonly strict: boolean
   readonly ownerWords: boolean
   readonly timeZone: string
@@ -138,7 +146,7 @@ export function ownerZone(runtime: IAgentRuntime, message: Memory): string {
 }
 
 export effect function ownerWords(message: Memory): string!! {
-  const bound = try (Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => null)
+  const bound = (Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => null)
   return bound === null ? "" : unwrapUserMessageText(bound ?? message)
 }
 
@@ -161,6 +169,18 @@ export function commandBinding(words: string, proposed: ProposedWorkflowChange):
   return { binding: bindToCommand(command === undefined ? "NoCommand" : commands[command.op], proposed), names: commandNames(command) }
 }
 
+export function searchWorkflows(workflows: readonly WorkflowView[], query: string): WorkflowView[] {
+  const terms = query.toLowerCase().split(/\s+/).filter((term) => term !== "")
+  return workflows
+    .map((workflow) => {
+      const haystack = `${workflow.name} ${workflow.description}`.toLowerCase()
+      return { workflow, score: searchScore(terms.map((term) => haystack.includes(term))) }
+    })
+    .filter(({ score }) => searchKeeps(score))
+    .sort((a, b) => b.score - a.score || a.workflow.id.localeCompare(b.workflow.id))
+    .map(({ workflow }) => workflow)
+}
+
 function quoted(workflows: readonly WorkflowView[], timeZone: string): string {
   const counts = new Map<string, number>()
   for (const workflow of workflows) counts.set(normalizeWorkflowName(workflow.name), (counts.get(normalizeWorkflowName(workflow.name)) ?? 0) + 1)
@@ -177,16 +197,27 @@ function refusal(code: string, text: string, userFacingText: string, data: Recor
   return new WorkflowReferenceRefused({ code, text, userFacingText, retryable, data })
 }
 
+effect function answeredByState(workflow: WorkflowView, op: ReferenceOp): WorkflowView!WorkflowReferenceRefused {
+  const label = `“${workflow.name}”`
+  const found = identities([workflow])
+  switch (referenceAnswer(op, workflow.removed)) {
+    case "ActOnWorkflow": return workflow
+    case "NotRemovedAnswer": throw refusal("WORKFLOW_NOT_REMOVED", `${label} is not removed. Nothing was changed.`, `${label} is not removed.`, { workflows: found }, false)
+    case "AlreadyRemovedAnswer": throw refusal("WORKFLOW_REMOVED", `${label} is already removed. Nothing was changed.`, `${label} is already removed.`, { workflows: found }, false)
+    case "RestoreFirstAnswer": throw refusal("WORKFLOW_REMOVED", `${label} was removed. Nothing was changed. Use action=restore_removed first.`, `${label} was removed. Restore it before you change or run it.`, { workflows: found }, false)
+  }
+}
+
 export effect function resolveWorkflowReference(
   service: WorkflowService, reference: { readonly workflowId?: string; readonly workflowName?: string }, options: ReferenceOptions,
 ): WorkflowView!(WorkflowRefused | WorkflowReferenceRefused) {
   const { workflowId, workflowName } = reference
-  const detailed = workflowId === undefined ? undefined : (try (service.detail(workflowId) catch effect (refused) => {
+  const removed = options.op === "RestoreReference"
+  const loaded = workflowId === undefined ? undefined : ((service.detail(workflowId) catch effect (refused) => {
     if (refused.status !== 404) throw refused
     return undefined
   })) as WorkflowView | undefined
-  const loaded = detailed?.removed === options.removed ? detailed : undefined
-  const all = (try service.list(options.removed)) as WorkflowView[]
+  const all = (try service.list(removed)) as WorkflowView[]
   const source = workflowName ?? workflowId
   const tiered = source === undefined ? [] : all.map((workflow) => ({ workflow, tier: nameMatchTier(workflow.name, source) }))
   const inTier = (wanted: "exact" | "bare" | "partial") => tiered.filter(({ tier }) => tier === wanted).map(({ workflow }) => workflow)
@@ -201,8 +232,8 @@ export effect function resolveWorkflowReference(
   const resolution = resolveWorkflow(loaded !== undefined, workflowName !== undefined, source !== undefined, options.ownerWords,
     loaded !== undefined && (workflowName === undefined || nameMatchTier(loaded.name, workflowName) !== undefined),
     full.length, full.some(({ id }) => id === loaded?.id), partial.length, options.strict)
-  if (resolution === "RefResolved" && chosen !== undefined) return chosen
-  const kind = options.removed ? "removed workflow" : "workflow"
+  if (resolution === "RefResolved" && chosen !== undefined) return try answeredByState(chosen, options.op)
+  const kind = removed ? "removed workflow" : "workflow"
   const listed = quoted(all, options.timeZone)
   switch (resolution) {
     case "RefMismatch":

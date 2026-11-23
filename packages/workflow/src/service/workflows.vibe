@@ -21,22 +21,14 @@ import type { GeneratedEntry, GeneratedWait } from "../worker/engine.vibe"
 import { WorkflowStoreUnavailable, workflowStore, type ApprovalRow, type DefinitionRow, type ReceiptRow, type RunEvent, type RunRow, type StoredDefinition } from "./store.vibe"
 import type { WorkflowHost, WorkflowWorkerConnection } from "./host.vibe"
 
-/** The catalog revision a typed draft is authored against. */
 export const PHONE_CATALOG_REVISION = "phone-workflow-catalog-6"
-/** The engine revision every typed save receipt binds. */
 export const PHONE_COMPILER_REVISION = "typed-workflow-engine-1"
-/** How long a pending device approval stays reviewable. */
 const APPROVAL_LIFETIME_MS = 24 * 3_600_000
-/** The run output text of an occurrence that came due after its window. */
 const TYPED_MISSED_TEXT = "The scheduled time passed while the agent was not running. This occurrence did not run and will not run later."
-/** The run output text of an occurrence skipped behind an unfinished run. */
 const TYPED_OVERLAP_TEXT = "An earlier run of this workflow was still active. This occurrence did not run."
-/** The metadata key marking an untyped definition whose generated code was checked. */
 const GENERATED_METADATA_KEY = "elizaGeneratedWorkflowV1"
-/** The run output text of a scheduled run the agent stopped before starting. */
 const TYPED_STOPPED_TEXT = "The agent stopped before this scheduled run started. Nothing ran, and it will not run later."
 
-/** A request the workflow routes refuse, with the bounded identity a client may match. */
 export error WorkflowRefused {
   status: number
   message: string
@@ -50,7 +42,6 @@ export error WorkflowRefused {
 type Bag = Record<string, unknown>
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
-/** The wire version identity of a definition version. */
 export function versionId(version: number): string {
   return `v${version}`
 }
@@ -92,7 +83,6 @@ const statusOf: Readonly<Record<X.ExecutionPhase, string>> = {
   WaitingApproval: "waiting-approval", WorkerUncertain: "running", ExecutionDone: "finished", ExecutionCancelled: "cancelled", ExecutionFailed: "failed",
 }
 
-/** The typed catalog this agent advertises: device operations only with an enrolled phone, model drafts only with a text model. */
 export function phoneWorkflowCatalog(modelAvailable: boolean, deviceAvailable: boolean) {
   const device = (reason: string, requiredDeviceProtocol?: number) => ({
     available: deviceAvailable, ...(deviceAvailable ? {} : { reason }), ...(requiredDeviceProtocol === undefined ? {} : { requiredDeviceProtocol }),
@@ -127,10 +117,8 @@ export function phoneWorkflowCatalog(modelAvailable: boolean, deviceAvailable: b
   }
 }
 
-/** The opened workflow service of one agent. */
 export type WorkflowService = Effect.Success<ReturnType<typeof openWorkflows>>
 
-/** Opens the workflow service over its host: the store, the pinned worker, the device bridge, the model and the scheduler. */
 export effect function openWorkflows(host: WorkflowHost) {
   const store = workflowStore(host.sql)
   const owner = host.owner
@@ -179,7 +167,7 @@ export effect function openWorkflows(host: WorkflowHost) {
     return {
       id: row.id, name: row.name, description: row.description, active: row.admission.active, removed: row.lifecycleState.removed,
       triggerCleanup: row.lifecycleState.removed && !row.lifecycleState.cleaned ? "pending" : "complete", versionId: versionId(row.admission.version),
-      steps: generated === undefined ? row.spec.steps.map((step) => ({ label: stepLabel(step) })) : generated.calls.map((call) => ({ label: `${call.method}: ${call.id}` })), metadata, origin: row.origin, createdAt: row.createdAt, updatedAt: row.updatedAt,
+      steps: generated === undefined ? row.spec.steps.map((step) => ({ id: step.id, label: stepLabel(step) })) : generated.calls.map((call) => ({ id: call.id, label: `${call.method}: ${call.id}` })), metadata, origin: row.origin, createdAt: row.createdAt, updatedAt: row.updatedAt,
     }
   }
 
@@ -819,6 +807,12 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     running.set(runId, fiber)
   }
 
+  effect function settle(runId: string) {
+    const fiber = running.get(runId)
+    if (fiber !== undefined) try Fiber.join(fiber)
+    return runView(try runOf(runId))
+  }
+
   effect function freshRun(definition: DefinitionRow, serial: number, fields: { readonly submissionId?: string; readonly input: Bag; readonly occurrence?: RunRow["occurrence"]; readonly hostedDigest?: Bag }): RunRow!WorkflowRefused {
     const at = try now
     const execution = try mapError(X.apply(X.initial, { type: "admitRun", runId: serial }), () => new WorkflowRefused({ status: 409, message: "The run could not be admitted" }))
@@ -1340,7 +1334,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
 
   return {
     host, store, owner, lock, now, db, status, catalog, validate, generate, draftSpec, save, saveReceipt, list, detail, activation, metadata, metadataReceipt, lifecycle, lifecycleReceipt,
-    run, submit, launch, submission, executions, execution, cancel, approvals, decide, phoneReview, arm, fire, start, stop, definitionOf, writeDefinition, admitted,
+    run, submit, launch, settle, submission, executions, execution, cancel, approvals, decide, phoneReview, arm, fire, start, stop, definitionOf, writeDefinition, admitted,
     project, runOf, updateRun, executed, persist, finishApprovals, freshRun, definitionView, runView, recordOccurrence, deviceProtocol, refuse,
     admissionStep, admissionState, lifecycleStep, lifecycleOf, executionStep, executionState, approvalStep, approvalState, signal, runEvents, revisions, restoreRevision, evaluationSuite,
     generatedStep, generatedState, checkSource, generatedActivation,

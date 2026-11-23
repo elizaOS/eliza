@@ -43,10 +43,8 @@ module browser {
 }
 import { encode, run, sameJson, sha256 } from browser
 
-/** A Notes response that breaks the contract, or a refusal the agent reported. */
 export error NotesClientRefused { message: string }
 
-/** How the client reaches the agent: the host's authorized fetch. */
 export interface NotesTransport {
   fetch<T = unknown>(
     path: string,
@@ -55,7 +53,6 @@ export interface NotesTransport {
   ): Promise<T>
 }
 
-/** A view capability's committed result, with the exact target of a mutation. */
 export interface NotesInteractResult {
   success: true
   text: string
@@ -65,7 +62,6 @@ export interface NotesInteractResult {
   target?: { id: string; revision: number }
 }
 
-/** The view capabilities the client may call. */
 export const NOTES_CAPABILITY_IDS: ReadonlySet<string> = new Set(["get-notes-trash", "restore-note", "get-notes", "get-note", "create-note", "update-note", "delete-note", "clear-notes"])
 
 const mutations: ReadonlySet<string> = new Set(["create-note", "update-note", "delete-note", "restore-note"])
@@ -137,7 +133,6 @@ effect function brokerResult(value: unknown, capability: string, params?: Record
   }
 }
 
-/** One browser-safe Notes client over the host's authorized transport. */
 export function createNotesClient(api: NotesTransport) {
   async function request(path: string, body: unknown, signal?: AbortSignal, options?: { skipResume?: boolean }): Promise<unknown> {
     signal?.throwIfAborted()
@@ -180,10 +175,8 @@ export function createNotesClient(api: NotesTransport) {
   }
 }
 
-/** The client over one host transport. */
 export type NotesClient = ReturnType<typeof createNotesClient>
 
-/** A link from a saved record back to the voice note recording its draft came from. */
 export interface NoteOrigin {
   version: 1
   noteId: string
@@ -191,20 +184,16 @@ export interface NoteOrigin {
   revision: string
 }
 
-/** A link from a saved record back to the canonical note its draft came from, with the authored revision reviewed. */
 export interface RecordNoteOrigin {
   version: 2
   noteId: string
   revision: string
 }
 
-/** Either link kind. */
 export type NoteLink = NoteOrigin | RecordNoteOrigin
 
-/** The record a link is kept for. */
 export type NoteOriginKind = "event" | "reminder"
 
-/** A link resolved against the current notes: found only when exactly one note still matches. */
 export type NoteLinkResolution = { status: "missing" } | { status: "found"; origin: NoteLink; note: Record<string, unknown> }
 
 function controlFree(value: unknown, max: number): value is string {
@@ -213,7 +202,6 @@ function controlFree(value: unknown, max: number): value is string {
 
 const hexRevision = /^[a-f0-9]{64}$/
 
-/** The exact fields of a recording link, or undefined. */
 export function noteOriginOf(value: unknown): NoteOrigin | undefined {
   if (typeof value !== "object" || value === null || !("version" in value) || value.version !== 1) return undefined
   const noteId = "noteId" in value ? value.noteId : undefined
@@ -223,7 +211,6 @@ export function noteOriginOf(value: unknown): NoteOrigin | undefined {
     ? { version: 1, noteId, audioId, revision } : undefined
 }
 
-/** The exact fields of a canonical record link, or undefined. */
 export function recordNoteOriginOf(value: unknown): RecordNoteOrigin | undefined {
   if (typeof value !== "object" || value === null || !("version" in value) || value.version !== 2) return undefined
   const noteId = "noteId" in value ? value.noteId : undefined
@@ -231,27 +218,22 @@ export function recordNoteOriginOf(value: unknown): RecordNoteOrigin | undefined
   return controlFree(noteId, 128) && typeof revision === "string" && hexRevision.test(revision) ? { version: 2, noteId, revision } : undefined
 }
 
-/** The exact fields of either link kind, or undefined. */
 export function noteLinkOf(value: unknown): NoteLink | undefined {
   return noteOriginOf(value) ?? recordNoteOriginOf(value)
 }
 
-/** SHA-256 of a note's authored fields: ID, title, body and format; timestamps and color are left out. */
 export function recordNoteRevision(note: { id: string; title?: unknown; body?: unknown; format?: unknown }): Promise<string> {
   return sha256(encode([note.id, String(note.title ?? ""), String(note.body ?? ""), note.format ?? null]))
 }
 
-/** The link for a canonical note record as it is now. */
 export async function recordNoteOriginFor(note: { id: string; title?: unknown; body?: unknown; format?: unknown }): Promise<RecordNoteOrigin | undefined> {
   return recordNoteOriginOf({ version: 2, noteId: note.id, revision: await recordNoteRevision(note) })
 }
 
-/** The key one link is kept under; a repeating event's occurrences share their series' link. */
 export function noteOriginKey(kind: NoteOriginKind, id: string): string {
   return `${kind}:${kind === "event" ? id.replace(/:occ:-?\d+$/, "") : id}`
 }
 
-/** A link resolved against the current notes; a recording link also needs the same recording. */
 export function resolveNoteLink(value: unknown, notes: readonly unknown[]): NoteLinkResolution {
   const origin = noteLinkOf(value)
   if (origin === undefined) return { status: "missing" }
@@ -265,19 +247,15 @@ export function resolveNoteLink(value: unknown, notes: readonly unknown[]): Note
   return { status: "found", origin, note }
 }
 
-/** The current title of a resolved note for display only, with control characters collapsed. */
 export function noteOriginTitle(note: unknown, fallback = "Voice note"): string {
   const title = typeof note === "object" && note !== null && "title" in note && typeof note.title === "string" ? note.title : ""
   return title.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 120) || fallback
 }
 
-/** Whether a draft is an event or a reminder. */
 export type NoteScheduleKind = "event" | "reminder"
 
-/** The longest draft text a note may hand to Calendar. */
 export const NOTE_SCHEDULE_TEXT_LIMIT = 4000
 
-/** A reviewed Calendar event or reminder draft from one note: only text and a back-link; nothing is scheduled until the owner saves it. */
 export interface NoteScheduleDraft {
   kind: NoteScheduleKind
   title: string
@@ -285,7 +263,6 @@ export interface NoteScheduleDraft {
   origin: RecordNoteOrigin
 }
 
-/** A draft, or why the note cannot make one. */
 export type NoteScheduleDraftResult =
   | { status: "ready"; draft: NoteScheduleDraft }
   | { status: "empty" | "too-long" | "invalid"; message: string }
@@ -296,7 +273,6 @@ function openItems(value: NoteJson | undefined): string[] {
     && typeof item.t === "string" && item.t.trim() !== "" ? [item.t.trim()] : [])
 }
 
-/** The draft text of a note: its open actions, else its open list items, else its body. */
 export function noteScheduleText(note: StickyNote): string {
   const data = note.format?.data ?? {}
   const actions = openItems(data.actions)
@@ -306,7 +282,6 @@ export function noteScheduleText(note: StickyNote): string {
   return note.body.trim()
 }
 
-/** A draft from one note, linked to its record as it is now. */
 export async function noteScheduleDraft(note: StickyNote, kind: NoteScheduleKind): Promise<NoteScheduleDraftResult> {
   const notes = noteScheduleText(note)
   if (notes === "") return { status: "empty", message: "This note has no open items or text to schedule." }

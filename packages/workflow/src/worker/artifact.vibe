@@ -2,17 +2,13 @@
 import { GENERATED_ENGINE_DECLARATION } from "./compiler.vibe"
 import { initial, machineOver, type Worker } from "../../gen/workflow__worker.effect.vibe"
 
-/** A staged package's bounded extraction index. */
 export interface StagedWorkerArtifact { readonly files: number; readonly bytes: number; readonly indexSha256: string }
 
-/** The worker program and engine a device needs before it enables workflows. */
 export const WORKER_REQUIRED_FILES: readonly string[] = [
   "src/worker/main.js", "src/worker/protocol.js", "src/worker/engine.js", "src/worker/guest.js", "src/worker/compiler.js", "workflow-worker.json", "dependencies.json", "compiler/compiler.json", "compiler/eliza-workflow.d.ts",
 ]
-/** The built worker program inside a package's dist and an artifact. */
 export const WORKER_EXECUTABLE = "src/worker/main.js"
 
-/** The artifact, package or installed tree did not prove its identity; nothing was relabeled or enabled. */
 export error WorkerArtifactRefused { reason: string }
 
 module node {
@@ -21,11 +17,8 @@ module node {
   import { copyFile, lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises"
   import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 
-  /** The provenance a consumer binds the producer to. */
   export interface WorkerIdentity { readonly sourceStampSha256: string; readonly lockSha256: string }
-  /** The manifest an artifact carries beside its files. */
   export interface WorkerManifest extends WorkerIdentity { readonly version: 1; readonly compiler?: unknown; readonly files: Readonly<Record<string, string>> }
-  /** A verified artifact: its manifest, every listed file with its digest, the manifest digest and the total size. */
   export interface VerifiedWorkerArtifact {
     readonly manifest: WorkerManifest
     readonly files: readonly (readonly [string, string])[]
@@ -382,7 +375,6 @@ module node {
 import { build, closure, compilerFiles, installed, sha256Of, stage, verify, type VerifiedWorkerArtifact, type WorkerClosure, type WorkerIdentity } from node
 export type { VerifiedWorkerArtifact, WorkerClosure, WorkerIdentity, WorkerManifest } from node
 
-/** The worker program's module closure inside a built package and every runtime dependency it imports, each staged under `node_modules/<name>`. */
 export effect function workerArtifactClosure(packageDir: string): WorkerClosure!WorkerArtifactRefused {
   return try checked(() => closure(packageDir, WORKER_EXECUTABLE))
 }
@@ -393,12 +385,10 @@ effect function checked<A>(call: () => Promise<{ readonly ok: true; readonly val
   return result.value
 }
 
-/** Verifies a worker artifact tree against its manifest and, when given, the expected producer identity. */
 export effect function verifyWorkerArtifact(directory: string, expected: Partial<WorkerIdentity> = {}): VerifiedWorkerArtifact!WorkerArtifactRefused {
   return try checked(() => verify(directory, expected, WORKER_REQUIRED_FILES))
 }
 
-/** The provenance machine of one worker from reviewed source to installed tree. */
 export effect function workerProvenance(start: Worker = initial) {
   const state = try Ref.make(start)
   const worker = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))

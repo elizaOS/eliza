@@ -35,16 +35,13 @@ module edge {
 }
 import { plain, sameJson } from edge
 
-/** Where the collection document is kept: the agent's own owner-scoped storage. */
 export interface NotesStorage {
   get(): Promise<unknown>
   set(document: unknown): Promise<boolean>
 }
 
-/** The stored collection could not be read, or a commit's outcome is unknown; nothing is reported as done. */
 export error NotesUnavailable { code: "NOTES_STORE_UNAVAILABLE" | "NOTES_COMMIT_UNCONFIRMED"; reason: string; cause?: unknown }
 
-/** A finished request: its value, the snapshot after it, and whether it changed the collection. */
 export interface Committed<A> {
   readonly value: A
   readonly snapshot: NotesSnapshot
@@ -52,7 +49,6 @@ export interface Committed<A> {
   readonly mutation: string
 }
 
-/** The serialized store over the authoritative copy: every read and transaction starts from what storage holds. */
 export interface NotesStore {
   read(): NotesDocument!NotesUnavailable
   transact<A, E>(work: (document: NotesDocument) => Change<A>!E, hasAudio?: (value: A) => boolean): Committed<A>!(E | NotesUnavailable)
@@ -84,13 +80,11 @@ effect function decode(raw: unknown): NotesDocument!NotesUnavailable {
   }
 }
 
-/** Where the earlier Notes document of this agent is read from, once, and the instant an import is stamped with. */
 export interface PriorImport {
   read(): Promise<PriorDocumentText | undefined>
   readonly at: string!NotesUnavailable
 }
 
-/** A store over the given storage, one request at a time, importing the earlier document when nothing was ever saved. */
 export function notesStore(storage: NotesStorage, prior?: PriorImport): NotesStore {
   const lock = Semaphore.makeUnsafe(1)
   let storeReady = true
@@ -153,7 +147,6 @@ export function notesStore(storage: NotesStorage, prior?: PriorImport): NotesSto
   }
 }
 
-/** The Notes document kept in the agent's cache under one key. */
 export function cacheStorage(cache: { getCache<T>(key: string): Promise<T | undefined>; setCache<T>(key: string, value: T): Promise<boolean> }, key = "notes-document"): NotesStorage {
   return {
     get: () => cache.getCache<unknown>(key),

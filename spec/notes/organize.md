@@ -71,7 +71,9 @@ Filtering and recording change no saved note, so they may run without a
 separate review when the owner's own current message asked for them and no
 workflow bound them. Moving a note, creating a folder and restoring a note
 change saved data, so the owner reviews each first; a move is bound to the
-reviewed note revision.
+reviewed note revision. While a filter or a recording waits to run directly,
+the owner hears what the phone will do; one kept for review, like every move,
+folder and restore, asks the owner to review it on the phone.
 
 ```quint
 pure def organizeChangesSavedNotes(kind: OrganizeKind): bool = kind == MoveNote or kind == CreateFolder or kind == RestoreNote

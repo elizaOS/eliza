@@ -1,11 +1,7 @@
 // spec/workflow/generated.md, "Activation needs a passing check and a review of the current source digest"; spec/workflow/worker.md, "Producer, package and installed tree must each prove their own identity"
-/** The largest generated workflow source the compiler checks. */
 export const GENERATED_SOURCE_MAX_BYTES = 65_536
-/** The engine revision every generated workflow check names, beside the TypeScript version. */
 export const GENERATED_ENGINE_REVISION = "generated-workflow-engine-2"
-/** The context methods generated code may call, each with a literal or computed id first. */
 export const GENERATED_CONTEXT_METHODS: readonly string[] = ["step", "generate", "approval", "signal", "sleep"]
-/** The declarations generated code is checked against; the only module it may import, and only for types. */
 export const GENERATED_ENGINE_DECLARATION = `declare module "eliza-workflow" {
   export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
   export interface ApprovalRequest { title: string; summary: string; operation: string; target: string; account: string }
@@ -23,13 +19,10 @@ export const GENERATED_ENGINE_DECLARATION = `declare module "eliza-workflow" {
 `
 
 
-/** The staged TypeScript compiler could not be loaded or did not answer. */
 export error CompilerUnavailable { reason: string }
 
 module node {
-  /** One context call the checker found, for the owner's review. */
   export interface GeneratedCall { readonly id: string; readonly method: string }
-  /** The compiler's verdict on one generated source. */
   export interface GeneratedCheck {
     readonly ok: boolean
     readonly diagnostics: readonly string[]
@@ -106,7 +99,6 @@ module node {
 import { check, type GeneratedCheck } from node
 export type { GeneratedCall, GeneratedCheck } from node
 
-/** Checks generated workflow source with the staged TypeScript compiler and compiles it to a self-contained module; it never runs the draft. */
 export effect function checkGeneratedSource(source: string): GeneratedCheck!CompilerUnavailable {
   return try tryPromise({
     try: () => check(source, GENERATED_ENGINE_DECLARATION, GENERATED_CONTEXT_METHODS, GENERATED_ENGINE_REVISION, GENERATED_SOURCE_MAX_BYTES),

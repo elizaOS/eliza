@@ -4,7 +4,6 @@ import { WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
 import type { hostedDigests } from "./service/digests.vibe"
 import type { generatedWorkflows } from "./service/generated.vibe"
 
-/** The workflow service and digest routes a runtime opened, or undefined before the plugin initialized. */
 export type WorkflowRouteTarget = () => { readonly service: WorkflowService; readonly digests: ReturnType<typeof hostedDigests>; readonly generated: ReturnType<typeof generatedWorkflows> } | undefined
 
 type Method = "GET" | "POST" | "PUT"
@@ -63,7 +62,6 @@ function eventsRoute(target: WorkflowRouteTarget): LocalRoute {
   }
 }
 
-/** Every route the workflow plugin serves under /api/workflow, each answering only what the status advertises. */
 export function workflowRoutes(target: WorkflowRouteTarget): LocalRoute[] {
   const id = (input: RouteInput) => param(input, "id")
   const route = routeOver(target)

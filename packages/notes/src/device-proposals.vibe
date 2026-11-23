@@ -1,8 +1,8 @@
-// spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn's own screen selects the phone's Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner's direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "Recording is offered with its own capability or with the full organize set"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/agent/deviceActions/index.md, "A durable claim allows at most one inference, even after a lost outcome"
+// spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn's own screen selects the phone's Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner's direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "Recording is offered with its own capability or with the full organize set"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly"; spec/agent/deviceActions/index.md, "A durable claim allows at most one inference, even after a lost outcome"
 import { ModelType, parseJsonModelRecord, type ActionParameterSchema, type IAgentRuntime, type JSONSchema } from "@elizaos/core"
 import {
-  bindingHash, readResult, type DeviceOperation, type DeviceOperationType, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type ProposalForm,
-  type ProposalText, type ReadContinuation,
+  bindingHash, readResult, type DeviceOperation, type DeviceOperationType, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type PendingRequest,
+  type ProposalForm, type ProposalText, type ReadContinuation,
 } from "@elizaos/agent/device-actions"
 import {
   editRead, editReply, groundPhoneNotes, phoneNotesOffered, type EditReading, type NotesSelection, type PhoneNotesProposal, type PhoneNotesReach, type PhoneScreen, type SharedRead,
@@ -12,7 +12,9 @@ import { folderGrounded } from "../gen/notes__organize.effect.vibe"
 import { applyPatch } from "./collection.vibe"
 import { json } from "./format.vibe"
 import { titleAppearsAsNamedPhrase } from "./lookup.vibe"
-import { canonicalNotesListShown, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, readNoteFolders, type NotesOrganizeType } from "./organize.vibe"
+import {
+  canonicalNotesListShown, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeRunsDirectly, readNoteFolders, type NotesOrganizeType,
+} from "./organize.vibe"
 import { UpdateRequest } from "./records.schema.vibe"
 import { NotesTargetSchema, type NotesTarget } from "./selected-read.vibe"
 import { projectNoteForModel, type StickyNote } from "./types.vibe"
@@ -85,7 +87,7 @@ const noFields: ActionParameterSchema = {
   properties: { title: { type: "string", enum: [""] }, body: { type: "string", enum: [""] } },
 }
 
-const editGuidance = "To change the note open in Notes, propose notes_update with its exact target and an empty title and body; to change a phone note by the title the owner said, propose notes_query by that title. The phone shares the note first; once the owner shares it, the requested change is prepared from its current text for a separate review. notes_read_selected only answers what the open note says. Never write replacement fields, never ask the owner to repeat the edit, and never report a change before its review."
+const editGuidance = "To change the note open in Notes, propose notes_update with its exact target and an empty title and body; to change a phone note by the name the owner said, propose notes_named with action update, that name, and an empty title and body. Never use notes_query for an edit. The phone shares the note first; once the owner shares it, the requested change is prepared from its current text for a separate review. notes_read_selected only answers what the open note says. Never write replacement fields, never ask the owner to repeat the edit, and never report a change before its review."
 const organizeGuidance = "With notes.organize.v1: notes_filter {text, folder name and/or kind text|list|voice|link} filters the phone Notes list and returns no note content; it runs directly only when the owner's current message asked for it. notes_move {target: the note open in Notes, folder: a folder name exactly as the phone listed it, or null for no folder}, notes_folder_create {name the owner said} and notes_restore {noteId of a note a deletion in this conversation moved to Recently deleted} are reviewed by the owner. Folder names are at most 40 characters. Never guess note IDs, revisions or folder names."
 
 const forms: readonly ProposalForm[] = [
@@ -105,6 +107,8 @@ const forms: readonly ProposalForm[] = [
   "ResolvedByPhone", () => [{ type: "notes_search", query: { kind: "titles", limit: 1 } }]),
   form(["notes_named"], shaped("notes_named", { action: { type: "string", enum: ["delete"] }, name: spoken("The note's name") }),
     "To delete a phone note the owner named from Home or Notes, use notes_named with action delete and the name; the phone finds the matching note, and the owner chooses and approves the exact one.",
+    "ResolvedByPhone", () => [{ type: "notes_named", action: "delete", name: "note" }]),
+  form(["notes_named"], shaped("notes_named", { action: { type: "string", enum: ["update"] }, name: spoken("The note's name"), fields: noFields }), editGuidance,
     "ResolvedByPhone", () => [{ type: "notes_named", action: "delete", name: "note" }]),
   form(["notes_read_selected"], shaped("notes_read_selected", { target }), `notes_read_selected shares the note open in Notes on the phone after the owner approves sharing it. ${editGuidance}`,
     "ExactPhoneNote", (turn) => [{ type: "notes_read_selected", target: selectedTarget(turn) }]),
@@ -177,12 +181,12 @@ function editKey(messageId: string, read: DeviceOperation): string | undefined {
 
 effect function markEdit(runtime: IAgentRuntime, messageId: string, read: DeviceOperation): boolean!! {
   const key = editKey(messageId, read)
-  return key !== undefined && (try (tryPromise(() => runtime.setCache(key, true)) catch () => false))
+  return key !== undefined && (tryPromise(() => runtime.setCache(key, true)) catch () => false)
 }
 
 effect function editMarked(runtime: IAgentRuntime, messageId: string, read: DeviceOperation): boolean!! {
   const key = editKey(messageId, read)
-  return key !== undefined && (try (tryPromise(() => runtime.getCache<boolean>(key)) catch () => undefined)) === true
+  return key !== undefined && (tryPromise(() => runtime.getCache<boolean>(key)) catch () => undefined) === true
 }
 
 effect function deletedHere(turn: DeviceTurn, noteId: string) {
@@ -200,7 +204,7 @@ effect function groundNotes(runtime: IAgentRuntime, operation: DeviceOperation, 
   const lookup = { type: "notes_query", query: { kind: "title", text: said ?? "" } } as const
   const deleted = operation.type === "notes_restore" && (try deletedHere(turn, operation.noteId))
   const outcome = groundPhoneNotes(proposal, said === undefined || titleAppearsAsNamedPhrase(turn.ownerText, said),
-    sameTarget(targetOf(operation), selectedTarget(turn)), turn.admit(lookup) !== undefined, deleted)
+    sameTarget(targetOf(operation), selectedTarget(turn)), turn.admit(lookup) !== undefined, deleted, turn.completesReads)
   switch (outcome) {
     case "AskWhichNote":
       return refused("NOTES_LOOKUP_NOT_REQUESTED", "The note text in this operation is not words the owner said in this message. No device proposal was created. Use the owner's own words for the title, name or search, or ask which note.",
@@ -208,6 +212,8 @@ effect function groundNotes(runtime: IAgentRuntime, operation: DeviceOperation, 
     case "NotTheOpenNote":
       return refused("NOTES_TARGET_NOT_SELECTED", "The target is not the note open in Notes on the phone. No device proposal was created. Use the open note's exact target, or ask the owner to open the note.",
         "Open that note in Notes on your phone, then ask me again.")
+    case "EditUnavailable":
+      return refused("NOTES_UPDATE_UNAVAILABLE", "The current note update authority is unavailable. Nothing was read or changed.", "I can't prepare that edit on your phone right now.")
     case "LookupUnavailable":
       return refused("NOTES_UPDATE_UNAVAILABLE", "Current named-note lookup access is unavailable. Nothing was read or changed.", "I can't look that note up on your phone right now.")
     case "RestoreUnknown":
@@ -232,15 +238,27 @@ effect function groundNotes(runtime: IAgentRuntime, operation: DeviceOperation, 
   }
 }
 
-function proposedText(operation: DeviceOperation): ProposalText | undefined {
-  const review = reviewSentence(operation)
-  return review === undefined ? undefined : { forOwner: review }
+function proposedText(operation: DeviceOperation, pending: PendingRequest): ProposalText | undefined {
+  const runsDirectly = isNotesOrganizeType(operation.type) && notesOrganizeRunsDirectly(operation.type, pending.direct, false)
+  const said = runsDirectly ? handoffSentence(operation) : reviewSentence(operation)
+  return said === undefined ? undefined : { forOwner: said }
 }
+
+function handoffSentence(operation: DeviceOperation): string | undefined {
+  switch (operation.type) {
+    case "notes_record": return operation.action === "start" ? "Your phone will start recording a voice note in Notes." : "Your phone will stop the recording and save the voice note."
+    case "notes_filter":
+    case "notes_list_filter": return "Your phone will show the matching notes."
+    default: return undefined
+  }
+}
+
+const sharingChangesNothing = "Sharing it changes nothing; any change you asked for gets its own review."
 
 function reviewSentence(operation: DeviceOperation): string | undefined {
   switch (operation.type) {
-    case "notes_read_selected": return "Share this note on your phone to continue. Nothing has changed yet."
-    case "notes_query": return "Choose the note on your phone to share it. Nothing has changed yet."
+    case "notes_read_selected": return `Share this note on your phone to continue. ${sharingChangesNothing}`
+    case "notes_query": return `Choose the note on your phone to share it. ${sharingChangesNothing}`
     case "notes_search": return operation.query.kind === "content" ? "Choose the matching note on your phone to share it." : "Review the note titles on your phone before they are shared."
     case "notes_named": return `Choose the note named “${operation.name}” on your phone to review deleting it. Nothing has been deleted yet.`
     case "notes_delete": return "Review deleting this note on your phone. Nothing has been deleted yet."
@@ -248,9 +266,6 @@ function reviewSentence(operation: DeviceOperation): string | undefined {
     case "notes_move": return operation.folder === null ? "Review taking this note out of its folder on your phone." : `Review moving this note to ${operation.folder} on your phone.`
     case "notes_folder_create": return `Review the new folder “${operation.name}” on your phone.`
     case "notes_restore": return "Review restoring this note on your phone."
-    case "notes_record": return operation.action === "start" ? "Your phone will start recording a voice note in Notes." : "Your phone will stop the recording and save the voice note."
-    case "notes_filter":
-    case "notes_list_filter": return "Your phone will show the matching notes."
     default: return undefined
   }
 }
@@ -337,7 +352,7 @@ effect function readEdit(runtime: IAgentRuntime, request: string, fields: Fields
   const patch = Option.getOrUndefined(readPatch(extracted.textEdit === null ? Object.fromEntries(replaced) : { textEdit: extracted.textEdit }))
   if (patch === undefined) throw unread("The edit was not a valid Notes patch")
   const carrier: StickyNote = { id: "device-note", title: fields.title, body: fields.body === "" ? "" : `\n${fields.body}`, color: "yellow", createdAt: epoch, updatedAt: epoch }
-  const next = projectNoteForModel(try (applyPatch(carrier, patch, epoch) catch effect (refusal) => { throw unread(refusal.message) }))
+  const next = projectNoteForModel((applyPatch(carrier, patch, epoch) catch effect (refusal) => { throw unread(refusal.message) }))
   return next.title === fields.title && next.body === fields.body ? { reading: "NothingToChange" } : { reading: "ChangeRequested", fields: { title: next.title, body: next.body } }
 }
 
@@ -351,7 +366,7 @@ const choiceUncertain = "The lookup did not establish which note you meant. Noth
 effect function edited(runtime: IAgentRuntime, original: Original, shared: SharedRead, words: DeletionWords, note: NotesTarget, fields: Fields): (ReadContinuation | undefined)!! {
   const deleting = deletionCommand(words)
   if (!editRead(shared, deleting)) return undefined
-  const read: EditRead = try (readEdit(runtime, original.ownerText, fields) catch effect (unread) => {
+  const read: EditRead = (readEdit(runtime, original.ownerText, fields) catch effect (unread) => {
     try sync(() => runtime.logger.warn({ src: "notes", messageId: original.message.id, reason: unread.reason }, "No phone note edit was prepared after the shared read"))
     return { reading: "NeedsMoreInput" as const }
   })

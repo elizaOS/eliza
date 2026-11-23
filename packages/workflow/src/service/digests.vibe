@@ -32,7 +32,6 @@ effect function nativeSelection(value: unknown): HostedNativeSelection!WorkflowR
   }
 }
 
-/** The hosted digest routes over the opened workflow service. */
 export function hostedDigests(service: WorkflowService) {
   const { host, store, owner, lock, now, db } = service
 
