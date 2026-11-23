@@ -83,7 +83,7 @@ type Finished = { readonly kind: "history" } | Settled
 export type RecoverResult = { readonly kind: "live" } | Finished
 export type ReviewResult = "sent" | "unsent" | "refused"
 
-export const NOT_DISPATCHED = "not_dispatched"
+export const NOT_DISPATCHED = "DEVICE_NOT_DISPATCHED"
 
 const reviewWire = {
   ReviewedApplied: "applied", ReviewedNotApplied: "not_applied", ReviewedUnresolved: "unresolved",
