@@ -1604,13 +1604,16 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
 
       try sync(() => maps.script({ kind: "oversized" }))
       const oversized = try geocode("geo-oversized")
+      try sync(() => maps.script({ kind: "geocodeReply", status: 200, geocode: "UNKNOWN_ERROR" }, { kind: "geocodeReply", status: 404, geocode: "ZERO_RESULTS" }))
+      const providerError = try geocode("geo-provider-error")
+      const nothingFound = try geocode("geo-nothing-found")
       const keptFirst = try geocode("geo-kept")
       const keptAgain = try geocode("geo-kept")
       try sync(() => clock.set(now + 15 * 60_000))
       const keptExpired = try geocode("geo-kept")
       for (const sweep of mapsSweeps) try cloud.inside(sweep.run)
       const keptRows = try sql(cloud, "SELECT count(*)::int AS n FROM maps_requests WHERE result IS NOT NULL", [])
-      const usage = try sql(cloud, "SELECT r.status, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key JOIN holds h ON h.key = r.hold_key WHERE h.organization_id = $1 ORDER BY r.status", [keeping.organizationId])
+      const usage = try sql(cloud, "SELECT r.status, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key JOIN holds h ON h.key = r.hold_key WHERE h.organization_id = $1 ORDER BY r.status, u.charged", [keeping.organizationId])
 
       try check(() => assert.deepStrictEqual(
         {
@@ -1618,6 +1621,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           credential: [busyStatuses.length, busyStatuses.every((status) => status === 200), credentialLimited.status, errorOf(credentialLimited.body), typeof credentialLimited.headers["retry-after"], Number(busyPlan[0]?.n)],
           plan: [freeStatuses.length, freeStatuses.every((status) => status === 200), planLimited.status, errorOf(planLimited.body), typeof planLimited.headers["retry-after"], tileStill.status, Number(freePlan[0]?.n)],
           oversized: [oversized.status, errorOf(oversized.body)],
+          geocodeReplies: [providerError.status, errorOf(providerError.body), nothingFound.status, (nothingFound.body as { readonly places: ReadonlyArray<unknown> }).places],
           kept: [keptFirst.status, keptAgain.status, keptAgain.body, keptExpired.status, errorOf(keptExpired.body), Number(keptRows[0]?.n)],
           usage: usage.map((row) => [row.status, Number(row.charged), row.outcome]),
           upstream: [maps.count("viewport"), maps.count("tile"), maps.count("geocode")]
@@ -1627,9 +1631,10 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           credential: [59, true, 429, "rate_limited", "string", 60],
           plan: [30, true, 429, "rate_limited", "string", 200, 30],
           oversized: [503, "provider_unavailable"],
+          geocodeReplies: [503, "provider_unavailable", 200, []],
           kept: [200, 200, keptFirst.body, 409, "idempotency_conflict", 0],
-          usage: [["answered", 5_000, "known"], ["refused", 5_000, "known"]],
-          upstream: [1, 1, 2]
+          usage: [["answered", 5_000, "known"], ["answered", 5_000, "known"], ["refused", 0, "known"], ["refused", 5_000, "known"]],
+          upstream: [1, 1, 4]
         }
       ))
     }

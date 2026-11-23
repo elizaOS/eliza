@@ -1,6 +1,6 @@
 // spec/cloud/services/maps.md, "A deployment answers capabilities always, and any other operation only when its provider serves it"; spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A tile is never stored, and none is sent without a freshly admitted hold"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { billingOf, detailsPrice, geocodePrice, nearbyPrice, offerOf, placeLookup, quoteOf, searchPrice, supportsMode, tilePrice, upstreamBodyCap, upstreamTimeout, type MapsProvider as ProviderKind, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
+import { billingOf, detailsPrice, geocodeBillingOf, geocodeFoundNothing, geocodePrice, nearbyPrice, offerOf, placeLookup, quoteOf, searchPrice, supportsMode, tilePrice, upstreamBodyCap, upstreamTimeout, type MapsProvider as ProviderKind, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
 import type { Micros } from "../../gen/cloud__shared__types.ts"
 import type { MapsSettings as MapsSettingsSchema } from "../profile/profile.schema.ts"
 import { Deployment } from "../profile/profile.vibe"
@@ -111,8 +111,8 @@ effect function send(meter: Meter, request: HttpClientRequest.HttpClientRequest,
   return try timeoutOrElse(exchange, { duration: upstreamTimeout, orElse: () => fail(new Lost({ cause: "timeout" })) })
 }
 
-effect function decoded<A>(got: Got, schema: Schema.Decoder<A>): A!Refused {
-  if (got.status !== 200) throw new Refused({ code: "ProviderInvalidResponse" })
+effect function decoded<A>(got: Got, schema: Schema.Decoder<A>, accepted: ReadonlyArray<number> = [200]): A!Refused {
+  if (!accepted.includes(got.status)) throw new Refused({ code: "ProviderInvalidResponse" })
   const text = new TextDecoder().decode(got.bytes)
   const json = try Effect.try({ try: () => JSON.parse(text) as unknown, catch: () => new Refused({ code: "ProviderInvalidResponse" }) })
   return Schema.decodeUnknownEffect(schema)(json) catch effect () => { throw new Refused({ code: "ProviderInvalidResponse" }) }
@@ -315,9 +315,15 @@ function googleMapsProvider(settings: GoogleSettings): MapsProvider {
 
   effect function geocoding(meter: Meter, params: Readonly<Record<string, string>>) {
     const request = HttpClientRequest.get(url("maps", "/maps/api/geocode/json"), { urlParams: { ...params, key: try apiKey() } })
-    const reply = try decoded(try send(meter, request, geocodePrice), GeocodeReply)
-    if (reply.status === "ZERO_RESULTS") return []
-    if (reply.status !== "OK") throw new Refused({ code: reply.status === "INVALID_REQUEST" ? "ProviderInvalidResponse" : "ProviderUnavailable" })
+    const got = try send(meter, request, geocodePrice)
+    const reply = decoded(got, GeocodeReply, [200, 404]) catch () => undefined
+    if (geocodeBillingOf(got.status, reply?.status ?? "") === "CallNotBilled") {
+      meter.observed -= geocodePrice
+      throw new Rejected({ status: got.status })
+    }
+    if (reply === undefined) throw new Refused({ code: "ProviderInvalidResponse" })
+    if (geocodeFoundNothing(got.status, reply.status)) return []
+    if (got.status !== 200 || reply.status !== "OK") throw new Refused({ code: got.status !== 200 || reply.status === "INVALID_REQUEST" ? "ProviderInvalidResponse" : "ProviderUnavailable" })
     return try places((reply.results ?? []).map((result) => ({
       id: result.place_id, formattedAddress: result.formatted_address, displayName: { text: result.formatted_address.split(",")[0].trim() }, location: { latitude: result.geometry.location.lat, longitude: result.geometry.location.lng },
     })))
