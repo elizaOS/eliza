@@ -472,8 +472,6 @@ const TAB_LIST_ASKS = [
   /^(?:what|which)(?:\s+browser)?\s+tabs\s+(?:do\s+i\s+have|are|have\s+i\s+got)(?:\s+open)?(?:\s+in\s+(?:the\s+)?browser)?$/,
 ]
 
-/** Whether the owner's whole message asks only to see the open Browser tabs: "show my open tabs", "list my tabs", "what tabs do I have open?".
- * A greeting, the assistant's name (Eliza when the character has none) followed by a space, comma or colon, and please are allowed; anything more is left to the model. */
 export function directBrowserTabList(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): boolean {
   if (unreadable(text)) return false
   let request = text.trim().toLowerCase().replace(/[\s.!?]+$/, "").replace(TAB_LIST_GREETING, "")

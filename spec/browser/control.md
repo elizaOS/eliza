@@ -211,26 +211,27 @@ pure val wordsValues = Set(typedWords, { ...typedWords, typedAsWholeWords: false
 
 A grounded search is bound to the owner's current message only when that
 whole message is the search and its words are the query; a tab switch or a
-find only when the owner typed its words in that message; a new tab, a tab
-close, showing the tab list and a history move whenever they are grounded.
-Any other is offered unbound to the message, so the phone shows its review
-card before it runs: the phone's answer to words the model chose would tell
-the agent about the owner's tabs or page. A tab close is reviewed however it
-is bound.
+find only when the owner typed its words in that message; showing the tab
+list only when the whole message asks to see it; a new tab, a tab close and a
+history move whenever they are grounded. The phone shows a review card
+before it runs an unbound proposal. A tab close always waits for review.
 
 ```quint
 type ProposedControl = { control: BrowserControl, wholeMessage: bool, wordsTyped: bool }
 pure def controlBound(proposed: ProposedControl): bool =
   if (proposed.control == SearchControl) proposed.wholeMessage and proposed.wordsTyped
+  else if (proposed.control == TabListControl) proposed.wholeMessage
   else not(needsTypedWords(proposed.control)) or proposed.wordsTyped
 pure def lawUntypedWordsAreNeverBound(proposed: ProposedControl): bool =
   (needsTypedWords(proposed.control) and not(proposed.wordsTyped)) implies not(controlBound(proposed))
 pure def lawOnlyMyWholeMessageSearchIsBound(proposed: ProposedControl): bool =
   (proposed.control == SearchControl and controlBound(proposed)) implies proposed.wholeMessage
+pure def lawOnlyMyWholeMessageTabListIsBound(proposed: ProposedControl): bool =
+  (proposed.control == TabListControl and controlBound(proposed)) implies proposed.wholeMessage
 pure val typedSearch: ProposedControl = { control: SearchControl, wholeMessage: true, wordsTyped: true }
 pure val proposedValues = Set(typedSearch, { ...typedSearch, wholeMessage: false }, { ...typedSearch, wordsTyped: false }, { ...typedSearch, control: FindControl, wholeMessage: false },
   { ...typedSearch, control: TabSwitchControl, wordsTyped: false }, { ...typedSearch, control: HistoryControl, wordsTyped: false }, { ...typedSearch, control: TabCloseControl, wordsTyped: false },
-  { ...typedSearch, control: TabListControl, wholeMessage: false, wordsTyped: false })
+  { ...typedSearch, control: TabListControl, wordsTyped: false }, { ...typedSearch, control: TabListControl, wholeMessage: false, wordsTyped: false })
 ```
 
 ### My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice

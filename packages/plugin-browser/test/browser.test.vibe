@@ -314,6 +314,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     try propose("Do not open https://two.example/post?id=2.", navigate("https://two.example/post?id=2"), everyBrowserCapability, frontPage()),
     try propose("Open the second story.", navigate("https://two.example/post?id=2")),
   ]
+  const tabList: DeviceOperation = { type: "browser_tabs_show" }
   const controls = [
     try propose("search the web for cheap flights please", { type: "browser_search", query: "Cheap  flights" }),
     try propose("find me cheap flights", { type: "browser_search", query: "cheap flights" }),
@@ -327,7 +328,10 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     try propose("close all the browser tabs", { type: "browser_tab_close", all: true }),
     try propose("close the bbc tab", { type: "browser_tab_close", target: "bbc" }, tabsOnly),
     try propose("go back", { type: "browser_history", action: "back" }),
-    try propose("show my open tabs", { type: "browser_tabs_show" }),
+    try propose("show my open tabs", tabList),
+    try propose("show my contacts", tabList),
+    try propose("don't show my tabs", tabList),
+    try propose("show my tabs and close the bbc one", tabList),
   ]
   const outright = [
     ...["open example.com in a new tab", "Hey Eliza, visit wikipedia.org.", "can you open example.com?", "example.com", "open example dot com", "don't open example.com"]
@@ -384,7 +388,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
       direct({ type: "browser_find", text: "price" }), reviewed({ type: "browser_find", text: "cost" }),
       direct({ type: "browser_tab_new", private: true }),
       "DEVICE_BROWSER_CLOSE_ALL_UNAVAILABLE", direct({ type: "browser_tab_close", all: true }), direct({ type: "browser_tab_close", target: "bbc" }),
-      direct({ type: "browser_history", action: "back" }), direct({ type: "browser_tabs_show" }),
+      direct({ type: "browser_history", action: "back" }), direct(tabList), reviewed(tabList), reviewed(tabList), reviewed(tabList),
     ])
     assert.deepStrictEqual(told, ["Opening wikipedia.org.", undefined, undefined])
     assert.strictEqual(toldShown?.forOwner, "Doing that in Browser.")

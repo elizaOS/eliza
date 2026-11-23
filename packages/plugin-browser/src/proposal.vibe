@@ -149,8 +149,9 @@ effect function ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!
       if (emptyTabOpensAddress(operation.private === true, asked !== undefined) && asked !== undefined) return try opened(turn, asked, true)
       return controlled(operation, turn, false)
     }
-    case "browser_tab_switch":
     case "browser_tabs_show":
+      return controlled(operation, turn, directBrowserTabList(turn.ownerText, turn.assistantName))
+    case "browser_tab_switch":
     case "browser_find":
     case "browser_history":
       return controlled(operation, turn, false)
