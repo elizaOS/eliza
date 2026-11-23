@@ -137,7 +137,9 @@ pure def lawNoMessageUnitCanEndItsStringOrTheBlock(u: TextUnit): bool = endsStri
 
 ### The answer is one draft of at most 320 units, or none, and nothing is sent
 
-The call asks for at most 160 tokens and carries the caller's cancellation.
+The call sends no output cap, asks the model to draft with thinking off
+(`providerOptions.eliza.thinking` `off`, see [binding](../models/binding.md)),
+and carries the caller's cancellation.
 Each run of whitespace in the model's text becomes one space and
 surrounding quotation marks are removed. A longer text is cut to its first
 320 UTF-16 units, less a split surrogate half and trailing space. `NONE`
@@ -156,7 +158,6 @@ type DraftAnswer = BadRequest | Unavailable | Cancelled | NoDraft | Draft({ kept
 type FailureLog = NoLog | LoggedFailure({ failureName: str })
 type Handled = { answer: DraftAnswer, modelCalls: int, log: FailureLog }
 pure val draftMax = 320
-pure val draftMaxTokens = 160
 pure def keptUnits(units: int): int = if (units > draftMax) draftMax else units
 pure def draftOf(said: ModelResult): DraftAnswer = match said {
   | ModelFailed(f) => Unavailable

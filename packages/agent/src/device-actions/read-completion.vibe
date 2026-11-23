@@ -81,7 +81,7 @@ module node {
         `Result: ${JSON.stringify(record.result)}`,
       ].filter(Boolean).join("\n\n")
       const text = await runtime.useModel(ModelType.TEXT_LARGE, {
-        system, messages: [{ role: "user", content: original.content.text ?? "" }], maxTokens: 1024, signal,
+        system, messages: [{ role: "user", content: original.content.text ?? "" }], signal,
       })
       if (typeof text !== "string" || !text.trim()) throw new CompletionFailed("The model gave no reply")
       return text

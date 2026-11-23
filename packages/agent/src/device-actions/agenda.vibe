@@ -51,7 +51,7 @@ module node {
       try {
         classification = await runtime.useModel(ModelType.TEXT_SMALL, {
           system: `The owner is viewing their Calendar on ${date} in ${timeZone}. Classify only whether the message explicitly asks to read their agenda for this displayed day. Reply with exactly {"kind":"read_agenda"} in that case or {"kind":"reply"} otherwise. Do not choose an operation, calendar, date or identity.`,
-          messages: [{ role: "user", content: message.content.text }], maxTokens: 32, signal,
+          messages: [{ role: "user", content: message.content.text }], signal,
         })
       } catch {
         signal.throwIfAborted()
