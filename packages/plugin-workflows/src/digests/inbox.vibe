@@ -342,9 +342,13 @@ export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommi
     return try mapError(decode(value), () => failed("A saved digest is unreadable"))
   }
 
+  effect function save(key: string, value: unknown): void!DigestInboxFailed {
+    try mapError(store.set(key, JSON.stringify(value)), () => failed("The digest inbox could not be written"))
+  }
+
   effect function write(key: string, value: unknown): void!DigestInboxFailed {
     if ((try inbox.get()).retired) throw failed("The digest inbox was retired")
-    try mapError(store.set(key, JSON.stringify(value)), () => failed("The digest inbox could not be written"))
+    try save(key, value)
   }
 
   effect function decodeIndex(value: unknown): StoredIndex!WorkflowResponseInvalid {
@@ -386,10 +390,10 @@ export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommi
     return current
   }
 
-  effect function recoverJournal(index: StoredIndex): StoredIndex!DigestInboxFailed {
+  effect function recoverJournal(index: StoredIndex, keep: (key: string, value: unknown) => void!DigestInboxFailed): StoredIndex!DigestInboxFailed {
     for (const run of index.removalDue) if (!index.retained.includes(run)) try mapError(store.remove(rowKey(run)), () => failed("A removed digest could not be deleted"))
     const cleared = { ...index, removalDue: [] }
-    try write(scope, cleared)
+    try keep(scope, cleared)
     return cleared
   }
 
@@ -417,11 +421,16 @@ export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommi
     throw failed(reason)
   }
 
+  effect function interrupted() {
+    void (inbox.send({ type: "retireDigestPoll" }) catch () => undefined)
+    if ((try inbox.get()).phase === "AwaitingAck") void (inbox.send({ type: "observeDigestAck", exactProviderRow: false, responseSuccessful: false }) catch () => undefined)
+  }
+
   effect function sync(protocol: HostedDigestProtocol, generation: number) {
-    return try serial(effect {
+    return try serial(Effect.onInterrupt(effect {
       let index = (try read(scope, decodeIndex)) ?? { clientId: try workflowUuid(), ...initialDigestIndex }
-      if ((try inbox.get()).phase === "ReadyToPoll") try write(scope, index)
-      const recovered = (map(recoverJournal(index), (next) => { index = next; return true }) catch () => false)
+      if ((try inbox.get()).phase === "ReadyToPoll") try save(scope, index)
+      const recovered = (map(recoverJournal(index, save), (next) => { index = next; return true }) catch () => false)
       try step({ type: "beginDigestPoll", generation, client: index.clientId, recoveredAtStart: recovered })
       if (!recovered) throw failed("The removal journal could not be recovered")
       index = (settleNotices(index) catch effect () => try abort("A delivered notice could not be recorded"))
@@ -453,12 +462,12 @@ export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommi
         if ((try step({ type: "observeDigestAck", exactProviderRow: acked, responseSuccessful: acked })).phase !== "RecoveringRemoval") {
           throw failed("The server did not confirm the acknowledgement")
         }
-        const cleared = (map(recoverJournal(index), (after) => { index = after; return true }) catch () => false)
+        const cleared = (map(recoverJournal(index, write), (after) => { index = after; return true }) catch () => false)
         try step({ type: "recoverDigestJournal", removedAndCleared: cleared })
         if (!cleared) throw failed("The removal journal could not be cleared")
       }
       return try history()
-    })
+    }, interrupted))
   }
 
   return {

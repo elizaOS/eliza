@@ -7,10 +7,12 @@ import { restoreEarlier } from "../src/evaluators/pages.vibe"
 import { commitEvaluatorProgress, evidenceOf, sourceOf, stageEvaluatorOutput, stagedOutput } from "../src/evaluators/progress.vibe"
 import { runEvaluators } from "../src/evaluators/runner.vibe"
 import { followupIndex, followupTick } from "../src/followups.vibe"
+import { admitRoute } from "@elizaos/agent"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
+import { followOwnerClock } from "../src/index.vibe"
 import { heardReply, replyKind } from "../src/replies.vibe"
 import { answerReminder, createReminder, deliverReminder, reminderKind, reminderReply } from "../src/reminders.vibe"
-import { createRoutine, deleteRoutine, updateRoutine } from "../src/routines.vibe"
+import { createRoutine, deleteRoutine, routineRoutes, updateRoutine } from "../src/routines.vibe"
 import { ownerCalendarZone, ownerClockAt, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
 import { changeTodos, currentTodos } from "../src/todos.vibe"
 import { ports, portsLayer, rowsOf } from "./support/ports.vibe"
@@ -21,12 +23,14 @@ const asked = (messageId: string) => ({ plan, messageId, text: "remind me in 20 
 const outcomeOf = (result: ActionResult) => ({ success: result.success, text: result.text, outcome: result.data?.outcome })
 const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
 
-it.effect('Create the reminder I asked for, once, at the planned time with the delivery the message chose (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message")', effect () => {
+it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message")', effect () => {
   const seen = ports()
-  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }))
+  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }), check({}))
   provide portsLayer(seen) {
     const first = try createReminder(asked("m1"))
     const again = try createReminder(asked("m1"))
+    const second = reminderReply(try createReminder({ ...asked("m1"), plan: { ...plan, title: "Take out the trash", due: { kind: "in", minutes: 40 } } }))
+    try equal([second.success, second.userFacingText?.startsWith('I\'ll remind you: "Take out the trash" in 40 minutes')], [true, true])
     const reply = reminderReply(first)
     try equal({ success: reply.success, heardInFull: reply.userFacingText?.startsWith('I\'ll remind you: "Call the dentist" in 20 minutes, at Sun, Nov 22, 10:20'), phase: first.kind === "settled" ? first.intent.reminderPhase : first.kind }, {
       success: true, heardInFull: true, phase: "ReminderSaved",
@@ -35,6 +39,7 @@ it.effect('Create the reminder I asked for, once, at the planned time with the d
     const rows = rowsOf(seen, reminderKind)
     try equal(rows.map((row) => ({ trigger: row.trigger, destination: row.metadata.destination, alert: row.metadata.alert, clock: row.metadata.clock })), [
       { trigger: { kind: "once", atIso: new Date(seen.now + 20 * 60_000).toISOString() }, destination: "device", alert: "alert", clock: "UtcClock" },
+      { trigger: { kind: "once", atIso: new Date(seen.now + 40 * 60_000).toISOString() }, destination: "chat", alert: "alert", clock: "UtcClock" },
     ])
   }
 })
@@ -94,7 +99,11 @@ it.effect('A goal checks in on its cadence, a dismissed check-in stays gone, and
     try changeGoal({ op: "update", target: "Run a 10k", status: "active" }, "g4")
     const live = rowsOf(seen, goalCheckinKind).filter((row) => row.status === "Scheduled")
     try equal(live.map((row) => row.metadata.slot), [2])
-    try equal(try deliverGoalCheckin(live[0]), { kind: "delivered" })
+    seen.presenterFailures = 1
+    const unshown = try deliverGoalCheckin(live[0])
+    const shown = try deliverGoalCheckin(live[0])
+    const waiting = try deliverGoalCheckin(live[0])
+    try equal([unshown.kind, shown.kind, waiting.kind, seen.presented.length], ["retry", "delivered", "undeliverable", 1])
     const answered = try changeGoal({ op: "checkin", target: "Run a 10k", progress: "on_track", note: "ran 5k" }, "g5")
     const [goal] = try listGoals()
     try equal([answered.success, goal?.goal.reviewState, goal?.record.log.map(({ note }) => note)], [true, "OnTrack", ["ran 5k"]])
@@ -135,25 +144,41 @@ it.effect('To-dos change once per request, never on a guess between two items, a
 
 it.effect('The owner\'s stated zone runs their clock, a trip overrides it only during the trip, and a statement naming no zone changes nothing (spec/assistant/timezone.md, "Story: Run my day on my own clock")', effect () => {
   const seen = ports()
+  const zones = () => rowsOf(seen, goalCheckinKind).map(({ trigger }) => trigger.kind === "cron" ? trigger.tz : trigger.kind)
   provide portsLayer(seen) {
+    try changeGoal({ op: "create", title: "Read more", cadence: "weekly" }, "z1")
+    const atStart = zones()
     const stated = try stateOwnerZone("my timezone is pacific time")
+    try followOwnerClock()
+    const afterStating = zones()
     const ignored = try stateOwnerZone("my time zone is whatever the laptop says")
     try recordTravel(seen.now - 1, seen.now + 86_400_000, "Europe/Berlin")
+    try followOwnerClock()
+    const onTrip = zones()
     const invalidTravel = try recordTravel(seen.now - 1, seen.now + 86_400_000, "constructor")
     const travelling = try ownerClockAt(seen.now)
     const back = try ownerClockAt(seen.now + 2 * 86_400_000)
     try equal([stated.zone, ignored.changed, invalidTravel, travelling, back, try ownerCalendarZone()], ["America/Los_Angeles", false, false, "Europe/Berlin", "America/Los_Angeles", "America/Los_Angeles"])
+    seen.now += 2 * 86_400_000
+    try followOwnerClock()
+    try equal([atStart, afterStating, onTrip, zones()], [["America/New_York"], ["America/Los_Angeles"], ["Europe/Berlin"], ["America/Los_Angeles"]])
   }
 })
 
-it.effect('A routine created twice with one key is created once, and a change or deletion answers what was saved (spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client")', effect () => {
+const routineCall = (method: string, target: string) => admitRoute(routineRoutes(() => undefined).map(({ method, path }) => ({ method, path })), {
+  method, target, streamed: false, body: method === "DELETE" ? undefined : new TextEncoder().encode("{}"),
+}).tag
+
+it.effect('A routine created twice with one key is created once, reached by its id through the routes, and a change or deletion answers what was saved (spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client")', effect () => {
   const seen = ports()
   provide portsLayer(seen) {
-    const first = try createRoutine({ idempotencyKey: "create-1", title: "Stretch", windows: ["afternoon"] })
-    const repeat = try createRoutine({ idempotencyKey: "create-1", title: "Stretch", windows: ["afternoon"] })
+    const first = try createRoutine({ idempotencyKey: "template:stretch", title: "Stretch", windows: ["afternoon"] })
+    const repeat = try createRoutine({ idempotencyKey: "template:stretch", title: "Stretch", windows: ["afternoon"] })
     const id = first.routine?.id ?? ""
+    const path = `/api/personal-assistant/routines/${id}`
+    try equal([routineCall("PATCH", path), routineCall("DELETE", path), routineCall("POST", `${path}/occurrence`)], ["Admitted", "Admitted", "Admitted"])
     const paused = try updateRoutine(id, { status: "paused" })
-    const repeatAfterPause = try createRoutine({ idempotencyKey: "create-1", title: "Stretch", windows: ["afternoon"] })
+    const repeatAfterPause = try createRoutine({ idempotencyKey: "template:stretch", title: "Stretch", windows: ["afternoon"] })
     const deleted = try deleteRoutine(id)
     try equal([first.created, repeat.created, rowsOf(seen, "personal-assistant.routine").length, paused?.status, repeatAfterPause.routine?.status, deleted], [true, false, 1, "paused", "paused", true])
   }

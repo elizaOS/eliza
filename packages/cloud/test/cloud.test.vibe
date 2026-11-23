@@ -3615,11 +3615,9 @@ module node {
       const api = "https://api.example.test"
       const providerInputs: string[] = []
       let chosen = "hours"
-      /* eslint-disable no-redeclare -- Both Worker AI call signatures use this fake. */
       async function run(id: string, input: Record<string, unknown>, options: { returnRawResponse: true; signal: AbortSignal }): Promise<Response>
       async function run(id: string, input: unknown): Promise<unknown>
       async function run(id: string, input: unknown, options?: unknown): Promise<unknown> {
-        /* eslint-enable no-redeclare */
         if (options) return Response.json({ error: "unexpected inference request" }, { status: 500 })
         providerInputs.push(JSON.stringify({ id, input }))
         if (providerInputs.length === 1) await Effect.runPromise(Effect.sleep(4_250))

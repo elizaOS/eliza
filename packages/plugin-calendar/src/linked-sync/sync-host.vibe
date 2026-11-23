@@ -4,7 +4,7 @@ import { SyncSettings } from "./wire.schema.vibe"
 import { CalendarSyncAborted, CalendarSyncRefused, type ProviderRefused, type ProviderUncertain, type LinkedCalendarEventRecord, type LinkedCalendarLocalPort } from "./linked.vibe"
 import { CALENDAR_LINK_LIMIT, CalendarLinkedStore, type CalendarLinkedStoreOptions, type CalendarLinkStorage, type CalendarSyncBinding } from "./linked-store.vibe"
 import { googleCalendarSyncPort, type CalendarSyncClient, type GoogleCalendarSyncPortOptions } from "./google-port.vibe"
-import { LinkedCalendarReconciler, type LinkedCalendarReconcileOutcome } from "./reconcile.vibe"
+import { LinkedCalendarReconciler, type LinkedCalendarReconcileOutcome, type LinkedCalendarRecoveryOutcome } from "./reconcile.vibe"
 import { foregroundSyncMachine } from "./settlement.vibe"
 
 export interface CalendarSyncContext {
@@ -94,6 +94,8 @@ type SyncFailure = CalendarSyncRefused | CalendarSyncAborted | ProviderRefused |
 
 const refuse = (message: string) => new CalendarSyncRefused({ message })
 const decodeSettings = Schema.decodeUnknownEffect(SyncSettings, { onExcessProperty: "error" })
+const dispatchSettleMs = 300_000
+const recoveredAs = { landed: "clean", not_landed: "dirty", unresolved: "quarantined" } as const satisfies Record<LinkedCalendarRecoveryOutcome, LinkedCalendarReconcileOutcome>
 const emptyReport = (): CalendarSyncReport => ({ clean: 0, pushed: 0, pulled: 0, conflicted: 0, quarantined: 0, paused: 0, dirty: 0 })
 
 export effect function readCalendarSyncSettings(value: unknown): (CalendarSyncSettings | null)!CalendarSyncRefused {
@@ -255,8 +257,8 @@ export class CalendarSyncController {
       for (const listed of try store.list()) {
         try opted()
         if (listed.state === "quarantined") {
-          if ((try engine.recoverDispatch(listed)) === "landed") report.clean++
-          else report.quarantined++
+          const release = { dispatchedAt: Date.parse(listed.updatedAt), settleMs: dispatchSettleMs, now: DateTime.toEpochMillis(try DateTime.now) }
+          report[recoveredAs[try engine.recoverDispatch(listed, release)]]++
           continue
         }
         const row: LinkedCalendarEventRecord = !events.some((event) => event.id === listed.localEventId) && listed.providerEventId !== null

@@ -31,7 +31,7 @@ export function reviewDigest(payload: CalendarMutationPayload): string {
 export function fieldsSpanValid(fields: CalendarEventFields): boolean {
   const start = utcInstant(fields.startAt)
   const end = utcInstant(fields.endAt)
-  return start !== undefined && end !== undefined && (fields.isAllDay ? end >= start : end > start)
+  return start !== undefined && end !== undefined && end > start
 }
 
 export function recurrenceFits(fields: CalendarEventFields, recurrence: CalendarRecurrence): boolean {

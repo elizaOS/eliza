@@ -6,7 +6,7 @@ import { dossierRoutes } from "./dossier.vibe"
 import { runEvaluators, type EvaluatorRun } from "./evaluators/runner.vibe"
 import { deliverFollowupTick, followupTickCron, followupTickKind } from "./followups.vibe"
 import { deliverGoalCheckin, goalCheckinKind, ownerGoalsAction, ownerGoalsProvider } from "./goals.vibe"
-import { Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { Facts, Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminderKind } from "./reminders.vibe"
 import { deliverRoutine, routineKind, routineRoutes } from "./routines.vibe"
 import { ownerClockAt, ownerTimezoneEvaluator } from "./timezone.vibe"
@@ -28,8 +28,22 @@ const deliverers: ReadonlyArray<readonly [string, Deliverer]> = [
   [goalCheckinKind, deliverGoalCheckin],
   [routineKind, deliverRoutine],
   [checkinKind, deliverCheckin],
-  [followupTickKind, () => deliverFollowupTick()],
+  [followupTickKind, () => effect {
+    followOwnerClock() catch () => undefined
+    return try deliverFollowupTick()
+  }],
 ]
+
+const ownerClockKinds = new Set([checkinKind, goalCheckinKind, routineKind])
+
+export effect function followOwnerClock() {
+  const zone = try ownerClockAt(try (try Facts).now())
+  const scheduler = try Scheduler
+  for (const task of try scheduler.list()) {
+    if (!ownerClockKinds.has(task.kind) || task.trigger.kind !== "cron" || task.trigger.tz === zone || task.status === "Dismissed") continue
+    try scheduler.retrigger(task.taskId, { ...task.trigger, tz: zone }, `clock:${task.taskId}:${task.revision}:${zone}`)
+  }
+}
 
 effect function scheduleStandingTasks() {
   const zone = try ownerClockAt(try Clock.currentTimeMillis)
@@ -42,6 +56,7 @@ effect function scheduleStandingTasks() {
     kind: followupTickKind, ownerVisible: false, promptInstructions: "Follow up on approvals left open",
     trigger: { kind: "cron", expression: followupTickCron, tz: zone }, metadata: {}, idempotencyKey: "followups:tick",
   })
+  try followOwnerClock()
 }
 
 export class PersonalAssistantService extends Service {

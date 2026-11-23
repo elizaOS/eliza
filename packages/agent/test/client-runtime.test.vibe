@@ -52,17 +52,25 @@ module node {
     }
   }
 
-  export async function failedStartup() {
+  export async function failedStartupThenRetry() {
+    let phase: RuntimeStatus["state"] = "stopped"
+    let starts = 0
     const client = createRuntimeJsonClient({
       startupTimeoutMs: 1000, pollMs: 5, requestTimeoutMs: 1000,
       bridge: () => ({
-        status: () => Promise.resolve({ available: true, state: "stopped" }),
-        start: () => Promise.resolve({ available: true, state: "stopped" }),
+        status: () => Promise.resolve({ available: true, state: phase }),
+        start() {
+          starts += 1
+          if (starts > 1) phase = "running"
+          return Promise.resolve({ available: true, state: phase })
+        },
         restart: () => Promise.reject(new Error("not called")),
-        request: () => Promise.reject(new Error("not called")),
+        request: ({ path }) => Promise.resolve({ status: 200, data: { path } }),
       }),
     })
-    return Promise.all([client.request("/a"), client.request("/b")].map((call) => call.then(() => "answered", failure)))
+    const failed = await Promise.all([client.request("/a"), client.request("/b")].map((call) => call.then(() => "answered", failure)))
+    const retried = await client.request("/c").then((data) => data, failure)
+    return { failed, retried, starts }
   }
 
   export async function noRoute() {
@@ -188,7 +196,7 @@ module node {
   }
 }
 
-import { failedStartup, noRoute, overLoopback, sharedStartupThenRefresh, streamedOverBridge, streamedOverHttp, streamRefusedByAgent } from node
+import { failedStartupThenRetry, noRoute, overLoopback, sharedStartupThenRefresh, streamedOverBridge, streamedOverHttp, streamRefusedByAgent } from node
 
 it.live('Requests to a stopped runtime share one startup, and a refresh restarts it before the next request (spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
   const observed = try host("shared startup", () => sharedStartupThenRefresh())
@@ -201,9 +209,9 @@ it.live('Requests to a stopped runtime share one startup, and a refresh restarts
   }))
 })
 
-it.live('A startup that never reports running fails every request waiting for it (spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet")', effect () => {
-  const observed = try host("failed startup", () => failedStartup())
-  try Effect.try(() => assert.deepStrictEqual(observed, ["StartupFailed", "StartupFailed"]))
+it.live('A startup that never reports running fails every request waiting for it, and the next request starts the runtime again (spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet")', effect () => {
+  const observed = try host("failed startup", () => failedStartupThenRetry())
+  try Effect.try(() => assert.deepStrictEqual(observed, { failed: ["StartupFailed", "StartupFailed"], retried: { path: "/c" }, starts: 2 }))
 })
 
 it.live('With no bridge and no HTTP base a request fails as NoRoute and nothing is called (spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {

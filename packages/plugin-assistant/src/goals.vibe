@@ -1,7 +1,7 @@
 // spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/goals.md, "A check-in the owner dismissed never comes back for the same slot"; spec/assistant/goals.md, "The owner's answer to a fired check-in sets the goal's review state"
 import { createReminderPresentation, type Action, type ActionResult, type Provider, type UUID } from "@elizaos/core"
-import { Machine, cadenceSlots, checkinLogLimit, stored, type Cadence, type Goal, type GoalStatus, type ReviewState } from "../gen/assistant__goals.effect.vibe"
-import { Facts, Presenter, Scheduler, SchedulerUnavailable, onAgent, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { Machine, canFireCheckin, cadenceSlots, checkinLogLimit, stored, type Cadence, type Goal, type GoalStatus, type ReviewState } from "../gen/assistant__goals.effect.vibe"
+import { DeliveryFailed, Facts, Presenter, Scheduler, SchedulerUnavailable, onAgent, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { appliedReceipt, attributed, failedReceipt, unchangedReceipt, type Attempt } from "./replies.vibe"
 import { requestOf } from "./reminders.vibe"
 import { GoalRequest } from "./requests.schema.vibe"
@@ -41,6 +41,12 @@ export effect function listGoals() {
     }
   }
   return found
+}
+
+effect function goalState(goalId: string) {
+  provide stored(stateKey(goalId)) {
+    return try (try Machine).get()
+  }
 }
 
 effect function keepRecord(record: GoalRecord) {
@@ -163,15 +169,16 @@ export effect function deliverGoalCheckin(task: TaskRow) {
   if (typeof goalId !== "string" || typeof slot !== "number") return { kind: "undeliverable", error: "The check-in names no goal" } satisfies DeliveryAnswer
   const record = (((try readRecord(indexKey, decodeIndex))?.goals ?? []).find((goal) => goal.goalId === goalId))
   if (record === undefined) return { kind: "undeliverable", error: "The goal is gone" } satisfies DeliveryAnswer
-  const fired = stepGoal({ ...record, lastFired: slot }, { type: "fireCheckin", slot }, `goal:fire:${task.taskId}:${task.revision}`) catch (refused) => refused
-  if (!("goal" in fired)) return { kind: "undeliverable", error: "The check-in is not live or is waiting for an answer" } satisfies DeliveryAnswer
+  const goal = try goalState(goalId)
+  if (!canFireCheckin(goal, slot)) return { kind: "undeliverable", error: "The check-in is not live or is waiting for an answer" } satisfies DeliveryAnswer
   const body = `How is "${record.title}" going: on track, at risk, or needs attention?`
   const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Goal check-in"), catch: () => "unpresentable" }) catch () => undefined
   if (presentation === undefined) return { kind: "undeliverable", error: "The check-in has no text to present" } satisfies DeliveryAnswer
   const room = task.metadata.roomId
-  return try ((try Presenter).present({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
-    |> Effect.as(%, { kind: "delivered" } as DeliveryAnswer)
-    |> Effect.catch(%, (failed) => Effect.succeed({ kind: "retry", afterMs: 60_000, reason: failed.reason } as DeliveryAnswer)))
+  const shown = (try Presenter).present({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation }) catch (failed) => failed
+  if (shown instanceof DeliveryFailed) return { kind: "retry", afterMs: 60_000, reason: shown.reason } satisfies DeliveryAnswer
+  stepGoal({ ...record, lastFired: slot }, { type: "fireCheckin", slot }, `goal:fire:${task.taskId}:${task.revision}`) catch () => undefined
+  return { kind: "delivered" } satisfies DeliveryAnswer
 }
 
 export const ownerGoalsAction: Action = {
