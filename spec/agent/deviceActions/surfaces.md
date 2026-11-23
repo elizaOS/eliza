@@ -58,6 +58,12 @@ lens capability, so the phone uses the camera that is showing.
 ```quint
 type CameraWords = { units: int, hasControl: bool, commanded: bool, front: bool, back: bool }
 pure val cameraWordsMaxUnits = 512
+pure val wordsValues = Set(
+  { units: 10, hasControl: false, commanded: true, front: false, back: false },
+  { units: 513, hasControl: false, commanded: true, front: false, back: false },
+  { units: 10, hasControl: true, commanded: true, front: false, back: false },
+  { units: 10, hasControl: false, commanded: false, front: false, back: false },
+  { units: 10, hasControl: false, commanded: true, front: true, back: true })
 pure def asksForPhotoNow(words: CameraWords): bool =
   words.units <= cameraWordsMaxUnits and not(words.hasControl) and words.commanded and not(words.front and words.back)
 pure def captureVerdict(words: CameraWords): SurfaceVerdict = if (asksForPhotoNow(words)) SurfaceGrounded else SurfaceReviewed

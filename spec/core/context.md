@@ -100,15 +100,15 @@ place of the one preview it supersedes, in that preview's own row.
 
 ```quint
 type ReceiptField = OperationField | ResourceField | ArtifactsField | OutcomeField | ReasonField | CommitField | FailureField | RollbackField | ReceiptIdField | IdempotencyField | ObservedAtField
-pure def slimKeeps(field: ReceiptField, rolledBack: bool): bool =
-  if (field == IdempotencyField or field == ObservedAtField) false
-  else if (field == ReceiptIdField) rolledBack
+pure def slimKeeps(part: ReceiptField, rolledBack: bool): bool =
+  if (part == IdempotencyField or part == ObservedAtField) false
+  else if (part == ReceiptIdField) rolledBack
   else true
-pure val fieldValues = Set(OperationField, ResourceField, ArtifactsField, OutcomeField, ReasonField, CommitField, FailureField, RollbackField, ReceiptIdField, IdempotencyField, ObservedAtField)
+pure val partValues = Set(OperationField, ResourceField, ArtifactsField, OutcomeField, ReasonField, CommitField, FailureField, RollbackField, ReceiptIdField, IdempotencyField, ObservedAtField)
 pure def lawRetryKeysAndTimesNeverReachTheWire(rolledBack: bool): bool = not(slimKeeps(IdempotencyField, rolledBack)) and not(slimKeeps(ObservedAtField, rolledBack))
 pure def lawAReceiptIdStaysOnlyBesideARollback(rolledBack: bool): bool = slimKeeps(ReceiptIdField, rolledBack) iff rolledBack
-pure def lawWhatWasDoneAndToWhatIsKept(field: ReceiptField, rolledBack: bool): bool =
-  (field != ReceiptIdField and field != IdempotencyField and field != ObservedAtField) implies slimKeeps(field, rolledBack)
+pure def lawWhatWasDoneAndToWhatIsKept(part: ReceiptField, rolledBack: bool): bool =
+  (part != ReceiptIdField and part != IdempotencyField and part != ObservedAtField) implies slimKeeps(part, rolledBack)
 ```
 
 ### Provider discovery preserves originals and requires source-bound review before selection

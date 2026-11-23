@@ -34,11 +34,11 @@ type QuietHours = NoQuietHours | QuietBetween({ startMinute: int, endMinute: int
 type EscalationPlan = { inAppAfter: List[int], pushAfter: List[int], quiet: QuietHours }
 type EscalationRequest = { askedInApp: List[int], askedPush: List[int], replaceAll: bool, askedQuiet: QuietHours, quietGiven: bool }
 pure val noEscalation: EscalationPlan = { inAppAfter: List(), pushAfter: List(), quiet: NoQuietHours }
-pure def stepsAfter(existing: List[int], requested: List[int], replaceAll: bool): List[int] =
+pure def offsetsAfter(existing: List[int], requested: List[int], replaceAll: bool): List[int] =
   if (replaceAll or requested.length() > 0) requested else existing
 pure def configureEscalation(plan: EscalationPlan, request: EscalationRequest): EscalationPlan = {
-  inAppAfter: stepsAfter(plan.inAppAfter, request.askedInApp, request.replaceAll),
-  pushAfter: stepsAfter(plan.pushAfter, request.askedPush, request.replaceAll),
+  inAppAfter: offsetsAfter(plan.inAppAfter, request.askedInApp, request.replaceAll),
+  pushAfter: offsetsAfter(plan.pushAfter, request.askedPush, request.replaceAll),
   quiet: if (request.quietGiven) request.askedQuiet else plan.quiet
 }
 pure val nightQuiet: QuietHours = QuietBetween({ startMinute: 1320, endMinute: 420 })
@@ -88,7 +88,7 @@ pure def inQuietHours(quiet: QuietHours, minuteOfDay: int): bool = match quiet {
       else if (q.startMinute < q.endMinute) q.startMinute <= minuteOfDay and minuteOfDay < q.endMinute
       else minuteOfDay >= q.startMinute or minuteOfDay < q.endMinute
 }
-pure def stepOutcome(channel: ReminderChannel, quiet: QuietHours, minuteOfDay: int, unanswered: bool): StepOutcome =
+pure def escalationOutcome(channel: ReminderChannel, quiet: QuietHours, minuteOfDay: int, unanswered: bool): StepOutcome =
   if (not(unanswered)) NoLongerOpen
   else if (channel == Push and inQuietHours(quiet, minuteOfDay)) HeldForQuietHours
   else NudgeSent
@@ -96,13 +96,13 @@ pure val quietValues: Set[QuietHours] = List(NoQuietHours, nightQuiet, QuietBetw
   .foldl(Set(), (acc, q) => acc.union(Set(q)))
 pure val minuteOfDayValues = Set(0, 60, 299, 300, 420, 600, 1319, 1320, 1439)
 pure def lawAnAnsweredReminderIsNeverNudged(channel: ReminderChannel, quiet: QuietHours, minuteOfDay: int): bool =
-  stepOutcome(channel, quiet, minuteOfDay, false) == NoLongerOpen
+  escalationOutcome(channel, quiet, minuteOfDay, false) == NoLongerOpen
 pure def lawTheConversationIsNeverHeld(quiet: QuietHours, minuteOfDay: int): bool =
-  stepOutcome(InApp, quiet, minuteOfDay, true) == NudgeSent
+  escalationOutcome(InApp, quiet, minuteOfDay, true) == NudgeSent
 pure def lawAPhoneStepInsideQuietHoursIsHeld(quiet: QuietHours, minuteOfDay: int): bool =
-  inQuietHours(quiet, minuteOfDay) implies stepOutcome(Push, quiet, minuteOfDay, true) == HeldForQuietHours
+  inQuietHours(quiet, minuteOfDay) implies escalationOutcome(Push, quiet, minuteOfDay, true) == HeldForQuietHours
 pure def lawAPhoneStepOutsideQuietHoursIsSent(quiet: QuietHours, minuteOfDay: int): bool =
-  not(inQuietHours(quiet, minuteOfDay)) implies stepOutcome(Push, quiet, minuteOfDay, true) == NudgeSent
+  not(inQuietHours(quiet, minuteOfDay)) implies escalationOutcome(Push, quiet, minuteOfDay, true) == NudgeSent
 pure def lawQuietHoursWrapPastMidnight(minuteOfDay: int): bool =
   inQuietHours(nightQuiet, minuteOfDay) iff (minuteOfDay >= 1320 or minuteOfDay < 420)
 ```
