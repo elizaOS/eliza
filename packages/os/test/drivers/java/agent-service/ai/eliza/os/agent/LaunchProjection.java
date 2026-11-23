@@ -28,18 +28,39 @@ public final class LaunchProjection {
       answer.put("reason", refused.getMessage());
       return answer;
     }
-    Map<String, Object> account = (Map<String, Object>) ask.get("account");
+    AgentCredentials.Account account = accountOf((Map<String, Object>) ask.get("account"));
     Map<String, Object> worker = (Map<String, Object>) ask.get("workflowWorker");
     Map<String, Object> frame = (Map<String, Object>) ask.get("frame");
+    Map<String, Object> resident = (Map<String, Object>) ask.get("residentOwner");
+    AgentConfig.WorkflowWorker workflowWorker = worker == null ? null
+      : new AgentConfig.WorkflowWorker((String) worker.get("runtimeDir"), (String) worker.get("executable"), (String) worker.get("sha256"));
+    String document;
+    try {
+      if (resident == null) document = config.launchDocument(account, workflowWorker);
+      else {
+        AgentConfig.ResidentOwner owner = switch ((String) resident.get("kind")) {
+          case "installation" -> new AgentConfig.InstallationOwner(accountOf((Map<String, Object>) resident.get("linkedAccount")));
+          case "retained-account" -> new AgentConfig.RetainedOwner(accountOf((Map<String, Object>) resident.get("account")));
+          default -> throw new IllegalArgumentException("Unknown resident owner fixture");
+        };
+        AgentConfig.ResidentInference inference = switch ((String) ask.get("residentInference")) {
+          case "none" -> new AgentConfig.NoInference();
+          case "cloud" -> new AgentConfig.CloudInference(account);
+          case "own-key" -> new AgentConfig.OwnKeyInference();
+          default -> throw new IllegalArgumentException("Unknown resident inference fixture");
+        };
+        document = config.residentLaunchDocument(owner, inference, workflowWorker);
+      }
+    } catch (IllegalArgumentException refused) {
+      return Map.of("kind", "refused", "reason", refused.getMessage());
+    }
     answer.put("kind", "admitted");
     answer.put("service", config.service);
     answer.put("notification", config.notification.text());
     answer.put("rendererGroups", BigDecimal.valueOf(config.routes(ChannelPolicy.CallerKind.RENDERER).size()));
     answer.put("nativeGroups", BigDecimal.valueOf(config.routes(ChannelPolicy.CallerKind.NATIVE).size()));
     answer.put("needsAccount", config.needsAccount());
-    answer.put("document", config.launchDocument(
-      account == null ? null : new AgentCredentials.Account((String) account.get("userId"), (String) account.get("organizationId")),
-      worker == null ? null : new AgentConfig.WorkflowWorker((String) worker.get("runtimeDir"), (String) worker.get("executable"), (String) worker.get("sha256"))));
+    answer.put("document", document);
     if (frame != null) {
       Map<String, Object> held = (Map<String, Object>) frame.get("credential");
       LaunchFrame first = LaunchFrame.first((String) frame.get("token"), ((BigDecimal) frame.get("epoch")).longValueExact(),
@@ -52,6 +73,10 @@ public final class LaunchProjection {
       answer.put("pushOfHeldVersion", first.accepts(held == null ? null : new LaunchFrame.Credential(first.credentialVersion(), "same")));
     }
     return answer;
+  }
+
+  private static AgentCredentials.Account accountOf(Map<String, Object> account) {
+    return account == null ? null : new AgentCredentials.Account((String) account.get("userId"), (String) account.get("organizationId"));
   }
 
   private static byte[] bytes(Object text) { return text instanceof String value ? value.getBytes(StandardCharsets.UTF_8) : null; }
