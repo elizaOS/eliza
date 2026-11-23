@@ -1,4 +1,4 @@
-// spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits"; spec/agent/voice/session.md, "A turn is sent once, and a half-duplex turn only after the capture confirmed its close"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"
+// spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits"; spec/agent/voice/session.md, "A turn is sent once, and a half-duplex turn only after the capture confirmed its close"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"; spec/agent/voice/session.md, "A turn taken back before its reply started is carried into the utterance in progress, and the next turn names the one it replaces"
 import type { Duplex, EndOfTurnReply, InputMode } from "../../gen/agent__voice__session.ts"
 
 export interface CaptureEvents {
@@ -29,6 +29,7 @@ export interface VoiceTurn {
   readonly channelType: string
   readonly metadata: { readonly voiceUi?: VoiceUi }
   readonly clientMessageId: string
+  readonly supersedes?: string
 }
 
 export interface VoiceReplyAction {
