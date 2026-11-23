@@ -1,13 +1,16 @@
 // spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/relay.md, "A queued command waits for the phone's current offer and survives a new offer it never reached"
-import { cloudServiceType, type AgentPlugin, type CloudLinkService } from "@elizaos/agent"
+import { cloudServiceType, deviceConversation, type AgentPlugin, type CloudLinkService } from "@elizaos/agent"
 import type { IAgentRuntime, Memory } from "@elizaos/core"
+import { MapsFailure } from "./client/contracts.vibe"
 import { createMapsPlugin } from "./plugin.vibe"
 import { conversationNavigation, mapsNavigationRelay, mapsNavigationRoute, type MapsDeviceNavigation } from "./relay.vibe"
 import type { AgentSavedPlaceStore } from "./saves.vibe"
 
-const navigations = new WeakMap<IAgentRuntime, (message: Memory) => MapsDeviceNavigation | undefined>()
+type TurnNavigation = (message: Memory) => (MapsDeviceNavigation | undefined)!MapsFailure
 
-export function registerMapsNavigation(runtime: IAgentRuntime, navigation: ((message: Memory) => MapsDeviceNavigation | undefined) | undefined): void {
+const navigations = new WeakMap<IAgentRuntime, TurnNavigation>()
+
+export function registerMapsNavigation(runtime: IAgentRuntime, navigation: TurnNavigation | undefined): void {
   if (navigation === undefined) navigations.delete(runtime)
   else navigations.set(runtime, navigation)
 }
@@ -27,9 +30,15 @@ export function registerMapsViews(runtime: IAgentRuntime, namesView: ((destinati
 
 const relay = runSync(mapsNavigationRelay())
 
+effect function turnNavigation(runtime: IAgentRuntime, message: Memory): (MapsDeviceNavigation | undefined)!MapsFailure {
+  const room = try mapError(tryPromise(() => runtime.getRoom(message.roomId)), () => new MapsFailure({ code: "storage", message: "The conversation of this turn could not be read." }))
+  const conversationId = room === null ? undefined : (try mapError(Effect.try(() => deviceConversation(room)), () => new MapsFailure({ code: "storage", message: "The conversation of this turn could not be read." })))?.id
+  return conversationId === undefined ? undefined : conversationNavigation(relay, conversationId, () => true)
+}
+
 const plugin = createMapsPlugin({
   cloud: (runtime) => runtime.getService<CloudLinkService>(cloudServiceType) ?? undefined,
-  navigation: (runtime, message) => navigations.get(runtime)?.(message),
+  navigation: (runtime, message) => navigations.get(runtime)?.(message) ?? sync(() => undefined),
   savedPlaces: (runtime) => savedPlaceStores.get(runtime),
   namesView: (runtime, destination) => viewRegistries.get(runtime)?.(destination),
 })
@@ -39,7 +48,7 @@ export const mapsPlugin: AgentPlugin = {
   routes: [mapsNavigationRoute(relay)],
   init: async (config, runtime) => {
     await plugin.init?.(config, runtime)
-    if (!navigations.has(runtime)) registerMapsNavigation(runtime, (message) => conversationNavigation(relay, message.roomId, () => true))
+    if (!navigations.has(runtime)) registerMapsNavigation(runtime, (message) => turnNavigation(runtime, message))
   },
 }
 

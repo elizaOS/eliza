@@ -108,6 +108,11 @@ export function mapsService(link: MapsCloudLink) {
     return answer.place === null ? null : try place(answer.place, answer.providerId)
   }
 
+  effect function reverse(point: Coordinate): (Place | null)!MapsFailure {
+    const answer = try call({ method: "POST", path: "/api/v1/maps/reverse", body: { coordinate: { latitude: point.latitude, longitude: point.longitude } } }, Detail, true)
+    return answer.place === null ? null : try place(answer.place, answer.providerId)
+  }
+
   effect function routes(from: Coordinate, to: Coordinate, mode: TravelMode, alternatives: boolean): RouteResults!MapsFailure {
     const answer = try call({ method: "POST", path: "/api/v1/maps/routes", body: { from, to, mode, ...(alternatives ? { alternatives: true } : {}) } }, Routes, true)
     if (!alternatives && answer.routes.length > 1) throw new MapsFailure({ code: "invalid-response", message: "The Maps route response is invalid." })
@@ -120,7 +125,7 @@ export function mapsService(link: MapsCloudLink) {
     return { providerId: answer.providerId, attribution: answer.attribution, routes: planned }
   }
 
-  return { offer, search, detail, routes }
+  return { offer, search, detail, reverse, routes }
 }
 
 export type MapsService = ReturnType<typeof mapsService>
