@@ -1,6 +1,7 @@
 // spec/calendar/linkedSync.md, "Story: Pause, resume or recover without replacing a newer sync decision"
 import type { CalendarCache } from "../../src/plugin/runtime-store.vibe";
 
+/** @throws {never} */
 export function memoryCache(): CalendarCache {
   const rows = new Map<string, unknown>();
   return {

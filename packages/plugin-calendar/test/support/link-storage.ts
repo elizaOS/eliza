@@ -1,6 +1,7 @@
 // spec/calendar/linkedSync.md, "Story: Pause, resume or recover without replacing a newer sync decision"
 import type { CalendarLinkStorage } from "../../src/linked-sync/index.vibe";
 
+/** @throws {never} */
 export function memoryLinkStorage(slots: () => Map<string, unknown>, refusing: () => boolean = () => false): CalendarLinkStorage {
   return {
     read: (slot) => Promise.resolve(structuredClone(slots().get(slot) ?? null)),
