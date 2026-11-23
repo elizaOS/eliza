@@ -149,6 +149,17 @@ final class UpdateChannel {
         return destination;
     }
 
+    static void keepOnly(File directory, String digest) throws IOException {
+        File[] files = directory.listFiles();
+        if (files == null) throw new IOException("Update storage is unavailable");
+        for (File file : files) {
+            String name = file.getName();
+            if (name.matches("[0-9a-f]{64}\\.(zip|payload|partial)") && !name.startsWith(digest + ".")) {
+                Files.deleteIfExists(file.toPath());
+            }
+        }
+    }
+
     private static void checkDownloadWindow(long started) throws DownloadDeferred {
         if (Thread.currentThread().isInterrupted() || SystemClock.elapsedRealtime() - started > 8 * 60_000L) {
             throw new DownloadDeferred();

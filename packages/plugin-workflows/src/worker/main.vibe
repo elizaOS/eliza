@@ -26,7 +26,6 @@ module node {
 }
 import { stdioLines } from node
 
-/** Serves one run over standard input and output until it parks or settles. */
 export effect function main(): void!! {
   const lines = try sync(() => stdioLines())
   const channel: WorkerChannel = {

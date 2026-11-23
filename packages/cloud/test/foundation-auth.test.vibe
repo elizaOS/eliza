@@ -28,7 +28,7 @@ import { startFakeServer, type FakeServer, type FakeHandler, type FakeAnswer } f
 import { callCloud, type CallInit } from "./support/http.ts"
 import { createStripeFake, fakeSecretKey, type StripeFake } from "./support/fakes/stripe.ts"
 import { stripePlanDowngrade, stripePlanPreview, stripePlanUpgrade, stripeRenewalPreview } from "./support/fakes/stripe-commands.ts"
-import { openRenewal } from "../src/billing/allowance.vibe"
+import { changeInvoiceAllowance, openRenewal } from "../src/billing/allowance.vibe"
 import { catalogPrices, secrets, testProfile } from "./support/profile.ts"
 
 const minuteMs = 60_000
@@ -863,6 +863,40 @@ describe("Node subscriptions", () => {
         [confirmed.status, command.status, rejected.status, result.status, result.resultRevision, replay.body, blockedPayment.status,
           current.planKey, current.liveCommand.tag, after, writes],
         [200, "awaiting_payment", 200, "rejected", null, rejected.body, 409, "PlusMonthly", "NoLiveCommand", paid, 1]
+      ))
+    }
+  }))
+
+  it.live("A paid upgrade over a refunded period applies the plan and moves no allowance (spec/cloud/billing/subscriptionCommands.md, \"Story: Get the plan I paid for\"; spec/cloud/billing/allowance.md, \"Story: Get more allowance when I upgrade mid-period\")", () => scoped(effect {
+    const now = 1_800_000_000_987
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(now))
+    provide Clock.Clock = clock.clock {
+      const stripe = try sync(() => createStripeFake({ now: () => now }))
+      const provider = try sync(() => stripePlanUpgrade(stripe, () => now))
+      const cloud = try testHttp(billing.routes, provider.handler)
+      const token = sessionToken("q")
+      const path = "/api/v1/subscriptions/upgrade"
+      const organizationId = "org-refunded-upgrade"
+      try account(cloud, "refunded-upgrade", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "refunded-upgrade", token, { live: true, epoch: 0, authAt: now,
+        accessExpiresAt: now + 15 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }, now)
+      const original = try paidReviewSubscription(cloud, stripe, organizationId, "plus_monthly", now)
+      const reviewed = try cloud.call(path + "/review", token, { json: { targetPlanKey: "pro_monthly" } })
+      const quote = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(reviewed.body)
+      const confirmed = try cloud.call(path + "/confirm", token, { json: { quoteId: quote.quoteId, idempotencyKey: "refunded-upgrade-review" } })
+      const command = try Schema.decodeUnknownEffect(Schema.Struct({ commandId: Schema.String }))(confirmed.body)
+      const periods = try sql(cloud, "SELECT key FROM allowance_periods WHERE organization_id=$1", [organizationId])
+      const invoiceId = String(periods[0]?.key).replace(/^[a-z]+\/(staging\/)?/, "")
+      try cloud.inside(cloud.store.transaction((tx) => cloud.inside(changeInvoiceAllowance(tx, { organizationId, invoiceId }, { type: "clawBack", cause: "RefundClawback" }, now))))
+      const refunded = try sql(cloud, "SELECT key,state FROM allowance_periods WHERE organization_id=$1 ORDER BY key", [organizationId])
+      try sync(() => provider.settle(original.subscriptionId, "paid"))
+      const applied = try cloud.call(path + "/" + command.commandId, token)
+      const current = try cloud.store.transaction((tx) => readSubscription(tx, organizationId))
+      const after = try sql(cloud, "SELECT key,state FROM allowance_periods WHERE organization_id=$1 ORDER BY key", [organizationId])
+      try check(() => assert.deepStrictEqual(
+        [confirmed.status, applied.status, (applied.body as CommandView).status, current.planKey, current.liveCommand.tag, after],
+        [200, 200, "succeeded", "ProMonthly", "NoLiveCommand", refunded]
       ))
     }
   }))

@@ -1,15 +1,11 @@
 // spec/agent/storage/database.md, "Story: Keep one agent identity for my data across restarts"; spec/agent/storage/database.md, "A damaged or linked identity file fails the open and is left in place"; spec/agent/storage/database.md, "Only one live process holds a data directory"; spec/core/atomicPublication.md, "The final path changes only after a complete temporary file is renamed"
 module node {
-  import { processAlive, processOwnerUid, processStart } from "../host/process-owner.vibe"
+  import { isError, processAlive, processOwnerUid, processStart } from "../host/process-owner.vibe"
   import { randomUUID } from "node:crypto"
   import { lstat, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises"
   import { join, resolve } from "node:path"
   import { logger, validateUuid, type UUID } from "@elizaos/core"
   import { StoreFailed } from "./fault.vibe"
-
-  function isError(error: unknown, code: string): boolean {
-    return typeof error === "object" && error !== null && "code" in error && error.code === code
-  }
 
   async function privateDirectory(directory: string): Promise<void> {
     await mkdir(directory, { mode: 0o700, recursive: true })

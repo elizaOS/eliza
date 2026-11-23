@@ -1,9 +1,9 @@
 // spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"
 import { promised } from "../edge.vibe"
 import type { ContentType, Media } from "../types/primitives.vibe"
-import { fetchRemoteMedia } from "./fetch.vibe"
+import { DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES, fetchRemoteMedia } from "./fetch.vibe"
 
-export const DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024
+export { DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES }
 
 export function contentTypeForMime(mime?: string | null): ContentType {
   const m = (mime ?? "").split(";")[0].trim().toLowerCase()

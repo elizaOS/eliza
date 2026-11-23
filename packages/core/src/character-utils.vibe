@@ -2,15 +2,23 @@
 import { MODEL_PROVIDER_SECRETS } from "./security/secrets.vibe"
 import type { Character } from "./types/agent.vibe"
 
+type CharacterSecrets = NonNullable<Character["secrets"]>
+
+function characterSecrets(character: Character): CharacterSecrets {
+  return { ...character.settings?.secrets, ...character.secrets }
+}
+
+function withSecrets(character: Character, secrets: CharacterSecrets): Character {
+  if (!character.settings) return { ...character, secrets }
+  const { secrets: _nested, ...settings } = character.settings
+  return { ...character, secrets, settings }
+}
+
 export function getCharacterSecret(
   character: Character,
   key: string,
 ): string | null {
-  const secrets = character.settings?.secrets as
-    | Record<string, string>
-    | undefined
-  const value = secrets?.[key]
-
+  const value = characterSecrets(character)[key]
   return typeof value === "string" && value.length > 0 ? value : null
 }
 
@@ -19,18 +27,7 @@ export function setCharacterSecret(
   key: string,
   value: string,
 ): Character {
-  const secrets = (character.settings?.secrets as Record<string, string>) ?? {}
-
-  return {
-    ...character,
-    settings: {
-      ...character.settings,
-      secrets: {
-        ...secrets,
-        [key]: value,
-      },
-    },
-  }
+  return withSecrets(character, { ...characterSecrets(character), [key]: value })
 }
 
 export function hasCharacterSecret(character: Character, key: string): boolean {
@@ -41,46 +38,25 @@ export function deleteCharacterSecret(
   character: Character,
   key: string,
 ): Character {
-  const secrets = (character.settings?.secrets as Record<string, string>) ?? {}
-  const { [key]: _removed, ...remaining } = secrets
-
-  return {
-    ...character,
-    settings: {
-      ...character.settings,
-      secrets: remaining,
-    },
-  }
+  const { [key]: _removed, ...remaining } = characterSecrets(character)
+  return withSecrets(character, remaining)
 }
 
 export function listCharacterSecretKeys(character: Character): string[] {
-  const secrets = character.settings?.secrets as
-    | Record<string, string>
-    | undefined
-  if (!secrets) return []
-  return Object.keys(secrets)
+  return Object.keys(characterSecrets(character))
 }
 
 export function mergeCharacterSecrets(
   character: Character,
   secrets: Record<string, string>,
 ): Character {
-  const existingSecrets = (character.settings?.secrets as Record<string, string>) ?? {}
-
-  const mergedSecrets: Record<string, string> = { ...secrets }
-  for (const [key, value] of Object.entries(existingSecrets)) {
+  const merged: CharacterSecrets = { ...secrets }
+  for (const [key, value] of Object.entries(characterSecrets(character))) {
     if (value && typeof value === "string") {
-      mergedSecrets[key] = value
+      merged[key] = value
     }
   }
-
-  return {
-    ...character,
-    settings: {
-      ...character.settings,
-      secrets: mergedSecrets,
-    },
-  }
+  return withSecrets(character, merged)
 }
 
 export function addCharacterPlugin(

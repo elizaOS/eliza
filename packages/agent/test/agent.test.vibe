@@ -38,14 +38,15 @@ it.effect('A repeated SIGTERM joins the stop already running and the process sti
   try Effect.try(() => assert.deepStrictEqual({ code: exited.code, signal: exited.signal }, { code: 0, signal: null }))
 }, 120_000)
 
-it.effect('After stop the phase reports the exit, health says stopping and a second stop joins with the same code (spec/agent/host/process.md, "A requested stop ends in an exit")', effect () => {
-  const started = try startInProcess()
+it.effect('A launch\'s plugin settings reach the runtime, and after stop the phase reports the exit, health says stopping and a second stop joins with the same code (spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "A requested stop ends in an exit")', effect () => {
+  const started = try startInProcess({ launch: { environment: { PRODUCT_SETTING: "launched", ELIZA_NOTES_TRASH_RETENTION_DAYS: "7" } } })
+  const settings = try Effect.try(() => ["PRODUCT_SETTING", "ELIZA_NOTES_TRASH_RETENTION_DAYS", "UNSET_SETTING"].map((key) => started.agent.runtime.getSetting(key)))
   const before = try Effect.try(() => healthReply(started.agent.phase()))
   const first = try host("stop", () => started.agent.stop())
   const second = try host("stop again", () => started.agent.stop())
   const after = try Effect.try(() => started.agent.phase())
-  try Effect.try(() => assert.deepStrictEqual({ before, first, second, outcome: after.outcome, health: healthReply(after) }, {
-    before: { tag: "HealthReady", epoch: 1 }, first: 0, second: 0,
+  try Effect.try(() => assert.deepStrictEqual({ settings, before, first, second, outcome: after.outcome, health: healthReply(after) }, {
+    settings: ["launched", "7", null], before: { tag: "HealthReady", epoch: 1 }, first: 0, second: 0,
     outcome: { tag: "ExitedWith", code: 0 }, health: { tag: "HealthUnavailable", phase: "stopping" },
   }))
 }, 120_000)

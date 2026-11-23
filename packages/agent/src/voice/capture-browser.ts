@@ -1,7 +1,7 @@
 // spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "A WAV holds every sample in order as mono PCM16 behind a 44-byte header"
 import type { CaptureAudioPort, ClipAudioPort } from "./capture.vibe"
 
-export const captureProcessorName = "eliza-capture-samples"
+const captureProcessorName = "eliza-capture-samples"
 
 export const browserCaptureAudio: CaptureAudioPort<MediaStream, AudioContext> = {
   open: (sampleRate) => new AudioContext({ sampleRate }),
@@ -12,6 +12,7 @@ export const browserCaptureAudio: CaptureAudioPort<MediaStream, AudioContext> = 
       node,
       stop: () => {
         node.port.onmessage = null
+        node.port.postMessage("stop")
         node.port.close()
       },
     }

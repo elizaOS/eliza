@@ -26,7 +26,6 @@ effect function text(value: unknown, maximum: number, empty = false): string!Wor
   return value
 }
 
-/** The model prompt that drafts generated workflow code; the request is data, never permission to widen the engine. */
 export function generatedDraftPrompt(request: string, existing?: { readonly name: string; readonly source: string }): string {
   return `Write one TypeScript module for a workflow, or return {"unsupported":"brief reason"} when the request needs anything the engine below cannot do. Return exactly one JSON object {"name":"1–200 chars","description":"0–4000 chars","source":"the module"} and nothing else.
 The module may import only types from "eliza-workflow" and must export default an async function taking ctx: WorkflowContext. Its declarations are:
@@ -35,7 +34,6 @@ Rules: give every ctx call a unique literal id; do all computation that must not
 ` + JSON.stringify({ request, existing: existing ?? null })
 }
 
-/** Authoring of untyped definitions over the opened workflow service: generation, checked saves, review and the source view. */
 export function generatedWorkflows(service: WorkflowService) {
   const { host, store, owner, lock, now, db } = service
 

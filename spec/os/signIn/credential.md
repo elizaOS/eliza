@@ -66,7 +66,8 @@ the same one-time code and PKCE verifier, and the cloud answers the same
 credential from its sealed copy until it is acknowledged. There is no
 device request-id replay. An acknowledgement may come up to the code's
 five-minute deadline later, so a key awaiting it may live that much past
-the expiry the token answer gave.
+the expiry the token answer gave. It retains the nonempty credential id
+from that token answer until the attempt ends.
 
 ```quint
 pure val ackWindow: Millis = 5 * millisPerMinute
@@ -82,7 +83,7 @@ pure val keyExpiresAtValues = Set(120000, 2592000000)
 pure val storedValues = Set(S::Written, S::Unconfirmed, S::Failed)
 pure val weight_tokenAnswered = 6
 pure def mintedActive(c: Custody, lastVersion: int): bool = match c { | Active(a) => a.version >= 1 and a.version <= lastVersion | _ => true }
-pure def mintedPending(p: Attempt, lastVersion: int, active: int): bool = match p { | Acknowledging(k) => k.version >= 1 and k.version == lastVersion and active < k.version | _ => true }
+pure def mintedPending(p: Attempt, lastVersion: int, active: int): bool = match p { | Acknowledging(k) => k.version >= 1 and k.version == lastVersion and active < k.version and k.credentialId != "" | _ => true }
 pure def alwaysKeysAreMintedInOrder(s: DeviceCredential): bool = mintedActive(s.custody, s.lastVersion) and mintedPending(s.attempt, s.lastVersion, activeVersion(s))
 pure def sometimesAwaitingAcknowledgement(s: DeviceCredential): bool = pendingVersion(s) >= 1
 ```

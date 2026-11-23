@@ -1,26 +1,20 @@
 // spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"; spec/calendar/managedFeed.md, "The resident accepts only complete broker data for the exact selected source and window"
 import type { ManagedGoogleCalendar, ManagedGoogleCalendarFeed, ManagedGoogleEvent } from "../feed/cloud-wire.schema.vibe"
 
-/** The capability a Google connection grants for calendar reads. */
 export const GOOGLE_CALENDAR_READ_CAPABILITY = "google.calendar.read"
 
-/** One Google calendar the connection lists. */
 export type GoogleCalendarSummary = ManagedGoogleCalendar
 
-/** One Google event as the Cloud feed returns it. */
 export type GoogleCalendarEvent = ManagedGoogleEvent
 
-/** One calendar's events over a window. */
 export type GoogleCalendarFeed = ManagedGoogleCalendarFeed
 
-/** A requested window and the zone it is about. */
 export interface GoogleCalendarRange {
   readonly timeMin: string
   readonly timeMax: string
   readonly timeZone: string
 }
 
-/** One Google connection as the Cloud lists it. */
 export interface GoogleCalendarAccount {
   readonly connectionId: string | null
   readonly connected: boolean
@@ -28,7 +22,6 @@ export interface GoogleCalendarAccount {
   readonly label: string
 }
 
-/** The signed-in owner and connection a reader is bound to. */
 export interface GoogleCalendarBinding {
   readonly environment: "production" | "staging"
   readonly userId: string
@@ -38,14 +31,12 @@ export interface GoogleCalendarBinding {
   readonly connectionId: string
 }
 
-/** The host's Cloud transport for Google calendar reads. */
 export interface GoogleCalendarClient {
   gmailAccounts(signal: AbortSignal): Promise<GoogleCalendarAccount[]>
   googleCalendars(grantId: string, signal: AbortSignal): Promise<GoogleCalendarSummary[]>
   googleCalendarFeed(grantId: string, calendarId: string, range: GoogleCalendarRange, signal: AbortSignal): Promise<GoogleCalendarFeed>
 }
 
-/** A readable Google calendar offered for selection. */
 export interface GoogleCalendarSource {
   readonly id: string
   readonly name: string
@@ -58,7 +49,6 @@ export interface GoogleCalendarSource {
   readonly readOnly: true
 }
 
-/** One read-only event of the selected Google calendar, with its interval in milliseconds. */
 export interface GoogleCalendarReadEvent {
   readonly id: string
   readonly calendarId: string
@@ -75,28 +65,20 @@ export interface GoogleCalendarReadEvent {
   readonly readOnly: true
 }
 
-/** Why a Google calendar could not be read. */
 export interface GoogleCalendarFailure {
   readonly status: "not-connected" | "permission-required" | "unavailable"
   readonly message: string
 }
-/** The readable calendars, or why there are none. */
 export type GoogleCalendarSources = GoogleCalendarFailure | { readonly status: "ready"; readonly calendars: readonly GoogleCalendarSource[] }
-/** The selected calendar's events, or why they cannot be shown. */
 export type GoogleCalendarRead =
   | GoogleCalendarFailure
   | { readonly status: "selection-required"; readonly message: string }
   | { readonly status: "ready"; readonly calendar: GoogleCalendarSource; readonly events: readonly GoogleCalendarReadEvent[]; readonly syncedAt: string; readonly truncated: false }
-/** How the host classifies a transport failure. */
 export type GoogleCalendarErrorKind = "not-connected" | "permission-required" | "account-changed" | "unavailable"
 
-/** The account, connection or selection changed while a read was in flight; its result is dropped. */
 export error GoogleCalendarChanged {}
-/** Google returned a response that does not describe the selected calendar. */
 export error GoogleCalendarInvalidResponse {}
-/** A Google read failed, classified by the host. */
 export error GoogleCalendarFailureError { kind: GoogleCalendarErrorKind }
-/** The requested window is not a valid range in a known zone. */
 export error GoogleCalendarInvalidRange {}
 
 const bindingKey = (binding: GoogleCalendarBinding) =>
@@ -122,7 +104,6 @@ effect function civilMidnight(instant: number, timeZone: string): number!GoogleC
   return Date.UTC(part("year"), part("month") - 1, part("day"))
 }
 
-/** A feed event as a read-only row of its calendar: all-day spans as UTC civil dates, timed ones as instants. */
 export effect function googleCalendarReadEvent(event: GoogleCalendarEvent, calendar: GoogleCalendarSource): GoogleCalendarReadEvent!GoogleCalendarInvalidResponse {
   let begin = Date.parse(event.startAt)
   let end = Date.parse(event.endAt)
@@ -145,7 +126,6 @@ export effect function googleCalendarReadEvent(event: GoogleCalendarEvent, calen
   }
 }
 
-/** A read-only reader of one owner-chosen Google calendar, dropping any result whose account, connection or selection changed meanwhile. */
 export class GoogleCalendarReader {
   #epoch = 0
   #selected: string | null = null
@@ -161,7 +141,6 @@ export class GoogleCalendarReader {
     this.#classify = classify
   }
 
-  /** Forgets the selection and the listed calendars. */
   invalidate(): void {
     this.#epoch++
     this.#selected = null
@@ -169,7 +148,6 @@ export class GoogleCalendarReader {
     this.#offered.clear()
   }
 
-  /** Selects a calendar from the current listing, or clears the selection; another calendar is refused. */
   effect selectSource(id: string | null): void!GoogleCalendarChanged {
     const binding = this.#binding()
     if (id !== null && (binding === null || this.#selectionOwner !== bindingKey(binding) || !this.#offered.has(id))) throw new GoogleCalendarChanged()
@@ -206,7 +184,6 @@ export class GoogleCalendarReader {
     return kind === "not-connected" ? disconnected() : kind === "permission-required" ? permissionRequired() : kind === "account-changed" ? undefined : unavailable()
   }
 
-  /** Lists the connection's readable calendars, keeping a selection only while it is still listed for the same owner. */
   effect listSources(): GoogleCalendarSources!GoogleCalendarChanged {
     const ticket = this.#ticket()
     if (ticket === null) {
@@ -242,7 +219,6 @@ export class GoogleCalendarReader {
     }
   }
 
-  /** Reads the selected calendar over a window, checking its access before and after the feed and every event's calendar and identity. */
   effect read(range: GoogleCalendarRange): GoogleCalendarRead!(GoogleCalendarChanged | GoogleCalendarInvalidRange) {
     const ticket = this.#ticket()
     if (ticket === null) {

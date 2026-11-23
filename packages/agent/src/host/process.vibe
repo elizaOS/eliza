@@ -44,7 +44,7 @@ module node {
 
   import { randomUUID } from "node:crypto"
   import { Effect, Redacted, Result } from "effect"
-  import { AgentEventService, AgentRuntime, EventType, NotificationService, QUIET_ERROR_CODES, TaskService, createCharacter, logger, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload, type ServiceClass } from "@elizaos/core"
+  import { AgentEventService, AgentRuntime, EventType, NotificationService, QUIET_ERROR_CODES, TaskService, createCharacter, logger, privacyPlugin, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload, type ServiceClass } from "@elizaos/core"
   import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
   import { storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
   import { backendOf, runStateOf, statusRoutes } from "./status.vibe"
@@ -66,7 +66,7 @@ module node {
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
   import { StoreFailed } from "../storage/fault.vibe"
   import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
-  import { bootFailureOf, composeAgent } from "./compose.vibe"
+  import { bootFailureOf, composeAgent, type Privacy } from "./compose.vibe"
   import { reservedHostPrefixes } from "../plugins/product.vibe"
   import { builtinModuleFactories } from "../plugins/profile.vibe"
   import { bindModels } from "../models/binding.vibe"
@@ -127,6 +127,10 @@ module node {
     return localEmbeddingsBoot(launch.embeddings === "local", server, launch.policy.plugins.load.includes(deviceEmbeddingsPlugin))
   }
 
+  function privacyOf({ privacy }: LaunchDocument): Privacy {
+    return privacy?.secretSwap || privacy?.piiSwap ? { kind: "on", plugin: privacyPlugin(privacy) } : { kind: "off" }
+  }
+
   function runtimeServicesAdmitted(services: readonly ServiceClass[], owned: readonly string[]): boolean {
     const types = [...owned, ...services.map(({ serviceType }) => serviceType)]
     return services.every(({ serviceType }) => typeof serviceType === "string" && serviceType !== "") && new Set(types).size === types.length
@@ -146,8 +150,7 @@ module node {
   async function boot(input: StartAgentInput, lifecycle: Lifecycle): Promise<Result.Result<RunningAgent, BootFailure>> {
     const { launch, authority, binding, stateDirectory } = input
     const sources = hostedSources(input)
-    if (sources === undefined || !localEmbeddingsAdmitted(launch)
-      || launch.privacy?.secretSwap || launch.privacy?.piiSwap) return Result.fail("Config")
+    if (sources === undefined || !localEmbeddingsAdmitted(launch)) return Result.fail("Config")
     const pinned = launch.workflowWorker === undefined ? undefined : await measureWorker(launch.workflowWorker)
     if (pinned?.kind === "refused") return Result.fail("Config")
     let installedWorker: WorkflowWorkerHost | undefined
@@ -251,7 +254,7 @@ module node {
         const sweeper = await Effect.runPromise(scheduleSweeps(adapter, sweeps.success))
         if (sweeper !== undefined) runtime.registerTaskWorker(sweeper)
       } },
-      cloudLink: modelPlugin(launch, models), privacy: { kind: "off" }, worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
+      cloudLink: modelPlugin(launch, models), privacy: privacyOf(launch), worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
       messageService: (runtime, actionGate) => ownerMessageService(runtime, [role], actionGate, accountFailureOf(() => Effect.runSync(models.read()))),
       policy: {
         actionsAllowed: [...permissions], pluginsLoad: [...launch.policy.plugins.load],
@@ -332,7 +335,7 @@ module node {
           ...authRoutes(agentId),
           ...conversationRoutes(runtime, conversationOwner, launch.character.name, events.conversationUpdated, agenda),
           ...enrollment.routes,
-          ...(agenda === undefined ? [] : proposalReviewRoutes(adapter, enrollment.deviceSender)),
+          ...(launch.callerRole === "owner" ? proposalReviewRoutes(adapter, enrollment.deviceSender) : []),
           ...readCompletionRoutes({ runtime, owner: conversationOwner, sender: enrollment.deviceSender }),
           ...composed.routes,
         ],

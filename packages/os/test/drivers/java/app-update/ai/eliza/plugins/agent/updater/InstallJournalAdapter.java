@@ -105,6 +105,7 @@ public final class InstallJournalAdapter {
       case "changeChannel" -> { return journal.setChannel("stable".equals(now.channel) ? "beta" : "stable").applied; }
       case "requestHold" -> { return journal.requestHold(current).applied; }
       case "acknowledgeHold" -> { return journal.acknowledgeHold(current, identity(whole(event.get("target")))).applied; }
+      case "releaseUnhandedHold" -> { return journal.releaseUnhandedHold(current).applied; }
       case "commitCandidate" -> {
         return journal.committingWithAction(current, session(event), now.channelGeneration, (plan, generation) -> {}, () -> {}).applied;
       }

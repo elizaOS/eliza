@@ -83,4 +83,4 @@ module node {
     return { endOfTurn, turns, heard }
   }
 }
-export { voiceNetworkPorts, type JsonAnswer, type JsonRequest, type VoiceNetworkPorts } from node
+export { jsonRequestOf, voiceNetworkPorts, VoiceRouteRefused, type JsonAnswer, type JsonRequest, type RuntimeJsonRequester, type VoiceNetworkPorts } from node

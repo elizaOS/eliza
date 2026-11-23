@@ -3,10 +3,8 @@ import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type M
 import { composeAnswer } from "../../gen/inbox__handoff.effect.vibe"
 import { canonicalUuid } from "../mailbox/digest.vibe"
 
-/** The action name of the hand-off of a new email to the requesting phone's composer. */
 export const inboxComposeActionName = "INBOX_COMPOSE_EMAIL"
 
-/** The unsent new email the phone's composer opens; its request identity becomes the send's. */
 export interface EmailDraftHandoff {
   readonly version: 1
   readonly requestMessageId: string
@@ -31,7 +29,6 @@ function recipients(value: unknown): string[] {
   return listed.flatMap((entry) => typeof entry === "string" && address.test(entry.trim()) ? [entry.trim()] : [])
 }
 
-/** What the agent answers an owner's request to draft a new email: the phone's composer, Inbox, or no hand-off. */
 export function emailDraftAnswer(message: Memory, options: unknown): ActionResult | undefined {
   const parameters = given(options)
   const to = recipients(parameters.to)
@@ -61,7 +58,6 @@ export function emailDraftAnswer(message: Memory, options: unknown): ActionResul
   }
 }
 
-/** Hands an unsent new email to the requesting phone's own composer; nothing is sent and no provider draft is made. */
 export const inboxComposeAction: Action = {
   name: inboxComposeActionName,
   description: "Draft a new email for the owner to review and send from their phone's Inbox composer: explicit recipient addresses, a subject and the text. It sends nothing; replies, copies, attachments and scheduled sends are made in Inbox.",
