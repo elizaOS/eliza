@@ -1,47 +1,27 @@
-// spec/assistant/ownerBrief.md, "Story: See a private brief assembled from my connected data"
-import { eligibleBriefItems, safeRanks, type BriefItem, type BriefRequest, type RankCandidate } from "../gen/assistant__ownerBrief.effect.vibe"
+// spec/assistant/ownerBrief.md, "Story: Put my items in priority order when I ask"
+import { safeRanks, type RankCandidate } from "../gen/assistant__ownerBrief.effect.vibe"
 
-export error BriefUnavailable { reason: string }
-
-export interface BriefEntry {
-  readonly item: BriefItem
-  readonly title: string
-  readonly detail?: string
-}
+export error RankUnavailable { reason: string }
 
 export interface RankEntry extends RankCandidate {
   readonly title: string
   readonly detail?: string
 }
 
-export service BriefSources {
-  read(request: BriefRequest): BriefEntry[]!BriefUnavailable
-}
-
 export service PriorityModel {
-  rank(entries: readonly RankEntry[], criteria: string): unknown!BriefUnavailable
-}
-
-export effect function ownerBrief(request: BriefRequest) {
-  if (request.briefOwner === "" || !Number.isSafeInteger(request.startsAt) || !Number.isSafeInteger(request.endsAt) || request.startsAt >= request.endsAt) {
-    throw new BriefUnavailable({ reason: "invalid owner or brief interval" })
-  }
-  const source = try BriefSources
-  const entries = try source.read(request)
-  const included = new Set(eligibleBriefItems(entries.map((entry) => entry.item), request))
-  return entries.filter(({ item }) => included.has(item))
+  rank(entries: readonly RankEntry[], criteria: string): unknown!RankUnavailable
 }
 
 const proposedRanks = Schema.decodeUnknownEffect(Schema.Array(Schema.NonEmptyString).check(Schema.isMaxLength(100)))
 
 export effect function rankOwnerEntries(ownerId: string, entries: readonly RankEntry[], criteria: string, limit: number) {
-  if (ownerId === "" || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new BriefUnavailable({ reason: "invalid owner or rank limit" })
+  if (ownerId === "" || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RankUnavailable({ reason: "invalid owner or rank limit" })
   const owned = entries.filter((entry) => entry.rankOwner === ownerId)
   if (owned.length === 0) return []
   const model = try PriorityModel
   const raw = try model.rank(owned, criteria)
   const proposals = proposedRanks(raw) catch effect () => {
-    throw new BriefUnavailable({ reason: "ranker did not return item identifiers" })
+    throw new RankUnavailable({ reason: "ranker did not return item identifiers" })
   }
   const byId = new Map(owned.map((entry) => [entry.rankId, entry]))
   return safeRanks(owned, ownerId, [...proposals]).slice(0, limit).flatMap((id) => {

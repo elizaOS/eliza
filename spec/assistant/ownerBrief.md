@@ -1,26 +1,14 @@
-# Owner briefs and prioritization
+# Prioritization
 
-## Story: See a private brief assembled from my connected data
+Briefs the owner asks for are told from the [check-in brief](./checkin.md),
+which reads the owner's calendar, to-dos, goals, routines and reminders.
+This spec covers only ranking the owner's own items when they ask what
+matters most.
 
-> As the owner, I can request a fresh brief for a selected interval. The brief includes calendar, inbox, commitments, and other items only when I can read the source.
+## Story: Put my items in priority order when I ask
 
-### Each included entry belongs to the requested owner and lies within the brief's interval
-
-The shell obtains source projections from the account's existing connected packages and binds each projection to the current owner read grant. Model output may choose or explain an admitted entry by ID. Model output cannot introduce an entry absent from the read set.
-
-```quint
-type BriefSource = CalendarEntry | InboxEntry | LifeEntry | MoneyEntry | CommitmentEntry
-type BriefItem = { itemOwner: str, briefId: str, source: BriefSource, itemAt: int, sourceReadable: bool }
-type BriefRequest = { briefOwner: str, startsAt: int, endsAt: int, includedSources: Set[BriefSource] }
-pure def briefIncludes(entry: BriefItem, request: BriefRequest): bool =
-  entry.itemOwner == request.briefOwner and request.briefOwner != "" and entry.briefId != "" and
-  entry.itemAt >= request.startsAt and entry.itemAt < request.endsAt and
-  entry.sourceReadable and request.includedSources.contains(entry.source)
-pure def eligibleBriefItems(items: List[BriefItem], request: BriefRequest): List[BriefItem] =
-  items.select(entry => briefIncludes(entry, request))
-pure def lawBriefItemsAreScoped(items: List[BriefItem], request: BriefRequest): bool =
-  eligibleBriefItems(items, request).every(entry => entry.itemOwner == request.briefOwner and entry.sourceReadable)
-```
+> As the owner, I can ask the agent to rank my to-dos, work threads,
+> decisions or commitments, and the order it gives holds only my own items.
 
 ### A suggestion can rank only identities present in the current source set
 
@@ -35,6 +23,8 @@ pure def safeRanks(candidates: List[RankCandidate], ownerId: str, proposals: Lis
     if (rankableIdentity(candidates, ownerId, proposedId) and not(seen.includes(proposedId))) seen.append(proposedId) else seen)
 pure def lawNoUnknownIdentityFitsEmptyRank(ownerId: str, proposals: List[str]): bool =
   safeRanks(List(), ownerId, proposals).length() == 0
-pure val itemsValues = Set(List(), List({ itemOwner: "owner", briefId: "event-1", source: CalendarEntry, itemAt: 50, sourceReadable: true }, { itemOwner: "other", briefId: "mail-1", source: InboxEntry, itemAt: 50, sourceReadable: false }))
-pure val requestValues = Set({ briefOwner: "owner", startsAt: 0, endsAt: 60, includedSources: Set(CalendarEntry, InboxEntry) }, { briefOwner: "owner", startsAt: 60, endsAt: 90, includedSources: Set(CalendarEntry) })
+pure def lawRanksHoldOnlyTheOwnersItems(candidates: List[RankCandidate], ownerId: str, proposals: List[str]): bool =
+  safeRanks(candidates, ownerId, proposals).every(id => rankableIdentity(candidates, ownerId, id))
+pure val candidatesValues = Set(List(), List({ rankId: "todo-1", rankOwner: "owner" }, { rankId: "todo-2", rankOwner: "other" }))
+pure val proposalsValues = Set(List(), List("todo-1", "todo-2", "todo-1", "unknown"))
 ```

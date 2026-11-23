@@ -1,5 +1,7 @@
 # PostgreSQL and PGlite persistence
 
+The phone's own agent store is the [device database](../agent/storage/database.md), which owns its identity, lock, numbered migrations and snapshot. This package is the adapter a server host attaches to PostgreSQL or a host-side PGlite, and it never opens the device store.
+
 ## Story: Attach a SQL adapter only after its schema is ready
 
 > As a host, I can attach PostgreSQL or embedded PGlite to my agent with the necessary extensions and verified migrations, and protect data scoped to that agent.

@@ -29,6 +29,6 @@ pure def findOwnerTodo(rows: List[TodoViewRow], ownerId: str, todoId: int): List
   rows.select(row => row.listOwner == ownerId and row.value.todoId == todoId)
 pure def lawTodoLookupKeepsRequestedIdentity(rows: List[TodoViewRow], ownerId: str, todoId: int): bool =
   findOwnerTodo(rows, ownerId, todoId).every(row => row.listOwner == ownerId and row.value.todoId == todoId)
-pure val rowsValues = Set(List(), List({ listOwner: "owner", value: { todoId: 1, content: "Meet Pat", todoStatus: TodoPolicy::TodoPending, completedAt: false } }, { listOwner: "other", value: { todoId: 1, content: "Read mail", todoStatus: TodoPolicy::TodoCompleted, completedAt: true } }))
+pure val rowsValues = Set(List(), List({ listOwner: "owner", value: { todoId: 1, content: "Meet Pat", todoStatus: TodoPolicy::TodoPending, completedAt: 0 } }, { listOwner: "other", value: { todoId: 1, content: "Read mail", todoStatus: TodoPolicy::TodoCompleted, completedAt: 100 } }))
 pure val statusGroupValues = Set(EveryTodo, SelectedTodoStatus({ wantedStatus: TodoPolicy::TodoPending }), SelectedTodoStatus({ wantedStatus: TodoPolicy::TodoCompleted }))
 ```

@@ -24,7 +24,7 @@ export { restoreEarlier, evidenceRows, type Restoration } from "./evaluators/pag
 export { followupTick, type TickReport } from "./followups.vibe"
 export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
 export { reminderProposalFamily } from "./device-proposals.vibe"
-export { BriefSources, PriorityModel, ownerBrief, rankOwnerEntries } from "./owner-brief.vibe"
+export { PriorityModel, rankOwnerEntries } from "./owner-brief.vibe"
 export { BillEvidencePort, keepObservedBill, findBillReceipt } from "./bill-evidence.vibe"
 
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"

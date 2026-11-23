@@ -1,5 +1,7 @@
 # Per-agent SQLite persistence
 
+The phone's own agent store is the [device database](../agent/storage/database.md). This package is the SQLite file a Node host opens for an agent, and it never opens the device store.
+
 ## Story: Reopen my agent's SQLite database in the owning runtime
 
 > As a host, I can reopen the same SQLite data file on Node and run its current migrations while protecting it against a competing writer.
