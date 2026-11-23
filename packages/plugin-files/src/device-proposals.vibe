@@ -1,5 +1,5 @@
 // spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
-import { directRequests, readOperation, type CheckedOperation, type DeviceProposalFamily, type DeviceTurn, type Grounding, type ProposalForm } from "@elizaos/agent/device-actions"
+import { directRequests, readOperation, type CheckedOperation, type DeviceProposalFamily, type DeviceTurn, type Grounding, type NegotiatedDevice, type ProposalForm } from "@elizaos/agent/device-actions"
 import { chatKeepsSentIdentities, filesChatAnswer, filesChatBound } from "../gen/files__shownTargets.effect.vibe"
 import {
   decodeFilesOperation, FILES_CAPABILITY, FILES_OPERATION_TYPES, FILES_SHOWN_TARGET_CAPABILITY, filesForm, filesToolSurface,
@@ -14,7 +14,7 @@ const every = filesToolSurface([FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY]
 
 const forms: readonly ProposalForm[] = every.flatMap((schema): ProposalForm[] => {
   const type = FILES_OPERATION_TYPES.find((name) => schema.properties?.type?.enum?.includes(name) === true)
-  return type === undefined ? [] : [{ types: [type], schema, offered: (turn: DeviceTurn) => filesToolSurface(turn.capabilities).schemas.includes(schema) }]
+  return type === undefined ? [] : [{ types: [type], schema, offered: (device: NegotiatedDevice) => filesToolSurface(device.capabilities).schemas.includes(schema) }]
 })
 
 function invalid(reason: string): Refusal {

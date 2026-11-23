@@ -123,7 +123,7 @@ effect function grounded(operation: unknown, turn: DeviceTurn) {
 }
 
 it.effect('Propose on my phone only the Calendar request I made (spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A delete is proposed only when the owner\'s own words ask for it, and a no keeps the event"; spec/calendar/reviewedReads.md, "A new phone event starts at the day and time the owner stated, in the phone\'s zone"; spec/calendar/reviewedReads.md, "A change after a shared read is the edits the owner\'s words gave, keeping every other field"; spec/calendar/availability.md, "An availability window is the day and time the owner asked about, in the phone\'s zone")', effect () => {
-  const offered = (turn: DeviceTurn) => calendarProposalFamily.forms.filter((form) => form.offered(turn)).map(({ schema }) => JSON.stringify(schema.properties?.action?.enum ?? schema.properties?.type?.enum))
+  const offered = (turn: DeviceTurn) => calendarProposalFamily.forms.filter((form) => form.offered(turn) && (form.now?.available(turn) ?? true)).map(({ schema }) => JSON.stringify(schema.properties?.action?.enum ?? schema.properties?.type?.enum))
   assert.deepStrictEqual(offered(phoneTurn("delete this", onCalendar)), [
     '["calendar_read_next"]', '["calendar_create_local"]', '["calendar_read_selected"]', '["calendar_delete"]', '["read"]', '["delete"]', '["calendar_availability"]',
   ])

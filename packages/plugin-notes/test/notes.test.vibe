@@ -554,7 +554,7 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
   const family = notesDeviceFamily(model.runtime)
   const home = { view: "home", revision: 1, sensitive: false }
   const opened = { view: "notes", revision: 2, sensitive: false, selectedObject: openPhoneNote }
-  const offered = (observation: DeviceTurn["observation"]) => family.forms.filter((form) => form.offered(phoneTurn(model.runtime, "", observation))).flatMap((form) => [...form.types])
+  const offered = (observation: DeviceTurn["observation"]) => family.forms.filter((form) => { const turn = phoneTurn(model.runtime, "", observation); return form.offered(turn) && (form.now?.available(turn) ?? true) }).flatMap((form) => [...form.types])
   assert.deepEqual({
     home: offered(home),
     opened: offered(opened),

@@ -61,11 +61,24 @@ function reaches(turn: DeviceTurn, reach: PhoneNotesReach, organized: NotesOrgan
 }
 
 const selectedTarget = (turn: DeviceTurn) => openNote(turn.observation?.selectedObject)
+const sampleRevision = "0".repeat(64)
+const sampleTarget: NotesTarget = { sourceId: "notes", sourceRevision: sampleRevision, noteId: "note", revision: sampleRevision }
 
-function form(types: ProposalForm["types"], schema: ActionParameterSchema, guidance: string, reach: PhoneNotesReach, probes: (turn: DeviceTurn) => readonly unknown[]): ProposalForm {
+const unreached: Readonly<Record<PhoneNotesReach, string>> = {
+  ResolvedByPhone: "the owner's screen on this message is neither Home nor the phone's own Notes, or it selects a canonical note",
+  ExactPhoneNote: "no phone note is open in Notes on the owner's screen on this message, so ask the owner to open it",
+  CanonicalListOnly: "the owner's screen on this message does not show the canonical Notes list",
+  ByCapability: "the owner's screen on this message does not allow this Notes operation",
+}
+
+function form(types: ProposalForm["types"], schema: ActionParameterSchema, guidance: string, reach: PhoneNotesReach, probes: (target: NotesTarget | undefined) => readonly unknown[]): ProposalForm {
   const first = types[0]
   const organized = isNotesOrganizeType(first) ? first : undefined
-  return { types, schema, guidance, offered: (turn) => reaches(turn, reach, organized) && probes(turn).every((operation) => turn.admit(operation) !== undefined) }
+  const now: NonNullable<ProposalForm["now"]> = {
+    unavailable: unreached[reach],
+    available: (turn) => reaches(turn, reach, organized) && probes(selectedTarget(turn)).every((operation) => turn.admit(operation) !== undefined),
+  }
+  return { types, schema, guidance, now, offered: (device) => probes(sampleTarget).every((operation) => device.admit(operation) !== undefined) }
 }
 
 const text: ActionParameterSchema = { type: "string" }
@@ -111,13 +124,13 @@ const forms: readonly ProposalForm[] = [
   form(["notes_named"], shaped("notes_named", { action: { type: "string", enum: ["update"] }, name: spoken("The note's name"), fields: noFields }), editGuidance,
     "ResolvedByPhone", () => [{ type: "notes_named", action: "delete", name: "note" }]),
   form(["notes_read_selected"], shaped("notes_read_selected", { target }), `notes_read_selected shares the note open in Notes on the phone after the owner approves sharing it. ${editGuidance}`,
-    "ExactPhoneNote", (turn) => [{ type: "notes_read_selected", target: selectedTarget(turn) }]),
+    "ExactPhoneNote", (open) => [{ type: "notes_read_selected", target: open }]),
   form(["notes_update"], shaped("notes_update", { target, fields: noFields }), editGuidance,
-    "ExactPhoneNote", (turn) => [{ type: "notes_read_selected", target: selectedTarget(turn) }, { type: "notes_update", target: selectedTarget(turn), fields: { title: "", body: "" } }]),
+    "ExactPhoneNote", (open) => [{ type: "notes_read_selected", target: open }, { type: "notes_update", target: open, fields: { title: "", body: "" } }]),
   form(["notes_delete"], shaped("notes_delete", { target }), "notes_delete moves the note open in Notes on the phone to Recently deleted after the owner confirms on the unlocked phone.",
-    "ExactPhoneNote", (turn) => [{ type: "notes_delete", target: selectedTarget(turn) }]),
+    "ExactPhoneNote", (open) => [{ type: "notes_delete", target: open }]),
   form(["notes_move"], shaped("notes_move", { target, folder: { anyOf: [folder, { type: "null" }] } }), organizeGuidance,
-    "ExactPhoneNote", (turn) => [{ type: "notes_move", target: selectedTarget(turn), folder: null }]),
+    "ExactPhoneNote", (open) => [{ type: "notes_move", target: open, folder: null }]),
   form(["notes_filter"], shaped("notes_filter", { text: filterText, folder, kind }, []), organizeGuidance, "ByCapability", () => [{ type: "notes_filter", kind: "text" }]),
   form(["notes_folder_create"], shaped("notes_folder_create", { name: spoken("The new folder's name") }), organizeGuidance, "ByCapability", () => [{ type: "notes_folder_create", name: "Notes" }]),
   form(["notes_restore"], shaped("notes_restore", { noteId: text }), organizeGuidance, "ByCapability", () => [{ type: "notes_restore", noteId: "note" }]),
