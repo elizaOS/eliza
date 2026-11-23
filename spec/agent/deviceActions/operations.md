@@ -37,8 +37,10 @@ type OperationType =
   | MessagesReadSelected | VoicemailReadSelected | VoicemailDeleteSelected | SmsLatestSender | ClockHandoff
   | ReadSelectedNotes | ReadCalendarRange | ReadSelectedReminders | PostNotification | SpeakText
   | CreateNote | CreateReminder | OpenView | BrowserNavigate
+  | BrowserSearch | BrowserTabNew | BrowserTabSwitch | BrowserTabClose | BrowserFind | BrowserHistory
 type Family = CalendarFamily | ReminderFamily | ReminderCreateFamily | CameraFamily | FilesFamily | ReviewFamily | MapsFamily | NotesFamily
   | NotesOrganizeFamily | NotesQueryFamily | PhotoLibraryFamily | PhotosViewFamily | TelephonyFamily | ClockFamily | WorkflowFamily | BaseFamily
+  | BrowserFamily
 pure def wireType(t: OperationType): str = match t {
   | CalendarCreateLocal => "calendar_create_local" | CalendarReadNext => "calendar_read_next" | CalendarCreate => "calendar_create"
   | CalendarReadSelected => "calendar_read_selected" | CalendarUpdate => "calendar_update" | CalendarDelete => "calendar_delete"
@@ -61,6 +63,8 @@ pure def wireType(t: OperationType): str = match t {
   | ReadSelectedNotes => "read_selected_notes" | ReadCalendarRange => "read_calendar_range" | ReadSelectedReminders => "read_selected_reminders"
   | PostNotification => "post_notification" | SpeakText => "speak_text"
   | CreateNote => "create_note" | CreateReminder => "create_reminder" | OpenView => "open_view" | BrowserNavigate => "browser_navigate"
+  | BrowserSearch => "browser_search" | BrowserTabNew => "browser_tab_new" | BrowserTabSwitch => "browser_tab_switch"
+  | BrowserTabClose => "browser_tab_close" | BrowserFind => "browser_find" | BrowserHistory => "browser_history"
 }
 pure def family(t: OperationType): Family = match t {
   | CalendarCreateLocal => CalendarFamily | CalendarReadNext => CalendarFamily | CalendarCreate => CalendarFamily
@@ -84,6 +88,8 @@ pure def family(t: OperationType): Family = match t {
   | ReadSelectedNotes => WorkflowFamily | ReadCalendarRange => WorkflowFamily | ReadSelectedReminders => WorkflowFamily
   | PostNotification => WorkflowFamily | SpeakText => WorkflowFamily
   | CreateNote => BaseFamily | CreateReminder => BaseFamily | OpenView => BaseFamily | BrowserNavigate => BaseFamily
+  | BrowserSearch => BrowserFamily | BrowserTabNew => BrowserFamily | BrowserTabSwitch => BrowserFamily
+  | BrowserTabClose => BrowserFamily | BrowserFind => BrowserFamily | BrowserHistory => BrowserFamily
 }
 pure def lawOneWireTypeIsOneOperation(a: OperationType, b: OperationType): bool =
   wireType(a) == wireType(b) implies (a == b or (family(a) == ReviewFamily and wireType(a) == "calendar_named"))
@@ -101,7 +107,14 @@ without it a recording still runs under the pair `notes.organize.v1` and
 `{selected: true}` in place of library IDs: the one item the owner has open
 in the Photos viewer, which the phone resolves at review, so the agent
 never needs or guesses that item's ID. That form needs
-`photos.view-selected.v1` beside the library and view capabilities. The base and workflow operations
+`photos.view-selected.v1` beside the library and view capabilities. It
+marks a Files share, move or trash that names `shown` positions in place of
+paths, which needs `files.shown-target.v1` beside `files.browser.v1`
+([shown targets](../../files/shownTargets.md)); a typed address opened in a
+tab of its own (`newTab`), which needs `browser.open-new-tab.v1`; and a tab
+close that names `all`, which needs `browser.tabs.close-all.v1` beside
+`browser.tabs.v1`. Each other Browser control needs its group's capability
+([Browser controls](../../browser/control.md)). The base and workflow operations
 need any capability other than the Clock handoff, so a device that
 advertised only the Clock handoff never receives them.
 
@@ -114,7 +127,7 @@ pure def familyNeed(f: Family, t: OperationType, versionTwo: bool): Need = match
   | ReminderFamily => reminderRecordNeed(versionTwo)
   | ReminderCreateFamily => needOne(RemindersCreateV1)
   | CameraFamily => needOne(CameraCapturePhotoV1)
-  | FilesFamily => needOne(FilesBrowserV1)
+  | FilesFamily => if (versionTwo) needAll(FilesBrowserV1, FilesShownTargetV1) else needOne(FilesBrowserV1)
   | ReviewFamily =>
       if (t == CalendarAvailability) needOne(CalendarAvailabilityReadV1)
       else if (t == NotesSearch) needAll(NotesSearchV1, NotesLocalRecordV1)
@@ -141,7 +154,11 @@ pure def familyNeed(f: Family, t: OperationType, versionTwo: bool): Need = match
       else needOne(ContactsWriteV1)
   | ClockFamily => clockHandoffNeed(versionTwo)
   | WorkflowFamily => anyButClock
-  | BaseFamily => anyButClock
+  | BaseFamily => if (t == BrowserNavigate and versionTwo) needOne(BrowserOpenNewTabV1) else anyButClock
+  | BrowserFamily =>
+      if (t == BrowserSearch) needOne(BrowserSearchV1) else if (t == BrowserFind) needOne(BrowserFindV1)
+      else if (t == BrowserHistory) needOne(BrowserHistoryV1) else if (t == BrowserTabClose and versionTwo) needAll(BrowserTabsV1, BrowserTabsCloseAllV1)
+      else needOne(BrowserTabsV1)
 }
 pure val negValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: Set() }), Negotiated({ capabilities: Set(ClockHandoffV1) }),
   Negotiated({ capabilities: Set(ClockHandoffV1, ClockHandoffV2) }), Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV1, NotesLocalRecordV1) }),
@@ -163,6 +180,12 @@ pure def lawANamedEditNeedsTheNamedTarget(t: OperationType, versionTwo: bool, ne
   ((t == NotesNamed or t == CalendarNamedEdit or t == ReminderNamed) and meets(neg, operationNeed(t, versionTwo))) implies negotiatedHas(neg, NamedTargetV1)
 pure def lawNewerReminderTimingIsNeverDowngraded(t: OperationType, neg: Negotiation): bool =
   ((family(t) == ReminderFamily or t == ReminderNamed) and meets(neg, operationNeed(t, true))) implies negotiatedHas(neg, RemindersLocalRecordV2)
+pure def lawAShownFilesChangeNeedsTheShownTarget(t: OperationType, neg: Negotiation): bool =
+  (family(t) == FilesFamily and meets(neg, operationNeed(t, true))) implies (negotiatedHas(neg, FilesShownTargetV1) and negotiatedHas(neg, FilesBrowserV1))
+pure def lawClosingEveryTabNeedsItsOwnCapability(neg: Negotiation): bool =
+  meets(neg, operationNeed(BrowserTabClose, true)) implies (negotiatedHas(neg, BrowserTabsCloseAllV1) and negotiatedHas(neg, BrowserTabsV1))
+pure def lawANewTabNeedsItsCapability(neg: Negotiation): bool =
+  meets(neg, operationNeed(BrowserNavigate, true)) implies negotiatedHas(neg, BrowserOpenNewTabV1)
 ```
 
 ### A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability
@@ -242,25 +265,47 @@ pure def lawAStandaloneAgendaReadNegotiatedTheAgenda(prop: Proposal, neg: Negoti
 
 Filtering or opening files, notes and photos, starting or stopping a voice
 note in the open Notes view, creating a note, opening a view or a web page,
-taking a photo, selecting library photos and placing a reply draft in the
-open conversation may skip the separate review, and only when the host bound
+a Browser search, new tab, tab switch, find or history move, taking a photo,
+selecting library photos and placing a reply draft in the open conversation
+may skip the separate review, and only when the host bound
 the proposal to the owner's own current message and no workflow bound it.
 Every other operation is reviewed on the device first: nothing that sends,
-calls, writes a contact, shares, deletes or hands off to the Clock ever runs
-directly. Whether the owner allows it is [execution](./execution.md)'s rule.
+calls, writes a contact, shares, deletes, closes a Browser tab or hands off
+to the Clock ever runs directly. Whether the owner allows it is
+[execution](./execution.md)'s rule, and a Browser control's typed words are
+the [Browser](../../browser/control.md)'s.
 
 ```quint
 pure def directEligible(t: OperationType): bool =
   t == FilesFilter or t == FilesOpen or t == NotesFilter or t == NotesListFilter or t == NotesRecord or t == PhotosFilter or t == PhotosOpen
   or t == CreateNote or t == OpenView or t == BrowserNavigate or t == CameraCapturePhoto or t == PhotoLibrarySelect or t == SmsReplySelected
+  or t == BrowserSearch or t == BrowserTabNew or t == BrowserTabSwitch or t == BrowserFind or t == BrowserHistory
 pure def mayRunDirectly(prop: Proposal, boundToCurrentMessage: bool): bool =
   directEligible(prop.opType) and prop.binding == NoBinding and boundToCurrentMessage
 pure def sendsSharesOrDeletes(t: OperationType): bool =
   (family(t) == TelephonyFamily and t != SmsReplySelected and t != MessagesReadSelected and t != VoicemailReadSelected and t != SmsLatestSender)
   or family(t) == ClockFamily or t == FilesShare or t == FilesTrash or t == PhotosShare or t == PhotoLibraryReview
-  or t == NotesDelete or t == CalendarDelete or t == ReminderCancel
+  or t == NotesDelete or t == CalendarDelete or t == ReminderCancel or t == BrowserTabClose
 pure def lawNothingThatSendsSharesOrDeletesRunsDirectly(prop: Proposal, boundToCurrentMessage: bool): bool =
   mayRunDirectly(prop, boundToCurrentMessage) implies not(sendsSharesOrDeletes(prop.opType))
+```
+
+### Only a read whose result answers the owner's request completes that request
+
+When the launch carries `hostContextRevision`, an offered read of the
+owner's calendar, reminders, notes, Maps selection, open Messages thread,
+voicemail or latest SMS sender opens a [read completion](./index.md): its
+applied result answers the message that asked for it. No edit, send or
+presentation does, and neither does a workflow read, which answers its
+workflow.
+
+```quint
+pure def completableRead(t: OperationType): bool =
+  t == CalendarNamedRead or t == CalendarAvailability or t == NotesQuery or t == NotesReadSelected or t == ReadCalendarRange
+  or t == CalendarReadSelected or t == CalendarReadNext or t == ReminderReadSelected or t == MapsReadSelected
+  or t == MessagesReadSelected or t == SmsLatestSender or t == VoicemailReadSelected
+pure def lawACompletableReadCarriesAResult(t: OperationType): bool = completableRead(t) implies evidenceOf(t) != NoResultEver
+pure def lawACompletableReadChangesNothing(t: OperationType): bool = completableRead(t) implies not(sendsSharesOrDeletes(t))
 ```
 
 ## Story: Learn exactly what the device did
@@ -275,8 +320,8 @@ A receipt reports applied, failed or unknown, with an optional native
 operation, failure code and typed result, which must show what the receipt
 reports. Phone and Clock results are evidence: one is missing only from an
 unknown receipt. Other reads and edits carry a result exactly when applied;
-files, notes organizing, workflow presentations and the base operations
-never carry one. An applied receipt names its native operation. An SMS or
+files, notes organizing, Browser controls, workflow presentations and the
+base operations never carry one. An applied receipt names its native operation. An SMS or
 MMS send, or a contact SMS, names the journal key of its claim, so a lost
 response reconciles against one native row and never sends twice. A
 failure the device reports as never dispatched, with no result, is admitted
@@ -295,7 +340,7 @@ type DeviceReceipt = { reported: ReportedOutcome, operationId: str, code: Failur
 type EvidenceKind = OutcomeEvidence | ResultWhenApplied | NoResultEver
 pure def evidenceOf(t: OperationType): EvidenceKind =
   if (family(t) == TelephonyFamily or family(t) == ClockFamily) OutcomeEvidence
-  else if (family(t) == FilesFamily or family(t) == NotesOrganizeFamily or family(t) == BaseFamily or t == PostNotification or t == SpeakText) NoResultEver
+  else if (family(t) == FilesFamily or family(t) == NotesOrganizeFamily or family(t) == BaseFamily or family(t) == BrowserFamily or t == PostNotification or t == SpeakText) NoResultEver
   else ResultWhenApplied
 pure def sharesSimJournal(t: OperationType): bool = t == SmsSend or t == MmsSend or t == SmsCompose
 pure def agrees(e: ResultEvidence, reported: ReportedOutcome): bool = match e { | ValidResult(x) => x.shows == reported | NoResult => true | InvalidResult => false }

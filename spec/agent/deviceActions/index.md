@@ -129,9 +129,12 @@ pure def sometimesLapsedApprovalCanBeDeclined(d: DeviceRequest): bool = d.phase 
 
 ### An unclaimed offer retires at its deadline or at the end of its turn
 
-Time only moves forward. An open offer past its deadline expires; an open
-offer whose turn ended retires. Either withdraws the session's authority, so
-the offer never reaches the device.
+Time only moves forward. An open offer past its deadline expires. A
+standalone agenda read, which the host offers for the displayed day without
+the model, retires when its turn ends; a proposal the owner's words asked
+for stays open after its turn, until the owner decides it or its deadline
+passes. Either withdraws the session's authority, so the offer never
+reaches the device.
 
 ```quint
 pure val elapsedValues = Set(0, 300000, 600000)
@@ -290,4 +293,88 @@ pure def canCancelCompletion(d: DeviceRequest, by: S::SessionOwner, digest: str)
 pure def cancelCompletion(d: DeviceRequest, by: S::SessionOwner, digest: str): DeviceRequest = if (d.completion == CompletionPending or d.completion == CompletionClaimed or d.completion == CompletionPrepared) { ...d, completion: CompletionCancelled } else d
 pure def stepClosedCompletionNeverReopens(before: DeviceRequest, after: DeviceRequest): bool = (before.completion == CompletionDelivered or before.completion == CompletionCancelled or before.completion == CompletionUnknown or (before.completion == NoCompletion and before.phase != Unoffered)) implies after.completion == before.completion
 pure def sometimesCancelledAfterClaim(d: DeviceRequest): bool = d.completion == CompletionCancelled and d.inferences == 1
+```
+
+## Story: Propose what I asked for on my phone, in my own words
+
+> As the owner, I want the agent to turn what I ask in chat, such as "call
+> mom" or "text Sam I'm late", into one request my phone reviews, with its
+> target taken from my own words, so that the agent never acts on a number,
+> an address or a record it invented, and a retry never asks my phone twice.
+
+### A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation
+
+`PROPOSE_DEVICE_ACTION` is offered to the model only on an owner turn the
+enrolled device sent, with a negotiation that was not refused, and only with
+the forms the operation families registered for this turn. The operation the
+model proposes must be one of those forms. Its family grounds it in the
+owner's words and may offer another operation of its own types in its place:
+a recipient restored from what the owner said, a send turned into a draft,
+an update turned into the read before it. The grounded operation is then
+validated again against the turn's negotiation with no binding, and only
+then offered, on the turn's request, conversation and message, for ten
+minutes.
+
+```quint
+type GroundingVerdict = FamilyGrounded | FamilyRefused
+type ProposalReply = ProposalOffered | RefusedBeforeDispatch
+pure def proposalReply(deviceTurn: bool, verdict: GroundingVerdict, admitted: bool): ProposalReply =
+  if (deviceTurn and verdict == FamilyGrounded and admitted) ProposalOffered else RefusedBeforeDispatch
+pure def lawOnlyAnOwnerTurnOfTheEnrolledDeviceProposes(verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(false, verdict, admitted) == RefusedBeforeDispatch
+pure def lawAGroundedProposalIsReadmitted(deviceTurn: bool, verdict: GroundingVerdict): bool =
+  proposalReply(deviceTurn, verdict, false) == RefusedBeforeDispatch
+```
+
+### A proposal's identity is its request message and its operation, so a repeat returns the same request
+
+The proposal id is derived from the owner's message and a digest of the
+grounded operation, never from the model. Proposing it again returns the
+request already kept under that id; an open request of the same conversation
+for the same operation is returned too. A request that already settled is
+reported from its stored receipt and is never dispatched again.
+
+```quint
+type ProposalAnswer = OfferedNew | ReturnedOpen | ReturnedSettled
+pure def proposalAnswer(sameKeyKept: bool, keptSettled: bool, sameOperationOpen: bool): ProposalAnswer =
+  if (sameKeyKept) (if (keptSettled) ReturnedSettled else ReturnedOpen)
+  else if (sameOperationOpen) ReturnedOpen
+  else OfferedNew
+pure def lawARepeatNeverOffersASecondRequest(keptSettled: bool, sameOperationOpen: bool): bool =
+  proposalAnswer(true, keptSettled, sameOperationOpen) != OfferedNew
+pure def lawASettledRepeatIsReportedNotDispatched(sameOperationOpen: bool): bool =
+  proposalAnswer(true, true, sameOperationOpen) == ReturnedSettled
+pure def lawAnOpenRequestOfTheSameOperationIsReturned(keptSettled: bool): bool =
+  proposalAnswer(false, keptSettled, true) == ReturnedOpen
+```
+
+### A grounding refusal offers nothing and is a refusal before dispatch
+
+When the family refuses, nothing is kept: the model learns why in its own
+words, the owner hears the family's own sentence verbatim, and the result is
+marked `executionStatus: "not_started"`, which [planning](../conversation/planning.md)
+records as `Rejected`. An operation that is not an offered form, or that the
+negotiation no longer admits, is refused the same way.
+
+```quint
+pure def lawAGroundingRefusalOffersNothing(deviceTurn: bool, admitted: bool): bool =
+  proposalReply(deviceTurn, FamilyRefused, admitted) == RefusedBeforeDispatch
+```
+
+### A later turn of the same conversation learns at most six applied outcomes of its own requests
+
+An owner turn of the enrolled device carries, beside the screen context, a
+note of the newest requests of this conversation that settled applied: each
+one's operation type, a label where the operation has one, and when it
+completed. It is a historical receipt, never a current read or authority for
+a new effect, and it names at most six.
+
+```quint
+pure val outcomesShown = 6
+pure def outcomeLearned(sameConversation: bool, applied: bool): bool = sameConversation and applied
+pure def outcomesLearned(appliedCount: int): int = if (appliedCount < outcomesShown) appliedCount else outcomesShown
+pure def lawAtMostSixOutcomesAreLearned(appliedCount: int): bool = outcomesLearned(appliedCount) <= outcomesShown
+pure def lawEveryAppliedOutcomeUpToSixIsLearned(appliedCount: int): bool = (appliedCount >= 0 and appliedCount <= outcomesShown) implies outcomesLearned(appliedCount) == appliedCount
+pure def lawOnlyThisConversationsAppliedOutcomesAreLearned(sameConversation: bool, applied: bool): bool =
+  outcomeLearned(sameConversation, applied) implies (sameConversation and applied)
 ```

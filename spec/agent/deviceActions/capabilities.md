@@ -26,7 +26,9 @@ an effect.
 ### The capability vocabulary is closed and versioned, with one wire name per capability
 
 Every capability has one wire name, which ends in its version, and no two
-capabilities share a name. Nothing outside this table is a capability.
+capabilities share a name. Nothing outside this table is a capability. The
+Browser controls' groups are the [Browser](../../browser/control.md)'s, and
+naming Files by their shown positions is [Files](../../files/shownTargets.md)'.
 
 ```quint
 type Capability =
@@ -36,6 +38,7 @@ type Capability =
   | FilesBrowserV1 | MapsSelectedReadV1 | ClockHandoffV1 | ClockHandoffV2 | SmsSendV1 | MmsSendV1 | SmsComposeV1
   | MessagesReadV1 | PhoneDialV1 | PhoneCallV1 | ContactsWriteV1 | VoicemailReadV1 | VoicemailDeleteV1
   | SmsLatestSenderV1 | SmsLatestSenderV2 | NotesRecordV1 | PhotosViewSelectedV1 | CameraLibraryIdV1
+  | BrowserSearchV1 | BrowserTabsV1 | BrowserTabsCloseAllV1 | BrowserFindV1 | BrowserHistoryV1 | BrowserOpenNewTabV1 | FilesShownTargetV1
 pure def capabilityName(c: Capability): str = match c {
   | CalendarLocalEventV1 => "calendar.local-event.v1" | CalendarCreateV1 => "calendar.create.v1" | CalendarNextReadV1 => "calendar.next-read.v1"
   | CalendarAgendaReadV1 => "calendar.agenda-read.v1" | CalendarAvailabilityReadV1 => "calendar.availability-read.v1"
@@ -49,6 +52,9 @@ pure def capabilityName(c: Capability): str = match c {
   | ContactsWriteV1 => "contacts.write.v1" | VoicemailReadV1 => "voicemail.read.v1" | VoicemailDeleteV1 => "voicemail.delete.v1"
   | SmsLatestSenderV1 => "sms.latest-sender.v1" | SmsLatestSenderV2 => "sms.latest-sender.v2" | NotesRecordV1 => "notes.record.v1"
   | PhotosViewSelectedV1 => "photos.view-selected.v1" | CameraLibraryIdV1 => "camera.capture-library-id.v1"
+  | BrowserSearchV1 => "browser.search.v1" | BrowserTabsV1 => "browser.tabs.v1" | BrowserTabsCloseAllV1 => "browser.tabs.close-all.v1"
+  | BrowserFindV1 => "browser.find.v1" | BrowserHistoryV1 => "browser.history.v1" | BrowserOpenNewTabV1 => "browser.open-new-tab.v1"
+  | FilesShownTargetV1 => "files.shown-target.v1"
 }
 pure val allCapabilities: Set[Capability] = Set(
   CalendarLocalEventV1, CalendarCreateV1, CalendarNextReadV1, CalendarAgendaReadV1, CalendarAvailabilityReadV1, CalendarNamedReadV1,
@@ -56,7 +62,8 @@ pure val allCapabilities: Set[Capability] = Set(
   RemindersLocalRecordV2, RemindersCreateV1, PhotosLibraryV1, PhotosViewV1, CameraCapturePhotoV1, FilesBrowserV1,
   MapsSelectedReadV1, ClockHandoffV1, ClockHandoffV2, SmsSendV1, MmsSendV1, SmsComposeV1, MessagesReadV1, PhoneDialV1,
   PhoneCallV1, ContactsWriteV1, VoicemailReadV1, VoicemailDeleteV1, SmsLatestSenderV1, SmsLatestSenderV2, NotesRecordV1,
-  PhotosViewSelectedV1, CameraLibraryIdV1)
+  PhotosViewSelectedV1, CameraLibraryIdV1, BrowserSearchV1, BrowserTabsV1, BrowserTabsCloseAllV1, BrowserFindV1, BrowserHistoryV1,
+  BrowserOpenNewTabV1, FilesShownTargetV1)
 pure def isCapabilityName(name: str): bool = allCapabilities.exists(c => capabilityName(c) == name)
 pure def lawTheVocabularyListsEveryCapability(c: Capability): bool = allCapabilities.contains(c)
 pure def lawNoTwoCapabilitiesShareAName(a: Capability, b: Capability): bool = capabilityName(a) == capabilityName(b) implies a == b
