@@ -1,5 +1,5 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A request needs an active account and sufficient funding for its quote"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/shared/metering.md, "A call reaches its provider only after its hold is durably marked dispatched"
-import { hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
+import { endOfFailure, hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
 import { refused } from "../http/refusal.vibe"
 import { signed } from "../http/request-auth.vibe"
 import { json, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
@@ -20,7 +20,7 @@ function providerBody({ max_tokens: _maxTokens, max_completion_tokens, ...body }
 
 
 function failureSettlement(failure: LlmFailure): Settlement {
-  return failure._tag === "ProviderRefused" && failure.status >= 400 && failure.status < 500
+  return failure._tag === "ProviderRefused" && endOfFailure(failure.status, false).tag === "ProviderRejected"
     ? { kind: "known", actual: 0 }
     : { kind: "unknown" }
 }
