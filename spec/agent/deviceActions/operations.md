@@ -101,7 +101,10 @@ without it a recording still runs under the pair `notes.organize.v1` and
 `{selected: true}` in place of library IDs: the one item the owner has open
 in the Photos viewer, which the phone resolves at review, so the agent
 never needs or guesses that item's ID. That form needs
-`photos.view-selected.v1` beside the library and view capabilities. The base and workflow operations
+`photos.view-selected.v1` beside the library and view capabilities. It
+also marks a typed address opened in a tab of its own (`newTab`), which
+needs `browser.open-new-tab.v1` ([browser controls](../../browser/control.md)),
+so a phone that would reuse its earlier tab is never sent one. The other base and workflow operations
 need any capability other than the Clock handoff, so a device that
 advertised only the Clock handoff never receives them.
 
@@ -141,11 +144,12 @@ pure def familyNeed(f: Family, t: OperationType, versionTwo: bool): Need = match
       else needOne(ContactsWriteV1)
   | ClockFamily => clockHandoffNeed(versionTwo)
   | WorkflowFamily => anyButClock
-  | BaseFamily => anyButClock
+  | BaseFamily => if (t == BrowserNavigate and versionTwo) needOne(BrowserOpenNewTabV1) else anyButClock
 }
 pure val negValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: Set() }), Negotiated({ capabilities: Set(ClockHandoffV1) }),
   Negotiated({ capabilities: Set(ClockHandoffV1, ClockHandoffV2) }), Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV1, NotesLocalRecordV1) }),
-  Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV2, CalendarAgendaReadV1, NotesQueryV1, NotesLocalRecordV1) }))
+  Negotiated({ capabilities: Set(NamedTargetV1, RemindersLocalRecordV2, CalendarAgendaReadV1, NotesQueryV1, NotesLocalRecordV1) }),
+  Negotiated({ capabilities: Set(CameraCapturePhotoV1, BrowserOpenNewTabV1) }), Negotiated({ capabilities: Set(CameraCapturePhotoV1, CameraCaptureLensV1) }))
 pure def clockOnly(neg: Negotiation): bool = allCapabilities.forall(c => negotiatedHas(neg, c) implies (c == ClockHandoffV1 or c == ClockHandoffV2))
 pure def recordingAlone(neg: Negotiation): bool = negotiatedHas(neg, NotesRecordV1)
 pure def lawRecordingRunsUnderItsOwnCapabilityAlone(t: OperationType): bool =
@@ -159,6 +163,8 @@ pure def lawEveryOperationNamesANeed(t: OperationType, versionTwo: bool): bool =
   namesSome(operationNeed(t, versionTwo).required) or namesSome(operationNeed(t, versionTwo).oneOf)
 pure def lawAClockOnlyDeviceReceivesOnlyClockHandoffs(t: OperationType, versionTwo: bool, neg: Negotiation): bool =
   (clockOnly(neg) and meets(neg, operationNeed(t, versionTwo))) implies t == ClockHandoff
+pure def lawANewTabNavigationNeedsItsCapability(neg: Negotiation): bool =
+  meets(neg, operationNeed(BrowserNavigate, true)) implies negotiatedHas(neg, BrowserOpenNewTabV1)
 pure def lawANamedEditNeedsTheNamedTarget(t: OperationType, versionTwo: bool, neg: Negotiation): bool =
   ((t == NotesNamed or t == CalendarNamedEdit or t == ReminderNamed) and meets(neg, operationNeed(t, versionTwo))) implies negotiatedHas(neg, NamedTargetV1)
 pure def lawNewerReminderTimingIsNeverDowngraded(t: OperationType, neg: Negotiation): bool =
@@ -202,7 +208,8 @@ A voice-note recording takes its version from the negotiation: the
 recording-only form exactly when the request negotiated `notes.record.v1`.
 A photo capture takes its version from the negotiation too: version two
 exactly when the request negotiated `camera.capture-library-id.v1`, so its
-receipt may name the saved photo's library ID.
+receipt may name the saved photo's library ID. A capture must also have
+its lens negotiated (next rule).
 The proposal, decide and claim requests each validate against their own
 negotiation.
 
@@ -219,7 +226,7 @@ pure def proposalVersion(prop: Proposal, neg: Negotiation): bool =
 pure def lawARecordingIsValidUnderEitherForm(prop: Proposal, neg: Negotiation): bool =
   (prop.opType == NotesRecord and prop.shapeValid and prop.binding == NoBinding and
     (negotiatedHas(neg, NotesRecordV1) or (negotiatedHas(neg, NotesOrganizeV1) and negotiatedHas(neg, NotesLocalRecordV1)))) implies validate(prop, neg)
-pure def validate(prop: Proposal, neg: Negotiation): bool = prop.shapeValid and meets(neg, operationNeed(prop.opType, proposalVersion(prop, neg))) and bindingAdmitted(prop, neg)
+pure def validate(prop: Proposal, neg: Negotiation): bool = prop.shapeValid and meets(neg, operationNeed(prop.opType, proposalVersion(prop, neg))) and bindingAdmitted(prop, neg) and lensAdmitted(prop, neg)
 pure val propValues: Set[Proposal] = Set(
   { opType: ReadCalendarRange, versionTwo: false, binding: AgendaBinding, shapeValid: true },
   { opType: ReadSelectedNotes, versionTwo: false, binding: NoBinding, shapeValid: true },
@@ -231,11 +238,31 @@ pure val propValues: Set[Proposal] = Set(
   { opType: FilesOpen, versionTwo: false, binding: NoBinding, shapeValid: true },
   { opType: SmsReplySelected, versionTwo: false, binding: WorkflowBinding, shapeValid: true },
   { opType: SmsSend, versionTwo: false, binding: NoBinding, shapeValid: true },
-  { opType: NotesRecord, versionTwo: false, binding: NoBinding, shapeValid: true })
+  { opType: NotesRecord, versionTwo: false, binding: NoBinding, shapeValid: true },
+  { opType: CameraCapturePhoto, versionTwo: true, binding: NoBinding, shapeValid: true },
+  { opType: BrowserNavigate, versionTwo: true, binding: NoBinding, shapeValid: true })
 pure def lawAWorkflowOperationIsBound(prop: Proposal, neg: Negotiation): bool =
   (validate(prop, neg) and family(prop.opType) == WorkflowFamily) implies (prop.binding == WorkflowBinding or (prop.opType == ReadCalendarRange and prop.binding == AgendaBinding))
 pure def lawAStandaloneAgendaReadNegotiatedTheAgenda(prop: Proposal, neg: Negotiation): bool =
   (validate(prop, neg) and prop.binding == AgendaBinding) implies (prop.opType == ReadCalendarRange and negotiatedHas(neg, CalendarAgendaReadV1))
+```
+
+### A photo capture names the front or back lens only when the request negotiated it
+
+A capture may name the front or back lens; without one the phone uses the
+camera that is showing. A capture that names a lens is valid only when the
+request negotiated `camera.capture-lens.v1`, so a phone that cannot switch
+lenses is never sent one. Its proposal marks the lens as `versionTwo`; the
+validated version, which its receipt follows, still comes from the
+negotiation (previous rule).
+
+```quint
+pure def lensAdmitted(prop: Proposal, neg: Negotiation): bool =
+  prop.opType != CameraCapturePhoto or not(prop.versionTwo) or negotiatedHas(neg, CameraCaptureLensV1)
+pure def lawALensNeedsItsCapability(prop: Proposal, neg: Negotiation): bool =
+  (validate(prop, neg) and prop.opType == CameraCapturePhoto and prop.versionTwo) implies negotiatedHas(neg, CameraCaptureLensV1)
+pure def lawACaptureWithoutALensNeedsNoLens(neg: Negotiation): bool =
+  negotiatedHas(neg, CameraCapturePhotoV1) implies validate({ opType: CameraCapturePhoto, versionTwo: false, binding: NoBinding, shapeValid: true }, neg)
 ```
 
 ### Only a reversible local operation bound to the owner's current message may run without a review
