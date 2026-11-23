@@ -266,8 +266,7 @@ const STRIPE_REVERSAL_EVENT_TYPES = ["charge.refunded", "charge.dispute.funds_wi
  * retried while the grant was pending, and can have spent its retry budget and
  * been dead-lettered. Stripe does not resend an event this service already
  * answered with 200, so the settlement makes those reversals due again with a
- * fresh budget, in the same transaction that grants the credit. A delivery
- * that a drain holds leased is left to that drain.
+ * fresh budget, in the same transaction that grants the credit.
  */
 async function reviveStripeReversalsAwaitingSettlement(
   tx: Parameters<Parameters<typeof writeTransaction>[0]>[0],
@@ -286,7 +285,6 @@ async function reviveStripeReversalsAwaitingSettlement(
         eq(webhookEvents.provider, "stripe"),
         isNotNull(webhookEvents.delivery_payload),
         isNull(webhookEvents.delivery_completed_at),
-        isNull(webhookEvents.delivery_lease_token),
         inArray(sql`${webhookEvents.delivery_payload}->>'eventType'`, STRIPE_REVERSAL_EVENT_TYPES),
         sql`${deliveryPaymentIntent} = ${paymentIntentId}`,
       ),
