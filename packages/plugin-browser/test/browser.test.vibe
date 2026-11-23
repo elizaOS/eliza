@@ -2,8 +2,9 @@
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core"
 import {
-  BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY, browserControlCapabilityAvailable,
-  browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable, parseBrowserControl, parseBrowserNavigate,
+  BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY, BROWSER_TABS_CLOSE_ALL_CAPABILITY,
+  browserControlCapabilityAvailable, browserControlRefusal, browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable,
+  describeBrowserControl, parseBrowserControl, parseBrowserNavigate,
 } from "../src/contract.vibe"
 import {
   browserDestinationMatches, browserSearchQueryMatches, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination,
@@ -50,7 +51,7 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
   })
 })
 
-it.effect(`Offer a Browser control only as negotiated and review it only on the unlocked phone (spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review")`, effect () => {
+it.effect(`Offer a Browser control only as negotiated and review it only on the unlocked phone (spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review"; spec/browser/control.md, "Closing every tab is its own negotiated form, and a request for several tabs is never narrowed to one")`, effect () => {
   const tabsOnly = [BROWSER_TABS_CAPABILITY]
   try Effect.try(() => {
     assert.deepStrictEqual(parseBrowserControl({ type: "browser_search", query: "  cheap   flights " }), { ok: true, operation: { type: "browser_search", query: "cheap flights" } })
@@ -82,6 +83,20 @@ it.effect(`Offer a Browser control only as negotiated and review it only on the 
       [false, false, true, false])
     assert.isDefined(browserControlReviewNotice({ sensitive: true }))
     assert.isUndefined(browserControlReviewNotice({ sensitive: false }))
+    const closeAll = parseBrowserControl({ type: "browser_tab_close", all: true })
+    assert.deepStrictEqual(closeAll, { ok: true, operation: { type: "browser_tab_close", all: true } })
+    assert.deepStrictEqual(
+      [{ type: "browser_tab_close", all: true, target: "news" }, { type: "browser_tab_close", all: false }].map((value) => parseBrowserControl(value).ok),
+      [false, false])
+    if (!closeAll.ok) return
+    const everyTab = [BROWSER_TABS_CAPABILITY, BROWSER_TABS_CLOSE_ALL_CAPABILITY]
+    assert.deepStrictEqual(
+      [browserControlRefusal(closeAll.operation, everyTab), browserControlRefusal({ type: "browser_tab_close" }, tabsOnly), browserControlRefusal(closeAll.operation, [BROWSER_TABS_CLOSE_ALL_CAPABILITY]) !== undefined],
+      [undefined, undefined, true])
+    assert.notStrictEqual(browserControlRefusal(closeAll.operation, tabsOnly), browserControlRefusal(closeAll.operation, []))
+    assert.isFalse(browserControlRunsUnreviewed(closeAll.operation, { boundToMessage: true, wordsTyped: true }))
+    const card = describeBrowserControl(closeAll.operation, [{ title: "News", host: "news.example" }, { title: "Mail" }, { title: "Bank", private: true }]).description
+    assert.deepStrictEqual([card.includes("News"), card.includes("Mail"), card.includes("Bank")], [true, true, false])
   })
 })
 
