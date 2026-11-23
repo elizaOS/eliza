@@ -500,7 +500,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
           },
         }),
       })
-      said = await sentAtMostTwice(() => holdDraft ? runWithSuppressedModelStream(infer) : infer(), signal)
+      said = await sentAtMostTwice(async () => holdDraft ? runWithSuppressedModelStream(infer) : infer(), signal)
     } catch (error: unknown) {
       if (signal.aborted || !stoppedAtOutputLimit(error)) throw error
       prose = cutOffReply

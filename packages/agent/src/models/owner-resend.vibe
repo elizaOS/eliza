@@ -1,12 +1,12 @@
 // spec/agent/models/binding.md, "One temporarily rate-limited owner model call can resend before its deadline"
-export interface OwnerResendScope {
-  readonly deadline: number
-  readonly retrySpent?: boolean
-  current(): boolean
-}
-
 module node {
   import { AsyncLocalStorage } from "node:async_hooks"
+
+  export interface OwnerResendScope {
+    readonly deadline: number
+    readonly retrySpent?: boolean
+    current(): boolean
+  }
 
   const active = new AsyncLocalStorage<OwnerResendScope | undefined>()
 
@@ -22,4 +22,4 @@ module node {
 }
 
 import { ownerResendScope, withOwnerResend } from node
-export { ownerResendScope, withOwnerResend }
+export { ownerResendScope, withOwnerResend, type OwnerResendScope } from node

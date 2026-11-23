@@ -532,11 +532,13 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
     const now = try Clock.currentTimeMillis
     const hint = failure.temporary429
     const advice = hint.tag === "ResendAt" && first.retryAt !== undefined ? { tag: "ResendAt" as const, at: first.retryAt } : hint
-    const decision = ownerResend(advice, true, resend.dispatched, resend.scope.current(), false, now, resend.scope.deadline)
+    const current = Effect.try(() => resend.scope.current()) catch () => false
+    const decision = ownerResend(advice, true, resend.dispatched, current, false, now, resend.scope.deadline)
     if (decision.tag !== "WaitToResend") throw first
     try sleep(Duration.millis(decision.delay))
     const resumed = try Clock.currentTimeMillis
-    if (!resend.scope.current() || resumed >= resend.scope.deadline) throw first
+    const stillCurrent = Effect.try(() => resend.scope.current()) catch () => false
+    if (!stillCurrent || resumed >= resend.scope.deadline) throw first
     return sendAgain() catch effect (second) => {
       if (second instanceof ModelRefusal) throw markModelProviderResendSpent(second)
       if (!(second instanceof Refused)) throw second
