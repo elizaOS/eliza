@@ -155,4 +155,4 @@ class SlackConnector extends Service {
 }
 
 export const slackPlugin: Plugin = { name: "@elizaos/plugin-slack", description: "Slack connector", services: [SlackConnector] }
-export default slackPlugin
+export { slackPlugin as default }

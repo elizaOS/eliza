@@ -150,4 +150,4 @@ export const githubAction: Action = {
 export { GitHubDeviceConnectionFailed, startGitHubDeviceConnection } from "./device-flow.vibe"
 
 export const githubPlugin: Plugin = { name: "@elizaos/plugin-github", description: "GitHub issue, pull request and notification tools", actions: [githubAction] }
-export default githubPlugin
+export { githubPlugin as default }

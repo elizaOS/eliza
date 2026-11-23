@@ -196,4 +196,4 @@ export const plugin: Plugin = {
   services: [PdfService],
 }
 
-export default plugin
+export { plugin as default }

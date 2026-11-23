@@ -158,4 +158,4 @@ class TelegramConnector extends Service {
 }
 
 export const telegramPlugin: Plugin = { name: "@elizaos/plugin-telegram", description: "Telegram connector", services: [TelegramConnector] }
-export default telegramPlugin
+export { telegramPlugin as default }

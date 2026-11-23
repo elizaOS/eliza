@@ -165,4 +165,4 @@ export const plugin: Plugin = {
   description: "Owner-authorized camera and desktop vision with OCR and grounded text coordinates.",
   actions: [visionAction],
 }
-export default plugin
+export { plugin as default }

@@ -99,4 +99,4 @@ export const plugin: Plugin = {
   },
 }
 
-export default plugin
+export { plugin as default }

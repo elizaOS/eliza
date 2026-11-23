@@ -178,4 +178,4 @@ class XConnector extends Service {
 }
 
 export const XPlugin: Plugin = { name: "@elizaos/plugin-x", description: "X account connector", services: [XConnector] }
-export default XPlugin
+export { XPlugin as default }

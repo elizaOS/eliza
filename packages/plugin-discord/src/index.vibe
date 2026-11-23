@@ -128,4 +128,4 @@ class DiscordConnector extends Service {
 }
 
 export const discordPlugin: Plugin = { name: "@elizaos/plugin-discord", description: "Discord connector", services: [DiscordConnector] }
-export default discordPlugin
+export { discordPlugin as default }

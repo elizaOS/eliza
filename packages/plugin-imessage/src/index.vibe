@@ -221,7 +221,7 @@ export class IMessageService extends Service {
 }
 
 export const imessagePlugin: Plugin = { name: "@elizaos/plugin-imessage", description: "Native Messages or signed Blooio connector", services: [IMessageService] }
-export default imessagePlugin
+export { imessagePlugin as default }
 
 export async function handleBlooioRequest(runtime: IAgentRuntime, request: Request): Promise<Response> {
   const service = runtime.getService<IMessageService>(IMessageService.serviceType)

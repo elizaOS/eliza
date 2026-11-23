@@ -225,4 +225,4 @@ export const plugin: Plugin = {
   description: "Owner-scoped browser search and the public Parallel search endpoint.",
   actions: [webSearchAction],
 }
-export default plugin
+export { plugin as default }
