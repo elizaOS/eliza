@@ -506,7 +506,7 @@ it.live('Acknowledge a page of digests only after it is stored (spec/workflow/ho
   }
 })
 
-it.live('Run a digest over a live Google source read through managed Google (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible")', effect () => {
+it.live('Run a digest over a live Google source read through managed Google (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/workflow/hostedDigest.md, "Story: Read my evening brief over the evening\'s window")', effect () => {
   provide KeyValueStore.layerMemory {
     const prompts: string[] = []
     const google = {
@@ -532,7 +532,7 @@ it.live('Run a digest over a live Google source read through managed Google (spe
         }
         return { timeZone: "UTC" }
       },
-      read: (selection) => sync(() => { reads.push(selection.sourceId); return "Water the plants" }),
+      read: (selection, _at, window) => sync(() => { reads.push(`${selection.sourceId}:${window}`); return "Water the plants" }),
     }
     const rig = try harness({ google, native, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
     const protocol = hostedDigestProtocol(rig.request)
@@ -558,6 +558,12 @@ it.live('Run a digest over a live Google source read through managed Google (spe
     const phoneLive = { provider: "native", ownerId: owner, agentId: "agent", ...device, sourceId: "tasks", revision: "a".repeat(64) }
     const phoneSaved = try protocol.mutate("sources", { id: "phone-1", kind: "tasks", label: "Tasks", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, live: phoneLive, confirmed: true })
     const phoneRevision = (phoneSaved.source as { readonly revision: string }).revision
+    const evening = try protocol.mutate("loops", { mutationId: "loop-evening", confirmed: true, spec: { version: 1, template: "evening", sourceId: "phone-1", sourceRevision: phoneRevision, timeZone: "UTC", localTime, enabled: true } })
+    const eveningReceipt = evening.receipt as { readonly workflowId: string; readonly versionId: string }
+    try rig.service.fire({ workflowId: eveningReceipt.workflowId, armVersion: Number(eveningReceipt.versionId.slice(1)), scheduledAt: minute }, rig.digests.fire)
+    const [eveningRun] = try rig.client.executions(eveningReceipt.workflowId)
+    const eveningDone = try settled(rig.client, eveningRun)
+    try check(() => assert.equal(eveningDone.status, "finished", eveningDone.error))
     const asked = { sourceId: "phone-1", sourceRevision: phoneRevision, mutationId: "dossier-1", confirmed: true }
     const granting = try Deferred.make<void>()
     const release = try Deferred.make<void>()
@@ -574,7 +580,7 @@ it.live('Run a digest over a live Google source read through managed Google (spe
     const afterRevoke = try Effect.flip(rig.request("/api/workflow/hosted/dossier", { ...asked, mutationId: "dossier-2" }))
     try check(() => assert.deepStrictEqual(
       [(meanwhile.source as { readonly id: string }).id, (replayed.execution as { readonly id: string }).id, afterRevoke._tag === "WorkflowHttpError" ? afterRevoke.status : 0, reads],
-      ["notes-1", dossierRun, 409, ["tasks"]]))
+      ["notes-1", dossierRun, 409, ["tasks:evening", "tasks:morning"]]))
   }
 })
 
