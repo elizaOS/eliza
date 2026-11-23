@@ -1,7 +1,7 @@
-name: Identify the writer of a checked verifier file
+name: Verify isolated installs in the four-slot product graph
 on:
   push:
-    branches: [codex/trace-verified-input-hardlinks-1123]
+    branches: [codex/qualify-isolated-verifier-hardlinks-1123]
 permissions:
   contents: read
 jobs:
