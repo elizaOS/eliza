@@ -486,4 +486,4 @@ export { createSurfaceClient, SurfaceProtocol, SurfaceTransport, type SurfaceCli
 export { TASK_ID_PATTERN } from "@elizaos/core/task-events"
 
 export { TurnController, ConversationRecord, InvalidConversation, findStoppedUserTurn, type ClientMessageId, type HistoryMessage, type StopResult, type StoppedConversationTurn, type TurnMessage, type TurnOptions, type TurnRefusal, type TurnReply, type TurnResult, type TurnTransport } from "./turn-controller.vibe"
-export { decodeLocationObservation, decodeObservation, decodeVoiceUiContext, encodeTurnContext, Observation, ObservationDropped, parseVoiceUiContext, VoiceUiContext, VoiceUiContextInvalid, type LocationObservation, type TurnContext } from "../conversation/turn-context.schema.vibe"
+export { BrowserPage, BrowserPageDropped, decodeBrowserPage, decodeLocationObservation, decodeObservation, decodeVoiceUiContext, encodeTurnContext, Observation, ObservationDropped, parseVoiceUiContext, VoiceUiContext, VoiceUiContextInvalid, type LocationObservation, type TurnContext } from "../conversation/turn-context.schema.vibe"
