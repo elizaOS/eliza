@@ -99,6 +99,25 @@ pure def lawAPageLinkIsAlwaysReviewed(wholeMessageOpen: bool): bool = not(openBo
 pure def lawOnlyMyWholeMessageOpenIsBound(pageLink: bool, wholeMessageOpen: bool): bool = openBound(pageLink, wholeMessageOpen) implies wholeMessageOpen
 ```
 
+### My whole-message open command opens the address without waiting on the model's choice
+
+When the owner's whole message is the strict open command, "open",
+"visit", "go to" or "navigate to" an address, with an optional greeting
+and the assistant's name before it, "in the browser" or "in a new tab", a
+polite suffix and closing marks after it, on a phone that opens addresses
+from chat, the open of that address is the turn's first call, before the
+model is asked. The model can no longer answer it by opening the Browser
+view, which loads no address. The open is grounded, bound and placed in a
+new tab as any whole-message open. A polite question, an everyday command,
+the bare address and a spoken hostname still wait on the model's choice.
+
+```quint
+pure def openAskedFirst(strictCommand: bool, opensAddresses: bool): bool = strictCommand and opensAddresses
+pure def lawOnlyTheStrictCommandSkipsTheModel(strictCommand: bool, opensAddresses: bool): bool =
+  openAskedFirst(strictCommand, opensAddresses) implies strictCommand
+pure def lawTheStrictCommandOpensWhereThePhoneOpensAddresses(opensAddresses: bool): bool = openAskedFirst(true, opensAddresses) iff opensAddresses
+```
+
 ### A closing mark that could belong to the address leaves the open for my review
 
 In an open command or request, a period, comma, exclamation or question
