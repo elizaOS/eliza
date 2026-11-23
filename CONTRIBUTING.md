@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `500cb8d`](https://github.com/lalalune/vibestack/commit/500cb8d59a0699aeab8aa016fe9bd1a43152a589).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `5f25987`](https://github.com/lalalune/vibestack/commit/5f259878cd436c3d7cdc3cec5e3955c5130a19ac).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -493,6 +493,10 @@ revision; a re-run starts at once.
 The task entry point disables Turbo telemetry. Local `selftest:tools` tasks wait for the
 root and Studio tests. In CI, the verify job runs those integration tests once.
 Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
+Fixture selftests on a pull request first restore an archive scoped to its PR number and lockfile. A complete cached task reuses it only when setup preserves its evaluator; inherited archives, evaluator changes and actual fixture execution retain normal publication.
+
+The canonical nightly install builds the tools and defers application generation to its unchanged nightly task graph. Verification and release install full Chromium and its headless shell. Hosted shard A installs Chromium when its Bombadil journey runs; nightly setup still provisions it, and other tool shards need no browser.
+
 All three tool shards skip workspace generation. The two fixture shards use their scratch inputs, and the packaged CLI test builds its workspace copy.
 Release materializes the prerequisites before running the isolated shards.
 Packing the Vibestack CLI builds the toolchain and Studio. The package's
