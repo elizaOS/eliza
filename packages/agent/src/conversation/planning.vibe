@@ -1,14 +1,16 @@
+// spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
 // spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request refuses the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
 // spec/agent/conversation/planning.md, "A response with competing terminal decisions runs no sibling action and can be repaired once"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
+import { tagsMayProduceEffects } from "@elizaos/core/protocol"
 import {
   acknowledges, actionNoteSent, callAdmission, callRunsFirst, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
-  terminalAnswerOf, turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome,
+  terminalAnswerOf, toolDispatch, turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
 import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
@@ -263,6 +265,21 @@ function stoppedAtModelMaximum(result: ActionResult): boolean {
   return [result.error, settled].some(stoppedAtOutputLimit)
 }
 
+function toolSettlement(result: ActionResult, action: Action | undefined): ToolSettlement {
+  const receipts = result.effectReceipts ?? []
+  if (receipts.some((receipt) => receipt.outcome === "applied")) return "ToolSucceeded"
+  if (receipts.some((receipt) => receipt.outcome === "failed" && (receipt.failure.acceptance === "unknown" || !receipt.failure.retryable))) return "ToolNonretryable"
+  if (result.success) {
+    const tags = action?.tags
+    const observation = receipts.length > 0
+      ? receipts.every((receipt) => receipt.outcome === "preview" || (receipt.outcome === "noop" && !receipt.idempotency.replayed))
+      : result.data?.readOnlyOperation === true
+        || (tags?.some((tag) => tag.trim().toLowerCase() === "capability:read") === true && !tagsMayProduceEffects(tags))
+    return observation ? "ToolOpen" : "ToolSucceeded"
+  }
+  return result.failureProvenance?.retryable === false || result.data?.retryable === false ? "ToolNonretryable" : "ToolOpen"
+}
+
 function byName(left: { readonly name: string }, right: { readonly name: string }): number {
   return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
 }
@@ -339,9 +356,22 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let streamed = ""
   let prose: string | undefined
   let terminalCorrectionSent = false
+  const seen = new Set<string>()
+  const settlements = new Map<string, ToolSettlement>()
   const execute = async (call: ToolCall): Promise<ActionResult> => {
     signal.throwIfAborted()
     const params = paramsOf(call)
+    const name = isDiscoveryActionName(call.name) ? DISCOVER_ACTIONS_NAME : call.name
+    const identity = `${name}\u0000${canonical(params)}`
+    const dispatch = toolDispatch(seen.has(identity), settlements.get(identity) ?? "ToolOpen")
+    if (dispatch !== "FreshCall") {
+      const text = dispatch === "RetryRefused" ? "This exact operation cannot be retried. Use a different valid operation or correct its arguments."
+        : "This turn already has a result for the same operation. Use that result and do not repeat the call."
+      const result = { success: false, text, data: { executionStatus: "not_started", code: dispatch } }
+      conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
+      return result
+    }
+    seen.add(identity)
     const routedTo = refused.get(call.name)
     const elsewhere = routedTo === undefined ? elsewhereOf(runtime, message, named.get(call.name), params) : undefined
     const refusal = routedTo !== undefined ? routeRefusal(call.name, routedTo) : elsewhere === undefined ? undefined : elsewhereRefusal(elsewhere)
@@ -358,6 +388,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         return []
       },
     }, { id: call.id, name: call.name, params }, { abortSignal: signal })
+    settlements.set(identity, toolSettlement(result, named.get(call.name)))
     if (!plannerOnlyCoaching(result.transcriptVisibility === "internal", result.data?.coachingFailure === true, result.success, (result.effectReceipts?.length ?? 0) > 0)) {
       await input.onStepResult?.(result)
       steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
@@ -426,6 +457,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         displayed = false
       }
       conversation.push({ role: "assistant", content: answered.text || null, toolCalls: work })
+      seen.clear()
       for (const call of work) {
         cutOff ||= stoppedAtModelMaximum(await execute(call))
         if (cutOff) break

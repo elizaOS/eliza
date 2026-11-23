@@ -317,6 +317,34 @@ pure def lawATerminalRepairUsesOneRemainingStep(terminalDecisions: int, terminal
   terminalAnswerOf(terminalDecisions, terminalRepairSent, hasSteps) == RepairTerminalAnswer implies not(terminalRepairSent) and hasSteps
 ```
 
+### An identical call runs at most once per model response, and a settled effect is never repeated in the turn
+
+Two calls with the same tool name and canonical arguments in one response
+are one operation even when the model gave them different ids. The second
+receives a tool result saying that it did not run. A later response can
+repeat an observation that declared itself read-only or whose receipts
+were all fresh no-ops or previews. It cannot repeat an identical
+operation that succeeded, applied an effect, or has a non-retryable
+failure from its provenance, typed data or effect receipts. A receipt
+with unknown acceptance also prevents repeating the operation. A different operation or
+corrected arguments still go through the usual admission checks.
+
+```quint
+type ToolSettlement = ToolOpen | ToolSucceeded | ToolNonretryable
+type ToolDispatch = FreshCall | DuplicateInBatch | AlreadySettled | RetryRefused
+pure def toolDispatch(seen: bool, previousSettlement: ToolSettlement): ToolDispatch =
+  if (seen) DuplicateInBatch else match previousSettlement {
+    | ToolSucceeded => AlreadySettled
+    | ToolNonretryable => RetryRefused
+    | ToolOpen => FreshCall
+  }
+pure val previousSettlementValues = Set(ToolOpen, ToolSucceeded, ToolNonretryable)
+pure def lawNoSecondCallInOneResponse(previousSettlement: ToolSettlement): bool =
+  toolDispatch(true, previousSettlement) == DuplicateInBatch
+pure def lawOnlyOpenCallsRunAcrossResponses(previousSettlement: ToolSettlement): bool =
+  (toolDispatch(false, previousSettlement) == FreshCall) == (previousSettlement == ToolOpen)
+```
+
 ### A call that stopped at the model's own output limit ends planning
 
 When the step's own call stops there, the turn answers that the reply was
