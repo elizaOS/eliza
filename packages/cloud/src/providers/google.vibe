@@ -95,6 +95,7 @@ effect function googleProfile(): GoogleProfile!Unavailable!Deployment {
 effect function exchange(request: HttpClientRequest.HttpClientRequest, maxBytes: number): { status: number; body: unknown }!(ContentTooLarge | Unavailable | InvalidResponse)!HttpClient.HttpClient {
   const answered = effect {
     const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new Unavailable() }
+    if (response.status === 204) return { status: 204, body: null }
     const text = boundedText(response, maxBytes) catch effect (failure) => {
       if (failure instanceof ProviderBodyTooLarge) throw new ContentTooLarge()
       throw new Unavailable()

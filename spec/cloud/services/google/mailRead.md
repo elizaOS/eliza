@@ -3,7 +3,7 @@
 The owner's mail, read through the grant of [the connection](./connection.md)
 (develop `agent-google-connector/{gmail.ts,inbox-provider.ts}`). Routes, by
 device key or session, `side` only `owner`, grant chosen by `connection`'s
-selection rule: `GET /api/v1/eliza/google/gmail/{triage,search,read}` and
+selection rule: `GET /api/v1/eliza/google/gmail/{triage,search,read,contacts}` and
 `GET …/gmail/inbox-v1/{capabilities,thread,attachment,drafts,draft}`. This
 library decides what a read may answer; the shell calls Google and renders
 the wire. [The reviewed operations](./mailOperations.md) reuse its revision
@@ -17,28 +17,29 @@ check, mail cap and operation kinds.
 
 ### A read needs a usable connection that holds the Gmail scope of its surface
 
-Triage reads headers, so `gmail.metadata` is enough; search, message,
-thread and attachment reads need the body (`gmail.readonly` or
+Triage and contacts read headers, so `gmail.metadata` is enough; search,
+message, thread and attachment reads need the body (`gmail.readonly` or
 `gmail.modify`); the drafts surfaces need `gmail.compose` or `gmail.modify`;
-capabilities need only the connection. A refused read answers
+Gmail's full access holds every surface; capabilities need only the
+connection. A refused read answers
 `connection`'s use refusal, after its refresh.
 
 ```quint
 import types.* from "../../shared/types"
 import connection as C from "./connection"
-type MailSurface = TriageSurface | SearchSurface | MessageSurface | ThreadSurface | AttachmentSurface | DraftsSurface | DraftSurface | CapabilitiesSurface
-pure val allSurfaces: List[MailSurface] = List(TriageSurface, SearchSurface, MessageSurface, ThreadSurface, AttachmentSurface, DraftsSurface, DraftSurface, CapabilitiesSurface)
+type MailSurface = TriageSurface | SearchSurface | MessageSurface | ThreadSurface | AttachmentSurface | DraftsSurface | DraftSurface | ContactsSurface | CapabilitiesSurface
+pure val allSurfaces: List[MailSurface] = List(TriageSurface, SearchSurface, MessageSurface, ThreadSurface, AttachmentSurface, DraftsSurface, DraftSurface, ContactsSurface, CapabilitiesSurface)
 pure def surfaceScopes(surface: MailSurface): List[C::GoogleScope] =
-  if (surface == TriageSurface) List(C::ScopeGmailMetadata, C::ScopeGmailReadonly, C::ScopeGmailModify)
-  else if (surface == DraftsSurface or surface == DraftSurface) List(C::ScopeGmailCompose, C::ScopeGmailModify)
-  else List(C::ScopeGmailReadonly, C::ScopeGmailModify)
+  if (surface == TriageSurface or surface == ContactsSurface) List(C::ScopeGmailMetadata, C::ScopeGmailReadonly, C::ScopeGmailModify, C::ScopeGmailFull)
+  else if (surface == DraftsSurface or surface == DraftSurface) List(C::ScopeGmailCompose, C::ScopeGmailModify, C::ScopeGmailFull)
+  else List(C::ScopeGmailReadonly, C::ScopeGmailModify, C::ScopeGmailFull)
 pure def surfaceHeld(surface: MailSurface, scopes: List[C::GoogleScope]): bool =
   surface == CapabilitiesSurface or surfaceScopes(surface).some(x => scopes.includes(x))
 pure def readAllowed(surface: MailSurface, status: C::ConnectionStatus, access: C::AccessState, scopes: List[C::GoogleScope]): bool =
   C::useAllowed(status, access, surfaceHeld(surface, scopes))
 pure def readRefusal(surface: MailSurface, status: C::ConnectionStatus, access: C::AccessState, scopes: List[C::GoogleScope]): Refusal =
   C::useRefusal(status, access, surfaceHeld(surface, scopes))
-pure val scopesValues = Set(List(), List(C::ScopeGmailMetadata), List(C::ScopeGmailReadonly), List(C::ScopeGmailCompose), List(C::ScopeGmailModify), List(C::ScopeGmailSend, C::ScopeCalendarEvents))
+pure val scopesValues = Set(List(), List(C::ScopeGmailMetadata), List(C::ScopeGmailReadonly), List(C::ScopeGmailCompose), List(C::ScopeGmailModify), List(C::ScopeGmailSend, C::ScopeCalendarEvents), List(C::ScopeGmailFull))
 pure def lawAReadNeedsTheCapabilityTheStatusReports(surface: MailSurface, scopes: List[C::GoogleScope]): bool =
   (surface != CapabilitiesSurface and surfaceHeld(surface, scopes)) implies
     C::capabilitiesOf(scopes).includes(if (surface == DraftsSurface or surface == DraftSurface) C::GmailDrafts else C::GmailTriage)
@@ -282,22 +283,50 @@ pure def lawADraftIsServedFromOneSnapshot(draft: DraftSnapshot): bool = { val re
 } }
 ```
 
+### Contacts are the named addresses of recent sent and received mail, each address once, those matching the query
+
+`GET gmail/contacts?grantId&query` reads the headers of the 50 newest Sent
+messages (`To`, `Cc`) and the 50 newest Inbox messages (`From`), newest
+first, and answers `{version: 1, contacts: [{name, email}]}`: the entries
+other than the account's own address whose name or address contains the
+query, ignoring case, each address once
+(compared ignoring case) as the first such entry named it, at most 50. A
+query over 200 characters is `400 invalid_request`.
+
+```quint
+type SeenAddress = { address: str, name: str, matches: bool }
+pure val contactMax: int = 50
+pure val contactQueryMax: int = 200
+pure def contactsOf(seen: List[SeenAddress]): List[SeenAddress] =
+  seen.foldl(List(), (kept, c) => if (not(c.matches) or kept.length() >= contactMax or kept.some(k => k.address == c.address)) kept else kept.append(c))
+pure def contactQueryFits(queryLength: int): bool = queryLength >= 0 and queryLength <= contactQueryMax
+pure val seenValues = Set(List(), List({ address: "a", name: "Ann", matches: true }, { address: "a", name: "A", matches: true }, { address: "b", name: "", matches: false }),
+  List({ address: "b", name: "Bo", matches: false }, { address: "c", name: "Cy", matches: true }))
+pure def lawContactsAreDistinctMatchingAndBounded(seen: List[SeenAddress]): bool = {
+  val got = contactsOf(seen)
+  got.length() <= contactMax and got.every(c => c.matches and got.select(k => k.address == c.address).length() == 1)
+}
+pure def lawAContactKeepsTheFirstNameItCarried(seen: List[SeenAddress]): bool =
+  contactsOf(seen).every(c => seen.select(s => s.address == c.address and s.matches).nthOr(0, c) == c)
+```
+
 ### Capabilities offer exactly the reads and changes the grant allows, and each change comes with the read its review needs
 
 `GET capabilities` answers `{version: 1, from, reads, kinds,
 attachmentPolicy: {mimeTypes, maxBytes}, providerExactlyOnce: false}`:
 `reads` are the surfaces the scopes hold, `kinds` the operation kinds whose
 capability the grant holds (send needs `google.gmail.send`, the draft kinds
-`google.gmail.drafts`, the others `google.gmail.manage`), `mimeTypes` PDF,
+`google.gmail.drafts`, purge `google.gmail.purge`, the others
+`google.gmail.manage`), `mimeTypes` PDF,
 PNG, JPEG, WebP and plain text, `maxBytes` the mail cap.
 
 ```quint
-type MailOperationKind = SendKind | DraftCreateKind | DraftReplaceKind | DraftDeleteKind | ArchiveKind | UnarchiveKind | TrashKind | UntrashKind | MarkReadKind | MarkUnreadKind | StarKind | UnstarKind
+type MailOperationKind = SendKind | DraftCreateKind | DraftReplaceKind | DraftDeleteKind | ArchiveKind | UnarchiveKind | TrashKind | UntrashKind | MarkReadKind | MarkUnreadKind | StarKind | UnstarKind | PurgeKind
 type AttachmentMime = MimePdf | MimePng | MimeJpeg | MimeWebp | MimeText
-pure val allOperationKinds: List[MailOperationKind] = List(SendKind, DraftCreateKind, DraftReplaceKind, DraftDeleteKind, ArchiveKind, UnarchiveKind, TrashKind, UntrashKind, MarkReadKind, MarkUnreadKind, StarKind, UnstarKind)
+pure val allOperationKinds: List[MailOperationKind] = List(SendKind, DraftCreateKind, DraftReplaceKind, DraftDeleteKind, ArchiveKind, UnarchiveKind, TrashKind, UntrashKind, MarkReadKind, MarkUnreadKind, StarKind, UnstarKind, PurgeKind)
 pure val attachmentMimes: List[AttachmentMime] = List(MimePdf, MimePng, MimeJpeg, MimeWebp, MimeText)
 pure def isDraftKind(kind: MailOperationKind): bool = kind == DraftCreateKind or kind == DraftReplaceKind or kind == DraftDeleteKind
-pure def kindNeeds(kind: MailOperationKind): C::GoogleCapability = if (kind == SendKind) C::GmailSend else if (isDraftKind(kind)) C::GmailDrafts else C::GmailManage
+pure def kindNeeds(kind: MailOperationKind): C::GoogleCapability = if (kind == SendKind) C::GmailSend else if (isDraftKind(kind)) C::GmailDrafts else if (kind == PurgeKind) C::GmailPurge else C::GmailManage
 pure def offeredKinds(scopes: List[C::GoogleScope]): List[MailOperationKind] = allOperationKinds.select(k => C::capabilitiesOf(scopes).includes(kindNeeds(k)))
 pure def offeredReads(scopes: List[C::GoogleScope]): List[MailSurface] = allSurfaces.select(s => surfaceHeld(s, scopes))
 pure def lawEveryOfferedChangeComesWithTheReadItsReviewNeeds(kind: MailOperationKind, scopes: List[C::GoogleScope]): bool =

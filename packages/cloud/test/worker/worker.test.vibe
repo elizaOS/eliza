@@ -42,7 +42,7 @@ effect function body(response: Response) {
 }
 
 describe('Serve the deployment from a Worker (spec/cloud/deployment.md, "Story: Serve the deployment from a Worker")', () => {
-  it.live("serves native sign-in, plans and the service document from the applied registration, keeps the Worker-only routes and refuses bindings that disagree", () => scoped(effect {
+  it.live("serves native sign-in, plans, the service document and every mail and calendar route the tablet's Connector calls from the applied registration, keeps the Worker-only routes and refuses bindings that disagree", () => scoped(effect {
     const fakes = try fakeServer()
     const profile = try sync(() => {
       fakes.mount("/stripe/", stripeCatalog(catalogPrices))
@@ -86,6 +86,19 @@ describe('Serve the deployment from a Worker (spec/cloud/deployment.md, "Story: 
     const decision = try call("/api/v1/decisions", env, { method: "POST", headers: { origin: web, "content-type": "application/json" }, body: "{}" })
     const unserved = try call("/api/v1/agents")
     const disagreeing = try call("/api/public/service", { ...env, WEB_ORIGIN: "https://www.other.example.com" })
+    const google = "/api/v1/eliza/google"
+    const operation = "/gmail/inbox-v1/operations/6f1c2a3b-4d5e-4f60-8a7b-1c2d3e4f5a6b"
+    const connectorRoutes: ReadonlyArray<readonly [string, string]> = [
+      ...["/status", "/accounts", "/calendar/feed", "/calendar/calendars", "/calendar/events/e1", "/gmail/triage", "/gmail/search", "/gmail/read", "/gmail/contacts",
+        "/gmail/inbox-v1/capabilities", "/gmail/inbox-v1/thread", "/gmail/inbox-v1/drafts", "/gmail/inbox-v1/draft", "/gmail/inbox-v1/attachment", operation].map((path) => ["GET", path] as const),
+      ...["/disconnect", "/connect/initiate", "/calendar/events", "/gmail/drafts", "/gmail/inbox-v1/operations", `${operation}/dispatch`].map((path) => ["POST", path] as const),
+      ["PATCH", "/calendar/events/e1"], ["DELETE", "/calendar/events/e1"], ["DELETE", "/gmail/drafts/d1"]
+    ]
+    const unservedConnector: string[] = []
+    for (const [method, path] of connectorRoutes) {
+      const answered = try call(google + path, env, { method, headers: { origin: web, authorization: "Bearer not-a-credential", "content-type": "application/json" }, ...(method === "GET" ? {} : { body: "{}" }) })
+      if (answered.status === 404) unservedConnector.push(`${method} ${path}`)
+    }
     try tryPromise(() => worker.scheduled({ scheduledTime: Date.UTC(2026, 10, 22, 12, 0) }, env))
     try check(() => {
       assert.deepEqual([config.status, (config.body as { clientId?: string; redirectUri?: string }).clientId, (config.body as { redirectUri?: string }).redirectUri], [200, phone.clientId, phone.signInReturn])
@@ -93,6 +106,7 @@ describe('Serve the deployment from a Worker (spec/cloud/deployment.md, "Story: 
       assert.equal(plans.status, 200)
       assert.deepEqual([service.status, (service.body as { service?: { name?: string } }).service?.name], [200, "Test Cloud"])
       assert.deepEqual([decision.status, unserved.status, disagreeing.status], [401, 404, 503])
+      assert.deepEqual(unservedConnector, [])
     })
   }), 60_000)
 })

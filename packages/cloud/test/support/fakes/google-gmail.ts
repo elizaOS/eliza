@@ -152,7 +152,9 @@ function answer(mailbox: ReadableMailbox, request: FakeRequest, rest: string): F
     return { status: 200, body: { id: threadPath[1], historyId, messages: messages.map((message) => shown(message, format)) } };
   }
   if (rest === "/drafts") {
-    const listed = page([...mailbox.drafts.keys()], query);
+    const wanted = /^rfc822msgid:<?([^>]+)>?$/.exec(query.get("q") ?? "")?.[1];
+    const ids = [...mailbox.drafts.values()].filter((draft) => wanted === undefined || rawParts(draft.raw).headers["Message-ID"] === `<${wanted}>`).map((draft) => draft.id);
+    const listed = page(ids, query);
     return { status: 200, body: { drafts: listed.rows.map((id) => ({ id })), ...(listed.nextPageToken === undefined ? {} : { nextPageToken: listed.nextPageToken }) } };
   }
   const draftPath = /^\/drafts\/([A-Za-z0-9_-]+)$/.exec(rest);
