@@ -128,6 +128,7 @@ import {
 import {
   availabilityReservationParentEventId,
   type CalendarOwnedAvailabilityKind,
+  calendarAvailabilityKindFromMetadata,
   createCalendarAvailabilityReservation,
   isLocallyManagedAvailabilityEvent,
 } from "../internal/availability-metadata.js";
@@ -3827,6 +3828,35 @@ export class CalendarService extends Service {
     });
   }
 
+  /** A travel buffer ends at its event's start, so it moves with the event. */
+  private async moveTravelBuffersToStart(
+    parent: LifeOpsCalendarEvent,
+  ): Promise<void> {
+    const start = Date.parse(parent.startAt);
+    if (!Number.isFinite(start)) return;
+    const events = await this.repo.listCalendarEvents(
+      this.agentId(),
+      parent.provider,
+    );
+    for (const buffer of events) {
+      if (
+        availabilityReservationParentEventId(buffer) !== parent.id ||
+        calendarAvailabilityKindFromMetadata(buffer.metadata) !== "travel" ||
+        Date.parse(buffer.endAt) === start
+      ) {
+        continue;
+      }
+      const length = Date.parse(buffer.endAt) - Date.parse(buffer.startAt);
+      await this.reserveCalendarAvailability({
+        eventId: parent.id,
+        kind: "travel",
+        startAt: new Date(start - length).toISOString(),
+        endAt: new Date(start).toISOString(),
+        idempotencyKey: String(buffer.metadata.idempotencyKey),
+      });
+    }
+  }
+
   private async deleteAvailabilityReservationsForParentIds(
     parentEventIds: readonly string[],
   ): Promise<void> {
@@ -7281,6 +7311,7 @@ export class CalendarService extends Service {
     }
     await this.enqueueBuiltInCalendarMutation(persisted, "update");
     await this.syncCalendarReminderPlans([persisted]);
+    await this.moveTravelBuffersToStart(persisted);
     await reconcileMeetingAutoJoin({
       runtime: this.runtime,
       agentId: this.agentId(),
@@ -7597,6 +7628,7 @@ export class CalendarService extends Service {
     });
     await this.repo.upsertCalendarEvent(event, grant.side);
     await this.syncCalendarReminderPlans([event]);
+    await this.moveTravelBuffersToStart(event);
     await reconcileMeetingAutoJoin({
       runtime: this.runtime,
       agentId: this.agentId(),
@@ -8108,6 +8140,7 @@ export class CalendarService extends Service {
     }
     await this.repo.upsertCalendarEvent(nativeEvent.data, "owner");
     await this.syncCalendarReminderPlans([nativeEvent.data]);
+    await this.moveTravelBuffersToStart(nativeEvent.data);
     await reconcileMeetingAutoJoin({
       runtime: this.runtime,
       agentId: this.agentId(),
