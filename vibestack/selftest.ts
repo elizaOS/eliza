@@ -16,6 +16,7 @@ import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
 import { cacheCredentials, collectGarbage, isActionEntry, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
+import { precomputeSimulations } from "./formal.ts";
 import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
 import { filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
@@ -647,6 +648,48 @@ export const driver = {
     assert.ok(!fs.existsSync(path.join(same, "gen/traces")), repeated.text);
     assert.ok(!fs.existsSync(path.join(same, "gen/proof/door/verify")), repeated.text);
     assert.ok(updated.failed.includes("model"), updated.text);
+  });
+
+  test("selected simulations warm the ordinary check in another project and reject failed inputs", async () => {
+    const cache = path.join(scratch({}), "formal-cache");
+    const sources = {
+      "spec/base.md": ruleSpec("pure val limit = 2"),
+      "spec/limit.md": ruleSpec('import base as B from "./base"\npure val top = B::limit'),
+      "spec/counter.md": ruleSpec('import limit as L from "./limit"\npure val initial: int = 0\npure def canInc(n: int): bool = n < L::top\npure def inc(n: int): int = n + 1\npure def alwaysBounded(n: int): bool = n <= L::top\npure def sometimesFull(n: int): bool = n == L::top'),
+      "spec/other.md": ruleSpec("pure val initial: int = 0\npure def bump(n: int): int = n + 1\npure def alwaysNonnegative(n: int): bool = n >= 0"),
+    };
+    const selected = ["other", "counter", "other"];
+    const simulations = (project: string, names = selected) => withFormalCache(cache, () => precomputeSimulations(project, readSpecs(project), names));
+    const invalid = ruleSpec("pure val bad = unknownValue");
+    const first = scratch({ ...sources, "spec/untouched.md": invalid });
+    const cold = await simulations(first);
+    assert.deepEqual([...new Set(cold.map((row) => row.where))], ["spec/other.md", "spec/counter.md"]);
+    assert.ok(cold.every((row) => row.ok) && cold.some((row) => row.stage === "sometimes"), JSON.stringify(cold));
+    assert.ok(cold.some((row) => row.stage === "replay" && row.where === "spec/counter.md"), JSON.stringify(cold));
+    assert.ok(fs.readdirSync(path.join(first, "gen/traces")).some((dir) => dir.startsWith("counter.")));
+    assert.ok(!fs.existsSync(path.join(first, "gen/counter.ts")), "partial precomputation does not publish generated modules");
+    const receipts = fs.readdirSync(cache);
+    assert.ok(receipts.length > 0 && receipts.every(isActionEntry));
+    fs.rmSync(first, { recursive: true, force: true });
+
+    const same = scratch(sources);
+    const warm = await withFormalCache(cache, () => run(same));
+    assert.deepEqual(warm.results.filter(({ stage }) => ["always", "sometimes", "replay"].includes(stage)),
+      [...cold].sort((a, b) => a.where!.localeCompare(b.where!)));
+    assert.ok(!fs.existsSync(path.join(same, "gen/traces")), "ordinary check reused every simulation action");
+    assert.ok(receipts.every((file) => fs.existsSync(path.join(cache, file))));
+
+    const changed = scratch({ ...sources, "spec/base.md": sources["spec/base.md"].replace("= 2", "= -1") });
+    const rejected = await simulations(changed, ["counter"]);
+    assert.ok(rejected.some((row) => row.stage === "always" && !row.ok && row.detail.includes("initial")), JSON.stringify(rejected));
+    const malformed = scratch({ ...sources, "spec/untouched.md": invalid,
+      "spec/other.md": sources["spec/other.md"].replace("n + 1", "n + 2") });
+    await assert.rejects(simulations(malformed, ["other", "untouched"]), /spec\/untouched.md[^]*unknownValue/);
+    const traces = path.join(malformed, "gen/traces");
+    assert.ok(fs.readdirSync(traces).some((dir) => dir.startsWith("other.inv.probe")), "the already started simulation reached the probe before rejection");
+    assert.ok(!fs.existsSync(path.join(malformed, ".spec-cache/lock")));
+    assert.ok((await simulations(malformed, ["other"])).every((row) => row.ok));
+    await assert.rejects(simulations(same, ["missing"]), /no spec has the module name "missing"/);
   });
 
   test("a guard that never refuses its event is reported without failing", async () => {

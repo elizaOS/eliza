@@ -129,6 +129,55 @@ async function withStableInstallation<T>(attempt: () => Promise<T>): Promise<T> 
   }
 }
 
+const canSimulate = (model: Model) => !!model.stateType || !!model.laws.length || !!model.evals.length;
+
+/** Warm the normal simulation actions for these module names in a disposable project, using a snapshot from readSpecs. */
+export async function precomputeSimulations(root: string, specs: Spec[], targets: readonly string[]): Promise<Result[]> {
+  const requested = new Set(targets);
+  if (!requested.size) return [];
+  const byName = new Map(specs.map((spec) => [spec.name, spec]));
+  const selected = new Map<string, Spec>();
+  const include = (name: string) => {
+    if (selected.has(name)) return;
+    const spec = byName.get(name);
+    if (!spec) throw new Error(`no spec has the module name "${name}"`);
+    for (const imported of spec.imports) include(imported);
+    selected.set(name, spec);
+  };
+  for (const name of requested) include(name);
+
+  const release = lockProject(root);
+  try {
+    return await withStableInstallation(async () => {
+      const memory: Memory = { root, fresh: false, used: new Set() };
+      const loaded = fs.mkdtempSync(path.join(root, ".spec-cache", "precompute-"));
+      const started = new Map<string, Promise<Simulation>>();
+      const { seed } = profile("normal");
+      try {
+        fs.writeFileSync(path.join(loaded, "package.json"), '{"type":"module"}\n');
+        for await (const { spec, model, error } of generating(memory, [...selected.values()], root, new Map())) {
+          if (!model) throw error;
+          const file = path.join(loaded, `${spec.name}.ts`);
+          fs.writeFileSync(file, model.ts);
+          if (!requested.has(spec.name) || !canSimulate(model)) continue;
+          const domain = await import(pathToFileURL(file).href);
+          const result = simulation(memory, spec, specs, model, domain, seed);
+          void result.catch(() => {});
+          started.set(spec.name, result);
+        }
+        const results = await allDone([...requested].map((name) => started.get(name)).filter((result) => result !== undefined));
+        certifyInstallation();
+        return results.flatMap(({ said }) => said);
+      } finally {
+        await Promise.allSettled(started.values());
+        fs.rmSync(loaded, { recursive: true, force: true });
+      }
+    });
+  } finally {
+    release();
+  }
+}
+
 // One sequence even when an application loads more than one copy of the tools.
 const CHECK_RUN = Symbol.for("vibestack.checkRun");
 const checkRuns = globalThis as typeof globalThis & { [CHECK_RUN]?: number };
@@ -405,7 +454,7 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     valid.push(spec);
     const parts = [[model.transitions.length, "transitions"], [model.always.length, "always"], [model.steps.length, "step"], [model.leadsTo.length, "leadsTo"], [model.sometimes.length, "sometimes"], [model.laws.length, "laws"], [model.opaques.length, "opaque"]];
     report({ ok: true, stage: "model", summary: `${spec.file}: ${parts.filter(([n]) => n).map((p) => p.join(" ")).join(", ") || "definitions only"}`, detail: "", where: spec.file });
-    if (!model.stateType && !model.laws.length && !model.evals.length) continue;
+    if (!canSimulate(model)) continue;
     if (observe && !simulations.length) simulatedAll = observe("simulation");
     const simulated = simulation(memory, spec, specs, model, domain, seed);
     // Report a rejected simulation in the same order as other results.

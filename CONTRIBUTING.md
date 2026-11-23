@@ -291,6 +291,14 @@ the completed Quint, LemmaScript, and Dafny actions, keyed by the installed
 tools and their inputs. The project directory holds its lock, generated files,
 and stage results. An acceptance or nightly check always reads fresh inputs.
 
+To precompute normal-profile simulations for a subset of a disposable project,
+use `precomputeSimulations(projectDirectory, readSpecs(projectDirectory), moduleNames)`
+from the same entry point inside `withFormalCache`. It compiles the selected
+modules and their transitive imports, runs the selected simulations and replay,
+and returns their verdicts in the requested module order. Treat a failed verdict
+or rejection as a failed precomputation. Run the full check with the shared
+actions to verify the whole project.
+
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
 and their runtime files before Turbo hashes its inputs. A build can run

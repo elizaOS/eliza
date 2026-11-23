@@ -1,2 +1,2 @@
 export { withFormalCache } from "./cache.ts";
-export { check } from "./pipeline.ts";
+export { check, precomputeSimulations, readSpecs } from "./pipeline.ts";
