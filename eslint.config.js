@@ -104,7 +104,6 @@ const commented = {
   "packages/agent/src/voice/capture.worklet.mjs": 1,
   "packages/agent/test/schedule-triggers.test.vibe": 1,
   "packages/cloud/src/google-read.vibe": 1,
-  "packages/cloud/src/native-clients/return-routes.vibe": 3,
   "packages/cloud/src/services/google/mail-read.vibe": 1,
   "packages/core/src/network/ssrf.vibe": 3,
   "packages/core/src/retrieval.vibe": 21,
