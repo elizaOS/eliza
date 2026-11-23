@@ -962,24 +962,33 @@ it("opens a link of the Browser page the request carried, for review", async () 
 it.each([
   [
     "an address that is not one of the page's links",
+    "Open the second story.",
     "https://evil.example/",
     {},
   ],
   [
     "a page bound to another revision",
+    "Open the second story.",
     "https://two.example/post?id=2",
     { revision: "5" },
   ],
   [
     "a page sent from another view",
+    "Open the second story.",
     "https://two.example/post?id=2",
     { view: "home" },
   ],
-])("refuses %s", async (_name, url, binding) => {
+  [
+    "a page link the owner said not to open",
+    "Do not open https://two.example/post?id=2.",
+    "https://two.example/post?id=2",
+    {},
+  ],
+])("refuses %s", async (_name, request, url, binding) => {
   const f = await fixture();
   try {
     const result = await f.run(
-      "Open the second story.",
+      request,
       true,
       true,
       url,

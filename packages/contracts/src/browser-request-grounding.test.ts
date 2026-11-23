@@ -10,7 +10,6 @@ import {
   directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
-  groundBrowserPageLink,
   groundBrowserSearchQuery,
   spokenBrowserDestination,
   spokenBrowserOpen,
@@ -1412,13 +1411,30 @@ describe("web search query", () => {
 
 describe("a link of the Browser page the request carried", () => {
   const links = ["https://one.example/story", "https://two.example/post?id=2"];
+  const ground = (proposed: string, pageLinks = links) =>
+    groundBrowserDestination(
+      "Open the second story.",
+      proposed,
+      "Eliza",
+      pageLinks,
+    );
   it("grounds exactly one of the page's links, without a fragment", () => {
-    expect(groundBrowserPageLink(links, "https://two.example/post?id=2")).toBe(
+    expect(ground("https://two.example/post?id=2")).toBe(
       "https://two.example/post?id=2",
     );
-    expect(groundBrowserPageLink(links, "https://one.example/story#top")).toBe(
+    expect(ground("https://one.example/story#top")).toBe(
       "https://one.example/story",
     );
+  });
+  it("refuses a link when the owner says not to open its address", () => {
+    expect(
+      groundBrowserDestination(
+        "Do not open https://two.example/post?id=2.",
+        "https://two.example/post?id=2",
+        "Eliza",
+        links,
+      ),
+    ).toBeUndefined();
   });
   it.each([
     "https://two.example/post?id=3",
@@ -1428,11 +1444,9 @@ describe("a link of the Browser page the request carried", () => {
     "javascript:alert(1)",
     "",
   ])("refuses %s", (proposed) => {
-    expect(groundBrowserPageLink(links, proposed)).toBeUndefined();
+    expect(ground(proposed)).toBeUndefined();
   });
   it("grounds nothing without page links", () => {
-    expect(
-      groundBrowserPageLink([], "https://one.example/story"),
-    ).toBeUndefined();
+    expect(ground("https://one.example/story", [])).toBeUndefined();
   });
 });

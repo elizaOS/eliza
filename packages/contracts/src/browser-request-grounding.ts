@@ -377,15 +377,14 @@ export function spokenBrowserOpen(
 }
 
 /** The destination to open for a model-proposed browser URL, built from the
- * address the user typed in this message, never from the model's spelling.
- * The user must have typed a web address on the proposed host (a leading
- * "www." and letter case aside) and, when they typed a path, that path. When
- * the guard refuses any word that names the host ("don't open x.com", "don't
- * open **x.com**"), the host never opens, whatever its other words ask. */
+ * address the user typed or an exact link from the Browser page they sent.
+ * For typed addresses, the host (apart from "www." and case) and any typed
+ * path must match. If the owner refuses the host, neither source allows it. */
 export function groundBrowserDestination(
   userText: string,
   proposedUrl: string,
   assistantName: string = DEFAULT_ASSISTANT_NAME,
+  pageLinks: readonly string[] = [],
 ): string | undefined {
   if (unreadable(userText) || typeof proposedUrl !== "string") return;
   const parsed = parseBrowserAddressInput(proposedUrl, {
@@ -437,7 +436,7 @@ export function groundBrowserDestination(
   const typedPath = (url: URL) =>
     url.pathname !== "/" || url.search !== "" || url.hash !== "";
   const path = (url: URL) => url.pathname.replace(/\/$/, "") + url.search;
-  return (
+  const typedDestination = (
     candidates.find(({ url }) => url.href === proposed.href) ??
     candidates.find(
       ({ url }) => typedPath(url) && path(url) === path(proposed),
@@ -447,6 +446,9 @@ export function groundBrowserDestination(
     ) ??
     candidates.find(({ url }) => !typedPath(url))
   )?.url.href;
+  if (typedDestination || pageLinks.length === 0) return typedDestination;
+  const pageLink = parsed.href.split("#", 1)[0];
+  return pageLinks.find((link) => link === pageLink);
 }
 
 /** Whether the message contains any web address at all, for reply copy. A
@@ -532,28 +534,6 @@ export function groundBrowserSearchQuery(
     )
       return text.slice(at, at + query.length);
   }
-}
-
-/**
- * A link of the page the owner had open in Browser when they sent this message
- * (`clientDevice.browserPage`, bound to that message's observation), named by
- * the model as one to open: "open the second story". Returns the page's own
- * link when the proposed address is exactly one of `links`, else undefined.
- * Such an open is never a direct request: the owner reviews it, since the page
- * and not the owner wrote the address.
- */
-export function groundBrowserPageLink(
-  links: readonly string[],
-  proposed: string,
-): string | undefined {
-  if (typeof proposed !== "string" || links.length === 0) return undefined;
-  const parsed = parseBrowserAddressInput(proposed, {
-    defaultProtocol: "https:",
-  });
-  if (parsed.kind !== "url") return undefined;
-  const url = new URL(parsed.href);
-  url.hash = "";
-  return links.find((link) => link === url.href);
 }
 
 export function browserDestinationMatches(

@@ -8,7 +8,6 @@ export {
   directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
-  groundBrowserPageLink,
   groundBrowserSearchQuery,
   spokenBrowserOpen,
 } from "@elizaos/contracts/browser-request-grounding";

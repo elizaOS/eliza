@@ -3,13 +3,13 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   CALENDAR_AVAILABILITY_CAPABILITY,
   CALENDAR_NAMED_READ_CAPABILITY,
-  readClientBrowserPage,
   canonicalNotesListContextAllowed,
   NAMED_TARGET_CAPABILITY,
   NOTES_LIST_FILTER_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
   PHONE_WORKFLOW_CALENDAR_ANCHOR_PROTOCOL,
   PHONE_WORKFLOW_DEVICE_PROTOCOL,
+  readClientBrowserPage,
   resolvePhoneCalendarRange,
   validatePhoneCalendarRange,
   workflowCalendarReadMatches,
@@ -78,7 +78,6 @@ import {
   directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
-  groundBrowserPageLink,
   groundBrowserSearchQuery,
   spokenBrowserOpen,
 } from "./browser-request-grounding.ts";
@@ -2876,12 +2875,12 @@ export class DeviceActionService {
       // never a direct request, so the owner reviews it.
       const destination =
         requestOrigin &&
-        (groundBrowserDestination(
+        groundBrowserDestination(
           requestOrigin.requestText,
           validated.url,
           this.runtime.character.name,
-        ) ??
-          groundBrowserPageLink(requestOrigin.pageLinks, validated.url));
+          requestOrigin.pageLinks,
+        );
       if (!destination) throw new DeviceBrowserNotRequestedError();
       // "Open x.com in a new tab" (or "can you open x.com in a new tab?") is
       // the owner's own placement, like the address: the page opens in a tab
