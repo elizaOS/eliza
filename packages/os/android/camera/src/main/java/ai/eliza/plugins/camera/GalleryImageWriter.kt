@@ -55,7 +55,7 @@ internal fun savedImageLibraryId(resolver: ContentResolver, uri: Uri): String? {
         }
     } catch (error: RuntimeException) {
         // error-policy:J1 the photo is saved; only its optional library id is unavailable.
-        android.util.Log.w("ElizaCamera", "Saved photo library id unavailable", error)
+        android.util.Log.w("ElizaCamera", "Saved photo library id unavailable: ${error.javaClass.simpleName}")
         null
     }
 }
