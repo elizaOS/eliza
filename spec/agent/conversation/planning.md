@@ -358,8 +358,9 @@ pure def lawATerminalRepairUsesOneRemainingStep(terminalDecisions: int, terminal
 Two calls with the same tool name and canonical arguments in one response
 are one operation even when the model gave them different ids. The second
 receives a tool result saying that it did not run. A later response can
-repeat an observation that declared itself read-only or whose receipts
-were all fresh no-ops or previews. It cannot repeat an identical
+repeat an observation without effect-capable tags when it declares itself
+read-only, or an observation whose receipts were all fresh no-ops or previews.
+It cannot repeat an identical
 operation that succeeded, applied an effect, or has a non-retryable
 failure from its provenance, typed data or effect receipts. A receipt
 with unknown acceptance also prevents repeating the operation. A different operation or

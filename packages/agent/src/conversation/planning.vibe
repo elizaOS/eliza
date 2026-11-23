@@ -327,8 +327,8 @@ function toolSettlement(result: ActionResult, action: Action | undefined): ToolS
     const tags = action?.tags
     const observation = receipts.length > 0
       ? receipts.every((receipt) => receipt.outcome === "preview" || (receipt.outcome === "noop" && !receipt.idempotency.replayed))
-      : result.data?.readOnlyOperation === true
-        || (tags?.some((tag) => tag.trim().toLowerCase() === "capability:read") === true && !tagsMayProduceEffects(tags))
+      : !tagsMayProduceEffects(tags) && (result.data?.readOnlyOperation === true
+        || tags?.some((tag) => tag.trim().toLowerCase() === "capability:read") === true)
     return observation ? "ToolOpen" : "ToolSucceeded"
   }
   return result.failureProvenance?.retryable === false || result.data?.retryable === false ? "ToolNonretryable" : "ToolOpen"
