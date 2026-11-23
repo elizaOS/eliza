@@ -138,7 +138,7 @@ it.effect('Propose on my phone only the Calendar request I made (spec/calendar/r
   assert.deepStrictEqual([try grounded(deleting, phoneTurn("No, keep it", onCalendar)), try grounded(deleting, phoneTurn("Please don't delete it", onCalendar))],
     ["CALENDAR_DELETE_NOT_REQUESTED", "CALENDAR_DELETE_NOT_REQUESTED"])
   assert.strictEqual(try grounded({ ...deleting, target: { ...target, eventId: "evt-2" } }, phoneTurn("Delete this event", onCalendar)), "DEVICE_CALENDAR_TARGET_NOT_SELECTED")
-  const lunchDelete = { type: "calendar_named", action: "delete", name: "lunch" }
+  const lunchDelete = { type: "calendar_named", action: "delete", name: "lunch" } as const
   assert.deepStrictEqual(try grounded(lunchDelete, phoneTurn("Cancel the lunch, we're not meeting", onHome)), lunchDelete)
   assert.strictEqual(try grounded({ type: "calendar_named", action: "delete", name: "plumber" }, phoneTurn("Delete my dentist appointment", onHome)), "CALENDAR_NAMED_NOT_REQUESTED")
   const unspaced = (name: string, words: string) => grounded({ type: "calendar_named", action: "delete", name }, phoneTurn(words, onHome))
@@ -195,7 +195,7 @@ it.effect('A change after a shared read is the edits the owner asked for (spec/c
   const after = (words: string, observation: DeviceTurn["observation"] = onCalendar) => calendarProposalFamily.continueAfterRead?.(read, phoneTurn(words, observation)) ?? succeed(undefined)
   const timeReview = "The event is ready for time-change review. Confirm the new time to update it; nothing has changed yet."
   const editReview = "The event is ready for update review. Confirm the requested changes; nothing has changed yet."
-  const moved = (start: string, end: string) => ({ operation: { type: "calendar_update", target, fields: { ...shared, start, end } }, text: timeReview })
+  const moved = (start: string, end: string) => ({ operation: { type: "calendar_update" as const, target, fields: { ...shared, start, end } }, text: timeReview })
   const edited = (change: Partial<typeof shared>) => ({ operation: { type: "calendar_update", target, fields: { ...shared, ...change } }, text: editReview })
   assert.deepStrictEqual([try after("Reschedule this meeting for tomorrow at 10am"), try after("Move this meeting to tomorrow at 10am for 2 hours"), try after("Move this meeting to 10am")], [
     moved("2026-11-23T09:00:00.000Z", "2026-11-23T09:30:00.000Z"), moved("2026-11-23T09:00:00.000Z", "2026-11-23T11:00:00.000Z"), moved("2026-11-22T09:00:00.000Z", "2026-11-22T09:30:00.000Z"),
