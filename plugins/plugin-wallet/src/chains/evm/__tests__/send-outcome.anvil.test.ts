@@ -18,9 +18,10 @@ import { foundry } from "viem/chains";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { WalletBackendService } from "../../../services/wallet-backend-service";
 import type { WalletRouterResult } from "../../../types/wallet-router";
+import { sendEvmTransaction } from "../../evm/actions/helpers";
 import { SwapAction } from "../../evm/actions/swap";
 import { NATIVE_TOKEN_ADDRESS } from "../../evm/constants";
-import { initWalletProvider } from "../../evm/providers/wallet";
+import { initWalletProvider, WalletProvider } from "../../evm/providers/wallet";
 import type { SwapQuote } from "../../evm/types";
 import { registerDefaultWalletChainHandlers } from "../../registry";
 import { walletRouterAction } from "../../wallet-action";
@@ -35,7 +36,15 @@ const ANVIL_URL = `http://127.0.0.1:${ANVIL_PORT}`;
 const TOKEN = "0x00000000000000000000000000000000000e1a20" as Address;
 const TOKEN_CODE = "0x601260005260206000f3" as Hex;
 
-type SendMode = "pass" | "delay" | "reject" | "duplicate" | "internal" | "generic";
+type SendMode =
+  | "pass"
+  | "delay"
+  | "reject"
+  | "duplicate"
+  | "internal"
+  | "generic"
+  | "fallback-refused"
+  | "fallback-confirmed";
 let sendMode: SendMode = "pass";
 let anvil: ChildProcess | undefined;
 let proxy: http.Server | undefined;
@@ -62,7 +71,15 @@ function startProxy(): Promise<string> {
     });
     req.on("end", async () => {
       const isSend = body.includes("eth_sendRawTransaction");
-      if (isSend && sendMode === "reject") {
+      const managed = req.url === "/managed";
+      if (isSend && managed && sendMode === "fallback-confirmed") {
+        res.statusCode = 503;
+        res.end();
+        return;
+      }
+      const rejectsSend = sendMode === "reject" ||
+        (sendMode === "fallback-refused" && req.url === "/fallback");
+      if (isSend && rejectsSend) {
         const { id } = JSON.parse(body) as { id: number };
         res.setHeader("content-type", "application/json");
         res.end(
@@ -86,6 +103,11 @@ function startProxy(): Promise<string> {
         return upstream.text();
       };
       let text = await forward();
+      if (isSend && managed && sendMode === "fallback-refused") {
+        res.statusCode = 503;
+        res.end();
+        return;
+      }
       // A gateway that already passed the transaction to the node (for
       // example the Eliza Cloud RPC before its public fallback) sends it
       // again: the client gets the node's answer to the second copy.
@@ -360,6 +382,38 @@ describe.skipIf(!HAS_ANVIL)("EVM send outcome after the node accepted the transa
       expect(mined.to?.toLowerCase()).toBe(ANVIL_ADDRESS_2.toLowerCase());
     },
     30_000
+  );
+
+  it.each(["fallback-refused", "fallback-confirmed"] as const)(
+    "classifies a managed send with %s from its public fallback",
+    async (mode) => {
+      const runtime = createRuntime();
+      const chain = {
+        ...foundry,
+        rpcUrls: { default: { http: [`${proxyUrl}/fallback`] } },
+      };
+      const provider = new WalletProvider(
+        ANVIL_PRIVATE_KEY,
+        runtime,
+        { foundry: chain },
+        { foundry: { rpcUrl: `${proxyUrl}/managed`, providerName: "elizacloud" } },
+      );
+      const before = await settled();
+      sendMode = mode;
+
+      const outcome = await sendEvmTransaction(provider.getWalletClient("foundry"), {
+        to: ANVIL_ADDRESS_2,
+        value: parseEther("1"),
+      });
+      const after = await settled();
+
+      expect(after.recipientWei - before.recipientWei).toBe(parseEther("1"));
+      expect(after.nonce).toBe(before.nonce + 1);
+      expect(outcome.sendUncertain).toBe(mode === "fallback-refused");
+      const mined = await chainClient.getTransaction({ hash: outcome.hash });
+      expect(mined.to?.toLowerCase()).toBe(ANVIL_ADDRESS_2.toLowerCase());
+    },
+    30_000,
   );
 
   it("still reports a transfer the node rejected as failed, so a retry is safe", async () => {

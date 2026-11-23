@@ -78,6 +78,7 @@
       "plugins/plugin-wallet/src/chains/evm/actions/helpers.ts",
       "plugins/plugin-wallet/src/chains/evm/actions/transfer.ts",
       "plugins/plugin-wallet/src/chains/evm/actions/swap.ts",
+      "plugins/plugin-wallet/src/chains/evm/providers/wallet.ts",
       "plugins/plugin-wallet/src/chains/registry.ts",
       "plugins/plugin-wallet/src/chains/wallet-action.ts"
     ],

@@ -22,11 +22,13 @@ module EvmTransactionSend {
   // "refused": request admission or the node definitively refused the send.
   // "lostAfterAccept": the node took the transaction but the answer was lost.
   // "opaqueRpcAfterAccept": a gateway returned an error after the node took it.
+  // "fallbackRefusedAfterAccept": the first provider may have accepted, so
+  //   refusing the same signed bytes on fallback leaves the first send uncertain.
   // "lostBeforeAccept": the request never reached the node; same client view.
   // "alreadyKnown": a gateway sent the transaction twice and returns the
   //   node's "already known" / "nonce too low" answer to the second copy.
   action Send = {
-    nondet outcome = Set("answered", "refused", "lostAfterAccept", "opaqueRpcAfterAccept", "lostBeforeAccept", "alreadyKnown").oneOf()
+    nondet outcome = Set("answered", "refused", "lostAfterAccept", "opaqueRpcAfterAccept", "fallbackRefusedAfterAccept", "lostBeforeAccept", "alreadyKnown").oneOf()
     all {
       s.phase == "send", s.signed,
       if (outcome == "refused")

@@ -36,6 +36,7 @@ import {
   createWalletClient,
   formatUnits,
   http,
+  keccak256,
   publicActions,
   walletActions,
 } from "viem";
@@ -116,6 +117,35 @@ async function getManagedRpcFallbackReason(response: Response): Promise<string |
   }
 
   return null;
+}
+
+function rawTransactionFromRequest(body: BodyInit | null | undefined): `0x${string}` | undefined {
+  if (typeof body !== "string" || !body.includes('"eth_sendRawTransaction"')) return undefined;
+  try {
+    const request = JSON.parse(body) as { method?: unknown; params?: unknown } | null;
+    if (request?.method !== "eth_sendRawTransaction" || !Array.isArray(request.params)) {
+      return undefined;
+    }
+    const raw = request.params[0];
+    return typeof raw === "string" && /^0x(?:[a-f\d]{2})+$/i.test(raw)
+      ? (raw as `0x${string}`)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function fallbackConfirmsSend(response: Response, raw: `0x${string}`): Promise<boolean> {
+  if (!response.ok) return false;
+  const body: unknown = await response.clone().json().catch(() => undefined);
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "result" in body &&
+    !("error" in body) &&
+    typeof body.result === "string" &&
+    body.result.toLowerCase() === keccak256(raw)
+  );
 }
 
 /** Per-chain outcome of a balance read; `unavailable` carries the RPC failure. */
@@ -357,6 +387,18 @@ export class WalletProvider {
         fetchFn:
           managedRpc.providerName === "elizacloud" && fallbackRpcUrl
             ? async (input, init) => {
+                const raw = rawTransactionFromRequest(init?.body);
+                const useFallback = async (): Promise<Response> => {
+                  const fallback = await fetch(fallbackRpcUrl, {
+                    ...init,
+                    headers: headersWithoutAuthorization(init?.headers),
+                  });
+                  if (raw !== undefined && !(await fallbackConfirmsSend(fallback, raw))) {
+                    // The first provider may have accepted these same signed bytes.
+                    throw new Error("Neither provider confirmed the EVM send");
+                  }
+                  return fallback;
+                };
                 try {
                   const response = await fetch(input, init);
                   const fallbackReason = await getManagedRpcFallbackReason(response);
@@ -378,20 +420,17 @@ export class WalletProvider {
                     );
                   }
 
-                  return await fetch(fallbackRpcUrl, {
-                    ...init,
-                    headers: headersWithoutAuthorization(init?.headers),
-                  });
+                  // A failed send fallback is terminal. A read retains its existing retry.
+                  return raw === undefined ? await useFallback() : useFallback();
                 } catch (error) {
-                  logger.warn(
-                    `[WalletProvider] Eliza Cloud RPC request threw for ${chainName}. Falling back to ${fallbackRpcUrl}.`,
-                    error instanceof Error ? error.message : String(error)
-                  );
-
-                  return await fetch(fallbackRpcUrl, {
-                    ...init,
-                    headers: headersWithoutAuthorization(init?.headers),
-                  });
+                  const message =
+                    `[WalletProvider] Eliza Cloud RPC request threw for ${chainName}. Falling back to ${fallbackRpcUrl}.`;
+                  if (raw === undefined) {
+                    logger.warn(message, error instanceof Error ? error.message : String(error));
+                  } else {
+                    logger.warn(message);
+                  }
+                  return useFallback();
                 }
               }
             : undefined,
