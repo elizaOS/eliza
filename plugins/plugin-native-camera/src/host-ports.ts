@@ -134,6 +134,23 @@ export interface CameraVideoPort {
   discard?(video: VideoResult): Promise<void> | void;
 }
 
+/** `m:<volume>:i:<id>` for one image row on one named volume (the assistant's permitted-id form). */
+const CAPTURED_LIBRARY_ID = /^m:([a-zA-Z0-9_-]{1,80}):i:([1-9][0-9]{0,18})$/;
+
+/**
+ * The saved photo's library id, when the receipt has a well-formed one. The aggregate `external`
+ * and `internal` volumes name no single row, so an id on them is treated as absent, as is any
+ * malformed value: a host then has no id to hand on rather than a wrong one.
+ */
+export function capturedLibraryId(photo: PhotoResult): string | undefined {
+  const id = photo.libraryId;
+  if (typeof id !== "string") return undefined;
+  const match = CAPTURED_LIBRARY_ID.exec(id);
+  if (!match || match[1] === "external" || match[1] === "internal")
+    return undefined;
+  return id;
+}
+
 /** A fresh operation identity for one capture's Keep. */
 export function captureOperationId(): string {
   return globalThis.crypto.randomUUID();

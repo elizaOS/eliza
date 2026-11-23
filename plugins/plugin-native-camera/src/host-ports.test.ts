@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PhotoResult, VideoResult } from "./definitions";
 import {
   cameraAccessDenied,
+  capturedLibraryId,
   captureOperationId,
   keepCapture,
   keepRecording,
@@ -183,5 +184,38 @@ describe("keepRecording", () => {
       message:
         "Keeping this video could not be confirmed. Check the library before trying again.",
     });
+  });
+});
+
+describe("capturedLibraryId", () => {
+  const withId = (libraryId: unknown) =>
+    ({ ...photo, libraryId }) as PhotoResult;
+
+  it("returns a volume-qualified image id", () => {
+    expect(capturedLibraryId(withId("m:external_primary:i:42"))).toBe(
+      "m:external_primary:i:42",
+    );
+    expect(capturedLibraryId(withId("m:1a2b-3c4d:i:7"))).toBe(
+      "m:1a2b-3c4d:i:7",
+    );
+  });
+
+  it("treats a missing, aggregate-volume or malformed id as absent", () => {
+    expect(capturedLibraryId(photo)).toBeUndefined();
+    for (const value of [
+      "m:external:i:42",
+      "m:internal:i:42",
+      "m:external_primary:v:42",
+      "m:external_primary:i:0",
+      "m:external_primary:i:042",
+      "m::i:42",
+      "m:a:b:i:42",
+      `m:${"x".repeat(81)}:i:1`,
+      "lib:i:42:1",
+      " m:external_primary:i:42",
+      42,
+      null,
+    ])
+      expect(capturedLibraryId(withId(value))).toBeUndefined();
   });
 });

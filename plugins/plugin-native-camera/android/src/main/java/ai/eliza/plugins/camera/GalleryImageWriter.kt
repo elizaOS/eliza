@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.BaseColumns
 import android.provider.MediaStore
 import java.io.File
 import java.io.IOException
@@ -42,6 +43,27 @@ internal fun galleryMediaValues(displayName: String, mimeType: String, pending: 
         values.put(MediaStore.MediaColumns.DATA, file.absolutePath)
     }
     return values
+}
+
+/**
+ * The library id (`m:<volume>:i:<id>`) of a saved MediaStore image. Saves insert through the
+ * aggregate `external` collection, so the URI does not name the row's volume; the row's own
+ * VOLUME_NAME does. Null below Android 10, which has no per-row volume, or when the provider
+ * reports no usable row: the id is optional and the photo is already saved, so a missing id
+ * never fails the capture.
+ */
+internal fun savedImageLibraryId(resolver: ContentResolver, uri: Uri): String? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+    return try {
+        resolver.query(uri, arrayOf(BaseColumns._ID, MediaStore.MediaColumns.VOLUME_NAME), null, null, null)?.use { row ->
+            if (!row.moveToFirst() || row.isNull(0) || row.isNull(1)) null
+            else CapturedLibraryId.image(row.getString(1), row.getLong(0))
+        }
+    } catch (error: RuntimeException) {
+        // error-policy:J1 the photo is saved; only its optional library id is unavailable.
+        android.util.Log.w("ElizaCamera", "Saved photo library id unavailable", error)
+        null
+    }
 }
 
 /** Owns one MediaStore insertion until it is published or removed. */
