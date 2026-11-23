@@ -5,25 +5,19 @@ import {
   type LinkedCalendarCheckpointStore, type LinkedCalendarEventRecord, type LinkedCalendarPatch,
 } from "./linked.vibe"
 
-/** The owner, connection, provider calendar, agent and local source one device sync is bound to. */
 export type CalendarSyncBinding = typeof SyncBinding.Type
 
-/** The host's durable slots, written only by compare and exchange on the value read. */
 export interface CalendarLinkStorage {
   read(slot: string): Promise<unknown | null>
   compareExchange(slot: string, expected: unknown | null, value: unknown): Promise<{ status: "saved" | "conflict" }>
 }
 
-/** How a store names its idempotency keys. */
 export interface CalendarLinkedStoreOptions {
   readonly idempotencyNamespace?: string
 }
 
-/** The slot prefix every link document is kept under. */
 export const CALENDAR_LINK_SLOT_PREFIX = "calendar-linked-sync:v1:"
-/** The most local events one binding links. */
 export const CALENDAR_LINK_LIMIT = 2000
-/** The largest link document kept. */
 export const CALENDAR_LINK_DOCUMENT_BYTES = 4 * 1024 * 1024
 
 type Link = LinkedCalendarEventRecord
@@ -37,7 +31,6 @@ const recreated = /^(?::recreate:[a-f0-9]{64})*$/
 const refused = () => new CalendarSyncRefused({ message: "Calendar sync checkpoints changed or need recovery. Existing data is retained." })
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length
 
-/** Durable link checkpoints for one reviewed binding, kept as one document and changed only by compare and exchange. */
 export class CalendarLinkedStore implements LinkedCalendarCheckpointStore {
   readonly scope: string
   readonly #sourceScope: string
@@ -55,10 +48,10 @@ export class CalendarLinkedStore implements LinkedCalendarCheckpointStore {
     this.#namespace = namespace
   }
 
-  /** Opens the store of a binding after checking the binding and the document already kept for it. */
   static open(input: CalendarSyncBinding, current: () => boolean, storage: CalendarLinkStorage, options: CalendarLinkedStoreOptions = {}): CalendarLinkedStore!(CalendarSyncRefused | CalendarSyncAborted) {
     return effect {
       const namespace = options.idempotencyNamespace ?? "calendar-sync"
+      // eslint-disable-next-line no-control-regex -- Request key namespaces exclude C0 controls, DEL, and the colon separator.
       if (!/^[^\u0000-\u001f\u007f:]{1,64}$/.test(namespace)) throw refused()
       const binding = try mapError(decodeBinding(input), refused)
       const scope = try digestText(JSON.stringify([binding.environment, binding.userId, binding.organizationId, binding.connectionId,
@@ -115,12 +108,10 @@ export class CalendarLinkedStore implements LinkedCalendarCheckpointStore {
     return result.status === "saved"
   }
 
-  /** Every link of the binding, as kept now. */
   effect list(): Link[]!(CalendarSyncRefused | CalendarSyncAborted) {
     return [...((try this.#read())?.links ?? [])]
   }
 
-  /** The link of a local event, created dirty with a pending create under a stable key when none exists. */
   effect link(localEventId: string, localRevision: string): Link!(CalendarSyncRefused | CalendarSyncAborted) {
     const before = try this.#read()
     const existing = before?.links.find((row) => row.localEventId === localEventId)
@@ -140,7 +131,6 @@ export class CalendarLinkedStore implements LinkedCalendarCheckpointStore {
     return concurrent
   }
 
-  /** Saves a checkpoint over the link exactly as it was read; a link changed since is refused and kept. */
   effect save(expected: Link, patch: LinkedCalendarPatch): Link!(CalendarSyncRefused | CalendarSyncAborted) {
     const held = try this.#validate(structuredClone(expected))
     const before = try this.#read()

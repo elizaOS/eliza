@@ -136,8 +136,7 @@ effect function settleUpgrade(row: PlanCommandRecord, evidence: UpgradeEvidence,
     const finished = try apply(command, { type: "finish", invoice, resultRevision: revision }, command.receipt.session.owner)
     for (const action of finished.out) {
       if (action.tag === "AdjustAllowance") {
-        const adjustment = try adjustForUpgrade(tx, row.organizationId, action.planKey, action.effectiveAt, action.reviewed, at, terms)
-        if (!adjustment.moved) throw refused("BillingStateConflict")
+        try adjustForUpgrade(tx, row.organizationId, action.planKey, action.effectiveAt, action.reviewed, at, terms)
       } else if (action.tag === "ReleaseSlot") try releaseLiveCommand(tx, row.organizationId, action.commandId, at)
       else throw refused("BillingStateConflict")
     }

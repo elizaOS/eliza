@@ -18,6 +18,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.content.pm.verify.domain.DomainVerificationManager;
 import android.content.pm.verify.domain.DomainVerificationUserState;
 import android.net.Uri;
@@ -180,8 +181,10 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
       if (live.get(environment.name) != opened) return;
     }
     Activity host = activity.get();
-    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE);
+    String browser = externalBrowser(context, url);
+    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(browser);
     try {
+      if (browser == null) throw new ActivityNotFoundException("no external browser");
       if (host == null || host.isFinishing()) context.startActivity(view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
       else host.startActivity(view);
     } catch (ActivityNotFoundException | SecurityException unavailable) {
@@ -191,6 +194,19 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
         if (failed != null) failed.returned().refused(Failure.GOOGLE_UNAVAILABLE);
       });
     }
+  }
+
+  static String externalBrowser(Context context, String url) {
+    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE);
+    PackageManager manager = context.getPackageManager();
+    List<String> handlers = new ArrayList<>();
+    for (ResolveInfo resolved : manager.queryIntentActivities(view, PackageManager.MATCH_DEFAULT_ONLY)) {
+      if (resolved.activityInfo != null) handlers.add(resolved.activityInfo.packageName);
+    }
+    ResolveInfo preferred = manager.resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY);
+    String chosen = ReadinessPolicy.browserToOpen(handlers,
+      preferred == null || preferred.activityInfo == null ? "" : preferred.activityInfo.packageName, context.getPackageName());
+    return chosen.isEmpty() ? null : chosen;
   }
 
   @Override public void cancel(int attempt) {

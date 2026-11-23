@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Effect } from "effect";
+import { Effect } from "effect";
 import { driver } from "./drivers/cloud__services__speechRelay.ts";
 import { openSocket, reapSessions, retire, sessionEnding } from "../src/services/speech-session.vibe";
 import { ledger, within } from "./support/ledger.ts";
@@ -40,7 +40,7 @@ describe("scratch U3", () => {
     const second = await cloud.run(openSocket("a"));
     expect(second.kind === "failed" && (second.error as { refusal: { code: string } }).refusal.code).toBe("SessionClosed");
     const waiting = cloud.run(sessionEnding("a"));
-    await new Promise((r) => setTimeout(r, 50));
+    await Effect.runPromise(Effect.sleep(50));
     const retired = await cloud.run(retire("a", "Revoked"));
     expect(retired.kind === "done" && retired.value.phase).toBe("Closed");
     const ended = await waiting;

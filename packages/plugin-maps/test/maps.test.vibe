@@ -116,17 +116,23 @@ it.live('Keep Cloud Maps on the account that requested it: coverage installs the
 })
 
 it.live('Show the right copyright for the map I am looking at: a view inside the attributed area keeps its copyright and a reply for a view I left is never shown (spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at")', effect () => {
-  const answers: Array<{ readonly view: string; readonly resolve: (text: string) => void }> = []
+  const replies = try Queue.unbounded<Deferred.Deferred<string>>()
+  let asked = 0
   const basemap: CloudMapsBasemap = {
     kind: "cloud-raster", attribution: "Google", minZoom: 0, maxZoom: 20, tileSize: 256,
     tile: () => succeed(new Uint8Array()),
-    copyright: (view) => promise(() => new Promise<string>((resolve) => { answers.push({ view: String(view.north), resolve }) })),
+    effect copyright() {
+      const reply = try Deferred.make<string>()
+      asked++
+      try Queue.offer(replies, reply)
+      return try Deferred.await(reply)
+    },
   }
   const attribution = try viewportAttribution(basemap)
   const city = { zoom: 12, north: 38, south: 37, east: -122, west: -123 }
   const first = fork attribution.show(city)
-  try sleep("10 millis")
-  answers[0]?.resolve("Map data ©2026 Google")
+  const firstReply = try Queue.take(replies)
+  try Deferred.succeed(firstReply, "Map data ©2026 Google")
   const shown = try join first
   try attribution.move({ ...city, north: 37.9, south: 37.1 })
   const within = try attribution.current()
@@ -134,18 +140,18 @@ it.live('Show the right copyright for the map I am looking at: a view inside the
   try attribution.move(elsewhere)
   const hidden = try attribution.current()
   const stale = fork attribution.show(elsewhere)
-  try sleep("10 millis")
+  const staleReply = try Queue.take(replies)
   const further = { ...elsewhere, north: 42, south: 41 }
   try attribution.move(further)
   const moved = fork attribution.show(further)
-  try sleep("10 millis")
-  answers[1]?.resolve("Stale copyright")
-  answers[2]?.resolve("Map data ©2026 Google, INEGI")
+  const currentReply = try Queue.take(replies)
+  try Deferred.succeed(staleReply, "Stale copyright")
   const late = try join stale
+  try Deferred.succeed(currentReply, "Map data ©2026 Google, INEGI")
   const current = try join moved
   try attribution.dispose()
   const disposed = try attribution.current()
-  try Effect.try(() => assert.deepStrictEqual({ shown, within, hidden, asked: answers.length, late, current, disposed },
+  try Effect.try(() => assert.deepStrictEqual({ shown, within, hidden, asked, late, current, disposed },
     { shown: "Map data ©2026 Google", within: "Map data ©2026 Google", hidden: "", asked: 3, late: "", current: "Map data ©2026 Google, INEGI", disposed: "" }))
 })
 

@@ -26,7 +26,6 @@ function utf8(text: string): number[] {
 
 const rotate = (value: number, bits: number) => (value >>> bits) | (value << (32 - bits))
 
-/** The lowercase hex SHA-256 of a string's UTF-8 bytes, computed without platform crypto so the renderer and the agent agree. */
 function sha256Hex(text: string): string {
   const bytes = utf8(text)
   const bitLength = bytes.length * 8
@@ -70,7 +69,6 @@ function sha256Hex(text: string): string {
   return hash.map((word) => word.toString(16).padStart(8, "0")).join("")
 }
 
-/** The SHA-256 of a value's JSON text, or `undefined` when the value has no JSON text. */
 export function digestOf(value: unknown): string | undefined {
   let text: string | undefined
   try {

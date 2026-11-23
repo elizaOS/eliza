@@ -8,13 +8,11 @@ function refusalCode(body: unknown): string {
   return typeof body === "object" && body !== null && "error" in body && typeof body.error === "string" ? body.error : ""
 }
 
-/** The owner's cloud link of this runtime, when the agent runs on a cloud backend. */
 function cloudLinkOf(runtime: IAgentRuntime): CloudLinkService | undefined {
   const found = runtime.getService<CloudLinkService>(cloudServiceType)
   return found === null || typeof found.request !== "function" ? undefined : found
 }
 
-/** A managed Gmail transport over the owner's cloud link; the agent reads mail and never fetches attachment bytes. */
 export function cloudLinkTransport(link: CloudLinkService): ManagedGmailTransport {
   return {
     effect request(path, options) {
@@ -32,7 +30,6 @@ export function cloudLinkTransport(link: CloudLinkService): ManagedGmailTranspor
   }
 }
 
-/** The managed Gmail client of this runtime's cloud link, if it has one. */
 export function agentGmailClient(runtime: IAgentRuntime): ManagedGmailClient | undefined {
   const link = cloudLinkOf(runtime)
   return link === undefined ? undefined : managedGmailClient(cloudLinkTransport(link))

@@ -31,7 +31,7 @@ operator or by plan allowance.
 
 `mobile` is the provider's hosted page; it returns to the billing return of
 the caller's registration (`spec/cloud/nativeClients/registry.md`), with
-`session_id` on success and `cancelled` on cancel. `embedded` is the
+`session_id` and `result=success` on success and `result=cancel` on cancel. `embedded` is the
 provider's form inside the app and never redirects. `shared` is a link
 another person pays; it returns to the CheckoutOutcome page
 (`spec/cloud/returnPages.md`). The request names no URL, and `hosted` is

@@ -102,6 +102,20 @@ function unavailable(event: { readonly code?: unknown; readonly data?: unknown }
   })
 }
 
+function settleAudio(utterances: Map<string, PendingUtterance>, type: "audio-start" | "audio-end", utteranceId: string): void {
+  const pending = utterances.get(utteranceId)
+  if (!pending) return
+  if (type === "audio-start") {
+    if (pending.started) return
+    pending.started = true
+    pending.onStarted()
+    return
+  }
+  utterances.delete(utteranceId)
+  if (pending.started) pending.resolve()
+  else pending.reject(new CloudSpeechRefused({ reason: "ended-without-audio" }))
+}
+
 export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, port: CloudStreamPort = cloudSpeechPlugin()): CloudStreamingSpeech {
   const sessionId = randomId() as SpeechSessionId
   const stopped = () => abortError("Cloud speech stopped")
@@ -171,20 +185,6 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     }
   }
 
-  const settleAudio = (type: "audio-start" | "audio-end", utteranceId: string) => {
-    const pending = utterances.get(utteranceId)
-    if (!pending) return
-    if (type === "audio-start") {
-      if (pending.started) return
-      pending.started = true
-      pending.onStarted()
-      return
-    }
-    utterances.delete(utteranceId)
-    if (pending.started) pending.resolve()
-    else pending.reject(new CloudSpeechRefused({ reason: "ended-without-audio" }))
-  }
-
   const receive = (raw: CloudStreamEvent) => {
     const decoded = Schema.decodeUnknownOption(StreamEvent)(raw)
     if (Option.isNone(decoded) || retired || decoded.value.sessionId !== sessionId) return
@@ -198,7 +198,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
           return fail(unavailable(event))
         case "audio-start":
         case "audio-end":
-          return settleAudio(event.type, event.utteranceId)
+          return settleAudio(utterances, event.type, event.utteranceId)
         case "speech-start":
           if (speechActive) return
           speechActive = true

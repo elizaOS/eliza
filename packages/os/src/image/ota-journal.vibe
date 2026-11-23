@@ -139,14 +139,15 @@ export effect function openOperatorJournal(file: string, serial: AdbSerial, expe
   const history = () => [...events]
   const store = (next: OperatorJournal, detail: { readonly observed?: unknown; readonly note?: string } = {}) => effect {
     if (!inv(next) || next.phase === "Unstarted") throw new OtaRefused({ reason: "Cannot persist an invalid OTA journal transition" })
-    if (!reserved) {
-      files.writeFileString(target, "", { flag: "wx", mode: 0o600 }) catch effect () => {
+    const recorded: JournalEvent = { at: new Date(try Clock.currentTimeMillis).toISOString(), phase: next.phase, lock: next.lock.tag, ...detail }
+    const content = `${JSON.stringify({ schema: 1, kind: "aosp-ota-update-journal", binding: identity, createdAt, events: [...events, recorded], state: next }, null, 2)}\n`
+    if (reserved) try writeDurableDeviceState(target, content)
+    else {
+      writeDurableDeviceState(target, content, true) catch effect () => {
         throw new OtaRefused({ reason: "Another OTA journal appeared at this path; inspect it before starting a new update" })
       }
       reserved = true
     }
-    const recorded: JournalEvent = { at: new Date(try Clock.currentTimeMillis).toISOString(), phase: next.phase, lock: next.lock.tag, ...detail }
-    try writeDurableDeviceState(target, `${JSON.stringify({ schema: 1, kind: "aosp-ota-update-journal", binding: identity, createdAt, events: [...events, recorded], state: next }, null, 2)}\n`)
     events.push(recorded)
     current = next
   }

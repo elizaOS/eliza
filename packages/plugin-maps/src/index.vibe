@@ -10,7 +10,6 @@ type TurnNavigation = (message: Memory) => (MapsDeviceNavigation | undefined)!Ma
 
 const navigations = new WeakMap<IAgentRuntime, TurnNavigation>()
 
-/** Gives the Maps actions of one runtime the phone navigation of the turn a message belongs to; the host that serves the phone relay calls it. */
 export function registerMapsNavigation(runtime: IAgentRuntime, navigation: TurnNavigation | undefined): void {
   if (navigation === undefined) navigations.delete(runtime)
   else navigations.set(runtime, navigation)
@@ -19,13 +18,11 @@ export function registerMapsNavigation(runtime: IAgentRuntime, navigation: TurnN
 const savedPlaceStores = new WeakMap<IAgentRuntime, AgentSavedPlaceStore>()
 const viewRegistries = new WeakMap<IAgentRuntime, (destination: string) => boolean>()
 
-/** Gives the Maps save actions of one runtime the host's store for the assistant's saved places. */
 export function registerMapsSavedPlaces(runtime: IAgentRuntime, store: AgentSavedPlaceStore | undefined): void {
   if (store === undefined) savedPlaceStores.delete(runtime)
   else savedPlaceStores.set(runtime, store)
 }
 
-/** Tells the Maps routing rules of one runtime whether a destination names one of the host's views; without it a travel request is never routed. */
 export function registerMapsViews(runtime: IAgentRuntime, namesView: ((destination: string) => boolean) | undefined): void {
   if (namesView === undefined) viewRegistries.delete(runtime)
   else viewRegistries.set(runtime, namesView)
@@ -46,7 +43,6 @@ const plugin = createMapsPlugin({
   namesView: (runtime, destination) => viewRegistries.get(runtime)?.(destination),
 })
 
-/** The Maps plugin the agent bundle loads: Cloud Maps through the owner's cloud link, the phone navigation relay among its own routes, and that relay as the navigation of each phone turn. */
 export const mapsPlugin: AgentPlugin = {
   ...plugin,
   routes: [mapsNavigationRoute(relay)],
