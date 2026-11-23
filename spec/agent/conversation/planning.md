@@ -10,6 +10,9 @@ back to the model, until the model answers without a tool call, calls
 action's own callback text is the action's verified presentation and is
 held for the reply, never delivered as a second message. After the reply
 is stored, the evaluators plugins registered run on the finished turn.
+The model also sees the turn's clock, and a current-time answer the clock
+did not observe is replaced by the clock's own reading before the reply
+is stored.
 
 The shell (`conversation/planning.vibe`) hands this library the facts it
 reads: which actions are registered and allowed, each step's outcome and
@@ -169,6 +172,97 @@ pure def lawOnlyAVoiceTurnThatRanAnActionIsLabelled(voice: bool, ran: List[str],
   (actionLabel(voice, ran, card, verbatim) != NoActionLabel) iff (voice and ran.length() > 0)
 pure def lawTheLabelNamesTheLastAction(ran: List[str], card: bool, verbatim: bool): bool =
   ran.length() > 0 implies actionLabel(true, ran, card, verbatim) == Labelled({ label: { kind: ran.nthOr(ran.length() - 1, ""), validatedCard: card, verbatimAsked: verbatim } })
+```
+
+## Story: Ask what time it is and hear my own clock
+
+> As the owner, I want the agent to know the date and time where I am, so
+> that it answers "what time is it" and resolves today and tomorrow from my
+> clock, and never tells me a date or time it made up.
+
+### Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch
+
+The shell reads the phone's zone from the turn's voice view context
+(`uiTimeZone`), else its observation (`timeZone`); the launch document's
+`timeZone`; and the host's own zone, or `UTC`. A zone counts only when the
+host's zone database knows it. The system prompt carries one line, to the
+minute, so every turn inside one minute sees the same text. The owner's
+local clock reads `Local date: <YYYY-MM-DD> (<zone>). <full date and
+time>. Resolve today/tomorrow from this local date, not the UTC date. UTC
+instant: <YYYY-MM-DDTHH:MM>Z`. Any other clock reads `Agent time` for the
+launch zone or `Server time` for the host's, then the full date and time,
+the zone and the UTC instant, and says the user's timezone is unknown.
+
+```quint
+type ZoneOrigin = PhoneZone | LaunchZone | HostZone
+type ClockSource = { clockZone: str, origin: ZoneOrigin, ownersLocal: bool }
+pure def clockSource(phoneZone: str, launchZone: str, hostZone: str, owner: bool): ClockSource =
+  if (phoneZone != "") { clockZone: phoneZone, origin: PhoneZone, ownersLocal: true }
+  else if (launchZone != "") { clockZone: launchZone, origin: LaunchZone, ownersLocal: owner }
+  else { clockZone: hostZone, origin: HostZone, ownersLocal: false }
+pure val phoneZoneValues = Set("", "Asia/Tokyo")
+pure val launchZoneValues = Set("", "America/New_York")
+pure val hostZoneValues = Set("UTC", "America/Los_Angeles")
+pure def lawThePhoneZoneWins(phoneZone: str, launchZone: str, hostZone: str, owner: bool): bool =
+  phoneZone != "" implies clockSource(phoneZone, launchZone, hostZone, owner) == { clockZone: phoneZone, origin: PhoneZone, ownersLocal: true }
+pure def lawTheLaunchZoneIsLocalOnlyForTheOwner(launchZone: str, hostZone: str, owner: bool): bool =
+  launchZone != "" implies clockSource("", launchZone, hostZone, owner) == { clockZone: launchZone, origin: LaunchZone, ownersLocal: owner }
+pure def lawTheHostClockIsNeverTheOwnersLocalTime(hostZone: str, owner: bool): bool =
+  clockSource("", "", hostZone, owner) == { clockZone: hostZone, origin: HostZone, ownersLocal: false }
+```
+
+### A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading
+
+The question is the whole message: `what time is it`, `what's the time`,
+`what is the current`, `local` or `today's` `time`, `day` or `date`, or
+`what day of the week is it`, followed only by `right now`, `now`,
+`today`, `for me` or `please` and closing punctuation. "What time is it now
+that the meeting has ended?" is not one. The answer is standalone when
+nothing is left after removing its month-day dates, weekdays and clock
+times (minutes optional, so `5 PM` is one), the fillers `it's`, `it is`,
+`today is`, `currently`, `right now`, `about`, `at`, `for you`, `in your
+local time` and `your local time`, `AM` and `PM`, every zone label the
+clock renders (`EST`, `EDT`, `CST`, `CDT`, `MST`, `MDT`, `PST`, `PDT`,
+`AKST`, `AKDT`, `HST`, `HAST`, `HADT`, `AST`, `ADT`, and `UTC` or `GMT`
+alone or with an offset such as `GMT+9` or `GMT+5:30`), and spaces and
+`,.!():`. A stated date disagrees when its month or day, or a year it
+states, is not the local date's; a weekday when it is not today's; a clock
+when it is more than ten minutes from the local time, counted the short
+way around midnight. The reply is then `It's <full date and time to the
+second, with its zone>.`, with no further model call. Any other reply is
+kept as it is.
+
+```quint
+type StatedTime = StatedDay({ month: int, day: int, year: int }) | StatedWeekday({ weekday: int }) | StatedClock({ minuteOfDay: int })
+type LocalClock = { month: int, day: int, year: int, weekday: int, minuteOfDay: int }
+pure val clockToleranceMinutes = 10
+pure val minutesPerDay = 1440
+pure def clockDrift(statedMinute: int, observedMinute: int): int = {
+  val apart = if (statedMinute > observedMinute) statedMinute - observedMinute else observedMinute - statedMinute
+  if (apart < minutesPerDay - apart) apart else minutesPerDay - apart
+}
+pure def statementDisagrees(statement: StatedTime, localClock: LocalClock): bool = match statement {
+  | StatedDay(d) => d.month != localClock.month or d.day != localClock.day or (d.year != 0 and d.year != localClock.year)
+  | StatedWeekday(w) => w.weekday != localClock.weekday
+  | StatedClock(c) => clockDrift(c.minuteOfDay, localClock.minuteOfDay) > clockToleranceMinutes
+}
+pure def statedTimeIsUngrounded(asksTime: bool, standalone: bool, statedTimes: List[StatedTime], localClock: LocalClock): bool =
+  asksTime and standalone and statedTimes.some(s => statementDisagrees(s, localClock))
+pure val localClockValues = Set({ month: 9, day: 11, year: 2026, weekday: 5, minuteOfDay: 678 }, { month: 9, day: 12, year: 2026, weekday: 6, minuteOfDay: 5 })
+pure val statementValues = Set(StatedDay({ month: 9, day: 11, year: 0 }), StatedDay({ month: 11, day: 22, year: 2026 }), StatedWeekday({ weekday: 0 }), StatedClock({ minuteOfDay: 1435 }), StatedClock({ minuteOfDay: 1021 }))
+pure val statedTimesValues = Set(List(), List(StatedWeekday({ weekday: 5 }), StatedClock({ minuteOfDay: 680 })), List(StatedDay({ month: 11, day: 22, year: 2026 })))
+pure val statedMinuteValues = Set(0, 5, 668, 689, 1435)
+pure val observedMinuteValues = Set(0, 678, 1439)
+pure def lawOnlyAStandaloneAnswerToATimeQuestionIsJudged(asksTime: bool, standalone: bool, statedTimes: List[StatedTime], localClock: LocalClock): bool =
+  statedTimeIsUngrounded(asksTime, standalone, statedTimes, localClock) implies (asksTime and standalone)
+pure def lawTheObservedClockIsGrounded(localClock: LocalClock): bool =
+  not(statementDisagrees(StatedDay({ month: localClock.month, day: localClock.day, year: localClock.year }), localClock))
+  and not(statementDisagrees(StatedWeekday({ weekday: localClock.weekday }), localClock))
+  and not(statementDisagrees(StatedClock({ minuteOfDay: localClock.minuteOfDay }), localClock))
+pure def lawAClockIsWrongOnlyBeyondTenMinutes(statedMinute: int, observedMinute: int, localClock: LocalClock): bool =
+  statementDisagrees(StatedClock({ minuteOfDay: statedMinute }), { ...localClock, minuteOfDay: observedMinute }) iff clockDrift(statedMinute, observedMinute) > clockToleranceMinutes
+pure def lawAWrongStatementIsReplaced(statement: StatedTime, localClock: LocalClock): bool =
+  statementDisagrees(statement, localClock) implies statedTimeIsUngrounded(true, true, List(statement), localClock)
 ```
 
 ## Story: Let my plugins learn from a finished turn

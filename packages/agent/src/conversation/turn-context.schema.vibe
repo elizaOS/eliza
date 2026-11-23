@@ -80,7 +80,8 @@ function table(value: unknown): Readonly<Record<string, unknown>> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Readonly<Record<string, unknown>> : undefined
 }
 
-function knownZone(name: unknown): name is string {
+/** Whether a name is a zone the host's zone database knows. */
+export function knownZone(name: unknown): name is string {
   if (!isZoneName(name)) return false
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: name })

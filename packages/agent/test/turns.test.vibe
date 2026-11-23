@@ -1,4 +1,4 @@
-// spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"
+// spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
 import { assert, it } from "@effect/vitest"
 import type { Memory, UUID } from "@elizaos/core"
 import { held, insufficientCredits, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
@@ -57,8 +57,25 @@ module node {
   export async function roomMessages(runtime: AgentRuntime, roomId: UUID): Promise<Memory[]> {
     return runtime.getMemories({ tableName: "messages", roomId, count: 1000 })
   }
+
+  /** @throws {never} */
+  export function localDay(zone: string, daysAhead: number) {
+    const at = new Date(Date.now() + daysAhead * 86_400_000)
+    return {
+      date: at.toLocaleDateString("en-CA", { timeZone: zone }),
+      weekday: new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "long" }).format(at),
+      monthDay: new Intl.DateTimeFormat("en-US", { timeZone: zone, month: "long", day: "numeric" }).format(at),
+    }
+  }
+
+  /** @throws {never} */
+  export function lastSystemPrompt(cloud: CloudFake): string {
+    const body = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { messages?: { role: string; content?: unknown }[] } | undefined
+    const system = body?.messages?.find(({ role }) => role === "system")?.content
+    return typeof system === "string" ? system : ""
+  }
 }
-import { completions, cutTurn, overlapping, roomMessages } from node
+import { completions, cutTurn, lastSystemPrompt, localDay, overlapping, roomMessages } from node
 
 const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 
@@ -206,5 +223,43 @@ it.live(`An allowed action runs as a tool, its result grounds the reply, a failu
     failureReported: true,
     duration: "One second is 1,000 milliseconds.",
     labels: { text: undefined, voice: { kind: "CALCULATE", validatedCard: false, verbatimAsked: true } },
+  }))
+}, 120_000)
+
+it.live(`A current-time question hears the phone's clock, else the owner's launch zone, and a date the clock did not observe is replaced by its reading (${planning}, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; ${planning}, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", timeZone: "America/New_York" },
+    frame: { credential: { version: 1, value: deviceKey } },
+  })
+  const { id } = try conversation(agent)
+  const tokyo = { observation: { view: "home", revision: 1, sensitive: false, timeZone: "Asia/Tokyo" } }
+  const awayTokyo = localDay("Asia/Tokyo", 3)
+  const awayHome = localDay("America/New_York", 3)
+
+  try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}, ${awayTokyo.monthDay} at 5 PM GMT+9.`)))
+  const invented = replyOf(try send(agent, id, { text: "What time is it now?", metadata: tokyo }))
+  const phonePrompt = lastSystemPrompt(cloud)
+
+  try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}.`)))
+  const clause = replyOf(try send(agent, id, { text: "What time is it now that the meeting has ended?", metadata: tokyo }))
+
+  try Effect.sync(() => cloud.script(text(`Today is ${awayHome.weekday}.`)))
+  const launched = replyOf(try send(agent, id, { text: "What day is it?" }))
+  const launchPrompt = lastSystemPrompt(cloud)
+
+  const today = { tokyo: localDay("Asia/Tokyo", 0), home: localDay("America/New_York", 0) }
+  try Effect.try(() => assert.deepStrictEqual({
+    invented: /^It's .+ GMT\+9\.$/.test(invented.text) && invented.text.includes(today.tokyo.monthDay),
+    phoneClock: phonePrompt.includes(`Local date: ${today.tokyo.date} (Asia/Tokyo). `),
+    clause: clause.text,
+    launched: launched.text.startsWith("It's ") && launched.text.includes(today.home.monthDay),
+    launchClock: launchPrompt.includes(`Local date: ${today.home.date} (America/New_York). `),
+  }, {
+    invented: true,
+    phoneClock: true,
+    clause: `It's ${awayTokyo.weekday}.`,
+    launched: true,
+    launchClock: true,
   }))
 }, 120_000)

@@ -1,0 +1,74 @@
+// spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; spec/agent/conversation/planning.md, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading"
+import type { Memory } from "@elizaos/core"
+import { clockSource, statedTimeIsUngrounded, type LocalClock, type StatedTime } from "../../gen/agent__conversation__planning.ts"
+import { knownZone, readTurnContext } from "./turn-context.schema.vibe"
+
+/** What one turn's clock observed: the exact instant, the zone it reads in, its full reading and the line the model sees. */
+export interface TurnClock {
+  readonly instant: number
+  readonly zone: string
+  readonly reading: string
+  readonly line: string
+}
+
+const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+const weekdayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+const timeQuestion = /^(?:what(?:['’]s|s| is)?\s+(?:the\s+)?(?:(?:current|local|today['’]s)\s+)?(?:time|day|date)(?:\s+is it)?|what day of the week is it)(?:\s+(?:right now|now|today|for me|please))*[?.!]*$/i
+const monthDay = /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/gi
+const clockTime = /\b(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(AM|PM|a\.m\.|p\.m\.)/gi
+const weekday = /\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/gi
+const filler = /\b(?:it['’]s|it is|today is|currently|right now|about|at|for you|in your local time|your local time|AM|PM|EST|EDT|CST|CDT|MST|MDT|PST|PDT|AKST|AKDT|HST|HAST|HADT|AST|ADT|(?:UTC|GMT)(?:[+-]\d{1,2}(?::\d{2})?)?)\b/gi
+
+function fullReading(instant: number, zone: string): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: zone, dateStyle: "full", timeStyle: "long" }).format(new Date(instant))
+}
+
+/** The turn's clock: the phone's zone, else the launch zone, else the host's, rendered to the minute for the model. */
+export function turnClock(message: Memory, launchZone: string | undefined, owner: boolean, instant: number): TurnClock {
+  const context = readTurnContext(message)
+  const said = context.voiceUi?.uiTimeZone
+  const phone = knownZone(said) ? said : context.observation?.timeZone ?? ""
+  const source = clockSource(phone, launchZone ?? "", Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", owner)
+  const zone = source.clockZone
+  const minute = Math.floor(instant / 60_000) * 60_000
+  const minuteInstant = `${new Date(minute).toISOString().slice(0, 16)}Z`
+  const minuteReading = fullReading(minute, zone).replace(/(\d{1,2}:\d{2}):00/, "$1")
+  const line = source.ownersLocal
+    ? `Local date: ${new Date(minute).toLocaleDateString("en-CA", { timeZone: zone })} (${zone}). ${minuteReading}. Resolve today/tomorrow from this local date, not the UTC date. UTC instant: ${minuteInstant}`
+    : `${source.origin === "LaunchZone" ? "Agent" : "Server"} time: ${minuteReading} (${zone}), ISO (UTC): ${minuteInstant}; user timezone unknown.`
+  return { instant, zone, reading: fullReading(instant, zone), line }
+}
+
+function localClockOf(clock: TurnClock): LocalClock {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: clock.zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", weekday: "long",
+  }).formatToParts(new Date(clock.instant))
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? ""
+  return {
+    month: Number(read("month")), day: Number(read("day")), year: Number(read("year")),
+    weekday: weekdayNames.indexOf(read("weekday").toLowerCase()), minuteOfDay: Number(read("hour")) * 60 + Number(read("minute")),
+  }
+}
+
+function statedTimes(reply: string): StatedTime[] {
+  return [
+    ...Array.from(reply.matchAll(monthDay), (found): StatedTime => ({
+      tag: "StatedDay", month: monthNames.indexOf(found[1].toLowerCase()) + 1, day: Number(found[2]), year: found[3] === undefined ? 0 : Number(found[3]),
+    })),
+    ...Array.from(reply.matchAll(weekday), (found): StatedTime => ({ tag: "StatedWeekday", weekday: weekdayNames.indexOf(found[1].toLowerCase()) })),
+    ...Array.from(reply.matchAll(clockTime), (found): StatedTime => ({
+      tag: "StatedClock", minuteOfDay: (Number(found[1]) % 12) * 60 + Number(found[2] ?? "0") + (/^p/i.test(found[3]) ? 720 : 0),
+    })),
+  ]
+}
+
+function standalone(reply: string): boolean {
+  return reply.replace(monthDay, " ").replace(weekday, " ").replace(clockTime, " ").replace(filler, " ").replace(/[\s,.!():]/g, "") === ""
+}
+
+/** The reply to store: the turn's own, or the clock's reading where it answers a current-time question with a time the clock did not observe. */
+export function groundedTimeReply(reply: string, request: string, clock: TurnClock): string {
+  const answer = reply.trim()
+  if (!answer) return reply
+  return statedTimeIsUngrounded(timeQuestion.test(request.trim()), standalone(answer), statedTimes(answer), localClockOf(clock)) ? `It's ${clock.reading}.` : reply
+}
