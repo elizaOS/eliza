@@ -1244,6 +1244,7 @@ pure val amountValues = Set(0, 1)`;
     fs.writeFileSync(receipt, JSON.stringify({ fingerprint: testInputs(root) }));
     const reused = await run(root);
     assert.ok(reused.said("tests", /^pass: the test runner recorded success for these inputs\n$/), reused.text);
+    assert.equal(reused.said("tests", /^1 tests cite no story or rule/)?.ok, false, reused.text);
     assert.equal(runs(), 3);
     fs.writeFileSync(path.join(root, "src/door.ts"), "export const door = 3;\n");
     await run(root);
@@ -2704,7 +2705,7 @@ function eachCheck() {
     assert.deepEqual(reworded.after, reworded.before, "rewording a comment in a tool every stage and every run of a tool rests on keys nothing anew");
     const rerun = await named("run.ts");
     assert.ok(Object.keys(rerun.before).every((stage) => rerun.after[stage] !== rerun.before[stage]), "a change to its code keys every one anew");
-    for (const tool of ["explore.ts", "stories/emit.ts", "design/tokens.ts", "testing/vitest.ts"]) {
+    for (const tool of ["explore.ts", "stories/emit.ts", "design/tokens.ts", "testing/vitest.ts", "testing/check.ts"]) {
       const { before, after } = await named(tool);
       assert.equal(after.simulate, before.simulate, `a simulation is not keyed by ${tool}, which it does not run`);
       assert.notEqual(after.tests, before.tests, `tests may run any of the tools, ${tool} among them`);
@@ -2712,7 +2713,7 @@ function eachCheck() {
     }
     const proving = await named("prove.ts");
     assert.deepEqual([proving.after.tests !== proving.before.tests, proving.after.explore !== proving.before.explore], [true, false], "an exploration is not keyed by a tool it does not run");
-    for (const tool of ["units.ts", "gen/harness.ts", "testing/profile.ts"]) {
+    for (const tool of ["units.ts", "util.ts", "gen/harness.ts", "testing/profile.ts"]) {
       const { before, after } = await named(tool);
       assert.notEqual(after.simulate, before.simulate, `a simulation is keyed by ${tool}, which it runs`);
     }
@@ -2772,15 +2773,23 @@ function eachCheck() {
       'const patched = await steady(async () => ({ runs: [await runs(), await runs()], simulation: await simulation() }));',
       `process.env.QUINT_HOME = ${JSON.stringify(path.join(root, "quint-home"))};`,
       `const native = ${JSON.stringify(native)};`,
-      'const simulate = () => steady(async () => {',
+      'const simulate = (schedule, scope = memory) => steady(async () => {',
       '  const key = await entry(".", "simulate", ["native"]);',
-      '  await remembered(memory, key, (child) => act(child, "quint", ["run"], "simulated", {}), (r) => r.ok);',
+      '  await remembered(scope, key, (child) => act(child, "quint", ["run"], "simulated", {}), (r) => r.ok, schedule);',
       `  return { key: key.name, saved: fs.existsSync(key.file), runs: fs.readFileSync(${JSON.stringify(log)}, "utf8").trim().split("\\n").length };`,
       '});',
       'const bootstrap = await simulate(), installed = await simulate(), warm = await simulate();',
+      'const held = await entry(".", "simulate", ["native"]);',
+      'const bytes = fs.readFileSync(held.file);',
+      'const { used } = JSON.parse((await import("node:zlib")).zstdDecompressSync(bytes));',
+      'fs.unlinkSync(held.file);',
+      'for (const name of used) fs.rmSync(".spec-cache/"+name, { force: true });',
+      'const scope = { ...memory, used: new Set() };',
+      'const late = await simulate(async (resume) => { fs.writeFileSync(held.file, bytes); return resume(true); }, scope);',
+      'const retained = used.length > 0 && used.every((name) => scope.used.has(name) && !fs.existsSync(".spec-cache/"+name));',
       'fs.writeFileSync(native, "replacement"); const replaced = await simulate(); fs.writeFileSync(native, "replacement");',
       'const identical = await simulate(); process.env.QUINT_HOME = "quint-home";',
-      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, patched, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
+      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, patched, late, retained, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
     ].join("\n");
     const r = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
     assert.equal(r.status, 0, r.stderr);
@@ -2801,6 +2810,8 @@ function eachCheck() {
     assert.equal(installed.saved, true);
     assert.equal(installed.runs, bootstrap.runs + 1, "the installed evaluator runs once for its own identity");
     assert.deepEqual(warm, installed);
+    assert.deepEqual(said.late, warm, "a queued simulation reuses an aggregate published before its native work starts");
+    assert.equal(said.retained, true, "the hit retains its action dependencies without recreating them");
     assert.equal(replaced.runs, warm.runs + 1);
     assert.notEqual(replaced.key, warm.key, "changing only evaluator bytes changes the simulation identity");
     assert.deepEqual(identical, replaced, "identical executable bytes still reuse the result");
