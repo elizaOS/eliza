@@ -1,10 +1,12 @@
-// spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"
+// spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CloudRequestPolicy.Attach;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Handoff;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Holding;
 import ai.eliza.plugins.signin.CloudRequestPolicy.KeyRejected;
+import ai.eliza.plugins.signin.CloudRequestPolicy.LeaseRejected;
+import ai.eliza.plugins.signin.CloudRequestPolicy.RefreshLeaseFirst;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Planned;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Refusal;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Refuse;
@@ -12,6 +14,8 @@ import ai.eliza.plugins.signin.CloudRequestPolicy.RefreshSessionFirst;
 import ai.eliza.plugins.signin.CloudRequestPolicy.Send;
 import ai.eliza.plugins.signin.CloudRequestPolicy.SessionRejected;
 import ai.eliza.plugins.signin.CloudRequestPolicy.WithKey;
+import ai.eliza.plugins.signin.CloudRequestPolicy.WithLease;
+import ai.eliza.plugins.signin.CredentialPolicy.LeaseUse;
 import ai.eliza.plugins.signin.CloudRequestPolicy.WithSession;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -23,7 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 public final class CloudRequests {
-  public record Custody(DeviceCredentialStore credentials, AccountSession session) {}
+  public record Custody(DeviceCredentialStore credentials, AccountSession session, DeviceLease lease) {}
 
   public sealed interface Outcome permits Answered, Failed {}
   public record Answered(int status, String etag, String contentType, String retryAfter, byte[] body, LargeBodyGrant.Grant grant) implements Outcome {}
@@ -59,21 +63,29 @@ public final class CloudRequests {
     CredentialReader.Credential key = store.current();
     int version = key == null ? 0 : key.version();
     CloudRequestPolicy.Origin origin = CloudRequestPolicy.originOf(apiOrigin);
-    Planned planned = policy.plan(new Holding(version, false, false), origin, method, target, headers, body);
+    boolean leaseHeld = !(store.state().lease() instanceof CredentialPolicy.Lease.NoLease);
+    Planned planned = policy.plan(new Holding(version, false, false, leaseHeld, false), origin, method, target, headers, body);
     String session = null;
+    DeviceLease.Held lease = null;
     if (planned.plan() instanceof Refuse refuse && refuse.why() == Refusal.REAUTH_REQUIRED) {
       session = custody.session().accessToken();
-      planned = policy.plan(new Holding(version, session != null, session != null), origin, method, target, headers, body);
+      planned = policy.plan(new Holding(version, session != null, session != null, leaseHeld, false), origin, method, target, headers, body);
+    } else if (planned.plan() instanceof RefreshLeaseFirst) {
+      lease = custody.lease().accessToken();
+      boolean stillHeld = !(store.state().lease() instanceof CredentialPolicy.Lease.NoLease);
+      planned = policy.plan(new Holding(version, false, false, stillHeld, lease != null), origin, method, target, headers, body);
     }
     Attach attach;
     switch (planned.plan()) {
       case Refuse refuse -> { return new Failed(Failure.of(refuse.why())); }
       case RefreshSessionFirst refresh -> { return new Failed(Failure.REAUTH_REQUIRED); }
+      case RefreshLeaseFirst refresh -> { return new Failed(Failure.NETWORK); }
       case Send send -> attach = send.attach();
     }
     String bearer = switch (attach) {
       case WithKey k -> key.value();
       case WithSession s -> session;
+      case WithLease l -> lease.token();
       case CloudRequestPolicy.Bare b -> null;
     };
     HttpURLConnection connection = null;
@@ -98,6 +110,7 @@ public final class CloudRequests {
         String text = answered.body() == null ? null : new String(answered.body(), StandardCharsets.UTF_8);
         switch (CloudRequestPolicy.reportOf(attach, planned.route(), status, CloudRequestPolicy.reasonOf(text))) {
           case KeyRejected rejected -> store.rejected(rejected.version(), rejected.reason(), rejected.on());
+          case LeaseRejected rejected -> store.leaseRejected(rejected.version(), rejected.reason(), LeaseUse.ACCESS_USE);
           case SessionRejected rejected -> custody.session().drop();
           case CloudRequestPolicy.NoReport none -> { }
         }

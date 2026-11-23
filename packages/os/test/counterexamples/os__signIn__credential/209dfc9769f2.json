@@ -1,0 +1,48 @@
+{
+  "origin": "walk 6 of seed 1",
+  "seed": 1,
+  "trace": [
+    [
+      "device",
+      {
+        "type": "beginSignIn"
+      }
+    ],
+    [
+      "device",
+      {
+        "type": "tokenAnswered",
+        "attempt": 1,
+        "credentialId": "c2",
+        "account": {
+          "userId": "u2",
+          "organizationId": "o2"
+        },
+        "keyExpiresAt": 120000,
+        "lease": {
+          "tag": "Offered",
+          "refreshExpiresAt": 7776000000
+        },
+        "stored": "Written"
+      }
+    ],
+    [
+      "device",
+      {
+        "type": "acknowledged",
+        "attempt": 1,
+        "credentialId": "c2",
+        "keyExpiresAt": 2592000000
+      }
+    ],
+    [
+      "device",
+      {
+        "type": "rejected",
+        "version": 1,
+        "reason": "CredentialExpired",
+        "on": "AccountRead"
+      }
+    ]
+  ]
+}
