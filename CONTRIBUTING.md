@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `37ec2c3`](https://github.com/lalalune/vibestack/commit/37ec2c334a200badb643fb02bc68909e4739c1ed).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `0969b0a`](https://github.com/lalalune/vibestack/commit/0969b0ac5e393aebc752421ce2b7a7f52f7885df).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
