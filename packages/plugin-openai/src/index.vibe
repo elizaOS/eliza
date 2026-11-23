@@ -1,5 +1,5 @@
 // spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"
-import { ModelType, VECTOR_DIMS, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TextStreamResult, type TokenUsage } from "@elizaos/core"
+import { ModelType, VECTOR_DIMS, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TextStreamResult, type TokenUsage, type ToolCall } from "@elizaos/core"
 import { Cause, Exit, Queue, Schema, Stream } from "effect"
 import * as Sse from "effect/encoding/Sse"
 import { Machine, machine, type OpenAiAttempt, openAiModelId, openAiTokenizerKey, suitableOpenAiEndpoint } from "../gen/openai.effect.vibe"
@@ -152,11 +152,54 @@ effect function streamAnswer(response: Response, model: Machine.Shape, attempt: 
   } as const
 }
 
+const wireToolCall = Schema.Struct({
+  id: Schema.String, type: Schema.Literal("function"),
+  function: Schema.Struct({ name: Schema.String, arguments: Schema.String }),
+})
+type WireToolCall = typeof wireToolCall.Type
+
 const chatResponse = Schema.Struct({
-  choices: Schema.NonEmptyArray(Schema.Struct({ message: Schema.Struct({ content: Schema.NullOr(Schema.String), tool_calls: Schema.optionalKey(Schema.Array(Schema.Unknown)) }), finish_reason: Schema.String })),
+  choices: Schema.NonEmptyArray(Schema.Struct({ message: Schema.Struct({ content: Schema.NullOr(Schema.String), tool_calls: Schema.optionalKey(Schema.Array(wireToolCall)) }), finish_reason: Schema.String })),
   usage: Schema.optionalKey(usageSchema),
 })
 const decodeChat = Schema.decodeUnknownEffect(chatResponse)
+
+function objectArguments(input: string): boolean {
+  try {
+    const decoded: unknown = JSON.parse(input)
+    return typeof decoded === "object" && decoded !== null && !Array.isArray(decoded)
+  } catch {
+    return false
+  }
+}
+
+// spec/openai/index.md, "Tool calls and their replies use the model tool protocol"
+function callsFromWire(wire: readonly WireToolCall[]): ToolCall[] | undefined {
+  const seen = new Set<string>()
+  const calls: ToolCall[] = []
+  for (const call of wire) {
+    const { name, arguments: args } = call.function
+    if (!call.id.trim() || seen.has(call.id) || !/^[A-Za-z0-9_-]{1,64}$/.test(name) || !objectArguments(args)) return undefined
+    seen.add(call.id)
+    calls.push({ id: call.id, name, arguments: args })
+  }
+  return calls
+}
+
+type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
+
+function messageForWire({ toolCallId, toolCalls, ...message }: ChatMessage) {
+  return {
+    ...message,
+    ...(toolCallId === undefined ? {} : { tool_call_id: toolCallId }),
+    ...(toolCalls === undefined ? {} : {
+      tool_calls: toolCalls.map((call) => ({
+        id: call.id, type: "function",
+        function: { name: call.name, arguments: typeof call.arguments === "string" ? call.arguments : JSON.stringify(call.arguments) },
+      })),
+    }),
+  }
+}
 
 function modelEndpoint(runtime: IAgentRuntime, modelId: string) {
   return { address: setting(runtime, "OPENAI_BASE_URL") || "https://api.openai.com/v1", modelId, acceptsOperation: true, acceptsSchema: true, confidential: setting(runtime, "OPENAI_CONFIDENTIAL") === "true" }
@@ -174,13 +217,13 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
     while (run.phase === "CallingOpenAi") {
       const endpoint = run.attempt === "PrimaryOpenAi" ? primary : fallback
       const result = try Effect.exit(effect {
-        const messages = params.messages ?? [
-          ...(params.system === undefined ? [] : [{ role: "system", content: params.system }]),
-          { role: "user", content: params.prompt ?? "" },
+        const messages: readonly ChatMessage[] = params.messages ?? [
+          ...(params.system === undefined ? [] : [{ role: "system" as const, content: params.system }]),
+          { role: "user" as const, content: params.prompt ?? "" },
         ]
         const wantsEvents = params.stream === true && !needsSchema && (params.tools?.length ?? 0) === 0 && params.toolChoice === undefined
         const payload = {
-          model: endpoint.modelId, messages, stream: wantsEvents, temperature: params.temperature, top_p: params.topP,
+          model: endpoint.modelId, messages: messages.map(messageForWire), stream: wantsEvents, temperature: params.temperature, top_p: params.topP,
           max_completion_tokens: params.omitMaxTokens ? undefined : params.maxTokens, stop: params.stopSequences,
           tools: params.tools?.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters, strict: tool.strict } })),
           tool_choice: params.toolChoice, seed: params.seed,
@@ -200,6 +243,10 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
         const choice = complete.choices[0]
         const valid = choice.finish_reason === "stop" || choice.finish_reason === "tool_calls"
         if (!valid) throw new OpenAiFailure({ reason: "OpenAI did not complete its response.", retryable: false })
+        const calls = choice.message.tool_calls === undefined ? undefined : callsFromWire(choice.message.tool_calls)
+        if ((choice.message.tool_calls !== undefined && calls === undefined) || (choice.finish_reason === "tool_calls" && !calls?.length)) {
+          throw new OpenAiFailure({ reason: "OpenAI returned an invalid tool call.", retryable: false })
+        }
         try model.send({ type: "acceptOpenAi", attempt: run.attempt, terminal: valid, shapeMatches: choice.message.content !== null })
         const text = choice.message.content ?? ""
         const reported = complete.usage
@@ -209,7 +256,7 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
           text,
           usage: reported && usageOf(reported),
           finishReason: choice.finish_reason,
-          toolCalls: choice.message.tool_calls,
+          toolCalls: calls,
         } as const
       }
       if (Cause.hasInterruptsOnly(result.cause)) return try Effect.failCause(result.cause)
