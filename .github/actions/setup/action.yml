@@ -29,7 +29,7 @@ runs:
     - id: setup-pnpm
       uses: pnpm/action-setup@v6
     - name: Install Dafny
-      if: inputs.verification == 'true'
+      if: inputs.verification == 'true' && !startsWith(inputs.job, 'simulate-')
       shell: bash
       run: |
         version=4.11.0
@@ -67,12 +67,14 @@ runs:
     # or cancelled verification of a superseded default-branch push. A job tries both key layouts for this lockfile first.
     # Each entry is named by the tools and inputs that produced it. A selftest-* job holds the selftest's tool runs,
     # which no other job adds to, and any other job the spec caches of the projects, which no selftest-* job checks.
+    # A simulate-* job starts from the spec cache verify saved, which holds every simulation its last check used.
     - id: spec-cache
       if: inputs.verification == 'true' && inputs.cache-verification == 'true'
       shell: bash
       env:
         JOB: ${{ inputs.job }}
       run: |
+        [[ $JOB != simulate-* ]] || JOB=verify
         lock='${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}'
         named="spec-${{ runner.os }}-${{ runner.arch }}-${JOB}-"
         prefix="${named}${lock}-"
@@ -290,7 +292,7 @@ runs:
         path: ~/.quint/rust-evaluator-${{ steps.quint-evaluator.outputs.version }}
         key: ${{ steps.quint-cache.outputs.cache-primary-key }}
     - name: Install Chromium
-      if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest'
+      if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest' && !startsWith(inputs.job, 'simulate-')
       env:
         FULL_CHROMIUM_ONLY: ${{ inputs.job == 'selftest-a' }}
       run: |

@@ -1,9 +1,11 @@
 name: ci
 
 # Every run is the tasks of `pnpm verify`, the tools' own self-test included,
-# split over four jobs that run side by side: the self-test of the tools in
-# three, everything else in one. Turborepo and spec skip what the change does
-# not reach, from the cache of the last run. The fixed normal profile is the
+# split over jobs that run side by side: the self-test of the tools in three,
+# the root check's simulations in four shards, and everything else in one,
+# which starts once the shards have simulated and checks with what they found.
+# Turborepo and spec skip what the change does not reach, from the cache of the
+# last run. The fixed normal profile is the
 # same locally and in CI. The self-test also installs and checks each
 # standalone example.
 on:
@@ -107,6 +109,8 @@ jobs:
 
   verify:
     name: ${{ matrix.name }}
+    needs: simulate
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -122,6 +126,13 @@ jobs:
         uses: ./.github/actions/setup
         with:
           job: ${{ matrix.name }}
+      - if: matrix.name == 'verify'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: simulations-*
+          path: .spec-cache
+          merge-multiple: true
       - id: verify-tasks
         run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
       - name: Report Turbo task timings
@@ -228,6 +239,44 @@ jobs:
             vibestack/examples/*/test/__traces__/
           if-no-files-found: ignore
           include-hidden-files: true
+
+  simulate:
+    name: simulate-${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          job: simulate-${{ matrix.shard }}
+      - name: Simulate the specs whose files hash to this shard
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: 4
+        run: |
+          node --input-type=module <<'JS'
+          import { createHash } from "node:crypto";
+          import { precomputeSimulations, readSpecs } from "./vibestack/formal.ts";
+          const specs = readSpecs(process.cwd());
+          const inShard = ({ file }) => parseInt(createHash("sha256").update(file).digest("hex").slice(0, 8), 16) % Number(process.env.SHARDS) === Number(process.env.SHARD) - 1;
+          const names = specs.filter(inShard).map(({ name }) => name);
+          const results = await precomputeSimulations(process.cwd(), specs, names);
+          const failed = results.filter(({ ok }) => !ok);
+          for (const { stage, summary, detail, where } of failed) console.log(`✗ ${stage} ${where ?? ""}: ${summary}\n${detail}`);
+          console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${failed.length} failed`);
+          process.exitCode = failed.length ? 1 : 0;
+          JS
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: simulations-${{ matrix.shard }}
+          path: .spec-cache/simulate-*
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 1
 
   vibestack-fixture-selftests:
     name: ${{ matrix.name }}

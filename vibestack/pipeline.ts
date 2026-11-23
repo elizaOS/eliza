@@ -961,14 +961,15 @@ export async function main(argv = process.argv.slice(2)) {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
     if (installing) {
       const hosted = process.env.GITHUB_ACTIONS === "true";
-      const fixture = hosted && process.env.GITHUB_JOB === "vibestack-fixture-selftests";
-      const prerequisites = installTasks.filter((task) => !fixture || task === "//#build");
+      const job = hosted ? process.env.GITHUB_JOB : undefined;
+      const fixture = job === "vibestack-fixture-selftests";
+      const prerequisites = job === "simulate" ? [] : installTasks.filter((task) => !fixture || task === "//#build");
       if (prerequisites.length) {
         const code = await runTasks(root, prerequisites);
         if (code !== 0) { process.exitCode = code ?? 1; return; }
       }
       const packingTools = skipGenOnPack && process.env.npm_command === "pack" && process.env.npm_lifecycle_event === "prepare";
-      if (fixture || packingTools) return;
+      if (fixture || job === "simulate" || packingTools) return;
       [command, ...args] = hosted ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
     }
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {
