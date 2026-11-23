@@ -3731,6 +3731,24 @@ function theCommandLine() {
     assert.equal(fixtures.status, 0, fixtures.stderr);
     assert.ok(fs.existsSync(path.join(root, "tools-built")));
     assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    const simulations = {
+      ...nightly, GITHUB_JOB: "vibestack-precompute-simulations",
+      GITHUB_WORKFLOW_REF: "owner/project/.github/workflows/ci.yml@refs/heads/main",
+    };
+    fs.rmSync(path.join(root, "tools-built"));
+    const precomputed = await install(simulations, ...prerequisites);
+    assert.equal(precomputed.status, 0, precomputed.stderr);
+    assert.ok(!fs.existsSync(path.join(root, "tools-built")));
+    assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    for (const outside of [
+      { GITHUB_JOB: "simulate" }, { GITHUB_ACTIONS: "false" }, { GITHUB_WORKSPACE: path.dirname(root) },
+      { GITHUB_WORKFLOW_REF: "owner/project/.github/workflows/other.yml@refs/heads/main" },
+      { npm_lifecycle_event: "" }, { npm_command: "pack" },
+    ]) {
+      const required = await install({ ...simulations, ...outside }, ...prerequisites);
+      assert.notEqual(required.status, 0, `an install outside the precompute context runs its prerequisites: ${JSON.stringify(outside)}`);
+      assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    }
     for (const hosted of [false, true]) {
       const missing = await prepare(hosted, "verify", ...prerequisites);
       assert.notEqual(missing.status, 0, "a failed prerequisite fails ordinary installs");

@@ -243,47 +243,51 @@ describe("the documents name what exists", () => {
       independentOwner: true, leftovers: [],
     }, "the owners' tasks, @repo/kit's among them, wait for the root's gen, and install's //#build does not, so `gen --if-valid` after it keeps a half-edited spec from failing install");
 
-    fs.symlinkSync(path.join(project, "node_modules"), path.join(root, "node_modules"), "dir");
-    const generationPlan = async (hosted: boolean, ...options: string[]) => {
-      const dry = await exec(process.execPath, [path.join(root, "vibestack/spec.ts"), "tasks", "//#gen", "//#lint:css", "--dry=json", "--cache=local:w", ...options], root, {
-        ...process.env, TURBO_TOKEN: "", GITHUB_ACTIONS: String(hosted), GITHUB_JOB: "verify", GITHUB_WORKSPACE: root,
-        GITHUB_REPOSITORY: "elizaOS/eliza", GITHUB_WORKFLOW_REF: "elizaOS/eliza/.github/workflows/ci.yml@refs/heads/vibestack",
-      });
-      assert.equal(dry.status, 0, dry.stderr);
-      const tasks: { taskId: string; hash: string; resolvedTaskDefinition: { env: string[] } }[] = JSON.parse(dry.stdout).tasks;
-      return Object.fromEntries(tasks.map(({ taskId, hash, resolvedTaskDefinition }) => [taskId, { hash, ...resolvedTaskDefinition }]));
-    };
-    const proof = path.join(root, "spec/audit.proof.dfy");
-    fs.writeFileSync(proof, "lemma One() {}\n");
-    const local = await generationPlan(false);
-    const hosted = await generationPlan(true);
-    fs.appendFileSync(proof, "lemma Two() {}\n");
-    assert.notEqual((await generationPlan(false))["//#gen"].hash, local["//#gen"].hash);
-    assert.equal((await generationPlan(true))["//#gen"].hash, hosted["//#gen"].hash);
-    append("spec/app/index.md")();
-    assert.notEqual((await generationPlan(true))["//#gen"].hash, hosted["//#gen"].hash);
-
-    const alternate = "other turbo.jsonc";
-    const config = JSON.parse(read("turbo.json", root));
-    config.tasks["//#lint:css"].env = ["AUDIT_CONFIG"];
-    fs.writeFileSync(path.join(root, alternate), JSON.stringify(config).replace(/^{/, "{\n// Explicit workspace config\n"));
-    const explicit = await generationPlan(true, "--root-turbo-json", alternate);
-    fs.unlinkSync(proof);
-    fs.symlinkSync("../missing-proof.dfy", proof);
-    const invalid = await generationPlan(true, `--root-turbo-json=${alternate}`);
-    assert.ok(invalid["//#lint:css"].env.includes("AUDIT_CONFIG"));
-    assert.notEqual(invalid["//#gen"].hash, explicit["//#gen"].hash);
-    assert.equal((await generationPlan(true, "--cwd", root))["//#gen"].hash, (await generationPlan(true, "--cwd=packages/kit"))["//#gen"].hash);
-    fs.unlinkSync(proof);
-    fs.writeFileSync(proof, "lemma One() {}\nlemma Two() {}\n");
-    assert.deepEqual(await generationPlan(true, "--root-turbo-json", alternate), explicit);
-    const passThrough = await generationPlan(true, "--", "--root-turbo-json", alternate);
-    assert.ok(!passThrough["//#lint:css"].env.includes("AUDIT_CONFIG"));
-    fs.mkdirSync(path.join(root, "spec/nested.proof.dfy"));
-    const nested = "spec/nested.proof.dfy/model.md";
-    append(nested)();
-    const beforeNested = await generationPlan(true);
-    append(nested)();
-    assert.notEqual((await generationPlan(true))["//#gen"].hash, beforeNested["//#gen"].hash);
+    await verifyGenerationInputs(root);
   });
 });
+
+async function verifyGenerationInputs(root: string) {
+  fs.symlinkSync(path.join(project, "node_modules"), path.join(root, "node_modules"), "dir");
+  const generationPlan = async (hosted: boolean, ...options: string[]) => {
+    const dry = await exec(process.execPath, [path.join(root, "vibestack/spec.ts"), "tasks", "//#gen", "//#lint:css", "--dry=json", "--cache=local:w", ...options], root, {
+      ...process.env, TURBO_TOKEN: "", GITHUB_ACTIONS: String(hosted), GITHUB_JOB: "verify", GITHUB_WORKSPACE: root,
+      GITHUB_REPOSITORY: "elizaOS/eliza", GITHUB_WORKFLOW_REF: "elizaOS/eliza/.github/workflows/ci.yml@refs/heads/vibestack",
+    });
+    assert.equal(dry.status, 0, dry.stderr);
+    const tasks: { taskId: string; hash: string; resolvedTaskDefinition: { env: string[] } }[] = JSON.parse(dry.stdout).tasks;
+    return Object.fromEntries(tasks.map(({ taskId, hash, resolvedTaskDefinition }) => [taskId, { hash, ...resolvedTaskDefinition }]));
+  };
+  const proof = path.join(root, "spec/audit.proof.dfy");
+  fs.writeFileSync(proof, "lemma One() {}\n");
+  const local = await generationPlan(false);
+  const hosted = await generationPlan(true);
+  fs.appendFileSync(proof, "lemma Two() {}\n");
+  assert.notEqual((await generationPlan(false))["//#gen"].hash, local["//#gen"].hash);
+  assert.equal((await generationPlan(true))["//#gen"].hash, hosted["//#gen"].hash);
+  fs.appendFileSync(path.join(root, "spec/app/index.md"), "\nMore words.\n");
+  assert.notEqual((await generationPlan(true))["//#gen"].hash, hosted["//#gen"].hash);
+
+  const alternate = "other turbo.jsonc";
+  const config = JSON.parse(read("turbo.json", root));
+  config.tasks["//#lint:css"].env = ["AUDIT_CONFIG"];
+  fs.writeFileSync(path.join(root, alternate), JSON.stringify(config).replace(/^{/, "{\n// Explicit workspace config\n"));
+  const explicit = await generationPlan(true, "--root-turbo-json", alternate);
+  fs.unlinkSync(proof);
+  fs.symlinkSync("../missing-proof.dfy", proof);
+  const invalid = await generationPlan(true, `--root-turbo-json=${alternate}`);
+  assert.ok(invalid["//#lint:css"].env.includes("AUDIT_CONFIG"));
+  assert.notEqual(invalid["//#gen"].hash, explicit["//#gen"].hash);
+  assert.equal((await generationPlan(true, "--cwd", root))["//#gen"].hash, (await generationPlan(true, "--cwd=packages/kit"))["//#gen"].hash);
+  fs.unlinkSync(proof);
+  fs.writeFileSync(proof, "lemma One() {}\nlemma Two() {}\n");
+  assert.deepEqual(await generationPlan(true, "--root-turbo-json", alternate), explicit);
+  const passThrough = await generationPlan(true, "--", "--root-turbo-json", alternate);
+  assert.ok(!passThrough["//#lint:css"].env.includes("AUDIT_CONFIG"));
+  fs.mkdirSync(path.join(root, "spec/nested.proof.dfy"));
+  const nested = path.join(root, "spec/nested.proof.dfy/model.md");
+  fs.appendFileSync(nested, "\nMore words.\n");
+  const beforeNested = await generationPlan(true);
+  fs.appendFileSync(nested, "\nMore words.\n");
+  assert.notEqual((await generationPlan(true))["//#gen"].hash, beforeNested["//#gen"].hash);
+}
