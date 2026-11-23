@@ -220,15 +220,14 @@ module node {
     const llm = llmFake()
     const fakes = await startFakeServer()
     const keyOf = (n: number) => "00000000-0000-4000-8000-" + String(n).padStart(12, "0")
-    const beforeHeaders = Promise.withResolvers<void>()
-    const releaseHeaders = Promise.withResolvers<void>()
-    let stallHeaders = false
+    let pauseHeaders: { readonly reached: () => void; readonly released: Promise<void> } | undefined
     try {
       fakes.mount("/llm/", async (request) => {
-        if (!stallHeaders) return llm.handler(request)
-        stallHeaders = false
-        beforeHeaders.resolve()
-        await releaseHeaders.promise
+        const pause = pauseHeaders
+        if (pause === undefined) return llm.handler(request)
+        pauseHeaders = undefined
+        pause.reached()
+        await pause.released
         return { status: 503 }
       })
       const fixture = await openBackupDatabase()
@@ -248,14 +247,14 @@ module node {
         await fund(rawProfile, organizationId, fixture.databaseUrl)
         const worker = cloudWorker()
         const retained = new Map<number, Promise<unknown>[]>()
-        const call = (n: number, includeUsage = false, signal?: AbortSignal) => {
+        const call = (n: number, includeUsage = false, signal?: AbortSignal, stream = true) => {
           const work: Promise<unknown>[] = []
           retained.set(n, work)
           return worker.fetch(new Request(api + "/api/v1/chat/completions", {
             method: "POST", signal,
             headers: { origin: web, authorization: "Bearer " + owner.access, "content-type": "application/json", "idempotency-key": keyOf(n) },
             body: JSON.stringify({ model: "test-chat", messages: [{ role: "user", content: "Please say hello" }],
-              max_tokens: 16, stream: true, stream_options: { include_usage: includeUsage } }),
+              max_tokens: 16, stream, ...(stream ? { stream_options: { include_usage: includeUsage } } : {}) }),
           }), env, { waitUntil: (pending) => { work.push(pending) } })
         }
         const ledger = async () => (await fixture.db.query<{
@@ -263,6 +262,26 @@ module node {
         }>(`SELECT h.state->'key'->>'requestId' AS request, h.key, h.phase,
                    u.hold_key AS "usageKey", u.quote, u.charged, u.outcome
               FROM holds h LEFT JOIN usage_records u ON u.hold_key=h.key WHERE h.organization_id=$1 ORDER BY request`, [organizationId])).rows
+        async function abortBeforeHeaders(n: number, stream: boolean) {
+          const reached = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          pauseHeaders = { reached: reached.resolve, released: release.promise }
+          const abort = new AbortController()
+          try {
+            const response = call(n, false, abort.signal, stream)
+            await Promise.race([reached.promise, response.then((answer) => { throw new Error("The provider was never reached: " + answer.status) })])
+            const before = (await ledger()).find((row) => row.request === keyOf(n))
+            const work = retained.get(n) ?? []
+            const retainedCount = work.length
+            abort.abort()
+            await Promise.all(work)
+            await (await response).text()
+            return { before, retainedCount }
+          } finally {
+            pauseHeaders = undefined
+            release.resolve()
+          }
+        }
         llm.script({ kind: "stream", duplicateUsage: true }, { kind: "stream", duplicateUsage: true },
           { kind: "truncated" }, { kind: "truncated", reportUsage: true }, { kind: "refuse" }, { kind: "hang", after: 2 },
           { kind: "hang", after: 0 })
@@ -284,16 +303,8 @@ module node {
         await llm.untilAborted(1)
         const retainedStream = retained.get(6) ?? []
         await Promise.all(retainedStream)
-        const abort = new AbortController()
-        stallHeaders = true
-        const earlyResponse = call(7, false, abort.signal)
-        await Promise.race([beforeHeaders.promise, earlyResponse.then((response) => { throw new Error("The provider was never reached: " + response.status) })])
-        const beforeEarlyCancel = (await ledger()).find((row) => row.request === keyOf(7))
-        const retainedBeforeHeaders = retained.get(7)?.length
-        abort.abort()
-        await Promise.all(retained.get(7) ?? [])
-        await (await earlyResponse).text()
-        releaseHeaders.resolve()
+        const earlyStream = await abortBeforeHeaders(7, true)
+        const beforeEarlyCancel = earlyStream.before
         const idleAbort = new AbortController()
         const idle = await call(8, false, idleAbort.signal)
         const beforeIdleCancel = (await ledger()).find((row) => row.request === keyOf(8))
@@ -301,6 +312,8 @@ module node {
         const retainedIdle = retained.get(8) ?? []
         await Promise.all(retainedIdle)
         await llm.untilAborted(2)
+        const earlyWhole = await abortBeforeHeaders(9, false)
+        const beforeWholeCancel = earlyWhole.before
         const settled = await ledger()
         const duplicate = await call(6)
         await duplicate.text()
@@ -311,13 +324,16 @@ module node {
             && !second.done && new TextDecoder().decode(second.value).includes(replyText.slice(0, 2)),
           beforeCancel: beforeCancel !== undefined && beforeCancel.phase === "dispatched" && beforeCancel.usageKey === null,
           beforeEarlyCancel: beforeEarlyCancel !== undefined && beforeEarlyCancel.phase === "dispatched" && beforeEarlyCancel.usageKey === null,
+          beforeWholeCancel: beforeWholeCancel !== undefined && beforeWholeCancel.phase === "dispatched" && beforeWholeCancel.usageKey === null,
           idleDispatched: idle.status === 200 && beforeIdleCancel !== undefined && beforeIdleCancel.phase === "dispatched" && beforeIdleCancel.usageKey === null,
           holds: settled.map((row, index) => [row.request === keyOf(index + 1), row.phase, row.usageKey === row.key, row.outcome,
             row.outcome === "unknown" ? row.charged === row.quote : index >= 5 ? Number(row.quote) - Number(row.charged) : Number(row.charged)]),
           cancelSameKey: beforeCancel !== undefined && settled.find((row) => row.request === keyOf(6))?.key === beforeCancel.key,
           earlyCancelSameKey: beforeEarlyCancel !== undefined && settled.find((row) => row.request === keyOf(7))?.key === beforeEarlyCancel.key,
           idleCancelSameKey: beforeIdleCancel !== undefined && settled.find((row) => row.request === keyOf(8))?.key === beforeIdleCancel.key,
-          retainedStream: retainedStream.length, retainedBeforeHeaders, retainedIdle: retainedIdle.length,
+          wholeCancelSameKey: beforeWholeCancel !== undefined && settled.find((row) => row.request === keyOf(9))?.key === beforeWholeCancel.key,
+          retainedStream: retainedStream.length, retainedBeforeHeaders: earlyStream.retainedCount, retainedIdle: retainedIdle.length,
+          retainedWholeBeforeHeaders: earlyWhole.retainedCount,
           cancelledUpstream: llm.aborted, providerCalls: llm.bodies.length, duplicate: duplicate.status,
           replayUnchanged: JSON.stringify(settled) === JSON.stringify(replayed),
         }
@@ -325,7 +341,6 @@ module node {
         await fixture.close()
       }
     } finally {
-      releaseHeaders.resolve()
       await fakes.close()
     }
   }
@@ -333,13 +348,13 @@ module node {
 
 import { workerChatJourney } from node
 
-it.live('Worker streams complete frames and settles the original hold (spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold")', () => effect {
+it.live('Worker streams complete frames and settles the original hold (spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported")', () => effect {
   const got = try tryPromise(() => workerChatJourney((profile, organization, databaseUrl) =>
     runPromise(Effect.provide(fundWorkerChat(profile, organization), storeLayer({ kind: "pg", url: databaseUrl })))))
   const answer = { status: 200, content: replyText, models: ["test-chat"], usage: 0, errors: 0, done: 1, terminal: true, complete: true }
   try check(() => assert.deepStrictEqual(got, {
     asked: { ...answer, usage: 1 }, notAsked: answer, truncated: { ...answer, errors: 1 },
-    usedBeforeFailure: { ...answer, errors: 1 }, preHeader: true, hangingStatus: 200, liveCompleteFrame: true, beforeCancel: true, beforeEarlyCancel: true, idleDispatched: true,
+    usedBeforeFailure: { ...answer, errors: 1 }, preHeader: true, hangingStatus: 200, liveCompleteFrame: true, beforeCancel: true, beforeEarlyCancel: true, beforeWholeCancel: true, idleDispatched: true,
     holds: [
       [true, "settled", true, "known", 31],
       [true, "settled", true, "known", 31],
@@ -349,9 +364,10 @@ it.live('Worker streams complete frames and settles the original hold (spec/clou
       [true, "settled", true, "known", 36],
       [true, "settled", true, "known", 38],
       [true, "settled", true, "known", 38],
+      [true, "settled", true, "known", 38],
     ],
-    cancelSameKey: true, earlyCancelSameKey: true, idleCancelSameKey: true,
-    retainedStream: 1, retainedBeforeHeaders: 1, retainedIdle: 1,
+    cancelSameKey: true, earlyCancelSameKey: true, idleCancelSameKey: true, wholeCancelSameKey: true,
+    retainedStream: 1, retainedBeforeHeaders: 1, retainedIdle: 1, retainedWholeBeforeHeaders: 1,
     cancelledUpstream: 2, providerCalls: 7, duplicate: 409, replayUnchanged: true,
   }))
 }, 60_000)
