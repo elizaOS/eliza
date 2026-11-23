@@ -79,8 +79,6 @@ export {
   normalizePromptSegments,
   renderContextObject,
   segmentBlock,
-  stampedMessage,
-  stampYear,
 } from "./runtime/context-renderer.vibe"
 export {
   containsToolCallShapedMarkup,
