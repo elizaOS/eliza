@@ -107,7 +107,7 @@ export function meteredChatStream({ upstream, publicModelId, quoted, holdKey, pr
     })),
     Stream.ensuring(effect {
       if (settled) return
-      const counts = failed ? reported : hangUpCounts(quoted, reported?.inputTokens ?? 0, deliveredChars)
+      const counts = failed ? reported : hangUpCounts(quoted, reported === undefined ? 0 : reported.inputTokens + reported.cachedTokens, deliveredChars)
       const actual = counts === undefined ? undefined : try price(counts)
       finishHold(completionSettlement(actual)) catch effect (failure) => {
         try annotateLogs(logError("a chat hold could not settle when the connection closed"), { holdKey, failure: failure._tag })

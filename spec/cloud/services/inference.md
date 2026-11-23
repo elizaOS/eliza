@@ -135,7 +135,7 @@ pure val bodyValues: Set[ChatBody] = Set(textBody, { ...textBody, parts: List(Te
   { ...textBody, model: "m9" }, { ...textBody, maxTokens: AskFor({ tokens: 9 }), maxCompletionTokens: AskFor({ tokens: 3000000 }) })
 pure val otherBodyValues: Set[ChatBody] = bodyValues
 pure val catalogValues: Set[Catalog] = {
-  val seeing = { profile: List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: true, defaultMaxTokens: Mo::OutputDefaultOf({ tokens: 4096 }) }), prices: List({ modelId: "m1", inputPer1K: 3, outputPer1K: 15 }) }
+  val seeing = { profile: List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: true, defaultMaxTokens: Mo::OutputDefaultOf({ tokens: 4096 }) }), prices: List({ modelId: "m1", inputPer1K: 3, cachedInputPer1K: 1, outputPer1K: 15 }) }
   Set({ profile: List(), prices: List() }, seeing, { ...seeing, profile: List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: false, defaultMaxTokens: Mo::NoOutputDefault }) })
 }
 pure val fundingValues: Set[Funding] = Set({ allowanceAvailable: 0, creditAvailable: 0 }, { allowanceAvailable: 0, creditAvailable: 20 }, { allowanceAvailable: 5, creditAvailable: 5 }, { allowanceAvailable: 0, creditAvailable: -1 })
@@ -143,8 +143,8 @@ pure val fundingValues: Set[Funding] = Set({ allowanceAvailable: 0, creditAvaila
 
 ### A request is admitted only for a live caller under its plan limit, held under the policy's lane at its quote, and otherwise refused well formed
 
-The quote counts a token per four input characters, rounded up, and the
-output the request allows: `max_completion_tokens`, else `max_tokens`, else
+The quote counts a token per four input characters, rounded up, none of
+them as read from a prompt cache, and the output the request allows: `max_completion_tokens`, else `max_tokens`, else
 the selected upstream model’s configured maximum generation length. The
 provider receives the resulting cap for both whole replies and streams. A
 model with no configured maximum requires a caller cap. An uncapped request
@@ -161,7 +161,7 @@ pure def outputLimit(maxCompletionTokens: TokenAsk, maxTokens: TokenAsk, default
   else if (maxTokens != NoAsk) maxTokens
   else match defaultMaxTokens { | OutputDefaultOf(x) => AskFor({ tokens: x.tokens }) | NoOutputDefault => NoAsk }
 pure def quoteCounts(chars: CharCount, outputTokens: int): Mo::TokenCounts =
-  { inputTokens: tokensOf(chars), outputTokens: outputTokens }
+  { inputTokens: tokensOf(chars), cachedTokens: 0, outputTokens: outputTokens }
 pure val charsValues = Set(-1, 0, 1, 4, 5, 8000000, 8000001)
 pure def lawEveryInputCharacterIsQuoted(chars: CharCount): bool = chars >= 0 implies (tokensOf(chars) * 4 >= chars and tokensOf(chars) * 4 < chars + 4)
 pure def lawAnAdmittedCallIsHeldAtItsQuote(ingress: R::Window, auth: RA::Admission, policy: E::PolicyAnswer, planWindow: R::Window, body: ChatBody, catalog: Catalog, funding: Funding): bool = {
@@ -208,21 +208,22 @@ A finished response or a failed stream is charged any usable usage report
 already received. When either has no such report, including a provider
 connection failure before streaming begins, it is charged the quote.
 A hang-up cancels the provider call itself
-and is charged the larger of the quoted and reported input tokens and a
-token per four delivered characters, each capped at `Mo::maxTokensPerSide`.
+and is charged the larger of the quoted and reported input tokens, all at
+the input price, and a token per four delivered characters, each capped at
+`Mo::maxTokensPerSide`.
 
 ```quint
 type UsageReport = NoUsage | Usage({ usage: Mo::ProviderUsage })
 type CompletionEnd = Finished({ report: UsageReport }) | HungUp({ reportedInput: int, deliveredChars: CharCount }) | ProviderRejected({ status: int }) | ProviderFailed({ report: UsageReport })
 type CompletionCharge = ChargeCounts({ counts: Mo::TokenCounts }) | ChargeQuote | ReleaseHold
-pure val noTokens: Mo::TokenCounts = { inputTokens: 0, outputTokens: 0 }
+pure val noTokens: Mo::TokenCounts = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 }
 pure def chargeOfUsage(u: Mo::ProviderUsage): CompletionCharge = {
   val billed = Mo::billedUsage(u)
   match billed { | Reported(r) => ChargeCounts({ counts: r.counts }) | Unreadable => ChargeQuote }
 }
 pure def chargeOfReport(report: UsageReport): CompletionCharge = match report { | NoUsage => ChargeQuote | Usage(u) => chargeOfUsage(u.usage) }
 pure def hangUpCounts(quoted: Mo::TokenCounts, reportedInput: int, deliveredChars: CharCount): Mo::TokenCounts =
-  { inputTokens: Mo::billedSide(quoted.inputTokens, reportedInput), outputTokens: Mo::billedSide(tokensOf(deliveredChars), 0) }
+  { inputTokens: Mo::billedSide(quoted.inputTokens, reportedInput), cachedTokens: 0, outputTokens: Mo::billedSide(tokensOf(deliveredChars), 0) }
 pure def chargeOf(dispatched: bool, end: CompletionEnd, quoted: Mo::TokenCounts): CompletionCharge =
   if (not(dispatched)) ReleaseHold
   else match end {
@@ -249,7 +250,7 @@ pure def lawAProviderReportDeterminesTheCharge(u: Mo::ProviderUsage, quoted: Mo:
   val expected = match billed { | Reported(r) => ChargeCounts({ counts: r.counts }) | Unreadable => ChargeQuote }
   chargeOf(true, Finished({ report: report }), quoted) == expected and chargeOf(true, ProviderFailed({ report: report }), quoted) == expected
 }
-pure val quotedValues: Set[Mo::TokenCounts] = Set(noTokens, { inputTokens: 10, outputTokens: 500 })
+pure val quotedValues: Set[Mo::TokenCounts] = Set(noTokens, { inputTokens: 10, cachedTokens: 0, outputTokens: 500 })
 pure val endValues: Set[CompletionEnd] = {
   val used = { promptTokens: 10, cachedTokens: 0, completionTokens: 7, reasoningTokens: 2 }
   Set(Finished({ report: NoUsage }), Finished({ report: Usage({ usage: used }) }), Finished({ report: Usage({ usage: { ...used, promptTokens: -1 } }) }),
@@ -285,7 +286,7 @@ refuses a second settlement or release.
 pure val rejectionStatuses: Set[int] = Set(400, 401, 402, 403, 404, 405, 406, 409, 410, 413, 415, 422, 429)
 pure def endOfFailure(status: int, delivered: bool): CompletionEnd =
   if (not(delivered) and rejectionStatuses.contains(status)) ProviderRejected({ status: status }) else ProviderFailed({ report: NoUsage })
-pure val pricedModel: Mo::Model = { id: "m1", provider: "p1", upstreamModel: "u1", vision: false, defaultMaxTokens: Mo::NoOutputDefault, inputPer1K: 3, outputPer1K: 15 }
+pure val pricedModel: Mo::Model = { id: "m1", provider: "p1", upstreamModel: "u1", vision: false, defaultMaxTokens: Mo::NoOutputDefault, inputPer1K: 3, cachedInputPer1K: 1, outputPer1K: 15 }
 pure def lawEveryCallClosesItsHoldOnce(lane: M::FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros, dispatched: bool, end: CompletionEnd, quoted: Mo::TokenCounts, creditFree: Micros): bool = {
   val held = M::reserve(M::initial, inferenceHoldKey("o1", "r1"), quote, lane, allowanceAvailable, creditAvailable, 0)
   val sent = if (dispatched) M::markDispatched(held, 0) else held
