@@ -16,6 +16,8 @@ interface Reply {
   readonly userMessageId: string
   readonly actionResults: readonly unknown[]
   readonly failureKind?: string
+  readonly planAction?: string
+  readonly retryAfterMs?: number
   readonly action?: { readonly kind: string; readonly validatedCard: boolean; readonly verbatimAsked: boolean }
 }
 
@@ -110,7 +112,7 @@ effect function send(agent: InProcess, id: string, body: object, headers?: Reado
 
 const replyOf = (answer: { readonly body: unknown }) => answer.body as Reply
 
-it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again")', effect () => {
+it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix and live wait, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const state = try scratch("turns")
   const first = try cloudAgent(cloud, state)
@@ -133,6 +135,11 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const unfunded = try send(first, id, { text: "Answer me.", clientMessageId: "m-3" })
   const storedFailure = try host("stored failure", () => first.agent.runtime.getMemoryById(replyOf(unfunded).messageId as UUID))
+  const limitedUntil = Date.now() + 60_000
+  try Effect.sync(() => cloud.script(rateLimited(limitedUntil)))
+  const limited = try send(first, id, { text: "Answer me now.", clientMessageId: "m-4" })
+  const limitedAgain = try send(first, id, { text: "Answer me now.", clientMessageId: "m-4" })
+  const storedLimit = try host("stored limit", () => first.agent.runtime.getMemoryById(replyOf(limited).messageId as UUID))
 
   try host("first stop", () => first.agent.stop())
   const second = try cloudAgent(cloud, state)
@@ -157,8 +164,14 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
     assert.deepStrictEqual(
       { owner: owner.status, text: replyOf(owner).text, joinedSame: replyOf(joined).messageId === replyOf(owner).messageId, busy: answerOf(overlap.busy), otherBody: answerOf(overlap.otherBody), calls: afterOverlap },
       { owner: 200, text: "Slow answer.", joinedSame: true, busy: { status: 429, body: { error: "ROOM_BUSY" } }, otherBody: { status: 409, body: { error: "CHAT_IDEMPOTENCY_CONFLICT" } }, calls: 3 })
-    assert.deepStrictEqual({ status: unfunded.status, failureKind: replyOf(unfunded).failureKind, stored: storedFailure?.content.failureKind },
-      { status: 200, failureKind: "insufficient_credits", stored: "insufficient_credits" })
+    assert.deepStrictEqual({ status: unfunded.status, failureKind: replyOf(unfunded).failureKind, planAction: replyOf(unfunded).planAction, stored: storedFailure?.content.failureKind },
+      { status: 200, failureKind: "insufficient_credits", planAction: "funding", stored: "insufficient_credits" })
+    const wait = replyOf(limited).retryAfterMs ?? -1
+    assert.deepStrictEqual({
+      status: limited.status, failureKind: replyOf(limited).failureKind, planAction: replyOf(limited).planAction, waits: wait > 0 && wait <= 60_000,
+      replayed: [replyOf(limitedAgain).messageId === replyOf(limited).messageId, replyOf(limitedAgain).failureKind, replyOf(limitedAgain).retryAfterMs],
+      stored: [storedLimit?.content.failureKind, storedLimit?.content.retryAt],
+    }, { status: 200, failureKind: "limit_reached", planAction: undefined, waits: true, replayed: [true, "limit_reached", undefined], stored: ["limit_reached", undefined] })
     assert.deepStrictEqual({ status: afterRestart.status, same: replyOf(afterRestart).messageId === replyOf(keyed).messageId, text: replyOf(afterRestart).text, calls: completions(cloud) - before },
       { status: 200, same: true, text: "Keyed answer.", calls: 0 })
     assert.deepStrictEqual({ status: cut.status, text: replyOf(cut).text, failureKind: replyOf(cut).failureKind, again: replyOf(cutAgain).messageId === replyOf(cut).messageId, calls: completions(cloud) - before },
