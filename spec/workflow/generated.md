@@ -117,4 +117,5 @@ pure def stepEndedRunStaysEnded(before: GeneratedRun, after: GeneratedRun): bool
   (before.phase == Settled or before.phase == Diverged or before.phase == EffectUnknown) implies after == before
 pure def sometimesResumedAfterSignal(r: GeneratedRun): bool = r.phase == Settled and r.journal.select(e => e.kind == SignalCall).length() > 0 and r.effectsSent == 1
 pure def sometimesDiverged(r: GeneratedRun): bool = r.phase == Diverged
+pure val eval_witness_sometimesResumedAfterSignal = (("dispatchEffect", "count", "d1"), "commitEffect", ("park", WaitSignal({ call: "ready", signal: "go" })), ("resumeWait", "ready", "d1"), "settleRun")
 ```
