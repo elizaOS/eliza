@@ -1,11 +1,14 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"
 import { sha256Hex, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
+import { freeTimeRead, intervalFree, morningAdmission, slotMinutesAllowed } from "../../gen/calendar__actions.effect.vibe"
+import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import { createNeedsConfirmation, statedYearCreate } from "../clock.vibe"
 import type { CalendarEvent, CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
+import { asksOnlyAboutTomorrowMorning, blockingSpans, openings, spanText, tomorrowMorning, windowFitsWeek } from "./free-time.vibe"
 import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearchResult } from "./host.vibe"
 import { CalendarService, calendarServiceType } from "./service.vibe"
 
@@ -14,7 +17,7 @@ export const calendarActionName = "CALENDAR"
 
 const day = 86_400_000
 const maxSpan = 370 * day
-const subactions = ["search_events", "next_event", "create_event", "update_event", "delete_event"] as const
+const subactions = ["search_events", "next_event", "check_availability", "propose_times", "create_event", "update_event", "delete_event"] as const
 type Subaction = typeof subactions[number]
 
 const isoWithZone = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/
@@ -34,6 +37,7 @@ const Parameters = Schema.Struct({
   endAt: Schema.optionalKey(Instant),
   isAllDay: Schema.optionalKey(Schema.Boolean),
   timeZone: Schema.optionalKey(Words(128)),
+  durationMinutes: Schema.optionalKey(Schema.Number),
   confirmedPastStart: Schema.optionalKey(Schema.Boolean),
   reviewBeforeSaving: Schema.optionalKey(Schema.Boolean),
   recurrenceScope: Schema.optionalKey(WriteScopeRecord),
@@ -201,6 +205,49 @@ function updatedFields(found: CalendarFound, parameters: Parameters, zone: strin
   }
 }
 
+effect function freeTime(host: CalendarHost, ask: CalendarAsk, parameters: Parameters, now: number, zone: string): ActionResult!! {
+  const subaction = parameters.subaction === "propose_times" ? "propose_times" : "check_availability"
+  const propose = subaction === "propose_times"
+  const begin = parameters.timeMin === undefined ? Number.NaN : Date.parse(parameters.timeMin)
+  const finish = parameters.timeMax === undefined ? Number.NaN : Date.parse(parameters.timeMax)
+  const minutes = parameters.durationMinutes ?? 0
+  const windowValid = windowFitsWeek(begin, finish, zone)
+  const durationValid = !propose || (Number.isInteger(minutes) && slotMinutesAllowed(minutes))
+  if (freeTimeRead(windowValid, durationValid, true) === "RefuseWindow") {
+    return failed(subaction, "I need the exact window (timeMin and timeMax, at most seven days apart) and, for openings, the asked length in minutes from 5 to 480.", { code: "CALENDAR_AVAILABILITY_INVALID_WINDOW" })
+  }
+  const morning = tomorrowMorning(now, zone)
+  if (morning !== undefined && morningAdmission(asksOnlyAboutTomorrowMorning(ask.text), begin < morning.midnight, finish > morning.noon) === "RefuseOutsideMorning") {
+    return failed(subaction, "The owner asked about tomorrow morning. Keep the window on tomorrow's date and end it by noon in the request's zone; for a shorter opening inside the morning, use propose_times.",
+      { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
+  }
+  const found = try host.search({ timeMin: Math.max(0, begin - day), timeMax: finish + day, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
+  if (found === undefined) return failed(subaction, "No calendar account is active right now.")
+  const asked = { begin, finish }
+  const busy = blockingSpans(found.events, zone)?.filter((span) => positiveOverlap(asked, span))
+  if (busy === undefined || freeTimeRead(windowValid, durationValid, found.complete) !== "AvailabilityKnown") {
+    return failed(subaction, "Some calendars could not be read completely, so I can't tell whether that time is free.", { code: "CALENDAR_AVAILABILITY_INCOMPLETE", availability: "unknown" })
+  }
+  const range = { windowStart: new Date(begin).toISOString(), windowEnd: new Date(finish).toISOString(), timeZone: zone, accountId: found.account.accountId }
+  if (!propose) {
+    const free = intervalFree(asked, busy)
+    return {
+      success: true, text: free ? `You're free ${spanText(asked, zone)}.` : `That time isn't free: ${busy.map((span) => spanText(span, zone)).join("; ")}.`,
+      data: { subaction, ...range, isFree: free, conflicts: busy.map((span) => ({ startAt: new Date(span.begin).toISOString(), endAt: new Date(span.finish).toISOString() })) },
+    }
+  }
+  const slots = openings(asked, minutes * 60_000, busy)
+  return {
+    success: true,
+    text: slots.length === 0 ? `I found no ${minutes}-minute opening on the quarter hour in that time.` : `I found these ${minutes}-minute openings: ${slots.map((slot) => spanText(slot, zone)).join(" and ")}.`,
+    data: {
+      subaction, ...range, durationMinutes: minutes,
+      slots: slots.map((slot) => ({ startAt: new Date(slot.begin).toISOString(), endAt: new Date(slot.finish).toISOString(), durationMinutes: minutes, timeZone: zone })),
+      availabilityEvidence: "Openings start on the quarter hour and come from this exact read. An empty list does not rule out an opening off the quarter hour.",
+    },
+  }
+}
+
 effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Parameters): ActionResult!! {
   const subaction = parameters.subaction
   const now = try Clock.currentTimeMillis
@@ -217,6 +264,9 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
       const events = subaction === "next_event" ? found.events.filter((event) => Date.parse(event.endAt) > now).slice(0, 1) : found.events
       return readResult(subaction, found, events, zone, subaction === "next_event" ? "Nothing is on your calendar in the next 30 days." : "No events match in that range.")
     }
+    case "check_availability":
+    case "propose_times":
+      return try freeTime(host, ask, parameters, now, zone)
     case "create_event": {
       const fields = decodeFields({
         title: parameters.title ?? "", description: parameters.description ?? "", location: parameters.location ?? "",
@@ -270,14 +320,14 @@ function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
 /** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all, applied at once on the agent's own calendar and through the owner's approval on a connected provider calendar, or on any calendar when the owner asked to review a new event before it is saved.",
-  similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
+  description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all, applied at once on the agent's own calendar and through the owner's approval on a connected provider calendar, or on any calendar when the owner asked to review a new event before it is saved.",
+  similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CALENDAR_CHECK_AVAILABILITY", "CALENDAR_PROPOSE_TIMES", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [
     { name: "subaction", required: true, description: "What to do.", schema: { type: "string", enum: [...subactions] } },
     { name: "query", required: false, description: "Words of the event title to look for.", schema: { type: "string" } },
-    { name: "timeMin", required: false, description: "Start of the range to read, ISO 8601 with an offset.", schema: { type: "string" } },
-    { name: "timeMax", required: false, description: "End of the range to read, ISO 8601 with an offset.", schema: { type: "string" } },
+    { name: "timeMin", required: false, description: "Start of the range to read, ISO 8601 with an offset. Required for check_availability and propose_times.", schema: { type: "string" } },
+    { name: "timeMax", required: false, description: "End of the range to read, ISO 8601 with an offset. Required for check_availability and propose_times; a morning-only request ends no later than noon in the request's zone.", schema: { type: "string" } },
     { name: "eventId", required: false, description: "The id of the event to change, from an earlier result.", schema: { type: "string" } },
     { name: "calendarId", required: false, description: "The calendar to read or write.", schema: { type: "string" } },
     { name: "title", required: false, description: "The event title, exactly as it should be saved.", schema: { type: "string" } },
@@ -287,6 +337,7 @@ export const calendarAction: Action = {
     { name: "endAt", required: false, description: "The event end, ISO 8601 with an offset.", schema: { type: "string" } },
     { name: "isAllDay", required: false, description: "Whether the event lasts whole days.", schema: { type: "boolean" } },
     { name: "timeZone", required: false, description: "The IANA zone the owner named for this request.", schema: { type: "string" } },
+    { name: "durationMinutes", required: false, description: "For propose_times: the exact number of minutes each opening needs. Do not guess a missing length.", schema: { type: "integer", minimum: 5, maximum: 480 } },
     { name: "confirmedPastStart", required: false, description: "The owner confirmed creating an event whose start has passed.", schema: { type: "boolean" } },
     { name: "reviewBeforeSaving", required: false, description: "For a new event: true when the owner asked to preview, review or confirm it before it is saved, or to prepare it without saving yet; it then waits for the owner's approval instead of a chat summary. Keep it when the owner adds missing details to that event. False or omitted for an ordinary create.", schema: { type: "boolean" } },
     { name: "repeat", required: false, description: "For a new repeating event: daily, weekdays or weekly.", schema: { type: "string", enum: ["daily", "weekdays", "weekly"] } },

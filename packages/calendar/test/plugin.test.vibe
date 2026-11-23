@@ -28,6 +28,7 @@ const work = { provider: "google", side: "owner", grantId: "grant", connectorAcc
 function googleCalendar() {
   const events = new Map<string, CalendarEvent>()
   const scopes: string[] = []
+  const health = { complete: true }
   let made = 0
   const mine = (account: CalendarAccount) => account.accountId === owner.accountId
   const refuse = (code: string) => new CalendarWriteNotAccepted({ failure: { code, message: code, retryable: false } })
@@ -38,7 +39,7 @@ function googleCalendar() {
       return mine(account) ? [{ ...work, accountEmail: owner.accountId, summary: "Work", description: null, primary: false, accessRole: "owner", timeZone: "UTC", selected: true, includeInFeed: true }] : []
     },
     effect read(account, _source, timeMin, timeMax) {
-      return { events: mine(account) ? [...events.values()].filter((event) => Date.parse(event.startAt) < timeMax && Date.parse(event.endAt) > timeMin) : [], complete: true }
+      return { events: mine(account) ? [...events.values()].filter((event) => Date.parse(event.startAt) < timeMax && Date.parse(event.endAt) > timeMin) : [], complete: health.complete }
     },
     effect get(account, _source, eventId) { return mine(account) ? events.get(eventId) : undefined },
     effect create(_account, _source, fields, _recurrence, key) {
@@ -69,7 +70,7 @@ function googleCalendar() {
       events.delete(eventId)
     },
   }
-  return { port, events, scopes }
+  return { port, events, scopes, health }
 }
 
 const march = { timeMin: "2030-03-01T00:00:00Z", timeMax: "2030-03-10T00:00:00Z" }
@@ -175,6 +176,59 @@ it.effect(`Ask the agent about my calendar and get my active account's events (s
   assert.strictEqual(at(removal.payload.change, "scope"), "instance")
   const invalidated = try host.executeApproval({ id: removal.id, action: removal.action, payload: removal.payload })
   assert.deepStrictEqual([invalidated.result, invalidated.failure?.code, google.events.size], ["ChangeInvalidated", "CALENDAR_REVIEW_UNBOUND", 1])
+})
+
+it.effect(`Ask when I am free and get openings from my real calendar (spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A free-time question reads exactly the asked window and answers only from a complete read"; spec/calendar/actions.md, "A tomorrow-morning question reads only tomorrow, from midnight to noon"; spec/calendar/actions.md, "A period is free only when no blocking event overlaps it"; spec/calendar/actions.md, "Openings are at most two quarter-hour starts of the asked length inside the window")`, effect () => {
+  try TestClock.setTime(Date.parse("2030-03-03T20:00:00Z"))
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })
+  const google = googleCalendar()
+  try host.register(google.port)
+  try host.bindAccount(owner)
+  const me = { email: owner.accountId, displayName: null, self: true, organizer: false, optional: false }
+  const row = (id: string, startAt: string, endAt: string, extra: Partial<CalendarEvent> = {}): CalendarEvent => ({
+    id, externalId: id, agentId: "agent", provider: "google", side: "owner", calendarId: "work", title: id, description: "", location: "", status: "confirmed",
+    startAt, endAt, isAllDay: false, timezone: "UTC", htmlLink: null, conferenceLink: null, organizer: null, attendees: [], metadata: { etag: id },
+    syncedAt: "2030-01-01T00:00:00.000Z", updatedAt: "2030-01-01T00:00:00.000Z", connectorAccountId: owner.accountId, grantId: "grant", ...extra,
+  })
+  for (const event of [
+    row("standup", "2030-03-04T17:00:00.000Z", "2030-03-04T17:30:00.000Z"),
+    row("review", "2030-03-04T17:45:00.000Z", "2030-03-04T18:40:00.000Z"),
+    row("declined", "2030-03-04T18:40:00.000Z", "2030-03-04T19:30:00.000Z", { attendees: [{ ...me, responseStatus: "declined" }] }),
+    row("focus", "2030-03-04T19:00:00.000Z", "2030-03-04T20:00:00.000Z", { metadata: { etag: "focus", transparency: "transparent" } }),
+    row("cancelled", "2030-03-04T19:00:00.000Z", "2030-03-04T19:30:00.000Z", { status: "cancelled" }),
+    row("offsite", "2030-03-06T00:00:00.000Z", "2030-03-07T00:00:00.000Z", { isAllDay: true }),
+  ]) google.events.set(event.id, event)
+  const zone = "America/Los_Angeles"
+  const asked = (text: string, parameters: Record<string, unknown>) => runCalendarAction(host, { by: "owner-entity", id: text, text }, { timeZone: zone, ...parameters })
+  const morning = { subaction: "propose_times", timeMin: "2030-03-04T09:00:00-08:00", timeMax: "2030-03-04T12:00:00-08:00", durationMinutes: 20 }
+
+  const twenty = try asked("Do I have 20 minutes tomorrow morning?", morning)
+  assert.deepStrictEqual([twenty.success, at(twenty.data, "slots")], [true, [
+    { startAt: "2030-03-04T18:45:00.000Z", endAt: "2030-03-04T19:05:00.000Z", durationMinutes: 20, timeZone: zone },
+    { startAt: "2030-03-04T19:15:00.000Z", endAt: "2030-03-04T19:35:00.000Z", durationMinutes: 20, timeZone: zone },
+  ]])
+  const evening = try asked("Do I have 20 minutes tomorrow morning?", { ...morning, timeMax: "2030-03-04T20:00:00-08:00" })
+  assert.deepStrictEqual([evening.success, at(evening.data, "code")], [false, "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD"])
+  const early = try asked("Am I free tomorrow morning until noon?", { ...morning, subaction: "check_availability", timeMin: "2030-03-03T23:00:00-08:00" })
+  assert.strictEqual(at(early.data, "code"), "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD")
+  const exact = try asked("Am I free tomorrow morning until noon?", { subaction: "check_availability", timeMin: "2030-03-04T00:00:00-08:00", timeMax: "2030-03-04T12:00:00-08:00" })
+  assert.deepStrictEqual([exact.success, at(exact.data, "isFree"), at(exact.data, "conflicts")], [true, false, [
+    { startAt: "2030-03-04T17:00:00.000Z", endAt: "2030-03-04T17:30:00.000Z" }, { startAt: "2030-03-04T17:45:00.000Z", endAt: "2030-03-04T18:40:00.000Z" },
+  ]])
+  for (const wider of ["Am I free tomorrow morning or afternoon?", "Check today or tomorrow morning.", "Am I free tomorrow morning from 10 to 12:30?", "Am I free tomorrow morning until 13:00?"]) {
+    const read = try asked(wider, { subaction: "check_availability", timeMin: "2030-03-04T10:00:00-08:00", timeMax: "2030-03-04T20:00:00-08:00" })
+    assert.deepStrictEqual([wider, read.success, at(read.data, "isFree"), at(read.data, "conflicts", "length")], [wider, true, false, 1])
+  }
+  const eleven = try asked("Am I free tomorrow at 11?", { subaction: "check_availability", timeMin: "2030-03-04T11:00:00-08:00", timeMax: "2030-03-04T11:30:00-08:00" })
+  assert.deepStrictEqual([eleven.success, at(eleven.data, "isFree"), at(eleven.data, "conflicts")], [true, true, []])
+  const wednesday = try asked("Is Wednesday free?", { subaction: "check_availability", timeMin: "2030-03-06T00:00:00-08:00", timeMax: "2030-03-07T00:00:00-08:00" })
+  assert.deepStrictEqual(at(wednesday.data, "conflicts"), [{ startAt: "2030-03-06T08:00:00.000Z", endAt: "2030-03-07T08:00:00.000Z" }])
+  const unsized = try asked("Find me time this week", { subaction: "propose_times", timeMin: "2030-03-04T09:00:00-08:00", timeMax: "2030-03-04T12:00:00-08:00" })
+  const tooLong = try asked("Am I free this month?", { subaction: "check_availability", timeMin: "2030-03-04T00:00:00-08:00", timeMax: "2030-03-12T00:00:00-07:00" })
+  assert.deepStrictEqual([at(unsized.data, "code"), at(tooLong.data, "code")], ["CALENDAR_AVAILABILITY_INVALID_WINDOW", "CALENDAR_AVAILABILITY_INVALID_WINDOW"])
+  google.health.complete = false
+  const stale = try asked("Do I have 20 minutes tomorrow morning?", morning)
+  assert.deepStrictEqual([stale.success, at(stale.data, "availability"), at(stale.data, "slots")], [false, "unknown", undefined])
 })
 
 it.effect(`Change my calendar only as I asked and know it happened, from the owner's client (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened")`, effect () => {

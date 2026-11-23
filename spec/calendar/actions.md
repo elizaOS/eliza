@@ -28,6 +28,119 @@ pure val eventAccountValues = Set("owner", "other")
 pure val activeAccountValues = Set("owner", "other")
 ```
 
+## Story: Ask when I am free and get openings from my real calendar
+
+> As the owner, I want the agent to tell me whether a whole period is
+> free, or to find openings of the length I asked for inside it, from a
+> complete read of my calendars and only within the period I named.
+
+### A free-time question reads exactly the asked window and answers only from a complete read
+
+Checking a period (`check_availability`) and finding openings
+(`propose_times`) both take the window's start and end, each with an
+explicit offset, in the request's zone. The end is after the start and
+no later than seven civil days after it in that zone, at the same wall
+time. Finding openings also needs the asked length, a whole number of
+minutes from 5 to 480, and never guesses a missing one. The read covers
+exactly that window, on the calendar named or on every listed calendar
+of the active account. When any of them could not be read completely,
+availability is unknown: the answer is neither free nor an opening.
+Neither question books or changes anything.
+
+```quint
+import availability.* from "./availability"
+type FreeTimeRead = RefuseWindow | AvailabilityUnknown | AvailabilityKnown
+pure def slotMinutesAllowed(minutes: int): bool = minutes >= 5 and minutes <= 480
+pure def freeTimeRead(windowValid: bool, durationValid: bool, readComplete: bool): FreeTimeRead =
+  if (not(windowValid and durationValid)) RefuseWindow
+  else if (not(readComplete)) AvailabilityUnknown
+  else AvailabilityKnown
+pure def lawIncompleteReadIsUnknown(windowValid: bool, durationValid: bool): bool =
+  freeTimeRead(windowValid, durationValid, false) != AvailabilityKnown
+pure def lawInvalidWindowIsRefused(durationValid: bool, readComplete: bool): bool =
+  freeTimeRead(false, durationValid, readComplete) == RefuseWindow
+pure def lawSlotLengthIsBounded(minutes: int): bool =
+  slotMinutesAllowed(minutes) implies minutes >= 5 and minutes <= 480
+pure val minutesValues = Set(4, 5, 480, 481)
+```
+
+### A tomorrow-morning question reads only tomorrow, from midnight to noon
+
+When the owner's words ask about tomorrow morning and no other period,
+the window must start no earlier than tomorrow's midnight and end no
+later than tomorrow's noon in the request's zone; a wider window is
+refused before anything is read, pointing to a slot search for a shorter
+opening. Both bounds themselves are inside the morning. A noon end bound
+("until noon", "through 12:00 PM") keeps the request morning-only. The
+request names another period when it also names another part of the day
+(afternoon, evening, tonight, noon, lunch, all day, the rest of the day,
+the week), an afternoon clock time (1 to 12 pm, 12:01 to 12:59 without
+"am", or 13:00 to 23:59), another day (today, a weekday, a date), or asks
+after, before, except or not tomorrow morning; such a window is read as
+asked.
+
+```quint
+type MorningAdmission = ReadMorning | RefuseOutsideMorning
+pure def morningAdmission(morningOnly: bool, startsEarly: bool, endsLate: bool): MorningAdmission =
+  if (morningOnly and (startsEarly or endsLate)) RefuseOutsideMorning else ReadMorning
+pure def lawMorningReadStaysInMorning(startsEarly: bool, endsLate: bool): bool =
+  morningAdmission(true, startsEarly, endsLate) == ReadMorning implies not(startsEarly) and not(endsLate)
+pure def lawWiderRequestIsRead(startsEarly: bool, endsLate: bool): bool =
+  morningAdmission(false, startsEarly, endsLate) == ReadMorning
+```
+
+### A period is free only when no blocking event overlaps it
+
+An event blocks the time it overlaps with positive length; a zero-length
+or adjacent event blocks nothing. A cancelled event, one the owner
+declined and one marked free block nothing. A tentative event blocks,
+and so does an all-day event, over its civil days in the request's zone.
+A period is free exactly when no blocking event overlaps it, and a busy
+answer lists the start and end of each blocking event.
+
+```quint
+pure def eventBlocks(cancelled: bool, ownerDeclined: bool, markedFree: bool): bool =
+  not(cancelled) and not(ownerDeclined) and not(markedFree)
+pure def intervalFree(asked: TimeWindow, busy: List[TimeWindow]): bool =
+  not(busy.some(blocker => positiveOverlap(asked, blocker)))
+pure def lawDeclinedNeverBlocks(cancelled: bool, markedFree: bool): bool =
+  not(eventBlocks(cancelled, true, markedFree))
+pure def lawOverlapIsBusy(asked: TimeWindow, blocker: TimeWindow): bool =
+  positiveOverlap(asked, blocker) implies not(intervalFree(asked, List(blocker)))
+pure def lawAdjacentLeavesFree(asked: TimeWindow): bool =
+  intervalFree(asked, List({ begin: asked.finish, finish: asked.finish + 1 }, { begin: asked.begin, finish: asked.begin }))
+pure val askedValues = Set({ begin: 0, finish: 4 }, { begin: 2, finish: 6 }, { begin: 0, finish: 3600000 })
+pure val blockerValues = Set({ begin: 3, finish: 5 }, { begin: 4, finish: 4 }, { begin: 6, finish: 8 })
+pure val busyValues = Set(List(), List({ begin: 3, finish: 5 }), List({ begin: 4, finish: 4 }, { begin: 6, finish: 8 }))
+```
+
+### Openings are at most two quarter-hour starts of the asked length inside the window
+
+An opening has exactly the asked length, lies inside the window and is
+free. It starts on a quarter hour of UTC time. The first is the earliest
+such start, the second the earliest at or after the first one's end, and
+there are at most two. The answer says that an empty list does not rule
+out an opening off the quarter hour.
+
+```quint
+pure val quarterHour: int = 900000
+pure def alignedStart(at: int): int = if (at % quarterHour == 0) at else (at / quarterHour + 1) * quarterHour
+pure def slotOffered(asked: TimeWindow, start: int, durationMs: int, busy: List[TimeWindow]): bool =
+  durationMs > 0 and start % quarterHour == 0 and start >= asked.begin and start + durationMs <= asked.finish and
+  intervalFree({ begin: start, finish: start + durationMs }, busy)
+pure def nextSearchStart(foundStart: int, durationMs: int): int = alignedStart(foundStart + durationMs)
+pure def lawOfferedSlotFitsWindow(asked: TimeWindow, start: int, durationMs: int, busy: List[TimeWindow]): bool =
+  slotOffered(asked, start, durationMs, busy) implies start >= asked.begin and start + durationMs <= asked.finish
+pure def lawNextOpeningNeverOverlaps(foundStart: int, durationMs: int): bool =
+  foundStart >= 0 and durationMs > 0 implies nextSearchStart(foundStart, durationMs) >= foundStart + durationMs
+pure def lawAlignedStartIsOnTheQuarter(at: int): bool =
+  at >= 0 implies alignedStart(at) % quarterHour == 0 and alignedStart(at) >= at and alignedStart(at) < at + quarterHour
+pure val startValues = Set(0, 900000, 1800000)
+pure val durationMsValues = Set(0, 300000, 900000, 1200000)
+pure val foundStartValues = Set(0, 900000, 1000000)
+pure val atValues = Set(-1, 0, 1, 900000, 1350000)
+```
+
 ## Story: Change my calendar only as I asked and know it happened
 
 > As the owner, I want a change the agent makes to my calendar to carry
