@@ -224,7 +224,10 @@ export effect function saveScopedEdit(rows: readonly CalendarRow[], selected: Re
     const parentFields: CalendarRowFields = { ...fields, begin: parentBegin, end: parentBegin + end - begin }
     const saved = parent.id === row.id ? try saveEdit(rows, { id: parent.id, revision: parent.revision }, parentFields, mint)
       : try saveSeriesEdit(rows, try reviewSeries(rows, selected, effect () => true), parentFields, mint)
-    return { rows: saved, selected: occurrenceId(parent.id, begin) }
+    if (parent.id !== row.id && storedRow(rows, row)) return { rows: try saveEdit(saved, selected, fields, mint), selected: row.id }
+    const moved = occurrenceId(parent.id, begin)
+    if (findRow(saved, moved) === undefined) throw new InvalidSeriesTime({ zone: zoneOf(parent), wall: begin })
+    return { rows: saved, selected: moved }
   }
   const { kept, moved } = splitStarts([...parent.excluded ?? []], splitAt)
   const following = rows.filter((stored) => stored.seriesId === parent.id && stored.id !== row.id && (stored.occurrenceBegin ?? stored.begin) >= splitAt)
