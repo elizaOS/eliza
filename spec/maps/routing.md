@@ -70,3 +70,23 @@ pure def lawExpiredChoiceNeverBinds(a: ChoiceAnswer): bool = a.age > choiceLifet
 pure def lawChoiceStaysInItsConversation(a: ChoiceAnswer): bool = not(a.sameConversation) implies not(choiceBinds(a))
 pure def lawPositionIsAmongTheOptions(a: ChoiceAnswer): bool = choiceBinds(a) implies a.position <= a.options
 ```
+
+### A Maps screen selection asks the planner to name the place
+
+A screen selection handle identifies an observation of the Maps screen.
+When it is offered as a provider place ID, Maps uses the provided place
+name or address, or an already bound answer to an open Maps question.
+When the handle is the only target, the planner receives a request to name
+the place from the conversation. The handle never reaches the provider.
+
+```quint
+type SelectionTarget = UsePlaceId | UsePlaceName | AskPlannerForPlace
+pure def mapsSelectionTarget(hasHandle: bool, hasName: bool): SelectionTarget =
+  if (not(hasHandle)) UsePlaceId
+  else if (hasName) UsePlaceName
+  else AskPlannerForPlace
+pure def lawMapsHandleNeverServesAsPlaceId(hasName: bool): bool =
+  mapsSelectionTarget(true, hasName) != UsePlaceId
+pure def lawMapsHandleOnlyAsksForThePlace(hasName: bool): bool =
+  (mapsSelectionTarget(true, hasName) == AskPlannerForPlace) == not(hasName)
+```

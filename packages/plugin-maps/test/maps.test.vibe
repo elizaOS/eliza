@@ -1,8 +1,9 @@
 // spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"; spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"
-import { assert, it } from "@effect/vitest"
+import { assert, it, layer } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
 import type { IAgentRuntime, JsonObject, Memory } from "@elizaos/core"
+import { mapsChat, mapsToolCall } from "./support/cloud.ts"
 import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
 import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
 import { MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route } from "../src/client/contracts.vibe"
@@ -427,6 +428,70 @@ it.effect('Let the agent see only what the Maps screen shows now (spec/maps/obse
   const retired = try observation.validate(seen)
   try Effect.try(() => assert.deepStrictEqual({ current, republished, changed, retired, fresh: renewed?.id !== seen.id },
     { current: true, republished: true, changed: false, retired: false, fresh: true }))
+})
+
+service MapsChatFixture {
+  readonly chat: Awaited<ReturnType<typeof mapsChat>>
+  readonly bodies: ReturnType<typeof linkFake>["bodies"]
+}
+
+const mapsChatFixture = Layer.effect(MapsChatFixture, effect {
+  const { link, bodies } = linkFake()
+  const chat = try acquireRelease(tryPromise(() => mapsChat(mapsPlugin, link.request)), (running) => promise(() => running.close()))
+  return { chat, bodies }
+})
+
+layer(mapsChatFixture, { excludeTestServices: true, timeout: "3 minutes" })("Maps recovery over the resident API", (it) => {
+  it.effect('Recover directions from a phone Maps selection without asking for the named place again (spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript")', effect () => {
+    const { chat, bodies } = try MapsChatFixture
+    const observed = try mapsObservation()
+    try observed.publish({ query: "Coit Tower", area: "San Francisco", results: ["Coit Tower"], provider: "google", ready: true })
+    const selectedObject = try observed.observe()
+    if (selectedObject === undefined) return try die("The Maps screen has no selection handle")
+    try Effect.try(() => chat.script(mapsToolCall("MAPS_PLACE", { query: "Coit Tower", placeId: selectedObject.id }), { content: "Here is Coit Tower." }))
+    const opened = try tryPromise(() => chat.post("/api/conversations", {}))
+    const { conversation } = try Schema.decodeUnknownEffect(Schema.Struct({ conversation: Schema.Struct({ id: Schema.String }) }))(opened.body)
+    const path = `/api/conversations/${conversation.id}/messages`
+    const first = try tryPromise(() => chat.post(path, { text: "Show me Coit Tower on the map." }))
+    if (first.status !== 200) return try die("Showing the original place was refused")
+    try Effect.try(() => chat.script(
+      mapsToolCall("MAPS_NAVIGATION_START", { placeId: selectedObject.id }),
+      mapsToolCall("MAPS_NAVIGATION_START", { placeId: selectedObject.id, destination: "Coit Tower" }),
+      { content: "Here are directions to Coit Tower." },
+    ))
+    const sent = try tryPromise(() => chat.post(path, {
+      text: "Directions to it.", metadata: { observation: { view: "maps", revision: 1, sensitive: false, selectedObject } },
+    }))
+    if (sent.status !== 200) return try die("The directions turn was refused")
+    const answer = try Schema.decodeUnknownEffect(Schema.Struct({
+      text: Schema.String,
+      actionResults: Schema.Array(Schema.Struct({
+        action: Schema.String, data: Schema.Struct({ card: Schema.optionalKey(Schema.Struct({ kind: Schema.String })) }),
+      })),
+    }))(sent.body)
+    const planningRequest = try Schema.decodeUnknownEffect(Schema.Struct({
+      messages: Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.optionalKey(Schema.Unknown) })),
+    }))(chat.prompts.at(-3))
+    try Effect.try(() => {
+      const prompts = chat.prompts.slice(-3).map((body) => JSON.stringify(body))
+      const sentDetails = bodies.filter(({ path }) => path.endsWith("/places/details"))
+      const searches = bodies.filter(({ path }) => path.endsWith("/places/search"))
+      assert.deepStrictEqual({
+        sawSelection: prompts[0]?.includes(selectedObject.id),
+        priorPlace: planningRequest.messages.some(({ role, content }) => role === "user" && content === "Show me Coit Tower on the map."),
+        coached: prompts[1]?.includes("MAPS_SELECTION_HANDLE") && prompts[1]?.includes("destination"),
+        lookupsOfHandle: sentDetails.length,
+        searches: searches.map(({ body }) => body),
+        actions: answer.actionResults.map(({ action }) => action),
+        route: answer.actionResults[0]?.data.card?.kind ?? recognizedMapsCards(answer.text)[0]?.card.kind,
+        named: answer.text.includes("Coit Tower"),
+        falseFailure: /did not start|did not complete|MAPS_SELECTION_HANDLE/iu.test(answer.text),
+      }, {
+        sawSelection: true, priorPlace: true, coached: true, lookupsOfHandle: 0, searches: [{ query: "Coit Tower" }, { query: "Coit Tower", limit: 5 }],
+        actions: ["MAPS_NAVIGATION_START"], route: "handoff", named: true, falseFailure: false,
+      })
+    })
+  })
 })
 
 it.effect('Keep my saved places safe on this phone: saving the same place again replaces it, and a list that cannot be read is never written over (spec/maps/savedPlaces.md, "Story: Keep my saved places safe on this phone")', effect () => {
