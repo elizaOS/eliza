@@ -35,7 +35,6 @@ export { linkedCalendarRoutes, type LinkedRouteContext } from "./plugin/linked-r
 export { RecurrenceRecord, ScopeMismatch, WriteScopeRecord, type CalendarRecurrence, type CalendarWriteScope } from "./series/index.vibe"
 export { ResidentNeedsReview, importPriorResident } from "./plugin/providers.vibe"
 export { calendarProposalFamily }
-export { declinesInWords, localInstant, namedInWords, parseExplicitLocalDate, parseStatedClockTimes, statedLengths, type StatedClockTime, type StatedClockTimes } from "./request-time.vibe"
 
 /** The package name the agent bundle loads this plugin under. */
 export const calendarPluginName = "@elizaos/plugin-calendar"

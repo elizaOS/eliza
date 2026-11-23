@@ -211,7 +211,7 @@ function groundReminder(operation: DeviceOperation, turn: DeviceTurn): Grounding
     return phoneZoneGrounded(turn.observation?.sensitive ?? true, observed, handoff.timeZone) ? { kind: "Grounded", operation: handoff } : clockZoneChanged(observed)
   }
   if (!recordsProposed(turn)) return sourceMismatch
-  const asksCancel = reminderCancelAsked(cancelWords.test(turn.ownerText), declinesInWords(turn.ownerText))
+  const asksCancel = reminderCancelAsked(cancelWords.test(turn.ownerText), declinesInWords(turn.ownerText, cancelWords))
   switch (operation.type) {
     case "reminder_read_selected":
     case "reminder_update":

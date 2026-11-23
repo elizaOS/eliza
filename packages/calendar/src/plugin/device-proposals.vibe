@@ -1,43 +1,47 @@
 // spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A delete is proposed only when the owner's own words ask for it, and a no keeps the event"; spec/calendar/reviewedReads.md, "A new phone event starts at the day and time the owner stated, in the phone's zone"; spec/calendar/reviewedReads.md, "A change after a shared read moves the event to the day and time the owner gave it, keeping its length unless the owner gave one"; spec/calendar/availability.md, "An availability window is the day and time the owner asked about, in the phone's zone"
 import type { ActionParameterSchema } from "@elizaos/core"
 import { readResult, type DeviceOperation, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type ProposalForm } from "@elizaos/agent/device-actions"
-import { askedAvailability } from "../../gen/calendar__availability.effect.vibe"
+import { askedAvailability, availabilityDayKnown, availabilityWindowed } from "../../gen/calendar__availability.effect.vibe"
 import {
-  calendarProposalAdmitted, changedEnd, deleteAsked, editAfterRead, eventTimeStated, namedGrounded, recordSource, statedEnd, targetGrounded, timeChangeStated,
-  type CalendarView, type ProposalReach, type StatedClock,
+  calendarProposalAdmitted, changedEnd, changeOf, changeReadAdmitted, deleteAsked, editAfterRead, namedGrounded, newEventStated, ownerWordsKept, recordSource,
+  statedEnd, targetGrounded, timeChangeStated, type CalendarView, type ChangeAsked, type ProposalReach, type StatedClock,
 } from "../../gen/calendar__reviewedReads.effect.vibe"
-import { addDaysToLocalDate, knownTimeZone, startOfCivilDay } from "../clock.vibe"
-import { declinesInWords, localInstant, namedInWords, parseExplicitLocalDate, parseStatedClockTimes, statedLengths, type StatedClockTimes } from "../request-time.vibe"
+import { CALENDAR_AVAILABILITY_CAPABILITY } from "../availability/projection.vibe"
+import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, namedCalendarReadTarget } from "../client/named-read.vibe"
+import { addDaysToLocalDate, getZonedDateParts, knownTimeZone, startOfCivilDay, type LocalDate } from "../clock.vibe"
+import {
+  declinesInWords, localInstant, namedInWords, namesAZone, parseExplicitLocalDate, parseStatedClockTimes, statedLengths, wordsInWords,
+  type StatedClockTime, type StatedClockTimes,
+} from "../request-time.vibe"
 import { calendarActionName } from "./actions.vibe"
 
 type Op<T extends DeviceOperation["type"]> = Extract<DeviceOperation, { readonly type: T }>
 type CalendarFields = Op<"calendar_create_local">["fields"]
 type CalendarTarget = Op<"calendar_read_selected">["target"]
 type CalendarSource = Op<"calendar_create">["source"]
+type Refusal = Extract<Grounding, { readonly kind: "Refused" }>
 type FormKey = "next" | "createLocal" | "create" | "readSelected" | "delete" | "namedRead" | "namedDelete" | "availability"
 
-const localEvent = "calendar.local-event.v1"
 const createCapability = "calendar.create.v1"
 const nextRead = "calendar.next-read.v1"
-const availabilityRead = "calendar.availability-read.v1"
-const namedRead = "calendar.named-read.v1"
 const namedTarget = "device.named-target.v1"
-const hour = 3_600_000
 
 const identifier = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
 const revision = /^[a-f0-9]{64}$/
 const phoneCalendarWords = /\b(?:phone|device|android|system|os)(?:['’]s)?\s+(?:own\s+)?calendar\b|\bcalendar\s+(?:app\s+)?on\s+(?:this|my|the)\s+(?:phone|device)\b/i
 const unsupportedCreate = /\b(?:every|each|daily|weekly|monthly|yearly|weekdays|repeat(?:s|ing)?|recurr\w*|invite\w*|guests?|attendees?|all[- ]day)\b/i
 const deleteWords = /\b(?:delete|remove|cancel|clear|drop|erase|get\s+rid\s+of)\b|\btake\b[\s\S]*\boff\b/i
-const changeWords = /\b(?:move|reschedule|change|push|shift|bump|postpone|delay|rename|retitle|edit|update|modify)\b/i
-const moveWords = /\b(?:move|reschedule|change|push(?:\s+back)?|shift|bump|postpone|delay)\b/i
-const compoundWords = /\b(?:if|unless|or|actually|instead|except|cancel|delete|never|without|description|location|place|notes?|body|invite|attendees?|guests?|people|repeat|recurr(?:ing|ence)?|google|microsoft|outlook)\b|\b(?:do\s+not|don['’]?t|read[- ]only|forget\s+(?:it|that)|never\s+mind)\b/iu
-const zoneWords = /\b(?:timezone|time\s+zone|UTC|GMT|[ECMP][SD]T)\b|[A-Za-z_]+\/[A-Za-z_]+/u
+const todayPart = /\b(?:this\s+(?:morning|afternoon|evening)|tonight|later\s+today)\b/i
+const leadingChange = /^[\s"“'‘]*(?:(?:please|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need|would\s+like|['’]d\s+like)\s+to\s+)?(?:move|reschedule|change|push|shift|bump|postpone|delay|rename|retitle|set|update|edit|call)\b/iu
+const moveWords = /\b(?:move|reschedule|push|shift|bump|postpone|delay)\b|\b(?:change|set|update|edit)\b(?!\s+(?:the\s+|its\s+)?(?:title|name)\b)/iu
+const renameMention = /\b(?:rename|retitle|title|name|call\s+it)\b/iu
+const otherWords = /\b(?:if|unless|or|actually|instead|except|cancel|delete|never|without|description|location|place|notes?|body|invite|attendees?|guests?|people|repeat|recurr(?:ing|ence)?|calendar|google|microsoft|outlook)\b|\b(?:do\s+not|don['’]?t|read[- ]only|forget\s+(?:it|that)|never\s+mind)\b/iu
+const eventNoun = /\bcalendar\s+(?:event|meeting|appointment)s?\b/giu
 const destinationMarker = /\b(?:to|(?:for|until|till)(?=\s+(?:today|tonight|tomorrow|(?:this|next)\s+(?:week(?:end)?|month|morning|afternoon|evening|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b|(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?\b|(?:tues|wednes|thurs|satur)day\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?=\s+\d|\s*$)|noon\b|midnight\b|\d{1,2}(?:[:/.-]\d|\s*(?:a\.?m\b|p\.?m\b)|(?:st|nd|rd|th)\b|\s*$|\s+(?:a\.?m\b|p\.?m\b|o['’]clock\b)))))\b/i
 const renameWords = [
-  /\b(?:rename|retitle)\b[\s\S]*?\bto\s+(.+)$/iu,
-  /\b(?:change|set|update)\s+(?:the\s+|its\s+)?(?:title|name)\s+to\s+(.+)$/iu,
-  /\bcall\s+it\s+(.+)$/iu,
+  /^[\s"“'‘]*(?:(?:please|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need|would\s+like|['’]d\s+like)\s+to\s+)?(?:rename|retitle)\b[\s\S]*?\bto\s+(.+)$/iu,
+  /^[\s"“'‘]*(?:(?:please|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need|would\s+like|['’]d\s+like)\s+to\s+)?(?:change|set|update)\s+(?:the\s+|its\s+)?(?:title|name)\s+to\s+(.+)$/iu,
+  /^[\s"“'‘]*(?:(?:please|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need|would\s+like|['’]d\s+like)\s+to\s+)?call\s+it\s+(.+)$/iu,
 ]
 
 const string = { type: "string" } satisfies ActionParameterSchema
@@ -49,7 +53,9 @@ function object(properties: Record<string, ActionParameterSchema>, required: rea
 const targetSchema = object({ sourceId: string, sourceRevision: string, eventId: string, revision: string })
 const sourceSchema = object({ sourceId: string, sourceRevision: string })
 const fieldsSchema = object({
-  title: string, description: string, location: string,
+  title: { type: "string", description: "The event title in the owner's own words." },
+  description: { type: "string", description: "Only what the owner said to note; otherwise empty." },
+  location: { type: "string", description: "Only the place the owner named; otherwise empty." },
   start: { type: "string", description: "Canonical UTC ISO instant with exactly three millisecond digits, e.g. 2026-10-04T15:00:00.000Z. The host sets it from the day and time the owner said." },
   end: { type: "string", description: "Canonical UTC ISO instant with three millisecond digits, strictly after start." },
   timeZone: { type: "string", description: "The phone's IANA time zone this turn." },
@@ -64,12 +70,6 @@ function viewOf(view: string | undefined): CalendarView {
 }
 
 type Selection = NonNullable<NonNullable<DeviceTurn["observation"]>["selectedObject"]>
-
-function selectedEvent(selected: Selection | undefined): CalendarTarget | undefined {
-  if (selected?.kind !== "calendar-event" || selected.accountId === undefined || selected.sourceRevision === undefined || selected.revision === undefined) return undefined
-  const target = { sourceId: selected.accountId, sourceRevision: selected.sourceRevision, eventId: selected.id, revision: selected.revision }
-  return identifier.test(target.sourceId) && identifier.test(target.eventId) && revision.test(target.sourceRevision) && revision.test(target.revision) ? target : undefined
-}
 
 function selectedSource(selected: Selection | undefined): CalendarSource | undefined {
   if (selected?.kind !== "calendar-source" || selected.revision === undefined) return undefined
@@ -88,7 +88,8 @@ function screenOf(turn: DeviceTurn): Screen | undefined {
   const observed = turn.observation
   if (observed === undefined) return undefined
   const selected = observed.selectedObject
-  const event = selectedEvent(selected), calendar = selectedSource(selected)
+  const event = namedCalendarReadTarget({ view: observed.view, sensitive: observed.sensitive, selectedObject: selected })
+  const calendar = selectedSource(selected)
   const kind = selected?.kind ?? ""
   const view = viewOf(observed.view)
   const otherCalendar = event === undefined && calendar === undefined && /^(?:calendar-|legacy-app-calendar-)/.test(kind)
@@ -99,12 +100,12 @@ function screenOf(turn: DeviceTurn): Screen | undefined {
 }
 
 const reachOf: Readonly<Record<FormKey, ProposalReach>> = {
-  next: "AnyView", createLocal: "AnyView", create: "SelectedOnPhone", readSelected: "SelectedOnPhone", delete: "SelectedOnPhone",
+  next: "AnyView", createLocal: "HomeOrCalendar", create: "SelectedOnPhone", readSelected: "SelectedOnPhone", delete: "SelectedOnPhone",
   namedRead: "HomeOrCalendar", namedDelete: "HomeOrCalendar", availability: "HomeOrCalendar",
 }
 const needOf: Readonly<Record<FormKey, readonly string[]>> = {
-  next: [nextRead], createLocal: [createCapability], create: [localEvent], readSelected: [localEvent], delete: [localEvent],
-  namedRead: [namedRead, localEvent], namedDelete: [namedTarget, localEvent], availability: [availabilityRead],
+  next: [nextRead], createLocal: [createCapability], create: [CALENDAR_CAPABILITY], readSelected: [CALENDAR_CAPABILITY], delete: [CALENDAR_CAPABILITY],
+  namedRead: [CALENDAR_NAMED_READ_CAPABILITY, CALENDAR_CAPABILITY], namedDelete: [namedTarget, CALENDAR_CAPABILITY], availability: [CALENDAR_AVAILABILITY_CAPABILITY],
 }
 
 function admitted(turn: DeviceTurn, key: FormKey): boolean {
@@ -136,22 +137,22 @@ const forms: readonly ProposalForm[] = [
   form("next", object({ type: typed("calendar_read_next") }), "calendar_read_next",
     "For next-event discovery use calendar_read_next; the phone fixes a window from now through the next 30 local days, discovers its readable calendars in a foreground review and shares only the approved next event, or that there is none. Never infer a calendar from what is on screen; no background access is granted."),
   form("createLocal", object({ type: typed("calendar_create_local"), fields: fieldsSchema }), "calendar_create_local",
-    "For an explicit request to add an event to the phone's own calendar use calendar_create_local. The host takes the day and time from the owner's words in the phone's zone; the phone saves it to its default On this phone calendar after the owner confirms it."),
+    "For an explicit request to add an event to the phone's own calendar use calendar_create_local, with the title in the owner's words and description and location empty unless the owner gave them. The host takes the day and time from the owner's words in the phone's zone; the phone saves it to its default On this phone calendar after the owner confirms it."),
   form("create", object({ type: typed("calendar_create"), source: sourceSchema, fields: fieldsSchema }), "calendar_create",
     "calendar_create adds an event to the calendar selected on the phone; copy the selected calendar's source exactly."),
   form("readSelected", object({ type: typed("calendar_read_selected"), target: targetSchema }), "calendar_read_selected",
-    "calendar_read_selected shares the event selected on the phone after the owner approves; copy its exact target. To change the selected event, propose calendar_read_selected: once the owner shares it, the requested change is prepared for a separate review."),
+    "calendar_read_selected shares the event selected on the phone after the owner approves; copy its exact target. To move the selected event to a new time, or to rename it, propose calendar_read_selected: once the owner shares it, that one change is prepared for a separate review."),
   form("delete", object({ type: typed("calendar_delete"), target: targetSchema }), "calendar_delete",
     "calendar_delete deletes the event selected on the phone, only when the owner asked to delete it; copy its exact target."),
   form("namedRead", object({ type: typed("calendar_named"), action: typed("read"), name: recordName }), "calendar_named",
-    "To change a Calendar event the owner names from Home or Calendar, use calendar_named with action read and only the spoken name: the owner chooses the matching event and shares it, and the requested change is then reviewed separately."),
+    "To move a Calendar event the owner names from Home or Calendar to a new time, or to rename it, use calendar_named with action read and only the spoken name: the owner chooses the matching event and shares it, and that one change is then reviewed separately."),
   form("namedDelete", object({ type: typed("calendar_named"), action: typed("delete"), name: recordName }), "calendar_named",
     "To delete a Calendar event the owner names, use calendar_named with action delete and only the spoken name; the owner chooses the matching event on the phone."),
   form("availability", object({ type: typed("calendar_availability"), start: fieldsSchema.properties?.start ?? string, end: { type: "string", description: "Canonical UTC ISO instant, after start and at most seven days later." }, timeZone: fieldsSchema.properties?.timeZone ?? string }), "calendar_availability",
     "Free/busy questions use calendar_availability; the host re-derives the window from the day and time the owner asked about in the phone's zone. The owner selects which calendars the phone reads; only busy intervals are shared, never titles. Events marked free are ignored, tentative events count as busy, all-day events block their whole local days. Report the returned status and intervals only."),
 ]
 
-const refused = (code: string, forModel: string, forOwner: string): Grounding => ({ kind: "Refused", code, forModel, forOwner })
+const refused = (code: string, forModel: string, forOwner: string): Refusal => ({ kind: "Refused", code, forModel, forOwner })
 const notHere = refused("DEVICE_OPERATION_RECORD_SOURCE", "Phone Calendar records are not selected for this turn. No device proposal was created.",
   "Open that event or calendar on your phone, then ask again.")
 const notSelected = refused("DEVICE_CALENDAR_TARGET_NOT_SELECTED", "The proposed event or calendar is not the one selected on the phone. Copy the selected target exactly. No device proposal was created.",
@@ -164,14 +165,22 @@ const notDeleted = refused("CALENDAR_DELETE_NOT_REQUESTED", "The owner did not a
   "I left that event as it is.")
 const noZone = refused("CALENDAR_ZONE_UNAVAILABLE", "The phone did not report its time zone this turn. No device proposal was created.",
   "I couldn't read your phone's time zone. Try again with the phone unlocked.")
+const otherZone = refused("CALENDAR_OTHER_ZONE_NAMED", "The owner named a time zone or offset; a phone Calendar review places times only on the phone's clock. No device proposal was created.",
+  "I can only use your phone's time zone here. Say the time as your phone's clock shows it.")
 const unsupported = refused("CALENDAR_CREATE_UNSUPPORTED", "This phone review holds one timed event, without repeats, guests or all-day time. No event was created.",
   "I can add one timed event on your phone; repeats, guests and all-day events need the Calendar app.")
+const untitled = refused("CALENDAR_TITLE_NOT_STATED", "The event title is not in the owner's words. Use the title as the owner said it. No event was created.",
+  "What should I call that event?")
 const untimed = refused("CALENDAR_CREATE_ORIGINAL_UNAVAILABLE", "The event's date and time could not be confirmed from the owner's request: it needs one date and one time. No event was created.",
   "The event details could not be confirmed from your request. No event was created. Say the title, date and time again.")
 const ambiguousWall = refused("CALENDAR_LOCAL_TIME_AMBIGUOUS", "That local time is skipped or repeated in the phone's time zone. No device proposal was created.",
   "That local time is skipped or repeated in your time zone. Choose an unambiguous time. Nothing was changed.")
-const unwindowed = refused("CALENDAR_ORIGINAL_AVAILABILITY_UNAVAILABLE", "The availability window needs one stated day and at most one time. No calendar was read.",
+const unwindowed = refused("CALENDAR_ORIGINAL_AVAILABILITY_UNAVAILABLE", "The availability window needs one day and at most one time. No calendar was read.",
   "Which exact date and local time should I check? No calendar was read.")
+const changeUnsupported = refused("CALENDAR_CHANGE_UNSUPPORTED", "A phone Calendar edit changes one event's time or its title, one at a time, with nothing conditional. No device proposal was created.",
+  "I can move an event to a new time or rename it on your phone, one change at a time. For anything else, use the Calendar app. Nothing was changed.")
+const changeUntimed = refused("CALENDAR_CHANGE_TIME_AMBIGUOUS", "A time change needs one new clock time, after \"to\", and at most one length. No device proposal was created.",
+  "Tell me the one new day and time for it. Nothing was changed.")
 
 const sameTarget = (left: CalendarTarget, right: CalendarTarget) =>
   left.sourceId === right.sourceId && left.sourceRevision === right.sourceRevision && left.eventId === right.eventId && left.revision === right.revision
@@ -189,85 +198,68 @@ function oneLength(text: string): number {
   return lengths?.length === 1 ? lengths[0] ?? 0 : 0
 }
 
-const iso = (instant: number) => new Date(instant).toISOString()
-
-function groundedFields(fields: CalendarFields, turn: DeviceTurn): CalendarFields | Grounding {
-  const zone = phoneZone(turn)
-  if (zone === undefined) return noZone
-  const day = parseExplicitLocalDate(turn.ownerText, zone, new Date(turn.startedAt))
-  const stated = parseStatedClockTimes(turn.ownerText)
-  const start = day === undefined || stated.kind !== "one" ? undefined : localInstant(zone, day, stated.start)
-  const asked = unsupportedCreate.test(turn.ownerText)
-  if (asked) return unsupported
-  if (!eventTimeStated(day !== undefined, clockOf(stated), true, asked, start !== undefined)) return stated.kind === "one" && day !== undefined ? ambiguousWall : untimed
-  const at = start ?? 0
-  const rangeEnd = day !== undefined && stated.kind === "one" && stated.end !== undefined ? localInstant(zone, day, stated.end) ?? 0 : 0
-  const end = statedEnd(at, rangeEnd, oneLength(turn.ownerText), Date.parse(fields.end) - Date.parse(fields.start))
-  return { ...fields, start: iso(at), end: iso(end), timeZone: zone }
+function localDay(instant: number, zone: string): LocalDate | undefined {
+  const parts = getZonedDateParts(new Date(instant), zone)
+  return parts === undefined ? undefined : { year: parts.year, month: parts.month, day: parts.day }
 }
 
-const isGrounding = (value: CalendarFields | Grounding): value is Grounding => "kind" in value
+const iso = (instant: number) => new Date(instant).toISOString()
+
+function groundedFields(fields: CalendarFields, turn: DeviceTurn): CalendarFields | Refusal {
+  const zone = phoneZone(turn)
+  const text = turn.ownerText
+  const day = zone === undefined ? undefined : parseExplicitLocalDate(text, zone, new Date(turn.startedAt))
+  const stated = parseStatedClockTimes(text)
+  const start = zone === undefined || day === undefined || stated.kind !== "one" ? undefined : localInstant(zone, day, stated.start)
+  const rangeEnd = zone === undefined || day === undefined || stated.kind !== "one" || stated.end === undefined ? undefined : localInstant(zone, day, stated.end)
+  const wallExists = start !== undefined && (stated.kind !== "one" || stated.end === undefined || rangeEnd !== undefined)
+  const asked = unsupportedCreate.test(text), zoneNamed = namesAZone(text), titled = wordsInWords(fields.title, text)
+  if (!newEventStated(day !== undefined, clockOf(stated), zone !== undefined, zoneNamed, asked, wallExists, titled) || zone === undefined || start === undefined) {
+    return zone === undefined ? noZone : zoneNamed ? otherZone : asked ? unsupported : day === undefined || stated.kind !== "one" ? untimed : !wallExists ? ambiguousWall : untitled
+  }
+  const end = statedEnd(start, rangeEnd ?? 0, oneLength(text), Date.parse(fields.end) - Date.parse(fields.start))
+  return {
+    ...fields, start: iso(start), end: iso(end), timeZone: zone,
+    description: ownerWordsKept(wordsInWords(fields.description, text), fields.description),
+    location: ownerWordsKept(wordsInWords(fields.location, text), fields.location),
+  }
+}
+
+const isRefusal = (value: CalendarFields | Refusal): value is Refusal => "kind" in value
 
 function groundAvailability(operation: Op<"calendar_availability">, turn: DeviceTurn): Grounding {
   const zone = phoneZone(turn)
   if (zone === undefined) return noZone
-  const day = parseExplicitLocalDate(turn.ownerText, zone, new Date(turn.startedAt))
-  const stated = parseStatedClockTimes(turn.ownerText)
-  if (day === undefined || stated.kind === "several") return unwindowed
-  const dayBegin = startOfCivilDay(day, zone), dayFinish = startOfCivilDay(addDaysToLocalDate(day, 1), zone)
-  const clockAt = stated.kind === "one" ? localInstant(zone, day, stated.start) : undefined
-  if (dayBegin === undefined || dayFinish === undefined || (stated.kind === "one" && clockAt === undefined)) return ambiguousWall
-  const statedFinish = stated.kind === "one" && clockAt !== undefined
-    ? (stated.end === undefined ? clockAt + oneLength(turn.ownerText) : localInstant(zone, day, stated.end) ?? 0) : 0
+  const text = turn.ownerText
+  const statedDay = parseExplicitLocalDate(text, zone, new Date(turn.startedAt))
+  const stated = parseStatedClockTimes(text)
+  const partOfToday = todayPart.test(text)
+  const dayKnown = availabilityDayKnown(statedDay !== undefined, stated.kind === "one", partOfToday)
+  const day = statedDay ?? (dayKnown ? localDay(turn.startedAt, zone) : undefined)
+  const dayBegin = day === undefined ? undefined : startOfCivilDay(day, zone)
+  const dayFinish = day === undefined ? undefined : startOfCivilDay(addDaysToLocalDate(day, 1), zone)
+  const clockAt = day === undefined || stated.kind !== "one" ? undefined : localInstant(zone, day, stated.start)
+  const finishAt = day === undefined || stated.kind !== "one" || stated.end === undefined ? undefined : localInstant(zone, day, stated.end)
+  const wallExists = dayBegin !== undefined && dayFinish !== undefined && (stated.kind !== "one" || (clockAt !== undefined && (stated.end === undefined || finishAt !== undefined)))
+  const zoneNamed = namesAZone(text)
+  if (!availabilityWindowed(dayKnown && day !== undefined, stated.kind === "several", zoneNamed, wallExists) || dayBegin === undefined || dayFinish === undefined) {
+    return zoneNamed ? otherZone : !dayKnown || stated.kind === "several" ? unwindowed : ambiguousWall
+  }
+  const statedFinish = clockAt === undefined ? 0 : finishAt ?? clockAt + oneLength(text)
   const window = askedAvailability(dayBegin, dayFinish, clockAt ?? 0, clockAt !== undefined, statedFinish,
     { begin: Date.parse(operation.start), finish: Date.parse(operation.end) })
   return { kind: "Grounded", operation: { type: "calendar_availability", start: iso(window.begin), end: iso(window.finish), timeZone: zone } }
 }
 
-function groundCalendar(operation: DeviceOperation, turn: DeviceTurn): Grounding {
-  const key = keyOf(operation)
-  const screen = screenOf(turn)
-  if (key === undefined || screen === undefined || !admitted(turn, key)) return notHere
-  const asksDelete = deleteAsked(deleteWords.test(turn.ownerText), declinesInWords(turn.ownerText))
-  switch (operation.type) {
-    case "calendar_read_next": return { kind: "Grounded", operation }
-    case "calendar_create_local": {
-      const fields = groundedFields(operation.fields, turn)
-      return isGrounding(fields) ? fields : { kind: "Grounded", operation: { ...operation, fields } }
-    }
-    case "calendar_create": {
-      const chosen = screen.calendar
-      if (!targetGrounded(chosen !== undefined, chosen?.sourceId === operation.source.sourceId && chosen.sourceRevision === operation.source.sourceRevision)) return notSelected
-      const fields = groundedFields(operation.fields, turn)
-      return isGrounding(fields) ? fields : { kind: "Grounded", operation: { ...operation, fields } }
-    }
-    case "calendar_read_selected":
-    case "calendar_delete": {
-      const event = screen.event
-      if (!targetGrounded(event !== undefined, event !== undefined && sameTarget(event, operation.target))) return notSelected
-      return operation.type === "calendar_delete" && !asksDelete ? notDeleted : { kind: "Grounded", operation }
-    }
-    case "calendar_named": {
-      const named = namedInWords(operation.name, turn.ownerText)
-      if (operation.action === "delete") return !named ? unnamed : !asksDelete ? notDeleted : { kind: "Grounded", operation }
-      if (!named) return unnamed
-      return namedGrounded(named, changeWords.test(turn.ownerText) && !declinesInWords(turn.ownerText)) ? { kind: "Grounded", operation } : readOnlyName
-    }
-    case "calendar_availability": return groundAvailability(operation, turn)
-    default: return notHere
-  }
-}
-
-function sharedEvent(read: EarlierRequest): { readonly target: CalendarTarget; readonly fields: CalendarFields } | undefined {
-  const operation = read.operation
-  if (operation.type === "calendar_read_selected") {
-    const result = readResult(operation, read.result)
-    return result === undefined || !("fields" in result) ? undefined : { target: operation.target, fields: result.fields }
-  }
-  if (operation.type !== "calendar_named" || operation.action !== "read") return undefined
-  const result = readResult(operation, read.result)
-  if (result === undefined || result.basis !== "owner-chosen" || result.operation.type !== "calendar_read_selected" || !("fields" in result.record)) return undefined
-  return { target: result.operation.target, fields: result.record.fields }
+interface Change {
+  readonly asked: ChangeAsked
+  readonly timeStated: boolean
+  readonly zoneNamed: boolean
+  readonly wallExists: boolean
+  readonly title: string | undefined
+  readonly day: LocalDate | undefined
+  readonly clock: StatedClockTime | undefined
+  readonly length: number
 }
 
 function newTitle(text: string): string | undefined {
@@ -279,29 +271,93 @@ function newTitle(text: string): string | undefined {
   return undefined
 }
 
-function movedFields(fields: CalendarFields, text: string, zone: string, startedAt: number): CalendarFields | undefined {
-  const marker = destinationMarker.exec(text)
-  if (!moveWords.test(text) || marker === null || zoneWords.test(text)) return undefined
-  const destination = text.slice(marker.index)
-  const day = parseExplicitLocalDate(destination, zone, new Date(startedAt))
+function changeIn(text: string, zone: string | undefined, startedAt: number, name: string | undefined): Change {
+  const title = newTitle(text)
+  const rest = [title, name].reduce((left, said) => said === undefined || said === "" ? left : left.split(said).join(" "), text).replace(eventNoun, " ")
+  const marker = title === undefined ? destinationMarker.exec(text) : null
+  const destination = marker === null ? "" : text.slice(marker.index)
+  const day = zone === undefined || marker === null ? undefined : parseExplicitLocalDate(destination, zone, new Date(startedAt))
   const stated = parseStatedClockTimes(destination)
+  const clock = stated.kind === "one" && stated.end === undefined ? stated.start : undefined
   const lengths = statedLengths(text)
-  const start = day === undefined || stated.kind !== "one" || stated.end !== undefined ? undefined : localInstant(zone, day, stated.start)
-  const clock: StatedClock = stated.kind === "one" && stated.end !== undefined ? "SeveralClocks" : clockOf(stated)
-  if (lengths === undefined || start === undefined || !timeChangeStated(day !== undefined, clock, lengths.length, true, compoundWords.test(text))) return undefined
-  const end = changedEnd(start, Date.parse(fields.start), Date.parse(fields.end), lengths[0] ?? 0)
-  return end > start ? { ...fields, start: iso(start), end: iso(end) } : undefined
+  const wallExists = zone === undefined || day === undefined || clock === undefined || localInstant(zone, day, clock) !== undefined
+  const zoneNamed = namesAZone(rest)
+  const asked = changeOf(leadingChange.test(text), title !== undefined || renameMention.test(rest),
+    moveWords.test(rest) || (title !== undefined && parseStatedClockTimes(title).kind !== "none"), otherWords.test(rest) || zoneNamed)
+  const timeStated = timeChangeStated(stated.kind === "one" && stated.end !== undefined ? "SeveralClocks" : clockOf(stated), lengths?.length ?? 2, wallExists)
+  return { asked, timeStated, zoneNamed, wallExists, title, day, clock, length: lengths?.[0] ?? 0 }
+}
+
+function changeRead(turn: DeviceTurn, name: string | undefined): Refusal | undefined {
+  const zone = phoneZone(turn)
+  const change = changeIn(turn.ownerText, zone, turn.startedAt, name)
+  if (changeReadAdmitted(change.asked, change.timeStated, zone !== undefined, name !== undefined)) return undefined
+  if (change.asked === "NoChangeAsked") return readOnlyName
+  if (editAfterRead(change.asked, change.timeStated)) return noZone
+  return change.zoneNamed ? otherZone : change.asked !== "TimeChangeAsked" ? changeUnsupported : !change.wallExists ? ambiguousWall : changeUntimed
+}
+
+function groundCalendar(operation: DeviceOperation, turn: DeviceTurn): Grounding {
+  const key = keyOf(operation)
+  const screen = screenOf(turn)
+  if (key === undefined || screen === undefined || !admitted(turn, key)) return notHere
+  const asksDelete = deleteAsked(deleteWords.test(turn.ownerText), declinesInWords(turn.ownerText, deleteWords))
+  switch (operation.type) {
+    case "calendar_read_next": return { kind: "Grounded", operation }
+    case "calendar_create_local": {
+      const fields = groundedFields(operation.fields, turn)
+      return isRefusal(fields) ? fields : { kind: "Grounded", operation: { ...operation, fields } }
+    }
+    case "calendar_create": {
+      const chosen = screen.calendar
+      if (!targetGrounded(chosen !== undefined, chosen?.sourceId === operation.source.sourceId && chosen.sourceRevision === operation.source.sourceRevision)) return notSelected
+      const fields = groundedFields(operation.fields, turn)
+      return isRefusal(fields) ? fields : { kind: "Grounded", operation: { ...operation, fields } }
+    }
+    case "calendar_read_selected":
+    case "calendar_delete": {
+      const event = screen.event
+      if (!targetGrounded(event !== undefined, event !== undefined && sameTarget(event, operation.target))) return notSelected
+      if (operation.type === "calendar_delete") return asksDelete ? { kind: "Grounded", operation } : notDeleted
+      return changeRead(turn, undefined) ?? { kind: "Grounded", operation }
+    }
+    case "calendar_named": {
+      const named = namedInWords(operation.name, turn.ownerText)
+      if (operation.action === "delete") return !named ? unnamed : !asksDelete ? notDeleted : { kind: "Grounded", operation }
+      if (!named) return unnamed
+      const refusal = changeRead(turn, operation.name)
+      return namedGrounded(named, refusal === undefined) ? { kind: "Grounded", operation } : refusal ?? readOnlyName
+    }
+    case "calendar_availability": return groundAvailability(operation, turn)
+    default: return notHere
+  }
+}
+
+function sharedEvent(read: EarlierRequest): { readonly target: CalendarTarget; readonly fields: CalendarFields; readonly name: string | undefined } | undefined {
+  const operation = read.operation
+  if (operation.type === "calendar_read_selected") {
+    const result = readResult(operation, read.result)
+    return result === undefined || !("fields" in result) ? undefined : { target: operation.target, fields: result.fields, name: undefined }
+  }
+  if (operation.type !== "calendar_named" || operation.action !== "read") return undefined
+  const result = readResult(operation, read.result)
+  if (result === undefined || result.basis !== "owner-chosen" || result.operation.type !== "calendar_read_selected" || !("fields" in result.record)) return undefined
+  return { target: result.operation.target, fields: result.record.fields, name: operation.name }
 }
 
 function continueCalendar(read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "startedAt" | "timeZone">): DeviceOperation | undefined {
   const shared = sharedEvent(read)
-  if (shared === undefined) return undefined
-  const zone = phoneZone(original) ?? (knownTimeZone(shared.fields.timeZone) ? shared.fields.timeZone : undefined)
-  const title = newTitle(original.ownerText)
-  const moved = zone === undefined || title !== undefined ? undefined : movedFields(shared.fields, original.ownerText, zone, original.startedAt)
-  if (!editAfterRead(moved !== undefined, title !== undefined)) return undefined
-  const fields = moved ?? { ...shared.fields, title: title ?? shared.fields.title }
-  return { type: "calendar_update", target: shared.target, fields }
+  const zone = phoneZone(original)
+  if (shared === undefined || zone === undefined) return undefined
+  const change = changeIn(original.ownerText, zone, original.startedAt, shared.name)
+  if (!editAfterRead(change.asked, change.timeStated)) return undefined
+  if (change.asked === "RenameAsked") return change.title === undefined ? undefined : { type: "calendar_update", target: shared.target, fields: { ...shared.fields, title: change.title } }
+  const oldStart = Date.parse(shared.fields.start), oldEnd = Date.parse(shared.fields.end)
+  const day = change.day ?? localDay(oldStart, zone)
+  const start = day === undefined || change.clock === undefined ? undefined : localInstant(zone, day, change.clock)
+  if (start === undefined) return undefined
+  const end = changedEnd(start, oldStart, oldEnd, change.length)
+  return end > start ? { type: "calendar_update", target: shared.target, fields: { ...shared.fields, start: iso(start), end: iso(end) } } : undefined
 }
 
 function proposedCalendarText(operation: DeviceOperation): string {
@@ -335,12 +391,11 @@ function settledCalendarText(operation: DeviceOperation, result: unknown): strin
   }
 }
 
-/** The phone's Calendar operations as chat proposes them: offered where their record may be proposed, and grounded in the owner's screen and words. */
 export const calendarProposalFamily: DeviceProposalFamily = {
   name: "calendar",
   types: ["calendar_read_next", "calendar_create_local", "calendar_create", "calendar_read_selected", "calendar_update", "calendar_delete", "calendar_availability", "calendar_named"],
   forms,
-  guidance: () => "Phone-native Calendar data uses these device reviews. A next-event read, named event, availability check or new event the phone resolves itself works from Home or Calendar; an operation on an exact event or calendar needs it selected on the phone. Other Calendar requests, and any turn with an app Calendar selection, use the CALENDAR action; a phone capability never redirects an app record.",
+  guidance: () => "Phone-native Calendar data uses these device reviews. A next-event read works from any screen; a named event, availability check or new event the phone resolves itself works from Home or Calendar; an operation on an exact event or calendar needs it selected on the phone. Other Calendar requests, and any turn with an app Calendar selection, use the CALENDAR action; a phone capability never redirects an app record.",
   ground: (proposed, turn) => succeed(groundCalendar(proposed.operation, turn)),
   proposedText: proposedCalendarText,
   settledText: settledCalendarText,

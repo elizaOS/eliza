@@ -1,13 +1,11 @@
 // spec/calendar/reviewedReads.md, "A new phone event starts at the day and time the owner stated, in the phone's zone"; spec/calendar/reviewedReads.md, "A change after a shared read moves the event to the day and time the owner gave it, keeping its length unless the owner gave one"; spec/calendar/availability.md, "An availability window is the day and time the owner asked about, in the phone's zone"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A delete is proposed only when the owner's own words ask for it, and a no keeps the event"
 import { addDaysToLocalDate, buildUtcDateFromLocalParts, getZonedDateParts, type LocalDate } from "./clock.vibe"
 
-/** One clock time the owner wrote: an hour and minute of the day. */
 export interface StatedClockTime {
   readonly hour: number
   readonly minute: number
 }
 
-/** The clock times a request states: none, exactly one (with the end of a range it states), or several that disagree. */
 export type StatedClockTimes =
   | { readonly kind: "none" }
   | { readonly kind: "one"; readonly start: StatedClockTime; readonly end?: StatedClockTime }
@@ -128,7 +126,6 @@ function weekdayDate(text: string, today: LocalDate): LocalDate | undefined {
   return addDaysToLocalDate(today, delta)
 }
 
-/** The civil date a request states, read in the owner's zone at the request's own time: an ISO, named-month or numeric date, a weekday, or a relative day. */
 export function parseExplicitLocalDate(value: string, timeZone: string, now: Date): LocalDate | undefined {
   const text = normalized(value)
   const today = getZonedDateParts(now, timeZone)
@@ -164,9 +161,6 @@ const meridiem = String.raw`(a\.?m\.?|p\.?m\.?)`
 const clockMentionSource = String.raw`\b(\d{1,2})(?::(\d{2}))?\s*${meridiem}(?![a-z])|\b(noon|midnight)\b|\b([01]\d|2[0-3]):([0-5]\d)\b(?!\s*${meridiem})`
 const clockRange = compiled(String.raw`\b(\d{1,2})(?::(\d{2}))?\s*${meridiem}?\s*(?:-|–|—|until|till|through|to)\s*(\d{1,2})(?::(\d{2}))?\s*${meridiem}(?![a-z])`, "i")
 
-/** A written clock time, as the pattern a whole-request grammar embeds. */
-export const statedClockMention = clockMentionSource
-
 function clockOf(hourText: string | undefined, minuteText: string | undefined, half: string | undefined): StatedClockTime | undefined {
   if (hourText === undefined) return undefined
   const hour = Number(hourText), minute = minuteText === undefined ? 0 : Number(minuteText)
@@ -176,7 +170,6 @@ function clockOf(hourText: string | undefined, minuteText: string | undefined, h
   return { hour: (hour % 12) + (half.toLowerCase().startsWith("p") ? 12 : 0), minute }
 }
 
-/** The clock times a request states: one time, one range, or several that cannot be one. */
 export function parseStatedClockTimes(value: string): StatedClockTimes {
   const text = normalized(value)
   const range = clockRange.exec(text)
@@ -203,7 +196,6 @@ export function parseStatedClockTimes(value: string): StatedClockTimes {
   return distinct.size > 1 ? { kind: "several" } : { kind: "one", start: only }
 }
 
-/** The lengths a request states in minutes or hours, in milliseconds, or undefined when one is ambiguous: a sign, a fraction or a unit without a number. */
 export function statedLengths(value: string): readonly number[] | undefined {
   const found = [...value.matchAll(/\b(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?)\b/giu)]
   if (/(?:[-+]\s*\d+|\d+\s*\/\s*\d+)\s*(?:minutes?|mins?|hours?|hrs?)/iu.test(value)) return undefined
@@ -211,20 +203,30 @@ export function statedLengths(value: string): readonly number[] | undefined {
   return found.map(([, amount, unit]) => Math.round(Number(amount) * (/^h/i.test(unit ?? "") ? 3_600_000 : 60_000)))
 }
 
-/** The instant a stated day and clock time name on a zone's clock, or undefined when the zone skips or repeats that wall time. */
 export function localInstant(zone: string, date: LocalDate, clock: StatedClockTime): number | undefined {
   return buildUtcDateFromLocalParts(zone, { ...date, hour: clock.hour, minute: clock.minute, second: 0 }, "reject")?.getTime()
 }
 
-const declining = /\b(?:no|nope|nah|not|never|don['’]?t|do\s+not|keep|wait|hold\s+on|never\s*mind|leave\s+it)\b|\bcancel\s+that\s*[.!]*$/iu
+const leadingDecline = /^[\s"“'‘]*(?:no(?!\s+(?:need|longer)\b)|nope|nah|wait|hold\s+on|never\s*mind|nevermind|keep\s+it|leave\s+it|forget\s+(?:it|that))\b|^\s*cancel\s+that\s*[.!]*\s*$/iu
 const folded = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
 
-/** Whether the owner's words turn a request down: "no, keep it", "don't delete it", "never mind". */
-export function declinesInWords(text: string): boolean {
-  return declining.test(text)
+export function declinesInWords(text: string, verbs: RegExp): boolean {
+  return leadingDecline.test(text) || compiled(String.raw`\b(?:don['’]?t|do\s+not|never|not|no\s+need\s+to)\s+(?!(?:forget|hesitate)\b)(?:\p{L}+\s+){0,2}?(?:${verbs.source})`, "iu").test(text)
 }
 
-/** Whether a record name is in the owner's words, as whole words, ignoring case, width and punctuation. */
 export function namedInWords(name: string, text: string): boolean {
   return folded(name) !== "" && ` ${folded(text)} `.includes(` ${folded(name)} `)
+}
+
+export function wordsInWords(value: string, text: string): boolean {
+  const said = new Set(folded(text).split(" "))
+  const words = folded(value).split(" ").filter((word) => word !== "")
+  return words.length > 0 && words.every((word) => said.has(word))
+}
+
+const zoneTerms = /\b(?:time\s*zones?|utc|gmt)\b/iu
+const zoneNames = /\b(?:[ECMPA][SD]T|AK[SD]T|HST|BST|IST|[CEW]ES?T|[CEW]EDT|JST|KST|HKT|SGT|A[ECW][SD]T|NZ[SD]T|MSK)\b|\b[A-Z][A-Za-z_]+\/[A-Z][A-Za-z_]+\b|(?<=\S\s+)[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+time\b|(?:\d|[ap]\.?m\.?)\s*[+−]\d{1,2}(?::?\d{2})?\b|\d(?::\d{2})?\s*Z\b/u
+
+export function namesAZone(text: string): boolean {
+  return zoneTerms.test(text) || zoneNames.test(text)
 }
