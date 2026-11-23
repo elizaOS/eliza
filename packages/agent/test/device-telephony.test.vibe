@@ -204,6 +204,7 @@ import { proposeTool, telephonyFromChat } from node
 
 const review = "Review this request on your phone before it can run."
 const numberNotWritten = "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use."
+const noNumberWritten = "I didn't set that up, because your message doesn't include a phone number. Nothing was called or sent. Tell me the number to use, or the name saved in Contacts."
 const numberNotSaved = "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use."
 const askRecipient = "Which person should receive this draft? Give one recipient."
 
@@ -220,7 +221,7 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
   const observed = try host("telephony from chat", () => telephonyFromChat(agent.agent.runtime, socket, agent.frame.token, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed, {
     handedThrough: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "4155550100" } } },
-    heldCall: { reply: review, requests: ["pending"] },
+    heldCall: { reply: noNumberWritten, requests: ["pending"] },
     separated: {
       call: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "4155550161" } } },
       send: { reply: review, operation: { type: "sms_send", recipients: ["+14155550162"], body: "hi", subscriptionId: 1 } },
@@ -229,7 +230,7 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
     ownerDialForm: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "+442079460958" } } },
     invented: { reply: numberNotWritten, operation: undefined },
     noNumber: {
-      reply: "I didn't set that up, because your message doesn't include a phone number. Nothing was called or sent. Tell me the number to use, or the name saved in Contacts.",
+      reply: noNumberWritten,
       operation: undefined,
     },
     callBack: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "mom" } } },

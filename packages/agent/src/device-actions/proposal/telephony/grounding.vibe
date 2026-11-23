@@ -60,7 +60,7 @@ export function swappedPhoneReferences(entries: readonly SwappedValue[], text: s
   const written = writtenPhoneNumbers(text)
   return entries.flatMap(({ kind, placeholder, value }) => {
     const [number] = kind === "phone" && placeholder.startsWith(referencePrefix) ? dialForms(value) : []
-    return number !== undefined && written.some((owned) => samePhoneNumber(owned, number)) ? [{ placeholder, number }] : []
+    return number !== undefined && text.includes(value) && written.some((owned) => samePhoneNumber(owned, number)) ? [{ placeholder, number }] : []
   })
 }
 
