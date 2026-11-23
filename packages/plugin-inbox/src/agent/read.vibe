@@ -1,6 +1,6 @@
 // spec/inbox/managedRead.md, "Only a bounded read is dispatched; any other request fails without a call"; spec/inbox/managedRead.md, "A read returns mail only for the current owner while permission holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type IAgentRuntime, type Memory } from "@elizaos/core"
-import { enabled, initial, machineOver, type Event, type ManagedInboxRead, type ManagedReadGrant, type ManagedReadKind } from "../../gen/inbox__managedRead.effect.vibe"
+import { enabled, initial, machineOver, type Event, type ManagedInboxRead, type ManagedReadKind } from "../../gen/inbox__managedRead.effect.vibe"
 import type { ManagedGmailClient } from "../client/index.vibe"
 import { classifyGmailFailure, type GmailFailureKind, type MailFailure } from "../mailbox/failures.vibe"
 import type { GmailMessage } from "../mailbox/types.vibe"
@@ -72,8 +72,12 @@ export effect function managedInboxRead(client: ManagedGmailClient, request: Man
     try read.step({ type: "sourceFails" })
     return failed(page)
   }
-  const after = observeManagedReadGrant(client) catch () => null
-  const grant: ManagedReadGrant = after?.grant ?? { tag: "NoReadableGrant" }
+  const after = observeManagedReadGrant(client) catch (error) => error
+  if ("_tag" in after) {
+    try read.step({ type: "sourceFails" })
+    return failed(after)
+  }
+  const grant = after.grant
   const done = try read.step({ type: "receiveMail", grant })
   if (done?.phase !== "ReadDone") return { kind: "refused", reason: refusalOfGrant[grant.tag] }
   return { kind: "mail", messages: page.messages.slice(0, request.limit ?? page.messages.length) }

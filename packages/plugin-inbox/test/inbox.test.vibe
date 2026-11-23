@@ -458,6 +458,10 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
   assert.deepEqual(cloud.state.paths.splice(0), [accounts])
 
   personal.connected = true
+  cloud.state.afterSearch = () => { cloud.state.refuse = { status: 503, error: "temporarily_unavailable" } }
+  assert.deepEqual(try managedInboxRead(cloud.client, { limit: 5 }), { kind: "failed", failure: "unavailable" })
+  assert.deepEqual(cloud.state.paths.splice(0), readCalls)
+
   cloud.state.afterSearch = () => {
     personal.connected = false
     work.capabilities = [...readOnly]
