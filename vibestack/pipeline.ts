@@ -20,7 +20,8 @@ import { contracts, citationLookup, pending, pendingKey, pendingContracts, accep
 import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, collectGarbage, evaluatorForCheck, isActionEntry, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
-import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, owner, specOwnerPaths, projectRoot, allDone, UNREAD, workspacePackages, writeWhole, type Reported, type SrcFile } from "./util.ts";
+import { tests, VITEST_CONFIG } from "./testing/check.ts";
+import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, readSrc, codeDirs, codeDirOf, owner, specOwnerPaths, projectRoot, allDone, UNREAD, workspacePackages, writeWhole, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
 import { setupProjectAgents } from "./skill-links.ts";
 
