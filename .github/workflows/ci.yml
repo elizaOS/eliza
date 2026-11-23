@@ -42,7 +42,7 @@ jobs:
 
   verify:
     name: ${{ matrix.name }}
-    needs: simulate
+    needs: vibestack-precompute-simulations
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     strategy:
@@ -67,7 +67,7 @@ jobs:
           TASK: ${{ matrix.tasks }}
           JOB: ${{ matrix.name }}
         run: |
-          hash=$(node vibestack/spec.ts tasks "$TASK" --only --dry=json | jq -er --arg task "$TASK" '
+          hash=$(node vibestack/spec.ts tasks "$TASK" --only --dry=json --cache=local:w | jq -er --arg task "$TASK" '
             .tasks | select(length == 1) | .[0]
             | select(.taskId == $task and .resolvedTaskDefinition.cache == true and .resolvedTaskDefinition.outputs == [])
             | .hash
@@ -226,9 +226,28 @@ jobs:
           key: ${{ steps.setup.outputs.spec-cache-key }}
       - id: prune-turbo-cache
         if: always() && steps.setup.outputs.turbo-cache-key != '' && steps.closed-pr-cache.outputs.skip != 'true'
+        shell: bash
+        env:
+          FIXTURE_INVENTORY: ${{ steps.setup.outputs.fixture-turbo-inventory }}
+          FULL_REPLAY: ${{ steps.task-timings.outputs.skip-spec-cache == 'true' }}
         run: |
           [[ -d .turbo/cache ]] || exit 0
-          cat .turbo/runs/*.json 2>/dev/null | jq -r '.tasks[] | select(.cache.status == "HIT") | .hash' | while read -r hash; do find .turbo/cache -name "$hash*" -exec touch {} +; done
+          if [[ $FULL_REPLAY == true && -s $FIXTURE_INVENTORY ]] &&
+            find .turbo/cache -printf '%D:%i:%s:%C@ %p\0' | cmp -s "$FIXTURE_INVENTORY" - &&
+            [[ -z $(find .turbo/cache -type f -mtime +7 -print -quit) ]]; then
+            echo 'Reusing the unchanged pull request Turbo archive after a full fixture replay.'
+            exit 0
+          fi
+          shopt -s nullglob
+          summaries=(.turbo/runs/*.json)
+          if (( ${#summaries[@]} )); then
+            jq -r '
+              .tasks[] | select(.cache.status == "HIT")
+              | .hash | select(type == "string" and test("^[a-f0-9]{16}$"))
+              | ".turbo/cache/\(.)" as $entry
+              | $entry + (".tar.zst", "-meta.json", "-manifest.json")
+            ' "${summaries[@]}" | xargs -r touch -c --
+          fi
           find .turbo/cache -type f -mtime +7 -delete
           for archive in .turbo/cache/*.tar.zst; do
             metadata="${archive%.tar.zst}-meta.json"
@@ -269,7 +288,7 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: true
 
-  simulate:
+  vibestack-precompute-simulations:
     name: simulate-${{ matrix.shard }}
     runs-on: ubuntu-latest
     strategy:

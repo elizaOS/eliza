@@ -66,7 +66,7 @@ describe("the documents name what exists", () => {
     const listed = (script: string) => scripts[script].split(" ").slice(3);
     const selftests = Object.keys(scripts).filter((script) => script.startsWith("selftest:")).sort();
     const shards = selftests.filter((script) => script.startsWith("selftest:tools:"));
-    const dry = await exec(turbo, ["run", ...listed("selftest"), "--dry=json"], project, { ...process.env, TURBO_TELEMETRY_DISABLED: "1" });
+    const dry = await exec(turbo, ["run", ...listed("selftest"), "--dry=json", "--cache=local:w"], project, { ...process.env, TURBO_TELEMETRY_DISABLED: "1" });
     assert.equal(dry.status, 0, dry.stderr);
     const plan: { globalCacheInputs: { files: Record<string, string> }; tasks: { taskId: string; inputs: Record<string, string> }[] } = JSON.parse(dry.stdout);
     const global = Object.keys(plan.globalCacheInputs.files);
@@ -164,7 +164,7 @@ describe("the documents name what exists", () => {
     assert.equal(child.status, 0, child.stderr);
     assert.ok(child.stdout.includes(evaluatorHome), child.stdout);
     const plan = async () => {
-      const dry = await exec(turbo, ["run", "build", "typecheck", "test", "test:browser", "vibestack-studio#dev", "//#lint:js", "//#lint:css", "//#analyze", "//#selftest:tools:a", "//#selftest:tools:b", "//#selftest:tools:rest", "//#selftest:docs", "//#selftest:examples", "--dry=json"], root, { ...process.env, TURBO_TELEMETRY_DISABLED: "1" });
+      const dry = await exec(turbo, ["run", "build", "typecheck", "test", "test:browser", "vibestack-studio#dev", "//#lint:js", "//#lint:css", "//#analyze", "//#selftest:tools:a", "//#selftest:tools:b", "//#selftest:tools:rest", "//#selftest:docs", "//#selftest:examples", "--dry=json", "--cache=local:w"], root, { ...process.env, TURBO_TELEMETRY_DISABLED: "1" });
       assert.equal(dry.status, 0, dry.stderr);
       const tasks: { taskId: string; hash: string; command: string; dependencies: string[]; inputs: Record<string, string> }[] = JSON.parse(dry.stdout).tasks;
       return new Map(tasks.map((task) => [task.taskId, task]));

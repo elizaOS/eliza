@@ -279,10 +279,12 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
 /**
  * The proof stage, run while the simulations and the typechecks do: what it reports, in order, and the proposed ledger if it passes.
  */
-async function proofStage(root: string, memory: Memory, specs: Spec[], models: Model[], srcFiles: SrcFile[], accepted: Record<string, Accepted | undefined>, accept: false | "reviews" | "unproved"): Promise<{ results: Result[]; ledger?: Record<string, Accepted> }> {
+async function proofStage(root: string, memory: Memory, specs: Spec[], models: Model[], srcFiles: SrcFile[], accepted: Record<string, Accepted | undefined>, accept: false | "reviews" | "unproved", stopped: AbortSignal): Promise<{ results: Result[]; ledger?: Record<string, Accepted> }> {
   const results: Result[] = [];
   const said = (ok: boolean, summary: string, detail = "", where?: string, rules: Result["rules"] = []) =>
     results.push({ ok, stage: "proof", summary, detail, ...(where ? { where } : {}), ...(rules.length ? { rules } : {}) });
+  if (stopped.aborted) return { results };
+  const proofMemory: Memory = { ...memory, actionSignal: stopped };
   try {
     const ledger: Record<string, Accepted> = {};
     fs.rmSync(path.join(root, "gen/proof"), { recursive: true, force: true });
@@ -298,7 +300,7 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
     // `_ensures` lemma of the units it imports that those units proved in this run. While one of them is still being
     // proved, it is proved meanwhile with all of them offered, and keeps that result only if they proved them all;
     // otherwise it is proved again with the clauses they did prove.
-    const running = new Map<string, Promise<Proof>>();
+    const running = new Map<string, Promise<Proof | undefined>>();
     const remembering = new Map<string, Promise<boolean>>();
     const proofTexts = new Map<string, string | undefined>();
     for (const u of units) {
@@ -307,8 +309,12 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
       proofTexts.set(u.unit, proofText);
       let recalled!: (hit: boolean) => void;
       remembering.set(u.unit, new Promise((settle) => { recalled = settle; }));
-      const proving = (axioms: Offered[], discarded?: () => boolean) => remembered(memory, entry(root, "prove", [JSON.stringify({ ...u, text: undefined }), proofText ?? "", proofText === undefined ? "" : libraryFor(lib, proofText) ?? "", JSON.stringify(axioms)]),
-        (memory) => { recalled(false); return prove(memory, u, { proof: proofText === undefined ? undefined : { file: u.proofFile, text: proofText }, lib, axioms }, discarded); }, (p) => p !== abandonedProof && !p.errors.length);
+      const proving = (axioms: Offered[], discarded?: () => boolean) => remembered<Proof | typeof abandonedProof>(proofMemory, entry(root, "prove", [JSON.stringify({ ...u, text: undefined }), proofText ?? "", proofText === undefined ? "" : libraryFor(lib, proofText) ?? "", JSON.stringify(axioms)]),
+        (memory) => {
+          recalled(false);
+          if (stopped.aborted) return abandonedProof;
+          return prove(memory, u, { proof: proofText === undefined ? undefined : { file: u.proofFile, text: proofText }, lib, axioms }, () => stopped.aborted || !!discarded?.());
+        }, (p) => !stopped.aborted && p !== abandonedProof && !p.errors.length);
       running.set(u.unit, (async () => {
         const imports = proofText === undefined ? [] : u.imports.lemmas;
         const offered = imports.map(({ fn }) => ({ fn }));
@@ -331,9 +337,11 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
           return { fn, proved: clausesProved };
         }));
         await Promise.allSettled(first ? [first, resolving] : [resolving]);
+        if (stopped.aborted) return;
         const resolved = await resolving;
         const proof = discarded ? await proving(resolved.filter((r): r is Required<Offered> => !!r?.proved.length))
           : await (first ?? proving(offered));
+        if (stopped.aborted) return;
         if (proof === abandonedProof) throw new Error(`the selected proof of ${u.unit} was abandoned`);
         proved.set(u.unit, proof);
         return proof;
@@ -341,6 +349,7 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
     }
     // Every unit finishes, whatever another one does, before anything is reported.
     await allDone(units.map((u) => running.get(u.unit)!));
+    if (stopped.aborted) return { results };
     for (const u of units) {
       const proofText = proofTexts.get(u.unit);
       const proof = proved.get(u.unit)!;
@@ -388,7 +397,7 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
     return { results, ...(results.every((r) => r.ok) ? { ledger } : {}) };
   } catch (e) {
     if (e instanceof InstallationChanged) throw e;
-    said(false, (e as Error).message);
+    if (!stopped.aborted) said(false, (e as Error).message);
     return { results };
   }
 }
@@ -470,6 +479,7 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
   const machines = new Map<string, Machine>();
   /** Each spec's simulation starts once its model is generated; they run at once and are reported in the specs' order. */
   const simulations: { spec: Spec; model: Model; domain: any; simulated: Promise<Simulation> }[] = [];
+  const proofWork = new AbortController();
   let simulatedAll: EndPhase | undefined;
   let lastSimulation: number | undefined;
   const simulationSettled = observe && (() => { lastSimulation = performance.now(); });
@@ -496,7 +506,10 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     report({ ok: true, stage: "model", summary: `${spec.file}: ${parts.filter(([n]) => n).map((p) => p.join(" ")).join(", ") || "definitions only"}`, detail: "", where: spec.file });
     if (!canSimulate(model)) continue;
     if (observe && !simulations.length) simulatedAll = observe("simulation");
-    const simulated = simulation(memory, spec, specs, model, domain, seed);
+    const simulated = simulation(memory, spec, specs, model, domain, seed).then((simulation) => {
+      if (simulation.said.some((result) => !result.ok && result.stage === "sometimes")) proofWork.abort();
+      return simulation;
+    });
     // Report a rejected simulation in the same order as other results.
     if (simulationSettled) void simulated.then(simulationSettled, simulationSettled);
     else simulated.catch(() => {});
@@ -516,15 +529,15 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
   try {
     mirrorGen(root, specs);
     generated?.();
-    // The typechecks and the proofs read only what generation wrote, so they run while the simulations do; after a
-    // failed simulation they finish unreported. VibeLang's compiler checks `.vibe`, `.ts` and `.tsx` as one program.
+    // The typechecks and the proofs read only what generation wrote, so they run while the simulations do.
+    // VibeLang's compiler checks `.vibe`, `.ts` and `.tsx` as one program.
     // Each of the root and the owners is a program of its own, checked against its own gen/.
     const started = allOk ? (() => {
       const typed = observe?.("types");
       const typechecks = dirs.map(async (dir) => fs.existsSync(path.join(root, dir, "tsconfig.json")) ? typecheck(memory, root, dir) : undefined);
       if (typed) void Promise.allSettled(typechecks).then(() => typed());
       const proved = observe?.("proof");
-      const proving = proofStage(root, memory, specs, models, srcFiles, lock.unproved, accept);
+      const proving = proofStage(root, memory, specs, models, srcFiles, lock.unproved, accept, proofWork.signal);
       if (proved) void proving.then(() => proved(), () => proved());
       return { typechecks, proving };
     })() : undefined;
@@ -1070,17 +1083,20 @@ export async function main(argv = process.argv.slice(2)) {
       const hosted = process.env.GITHUB_ACTIONS === "true";
       const job = hosted ? process.env.GITHUB_JOB : undefined;
       const fixture = job === "vibestack-fixture-selftests";
-      const prerequisites = job === "simulate" ? [] : installTasks.filter((task) => !fixture || task === "//#build");
+      const preparing = process.env.npm_lifecycle_event === "prepare";
+      const precomputeInstall = preparing && job === "vibestack-precompute-simulations" && process.env.npm_command === "install"
+        && process.env.GITHUB_WORKSPACE === root
+        && process.env.GITHUB_WORKFLOW_REF?.startsWith(`${process.env.GITHUB_REPOSITORY}/.github/workflows/ci.yml@`);
+      const prerequisites = precomputeInstall ? [] : installTasks.filter((task) => !fixture || task === "//#build");
       if (prerequisites.length) {
         const code = await runTasks(root, prerequisites);
         if (code !== 0) { process.exitCode = code ?? 1; return; }
       }
-      const preparing = process.env.npm_lifecycle_event === "prepare";
       const packingTools = preparing && skipGenOnPack && process.env.npm_command === "pack";
       const nightlyCheck = preparing && hosted && process.env.npm_command === "install"
         && process.env.GITHUB_JOB === "vibestack-nightly-check" && process.env.GITHUB_WORKSPACE === root
         && process.env.GITHUB_WORKFLOW_REF?.startsWith(`${process.env.GITHUB_REPOSITORY}/.github/workflows/fuzz.yml@`);
-      if (fixture || job === "simulate" || packingTools || nightlyCheck) return;
+      if (fixture || precomputeInstall || packingTools || nightlyCheck) return;
       [command, ...args] = hosted ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
     }
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {

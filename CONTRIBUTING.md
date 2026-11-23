@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `5f25987`](https://github.com/lalalune/vibestack/commit/5f259878cd436c3d7cdc3cec5e3955c5130a19ac).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `6c683a3`](https://github.com/lalalune/vibestack/commit/6c683a30fa2aee504ce4a7bc87be9e7902bf770e).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -248,7 +248,11 @@ remembers under the programs installed now. Each tool runs in a process group
 of its own, and a check that is interrupted, or that exits, ends each group
 still running and the group of each process a tool started outside its own, as
 a browser is: no verifier, simulation or browser outlives it. A tool stopped
-for its time or its output is ended the same way. A run
+for its time or its output is ended the same way. An unreached simulation goal
+or an event its guard never allows cancels the queued proofs started alongside
+the simulations. On systems with process groups, it also stops their running
+tools. The check reports every simulation and waits for the tools to close
+before it releases the project lock. A run
 of a tool is remembered when it reached its answer, a refusal of its input
 included, never when it was stopped, timed out or failed for want of a file or
 program: an unchanged unit whose proof failed runs neither again, and an edit
@@ -384,6 +388,10 @@ to tasks so they use the selected evaluator. Its bytes determine the fingerprint
 In CI, a Turborepo cache entry is
 kept for seven days after its last hit, which the run summary names.
 
+The shared Dafny library is a direct input of the tool package build and the
+Studio tests that run proofs. An edit to that library leaves the application
+build keys unchanged.
+
 ### Seeds and budgets
 
 `vibestack/testing/profile.ts` is the one source of the fixed profiles:
@@ -463,6 +471,10 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
+The `simulate-*` precompute jobs skip the root install's build and generation only during
+the canonical `ci.yml` preparation in its workspace. Other workflows, manual
+commands and nested packages keep their declared install work.
+
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
 exploration is, as an artifact.
@@ -472,8 +484,10 @@ Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
 tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job, the
 lockfile and the commit. A job tries both key layouts for its own name and current lockfile, then tries the current
-layout for another lockfile. Each entry is named by the tools and inputs that produced it, so a job reads only the
-entries that still apply.
+layout for another lockfile. Selftest jobs on pull requests first try an archive for that pull request and lockfile.
+A successful replay of the entire fixture task can reuse that archive when setup leaves the cached evaluator intact.
+Fixture jobs also restore their pull request’s Turbo archive before the shared fallback. A full replay keeps that archive if its contents stayed unchanged and no files need pruning.
+Each entry is named by the tools and inputs that produced it, so a job reads only the entries that still apply.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
 The default branch's `verify` job publishes the pnpm store after the frozen
