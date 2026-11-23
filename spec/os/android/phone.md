@@ -381,7 +381,7 @@ pure def lawWithoutPhoneStateNoLineIsListed(access: SimAccess, sim: SimLine): bo
   not(access.phoneState) implies not(linesFollowAccess(access, List(readSimLine(access, sim))))
 ```
 
-### A line's network reads "none" only when the radio is known to have no service
+### A line's network reads as no service only when the radio is known to have none
 
 The network is the line's data network type, or its voice network type when
 data reports none. With neither reported, the line reads "none" only when
