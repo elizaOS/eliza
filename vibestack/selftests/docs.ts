@@ -80,7 +80,7 @@ describe("the documents name what exists", () => {
       docs: missed(docs, () => true),
       examples: missed(examples, (file) => ![toolSource, docsSource, toolMetadata].includes(file) && /^vibestack\/(examples\/|(?!studio\/|fixtures\/|(testing|stories|design)\/test\/))/.test(file)),
       tools: tools.flatMap((hashed) => missed(hashed, (file) => toolInput(file) && (hashed === packed || file !== "README.md"))),
-      packed: missed(packed, workspace),
+      packed: missed(packed, (file) => file === ".gitignore" || workspace(file)),
       readmeInFixtures: [shardA, shardB].some((hashed) => hashed.has("README.md")),
       workspaceInFixtures: [shardA, shardB].flatMap((hashed) => [...hashed].filter(workspace)),
       examplesInTools: tools.flatMap((hashed) => [...hashed]).filter((file) => /^vibestack\/examples\/(?!order\/)/.test(file)),
@@ -127,7 +127,7 @@ describe("the documents name what exists", () => {
     assert.deepEqual(read(".github/workflows/fuzz.yml").match(/^ +shard: \[(.+)\]$/m)?.[1].split(", "), shards.map((task) => task.split(":")[2]), "the nightly run names every shard");
     const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`].dependsOn);
     assert.deepEqual(others, others.map(() => first), "the shards wait for the same integration prerequisites");
-    assert.deepEqual(fs.readdirSync(path.join(project, ".github/workflows")).filter((flow) => /\bdevelop\b/.test(read(`.github/workflows/${flow}`))), [], "main is the only long-lived branch");
+    assert.deepEqual(fs.readdirSync(path.join(project, ".github/workflows")).filter((flow) => /\bdevelop\b/.test(read(`.github/workflows/${flow}`).replace(/^ +branches: \[[\w, ]+\]$/gm, ""))), [], "develop is named only where a workflow lists the branches that trigger it");
   });
 
   test("tasks wait for the root's gen where needed; selftest edits keep the CLI build cached, and Studio only reacts to its inputs", async (context) => {

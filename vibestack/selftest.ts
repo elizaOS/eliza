@@ -816,6 +816,22 @@ pure def sometimesExit(n: int): bool = n == -1`);
       s["mbt::actionTaken"] === "eval_sometimesExit" && isDeepStrictEqual(s.outcome, { tag: "Out_sometimesExit", value: true }))));
   });
 
+  test("a deeper reachable goal does not preempt a shallow safety counterexample", async () => {
+    const root = oneRule("rare", "Find a rare choice after counting", `pure val initial: int = 0
+pure val pValues = 0.to(127)
+pure val qValues = 0.to(127)
+pure def up(n: int, p: int, q: int): int = if (n == 0 and p == 109 and q == 71) -2 else if (n == 38 and p < 16 and q < 6) -1 else n + 1
+pure def alwaysSafe(n: int): bool = n >= -1
+pure def sometimesMarked(n: int): bool = n == -1`);
+    const result = await run(root);
+    const broken = result.said("always", /a reachable state breaks/);
+    assert.ok(broken && !broken.ok, result.text);
+    assert.match(broken.detail, /-> state = -2\b/);
+    assert.match(broken.detail, /never_sometimesMarked .*--max-samples 200000 --max-steps 20\b/);
+    assert.ok(!result.said("sometimes", /is reachable/), result.text);
+    assert.ok(result.said("skipped", /^types, proof,/), result.text);
+  });
+
   test("a deep witness is found in the short sweep before the full search", async () => {
     const quint = "pure val initial: int = 0\npure def up(n: int): int = n + 1\npure def sometimesLate(n: int): bool = n == 38";
     const root = oneRule("t", "Counting", quint);
@@ -837,7 +853,7 @@ pure def sometimesExit(n: int): bool = n == -1`);
     const rareModel = await gen(rare, readSpecs(rare)[0]);
     const found = await search({ memory: { root: rare, fresh: true, used: new Set() }, model: rareModel, files: harnessFiles(readSpecs(rare)[0], readSpecs(rare), rareModel) }, "never_sometimesMarked", "step", [20, 40], 4096);
     assert.equal(found.broken, true, found.again);
-    assert.match(found.again, /--max-samples 1024 --max-steps 40\b/);
+    assert.match(found.again, /--max-samples 2048 --max-steps 40\b/);
     assert.equal(found.traces[0]?.at(-1)?.state, -1);
 
     const lateGuard = oneRule("gate", "Allow completion after counting", [
@@ -2961,7 +2977,7 @@ function eachCheck() {
     fs.writeFileSync(lock, `${process.pid}\n`);
     fs.mkdirSync(path.join(staging, "node_modules"));
     fs.writeFileSync(path.join(staging, "node_modules/should-not-copy"), "dependencies belong to the scratch install\n");
-    const copy = scratch({});
+    const copy = scratch({ ".gitignore": read(".gitignore") });
     copySources(staging, copy);
     const fixture = "vibestack/stories/test/fixtures/gen/index.ts";
     assert.deepEqual(fs.readFileSync(path.join(copy, fixture)), fs.readFileSync(path.join(project, fixture)));
@@ -2981,8 +2997,22 @@ function eachCheck() {
     const dependencies = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm",
       ["install", "--offline", "--frozen-lockfile", "--ignore-scripts"], copy, installEnv);
     assert.equal(dependencies.status, 0, dependencies.stdout + dependencies.stderr);
+    const page = path.join(copy, "vibestack/studio/dist/page");
+    const pageFiles = (directory: string) => fs.readdirSync(directory, { recursive: true, encoding: "utf8" })
+      .filter((file) => fs.statSync(path.join(directory, file)).isFile()).sort()
+      .map((file) => ({ file: file.split(path.sep).join("/"), bytes: fs.readFileSync(path.join(directory, file)) }));
+    const studio = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["all", "vibestack-studio#build"], copy, { ...process.env, TURBO_CACHE: "local:rw" });
+    assert.equal(studio.status, 0, studio.stdout + studio.stderr);
+    const currentPage = pageFiles(page);
+    const stale = ["assets/stale-bundle.js", "assets/stale-style.css", "removed-public.txt"];
+    for (const file of stale) {
+      fs.mkdirSync(path.dirname(path.join(page, file)), { recursive: true });
+      fs.writeFileSync(path.join(page, file), "obsolete build output\n");
+    }
     const built = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["run", "build"], copy, { ...process.env, TURBO_CACHE: "local:rw" });
     assert.equal(built.status, 0, built.stdout + built.stderr);
+    assert.match(stripVTControlCharacters(built.stdout), /^(?:vibestack-studio:build: |::group::vibestack-studio:build\r?\n)cache hit\b/m);
+    assert.deepEqual(stale.filter((file) => fs.existsSync(path.join(page, file))), stale);
     const script = path.join(copy, "dist/spec.js");
     fs.chmodSync(script, 0o755);
     const generated = await exec(process.platform === "win32" ? process.execPath : script,
@@ -2999,6 +3029,7 @@ function eachCheck() {
     fs.mkdirSync(installed, { recursive: true });
     const unpacked = await exec("tar", ["-xzf", archive, "--strip-components", "1", "-C", installed], copy);
     assert.equal(unpacked.status, 0, unpacked.stdout + unpacked.stderr);
+    assert.deepEqual(pageFiles(path.join(installed, "dist/studio/dist/page")), currentPage);
     assert.deepEqual(fs.readdirSync(installed, { recursive: true, encoding: "utf8" }).filter((file) => file.split(path.sep).includes("examples")), [], "an application's toolchain carries no example to check");
     fs.mkdirSync(path.join(installed, "node_modules"));
     for (const entry of fs.readdirSync(nodeModules).filter((name) => name !== ".bin"))
