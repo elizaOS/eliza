@@ -303,18 +303,20 @@ connection ends it with `End`; a retired launch ends it with
 `Failed(Restarted)`. Both go through the rules of a pending call.
 
 ```quint
+pure def newWatchAcknowledged(before: AgentChannel, after: AgentChannel, seq: int, id: str): bool = {
+  val opening = entryAt(seq, before)
+  val opened = entryAt(seq, after)
+  isWatch(opening.mode) and not(opening.acknowledged) and
+    opened == { ...opening, acknowledged: true } and id == opening.id
+}
+pure def watchConfirmedBeforeDelivery(before: AgentChannel, seq: int): bool = {
+  val e = entryAt(seq, before)
+  isWatch(e.mode) implies e.acknowledged
+}
 pure def stepOnlyNewWatchIsAcknowledged(before: AgentChannel, via: str, after: AgentChannel, out: List[ChannelOut]): bool =
   out.every(o => match o {
-    | Acknowledged(a) => {
-      val opening = entryAt(a.seq, before)
-      val opened = entryAt(a.seq, after)
-      via == "reply" and isWatch(opening.mode) and not(opening.acknowledged) and
-        opened == { ...opening, acknowledged: true } and a.id == opening.id
-    }
-    | Delivered(d) => {
-      val e = entryAt(d.seq, before)
-      isWatch(e.mode) implies e.acknowledged
-    }
+    | Acknowledged(a) => via == "reply" and newWatchAcknowledged(before, after, a.seq, a.id)
+    | Delivered(d) => watchConfirmedBeforeDelivery(before, d.seq)
     | _ => true
   })
 pure def sometimesWatchAcknowledged(s: AgentChannel): bool =
