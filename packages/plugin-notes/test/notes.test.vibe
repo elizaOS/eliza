@@ -578,7 +578,9 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
     untrusted: told.filter((fragment) => fragment.includes("untrusted data")),
     capabilitiesNamed: told.filter((fragment) => /\b[a-z]+(?:\.[a-z-]+)+\.v\d+\b/.test(fragment)),
     fieldsWritten: family.types.filter((type) => told.some((fragment) => fragment.includes(`${type} {`))),
-  }, { edit: 1, untrusted: [untrustedReturnGuidance], capabilitiesNamed: [], fieldsWritten: [] })
+    nullFolderTold: told.filter((fragment) => fragment.includes("null")),
+    nullFolderField: family.forms.find((form) => form.types.includes("notes_move"))?.schema.properties?.folder?.description,
+  }, { edit: 1, untrusted: [untrustedReturnGuidance], capabilitiesNamed: [], fieldsWritten: [], nullFolderTold: [], nullFolderField: "null for no folder" })
 
   const grounding = (words: string, observation: DeviceTurn["observation"], operation: unknown, metadata?: Record<string, unknown>, earlier?: readonly EarlierRequest[], completesReads?: boolean) => {
     const turn = phoneTurn(model.runtime, words, observation, metadata, earlier, completesReads)
