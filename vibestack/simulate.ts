@@ -387,26 +387,20 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // The usual starting states each get a whole bounded interval after them.
       const sim = await simulate(harness, "inv", model.leadsTo.length ? LASSO_TRACES : REPLAYED, SAMPLES, "step", true, simulationSteps, seed);
       if (broke([sim])) return { said, tested };
-      const paths = model.sometimes.map((w) => ({ w, length: model.witness?.lengths.get(w) }));
-      const demonstrations = paths.flatMap(({ w, length }) => guided && length !== undefined
-        ? [{ w, run: simulate(guided, `never_${w}`, 1, 1, witnessAction(w), false, length + 1 + Number(!!model.opaques.length), seed) }]
-        : []);
-      const [probe, ...examples] = await allDone([
+      const [probe, ...searches] = await allDone([
         simulate(harness, "inv", REPLAYED, COMPARED_SAMPLES, "probe", true, STEPS, seed),
-        ...demonstrations.map(({ run }) => run),
+        ...model.sometimes.map(async (w) => {
+          const invariant = `never_${w}`;
+          const length = model.witness?.lengths.get(w);
+          if (guided && length !== undefined) {
+            const run = await simulate(guided, invariant, 1, 1, witnessAction(w), false, length + 1 + Number(!!model.opaques.length), seed);
+            if (run.broken) return run;
+          }
+          return search(harness, invariant, "step", DEPTHS, WITNESS_SAMPLES, seed);
+        }),
       ]);
-      if (broke([probe, ...examples.filter((run) => run.broken)])) return { said, tested };
-      const retained = witnessedIn(probe.traces, paths.filter(({ length }) => length === undefined).map(({ w }) => w));
-      const byGoal = new Map(demonstrations.map(({ w }, i) => [w, examples[i]]));
-      const witnesses = await allDone(paths.map(async ({ w }) => {
-        const example = byGoal.get(w);
-        const trace = retained.get(w);
-        const run = example?.broken ? example : trace ? undefined
-          : await search(harness, `never_${w}`, "step", DEPTHS, WITNESS_SAMPLES, seed);
-        return { w, run, trace };
-      }));
-      const searches = witnesses.flatMap(({ run }) => run?.broken ? [run] : []);
-      const runs = [sim, probe, ...searches];
+      const witnesses = model.sometimes.map((w, i) => ({ w, run: searches[i] }));
+      const runs = [sim, probe, ...searches.filter((run) => run.broken)];
       if (broke(runs)) return { said, tested };
       if (sim.broken || probe.broken) throw new Error(`the simulator reports a broken rule that no trace shows (${sim.again})`);
       if (!sim.traces.length && !probe.traces.length) {
@@ -460,14 +454,21 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
         `${shown}\n      ${sim.again}`);
         return { said, tested };
       }
+      const retained = witnessedIn(probe.traces, witnesses.filter(({ w, run }) => !run.broken && !model.witness?.lengths.has(w)).map(({ w }) => w));
+      const reached = witnesses.map(({ w, run }) => {
+        const fallback = retained.get(w);
+        const candidates = run.broken ? run.traces : fallback ? [fallback] : [];
+        const goal = candidates.filter((t) => standIn(domain, t)[w](t.at(-1)?.state) === true).sort((a, b) => a.length - b.length)[0];
+        if (!goal && run.broken) throw new Error(`TypeScript and Quint disagree on the violation of never_${w} in the witness search: ${run.again}`);
+        if (!goal && fallback) throw new Error(`TypeScript and Quint disagree on the probe that evaluated ${w} to true`);
+        return { w, run, goal };
+      });
       const loops = runsOf.reduce((n, r) => n + r.loops, 0);
       say(true, "always", `no rule broken in ${SAMPLES + COMPARED_SAMPLES} simulated traces`
         + (model.leadsTo.length ? `, and no fair run that stops or loops in ${sim.traces.length} of them breaks a \`leadsTo\` rule (${loops} loops found)` : ""));
-      const journeys = witnesses.flatMap(({ w, run, trace }) => {
-        const candidates = run?.broken ? run.traces : trace ? [trace] : [];
-        const goal = candidates.filter((t) => standIn(domain, t)[w](t.at(-1)?.state) === true).sort((a, b) => a.length - b.length)[0];
+      const journeys = reached.flatMap(({ w, run, goal }) => {
         say(!!goal, "sometimes", goal ? `${w} is reachable`
-          : `${cite(w)} was not reached in ${SEARCHED}: a guard is too strict, a transition is missing, or the goal needs values the simulator does not try`, goal || !run ? "" : `      ${run.again}`);
+          : `${cite(w)} was not reached in ${SEARCHED}: a guard is too strict, a transition is missing, or the goal needs values the simulator does not try`, goal ? "" : `      ${run.again}`);
         return goal ? [{ w, trace: goal }] : [];
       });
       for (const { t, again } of neverAllowed) {
