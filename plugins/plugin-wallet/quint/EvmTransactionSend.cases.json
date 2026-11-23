@@ -1,0 +1,30 @@
+{
+  "sources": [
+    "plugins/plugin-wallet/src/chains/evm/actions/helpers.ts",
+    "plugins/plugin-wallet/src/chains/evm/actions/transfer.ts",
+    "plugins/plugin-wallet/src/chains/evm/actions/swap.ts",
+    "plugins/plugin-wallet/src/chains/registry.ts",
+    "plugins/plugin-wallet/src/chains/wallet-action.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-wallet/src/chains/evm/__tests__/send-outcome.anvil.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "EvmTransactionSend",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "SignedBeforeSend",
+        "NoDoublePay",
+        "FailureOnlyWhenNothingLanded",
+        "UncertainKeepsHash",
+        "SubmittedLanded"
+      ],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ]
+}

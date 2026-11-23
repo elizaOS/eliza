@@ -5,15 +5,26 @@
  * assembling viem `SendTransactionParameters` from optional fields. See
  * `isConfirmed` for why LLM-supplied confirmation flags are never trusted.
  */
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
+import {
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type State,
 } from "@elizaos/core";
-import type { Address, Chain, Hex, SendTransactionParameters } from "viem";
+import {
+  type Address,
+  BaseError,
+  type Chain,
+  type Hash,
+  type Hex,
+  keccak256,
+  RpcRequestError,
+  type SendTransactionParameters,
+  type WalletClient,
+} from "viem";
 import type { Account } from "viem/accounts";
 
 type ActionValidate = NonNullable<Action["validate"]>;
@@ -153,4 +164,59 @@ export function buildSendTxParams(params: {
   }
 
   return txParams as SendTransactionParameters;
+}
+
+/**
+ * True when the node answered `eth_sendRawTransaction` with a JSON-RPC error
+ * that refuses the transaction. Only then is a retry safe. "Already known"
+ * and "nonce too low" can mean this same transaction already reached the
+ * node (for example through the Eliza Cloud RPC before its public fallback),
+ * so they are not a refusal.
+ */
+function isNodeRejection(error: unknown): boolean {
+  if (!(error instanceof BaseError)) return false;
+  const rpcError = error.walk((cause) => cause instanceof RpcRequestError);
+  if (!rpcError) return false;
+  return !/already known|known transaction|already imported|nonce too low/i.test(error.message);
+}
+
+export interface EvmSendOutcome {
+  readonly hash: Hash;
+  /** The node did not answer the send, so it may or may not have the transaction. */
+  readonly sendUncertain: boolean;
+}
+
+/**
+ * Signs locally, then sends the raw transaction. The hash of the signed bytes
+ * is known before the send, so a send whose answer is lost (RPC timeout, network error, gateway
+ * 5xx) is returned as uncertain with that hash instead of thrown: the node may
+ * already hold the transaction, and a caller that reports a failure invites a
+ * retry that signs the next nonce and pays twice. A JSON-RPC refusal from the
+ * node and any error before the send still throw.
+ */
+export async function sendEvmTransaction(
+  walletClient: WalletClient,
+  params: SendTransactionParameters
+): Promise<EvmSendOutcome> {
+  const request = await walletClient.prepareTransactionRequest(
+    params as Parameters<WalletClient["prepareTransactionRequest"]>[0]
+  );
+  const serializedTransaction = await walletClient.signTransaction(
+    request as Parameters<WalletClient["signTransaction"]>[0]
+  );
+  try {
+    const hash = await walletClient.sendRawTransaction({ serializedTransaction });
+    return { hash, sendUncertain: false };
+  } catch (error) {
+    if (isNodeRejection(error)) throw error;
+    // The node gave no hash, so report the hash of the signed bytes.
+    const hash = keccak256(serializedTransaction);
+    // error-policy:J2 the signed transaction may be on the node; its outcome is unknown.
+    // shortMessage leaves out the RPC URL and request body that viem adds to message.
+    logger.warn(
+      { hash, error: error instanceof BaseError ? error.shortMessage : String(error) },
+      "[plugin-wallet] EVM send got no answer; outcome unconfirmed"
+    );
+    return { hash, sendUncertain: true };
+  }
 }

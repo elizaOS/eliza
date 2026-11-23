@@ -13,18 +13,20 @@ const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
 const WETH = "0x4200000000000000000000000000000000000006" as Address;
 
 function stubWalletProvider() {
-  const sendTransaction = vi.fn(async () => "0xhash");
+  const signTransaction = vi.fn(async () => "0x02");
   const provider = {
     chains: { base },
     getChainConfigs: () => base,
     getWalletClient: () => ({
       account: { address: ACCOUNT },
       getAddresses: async () => [ACCOUNT],
-      sendTransaction,
+      prepareTransactionRequest: async (params: unknown) => params,
+      signTransaction,
+      sendRawTransaction: async () => "0xhash",
     }),
     getPublicClient: () => ({ readContract: async () => 6 }),
   } as unknown as WalletProvider;
-  return { provider, sendTransaction };
+  return { provider, signTransaction };
 }
 
 const notRepresentable = (value: unknown) =>
@@ -41,7 +43,7 @@ describe("EVM amounts the token cannot hold", () => {
   });
 
   it("does not sign a native transfer of a fraction of a wei", async () => {
-    const { provider, sendTransaction } = stubWalletProvider();
+    const { provider, signTransaction } = stubWalletProvider();
     const action = new TransferAction(provider);
 
     await expect(
@@ -51,7 +53,7 @@ describe("EVM amounts the token cannot hold", () => {
         amount: "0.0000000000000000015",
       }),
     ).rejects.toSatisfy(notRepresentable);
-    expect(sendTransaction).not.toHaveBeenCalled();
+    expect(signTransaction).not.toHaveBeenCalled();
 
     const tx = await action.transfer({
       fromChain: "base",
@@ -62,7 +64,7 @@ describe("EVM amounts the token cannot hold", () => {
   });
 
   it("refuses a swap amount before any aggregator is asked for a quote", async () => {
-    const { provider, sendTransaction } = stubWalletProvider();
+    const { provider, signTransaction } = stubWalletProvider();
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     await expect(
@@ -74,7 +76,7 @@ describe("EVM amounts the token cannot hold", () => {
       }),
     ).rejects.toSatisfy(notRepresentable);
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(sendTransaction).not.toHaveBeenCalled();
+    expect(signTransaction).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 });
