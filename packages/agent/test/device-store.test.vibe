@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"
+// spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it"; spec/agent/deviceActions/index.md, "A revoked enrollment retires every open offer, and nothing offered under it is served again"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"
 import { assert, it } from "@effect/vitest"
 import type { IDatabaseAdapter } from "@elizaos/core"
 import { apply } from "../gen/agent__deviceActions.effect.vibe"
@@ -73,7 +73,7 @@ effect function listed(adapter: IDatabaseAdapter) {
   return { open: try phases("open"), settled: try phases("settled") }
 }
 
-it.live('Keep accepted device receipts across a restart and revoke the enrollment for good (spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
+it.live('Keep accepted device receipts across a restart, and serve nothing offered under a revoked enrollment after the device enrolls again (spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
   const state = try scratch("device-store")
   const before = try Clock.currentTimeMillis
   const first = try open(state.file("state"), true)
@@ -146,9 +146,18 @@ it.live('Keep accepted device receipts across a restart and revoke the enrollmen
     settled: [["p1", "Receipted", "Revoked"], ["p2", "Declined", "Revoked"], ["p3", "Retired", "Revoked"], ["p-without-result", "Receipted", "Revoked"]],
   })
   const lateOffer = try failure(offerRequest(second.adapter, offerOf("p4", try Clock.currentTimeMillis), owner, terms))
-  const reEnroll = try failure(changeEnrollment(second.adapter, register, owner))
-  assert.deepStrictEqual([lateOffer?._tag, reEnroll?._tag], ["Rejected", "Rejected"])
+  assert.strictEqual(lateOffer?._tag, "Rejected")
   assert.strictEqual((try enrollment(second.adapter)).enrollment.tag, "Revoked")
+
+  const enrolledAgain = try changeEnrollment(second.adapter, { ...register, keyHash: "key-hash-2" }, owner)
+  assert.strictEqual(enrolledAgain.enrollment.tag, "Enrolled")
+  try offerRequest(second.adapter, offerOf("p4", try Clock.currentTimeMillis), owner, terms)
+  const revokedReceipt = try recordRequestReceipt(second.adapter, { ...receipt, result: { eventId: keptResult.eventId, kind: keptResult.kind } })
+  assert.strictEqual(revokedReceipt.kind, "refused")
+  assert.deepStrictEqual(try listed(second.adapter), {
+    open: [["p4", "Offered", "Enrolled"]],
+    settled: [["p1", "Receipted", "Revoked"], ["p2", "Declined", "Revoked"], ["p3", "Retired", "Revoked"], ["p-without-result", "Receipted", "Revoked"]],
+  })
   try closed(second.adapter)
 })
 

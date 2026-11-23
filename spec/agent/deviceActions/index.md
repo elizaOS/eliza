@@ -24,9 +24,11 @@ A refused event answers 409 and changes nothing; a store failure answers 503.
 
 ## Story: Enroll my device and revoke it
 
-> As the owner, I want to enroll my device once under its own key and to
-> revoke it for good, so that no other device and no revoked device can see
-> or act on what the agent asks.
+> As the owner, I want to enroll my device under its own key, to enroll it
+> again when its key is lost or the phone is replaced, and to revoke an
+> enrollment for good, so that only the device I enrolled last can see or
+> act on what the agent asks, and nothing asked under an earlier enrollment
+> is ever served again.
 
 ### A device enrolls under its own key as the agent's installation
 
@@ -34,9 +36,14 @@ The installation id is the agent's own store id (`storage/database.md`),
 never a second identity. A first registration records the owner, the key
 hash and the workflow protocol, and connects the device to the bridge with
 the capabilities it declares. Registering again with the same key changes
-only the workflow protocol; another key, another owner or a revoked
-enrollment is refused. The workflow protocol's upper bound is the workflow
-spec's, checked by the shell.
+only the workflow protocol. The agent keeps one enrollment. When its owner
+registers under another key, as a reinstalled or replaced phone does, the
+shell first revokes the enrollment that key replaces and then enrolls the
+new key, only for a registration it would otherwise accept: the earlier key
+stops working, and every request offered under it ends as revocation ends
+it. A store whose enrollment was revoked enrolls again the same way, as a
+new enrollment. Another owner is refused. The workflow protocol's upper
+bound is the workflow spec's, checked by the shell.
 
 ```quint
 import sessions as S from "../../core/sessions"
@@ -57,24 +64,28 @@ pure val byValues = Set({ agentId: "agent1", actorId: "owner1", connector: "agen
 pure val keyHashValues = Set("key1", "key2")
 pure val capabilitiesValues = Set(List("calendar.create.v1"), List("calendar.create.v1", "sms.send.v1"))
 pure val workflowProtocolValues = Set(-1, 0, 3)
-pure def canRegisterDevice(d: DeviceRequest, by: S::SessionOwner, keyHash: str, capabilities: List[str], workflowProtocol: int): bool = keyHash != "" and workflowProtocol >= 0 and by.actorId != "" and by.agentId != "" and by.connector == by.agentId and (if (d.enrollment == Unenrolled) DB::canConnectDevice(d.bridge, { id: by.connector, capabilities: capabilities }) else enrolledOwner(d.enrollment) == by and enrolledKey(d.enrollment) == keyHash)
-pure def registerDevice(d: DeviceRequest, by: S::SessionOwner, keyHash: str, capabilities: List[str], workflowProtocol: int): DeviceRequest = { ...d, enrollment: Enrolled({ owner: by, keyHash: keyHash, workflowProtocol: workflowProtocol }), bridge: if (d.enrollment == Unenrolled) DB::connectDevice(d.bridge, { id: by.connector, capabilities: capabilities }) else d.bridge }
+pure def canRegisterDevice(d: DeviceRequest, by: S::SessionOwner, keyHash: str, capabilities: List[str], workflowProtocol: int): bool = keyHash != "" and workflowProtocol >= 0 and by.actorId != "" and by.agentId != "" and by.connector == by.agentId and (if (isEnrolled(d.enrollment)) (enrolledOwner(d.enrollment) == by and enrolledKey(d.enrollment) == keyHash) else ((d.enrollment == Unenrolled or d.phase == Unoffered) and DB::canConnectDevice(d.bridge, { id: by.connector, capabilities: capabilities })))
+pure def registerDevice(d: DeviceRequest, by: S::SessionOwner, keyHash: str, capabilities: List[str], workflowProtocol: int): DeviceRequest = { ...d, enrollment: Enrolled({ owner: by, keyHash: keyHash, workflowProtocol: workflowProtocol }), bridge: if (isEnrolled(d.enrollment)) d.bridge else DB::connectDevice(d.bridge, { id: by.connector, capabilities: capabilities }) }
+pure def replacesEnrollment(d: DeviceRequest, by: S::SessionOwner, keyHash: str): bool = keyHash != "" and isEnrolled(d.enrollment) and enrolledOwner(d.enrollment) == by and enrolledKey(d.enrollment) != keyHash
 pure def alwaysInstallationIsTheAgent(d: DeviceRequest): bool = isEnrolled(d.enrollment) implies (enrolledOwner(d.enrollment).connector == enrolledOwner(d.enrollment).agentId and enrolledKey(d.enrollment) != "")
 pure def stepEnrollmentKeepsItsOwnerAndKey(before: DeviceRequest, after: DeviceRequest): bool = isEnrolled(before.enrollment) implies (after.enrollment == Revoked or (enrolledOwner(after.enrollment) == enrolledOwner(before.enrollment) and enrolledKey(after.enrollment) == enrolledKey(before.enrollment)))
 ```
 
-### A revoked enrollment never returns and retires every open offer
+### A revoked enrollment retires every open offer, and nothing offered under it is served again
 
 Revocation disconnects the device from the bridge, which fails a call still
 waiting on it, and retires an offer not yet claimed. A dispatched request
 keeps its record: the device can no longer report on it, and nothing runs
-it again.
+it again. That holds for good: a request offered under a revoked enrollment
+stays revoked when the device enrolls again, so only a store with no
+request of its own, the agent's enrollment record, ever leaves revocation,
+and only by a registration.
 
 ```quint
 pure def openOffer(phase: RequestPhase): bool = phase == Offered or phase == Approved
 pure def canRevokeEnrollment(d: DeviceRequest, by: S::SessionOwner): bool = isEnrolled(d.enrollment) and enrolledOwner(d.enrollment) == by and DB::canDisconnectDevice(d.bridge, by.connector)
 pure def revokeEnrollment(d: DeviceRequest, by: S::SessionOwner): DeviceRequest = { ...d, enrollment: Revoked, bridge: DB::disconnectDevice(d.bridge, by.connector), phase: if (openOffer(d.phase)) Retired else d.phase, session: if (openOffer(d.phase)) S::revoke(d.session) else d.session }
-pure def stepRevokedStaysRevoked(before: DeviceRequest, via: str, after: DeviceRequest): bool = (before.enrollment == Revoked implies after.enrollment == Revoked) and (via == "revokeEnrollment" implies (if (openOffer(before.phase)) after.phase == Retired else after.phase == before.phase))
+pure def stepARevokedRequestStaysRevoked(before: DeviceRequest, via: str, after: DeviceRequest): bool = ((before.enrollment == Revoked and after.enrollment != Revoked) implies (via == "registerDevice" and before.phase == Unoffered)) and (via == "revokeEnrollment" implies (if (openOffer(before.phase)) after.phase == Retired else after.phase == before.phase))
 pure def sometimesRevokedRetiredAnOffer(d: DeviceRequest): bool = d.enrollment == Revoked and d.phase == Retired
 pure def sometimesRevokedAfterDispatch(d: DeviceRequest): bool = d.enrollment == Revoked and d.phase == Dispatched
 ```
