@@ -4,6 +4,7 @@
 //   ignore **/test/fixtures/**              inputs the tools' tests read as text, never imported
 //   ignoreIssues server.vibe exports        AGENTS is used in its own file, in a body ignoreExportsUsedInFile cannot see
 //   ignoreIssues sse.ts, relay-frames.ts exports  verified //@ modules whose laws and helpers the proof stage reads, not another module
+//   ignoreIssues assistant host.vibe exports  RecordUnreadable is thrown only in its own file, yet the declarations of the exported reads must name it
 //   root lemmascript                       run as an executable by vibestack/prove.ts
 //   root @vitest/browser                    loaded by Vitest's browser mode, beside @vitest/browser-playwright
 //   root @repo/design-system                read as files by vibestack/design/test/design.test.ts
@@ -26,6 +27,7 @@ export default {
     "vibestack/studio/src/server.vibe": ["exports"],
     "packages/cloud/src/services/sse.ts": ["exports"],
     "packages/cloud/src/client/relay-frames.ts": ["exports"],
+    "packages/plugin-assistant/src/host.vibe": ["exports"],
     "packages/agent/test/support/product-plugin/entry.ts": ["unlisted"],
     "packages/plugin-assistant/src/index.vibe": ["duplicates"],
     "packages/plugin-browser/src/index.vibe": ["duplicates"],

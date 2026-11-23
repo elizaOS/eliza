@@ -85,6 +85,7 @@ interface Shell {
   graceful: boolean
   queued: number
   gone: boolean
+  renewal: Deferred.Deferred<void> | undefined
 }
 
 type Arrival =
@@ -329,10 +330,16 @@ effect function renew(ports: RelayPorts, sessionId: string, window: Window): Arr
 effect function watchWindow(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, window: Window) {
   try untilAt(window.expiresAt - windowBudget.renewLeadMs)
   if (shell.relay.extend && shell.relay.phase === "RelayLive") {
-    const outcome = renew(ports, sessionId, window) catch effect (failure) => {
-      try annotateLogs(logError("a speech window could not be renewed"), { sessionId, window: window.number + 1, failure: failure._tag })
-      return providerFailed
-    }
+    const renewal = try Deferred.make<void>()
+    shell.renewal = renewal
+    const outcome = try ensuring(effect {
+      const arrival = renew(ports, sessionId, window) catch effect (failure) => {
+        try annotateLogs(logError("a speech window could not be renewed"), { sessionId, window: window.number + 1, failure: failure._tag })
+        return providerFailed
+      }
+      if (arrival.kind === "renewed") shell.windows.push(arrival.window)
+      return arrival
+    }, Deferred.succeed(renewal, undefined))
     try Queue.offer(arrivals, outcome)
   }
   try untilAt(window.expiresAt)
@@ -410,7 +417,6 @@ effect function arrive(shell: Shell, ports: RelayPorts, sessionId: string, arriv
       try ttsEdge(shell, writer, arrival.edge)
       return
     case "renewed":
-      shell.windows.push(arrival.window)
       try advance(shell, writer, { tag: "WindowRenewed" })
       return
     case "refusedRenewal":
@@ -453,6 +459,8 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
   ports.session.retire(sessionId) catch effect (failure) => {
     try annotateLogs(logError("a speech session could not be retired"), { sessionId, failure: failure._tag })
   }
+  const renewal = shell.renewal
+  if (renewal !== undefined) try Deferred.await(renewal)
   for (const window of shell.windows) {
     const usage: WindowUsage = { pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttDrained, ttsConfirmed, dispatched: window.dispatched }
     ports.session.settleWindow(sessionId, window.number, usage) catch effect (failure) => {
@@ -464,7 +472,7 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
 effect function serve(ports: RelayPorts, sessionId: string, socket: Socket.Socket) {
   const shell: Shell = {
     relay: relayAtUpgrade, windows: [], current: 0, refusal: undefined, stt: undefined, tts: undefined,
-    transcripts: [], spoken: new Set(), ttsUncertain: false, graceful: false, queued: 0, gone: false
+    transcripts: [], spoken: new Set(), ttsUncertain: false, graceful: false, queued: 0, gone: false, renewal: undefined
   }
   const session = effect {
     const reader = try socket.reader

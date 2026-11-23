@@ -988,7 +988,9 @@ function generationNeedsUncached(root: string, scopes: readonly string[]): boole
     return scopes.some((scope) => {
       if (scope === "spec") {
         const directory = path.join(root, scope);
-        const areas = new Set(specFiles(root).map((file) => file.split("/")[1]));
+        const files = specFiles(root);
+        if (files.some((file) => file.includes(".proof.dfy/"))) return true;
+        const areas = new Set(files.map((file) => file.split("/")[1]));
         return fs.existsSync(directory) && fs.readdirSync(directory).some((name) => !areas.has(name) && owner(root, `spec/${name}/`) !== undefined);
       }
       const container = path.join(root, scope.split("/")[0]);

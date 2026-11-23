@@ -281,9 +281,9 @@ module node {
     const { conversation: { id } } = roomOf(await send("/api/conversations", { title: "Read the displayed calendar" }))
     const path = `/api/conversations/${id}/messages`
     const source = { sourceId: "calendar-1", sourceRevision: "c".repeat(64) }
-    const metadata = { clientDevice: { calendarAgendaSource: source, context: {
+    const metadata = { clientDevice: { calendarAgendaSource: source }, observation: {
       view: "calendar", revision: 1, sensitive: false, timeZone: "Etc/UTC", calendarDay: { date: "2026-11-18", timeZone: "Etc/UTC" },
-    } } }
+    } }
     const heldAnswer = Promise.withResolvers<void>()
     cloud.script(text('{"kind":"read_agenda"}'), held(heldAnswer.promise, text("I’ve prepared the agenda for your review.")))
     const pending = send(path, { text: "Please read the agenda for the day I have open.", clientMessageId: "ordinary-agenda", metadata })

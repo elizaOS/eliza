@@ -1,7 +1,8 @@
-// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/os/android/files/storage.md, "A row answers copied, moved or trashed only for an admitted row whose own write was acknowledged"
+// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"; spec/os/android/files/storage.md, "A row answers copied, moved or trashed only for an admitted row whose own write was acknowledged"
 import { filesClient, type ElizaFilesPlugin, type FileOutcomeRow, type FilesResult } from "@elizaos/os/bridges/files"
-import { nativeAcknowledged, receiptOutcome, type FilesOp, type WriteResult } from "../../gen/os__android__files__storage.effect.vibe"
-import { filterMatches, filterTime, listing, type CategoryFolder, type FilesCategory, type FilesFilter, type Listing, type StorageVolume, type TrashEntry } from "./model.vibe"
+import { batchMax, nativeAcknowledged, receiptOutcome, validSelection, type FilesOp, type WriteResult } from "../../gen/os__android__files__storage.effect.vibe"
+import { downloadsCreatesParent } from "../../gen/files__requests.effect.vibe"
+import { downloadsListing, filterMatches, filterTime, listing, DOWNLOAD_FOLDER, type CategoryFolder, type FilesCategory, type FilesFilter, type Listing, type StorageVolume, type TrashEntry } from "./model.vibe"
 
 export type RowStatus = "copied" | "moved" | "unchanged" | "trashed" | "restored" | "changed" | "missing" | "invalid" | "failed" | "unknown"
 export type RowOutcome = { readonly path: string; readonly status: RowStatus; readonly to?: string }
@@ -10,6 +11,17 @@ export type CategoryListing = Listing & { readonly count?: number; readonly fold
 export type StorageAccess = { readonly access: "granted" | "denied" | "unsupported"; readonly legacy?: boolean; readonly volumes: readonly StorageVolume[] }
 
 export error VolumeRefused { status: VolumeRefusal; message: string }
+
+export effect function checkSelection(selected: readonly string[], reviewed: readonly string[] | undefined): void!VolumeRefused {
+  if (!validSelection({ reviewed: reviewed !== undefined, paths: selected.length, distinct: new Set(selected).size === selected.length,
+    tokens: reviewed?.length ?? 0, tokensWellFormed: (reviewed ?? []).every((token) => /^[A-Za-z0-9_-]{43}$/.test(token)) })) {
+    throw new VolumeRefused({ status: "invalid", message: `Select 1–${batchMax} distinct files` })
+  }
+}
+
+export function succeeded<A, E>(work: A!E): boolean!! {
+  return Effect.match(work, { onSuccess: () => true, onFailure: () => false })
+}
 
 export service FilesVolume {
   state(): StorageAccess!VolumeRefused
@@ -50,8 +62,12 @@ function refusal(result: FilesResult): VolumeRefused {
   return new VolumeRefused({ status, message: result.message ?? status })
 }
 
+effect function reached<R extends FilesResult>(call: () => Promise<R>): R!VolumeRefused {
+  return try tryPromise({ try: call, catch: () => new VolumeRefused({ status: "unavailable", message: "Files storage is not available" }) })
+}
+
 effect function read<R extends FilesResult>(call: () => Promise<R>): R!VolumeRefused {
-  const result = try tryPromise({ try: call, catch: () => new VolumeRefused({ status: "unavailable", message: "Files storage is not available" }) })
+  const result = try reached(call)
   if (result.status !== "ready") throw refusal(result)
   return result
 }
@@ -95,6 +111,12 @@ export function nativeVolume(plugin: ElizaFilesPlugin = filesClient()) {
       return listing(result.entries ?? [], { metadataKnown: result.entries !== undefined, partial: result.truncated === true, failed: false })
     },
     effect category(category) {
+      if (category === "downloads") {
+        const listed = try reached(() => plugin.storageList({ path: DOWNLOAD_FOLDER }))
+        if (listed.status === "missing") return downloadsListing("DownloadFolderAbsent", [], { metadataKnown: false, partial: false })
+        if (listed.status !== "ready") throw refusal(listed)
+        return downloadsListing("DownloadFolderListed", listed.entries ?? [], { metadataKnown: listed.entries !== undefined, partial: listed.truncated === true })
+      }
       const result = try read(() => plugin.storageCategory({ category }))
       return {
         ...listing(result.entries ?? [], { metadataKnown: result.entries !== undefined, partial: result.truncated === true, failed: false }),
@@ -123,6 +145,14 @@ export function nativeVolume(plugin: ElizaFilesPlugin = filesClient()) {
       return (try read(() => plugin.storageEmptyTrash({ ids, confirmed }))).count ?? 0
     },
     effect createFolder(parent, name) {
+      if (parent === DOWNLOAD_FOLDER) {
+        const listed = try reached(() => plugin.storageList({ path: DOWNLOAD_FOLDER }))
+        if (listed.status !== "ready" && listed.status !== "missing") throw refusal(listed)
+        if (downloadsCreatesParent(listed.status === "missing" ? "DownloadFolderAbsent" : "DownloadFolderListed")) {
+          const made = try reached(() => plugin.storageCreateFolder({ parent: "", name: DOWNLOAD_FOLDER }))
+          if (made.status !== "ready" && made.status !== "exists") throw refusal(made)
+        }
+      }
       const result = try read(() => plugin.storageCreateFolder({ parent, name }))
       if (result.path === undefined) throw new VolumeRefused({ status: "failed", message: "The folder was not created" })
       return result.path

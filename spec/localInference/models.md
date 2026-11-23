@@ -22,7 +22,7 @@ candidate that may be installed and inspected but never activated.
 
 ```quint
 type ModelRole = ChatRole | EmbeddingRole
-type InstallPhase = NotInstalled | Downloading | Installed
+type InstallPhase = NotInstalled | Downloading | Installed | Unreadable
 type LocalModel = { role: ModelRole, install: InstallPhase, evalsPassed: bool }
 type ModelSlot = TextSmallSlot | TextLargeSlot | EmbeddingSlot | SpeechSlot | TranscriptionSlot
 type ActiveStatus = ActiveIdle | ActiveLoading | ActiveReady | ActiveFailed
@@ -133,6 +133,23 @@ pure def alwaysAssignedModelsAreInstalled(s: LocalModels): bool =
   allSlots.foldl(true, (ok, slot) => ok and (assignedTo(s, slot) == "" or installed(s, assignedTo(s, slot))))
 ```
 
+### A model whose files cannot be read is reported unreadable, never as absent
+
+A model directory, file or install record that exists but cannot be read,
+for a permission or input/output failure rather than a missing path, leaves
+the model unreadable, with the failure's code. The agent keeps running
+without it: nothing downloads over it, no slot or activation names it, and
+its install record is kept for when the device can read it again. When the
+models directory or the install record itself cannot be read, every model
+is unreadable.
+
+```quint
+pure def canModelUnreadable(s: LocalModels, modelId: str): bool = catalog.contains(modelId) and modelOf(s, modelId).install == NotInstalled
+pure def modelUnreadable(s: LocalModels, modelId: str): LocalModels = withInstall(modelId, s, Unreadable, false)
+pure def stepUnreadableModelsStayUnreadable(before: LocalModels, after: LocalModels): bool =
+  catalog.forall(m => modelOf(before, m).install == Unreadable implies modelOf(after, m).install == Unreadable)
+```
+
 ### Loading a model settles
 
 ```quint
@@ -141,7 +158,7 @@ pure def leadsToLoadingSettles(s: LocalModels, later: LocalModels): bool =
   s.activeStatus == ActiveLoading implies later.activeStatus != ActiveLoading
 ```
 
-### A model can be downloaded, assigned, activated, and kept assigned while its record is unreadable
+### A model can be downloaded, assigned, activated, kept assigned while its record is unreadable, and reported unreadable
 
 ```quint
 pure def sometimesActiveModelReady(s: LocalModels): bool = s.activeStatus == ActiveReady
@@ -149,4 +166,5 @@ pure def sometimesLoadFailed(s: LocalModels): bool = s.activeStatus == ActiveFai
 pure def sometimesEmbeddingModelAssigned(s: LocalModels): bool = assignedTo(s, EmbeddingSlot) == "model2"
 pure def sometimesUnreadableAssignmentsKept(s: LocalModels): bool = not(s.assignmentsReadable) and assignedTo(s, TextLargeSlot) != ""
 pure def sometimesCandidateInstalled(s: LocalModels): bool = installed(s, "model1") and not(modelOf(s, "model1").evalsPassed)
+pure def sometimesModelUnreadable(s: LocalModels): bool = modelOf(s, "model2").install == Unreadable and installed(s, "model1")
 ```

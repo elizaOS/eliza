@@ -23,16 +23,18 @@ Start opens the capture for conversation or dictation, half or full
 duplex. A half-duplex session closes the microphone for each turn and
 reopens it once the turn has ended; a full-duplex one keeps it open so the
 person can cut in. A capture that opens after Stop is closed at once. A
-capture that fails to open or close ends the session with an error. Stop
-ends the session, retires the utterance and the turn, and closes an open
-capture; a new session starts only once the capture is closed.
+capture that fails to open or close ends the session with an error; one
+that failed to close may still hold the microphone, so it stays
+unreleased. Stop ends the session, retires the utterance and the turn, and
+closes an open capture; a new session starts only once the capture is
+closed.
 
 ```quint
 import turns as T from "../conversation/turns"
 type InputMode = ConversationMode | DictationMode
 type Duplex = HalfDuplex | FullDuplex
 type SessionLife = Idle | Starting | Live | Failed
-type CaptureState = CaptureClosed | CaptureOpening | CaptureOpen | CaptureClosing
+type CaptureState = CaptureClosed | CaptureOpening | CaptureOpen | CaptureClosing | CaptureUnreleased
 type Utterance = NoUtterance | Hearing | AwaitingFinal | GapWaiting | AskingEndOfTurn | WaitingLongGap
 type TurnStage = NoTurn | AwaitingClose | ReadyToSend | AwaitingReply | Playing
 type SubmitCause = NoSubmit | EndOfTurnSubmit | LongGapSubmit
@@ -60,7 +62,8 @@ pure def captureOpened(s: VoiceSession): VoiceSession =
 pure def canCaptureClosed(s: VoiceSession): bool = s.capture == CaptureClosing
 pure def captureClosed(s: VoiceSession): VoiceSession = { ...s, capture: CaptureClosed, turn: if (s.turn == AwaitingClose) ReadyToSend else s.turn }
 pure def canCaptureFailed(s: VoiceSession): bool = s.capture == CaptureOpening or s.capture == CaptureClosing
-pure def captureFailed(s: VoiceSession): VoiceSession = { ...halted(if (isRunning(s.life)) Failed else s.life, s), capture: CaptureClosed }
+pure def captureFailed(s: VoiceSession): VoiceSession =
+  { ...halted(if (isRunning(s.life)) Failed else s.life, s), capture: if (s.capture == CaptureClosing) CaptureUnreleased else CaptureClosed }
 pure def canReopenCapture(s: VoiceSession): bool = isRunning(s.life) and s.turn == NoTurn and s.capture == CaptureClosed
 pure def reopenCapture(s: VoiceSession): VoiceSession = { ...s, capture: CaptureOpening }
 pure def canStop(s: VoiceSession): bool = isRunning(s.life)
@@ -77,6 +80,21 @@ pure def alwaysAHeldMicrophoneStaysClosedDuringItsTurn(s: VoiceSession): bool =
   (s.turn == AwaitingClose implies (s.duplex == HalfDuplex and s.capture == CaptureClosing)) and
   ((s.duplex == HalfDuplex and s.turn != NoTurn and s.turn != AwaitingClose) implies s.capture == CaptureClosed)
 pure def sometimesAFailedCaptureEndsTheSession(s: VoiceSession): bool = s.life == Failed and s.capture == CaptureClosed
+```
+
+### A capture that failed to close is kept until it confirms its release, and no capture opens over it
+
+Stop asks an unreleased capture to close again, and a close that fails
+again keeps it unreleased; only its confirmed close lets a new session
+start.
+
+```quint
+pure def canRetryRelease(s: VoiceSession): bool = s.capture == CaptureUnreleased
+pure def retryRelease(s: VoiceSession): VoiceSession = { ...s, capture: CaptureClosing }
+pure def alwaysAnUnreleasedCaptureEndedItsSession(s: VoiceSession): bool = s.capture == CaptureUnreleased implies not(isRunning(s.life))
+pure def stepNothingOpensOverAnUnreleasedCapture(before: VoiceSession, after: VoiceSession): bool =
+  before.capture == CaptureUnreleased implies (after.capture == CaptureUnreleased or after.capture == CaptureClosing)
+pure def sometimesACaptureIsUnreleased(s: VoiceSession): bool = s.capture == CaptureUnreleased
 ```
 
 ### A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default
@@ -384,7 +402,8 @@ pure def sometimesNothingHeardIsRecorded(s: VoiceSession): bool =
 
 ### The shown phase is computed from the session state, never kept apart
 
-Idle when not running, error after a failure, starting until the
+Idle when not running, error after a failure or while a capture that
+failed to close has not confirmed its release, starting until the
 microphone first opened, speaking while a reply plays (a barge-in
 candidate included), thinking from submission until the reply starts, and
 listening otherwise.
@@ -392,7 +411,7 @@ listening otherwise.
 ```quint
 type ShownPhase = PhaseIdle | PhaseStarting | PhaseListening | PhaseThinking | PhaseSpeaking | PhaseError
 pure def shownPhase(s: VoiceSession): ShownPhase =
-  if (s.life == Idle) PhaseIdle else if (s.life == Failed) PhaseError else if (s.life == Starting) PhaseStarting
+  if (s.capture == CaptureUnreleased or s.life == Failed) PhaseError else if (s.life == Idle) PhaseIdle else if (s.life == Starting) PhaseStarting
   else if (s.turn == Playing) PhaseSpeaking else if (s.turn == NoTurn) PhaseListening else PhaseThinking
 pure def sometimesShowsThinking(s: VoiceSession): bool = shownPhase(s) == PhaseThinking
 pure def sometimesShowsSpeakingThroughACandidate(s: VoiceSession): bool = shownPhase(s) == PhaseSpeaking and s.bargeIn

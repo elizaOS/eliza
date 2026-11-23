@@ -118,4 +118,15 @@ public final class CloudSpeechWireTest {
     require(CloudSpeechWire.hello("token", true).contains("\"extend\":true"), "extend when offered");
     require(refused(() -> CloudSpeechWire.hello("a".repeat(6145), false)), "token limit");
   }
+
+  @Test public void onlyADroppedConnectionSendsConsentAgain() {
+    require(CloudSpeechWire.droppedConnection(new java.net.SocketException("Connection reset")), "reset");
+    require(CloudSpeechWire.droppedConnection(new java.net.SocketException("Connection reset by peer")), "reset by peer");
+    require(CloudSpeechWire.droppedConnection(new java.io.IOException("unexpected end of stream on https://cloud.example/...")), "dropped pooled connection");
+    require(!CloudSpeechWire.droppedConnection(new java.net.ConnectException("Connection reset")), "unconnected");
+    require(!CloudSpeechWire.droppedConnection(new java.net.SocketTimeoutException("timeout")), "timeout");
+    require(!CloudSpeechWire.droppedConnection(new java.io.IOException("Connection reset")), "other failure");
+    require(!CloudSpeechWire.droppedConnection(new java.io.IOException("Oversized speech response")), "oversized answer");
+    require(!CloudSpeechWire.droppedConnection(new java.io.IOException()), "no message");
+  }
 }

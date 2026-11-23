@@ -198,7 +198,7 @@ public final class AgentPolicy {
   }
 
   private boolean crash() {
-    return begin(attempt + 1, HealthPolicy.restartDelay(attempt));
+    return begin(attempt == Integer.MAX_VALUE ? attempt : attempt + 1, HealthPolicy.restartDelay(attempt));
   }
 
   private boolean startable() {

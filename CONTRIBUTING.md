@@ -116,7 +116,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `70d6024`](https://github.com/lalalune/vibestack/commit/70d60241dfa56d71faa6ed2a85dcda48358e60aa).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `03ed430`](https://github.com/lalalune/vibestack/commit/03ed43079689961c290d2548e850f6c0c0266a7d).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -394,13 +394,6 @@ The shared Dafny library is a direct input of the tool package build and the
 Studio tests that run proofs. An edit to that library leaves the application
 build keys unchanged.
 
-Hosted verification keys eligible Core, Cloud, Agent, OS and plugin builds and
-ordinary VibeLang plugin typechecks by their own generated files. Root
-generation still validates the whole spec first, and workspace dependency
-builds still run. Add non-generated files a build reads to its Turbo inputs,
-such as Core's external plugin registry entries. Keep the full generation
-key for a task that reads generated files outside its owner.
-
 ### Seeds and budgets
 
 `vibestack/testing/profile.ts` is the one source of the fixed profiles:
@@ -476,7 +469,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each simulate the specs assigned by file hash, starting from the spec cache `verify` saved. Each shard transfers its available simulation and imported typecheck receipts and reports its failures. When the shards finish, `verify` keeps its restored receipts, imports missing keys on which the shards agree, computes the rest, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each simulate the specs assigned by file hash, starting from the spec cache `verify` saved. A shard fills missing receipts from an earlier run of its layout and lockfile. When it creates simulation aggregates, it saves its certified typechecks and simulation results for later runs, including reproducible failures. It transfers the available receipts to verification and reports failures. When the shards finish, `verify` keeps its restored receipts, imports missing keys on which the shards agree, computes the rest, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
@@ -484,11 +477,6 @@ In the canonical `ci.yml` workspace, simulation precompute installs the root
 tool workspace’s production dependencies when its prepare script matches the
 standard tool preparation. Verification owns application builds and generation.
 Other workflows and custom prepares retain the full frozen install.
-
-Each shard fills gaps in its restored spec cache from a previous run of the
-same shard layout and lockfile. When it creates or repairs a simulation
-aggregate, it saves its certified snapshot for later runs, including when a
-rule failed.
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken

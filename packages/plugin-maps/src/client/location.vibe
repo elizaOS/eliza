@@ -1,7 +1,6 @@
-// spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/navigationService.md, "Location events require the live watch attempt and cleanup preserves failures"
+// spec/maps/navigationService.md, "Location events require the live watch attempt and cleanup preserves failures"
 import { finishWatch, nextWatch } from "../../gen/maps__navigationService.effect.vibe"
-import { nearbyPositionUsable } from "../../gen/maps__phonePosition.effect.vibe"
-import { Coordinate, MapsFailure } from "./contracts.vibe"
+import { type Coordinate, MapsFailure } from "./contracts.vibe"
 import { reportableWatchFix } from "./navigation-fix.vibe"
 
 module browser {
@@ -25,43 +24,6 @@ export interface MapsLocation {
   awaitingPermission(): boolean
   start(oneShot: boolean, onFix: (position: Position) => void, onError: (error: MapsFailure) => void): void!MapsFailure
   stop(): void!MapsFailure
-}
-
-export const PhoneLocation = Schema.Struct({
-  latitude: Coordinate.fields.latitude,
-  longitude: Coordinate.fields.longitude,
-  accuracyMeters: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1_000_000 }))),
-  capturedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-})
-export type PhoneLocation = typeof PhoneLocation.Type
-
-const strict = { onExcessProperty: "error" } as const
-const decodePhoneLocation = Schema.decodeUnknownOption(PhoneLocation, strict)
-const MessageLocation = Schema.Struct({ clientDevice: Schema.Struct({ context: Schema.Struct({ location: Schema.Unknown }) }) })
-const decodeMessageLocation = Schema.decodeUnknownOption(MessageLocation)
-
-export function phoneLocation(value: unknown): PhoneLocation | undefined {
-  const read = decodePhoneLocation(value)
-  if (read._tag === "None") return undefined
-  const round = (degrees: number) => Math.round(degrees * 1e5) / 1e5
-  const { accuracyMeters, ...fix } = read.value
-  return { ...fix, latitude: round(fix.latitude), longitude: round(fix.longitude), ...(accuracyMeters === undefined ? {} : { accuracyMeters: Math.round(accuracyMeters) }) }
-}
-
-export function messageLocation(metadata: unknown): PhoneLocation | undefined {
-  const read = decodeMessageLocation(metadata)
-  return read._tag === "Some" ? phoneLocation(read.value.clientDevice.context.location) : undefined
-}
-
-export function nearbyPoint(location: PhoneLocation | undefined, now: number): Coordinate | undefined {
-  if (location === undefined) return undefined
-  const usable = nearbyPositionUsable({
-    present: true,
-    age: now - location.capturedAt,
-    hasAccuracy: location.accuracyMeters !== undefined,
-    accuracy: Math.round(location.accuracyMeters ?? 0),
-  })
-  return usable ? { latitude: location.latitude, longitude: location.longitude } : undefined
 }
 
 export error LocationBridgeFailed { operation: string }
