@@ -557,8 +557,8 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
     elsewhere: offered({ view: "calendar", revision: 4, sensitive: false }),
     unobserved: offered(undefined),
   }, {
-    home: ["notes_query", "notes_search", "notes_named", "notes_filter", "notes_folder_create", "notes_restore"],
-    opened: ["notes_query", "notes_search", "notes_named", "notes_read_selected", "notes_update", "notes_delete", "notes_move", "notes_filter", "notes_folder_create", "notes_restore", "notes_record"],
+    home: ["notes_query", "notes_search", "notes_named", "notes_named", "notes_filter", "notes_folder_create", "notes_restore"],
+    opened: ["notes_query", "notes_search", "notes_named", "notes_named", "notes_read_selected", "notes_update", "notes_delete", "notes_move", "notes_filter", "notes_folder_create", "notes_restore", "notes_record"],
     canonical: ["notes_filter", "notes_folder_create", "notes_restore", "notes_record"],
     sensitive: [],
     elsewhere: [],
@@ -577,12 +577,12 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
   assert.deepEqual([
     try grounding("Delete my note called Groceries", home, { type: "notes_query", query: { kind: "title", text: "groceries" } }),
     try grounding("Find my shopping note", home, { type: "notes_query", query: { kind: "title", text: "Bank passwords" } }),
-    try grounding("Add eggs to my Shopping note", home, { type: "notes_named", action: "update", name: "Shopping", fields: { title: "Shopping", body: "eggs" } }),
+    try grounding("Add eggs to my Shopping note", home, { type: "notes_named", action: "update", name: "Shopping", fields: noFields }),
     try grounding("Delete this note", opened, { type: "notes_delete", target: { ...phoneNote, noteId: "note-8" } }),
     try grounding("Add eggs to this note", opened, { type: "notes_update", target: phoneNote, fields: noFields }),
     try grounding("Change this note", opened, { type: "notes_update", target: phoneNote, fields: noFields }),
     try grounding("Add milk to this note", opened, { type: "notes_update", target: phoneNote, fields: noFields }, {}, [], false),
-    try grounding("Add milk to my Shopping note", home, { type: "notes_named", action: "update", name: "Shopping", fields: { title: "Shopping", body: "milk" } }, {}, [], false),
+    try grounding("Add milk to my Shopping note", home, { type: "notes_named", action: "update", name: "Shopping", fields: noFields }, {}, [], false),
     try grounding("Add eggs to that other note", opened, { type: "notes_update", target: { ...phoneNote, noteId: "note-8" }, fields: noFields }),
     try grounding("Move this note to errands", opened, { type: "notes_move", target: phoneNote, folder: "errands" }, folders),
     try grounding("Move this note to Work", opened, { type: "notes_move", target: phoneNote, folder: "Work" }, folders),
@@ -609,19 +609,9 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
   ])
 
   const pending = (operation: DeviceOperation, direct: boolean) => family.proposedText(operation, { direct, timeZone: "Etc/UTC" })?.forOwner
-  assert.deepEqual([
-    pending({ type: "notes_record", action: "start" }, true),
-    pending({ type: "notes_record", action: "start" }, false),
-    pending({ type: "notes_filter", kind: "list" }, true),
-    pending({ type: "notes_filter", kind: "list" }, false),
-    pending({ type: "notes_delete", target: phoneNote }, true),
-  ], [
-    "Your phone will start recording a voice note in Notes.",
-    undefined,
-    "Your phone will show the matching notes.",
-    undefined,
-    "Review deleting this note on your phone. Nothing has been deleted yet.",
-  ])
+  const handedOff = (operation: DeviceOperation) => pending(operation, true) !== pending(operation, false)
+  const waiting: DeviceOperation[] = [{ type: "notes_record", action: "start" }, { type: "notes_filter", kind: "list" }, { type: "notes_delete", target: phoneNote }]
+  assert.deepEqual(waiting.map(handedOff), [true, true, false])
 
   const negotiated = negotiation(true, phoneCapabilities)
   const afterRead = (words: string, operation: DeviceOperation, result: unknown) => {

@@ -221,15 +221,20 @@ that appears as a whole phrase, case and spacing aside, in the owner's own
 words in this message; anything else proposes nothing, and the owner is
 asked which note. A latest query and a titles list carry no text. Sharing,
 deleting, moving or editing an exact note targets exactly the phone note
-open in Notes: another target is refused. A named edit is proposed as the
-title lookup of that name, never with the model's replacement fields, and
-only when the phone negotiated the lookup; an edit of the open note is
-proposed as its selected read, marked as read for that edit, never with
-replacement fields. Either edit is proposed only when the launch completes
-reads, so the shared note comes back to this conversation; otherwise nothing
-is proposed, nothing is read, and the owner hears that the edit cannot be
-prepared. A restore names only a note an applied deletion of this
-conversation moved to Recently deleted; any other note ID proposes nothing.
+open in Notes: another target is refused. The model asks for a named edit
+as a named update with the name and empty fields, offered wherever a named
+delete is, and for an edit of the open note as its update with empty
+fields; a title lookup is never how an edit is asked for. A named edit is
+proposed as the title lookup of that name, never with the model's
+replacement fields, and only when the phone negotiated the lookup; an edit
+of the open note is proposed as its selected read, marked as read for that
+edit, never with replacement fields. Either edit is proposed only when the
+launch completes reads, so the shared note comes back to this conversation;
+otherwise nothing is proposed, nothing is read, and the owner hears that
+the edit cannot be prepared. The prompt to share or choose a note tells the
+owner that sharing changes nothing and that any change gets its own review.
+A restore names only a note an applied deletion of this conversation moved
+to Recently deleted; any other note ID proposes nothing.
 
 ```quint
 type PhoneNotesProposal = TitleLookup | LatestLookup | ContentSearch | TitlesList | NamedDelete | NamedEdit | OpenNoteTarget | OpenNoteEdit | RestoreDeleted | OtherPhoneNotes
