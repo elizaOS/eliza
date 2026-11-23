@@ -238,4 +238,4 @@ module node {
   }
 }
 
-export { devicePayload, proposalReviewRoutes, type AgendaOperation, type RequestScope } from node
+export { devicePayload, proposalReviewRoutes, type AgendaOperation } from node
