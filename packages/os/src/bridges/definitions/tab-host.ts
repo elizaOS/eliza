@@ -1,4 +1,4 @@
-// spec/os/browser/tabHost/document.md, "Story: Keep my tab's page and privacy stable"; spec/os/browser/tabHost/document.md, "Story: Open new tabs and other apps only when I tap"
+// spec/os/browser/tabHost/document.md, "Story: Keep my tab's page and privacy stable"; spec/os/browser/tabHost/document.md, "Story: Open new tabs and other apps only when I tap"; spec/os/browser/tabHost/storage.md, "Story: Keep my bookmarks whole"
 export interface BrowserTabHostListener {
   remove(): Promise<void> | void;
 }
@@ -89,6 +89,11 @@ export interface BrowserSavedState {
   readonly cur: string;
 }
 
+export interface BrowserBookmarkList {
+  readonly urls: string[];
+  readonly entries?: { readonly url: string; readonly title?: string }[];
+}
+
 export type BrowserTabCommand = "back" | "forward" | "reload" | "stop";
 
 export interface BrowserTabHostPlugin {
@@ -100,8 +105,8 @@ export interface BrowserTabHostPlugin {
   find(options: { session: string; id: string; query: string }): Promise<BrowserTabState>;
   findNext(options: { session: string; id: string; forward?: boolean }): Promise<BrowserTabState>;
   clearFind(options: { session: string; id: string }): Promise<BrowserTabState>;
-  bookmarks(options: { session: string }): Promise<{ urls: string[] }>;
-  setBookmark(options: { session: string; url: string; saved: boolean }): Promise<{ urls: string[] }>;
+  bookmarks(options: { session: string }): Promise<BrowserBookmarkList>;
+  setBookmark(options: { session: string; url: string; saved: boolean; title?: string }): Promise<BrowserBookmarkList>;
   browsingState(options: { session: string }): Promise<BrowserSavedState>;
   saveBrowsingState(options: { session: string } & BrowserSavedState): Promise<BrowserSavedState>;
   clearBrowsingData(options: { session: string }): Promise<{ closed: string[] }>;
