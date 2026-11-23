@@ -1,7 +1,7 @@
 // spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/harness.md, "Story: Run instrumentation on a device I hold alone"; spec/os/image/harness.md, "Story: Run a test in a fresh Android user that is removed afterwards"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { NATIVE_TARGETS, createDevelopmentLauncherDescriptor, finalizeNative, readNativeLibraries, renderOverlay, stageLauncher, validateDescriptor, type LauncherDescriptor } from "../src/image/stage-launcher.vibe"
+import { NATIVE_INSTALLS, NATIVE_TARGETS, createDevelopmentLauncherDescriptor, finalizeNative, readNativeLibraries, renderOverlay, stageLauncher, validateDescriptor, type LauncherDescriptor } from "../src/image/stage-launcher.vibe"
 import { androidTools, buildApk, testSigner, type NativeAbi } from "./support/android-tools.ts"
 import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
 import { composeProduct } from "../src/image/compose-product.vibe"
@@ -137,6 +137,20 @@ module node {
     readonly state?: { readonly phase: { readonly tag: string } }
   }
 
+  export interface PathStager {
+    readonly renderNativeOverlay: (descriptor: object, abi: NativeAbi, libraries: readonly { readonly name: string; readonly sha256: string }[], install: "make" | "soong") => {
+      readonly blueprint: string
+      readonly makefile: string | null
+      readonly config: string
+      readonly report: { readonly soongPatch?: { readonly name: string } }
+    }
+  }
+
+  /** @throws {never} */
+  export function soongModules(blueprint: string | undefined): string[] {
+    return [...(blueprint ?? "").matchAll(/^\w+ \{\n(?: {4}.*\n)*\}$/gm)].map((block) => block[0])
+  }
+
   export const ARM_ELF = standInElf("arm64-v8a")
   export const X86_ELF = standInElf("x86_64")
 
@@ -186,7 +200,7 @@ module node {
     return { "libeliza_node.so": elf, "libagent.so": elf }
   }
 }
-import { ARM_ELF, X86_ELF, companionManifest, launcherManifest, parsed, runtimeNatives } from node
+import { ARM_ELF, X86_ELF, companionManifest, launcherManifest, parsed, runtimeNatives, soongModules, type PathStager } from node
 
 import { changeMode, copySystemui, directoryMode, linkTo, swapVariable, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary, virtualCompositionLock } from node
 
@@ -449,6 +463,32 @@ it.effect.skipIf(skipped !== null)(`Defer the Soong conversion of a privileged r
     assert.deepStrictEqual([resumed.product, resumed.claims], [product.productName, ["ProductStaged"]])
   }
 }, 240_000)
+
+it.effect('The stager a consumer runs by path declares the modules, native rules and file modes of the staged overlay (spec/os/image/staging.md, "An APK that carries the Node runtime is staged only with its natives for the image ABI, under the install rules the target supports"; spec/os/image/staging.md, "The overlay grants only declared permissions, and places the launcher in priv-app with its allow-list and the agent socket policy only when it names privileged permissions")', effect () => {
+  provide NodeServices.layer {
+    const path = try Path.Path
+    const stager: PathStager = try Effect.promise(() => import(path.join(import.meta.dirname, "../aosp/stage-launcher-overlay.ts")))
+    const pinned: LauncherDescriptor = { schemaVersion: 1, ...IDENTITY, apkSha256: "a".repeat(64), certificateSha256: "b".repeat(64) }
+    const libraries = [{ name: "libagent.so", sha256: "c".repeat(64) }, { name: "libeliza_node.so", sha256: "d".repeat(64) }]
+    const descriptors: readonly LauncherDescriptor[] = [
+      pinned,
+      { ...pinned, privilegedPermissions: [PRIVILEGED] },
+      { ...pinned, partition: "system", defaultPermissions: ["android.permission.CAMERA"], companions: [{ moduleName: "ExampleUpdater", packageName: COMPANION, apkSha256: "e".repeat(64) }] },
+    ]
+    for (const descriptor of descriptors) {
+      for (const rule of NATIVE_INSTALLS) {
+        const byPath = try Effect.try(() => stager.renderNativeOverlay(descriptor, "x86_64", libraries, rule))
+        const staged = renderOverlay(descriptor, { abi: "x86_64", rule, libraries })
+        const makefile = byPath.makefile === null ? undefined : byPath.makefile.slice(byPath.makefile.indexOf("\n") + 1)
+        assert.deepStrictEqual(
+          { modules: soongModules(byPath.blueprint), modes: byPath.config, makefile, patch: byPath.report.soongPatch?.name },
+          { modules: soongModules(staged["Android.bp"]), modes: staged["config.fs"], makefile: staged["Android.mk"], patch: rule === "soong" ? "soong-app-native" : undefined },
+          `${rule} rules for a launcher with ${descriptor.privilegedPermissions?.length ?? 0} privileged permissions on ${descriptor.partition ?? "product"}`,
+        )
+      }
+    }
+  }
+})
 
 it.effect.skipIf(skipped !== null)(`Refuse to stage over an existing output and stop at admission when asked, leaving nothing behind${suffix} (spec/os/image/staging.md, "Only an admitted, rendered overlay is published, once, and never over an existing output"; spec/os/image/staging.md, "A call settles as published, refused or admission-checked, with its private copy cleaned up")`, effect () => {
   provide NodeServices.layer {
