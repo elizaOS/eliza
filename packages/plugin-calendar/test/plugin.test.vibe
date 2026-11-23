@@ -334,7 +334,7 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   const processingAt = Date.parse("2030-03-04T00:01:00-08:00")
   const late = { id: "midnight-ask", roomId: "room", entityId: "owner-entity",
     createdAt: processingAt, content: { text: "Am I free tomorrow morning until noon?" } } as Memory
-  bindIncomingMessagePersistence(late, { ...late, createdAt: Date.parse("2030-03-03T23:59:00-08:00") })
+  try Effect.try(() => bindIncomingMessagePersistence(late, { ...late, createdAt: Date.parse("2030-03-03T23:59:00-08:00") }))
   try TestClock.setTime(processingAt)
   const requestedMorning = { subaction: "check_availability", timeZone: zone,
     timeMin: "2030-03-04T00:00:00-08:00", timeMax: "2030-03-04T12:00:00-08:00" }
@@ -348,7 +348,7 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   [true, "2030-03-04T08:00:00.000Z", "2030-03-04T20:00:00.000Z",
     "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD", "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD"])
   const invalid = { ...late, id: "invalid-time-ask" } as Memory
-  bindIncomingMessagePersistence(invalid, { ...invalid, createdAt: Number.NaN })
+  try Effect.try(() => bindIncomingMessagePersistence(invalid, { ...invalid, createdAt: Number.NaN }))
   const unknownTime = try runCalendarAction(host, calendarAsk(invalid), requestedMorning, invalid)
   assert.deepStrictEqual([unknownTime.success, at(unknownTime.data, "code")], [false, "CALENDAR_AVAILABILITY_REQUEST_TIME_UNAVAILABLE"])
   try TestClock.setTime(Date.parse("2030-03-03T20:00:00Z"))

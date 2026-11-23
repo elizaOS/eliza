@@ -568,7 +568,7 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   const today = { tokyo: localDay("Asia/Tokyo", 0), home: localDay("America/New_York", 0) }
   const processing = Date.parse("2030-03-04T00:01:00-08:00")
   const queued = { id: "delayed-turn", roomId: "room", entityId: "owner", content: { text: "What day is it?" }, createdAt: processing } as Memory
-  bindIncomingMessagePersistence(queued, { ...queued, createdAt: Date.parse("2030-03-03T23:59:00-08:00") })
+  try Effect.try(() => bindIncomingMessagePersistence(queued, { ...queued, createdAt: Date.parse("2030-03-03T23:59:00-08:00") }))
   const midnight = turnClock(queued, "America/Los_Angeles", true, processing)
   try Effect.try(() => assert.deepStrictEqual({
     invented: /^It's .+ GMT\+9\.$/.test(invented.text) && invented.text.includes(today.tokyo.monthDay),
