@@ -284,6 +284,7 @@ jobs:
           shopt -s nullglob
           summaries=(.turbo/runs/*.json)
           if (( ${#summaries[@]} )); then
+            set +o pipefail
             jq -r '
               .tasks[] | select(.cache.status == "HIT")
               | .hash | select(type == "string" and test("^[a-f0-9]{16}$"))
