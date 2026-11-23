@@ -198,8 +198,9 @@ it.effect('A change after a shared read is the one edit the owner asked for (spe
   assert.deepStrictEqual([try after("Reschedule this meeting for tomorrow at 10am"), try after("Move this meeting to tomorrow at 10am for 2 hours"), try after("Move this meeting to 10am")], [
     moved("2026-11-23T09:00:00.000Z", "2026-11-23T09:30:00.000Z"), moved("2026-11-23T09:00:00.000Z", "2026-11-23T11:00:00.000Z"), moved("2026-11-22T09:00:00.000Z", "2026-11-22T09:30:00.000Z"),
   ])
-  assert.deepStrictEqual([try after("Push this meeting back an hour"), try after("Move this meeting two days earlier"), try after("Move it half an hour later")], [
+  assert.deepStrictEqual([try after("Push this meeting back an hour"), try after("Move this meeting two days earlier"), try after("Move it half an hour later"), try after("Move this meeting to Friday")], [
     moved("2026-11-22T17:00:00.000Z", "2026-11-22T17:30:00.000Z"), moved("2026-11-20T16:00:00.000Z", "2026-11-20T16:30:00.000Z"), moved("2026-11-22T16:30:00.000Z", "2026-11-22T17:00:00.000Z"),
+    moved("2026-11-27T16:00:00.000Z", "2026-11-27T16:30:00.000Z"),
   ])
   assert.deepStrictEqual([try after("Rename this to “Team sync”"), try after("Change the location to Room 4"), try after("Please set the notes for this meeting to Bring the slides.")],
     [edited({ title: "Team sync" }), edited({ location: "Room 4" }), edited({ description: "Bring the slides" })])

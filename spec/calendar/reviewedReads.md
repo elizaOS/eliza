@@ -244,8 +244,9 @@ not name:
   day from those words too, else the event keeps its own day on the phone's
   clock: "reschedule the standup for tomorrow at 10am" moves the standup to
   tomorrow and never looks for a standup tomorrow, and "move my 3pm to 4pm"
-  keeps its day. It keeps the event's length unless the owner states
-  exactly one length.
+  keeps its day. Words after the marker that give only a day ("move it to
+  Friday") keep the event's own clock time on that day. It keeps the
+  event's length unless the owner states exactly one length.
 - A shift moves the event by the one amount the owner stated, with no
   destination: later ("later", "back", "delay", "postpone", "push") or
   earlier ("earlier", "sooner", "up"), never both. Minutes and hours
@@ -284,8 +285,10 @@ pure def changeOf(leadsWithChange: bool, renameAsked: bool, moveAsked: bool, shi
   else if (placeAsked) PlaceChangeAsked
   else if (notesAsked) NotesChangeAsked
   else OtherChangeAsked
-pure def timeChangeStated(clock: StatedClock, lengthsStated: int, wallTimeExists: bool): bool =
-  clock == OneClock and lengthsStated <= 1 and wallTimeExists
+pure def timeChangeStated(clock: StatedClock, dayStated: bool, lengthsStated: int, wallTimeExists: bool): bool =
+  (clock == OneClock or (clock == NoClock and dayStated)) and lengthsStated <= 1 and wallTimeExists
+pure def lawAMoveNeedsADayOrOneClock(lengthsStated: int, wallTimeExists: bool): bool =
+  not(timeChangeStated(NoClock, false, lengthsStated, wallTimeExists)) and not(timeChangeStated(SeveralClocks, true, lengthsStated, wallTimeExists))
 pure def editAfterRead(change: ChangeAsked, timeStated: bool): bool =
   change == RenameAsked or change == PlaceChangeAsked or change == NotesChangeAsked
   or ((change == TimeChangeAsked or change == ShiftAsked) and timeStated)

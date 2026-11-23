@@ -319,7 +319,7 @@ function changeIn(text: string, zone: string | undefined, startedAt: number, nam
   const otherAsked = otherWords.test(rest) || zoneNamed || fieldNouns.test(field === undefined ? rest : field.value)
   const asked = changeOf(leadingChange.test(text), renameAsked, moveAsked, shifted !== undefined, field?.kind === "place", field?.kind === "notes", otherAsked)
   const timeStated = asked === "ShiftAsked" ? typeof shifted === "object"
-    : timeChangeStated(stated.kind === "one" && stated.end !== undefined ? "SeveralClocks" : clockOf(stated), lengths?.length ?? 2, wallExists)
+    : timeChangeStated(stated.kind === "one" && stated.end !== undefined ? "SeveralClocks" : clockOf(stated), day !== undefined, lengths?.length ?? 2, wallExists)
   return {
     asked, timeStated, zoneNamed, wallExists, title, field, shift: typeof shifted === "object" ? shifted : undefined, day, clock, length: lengths?.[0] ?? 0,
   }
@@ -404,7 +404,9 @@ function editedFields(change: Change, fields: CalendarFields, zone: string): Cal
     case "ShiftAsked": return change.shift === undefined ? undefined : moved(shiftedStart(change.shift, oldStart, zone), 0)
     case "TimeChangeAsked": {
       const day = change.day ?? localDay(oldStart, zone)
-      return moved(day === undefined || change.clock === undefined ? undefined : localInstant(zone, day, change.clock), change.length)
+      const wall = getZonedDateParts(new Date(oldStart), zone)
+      const clock = change.clock ?? (wall === undefined ? undefined : { hour: wall.hour, minute: wall.minute })
+      return moved(day === undefined || clock === undefined ? undefined : localInstant(zone, day, clock), change.length)
     }
     default: return undefined
   }
