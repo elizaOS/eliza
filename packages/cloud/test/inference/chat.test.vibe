@@ -96,7 +96,7 @@ effect function hangUpAfterFirstBytes(url: string, key: string) {
 }
 
 describe("WP5 Inference: chat completions", () => {
-  it.live("Answer a chat completion once and charge it once (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")", () => scoped(effect {
+  it.live("Answer a chat completion once and charge it once, forwarding a planning turn as sent (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
     const { cloud, llm, chat } = try chatCloud(true)
     const { model, messages } = request
     const unbounded = { model, messages }
@@ -111,7 +111,12 @@ describe("WP5 Inference: chat completions", () => {
     try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }))
     const refusedByProvider = try chat(request)
     const unreadable = try chat(request)
-    const legacy = try chat({ ...request, model: "legacy-chat", max_completion_tokens: 64 })
+    const planning = {
+      tools: [{ type: "function", function: { name: "SEARCH", parameters: { type: "object", properties: {} } } }],
+      tool_choice: { type: "function", function: { name: "SEARCH" } },
+      top_p: 0.5, stop: "END", seed: 3, frequency_penalty: 0.2, presence_penalty: 0.3, prompt_cache_key: "agent-1"
+    }
+    const legacy = try chat({ ...request, ...planning, model: "legacy-chat", max_completion_tokens: 64 })
     const wide = try chat({ ...unbounded, model: "wide-chat", stream: true })
     const answer = whole.body as { readonly model: string; readonly choices: ReadonlyArray<{ readonly message: { readonly content: string } }> }
     const usage = try settledCount(cloud, "org-owner", 5)
@@ -129,6 +134,7 @@ describe("WP5 Inference: chat completions", () => {
         whole: [whole.status, answer.model, answer.choices[0]?.message.content, whole.headers["cache-control"], status(again)],
         upstream: llm.bodies.map((body) => [body.model, body.stream ?? false, body.max_tokens, body.max_completion_tokens]),
         idempotencyForwarded: llm.headers.some((headers) => headers["idempotency-key"] !== undefined),
+        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[3]?.[field]])),
         refusedByProvider: status(refusedByProvider),
         unreadable: status(unreadable),
         usage,
@@ -147,6 +153,7 @@ describe("WP5 Inference: chat completions", () => {
         upstream: [[upstreamModel, false, 4096, undefined], [upstreamModel, false, 16, undefined],
           [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
         idempotencyForwarded: false,
+        planningForwarded: planning,
         refusedByProvider: [503, "provider_unavailable", "7"],
         unreadable: [502, "provider_invalid_response", undefined],
         usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 166, 31], ["known", 19673, 31]],
