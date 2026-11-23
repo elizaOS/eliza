@@ -56,7 +56,7 @@ export function operationOf<T extends DeviceOperationType>(input: unknown, type:
 }
 
 /** The typed result a device reports for one wire type, or `never` for an operation that carries none. */
-export type OperationResultOf<T extends DeviceOperationType> = (typeof families)[T] extends { readonly result: Schema.Decoder<infer R> } ? R : never
+export type OperationResultOf<T extends DeviceOperationType> = (typeof families)[T] extends infer F ? F extends { readonly result: Schema.Decoder<infer R> } ? R : never : never
 
 /** Decodes an untrusted result for an operation by that operation's own result schema, or `undefined` when it has none or does not match. */
 export function readResult<T extends DeviceOperationType>(operation: Extract<DeviceOperation, { type: T }>, input: unknown): OperationResultOf<T> | undefined {
