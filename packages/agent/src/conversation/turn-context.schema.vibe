@@ -52,7 +52,9 @@ function webPageAddress(value: string): boolean {
   return parsed !== null && parsed.protocol === "https:" && parsed.hostname !== "" && parsed.username === "" && parsed.password === "" && parsed.href === value
 }
 
-const PageAddress = Schema.String.check(Schema.makeFilter(webPageAddress))
+const PageAddress = Schema.String.check(Schema.makeFilter(webPageAddress, {
+  arbitraryConstraint: { minLength: 32, patterns: [{ source: /^https:\/\/(?:[a-z][a-z0-9.-]*\.[a-z]{2,8}|127\.0\.0\.1|\[::1\])(?::[1-9][0-9]{3})?\/[a-zA-Z0-9_/?=&-]*$/.source, flags: "" }] },
+}))
 const PageLink = Schema.Struct({ text: line(120).check(Schema.makeFilter((value: string) => value.trim() !== "")), url: PageAddress })
 const pageFields = {
   tabId: Token,

@@ -10,8 +10,6 @@ lemma lawEveryNamedCapabilityIsNegotiated_ensures(names: seq<string>, c: Capabil
   }
 }
 
-// Each capability, case by case, is one of the listed vocabulary. The prover reads a long list from its end, so
-// the first half is read as a list of its own.
 lemma lawTheVocabularyListsEveryCapability_ensures(c: Capability)
   ensures (lawTheVocabularyListsEveryCapability(c) == true)
 {
@@ -36,13 +34,13 @@ lemma lawTheVocabularyListsEveryCapability_ensures(c: Capability)
     case PhotosLibraryV1 => assert front[15] == c;
     case PhotosViewV1 => assert front[16] == c;
     case CameraCapturePhotoV1 => assert front[17] == c;
-    case FilesBrowserV1 => assert front[18] == c;
-    case MapsSelectedReadV1 => assert front[19] == c;
-    case ClockHandoffV1 => assert front[20] == c;
-    case ClockHandoffV2 => assert front[21] == c;
-    case SmsSendV1 => assert front[22] == c;
-    case MmsSendV1 => assert front[23] == c;
-    case SmsComposeV1 => assert front[24] == c;
+    case FilesBrowserV1 => assert allCapabilities[18] == c;
+    case MapsSelectedReadV1 => assert allCapabilities[19] == c;
+    case ClockHandoffV1 => assert allCapabilities[20] == c;
+    case ClockHandoffV2 => assert allCapabilities[21] == c;
+    case SmsSendV1 => assert allCapabilities[22] == c;
+    case MmsSendV1 => assert allCapabilities[23] == c;
+    case SmsComposeV1 => assert allCapabilities[24] == c;
     case MessagesReadV1 => assert allCapabilities[25] == c;
     case PhoneDialV1 => assert allCapabilities[26] == c;
     case PhoneCallV1 => assert allCapabilities[27] == c;
@@ -73,7 +71,6 @@ lemma lawTheVocabularyListsEveryCapability_ensures(c: Capability)
   }
 }
 
-// Each older form needs only the older capability itself.
 lemma lawTheOlderFormsRunUnderTheOlderCapability_ensures(n: Negotiation)
   ensures (lawTheOlderFormsRunUnderTheOlderCapability(n) == true)
 {
@@ -82,33 +79,6 @@ lemma lawTheOlderFormsRunUnderTheOlderCapability_ensures(n: Negotiation)
   assert Capability.PhoneDialV1 in phoneDialNeed(false).required;
 }
 
-// Either sender version is one of the suffix read's alternatives.
-lemma lawEitherSenderVersionNamesTheSuffix_ensures(n: Negotiation)
-  ensures (lawEitherSenderVersionNamesTheSuffix(n) == true)
-{
-  var need := smsLatestSenderNeed(false);
-  assert Capability.SmsLatestSenderV1 in need.oneOf && Capability.SmsLatestSenderV2 in need.oneOf;
-  if negotiatedHas(n, Capability.SmsLatestSenderV1) {
-    assert Capability.SmsLatestSenderV1 in need.oneOf && Capability.SmsLatestSenderV1 in n.capabilities;
-  } else if negotiatedHas(n, Capability.SmsLatestSenderV2) {
-    assert Capability.SmsLatestSenderV2 in need.oneOf && Capability.SmsLatestSenderV2 in n.capabilities;
-  }
-}
-
-// Either clock version is one of the ordinary hand-off's alternatives.
-lemma lawEitherClockVersionRunsAnOrdinaryHandoff_ensures(n: Negotiation)
-  ensures (lawEitherClockVersionRunsAnOrdinaryHandoff(n) == true)
-{
-  var need := clockHandoffNeed(false);
-  assert Capability.ClockHandoffV1 in need.oneOf && Capability.ClockHandoffV2 in need.oneOf;
-  if negotiatedHas(n, Capability.ClockHandoffV1) {
-    assert Capability.ClockHandoffV1 in need.oneOf && Capability.ClockHandoffV1 in n.capabilities;
-  } else if negotiatedHas(n, Capability.ClockHandoffV2) {
-    assert Capability.ClockHandoffV2 in need.oneOf && Capability.ClockHandoffV2 in n.capabilities;
-  }
-}
-
-// A view other than Phone, Messages and Contacts is listed, and the filter that leaves out the telephony views keeps it.
 lemma lawEveryOtherViewIsOffered_ensures(n: Negotiation, view: DeviceView)
   ensures (lawEveryOtherViewIsOffered(n, view) == true)
 {

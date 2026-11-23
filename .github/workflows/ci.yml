@@ -321,6 +321,9 @@ jobs:
 
   vibestack-precompute-simulations:
     name: simulate-${{ matrix.shard }}
+    permissions:
+      actions: read
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -356,7 +359,128 @@ jobs:
           SHARDS: ${{ strategy.job-total }}
           CACHE_PREFIX: ${{ steps.simulation-cache.outputs.prefix }}
           RESTORED_KEY: ${{ steps.restore-simulation-cache.outputs.cache-matched-key }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          if [[ $GITHUB_EVENT_NAME == pull_request && -n $GH_TOKEN ]]; then
+            python3 - <<'PYTHON' &
+          from collections import defaultdict
+          from hashlib import file_digest
+          from pathlib import Path
+          from tempfile import TemporaryDirectory, TemporaryFile
+          from urllib.error import HTTPError
+          from urllib.parse import urlencode, urlsplit
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
+          from zipfile import BadZipFile, ZipFile
+          import json
+          import os
+          import re
+          import shutil
+          import time
+
+          class HttpsRedirect(HTTPRedirectHandler):
+              def redirect_request(self, request, stream, status, message, headers, url):
+                  if urlsplit(url).scheme != "https":
+                      raise ValueError("expected an HTTPS artifact redirect")
+                  return super().redirect_request(request, stream, status, message, headers, url)
+
+          def receive():
+              base = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())["pull_request"]["base"]
+              repository = int(os.environ["GITHUB_REPOSITORY_ID"])
+              if base["repo"]["id"] != repository:
+                  return
+              api = f'{os.environ["GITHUB_API_URL"]}/repos/{os.environ["GITHUB_REPOSITORY"]}/actions/'
+              opener = build_opener(HttpsRedirect())
+              def get(path, etag=None):
+                  request = Request(api + path, headers={"Accept": "application/vnd.github+json"})
+                  request.add_unredirected_header("Authorization", "Bearer " + os.environ["GH_TOKEN"])
+                  if etag:
+                      request.add_header("If-None-Match", etag)
+                  return opener.open(request, timeout=6)
+              deadline = time.monotonic() + 3600
+              traces = Path("gen/traces")
+              while time.monotonic() < deadline:
+                  time.sleep(30)
+                  if any(child.is_dir() and not child.name.endswith(".ordinary") for child in traces.glob("*")):
+                      break
+              else:
+                  return
+              query = urlencode({"branch": base["ref"], "head_sha": base["sha"], "event": "push", "per_page": 1})
+              with get("workflows/ci.yml/runs?" + query) as response:
+                  runs = json.load(response)["workflow_runs"]
+              if not runs:
+                  return
+              run = runs[0]
+              if (run["event"] != "push" or run["path"] != ".github/workflows/ci.yml" or
+                  run["head_branch"] != base["ref"] or run["head_sha"] != base["sha"] or
+                  run["head_repository"]["id"] != repository or run["repository"]["id"] != repository):
+                  return
+              source = {"id": run["id"], "repository_id": repository, "head_repository_id": repository,
+                        "head_branch": base["ref"], "head_sha": base["sha"]}
+              name = "simulations-" + os.environ["SHARD"]
+              listing = f'runs/{run["id"]}/artifacts?' + urlencode({"name": name, "per_page": 2})
+              delay = 90
+              etag = None
+              while time.monotonic() < deadline:
+                  try:
+                      with get(listing, etag) as response:
+                          etag = response.headers.get("etag")
+                          delay = max(delay, int(response.headers.get("x-poll-interval", "0")))
+                          artifacts = [item for item in json.load(response)["artifacts"]
+                                       if item["name"] == name and not item["expired"] and item["workflow_run"] == source]
+                  except HTTPError as error:
+                      if error.code != 304:
+                          raise
+                      artifacts = []
+                  if len(artifacts) == 1:
+                      break
+                  if artifacts or run["status"] == "completed":
+                      return
+                  time.sleep(delay)
+              else:
+                  return
+              artifact = artifacts[0]
+              with TemporaryFile() as archive:
+                  with get(f'artifacts/{artifact["id"]}/zip') as response:
+                      shutil.copyfileobj(response, archive)
+                  if archive.tell() != artifact["size_in_bytes"]:
+                      return
+                  archive.seek(0)
+                  if "sha256:" + file_digest(archive, "sha256").hexdigest() != artifact["digest"]:
+                      return
+                  cache = Path(".spec-cache")
+                  cache.mkdir(exist_ok=True)
+                  with ZipFile(archive) as packed, TemporaryDirectory(dir=cache.parent) as staging:
+                      keys = defaultdict(list)
+                      for member in packed.infolist():
+                          if re.fullmatch(r"(?:action|simulate)-[0-9a-f]{24}\.json\.(?:gz|zst)", member.filename):
+                              keys[member.filename.rsplit(".", 1)[0]].append(member)
+                      count = 0
+                      for key, members in keys.items():
+                          if len(members) != 1 or any(os.path.lexists(cache / (key + suffix)) for suffix in (".gz", ".zst")):
+                              continue
+                          member = members[0]
+                          temporary = Path(staging) / member.filename
+                          with packed.open(member) as src, temporary.open("xb") as dest:
+                              shutil.copyfileobj(src, dest)
+                          try:
+                              os.link(temporary, cache / member.filename)
+                              count += 1
+                          except FileExistsError:
+                              pass
+              if count:
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                      output.write("base-receipts=true\n")
+                  print(f'Imported {count} published receipts from base run {run["id"]}, artifact {artifact["id"]}.', flush=True)
+
+          try:
+              receive()
+          except (OSError, ValueError, KeyError, TypeError, BadZipFile) as error:
+              print("Optional base receipt transfer ended:", type(error).__name__, flush=True)
+          PYTHON
+            receiver=$!
+            trap 'kill "$receiver" 2>/dev/null || true; wait "$receiver" 2>/dev/null || true' EXIT
+          fi
+          unset GH_TOKEN
           node --input-type=module <<'JS'
           import { createHash } from "node:crypto";
           import fs from "node:fs";
@@ -392,7 +516,7 @@ jobs:
                   fs.rmSync(directory, { recursive: true, force: true });
                   fs.renameSync(checkpoint, directory);
                   transfer = directory;
-                  fs.appendFileSync(process.env.GITHUB_OUTPUT, `cache-key=${key}\n`);
+                  fs.appendFileSync(process.env.GITHUB_OUTPUT, `cache-key=${key}\ncache-prefix=${prefix}\n`);
                 } catch (error) {
                   console.log(`::warning::Could not stage the simulation cache: ${error.message}`);
                 }
@@ -406,7 +530,16 @@ jobs:
           console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${fs.readdirSync(transfer).length} ${kind} entries, ${failed.length} failed`);
           process.exitCode = failed.length ? 1 : 0;
           JS
-      - if: ${{ !cancelled() && steps.precompute.outputs.cache-key != '' }}
+      - id: published-simulation-cache
+        if: ${{ !cancelled() && steps.precompute.outputs.cache-key != '' && steps.precompute.outputs.base-receipts == 'true' }}
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/cached-simulation-receipts
+          key: ${{ steps.precompute.outputs.cache-key }}
+          restore-keys: ${{ steps.precompute.outputs.cache-prefix }}
+          lookup-only: true
+      - if: ${{ !cancelled() && steps.precompute.outputs.cache-key != '' && steps.published-simulation-cache.outputs.cache-matched-key == '' }}
         continue-on-error: true
         uses: actions/cache/save@v6
         with:
