@@ -174,7 +174,7 @@ export function googleMapsFake(): GoogleMapsFake {
       calls.push({ operation, request });
       if (operation === "createSession") sessionAsked();
       if (keyOf(request) !== googleKey) return { status: 403, body: { error: { code: 403, status: "PERMISSION_DENIED" } } };
-      const session: GoogleScript = sessionDelayMs > 0 ? { kind: "slow", delayMs: sessionDelayMs } : { kind: "answer" };
+      const session: GoogleScript = sessionDelayMs > 0 ? { kind: "hold", wait: () => new Promise<void>((resolve) => setTimeout(resolve, sessionDelayMs)) } : { kind: "answer" };
       return scripted(operation === "createSession" ? session : queue.shift() ?? { kind: "answer" }, operation, request);
     },
     calls,

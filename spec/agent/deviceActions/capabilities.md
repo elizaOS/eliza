@@ -52,7 +52,6 @@ pure def capabilityName(c: Capability): str = match c {
   | SmsComposeV1 => "sms.compose.v1" | MessagesReadV1 => "messages.read.v1" | PhoneDialV1 => "phone.dial.v1" | PhoneCallV1 => "phone.call.v1"
   | ContactsWriteV1 => "contacts.write.v1" | VoicemailReadV1 => "voicemail.read.v1" | VoicemailDeleteV1 => "voicemail.delete.v1"
   | SmsLatestSenderV1 => "sms.latest-sender.v1" | SmsLatestSenderV2 => "sms.latest-sender.v2" | NotesRecordV1 => "notes.record.v1"
-  | PhotosViewSelectedV1 => "photos.view-selected.v1" | CameraLibraryIdV1 => "camera.capture-library-id.v1"
   | PhotosViewSelectedV1 => "photos.view-selected.v1" | CameraLibraryIdV1 => "camera.capture-library-id.v1" | CameraCaptureLensV1 => "camera.capture-lens.v1"
   | SmsComposeV2 => "sms.compose.v2" | ContactsWriteV2 => "contacts.write.v2" | ContactsShowV1 => "contacts.show.v1"
   | ContactsReadV1 => "contacts.read.v1" | ContactsLookupV1 => "contacts.lookup.v1" | PhoneKeypadV1 => "phone.keypad.v1"

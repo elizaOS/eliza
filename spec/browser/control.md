@@ -59,28 +59,6 @@ pure val negotiatedValues = Set(nothingNegotiated, { ...nothingNegotiated, searc
   { ...nothingNegotiated, tabsCapability: true, closeAllCapability: true }, { ...nothingNegotiated, closeAllCapability: true })
 ```
 
-### Closing every tab is its own negotiated form, and a request for several tabs is never narrowed to one
-
-A close names one tab, the tab that is showing, or every open tab, never a
-named tab and every tab together: such a close is refused. Closing every
-tab needs `browser.tabs.close-all.v1` beside `browser.tabs.v1`. A phone that
-did not negotiate it is never sent it, and the request is refused with the
-reason the agent tells the owner, offering to close the tab that is showing
-or one they name; it is never narrowed to the tab that is showing. The
-review card of a close of every tab lists the tabs the phone will close,
-counting private tabs without naming them, and says only what will happen
-when the phone has no list; the agent never receives the list.
-
-```quint
-type TabClose = CloseShowing | CloseNamed | CloseAll
-pure def closeOffered(close: TabClose, negotiated: Negotiated): bool =
-  controlOffered(TabCloseControl, negotiated) and (close != CloseAll or negotiated.closeAllCapability)
-pure def lawClosingEveryTabNeedsBothCapabilities(negotiated: Negotiated): bool =
-  closeOffered(CloseAll, negotiated) iff (negotiated.tabsCapability and negotiated.closeAllCapability)
-pure def lawOneTabClosesUnderTheTabsCapability(close: TabClose, negotiated: Negotiated): bool =
-  close != CloseAll implies (closeOffered(close, negotiated) iff negotiated.tabsCapability)
-```
-
 ### Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs
 
 Closing every open tab is a tab close that names `all`. It needs
