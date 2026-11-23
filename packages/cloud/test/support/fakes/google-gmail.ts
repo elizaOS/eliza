@@ -78,7 +78,7 @@ function headerList(received: ReadonlyArray<{ readonly name: string; readonly va
 function payload(message: ReadableMessage, format: string, only: ReadonlyArray<string> | undefined) {
   const parsed = message.raw === undefined ? undefined : rawParts(message.raw);
   const headers = headerList(message.received ?? [], message.headers ?? parsed?.headers ?? {}, format === "metadata" ? only : undefined);
-  if (format === "metadata") return { mimeType: "multipart/mixed", headers };
+  if (format === "metadata") return { mimeType: (message.attachments ?? []).length > 0 ? "multipart/mixed" : "multipart/alternative", headers };
   if (message.mimePayload !== undefined) return { ...message.mimePayload, headers };
   const text = message.bodyText ?? parsed?.body;
   const bodies = [

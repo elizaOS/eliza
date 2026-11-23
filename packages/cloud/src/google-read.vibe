@@ -2,7 +2,7 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 import { Result } from "effect"
 import { Base64Url } from "effect/encoding"
-import { htmlMaxBytes, htmlViewOf, listCount, mailMaxBytes, needsReply, replyAddressNamed, searchOutcome, triageImportant, triageReasons, triageScore, type Continuation, type MailList, type TriageReason } from "../gen/cloud__services__google__mailRead.effect.vibe"
+import { attachmentHint, htmlMaxBytes, htmlViewOf, listCount, mailMaxBytes, needsReply, replyAddressNamed, searchOutcome, triageImportant, triageReasons, triageScore, type Continuation, type MailList, type TriageReason } from "../gen/cloud__services__google__mailRead.effect.vibe"
 
 export type GoogleReadApi<E, R> = (url: string, maxBytes?: number) => unknown!E!R
 export error GoogleReadInput
@@ -90,6 +90,10 @@ export function mailReplyAddress(headers: ReadonlyMap<string, string>): string |
   return replyAddressNamed(named !== undefined, address !== null) ? address : null
 }
 
+export function mailAttachmentHint(payload: MailPart | undefined): boolean {
+  return attachmentHint(payload?.mimeType?.toLowerCase() === "multipart/mixed", (payload?.filename ?? "") !== "")
+}
+
 export function isoMailDate(value: string | undefined) {
   if (!value || !history.test(value)) return null
   const instant = new Date(Number(value))
@@ -142,7 +146,7 @@ effect function mailCard(message: MailMessage, selfEmail: string) {
   return {
     ...mailTriageFields(labels, headers, selfEmail),
     id: message.id, externalId: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from, fromEmail: sender(from),
-    replyTo: mailReplyAddress(headers), to: split("to"), cc: split("cc"), snippet: message.snippet ?? "",
+    replyTo: mailReplyAddress(headers), hasAttachments: mailAttachmentHint(message.payload), to: split("to"), cc: split("cc"), snippet: message.snippet ?? "",
     receivedAt, labels,
     htmlLink: `https://mail.google.com/mail/u/0/#all/${message.id}`, metadata: { historyId: message.historyId ?? null }
   }

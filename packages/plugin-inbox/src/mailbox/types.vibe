@@ -86,6 +86,7 @@ export interface GmailMessage {
   readonly to: readonly string[]
   readonly cc: readonly string[]
   readonly replyTo?: string
+  readonly hasAttachments?: boolean
   readonly snippet: string
   readonly receivedAt: string
   readonly unread: boolean

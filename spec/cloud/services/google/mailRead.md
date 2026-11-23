@@ -108,17 +108,22 @@ pure def lawAScoreIsWithinItsRange(signals: TriageSignals): bool =
   triageScore(signals) >= 0 and triageScore(signals) <= 110 and (triageReasons(signals) == List() implies triageScore(signals) == 0)
 ```
 
-### A message row names the one address its replies go to
+### A message row names the one address its replies go to, and hints at attachments
 
 Every message row, in triage, a search page, a message read and a thread
 page, carries `replyTo`: the single literal address its `Reply-To` header
 names, or null when the message has no such header or the header names
 anything else. [The reviewed operations](./mailOperations.md) bind a reply
 to that header, so a client can address the reply where the review will
-accept it.
+accept it. It also carries `hasAttachments`: true when the message's outer
+part is a `multipart/mixed` container, which is all a header read learns,
+or is itself a named file. That is a hint for a list row, never an
+inventory; a message read lists the attachments themselves.
 
 ```quint
 pure def replyAddressNamed(headerPresent: bool, oneLiteralAddress: bool): bool = headerPresent and oneLiteralAddress
+pure def attachmentHint(mixedContainer: bool, namedFile: bool): bool = mixedContainer or namedFile
+pure def lawAPlainMessageHintsAtNoAttachment(namedFile: bool): bool = attachmentHint(false, namedFile) == namedFile
 pure def lawNoReplyHeaderNamesNoAddress(oneLiteralAddress: bool): bool = not(replyAddressNamed(false, oneLiteralAddress))
 pure def lawOnlyALiteralAddressIsNamed(headerPresent: bool): bool = not(replyAddressNamed(headerPresent, false))
 ```

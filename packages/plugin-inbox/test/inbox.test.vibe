@@ -250,10 +250,11 @@ it.effect(`Page a folder once per message, notice a changed mailbox, and keep ca
   const row = { key: listKey, account: "grant-a", at: now, firstPageRevision: "41", messages: second.messages, query: "in:inbox", cursor: null, cursors: ["p1", "p2"], shifted: true }
   assert.isFalse(try caches.rememberList({ ...row, key: "drafts", query: "in:drafts" }))
   assert.isTrue(try caches.rememberList(row))
-  cloud.state.rowFields.set("m1", { replyTo: "Plans <Plans@Example.org>" }).set("m2", { replyTo: "bo@example.com, cy@example.com" })
+  cloud.state.rowFields.set("m1", { replyTo: "Plans <Plans@Example.org>", hasAttachments: true }).set("m2", { replyTo: "bo@example.com, cy@example.com" })
   const body = try cloud.client.gmailRead("grant-a", "m1")
   assert.deepEqual(body.links, [{ href: "https://example.com/a", text: "https://example.com/a" }])
-  assert.deepEqual([body.message.replyTo, (try cloud.client.gmailRead("grant-a", "m2")).message.replyTo], ["plans@example.org", undefined])
+  const plain = (try cloud.client.gmailRead("grant-a", "m2")).message
+  assert.deepEqual([body.message.replyTo, body.message.hasAttachments, plain.replyTo, plain.hasAttachments], ["plans@example.org", true, undefined, undefined])
   try caches.rememberBody({ key: "m1", account: "grant-a", at: now, body })
   assert.isTrue((try caches.body("m1", now + 1000))?.skipsRead)
   assert.isFalse((try caches.body("m1", now + 600_000))?.skipsRead)

@@ -2094,7 +2094,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       providerCallsOnRejectedSelection: 0,
     }))
     const pdf = new TextEncoder().encode("%PDF-plan")
-    type Card = { readonly id: string; readonly replyTo: string | null; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
+    type Card = { readonly id: string; readonly replyTo: string | null; readonly hasAttachments: boolean; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
     const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId])
     const readBody = read.body as { readonly message: Card; readonly bodyText: string; readonly bodyHtml: string | null; readonly bodyHtmlStatus: string; readonly attachments: ReadonlyArray<unknown>; readonly authenticationResults: string | null }
     const file = attachment.body as { readonly name: string; readonly mimeType: string; readonly size: number; readonly dataBase64: string; readonly sha256: string; readonly supported: boolean }
@@ -2118,6 +2118,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
         thread: [thread.status, threadBody.historyId, threadBody.total, threadBody.messages.map((message) => message.bodyText)],
         replyTo: [readBody.message.replyTo, (triage.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => card.replyTo), threadBody.messages.map((message) => message.message.replyTo)],
+        hasAttachments: (triage.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => card.hasAttachments),
         pages: [first.body.historyId === next.body.historyId, pageOf(first, earlierText), pageOf(next, laterText)],
         pageRefusals: [errorOf(missingRevision), errorOf(changedPage), errorOf(indivisible)],
         stale: [errorOf(staleAttachment), errorOf(staleThread)],
@@ -2148,6 +2149,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
         thread: [200, "1001", 1, ["Please review the plan."]],
         replyTo: ["plans@example.org", ["plans@example.org", null], ["plans@example.org"]],
+        hasAttachments: [true, false],
         pages: [true, [200, true, 2, 0, 1, [["page-earlier", "1006", true]]], [200, true, 2, 1, null, [["page-later", "1005", true]]]],
         pageRefusals: [[400, "invalid_request"], [409, "stale_revision"], [413, "content_too_large"]],
         stale: [[409, "stale_revision"], [409, "stale_revision"]],

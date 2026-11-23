@@ -66,15 +66,20 @@ pure def sometimesListHasNextPage(s: MailboxFeed): bool = s.cursor != ""
 > reply needs, and nothing a confused answer could smuggle in, so that the
 > composer addresses a reply where its review will accept it.
 
-### A message names where its replies go only as one literal address
+### A message names where its replies go only as one literal address, and marks attachments only as Cloud hinted
 
 Cloud's message row may name a `replyTo`. The message keeps it only when
 it is one literal address, lower-cased like the sender's own; a row
 without one, or naming anything else, leaves the message without a reply
-address, and a reply then goes to its sender. The saved mailbox keeps the
-reply address with the message.
+address, and a reply then goes to its sender. A row's `hasAttachments` is
+Cloud's hint for a paperclip on a list row: the message carries it exactly
+as sent, and carries none when Cloud sent none, so a missing hint is never
+shown as "no attachments". The saved mailbox keeps both with the message.
 
 ```quint
+type AttachmentMark = MarkUnknown | MarkAttached | MarkPlain
+pure def attachmentMark(hinted: bool, hint: bool): AttachmentMark = if (not(hinted)) MarkUnknown else if (hint) MarkAttached else MarkPlain
+pure def lawAMissingHintMarksNothing(hint: bool): bool = attachmentMark(false, hint) == MarkUnknown
 pure def replyToKept(named: bool, literalAddress: bool): bool = named and literalAddress
 pure def lawAnUnreadableReplyAddressIsNotKept(named: bool): bool = not(replyToKept(named, false))
 pure def lawAnUnnamedReplyAddressIsNotKept(literalAddress: bool): bool = not(replyToKept(false, literalAddress))

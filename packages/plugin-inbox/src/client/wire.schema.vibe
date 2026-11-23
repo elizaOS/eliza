@@ -1,4 +1,4 @@
-// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/reads.md, "A message names where its replies go only as one literal address"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"
+// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/reads.md, "A message names where its replies go only as one literal address, and marks attachments only as Cloud hinted"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"
 const Text = Schema.String
 const Texts = Schema.Array(Schema.String)
 const Kind = Schema.Literals(["send", "draft-create", "draft-replace", "draft-delete", "archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"])
@@ -17,7 +17,7 @@ export const AccountsWire = Schema.Array(ConnectionWire)
 export const MailCardWire = Schema.Struct({
   id: Text, threadId: Text, subject: Text, from: Text, to: Texts, cc: Texts, snippet: Text, receivedAt: Text,
   labels: Texts, isUnread: Schema.Boolean, metadata: Schema.Struct({ historyId: Schema.NullOr(Text) }),
-  replyTo: Schema.optionalKey(Schema.NullOr(Text)),
+  replyTo: Schema.optionalKey(Schema.NullOr(Text)), hasAttachments: Schema.optionalKey(Schema.Boolean),
 })
 
 export const SearchWire = Schema.Struct({

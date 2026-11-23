@@ -1,5 +1,5 @@
-// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/reads.md, "A message names where its replies go only as one literal address"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"; spec/inbox/outgoing.md, "A saved attachment of any type is a checked byte copy, never opened"; spec/inbox/display.md, "Only an absolute web link without credentials is kept, and its shown text is plain"
-import { replyToKept } from "../../gen/inbox__reads.effect.vibe"
+// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/reads.md, "A message names where its replies go only as one literal address, and marks attachments only as Cloud hinted"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"; spec/inbox/outgoing.md, "A saved attachment of any type is a checked byte copy, never opened"; spec/inbox/display.md, "Only an absolute web link without credentials is kept, and its shown text is plain"
+import { attachmentMark, replyToKept } from "../../gen/inbox__reads.effect.vibe"
 import { reviewOpaqueAttachment, type MailAttachmentReviewer, type OpaqueMailAttachment, type ReviewedMailAttachment } from "../mailbox/attachments.vibe"
 import { utf8Length } from "../mailbox/digest.vibe"
 import { MailProtocolFailed, type MailFailure, type MailUnreachable } from "../mailbox/failures.vibe"
@@ -44,6 +44,8 @@ function query(entries: Readonly<Record<string, string | undefined>>): string {
   return new URLSearchParams(Object.entries(entries).flatMap(([name, value]) => value === undefined ? [] : [[name, value]])).toString()
 }
 
+const hinted = { MarkUnknown: {}, MarkAttached: { hasAttachments: true }, MarkPlain: { hasAttachments: false } } as const
+
 function senderEmail(from: string): string | null {
   const candidate = (/<([^<>]+)>\s*$/.exec(from)?.[1] ?? from).trim()
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(candidate) ? candidate.toLowerCase() : null
@@ -61,6 +63,7 @@ effect function messageOf(card: typeof MailCardWire.Type): GmailMessage!MailProt
     to: card.to,
     cc: card.cc,
     ...(replyTo === null ? {} : { replyTo }),
+    ...hinted[attachmentMark(card.hasAttachments !== undefined, card.hasAttachments === true)],
     snippet: card.snippet,
     receivedAt: try present(card.receivedAt),
     unread: card.isUnread,
