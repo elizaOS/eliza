@@ -86,6 +86,71 @@ function entryOf(rows: readonly LibraryRow[], path: string, row: LibraryRow): St
   }
 }
 
+effect function walkRows(all: readonly LibraryRow[], from: string, keep: (entry: StorageEntry) => boolean) {
+  const start = folderIdAt(all, from)
+  if (start === undefined) throw refused("missing", "The folder is not there")
+  const found: StorageEntry[] = []
+  const queue: [string, string][] = [[start, from]]
+  let visited = 0
+  for (let index = 0; index < queue.length; index++) {
+    const [id, path] = queue[index]
+    for (const row of visible(all, id)) {
+      if (++visited > WALK_LIMIT) return { found, partial: true }
+      const entry = entryOf(all, joinPath(path, row.name), row)
+      if (keep(entry)) found.push(entry)
+      if (row.directory) queue.push([row.id, entry.path])
+    }
+  }
+  return { found, partial: false }
+}
+
+effect function checkRow(all: readonly LibraryRow[], op: FilesOp, raw: string, reviewed: string | undefined, dest: string) {
+  const path = visiblePath(raw) ?? ""
+  const valid = path !== ""
+  const row = valid ? rowAt(all, path) : undefined
+  const matches = reviewed !== undefined && row !== undefined && (try promise(() => identityToken(row.id, row.revision))) === reviewed
+  const facts: FilesRowCheck = {
+    validPath: valid, pathExists: row !== undefined, reviewRequired: reviewed !== undefined, reviewMatches: matches, currentOwner: valid,
+    sameFolder: op === "Move" && parentOf(path) === dest, descendant: row?.directory === true && within(dest, path),
+  }
+  return { path, row, facts, admission: classifyRow(op, facts) }
+}
+
+effect function freeNameIn(all: readonly LibraryRow[], folderId: string, name: string, directory: boolean): string!VolumeRefused {
+  const free = freeName(name, childrenOf(all, folderId).map((row) => row.name), directory)
+  if (free === undefined) throw refused("exists", "No free name")
+  return free
+}
+
+effect function archiveOf(all: readonly LibraryRow[], selected: readonly string[]) {
+  const files: { path: string; bytes: Uint8Array<ArrayBuffer> }[] = []
+  for (const raw of selected) {
+    const path = visiblePath(raw)
+    const row = path === undefined ? undefined : rowAt(all, path)
+    if (row === undefined) throw refused("missing", "A selected item changed. Refresh and select again.")
+    for (const id of subtreeOf(all, row.id)) {
+      const item = all.find((candidate) => candidate.id === id)
+      if (item === undefined) continue
+      let name = item.name
+      for (let parent = item.parentId; parent !== row.parentId && parent !== LIBRARY_ROOT;) {
+        const above = all.find((candidate) => candidate.id === parent)
+        if (above === undefined) break
+        name = `${above.name}/${name}`
+        parent = above.parentId
+      }
+      if (item.directory) files.push({ path: `${name}/`, bytes: new Uint8Array(0) })
+      else if (item.bytes === undefined) throw refused("failed", "File bytes unavailable.")
+      else files.push({ path: name, bytes: item.bytes })
+    }
+  }
+  return try mapError(fileArchive(files), (failure) => refused("invalid", failure.message))
+}
+
+function trashDataOf(all: readonly LibraryRow[]) {
+  const trashId = folderIdAt(all, TRASH)
+  return trashId === undefined ? [] : childrenOf(all, trashId).filter((row) => !row.name.endsWith(".json"))
+}
+
 export function libraryVolume(archiveName = "Files.zip") {
   return Layer.effect(FilesVolume, effect {
     const library = try LibraryStore
@@ -115,45 +180,8 @@ export function libraryVolume(archiveName = "Files.zip") {
       return id
     }
 
-    effect function walk(from: string, keep: (entry: StorageEntry) => boolean) {
-      const all = try rows()
-      const start = folderIdAt(all, from)
-      if (start === undefined) throw refused("missing", "The folder is not there")
-      const found: StorageEntry[] = []
-      const queue: [string, string][] = [[start, from]]
-      let visited = 0
-      for (let index = 0; index < queue.length; index++) {
-        const [id, path] = queue[index]
-        for (const row of visible(all, id)) {
-          if (++visited > WALK_LIMIT) return { found, partial: true }
-          const entry = entryOf(all, joinPath(path, row.name), row)
-          if (keep(entry)) found.push(entry)
-          if (row.directory) queue.push([row.id, entry.path])
-        }
-      }
-      return { found, partial: false }
-    }
-
     const token = (row: LibraryRow) => promise(() => identityToken(row.id, row.revision))
-
-    effect function check(op: FilesOp, raw: string, reviewed: string | undefined, dest: string) {
-      const path = visiblePath(raw) ?? ""
-      const valid = path !== ""
-      const all = try rows()
-      const row = valid ? rowAt(all, path) : undefined
-      const matches = reviewed !== undefined && row !== undefined && (try token(row)) === reviewed
-      const facts: FilesRowCheck = {
-        validPath: valid, pathExists: row !== undefined, reviewRequired: reviewed !== undefined, reviewMatches: matches, currentOwner: valid,
-        sameFolder: op === "Move" && parentOf(path) === dest, descendant: row?.directory === true && within(dest, path),
-      }
-      return { path, row, facts, admission: classifyRow(op, facts) }
-    }
-
-    effect function freeIn(folderId: string, name: string, directory: boolean): string!VolumeRefused {
-      const free = freeName(name, childrenOf(try rows(), folderId).map((row) => row.name), directory)
-      if (free === undefined) throw refused("exists", "No free name")
-      return free
-    }
+    effect function freeIn(folderId: string, name: string, directory: boolean): string!VolumeRefused { return try freeNameIn(try rows(), folderId, name, directory) }
 
     effect function copyInto(row: LibraryRow, folderId: string, name: string): void!VolumeRefused {
       const id = try allocateId
@@ -194,7 +222,7 @@ export function libraryVolume(archiveName = "Files.zip") {
     }
 
     effect function trashRow(raw: string, reviewed: string | undefined): RowOutcome!VolumeRefused {
-      const { path, row, facts, admission } = try check("Trash", raw, reviewed, "")
+      const { path, row, facts, admission } = try checkRow(try rows(), "Trash", raw, reviewed, "")
       if (admission !== "Admitted" || row === undefined) return { path: raw, status: ANSWERS[admission] }
       const trashId = try folder(TRASH, true)
       const id = try allocateId
@@ -209,7 +237,7 @@ export function libraryVolume(archiveName = "Files.zip") {
     }
 
     effect function transferRow(op: FilesOp, raw: string, reviewed: string | undefined, dest: string, destId: string): RowOutcome!VolumeRefused {
-      const { path, row, admission } = try check(op, raw, reviewed, dest)
+      const { path, row, admission } = try checkRow(try rows(), op, raw, reviewed, dest)
       if (admission === "Unchanged") return { path, status: "unchanged", to: path }
       if (admission !== "Admitted" || row === undefined) return { path: raw, status: ANSWERS[admission] }
       const name = (freeIn(destId, row.name, row.directory) catch () => undefined)
@@ -219,39 +247,8 @@ export function libraryVolume(archiveName = "Files.zip") {
       return written ? { path, status: op === "Copy" ? "copied" : "moved", to: joinPath(dest, name) } : { path, status: "failed" }
     }
 
-    effect function trashData() {
-      const all = try rows()
-      const trashId = folderIdAt(all, TRASH)
-      return trashId === undefined ? [] : childrenOf(all, trashId).filter((row) => !row.name.endsWith(".json"))
-    }
-
     effect function erase(row: LibraryRow): boolean!! {
       return try succeeded(commit(deletePlan([{ id: row.id, expectedRevision: row.revision }], true, true)))
-    }
-
-    effect function archiveOf(selected: readonly string[]) {
-      const all = try rows()
-      const files: { path: string; bytes: Uint8Array<ArrayBuffer> }[] = []
-      for (const raw of selected) {
-        const path = visiblePath(raw)
-        const row = path === undefined ? undefined : rowAt(all, path)
-        if (row === undefined) throw refused("missing", "A selected item changed. Refresh and select again.")
-        for (const id of subtreeOf(all, row.id)) {
-          const item = all.find((candidate) => candidate.id === id)
-          if (item === undefined) continue
-          let name = item.name
-          for (let parent = item.parentId; parent !== row.parentId && parent !== LIBRARY_ROOT;) {
-            const above = all.find((candidate) => candidate.id === parent)
-            if (above === undefined) break
-            name = `${above.name}/${name}`
-            parent = above.parentId
-          }
-          if (item.directory) files.push({ path: `${name}/`, bytes: new Uint8Array(0) })
-          else if (item.bytes === undefined) throw refused("failed", "File bytes unavailable.")
-          else files.push({ path: name, bytes: item.bytes })
-        }
-      }
-      return try mapError(fileArchive(files), (failure) => refused("invalid", failure.message))
     }
 
     return {
@@ -262,9 +259,7 @@ export function libraryVolume(archiveName = "Files.zip") {
         return { access: "granted" as const, volumes: [{ id: "primary", name: "Internal storage", primary: true, free: estimate?.free ?? 0, total: estimate?.total ?? 0,
           ...(estimate === undefined ? { usage: { bytes: kept.reduce((sum, row) => sum + (row.bytes?.byteLength ?? row.size), 0), files: kept.length } } : {}) }] }
       },
-      effect requestAccess() {
-        return "granted" as const
-      },
+      effect requestAccess() { return "granted" as const },
       effect list(path) {
         const at = visiblePath(path, true)
         if (at === undefined) throw refused("invalid", "Invalid folder")
@@ -281,14 +276,14 @@ export function libraryVolume(archiveName = "Files.zip") {
           const found = visible(all, id).map((row) => entryOf(all, joinPath(DOWNLOAD_FOLDER, row.name), row))
           return { ...downloadsListing("DownloadFolderListed", found, { metadataKnown: true, partial: false }), count: found.length }
         }
-        const { found, partial } = try walk("", (entry) => inCategory(category, entry))
+        const { found, partial } = try walkRows(try rows(), "", (entry) => inCategory(category, entry))
         const sorted = [...found].sort((a, b) => b.modified - a.modified)
         return { ...listing(sorted, { metadataKnown: true, partial, failed: false }), count: sorted.length }
       },
       effect query(filter) {
         const folder = visiblePath(filter.folder ?? "", true)
         if (folder === undefined) throw refused("invalid", "Invalid folder")
-        const { found, partial } = try walk(folder, (entry) => filterMatches(filter, entry))
+        const { found, partial } = try walkRows(try rows(), folder, (entry) => filterMatches(filter, entry))
         return listing(found, { metadataKnown: true, partial, failed: false })
       },
       effect reviewedIdentities(selected) {
@@ -350,7 +345,7 @@ export function libraryVolume(archiveName = "Files.zip") {
       restore: (ids) => namespace(effect {
         const outcomes: RowOutcome[] = []
         for (const id of ids) {
-          const data = (try trashData()).find((row) => row.name === id)
+          const data = (trashDataOf(try rows())).find((row) => row.name === id)
           const { kept } = try recordRow(id)
           if (data === undefined || kept === undefined) {
             outcomes.push({ path: id, status: "missing" })
@@ -371,7 +366,7 @@ export function libraryVolume(archiveName = "Files.zip") {
         if (!confirmed) throw refused("confirmation-required", "Confirm before deleting permanently.")
         if (ids.length < 1 || ids.length > batchMax || new Set(ids).size !== ids.length) throw refused("invalid", "Invalid name or path.")
         let count = 0
-        for (const data of try trashData()) {
+        for (const data of trashDataOf(try rows())) {
           if (!ids.includes(data.name)) continue
           if ((try erase(data)) && (try eraseRecord(data.name))) count++
         }
@@ -400,7 +395,7 @@ export function libraryVolume(archiveName = "Files.zip") {
       },
       effect share(selected) {
         if (selected.length === 0) throw refused("unsupported", "Select files to share.")
-        const archive = try archiveOf(selected)
+        const archive = try archiveOf(try rows(), selected)
         const handed = try promise(() => shareFile(archiveName, archive))
         if (handed === "opened") return 1
         throw handed === "cancelled" ? refused("cancelled", "Sharing was cancelled.") : refused("unsupported", "Sharing is unavailable in this browser.")
