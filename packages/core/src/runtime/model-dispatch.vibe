@@ -847,11 +847,19 @@ function toolLogEntry(tool: unknown): ModelLogTool[] {
   return [{ name, chars: text.length, hash: sha256Hex(text).slice(0, 12) }]
 }
 
-function modelCallRequestSizes(request: unknown): { tools?: ModelLogTool[]; maxTokens?: number } {
+function callerPurpose(request: Record<string, unknown>): string | undefined {
+  const eliza = isPlainObject(request.providerOptions) ? request.providerOptions.eliza : undefined
+  const purpose = isPlainObject(eliza) ? eliza.purpose : undefined
+  return typeof purpose === "string" && purpose !== "" ? purpose : undefined
+}
+
+function modelCallRequestSizes(request: unknown): { tools?: ModelLogTool[]; maxTokens?: number; purpose?: string } {
   if (!isPlainObject(request)) return {}
+  const purpose = callerPurpose(request)
   return {
     tools: Array.isArray(request.tools) ? request.tools.flatMap(toolLogEntry) : [],
     ...(typeof request.maxTokens === "number" && request.omitMaxTokens !== true ? { maxTokens: request.maxTokens } : {}),
+    ...(purpose === undefined ? {} : { purpose }),
   }
 }
 

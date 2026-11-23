@@ -362,6 +362,7 @@ export interface ModelLogBody extends BaseLogBody {
   response?: JsonValue
   tools?: ModelLogTool[]
   maxTokens?: number
+  purpose?: string
   usage?: ModelLogUsage
 }
 

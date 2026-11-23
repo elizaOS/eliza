@@ -126,16 +126,19 @@ pure def alwaysActiveDispatchHasRegistration(s: Dispatch): bool = s.phase == Adm
 
 ## Story: Read what one model call sent and what it cost
 
-> As the owner's operator, I want each model-call log row to say which tool
-> schemas and output cap the request carried and what the provider counted,
-> so that I can see what crowds a long turn and when a prefix cache was used.
+> As the owner's operator, I want each model-call log row to say which stage
+> made the call, which tool schemas and output cap the request carried and
+> what the provider counted, so that I can see what crowds a long turn and
+> when a prefix cache was used.
 
 ### A model-call log row records the request parts its prompt omits and only the token counts the provider reported
 
 The row's `prompt` holds the messages only. `tools` lists each tool schema
 the request sent, in order, with its serialized length and the first twelve
 hex digits of its SHA-256, and is empty when the request sent none. `maxTokens`
-is the cap the request sent, absent when it sent none. `usage` exists only
+is the cap the request sent, absent when it sent none. `purpose` is the
+stage the caller named in `providerOptions.eliza.purpose`, as named, and is
+absent when the caller named none or an empty one. `usage` exists only
 when the provider reported a prompt count; a completion, cache-read or
 reasoning count the provider did not report is absent, never zero, and a
 reported zero is kept, so no report stays distinguishable from a cache miss.
@@ -152,6 +155,12 @@ pure def lawAMissingCountIsNeverZero(c: ProviderCount): bool = c == CountMissing
 pure def lawAReportedZeroIsKept(c: ProviderCount): bool = c == CountReported({ tokens: 0 }) implies loggedTokens(c) == 0
 pure def lawUsageNeedsAReportedPromptCount(prompt: ProviderCount): bool = usageLogged(prompt) implies prompt != CountMissing
 pure def lawEveryToolSentIsLogged(sent: int): bool = sent >= 0 implies toolsLogged(sent) == sent
+type CallerPurpose = PurposeNamed({ name: str }) | NoPurpose
+pure def purposeLogged(p: CallerPurpose): bool = match p { | PurposeNamed(x) => x.name != "" | NoPurpose => false }
+pure def loggedPurpose(p: CallerPurpose): str = match p { | PurposeNamed(x) => x.name | NoPurpose => "" }
+pure val purposeValues = Set(PurposeNamed({ name: "planner" }), PurposeNamed({ name: "" }), NoPurpose)
+pure def lawANamedPurposeIsLoggedAsNamed(purpose: CallerPurpose): bool = purposeLogged(purpose) implies purpose == PurposeNamed({ name: loggedPurpose(purpose) })
+pure def lawNoPurposeIsLoggedUnlessNamed(purpose: CallerPurpose): bool = purpose == NoPurpose implies not(purposeLogged(purpose))
 ```
 
 ## Story: Get a whole answer from a busy provider

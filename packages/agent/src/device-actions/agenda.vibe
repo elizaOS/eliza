@@ -1,7 +1,8 @@
-// spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"
+// spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/models/binding.md, "Each text model call the agent makes names its stage, which its log row records and no provider receives"
 module node {
   import { Effect, Schema } from "effect"
   import { ModelType, type AgentRuntime } from "@elizaos/core"
+  import { stagePurpose } from "../../gen/agent__models__binding.ts"
   import { readTurnContext } from "../conversation/turn-context.schema.vibe"
   import { firstOfLocalDay } from "./operation-schemas/device.schema.vibe"
   import { CalendarSource, day } from "./operation-schemas/personal.schema.vibe"
@@ -47,7 +48,7 @@ module node {
       try {
         classification = await runtime.useModel(ModelType.TEXT_SMALL, {
           system: `The owner is viewing their Calendar on ${date} in ${timeZone}. Classify only whether the message explicitly asks to read their agenda for this displayed day. Reply with exactly {"kind":"read_agenda"} in that case or {"kind":"reply"} otherwise. Do not choose an operation, calendar, date or identity.`,
-          messages: [{ role: "user", content: message.content.text }], signal,
+          messages: [{ role: "user", content: message.content.text }], signal, providerOptions: { eliza: { purpose: stagePurpose("AgendaStage") } },
         })
       } catch {
         signal.throwIfAborted()

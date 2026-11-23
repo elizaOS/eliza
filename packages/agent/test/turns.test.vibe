@@ -595,3 +595,24 @@ it.effect(`A calendar change is reported at the time it got (spec/agent/conversa
     "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.",
   ]))
 })
+
+it.live(`A planning round and a turn evaluator each name their stage on their model-call row, and no provider receives it (spec/agent/models/binding.md, "Each text model call the agent makes names its stage, which its log row records and no provider receives"; ${planning}, "After the reply is stored, each evaluator that opts in runs in priority order, and one evaluator's failure stops neither its peers nor the turn")`, () => effect {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try cloudAgent(cloud)
+  const { id } = try conversation(agent)
+  const runtime = agent.agent.runtime
+  try Effect.sync(() => runtime.registerEvaluator({ name: "STAGE_PROBE", description: "Notes the turn.", schema: { type: "object" }, shouldRun: async () => true, prompt: () => "Note the turn." }))
+  try Effect.sync(() => cloud.script(text("Hello."), text("{}")))
+  const called = try Effect.sync(() => arrivals(cloud, 2))
+  const said = replyOf(try send(agent, id, { text: "Hi" }))
+  try host("evaluator call", () => called)
+  let purposes: unknown[] = []
+  for (let read = 0; purposes.length < 2 && read < 100; read++) {
+    try Effect.sleep("20 millis")
+    const rows = try host("model-call rows", () => runtime.getLogs({ entityId: runtime.agentId }))
+    purposes = rows.filter(({ type }) => type.startsWith("useModel:")).map(({ body }) => String((body as { purpose?: unknown }).purpose)).sort()
+  }
+  try Effect.try(() => assert.deepStrictEqual({ said: said.text, purposes, unsent: cloud.calls.every(({ body }) => !JSON.stringify(body ?? null).includes("purpose")) }, {
+    said: "Hello.", purposes: ["evaluator", "planner"], unsent: true,
+  }))
+}, 60_000)

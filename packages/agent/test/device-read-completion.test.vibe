@@ -493,7 +493,7 @@ module node {
 
 import { agendaAfterRestart, agendaFromOrdinaryTurn, completeOriginalRead, workflowStepsOffered } from node
 
-it.effect('A shared device read answers the original request once, in its conversation (spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared"; spec/agent/deviceActions/index.md, "Story: Approve a device request once and learn exactly what happened"; spec/agent/deviceActions/execution.md, "Story: Preserve a device result when the screen retires")', effect () => {
+it.effect('A shared device read answers the original request once, in its conversation (spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared"; spec/agent/deviceActions/index.md, "Story: Approve a device request once and learn exactly what happened"; spec/agent/deviceActions/execution.md, "Story: Preserve a device result when the screen retires"; spec/agent/models/binding.md, "Each text model call the agent makes names its stage, which its log row records and no provider receives")', effect () => {
   const state = try scratch("read-completion")
   const cloud = try cloudFake(deviceKey)
   const socket = state.file("agent.sock")
@@ -530,6 +530,9 @@ it.effect('A shared device read answers the original request once, in its conver
     stored: { roomId: observed.expected.roomId, inReplyTo: observed.expected.inReplyTo, text: reply.text },
     expected: undefined,
   }))
+  const rows = try host("model-call rows", () => running.runtime.getLogs({ entityId: running.runtime.agentId }))
+  const stages = [...new Set(rows.filter(({ type }) => type.startsWith("useModel:") && type !== "useModel:TEXT_EMBEDDING").map(({ body }) => String((body as { purpose?: unknown }).purpose)))].sort()
+  assert.deepStrictEqual(stages, ["agenda", "planner", "read-completion"])
   try host("retire the first agent process", () => running.stop())
   const restarted = try acquireRelease(
     startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket } }),

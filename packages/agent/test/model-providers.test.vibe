@@ -170,7 +170,7 @@ it.effect('The own-key backend answers text and image description, classifies it
   assert.strictEqual(lineBreak._tag, "LaunchFrameRejected")
 })
 
-it.effect('A tool call and its token use reach the caller as one result, a usage report missing a count leaves the answer whole, a streamed call asks for its token use and records the cached prompt tokens of its last chunk, a cache miss included, each tool result follows the call that asked for it, and a thinking hint sets the reasoning effort only on a model that documents it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "The token use keeps every count the provider named, zero included, and a report missing a prompt or completion count leaves the answer whole without one"; spec/core/models.md, "A model-call log row records the request parts its prompt omits and only the token counts the provider reported")', effect () => {
+it.effect('A tool call and its token use reach the caller as one result, a usage report missing a count leaves the answer whole, a streamed call asks for its token use and records the cached prompt tokens of its last chunk, a cache miss included, with the stage its caller named and no provider received, each tool result follows the call that asked for it, and a thinking hint sets the reasoning effort only on a model that documents it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "The token use keeps every count the provider named, zero included, and a report missing a prompt or completion count leaves the answer whole without one"; spec/agent/models/binding.md, "Each text model call the agent makes names its stage, which its log row records and no provider receives"; spec/core/models.md, "A model-call log row records the request parts its prompt omits and only the token counts the provider reported")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud, "cerebras/qwen-3.8-27b")
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
@@ -220,27 +220,29 @@ it.effect('A tool call and its token use reach the caller as one result, a usage
   try Effect.sync(() => scripted.script(text("Whole."), cachedText(48, "Four."), cachedText(0, "Five.")))
   try host("whole call", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hi." }))
   const chunks: string[] = []
-  const offer = () => host("streamed tool offer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, {
-    tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto",
+  const offer = (purpose: string) => host("streamed tool offer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, {
+    tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto", providerOptions: { eliza: { purpose } },
     messages: [{ role: "user", content: "What is 2+2?" }], stream: true, onStreamChunk: (chunk: string) => { chunks.push(chunk) },
   }))
-  const streamed = try offer()
-  const missed = try offer()
+  const streamed = try offer("planner")
+  const missed = try offer("evaluator")
   const [whole, asked] = scripted.calls.map((call) => call.body as Record<string, unknown>)
   let logged: unknown[] = []
   for (let read = 0; logged.length < 2 && read < 100; read++) {
     const rows = try host("model-call records", () => streaming.runtime.getLogs({ entityId: streaming.runtime.agentId }))
-    logged = rows.flatMap((log) => (log.body as { usage?: { promptTokens: number } }).usage ?? []).sort((a, b) => a.promptTokens - b.promptTokens)
+    logged = rows.map((log) => log.body as { purpose?: string; usage?: unknown }).filter((body) => body.usage !== undefined)
+      .map(({ purpose, usage }) => ({ purpose, usage })).sort((a, b) => String(a.purpose).localeCompare(String(b.purpose)))
   }
-  assert.deepStrictEqual<unknown>({ streamed, missed, chunks, options: [asked?.stream_options, whole !== undefined && "stream_options" in whole], logged }, {
+  assert.deepStrictEqual<unknown>({ streamed, missed, chunks, options: [asked?.stream_options, whole !== undefined && "stream_options" in whole], logged, unsent: scripted.calls.every((call) => !JSON.stringify(call.body).includes("purpose")) }, {
     streamed: { text: "Four.", toolCalls: [], finishReason: "stop", usage: { promptTokens: 49, completionTokens: 2, totalTokens: 51, cacheReadInputTokens: 48 } },
     missed: { text: "Five.", toolCalls: [], finishReason: "stop", usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3, cacheReadInputTokens: 0 } },
     chunks: ["Four.", "Five."],
     options: [{ include_usage: true }, false],
     logged: [
-      { promptTokens: 1, completionTokens: 2, cacheReadInputTokens: 0 },
-      { promptTokens: 49, completionTokens: 2, cacheReadInputTokens: 48 },
+      { purpose: "evaluator", usage: { promptTokens: 1, completionTokens: 2, cacheReadInputTokens: 0 } },
+      { purpose: "planner", usage: { promptTokens: 49, completionTokens: 2, cacheReadInputTokens: 48 } },
     ],
+    unsent: true,
   })
 })
 

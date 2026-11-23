@@ -563,3 +563,25 @@ pure def lawAnUnnamedDetailIsNeverZero(report: UsageReport): bool = detailReturn
 pure def lawAReportMissingACountGivesNoTokenUse(report: UsageReport): bool =
   (report.prompt == M::CountMissing or report.completion == M::CountMissing) implies not(tokenUseReturned(report))
 ```
+
+### Each text model call the agent makes names its stage, which its log row records and no provider receives
+
+A planning round names `planner`, a turn evaluator `evaluator`, a reply
+draft `reply-draft`, the check whether a message asks for the calendar
+agenda on screen `agenda`, and the answer after an approved device read
+`read-completion`, each in `providerOptions.eliza.purpose`, so the
+model-call log row ([models](../../core/models.md)) says which stage
+spent the call's tokens. No handler sends the stage: a provider receives
+the same request with it as without it, so naming a stage costs no prompt
+cache reuse.
+
+```quint
+type CallStage = PlannerStage | EvaluatorStage | ReplyDraftStage | AgendaStage | ReadCompletionStage
+pure def stagePurpose(stage: CallStage): str = match stage {
+  | PlannerStage => "planner" | EvaluatorStage => "evaluator" | ReplyDraftStage => "reply-draft" | AgendaStage => "agenda" | ReadCompletionStage => "read-completion"
+}
+pure val stageValues = Set(PlannerStage, EvaluatorStage, ReplyDraftStage, AgendaStage, ReadCompletionStage)
+pure val otherValues = stageValues
+pure def lawEachStageHasItsOwnPurpose(stage: CallStage, other: CallStage): bool = stagePurpose(stage) == stagePurpose(other) implies stage == other
+pure def lawEveryStageIsLogged(stage: CallStage): bool = M::purposeLogged(M::PurposeNamed({ name: stagePurpose(stage) }))
+```
