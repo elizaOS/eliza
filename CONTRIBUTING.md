@@ -116,7 +116,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `374c1f1`](https://github.com/lalalune/vibestack/commit/374c1f1f128b36061ff61f2beb007470234fa39a).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `70d6024`](https://github.com/lalalune/vibestack/commit/70d60241dfa56d71faa6ed2a85dcda48358e60aa).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -480,8 +480,9 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
 In the canonical `ci.yml` workspace, simulation precompute installs the root
-tool workspace's production dependencies. The root prepare script leaves
-application builds and generation to verification.
+tool workspace’s production dependencies when its prepare script matches the
+standard tool preparation. Verification owns application builds and generation.
+Other workflows and custom prepares retain the full frozen install.
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
