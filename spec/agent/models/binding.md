@@ -16,8 +16,10 @@ a rate limit holds the account, and when a pushed credential takes effect.
 Text and image description use the cloud client's chat completion (an image
 description is a chat completion with an image part); the own-key handler
 classifies its HTTP failures into the same refusal vocabulary: a spent quota
-is insufficient credits, and a timeout, a conflict or an overloaded bad
-request without a validation complaint is a provider issue. HTTP, the
+is insufficient credits, and a timeout, a conflict or a bad request without
+a validation complaint that says the provider is overloaded or rate limited
+(`rate` as a word, or a rate limit in any spelling, never the `rate` inside
+`generate`) is a provider issue. HTTP, the
 credential value and the client stay in the shell (`models/*.vibe`); the
 credential lives in memory only and appears in no state here. Source: the
 develop cloud plugin's text and image handlers, the pinned embedded host's

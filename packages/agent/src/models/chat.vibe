@@ -324,7 +324,7 @@ function providerRefusal(status: number, words: string): CloudFailure | undefine
   if (status === 429 && words.includes("insufficient_quota")) return { tag: "CloudInsufficientCredits" }
   if (status === 408 || status === 409) return { tag: "CloudProviderIssue" }
   if (status === 400 && !/invalid|unsupported|must be|required|malformed|not allowed|schema/.test(words)
-    && /server error|server_error|try again|overload|capacity|temporarily|busy/.test(words)) return { tag: "CloudProviderIssue" }
+    && /server error|server_error|try again|overload|capacity|temporarily|busy|\brate\b|rate.?limit/.test(words)) return { tag: "CloudProviderIssue" }
   return undefined
 }
 
