@@ -79,7 +79,7 @@ const ownerEntity = "00000000-0000-4000-8000-000000000001" as UUID
 const agentEntity = "00000000-0000-4000-8000-000000000002" as UUID
 const guestEntity = "00000000-0000-4000-8000-000000000003" as UUID
 
-effect function ownerTurn(participants: readonly UUID[]): Memory!! {
+effect function ownerTurn(participants: readonly UUID[]) {
   const runtime = { agentId: agentEntity, getSetting: (key: string) => key === "ELIZA_ADMIN_ENTITY_ID" ? ownerEntity : undefined,
     getParticipantsForRoom: async () => [...participants], getEntityById: async () => null } as unknown as IAgentRuntime
   const message: Memory = { id: "00000000-0000-4000-8000-000000000005" as UUID, entityId: ownerEntity, agentId: agentEntity, roomId: "00000000-0000-4000-8000-000000000004" as UUID, content: { text: "What's on my calendar?" } }
