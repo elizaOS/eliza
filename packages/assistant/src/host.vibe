@@ -173,6 +173,12 @@ export effect function writeRecord(key: string, value: unknown) {
   try orDie(store.set(key, JSON.stringify(value)))
 }
 
+/** Forgets one record this package keeps; a store that refuses is a defect. */
+export effect function removeRecord(key: string) {
+  const store = try KeyValueStore.KeyValueStore
+  try orDie(store.remove(key))
+}
+
 /** Whether a started service is the agent's scheduled tasks. */
 export function isAgentScheduledTasks(service: Service | null): service is ScheduledTasksApi {
   return service !== null && ["create", "deliverKind", "get", "list", "applyVerb"].every((name) => typeof Reflect.get(service, name) === "function")
