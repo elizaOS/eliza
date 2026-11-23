@@ -149,11 +149,15 @@ module node {
     })
   }
 
-  export function definitions<A>(sql: WorkflowSql, owner: string): Promise<Stored<A>[]> {
+  export function definitionRecords(sql: WorkflowSql, owner: string) {
     return sql.transaction(async (q) => {
-      const found = await q.query<{ revision: number; data: unknown }>("SELECT revision, data FROM workflow_definitions WHERE owner = $1 ORDER BY id", [owner])
-      return found.rows.map((row) => ({ revision: row.revision, row: parsed<A>(row.data) }))
+      const found = await q.query<{ id: string; revision: number; data: unknown }>("SELECT id, revision, data FROM workflow_definitions WHERE owner = $1 ORDER BY id", [owner])
+      return found.rows
     })
+  }
+
+  export async function definitions<A>(sql: WorkflowSql, owner: string): Promise<Stored<A>[]> {
+    return (await definitionRecords(sql, owner)).map((row) => ({ revision: row.revision, row: parsed<A>(row.data) }))
   }
 
   export function definition<A>(sql: WorkflowSql, id: string): Promise<Stored<A> | undefined> {
@@ -192,14 +196,24 @@ module node {
     })
   }
 
-  export function runs<A>(sql: WorkflowSql, filter: { workflowId?: string; unfinished?: boolean; owner: string }): Promise<A[]> {
+  export function runRecords(sql: WorkflowSql, filter: { workflowId?: string; unfinished?: boolean; owner: string }) {
     return sql.transaction(async (q) => {
-      const found = await q.query<{ data: unknown }>(
-        `SELECT data FROM workflow_runs WHERE owner = $1 AND ($2::text IS NULL OR workflow_id = $2) AND ($3::boolean IS NULL OR finished = NOT $3) ORDER BY created_at, id`,
+      const found = await q.query<{ id: string; data: unknown }>(
+        `SELECT id, data FROM workflow_runs WHERE owner = $1 AND ($2::text IS NULL OR workflow_id = $2) AND ($3::boolean IS NULL OR finished = NOT $3) ORDER BY created_at, id`,
         [filter.owner, filter.workflowId ?? null, filter.unfinished ?? null],
       )
-      return found.rows.map((row) => parsed<A>(row.data))
+      return found.rows
     })
+  }
+
+  export async function runs<A>(sql: WorkflowSql, filter: { workflowId?: string; unfinished?: boolean; owner: string }): Promise<A[]> {
+    return (await runRecords(sql, filter)).map((row) => parsed<A>(row.data))
+  }
+
+  export async function readRecoveryRow<A extends { readonly id: string; readonly owner: string }>(id: string, owner: string, data: unknown): Promise<A> {
+    const row = parsed<A>(data)
+    if (row?.id !== id || row.owner !== owner) throw new Error("Stored workflow identity does not match its row")
+    return row
   }
 
   export function run<A>(sql: WorkflowSql, id: string): Promise<A | undefined> {
@@ -281,7 +295,7 @@ module node {
 }
 
 import {
-  acknowledgeDigest, admitRun, definition, definitions, digestPage, insertRun, migrate, receipt, run, runs, saveSource, sources, writeDefinition, writeRun,
+  acknowledgeDigest, admitRun, definition, definitionRecords, definitions, digestPage, insertRun, migrate, readRecoveryRow, receipt, run, runRecords, runs, saveSource, sources, writeDefinition, writeRun,
   type Stored, type WorkflowSql,
 } from node
 export type { Stored, WorkflowQuery, WorkflowSql } from node
@@ -300,6 +314,10 @@ export function workflowStore(sql: WorkflowSql) {
     receipt: (mutationId: string) => stored("read a receipt", () => receipt<Readonly<Record<string, unknown>>>(sql, mutationId)),
     runs: (filter: { readonly owner: string; readonly workflowId?: string; readonly unfinished?: boolean }) => stored("list runs", () => runs<RunRow>(sql, filter)),
     run: (id: string) => stored("read a run", () => run<RunRow>(sql, id)),
+    recoveryRuns: (owner: string) => map(stored("list unfinished runs", () => runRecords(sql, { owner, unfinished: true })), (rows) =>
+      rows.map(({ id, data }) => ({ id, read: stored("decode an unfinished run", () => readRecoveryRow<RunRow>(id, owner, data)) }))),
+    recoveryDefinitions: (owner: string) => map(stored("list recovery schedules", () => definitionRecords(sql, owner)), (rows) =>
+      rows.map(({ id, data }) => ({ id, read: stored("decode a recovery schedule", () => readRecoveryRow<DefinitionRow>(id, owner, data)) }))),
     admitRun: (stored_: { readonly id: string; readonly read: number; readonly next: DefinitionRow }, created: RunRow, at: number) =>
       stored("admit a run", () => admitRun(sql, stored_, { id: created.id, workflowId: created.workflowId, owner: created.owner, at, data: created })),
     insertRun: (created: RunRow, at: number) =>

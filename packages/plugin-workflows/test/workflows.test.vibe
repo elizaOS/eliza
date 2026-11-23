@@ -656,8 +656,8 @@ it.live('Recover a parked workflow without creating a second execution, past row
   const key = `workflow:${timed.workflowId}`
   rig.wakeups.delete(key)
   try promise(() => plant(rig.host.sql, [
-    `INSERT INTO workflow_runs (id, workflow_id, owner, finished, created_at, data) VALUES ('broken-run', 'gone', '${owner}', false, 0, '{"id":"broken-run"}'::jsonb)`,
-    `INSERT INTO workflow_definitions (id, owner, revision, data) VALUES ('00000000-broken', '${owner}', 1, '{"id":"00000000-broken","origin":"view"}'::jsonb)`,
+    `INSERT INTO workflow_runs (id, workflow_id, owner, finished, created_at, data) VALUES ('broken-run', 'gone', '${owner}', false, 0, '["workflow-json-keys-v1", "{"]'::jsonb)`,
+    `INSERT INTO workflow_definitions (id, owner, revision, data) VALUES ('00000000-broken', '${owner}', 1, '["workflow-json-keys-v1", "{"]'::jsonb)`,
   ]))
   const restarted = try openWorkflows(rig.host)
   try addFinalizer(() => restarted.stop())

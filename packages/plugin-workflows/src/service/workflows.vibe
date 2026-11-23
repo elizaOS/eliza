@@ -1465,14 +1465,14 @@ export effect function openWorkflows(host: WorkflowHost) {
   effect function start(): void!! {
     try Ref.set(stopping, false)
     void (effect {
-      for (const row of try db(store.runs({ owner, unfinished: true }))) {
-        const recovered = try exit(recoverRun(row))
-        if (Exit.isFailure(recovered)) try log("workflow run could not be recovered", row.id, Cause.squash(recovered.cause))
+      for (const { id, read } of try db(store.recoveryRuns(owner))) {
+        const recovered = try exit(effect { try recoverRun(try db(read)) })
+        if (Exit.isFailure(recovered)) try log("workflow run could not be recovered", id, Cause.squash(recovered.cause))
       }
       const held: readonly string[] = host.scheduler.keys catch () => []
-      for (const stored of try db(store.definitions(owner))) {
-        const rearmed = try exit(rearm(stored.row, held))
-        if (Exit.isFailure(rearmed)) try log("workflow schedule could not be recovered", stored.row.id, Cause.squash(rearmed.cause))
+      for (const { id, read } of try db(store.recoveryDefinitions(owner))) {
+        const rearmed = try exit(effect { try rearm(try db(read), held) })
+        if (Exit.isFailure(rearmed)) try log("workflow schedule could not be recovered", id, Cause.squash(rearmed.cause))
       }
     } catch effect (error) => try log("workflow service could not recover its runs", "start", error))
   }
