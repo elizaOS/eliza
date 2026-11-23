@@ -146,9 +146,12 @@ pure val fundingValues: Set[Funding] = Set({ allowanceAvailable: 0, creditAvaila
 The quote counts a token per four input characters, rounded up, and the
 output the request allows: `max_completion_tokens`, else `max_tokens`, else
 the selected upstream model’s configured maximum generation length. The
-provider receives the resulting cap for both whole replies and streams. A
-model with no configured maximum requires a caller cap. An uncapped request
-for it is refused `400 model_unavailable` before any hold or provider call.
+provider receives the caller's cap, `max_completion_tokens` else
+`max_tokens`, for both whole replies and streams, and none when the caller
+named none: the cloud adds no output cap of its own, so the model's own
+maximum applies. A model with no configured maximum requires a caller cap,
+because the quote needs one. An uncapped request for it is refused
+`400 model_unavailable` before any hold or provider call.
 A side that is negative or over `Mo::maxTokensPerSide` is refused
 `400 invalid_request`. A fresh server request id names no hold, so
 `M::admission` is asked about `M::initial` and never replays. Refusals of the
@@ -156,10 +159,19 @@ rate limiter, `requestAuth` and metering pass through unchanged.
 
 ```quint
 pure def tokensOf(chars: CharCount): int = if (chars <= 0) 0 else (chars + 3) / 4
-pure def outputLimit(maxCompletionTokens: TokenAsk, maxTokens: TokenAsk, defaultMaxTokens: Mo::OutputDefault): TokenAsk =
-  if (maxCompletionTokens != NoAsk) maxCompletionTokens
-  else if (maxTokens != NoAsk) maxTokens
+pure def forwardedCap(maxCompletionTokens: TokenAsk, maxTokens: TokenAsk): TokenAsk =
+  if (maxCompletionTokens != NoAsk) maxCompletionTokens else maxTokens
+pure def outputLimit(maxCompletionTokens: TokenAsk, maxTokens: TokenAsk, defaultMaxTokens: Mo::OutputDefault): TokenAsk = {
+  val cap = forwardedCap(maxCompletionTokens, maxTokens)
+  if (cap != NoAsk) cap
   else match defaultMaxTokens { | OutputDefaultOf(x) => AskFor({ tokens: x.tokens }) | NoOutputDefault => NoAsk }
+}
+pure val maxCompletionTokensValues: Set[TokenAsk] = Set(NoAsk, AskFor({ tokens: 16 }))
+pure val maxTokensValues: Set[TokenAsk] = Set(NoAsk, AskFor({ tokens: 64 }))
+pure def lawNoOutputCapIsInvented(maxCompletionTokens: TokenAsk, maxTokens: TokenAsk): bool = {
+  val cap = forwardedCap(maxCompletionTokens, maxTokens)
+  (cap == maxCompletionTokens or cap == maxTokens) and ((cap == NoAsk) iff (maxCompletionTokens == NoAsk and maxTokens == NoAsk))
+}
 pure def quoteCounts(chars: CharCount, outputTokens: int): Mo::TokenCounts =
   { inputTokens: tokensOf(chars), outputTokens: outputTokens }
 pure val charsValues = Set(-1, 0, 1, 4, 5, 8000000, 8000001)

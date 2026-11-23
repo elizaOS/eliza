@@ -7,17 +7,12 @@ import { Deployment } from "../profile/profile.vibe"
 import { complete, stream, type LlmFailure } from "../providers/llm.vibe"
 import { keepStanding, markDispatched, reserve, settle, type Settlement } from "../shared/metering.vibe"
 import { Store } from "../store/connection.vibe"
-import { chatBody, chatIngressPerMinute, hasImage, quote, type ChatRequest } from "./chat-request.vibe"
+import { chatBody, chatIngressPerMinute, hasImage, providerBody, quote } from "./chat-request.vibe"
 import { billedFromUsage, callCostFor, chooseFor, type Model } from "./models.vibe"
 import { completionSettlement, meteredChatStream, providerRefusal } from "./chat-stream.vibe"
 
 const requestIdPattern = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
 const headers = { "cache-control": "no-store" }
-
-function providerBody({ max_tokens: _maxTokens, max_completion_tokens, ...body }: ChatRequest, model: string, max: number) {
-  return { ...body, model, ...(max_completion_tokens === undefined ? { max_tokens: max } : { max_completion_tokens: max }) }
-}
-
 
 function failureSettlement(failure: LlmFailure): Settlement {
   return failure._tag === "ProviderRefused" && failure.status >= 400 && failure.status < 500
@@ -47,7 +42,7 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
   const store = try Store
   const { model, provider } = try store.transaction((tx) => chooseFor(tx, settings, body.model, hasImage(body)))
   const priced = try quote(body, model)
-  const payload = providerBody(body, model.upstreamModel, priced.counts.outputTokens)
+  const payload = providerBody(body, model.upstreamModel)
   const ticket = try reserve(caller, { service: "MeteredInference", caller: caller.organizationId, requestId: id ?? context.requestId, part: { tag: "WholeRequest" } }, priced.micros)
   if (ticket.replayed) throw refused("AlreadyDispatched")
 
