@@ -3796,8 +3796,15 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const onDevice = getConnectorAccountManager(device)
   const deviceBot = try host(() => onDevice.upsertAccount("slack", { label: "Device" }, "device-bot"))
   const deviceAccounts = try host(() => onDevice.listAccounts("slack"))
-  const deviceFlow = try host(() => onDevice.getStorage().createOAuthFlow({ id: "device-flow", provider: "slack", state: "device-state", status: "pending", createdAt: 1, updatedAt: 1 }))
-  const unsupported = { accounts: deviceAccounts.map((account) => [account.accountKey, account.id === deviceBot.id]), flow: [deviceFlow.id, deviceFlow.status] }
+  const dropbox = try Effect.try(() => scriptedOAuthProvider({ name: "dropbox" }))
+  try Effect.try(() => onDevice.registerProvider(dropbox.provider))
+  const deviceStart = try host(() => onDevice.startOAuth("dropbox", { accountId: "device-user" }))
+  const deviceDone = try host(() => onDevice.completeOAuth("dropbox", dropbox.consent(deviceStart.authUrl ?? "", "device-user")))
+  const deviceStored = try host(() => onDevice.getOAuthFlow("dropbox", deviceStart.id))
+  const unsupported = {
+    accounts: deviceAccounts.map((account) => [account.accountKey, account.id === deviceBot.id]),
+    flow: [(deviceStart.codeVerifier ?? "").length, deviceDone.flow.status, deviceDone.account?.accountKey, deviceStored?.status, deviceStored?.codeVerifier ?? null],
+  }
   const facade = manager.getStorage()
   // spec/core/accountValues.md, "Normalization preserves explicit values and applies only documented defaults"
   const team = try host(() => manager.upsertAccount("slack", { label: "", role: "SERVICE", purpose: ["messaging", " "] }, " team-bot "))
@@ -3966,7 +3973,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
         spelled: "google",
         elsewhere: null,
       },
-      unsupported: { accounts: [["device-bot", true]], flow: ["device-flow", "pending"] },
+      unsupported: { accounts: [["device-bot", true]], flow: [43, "completed", "device-user", "completed", null] },
       team: ["team-bot", "slack", "", "AGENT", ["messaging"], "open", "connected"],
       storedBeforeProvider: [{ id: work.id, status: "pending", authUrl: null }],
       flow: ["google", "pending", "user-1", "https://agent.test/oauth/callback", true, true, 43],

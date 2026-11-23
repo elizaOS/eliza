@@ -605,6 +605,7 @@ export class InMemoryConnectorAccountStorage implements ConnectorAccountStorage 
   }
 
   async createOAuthFlow(flow: ConnectorOAuthFlow): Promise<ConnectorOAuthFlow> {
+    this.deleteExpiredOAuthFlows(Date.now())
     const cloned = cloneFlow(flow)
     this.flows.set(flowKey(cloned.provider, cloned.id), cloned)
     this.flows.set(flowKey(cloned.provider, cloned.state), cloned)
@@ -637,6 +638,7 @@ export class InMemoryConnectorAccountStorage implements ConnectorAccountStorage 
         ? cloneMetadata(patch.metadata)
         : cloneMetadata(existing.metadata),
     }
+    if (next.status !== "pending") delete next.codeVerifier
     this.flows.set(flowKey(next.provider, next.id), next)
     this.flows.set(flowKey(next.provider, next.state), next)
     return cloneFlow(next)
@@ -866,9 +868,6 @@ function persistsOAuthFlows(adapter: ConnectorAccountDatabaseAdapter): boolean {
 
 effect function createDatabaseOAuthFlow(storage: DatabaseConnectorAccountStorage, flow: ConnectorOAuthFlow) {
   const { adapter, oauthFallback } = storage
-  if (persistsOAuthFlows(adapter)) {
-    oauthFallback.deleteExpiredOAuthFlows(Date.now())
-  }
   try foreign(() => oauthFallback.createOAuthFlow(flow))
   const createState = supportedMethod(adapter, "createOAuthFlowState")
   if (typeof createState !== "function") {
