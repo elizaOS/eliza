@@ -1,7 +1,8 @@
 // spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"; spec/agent/host/launch.md, "Local embeddings boot only when the device serves them: no operator endpoint or chosen hosted service takes precedence, and the local inference plugin is listed"; spec/agent/host/launch.md, "Plugin settings never set a reserved key, and log retention bounds are positive"
 import { assert, it } from "@effect/vitest"
 import { AGENT_EXIT_CODES, exitClass, exitCode, parseLaunch } from "../src/host/launch.vibe"
-import { agentChild, boot, host, ready, scratch } from "./support/kernel.vibe"
+import { agentChild, boot, call, host, ready, scratch, startInProcess } from "./support/kernel.vibe"
+import { tasksModuleName } from "../src/tasks/module.vibe"
 import { account, launchDocument, launchFrame, writeLaunch, type LaunchOptions } from "./support/scratch.ts"
 
 const cloudBackend = { kind: "cloud" as const, origin: "https://cloud.example" }
@@ -97,6 +98,72 @@ it.effect('A cloud or own-key launch without a credential is Credential and a no
   const none = try parseLaunch(JSON.stringify(launchDocument()), keyless)
   try Effect.try(() => assert.deepStrictEqual([cloud._tag, ownKey._tag, none.launch.model.backend, account.userId],
     ["LaunchCredentialMissing", "LaunchCredentialMissing", "none", "owner-user"]))
+})
+
+it.live('A resident keeps its conversations and device enrollment when inference becomes available (spec/agent/host/launch.md, "A resident uses its stored owner when inference changes")', effect () => {
+  const state = try scratch("resident-owner")
+  const launch: LaunchOptions = { persistMemory: true, callerRole: "owner", load: [tasksModuleName],
+    residentOwner: { kind: "installation" } }
+  const frame = { storageKey: "A".repeat(43) }
+  const local = try startInProcess({ state, launch, frame })
+  const localStatus = try call(local, { method: "GET", path: "/api/status" })
+  const taskStorage = try call(local, { method: "GET", path: "/api/tasks/storage" })
+  const created = try call(local, { method: "POST", path: "/api/conversations", body: { title: "Kept on device" } })
+  const headers = { "x-eliza-device-id": local.agent.status.agentId, "x-eliza-device-key": "a".repeat(64) }
+  const enrolled = try call(local, { method: "POST", path: "/api/client-devices/register", headers, body: { capabilities: [], workflowProtocol: 1 } })
+  const before = try call(local, { method: "GET", path: "/api/client-devices/context", headers })
+  try host("stop the local resident", () => local.agent.stop())
+  const signedIn = try startInProcess({ state, launch: { ...launch, residentOwner: { kind: "installation", linkedAccount: account } },
+    frame: { ...frame, epoch: 2 }, cloud: true })
+  const list = try call(signedIn, { method: "GET", path: "/api/conversations" })
+  const after = try call(signedIn, { method: "GET", path: "/api/client-devices/context", headers })
+  const stale = try call(signedIn, { method: "GET", path: "/api/client-devices/context", headers, token: local.frame.token })
+  if (!("json" in localStatus) || !("json" in taskStorage) || !("json" in before) || !("json" in after) || !("json" in list))
+    return try Effect.die(new Error("The resident's socket did not serve its owner routes"))
+  try Effect.try(() => {
+    assert.include(localStatus.json as object, { state: "running", canRespond: false })
+    assert.include(taskStorage.json as object, { taskStorage: "ok" })
+    assert.propertyVal(created, "status", 201)
+    assert.propertyVal(enrolled, "status", 200)
+    assert.propertyVal(before, "status", 200)
+    assert.propertyVal(after, "status", 200)
+    assert.propertyVal(stale, "status", 401)
+    assert.strictEqual(signedIn.agent.status.agentId, local.agent.status.agentId)
+    assert.include(JSON.stringify(list.json), "Kept on device")
+    const identity = (input: unknown) => (input as { subjectUserId?: string }).subjectUserId
+    assert.isString(identity(before.json))
+    assert.strictEqual(identity(after.json), identity(before.json))
+  })
+}, 120_000)
+
+it.live('An existing account-owned vault retains its owner when the resident starts without inference (spec/agent/host/launch.md, "A resident uses its stored owner when inference changes")', effect () => {
+  const state = try scratch("retained-account-owner")
+  const launch: LaunchOptions = { persistMemory: true, callerRole: "owner" }
+  const online = try startInProcess({ state, launch, cloud: true })
+  const created = try call(online, { method: "POST", path: "/api/conversations", body: { title: "Legacy account conversation" } })
+  try host("stop the account launch", () => online.agent.stop())
+  const local = try startInProcess({ state, launch: { ...launch, residentOwner: { kind: "retained-account", account } },
+    frame: { storageKey: "A".repeat(43), epoch: 2 } })
+  const listed = try call(local, { method: "GET", path: "/api/conversations" })
+  if (!("json" in listed)) return try Effect.die(new Error("The retained account vault was unavailable"))
+  try Effect.try(() => {
+    assert.propertyVal(created, "status", 201)
+    assert.strictEqual(local.agent.status.agentId, online.agent.status.agentId)
+    assert.strictEqual(listed.status, 200)
+    assert.include(JSON.stringify(listed.json), "Legacy account conversation")
+  })
+}, 120_000)
+
+it.effect('A durable resident requires the private key and cannot select a different Cloud link (spec/agent/host/launch.md, "A resident uses its stored owner when inference changes")', effect () => {
+  const options: LaunchOptions = { callerRole: "owner", persistMemory: true, residentOwner: { kind: "installation", linkedAccount: account } }
+  const resident = launchDocument(options)
+  const frame = launchFrame({ storageKey: "A".repeat(43) })
+  const noKey = try refusal(resident, launchFrame())
+  const malformed = try refusal(resident, launchFrame({ storageKey: "not a key" }))
+  const unexpected = try refusal(resident, { ...frame, ...keyed })
+  const wrong = try refusal({ ...launchDocument({ ...options, backend: cloudBackend }), account: { ...account, organizationId: "other-org" } }, { ...frame, ...keyed })
+  try Effect.try(() => assert.deepStrictEqual([noKey, malformed, unexpected, wrong],
+    ["LaunchFrameRejected", "LaunchFrameRejected", "LaunchFrameRejected", "LaunchDocumentRejected"]))
 })
 
 it.effect('The exit table maps each boot failure to one code and every other code to a crash (spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash")', effect () => {

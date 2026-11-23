@@ -49,13 +49,19 @@ const Policy = Schema.Struct({
   actions: Schema.Struct({ allowed: UniqueNames.check(Schema.isMinLength(1)) }),
   plugins: Schema.Struct({ load: UniqueNames, product: Schema.optionalKey(Nonblank) }),
 }).check(Schema.makeFilter(({ plugins }) => plugins.product === undefined || !plugins.load.includes(plugins.product)))
+const Account = Schema.Struct({ userId: Nonblank, organizationId: Nonblank })
+const ResidentOwner = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("installation"), linkedAccount: Schema.optionalKey(Account) }),
+  Schema.Struct({ kind: Schema.Literal("retained-account"), account: Account }),
+])
 
 export const LaunchDocument = Schema.Struct({
   schema: Schema.Literal(1),
   character: Character,
   policy: Policy,
   model: Model,
-  account: Schema.optionalKey(Schema.Struct({ userId: Nonblank, organizationId: Nonblank })),
+  account: Schema.optionalKey(Account),
+  residentOwner: Schema.optionalKey(ResidentOwner),
   embeddings: Schema.Literals(["local", "none"]),
   embeddingDimensions: Schema.optionalKey(PositiveInteger),
   persistMemory: Schema.optionalKey(Schema.Boolean),
@@ -72,9 +78,15 @@ export const LaunchDocument = Schema.Struct({
   })),
   hostContextRevision: Schema.optionalKey(PositiveInteger),
   environment: Schema.optionalKey(Schema.Record(EnvironmentName, EnvironmentValue)),
-}).check(Schema.makeFilter((launch) =>
-  (launch.model.backend !== "cloud" || launch.account !== undefined)
-  && (launch.embeddings === "none" || launch.embeddingDimensions !== undefined)))
+}).check(Schema.makeFilter((launch) => {
+  const resident = launch.residentOwner
+  const linked = resident?.kind === "installation" ? resident.linkedAccount : resident?.account
+  const accountMatches = launch.account === undefined
+    || (linked?.userId === launch.account.userId && linked.organizationId === launch.account.organizationId)
+  return (launch.model.backend !== "cloud" || launch.account !== undefined)
+    && (launch.embeddings === "none" || launch.embeddingDimensions !== undefined)
+    && (resident === undefined || (launch.callerRole === "owner" && launch.persistMemory === true && accountMatches))
+}))
 
 export const LaunchFrame = Schema.Struct({
   version: Schema.Literal(1),

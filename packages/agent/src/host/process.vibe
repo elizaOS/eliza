@@ -6,6 +6,7 @@ module node {
   import { deviceEmbeddingsPlugin, embeddingServer, localEmbeddingsBoot, type BootFailure, type LaunchDocument as LaunchModel, type LaunchFrame as FrameModel, type UrlShape } from "../../gen/agent__host__launch.ts"
   import type { AgentProcess, Event as ProcessEvent } from "../../gen/agent__host__process.ts"
   import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
+  import { launchOwnerAccount, residentFrameAdmitted } from "./launch.vibe"
   import type { AgentPlugin, ModuleFactory } from "./module.vibe"
   import { measureWorker, workerHost, workflowWorkerService, type WorkflowWorkerHost } from "./workflow-worker.vibe"
 
@@ -152,7 +153,7 @@ module node {
   async function boot(input: StartAgentInput, lifecycle: Lifecycle): Promise<Result.Result<RunningAgent, BootFailure>> {
     const { launch, authority, binding, stateDirectory } = input
     const sources = hostedSources(input)
-    if (sources === undefined || !localEmbeddingsAdmitted(launch)) return Result.fail("Config")
+    if (sources === undefined || !localEmbeddingsAdmitted(launch) || !residentFrameAdmitted(launch, authority)) return Result.fail("Config")
     const pinned = launch.workflowWorker === undefined ? undefined : await measureWorker(launch.workflowWorker)
     if (pinned?.kind === "refused") return Result.fail("Config")
     let installedWorker: WorkflowWorkerHost | undefined
@@ -207,9 +208,10 @@ module node {
     if (lifecycle.send({ type: "readLaunch", doc: launchModel(launch), f: frameModel(authority) }).failure.tag !== "NoFailure") return failed()
     const models = await Effect.runPromise(bindModels(launch, authority))
 
+    const storedAccount = launchOwnerAccount(launch)
     const opened = await openDeviceStorage({
       stateDirectory, persistMemory: launch.persistMemory ?? false,
-      account: launch.account ?? null, embeddingDimensions: launch.embeddingDimensions ?? 0,
+      account: storedAccount ?? null, embeddingDimensions: launch.embeddingDimensions ?? 0,
       ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
     }).then((store) => ({ kind: "opened" as const, ...store }), (error: unknown) => ({ kind: "refused" as const, error }))
     if (opened.kind === "refused") {
@@ -240,7 +242,8 @@ module node {
     })
     const role = launch.callerRole === "owner" ? "OWNER" : "USER"
     const permissions = new Set(launch.policy.actions.allowed)
-    const user = launch.account ? (validateUuid(launch.account.userId) ?? stringToUuid(`account:${launch.account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
+    const user = storedAccount === undefined ? stringToUuid(`device-owner:${agentId}`)
+      : validateUuid(storedAccount.userId) ?? stringToUuid(`account:${storedAccount.userId}`)
     const ownerId = role === "OWNER" ? user : agentId
     const conversationOwner = { user, world: stringToUuid(`device:${agentId}`) }
     const events = createEventHub()

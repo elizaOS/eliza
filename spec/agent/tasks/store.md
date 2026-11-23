@@ -7,8 +7,11 @@ payload is sealed with AES-256-GCM under a key that `TaskKeySource` derives
 with HKDF-SHA256 from the launch frame's `storageKey` for the launch account,
 the host's namespace and one purpose; ids, the unfinished flag, revisions
 and timestamps stay in clear beside the payload. The os keeps `storageKey` in the Keystore and
-releases it only for the current account, so an account change is a new
-launch. This spec models who may open the store, how a writer is fenced, what
+releases it only for the current storage owner. A resident launch uses the
+stored owner named by the [launch binding](../host/launch.md). An
+installation has its own connector derived from its stored agent identity,
+and an adopted account vault keeps its original connector. This spec
+models who may open the store, how a writer is fenced, what
 an operation may report and which records are held aside. SQL, file modes,
 key bytes and the cipher stay in the shell (`tasks/store.vibe`,
 `tasks/sealing.vibe`). There is no migration from plaintext, no evidence log

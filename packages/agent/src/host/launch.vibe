@@ -1,10 +1,11 @@
 // spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"; spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error"
 export { type LaunchDocument, type LaunchFrame } from "./launch.schema.vibe"
 import { exitCode } from "../../gen/agent__host__launch.effect.vibe"
-import { ownKeyMaxUnits } from "../../gen/agent__host__launch.ts"
+import { ownKeyMaxUnits, residentStorageAccount, type OwnerAccount, type ResidentMode } from "../../gen/agent__host__launch.ts"
 export { exitClass, exitCode, type BootFailure, type ExitClass } from "../../gen/agent__host__launch.effect.vibe"
 import { Stdio } from "effect/Stdio"
 import { decodeLaunchDocument, decodeLaunchFrame, LaunchDocumentRejected, LaunchFrameRejected } from "./launch.schema.vibe"
+import type { LaunchDocument, LaunchFrame } from "./launch.schema.vibe"
 
 export error LaunchCredentialMissing { oversized: boolean }
 
@@ -16,7 +17,24 @@ export const AGENT_EXIT_CODES = {
 const frameLimit = 16 * 1024
 const documentLimit = 256 * 1024
 const ipv4Loopback = /^127\.0\.0\.1:(\d{1,5})$/
+const storageKey32 = /^(?:[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=|[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048])$/
 export type Endpoint = { kind: "http"; port: number } | { kind: "socket"; path: string }
+
+export function launchOwnerAccount(launch: LaunchDocument): LaunchDocument["account"] {
+  const inference: OwnerAccount = launch.account === undefined ? { tag: "NoAccount" } : { tag: "SignedIn", ...launch.account }
+  const resident = launch.residentOwner
+  const mode: ResidentMode = resident === undefined ? { tag: "LegacyLaunchOwner" }
+    : resident.kind === "installation" ? { tag: "InstallationOwner" }
+      : { tag: "RetainedOwner", stored: { tag: "SignedIn", ...resident.account } }
+  const stored = residentStorageAccount(mode, inference)
+  return stored.tag === "NoAccount" ? undefined : { userId: stored.userId, organizationId: stored.organizationId }
+}
+
+export function residentFrameAdmitted(launch: LaunchDocument, frame: LaunchFrame): boolean {
+  return launch.residentOwner === undefined
+    || (frame.storageKey !== undefined && storageKey32.test(Redacted.value(frame.storageKey))
+      && (launch.model.backend !== "none" || frame.credential === undefined))
+}
 
 function endpoint(mode: string, address: string): Endpoint | undefined {
   if (mode === "--socket" && address.startsWith("/") && !address.includes("\u0000")) return { kind: "socket", path: address }
@@ -50,6 +68,7 @@ export effect function readLaunch() {
 export effect function parseLaunch(document: string, frame: string) {
   const launch = try decodeLaunchDocument(document)
   const authority = try decodeLaunchFrame(frame)
+  if (!residentFrameAdmitted(launch, authority)) throw new LaunchFrameRejected()
   if (launch.model.backend !== "none" && authority.credential === undefined) throw new LaunchCredentialMissing({ oversized: false })
   if (launch.model.backend === "own-key" && authority.credential !== undefined && Redacted.value(authority.credential.value).length > ownKeyMaxUnits)
     throw new LaunchCredentialMissing({ oversized: true })

@@ -29,6 +29,9 @@ export interface LaunchOptions {
   readonly load?: readonly string[];
   readonly productPlugin?: string;
   readonly persistMemory?: boolean;
+  readonly residentOwner?:
+    | { readonly kind: "installation"; readonly linkedAccount?: { readonly userId: string; readonly organizationId: string } }
+    | { readonly kind: "retained-account"; readonly account: { readonly userId: string; readonly organizationId: string } };
   readonly callerRole?: "owner" | "user";
   readonly timeZone?: string;
   readonly retention?: { readonly days: number; readonly maxRowsPerRoom: number; readonly intervalMinutes: number };
@@ -71,6 +74,7 @@ export function launchDocument(options: LaunchOptions = {}): Record<string, unkn
     ...(backend.kind === "none" ? {} : { account }),
     embeddings: "none",
     persistMemory: options.persistMemory ?? false,
+    ...(options.residentOwner === undefined ? {} : { residentOwner: options.residentOwner }),
     callerRole: options.callerRole ?? "user",
     ...(options.timeZone === undefined ? {} : { timeZone: options.timeZone }),
     ...(options.retention === undefined ? {} : { retention: options.retention }),

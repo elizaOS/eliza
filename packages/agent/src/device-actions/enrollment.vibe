@@ -14,6 +14,7 @@ module node {
 }
 
 import type { AgentRuntime } from "@elizaos/core"
+import { launchOwnerAccount } from "../host/launch.vibe"
 import { deviceContext, enrolledKey, enrolledOwner, isEnrolled, Rejected, type DeviceRequest } from "../../gen/agent__deviceActions.effect.vibe"
 import { allCapabilities, capabilityName, distinctNames, isCapabilityName } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
@@ -59,7 +60,7 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
   const runtime: AgentRuntime = context.runtime
   const adapter = runtime.adapter
   const agentId = runtime.agentId
-  const owner: SessionOwner = { agentId, actorId: context.launch.account?.userId ?? context.ownerEntityId, connector: agentId }
+  const owner: SessionOwner = { agentId, actorId: launchOwnerAccount(context.launch)?.userId ?? context.ownerEntityId, connector: agentId }
   const lock = Semaphore.makeUnsafe(1)
 
   function presentedKeyHash(input: Pick<RouteInput, "headers">): string | undefined {
