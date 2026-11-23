@@ -64,6 +64,7 @@ export interface ApprovalRow {
   readonly decidedAt?: string
 }
 export interface RunEvent { readonly type: string; readonly timestamp: string; readonly nodeId?: string }
+export interface StoredRunEvent extends RunEvent { readonly ordinal?: number }
 export interface RunRow {
   readonly id: string
   readonly workflowId: string
@@ -89,7 +90,7 @@ export interface RunRow {
   readonly next: number
   readonly allowed: boolean
   readonly approvals: readonly ApprovalRow[]
-  readonly events: readonly RunEvent[]
+  readonly events: readonly StoredRunEvent[]
   readonly eventsDropped?: number
   readonly cancellationRequestedAt?: string
   readonly hostedDigest?: Readonly<Record<string, unknown>>
@@ -123,12 +124,23 @@ module node {
 
   export interface Stored<A> { readonly revision: number; readonly row: A }
 
+  const escapedKeys = "workflow-json-keys-v1"
+
   function parsed<A>(value: unknown): A {
-    return (typeof value === "string" ? JSON.parse(value) : value) as A
+    const document: unknown = typeof value === "string" ? JSON.parse(value) : value
+    if (Array.isArray(document) && document.length === 2 && document[0] === escapedKeys && typeof document[1] === "string") {
+      return JSON.parse(document[1]) as A
+    }
+    return document as A
   }
 
   function jsonb(value: unknown): string {
-    return JSON.stringify(value, (_key, item: unknown) => typeof item === "string" ? item.replaceAll("\u0000", "") : item)
+    let hasEscapedKey = false
+    const document = JSON.stringify(value, (key, item: unknown) => {
+      if (key.includes("\u0000")) hasEscapedKey = true
+      return typeof item === "string" ? item.replaceAll("\u0000", "") : item
+    })
+    return hasEscapedKey ? JSON.stringify([escapedKeys, document]) : document
   }
 
   export function migrate(sql: WorkflowSql, statements: string): Promise<void> {

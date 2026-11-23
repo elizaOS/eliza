@@ -113,6 +113,9 @@ The store keeps a run as JSON that cannot hold the character U+0000. Text a run
 carries can still contain one: a model's reply, a step's value, an approval's
 summary. Every string in the stored record is kept without that character, so
 the run is stored and finishes as it would have without it.
+If an object key contains U+0000, the store keeps the document as escaped
+JSON text and restores the exact key when it reads the record. A key that
+contains U+0000 stays distinct from a key that already omits it.
 
 ```quint
 pure def storedRunCodeUnit(codeUnit: int): bool = codeUnit != 0
@@ -124,13 +127,17 @@ A run's history grows with every step, and a long loop would grow its stored
 record without limit. Each time the run is stored, its oldest progress events
 beyond the newest 200 are dropped and their number is added to the run's count
 of dropped events. Timer and approval events are always kept, and so is the
-newest event, so the history read after it continues where it left off.
+newest event. Each event keeps its original position even when an older
+progress event is dropped. A running reader receives only retained events
+whose positions are after the last event it already read.
 
 ```quint
 pure val maxProgressEvents: int = 200
 pure def progressEventsDropped(progress: int): int = if (progress > maxProgressEvents) progress - maxProgressEvents else 0
+pure def historyEventAfter(position: int, lastRead: int): bool = position > lastRead
 pure val progressValues = Set(0, 1, 200, 201, 450)
 pure def lawStoredProgressIsBounded(progress: int): bool = progress - progressEventsDropped(progress) <= maxProgressEvents
 pure def lawShortHistoryIsKeptWhole(progress: int): bool = progress <= maxProgressEvents implies progressEventsDropped(progress) == 0
 pure def lawNoMoreDroppedThanNeeded(progress: int): bool = progress >= maxProgressEvents implies progress - progressEventsDropped(progress) == maxProgressEvents
+pure def lawReadHistoryDoesNotRepeat(position: int, lastRead: int): bool = historyEventAfter(position, lastRead) implies not(historyEventAfter(position, position))
 ```
