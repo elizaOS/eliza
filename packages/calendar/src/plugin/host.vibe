@@ -1,8 +1,12 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
 import { sha256Hex } from "@elizaos/core"
+import { FetchHttpClient } from "effect/http"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { attendeeNotice, eventVisible, invitationVerdict, writeRoute, type AttendeeNotice } from "../../gen/calendar__actions.effect.vibe"
-import { sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceKey, type CalendarSummary } from "../model.vibe"
+import { attendeeNotice, eventVisible, invitationVerdict, sourceRead, writeRoute, type AttendeeNotice, type SourceRead } from "../../gen/calendar__actions.effect.vibe"
+import type { ManagedCalendarBroker } from "../feed/broker.vibe"
+import {
+  sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceHealth, type CalendarSourceKey, type CalendarSourceStatus, type CalendarSummary,
+} from "../model.vibe"
 import {
   calendarMutationLedger, CalendarLedgerUnavailable,
   type CalendarAnswerScope, type CalendarInvitationResponse, type CalendarMutationOutcome, type CalendarMutationPayload, type CalendarMutationRequest,
@@ -13,6 +17,7 @@ import type { CalendarWriteScope } from "../series/document.vibe"
 import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
 import { eventInWindow, eventVersion, hasOtherAttendees, ownerRole, residentCalendar, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
 import { lookupMatches } from "./lookup.vibe"
+import { managedGoogleCalendar } from "./managed-provider.vibe"
 import { cacheKeyValueStore, type CalendarCache } from "./runtime-store.vibe"
 
 /** The approval queue's name for a change: an answer is a modify, and a decline is a cancel, as the queue knows them. */
@@ -62,11 +67,12 @@ export interface CalendarSearch {
   readonly calendarId?: string
 }
 
-/** What a read found, and whether every listed calendar answered completely. */
+/** What a read found, whether every listed calendar answered completely, and how each calendar it read answered. */
 export interface CalendarSearchResult {
   readonly account: CalendarAccount
   readonly events: readonly CalendarEvent[]
   readonly complete: boolean
+  readonly sources: readonly CalendarSourceHealth[]
   readonly unavailable: readonly CalendarProvider[]
   readonly timeMin: string
   readonly timeMax: string
@@ -94,7 +100,7 @@ export type CalendarChangeResult =
 /** Why a change was refused before anything ran. */
 export type CalendarRefusal =
   | "no_account" | "foreign_account" | "not_writable" | "no_provider" | "approvals_unavailable"
-  | "organizer_unknown" | "not_invitee" | "invitee_edit" | "answers_unsupported" | "answer_scope"
+  | "organizer_unknown" | "not_invitee" | "invitee_edit" | "answers_unsupported" | "answer_scope" | "deletes_unsupported"
 
 /** A delete the Calendar action asked the owner to confirm in chat: the event, the request that asked, and when. */
 export interface CalendarDeleteQuestion {
@@ -103,17 +109,19 @@ export interface CalendarDeleteQuestion {
   readonly askedAt: number
 }
 
-/** What a calendar host needs from the agent: its durable cache, its id, and the owner approval queue when it runs. */
+/** What a calendar host needs from the agent: its durable cache, its id, the owner approval queue when it runs, and the private broker of the managed Google calendar when the host names one. */
 export interface CalendarHostOptions {
   readonly cache: CalendarCache
   readonly agentId: string
   readonly approvals: () => CalendarApprovals | undefined
+  readonly managed?: ManagedCalendarBroker
 }
 
 const approvalLifetimeMs = 24 * 60 * 60 * 1000
 const decodePayload = Schema.decodeUnknownOption(PayloadRecord, { onExcessProperty: "error" })
 const decodeQuestion = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ eventId: Schema.String, askedIn: Schema.String, askedAt: Schema.Number })))
 const questionKey = (conversation: string) => `calendar.delete-question.${encodeURIComponent(conversation)}`
+const sourceStatus: Readonly<Record<SourceRead, CalendarSourceStatus>> = { ReadFresh: "fresh", ReadStale: "stale", ReadFailed: "error" }
 const noticeReason: Readonly<Record<AttendeeNotice, string>> = {
   NotifyAttendees: ", telling its attendees",
   NotifyNobody: "",
@@ -145,8 +153,10 @@ export effect function calendarHost(options: CalendarHostOptions) {
   const store = try cacheKeyValueStore(options.cache)
   const rows = Layer.succeed(KeyValueStore.KeyValueStore, store)
   const resident = try Effect.provide(residentCalendar(), rows)
-  const providers = try Ref.make(new Map<CalendarProvider, CalendarProviderPort>([["eliza", resident]]))
   const residentAccount: CalendarAccount = { agentId: options.agentId, ownerId: "owner", accountId: `resident:${options.agentId}` }
+  const managed = options.managed === undefined ? undefined
+    : try Effect.provide(Effect.provideService(managedGoogleCalendar({ broker: options.managed, owner: residentAccount, store }), Scope.Scope, try Scope.make()), FetchHttpClient.layer)
+  const providers = try Ref.make(new Map<CalendarProvider, CalendarProviderPort>(managed === undefined ? [["eliza", resident]] : [["eliza", resident], ["google", managed]]))
   const active = try Ref.make<CalendarAccount | undefined>(residentAccount)
   const ledger = try calendarMutationLedger()
   const port = providerMutationPort({ active: () => Ref.get(active), port: (provider) => map(Ref.get(providers), (held) => held.get(provider)) })
@@ -180,11 +190,16 @@ export effect function calendarHost(options: CalendarHostOptions) {
     if (account === undefined) return undefined
     const { found, unavailable } = try listed(account)
     const events: CalendarEvent[] = []
+    const sources: CalendarSourceHealth[] = []
     let complete = unavailable.length === 0
     const seen = new Set<string>()
+    const readAt = new Date(try Clock.currentTimeMillis).toISOString()
     for (const { port, row } of found) {
       if (request.calendarId !== undefined && row.calendarId !== request.calendarId) continue
       const read = port.read(account, row, request.timeMin, request.timeMax) catch () => undefined
+      const status = sourceStatus[sourceRead(read !== undefined, read?.complete === true, (read?.events.length ?? 0) > 0)]
+      sources.push({ key: { provider: row.provider, side: row.side, grantId: row.grantId, connectorAccountId: row.connectorAccountId, calendarId: row.calendarId },
+        summary: row.summary, accessRole: row.accessRole, status, syncedAt: status === "fresh" ? readAt : null })
       if (read === undefined) { complete = false; unavailable.push(port.provider); continue }
       complete = complete && read.complete
       for (const event of read.events) {
@@ -195,7 +210,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
       }
     }
     return {
-      account, events: (request.query === undefined ? events : lookupMatches(events, request.query)).sort(byStart), complete, unavailable: [...new Set(unavailable)],
+      account, events: (request.query === undefined ? events : lookupMatches(events, request.query)).sort(byStart), complete, sources, unavailable: [...new Set(unavailable)],
       timeMin: new Date(request.timeMin).toISOString(), timeMax: new Date(request.timeMax).toISOString(),
     }
   }
@@ -264,6 +279,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
       if (verdict === "RefuseRole") return { kind: "refused", reason: role === "UnknownRole" ? "organizer_unknown" : change === "AnswerInvitation" ? "not_invitee" : "invitee_edit" }
       if (verdict === "RefuseUnsupported") return { kind: "refused", reason: "answers_unsupported" }
       if (verdict === "RefuseScope") return { kind: "refused", reason: "answer_scope" }
+      if (asked.kind === "delete" && verdict === "RunAsAsked" && provider.remove === undefined) return { kind: "refused", reason: "deletes_unsupported" }
       const scope = asked.scope === "series" ? "series" : "instance"
       payload = asked.kind === "update" ? { action: "modify_event", account: account.accountId, target, scope: asked.scope, fields: asked.fields, ...notify }
         : asked.kind === "respond" ? { action: "respond_invitation", account: account.accountId, target, scope, response: asked.response, ...notify }

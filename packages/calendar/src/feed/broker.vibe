@@ -112,7 +112,8 @@ function wireOf(reply: Reply, limit: number, checks: Pick<BrokerCalendarWire, "e
 
 const everyCheck = { envelopeValid: true, exactWindowAndCalendar: true, onlyFreshHealth: true, exactEvents: true }
 
-function eventOf(row: typeof BrokerEvent.Type, agentId: string, syncedAt: string): CalendarEvent {
+/** A broker event as a calendar event of this agent, with its provider edit time as its change time. */
+export function brokerEventOf(row: typeof BrokerEvent.Type, agentId: string, syncedAt: string): CalendarEvent {
   const metadata = row.metadata ?? {}
   return {
     id: row.id, externalId: row.externalId, agentId, provider: "google", side: "owner", calendarId: row.calendarId,
@@ -200,7 +201,7 @@ export function managedBroker(endpoint: BrokerEndpoint): ManagedCalendarBroker {
       const key = { provider: source.provider, side: source.side, grantId: source.grantId, connectorAccountId: source.connectorAccountId, calendarId: source.calendarId }
       const feed: CalendarFeed = {
         calendarId: source.calendarId,
-        events: events.map((event) => eventOf(event, agentId, syncedAt)),
+        events: events.map((event) => brokerEventOf(event, agentId, syncedAt)),
         source: "synced",
         state: "complete",
         sources: [{ key, summary: source.summary, accessRole: source.accessRole, status: "fresh", syncedAt }],

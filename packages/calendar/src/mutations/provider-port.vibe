@@ -1,4 +1,4 @@
-// spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"
+// spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
 import { sha256Hex } from "@elizaos/core"
 import { createOutcome, invitationVerdict, repeatingCreateAllowed, receiptVersion, reviewStillBinds, type InvitationChange, type InvitationVerdict, type OwnerRole } from "../../gen/calendar__actions.effect.vibe"
 import { knownTimeZone } from "../clock.vibe"
@@ -95,6 +95,7 @@ export function providerMutationPort(providers: CalendarProviders): CalendarMuta
         const refusal = invitationRefusal("AnswerInvitation", "InviteeRole", "RefuseUnsupported")
         throw refuse(refusal.code, refusal.message)
       }
+      if (request.payload.action === "cancel_event" && port.remove === undefined) throw refuse("CALENDAR_DELETE_UNSUPPORTED", "That calendar's provider can't delete events from here. Nothing was changed.")
       const listed = port.sources(account) catch effect () => { throw refuse("CALENDAR_SOURCE_UNAVAILABLE", "The calendar could not be listed.", true) }
       const writable = listed.find((row) => sameSourceKey(row, source))
       if (writable === undefined || (writable.accessRole !== "owner" && writable.accessRole !== "writer")) {
@@ -157,6 +158,7 @@ export function providerMutationPort(providers: CalendarProviders): CalendarMuta
         }
         return { operation: payload.action, source, eventId: payload.target.eventId, providerVersion: version, event: read, target, acceptedAt: read.updatedAt } satisfies CalendarMutationReceipt
       }
+      if (port.remove === undefined) throw new CalendarWriteNotAccepted({ failure: failure("CALENDAR_DELETE_UNSUPPORTED", "That calendar's provider can't delete events from here.", false) })
       try port.remove(account, source, payload.target.eventId, payload.scope, payload.target.expectedVersion, request.id, payload.notifyAttendees === true)
       if ((try readBack(port, account, source, payload.target.eventId)) !== undefined) throw unconfirmed("CALENDAR_DELETE_UNCONFIRMED", "The deleted event still reads back.")
       if (receiptVersion("DeleteChange", eventVersion(target) !== "", false) !== "FromDeletedTarget") throw unconfirmed("CALENDAR_DELETE_UNVERSIONED", "The deleted event had no version.")

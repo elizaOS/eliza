@@ -28,6 +28,40 @@ pure val eventAccountValues = Set("owner", "other")
 pure val activeAccountValues = Set("owner", "other")
 ```
 
+### The managed Google calendar is read and changed as one of the active account's calendars
+
+When the host names the Cloud's [managed Google](./managedFeed.md)
+connection through its private broker, the calendars that broker lists are
+listed calendars of the account in use, beside the resident calendar.
+Searches, lookups, free-time questions, trip questions, the agent's context
+and the client's feed read them, through the broker for the exact calendar
+and window. Each answer lists every calendar it read with whether that read
+was fresh, held only kept events (stale), or failed. A broker read that
+fails answers from the events the last good read of that calendar kept, and
+the answer is never complete. A change to one of them waits for the owner's
+approval like any provider calendar. That calendar creates events and edits
+one occurrence; it cannot email attendees, answer invitations, delete
+events, or edit more than one occurrence of a repeating event, so such a
+request is refused before anything is queued or changed. A broker address
+or token that is not the device's private one stops the calendar from
+starting rather than reading without it.
+
+```quint
+type ManagedChange = ManagedCreate | ManagedEdit | ManagedDelete | ManagedAnswer
+type SourceRead = ReadFresh | ReadStale | ReadFailed
+pure def managedChangeAllowed(change: ManagedChange, oneOccurrence: bool): bool =
+  change == ManagedCreate or (change == ManagedEdit and oneOccurrence)
+pure def sourceRead(answered: bool, complete: bool, keptEvents: bool): SourceRead =
+  if (answered and complete) ReadFresh
+  else if (answered or keptEvents) ReadStale
+  else ReadFailed
+pure def lawAManagedDeleteIsRefused(oneOccurrence: bool): bool = not(managedChangeAllowed(ManagedDelete, oneOccurrence))
+pure def lawAManagedAnswerIsRefused(oneOccurrence: bool): bool = not(managedChangeAllowed(ManagedAnswer, oneOccurrence))
+pure def lawOnlyACreateSpansASeries(change: ManagedChange): bool = change != ManagedCreate implies not(managedChangeAllowed(change, false))
+pure def lawOnlyAnAnsweredCompleteReadIsFresh(answered: bool, complete: bool, keptEvents: bool): bool =
+  sourceRead(answered, complete, keptEvents) == ReadFresh iff (answered and complete)
+```
+
 ### A lookup finds the events that hold the most asked words, preferring their titles
 
 A search, and the lookup that picks the event a change is for, read the
