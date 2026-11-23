@@ -18,14 +18,15 @@ const examplesSource = "vibestack/selftests/examples.ts";
 const toolMetadata = "vibestack/selftests/tools.ts";
 const EXAMPLES = "vibestack/examples";
 
-test("the prove skill lists everything the proof library declares", () => {
+function checkProofSkill(): void {
   const skill = read(".agents/skills/prove/SKILL.md");
   const declared = [...fs.readFileSync(LIB_FILE, "utf8").matchAll(/^\s*(?:ghost )?(?:lemma|function|predicate) (\w+)/gm)].map((m) => m[1]);
   assert.ok(declared.length > 30, "vibestack/proof/lib.dfy declares its lemmas one to a line");
   assert.deepEqual(declared.filter((name) => !skill.includes(`\`${name}\``)), []);
-});
+}
 
 describe("the documents name what exists", () => {
+  test("the prove skill lists everything the proof library declares", checkProofSkill);
   const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".agents/skills").filter((file) => file.endsWith(".md"))];
   const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
   const within = (dir: string) => fs.existsSync(path.join(project, dir)) ? fs.readdirSync(path.join(project, dir), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `${dir}/${e.name}`) : [];
