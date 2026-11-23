@@ -482,6 +482,30 @@ function mutationApplied(result: TodoMutationResult): boolean {
   }
 }
 
+/**
+ * Whether applying `patch` to `todo` would change nothing. A patch field
+ * only counts when it is present and differs from the stored value, so an
+ * update that restates the current state is a no-op.
+ */
+function todoPatchIsNoop(todo: Todo, patch: UpdateTodoInput): boolean {
+  if (patch.content !== undefined && patch.content !== todo.content)
+    return false;
+  if (patch.activeForm !== undefined && patch.activeForm !== todo.activeForm)
+    return false;
+  if (patch.status !== undefined && patch.status !== todo.status) return false;
+  if (
+    patch.parentTodoId !== undefined &&
+    patch.parentTodoId !== todo.parentTodoId
+  )
+    return false;
+  if (
+    patch.metadata !== undefined &&
+    JSON.stringify(patch.metadata) !== JSON.stringify(todo.metadata)
+  )
+    return false;
+  return true;
+}
+
 function sameTodoListState(before: Todo[], after: Todo[]): boolean {
   if (before.length !== after.length) return false;
   const beforeById = new Map(before.map((todo) => [todo.id, todo]));
@@ -1634,6 +1658,50 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
     return { miss: { kind: "ambiguous", candidates: matches } };
   }
 
+  /** Full row for one todo under the scope lock, or null when it is gone. */
+  private async currentTodoInTransaction(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+    id: string,
+  ): Promise<Todo | null> {
+    const [row] = await tx
+      .select()
+      .from(todosTable)
+      .where(
+        and(
+          eq(todosTable.id, id as UUID),
+          eq(todosTable.agentId, scope.agentId as UUID),
+          eq(todosTable.entityId, scope.entityId as UUID),
+        ),
+      )
+      .limit(1);
+    return row ? rowToTodo(row) : null;
+  }
+
+  private async hasAppliedRequestForTodo(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+    operation: "update" | "complete" | "cancel",
+    todoId: string,
+    requestDigest: string,
+  ): Promise<boolean> {
+    const [row] = await tx
+      .select({ mutationId: todoMutationsTable.mutationId })
+      .from(todoMutationsTable)
+      .where(
+        and(
+          eq(todoMutationsTable.agentId, scope.agentId as UUID),
+          eq(todoMutationsTable.entityId, scope.entityId as UUID),
+          eq(todoMutationsTable.operation, operation),
+          eq(todoMutationsTable.requestDigest, requestDigest),
+          eq(todoMutationsTable.applied, true),
+          sql`${todoMutationsTable.resultJson} -> 'result' -> 'todo' ->> 'id' = ${todoId}`,
+        ),
+      )
+      .limit(1);
+    return row !== undefined;
+  }
+
   /** Latest record of one operation, only while its confirmation window is open. */
   private async openConfirmationRecord(
     tx: TodoTransaction<TSchema>,
@@ -1814,6 +1882,7 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
       }
 
       let result: TodoMutationResult;
+      let replayedNoop = false;
       const mutation = input.mutation;
       switch (mutation.action) {
         case "create":
@@ -1831,20 +1900,40 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
             result = { action: mutation.action, todo: null, miss: target.miss };
             break;
           }
+          const patch: UpdateTodoInput =
+            mutation.action === "update"
+              ? mutation.patch
+              : {
+                  status:
+                    mutation.action === "complete" ? "completed" : "cancelled",
+                };
+          const current = await this.currentTodoInTransaction(
+            tx,
+            input.scope,
+            target.id,
+          );
+          if (
+            current &&
+            todoPatchIsNoop(current, patch) &&
+            (await this.hasAppliedRequestForTodo(
+              tx,
+              input.scope,
+              mutation.action,
+              target.id,
+              requestDigest,
+            ))
+          ) {
+            result = { action: mutation.action, todo: current };
+            replayedNoop = true;
+            break;
+          }
           result = {
             action: mutation.action,
             todo: await this.updateInTransaction(
               tx,
               input.scope,
               target.id,
-              mutation.action === "update"
-                ? mutation.patch
-                : {
-                    status:
-                      mutation.action === "complete"
-                        ? "completed"
-                        : "cancelled",
-                  },
+              patch,
             ),
           };
           break;
@@ -1887,7 +1976,7 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
                 };
           break;
       }
-      const applied = mutationApplied(result);
+      const applied = !replayedNoop && mutationApplied(result);
       const [inserted] = await tx
         .insert(todoMutationsTable)
         .values({
@@ -1906,7 +1995,7 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
       return {
         mutationId: inserted.mutationId,
         idempotencyKey: inserted.idempotencyKey,
-        replayed: false,
+        replayed: replayedNoop,
         committedAt: inserted.committedAt,
         applied: inserted.applied,
         result,
