@@ -11,7 +11,7 @@ module node {
   import { heardView } from "../src/conversation/heard.vibe"
   import { storedText } from "../src/conversation/history.vibe"
 
-  export const fresh = Array.from({ length: 9 }, () => randomUUID() as UUID)
+  export const fresh = Array.from({ length: 10 }, () => randomUUID() as UUID)
 
   export function holdRoom(runtime: AgentRuntime, roomId: UUID) {
     const gate = Promise.withResolvers<void>()
@@ -108,7 +108,7 @@ it.live('A turn that does not stop within five seconds is uncertain, a second St
   }))
 }, 120_000)
 
-it.live('Report what of a spoken reply was heard: prefix, nothing heard, 409 and unchanged, with the reply kept whole (spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply")', effect () => {
+it.live('Report what of a spoken reply was heard: prefix, collapsed and spoken prefixes, nothing heard, 409 and unchanged, with the reply kept whole (spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply")', effect () => {
   const agent = try startInProcess()
   const chat = try open(agent)
   const runtime = agent.agent.runtime
@@ -116,7 +116,8 @@ it.live('Report what of a spoken reply was heard: prefix, nothing heard, 409 and
   const at = Date.now()
   const said: Memory = { id: fresh[1], entityId: fresh[2], agentId: runtime.agentId, roomId: chat.roomId, createdAt: at, content: { text: "Say hello.", source: "device" } }
   const answered: Memory = { id: fresh[3], entityId: runtime.agentId, agentId: runtime.agentId, roomId: chat.roomId, createdAt: at + 1, content: { text: whole, inReplyTo: said.id, source: "device" } }
-  try host("seed reply", () => runtime.adapter.createMemories([said, answered].map((memory) => ({ memory, tableName: "messages" }))))
+  const marked: Memory = { ...answered, id: fresh[9], createdAt: at + 2, content: { text: "**Hello**  there.\n\nMore words.", inReplyTo: said.id, source: "device" } }
+  try host("seed reply", () => runtime.adapter.createMemories([said, answered, marked].map((memory) => ({ memory, tableName: "messages" }))))
   const heard = (messageId: string, body: object, conversation = chat.id) =>
     ask(agent, { method: "POST", path: `/api/conversations/${conversation}/messages/${messageId}/heard`, body })
   const stored = () => host("read reply", () => storedReply(runtime, answered.id as UUID))
@@ -140,16 +141,22 @@ it.live('Report what of a spoken reply was heard: prefix, nothing heard, 409 and
   const unknownMessage = try heard(fresh[4], { nothingHeard: true })
   const unknownConversation = try heard(id, { nothingHeard: true }, fresh[5])
   const malformed = try heard(id, { heardText: "Hello", nothingHeard: true })
+  const collapsed = try heard(String(marked.id), { heardText: "**Hello** there. More" })
+  const collapsedStored = try host("read marked reply", () => storedReply(runtime, marked.id as UUID))
+  const spoken = try heard(String(marked.id), { heardText: "Hello there." })
+  const spokenStored = try host("read marked reply", () => storedReply(runtime, marked.id as UUID))
 
   try Effect.try(() => assert.deepStrictEqual({
     wholeHeard, untouched, part, partAgain, partStored, pastBoundary, notPrefix, blank, nothing, nothingAgain, afterNothing, nothingStored,
     missing: [userMessage.status, unknownMessage.status, unknownConversation.status], malformed: malformed.status,
+    spokenReports: [collapsed.status, collapsedStored.view, spoken.status, spokenStored.view],
   }, {
     wholeHeard: changed(false), untouched: { text: whole, view: { heard: whole, unheard: "" } },
     part: changed(true), partAgain: changed(false), partStored: { text: whole, view: { heard: "Hello there.", unheard: " More words." } },
     pastBoundary: conflict, notPrefix: conflict, blank: conflict,
     nothing: changed(true), nothingAgain: changed(false), afterNothing: conflict, nothingStored: { text: whole, view: { heard: "", unheard: whole } },
     missing: [404, 404, 404], malformed: 400,
+    spokenReports: [200, { heard: "**Hello**  there.\n\nMore", unheard: " words." }, 200, { heard: "**Hello**  there.", unheard: "\n\nMore words." }],
   }))
 }, 120_000)
 
