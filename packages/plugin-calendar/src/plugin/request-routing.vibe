@@ -97,17 +97,17 @@ const hasTimeWindow = new RegExp(String.raw`\b${PERIOD}\b`, "iu")
 const separateTask = /(?:[.!?]\s+|\s*,?\s+and\s+(?:also\s+|then\s+)?|\s*,?\s+then\s+)(?=(?:add|am|check|create|do|find|is|look|open|read|send|set|show|start|suggest)\b)/iu
 
 export function calendarAvailabilityRequest(text: string): AvailabilityIntent {
-  if (PHONE_CALENDAR.test(text) || text.length > 300) return "NoAvailability"
+  if (PHONE_CALENDAR.test(text) || text.length > 300) return { tag: "NoAvailability" }
   for (const part of text.trim().split(separateTask)) {
     if (!hasTimeWindow.test(part) && !namesCalendarDate(part)) continue
     const lengths = statedLengths(part)
     if (asksForOpening.test(part)) {
       const minutes = lengths?.length === 1 ? (lengths[0] ?? 0) / 60_000 : 0
-      return Number.isInteger(minutes) && minutes >= 5 && minutes <= 480 ? { tag: "FindOpening", minutes } : "NeedOpeningLength"
+      return Number.isInteger(minutes) && minutes >= 5 && minutes <= 480 ? { tag: "FindOpening", minutes } : { tag: "NeedOpeningLength" }
     }
-    if (availabilityCheck.test(part)) return "CheckInterval"
+    if (availabilityCheck.test(part)) return { tag: "CheckInterval" }
   }
-  return "NoAvailability"
+  return { tag: "NoAvailability" }
 }
 
 /**
@@ -168,19 +168,19 @@ export async function calendarRequestRelevance(runtime: IAgentRuntime, message: 
   if (intent === "NoEventIntent") {
     const turn = deviceTurnFor(runtime, message)
     const read = residentAvailabilityIntent(calendarAvailabilityRequest(words), turn !== undefined && phoneAvailabilityOffered(turn))
-    if (read === "NoAvailability") return undefined
-    const note = read === "NeedOpeningLength"
+    if (read.tag === "NoAvailability") return undefined
+    const note = read.tag === "NeedOpeningLength"
       ? "The owner asked for a Calendar opening. Ask how long the opening should be."
-      : read === "CheckInterval"
+      : read.tag === "CheckInterval"
         ? "The owner asked about Calendar availability. Use CALENDAR's check_availability for the requested interval."
         : `The owner asked for a ${read.minutes}-minute Calendar opening. Use CALENDAR's propose_times for that length in the requested window.`
     return {
       note,
       context: "calendar" as const,
       matches: (params: Readonly<Record<string, unknown>>) => {
-        const called = params.subaction === "check_availability" ? "CheckInterval"
+        const called: AvailabilityIntent = params.subaction === "check_availability" ? { tag: "CheckInterval" }
           : params.subaction === "propose_times" && typeof params.durationMinutes === "number"
-            ? { tag: "FindOpening" as const, minutes: params.durationMinutes } : "NoAvailability"
+            ? { tag: "FindOpening", minutes: params.durationMinutes } : { tag: "NoAvailability" }
         return availabilityCallAdmitted(read, called, params.calendarId !== undefined)
       },
     }

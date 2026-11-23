@@ -27,7 +27,8 @@ it.effect('Recognize current Calendar words and keep other records out (spec/cal
     calendarAvailabilityRequest("Find me time for a call tomorrow morning"),
     calendarAvailabilityRequest("Is Chrome free tomorrow?"),
     calendarAvailabilityRequest("Am I free tomorrow on my phone's calendar?"),
-  ], ["CheckInterval", { tag: "FindOpening", minutes: 20 }, "CheckInterval", "NeedOpeningLength", "NoAvailability", "NoAvailability"]))
+  ], [{ tag: "CheckInterval" }, { tag: "FindOpening", minutes: 20 }, { tag: "CheckInterval" },
+    { tag: "NeedOpeningLength" }, { tag: "NoAvailability" }, { tag: "NoAvailability" }]))
 })
 
 it.live('Use resident Calendar and keep the other work while Contacts is open (spec/calendar/requestRouting.md, "Story: Change a calendar event from the view I am using"; spec/calendar/requestRouting.md, "Story: Check my calendar availability from the view I am using")', effect () => {

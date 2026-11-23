@@ -88,20 +88,20 @@ window and requires a complete read.
 
 ```quint
 type AvailabilityIntent = NoAvailability | CheckInterval | FindOpening({ minutes: int }) | NeedOpeningLength
-pure val askedValues = Set(NoAvailability, CheckInterval, FindOpening({ minutes: 4 }), FindOpening({ minutes: 5 }), FindOpening({ minutes: 20 }), FindOpening({ minutes: 30 }), FindOpening({ minutes: 480 }), FindOpening({ minutes: 481 }), NeedOpeningLength)
-pure val calledValues = askedValues
-pure def residentAvailabilityIntent(asked: AvailabilityIntent, phoneOwns: bool): AvailabilityIntent =
-  if (phoneOwns) NoAvailability else asked
-pure def availabilityCallAdmitted(asked: AvailabilityIntent, called: AvailabilityIntent, scoped: bool): bool =
-  not(scoped) and match asked {
-    | CheckInterval => called == CheckInterval
-    | FindOpening(n) => called == FindOpening(n) and n.minutes >= 5 and n.minutes <= 480
+pure val availabilityAskedValues = Set(NoAvailability, CheckInterval, FindOpening({ minutes: 4 }), FindOpening({ minutes: 5 }), FindOpening({ minutes: 20 }), FindOpening({ minutes: 30 }), FindOpening({ minutes: 480 }), FindOpening({ minutes: 481 }), NeedOpeningLength)
+pure val availabilityCalledValues = availabilityAskedValues
+pure def residentAvailabilityIntent(availabilityAsked: AvailabilityIntent, phoneOwns: bool): AvailabilityIntent =
+  if (phoneOwns) NoAvailability else availabilityAsked
+pure def availabilityCallAdmitted(availabilityAsked: AvailabilityIntent, availabilityCalled: AvailabilityIntent, scoped: bool): bool =
+  not(scoped) and match availabilityAsked {
+    | CheckInterval => availabilityCalled == CheckInterval
+    | FindOpening(n) => availabilityCalled == FindOpening(n) and n.minutes >= 5 and n.minutes <= 480
     | _ => false
   }
-pure def lawPhoneAvailabilityDoesNotAdmitAResidentRead(asked: AvailabilityIntent): bool =
-  residentAvailabilityIntent(asked, true) == NoAvailability
-pure def lawAvailabilityDoesNotAddASourceOrOtherOperation(asked: AvailabilityIntent, called: AvailabilityIntent, scoped: bool): bool =
-  availabilityCallAdmitted(asked, called, scoped) implies not(scoped) and asked == called and called != NoAvailability and called != NeedOpeningLength
+pure def lawPhoneAvailabilityDoesNotAdmitAResidentRead(availabilityAsked: AvailabilityIntent): bool =
+  residentAvailabilityIntent(availabilityAsked, true) == NoAvailability
+pure def lawAvailabilityDoesNotAddASourceOrOtherOperation(availabilityAsked: AvailabilityIntent, availabilityCalled: AvailabilityIntent, scoped: bool): bool =
+  availabilityCallAdmitted(availabilityAsked, availabilityCalled, scoped) implies not(scoped) and availabilityAsked == availabilityCalled and availabilityCalled != NoAvailability and availabilityCalled != NeedOpeningLength
 pure def lawAnOpeningNeedsTheOwnersDuration(minutes: int, proposed: int): bool =
   availabilityCallAdmitted(FindOpening({ minutes: minutes }), FindOpening({ minutes: proposed }), false) implies proposed == minutes
 ```
