@@ -65,6 +65,12 @@ const openViewNow: MessageAvailability = {
 }
 
 const captureForm: ProposalForm = { types: ["camera_capture_photo"], schema: branch("camera_capture_photo", [], {}), guidance: cameraGuidance, offered: needed("CameraCapturePhoto") }
+const lensGuidance = "camera_capture_photo may name lens front (a selfie) or back only when the owner asked for that camera; without lens the phone uses the camera that is showing."
+const lensForm: ProposalForm = {
+  types: ["camera_capture_photo"], guidance: lensGuidance,
+  offered: (device) => needed("CameraCapturePhoto")(device) && negotiatedHas(device.negotiation, "CameraCaptureLensV1"),
+  schema: branch("camera_capture_photo", ["lens"], { lens: { type: "string", enum: ["front", "back"] } }),
+}
 
 function ownerChat(turn: DeviceTurn): boolean {
   const channel = turn.message.content.channelType
@@ -91,6 +97,7 @@ function noteSaidByOwner(ownerText: string, note: { readonly title: string; read
 
 const forms: readonly ProposalForm[] = [
   captureForm,
+  lensForm,
   {
     types: ["photo_library_search"], guidance: libraryGuidance, offered: needed("PhotoLibrarySearch"),
     schema: branch("photo_library_search", [], {
