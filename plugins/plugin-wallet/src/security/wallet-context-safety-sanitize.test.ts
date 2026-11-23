@@ -11,9 +11,12 @@ describe("sanitizeWalletDisplayLabel word-character boundaries", () => {
   it.each(["_", "z", "g"])("redacts EVM address followed by %s", (s) => {
     expect(sanitizeWalletDisplayLabel(`USDC ${EVM}${s}`)).not.toContain(EVM);
   });
-  it.each(["_", "0", "O", "I", "l"])("redacts Solana address followed by %s", (s) => {
-    expect(sanitizeWalletDisplayLabel(`T ${SOL}${s}`)).not.toContain(SOL);
-  });
+  it.each(["_", "0", "O", "I", "l"])(
+    "redacts Solana address followed by %s",
+    (s) => {
+      expect(sanitizeWalletDisplayLabel(`T ${SOL}${s}`)).not.toContain(SOL);
+    },
+  );
   it.each(["_", "0"])("redacts Solana address preceded by %s", (s) => {
     expect(sanitizeWalletDisplayLabel(`T ${s}${SOL}`)).not.toContain(SOL);
   });

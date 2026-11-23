@@ -1040,10 +1040,12 @@ async function sendAndConfirmSolanaTransaction(
   connection: Connection,
   transaction: VersionedTransaction,
   sendOptions: SendOptions,
-  blockhashExpiry: Readonly<{
-    blockhash: string;
-    lastValidBlockHeight: number;
-  }> | undefined,
+  blockhashExpiry:
+    | Readonly<{
+        blockhash: string;
+        lastValidBlockHeight: number;
+      }>
+    | undefined,
   failurePrefix: string,
 ): Promise<{
   signature: string;
@@ -1066,12 +1068,13 @@ async function sendAndConfirmSolanaTransaction(
 
   let confirmation: Awaited<ReturnType<Connection["confirmTransaction"]>>;
   try {
-    confirmation = blockhashExpiry === undefined
-      ? await connection.confirmTransaction(signature, "confirmed")
-      : await connection.confirmTransaction(
-          { signature, ...blockhashExpiry },
-          "confirmed",
-        );
+    confirmation =
+      blockhashExpiry === undefined
+        ? await connection.confirmTransaction(signature, "confirmed")
+        : await connection.confirmTransaction(
+            { signature, ...blockhashExpiry },
+            "confirmed",
+          );
   } catch {
     // error-policy:J2 the transaction was sent; its outcome is unknown.
     return {
