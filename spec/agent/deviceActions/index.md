@@ -340,9 +340,9 @@ negotiation and the installation's views hold
 changes it. What depends on the message reaches the model after it, in
 the tool's note for the message, sent only while the tool is offered
 ([planning](../conversation/planning.md)): the whole-message route that
-owns it, if any, as what to use; how views open on it; and each offered
-form the message does not allow, with why. The note says what applies,
-never that a proposal was made. A form may be offered and yet not available on a message: a family
+owns it, if any, as what to use; how views open on it; and the offered
+forms the message does not allow, each reason said once with the forms it
+holds back. The note says what applies, never that a proposal was made. A form may be offered and yet not available on a message: a family
 says which of its forms depend on what the message shows, as a new phone
 note depends on the Notes screen ([surfaces](./surfaces.md)), and on a
 message a whole-message route owns only the routed forms are available.
