@@ -559,10 +559,11 @@ function rememberSettledRequest(
   requestId: string,
   fencedEstimateUsd?: number,
 ): void {
-  // Only bounded speech IDs require this replay metadata. Duplicating arbitrary
-  // 128-byte request IDs can exhaust the existing 512 KiB ledger bound.
+  // Only bounded speech IDs, including later budget windows, require this
+  // replay metadata. Duplicating arbitrary 128-byte request IDs can exhaust
+  // the existing 512 KiB ledger bound.
   const speechRequest =
-    /^speech:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(stt|tts)$/i.test(
+    /^speech:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(stt|tts)(:[1-9][0-9]{0,3})?$/i.test(
       requestId,
     );
   if (speechRequest && fencedEstimateUsd !== undefined) {

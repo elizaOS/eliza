@@ -37,12 +37,14 @@ public final class BrowserBookmarkRecordTest {
   List<Entry> plain=BrowserBookmarkRecord.change(rows,"https://a.test/",true,null,VALID);
   sameRecord(BrowserBookmarkRecord.write(plain),"[\"https://a.test/\",\"https://b.test/x?q=1\"]","re-saving moves the address first, once");
   sameRecord(BrowserBookmarkRecord.write(BrowserBookmarkRecord.change(plain,"https://a.test/",false,null,VALID)),"[\"https://b.test/x?q=1\"]","removal");
-  // A title is stored with its address and read back.
+  // The address list remains readable by previous builds.
   List<Entry> titled=BrowserBookmarkRecord.change(plain,"https://c.test/",true,"  Garden\tjournal\n",VALID);
   equal(titled.get(0),new Entry("https://c.test/","Garden journal"),"title is cleaned of control characters and trimmed");
   String written=BrowserBookmarkRecord.write(titled);
-  sameRecord(written,"[{\"url\":\"https://c.test/\",\"title\":\"Garden journal\"},\"https://a.test/\",\"https://b.test/x?q=1\"]","titled rows are objects, others stay strings");
-  equal(BrowserBookmarkRecord.read(written,VALID),titled,"round trip keeps order and titles");
+  sameRecord(written, "[\"https://c.test/\",\"https://a.test/\",\"https://b.test/x?q=1\"]",
+      "the address list remains strings even when a bookmark has a title");
+  String mixed = "[{\"url\":\"https://c.test/\",\"title\":\"Garden journal\"},\"https://a.test/\",\"https://b.test/x?q=1\"]";
+  equal(BrowserBookmarkRecord.read(mixed, VALID), titled, "the earlier title format keeps order and titles");
   // No title keeps the saved title; a new title replaces it; a blank title removes it.
   List<Entry> kept=BrowserBookmarkRecord.change(BrowserBookmarkRecord.change(titled,"https://a.test/",true,null,VALID),"https://c.test/",true,null,VALID);
   equal(kept.get(0),new Entry("https://c.test/","Garden journal"),"re-saving without a title keeps it");

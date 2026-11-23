@@ -86,6 +86,37 @@ test("renewed windows must settle before retirement can be confirmed", () => {
     ),
   ).toThrow("identity mismatch");
 });
+test("a superseded window's frozen counters confirm only after their transports stop", () => {
+  let value = actual(actual(current(), "stt"), "tts");
+  for (const kind of ["stt", "tts"] as const)
+    value = recordSpeechSettlement(
+      value,
+      kind,
+      {
+        state: "settled_conservative",
+        requestId: `speech:session:${kind}:1`,
+        amountUsd: "0.01",
+        basis: "submitted_counter_provider_unconfirmed",
+      },
+      1,
+    );
+  const retiring = beginSpeechRetirement(value);
+  const closed = {
+    stt: "gracefully_drained",
+    tts: "transport_closed",
+    accounting: "settled_actual",
+    moneyTerminal: true,
+  } as const;
+  const proof = (evidence: Parameters<typeof completeSpeechRetirement>[2]) =>
+    completeSpeechRetirement(retiring, retiring.retirement!, evidence, 100)
+      .retirement?.proof?.state;
+  expect(proof(closed)).toBe("confirmed");
+  // A TTS transport that never dispatched is stopped too.
+  expect(proof({ ...closed, tts: "not_dispatched" })).toBe("confirmed");
+  expect(proof({ ...closed, tts: "unknown" })).toBe("unconfirmed");
+  expect(proof({ ...closed, stt: "not_dispatched" })).toBe("unconfirmed");
+  expect(proof({ ...closed, moneyTerminal: undefined })).toBe("unconfirmed");
+});
 test.each(["starting", "retiring", "closed"] as const)(
   "duplicate initialization never resets %s",
   (phase) => {

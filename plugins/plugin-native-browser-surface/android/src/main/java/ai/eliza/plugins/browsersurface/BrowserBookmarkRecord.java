@@ -9,10 +9,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * The plain form of the sealed bookmark record, newest first. A row without a title is the bare
- * address string, exactly as earlier builds wrote every row; a row with a title is
- * {@code {"url":"https://…","title":"…"}}. A record without titles is therefore unchanged, and a
- * record written by an earlier build reads back with no titles. Titles are display text the host
+ * The plaintext bookmark records. The address list keeps the original string-only format, newest
+ * first. The reader also accepts the intervening format where a title and address share an object.
+ * The optional titles are stored separately for the same address list. Titles are display text the host
  * supplies: control characters become spaces, surrounding whitespace is trimmed, and at most
  * {@link #MAX_TITLE} characters are kept. A record that is too long, holds an invalid or repeated
  * address, or a title that is not in that form is damaged and refused as a whole. Only org.json,
@@ -108,14 +107,34 @@ public final class BrowserBookmarkRecord {
     return result;
   }
 
-  /** The record to seal. Rows without a title are written as bare addresses. */
+  /** The address list retains the format previous versions read. */
   public static String write(List<Entry> entries) throws Exception {
-    JSONArray json = new JSONArray();
-    for (Entry entry : entries) {
-      if (entry.title == null) json.put(entry.url);
-      else json.put(new JSONObject().put("url", entry.url).put("title", entry.title));
+    JSONArray addresses = new JSONArray();
+    for (Entry entry : entries) addresses.put(entry.url);
+    return addresses.toString();
+  }
+
+  /** The optional titles, indexed by the matching generation of the address list. */
+  static JSONArray titles(List<Entry> rows) {
+    JSONArray titles = new JSONArray();
+    for (Entry row : rows) titles.put(row.title == null ? JSONObject.NULL : row.title);
+    return titles;
+  }
+
+  static List<Entry> withTitles(List<Entry> rows, JSONArray titles) throws Exception {
+    if (rows.size() != titles.length()) throw new IllegalStateException("bookmark title record mismatch");
+    List<Entry> result = new ArrayList<>();
+    for (int i = 0; i < titles.length(); i++) {
+      Object raw = titles.get(i);
+      String title = null;
+      if (raw != JSONObject.NULL) {
+        if (!(raw instanceof String) || !storedTitle((String) raw))
+          throw new IllegalStateException("damaged bookmark title record");
+        title = (String) raw;
+      }
+      result.add(new Entry(rows.get(i).url, title));
     }
-    return json.toString();
+    return result;
   }
 
   /**
