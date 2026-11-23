@@ -391,14 +391,81 @@ const OBSERVED_POSITION_MAX_AGE_MS = 30 * 60_000;
 function observedPosition(
   message: Memory,
   now = Date.now(),
-): { latitude: number; longitude: number } | undefined {
+):
+  | { latitude: number; longitude: number; accuracyMeters?: number }
+  | undefined {
   const location = readClientTurnObservation(
     message.content?.metadata,
   )?.location;
   if (!location) return undefined;
   const age = now - location.capturedAt;
   if (age < -60_000 || age > OBSERVED_POSITION_MAX_AGE_MS) return undefined;
-  return { latitude: location.latitude, longitude: location.longitude };
+  return {
+    latitude: location.latitude,
+    longitude: location.longitude,
+    ...(location.accuracyMeters === undefined
+      ? {}
+      : { accuracyMeters: location.accuracyMeters }),
+  };
+}
+
+/**
+ * A phone position this uncertain (a network or address-based estimate) says
+ * which area the owner is in, never which building.
+ */
+export const COARSE_POSITION_METERS = 1_000;
+
+/**
+ * The accuracy of the phone's own coarse position when these coordinates are
+ * that position (the planner passing the reported fix back for "where am I").
+ */
+function coarsePhonePosition(
+  message: Memory,
+  point: { latitude: number; longitude: number },
+): number | undefined {
+  const phone = observedPosition(message);
+  const accuracy = phone?.accuracyMeters;
+  if (!phone || accuracy === undefined || accuracy <= COARSE_POSITION_METERS)
+    return undefined;
+  return metersBetween(phone, point) <= Math.max(250, accuracy / 10)
+    ? accuracy
+    : undefined;
+}
+
+/**
+ * The area part of an address: the street part (a first segment with a number,
+ * or the first of three or more) and any token with a digit (house numbers,
+ * postcodes) are left out, and at most the last three parts are kept, so an
+ * address written "name, number, road, suburb, city, state, country" keeps no
+ * road. "278 W Broadway, New York, NY 10006, USA" is "New York, NY, USA";
+ * "Paris, France" stays whole.
+ */
+export function addressArea(
+  formattedAddress: string | undefined,
+): string | undefined {
+  const segments = (formattedAddress ?? "")
+    .split(",")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const street =
+    segments.length > 1 &&
+    (segments.length >= 3 || /\d/.test(segments[0] ?? ""));
+  const area = (street ? segments.slice(1) : segments)
+    .map((segment) =>
+      segment
+        .split(/\s+/)
+        .filter((token) => !/\d/.test(token))
+        .join(" "),
+    )
+    .filter(Boolean)
+    .slice(-3);
+  return area.length ? area.join(", ") : undefined;
+}
+
+/** "within about 25 km" / "within about 1.5 km". */
+function aboutDistance(meters: number): string {
+  const km = meters / 1000;
+  return `within about ${km >= 10 ? Math.round(km) : Math.round(km * 10) / 10} km`;
 }
 
 function replyText(message: Memory): string | undefined {
@@ -1038,6 +1105,36 @@ async function execute(
             ),
             text(params.provider),
           );
+          const coarse = coarsePhonePosition(message, {
+            latitude: pointLatitude,
+            longitude: pointLongitude,
+          });
+          if (coarse !== undefined) {
+            // A rough phone position: the nearest address to its center is not
+            // where the owner is, so only the area is named, without a card.
+            const area = addressArea(place?.formattedAddress);
+            const said = area
+              ? `Your phone's position is approximate (${aboutDistance(coarse)}): somewhere around ${area}.`
+              : `Your phone's position is approximate (${aboutDistance(coarse)}), and no area is known there.`;
+            return result(
+              action,
+              {
+                success: true,
+                text: `${said} Name only this area; the exact street or building is not known.`,
+                userFacingText: said,
+                verifiedUserFacing: true,
+                data: {
+                  actionName: "MAPS",
+                  action,
+                  status: area ? "approximate" : "empty",
+                  accuracyMeters: coarse,
+                  ...(area ? { area } : {}),
+                  place: null,
+                },
+              },
+              callback,
+            );
+          }
           if (!place) {
             return result(
               action,

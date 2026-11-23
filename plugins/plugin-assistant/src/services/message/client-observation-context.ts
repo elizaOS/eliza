@@ -15,7 +15,7 @@ export const CLIENT_OBSERVATION_SCOPE =
 
 /** Added only to a turn whose observation carries the phone's position. */
 export const CLIENT_LOCATION_NOTE =
-  "location is the phone's last known position: the owner's current location (capturedAt in epoch ms). Never guess a street, neighborhood or city from coordinates: when asked where the owner is, call MAPS_PLACE with these latitude and longitude and no query, or else give the coordinates.";
+  "location is the phone's last known position: the owner's current location (capturedAt in epoch ms). Never guess a street, neighborhood or city from coordinates: when asked where the owner is, call MAPS_PLACE with these latitude and longitude and no query, or else give the coordinates. An accuracyMeters over 1000 is a rough estimate: name only the area, never a street or building.";
 
 /** Added only to a turn that carries the open Browser page. */
 export const CLIENT_BROWSER_PAGE_NOTE =
