@@ -697,7 +697,10 @@ describe("model acknowledgment authoring grammar", () => {
       'For a lookup or any question: "Let me check."',
     );
     expect(ACKNOWLEDGMENT_RULE).toContain(
-      "Never start with Sure or Yeah when the user asked a question",
+      "Never start with Sure or Yeah when the user asked a question, even one asking for an action such as Can you text Sam",
+    );
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      'just "On it." or "One sec.", or for a plain command',
     );
   });
   it.each(forbidden)(

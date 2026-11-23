@@ -3110,6 +3110,10 @@ describe("requestIsInstruction", () => {
     "ok so set a timer for ten minutes",
     "Eliza, add milk to my list",
     "Let me know when Sam replies",
+    "hey alpha text Sam I'm late",
+    "Okay, Eliza, set an alarm for 7:30",
+    "Set an alarm for 7 a.m. tomorrow",
+    "Text Sam, tell him I'm late",
   ])("reads an imperative as an instruction: %s", (request) => {
     expect(requestIsInstruction(request)).toBe(true);
   });
@@ -3141,6 +3145,27 @@ describe("requestIsInstruction", () => {
     "Text Sam. Wait, is he free?",
     "Set an alarm for 7am?",
     "?",
+    // A filler after the auxiliary does not hide it.
+    "Is, uh, the dentist on my calendar",
+    "Am, um, I free Friday",
+    "Can, uh, you text Sam",
+    // A wake name, an interjection or a later sentence does not hide it.
+    "hey alpha is it raining",
+    "Okay Eliza am I free friday",
+    "Thanks. Am I free Friday",
+    "Wait. Am I free friday",
+    "Sorry is it raining",
+    "Quick question am I free friday",
+    "Look, am I free Friday",
+    "Text Sam I'm late. Am I free Friday",
+    // A question with its auxiliary dropped opens with no command verb.
+    "Any meetings today",
+    "Anything on my calendar",
+    "You free Friday",
+    "I'm free Friday right",
+    "Dentist on my calendar",
+    "Weather tomorrow",
+    "Got anything Friday",
   ])("does not read a question as an instruction: %s", (request) => {
     expect(requestIsInstruction(request)).toBe(false);
   });
