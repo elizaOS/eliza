@@ -98,9 +98,11 @@ pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, d: DeviceRoute): bool =
 
 ### A mail or calendar route is sent only with the lease, never with the device key
 
-The agent holds the device key and reads untrusted mail, so the cloud
+The agent holds the device key and acts on untrusted text, so the cloud
 refuses that key on its mail routes (`spec/cloud/identity/requestAuth.md`,
-`MailRoute`), and the device never sends it there. The mail routes are the
+`MailRoute`), and the device never sends it there. The agent reaches managed
+mail only through a broker its host runs in this shell with the lease, where
+the host provides one, and otherwise not at all. The mail routes are the
 device routes the cloud's client lists as `Mail` (`spec/cloud/client.md`):
 Google status, accounts, connect, disconnect, Gmail triage, search, read,
 thread, capabilities, drafts, draft, attachment and operations, and the
