@@ -322,11 +322,13 @@ function settleReply(steps: readonly PlannedStep[], prose: string | undefined): 
   const failed = failedOpen(plan)
   const delivered = steps.filter(({ outcomes }) => outcomes.some(({ outcome }) => outcome === "Applied" || outcome === "Proposed" || outcome === "NoEffect"))
   const toolText = [...new Set(delivered.flatMap(({ shown }) => shown))].join("\n\n")
-  const ownCopy = open.some(({ outcome }) => outcome === "Proposed")
-  const composed = composeReply(toolText || undefined, prose, ownCopy)
-  const failedKeys = new Set(failed.map(entryKey))
-  const notices = [...new Set(steps.filter(({ outcomes }) => outcomes.some((entry) => failedKeys.has(entryKey(entry)))).map(failureNotice))]
-    .filter((notice) => !composed.includes(notice))
+  const holding = (entries: readonly PlanStep[]) => {
+    const keys = new Set(entries.map(entryKey))
+    return steps.filter(({ outcomes }) => outcomes.some((entry) => keys.has(entryKey(entry))))
+  }
+  const proposing = holding(open.filter(({ outcome }) => outcome === "Proposed"))
+  const composed = composeReply(toolText || undefined, prose, { open: proposing.length, uncopied: proposing.filter(({ shown }) => shown.length === 0).length })
+  const notices = [...new Set(holding(failed).map(failureNotice))].filter((notice) => !composed.includes(notice))
   return [composed, ...notices].filter((part) => part.trim()).join("\n\n")
 }
 

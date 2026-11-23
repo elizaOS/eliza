@@ -550,9 +550,12 @@ marker on its own line, one JSON object on the next and its close marker;
 any other bracketed text is ordinary output. Tool text the action marked
 verified for the owner is kept verbatim; prose that holds it is the whole
 reply, and prose it already holds adds nothing. Prose carrying a tool-call
-or reasoning marker is never shown. An open confirmation proposal or an
-interaction block (`[CHOICE]`, `[FORM]`) is the action's own copy and is
-delivered alone.
+or reasoning marker is never shown. An interaction block (`[CHOICE]`,
+`[FORM]`) is the action's own copy and is delivered alone, and so is the
+copy of the turn's open confirmation proposals when each of them gave the
+owner its own. When an open proposal gave the owner no copy of its own,
+planning went on so the model could ask about it (above), and the model's
+prose follows the other proposals' copy as grounded prose does.
 
 ```quint
 type Composition = NoText | ToolOnly | ProseOnly | ToolThenProse | FencedToolThenProse
@@ -574,6 +577,12 @@ pure def lawGroundedProseIsKept(tool: ToolTextShape, proseHoldsTool: bool): bool
   (tool.present and not(tool.ownCopy)) implies compose(tool, true, proseHoldsTool, false) != ToolOnly
 pure def lawToolTextIsNeverDropped(tool: ToolTextShape, prose: bool, toolHoldsProse: bool): bool =
   tool.present implies compose(tool, prose, false, toolHoldsProse) != ProseOnly and compose(tool, prose, false, toolHoldsProse) != NoText
+pure def toolTextIsOwnCopy(interactionBlock: bool, openProposals: int, uncopiedProposals: int): bool =
+  interactionBlock or (openProposals > 0 and uncopiedProposals == 0)
+pure def lawAQuestionPlanningWentOnToAskIsHeard(tool: ToolTextShape, callsWithoutStep: int, uncopiedCalls: int, replyOutcomes: List[StepOutcome], proseHoldsTool: bool): bool =
+  (uncopiedCalls > 0 and replyOutcomes.length() > 0 and replyOutcomes.every(o => o == Proposed)) implies
+    (not(awaitsOnlyTheOwner(callsWithoutStep, uncopiedCalls, replyOutcomes)) and
+      compose({ ...tool, ownCopy: toolTextIsOwnCopy(false, replyOutcomes.length(), uncopiedCalls) }, true, proseHoldsTool, false) != ToolOnly)
 ```
 
 ### A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording
