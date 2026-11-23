@@ -12,8 +12,8 @@ module node {
   import type { TurnOffer } from "./proposal/turn.vibe"
   import { retireRequest } from "./store.vibe"
 
-  const NativeTurn = Schema.Struct({ clientDevice: Schema.Struct({ context: Schema.JsonObject, calendarAgendaSource: Schema.Unknown }) })
-  const nativeTurn = Schema.decodeUnknownOption(NativeTurn)
+  const AgendaSource = Schema.Struct({ clientDevice: Schema.Struct({ calendarAgendaSource: Schema.Unknown }) })
+  const agendaSource = Schema.decodeUnknownOption(AgendaSource)
   const sourceOf = Schema.decodeUnknownOption(CalendarSource, { onExcessProperty: "error" })
   const decision = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({
     kind: Schema.Literals(["read_agenda", "reply"]),
@@ -22,13 +22,12 @@ module node {
   export function agendaOffer(runtime: AgentRuntime): TurnOffer {
     return async (turn: DeviceTurn) => {
       const { message, signal } = turn
-      const native = nativeTurn(message.content.metadata)
-      if (native._tag !== "Some" || !message.content.text) return undefined
-      const source = sourceOf(native.value.clientDevice.calendarAgendaSource)
+      const sent = agendaSource(message.content.metadata)
+      if (sent._tag !== "Some" || !message.content.text) return undefined
+      const source = sourceOf(sent.value.clientDevice.calendarAgendaSource)
       if (source._tag !== "Some") return undefined
       const calendarAgendaSource = source.value
-      const { context } = native.value.clientDevice
-      const observation = readTurnContext({ content: { metadata: { observation: context } } }).observation
+      const { observation } = readTurnContext(message)
       if (observation?.view !== "calendar" || observation.sensitive || observation.calendarDay === undefined) return undefined
       const { date, timeZone } = observation.calendarDay
       const wallDay = Date.parse(`${date}T00:00:00.000Z`)

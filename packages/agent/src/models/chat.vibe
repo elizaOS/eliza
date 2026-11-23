@@ -1,9 +1,9 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A host may shorten how long a rate limit holds the account, never past the provider's retry time"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A host may shorten how long a rate limit holds the account, never past the provider's retry time"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  capSent, chatReturn, effortFor, failureOf, outcomeOf, retryAtOf, shellOutcome, streamIdleSeconds,
+  cacheKeySent, capSent, chatReturn, effortFor, failureOf, outcomeOf, retryAtOf, shellOutcome, streamIdleSeconds,
   type CapAsk, type ChatAsk, type ChatReturn, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
@@ -491,6 +491,12 @@ function hintOf(params: GenerateTextParams): ThinkingHint {
   return thinking === "low" ? "ThinkingLow" : thinking === "off" ? "ThinkingOff" : "NoThinkingHint"
 }
 
+function cacheKeyOf(params: GenerateTextParams): string | undefined {
+  const cerebras = params.providerOptions?.cerebras
+  const key = typeof cerebras === "object" && cerebras !== null ? (cerebras as { promptCacheKey?: unknown }).promptCacheKey : undefined
+  return typeof key === "string" && key.trim() !== "" ? key : undefined
+}
+
 const efforts: Record<ReasoningEffort, string | undefined> = { ProviderDefault: undefined, EffortLow: "low", EffortNone: "none" }
 
 function capOf(params: GenerateTextParams): CapAsk {
@@ -502,7 +508,10 @@ function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTex
   const messages = conversation(params)
   if (messages === undefined) return undefined
   const cap = capOf(params)
-  const effort = endpoint.reasoningHints ? efforts[effortFor(familyOf(endpoint.models[handler]), hintOf(params))] : undefined
+  const family = familyOf(endpoint.models[handler])
+  const effort = endpoint.reasoningHints ? efforts[effortFor(family, hintOf(params))] : undefined
+  const named = cacheKeyOf(params)
+  const cacheKey = cacheKeySent(family, endpoint.reasoningHints, named !== undefined) ? named : undefined
   const tools = toolsOf(params.tools)
   const toolChoice = toolChoiceOf(params.toolChoice)
   const format = responseFormatOf(params)
@@ -510,6 +519,7 @@ function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTex
     messages,
     ...(cap.tag === "CapAsked" ? { [endpoint.maxTokensField]: cap.tokens } : {}),
     ...(effort === undefined ? {} : { reasoning_effort: effort }),
+    ...(cacheKey === undefined ? {} : { prompt_cache_key: cacheKey }),
     ...(params.temperature === undefined ? {} : { temperature: params.temperature }),
     ...(params.topP === undefined ? {} : { top_p: params.topP }),
     ...(params.stopSequences === undefined || params.stopSequences.length === 0 ? {} : { stop: params.stopSequences }),

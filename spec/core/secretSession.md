@@ -88,14 +88,14 @@ pure def sometimesSecretLearned(s: Secrets): bool = s.entries.length() > 0 and s
 
 ### A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote
 
-When the host turns on `ELIZA_SECRET_SWAP_STABLE_REFERENCES`, the runtime
+Whenever secret swap is on (`ELIZA_SECRET_SWAP_ENABLED`), the runtime
 holds one random key in memory for its life, never stored or logged, and
 each conversation's sessions derive from that key and the conversation's
 room both the nonce and each value's number, from a keyed SHA-256 of the
 value rather than the order a session met it, so an earlier turn's text
 stays byte-identical and a provider can reuse the prompt prefix. The
 conversation's pseudonym salt is a digest under its own label. A call
-outside a conversation, or with the setting off, draws a fresh nonce and
+outside a conversation, or with secret swap off, draws a fresh nonce and
 numbers values in order. Because a reference now outlives its session,
 restoration and the unresolved check accept only references the current
 session wrote into text: one that arrives in input the session did not

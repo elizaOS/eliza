@@ -66,7 +66,12 @@ each labelled as a note from the agent host. A provider reuses a
 request's prompt cache up to its first changed byte, and the cached prefix
 is the tools, then the system prompt, then the messages, so a part that
 changes with the turn placed before the history costs every message after
-it.
+it. Each planning call also names its conversation's prompt cache key,
+`eliza-workflow-v1:` and the hex SHA-256 of the JSON `[agentId, roomId]`
+followed by `:planner`, and each evaluator call the same key with
+`:evaluator`, so a provider that keeps one cache per key keeps one for
+each conversation and stage rather than one for every phone that sends
+the same prompt ([binding](../models/binding.md) decides where it is sent).
 
 ```quint
 type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice

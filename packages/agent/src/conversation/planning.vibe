@@ -2,7 +2,7 @@
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import {
@@ -198,6 +198,11 @@ function callFailureOf(error: unknown): CallFailure {
   return stoppedAtOutputLimit(error) ? { tag: "OutputLimitReached" } : { tag: "OtherFailure" }
 }
 
+/** The provider options that name a conversation's prompt cache key for one stage of its turns. */
+export function conversationCache(runtime: IAgentRuntime, roomId: string, stage: "planner" | "evaluator"): GenerateTextParams["providerOptions"] {
+  return { cerebras: { promptCacheKey: `eliza-workflow-v1:${sha256Hex(`${JSON.stringify([runtime.agentId, roomId])}:${stage}`)}` } }
+}
+
 /** Sends a model call, and once more after a temporary rate limit or a tool call the provider could not parse. */
 export async function sentAtMostTwice<T>(send: () => Promise<T>, signal: AbortSignal): Promise<T> {
   try {
@@ -302,7 +307,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     let said: unknown
     try {
       said = await sentAtMostTwice(() => runtime.useModel(ModelType.TEXT_LARGE, {
-        system: input.system, messages: conversation, signal,
+        system: input.system, messages: conversation, signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
         ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
         ...(onStreamChunk === undefined ? {} : {
           stream: true,
