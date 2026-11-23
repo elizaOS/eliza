@@ -45,7 +45,7 @@ const notAPlaceKind = /^(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?
 export function nearbyPlaceKind(query: string): string | undefined {
   const trimmed = query.trim().replace(/[.!?]+$/, "")
   const leading = /^(?:the\s+)?(?:nearest|closest)\s+(.{2,80})$/i.exec(trimmed)?.[1]
-  const trailing = /^(.{2,80}?)\s+(?:near\s+(?:me|here|us|my\s+location)|nearby|around\s+(?:me|here)|close\s+to\s+me)$/i.exec(trimmed)?.[1]
+  const trailing = /^(.{2,80}?)\s+(?:near\s+(?:me|here|us|by|my\s+location)|nearby|around\s+(?:me|here)|close\s+to\s+me)$/i.exec(trimmed)?.[1]
   const kind = (leading ?? trailing)?.trim()
   return kind === undefined || kind === "" || notAPlaceKind.test(kind) ? undefined : kind
 }

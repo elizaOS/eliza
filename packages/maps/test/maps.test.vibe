@@ -464,17 +464,20 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const old = messageWith({ latitude: here.latitude, longitude: here.longitude, capturedAt: now - 31 * 60_000 })
   const nearby = try act("MAPS_PLACE", recent, { query: "pharmacy", useCurrentLocation: true })
   const asked = try act("MAPS_PLACE", old, { query: "nearest pharmacy" })
+  const nearBy = try act("MAPS_PLACE", old, { query: "pharmacy near by" })
   const route = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Coit Tower", travelMode: "walk" })
   const fromHere = try act("MAPS_ROUTE", recent, { origin: "here", destination: "Coit Tower" })
   const handoff = try act("MAPS_NAVIGATION_START", recent, { destination: "Coit Tower", travelMode: "walk" })
   const provider = try promise(() => phonePositionProvider.get(runtime, recent, {} as never))
   const routeText = route.text ?? ""
+  const nearByCard = recognizedMapsCards(nearBy.text ?? "")[0]?.card
   const fenced = `\`\`\`\n${appendMapsCard("", { kind: "place", place: { name: "X", latitude: 1, longitude: 1, provider: "p", providerPlaceId: "x", categories: [] }, attribution: null })}\n\`\`\``
   const searched = bodies.find((made) => made.path === "/api/v1/maps/places/search")
   try Effect.try(() => assert.deepStrictEqual({
     nearby: [nearby.success, (nearby.data as { readonly places: ReadonlyArray<{ readonly providerPlaceId: string }> }).places.map((item) => item.providerPlaceId)],
     searchedNear: (searched?.body as { readonly near?: unknown } | undefined)?.near, keyed: searched?.key,
     asked: [asked.success, (asked.data as { readonly state: string }).state, recognizedMapsCards(asked.text ?? "")[0]?.card.kind],
+    nearBy: [nearBy.success, nearByCard?.kind, nearByCard?.kind === "locate" ? nearByCard.query : undefined],
     route: [route.success, routeText.includes("Alternatives: 1. 20 min"), routeText.includes("Google Maps Platform via Eliza Cloud"), recognizedMapsCards(routeText).map((found) => found.card.kind)],
     plain: withoutMapsCards(routeText).includes("MAPSCARD"),
     fromHere: [fromHere.success, (fromHere.data as { readonly origin: string }).origin],
@@ -486,6 +489,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     nearby: [true, ["near", "far"]],
     searchedNear: { latitude: here.latitude, longitude: here.longitude }, keyed: true,
     asked: [false, "awaiting-location", "locate"],
+    nearBy: [false, "locate", "pharmacy"],
     route: [true, true, true, ["route"]],
     plain: false,
     fromHere: [false, "own-position"],
