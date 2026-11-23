@@ -3901,7 +3901,8 @@ try {
   const deadline = performance.now() + 30_000;
   while (!ready() && performance.now() < deadline) await delay(50);
   assert.ok(ready(), "both writers started and their parents were reaped");
-  Date.now = () => originalNow() + 61 * 60_000;
+  const clockStart = performance.now();
+  Date.now = () => originalNow() + 61 * 60_000 + Math.floor((performance.now() - clockStart) * 10_000);
   const results = await Promise.race([finished, delay(20_000, undefined, { ref: false })]);
   assert.ok(results, "the watchdog released both inherited pipes");
   for (const [index, mode] of modes.entries()) {
