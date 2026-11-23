@@ -335,6 +335,13 @@ question for that one event: a yes, or the event's whole title, with no
 question back and no decline, deletes it; a decline keeps it and spends the
 question.
 
+A recurring event, or a delete of more than one occurrence, is reached from
+chat only as the event selected in Calendar: neither the owner's words nor a
+yes in chat deletes it, and the reply says to select it there. Each chat
+request deletes at most one resident event: its ledger identity is the owner
+and that request alone, so a replay of the request never deletes a second
+event, even one with the same title.
+
 ```quint
 type DeleteAnswer = Unanswered | AnsweredYes | AnsweredNo
 type ResidentDeleteStep = DeleteNow | AskInChat | KeepEvent
@@ -366,6 +373,12 @@ pure def lawAStaleQuestionIsNeverConfirmed(askedAboutThisEvent: bool, laterReque
   deleteAnswer(askedAboutThisEvent, laterRequest, deleteQuestionLifetime, yesOrTitle, declines, asksBack) == Unanswered
 pure def lawTheAskingRequestNeverAnswers(askedAboutThisEvent: bool, sinceAsked: int, yesOrTitle: bool, declines: bool, asksBack: bool): bool =
   deleteAnswer(askedAboutThisEvent, false, sinceAsked, yesOrTitle, declines, asksBack) == Unanswered
+pure def chatDeleteReachesOneEvent(oneOff: bool, instanceOnly: bool, selectedOnScreen: bool): bool =
+  selectedOnScreen or (oneOff and instanceOnly)
+type ResidentDeleteIdentity = { deleteActor: str, deleteTurn: str }
+pure def residentDeleteIdentity(deleteActor: str, deleteTurn: str): ResidentDeleteIdentity = { deleteActor: deleteActor, deleteTurn: deleteTurn }
+pure def lawASeriesIsDeletedOnlyFromTheScreen(oneOff: bool, instanceOnly: bool): bool =
+  chatDeleteReachesOneEvent(oneOff, instanceOnly, false) implies (oneOff and instanceOnly)
 pure val sinceAskedValues = Set(-1, 0, 60000, 1800000)
 ```
 

@@ -2,7 +2,7 @@
 import { sha256Hex } from "@elizaos/core"
 import { FetchHttpClient } from "effect/http"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { attendeeNotice, eventVisible, invitationVerdict, readScope, sourceRead, writeRoute, type AttendeeNotice, type SourceRead } from "../../gen/calendar__actions.effect.vibe"
+import { attendeeNotice, eventVisible, invitationVerdict, readScope, residentDeleteIdentity, sourceRead, writeRoute, type AttendeeNotice, type SourceRead } from "../../gen/calendar__actions.effect.vibe"
 import type { ManagedCalendarBroker } from "../feed/broker.vibe"
 import {
   sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceHealth, type CalendarSourceKey, type CalendarSourceStatus, type CalendarSummary,
@@ -78,7 +78,7 @@ export interface CalendarFound {
 export type CalendarChangeRequest =
   | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly reviewFirst?: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "update"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
-  | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
+  | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly notifyAttendees?: boolean; readonly onePerAsk?: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "respond"; readonly target: CalendarFound; readonly scope: CalendarAnswerScope; readonly response: CalendarInvitationResponse; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
 
 export type CalendarChangeResult =
@@ -279,7 +279,8 @@ export effect function calendarHost(options: CalendarHostOptions) {
         : { action: "cancel_event", account: account.accountId, target, scope: asked.scope, ...notify }
     }
     const digest = reviewDigest(payload)
-    const request: CalendarMutationRequest = { id: `calendar-${sha256Hex(`${asked.askId}\n${digest}`).slice(0, 40)}`, digest, payload }
+    const key = asked.kind === "delete" && asked.onePerAsk === true ? `resident-chat-delete\n${JSON.stringify(residentDeleteIdentity(asked.askedBy, asked.askId))}` : `${asked.askId}\n${digest}`
+    const request: CalendarMutationRequest = { id: `calendar-${sha256Hex(key).slice(0, 40)}`, digest, payload }
     if (route === "ApplyNow") return { kind: "ran", request, outcome: try Effect.provide(ledger.run(request, port), rows), notice }
     const approvals = options.approvals()
     if (approvals === undefined) return { kind: "refused", reason: "approvals_unavailable" }

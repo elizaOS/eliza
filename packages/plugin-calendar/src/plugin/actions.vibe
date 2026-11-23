@@ -2,7 +2,7 @@
 import { readTurnContext } from "@elizaos/agent"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
+  chatDeleteReachesOneEvent, deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import { createNeedsConfirmation, createTimeZone, deviceTimeZone, knownTimeZone, requestTimeZone, statedYearCreate } from "../clock.vibe"
@@ -18,7 +18,7 @@ import { tripEvents } from "./lookup.vibe"
 import { asksOnlyAboutTomorrowMorning, blockingSpans, openings, spanText, tomorrowMorning, windowFitsWeek } from "./free-time.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
 import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearchResult } from "./host.vibe"
-import { guestAddresses } from "./providers.vibe"
+import { eventVersion, guestAddresses } from "./providers.vibe"
 import { CalendarService, calendarServiceType } from "./service.vibe"
 
 export const calendarActionName = "CALENDAR"
@@ -272,7 +272,7 @@ function updatedFields(found: CalendarFound, parameters: Parameters, zone: strin
 const eventKey = (event: CalendarEvent) => `${event.provider}\n${event.calendarId}\n${event.id}`
 
 effect function namedRead(host: CalendarHost, event: CalendarEvent, text: string, now: number): { readonly complete: boolean; readonly only: boolean }!! {
-  const read = try host.search({ timeMin: Math.min(now - day, Date.parse(event.startAt)), timeMax: Math.max(now + 60 * day, Date.parse(event.endAt) + 1) })
+  const read = try host.search({ timeMin: Math.min(now - day, Date.parse(event.startAt) - maxSpan), timeMax: Math.max(now + 60 * day, Date.parse(event.endAt) + maxSpan) })
   if (read === undefined) return { complete: false, only: false }
   const named = new Set(read.events.filter((other) => eventNamedInWords(other.title, text)).map(eventKey))
   return { complete: read.complete, only: named.size === 1 && named.has(eventKey(event)) }
@@ -287,6 +287,10 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
   const declines = declinesInWords(ask.text, deleteWords)
   const answer = deleteAnswer(question?.eventId === event.id, question !== undefined && question.askedIn !== ask.id, question === undefined ? -1 : now - question.askedAt,
     saysYes(ask.text) || titled, declines, ask.text.includes("?"))
+  const oneOff = (event.recurrence ?? []).length === 0 && (event.recurringEventId ?? null) === null
+  if (!declines && !chatDeleteReachesOneEvent(oneOff, scope === "instance", ask.selected === event.id)) {
+    return failed(subaction, `Nothing was deleted. “${event.title}” repeats or the request covers more than one occurrence, so select it in Calendar to delete it.`, { needsConfirmation: "delete_target", eventId: event.id })
+  }
   switch (residentDeleteStep(ownerPointedAt(titled, read.only, read.complete, ask.selected === event.id), asksToDeleteInWords(ask.text), declines, answer)) {
     case "KeepEvent": {
       if (question?.eventId === event.id) try host.settleDeleteQuestion(ask.conversation)
@@ -299,8 +303,14 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
         { requiresInput: true, missing: ["delete confirmation"], eventId: event.id, targetEvent: event })
     }
     case "DeleteNow": {
-      const result = host.change({ kind: "delete", target: found, scope, notifyAttendees, askedBy: ask.by, askId: `${ask.id}:${subaction}` }) catch () => undefined
+      const result = host.change({ kind: "delete", target: found, scope, notifyAttendees, onePerAsk: true, askedBy: ask.by, askId: `${ask.id}:${subaction}` }) catch () => undefined
       if (question !== undefined && result?.kind === "ran") try host.settleDeleteQuestion(ask.conversation)
+      if (result?.kind === "ran" && result.outcome.kind === "succeeded" && result.outcome.replayed) {
+        const receipt = result.outcome.receipt
+        if (receipt.target === null || receipt.eventId !== event.id || eventVersion(receipt.target) !== eventVersion(event) || receipt.source.connectorAccountId !== found.source.connectorAccountId) {
+          return failed(subaction, "This request already settled a different event. Ask again if you want to delete this one.")
+        }
+      }
       return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
   }
