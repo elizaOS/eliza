@@ -248,7 +248,7 @@ pure def incomingText(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, pro
   else if (not(senderKnown) or not(workerRan) or not(providerStored)) TextNotStored
   else if (noticeConfirmed) TextStoredAndAnnounced
   else TextStoredUnannounced
-pure def textKept(outcome: IncomingText): bool = outcome == TextStoredUnannounced or outcome == TextStoredAndAnnounced
+pure def textKept(arrived: IncomingText): bool = arrived == TextStoredUnannounced or arrived == TextStoredAndAnnounced
 pure def lawATextIsKeptExactlyWhenTheRoleHolderStoredIt(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, providerStored: bool, noticeConfirmed: bool): bool =
   textKept(incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, noticeConfirmed)) iff (smsRoleHeld and senderKnown and workerRan and providerStored)
 pure def lawOnlyAStoredTextIsAnnounced(smsRoleHeld: bool, senderKnown: bool, workerRan: bool, providerStored: bool, noticeConfirmed: bool): bool =

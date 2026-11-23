@@ -277,16 +277,16 @@ or damaged, the new one is refused as storage full and nothing is dropped.
 ```quint
 type StoreRoom = RoomFree | RoomReclaimed | RoomFull
 pure val maxReminders = 250
-pure def roomFor(alreadyStored: bool, stored: int, closedReminders: int): StoreRoom =
-  if (alreadyStored or stored < maxReminders) RoomFree
+pure def roomFor(alreadyStored: bool, heldReminders: int, closedReminders: int): StoreRoom =
+  if (alreadyStored or heldReminders < maxReminders) RoomFree
   else if (closedReminders > 0) RoomReclaimed
   else RoomFull
-pure def storedAfter(alreadyStored: bool, stored: int, closedReminders: int): int =
-  if (not(alreadyStored) and roomFor(alreadyStored, stored, closedReminders) == RoomFree) stored + 1 else stored
-pure val storedValues = Set(0, 249, 250)
+pure def storedAfter(alreadyStored: bool, heldReminders: int, closedReminders: int): int =
+  if (not(alreadyStored) and roomFor(alreadyStored, heldReminders, closedReminders) == RoomFree) heldReminders + 1 else heldReminders
+pure val heldRemindersValues = Set(0, 249, 250)
 pure val closedRemindersValues = Set(0, 1)
-pure def lawTheStoreNeverGrowsPastItsLimit(alreadyStored: bool, stored: int, closedReminders: int): bool =
-  stored <= maxReminders implies storedAfter(alreadyStored, stored, closedReminders) <= maxReminders
-pure def lawAnUnresolvedReminderIsNeverDropped(stored: int): bool =
-  roomFor(false, stored, 0) != RoomReclaimed and (stored >= maxReminders implies roomFor(false, stored, 0) == RoomFull)
+pure def lawTheStoreNeverGrowsPastItsLimit(alreadyStored: bool, heldReminders: int, closedReminders: int): bool =
+  heldReminders <= maxReminders implies storedAfter(alreadyStored, heldReminders, closedReminders) <= maxReminders
+pure def lawAnUnresolvedReminderIsNeverDropped(heldReminders: int): bool =
+  roomFor(false, heldReminders, 0) != RoomReclaimed and (heldReminders >= maxReminders implies roomFor(false, heldReminders, 0) == RoomFull)
 ```
