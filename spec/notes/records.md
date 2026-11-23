@@ -42,7 +42,8 @@ A note has an ID no other saved or trashed note has, a title of at most 240
 units, a body of at most 20,001 units, one of four colors and authored
 content that is not blank. A creation that carries the client's own creation
 ID returns the note that ID made, even from Trash, and never adds a second;
-the ID is retired when its note is erased. Without one, an agent creation
+the ID is retired when its note is erased or its identical copy is
+consolidated into another note. Without one, an agent creation
 whose text and color match a plain saved note returns that note, and a
 creation the owner's editor marked as new always adds one.
 
@@ -60,6 +61,27 @@ pure def lawEditorDraftAlwaysCreates(plainMatch: bool): bool =
   not(creationReturnsExisting({ creationKnown: false, createdNoteKept: false, forceNew: true, plainMatch: plainMatch }))
 pure def lawBlankNoteRefused(titleUnits: int, bodyUnits: int, uniqueId: bool): bool =
   not(noteRecordAdmitted(titleUnits, bodyUnits, false, uniqueId))
+```
+
+### Moving a note by name takes its identical saved copies along
+
+A move by name selects one logical note from the current saved collection.
+Distinct matches require the owner to identify one. A move by exact ID
+changes that record alone. A named move keeps one resolved record and
+consolidates its other copies in the same commit. Only plain records with
+the same title, body and color share a logical identity. A formatted note
+keeps its own identity. The moved record keeps its text, format contents
+and creation time, changing only its folder and edit time. Trash is outside
+this move. If the requester gives a collection revision, it must still match.
+
+```quint
+type MoveSelection = MoveById | MoveByName
+pure def consolidateMovedCopy(selection: MoveSelection, isSelected: bool, sameIdentity: bool): bool =
+  selection == MoveByName and not(isSelected) and sameIdentity
+pure def lawAMoveByIdConsolidatesNothing(isSelected: bool, sameIdentity: bool): bool =
+  not(consolidateMovedCopy(MoveById, isSelected, sameIdentity))
+pure def lawAMoveByNameConsolidatesOnlyIdenticalCopies(isSelected: bool, sameIdentity: bool): bool =
+  consolidateMovedCopy(MoveByName, isSelected, sameIdentity) iff (not(isSelected) and sameIdentity)
 ```
 
 ### The agent reads and changes Notes only for the owner, on the owner's own words in the bound request

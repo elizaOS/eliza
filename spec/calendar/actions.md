@@ -2,8 +2,9 @@
 
 The agent reads and changes the owner's calendars through one Calendar
 action. A read answers from the active account's own listed calendars.
-A change to the resident calendar runs at once for the owner who asked;
-a change to a provider calendar waits for the owner's approval. Both run
+A change to the resident calendar can run at once for the owner who
+asked. A provider change or a resident chat delete with an uncertain
+target waits for the owner's approval. Both run
 through the [mutation ledger](./mutationLedger.md) with exactly the
 fields that were reviewed.
 
@@ -108,6 +109,36 @@ pure def cancellationRoute(mode: CancellationMode): CancellationRoute =
   if (mode == DeclineInvitation) RefuseUnsupported else DeleteEvent
 pure def lawDeclineNeverDeletes(mode: CancellationMode): bool =
   mode == DeclineInvitation implies cancellationRoute(mode) != DeleteEvent
+```
+
+### A resident chat deletion requires one exact target in the owner's words or a screen review
+
+The original request can directly name a resident event with a whole
+title in a supported deletion phrase. For an unspaced Chinese, Japanese
+or Korean phrase, compare the entire title in the command after
+normalizing whitespace and punctuation. A title inside a longer title
+does not count. The planner's event ID, proposed scope, calendar and
+time window can locate a candidate only. Direct execution requires a
+complete active-account lookup of the owner's title, one matching event
+and the same source, event ID and version as the candidate. A direct
+delete applies to just the named instance. A uniquely located candidate
+without direct authority can be placed in the existing owner review
+queue with its exact target and recurrence scope. The owner UI reviews
+the queued change before execution. Direct Calendar UI requests already
+carry a reviewed version and use the existing client route.
+
+```quint
+type ResidentChatDelete = DeleteNamedInstance | ReviewResidentDelete
+pure def residentChatDelete(wholeTitle: bool, complete: bool, unique: bool, sameTarget: bool, instance: bool): ResidentChatDelete =
+  if (wholeTitle and complete and unique and sameTarget and instance) DeleteNamedInstance else ReviewResidentDelete
+pure def lawAPlannerTargetAloneRequiresReview(complete: bool, unique: bool, sameTarget: bool, instance: bool): bool =
+  residentChatDelete(false, complete, unique, sameTarget, instance) == ReviewResidentDelete
+pure def lawAnIncompleteLookupRequiresReview(wholeTitle: bool, unique: bool, sameTarget: bool, instance: bool): bool =
+  residentChatDelete(wholeTitle, false, unique, sameTarget, instance) == ReviewResidentDelete
+pure def lawAChangedTargetRequiresReview(wholeTitle: bool, complete: bool, unique: bool, instance: bool): bool =
+  residentChatDelete(wholeTitle, complete, unique, false, instance) == ReviewResidentDelete
+pure def lawARecurringScopeNeedsReview(wholeTitle: bool, complete: bool, unique: bool, sameTarget: bool): bool =
+  residentChatDelete(wholeTitle, complete, unique, sameTarget, false) == ReviewResidentDelete
 ```
 
 ### An approved change runs only with its reviewed fields for the account that approved it

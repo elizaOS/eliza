@@ -70,3 +70,38 @@ pure def lawExpiredChoiceNeverBinds(a: ChoiceAnswer): bool = a.age > choiceLifet
 pure def lawChoiceStaysInItsConversation(a: ChoiceAnswer): bool = not(a.sameConversation) implies not(choiceBinds(a))
 pure def lawPositionIsAmongTheOptions(a: ChoiceAnswer): bool = choiceBinds(a) implies a.position <= a.options
 ```
+
+## Story: Use the place I already named when following up on my map
+
+> As the owner, I want directions to the place we just discussed without
+> having to name it again because the phone supplied a selection handle.
+
+### A phone selection handle cannot become a provider place identifier
+
+A phone observation's `maps_<uuid>` value identifies a selection inside
+that phone. It is never sent for Cloud place details. If the action already
+has a place name or address, it uses that text. Otherwise, the action
+returns a correction to the planner with the applicable name field and
+makes no Cloud lookup or device change. The planner can use the name from
+the conversation before asking the owner. A real provider identifier still
+uses the details lookup before asking for position for a nearby search.
+When Cloud explicitly refuses the place ID as invalid, or reports that
+it found no such place, the action can search by the provided name.
+Provider faults and other service refusals remain visible. A request
+with no identifier or name can ask for a place in the ordinary way.
+After the phone confirms selection, the result includes the provider,
+canonical place ID, and name so a later tool can refer to the place.
+
+```quint
+type PlaceIdentifier = PhoneSelection | ProviderPlace | NoPlaceIdentifier
+type PlaceResolution = FromProviderId | FromPlaceName | AskPlannerForPlace | AskOwnerForPlace
+pure def placeResolution(identifier: PlaceIdentifier, named: bool): PlaceResolution =
+  if (identifier == ProviderPlace) FromProviderId
+  else if (named) FromPlaceName
+  else if (identifier == PhoneSelection) AskPlannerForPlace
+  else AskOwnerForPlace
+pure def lawSelectionNeverResolvesByProviderId(named: bool): bool =
+  placeResolution(PhoneSelection, named) != FromProviderId
+pure def lawSelectionAsksPlannerOnlyWithoutAName(named: bool): bool =
+  placeResolution(PhoneSelection, named) == (if (named) FromPlaceName else AskPlannerForPlace)
+```

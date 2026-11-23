@@ -1,6 +1,6 @@
-// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
+// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"; spec/notes/records.md, "Moving a note by name takes its identical saved copies along"
 import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
-import { creationReturnsExisting, deleteByNameAllowed, literalEditAdmitted, noteRecordAdmitted, revisionAdmits } from "../gen/notes__records.effect.vibe"
+import { consolidateMovedCopy, creationReturnsExisting, deleteByNameAllowed, literalEditAdmitted, noteRecordAdmitted, revisionAdmits } from "../gen/notes__records.effect.vibe"
 import { authoredNoteText, editAuthoredNoteFormat, type AuthoredNoteEdit } from "./format.vibe"
 import { lookupMatches, noteContentKey, titleAppearsAsNamedPhrase, type NoteSelector } from "./lookup.vibe"
 import { noteLimits, recordingIdPattern, type CreateRequest, type ImportReceipt, type UpdateRequest } from "./records.schema.vibe"
@@ -292,13 +292,25 @@ export effect function clearIn(document: NotesDocument, expectedRevision: number
   }
 }
 
-export effect function moveIn(document: NotesDocument, target: NoteTarget, folderId: string | null, at: Instant): Change<StickyNote>!NotesRefused {
+export effect function moveIn(document: NotesDocument, target: NoteTarget, folderId: string | null, expectedRevision: number | undefined, at: Instant): Change<{ note: StickyNote; consolidatedCount: number }>!NotesRefused {
+  try requireRevision(document, false, expectedRevision)
   const index = try resolveIndex(document.notes, target)
   const existing = document.notes[index]
   if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
   const { folderId: _current, ...data } = existing.format?.data ?? {}
   const moved: StickyNote = { ...existing, updatedAt: at.iso, format: { kind: existing.format?.kind ?? "text", data: folderId === null ? data : { ...data, folderId } } }
-  return { next: { ...document, notes: document.notes.map((note, position) => position === index ? moved : note) }, value: moved, mutation: "note:moved" }
+  const selection = "id" in target ? "MoveById" : "MoveByName"
+  const sameAsSelected = noteContentKey(existing)
+  const consolidated = new Set<string>()
+  const notes = document.notes.flatMap((note, position) => {
+    if (consolidateMovedCopy(selection, position === index, noteContentKey(note) === sameAsSelected)) {
+      consolidated.add(note.id)
+      return []
+    }
+    return [position === index ? moved : note]
+  })
+  const creations = Object.fromEntries(Object.entries(document.creations).filter(([, id]) => !consolidated.has(id)))
+  return { next: { ...document, notes, creations }, value: { note: moved, consolidatedCount: consolidated.size }, mutation: "note:moved" }
 }
 
 function noteRecordingId(note: StickyNote): string | null | undefined {

@@ -28,18 +28,19 @@ unexpected argument, `executionStatus: "not_started"`) is `Rejected`.
 ### A turn offers the model only registered actions the launch allows, and plans at most eight steps
 
 The message service's own `REPLY`, `IGNORE` and `NONE` are never offered
-as tools; a `REPLY` call the model makes anyway ends planning with its
+as tools; a `REPLY` call the model makes anyway normally ends planning with its
 text, and an owner turn always ends with one reply. A step whose model
 call returns no tool call ends planning with that text.
 
 ```quint
-type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect
+type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect | Coaching | Uncertain
 type StepIdentity = RequestAttempt({ key: str }) | ReceiptOperation({ key: str })
 type PlanStep = { outcome: StepOutcome, identity: StepIdentity }
 pure val maxPlanSteps = 8
 pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
 pure def offered(registered: Set[str], allowed: Set[str]): Set[str] = registered.intersect(allowed).exclude(messageServiceActions)
 pure def keepsPlanning(taken: int, calls: int, terminal: bool): bool = calls > 0 and not(terminal) and taken < maxPlanSteps
+pure def acceptsPlannedReply(reply: bool, coaching: bool): bool = reply and not(coaching)
 pure val registeredValues = Set(Set("REPLY", "CALCULATE"), Set("REPLY", "CALCULATE", "PRODUCT_ACTION"), Set())
 pure val allowedValues = Set(Set("REPLY"), Set("REPLY", "CALCULATE"), Set())
 pure val takenValues = Set(0, 1, 7, 8, 9)
@@ -47,13 +48,38 @@ pure def lawOnlyAllowedRegisteredActionsAreOffered(registered: Set[str], allowed
   offered(registered, allowed).subseteq(allowed) and offered(registered, allowed).subseteq(registered) and not(offered(registered, allowed).contains("REPLY"))
 pure def lawPlanningStopsAtTheBound(taken: int, calls: int, terminal: bool): bool =
   taken >= maxPlanSteps implies not(keepsPlanning(taken, calls, terminal))
+pure def lawAReplyAlongsideACoachingRefusalDoesNotEndPlanning(taken: int): bool =
+  (taken < maxPlanSteps implies keepsPlanning(taken, 1, acceptsPlannedReply(true, true))) and not(acceptsPlannedReply(true, true))
 pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool = not(keepsPlanning(taken, 0, terminal))
+```
+
+### The live owner turn classifies a Notes write from its original conversation before dispatch
+
+A planned, registered Notes write may trigger the Notes response field once
+in the live owner's turn. The field sees the original owner message and
+the shown dialogue. Tool arguments, tool output, attachments and device
+metadata do not supply the classification. The action receives the
+classification only through the live request binding checked by the
+executor. An unavailable or invalid classification leaves the request
+unresolved. Notes reads need no classification and use the Notes context
+only through an admitted Notes action.
+
+```quint
+pure def classifiesNotesWrite(owner: bool, offeredNotesWrite: bool, hasWords: bool): bool =
+  owner and offeredNotesWrite and hasWords
+pure def lawAWriteClassificationNeedsOwnerWords(owner: bool, offeredNotesWrite: bool): bool =
+  not(classifiesNotesWrite(owner, offeredNotesWrite, false))
+pure def lawOtherActionsDoNotTriggerNotesClassification(owner: bool, hasWords: bool): bool =
+  not(classifiesNotesWrite(owner, false, hasWords))
 ```
 
 ### A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it
 
-A later `Applied` receipt for the same operation and resource closes an
-earlier failure or proposal of that operation. Open outcomes for the same
+An active commit with the same receipt, effect identity or idempotency key
+closes an open failure, uncertainty or proposal. The reply reports unknown
+provider acceptance as uncertainty. An unrelated failure stays reportable
+after other commits. A replayed commit qualifies, and rollback removes
+that qualification. Open outcomes for the same
 operation or receiptless request replace earlier ones of the same identity.
 Pre-dispatch refusals are recorded separately from dispatched failures. A
 later call to the same action can be for another request. The reply reports
@@ -61,10 +87,18 @@ an unlinked refusal as a call that did not start, even if the action later
 runs. It reports an open failure as that action's failure and an open proposal
 as awaiting the owner, whatever the model's prose claims.
 
+A failed action may explicitly return a coaching refusal when it did
+no work and issued no effect receipt. The instruction goes back to the
+planner, and a reply bundled with it cannot end planning. The owner hears
+the eventual answer, or a generic failure if the planner has no answer.
+Failures with receipts remain reportable.
+
 ```quint
 pure def isReceiptOperation(identity: StepIdentity): bool = match identity { | ReceiptOperation(_) => true | _ => false }
 pure def supersedes(later: PlanStep, earlier: PlanStep): bool =
   later.outcome == Applied and earlier.outcome != Rejected and later.identity == earlier.identity and isReceiptOperation(later.identity)
+pure def receiptlessFailure(hasReceipts: bool, coaching: bool, rejected: bool): StepOutcome =
+  if (not(hasReceipts) and coaching) Coaching else if (rejected) Rejected else Failed
 pure def opens(o: StepOutcome): bool = o == Failed or o == Rejected or o == Proposed
 pure def settleStep(held: List[PlanStep], entry: PlanStep): List[PlanStep] =
   if (opens(entry.outcome))
@@ -86,6 +120,8 @@ pure val laterValues = Set(
   { outcome: Rejected, identity: RequestAttempt({ key: "send:a" }) },
 )
 pure val stepsValues = Set(List(), List({ outcome: Failed, identity: ReceiptOperation({ key: "note:a" }) }))
+pure def lawCoachingIsNotAnOpenFailure(rejected: bool): bool =
+  not(opens(receiptlessFailure(false, true, rejected))) and opens(receiptlessFailure(true, true, rejected))
 pure def lawTheLatestFailureIsReported(steps: List[PlanStep], earlier: PlanStep): bool =
   earlier.outcome == Failed implies failedOpen(steps.append(earlier)).includes(earlier)
 pure def lawASuccessOfTheSameOperationSupersedes(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
@@ -95,6 +131,35 @@ pure def lawASuccessOfAnotherOperationKeepsTheFailure(steps: List[PlanStep], ear
   (earlier.outcome == Failed and later.identity != earlier.identity) implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
 pure def lawARefusalBeforeDispatchStaysReported(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
   earlier.outcome == Rejected implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
+```
+
+### Recovered prose cites this turn's evidence before it is shown
+
+The planner holds a draft made after an effect or a recorded failure for
+review. Action-authored outcome text can still be used when its evidence
+is active. The review identifies claims by exact quotes in the draft.
+An assistant completion requires an active committed receipt for the
+claimed effect. An assistant failure requires a cited result with an
+unapplied outcome and no matching commit, including a replay under the
+same key. Unknown acceptance supports only uncertainty. A receiptless
+failure can support an account of that particular attempt. The reviewer
+uses the ordered results and original dialogue to attribute each claim.
+The shell checks the cited receipts and attempt positions against the
+unchanged evidence. If any claim is unsupported, it can revise the draft
+once and review it again. A missing or failed review leaves action-owned
+text and the settled outcome notices available to the reply.
+
+```quint
+type RecoveredChange = None | Occurred | DidNotOccur
+pure val changeValues = Set(None, Occurred, DidNotOccur)
+pure def allowsRecoveredClaim(change: RecoveredChange, supported: bool, quotesDraft: bool, committed: bool, unapplied: bool): bool =
+  supported and quotesDraft and (if (change == Occurred) committed else if (change == DidNotOccur) unapplied else true)
+pure def lawAReviewCannotAuthorizeAnUnquotedClaim(change: RecoveredChange, supported: bool, committed: bool, unapplied: bool): bool =
+  not(allowsRecoveredClaim(change, supported, false, committed, unapplied))
+pure def lawARecoveredCompletionRequiresAnActiveCommit(supported: bool, quotesDraft: bool, unapplied: bool): bool =
+  not(allowsRecoveredClaim(Occurred, supported, quotesDraft, false, unapplied))
+pure def lawARecoveredFailureRequiresAnUnappliedResult(supported: bool, quotesDraft: bool, committed: bool): bool =
+  not(allowsRecoveredClaim(DidNotOccur, supported, quotesDraft, committed, false))
 ```
 
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole

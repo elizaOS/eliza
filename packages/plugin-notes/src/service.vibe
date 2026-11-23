@@ -97,7 +97,7 @@ export interface NotesCollection {
   delete(target: NoteTarget, ownerWords?: string): Committed<StickyNote>!NotesFailure
   restore(input: unknown): Committed<StickyNote>!NotesFailure
   clear(expectedRevision: unknown): Committed<number>!NotesFailure
-  move(target: NoteTarget, folderId: string | null): Committed<StickyNote>!NotesFailure
+  move(target: NoteTarget, folderId: string | null, expectedRevision?: unknown): (Committed<StickyNote> & { consolidatedCount: number })!NotesFailure
   eraseTrash(input: unknown): Committed<{ erased: number; recordingCleanup: NotesTrashRecordingCleanup[] }>!NotesFailure
   readTrashRecordingCleanup(): NotesTrashRecordingCleanup[]!NotesFailure
   acknowledgeTrashRecordingCleanup(input: unknown, signal?: AbortSignal): boolean!NotesFailure
@@ -222,9 +222,11 @@ export function notesCollection(host: NotesHost): NotesCollection {
       const now = try at()
       return try published(try store.transact((document) => clearIn(document, revision, now)))
     },
-    move: (target, folderId) => effect {
+    move: (target, folderId, expectedRevision) => effect {
+      const revision = try optionalRevision(expectedRevision)
       const now = try at()
-      return try published(try store.transact((document) => moveIn(document, target, folderId, now)))
+      const committed = try published(try store.transact((document) => moveIn(document, target, folderId, revision, now)))
+      return { ...committed, value: committed.value.note, consolidatedCount: committed.value.consolidatedCount }
     },
     eraseTrash: (input) => effect {
       try requireRetention()

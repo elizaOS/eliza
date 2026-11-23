@@ -9,6 +9,7 @@ import { textForTurn } from "./heard.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext } from "./turn-context.schema.vibe"
 import { offeredActions, planTurn } from "./planning.vibe"
+import { ownerNotesAdmission } from "./notes-admission.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
@@ -134,6 +135,7 @@ async function respond(
       const began = Date.now()
       const terminal = new RunTerminalOwner(runtime, runtime.startRun(message.roomId), message, began, lease)
       const responseMessages: Memory[] = []
+      let planningLive = true
       let written = ""
       const onStreamChunk = options?.onStreamChunk
       try {
@@ -156,8 +158,15 @@ async function respond(
           window.windowed ? historyWindowNotice(window) : undefined].filter(Boolean).join("\n\n")
         const state = await runtime.composeState(message, [], true, true)
         const actions = await offeredActions(runtime, message, state, actionGate)
+        const notesHistoryIds = new Set(recent.flatMap(({ id, entityId }) =>
+          id !== undefined && (entityId === message.entityId || entityId === runtime.agentId) ? [id] : []))
+        const actionContext = ownerNotesAdmission({
+          runtime, message, state, signal, owner: roles.includes("OWNER"),
+          history: history.filter((_, index) => notesHistoryIds.has(window.shown[index]?.id ?? "")),
+          current: () => planningLive && !signal.aborted && runtime.roomHandlerQueue.ownsLease(message.roomId, lease),
+        })
         const planned = await planTurn({
-          runtime, message, state, roles, actionGate, system, messages, signal,
+          runtime, message, state, roles, actionGate, system, messages, signal, actionContext,
           onStepResult: (result) => Effect.runPromise(Effect.try({
             try: () => terminal.recordActionResult(result),
             catch: toElizaError,
@@ -175,6 +184,7 @@ async function respond(
           ...(options?.onPlanningAcknowledgment === undefined ? {} : { onPlanningAcknowledgment: options.onPlanningAcknowledgment }),
           ...(options?.onActivityStatus === undefined ? {} : { onActivityStatus: options.onActivityStatus }),
         }, actions)
+        planningLive = false
         signal.throwIfAborted()
         const replyText = planned.reply
         if (!replyText.trim()) throw new Error("The turn produced no reply")
@@ -212,6 +222,7 @@ async function respond(
         const retryAt = failed?.retryAt
         return { didRespond: false, responseContent: retryAt === undefined ? content : { ...content, retryAt }, responseMessages, outcome }
       } finally {
+        planningLive = false
         runtime.endRun()
       }
     }))), { signal: options?.abortSignal, lease: options?.roomHandlerLease })

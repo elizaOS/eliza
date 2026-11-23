@@ -61,7 +61,7 @@ export interface CalendarFound {
 export type CalendarChangeRequest =
   | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly reviewAsked: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "update"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields; readonly askedBy: string; readonly askId: string }
-  | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly askedBy: string; readonly askId: string }
+  | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly askedBy: string; readonly askId: string; readonly review?: "owner" }
 
 export type CalendarChangeResult =
   | { readonly kind: "ran"; readonly request: CalendarMutationRequest; readonly outcome: CalendarMutationOutcome }
@@ -197,7 +197,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
     if (provider === undefined) return { kind: "refused", reason: "no_provider" }
     const row = (try listed(account)).found.find(({ row }) => sameSourceKey(row, source))
     const route = writeRoute(source.provider === "eliza" ? "ResidentProvider" : "AccountProvider", source.connectorAccountId === account.accountId && row !== undefined, row !== undefined && writableRow(row.row),
-      asked.kind === "create" && asked.reviewAsked)
+      asked.kind === "create" ? asked.reviewAsked : asked.kind === "delete" && asked.review === "owner")
 
     if (route === "RefuseWrite") return { kind: "refused", reason: source.connectorAccountId === account.accountId ? "not_writable" : "foreign_account" }
     const payload: CalendarMutationPayload = asked.kind === "create"

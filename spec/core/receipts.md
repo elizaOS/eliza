@@ -79,3 +79,32 @@ pure def sometimesRollbackWithholdsConfirmation(s: Delivery): bool = s.delivered
 pure def automaticRetryAllowed(mutating: bool, explicitlyIdempotent: bool): bool = not(mutating) or explicitlyIdempotent
 pure def lawMutationsRequireIdempotency(explicitlyIdempotent: bool): bool = automaticRetryAllowed(true, explicitlyIdempotent) == explicitlyIdempotent
 ```
+
+### An active commit supersedes a report only for the same receipt, effect or retry key
+
+The receipt ID names a specific record of an outcome. The combination of
+operation, resource kind and resource ID names an effect. A nonempty
+idempotency key identifies the same retry when the provider returns a
+different resource identity. Any of those matches is evidence against a
+report that the effect did not take place. A receiptless failure provides
+evidence for its own attempt only.
+
+```quint
+type EffectIdentity = { receiptId: str, operation: str, resourceKind: str, resourceId: str, retryKey: str }
+pure val noEffectIdentity: EffectIdentity = { receiptId: "", operation: "", resourceKind: "", resourceId: "", retryKey: "" }
+pure def sameEffectEvidence(asked: EffectIdentity, committed: EffectIdentity): bool =
+  (asked.receiptId != "" and asked.receiptId == committed.receiptId)
+  or (asked.operation != "" and asked.resourceKind != "" and asked.resourceId != "" and
+    asked.operation == committed.operation and asked.resourceKind == committed.resourceKind and asked.resourceId == committed.resourceId)
+  or (asked.retryKey != "" and asked.retryKey == committed.retryKey)
+pure val exampleIdentity = { receiptId: "r1", operation: "save", resourceKind: "note", resourceId: "n1", retryKey: "retry" }
+pure val askedValues = Set(noEffectIdentity, exampleIdentity, { ...exampleIdentity, retryKey: "" })
+pure val committedValues = Set(noEffectIdentity, exampleIdentity, { ...exampleIdentity, receiptId: "r2", resourceId: "n2" }, { ...exampleIdentity, receiptId: "r3", operation: "delete", retryKey: "" })
+pure def lawAReceiptlessFailureIsNeverSuperseded(committed: EffectIdentity): bool =
+  not(sameEffectEvidence(noEffectIdentity, committed))
+pure def lawACommitWithTheSameRetryKeySupersedes(asked: EffectIdentity, committed: EffectIdentity): bool =
+  (asked.retryKey != "" and asked.retryKey == committed.retryKey) implies sameEffectEvidence(asked, committed)
+pure def lawADifferentOperationAloneCannotSupersede(asked: EffectIdentity, committed: EffectIdentity): bool =
+  (asked.operation != committed.operation and asked.receiptId != committed.receiptId and asked.retryKey != committed.retryKey) implies
+  not(sameEffectEvidence(asked, committed))
+```
