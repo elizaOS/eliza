@@ -79,7 +79,7 @@ it.effect('Act only on the file revision I reviewed (spec/files/reviewedOperatio
   }
 })
 
-it.effect('Claim an empty or complete folder only when the listing knows (spec/files/requests.md, "Story: Claim an empty or complete folder only when the listing knows"; spec/files/requests.md, "An empty or complete claim needs a full, known listing")', effect () => {
+it.effect('Claim an empty or complete folder only when the listing knows (spec/files/requests.md, "Story: Claim an empty or complete folder only when the listing knows"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty")', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const { root } = try storage({ "Empty/.keep": "" })
@@ -88,7 +88,15 @@ it.effect('Claim an empty or complete folder only when the listing knows (spec/f
       const partial = try on(nativeVolume(fakeDevice(() => [], { truncated: true }).plugin), effect { return try (try FilesVolume).list("Download") })
       const unknown = try on(nativeVolume(fakeDevice(() => [], { entries: false }).plugin), effect { return try (try FilesVolume).list("Download") })
       const filtered = try on(nativeVolume(fakeDevice(() => [], { truncated: true }).plugin), effect { return try (try FilesVolume).query({ text: "nothing" }) })
+      const downloads = try on(localVolume(root), effect {
+        const volume = try FilesVolume
+        const before = try volume.category("downloads")
+        const made = try volume.createFolder("Download", "Trips")
+        const after = try volume.category("downloads")
+        return { before: [before.complete, before.empty], made, after: after.entries.map((entry) => [entry.path, entry.directory]) }
+      })
       try check(() => {
+        assert.deepEqual(downloads, { before: [true, true], made: "Download/Trips", after: [["Download/Trips", true]] })
         assert.equal(local, undefined)
         assert.deepEqual({ complete: empty.complete, empty: empty.empty, rows: empty.entries.length }, { complete: true, empty: true, rows: 0 })
         assert.deepEqual({ complete: partial.complete, empty: partial.empty, rows: partial.entries.length }, { complete: false, empty: false, rows: 1 })

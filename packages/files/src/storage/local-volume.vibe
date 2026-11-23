@@ -1,4 +1,4 @@
-// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/os/android/files/storage.md, "A rename never replaces a different entry and reports the new path only when it happened"
+// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"; spec/os/android/files/storage.md, "A rename never replaces a different entry and reports the new path only when it happened"
 module node {
   import { createHash, randomUUID } from "node:crypto"
   import { lstat } from "node:fs/promises"
@@ -23,7 +23,8 @@ module node {
 import { identityOf, linked, trashId } from node
 import { canPrune, classifyRow, listed, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
 import { renameOutcome, validSelection, batchMax, type FilesOp, type FilesRowCheck, type FileOutcome } from "../../gen/os__android__files__storage.effect.vibe"
-import { baseName, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER,
+import { downloadsCreatesParent } from "../../gen/files__requests.effect.vibe"
+import { baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER,
   type StorageEntry, type TrashEntry } from "./model.vibe"
 import { FilesVolume, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
 
@@ -197,9 +198,12 @@ export function localVolume(root: string, name = "Internal storage") {
         return listing(entries, { metadataKnown: known, partial: false, failed: false })
       },
       effect category(category) {
-        const downloads = category === "downloads" ? try children(DOWNLOAD_FOLDER) : undefined
-        const { found, known, partial } = downloads === undefined ? try walk("", (child) => inCategory(category, child))
-          : { found: downloads.entries.filter((child) => !child.directory), known: downloads.known, partial: false }
+        if (category === "downloads") {
+          if (!(try exists(at(DOWNLOAD_FOLDER)))) return { ...downloadsListing("DownloadFolderAbsent", [], { metadataKnown: false, partial: false }), count: 0 }
+          const { entries, known } = try children(DOWNLOAD_FOLDER)
+          return { ...downloadsListing("DownloadFolderListed", entries, { metadataKnown: known, partial: false }), count: entries.length }
+        }
+        const { found, known, partial } = try walk("", (child) => inCategory(category, child))
         return { ...listing(found, { metadataKnown: known, partial, failed: false }), count: found.length }
       },
       effect query(filter) {
@@ -281,6 +285,9 @@ export function localVolume(root: string, name = "Internal storage") {
         return count
       }),
       effect createFolder(parent, folderName) {
+        if (parent === DOWNLOAD_FOLDER && downloadsCreatesParent((try exists(at(DOWNLOAD_FOLDER))) ? "DownloadFolderListed" : "DownloadFolderAbsent")) {
+          try mapError(fs.makeDirectory(at(DOWNLOAD_FOLDER)), () => refused("failed", "The folder was not created"))
+        }
         const folder = try folderPath(parent)
         const valid = validName(folderName)
         if (valid === undefined || valid.startsWith(".")) throw refused("invalid", "Invalid name")
