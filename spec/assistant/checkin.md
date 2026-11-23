@@ -20,6 +20,7 @@ this model; so are scheduling, delivery and cancellation at the scheduler.
 Rendering may find no model, have the model refuse, return blank text, or
 return text that declares a report day other than the current one. Only a
 valid answer goes on to storage, and storage may still refuse the write.
+The model is asked with no output limit, so a summary is never cut short.
 
 ```quint
 type CheckinPhase = CheckinIdle | Collected | Rendered | SummaryStored | CheckinFailed
@@ -91,4 +92,94 @@ pure def lawInvalidMetadataStaysUnknown(e: EventClocks): bool =
   (e.synced and (e.malformed or MF::providerClock(e.editedClock, e.createdClock) == MF::ClockInvalid)) implies (projectChange(e).changeClock == MF::ClockAbsent and projectChange(e).partial)
 pure def lawTodayOrRecentIsKept(e: EventClocks): bool =
   projectChange(e).included == (e.today or projectChange(e).changeClock == MF::ClockRecent)
+```
+
+## Story: Check in on me at the times I chose
+
+> As an owner, I want my morning check-in, and a night check-in if I ask
+> for one, at the times I set on my own clock, and none that I turned off.
+
+### A check-in comes at the time the owner chose, the morning one at eight until they choose, and the night one only once chosen
+
+The owner sets the morning or the night check-in to an hour and minute
+of the day on their clock, or turns either off, from the conversation or
+from their own client. Until they choose, the morning check-in comes at
+08:00 and no night check-in comes. A new time replaces the check-in
+already scheduled for that slot, so it comes once a day at the new time
+and never at the old one too, and the owner hears it was changed only when
+the scheduler applied the change. A check-in the owner dismissed from
+their scheduled tasks is off until they choose a time for it again, so a
+restart never brings it back. Every check-in follows the owner's clock:
+when the owner states a new zone, the daily check-ins, goal check-ins,
+routines and repeating reminders are rescheduled on it at once.
+
+```quint
+type CheckinSlot = MorningCheckin | NightCheckin
+type CheckinSetting = CheckinUnset | CheckinOff | CheckinAt({ minute: int })
+pure val defaultMorningMinute = 480
+pure def checkinMinuteValid(minute: int): bool = minute >= 0 and minute < 1440
+pure def checkinSchedule(slot: CheckinSlot, setting: CheckinSetting): CheckinSetting =
+  if (setting == CheckinUnset) (if (slot == MorningCheckin) CheckinAt({ minute: defaultMorningMinute }) else CheckinOff) else setting
+pure val settingValues: Set[CheckinSetting] = List(CheckinUnset, CheckinOff, CheckinAt({ minute: 450 }), CheckinAt({ minute: 1290 }))
+  .foldl(Set(), (acc, s) => acc.union(Set(s)))
+pure def lawTheMorningCheckinComesAtEightUntilChosen(slot: CheckinSlot): bool =
+  slot == MorningCheckin implies checkinSchedule(slot, CheckinUnset) == CheckinAt({ minute: defaultMorningMinute })
+pure def lawNoNightCheckinComesUntilChosen(slot: CheckinSlot): bool =
+  slot == NightCheckin implies checkinSchedule(slot, CheckinUnset) == CheckinOff
+pure def lawAChosenCheckinIsKept(slot: CheckinSlot, setting: CheckinSetting): bool =
+  setting != CheckinUnset implies checkinSchedule(slot, setting) == setting
+pure def checkinAfterDismissal(chosenAgain: bool, setting: CheckinSetting): CheckinSetting = if (chosenAgain) setting else CheckinOff
+pure def lawADismissedCheckinStaysOffUntilChosen(slot: CheckinSlot, setting: CheckinSetting): bool =
+  checkinSchedule(slot, checkinAfterDismissal(false, setting)) == CheckinOff
+```
+
+## Story: Brief me on my morning, evening or week when I ask
+
+> As an owner, I want a brief of my morning, my evening or my week when I
+> ask for one, told only from what my calendar, to-dos, goals, routines
+> and reminders hold, and told plainly when one of them could not be read.
+
+### A brief is the kind the owner named, else the morning one before five in the evening and the evening one from then
+
+A morning or evening brief covers today and a weekly brief the seven days
+from today, unless the owner names today, tomorrow or this week. The kind
+and the days are what the owner's own message names: the planner's choice
+counts only when the message says it too, a weekly brief or a week's span
+is never read from a passing mention of the week, and a brief that names
+no kind is the morning brief before 17:00 on the owner's clock and the
+evening brief from then. The brief holds every calendar event that
+overlaps its days, with its end and place when known, the open to-dos,
+the active goals with how they are going, the active routines with when
+they come, and the reminders due in its days; only the evening brief
+recaps the day, with the to-dos, routines and reminders the owner
+finished today and the goal check-ins they answered. Each source is read
+on its own: one that could not be read is said to be unchecked and the
+rest are still told. A section the owner asked to leave out of their
+briefs stays out until they ask for it back. The model writes the brief
+from the whole fact sheet, with no output limit, and the owner hears what
+it wrote whole.
+
+```quint
+type BriefKind = MorningBrief | EveningBrief | WeeklyBrief
+type BriefAsked = AskedMorning | AskedEvening | AskedWeekly | AskedNoKind
+type BriefPeriod = PeriodToday | PeriodTomorrow | PeriodThisWeek | PeriodUnstated
+pure val eveningStartMinute = 1020
+pure val minuteOfDayValues = Set(0, 600, 1019, 1020, 1439)
+pure def briefKind(asked: BriefAsked, minuteOfDay: int): BriefKind =
+  if (asked == AskedMorning) MorningBrief
+  else if (asked == AskedEvening) EveningBrief
+  else if (asked == AskedWeekly) WeeklyBrief
+  else if (minuteOfDay >= eveningStartMinute) EveningBrief
+  else MorningBrief
+pure def briefPeriod(kind: BriefKind, asked: BriefPeriod): BriefPeriod =
+  if (asked != PeriodUnstated) asked else if (kind == WeeklyBrief) PeriodThisWeek else PeriodToday
+pure def recapsTheDay(kind: BriefKind): bool = kind == EveningBrief
+pure def lawANamedBriefKeepsItsKind(minuteOfDay: int): bool =
+  briefKind(AskedMorning, minuteOfDay) == MorningBrief and briefKind(AskedEvening, minuteOfDay) == EveningBrief and briefKind(AskedWeekly, minuteOfDay) == WeeklyBrief
+pure def lawAnUnnamedBriefFollowsTheClock(minuteOfDay: int): bool =
+  briefKind(AskedNoKind, minuteOfDay) == (if (minuteOfDay >= eveningStartMinute) EveningBrief else MorningBrief)
+pure def lawAStatedPeriodIsKept(kind: BriefKind, asked: BriefPeriod): bool = asked != PeriodUnstated implies briefPeriod(kind, asked) == asked
+pure def lawAWeeklyBriefCoversTheWeek(kind: BriefKind): bool =
+  briefPeriod(kind, PeriodUnstated) == (if (kind == WeeklyBrief) PeriodThisWeek else PeriodToday)
+pure def lawOnlyTheEveningBriefRecapsTheDay(kind: BriefKind): bool = recapsTheDay(kind) iff kind == EveningBrief
 ```

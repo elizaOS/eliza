@@ -19,7 +19,11 @@ the launch.
 
 The agent's own optional modules are named plugins like any other.
 `@elizaos/agent/basic-actions` registers one action, `CALCULATE`: arithmetic
-only, no I/O, for a User caller. Any other name refuses boot. A bundled
+only, no I/O, for a User caller. `@elizaos/agent/device-actions` registers
+one action, `PROPOSE_DEVICE_ACTION`, for an Owner caller: it proposes one
+operation to the enrolled device for review
+([device requests](../deviceActions/index.md)) and runs nothing itself. Any
+other name refuses boot. A bundled
 package whose plugin needs a device service only the host supplies (local
 inference's engine) is a hosted module: the bundle carries its package, the
 host hands the agent its module factory, and it loads like the agent's own
@@ -38,8 +42,9 @@ type ProcessValue = PlainSetting | DeviceCredential | LaunchToken | SealingKey
 type ProductStep = WithoutProduct | ProductPending({ name: str }) | ProductRegistered({ name: str })
 type PluginPlan = { phase: PlanPhase, bundled: Set[str], privacyOn: bool, product: ProductStep, order: List[str], next: int, allowed: Set[str], actions: Set[str], moduleRoutes: Set[str], productRoutes: Set[str], worker: WorkerState, workerEnv: Set[ProcessValue], workerRuns: int }
 pure val initial: PluginPlan = { phase: Choosing, bundled: Set(), privacyOn: false, product: WithoutProduct, order: List(), next: 0, allowed: Set(), actions: Set(), moduleRoutes: Set(), productRoutes: Set(), worker: NoWorker, workerEnv: Set(), workerRuns: 0 }
-pure val builtinModules = Set("@elizaos/agent/basic-actions", "@elizaos/agent/approvals", "@elizaos/agent/notifications", "@elizaos/agent/views", "@elizaos/agent/reply-draft", "@elizaos/agent/triggers", "@elizaos/agent/scheduled-tasks", "@elizaos/agent/tasks", "@elizaos/agent/surface")
+pure val builtinModules = Set("@elizaos/agent/basic-actions", "@elizaos/agent/approvals", "@elizaos/agent/notifications", "@elizaos/agent/views", "@elizaos/agent/device-actions", "@elizaos/agent/reply-draft", "@elizaos/agent/triggers", "@elizaos/agent/scheduled-tasks", "@elizaos/agent/tasks", "@elizaos/agent/surface")
 pure val calculateAction: AP::ActionDecl = { name: "CALCULATE", subactions: List(), minRole: Z::User }
+pure val proposeDeviceAction: AP::ActionDecl = { name: "PROPOSE_DEVICE_ACTION", subactions: List(), minRole: Z::Owner }
 pure def available(bundled: Set[str]): Set[str] = bundled.union(builtinModules)
 pure def productName(policy: LaunchPolicy): str = {
   val product = policy.productPlugin

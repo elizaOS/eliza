@@ -1,7 +1,12 @@
 # Routines
 
 A routine is a habit the owner keeps on a cadence, such as brushing teeth
-morning and night or stretching in the afternoon. Each due time is an
+morning and night or stretching in the afternoon. It comes in the daily
+windows the owner names (morning at 09:00, afternoon at 15:00, evening at
+18:00, night at 21:00), at the exact times they name, or both, every day
+or on the weekdays they name, on the owner's clock; a routine that names
+no valid time is not created. The assistant keeps the instants the owner
+marked its occurrences done, for the evening brief. Each due time is an
 occurrence: pending until its window opens, then shown to the owner, who
 completes it, skips it or snoozes it; an occurrence nobody answered
 expires when its window ends. The owner may mute a routine. During
@@ -135,4 +140,27 @@ pure def deleteDefinition(s: Routines): Routines = { ...s, definition: Definitio
 pure def alwaysReplyIsTheSavedDefinition(s: Routines): bool =
   (s.replied == DefinitionSaved implies s.repliedStatus == s.definition) and (s.replied == DefinitionDeleted implies s.definition == DefinitionAbsent)
 pure def sometimesDeletedAfterChange(s: Routines): bool = s.replied == DefinitionDeleted and s.definitions > 0
+```
+
+## Story: Keep my habits from the conversation
+
+> As the owner, I want to add, pause, resume, delete and answer a routine
+> by telling the assistant, and a request that names no routine, or
+> several, to change nothing.
+
+### A request from the conversation changes the one routine it names, and none when it names none or several
+
+A routine is named by its id or its whole title, ignoring case. A routine
+added from a message is keyed by that message, so a repeated message adds
+it once, as "A creation with an idempotency key creates at most one
+definition" says. Pausing, resuming and archiving change its status, and
+completing, skipping, snoozing, muting and unmuting answer its occurrence
+as the owner's client does.
+
+```quint
+type RoutineNamed = NoRoutineNamed | OneRoutineNamed | SeveralRoutinesNamed
+pure def routineNamed(matches: int): RoutineNamed =
+  if (matches == 1) OneRoutineNamed else if (matches < 1) NoRoutineNamed else SeveralRoutinesNamed
+pure def lawOnlyOneNamedRoutineChanges(matches: int): bool = (routineNamed(matches) == OneRoutineNamed) iff (matches == 1)
+pure def lawSeveralNamedRoutinesAreAQuestion(matches: int): bool = (routineNamed(matches) == SeveralRoutinesNamed) iff (matches > 1)
 ```

@@ -5,8 +5,8 @@ start is a launch with a new epoch: the service checks the payload, reaps a
 child an earlier launch left behind, runs the consumer's launch hook,
 spawns the agent with the launch frame of `spec/agent/host/launch.md`, and
 serves once the agent answers ready for that epoch. It restarts a crashed or
-unhealthy agent after the growing pause of [health](./health.md) and never
-gives up on it, follows the
+unhealthy agent after the delay of [health](./health.md), however often it
+crashes, follows the
 device key of [credential](../signIn/credential.md), keeps a failed store's
 records until the owner moves them aside, and holds the agent for an app
 update. Spawning, the socket, the pid and epoch journal, the notification
@@ -24,7 +24,7 @@ the current launch did.
 No start is taken while an update holds the agent or its records need
 recovery after a storage failure. The shell runs the
 check (`BeginCheck`) after the delay it names; an explicit start (also on
-boot or package replacement) resets the restart count.
+boot or package replacement) resets the restart delay.
 Before it publishes a check, the shell saves and syncs that launch's
 epoch. A failed save reports `Runtime` and publishes no check.
 
@@ -249,27 +249,24 @@ pure def alwaysStatusTellsTheTruth(s: AgentService): bool = ((statusOf(s).failur
   and (statusOf(s).bridgeState == "running" implies (s.readyEpoch == s.epoch and childOwned(s.child)))
 ```
 
-## Story: Keep restarting a crashed or unhealthy agent after a growing pause
+## Story: Restart a crashed or unhealthy agent until it stays up
 
 > As a device owner, I want an agent that crashes or stops answering
-> restarted after a pause that grows to a minute, however often it
-> crashes, so that it comes back by itself without draining my battery.
+> restarted after a growing pause, however often it crashes, so that it
+> comes back by itself without draining my battery.
 
-### Any exit after readiness is a crash, and every crash is restarted after the health delay for its count
+### Any exit after readiness is a crash, and every crash is restarted after the health delay
 
-The agent never exits on its own once ready, so any code is a crash. No
-count of crashes in a row gives up on the agent: the count only lengthens
-the pause, which `H::restartDelay` caps at 60 s.
+The agent never exits on its own once ready, so any code is a crash. The
+delay grows with the crashes since the last explicit start or stable run
+and stops growing at 60 s; no number of crashes leaves the agent failed.
 
 ```quint
 pure def restartAfterCrash(attempt: int, s: AgentService): ServiceStep = launch(attempt + 1, H::restartDelay(attempt), s)
-pure def alwaysRestartCountIsNotNegative(s: AgentService): bool = s.attempt >= 0
-pure def stepEveryCrashIsRestarted(before: AgentService, via: str, after: AgentService): bool =
-  (via == "observeExit" and (before.phase == Running or before.phase == Stopping({ onExit: ToRestart })))
-    implies (after.phase == Starting({ step: Checking }) and after.attempt == before.attempt + 1)
+pure def alwaysCrashCountIsNotNegative(s: AgentService): bool = s.attempt >= 0
 pure def sometimesRestartedAfterCrash(s: AgentService): bool = s.phase == Running and s.attempt >= 1
-pure def sometimesRestartedAfterSixCrashes(s: AgentService): bool = s.phase == Running and s.attempt >= 6
-pure val eval_witness_sometimesRestartedAfterSixCrashes = (
+pure def sometimesRestartedAfterSixCrashesInARow(s: AgentService): bool = s.phase == Starting({ step: Checking }) and s.attempt == 6
+pure val eval_witness_sometimesRestartedAfterSixCrashesInARow = (
   ("credentialArrived", 1, { userId: "u1", organizationId: "o1" }),
   "start",
   ("spawn", true), ("observeReady", readyReply(1)), ("observeExit", 1),
@@ -277,16 +274,15 @@ pure val eval_witness_sometimesRestartedAfterSixCrashes = (
   ("spawn", true), ("observeReady", readyReply(3)), ("observeExit", 1),
   ("spawn", true), ("observeReady", readyReply(4)), ("observeExit", 1),
   ("spawn", true), ("observeReady", readyReply(5)), ("observeExit", 1),
-  ("spawn", true), ("observeReady", readyReply(6)), ("observeExit", 1),
-  ("spawn", true), ("observeReady", readyReply(7))
+  ("spawn", true), ("observeReady", readyReply(6)), ("observeExit", 1)
 )
 ```
 
 ### An unhealthy verdict kills the child and counts as a crash
 
 Each health observation of the running launch is folded into the watch;
-after a `Restart` verdict the child's exit is a crash, restarted as any
-crash is.
+after a `Restart` verdict the child's exit is a crash, restarted after the
+same delay.
 
 ```quint
 pure def canObserveHealth(s: AgentService, observed: H::Observation): bool = s.phase == Running and H::verdict(s.watch, observed, s.epoch) == H::KeepRunning
@@ -305,14 +301,14 @@ pure val weight_observeHealth = 4
 pure def sometimesKilledAsUnhealthy(s: AgentService): bool = s.phase == Stopping({ onExit: ToRestart })
 ```
 
-### Five minutes of running reset the restart count
+### Five minutes of running reset the restart delay
 
 The shell sends `stableRun` after `H::stableRunMs` in `Running`.
 
 ```quint
 pure def canStableRun(s: AgentService): bool = s.phase == Running and s.attempt > 0
 pure def stableRun(s: AgentService): AgentService = { ...s, attempt: 0 }
-pure def stepCountResetOnlyByStartOrStableRun(before: AgentService, via: str, after: AgentService): bool =
+pure def stepRestartDelayResetOnlyByStartOrStableRun(before: AgentService, via: str, after: AgentService): bool =
   (after.attempt < before.attempt) implies (after.attempt == 0 and (via == "stableRun" or after.epoch == before.epoch + 1))
 ```
 
@@ -326,7 +322,7 @@ pure def stepCountResetOnlyByStartOrStableRun(before: AgentService, via: str, af
 
 The credential's `SignedOutNotice` and `ExpiredNotice` withdraw the key;
 a live child is killed first, and a stopped service stays stopped. The
-next `Announce` starts the agent without counting a restart, unless an
+next `Announce` starts the agent with no restart delay, unless an
 update holds it. A pending check keeps its epoch when its first key
 arrives. If the key selects the account, the shell lets a queued stop or
 hold run, then reads the current key before opening that account's storage.
@@ -369,7 +365,8 @@ pure val weight_credentialArrived = 18
 ### Another account's key restarts the agent on that account's directory
 
 The agent refuses a store opened under another account, so a live child
-is killed and a new launch follows its exit; this counts no restart.
+is killed and a new launch follows its exit; this is not counted as a
+crash.
 
 ```quint
 pure def canAccountChanged(s: AgentService, version: int, account: C::Account): bool =

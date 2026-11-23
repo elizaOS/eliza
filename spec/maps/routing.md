@@ -23,6 +23,14 @@ map goes to showing or finding it; travelling to a destination, or going to
 a named place or street address, goes to navigation from here unless the
 destination names one of the agent's views; a nearby or nearest kind of
 place, and a kind of place near a named place, go to place search.
+"Get to" before a verb is a chance to do something, not a trip: "how do I
+get to talk to someone" or "can I get to see my results" is no travel
+request. See, hear and try still travel before a place ("get to see the
+Eiffel Tower") and stop it only before a possessive or a person.
+Weather, traffic, news or a forecast near a place, and things kept on the
+phone such as photos, messages or notes, are not a kind of place; a time,
+a holiday, a price or the owner's own place after "near" is not a named
+place. Those requests keep the planner's own choice.
 
 ```quint
 type RequestShape = DirectionsRequest | PlaceOnMap | TravelTo | GoToNamedPlace | NearbyKind | KindNearNamedPlace | ChoiceReply | OtherRequest
@@ -50,6 +58,45 @@ pure def lawCompoundRequestKeepsThePlanner(r: MapsRequest): bool = (r.compound o
 pure def lawOtherRequestKeepsThePlanner(r: MapsRequest): bool = r.shape == OtherRequest implies mapsRouteOf(r) == ToPlanner
 ```
 
+### A place named with its locality is taken only from that locality, and otherwise Maps asks which one
+
+A typed place is looked up and taken when exactly one result fits it, or
+when the search ran near a known point; several that fit are offered as a
+numbered question, and no result is the plain not-found reply. A name
+qualified by its locality ("Union Station, Washington, DC", "Union Station
+in Washington") fits only a result whose name holds the name and whose
+address holds the locality, or whose name or address holds the whole query.
+When no result is in the named locality, Maps asks which one rather than
+taking a namesake elsewhere, even when it found only one.
+
+```quint
+type PlacePick = TakePlace | AskWhich | NoPlace
+pure def placePick(found: int, qualified: bool, matching: int, near: bool): PlacePick =
+  if (found <= 0) NoPlace
+  else if (qualified and matching <= 0) AskWhich
+  else if (matching == 1 or near) TakePlace
+  else AskWhich
+pure val foundValues = Set(0, 1, 3)
+pure val matchingValues = Set(0, 1, 2)
+pure def lawANamesakeOutsideTheLocalityIsNeverTaken(found: int, near: bool): bool = placePick(found, true, 0, near) != TakePlace
+pure def lawNothingFoundIsNeverTaken(qualified: bool, matching: int, near: bool): bool = placePick(0, qualified, matching, near) == NoPlace
+pure def lawOneFittingResultIsTaken(found: int, qualified: bool, near: bool): bool = found > 0 implies placePick(found, qualified, 1, near) == TakePlace
+```
+
+### A route's destination that names no locality is taken from within 100 km of its start when any result is there
+
+A route's destination is searched around its starting place: when it
+names no locality, the results within 100 km of the start are the ones
+that fit, if any are, so "Union Square" from the Ferry Building is the
+one in San Francisco. That alone never takes a result: two that fit still
+ask, as for any typed place.
+
+```quint
+pure val startAreaMeters = 100000
+pure def aroundTheStart(meters: int): bool = meters >= 0 and meters <= startAreaMeters
+pure def lawAFarNamesakeIsNotAroundTheStart(meters: int): bool = meters > startAreaMeters implies not(aroundTheStart(meters))
+```
+
 ### A choice reply answers only the open question of the same conversation, within its options and ten minutes
 
 When Maps asks "which one did you mean?", the question stays open in that
@@ -69,4 +116,61 @@ pure val aValues = Set({ open: true, sameConversation: true, age: 0, position: 2
 pure def lawExpiredChoiceNeverBinds(a: ChoiceAnswer): bool = a.age > choiceLifetime implies not(choiceBinds(a))
 pure def lawChoiceStaysInItsConversation(a: ChoiceAnswer): bool = not(a.sameConversation) implies not(choiceBinds(a))
 pure def lawPositionIsAmongTheOptions(a: ChoiceAnswer): bool = choiceBinds(a) implies a.position <= a.options
+```
+
+### Same-named areas close together are one place, and same-named street addresses still ask
+
+When a place search for a route, a saved place or navigation finds several
+places with exactly the name asked for, Maps asks which one was meant. Two
+such places count as one landmark, and the first is used without asking,
+when neither is at a street address and they are within 5 km of each
+other: a park and the neighbourhood named after it. Branches of a chain at
+street addresses, and same-named areas farther apart, still ask.
+
+```quint
+pure val landmarkAreaMeters = 5000
+pure def sameLandmark(firstIsArea: bool, otherIsArea: bool, meters: int): bool =
+  firstIsArea and otherIsArea and meters >= 0 and meters <= landmarkAreaMeters
+pure val metersValues = Set(0, 1400, 5000, 5001, 20000)
+pure def lawStreetAddressStillAsks(otherIsArea: bool, meters: int): bool =
+  not(sameLandmark(false, otherIsArea, meters)) and not(sameLandmark(otherIsArea, false, meters))
+pure def lawFarAreasStillAsk(meters: int): bool = meters > landmarkAreaMeters implies not(sameLandmark(true, true, meters))
+pure def lawCloseAreasAreOneLandmark(meters: int): bool = (meters >= 0 and meters <= landmarkAreaMeters) implies sameLandmark(true, true, meters)
+```
+
+## Story: Share a place only once I agree, and hear where Maps works
+
+> As the owner, I want "share this place" to send its location only after
+> I say yes to sharing it, and "where does Maps work" answered from what
+> my Maps service says it serves.
+
+### A place's location is shared only after the owner's own later yes to sharing that place
+
+Asked to share a place, Maps finds it as it finds a place to show, then
+asks "Share the location of <place>?" with Share and Don't share choices,
+and shares nothing. Only the owner's own later reply to that question,
+for the same place and within five minutes, settles it: a yes returns a
+geo link, an Apple Maps link and an OpenStreetMap link for the place with
+the time it was shared; a no says it was not shared; anything unclear
+asks again. The message that asked never answers its own question, and
+no parameter the planner sets confirms it.
+
+```quint
+type ShareDecision = ShareAsked | ShareConfirmed | ShareCancelled
+pure def sharesLocation(d: ShareDecision): bool = d == ShareConfirmed
+pure def lawOnlyAConfirmedShareSendsTheLocation(d: ShareDecision): bool = sharesLocation(d) implies d == ShareConfirmed
+```
+
+### Asked where Maps works, the reply states only what Cloud Maps reports
+
+The reply names the regions and dataset revision Cloud Maps reports, the
+travel modes it routes and whether it offers alternatives, that it does
+not look up places from coordinates when it says so, which of live
+traffic, transit schedules and offline use it lacks, who receives search
+text and route points, and its attribution. A deployment that serves no
+maps says so, and nothing is inferred for what it does not report.
+
+```quint
+type CoverageAnswer = NoMapsServed | ReportedCoverage
+pure def coverageAnswer(served: bool): CoverageAnswer = if (served) ReportedCoverage else NoMapsServed
 ```

@@ -3,9 +3,64 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import type { ElizaFilesPlugin } from "@elizaos/os/bridges/files"
 import { FilesVolume, filesReviews, filesView, nativeVolume, runBatch, undoBatch, type OpenPorts } from "../src/client.vibe"
-import { FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY, FILES_SHOWN_TARGET_GUIDANCE, FilesOperationRefused, filesOperationAdmitted, filesToolSurface, type FilesAgentRunner } from "../src/contract.vibe"
+import { FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY, FILES_SHOWN_TARGET_GUIDANCE, FilesOperationRefused, filesContextAllowed, filesContextNotice, filesOperationAdmitted, filesToolSurface, type FilesAgentRunner } from "../src/contract.vibe"
 import { localVolume } from "../src/storage/local-volume.vibe"
 import { workspace } from "../src/workspace.vibe"
+import { plugin } from "../src/index.vibe"
+import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { filesProposalFamily } from "../src/device-proposals.vibe"
+
+module node {
+  import { Effect } from "effect"
+  import { AgentRuntime, stringToUuid } from "@elizaos/core"
+  import { negotiation, readOperation, validate, type DeviceTurn, type Grounding } from "@elizaos/agent/device-actions"
+  import { filesProposalFamily } from "../src/device-proposals.vibe"
+
+  const asked = "Trash the first two files"
+  const directRequest = { voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } }
+
+  export interface Screen {
+    readonly observation?: DeviceTurn["observation"]
+    readonly direct?: boolean
+  }
+
+  export const onFiles: Screen = { observation: { view: "files", revision: 1, sensitive: false } }
+  export const onHome: Screen = { observation: { view: "home", revision: 1, sensitive: false } }
+
+  function chatTurn(runtime: AgentRuntime, capabilities: readonly string[], screen: Screen): DeviceTurn {
+    const negotiated = negotiation(true, capabilities.join(","))
+    const id = stringToUuid(`files-chat:${capabilities.join(",")}`)
+    return {
+      runtime, by: { agentId: runtime.agentId, actorId: "owner", connector: runtime.agentId }, negotiation: negotiated, capabilities,
+      message: { id, entityId: id, roomId: id, content: { text: asked, ...(screen.direct === true ? { metadata: directRequest } : {}) } }, ownerText: asked,
+      observation: screen.observation, completedActionNavigation: screen.direct === true, completesReads: false,
+      conversationId: "files-chat", requestId: "files-chat-1", assistantName: "Eliza", swapped: [], startedAt: 0, timeZone: undefined,
+      signal: new AbortController().signal,
+      admit: (operation) => validate(operation, negotiated, "NoBinding"),
+      earlier: () => Effect.succeed([]),
+    }
+  }
+
+  export async function proposeFiles(runtime: AgentRuntime, capabilities: readonly string[], operation: unknown, screen: Screen = onFiles): Promise<Grounding | undefined> {
+    const checked = readOperation(operation)
+    return checked === undefined ? undefined : Effect.runPromise(filesProposalFamily.ground(checked, chatTurn(runtime, capabilities, screen)))
+  }
+
+  export function offeredForms(runtime: AgentRuntime, capabilities: readonly string[]): number {
+    const turn = chatTurn(runtime, capabilities, onFiles)
+    return filesProposalFamily.forms.filter((form) => form.offered(turn)).length
+  }
+
+  export function guidanceFor(runtime: AgentRuntime, capabilities: readonly string[]): string | undefined {
+    return filesProposalFamily.guidance(chatTurn(runtime, capabilities, onFiles))
+  }
+
+  export function chatRuntime(): AgentRuntime {
+    return new AgentRuntime({ character: { name: "Eliza", bio: [] } })
+  }
+}
+
+import { chatRuntime, guidanceFor, offeredForms, onHome, proposeFiles, type Screen } from node
 
 const check = (assertion: () => void) => Effect.try(assertion)
 const both = [FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY]
@@ -79,7 +134,7 @@ it.effect('Act only on the file revision I reviewed (spec/files/reviewedOperatio
   }
 })
 
-it.effect('Claim an empty or complete folder only when the listing knows (spec/files/requests.md, "Story: Claim an empty or complete folder only when the listing knows"; spec/files/requests.md, "An empty or complete claim needs a full, known listing")', effect () => {
+it.effect('Claim an empty or complete folder only when the listing knows (spec/files/requests.md, "Story: Claim an empty or complete folder only when the listing knows"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty")', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const { root } = try storage({ "Empty/.keep": "" })
@@ -88,7 +143,15 @@ it.effect('Claim an empty or complete folder only when the listing knows (spec/f
       const partial = try on(nativeVolume(fakeDevice(() => [], { truncated: true }).plugin), effect { return try (try FilesVolume).list("Download") })
       const unknown = try on(nativeVolume(fakeDevice(() => [], { entries: false }).plugin), effect { return try (try FilesVolume).list("Download") })
       const filtered = try on(nativeVolume(fakeDevice(() => [], { truncated: true }).plugin), effect { return try (try FilesVolume).query({ text: "nothing" }) })
+      const downloads = try on(localVolume(root), effect {
+        const volume = try FilesVolume
+        const before = try volume.category("downloads")
+        const made = try volume.createFolder("Download", "Trips")
+        const after = try volume.category("downloads")
+        return { before: [before.complete, before.empty], made, after: after.entries.map((entry) => [entry.path, entry.directory]) }
+      })
       try check(() => {
+        assert.deepEqual(downloads, { before: [true, true], made: "Download/Trips", after: [["Download/Trips", true]] })
         assert.equal(local, undefined)
         assert.deepEqual({ complete: empty.complete, empty: empty.empty, rows: empty.entries.length }, { complete: true, empty: true, rows: 0 })
         assert.deepEqual({ complete: partial.complete, empty: partial.empty, rows: partial.entries.length }, { complete: false, empty: false, rows: 1 })
@@ -139,7 +202,13 @@ it.effect('Open the file I asked for, and only from what I was shown (spec/files
     return true
   } })
   const after = try view.open({ shown: 1 }, ports())
+  try view.leave()
+  const lateFilter = try view.show({ text: "lease" }, { entries: [{ path: "Download/lease.pdf", name: "lease.pdf", directory: false, mimeType: "application/pdf", size: 5, modified: 1 }], complete: true, empty: false })
+  try view.enter()
+  const reopened = try view.shown()
   try check(() => {
+    assert.isUndefined(lateFilter)
+    assert.isUndefined(reopened)
     assert.deepEqual(cold, { kind: "opened", path: "Download/lease.pdf" })
     assert.deepEqual(shown, { kind: "opened", path: "Download/lease.pdf" })
     assert.deepEqual(missing, { kind: "refused", reason: "not_shown" })
@@ -149,7 +218,7 @@ it.effect('Open the file I asked for, and only from what I was shown (spec/files
   })
 })
 
-it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none")', effect () => {
+it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none")', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const { root } = try storage({ "Download/lease.pdf": "lease", "Download/lease notes.txt": "notes" })
@@ -163,8 +232,22 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
           shownPaths: (shown) => mapError(view.shownPaths(shown), () => new FilesOperationRefused({ input: shown, reason: "not shown" })),
           run: () => succeed({ status: "succeeded", summary: "" }),
         }
+        const runtime = try Effect.try(() => chatRuntime())
+        try tryPromise(async () => plugin.init?.({}, runtime))
+        const rival = try Effect.flip(registerDeviceProposalFamily(runtime, { ...filesProposalFamily, name: "notes" }))
+        const chat = (capabilities: readonly string[], operation: unknown, screen?: Screen) => tryPromise(() => proposeFiles(runtime, capabilities, operation, screen))
+        const asked = try chat(both, { type: "files_trash", shown: [2, 1] })
+        const unnegotiatedAsk = try chat([FILES_CAPABILITY], { type: "files_share", shown: [1] })
+        const chosenIdentity = try chat(both, { type: "files_move", paths: ["Download/lease.pdf/"], dest: "Archive", reviewed: ["a".repeat(43)] })
+        const hiddenFolder = try chat(both, { type: "files_folder_create", parent: "Download", name: ".cache" })
+        const trashFromHome = try chat(both, { type: "files_trash", paths: ["Download/lease.pdf"] }, onHome)
+        const filterFromHome = try chat(both, { type: "files_filter", text: "lease" }, onHome)
+        const lockedScreen = try chat(both, { type: "files_filter", text: "lease" }, { observation: { view: "files", revision: 2, sensitive: true } })
+        const unseenScreen = try chat(both, { type: "files_open", path: "Download/lease.pdf" }, {})
+        const directOpen = try chat(both, { type: "files_open", path: "Download/lease.pdf" }, { ...onHome, direct: true })
+        const refusal = (grounding: typeof asked) => grounding?.kind === "Refused" ? { code: grounding.code, forOwner: grounding.forOwner } : grounding
         const reviews = try filesReviews(runner, both)
-        const trash = try reviews.review("p1", "d1", { type: "files_trash", shown: [2, 1] })
+        const trash = try reviews.review("p1", "d1", asked?.kind === "Grounded" ? asked.operation : undefined)
         const share = try reviews.review("p2", "d2", { type: "files_share", shown: [1] })
         const unresolved = try reviews.review("p3", "d3", { type: "files_trash", shown: [3] })
         const unnegotiated = try (try filesReviews(runner, [FILES_CAPABILITY])).review("p4", "d4", { type: "files_share", shown: [1] })
@@ -189,6 +272,33 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
           assert.deepEqual(filesToolSurface(both).guidance, [FILES_SHOWN_TARGET_GUIDANCE])
           assert.equal(filesToolSurface([]).schemas.length, 0)
           assert.equal(filesToolSurface(both).schemas.length - filesToolSurface([FILES_CAPABILITY]).schemas.length, 3)
+          assert.deepEqual({
+            rival: rival._tag, asked, unnegotiated: refusal(unnegotiatedAsk), chosenIdentity,
+            hiddenFolder: hiddenFolder?.kind === "Refused" && hiddenFolder.code === "FILES_OPERATION_INVALID" &&
+              hiddenFolder.forModel.startsWith("Invalid Files operation: ") && hiddenFolder.forModel.endsWith('Use paths on Internal storage such as "Download/lease.pdf".'),
+            trashFromHome, filterFromHome, lockedScreen, unseenScreen, directOpen,
+            cards: [
+              filesContextNotice({ type: "files_trash", paths: ["Download/lease.pdf"] }, { view: "home", sensitive: false }),
+              filesContextNotice({ type: "files_filter", text: "lease" }, { view: "files", sensitive: true }),
+              filesContextNotice({ type: "files_open", path: "Download/lease.pdf" }, { view: "home" }),
+              filesContextNotice({ type: "files_trash", paths: ["Download/lease.pdf"] }, { view: "files", sensitive: false }),
+            ],
+            allowed: [filesContextAllowed({ type: "files_folder_create", parent: "Download", name: "Taxes" }, { view: "home" }), filesContextAllowed({ type: "files_filter", text: "lease" }, { view: "home" })],
+            forms: [offeredForms(runtime, []), offeredForms(runtime, [FILES_CAPABILITY]), offeredForms(runtime, both)],
+            guided: guidanceFor(runtime, both)?.includes(FILES_SHOWN_TARGET_GUIDANCE),
+          }, {
+            rival: "FamilyConflict", asked: { kind: "Grounded", operation: { type: "files_trash", shown: [2, 1] }, grounding: "GroundedForReview" },
+            unnegotiated: { code: "FILES_FORM_NOT_NEGOTIATED", forOwner: "Your phone can't do that in Files from chat right now." },
+            chosenIdentity: { kind: "Grounded", operation: { type: "files_move", paths: ["Download/lease.pdf"], dest: "Archive" }, grounding: "GroundedForReview" }, hiddenFolder: true,
+            trashFromHome: { kind: "Grounded", operation: { type: "files_trash", paths: ["Download/lease.pdf"] }, grounding: "GroundedForReview" },
+            filterFromHome: { kind: "Grounded", operation: { type: "files_filter", text: "lease" }, grounding: "GroundedForReview" },
+            lockedScreen: { kind: "Grounded", operation: { type: "files_filter", text: "lease" }, grounding: "GroundedForReview" },
+            unseenScreen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedForReview" },
+            directOpen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedAsAsked" },
+            cards: ["Open Files to review this action.", "Unlock the phone to review this action.", undefined, undefined],
+            allowed: [false, true],
+            forms: [0, 6, 9], guided: true,
+          })
         })
       }
     })

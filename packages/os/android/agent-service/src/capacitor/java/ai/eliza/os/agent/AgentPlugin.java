@@ -1,4 +1,4 @@
-// spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"; spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"
+// spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"; spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.ChannelPolicy.FailCode;
@@ -11,6 +11,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.json.JSONException;
@@ -124,7 +125,22 @@ public class AgentPlugin extends Plugin {
     Object body = call.getData().opt("body");
     String text = body == null || body == JSONObject.NULL ? null : body instanceof String plain ? JSONObject.quote(plain) : body.toString();
     byte[] bytes = text == null ? null : text.getBytes(StandardCharsets.UTF_8);
-    return AgentService.channel().ask(owner, id, call.getString("method", ""), call.getString("path", ""), streamed, bytes, listener);
+    return AgentService.channel().ask(owner, id, call.getString("method", ""), call.getString("path", ""), streamed, bytes, headers(call), listener);
+  }
+
+  private static Map<String, Object> headers(PluginCall call) {
+    Map<String, Object> named = new LinkedHashMap<>();
+    Object given = call.getData().opt("headers");
+    if (given == null || given == JSONObject.NULL) return named;
+    if (!(given instanceof JSONObject headers)) {
+      named.put("headers", given);
+      return named;
+    }
+    for (var keys = headers.keys(); keys.hasNext();) {
+      String key = keys.next();
+      named.put(key, headers.opt(key));
+    }
+    return named;
   }
 
   private static Topic topic(String name) {

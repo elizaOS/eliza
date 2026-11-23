@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check"; spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did"
+// spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check"; spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
 import { assert, it } from "@effect/vitest"
 import { negotiation } from "../src/device-actions/capabilities.vibe"
 import { deviceOperations } from "../src/device-actions/operation-schemas/device.schema.vibe"
@@ -46,8 +46,9 @@ const samples: Record<string, unknown> = {
   VoicemailReadSelected: { type: "voicemail_read_selected" },
   VoicemailDeleteSelected: { type: "voicemail_delete_selected" },
   SmsLatestSender: { type: "sms_latest_sender" },
-  PhoneKeypad: { type: "phone_keypad" },
-  ContactShow: { type: "contact_show", query: "Maya" },
+  SmsDraft: { type: "sms_compose", target: { kind: "number", number: "+15550100" }, body: "Running late", draft: true },
+  PhoneKeypad: { type: "phone_keypad", number: "+15550100" },
+  ContactShow: { type: "contact_show", query: "Sam" },
   ContactReadSelected: { type: "contact_read_selected" },
   ReadSelectedNotes: { type: "read_selected_notes", notes: [{ id: "note-1", revision: noteRevision }] },
   ReadCalendarRange: range,
@@ -58,6 +59,12 @@ const samples: Record<string, unknown> = {
   CreateReminder: { type: "create_reminder", title: "Call Sam", dueAt: "2026-11-22T09:00:00Z" },
   OpenView: { type: "open_view", view: "photos" },
   BrowserNavigate: { type: "browser_navigate", url: "example.com/menu" },
+  BrowserSearch: { type: "browser_search", query: " weather  in Paris " },
+  BrowserTabNew: { type: "browser_tab_new", private: false },
+  BrowserTabSwitch: { type: "browser_tab_switch", target: "news" },
+  BrowserTabClose: { type: "browser_tab_close", all: true },
+  BrowserFind: { type: "browser_find", text: "opening hours" },
+  BrowserHistory: { type: "browser_history", action: "back" },
 }
 
 function checked(input: unknown): CheckedOperation {
@@ -83,6 +90,18 @@ it("Propose only operations the device can check: every media, files, telephony,
   assert.isTrue(Option.isNone(encodeBrowser({ ...browser, url: "http://example.com/menu" })))
   assert.deepStrictEqual(checked({ type: "files_open", path: "Download/" }).operation, { type: "files_open", path: "Download" })
   assert.strictEqual((checked(samples.FilesFilter).operation as { text: string }).text, "lease")
+  assert.deepStrictEqual(checked(samples.BrowserSearch).operation, { type: "browser_search", query: "weather in Paris" })
+  assert.deepStrictEqual(checked(samples.BrowserTabNew).operation, { type: "browser_tab_new" })
+  assert.isUndefined(readOperation({ type: "browser_tab_close", target: "news", all: true }))
+  const shownShare = { type: "files_share", shown: [1, 2] }
+  assert.isTrue(checked(shownShare).versionTwo)
+  assert.isFalse(checked(samples.FilesShare).versionTwo)
+  assert.isUndefined(validate(shownShare, negotiation(true, "files.browser.v1"), "NoBinding"))
+  assert.isDefined(validate(shownShare, negotiation(true, "files.browser.v1,files.shown-target.v1"), "NoBinding"))
+  assert.isUndefined(validate({ type: "browser_tab_close", all: true }, negotiation(true, "browser.tabs.v1"), "NoBinding"))
+  assert.isDefined(validate({ type: "browser_tab_close", all: true }, negotiation(true, "browser.tabs.v1,browser.tabs.close-all.v1"), "NoBinding"))
+  assert.isUndefined(validate({ type: "browser_navigate", url: "example.com", newTab: true }, negotiation(true, "files.browser.v1"), "NoBinding"))
+  assert.isDefined(validate({ type: "browser_navigate", url: "example.com", newTab: true }, negotiation(true, "browser.open-new-tab.v1"), "NoBinding"))
 })
 
 it("Propose only operations the device can check: a proposal with a stray key or a field outside its bounds is refused", () => {
@@ -128,21 +147,61 @@ it("Propose only operations the device can check: each operation needs its own c
   assert.isUndefined(validate(whole, negotiation(true, "sms.latest-sender.v1"), "NoBinding"))
   assert.strictEqual(validate(whole, negotiation(true, "sms.latest-sender.v2"), "NoBinding")?.versionTwo, true)
   assert.strictEqual(readOperation({ type: "sms_latest_sender", includeAddress: false }), undefined)
-  assert.isFalse(mayRunDirectly(checked(whole), "NoBinding", true))
+  assert.isTrue(mayRunDirectly(checked(whole), "NoBinding", true))
   const newTab = { type: "browser_navigate", url: "example.com/menu", newTab: true }
   assert.isDefined(validate(samples.BrowserNavigate, negotiation(true, "files.browser.v1"), "NoBinding"))
   assert.isUndefined(validate(newTab, negotiation(true, "files.browser.v1"), "NoBinding"))
   assert.isDefined(validate(newTab, negotiation(true, "browser.open-new-tab.v1"), "NoBinding"))
 })
 
-it("Propose only operations the device can check: a keypad, a contact search or read, a single-value contact change and a text to an exact number each need their own capability, and a draft never reports a send", () => {
+it("Propose only operations the device can check: a targeted text, a draft in the sender's thread, a contact change by value and a dial to a contact need their newer capability, and a draft never reports a send", () => {
+  const draft = samples.SmsDraft
+  const threaded = { type: "sms_compose", target: { kind: "number", number: "+15550100" }, body: "On my way", draft: true, replyThreadId: "thread:42" }
+  const targeted = { type: "sms_compose", target: { kind: "contact", query: "Sam" }, body: "On my way" }
+  const byValue = { type: "contact_update", query: "Sam", add: { phoneNumbers: ["+15550100"] }, remove: { emailAddresses: ["sam@example.com"] } }
+  const toContact = { type: "phone_dial", target: { kind: "contact", query: "Sam" } }
+  const compose = "sms.compose.v1,sms.compose.v2"
+  assert.isUndefined(validate(targeted, negotiation(true, "sms.compose.v1"), "NoBinding"))
+  assert.strictEqual(validate(targeted, negotiation(true, compose), "NoBinding")?.opType, "SmsCompose")
+  assert.isUndefined(validate(threaded, negotiation(true, compose), "NoBinding"))
+  assert.strictEqual(validate(threaded, negotiation(true, `${compose},sms.latest-sender.v2`), "NoBinding")?.opType, "SmsDraft")
+  assert.isUndefined(validate(byValue, negotiation(true, "contacts.write.v1"), "NoBinding"))
+  assert.isDefined(validate(byValue, negotiation(true, "contacts.write.v1,contacts.write.v2"), "NoBinding"))
+  assert.isUndefined(validate(toContact, negotiation(true, "phone.dial.v1"), "NoBinding"))
+  assert.isDefined(validate(toContact, negotiation(true, "phone.dial.v1,contacts.lookup.v1"), "NoBinding"))
+  for (const input of [
+    { type: "sms_compose", target: { kind: "number", number: "+15550100" }, body: "On my way", replyThreadId: "thread:42" },
+    { type: "sms_compose", target: { kind: "contact", query: "Sam" }, body: "On my way", draft: true, replyThreadId: "thread:42" },
+    { type: "sms_compose", query: "Sam", body: "On my way", draft: true },
+    { type: "contact_update", query: "Sam", set: { phoneNumbers: ["+15550100"] }, add: { phoneNumbers: ["+15550101"] } },
+    { type: "contact_update", query: "Sam", add: { phoneNumbers: ["+15550100"] }, remove: { phoneNumbers: ["+15550100"] } },
+    { type: "contact_update", query: "Sam", add: { phoneNumbers: [] } },
+    { type: "contact_update", query: "Sam" },
+    { type: "phone_keypad", number: "415-555-0100" },
+  ]) assert.isUndefined(readOperation(input), JSON.stringify(input))
+  assert.isTrue(mayRunDirectly(checked(draft), "NoBinding", true))
+  assert.isTrue(mayRunDirectly(checked(samples.PhoneKeypad), "NoBinding", true))
+  assert.isFalse(mayRunDirectly(checked(targeted), "NoBinding", true))
+  assert.strictEqual(outcome(draft, { outcome: "applied", operationId: "claim-1", result: { kind: "sms-compose", status: "drafted" } }), "ReportedApplied")
+  assert.strictEqual(outcome(draft, { outcome: "applied", operationId: "claim-1", result: { kind: "sms-compose", status: "sent" } }), "refused")
+  assert.strictEqual(outcome(draft, { outcome: "failed", operationId: "claim-1", result: { kind: "sms-compose", status: "not-found" } }), "refused")
+  assert.strictEqual(outcome(draft, { outcome: "failed", operationId: "claim-1", result: { kind: "sms-compose", status: "cancelled" } }), "ReportedNothingRan")
+  assert.strictEqual(outcome(samples.PhoneKeypad, { outcome: "applied", operationId: "n1", result: { kind: "phone-keypad", status: "opened" } }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.ContactShow, { outcome: "failed", operationId: "n1", result: { kind: "contact-show", status: "not-found" } }), "ReportedUnknown")
+  const shared = { kind: "contact-read", status: "read", contact: { displayName: null, phoneNumbers: ["(415) 555-0100"], emailAddresses: [] } }
+  assert.strictEqual(outcome(samples.ContactReadSelected, { outcome: "applied", operationId: "n1", result: shared }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.ContactReadSelected, { outcome: "applied", operationId: "n1", result: { kind: "contact-read", status: "none-selected" } }), "refused")
+})
+
+it("Propose only operations the device can check: a keypad, a contact search or read, a single-value contact change, a text to an exact number and a Phone, Messages or Contacts view each need their own capability, a keypad never reports a call and a contact search names nobody", () => {
+  const empty = { type: "phone_keypad" }
   const filled = { type: "phone_keypad", number: "+15550100" }
   const values = { type: "contact_update", query: "Maya", add: { phoneNumbers: ["+15550101"] }, remove: { emailAddresses: ["old@example.com"] } }
   const toNumber = { type: "sms_compose", target: { kind: "number", number: "+15550100" }, body: "Running late" }
   const draft = { ...toNumber, draft: true }
   const accepted = (input: unknown, capabilities: string) => validate(input, negotiation(true, capabilities), "NoBinding") !== undefined
   assert.deepStrictEqual(
-    [accepted(samples.PhoneKeypad, "phone.keypad.v1"), accepted(filled, "phone.keypad.v1"), accepted(samples.PhoneKeypad, "phone.dial.v1,phone.call.v1"),
+    [accepted(empty, "phone.keypad.v1"), accepted(filled, "phone.keypad.v1"), accepted(empty, "phone.dial.v1,phone.call.v1"),
       accepted(samples.ContactShow, "contacts.show.v1"), accepted(samples.ContactShow, "contacts.write.v1"),
       accepted(samples.ContactReadSelected, "contacts.read.v1"), accepted(samples.ContactReadSelected, "contacts.show.v1"),
       accepted(values, "contacts.write.v1,contacts.write.v2"), accepted(values, "contacts.write.v1"), accepted(samples.ContactUpdate, "contacts.write.v1"),
@@ -157,9 +216,9 @@ it("Propose only operations the device can check: a keypad, a contact search or 
     { type: "contact_show" }, { type: "contact_read_selected", query: "Maya" }, { ...toNumber, query: "Maya" },
   ]) assert.isUndefined(readOperation(input), JSON.stringify(input))
   assert.deepStrictEqual(
-    [mayRunDirectly(checked(samples.PhoneKeypad), "NoBinding", true), mayRunDirectly(checked(filled), "NoBinding", true),
+    [mayRunDirectly(checked(empty), "NoBinding", true), mayRunDirectly(checked(filled), "NoBinding", true),
       mayRunDirectly(checked(samples.ContactShow), "NoBinding", true), mayRunDirectly(checked(samples.ContactReadSelected), "NoBinding", true)],
-    [true, false, false, false])
+    [true, true, false, false])
   const composed = (status: string) => ({ outcome: status === "drafted" || status === "sent" ? "applied" : status === "unknown" ? "unknown" : "failed", operationId: "claim-1", result: { kind: "sms-compose", status } })
   assert.deepStrictEqual(
     [outcome(draft, composed("drafted")), outcome(draft, composed("sent")), outcome(draft, composed("unknown")), outcome(toNumber, composed("sent")),
@@ -211,7 +270,8 @@ it("Propose only operations the device can check: only a reversible local operat
   assert.isTrue(mayRunDirectly(checked(samples.FilesOpen), "NoBinding", true))
   assert.isTrue(mayRunDirectly(checked(samples.SmsReplySelected), "NoBinding", true))
   assert.isFalse(mayRunDirectly(checked(samples.FilesOpen), "NoBinding", false))
-  for (const type of ["SmsSend", "PhoneCall", "ContactDelete", "FilesShare", "PhotosShare", "PhotoLibraryReview", "VoicemailDeleteSelected"])
+  assert.isTrue(mayRunDirectly(checked(samples.BrowserHistory), "NoBinding", true))
+  for (const type of ["SmsSend", "PhoneCall", "ContactDelete", "FilesShare", "PhotosShare", "PhotoLibraryReview", "VoicemailDeleteSelected", "BrowserTabClose"])
     assert.isFalse(mayRunDirectly(checked(samples[type]), "NoBinding", true), type)
 })
 

@@ -1,4 +1,4 @@
-// spec/os/voice/cloudSpeech.md, "Story: Talk to the agent through the cloud speech relay"; spec/os/voice/speechOutput.md, "Audio focus is held while a reply speaks and abandoned exactly when it stops"; spec/os/voice/speechOutput.md, "A focus loss stops the reply and drops its unplayed audio, and a ducking loss only lowers it"; spec/os/voice/microphone.md, "One user holds the slot, and every other reservation is refused while it does"
+// spec/os/voice/cloudSpeech.md, "Story: Talk to the agent through the cloud speech relay"; spec/os/voice/speechOutput.md, "Audio focus is held while a reply speaks or a listener holds it, and abandoned exactly when neither does"; spec/os/voice/speechOutput.md, "A listener holds focus while its microphone is open, and a transient loss pauses it until focus returns"; spec/os/voice/cloudSpeech.md, "A transient focus loss pauses listening and speaking until focus returns"; spec/os/voice/speechOutput.md, "A focus loss stops the reply and drops its unplayed audio, and a ducking loss only lowers it"; spec/os/voice/microphone.md, "One user holds the slot, and every other reservation is refused while it does"
 package ai.eliza.voice;
 
 import ai.eliza.voice.CloudSpeechPolicy.Answer;
@@ -154,6 +154,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   private final ArrayDeque<JSObject> timings = new ArrayDeque<>();
   private SpeechAudioFocus focus;
   private Utterance focusHolder;
+  private Session listener;
   private volatile Session session;
   private volatile PluginCall pendingStart;
   private volatile boolean foreground = true, destroyed;
@@ -324,7 +325,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     if (own.askedAt == 0) own.askedAt = SystemClock.elapsedRealtime();
     JSONObject answer;
     try {
-      answer = post(own, "consent", new JSONObject());
+      answer = consentAnswer(own);
     } catch (Exception failure) {
       if (failure instanceof Changed) {
         invalidate(own);
@@ -461,6 +462,16 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     return new Refused(status, data, CloudSpeechWire.refused(status, body, retryAfter, System.currentTimeMillis()));
   }
 
+  private JSONObject consentAnswer(Session own) throws Exception {
+    try {
+      return post(own, "consent", new JSONObject());
+    } catch (IOException failure) {
+      if (!CloudSpeechWire.droppedConnection(failure)) throw failure;
+      mark(own, "consent-retry");
+      return post(own, "consent", new JSONObject());
+    }
+  }
+
   private JSONObject post(Session own, String path, JSONObject body) throws Exception {
     if (!valid(own)) throw new Changed();
     mark(own, path + "-start");
@@ -495,6 +506,9 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
           return new JSONObject();
         }
       }
+    } catch (Exception failure) {
+      mark(own, path + "-failed");
+      throw failure;
     } finally {
       own.pending = null;
     }
@@ -571,6 +585,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   private void mute(Session own, PluginCall call) {
     own.muted = true;
     if (apply(own, new Event.Mute(), null) == null && own.captured && !own.closed.get()) silence(own, own.muteGeneration.incrementAndGet(), SILENCE_FRAMES);
+    releaseListening(own);
     if (call != null) submit(media, call::resolve, () -> call.reject("Voice is closed"));
   }
 
@@ -583,10 +598,40 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     }
     if (call != null) own.unmuteCalls.add(call);
     if (s.capture() == CloudSpeechPolicy.Capture.RESERVING) return;
-    if (apply(own, new Event.Unmute(microphoneGranted()), null) != null) return;
+    if (s.focusPaused()) {
+      settleUnmutes(own, true);
+      return;
+    }
+    boolean granted = microphoneGranted();
+    String refused = granted ? focus.openListening() : null;
+    if (refused != null) {
+      own.muted = true;
+      refuseUnmutes(own, refused);
+      if (call == null) deviceEnded(own, DeviceCause.FOCUS_UNAVAILABLE, refused);
+      return;
+    }
+    if (granted) listener = own;
+    if (apply(own, new Event.Unmute(granted), null) != null) return;
+    releaseListening(own);
     own.muted = true;
     settleUnmutes(own, false);
     if (call == null) settleStart(own, false);
+  }
+
+  /** Main thread. Only the session that holds focus for its microphone gives it up, so an ended session never releases a newer one's. */
+  private void releaseListening(Session own) {
+    if (listener != own) return;
+    listener = null;
+    focus.closeListening();
+  }
+
+  private void refuseUnmutes(Session own, String code) {
+    List<PluginCall> calls;
+    synchronized (own.unmuteCalls) {
+      calls = new ArrayList<>(own.unmuteCalls);
+      own.unmuteCalls.clear();
+    }
+    for (PluginCall call : calls) call.reject("Microphone could not change state", code);
   }
 
   private boolean microphoneGranted() {
@@ -632,6 +677,10 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       call.reject("Speech could not start");
       return;
     }
+    if (own.machine.state().focusPaused()) {
+      call.reject("Speech is paused while another app holds audio focus", SpeechAudioFocusPolicy.FOCUS_PAUSED);
+      return;
+    }
     if (own.speakerDraining) {
       call.reject("Invalid speech request");
       return;
@@ -646,7 +695,8 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     }
     String refused = focus.startSpeech();
     if (refused != null) {
-      apply(own, new Event.Output(SpeechAudioFocusPolicy.CALL_ACTIVE.equals(refused) ? OutputNotice.REFUSED_CALL_ACTIVE : OutputNotice.REFUSED_FOCUS_DENIED), null);
+      apply(own, new Event.Output(SpeechAudioFocusPolicy.CALL_ACTIVE.equals(refused) ? OutputNotice.REFUSED_CALL_ACTIVE
+          : SpeechAudioFocusPolicy.FOCUS_PAUSED.equals(refused) ? OutputNotice.REFUSED_FOCUS_PAUSED : OutputNotice.REFUSED_FOCUS_DENIED), null);
       call.reject("Speech could not start", refused);
       return;
     }
@@ -855,6 +905,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       if (u.playback != null) u.playback.stop();
       main.post(() -> releaseFocus(u, false));
     }
+    main.post(() -> releaseListening(own));
     own.feeder.shutdown();
   }
 
@@ -920,7 +971,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   /** Media thread: reserves the microphone slot as live capture, opens it, and reports the answer. */
   private void openMicrophone(Session own) {
     if (own.closed.get() || own.machine.state().capture() != CloudSpeechPolicy.Capture.RESERVING) {
-      settleUnmutes(own, own.muted && !own.closed.get());
+      settleUnmutes(own, settledAway(own));
       return;
     }
     LocalMicrophoneLease lease;
@@ -944,13 +995,18 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     if (step == null || CloudSpeechPolicy.ended(step.state())) {
       if (own.microphone == microphone) own.microphone = null;
       microphone.close();
-      settleUnmutes(own, own.muted && !own.closed.get());
+      settleUnmutes(own, settledAway(own));
       return;
     }
     own.captured = true;
     microphone.listen(step.state().generation());
     settleStart(own, microphone.echoEnabled);
     settleUnmutes(own, true);
+  }
+
+  /** An unmute overtaken by a mute or a focus pause still succeeds: the mute won, or the regain opens the microphone. */
+  private boolean settledAway(Session own) {
+    return (own.muted || own.machine.state().focusPaused()) && !own.closed.get();
   }
 
   /** Main thread: a draft recording asked for the microphone, so live capture mutes and hands it over once released. */
@@ -975,9 +1031,9 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     if (microphone != null) microphone.close();
   }
 
-  /** Each mute after the microphone first opened sends a bounded silence tail that closes the provider's current turn. */
+  /** Each mute or focus pause after the microphone first opened sends a bounded silence tail that closes the provider's current turn. */
   private void silence(Session own, long generation, int remaining) {
-    if (remaining <= 0 || !own.muted || own.muteGeneration.get() != generation || own.closed.get()) return;
+    if (remaining <= 0 || !own.muted && !own.machine.state().focusPaused() || own.muteGeneration.get() != generation || own.closed.get()) return;
     if (own.machine.state().capture() == CloudSpeechPolicy.Capture.LISTENING) return;
     if (!own.sendPcm(new byte[MIC_FRAME], MIC_FRAME)) return;
     main.postDelayed(() -> silence(own, generation, remaining - 1), SILENCE_MS);
@@ -1404,7 +1460,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     else main.post(() -> outputChanged(notices));
   }
 
-  /** Main thread: what the speech output reports. A focus loss stops the reply only; a call ends the session. */
+  /** Main thread: what the speech output reports. A transient focus loss stops the reply and pauses listening until focus returns; a permanent loss or a call ends the session. */
   private void outputChanged(List<SpeechOutputGate.Notice> notices) {
     Session own = session;
     Utterance holder = focusHolder;
@@ -1423,7 +1479,21 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       if (playback != null) playback.duck(duck);
       if (own != null) apply(own, new Event.Output(duck ? OutputNotice.DUCK_VOLUME : OutputNotice.RESTORE_VOLUME), null);
     }
+    if (own != null && notices.contains(SpeechOutputGate.Notice.PAUSE_LISTENING) && !own.machine.state().focusPaused()) {
+      if (own.machine.state().reply() != null) apply(own, new Event.CancelReply(), null);
+      Step paused = apply(own, new Event.Output(OutputNotice.PAUSE_LISTENING), null);
+      if (paused != null && paused.state().focusPaused()) emit(own, "focus-paused", new JSObject());
+    }
+    if (own != null && notices.contains(SpeechOutputGate.Notice.RESUME_LISTENING) && own.machine.state().focusPaused()) {
+      Step resumed = apply(own, new Event.Output(OutputNotice.RESUME_LISTENING), null);
+      if (resumed != null && !resumed.state().focusPaused()) emit(own, "focus-resumed", new JSObject());
+    }
+    if (notices.contains(SpeechOutputGate.Notice.PERMANENT_LOSS)) {
+      listener = null;
+      if (own != null && !call) deviceEnded(own, DeviceCause.FOCUS_UNAVAILABLE, AUDIO_FOCUS_LOST);
+    }
     if (call && own != null) {
+      listener = null;
       if (CloudSpeechPolicy.live(own.machine.state())) apply(own, new Event.Output(OutputNotice.STOP_CAPTURE), Why.code(SpeechAudioFocusPolicy.CALL_ACTIVE));
       else deviceEnded(own, DeviceCause.CALL_BEFORE_LIVE, SpeechAudioFocusPolicy.CALL_ACTIVE);
     }

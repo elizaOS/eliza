@@ -287,11 +287,18 @@ pure def sometimesStoppedReplyStored(s: Turns): bool = s.replies.some(r => r.kin
 
 `POST /api/conversations/:id/messages/:messageId/heard` takes `{heardText}`
 or `{nothingHeard: true}`. Heard text must be nonblank and a prefix of the
-reply's UTF-16 units; it records the boundary at its end, nothing heard at
+reply as written, as written with whitespace runs collapsed, or as spoken:
+the reply's speech text, without its markdown, addresses, code and stage
+directions, whitespace collapsed. A collapsed or spoken prefix stands for
+the shortest prefix of the reply's UTF-16 units that says it, a spoken one
+cut at the end of a word; a report the whole reply says is heard to its
+end. It records the boundary at the end of that prefix, nothing heard at
 zero. A report past the current boundary, or not a prefix, is 409
 `CONVERSATION_HEARD_NOT_PREFIX`; one at the boundary is `unchanged`; an id
 that is not an agent reply of this conversation is 404. A reply heard to
-its end needs no boundary.
+its end needs no boundary. The reply is its whole stored text: a reply too
+long to keep inline (over 64 KiB) is read back from its stored segments,
+so its heard text is compared with all of it.
 
 ```quint
 import streamUnits.* from "../../core/streamUnits"
@@ -327,7 +334,10 @@ pure def sometimesPartHeard(s: Turns): bool = s.replies.some(r => boundaryOf(r) 
 ### The heard part and the unheard remainder together are the whole reply
 
 The next turn's context shows the stored reply with its unheard remainder
-marked; nothing is dropped.
+marked; nothing is dropped, a reply read back from its stored segments
+included. A message whose stored segments are missing or do not match its
+digest is shown as a note that its text could not be read back, never left
+out of the history.
 
 ```quint
 pure def heardPart(r: Reply): List[int] = sliceUnits(r.units, 0, boundaryOf(r))

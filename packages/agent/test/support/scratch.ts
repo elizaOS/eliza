@@ -30,6 +30,7 @@ export interface LaunchOptions {
   readonly productPlugin?: string;
   readonly persistMemory?: boolean;
   readonly callerRole?: "owner" | "user";
+  readonly timeZone?: string;
   readonly retention?: { readonly days: number; readonly maxRowsPerRoom: number; readonly intervalMinutes: number };
   readonly privacy?: { readonly secretSwap: boolean; readonly piiSwap: boolean };
   readonly google?: { readonly gmailChanges: boolean; readonly calendarEdits: boolean };
@@ -71,6 +72,7 @@ export function launchDocument(options: LaunchOptions = {}): Record<string, unkn
     embeddings: "none",
     persistMemory: options.persistMemory ?? false,
     callerRole: options.callerRole ?? "user",
+    ...(options.timeZone === undefined ? {} : { timeZone: options.timeZone }),
     ...(options.retention === undefined ? {} : { retention: options.retention }),
     ...(options.privacy === undefined ? {} : { privacy: options.privacy }),
     ...(options.google === undefined ? {} : { google: options.google }),

@@ -1,0 +1,173 @@
+// spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/reminderEscalation.md, "New steps keep the quiet hours of the reminder"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"; spec/assistant/reminderEscalation.md, "Intensity shapes only the follow-ups: minimal drops them, persistent adds one, and high priority only keeps them for a high-priority reminder"; spec/assistant/reminderEscalation.md, "A quiet owner is chased one notch less"
+import { createReminderPresentation, type ActionResult, type UUID } from "@elizaos/core"
+import { configureEscalation, effectiveIntensity, followupsUnder, noEscalation, ownerQuiet, quietIntensity, escalationOutcome, type EscalationPlan, type QuietHours, type ReminderChannel, type ReminderIntensity } from "../gen/assistant__reminderEscalation.effect.vibe"
+import { Facts, Scheduler, presentOnce, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { appliedReceipt, attributed } from "./replies.vibe"
+import type { ReminderEscalation } from "./requests.schema.vibe"
+import { hhmm, localMinutes, minuteOf } from "./time.vibe"
+import { ownerClockAt } from "./timezone.vibe"
+
+export const escalationKind = "personal-assistant.reminder-escalation"
+
+const channels = { in_app: "InApp", push: "Push" } as const satisfies Record<string, ReminderChannel>
+type ChannelName = keyof typeof channels
+const isChannelName = (name: unknown): name is ChannelName => typeof name === "string" && Object.hasOwn(channels, name)
+
+const Quiet = Schema.Union([
+  Schema.Struct({ tag: Schema.Literal("NoQuietHours") }),
+  Schema.Struct({ tag: Schema.Literal("QuietBetween"), startMinute: Schema.Number, endMinute: Schema.Number }),
+])
+const EscalationRecord = Schema.Struct({
+  inAppAfter: Schema.Array(Schema.Number), pushAfter: Schema.Array(Schema.Number), quiet: Quiet,
+  quietZone: Schema.String, firedAt: Schema.NullOr(Schema.Number),
+})
+type EscalationRecord = typeof EscalationRecord.Type
+const decodeRecord = Schema.decodeUnknownOption(EscalationRecord)
+const recordKey = (taskId: string) => `reminder-escalation:${taskId}`
+const noQuiet: QuietHours = { tag: "NoQuietHours" }
+
+const planOf = (record: EscalationRecord): EscalationPlan => ({ inAppAfter: [...record.inAppAfter], pushAfter: [...record.pushAfter], quiet: record.quiet })
+const ascending = (minutes: readonly number[]) => [...new Set(minutes)].sort((a, b) => a - b)
+
+function describePlan(plan: EscalationPlan, zone: string): string {
+  const steps = [...plan.inAppAfter.map((minutes) => ["in_app", minutes] as const), ...plan.pushAfter.map((minutes) => ["push", minutes] as const)]
+    .sort((a, b) => a[1] - b[1]).map(([channel, minutes]) => `${channel} at +${minutes}m`)
+  const quiet = plan.quiet.tag === "QuietBetween" ? `; quiet hours ${hhmm(plan.quiet.startMinute)}-${hhmm(plan.quiet.endMinute)} ${zone}` : ""
+  return `${steps.length === 0 ? "no follow-ups" : steps.join(", ")}${quiet}`
+}
+
+effect function escalationOf(taskId: string) {
+  return try readRecord(recordKey(taskId), decodeRecord)
+}
+
+export effect function changeEscalation(task: TaskRow, request: ReminderEscalation, messageId: string) {
+  const title = task.promptInstructions
+  const steps: ReadonlyArray<{ readonly channel: string; readonly afterMinutes: number }> =
+    request.steps ?? (request.afterMinutes === undefined ? [] : [{ channel: "push", afterMinutes: request.afterMinutes }])
+  const unreachable = [...new Set(steps.map((step) => step.channel).filter((channel) => !isChannelName(channel)))]
+  if (unreachable.length > 0) {
+    return {
+      success: false, text: `I can't send reminders by ${unreachable.join(", ")}. Use one of: ${Object.keys(channels).join(", ")}.`,
+      data: { outcome: "REMINDER_CHANNEL_UNREACHABLE", invalidChannels: unreachable },
+    } satisfies ActionResult
+  }
+  const quietHours = request.quietHours
+  const quietStart = quietHours === undefined ? undefined : minuteOf(quietHours.start)
+  const quietEnd = quietHours === undefined ? undefined : minuteOf(quietHours.end)
+  if (quietHours !== undefined && (quietStart === undefined || quietEnd === undefined)) {
+    return { success: false, text: "Give quiet hours as a start and an end time, such as 22:00 to 07:00.", data: { outcome: "QUIET_HOURS_INVALID" } } satisfies ActionResult
+  }
+  if (steps.length === 0 && quietHours === undefined) {
+    return { success: false, text: `How should "${title}" escalate? For example: nudge me again if I don't respond in 30 minutes.`, data: { outcome: "ESCALATION_TIMING_MISSING" } } satisfies ActionResult
+  }
+  const at = try (try Facts).now()
+  const clock = try ownerClockAt(at)
+  const before = try escalationOf(task.taskId)
+  const plan = configureEscalation(before === undefined ? noEscalation : planOf(before), {
+    askedInApp: ascending(steps.filter((step) => step.channel === "in_app").map((step) => step.afterMinutes)),
+    askedPush: ascending(steps.filter((step) => step.channel === "push").map((step) => step.afterMinutes)),
+    replaceAll: request.replace === true,
+    askedQuiet: quietStart === undefined || quietEnd === undefined ? noQuiet : { tag: "QuietBetween", startMinute: quietStart, endMinute: quietEnd },
+    quietGiven: quietHours !== undefined,
+  })
+  const zone = quietHours === undefined ? before?.quietZone ?? clock : clock
+  try writeRecord(recordKey(task.taskId), { ...plan, quietZone: zone, firedAt: before?.firedAt ?? null } satisfies EscalationRecord)
+  const receipt = appliedReceipt({ operation: "reminder.escalate", kind: "reminder", id: task.taskId, key: `reminder:escalate:${messageId}`, at })
+  return attributed([{ actionName: "OWNER_REMINDERS", success: true, receipts: [receipt] }], `reminder:${task.taskId}`, {
+    done: `Updated reminder plan for "${title}": ${describePlan(plan, zone)}.`,
+    notDone: `The escalation of "${title}" was not changed.`,
+    unproven: `I couldn't confirm the escalation of "${title}" was changed.`,
+  }, { taskId: task.taskId })
+}
+
+const intensities = {
+  minimal: "IntensityMinimal", normal: "IntensityNormal", persistent: "IntensityPersistent", high_priority_only: "IntensityHighPriorityOnly",
+} as const satisfies Record<string, ReminderIntensity>
+export type IntensityName = keyof typeof intensities
+const intensityWords: Readonly<Record<IntensityName, string>> = { minimal: "minimal", normal: "normal", persistent: "persistent", high_priority_only: "high priority only" }
+export const isIntensityName = (name: unknown): name is IntensityName => typeof name === "string" && Object.hasOwn(intensities, name)
+const decodeIntensity = Schema.decodeUnknownOption(Schema.Struct({ intensity: Schema.Literals(["minimal", "normal", "persistent", "high_priority_only"]) }))
+const ownerIntensityKey = "reminder-intensity"
+const intensityKey = (taskId: string) => `reminder-intensity:${taskId}`
+const routineIntensityKey = (routineId: string) => `reminder-intensity:routine:${routineId}`
+const lastAnswerKey = "owner-last-answer"
+const decodeAnswered = Schema.decodeUnknownOption(Schema.Struct({ at: Schema.Number }))
+
+effect function intensityAt(key: string) {
+  const kept = try readRecord(key, decodeIntensity)
+  return kept === undefined ? "IntensityUnset" : intensities[kept.intensity]
+}
+
+export effect function noteOwnerAnswer() {
+  try writeRecord(lastAnswerKey, { at: try (try Facts).now() })
+}
+
+effect function followupIntensity(ownKey: string) {
+  const own = try intensityAt(ownKey)
+  const owners = try intensityAt(ownerIntensityKey)
+  const answered = try readRecord(lastAnswerKey, decodeAnswered)
+  return quietIntensity(effectiveIntensity(own, owners), ownerQuiet(answered?.at ?? 0, try (try Facts).now()))
+}
+
+export effect function routineNudgeMinutes(routineId: string) {
+  return followupsUnder(noEscalation, try followupIntensity(routineIntensityKey(routineId)), false).inAppAfter
+}
+
+export type IntensityTarget =
+  | { readonly kind: "owner" }
+  | { readonly kind: "reminder"; readonly task: TaskRow }
+  | { readonly kind: "routine"; readonly routineId: string; readonly title: string }
+
+export effect function changeIntensity(intensity: IntensityName, target: IntensityTarget, messageId: string) {
+  const at = try (try Facts).now()
+  const key = `reminder:intensity:${messageId}`
+  const [recordKey, id, done] = target.kind === "owner" ? [ownerIntensityKey, "owner", `Your reminders are now ${intensityWords[intensity]}.`] as const
+    : target.kind === "reminder" ? [intensityKey(target.task.taskId), target.task.taskId, `Reminder intensity for "${target.task.promptInstructions}" is now ${intensityWords[intensity]}.`] as const
+    : [routineIntensityKey(target.routineId), `routine:${target.routineId}`, `Reminder intensity for the routine "${target.title}" is now ${intensityWords[intensity]}.`] as const
+  try writeRecord(recordKey, { intensity })
+  const receipt = appliedReceipt({ operation: "reminder.intensity", kind: "reminder-intensity", id, key, at })
+  return attributed([{ actionName: "OWNER_REMINDERS", success: true, receipts: [receipt] }], `reminder-intensity:${id}`, {
+    done, notDone: "The reminder intensity was not changed.", unproven: "I couldn't confirm the reminder intensity was changed.",
+  }, { intensity, taskId: target.kind === "reminder" ? target.task.taskId : null, routineId: target.kind === "routine" ? target.routineId : null })
+}
+
+export effect function scheduleEscalation(task: TaskRow) {
+  const kept = try escalationOf(task.taskId)
+  const intensity = try followupIntensity(intensityKey(task.taskId))
+  const record: EscalationRecord = kept ?? { ...noEscalation, quietZone: "", firedAt: null }
+  const plan = followupsUnder(planOf(record), intensity, task.metadata.priority === "high")
+  const steps = [...plan.inAppAfter.map((minutes) => ["in_app", minutes] as const), ...plan.pushAfter.map((minutes) => ["push", minutes] as const)]
+  if (kept === undefined && steps.length === 0) return
+  const firedAt = try (try Facts).now()
+  try writeRecord(recordKey(task.taskId), { ...record, firedAt } satisfies EscalationRecord)
+  const scheduler = try Scheduler
+  for (const [channel, minutes] of steps) {
+    try scheduler.create({
+      kind: escalationKind, ownerVisible: false, promptInstructions: task.promptInstructions,
+      trigger: { kind: "once", atIso: new Date(firedAt + minutes * 60_000).toISOString() } as const,
+      metadata: { reminderTaskId: task.taskId, channel, firedAt, roomId: task.metadata.roomId ?? null },
+      idempotencyKey: `reminder-escalation:${task.taskId}:${firedAt}:${channel}:${minutes}`,
+    })
+  }
+}
+
+export effect function deliverEscalation(task: TaskRow) {
+  const { reminderTaskId, firedAt, channel, roomId } = task.metadata
+  if (typeof reminderTaskId !== "string" || typeof firedAt !== "number" || !isChannelName(channel)) {
+    return { kind: "undeliverable", error: "The escalation names no reminder firing" } satisfies DeliveryAnswer
+  }
+  const record = try escalationOf(reminderTaskId)
+  const reminder = try (try Scheduler).find(reminderTaskId)
+  const now = try (try Facts).now()
+  const clock = try ownerClockAt(now)
+  const zone = record === undefined || record.quietZone === "" ? clock : record.quietZone
+  const unanswered = record !== undefined && record.firedAt === firedAt && reminder?.status === "Fired"
+  const outcome = escalationOutcome(channels[channel], record?.quiet ?? noQuiet, localMinutes(now, zone) % 1440, unanswered)
+  if (outcome !== "NudgeSent") return { kind: "delivered" } satisfies DeliveryAnswer
+  const body = `${task.promptInstructions.trim()} still needs your attention`
+  const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Reminder"), catch: () => "unpresentable" }) catch () => undefined
+  if (presentation === undefined) return { kind: "undeliverable", error: "The reminder has no text to present" } satisfies DeliveryAnswer
+  return try presentOnce({
+    taskId: reminderTaskId, kind: task.kind, roomId: typeof roomId === "string" ? roomId as UUID : undefined, presentation, conversationOnly: channel === "in_app",
+  })
+}

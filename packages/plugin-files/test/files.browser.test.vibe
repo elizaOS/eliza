@@ -45,6 +45,12 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
     const memo = try selections.select("Download/memo.txt")
     assert.deepEqual(try selections.readText(memo.selectionId), { kind: "read", text: "memo", mimeType: "text/plain", bytes: 4 })
     assert.deepEqual(try selections.attachment(memo.selectionId), { name: "memo.txt", mimeType: "text/plain", dataBase64: "bWVtbw==" })
+    const selectedLease = try selections.select("Download/lease.pdf")
+    assert.equal(try status(selections.rename(selectedLease.selectionId, "MEMO.txt")), "exists")
+    assert.deepEqual(try selections.rename(selectedLease.selectionId, "contract.pdf"), { selectionId: selectedLease.selectionId, name: "contract.pdf", mimeType: "application/pdf", size: 8 })
+    assert.equal((try selections.bytes(selectedLease.selectionId)).name, "contract.pdf")
+    assert.equal(try volume.rename("Download/contract.pdf", "lease.pdf"), "Download/lease.pdf")
+    assert.equal(try status(selections.rename(selectedLease.selectionId, "again.pdf")), "changed")
 
     const reviewed = try volume.reviewedIdentities(["Download/lease.pdf", "Download/memo.txt"])
     assert.equal(try volume.rename("Download/memo.txt", "notes.txt"), "Download/notes.txt")
