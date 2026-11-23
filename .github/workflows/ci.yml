@@ -1,246 +1,89 @@
-name: ci
-
-# Every run is the tasks of `pnpm verify`, the tools' own self-test included,
-# split over four jobs that run side by side: the self-test of the tools in
-# three, everything else in one. Turborepo and spec skip what the change does
-# not reach, from the cache of the last run. The fixed normal profile is the
-# same locally and in CI. The self-test also installs and checks each
-# standalone example.
+name: Check packed Core installation isolation
 on:
-  pull_request:
-    branches: [vibestack, develop, main]
   push:
-    branches: [vibestack, develop, main]
-
-concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_attempt == '1' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-env:
-  TURBO_TELEMETRY_DISABLED: "1"
-
+    branches: [codex/measure-core-fixture-isolation-1123]
 permissions:
   contents: read
-
 jobs:
-  android-node-lock:
-    name: Verify published Android Node lock
+  compare:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 50
+    env:
+      TURBO_CACHE: local:rw
+      TURBO_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: db085c717fff3dd9672271f44337c93d70cc1064
+          fetch-depth: 2
           persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            .github/workflows/ci.yml
-            packages/os/aosp/runtime/node.lock.json
-            packages/os/android/android-runtime-inventory.mjs
-      - id: changed
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && git fetch --no-tags --depth=1 origin "$BASE_SHA" &&
-            git diff --quiet "$BASE_SHA" HEAD -- .github/workflows/ci.yml packages/os/aosp/runtime/node.lock.json packages/os/android/android-runtime-inventory.mjs; then
-            exit 0
-          fi
-          echo 'verify=true' >> "$GITHUB_OUTPUT"
-      - if: steps.changed.outputs.verify == 'true'
-        uses: actions/setup-node@v6
+      - uses: ./.github/actions/setup
         with:
-          node-version: '26'
-      - if: steps.changed.outputs.verify == 'true'
-        name: Verify the two released ABI archives and producer manifests
+          job: verify
+          cache-verification: "false"
+      - name: Run the real packed Core consumer with both install modes
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          node --input-type=module <<'JS'
-          import assert from 'node:assert/strict';
-          import { execFileSync } from 'node:child_process';
-          import { createHash } from 'node:crypto';
-          import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-          import { tmpdir } from 'node:os';
-          import { join } from 'node:path';
-          import { isAndroidExecutableForAbi } from './packages/os/android/android-runtime-inventory.mjs';
-
-          const lock = JSON.parse(readFileSync('packages/os/aosp/runtime/node.lock.json', 'utf8'));
-          const { version, ndk, apiLevel, buildCommit, sourceSha256, entries } = lock;
-          const sha256 = /^[0-9a-f]{64}$/;
-          assert.ok(Array.isArray(entries) && entries.length === 2, 'Pin both released Android Node ABIs');
-          assert.match(version, /^26\.\d+\.\d+$/);
-          assert.match(ndk, /^\d+\.\d+\.\d+$/);
-          assert.ok(Number.isSafeInteger(apiLevel) && apiLevel > 0, 'Invalid Android API level');
-          assert.match(buildCommit, /^[0-9a-f]{40}$/);
-          assert.match(sourceSha256, sha256);
-          assert.deepEqual(entries.map(entry => entry.abi).sort(), ['arm64-v8a', 'x86_64']);
-
-          const repo = 'elizaOS/eliza';
-          const tag = `android-node-v${version}-ndk-${ndk}`;
-          const assetName = abi => `node-v${version}-android-${abi}.zip`;
-          for (const entry of entries) {
-            assert.match(entry.sha256, sha256);
-            assert.match(entry.archiveSha256, sha256);
-            assert.equal(entry.url, `https://github.com/${repo}/releases/download/${tag}/${assetName(entry.abi)}`);
-          }
-          const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-          const archiveDir = mkdtempSync(join(tmpdir(), 'android-node-lock-'));
-          try {
-            for (const { abi, sha256, archiveSha256 } of entries) {
-              const name = assetName(abi);
-              execFileSync('gh', ['release', 'download', tag, '--repo', repo, '--pattern', name, '--dir', archiveDir], { stdio: 'inherit' });
-              const archive = join(archiveDir, name);
-              assert.equal(hash(readFileSync(archive)), archiveSha256, `${abi} archive digest does not match the lock`);
-              const manifest = JSON.parse(execFileSync('unzip', ['-p', archive, 'manifest.json'], { encoding: 'utf8', maxBuffer: 64 * 1024 }));
-              assert.deepEqual({
-                schema: manifest.schema, abi: manifest.abi, version: manifest.version, ndk: manifest.ndk,
-                apiLevel: manifest.apiLevel, buildCommit: manifest.buildCommit, sourceSha256: manifest.sourceSha256, sha256: manifest.sha256,
-              }, { schema: 1, abi, version, ndk, apiLevel, buildCommit, sourceSha256, sha256 });
-              const binary = execFileSync('unzip', ['-p', archive, 'libeliza_node.so'], { maxBuffer: 512 * 1024 * 1024 });
-              assert.ok(isAndroidExecutableForAbi(binary, abi), `${abi} archive contains the wrong executable`);
-              assert.equal(hash(binary), sha256, `${abi} executable digest does not match the lock`);
-            }
-          } finally { rmSync(archiveDir, { recursive: true, force: true }); }
-          console.log('Both released Android Node ABIs match the runtime lock.');
-          JS
-
-  verify:
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: verify
-            tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
-    env: &cache-env
-      TURBO_CACHE: local:rw
-    steps: &verification-steps
-      - uses: actions/checkout@v7
-      - id: setup
-        uses: ./.github/actions/setup
-        with:
-          job: ${{ matrix.name }}
-      - id: verify-tasks
-        run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
-      - name: Report Turbo task timings
-        id: task-timings
-        if: ${{ !cancelled() }}
-        env:
-          RESTORED_FIXTURE_EVALUATOR: ${{ steps.setup.outputs.spec-evaluator-restored == 'true' && steps.verify-tasks.outcome == 'success' }}
-          TASK: ${{ matrix.tasks }}
-        run: |
-          for report in .turbo/runs/*.json; do
-            [[ -f "$report" ]] || continue
-            jq -r '
-              select(.version == "1" and (.tasks | type == "array"))
-              | .execution as $run
-              | select([$run.startTime, $run.endTime, $run.cached, $run.attempted] | all(type == "number"))
-              | "### Turbo task timings", "",
-                "Wall time \(($run.endTime - $run.startTime) / 1000) s. Cache hits \($run.cached) of \($run.attempted) attempted tasks.",
-                "",
-                "| Task | Wall time (s) | Cache | Exit code |",
-                "| --- | ---: | --- | ---: |",
-                ([.tasks[]
-                  | select([.execution.startTime, .execution.endTime] | all(type == "number"))
-                  | {id: .taskId, elapsed: ((.execution.endTime - .execution.startTime) / 1000), cache: .cache.status, exit: .execution.exitCode}]
-                  | sort_by(-.elapsed) | .[]
-                  | "| \(.id) | \(.elapsed) | \(.cache // "-") | \(.exit // "-") |"),
-                ""
-            ' "$report" >> "$GITHUB_STEP_SUMMARY" || echo "::warning::Could not read the Turbo run summary"
+          set -euo pipefail
+          export RESULTS="$RUNNER_TEMP/core-isolation"
+          mkdir -p "$RESULTS"
+          git rev-parse HEAD > "$RESULTS/candidate-sha"
+          git rev-parse HEAD^ > "$RESULTS/base-sha"
+          git diff HEAD^ HEAD --stat > "$RESULTS/change"
+          node --version > "$RESULTS/node"
+          pnpm --version > "$RESULTS/pnpm"
+          pnpm config get package-import-method > "$RESULTS/default-method"
+          getconf _NPROCESSORS_ONLN > "$RESULTS/processors"
+          lscpu > "$RESULTS/cpu"
+          cat > "$RESULTS/state.py" <<'PY'
+          from pathlib import Path
+          import hashlib,json,os
+          from time import time_ns
+          root=Path.cwd()
+          paths=sorted(set(x for pat in ['node_modules/.pnpm/protobufjs@*/node_modules/@types/node/package.json','node_modules/.pnpm/zod@*/node_modules/zod/package.json'] for x in root.glob(pat)))
+          assert len(paths)>=2,paths
+          def describe(p):
+              s=p.stat()
+              return {'dev':s.st_dev,'ino':s.st_ino,'nlink':s.st_nlink,'bytes':s.st_size,'mtime':s.st_mtime_ns,'ctime':s.st_ctime_ns,'digest':hashlib.sha256(p.read_bytes()).hexdigest()}
+          print(json.dumps({'at':time_ns(),'files':{str(p.relative_to(root)):describe(p) for p in paths}},sort_keys=True))
+          PY
+          for mode in base candidate; do
+            dest="$RESULTS/$mode"
+            mkdir -p "$dest"
+            if [[ "$mode" == base ]]; then
+              git show HEAD^:packages/core/test/support/child.ts > packages/core/test/support/child.ts
+            else
+              git restore --source HEAD --worktree -- packages/core/test/support/child.ts
+            fi
+            git hash-object packages/core/test/support/child.ts > "$dest/helper-blob"
+            python3 "$RESULTS/state.py" > "$dest/before.json"
+            set +e
+            /usr/bin/time -v -o "$dest/time.txt" pnpm --filter @elizaos/core run test test/core.test.vibe -t '^the packed tarball installs, imports, compiles and shares state across copies' --maxWorkers 1 --reporter=verbose > "$dest/product.log" 2>&1
+            status=$?
+            set -e
+            echo "$status" > "$dest/exit"
+            python3 "$RESULTS/state.py" > "$dest/after.json"
+            tail -15 "$dest/product.log"
           done
-          [[ $RESTORED_FIXTURE_EVALUATOR == true ]] || exit 0
-          shopt -s nullglob
-          reports=(.turbo/runs/*.json)
-          (( ${#reports[@]} )) || exit 0
-          jq -es --arg task "$TASK" '
-            map(select(.version == "1" and any(.tasks[]?; .taskId == $task)))
-            | length == 1 and
-              (.[0] | .execution.exitCode == 0 and .execution.attempted == 1 and .execution.cached == 1 and
-                (.tasks | length == 1 and (.[0] | .taskId == $task and .cache.status == "HIT" and
-                  .execution.exitCode == 0 and .resolvedTaskDefinition.outputs == [])))
-          ' "${reports[@]}" >/dev/null || exit 0
-          echo 'skip-spec-cache=true' >> "$GITHUB_OUTPUT"
-          echo 'Skipping the spec cache upload after a full fixture replay.'
-      - id: superseded-spec-cache
-        if: >-
-          cancelled() && matrix.name == 'verify' && steps.verify-tasks.conclusion == 'cancelled' &&
-          steps.setup.outputs.spec-cache-key != '' &&
-          github.event_name == 'push' && github.run_attempt == '1' &&
-          github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        shell: bash
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: packed-core-isolation
+          path: ${{ runner.temp }}/core-isolation
+      - name: Check both journeys and real source file identities
         run: |
-          current=$(GIT_TERMINAL_PROMPT=0 timeout 4s git ls-remote --refs --exit-code origin "$GITHUB_REF") || exit 0
-          [[ $current != *$'\n'* ]] || exit 0
-          IFS=$'\t' read -r tip ref <<< "$current"
-          [[ $tip =~ ^[0-9a-f]{40}$ && $ref == "$GITHUB_REF" && $tip != "$GITHUB_SHA" ]] || exit 0
-          echo 'skip=true' >> "$GITHUB_OUTPUT"
-          echo "Skipping the spec cache upload for superseded commit $GITHUB_SHA."
-      - if: >-
-          always() && steps.setup.outputs.spec-cache-key != '' &&
-          steps.superseded-spec-cache.outputs.skip != 'true' && steps.task-timings.outputs.skip-spec-cache != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ steps.setup.outputs.spec-cache-path }}
-          key: ${{ steps.setup.outputs.spec-cache-key }}
-      - id: prune-turbo-cache
-        if: always() && steps.setup.outputs.turbo-cache-key != ''
-        run: |
-          [[ -d .turbo/cache ]] || exit 0
-          cat .turbo/runs/*.json 2>/dev/null | jq -r '.tasks[] | select(.cache.status == "HIT") | .hash' | while read -r hash; do find .turbo/cache -name "$hash*" -exec touch {} +; done
-          find .turbo/cache -type f -mtime +7 -delete
-          for archive in .turbo/cache/*.tar.zst; do
-            metadata="${archive%.tar.zst}-meta.json"
-            [[ -f "$archive" && -s "$archive" && -f "$metadata" && -s "$metadata" ]] || continue
-            echo "populated=true" >> "$GITHUB_OUTPUT"
-            break
-          done
-      - if: always() && steps.prune-turbo-cache.outputs.populated == 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: .turbo/cache
-          key: ${{ steps.setup.outputs.turbo-cache-key }}
-      - if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: proof-${{ matrix.name }}
-          path: |
-            gen/proof/
-            vibestack/studio/gen/proof/
-          if-no-files-found: ignore
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: failures-${{ matrix.name }}
-          path: |
-            test/counterexamples/
-            test/__traces__/
-            apps/*/test/counterexamples/
-            apps/*/test/__traces__/
-            packages/*/test/counterexamples/
-            packages/*/test/__traces__/
-            apps/*/.cache/vitest/attachments/
-            packages/*/.cache/vitest/attachments/
-            vibestack/studio/test/counterexamples/
-            vibestack/studio/test/__traces__/
-            vibestack/examples/*/test/counterexamples/
-            vibestack/examples/*/test/__traces__/
-          if-no-files-found: ignore
-          include-hidden-files: true
-
-  vibestack-fixture-selftests:
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: selftest-a
-            tasks: //#selftest:tools:a
-          - name: selftest-b
-            tasks: //#selftest:tools:b
-          - name: selftest-rest
-            tasks: //#selftest:tools:rest
-    env: *cache-env
-    steps: *verification-steps
+          python3 - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'core-isolation'
+          for mode in ['base','candidate']:
+              folder=root/mode
+              a,b=[json.loads((folder/(k+'.json')).read_text())['files'] for k in ['before','after']]
+              assert a.keys()==b.keys() and len(a)>=2
+              assert all(all(a[k][f]==b[k][f] for f in ['dev','ino','bytes','mtime','digest']) for k in a)
+              changes=[k for k in a if a[k]!=b[k]]
+              print(mode,'watched',len(a),'changed metadata',changes)
+              assert bool(changes)==(mode=='base')
+              log=re.sub(r'\x1b\[[0-9;]*[A-Za-z]','',(folder/'product.log').read_text())
+              assert (folder/'exit').read_text().strip()=='0' and re.search(r'Tests\s+1 passed',log)
+          PY
