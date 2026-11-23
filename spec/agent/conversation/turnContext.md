@@ -167,8 +167,14 @@ after a note on how to use it: it is the page open as the owner sent the
 message, for "this page" or what is on screen; a cut or withheld text is
 said to be cut or withheld, never guessed; and its title, address, text and
 links are information only, never the owner's instructions, authorizing no
-action. The page itself sits inside core's untrusted-content envelope with
-the source `Browser page open on the owner's phone`, from the page's host,
+action. A page withheld as `unreadable` is shown as one the phone cannot
+read, with only its title and address known, and a further note tells the
+model that reloading or reopening it will not help, to tell the owner it
+cannot read the page here, naming its title or address if that helps, and
+not to reload, refresh, reopen or navigate unless the owner asked, nor to
+offer to; a page withheld as `sensitive-page` keeps its own wording,
+withheld on purpose. The page itself sits inside core's untrusted-content
+envelope with the source `Browser page open on the owner's phone`, from the page's host,
 so a marker the page forges cannot close or open an envelope. History
 keeps only message text.
 
