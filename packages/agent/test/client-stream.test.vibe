@@ -7,13 +7,17 @@ import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "../src/client/stream-reader.vibe"
 import { cueRule } from "../src/conversation/reply-text.vibe"
+import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
+import { deviceKeyHex } from "./support/device.ts"
 
 module node {
+  import { Effect } from "effect"
   import { registerDirectActionRoutingRule, sleepWithAbort, type Action } from "@elizaos/core"
   import type { EffectReceipt } from "@elizaos/core/protocol"
   import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
   import { turnFirstCalls } from "../src/conversation/planning.vibe"
   import type { AgentPlugin } from "../src/host/module.vibe"
+  import { registerDeviceProposalFamily, unoffered } from "../src/device-actions/proposal/registry.vibe"
 
   export interface Read {
     readonly outcome: ReplyOutcome
@@ -55,10 +59,11 @@ module node {
   }
 
   export const agendaApp: AgentPlugin = {
-    name: "agenda-app", description: "An app that reads the owner's agenda and shows it or the journal",
+    name: "agenda-app", description: "An app that reads the owner's agenda, shows it or the journal, and runs its phone operations in Agenda",
     init: async (_config, runtime) => {
       runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" })
       runtime.contexts.tryRegister({ id: "journal", label: "Journal", sensitivity: "personal" })
+      await Effect.runPromise(registerDeviceProposalFamily(runtime, { ...unoffered("calendar"), types: ["calendar_named"], app: "agenda" }))
       turnFirstCalls.set(agendaRead, (_runtime, { content }) => content.text?.startsWith("Open my agenda for ") ? {} : undefined)
       for (const app of ["agenda", "journal"]) {
         registerDirectActionRoutingRule(runtime, {
@@ -425,4 +430,31 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
   }))
+}, 120_000)
+
+it.live(`See which app a call on my phone runs in, by the app its operations belong to (${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/deviceActions/index.md, "Each wire type belongs to at most one proposal family, and a family offers forms only of its own types")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
+      load: [deviceActionsModuleName, agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "PROPOSE_DEVICE_ACTION"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[agendaApp.name, agendaApp]]),
+  })
+  const capabilities = ["sms.send.v1", "sms.compose.v2"]
+  const headers = { "x-eliza-device-id": agent.agent.runtime.agentId, "x-eliza-device-key": deviceKeyHex, "x-eliza-device-capabilities": capabilities.join(",") }
+  try call(agent, { method: "POST", path: "/api/client-devices/register", headers, body: { capabilities, workflowProtocol: 1 } })
+  const id = try conversation(agent)
+  const propose = (operation: object) => ({ name: "PROPOSE_DEVICE_ACTION", arguments: { operation } })
+  try Effect.sync(() => cloud.script(
+    toolCalls("", propose({ type: "calendar_named", query: "standup" })),
+    toolCalls("", propose({ type: "sms_send", recipients: ["4155550100"], body: "hi", subscriptionId: 1 })),
+    text("Okay."),
+  ))
+  const answer = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, headers, body: { text: "Check my standup" } })
+  const whole = try read(answer.chunks, 0)
+  try Effect.try(() => assert.deepStrictEqual(
+    { kind: whole.outcome.kind, tools: whole.seen.filter((entry) => entry.startsWith("tool:")) },
+    { kind: "Done", tools: ["tool:PROPOSE_DEVICE_ACTION:Using Agenda", "tool:PROPOSE_DEVICE_ACTION:Working"] },
+  ))
 }, 120_000)

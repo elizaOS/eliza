@@ -16,7 +16,7 @@ import {
   wordsInWords, zoneNamedIn,
   type StatedClockTime, type StatedClockTimes, type StatedShift,
 } from "../request-time.vibe"
-import { calendarActionName } from "./actions.vibe"
+import { calendarActionName, calendarContext } from "./actions.vibe"
 
 type Op<T extends DeviceOperation["type"]> = Extract<DeviceOperation, { readonly type: T }>
 type CalendarFields = Op<"calendar_create_local">["fields"]
@@ -548,6 +548,7 @@ function settledSentence(operation: DeviceOperation, result: unknown): string | 
 
 export const calendarProposalFamily: DeviceProposalFamily = {
   name: "calendar",
+  app: calendarContext.id,
   types: ["calendar_read_next", "calendar_create_local", "calendar_create", "calendar_read_selected", "calendar_update", "calendar_delete", "calendar_availability", "calendar_named"],
   forms,
   guidance: () => ["Phone-native Calendar data uses these device reviews. A next-event read works from any screen; a named event, availability check or new event the phone resolves itself works from Home or Calendar; an operation on an exact event or calendar needs it selected on the phone. Other Calendar requests, and any turn with an app Calendar selection, use the CALENDAR action; a phone capability never redirects an app record."],

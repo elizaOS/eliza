@@ -1,5 +1,11 @@
 // spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"
+import type { ContextDefinition } from "@elizaos/core"
 import { projectAuthoredNoteContent, type AuthoredNoteContent, type AuthoredNoteEdit } from "./format.vibe"
+
+export const notesContext: ContextDefinition = {
+  id: "notes", aliases: ["note"], label: "Notes", description: "Saved notes.", descriptionCompressed: "Saved notes.",
+  sensitivity: "personal", cacheScope: "agent", roleGate: { minRole: "OWNER" },
+}
 
 export const STICKY_COLORS =["yellow", "green", "rose", "slate"] as const
 

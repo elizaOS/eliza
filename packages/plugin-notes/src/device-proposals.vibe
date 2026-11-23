@@ -17,7 +17,7 @@ import {
 } from "./organize.vibe"
 import { UpdateRequest } from "./records.schema.vibe"
 import { NotesTargetSchema, type NotesTarget } from "./selected-read.vibe"
-import { projectNoteForModel, type StickyNote } from "./types.vibe"
+import { notesContext, projectNoteForModel, type StickyNote } from "./types.vibe"
 
 type Operation<T extends DeviceOperationType> = Extract<DeviceOperation, { readonly type: T }>
 type Selected = NonNullable<NonNullable<DeviceTurn["observation"]>["selectedObject"]>
@@ -414,7 +414,7 @@ effect function afterRead(runtime: IAgentRuntime, read: EarlierRequest, original
 
 export function notesDeviceFamily(runtime: IAgentRuntime): DeviceProposalFamily {
   return {
-    name: "notes", types: notesTypes, forms,
+    name: "notes", app: notesContext.id, types: notesTypes, forms,
     guidance: () => [familyGuidance, untrustedReturnGuidance],
     ground: (proposed, turn) => groundNotes(runtime, proposed.operation, turn),
     proposedText, settledText,
