@@ -1,7 +1,7 @@
 // spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { computeNextCronRunAtMs, type ActionResult, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
+import { computeNextCronRunAtMs, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
 import { activeWorkflowsProvider, workflowAction, workflowInstances } from "../src/agent.vibe"
 import {
   keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
@@ -289,8 +289,8 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   try saved(rig, manual("Backup workflow", greeting.steps))
   const runtime = chatRuntime()
   workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
-  const say = (words: string, parameters: Record<string, unknown>, metadata: Record<string, unknown> = {}) =>
-    promise(() => workflowAction.handler(runtime, { content: { text: words, metadata } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
+  const say = (words: string, parameters: JsonObject, metadata: JsonObject = {}) =>
+    promise(() => workflowAction.handler(runtime, { content: { text: words, metadata } as Content } as Memory, undefined, { parameters }) as Promise<ActionResult>)
   const code = (result: ActionResult) => result.success ? "applied" : (result.data as { readonly code?: string } | undefined)?.code
 
   const conflict = try say("rename the workflow Morning note to Evening note", { action: "remove", workflowName: "Morning note" })
@@ -311,7 +311,7 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
     try say("rename the workflow 'Evening note' to 'Parents' Day'", { action: "rename", workflowName: "Evening note'", name: "Parents' Day'" }),
     try say("Create a workflow called ‘Morning brief’.", { action: "create", name: "Morning brief’" }),
     try say("create a workflow called Mom’s birthday", { action: "create", name: "Mom" }),
-    try say("create a workflow called 'Weekly plan.'", { action: "create", name: "Weekly plan.'" }),
+    try say("create a workflow called 'Reading list.'", { action: "create", name: "Reading list.'" }),
   ]
   const again = try say("remove it", { action: "remove", workflowId: backup.workflowId })
   const names = ((try rig.service.list(false)) as { readonly name: string }[]).map(({ name }) => name).sort()
@@ -342,13 +342,13 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
     ],
     quoted: ["applied", "applied", "applied", "applied"],
     listed: { total: names.length, truncated: true, workflows: 2 },
-    found: ["Fresh one", "Mom’s birthday", "Morning brief", "Weekly plan"],
+    found: ["Fresh one", "Mom’s birthday", "Morning brief", "Reading list"],
     cards: ["workflow", "workflow-run", garden.workflowId],
-    context: { matching: ["Fresh one", "Mom’s birthday", "Morning brief", "Weekly plan"], twin: false, unmatched: [false, []] },
+    context: { matching: ["Fresh one", "Mom’s birthday", "Morning brief", "Reading list"], twin: false, unmatched: [false, []] },
     twins: 2,
     ownerZone: true,
     confirm: "Do you mean “Garden digest”? I left it unchanged.",
-    names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Twin", "Twin", "Weekly plan"],
+    names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Reading list", "Twin", "Twin"],
   }))
 })
 
