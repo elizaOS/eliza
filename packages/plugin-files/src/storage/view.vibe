@@ -4,13 +4,10 @@ import { acceptsFallback, canCancelRequest, canEnterFiles, canLeaveFiles, canLoa
 import { shownResolved } from "../../gen/files__shownTargets.effect.vibe"
 import { filterLabel, type FilesFilter, type Listing } from "./model.vibe"
 
-/** What Files shows for a filter: its results by position, 1 being the first. */
 export type ShownResults = { readonly filter: FilesFilter; readonly label: string; readonly paths: readonly string[]; readonly complete: boolean; readonly empty: boolean }
 
-/** The target of an open: a path, or a position in the filter results Files shows. */
 export type OpenTarget = { readonly path: string } | { readonly shown: number }
 
-/** How the host answers each stage of an open. */
 export interface OpenPorts {
   readonly commitView: () => boolean!!
   readonly access: () => boolean!!
@@ -24,23 +21,19 @@ export error ShownUnresolved { positions: readonly number[] }
 
 type ViewFacts = Pick<FileRequest, "active" | "epoch" | "generation" | "load">
 
-/** The positions' paths in the filter results shown now, one for each, in order. */
 export function resolveShown(shown: ShownResults | undefined, positions: readonly number[]): readonly string[] | undefined {
   const paths = positions.flatMap((position) => shown?.paths[position - 1] ?? [])
   return shownResolved({ positions: positions.length, resolvedPaths: paths.length, resultsShown: shown !== undefined }) ? paths : undefined
 }
 
-/** Where an opened file is shown: here, or in another app when it cannot be previewed and one can open it. */
 export function routeOpen(previewable: boolean, externalPort: boolean): OpenRoute {
   return openRoute(previewable, externalPort)
 }
 
-/** Whether another app's fallback reply is accepted, released, or neither. */
 export function fallbackDisposition(reply: OpenReply, viewActive: boolean): "accept" | "release" | "ignore" {
   return acceptsFallback(reply, viewActive) ? "accept" : releasesFallback(reply, viewActive) ? "release" : "ignore"
 }
 
-/** The Files view: its visits, the filter results it shows, and the one open request that belongs to them. */
 export effect function filesView() {
   const view = try Ref.make<ViewFacts>({ active: false, epoch: 0, generation: 0, load: "Unread" })
   const shown = try Ref.make<ShownResults | undefined>(undefined)
@@ -103,7 +96,7 @@ export effect function filesView() {
       if ((try Ref.get(request)) === mine) try Ref.set(view, facts(next))
     })
     effect function send(event: Event): FileRequest!! {
-      return try serialize(machine.send(event) catch (rejected) => rejected.state)
+      return try serialize(Effect.catch(machine.send(event), (rejected) => Effect.succeed(rejected.state)))
     }
     return try ensuring(effect {
       let state = try send({ type: "beginRequest" })

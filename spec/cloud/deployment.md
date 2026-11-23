@@ -188,7 +188,10 @@ webhook. The billing snapshot and the entitlement with its keys stay open, so
 an account funded only by `credits add` still shows its balance. The maps
 capabilities route stays open and answers `{available: false}` with maps off
 (`services/maps`). Managed Google gates the Google routes and their callback.
-Text inference needs no capability but inference. Sign-in, native client,
+Text inference needs no capability but inference. An inference model’s optional
+`defaultMaxTokens` is its provider’s verified maximum generation length for
+that exact upstream model, between 1 and 2,000,000. Profiles that omit it
+continue to serve requests with an explicit output limit. Sign-in, native client,
 public service and return page routes need none.
 
 ```quint
@@ -386,8 +389,11 @@ per period, and one of a minute or less at every tick.
 
 ```quint
 pure val sweepTick: Millis = millisPerMinute
-pure def sweepDue(scheduledAt: Millis, everyMs: Millis): bool = everyMs > 0 and scheduledAt % everyMs < sweepTick
-pure val scheduledAtValues = Set(0, 60000, 300000, 3540000, 3600000)
+pure def sweepDue(scheduledAt: Millis, everyMs: Millis): bool = {
+  val elapsed = if (everyMs > 0) scheduledAt % everyMs else 0
+  everyMs > 0 and (if (elapsed < 0) elapsed + everyMs else elapsed) < sweepTick
+}
+pure val scheduledAtValues = Set(-120001, -120000, -119999, -60000, -1, 0, 60000, 300000, 3540000, 3600000)
 pure val everyMsValues = Set(30000, 60000, 300000, 3600000)
 pure def lawAWholeMinuteSweepRunsAtItsPeriodOnly(scheduledAt: Millis, everyMs: Millis): bool =
   (everyMs >= sweepTick and everyMs % sweepTick == 0 and scheduledAt % sweepTick == 0) implies (sweepDue(scheduledAt, everyMs) iff scheduledAt % everyMs == 0)

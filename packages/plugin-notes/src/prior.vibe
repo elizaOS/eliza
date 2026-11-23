@@ -3,13 +3,11 @@ import { importedRevision } from "../gen/notes__records.effect.vibe"
 import type { NotesDocument } from "./collection.vibe"
 import { CleanupReceipt, Instant, Revision, StoredDocument } from "./records.schema.vibe"
 
-/** The earlier Notes document of this agent as its file holds it, with the SHA-256 of that text. */
 export interface PriorDocumentText {
   readonly raw: string
   readonly digest: string
 }
 
-/** The earlier document cannot be read or validated; it needs review and nothing starts empty. */
 export error PriorRefused { reason: string }
 
 const PriorShape = Schema.Struct({
@@ -31,7 +29,6 @@ function framed(note: unknown, schemaVersion: 1 | 2 | 3): unknown {
   return { ...note, body: `\n${note.body}` }
 }
 
-/** The collection an earlier document becomes: the same notes, Trash, creation IDs and pending cleanup, one revision on, with its import receipt. */
 export effect function importPriorDocument(prior: PriorDocumentText, importedAt: string): NotesDocument!PriorRefused {
   const shape = try mapError(decodeShape(prior.raw), () => new PriorRefused({ reason: "The earlier Notes document is not a Notes document of schema 1, 2 or 3." }))
   const ids = new Set([...shape.notes, ...(shape.trash ?? []).map((entry) => entry.note)]

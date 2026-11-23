@@ -62,25 +62,22 @@ import {
   admitsOcrBitmap, admitsOcrBlob, admittedOcrResult, canEndOcrWorker, canSettleOcrReply, exposesOcrProgress, exposesReviewedOcr, initial, machineOver,
   type OcrImageType, type OcrJob, type OcrReply, type OcrReplyKind, type OcrStep,
 } from "../../gen/files__localOcr.effect.vibe"
-import { decodedImage, encoded, fittedSize, imageRefused, rasterOf, readBytes, ImageRefused } from "./images.vibe"
+import { decodedImage, encoded, fittedSize, imageRefused, rasterOf, readBytes, type ImageRefused } from "./images.vibe"
 import { scanTextLayer, type ScanTextLine } from "./scan-text-layer.vibe"
 import { localUrl, openWorker, type WorkerPort } from browser
 
-/** Where the pinned local worker, engine core and language data are served from. */
 export interface OcrConfig {
   readonly workerUrl: string
   readonly assetsUrl: string
   readonly language: string
 }
 
-/** Recognized text with its reported confidence, and the page's line layer in layout mode. */
 export interface OcrResult {
   readonly text: string
   readonly confidence: number
   readonly lines?: ScanTextLine[]
 }
 
-/** One clamped progress report from the worker. */
 export interface OcrProgress {
   readonly status: string
   readonly progress: number
@@ -99,7 +96,6 @@ const ocrText: Readonly<Record<OcrRefusal, string>> = {
   "not-current": "This scan review is no longer current.",
 }
 
-/** The local worker failed, replied unreadably, or its result is not admissible for the review that asked. */
 export error OcrRefused { reason: OcrRefusal; message: string }
 
 const refused = (reason: OcrRefusal) => new OcrRefused({ reason, message: ocrText[reason] })
@@ -142,10 +138,9 @@ effect function layoutLines(blocks: unknown, width: number, height: number): Sca
       }
     }
   }
-  return try scanTextLayer(lines)
+  return try mapError(scanTextLayer(lines), (failure) => refused(failure.reason === "invalid-line" ? "invalid-position" : "invalid-result"))
 }
 
-/** Recognizes the text of one admitted image on the device; interrupting it terminates the worker at once. */
 export effect function recognizeLocalText(config: OcrConfig, image: Blob, onProgress: (value: OcrProgress) => void = () => {},
   layout = false, reviewCurrent: () => boolean = () => true): OcrResult!(OcrRefused | ImageRefused) {
   if (!admitsOcrBlob(imageTypes[image.type] ?? "OtherOcrImage", image.size, false)) throw imageRefused("unsupported")

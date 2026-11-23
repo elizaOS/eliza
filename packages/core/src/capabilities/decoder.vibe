@@ -139,6 +139,7 @@ effect function optionalRemotePluginConfig(
   }
   const config: RemotePluginConfigMap = {}
   for (const [configKey, configValue] of Object.entries(value)) {
+    try rejectPrototypeKey(configKey, `${key}.${configKey}`, method)
     if (
       typeof configValue === "string"
       || (typeof configValue === "number" && Number.isFinite(configValue))
@@ -154,6 +155,16 @@ effect function optionalRemotePluginConfig(
     )
   }
   return config
+}
+
+effect function rejectPrototypeKey(
+  key: string,
+  path: string,
+  method: string,
+): void!CapabilityError {
+  if (key === "__proto__") {
+    throw decodeError(method, `${path} is not an allowed key.`)
+  }
 }
 
 effect function requireJsonObject(
@@ -963,6 +974,7 @@ effect function requireRemotePluginJsonSchemaProperties(
   const object = try requireObject(value, `${method}.properties`)
   const properties: Record<string, RemotePluginJsonSchemaDefinition> = {}
   for (const [key, property] of Object.entries(object)) {
+    try rejectPrototypeKey(key, `${method}.properties.${key}`, method)
     properties[key] = try requireRemotePluginJsonSchemaDefinition(
       property,
       `${method}.properties.${key}`,

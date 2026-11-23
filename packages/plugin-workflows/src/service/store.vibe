@@ -8,10 +8,8 @@ import type { PhoneScheduledOccurrence, PhoneWorkflowSpec } from "../contract/ph
 import type { DigestSourceRecord, DigestSpec } from "../contract/digest.vibe"
 import type { WorkflowDeviceOperation } from "../contract/device.vibe"
 
-/** The store could not be read or written; the outcome of a write is unknown. */
 export error WorkflowStoreUnavailable { step: string; cause: unknown }
 
-/** One stored workflow definition. */
 export interface DefinitionRow {
   readonly id: string
   readonly owner: string
@@ -29,7 +27,6 @@ export interface DefinitionRow {
   readonly updatedAt: string
   readonly armedVersion: number
 }
-/** The generated code of an untyped definition: its source, compiled module, check and review. */
 export interface GeneratedDefinition {
   readonly source: string
   readonly sourceDigest: string
@@ -40,7 +37,6 @@ export interface GeneratedDefinition {
   readonly reviewedDigest: string
   readonly reviewedVersion: number
 }
-/** One saved version of a definition, kept so the owner can list and restore it. */
 export interface Revision {
   readonly version: number
   readonly spec: PhoneWorkflowSpec
@@ -51,9 +47,7 @@ export interface Revision {
   readonly reason: string
   readonly generated?: GeneratedDefinition
 }
-/** One step's settled result inside a run. */
 export interface StepResult { readonly id: string; readonly status: "completed" | "skipped"; readonly text: string }
-/** One approval gate of a device step. */
 export interface ApprovalRow {
   readonly nodeId: string
   readonly iteration: number
@@ -69,9 +63,7 @@ export interface ApprovalRow {
   readonly decidedBy?: string
   readonly decidedAt?: string
 }
-/** One run event as the receipt reports it. */
 export interface RunEvent { readonly type: string; readonly timestamp: string; readonly nodeId?: string }
-/** One stored run, including occurrences recorded without running. */
 export interface RunRow {
   readonly id: string
   readonly workflowId: string
@@ -108,10 +100,7 @@ export interface RunRow {
   readonly waitDigest?: string
   readonly signals?: readonly { readonly name: string; readonly payload: unknown; readonly receivedAt: string; readonly receivedBy: string }[]
 }
-/** One retained mutation receipt, by its mutation id. */
 export interface ReceiptRow { readonly mutationId: string; readonly owner: string; readonly kind: "typed" | "metadata" | "lifecycle" | "digest" | "generated"; readonly data: Readonly<Record<string, unknown>> }
-/** One digest result row with its delivery cursor. */
-export interface DigestResultRow { readonly cursor: number; readonly runId: string; readonly workflowId: string; readonly result: Readonly<Record<string, unknown>> }
 
 const schema = `
 CREATE TABLE IF NOT EXISTS workflow_definitions (id text PRIMARY KEY, owner text NOT NULL, revision integer NOT NULL CHECK (revision > 0), data jsonb NOT NULL);
@@ -124,11 +113,9 @@ CREATE TABLE IF NOT EXISTS workflow_digest_clients (owner text NOT NULL, client_
 `
 
 module node {
-  /** One SQL statement runner inside a transaction. */
   export interface WorkflowQuery {
     query<R>(text: string, params?: unknown[]): Promise<{ rows: R[]; affectedRows?: number }>
   }
-  /** The database the workflow store keeps its rows in: one transaction per call. */
   export interface WorkflowSql {
     transaction<A>(work: (sql: WorkflowQuery) => Promise<A>): Promise<A>
   }
@@ -286,7 +273,6 @@ effect function stored<A>(step: string, call: () => Promise<A>): A!WorkflowStore
   return try tryPromise({ try: () => call(), catch: (cause) => new WorkflowStoreUnavailable({ step, cause }) })
 }
 
-/** The workflow store over one database. */
 export function workflowStore(sql: WorkflowSql) {
   return {
     migrate: () => stored("create workflow tables", () => migrate(sql, schema)),
@@ -311,7 +297,4 @@ export function workflowStore(sql: WorkflowSql) {
   }
 }
 
-/** The workflow store over one database. */
-export type WorkflowStore = ReturnType<typeof workflowStore>
-/** A stored definition with the revision it was read at. */
 export type StoredDefinition = Stored<DefinitionRow>

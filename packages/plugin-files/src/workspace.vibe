@@ -8,19 +8,16 @@ module node {
   const inside = (root: string, target: string) => target === root || target.startsWith(root.endsWith(path.sep) ? root : root + path.sep)
   const code = (error: unknown) => typeof error === "object" && error !== null && "code" in error ? error.code : undefined
 
-  /** The workspace directory under a state directory. */
   export function workspaceRoot(stateDirectory: string): string {
     return path.join(stateDirectory, "workspace")
   }
 
-  /** Where a relative path really is, with links resolved, and whether it stays in the workspace. */
   export async function resolveExisting(root: string, relative: string): Promise<{ readonly target: string; readonly facts: Resolved }> {
     await mkdir(root, { recursive: true })
     const [base, target] = await Promise.all([realpath(root), realpath(path.join(root, relative))])
     return { target, facts: { realInside: inside(base, target), parentIsLink: false, parentIsFile: false, leafIsLink: false } }
   }
 
-  /** Creates each missing parent of a relative path as a plain folder and reports what the write would touch. */
   export async function prepareWrite(root: string, relative: string): Promise<{ readonly target: string; readonly facts: Resolved }> {
     await mkdir(root, { recursive: true })
     const base = await realpath(root)
@@ -43,12 +40,10 @@ module node {
     return { target, facts: { realInside: inside(base, current), parentIsLink, parentIsFile, leafIsLink: leaf?.isSymbolicLink() === true } }
   }
 
-  /** Reads a resolved file. */
   export async function readTarget(target: string, encoding: "utf8" | "base64"): Promise<string> {
     return readFile(target, encoding)
   }
 
-  /** Writes a prepared file without following a link at its own name. */
   export async function writeTarget(target: string, content: string, encoding: "utf8" | "base64"): Promise<void> {
     const flags = constants.O_WRONLY | constants.O_NOFOLLOW
     const handle = await open(target, flags).catch((error: unknown) => code(error) === "ENOENT"
@@ -62,7 +57,6 @@ module node {
     }
   }
 
-  /** The files and folders of a resolved folder; a dangling link counts as a file. */
   export async function listTarget(target: string): Promise<{ readonly name: string; readonly type: "file" | "directory" }[]> {
     const entries = await readdir(target, { withFileTypes: true })
     return Promise.all(entries.map(async (entry) => ({
@@ -80,7 +74,6 @@ export type DirectoryEntry = { readonly name: string; readonly type: "file" | "d
 
 export error WorkspaceRefused { path: string; reason: "invalid_path" | "outside_workspace" | "not_found" | "failed" }
 
-/** A workspace path normalized to slash-separated segments, or undefined when the workspace rules refuse it. */
 export function normalizeWorkspacePath(input: string, folderCall = false): string | undefined {
   const unified = input.replace(/\\/g, "/")
   const segments = unified.split("/").filter((segment) => segment !== "" && segment !== ".")
@@ -105,7 +98,6 @@ effect function resolved(input: string, call: WorkspaceCall, resolve: () => Prom
   return target
 }
 
-/** The agent's working files under one workspace directory. */
 export function workspace(root: string) {
   return {
     effect read(input: string, encoding: FileEncoding = "utf8"): string!WorkspaceRefused {

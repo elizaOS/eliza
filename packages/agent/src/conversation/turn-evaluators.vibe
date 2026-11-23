@@ -1,5 +1,5 @@
 // spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "After the reply is stored, each evaluator that opts in runs in priority order, and one evaluator's failure stops neither its peers nor the turn"
-import { type AgentRuntime, type Memory, type RegisteredEvaluator, type State, logger, ModelType } from "@elizaos/core"
+import { type AgentRuntime, type Memory, type RegisteredEvaluator, type State, isTextGenerationModelType, logger, ModelType } from "@elizaos/core"
 import { runsNext } from "../../gen/agent__conversation__planning.ts"
 
 const defaultPriority = 100
@@ -37,9 +37,14 @@ async function runOne(runtime: AgentRuntime, evaluator: RegisteredEvaluator, mes
   const prepared = evaluator.prepare === undefined ? undefined : await evaluator.prepare({ ...context, state })
   const prompted = { ...context, state, prepared }
   const resolved = evaluator.resolveOutput !== undefined && (evaluator.resolveOutputWhen?.(prompted) ?? true)
-  const raw = resolved && evaluator.resolveOutput !== undefined
-    ? evaluator.resolveOutput(prompted)
-    : outputOf(await runtime.useModel(evaluator.modelType ?? ModelType.TEXT_SMALL, { prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, signal }))
+  let raw: unknown
+  if (resolved && evaluator.resolveOutput !== undefined) {
+    raw = evaluator.resolveOutput(prompted)
+  } else {
+    const modelType = evaluator.modelType?.trim().toUpperCase() ?? ModelType.TEXT_SMALL
+    if (!isTextGenerationModelType(modelType)) throw new Error(`Unsupported evaluator model type: ${evaluator.modelType}`)
+    raw = outputOf(await runtime.useModel(modelType, { prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, signal }))
+  }
   const output = evaluator.parse === undefined ? raw : evaluator.parse(raw, { ...prompted, outputSource: resolved ? "resolved" : "model" })
   if (output === null || output === undefined) return
   for (const processor of byPriority(evaluator.processors ?? [])) {
@@ -52,7 +57,6 @@ async function runOne(runtime: AgentRuntime, evaluator: RegisteredEvaluator, mes
   }
 }
 
-/** Runs every inline evaluator registered on the runtime over the finished turn, in priority order, isolating each one's failures. */
 export async function runTurnEvaluators(runtime: AgentRuntime, message: Memory, state: State, responses: Memory[], signal: AbortSignal): Promise<void> {
   const evaluators = byPriority(runtime.evaluators.filter((evaluator) => inline(runtime, evaluator)))
   for (const [done, evaluator] of evaluators.entries()) {

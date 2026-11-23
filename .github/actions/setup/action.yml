@@ -17,6 +17,9 @@ outputs:
   spec-cache-key:
     description: The key to save the spec cache under, unique to this run attempt and present when verification results are restored.
     value: ${{ steps.spec-cache.outputs.key }}
+  spec-evaluator-restored:
+    description: Whether the fixture job reused its pinned evaluator from a spec cache for the same lockfile.
+    value: ${{ steps.install-quint-evaluator.outputs.spec-evaluator-restored }}
   turbo-cache-key:
     description: The key for Turborepo's local cache on pull requests and local-only branch pushes, unique to this run attempt.
     value: ${{ steps.turbo-cache.outputs.key }}
@@ -60,24 +63,34 @@ runs:
     # Turborepo skips a task whose inputs it has seen; spec skips a simulation or proof it has seen, and the selftest's
     # shared projects skip a tool run an earlier selftest made (nightly, fuzz.yml runs it without them).
     # Quint downloads its evaluator to ~/.quint from GitHub's rate-limited API: once per cache, not per run.
-    # Only restored here: ci.yml saves it at the end, including failures, except cancelled verification of a superseded
-    # default-branch push. A job restores what a job of its name last saved, else another's
-    # that holds the same paths: a selftest-* job holds the selftest's tool runs, which no other job adds to, and any
-    # other job the spec caches of the projects, which no selftest-* job checks.
+    # Only restored here: ci.yml saves it at the end, except a complete fixture replay with a restored evaluator
+    # or cancelled verification of a superseded default-branch push. A job tries both key layouts for this lockfile first.
+    # Each entry is named by the tools and inputs that produced it. A selftest-* job holds the selftest's tool runs,
+    # which no other job adds to, and any other job the spec caches of the projects, which no selftest-* job checks.
     - id: spec-cache
       if: inputs.verification == 'true' && inputs.cache-verification == 'true'
       shell: bash
       env:
         JOB: ${{ inputs.job }}
       run: |
-        shared='spec-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}-'
-        prefix="${shared}${JOB}-"
-        key="${prefix}${{ github.sha }}-${{ github.run_attempt }}"
-        [[ $key == spec-*-"$JOB"-${{ github.sha }}-${{ github.run_attempt }} ]] || { echo "::error::Malformed spec cache key '$key'"; exit 1; }
+        lock='${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}'
+        named="spec-${{ runner.os }}-${{ runner.arch }}-${JOB}-"
+        prefix="${named}${lock}-"
+        legacy="spec-${{ runner.os }}-${{ runner.arch }}-${lock}-${JOB}-"
+        pr_prefix=
+        if [[ $JOB == selftest-* && $GITHUB_EVENT_NAME == pull_request && $GITHUB_REF =~ ^refs/pull/([1-9][0-9]*)/merge$ ]]; then
+          pr_prefix="${named}pr-${BASH_REMATCH[1]}-${lock}-"
+        fi
+        key="${pr_prefix:-$prefix}${{ github.sha }}-${{ github.run_attempt }}"
+        [[ $key == spec-*-"$JOB"-*-${{ github.sha }}-${{ github.run_attempt }} ]] || { echo "::error::Malformed spec cache key '$key'"; exit 1; }
         {
           echo "restore<<EOF"
-          printf '%s\n' "$prefix" "$shared"
+          if [[ -n $pr_prefix ]]; then printf '%s\n' "$pr_prefix"; fi
+          printf '%s\n' "$prefix" "$legacy" "$named"
           echo "EOF"
+          echo "pr-lock-prefix=$pr_prefix"
+          echo "lock-prefix=$prefix"
+          echo "legacy-lock-prefix=$legacy"
           echo "key=$key"
           echo "path<<EOF"
           if [[ $JOB == selftest-* ]]; then printf '%s\n' .cache/selftest/.spec-cache
@@ -86,7 +99,8 @@ runs:
           echo '~/.quint'
           echo "EOF"
         } >> "$GITHUB_OUTPUT"
-    - if: steps.spec-cache.outputs.key != ''
+    - id: restore-spec-cache
+      if: steps.spec-cache.outputs.key != ''
       uses: actions/cache/restore@v6
       with:
         path: ${{ steps.spec-cache.outputs.path }}
@@ -103,9 +117,7 @@ runs:
       with:
         path: .turbo/cache
         key: ${{ steps.turbo-cache.outputs.key }}
-        restore-keys: |
-          turbo-${{ runner.os }}-${{ runner.arch }}-${{ inputs.job }}-
-          turbo-${{ runner.os }}-${{ runner.arch }}-
+        restore-keys: turbo-${{ runner.os }}-${{ runner.arch }}-${{ inputs.job }}-
     - id: gen-seed
       if: >-
         inputs.job == 'verify' && inputs.cache-verification == 'true' &&
@@ -167,10 +179,30 @@ runs:
           mv "$archive" "$meta" .turbo/cache/
         done
     - name: Install workspace dependencies
+      id: install-workspace
       shell: bash
       env:
         PUBLISH_GEN_SEED: ${{ inputs.verification == 'true' && steps.gen-seed.outputs.prefix != '' }}
+        REMEMBER_RESTORED_EVALUATORS: >-
+          ${{ startsWith(inputs.job, 'selftest-') &&
+              steps.restore-spec-cache.outcome == 'success' && steps.restore-spec-cache.outputs.cache-matched-key != '' &&
+              ((github.event_name == 'pull_request' && steps.spec-cache.outputs.pr-lock-prefix != '' &&
+                startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.pr-lock-prefix)) ||
+               (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+                steps.spec-cache.outputs.lock-prefix != '' && steps.spec-cache.outputs.legacy-lock-prefix != '' &&
+                (startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.lock-prefix) ||
+                 startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.legacy-lock-prefix)))) }}
       run: |
+        if [[ $REMEMBER_RESTORED_EVALUATORS == true ]]; then
+          {
+            echo 'evaluators<<EOF'
+            for evaluator in "$HOME"/.quint/rust-evaluator-*/quint_evaluator; do
+              [[ -f $evaluator && -x $evaluator && ! -L $evaluator ]] || continue
+              stat -c '%d:%i:%s:%y:%z' -- "$evaluator" || true
+            done
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+        fi
         if [[ $PUBLISH_GEN_SEED == true ]]; then export TURBO_RUN_SUMMARY=true; fi
         pnpm install --frozen-lockfile
     - id: publish-gen-seed
@@ -243,14 +275,20 @@ runs:
     # Quint's first-run downloader uses the unauthenticated GitHub API.
     # Fetch its pinned release directly before concurrent checks need it.
     - name: Install Quint evaluator
+      id: install-quint-evaluator
       if: inputs.verification == 'true'
       env:
         EVALUATOR_VERSION: ${{ steps.quint-evaluator.outputs.version }}
+        RESTORED_EVALUATORS: ${{ steps.install-workspace.outputs.evaluators }}
       run: |
         evaluator_dir="$HOME/.quint/rust-evaluator-$EVALUATOR_VERSION"
         if [ ! -x "$evaluator_dir/quint_evaluator" ]; then
           mkdir -p "$evaluator_dir"
           curl --fail --location --retry 3 "https://github.com/quint-co/quint/releases/download/evaluator/$EVALUATOR_VERSION/quint_evaluator-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$evaluator_dir"
+        elif [[ -n $RESTORED_EVALUATORS ]] &&
+          stamp=$(stat -c '%d:%i:%s:%y:%z' -- "$evaluator_dir/quint_evaluator") &&
+          grep -Fxq -- "$stamp" <<< "$RESTORED_EVALUATORS"; then
+          echo 'spec-evaluator-restored=true' >> "$GITHUB_OUTPUT"
         fi
         "$evaluator_dir/quint_evaluator" --help
       shell: bash
@@ -261,25 +299,12 @@ runs:
         key: ${{ steps.quint-cache.outputs.cache-primary-key }}
     - name: Install Chromium
       if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest'
-      env:
-        FULL_CHROMIUM_ONLY: ${{ inputs.job == 'selftest-a' }}
       run: |
-        args=(chromium)
-        [[ "$FULL_CHROMIUM_ONLY" != true ]] || args+=(--no-shell)
-        pnpm exec playwright install "${args[@]}"
-        probe() {
-          node --input-type=module <<'JS'
-        import { chromium } from "playwright";
-        async function check(options) {
-          const browser = await chromium.launch({ timeout: 10_000, ...options });
-          await browser.close();
+        node --input-type=module - "${{ inputs.job == 'selftest-a' }}" "${{ inputs.cache-verification == 'true' }}" <<'JS'
+        import { hostedCachedFixture, installChromium } from "./vibestack/selftests/install.ts";
+        const [fullOnly, cacheVerification] = process.argv.slice(2);
+        if (fullOnly !== "true" || cacheVerification !== "true" || !hostedCachedFixture()) {
+          await installChromium(fullOnly === "true");
         }
-        await check({ executablePath: chromium.executablePath() });
-        if (process.env.FULL_CHROMIUM_ONLY !== "true") await check({});
         JS
-        }
-        if ! probe; then
-          pnpm exec playwright install-deps chromium
-          probe
-        fi
       shell: bash

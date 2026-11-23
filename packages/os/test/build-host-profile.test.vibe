@@ -116,7 +116,7 @@ it.effect("Each broken rule refuses the profile by name (spec/os/build/androidHo
   const cases: Record<HostRefusal, { readonly profile: Readonly<Record<string, unknown>>; readonly setting?: Partial<HostSetting> }> = {
     ProfileMalformed: { profile: { ...PROFILE, embeddedAgent: AGENT } },
     FieldDropped: { profile: { ...PROFILE, schema: 1, agent: undefined, agentService: undefined, osModules: undefined, modules: [], generationInputs: [consumer("app.json")] } },
-    UpstreamUnmapped: { profile: { ...PROFILE, schema: 1, agent: undefined, agentService: undefined, osModules: undefined, modules: [{ name: "eliza-network-policy", source: upstream("plugins/plugin-native-network-policy/android") }] } },
+    UpstreamUnmapped: { profile: { ...PROFILE, schema: 1, agent: undefined, agentService: undefined, osModules: undefined, modules: [{ name: "eliza-unmapped-fixture", source: upstream("plugins/plugin-native-unmapped-fixture/android") }] } },
     SchemaUnsupported: { profile: { ...PROFILE, schema: 3 } },
     CompanionDeclared: { profile: { ...PROFILE, companion: { entry: "gateway.mjs" } } },
     IdentityInvalid: { profile: PROFILE, setting: { identity: { appId: "example.fixture.host", appName: "Fixture Host", version: "1.0.0", versionCode: 2_100_000_001 } } },

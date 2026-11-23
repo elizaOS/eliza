@@ -20,14 +20,12 @@ effect function caughtUp(dossier: Dossier) {
   return state
 }
 
-/** The dossier's control as it stands now on the owner's clock. */
 export effect function dossierControl() {
   provide stored(dossierKey) {
     return try caughtUp(try Machine)
   }
 }
 
-/** Turns the dossier on or off, moves its day boundary, or reopens it; a real change starts a new generation and drops any admission. */
 export effect function setDossier(turnOn: boolean, boundary: number, reopened: boolean) {
   provide stored(dossierKey) {
     const dossier = try Machine
@@ -37,13 +35,11 @@ export effect function setDossier(turnOn: boolean, boundary: number, reopened: b
   }
 }
 
-/** What became of one activity signal from the owner's device. */
-export type ActivityOutcome =
+type ActivityOutcome =
   | { readonly kind: "ignored"; readonly control: DossierControl }
   | { readonly kind: "admitted"; readonly control: DossierControl }
   | { readonly kind: "fired"; readonly control: DossierControl; readonly presented: boolean }
 
-/** Admits the owner's authenticated foreground or unlock signal once per owner day, and fires the day's dossier in the same claim that consumes it. */
 export effect function ownerActivity(kind: string, fromOwner: boolean) {
   const signal: ActivityKind = kind === "foreground" || kind === "unlock" ? activityKinds[kind] : "OtherActivity"
   provide stored(dossierKey) {
@@ -57,7 +53,6 @@ export effect function ownerActivity(kind: string, fromOwner: boolean) {
   }
 }
 
-/** Prepares and shows the owner's day; a manual refresh consumes nothing. */
 export effect function presentDossier() {
   const at = try (try Facts).now()
   const zone = try ownerClockAt(at)
@@ -77,7 +72,6 @@ const decodeControl = Schema.decodeUnknownOption(Schema.Struct({
 }), strict)
 const decodeActivity = Schema.decodeUnknownOption(Schema.Struct({ kind: Schema.Literals(["foreground", "unlock", "other"]) }), strict)
 
-/** The routes the owner's device reports activity through and the client sets the dossier's control through; the agent authenticates the owner before either. */
 export function dossierRoutes(agent: () => IAgentRuntime | undefined): LocalRoute[] {
   const offline = { status: 503, body: { error: "assistant_unavailable" } }
   const malformed = { status: 400, body: { error: "malformed" } }

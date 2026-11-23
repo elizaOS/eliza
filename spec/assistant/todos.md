@@ -14,7 +14,7 @@ one item matches. This machine follows one owner's list.
 
 ### A mutation is applied once per idempotency key
 
-A key seen before with the same request replays the recorded result and
+A key seen before with the same request confirms it was recorded and
 changes nothing. A key seen before with a different request is refused.
 
 ```quint
@@ -55,7 +55,9 @@ pure def alwaysNextIdIsPositive(s: Todos): bool = s.nextId > 0
 ### A change by text applies only when exactly one item matches
 
 When no item or several items match, nothing changes and the result names
-the miss, with the candidates when there are several.
+the miss, with the candidates when there are several. If the one matching
+item already has the requested status, the request is recorded and the
+item stays as it was.
 
 ```quint
 pure def matching(s: Todos, content: str): List[Todo] = s.todos.select(t => t.content == content)
@@ -64,6 +66,7 @@ pure def canSetTodoStatus(s: Todos, key: str, content: str, status: TodoStatus):
 pure def setTodoStatus(s: Todos, key: str, content: str, status: TodoStatus): Todos =
   if (replayed(s, key)) s
   else if (matching(s, content).length() != 1) recordMutation(key, statusRequest(content, status), s, Missed)
+  else if (matching(s, content).some(t => t.todoStatus == status)) recordMutation(key, statusRequest(content, status), s, NoOutcome)
   else recordMutation(key, statusRequest(content, status),
     { ...s, todos: s.todos.listMap(t => if (t.content == content) { ...t, todoStatus: status, completedAt: status == TodoCompleted } else t) }, Applied)
 pure def deleteRequest(content: str): TodoRequest = { op: DeleteOp, requestContent: content, requestStatus: TodoPending, affirmed: false }
@@ -72,8 +75,9 @@ pure def deleteTodo(s: Todos, key: str, content: str): Todos =
   if (replayed(s, key)) s
   else if (matching(s, content).length() != 1) recordMutation(key, deleteRequest(content), s, Missed)
   else recordMutation(key, deleteRequest(content), { ...s, todos: s.todos.select(t => t.content != content) }, Applied)
-pure def stepMissChangesNoItem(before: Todos, after: Todos): bool =
-  (after.lastOutcome == Missed and after.mutations.length() > before.mutations.length()) implies after.todos == before.todos
+pure def stepNoChangeKeepsItems(before: Todos, after: Todos): bool =
+  ((after.lastOutcome == Missed or after.lastOutcome == NoOutcome) and after.mutations.length() > before.mutations.length()) implies after.todos == before.todos
+pure def sometimesStatusAlreadySet(s: Todos): bool = s.lastOutcome == NoOutcome and s.mutations.length() > 0
 ```
 
 ### An item's completion time is set exactly while it is completed

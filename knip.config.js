@@ -9,7 +9,7 @@
 //   root @repo/design-system                read as files by vibestack/design/test/design.test.ts
 //   tailwindcss (ui, design-system, studio, cloud)  resolved by @tailwindcss/vite and the lint plugin from CSS
 //   core @biomejs/biome                     resolved by path in src/catalog/generate.vibe
-//   os ruby                                 the system Ruby the Android toolchain asks for its gem directory
+//   os ruby, otool                           system binaries used by the Android toolchain
 //   entry *.meta.tsx, *.css (ui, cloud)     read by the design tool and the page's index.html
 //   entry *.schema, *.contract              imported by the tests vibestack/testing/generate.ts writes under .cache/
 //   design-system eslint, eslint-plugin-better-tailwindcss, typescript-eslint  loaded by name in vibestack/design/test/design.test.ts
@@ -25,7 +25,15 @@ export default {
   "ignoreIssues": {
     "vibestack/studio/src/server.vibe": ["exports"],
     "packages/cloud/src/services/sse.ts": ["exports"],
-    "packages/cloud/src/client/relay-frames.ts": ["exports"]
+    "packages/cloud/src/client/relay-frames.ts": ["exports"],
+    "packages/agent/test/support/product-plugin/entry.ts": ["unlisted"],
+    "packages/plugin-assistant/src/index.vibe": ["duplicates"],
+    "packages/plugin-browser/src/index.vibe": ["duplicates"],
+    "packages/plugin-calendar/src/index.vibe": ["duplicates"],
+    "packages/plugin-files/src/index.vibe": ["duplicates"],
+    "packages/plugin-inbox/src/index.vibe": ["duplicates"],
+    "packages/plugin-maps/src/index.vibe": ["duplicates"],
+    "packages/plugin-workflows/src/index.vibe": ["duplicates"]
   },
   "workspaces": {
     ".": {
@@ -129,6 +137,21 @@ export default {
         "test/**/*.{ts,vibe,vibex}"
       ]
     },
+    "packages/plugin-assistant": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
+    "packages/plugin-calendar": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
+    "packages/plugin-inbox": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
+    "packages/plugin-notes": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
+    "packages/plugin-workflows": {
+      "entry": ["src/worker/main.vibe", "src/**/*.{schema,contract}.{ts,vibe}"]
+    },
     "packages/os": {
       "entry": [
         "src/{index,cli}.vibe",
@@ -147,7 +170,8 @@ export default {
         "@effect/platform-node-shared"
       ],
       "ignoreBinaries": [
-        "ruby"
+        "ruby",
+        "otool"
       ],
       "ignoreUnresolved": [
         "./runtime-config.mjs"

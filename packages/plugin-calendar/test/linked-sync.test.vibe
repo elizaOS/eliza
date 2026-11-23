@@ -3,9 +3,12 @@ import { assert, it } from "@effect/vitest"
 import {
   CalendarLinkedStore, CalendarSyncController, LinkedCalendarReconciler, calendarSyncSettingsSlot, chooseLinkDestination, createCalendarSyncHost,
   googleCalendarSyncPort, linkedCalendarControl,
-  readGoogleCalendarSyncDestination, type CalendarLinkStorage, type CalendarSyncBinding, type CalendarSyncClient, type CalendarSyncRequest,
+  readGoogleCalendarSyncDestination, type LinkedControlRefused, type LinkedControlUncertain, type CalendarLinkStorage, type CalendarSyncBinding, type CalendarSyncClient, type CalendarSyncRequest,
   type LinkedCalendarLocalPort, type LinkedCalendarSemanticEvent,
 } from "../src/linked-sync/index.vibe"
+
+const refusalCode = (failure: LinkedControlRefused | LinkedControlUncertain) =>
+  failure._tag === "LinkedControlRefused" ? failure.code : failure._tag
 
 const grant = "11111111-1111-4111-8111-111111111111"
 const binding: CalendarSyncBinding = {
@@ -33,6 +36,7 @@ function memoryStorage(): CalendarLinkStorage & { readonly slots: Map<string, un
 function fakeGoogle() {
   const events = new Map<string, { eventId: string; etag: string; key: string; event: LinkedCalendarSemanticEvent }>()
   let next = 0
+  let down = false
   const envelope = (body: Record<string, unknown>) => ({ version: 1, calendarId: binding.calendarId, providerExactlyOnce: false, ...body })
   const snapshot = (row: { eventId: string; etag: string; event: LinkedCalendarSemanticEvent }) =>
     ({ eventId: row.eventId, etag: row.etag, visibility: "private", remindersDisabled: true, event: row.event })
@@ -56,6 +60,10 @@ function fakeGoogle() {
           return envelope({ event: snapshot(row) })
         }
         case "update": {
+          if (down) {
+            down = false
+            throw Object.assign(new Error("Calendar sync did not answer."), { status: 502 })
+          }
           const row = events.get(input.eventId)
           if (row === undefined || row.etag !== input.expectedEtag) throw refused("precondition_failed")
           const updated = { ...row, etag: `${row.etag}+`, event: input.event }
@@ -75,7 +83,7 @@ function fakeGoogle() {
     const row = events.get(eventId)
     if (row !== undefined) events.set(eventId, { ...row, etag: `${row.etag}!`, event: { ...row.event, ...change } })
   }
-  return { client, events, edit }
+  return { client, events, edit, dropNextUpdate: () => { down = true } }
 }
 
 function residentCalendar() {
@@ -139,6 +147,15 @@ it.effect('Link my resident calendar to a verified provider destination (spec/ca
   assert.equal((try controller.sync()).pulled, 1)
   assert.equal(resident.rows.get("lunch")?.event.location, "Park")
 
+  google.dropNextUpdate()
+  resident.write("lunch", { ...lunch, location: "Park", title: "Lunch outside" })
+  assert.equal((try controller.sync()).quarantined, 1)
+  assert.equal((try controller.sync()).quarantined, 1)
+  try TestClock.adjust("6 minutes")
+  assert.equal((try controller.sync()).dirty, 1)
+  assert.equal((try controller.sync()).pushed, 1)
+  assert.equal(google.events.get("g1")?.event.title, "Lunch outside")
+
   google.edit("g1", { title: "Lunch with Ada" })
   resident.write("lunch", { ...lunch, location: "Park", title: "Team lunch" })
   assert.equal((try controller.sync()).conflicted, 1)
@@ -195,20 +212,20 @@ it.effect('Pause, resume or recover without replacing a newer sync decision (spe
   const selected = try control.commit({ operation: "select", expectedRevision: 0, idempotencyKey: "select-1", destination })
   assert.deepEqual(selected.control, { revision: 1, paused: true, destination, conflictCount: 0, pendingLinkId: null, pendingDispatchReference: null })
   assert.equal((try control.commit({ operation: "select", expectedRevision: 0, idempotencyKey: "select-1", destination })).receipt.replayed, true)
-  assert.equal((try Effect.flip(control.commit({ operation: "pause", expectedRevision: 0, idempotencyKey: "select-1" }))).code, "LINKED_CALENDAR_OPERATION_KEY_CONFLICT")
+  assert.equal(refusalCode(try Effect.flip(control.commit({ operation: "pause", expectedRevision: 0, idempotencyKey: "select-1" }))), "LINKED_CALENDAR_OPERATION_KEY_CONFLICT")
   const resumed = try control.commit({ operation: "resume", expectedRevision: 1, idempotencyKey: "resume-1" })
   assert.deepEqual([resumed.control.revision, resumed.control.paused, booted], [2, false, ["primary"]])
-  assert.equal((try Effect.flip(control.commit({ operation: "select", expectedRevision: 0, idempotencyKey: "select-1", destination }))).code, "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
+  assert.equal(refusalCode(try Effect.flip(control.commit({ operation: "select", expectedRevision: 0, idempotencyKey: "select-1", destination }))), "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
   assert.equal(try control.report(2), "synced")
   assert.equal(try control.report(1), "changed")
 
   const token = try control.acquireDispatch(2, "link-1", destination)
-  assert.equal((try Effect.flip(control.acquireDispatch(2, "link-2", destination))).code, "LINKED_CALENDAR_DISPATCH_REJECTED")
+  assert.equal(refusalCode(try Effect.flip(control.acquireDispatch(2, "link-2", destination))), "LINKED_CALENDAR_DISPATCH_REJECTED")
   assert.equal(try control.report(2), "syncing")
   const paused = try control.commit({ operation: "pause", expectedRevision: 2, idempotencyKey: "pause-1" })
   assert.deepEqual([paused.control.paused, paused.control.pendingLinkId], [true, "link-1"])
-  assert.equal((try Effect.flip(control.commit({ operation: "resume", expectedRevision: 3, idempotencyKey: "resume-2" }))).code, "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
-  assert.equal((try Effect.flip(control.commit({ operation: "recover", expectedRevision: 3, idempotencyKey: "recover-1", dispatchReference: paused.control.pendingDispatchReference ?? "" }))).code, "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
+  assert.equal(refusalCode(try Effect.flip(control.commit({ operation: "resume", expectedRevision: 3, idempotencyKey: "resume-2" }))), "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
+  assert.equal(refusalCode(try Effect.flip(control.commit({ operation: "recover", expectedRevision: 3, idempotencyKey: "recover-1", dispatchReference: paused.control.pendingDispatchReference ?? "" }))), "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
   try control.settleDispatch(token)
   assert.equal((try control.read()).pendingLinkId, null)
   assert.equal((try control.read()).revision, 3)
@@ -219,7 +236,7 @@ it.effect('Pause, resume or recover without replacing a newer sync decision (spe
   assert.equal((try restarted.read()).pendingLinkId, "link-2")
   try restarted.commit({ operation: "pause", expectedRevision: 4, idempotencyKey: "pause-2" })
   const held = (try restarted.read()).pendingDispatchReference ?? ""
-  assert.equal((try Effect.flip(restarted.commit({ operation: "recover", expectedRevision: 5, idempotencyKey: "recover-stale", dispatchReference: "an earlier dispatch" }))).code,
+  assert.equal(refusalCode(try Effect.flip(restarted.commit({ operation: "recover", expectedRevision: 5, idempotencyKey: "recover-stale", dispatchReference: "an earlier dispatch" }))),
     "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED")
   const recovered = try restarted.commit({ operation: "recover", expectedRevision: 5, idempotencyKey: "recover-2", dispatchReference: held })
   assert.deepEqual([recovered.control.revision, recovered.control.paused, recovered.control.pendingLinkId], [6, true, null])
@@ -241,10 +258,10 @@ it.effect('Keep a link local or move it only while sync is drained (spec/calenda
   const rebound = try control.editMapping({ operation: "rebind", linkId: "link-1", expectedRevision: 2, reviewed: mapping, destination: second })
   assert.equal(rebound.revision, 3)
   assert.equal((try control.editMapping({ operation: "rebind", linkId: "link-1", expectedRevision: 2, reviewed: mapping, destination: second })).revision, 3)
-  assert.equal((try Effect.flip(control.editMapping({ operation: "retain_local", linkId: "link-1", expectedRevision: 2, reviewed: mapping, destination: null }))).code,
+  assert.equal(refusalCode(try Effect.flip(control.editMapping({ operation: "retain_local", linkId: "link-1", expectedRevision: 2, reviewed: mapping, destination: null }))),
     "LINKED_CALENDAR_MAPPING_EDIT_REJECTED")
   try control.commit({ operation: "resume", expectedRevision: 3, idempotencyKey: "resume-1" })
-  assert.equal((try Effect.flip(control.editMapping({ operation: "rebind", linkId: "link-1", expectedRevision: 2, reviewed: mapping, destination: second }))).code,
+  assert.equal(refusalCode(try Effect.flip(control.editMapping({ operation: "rebind", linkId: "link-1", expectedRevision: 2, reviewed: mapping, destination: second }))),
     "LINKED_CALENDAR_MAPPING_REPLAY_REFUSED")
 })
 

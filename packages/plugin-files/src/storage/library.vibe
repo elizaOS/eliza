@@ -43,7 +43,6 @@ module browser {
   const row = ({ bytes, ...rest }: Stored): LibraryRow => bytes === undefined ? rest : { ...rest, bytes: new Uint8Array(bytes) }
   const stored = ({ bytes, ...rest }: LibraryRow): Stored => bytes === undefined ? rest : { ...rest, bytes: bytes.slice().buffer }
 
-  /** Every row of the named library. */
   export async function readRows(name: string): Promise<LibraryRow[]> {
     const db = await database(name)
     return new Promise((resolve, reject) => {
@@ -53,7 +52,6 @@ module browser {
     })
   }
 
-  /** Reads every row and applies the plan made from them in one transaction; a refusal aborts it and changes nothing. */
   export async function commitRows(name: string, plan: (rows: readonly LibraryRow[]) => LibraryPlan | string): Promise<string | undefined> {
     const db = await database(name)
     return new Promise((resolve, reject) => {
@@ -77,12 +75,10 @@ module browser {
     })
   }
 
-  /** A fresh row ID. */
   export function newId(): string {
     return crypto.randomUUID()
   }
 
-  /** A fresh row revision. */
   export function newRevision(): string {
     return Array.from(crypto.getRandomValues(new Uint8Array(32)), (value) => value.toString(16).padStart(2, "0")).join("")
   }
@@ -92,11 +88,11 @@ import { batchCommits, libraryAnswer, type AttachmentAnswer, type LibraryAnswer 
 
 export { newId, newRevision, type LibraryPlan, type LibraryRow }
 
-/** The library's own root folder. */
 export const LIBRARY_ROOT = "root"
 
 export error LibraryFailed { message: string }
-/** Why a plan refused to change the library. */
+export const allocateLibraryId = Effect.try({ try: newId, catch: () => new LibraryFailed({ message: "A file identity could not be generated." }) })
+export const allocateLibraryRevision = Effect.try({ try: newRevision, catch: () => new LibraryFailed({ message: "A file revision could not be generated." }) })
 export type LibraryRefusal = LibraryAnswer | "LibraryBatchRefused" | "FolderImportRefused" | AttachmentAnswer
 
 export error LibraryRefused { answer: LibraryRefusal; message: string }
@@ -109,13 +105,11 @@ const MESSAGES: Readonly<Record<LibraryRefusal, string>> = {
   ReceiptsBlocked: "A file named Receipts already exists. Rename it before saving receipts.",
 }
 
-/** The rows of one browser library and the one way to change them: a plan applied to the rows as one transaction reads them. */
 export service LibraryStore {
   rows(): readonly LibraryRow[]!LibraryFailed
   commit(plan: (rows: readonly LibraryRow[]) => LibraryPlan | LibraryRefusal): void!(LibraryFailed | LibraryRefused)
 }
 
-/** The library kept in this browser's IndexedDB database of that name, shared by every tab. */
 export function indexedLibrary(databaseName: string) {
   return Layer.succeed(LibraryStore, {
     rows: () => tryPromise({ try: () => readRows(databaseName), catch: () => new LibraryFailed({ message: "File storage could not be read." }) }),
@@ -126,17 +120,15 @@ export function indexedLibrary(databaseName: string) {
   })
 }
 
-/** The rows a folder holds. */
 export function childrenOf(rows: readonly LibraryRow[], folderId: string): LibraryRow[] {
   return rows.filter((row) => row.parentId === folderId)
 }
 
-/** Whether a folder is the row itself or lies inside it. */
-export function insideOf(rows: readonly LibraryRow[], folderId: string, rowId: string): boolean {
+function insideOf(rows: readonly LibraryRow[], folderId: string, rowId: string): boolean {
   let current: string | undefined = folderId
   for (let depth = 0; current !== undefined && current !== "" && depth <= rows.length + 1; depth++) {
     if (current === rowId) return true
-    const at = current
+    const at: string = current
     current = rows.find((row) => row.id === at)?.parentId
   }
   return false
@@ -146,7 +138,6 @@ const isFolder = (rows: readonly LibraryRow[], id: string) => id === LIBRARY_ROO
 const nameUsed = (rows: readonly LibraryRow[], folderId: string, name: string, except?: string) =>
   rows.some((row) => row.parentId === folderId && row.id !== except && row.name === name)
 
-/** A new row in a folder, refused when the folder is gone or the name is in use. */
 export function insertPlan(entry: Omit<LibraryRow, "revision" | "createdAt" | "modifiedAt">, now: number) {
   return (rows: readonly LibraryRow[]): LibraryPlan | LibraryAnswer => {
     const answer = libraryAnswer({ present: true, revisionMatches: true, nameTaken: nameUsed(rows, entry.parentId, entry.name),
@@ -155,7 +146,6 @@ export function insertPlan(entry: Omit<LibraryRow, "revision" | "createdAt" | "m
   }
 }
 
-/** A rename or move of one row at the revision it expects, under a new revision. */
 export function placePlan(change: { readonly id: string; readonly expectedRevision: string; readonly destinationId: string; readonly name: string }, now: number) {
   return (rows: readonly LibraryRow[]): LibraryPlan | LibraryAnswer => {
     const row = rows.find((candidate) => candidate.id === change.id)
@@ -169,14 +159,12 @@ export function placePlan(change: { readonly id: string; readonly expectedRevisi
   }
 }
 
-/** A row with everything inside it, as the rows to remove. */
 export function subtreeOf(rows: readonly LibraryRow[], id: string): string[] {
   const out = [id]
   for (let index = 0; index < out.length; index++) out.push(...childrenOf(rows, out[index]).map((row) => row.id))
   return out
 }
 
-/** A permanent delete of rows at their expected revisions, all or none: confirmed, and leaving any folder that still holds rows unless whole subtrees go. */
 export function deletePlan(items: readonly { readonly id: string; readonly expectedRevision: string }[], confirmed: boolean, subtrees = false) {
   return (rows: readonly LibraryRow[]): LibraryPlan | "LibraryBatchRefused" => {
     const found = items.map((item) => rows.find((row) => row.id === item.id && row.revision === item.expectedRevision))

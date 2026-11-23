@@ -3,19 +3,16 @@ import type { ExchangeOutcome } from "../../../gen/os__android__secureStore.ts";
 
 export type { ExchangeOutcome };
 
-/** A slot name, 1 to 1024 UTF-16 units; the host's consumer policy decides what the app view may do with it. */
 export type ElizaSecureStoreKey = string;
 
 export type ElizaSecureStoreReadError = "not_found" | "unreadable" | "denied" | "unavailable";
 
 export type ElizaSecureStoreError = "conflict" | "storage_full" | "denied" | "native_error" | "unconfirmed" | "unavailable";
 
-/** `value` is exactly one serialized JSON value. */
 export type ElizaSecureStoreRead =
   | { readonly ok: true; readonly value: string }
   | { readonly ok: false; readonly error: ElizaSecureStoreReadError };
 
-/** `outcome` is absent only when the plugin could not load the host's policy. */
 export type ElizaSecureStoreResult =
   | { readonly ok: true; readonly outcome: Extract<ExchangeOutcome, "Written" | "Removed"> }
   | { readonly ok: false; readonly error: ElizaSecureStoreError; readonly outcome?: Exclude<ExchangeOutcome, "Written" | "Removed"> };
@@ -41,9 +38,7 @@ export type ElizaSecureStoreStatus =
 
 export interface ElizaSecureStoreExchange {
   readonly key: ElizaSecureStoreKey;
-  /** The exact stored text the caller last read, or null when it expects the slot to be absent. */
   readonly expected: string | null;
-  /** The new serialized JSON value, or null to remove the slot. */
   readonly value: string | null;
 }
 

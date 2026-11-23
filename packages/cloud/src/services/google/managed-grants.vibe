@@ -4,11 +4,11 @@ import { nativeConnectAttempts, nativeConnectStores, nativeConnectStoresAny, nat
 import { millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
 import type { Signed } from "../../http/request-auth.vibe"
 import { refused } from "../../http/refusal.vibe"
+import { rateLimitRetryAt } from "../../identity-store.vibe"
 import { decodeGrant, inspectKey, isFlatGrant } from "../../native-clients/grants.vibe"
 import { capabilityEnabled, Deployment } from "../../profile/profile.vibe"
 import { googleSubjectPattern, readIdToken } from "../../providers/google-identity.vibe"
 import { googleJson, tokenForm, type GoogleProfile } from "../../providers/google.vibe"
-import { admit } from "../../shared/rate-limit.vibe"
 import { Store, toText, type Tx } from "../../store/connection.vibe"
 import { capabilitiesOf, holds, issueManagedGrant, type GoogleCapability, type ManagedLanding, type Owner } from "./grant-access.vibe"
 
@@ -171,7 +171,10 @@ export effect function linkAuthorizedGoogle(caller: Signed, code: string, expect
   const now = try Clock.currentTimeMillis
   const native = try store.transaction((tx) => nativeRegistration(tx, caller, caller.grantKey, environment, now))
   if (!native) return try linkNativeGoogle(caller, code, { kind: "standalone", subject: expectedSubject })
-  try admit({ subject: caller.userId, scope: "google:native:connect", limit: nativeConnectAttempts, widthMs: nativeConnectWindowSeconds * millisPerSecond })
+  const retryAt = try store.transaction((tx) => rateLimitRetryAt(tx, {
+    scope: "google:native:connect", subject: caller.userId, maximum: nativeConnectAttempts, seconds: nativeConnectWindowSeconds,
+  }, now))
+  if (retryAt !== undefined) throw refused("RateLimited", "NoReason", retryAt)
   const subject = try store.transaction((tx) => enrolledSubject(tx, caller))
   if (subject === undefined || (expectedSubject !== undefined && expectedSubject !== subject)) return unlinked("google_reconnect_required")
   return try linkNativeGoogle(caller, code, { kind: "enrolled", subject, grantKey: caller.grantKey })

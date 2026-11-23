@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import {
   deviceCalendar, findRow, occurrenceId, removeRow, removeScoped, reviewSeries, saveEdit, saveScopedEdit, saveSeriesEdit, settleDeletions, stageDeletion, stageSeriesDeletion,
-  guardPendingChanges, trimJournal, undoDeletion, DeletionRefused, DeviceBridgeFault, ScopeMismatch, SeriesChanged,
+  guardPendingChanges, trimJournal, undoDeletion, type DeletionRefused, DeviceBridgeFault, InvalidSeriesTime, ScopeMismatch, SeriesChanged,
   type CalendarDocument, type CalendarRow, type DeletionClock, type DeletionOwner, type DeviceInspection, type DeviceRemoval, type DeviceRow,
   type DeviceTicket, type OwnerFacts,
 } from "../src/series/index.vibe"
@@ -37,7 +37,7 @@ it.effect('Edit one occurrence, delete another and move the series (spec/calenda
     { ...standup, id: second, title: "Standup, later", begin: begin + day + 3_600_000, end: begin + day + 5_400_000, revision: "m1", repeat: "none", seriesId: "standup", occurrenceBegin: begin + day },
   ])
   assert.equal(findRow(edited, third)?.title, "Standup")
-  const removed = try removeRow(edited, findRow(edited, third)!, "m2")
+  const removed = try removeRow(edited, findRow(edited, third)!, mint())
   assert.deepStrictEqual(removed[0], { ...standup, revision: "m2", excluded: [begin + 2 * day] })
   assert.equal(findRow(removed, third), undefined)
   assert.equal(try map(Effect.flip(saveEdit(removed, { id: second, revision: "r1" }, { title: "stale" }, mint)), (error) => error._tag), "SeriesChanged")
@@ -74,6 +74,13 @@ it.effect('Change this event, this and following, or all of a series from one oc
     [occurrenceId("standup", begin + day + 1_800_000), "Sync", "Sync"])
   const one = try saveScopedEdit([standup], { id: second, revision: "r1" }, "instance", { title: "Just today" }, mint, "unused")
   assert.deepStrictEqual([findRow(one.rows, second)?.title, findRow(one.rows, third)?.title], ["Just today", "Standup"])
+  const fromOverride = try saveScopedEdit(one.rows, { id: second, revision: findRow(one.rows, second)!.revision }, "series",
+    { title: "Sync", begin: begin + day + hour, end: begin + day + hour + 1_800_000 }, mint, "unused")
+  assert.deepStrictEqual([fromOverride.selected, findRow(fromOverride.rows, second)?.title, findRow(fromOverride.rows, second)?.begin, findRow(fromOverride.rows, occurrenceId("standup", begin + 2 * day + hour))?.title],
+    [second, "Sync", begin + day + hour, "Sync"])
+  const friday = occurrenceId("standup", begin + 4 * day)
+  const weekend = try Effect.flip(saveScopedEdit([{ ...standup, repeat: "weekdays" }], { id: friday, revision: "r1" }, "series", { begin: begin + 5 * day, end: begin + 5 * day + 1_800_000 }, mint, "unused"))
+  assert.isTrue(weekend instanceof InvalidSeriesTime)
   const mismatch = try Effect.flip(saveScopedEdit([dentist], { id: "dentist", revision: "d1" }, "series", { title: "Dentist" }, mint, "unused"))
   assert.isTrue(mismatch instanceof ScopeMismatch)
   const stale = try Effect.flip(removeScoped([standup], { id: second, revision: "old" }, "series", mint))
@@ -199,7 +206,9 @@ it.effect('Send only the inspected device target and hold an uncertain write (sp
   session.owner = "alice"
 
   controls.deletion = { status: "external" }
+  calls.length = 0
   assert.deepStrictEqual(try device.remove(row, false), { status: "external" })
+  assert.deepStrictEqual(calls, [["inspectDeletion", "row-1", undefined], ["openExternal", { id: "row-1", begin: 10_000, end: 20_000 }]])
   controls.deletion = { status: "changed" }
   assert.deepStrictEqual(try device.remove(row, false), { status: "refresh" })
 
@@ -212,7 +221,9 @@ it.effect('Send only the inspected device target and hold an uncertain write (sp
   assert.equal(try device.held(), "row-1")
   assert.deepStrictEqual(try device.remove(row, false), { status: "busy" })
   controls.removal = "queued"
+  session.openRow = "row-2"
   assert.equal((try device.remove({ ...row, id: "row-2" }, false)).status, "sent")
+  session.openRow = row.id
   const read = { accepted: true, cause: "requested" as const, complete: true, eventIds: [] as string[], begin: 0, end: 100_000 }
   assert.equal(try device.observeRead({ ...read, complete: false }), false)
   assert.equal(try device.observeRead({ ...read, cause: "ordinary" }), false)

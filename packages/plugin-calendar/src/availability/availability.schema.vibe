@@ -21,11 +21,15 @@ function sampled<Wire extends Schema.Constraint, Seed extends Schema.Constraint>
 
 const ZoneSeed = Schema.Literals(["UTC", "America/Los_Angeles", "America/New_York", "Europe/London", "Australia/Lord_Howe"])
 
-/** A four-digit-year UTC instant with millisecond precision that round-trips. */
 export const Instant = sampled(Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/), Schema.makeFilter(roundTrips)),
   between(0, lastInstant), instantText)
 
-/** A zone Intl supports, nonempty, at most 128 UTF-16 units and free of NUL. */
+export function sampledWireInstant(wire: Schema.Codec<string, string>, { allowDateOnly = true }: { readonly allowDateOnly?: boolean } = {}) {
+  const formats = allowDateOnly ? ["Z", "+05:30", "-07:00", "date"] as const : ["Z", "+05:30", "-07:00"] as const
+  return sampled(wire, Schema.Struct({ instant: Instant, format: Schema.Literals(formats) }),
+    ({ instant, format }) => format === "date" ? instant.slice(0, 10) : instant.slice(0, -1) + format)
+}
+
 export const ZoneName = sampled(Schema.String.check(Schema.makeFilter((name: string) => knownTimeZone(name))), ZoneSeed, (zone) => zone)
 
 function boundedSpan({ start, end }: { readonly start: string; readonly end: string }) {
@@ -36,17 +40,14 @@ function boundedSpan({ start, end }: { readonly start: string; readonly end: str
 const OperationWire = Schema.Struct({ type: Schema.Literal("calendar_availability"), start: Instant, end: Instant, timeZone: ZoneName })
   .check(Schema.makeFilter(boundedSpan))
 
-/** The availability operation: exactly its type, a positive interval of at most seven days from a nonnegative start, and a zone. */
 export const AvailabilityOperation = sampled(OperationWire,
   Schema.Struct({ from: between(0, lastInstant - 7 * day), duration: between(1, 7 * day), timeZone: ZoneSeed }),
   ({ from, duration, timeZone }) => ({ type: "calendar_availability", start: instantText(from), end: instantText(from + duration), timeZone } as const))
 
-/** One occupancy-only row a reader returns: exactly its interval, all-day flag and availability. */
 export const AvailabilityEventRow = Schema.Struct({
   start: Instant, end: Instant, allDay: Schema.Boolean, availability: Schema.Literals(["busy", "free", "tentative"]),
 })
 
-/** One readable calendar the picker may offer: a distinct nonempty identity and a lowercase 64-hex revision; labels stay local. */
 export const AvailabilitySourceRow = Schema.Struct({
   id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128), Schema.makeFilter((id: string) => !id.includes("\0"))),
   sourceRevision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
@@ -56,7 +57,6 @@ export const AvailabilitySourceRow = Schema.Struct({
 
 const BusyInterval = Schema.Struct({ start: Instant, end: Instant, allDay: Schema.Boolean, tentative: Schema.Boolean })
 
-/** The shared availability result: exactly its version, kind, window, calendar count, status, busy intervals and transparent count. */
 export const AvailabilityResult = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("calendar_availability"),
@@ -67,9 +67,6 @@ export const AvailabilityResult = Schema.Struct({
   transparentIgnored: between(0, 200),
 })
 
-/** The availability operation's type. */
 export type AvailabilityOperation = typeof AvailabilityOperation.Type
-/** An occupancy-only row's type. */
 export type AvailabilityEventRow = typeof AvailabilityEventRow.Type
-/** A shared availability result's type. */
 export type AvailabilityResult = typeof AvailabilityResult.Type

@@ -1,10 +1,9 @@
 // spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/models.md, "A slot is assigned only to an installed model whose role serves it, one slot per change"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"; spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"
 import type { LocalRoute } from "@elizaos/agent/routes"
 import { modelNamed } from "./catalog.vibe"
-import { InferenceEngine } from "./engine.vibe"
+import type { InferenceEngine } from "./engine.vibe"
 import { slotNamed, type LocalModelsApi } from "./models.vibe"
 
-/** The route a client posts a partial transcript to for an end-of-turn score. */
 export const endOfTurnPath = "/api/asr/local-inference/end-of-turn"
 
 const maxTranscriptCharacters = 4096
@@ -18,15 +17,16 @@ type Answer = { readonly status: number; readonly body: object }
 const refused = (status: number, error: string): Answer => ({ status, body: { error } })
 const unknownModel = refused(404, "unknown-model")
 
-/** The owner's model routes and the end-of-turn score, over the device's models and engine. */
 export function localInferenceRoutes(models: LocalModelsApi, engine: InferenceEngine.Shape): readonly LocalRoute[] {
-  const answer = <E extends { readonly _tag: string }>(work: void!E, signal: AbortSignal, status = 200) => runPromise(effect {
-    try work
-    return { status, body: try models.view() } satisfies Answer
-  } catch (failure) => match (failure._tag) {
-    when "Rejected": refused(409, "not-allowed");
-    when "AssignmentsUnreadable": refused(409, "assignments-unreadable");
-    default: refused(500, failure._tag);
+  const answer = <E extends { readonly _tag: string }>(work: void!E, signal: AbortSignal, status = 200): Promise<Answer> => runPromise(effect {
+    return (effect {
+      try work
+      return { status, body: try models.view() } satisfies Answer
+    } catch (failure) => match (failure._tag) {
+      when "Rejected": refused(409, "not-allowed");
+      when "AssignmentsUnreadable": refused(409, "assignments-unreadable");
+      default: refused(500, failure._tag);
+    })
   }, { signal })
 
   const chosen = (body: unknown) => Option.getOrUndefined(Option.flatMap(decodeModelChoice(body), (choice) => Option.fromNullishOr(modelNamed(choice.modelId, models.catalog))))
@@ -64,7 +64,7 @@ export function localInferenceRoutes(models: LocalModelsApi, engine: InferenceEn
       method: "POST", path: "/api/local-inference/active", maxBodyBytes: 4096,
       handler: ({ body, signal }) => {
         const model = chosen(body)
-        return model === undefined ? unknownModel : answer(Effect.asVoid(models.activate(model.id)), signal)
+        return model === undefined ? unknownModel : answer(models.activate(model.id), signal, 202)
       },
     },
     { method: "DELETE", path: "/api/local-inference/active", handler: ({ signal }) => answer(models.deactivate(), signal) },

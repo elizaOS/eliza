@@ -1,8 +1,8 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { chatReturn, failureOf, outcomeOf, type ChatAsk, type ChatReturn, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
+import { chatReturn, failureOf, outcomeOf, retryAtOf, type ChatAsk, type ChatReturn, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 
 export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
@@ -13,7 +13,6 @@ export interface Endpoint {
   readonly url: string
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
   readonly maxTokensField: "max_tokens" | "max_completion_tokens"
-  readonly defaultMaxTokens?: number
 }
 
 interface Sink {
@@ -21,8 +20,7 @@ interface Sink {
   readonly onStreamChunk?: StreamChunkCallback
 }
 
-/** One decoded chat completion: its text, tool calls, finish reason, token use and replayable reasoning. */
-export interface Reply {
+interface Reply {
   readonly text: string
   readonly toolCalls: ToolCall[]
   readonly finishReason: string | undefined
@@ -30,7 +28,7 @@ export interface Reply {
   readonly reasoning: string
 }
 
-export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind }
+export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind; retryAt: number | undefined }
 
 export error Refused { cloud: CloudFailure }
 
@@ -271,8 +269,10 @@ module edge {
 import { run } from edge
 
 function refusalOf(cloud: CloudFailure): ModelRefusal {
-  const failureKind = failureKindName(failureOf(cloud, 0))
-  const refused = (message: string, status?: number, code?: string) => new ModelRefusal({ message, code, status, failureKind })
+  const failure = failureOf(cloud, 0)
+  const failureKind = failureKindName(failure)
+  const retryAt = retryAtOf(failure)
+  const refused = (message: string, status?: number, code?: string) => new ModelRefusal({ message, code, status, failureKind, retryAt: retryAt > 0 ? retryAt : undefined })
   const outcome = outcomeOf(cloud)
   switch (outcome) {
     case "RefusedConnection": return refused("The model connection failed", undefined, "ECONNRESET")
@@ -412,7 +412,7 @@ effect function send(url: string, credential: Redacted.Redacted<string>, body: o
 effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, fields: object | undefined, sink: Sink, ask: ChatAsk) {
   const began = try Clock.currentTimeMillis
   const started = try binding.startCall(handler, began)
-  if (started === "limited") throw refusalOf({ tag: "CloudRateLimited", retryAt: 0 })
+  if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil })
   const body = fields === undefined ? undefined : { model: endpoint.models[handler], stream: sink.stream === true, ...fields }
   const answer = send(endpoint.url, binding.credential(), body, sink, ask) catch effect (failure) => {
     if (!(failure instanceof Refused)) throw failure
@@ -428,7 +428,7 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
 function requestOf(endpoint: Endpoint, params: GenerateTextParams): object | undefined {
   const messages = conversation(params)
   if (messages === undefined) return undefined
-  const max = params.omitMaxTokens ? undefined : params.maxTokens ?? endpoint.defaultMaxTokens
+  const max = params.omitMaxTokens ? undefined : params.maxTokens
   const tools = toolsOf(params.tools)
   const toolChoice = toolChoiceOf(params.toolChoice)
   const format = responseFormatOf(params)
@@ -467,7 +467,6 @@ function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProvi
   return answer.form === "AnswerResult" ? resultOf(answer.reply) : answer.reply.text
 }
 
-/** Serves a text handler: the reply text, or one result with tool calls, finish reason and token use when the call offers tools or asks for a schema. */
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
   return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
     Effect.provide(Effect.map(serve(binding, handler, endpoint, requestOf(endpoint, params), params, askOf(params)), returned), FetchHttpClient.layer),
@@ -475,7 +474,6 @@ export function generateText(binding: Binding, endpoint: Endpoint, handler: Chat
   )
 }
 
-/** Serves image description as a chat completion with the image as its one part. */
 export function describeImage(binding: Binding, endpoint: Endpoint) {
   return (_runtime: IAgentRuntime, params: { imageUrl: string; prompt?: string; signal?: AbortSignal; stream?: boolean; onStreamChunk?: StreamChunkCallback } | string): Promise<{ title: string; description: string }> => {
     const input = typeof params === "string" ? { imageUrl: params } : params
@@ -488,7 +486,6 @@ export function describeImage(binding: Binding, endpoint: Endpoint) {
   }
 }
 
-/** Lists the model ids an endpoint offers to the credential. */
 export effect function listModels(baseUrl: string, credential: Redacted.Redacted<string>) {
   const request = HttpClientRequest.setHeader(HttpClientRequest.get(baseUrl + "/models"), "authorization", "Bearer " + Redacted.value(credential))
   const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" })
@@ -502,7 +499,6 @@ export effect function listModels(baseUrl: string, credential: Redacted.Redacted
 
 type Handler = Parameters<IAgentRuntime["registerModel"]>[1]
 
-/** Registers each handler twice so core retries a transient refusal once. */
 export function registerTwice(runtime: IAgentRuntime, provider: string, handlers: Readonly<Record<string, unknown>>, metadata: ModelRegistrationMetadata): void {
   for (const [modelType, handler] of Object.entries(handlers)) {
     const serve = handler as Handler

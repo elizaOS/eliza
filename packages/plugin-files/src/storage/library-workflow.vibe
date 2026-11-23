@@ -1,6 +1,6 @@
 // spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything"; spec/files/library.md, "A workflow attachment and its receipt commit together, and a replay returns the receipt without saving again"; spec/files/library.md, "A workflow reads its Files source whole and unchanged, or not at all"; spec/files/library.md, "An imported folder arrives whole under a name not yet used, or not at all"
 module browser {
-  /** The bytes of canonical base64 text, or undefined. */
+  /** @throws {never} */
   export function fromBase64(text: string): Uint8Array<ArrayBuffer> | undefined {
     try {
       const raw = atob(text)
@@ -10,7 +10,7 @@ module browser {
     }
   }
 
-  /** A stored receipt's fingerprint and result, or undefined when the bytes are not one. */
+  /** @throws {never} */
   export function receiptOf(bytes: Uint8Array | undefined): { fingerprint: string; result: { id: string; name: string; sha256: string } } | undefined {
     if (bytes === undefined) return undefined
     try {
@@ -29,7 +29,7 @@ import { fromBase64, receiptOf } from browser
 import { attachmentAnswer, folderImported, recentFilesLimit, sourceAdmitted, sourceFilesLimit, sourceTextLimit } from "../../gen/files__library.effect.vibe"
 import { reviewMailAttachment, type MailAttachment } from "../documents/source-links.vibe"
 import { freeName, validName } from "./model.vibe"
-import { childrenOf, LibraryStore, LIBRARY_ROOT, newId, newRevision, type LibraryRow } from "./library.vibe"
+import { allocateLibraryId, allocateLibraryRevision, childrenOf, LibraryStore, LIBRARY_ROOT, newId, newRevision, type LibraryRow } from "./library.vibe"
 import { VolumeRefused } from "./volume.vibe"
 
 const RECEIPTS = "Receipts"
@@ -39,10 +39,8 @@ const TEXT_TYPES = ["application/json", "application/xml", "application/javascri
 const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
 const unavailable = (failure: { readonly message: string }) => refused("unavailable", failure.message)
 
-/** What a workflow step saved: the library row, the name it got and its content digest. */
 export type WorkflowSaved = { readonly id: string; readonly name: string; readonly sha256: string }
 
-/** One file of a workflow's Files source, with its text when it is a text file. */
 export type WorkflowFile = {
   readonly id: string
   readonly parentId: string
@@ -75,8 +73,7 @@ function hidden(rows: readonly LibraryRow[], row: LibraryRow): boolean {
   return false
 }
 
-/** Saves a workflow step's reviewed attachment into Receipts once: the file and the step's receipt commit together, and a replay answers the receipt. */
-export effect function saveWorkflowAttachment(input: MailAttachment & { readonly operationId: string }): WorkflowSaved!VolumeRefused {
+export effect function saveWorkflowAttachment(input: MailAttachment & { readonly operationId: string }): WorkflowSaved!VolumeRefused!LibraryStore {
   if (!/^[a-zA-Z0-9_-]{1,120}$/.test(input.operationId)) throw refused("invalid", "Invalid workflow operation.")
   const name = validName(input.name)
   const reviewed = try mapError(reviewMailAttachment(input), (failure) => refused("invalid", failure.message))
@@ -85,9 +82,9 @@ export effect function saveWorkflowAttachment(input: MailAttachment & { readonly
   const fingerprint = JSON.stringify([name, input.mimeType, reviewed.sha256])
   const library = try LibraryStore
   const now = try Clock.currentTimeMillis
-  const saved: WorkflowSaved = { id: newId(), name, sha256: reviewed.sha256 }
+  const saved: WorkflowSaved = { id: try mapError(allocateLibraryId, unavailable), name, sha256: reviewed.sha256 }
   let answered: WorkflowSaved = saved
-  const outcome = try (map(library.commit((rows) => {
+  const outcome = (map(library.commit((rows) => {
     const kept = receiptRowOf(rows, input.operationId)
     const receipts = childrenOf(rows, LIBRARY_ROOT).find((row) => row.name === RECEIPTS)
     const answer = attachmentAnswer({ receiptKept: kept !== undefined, fingerprintMatches: receiptOf(kept?.bytes)?.fingerprint === fingerprint,
@@ -125,7 +122,6 @@ effect function sourceRows(recent: boolean) {
   return { count: files.length, chosen }
 }
 
-/** Reads a workflow's Files source whole: the 20 most recent files or every file up to 2000, each text whole, refused when anything changed during the read. */
 export effect function workflowFiles(recent: boolean) {
   const before = try sourceRows(recent)
   const read = (textOverLimit: boolean, changedDuringRead: boolean) => sourceAdmitted({ recent, files: before.count, textOverLimit, changedDuringRead })
@@ -134,7 +130,7 @@ export effect function workflowFiles(recent: boolean) {
   for (const row of before.chosen) {
     const textual = row.mimeType.startsWith("text/") || TEXT_TYPES.includes(row.mimeType)
     if (textual && !read(row.size > sourceTextLimit, false)) throw refused("invalid", "A selected Files text source exceeds the 16,000-byte read limit. No partial source was returned.")
-    const decoded = textual && row.bytes !== undefined ? try (Effect.try(() => new TextDecoder("utf-8", { fatal: true }).decode(row.bytes)) catch () => undefined) : undefined
+    const decoded = textual && row.bytes !== undefined ? (Effect.try(() => new TextDecoder("utf-8", { fatal: true }).decode(row.bytes)) catch () => undefined) : undefined
     const text = decoded !== undefined && !decoded.includes("\0") ? decoded : undefined
     files.push({ id: row.id, parentId: row.parentId, name: row.name, mimeType: row.mimeType, size: row.size, revision: row.revision, createdAt: row.createdAt,
       modifiedAt: row.modifiedAt, contentStatus: text === undefined ? "binary" : "text", ...(text === undefined ? {} : { text }) })
@@ -145,11 +141,9 @@ export effect function workflowFiles(recent: boolean) {
   return { scope: recent ? "20 most recently imported or changed files" : "All managed files", files }
 }
 
-/** One file under an imported folder, by its path inside the folder. */
 export type ImportedFile = { readonly path: string; readonly mimeType: string; readonly bytes: Uint8Array<ArrayBuffer> }
 
-/** Adds a folder the renderer picked, with every file under it, in one transaction; it answers the folder's path. */
-export effect function importLibraryFolder(folderName: string, files: readonly ImportedFile[]): string!VolumeRefused {
+export effect function importLibraryFolder(folderName: string, files: readonly ImportedFile[]): string!VolumeRefused!LibraryStore {
   const library = try LibraryStore
   const now = try Clock.currentTimeMillis
   const name = validName(folderName)
@@ -183,8 +177,8 @@ export effect function importLibraryFolder(folderName: string, files: readonly I
     const place = `${parentId}/${leaf}`
     if (places.has(place) || folders.has(names.join("/"))) duplicateEntry = true
     places.add(place)
-    rows.push({ id: newId(), parentId, name: leaf, mimeType: file.mimeType || "application/octet-stream", directory: false, size: file.bytes.byteLength,
-      revision: newRevision(), createdAt: now, modifiedAt: now, bytes: file.bytes })
+    rows.push({ id: try mapError(allocateLibraryId, unavailable), parentId, name: leaf, mimeType: file.mimeType || "application/octet-stream", directory: false, size: file.bytes.byteLength,
+      revision: try mapError(allocateLibraryRevision, unavailable), createdAt: now, modifiedAt: now, bytes: file.bytes })
   }
   try mapError(library.commit((all) => folderImported({ nameTaken: childrenOf(all, LIBRARY_ROOT).some((row) => row.name === top.name), duplicateEntry, namesValid })
     ? { put: rows, remove: [] } : "FolderImportRefused"), (failure) => failure._tag === "LibraryRefused"

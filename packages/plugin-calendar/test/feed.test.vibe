@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
-import { managedBroker, managedFeed, mergeFeedEvents, parseBrokerEndpoint, parseManagedGoogleCalendarFeed, PurgeRefused,
+import { managedBroker, managedFeed, mergeFeedEvents, parseBrokerEndpoint, parseManagedGoogleCalendarFeed, type PurgeRefused,
   type AggregatePorts, type CalendarLinkRecord, type FeedComponent, type ImportedSourceScope, type ManagedCacheStore } from "../src/feed/index.vibe"
 
 module node {
@@ -47,7 +47,7 @@ effect function brokerFake(answer: (call: Call) => Answer!!) {
     const parsed = try orDie(Effect.try(() => JSON.parse(text) as { calendar: Call }))
     calls.push({ ...parsed.calendar, url: url.href, authorization: request.headers.authorization })
     const reply = try answer(parsed.calendar)
-    return HttpClientResponse.fromWeb(request, webResponse(reply.body, reply.status))
+    return HttpClientResponse.fromWeb(request, try orDie(Effect.try(() => webResponse(reply.body, reply.status))))
   })
   return { calls, layer: Layer.succeed(HttpClient.HttpClient, client) }
 }
@@ -129,7 +129,7 @@ it.effect(`Read only the exact selected source and window, cache it under its ow
       assert.deepEqual(try refusal(() => ({ status: 409, body: "{}" })), ["http", 409])
       assert.deepEqual(try refusal(() => ({ status: 200, body: "[]" })), ["schema", 200])
       const calls = broker.calls.length
-      assert.deepEqual(try map(Effect.flip(feed.read(sourceOf("unscoped", "work"), window)), (failure) => failure._tag === "ManagedCalendarUnavailable" && failure.stage), "scope")
+      assert.deepEqual(try map(Effect.flip(feed.read(sourceOf("unscoped", "work"), window)), (failure) => failure._tag === "ManagedCalendarUnavailable" ? failure.stage : failure._tag), "scope")
       assert.equal(broker.calls.length, calls)
 
       mode.sources = { status: 200, body: JSON.stringify({ calendars: [{ ...work, connectorAccountId: otherGrant }] }) }

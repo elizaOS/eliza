@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
-import type { IAgentRuntime, Memory } from "@elizaos/core"
+import type { IAgentRuntime, JsonObject, Memory } from "@elizaos/core"
 import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
 import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
 import { MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route } from "../src/client/contracts.vibe"
@@ -16,6 +16,7 @@ import { usableNavigationFix } from "../src/client/navigation-fix.vibe"
 import { mapsObservation } from "../src/client/observation.vibe"
 import { routeProgress } from "../src/client/route-distance.vibe"
 import { savedPlaces } from "../src/client/saved-places.vibe"
+import { mapsPlugin } from "../src/index.vibe"
 import { createMapsPlugin, nearbyPlaceKind, phonePositionProvider } from "../src/plugin.vibe"
 import { mapsNavigationRelay } from "../src/relay.vibe"
 import { routeOf } from "../src/routing.vibe"
@@ -46,12 +47,16 @@ const offer = {
 
 function cloudFake() {
   const calls: string[] = []
-  const gates: { search?: Promise<void>; refuseSearch?: CloudError } = {}
+  const gates: { search?: { started: Deferred.Deferred<void>; finish: Deferred.Deferred<void> }; refuseSearch?: CloudError } = {}
   const client = {
     async mapsCapabilities() { calls.push("capabilities"); return offer },
     async mapsPlacesSearch(request: { readonly query: string }) {
       calls.push(`search:${request.query}`)
-      await gates.search
+      const search = gates.search
+      if (search !== undefined) {
+        await runPromise(Deferred.succeed(search.started, undefined))
+        await runPromise(Deferred.await(search.finish))
+      }
       if (gates.refuseSearch !== undefined) throw gates.refuseSearch
       return { providerId: "google", attribution: "Google", places: [{ providerId: "google", id: "ferry", name: "Ferry Building", coordinate: ferry, attribution: "Google", fetchedAt: Date.now() }] }
     },
@@ -79,12 +84,12 @@ it.live('Keep Cloud Maps on the account that requested it: coverage installs the
   const installed = holder.provider
   if (installed === undefined) return try Effect.die(new Error("Cloud Maps installed no provider"))
   const found = try installed.search("ferry building")
-  let release = () => {}
-  cloud.gates.search = new Promise<void>((resolve) => { release = resolve })
+  const gate = { started: try Deferred.make<void>(), finish: try Deferred.make<void>() }
+  cloud.gates.search = gate
   const inFlight = fork installed.search("coit tower")
-  try sleep("20 millis")
+  try Deferred.await(gate.started)
   try maps.bind({ session: "s2", credential: "k2", client: cloud.client })
-  release()
+  try Deferred.succeed(gate.finish, undefined)
   const fenced = try Fiber.await(inFlight)
   cloud.gates.search = undefined
   try maps.initialize()
@@ -111,17 +116,23 @@ it.live('Keep Cloud Maps on the account that requested it: coverage installs the
 })
 
 it.live('Show the right copyright for the map I am looking at: a view inside the attributed area keeps its copyright and a reply for a view I left is never shown (spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at")', effect () => {
-  const answers: Array<{ readonly view: string; readonly resolve: (text: string) => void }> = []
+  const replies = try Queue.unbounded<Deferred.Deferred<string>>()
+  let asked = 0
   const basemap: CloudMapsBasemap = {
     kind: "cloud-raster", attribution: "Google", minZoom: 0, maxZoom: 20, tileSize: 256,
     tile: () => succeed(new Uint8Array()),
-    copyright: (view) => promise(() => new Promise<string>((resolve) => { answers.push({ view: String(view.north), resolve }) })),
+    effect copyright() {
+      const reply = try Deferred.make<string>()
+      asked++
+      try Queue.offer(replies, reply)
+      return try Deferred.await(reply)
+    },
   }
   const attribution = try viewportAttribution(basemap)
   const city = { zoom: 12, north: 38, south: 37, east: -122, west: -123 }
   const first = fork attribution.show(city)
-  try sleep("10 millis")
-  answers[0]?.resolve("Map data ©2026 Google")
+  const firstReply = try Queue.take(replies)
+  try Deferred.succeed(firstReply, "Map data ©2026 Google")
   const shown = try join first
   try attribution.move({ ...city, north: 37.9, south: 37.1 })
   const within = try attribution.current()
@@ -129,18 +140,18 @@ it.live('Show the right copyright for the map I am looking at: a view inside the
   try attribution.move(elsewhere)
   const hidden = try attribution.current()
   const stale = fork attribution.show(elsewhere)
-  try sleep("10 millis")
+  const staleReply = try Queue.take(replies)
   const further = { ...elsewhere, north: 42, south: 41 }
   try attribution.move(further)
   const moved = fork attribution.show(further)
-  try sleep("10 millis")
-  answers[1]?.resolve("Stale copyright")
-  answers[2]?.resolve("Map data ©2026 Google, INEGI")
+  const currentReply = try Queue.take(replies)
+  try Deferred.succeed(staleReply, "Stale copyright")
   const late = try join stale
+  try Deferred.succeed(currentReply, "Map data ©2026 Google, INEGI")
   const current = try join moved
   try attribution.dispose()
   const disposed = try attribution.current()
-  try Effect.try(() => assert.deepStrictEqual({ shown, within, hidden, asked: answers.length, late, current, disposed },
+  try Effect.try(() => assert.deepStrictEqual({ shown, within, hidden, asked, late, current, disposed },
     { shown: "Map data ©2026 Google", within: "Map data ©2026 Google", hidden: "", asked: 3, late: "", current: "Map data ©2026 Google, INEGI", disposed: "" }))
 })
 
@@ -232,7 +243,7 @@ it.live('Plan directions and keep me in control of guidance: an agent request wa
   }))
 })
 
-it.live('Navigate again when the phone never received my request: a lost delivery is delivered again to the same offer after its lease lapses, and the phone runs it once and answers once (spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer")', effect () => {
+it.live('Navigate again when the phone never received my request: a lost delivery is delivered again to the same offer after its lease lapses, the phone runs it once and answers once, and the agent bundle reaches the phone that opened its relay for the turn\'s conversation (spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer")', effect () => {
   const relay = try mapsNavigationRelay({ leaseMs: 40, commandMs: 3_000, liveMs: 2_000, idleMs: 30_000, pollMs: 20 })
   const conversationId = "11111111-2222-4333-8444-555555555555"
   const agent = relay.navigation("phone-scope", conversationId, () => true)
@@ -243,6 +254,7 @@ it.live('Navigate again when the phone never received my request: a lost deliver
     current: () => screen,
     execute: effect (_owner: object, operation: { readonly kind: string }) => {
       runs.push(operation.kind)
+      if (operation.kind === "stop") return { state: "stopped" as const }
       return { state: "awaiting-confirmation" as const, placeName: "Coit Tower", travelMode: "walk" as const, route: { durationSeconds: 720, distanceMeters: 4800, traffic: "live" as const } }
     },
     connected: () => {},
@@ -260,7 +272,26 @@ it.live('Navigate again when the phone never received my request: a lost deliver
   const available = try agent.available()
   const status = try agent.start({ destination: towerRef, travelMode: "walk" })
   try Fiber.interrupt(turn)
-  try Effect.try(() => assert.deepStrictEqual({ available, status: status.state, route: status.route?.durationSeconds, runs }, { available: true, status: "awaiting-confirmation", route: 720, runs: ["start"] }))
+  const roomId = "66666666-2222-4333-8444-555555555555"
+  const runtime = {
+    getService: () => linkFake().link,
+    getRoom: (id: string) => Promise.resolve(id === roomId ? { id: roomId, metadata: { deviceConversation: { id: conversationId, createdAt: 1, updatedAt: 1 } } } : null),
+  } as unknown as IAgentRuntime
+  try promise(() => mapsPlugin.init?.({}, runtime) ?? Promise.resolve())
+  const route = mapsPlugin.routes?.[0]
+  const viaBundle = effect (body: Readonly<Record<string, unknown>>) => {
+    const sent = try mapError(tryPromise(async () => await route?.handler({ parameters: new Map(), query: new Map(), headers: new Map(), body, signal: new AbortController().signal })),
+      () => new RelayUnavailable({ reason: "The relay route failed." })) as { readonly status: number; readonly body: { readonly error?: string } } | undefined
+    if (sent?.status !== 200) throw new RelayUnavailable({ reason: sent?.body.error ?? "The relay route is missing." })
+    return sent.body
+  }
+  const stopAction = mapsPlugin.actions?.find((found) => found.name === "MAPS_NAVIGATION_STOP")
+  const phoneTurn = fork withMapsNavigationRelay(phoneHost, viaBundle, conversationId, sleep("1500 millis"))
+  try sleep("50 millis")
+  const stopped = try promise(async () => await stopAction?.handler(runtime, { entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text: "stop navigation", source: "device" } } as unknown as Memory, undefined, {}))
+  try Fiber.interrupt(phoneTurn)
+  try Effect.try(() => assert.deepStrictEqual({ available, status: status.state, route: status.route?.durationSeconds, runs, stopped: [stopped?.success, (stopped?.data as { readonly status?: { readonly state: string } } | undefined)?.status?.state] },
+    { available: true, status: "awaiting-confirmation", route: 720, runs: ["start", "stop"], stopped: [true, "stopped"] }))
 })
 
 it.live('A command delivered to an offer that is then replaced is abandoned rather than replayed, and a queued one reaches the new offer (spec/maps/relay.md, "A queued command waits for the phone\'s current offer and survives a new offer it never reached")', effect () => {
@@ -435,6 +466,7 @@ function linkFake() {
           const known = [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry), place("tower", "Coit Tower", tower)].find((item) => item.id === id)
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: known ?? null } }
         }
+        case "/api/v1/maps/reverse": return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: { ...place("sun", "The Sun Building", here), address: "278 W Broadway, New York, NY 10006, USA" } } }
         case "/api/v1/maps/routes": {
           const planned = (id: string, minutes: number) => ({ providerId: "google", id, from: ferry, to: tower, mode: "walk", geometry: [ferry, tower], distanceMeters: minutes * 80, durationSeconds: minutes * 60, steps: [], attribution: "Google", fetchedAt: at, traffic: "none" })
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google Maps Platform via Eliza Cloud", routes: [planned("best", 20), planned("other", 24)] } }
@@ -450,11 +482,11 @@ function messageWith(location: unknown): Memory {
   return { entityId: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002", content: { text: "coffee near me", metadata: { clientDevice: { context: location === undefined ? {} : { location } } } } } as unknown as Memory
 }
 
-it.live('Search near me with where my phone is now: a recent reported position searches around the phone, an old one asks the phone for its location, routes keep their alternatives and attribution, and the card stays recognizable outside a fence (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at")', effect () => {
+it.live('Search near me with where my phone is now: a recent reported position searches around the phone, an old one asks the phone for its location, routes keep their alternatives and attribution, and the card stays recognizable outside a fence, and "where am I" names only the area from a rough position (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/phonePosition.md, "Story: Tell me where I am from where my phone is now"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at")', effect () => {
   const { link, bodies } = linkFake()
-  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => undefined, savedPlaces: () => undefined, namesView: () => false })
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
   const runtime = {} as IAgentRuntime
-  const act = (name: string, message: Memory, parameters: Record<string, unknown>) => promise(async () => {
+  const act = (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
     const action = plugin.actions?.find((found) => found.name === name)
     if (action === undefined) throw new Error(`${name} is not registered`)
     return await action.handler(runtime, message, undefined, { parameters })
@@ -468,6 +500,9 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const route = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Coit Tower", travelMode: "walk" })
   const fromHere = try act("MAPS_ROUTE", recent, { origin: "here", destination: "Coit Tower" })
   const handoff = try act("MAPS_NAVIGATION_START", recent, { destination: "Coit Tower", travelMode: "walk" })
+  const rough = try act("MAPS_WHERE_AM_I", messageWith({ latitude: here.latitude, longitude: here.longitude, accuracyMeters: 25_000, capturedAt: now - 60_000 }), {})
+  const precise = try act("MAPS_WHERE_AM_I", recent, {})
+  const unknown = try act("MAPS_WHERE_AM_I", old, {})
   const provider = try promise(() => phonePositionProvider.get(runtime, recent, {} as never))
   const routeText = route.text ?? ""
   const nearByCard = recognizedMapsCards(nearBy.text ?? "")[0]?.card
@@ -484,6 +519,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     handoff: recognizedMapsCards(handoff.text ?? "")[0]?.card.kind,
     provider: provider.values,
     fenced: recognizedMapsCards(fenced).length,
+    whereAmI: [rough.text, recognizedMapsCards(rough.text ?? "").length, recognizedMapsCards(precise.text ?? "")[0]?.card.kind, withoutMapsCards(precise.text ?? "").startsWith("You're at The Sun Building"), unknown.success, bodies.filter((made) => made.path === "/api/v1/maps/reverse").length],
     kinds: [nearbyPlaceKind("the nearest pharmacy"), nearbyPlaceKind("round to the nearest dollar"), nearbyPlaceKind("coffee near me")],
   }, {
     nearby: [true, ["near", "far"]],
@@ -496,6 +532,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     handoff: "handoff",
     provider: { phonePositionAvailable: true },
     fenced: 0,
+    whereAmI: ["Your phone's position is approximate (within about 25.0 km): somewhere around New York, NY, USA.", 0, "place", true, false, 2],
     kinds: ["pharmacy", undefined, "coffee"],
   }))
 })
@@ -563,15 +600,15 @@ function memoryStore(): AgentSavedPlaceStore {
 }
 
 function ownerTurn(text: string, roomId = "00000000-0000-4000-8000-000000000002"): Memory {
-  return { entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text, source: "client_chat", channelType: "DM" } } as unknown as Memory
+  return { entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text, source: "device" } } as unknown as Memory
 }
 
 it.live('Save a place with my assistant once, and answer the question Maps asked: a repeat saves nothing, a superseded repeat is a new change, a reused key is refused, and "the second one" continues the request that asked (spec/maps/savedPlaces.md, "Story: Save a place with my assistant once"; spec/maps/routing.md, "Story: Send my directions request to Maps, not to a view")', effect () => {
   const { link } = linkFake()
   const store = memoryStore()
-  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => undefined, savedPlaces: () => store, namesView: (_runtime, destination) => destination === "settings" })
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => store, namesView: (_runtime, destination) => destination === "settings" })
   const runtime = {} as IAgentRuntime
-  const act = (name: string, message: Memory, parameters: Record<string, unknown>) => promise(async () => {
+  const act = (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
     const action = plugin.actions?.find((found) => found.name === name)
     if (action === undefined) throw new Error(`${name} is not registered`)
     return await action.handler(runtime, message, undefined, { parameters })
@@ -589,12 +626,16 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
   const elsewhere = try act("MAPS_NAVIGATION_START", ownerTurn("the second one", "00000000-0000-4000-8000-000000000003"), {})
   const routes = [
     routeOf("directions to Coit Tower", ownerTurn("directions to Coit Tower"), false, () => false),
-    routeOf("take me to Coit Tower", ownerTurn("take me to Coit Tower"), false, () => false),
+    routeOf("take me to Coit Tower", { ...ownerTurn("x"), content: { text: "x", source: "device", channelType: "VOICE_DM" } } as unknown as Memory, false, () => false),
     routeOf("take me to settings", ownerTurn("take me to settings"), false, (destination) => destination === "settings"),
     routeOf("take me to Coit Tower then text Sam", ownerTurn("x"), false, () => false),
     routeOf("find the nearest pharmacy", ownerTurn("x"), false, () => false),
     routeOf("directions to Coit Tower", { ...ownerTurn("x"), content: { text: "x", source: "discord", channelType: "GROUP" } } as unknown as Memory, false, () => false),
     routeOf("directions to assemble the shelf", ownerTurn("x"), false, () => false),
+    routeOf("show me the route to the settings page", ownerTurn("x"), false, () => false),
+    routeOf("what's the weather near Times Square", ownerTurn("x"), false, () => false),
+    routeOf("find coffee near Union Square", ownerTurn("x"), false, () => false),
+    ...["go to coit tower", "go to SFO", "how do I get to see the Eiffel Tower", "go to bed", "how do I get to see my results"].map((said) => routeOf(said, ownerTurn("x"), false, () => false)),
   ]
   const receipt = (result: { readonly effectReceipts?: ReadonlyArray<{ readonly outcome: string }> }) => result.effectReceipts?.[0]?.outcome
   try Effect.try(() => assert.deepStrictEqual({
@@ -610,6 +651,6 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
     asked: [false, "destination"],
     answered: [true, "near"],
     elsewhere: false,
-    routes: ["ToDirections", "ToTravel", "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner", "ToPlanner"],
+    routes: ["ToDirections", "ToTravel", "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToTravel", "ToTravel", "ToTravel", "ToPlanner", "ToPlanner"],
   }))
 })

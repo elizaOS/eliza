@@ -258,6 +258,7 @@ export const TELEPHONY_MAX_SUBSCRIPTIONS = 8;
 const PERMISSIONS: readonly TelephonyPermissionState[] = ["granted", "denied", "prompt", "prompt-with-rationale"];
 const ROLES: readonly TelephonyRole[] = ["dialer", "sms"];
 const DIAL_SHAPE = /^\+?[\d\s().-]{2,40}$/;
+const OPTIONAL_TRUNK_ZERO = /^(\+(?:41|44|49)) ?\(0\) ?(?=\d)/;
 const DIGITS = /^\+?\d{2,20}$/;
 const SEPARATORS = /[\s().-]/g;
 
@@ -362,6 +363,6 @@ export function normalizePhoneNumber(value: unknown): PhoneNumber | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!DIAL_SHAPE.test(trimmed)) return null;
-  const digits = trimmed.replace(SEPARATORS, "");
+  const digits = trimmed.replace(OPTIONAL_TRUNK_ZERO, "$1").replace(SEPARATORS, "");
   return DIGITS.test(digits) ? (digits as PhoneNumber) : null;
 }

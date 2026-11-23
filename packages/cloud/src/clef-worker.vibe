@@ -85,9 +85,9 @@ function decision(request: ClefDecisionRequest, raw: unknown) {
 
 const unavailable = (reason: "disabled" | "provider_error") => WorkerResponse.json({ status: "unavailable", reason }, { status: 503 })
 const scopeHeader = "X-Clef-Rate-Limit-Scope"
-export type Scope = "organization-day" | "subscription-minute"
+type Scope = "organization-day" | "subscription-minute"
 
-export error DecisionLimited { scope: Scope }
+error DecisionLimited { scope: Scope }
 
 function workerTx(db: Client): Tx {
   return {

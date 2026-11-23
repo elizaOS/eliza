@@ -40,8 +40,7 @@ const afterAssent = pattern(`^${leadForm}${tail}$`, "u")
 const waitSentence = pattern(`^${waitCue}$`, "u")
 const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu
 
-/** True when the whole text is a closed-grammar acknowledgment that may be spoken before pending work, and never an answer. */
-export function isPendingWorkCue(reply: string): boolean {
+function isPendingWorkCue(reply: string): boolean {
   const text = reply.trim()
   if (!text || text.length > maxCueLength || text.includes("?") || text.includes(personMark) || dataToken.test(text)) return false
   const words = text.replace(/\s+/gu, " ").replace(person, `check with ${personMark}`).toLowerCase()
@@ -53,7 +52,6 @@ export function isPendingWorkCue(reply: string): boolean {
     && sentences.every((sentence) => waitSentence.test(sentence) || progress.test(sentence))
 }
 
-/** The plan's reading of the model's text: a cue, an answer, or nothing to say. */
 export function draftOf(text: string): Draft {
   if (!text.trim()) return "Silent"
   return isPendingWorkCue(text) ? "Cue" : "Answer"
@@ -70,21 +68,18 @@ function isJsonObject(body: string): boolean {
   }
 }
 
-/** True when the text carries at least one well-formed client-rendered card block. */
-export function containsRenderedCard(text: string): boolean {
+function containsRenderedCard(text: string): boolean {
   if (!text.includes("[/")) return false
   return [...text.matchAll(cardBlock)].some((match) => match[2] !== undefined && isJsonObject(match[2]))
 }
 
-/** The model's prose when it is safe to show the owner, or `undefined` when it carries a tool-call, evaluator or control envelope. */
-export function shownProse(text: string): string | undefined {
+function shownProse(text: string): string | undefined {
   const trimmed = text.trim()
   if (!trimmed || looksLikeActionEnvelopeJson(trimmed) || looksLikeEvaluatorEnvelopeJson(trimmed)) return undefined
   const output = sanitizeUserVisibleModelOutput(trimmed)
   return output.kind === "text" ? output.text.trim() || undefined : undefined
 }
 
-/** Joins the actions' own text and the model's grounded prose into the one reply the turn stores. */
 export function composeReply(toolText: string | undefined, prose: string | undefined, ownCopy: boolean): string {
   const verified = toolText?.trim() ?? ""
   const said = prose === undefined ? undefined : shownProse(prose)
@@ -108,12 +103,10 @@ export function composeReply(toolText: string | undefined, prose: string | undef
 const literalSpeech = /\b(?:verbatim|word for word|as written|read it (?:back|aloud)|spell it out|repeat (?:it|that) exactly)\b/i
 const asksForField = /\b(?:read(?: back)?|spell(?: out)?|quote|repeat|recite|give me|tell me|what(?:[’']s| is| are))\s+(?:(?:me|out|aloud|the|this|that|my|its|full|exact|whole|entire|last|four)\s+){0,7}(?:(?:event|request|operation|workflow|run|order|thread|record|confirmation|reference)\s+(?:ID|identifier|number)|receipt|identifier|ID|address|number|digits|code|subject|headers?|body|draft|e-?mail|message|text)\b/i
 
-/** True when the owner's words ask for literal wording or for a field to be read out. */
-export function asksForVerbatim(request: string): boolean {
+function asksForVerbatim(request: string): boolean {
   return literalSpeech.test(request) || asksForField.test(request)
 }
 
-/** The action label a voice turn's answer carries, or `undefined` for a text turn or one that ran no action. */
 export function voiceActionLabel(voice: boolean, request: string, reply: string, ran: readonly string[]): VoiceAction | undefined {
   const label: ActionLabel = actionLabel(voice, [...ran], containsRenderedCard(reply), asksForVerbatim(request))
   return label.tag === "Labelled" ? label.label : undefined

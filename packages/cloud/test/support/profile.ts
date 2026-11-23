@@ -80,7 +80,7 @@ export function environmentProfile(fakeUrl: string, api: string, web: string) {
     },
     inference: {
       providers: [{ id: "llm", baseUrl: `${fakeUrl}/llm`, apiKeyEnv: "LLM_API_KEY" }],
-      models: [{ id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true }],
+      models: [{ id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true, defaultMaxTokens: 4096 }],
     },
     speech: {
       provider: "speech",

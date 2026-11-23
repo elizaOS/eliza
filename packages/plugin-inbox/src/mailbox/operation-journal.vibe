@@ -14,6 +14,7 @@ import { gmailInboxAllows } from "./grants.vibe"
 import type { GmailInboxCapabilities, GmailInboxOperationKind, GmailInboxReceipt } from "./types.vibe"
 
 type Bag = Readonly<Record<string, unknown>>
+type PreparedInboxOperation = { readonly receipt: GmailInboxReceipt; readonly review: Bag }
 type Checked = { readonly matches: boolean; readonly checked: readonly Omit<ReviewedMailAttachment, "text">[] }
 
 const operationKinds = ["send", "draft-create", "draft-replace", "draft-delete", "archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"] as const
@@ -45,10 +46,8 @@ const OperationRecord = Schema.Struct({
 })
 const decodeRecord = Schema.decodeUnknownOption(OperationRecord)
 
-/** The durable journal record of one reviewed operation for one owner and grant. */
 export type InboxOperationRecord = typeof OperationRecord.Type
 
-/** The local draft a send was started from, and the owner request it answers. */
 export interface OperationSource {
   readonly draftId: string
   readonly requestId?: string
@@ -56,47 +55,37 @@ export interface OperationSource {
   readonly providerDraft?: { readonly draftId: string; readonly providerDigest: string }
 }
 
-/** The email in the composer at the moment of a tap. */
 export interface ComposerEmail {
   readonly draftId: string
   readonly proposal: Bag
 }
 
-/** How an unsent composer review relates to the email now in the composer. */
 export type ReviewBinding = "bound" | "edited" | "other" | "absent"
 
-/** Why the journal refused a step; nothing was dispatched by the refused step. */
 export type OperationRefusal =
   | "pending" | "unsaved-review" | "too-large" | "invalid-proposal" | "invalid-source-request" | "changed" | "invalid-record"
   | "review-mismatch" | "not-reviewable" | "not-allowed" | "foreign-receipt" | "no-record" | "not-attempted" | "unresolved"
   | "inactive" | "not-adoptable" | "unsent-review-moving"
 
-/** A refused journal step. */
 export error OperationRefused { reason: OperationRefusal }
 
-/** A review that is not for the email now in the composer; an edited or other review was discarded unsent. */
 export error ReviewNotBound { binding: Exclude<ReviewBinding, "bound"> }
 
-/** A failure of the journal's storage. */
 export error JournalStoreFailed { cause: unknown }
 
-/** Every way a journal step fails. */
 export type OperationFailure = OperationRefused | ReviewNotBound | JournalStoreFailed | MailFailure | OutgoingAttachmentsRefused
 
-/** Compare-and-exchange storage for the journal record, encrypted on a phone. */
 export interface InboxOperationStore {
   read(key: string): unknown!JournalStoreFailed
   compareExchange(key: string, expected: unknown, next: unknown): ("saved" | "conflict")!JournalStoreFailed
 }
 
-/** The reviewed calls of one operation; dispatch is made at most once and recovery only reads the receipt. */
 export interface InboxOperationClient {
-  gmailPrepareOperation(grantId: string, requestId: string, proposal: Bag): { readonly receipt: GmailInboxReceipt; readonly review: Bag }!MailFailure
+  gmailPrepareOperation(grantId: string, requestId: string, proposal: Bag): PreparedInboxOperation!MailFailure
   gmailDispatchOperation(grantId: string, requestId: string, reviewDigest: string, proposal: Bag): GmailInboxReceipt!MailFailure
   gmailOperation(grantId: string, requestId: string): GmailInboxReceipt!MailFailure
 }
 
-/** What one journal is bound to. */
 export interface InboxOperationDependencies {
   readonly owner: string
   readonly grantId: string
@@ -107,7 +96,6 @@ export interface InboxOperationDependencies {
   readonly reviewAttachment: MailAttachmentReviewer
 }
 
-/** What the composer checked before a provider draft reference is adopted. */
 export interface ProviderReferenceChecks {
   readonly reference: { readonly draftId: string; readonly providerDigest: string }
   readonly exactId: boolean
@@ -117,7 +105,6 @@ export interface ProviderReferenceChecks {
   readonly localAcknowledged: boolean
 }
 
-/** One durable selected-account intent; no recovery path dispatches an effect. */
 export interface InboxOperation {
   snapshot(): (InboxOperationRecord | null)!!
   load(): (InboxOperationRecord | null)!OperationFailure
@@ -131,21 +118,18 @@ export interface InboxOperation {
   stop(): void!!
 }
 
-/** Whether an operation kind is reviewed from the composer. */
 export function composerKind(kind: unknown): boolean {
   return kind === "send" || kind === "draft-create" || kind === "draft-replace"
 }
 
 const contentFields = ["mode", "to", "cc", "bcc", "subject", "bodyText", "attachments", "forwardAttachments", "replyMessageId"] as const
 
-/** Everything the owner reviews in a composer proposal, as one comparable text. */
 export function composerContent(proposal: Bag): string {
   return JSON.stringify(contentFields.map((field) => proposal[field] ?? null))
 }
 
 const bindingNames = { BoundReview: "bound", EditedReview: "edited", OtherReview: "other", AbsentReview: "absent" } as const satisfies Record<Binding, ReviewBinding>
 
-/** How an unsent composer review relates to the email now in the composer. */
 export function reviewBinding(record: Pick<InboxOperationRecord, "proposal" | "composer">, current: ComposerEmail | null): ReviewBinding {
   return bindingNames[bindingOf(record.composer?.draftId ?? "", composerContent(record.proposal), {
     open: current !== null,
@@ -154,7 +138,6 @@ export function reviewBinding(record: Pick<InboxOperationRecord, "proposal" | "c
   })]
 }
 
-/** The storage key of the journal of one owner and grant, an installed-data identifier. */
 export effect function inboxOperationKey(owner: string, grantId: string): string!! {
   return `inbox-operation:v1:${try sha256Hex(JSON.stringify([owner, grantId]))}`
 }
@@ -197,7 +180,6 @@ function sentMessageId(receipt: GmailInboxReceipt | null): string | undefined {
   return typeof id === "string" && id !== "" ? id : undefined
 }
 
-/** Removes the saved record of one owner and grant when it is an undispatched review, whatever binding is live. */
 export effect function discardUnsent(store: InboxOperationStore, owner: string, grantId: string): boolean!(OperationRefused | JournalStoreFailed) {
   const key = try inboxOperationKey(owner, grantId)
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -209,7 +191,6 @@ export effect function discardUnsent(store: InboxOperationStore, owner: string, 
   throw refused("unsent-review-moving")
 }
 
-/** The journal's model of its one operation: every journal step is taken through it, and only where the rules allow. */
 export interface JournalModel {
   state(): MailState!!
   admits(events: readonly Event[]): boolean!!
@@ -217,7 +198,6 @@ export interface JournalModel {
   restore(state: MailState): void!!
 }
 
-/** A journal model starting with no binding and an empty journal. */
 export effect function journalModel(): JournalModel!! {
   const kept = try Ref.make(initial)
   const machine = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
@@ -241,7 +221,102 @@ export effect function journalModel(): JournalModel!! {
   }
 }
 
-/** A journal bound to one owner and grant: prepare, one confirmed dispatch, and receipt reads that never dispatch. */
+function projectRecord(
+  saved: InboxOperationRecord | null,
+  state: MailState,
+  { digestOf, composerCopy, intern }: {
+    readonly digestOf: (digest: string) => number
+    readonly composerCopy: (draftId: string, proposal: Bag) => Copy
+    readonly intern: (text: string) => number
+  },
+): MailState {
+  if (saved === null) return emptyJournal(emptyCopy, state)
+  const kind = operationKind(saved.proposal) ?? "send"
+  const request = state.lastRequest + 1
+  const phase = phaseOf(saved)
+  const sent = sentMessageId(saved.receipt)
+  return {
+    ...state,
+    phase,
+    kind: kindOf[kind],
+    request,
+    lastRequest: request,
+    review: saved.receipt === null || phase === "PreparingMail" ? 0 : digestOf(saved.receipt.reviewDigest),
+    remoteRevision: typeof saved.proposal.expectedDigest === "string" ? digestOf(saved.proposal.expectedDigest) : 0,
+    captured: composerKind(kind) ? composerCopy(saved.composer?.draftId ?? `request:${saved.requestId}`, saved.proposal) : emptyCopy,
+    forwarded: saved.proposal.forwardAttachments !== undefined,
+    dispatchEpoch: 0,
+    dispatches: 0,
+    sentMessage: kind === "send" && sent !== undefined ? intern(`message:${sent}`) : 0,
+    cleanupHeld: sentFromDraft(saved),
+    cleanupReady: false,
+  }
+}
+
+type InboxReviewDependencies = Pick<InboxOperationDependencies, "capabilities" | "reviewAttachment">
+
+effect function reviewedAttachments(deps: InboxReviewDependencies, saved: InboxOperationRecord, review: Bag): Checked!(MailFailure | OutgoingAttachmentsRefused) {
+  const listedFiles = saved.proposal.attachments ?? []
+  if (!Array.isArray(listedFiles)) return { matches: false, checked: [] }
+  const files = listedFiles as readonly OutgoingMailAttachment[]
+  const caps = deps.capabilities()
+  try checkOutgoingAttachments(files, caps === null ? undefined : caps.attachmentPolicy)
+  const checked: Omit<ReviewedMailAttachment, "text">[] = []
+  for (const file of files) {
+    const { text: _text, ...metadata } = try deps.reviewAttachment(file)
+    checked.push(metadata)
+  }
+  const listed: readonly Bag[] = Array.isArray(review.attachments) ? review.attachments : []
+  const shape = (row: Bag) => [row.name, row.mimeType, row.size, row.sha256]
+  return { matches: (files.length <= 1 || Array.isArray(review.attachments)) && same(checked.map(shape), listed.map(shape)), checked }
+}
+
+function forwardMatches(saved: InboxOperationRecord, review: Bag, localBytes: number, localCount: number): { readonly matches: boolean; readonly within: boolean } {
+  const forward = saved.proposal.forwardAttachments
+  const reviewed = review.forwardedAttachments
+  if (forward === undefined) return { matches: reviewed === undefined || same(reviewed, []), within: true }
+  if (typeof forward !== "object" || forward === null || saved.proposal.mode !== "forward") return { matches: false, within: false }
+  const { messageId, historyId, partIds } = forward as Bag
+  if (typeof messageId !== "string" || typeof historyId !== "string" || !Array.isArray(partIds) || partIds.length === 0 ||
+    partIds.length > outgoingAttachmentLimits.maximumFiles || partIds.some((id) => typeof id !== "string") || !Array.isArray(reviewed)) {
+    return { matches: false, within: false }
+  }
+  const rows = reviewed as readonly Bag[]
+  const exact = same(rows.map((row) => row?.partId), partIds) &&
+    rows.every((row) => typeof row.name === "string" && typeof row.size === "number" && typeof row.sha256 === "string" && sha.test(row.sha256))
+  const total = localBytes + rows.reduce((sum, row) => sum + (typeof row.size === "number" ? row.size : 0), 0)
+  return { matches: exact, within: total <= outgoingAttachmentLimits.maximumTotalBytes && localCount + rows.length <= outgoingAttachmentLimits.maximumFiles }
+}
+
+function fieldsEchoed(proposal: Bag, review: Bag, kind: GmailInboxOperationKind): boolean {
+  const fields = composerKind(kind) ? ["to", "cc", "bcc", "subject", "bodyText"]
+    : kind === "draft-delete" ? ["draftId", "expectedDigest"]
+    : ["kind", "messageId", "expectedHistoryId"]
+  return fields.every((field) => proposal[field] === undefined || same(proposal[field], review[field])) &&
+    (kind !== "draft-delete" || review.permanent === true)
+}
+
+effect function verifyProviderReview(
+  deps: InboxReviewDependencies,
+  saved: InboxOperationRecord,
+  kind: GmailInboxOperationKind,
+  result: PreparedInboxOperation,
+): void!(OperationRefused | MailFailure | OutgoingAttachmentsRefused) {
+  const review = result.review
+  const attachments: Checked = composerKind(kind) ? try reviewedAttachments(deps, saved, review) : { matches: review.attachments === undefined, checked: [] }
+  const localBytes = attachments.checked.reduce((sum, file) => sum + file.size, 0)
+  const forward = forwardMatches(saved, review, localBytes, attachments.checked.length)
+  const accepted = reviewAccepted({
+    receiptMatches: result.receipt.requestId === saved.requestId && result.receipt.kind === kind && sha.test(result.receipt.reviewDigest),
+    fieldsEchoed: fieldsEchoed(saved.proposal, review, kind),
+    senderNamed: typeof review.from === "string" && review.from !== "",
+    attachmentsMatch: attachments.matches,
+    forwardMatches: forward.matches,
+    withinLimits: forward.within,
+  })
+  if (!accepted) throw refused("review-mismatch")
+}
+
 export effect function inboxOperation(deps: InboxOperationDependencies): InboxOperation!! {
   const model = try journalModel()
   const busy = try Ref.make(false)
@@ -311,30 +386,6 @@ export effect function inboxOperation(deps: InboxOperationDependencies): InboxOp
     return value
   }
 
-  function project(saved: InboxOperationRecord | null, state: MailState): MailState {
-    if (saved === null) return emptyJournal(emptyCopy, state)
-    const kind = operationKind(saved.proposal) ?? "send"
-    const request = state.lastRequest + 1
-    const phase = phaseOf(saved)
-    const sent = sentMessageId(saved.receipt)
-    return {
-      ...state,
-      phase,
-      kind: kindOf[kind],
-      request,
-      lastRequest: request,
-      review: saved.receipt === null || phase === "PreparingMail" ? 0 : digestOf(saved.receipt.reviewDigest),
-      remoteRevision: typeof saved.proposal.expectedDigest === "string" ? digestOf(saved.proposal.expectedDigest) : 0,
-      captured: composerKind(kind) ? composerCopy(saved.composer?.draftId ?? `request:${saved.requestId}`, saved.proposal) : emptyCopy,
-      forwarded: saved.proposal.forwardAttachments !== undefined,
-      dispatchEpoch: 0,
-      dispatches: 0,
-      sentMessage: kind === "send" && sent !== undefined ? intern(`message:${sent}`) : 0,
-      cleanupHeld: sentFromDraft(saved),
-      cleanupReady: false,
-    }
-  }
-
   effect function receiptEvent(receipt: GmailInboxReceipt): Event!! {
     const state = try model.state()
     return { type: "readReceipt", epochId: state.epoch, requestId: state.request, mailKind: state.kind, digest: digestOf(receipt.reviewDigest), receipt: receiptOf[receipt.state], message: messageOf(receipt) }
@@ -360,47 +411,6 @@ export effect function inboxOperation(deps: InboxOperationDependencies): InboxOp
     try save({ ...saved, receipt: copyOf(receipt), phase: "observed" }, [try receiptEvent(receipt)])
   }
 
-  effect function reviewedAttachments(saved: InboxOperationRecord, review: Bag): Checked!(MailFailure | OutgoingAttachmentsRefused) {
-    const listedFiles = saved.proposal.attachments ?? []
-    if (!Array.isArray(listedFiles)) return { matches: false, checked: [] }
-    const files = listedFiles as readonly OutgoingMailAttachment[]
-    const caps = deps.capabilities()
-    try checkOutgoingAttachments(files, caps === null ? undefined : caps.attachmentPolicy)
-    const checked: Omit<ReviewedMailAttachment, "text">[] = []
-    for (const file of files) {
-      const { text: _text, ...metadata } = try deps.reviewAttachment(file)
-      checked.push(metadata)
-    }
-    const listed: readonly Bag[] = Array.isArray(review.attachments) ? review.attachments : []
-    const shape = (row: Bag) => [row.name, row.mimeType, row.size, row.sha256]
-    return { matches: (files.length <= 1 || Array.isArray(review.attachments)) && same(checked.map(shape), listed.map(shape)), checked }
-  }
-
-  function forwardMatches(saved: InboxOperationRecord, review: Bag, localBytes: number, localCount: number): { readonly matches: boolean; readonly within: boolean } {
-    const forward = saved.proposal.forwardAttachments
-    const reviewed = review.forwardedAttachments
-    if (forward === undefined) return { matches: reviewed === undefined || same(reviewed, []), within: true }
-    if (typeof forward !== "object" || forward === null || saved.proposal.mode !== "forward") return { matches: false, within: false }
-    const { messageId, historyId, partIds } = forward as Bag
-    if (typeof messageId !== "string" || typeof historyId !== "string" || !Array.isArray(partIds) || partIds.length === 0 ||
-      partIds.length > outgoingAttachmentLimits.maximumFiles || partIds.some((id) => typeof id !== "string") || !Array.isArray(reviewed)) {
-      return { matches: false, within: false }
-    }
-    const rows = reviewed as readonly Bag[]
-    const exact = same(rows.map((row) => row?.partId), partIds) &&
-      rows.every((row) => typeof row.name === "string" && typeof row.size === "number" && typeof row.sha256 === "string" && sha.test(row.sha256))
-    const total = localBytes + rows.reduce((sum, row) => sum + (typeof row.size === "number" ? row.size : 0), 0)
-    return { matches: exact, within: total <= outgoingAttachmentLimits.maximumTotalBytes && localCount + rows.length <= outgoingAttachmentLimits.maximumFiles }
-  }
-
-  function fieldsEchoed(proposal: Bag, review: Bag, kind: GmailInboxOperationKind): boolean {
-    const fields = composerKind(kind) ? ["to", "cc", "bcc", "subject", "bodyText"]
-      : kind === "draft-delete" ? ["draftId", "expectedDigest"]
-      : ["kind", "messageId", "expectedHistoryId"]
-    return fields.every((field) => proposal[field] === undefined || same(proposal[field], review[field])) &&
-      (kind !== "draft-delete" || review.permanent === true)
-  }
-
   effect function reviewCurrent(): void!OperationFailure {
     const saved = record
     if (saved === null) throw refused("no-record")
@@ -408,19 +418,8 @@ export effect function inboxOperation(deps: InboxOperationDependencies): InboxOp
     if (kind === undefined) throw refused("invalid-proposal")
     const result = try deps.client.gmailPrepareOperation(saved.grantId, saved.requestId, saved.proposal)
     try check()
-    const review = result.review
-    const attachments: Checked = composerKind(kind) ? try reviewedAttachments(saved, review) : { matches: review.attachments === undefined, checked: [] }
-    const localBytes = attachments.checked.reduce((sum, file) => sum + file.size, 0)
-    const forward = forwardMatches(saved, review, localBytes, attachments.checked.length)
-    const accepted = reviewAccepted({
-      receiptMatches: result.receipt.requestId === saved.requestId && result.receipt.kind === kind && sha.test(result.receipt.reviewDigest),
-      fieldsEchoed: fieldsEchoed(saved.proposal, review, kind),
-      senderNamed: typeof review.from === "string" && review.from !== "",
-      attachmentsMatch: attachments.matches,
-      forwardMatches: forward.matches,
-      withinLimits: forward.within,
-    })
-    if (!accepted) throw refused("review-mismatch")
+    try verifyProviderReview(deps, saved, kind, result)
+    const { review } = result
     const state = try model.state()
     const event: Event = {
       type: "observeReview", epochId: state.epoch, requestId: state.request, mailKind: state.kind, digest: digestOf(result.receipt.reviewDigest),
@@ -442,7 +441,7 @@ export effect function inboxOperation(deps: InboxOperationDependencies): InboxOp
         saved = decoded.value
       }
       if (saved !== null && (saved.owner !== deps.owner || saved.grantId !== deps.grantId || operationKind(saved.proposal) === undefined)) throw refused("invalid-record")
-      const projected = project(saved, try model.state())
+      const projected = projectRecord(saved, try model.state(), { digestOf, composerCopy, intern })
       const restored = decodeState(projected) catch effect () => { throw refused("invalid-record") }
       try model.restore(restored)
       record = saved

@@ -475,6 +475,11 @@ module edge {
     }
 
     /** @throws {never} */
+    isFastStopRequested(): boolean {
+      return this.#kernel.runSync(lifecycle.isFastStopRequested())
+    }
+
+    /** @throws {never} */
     getServiceHealth(): Record< string, { status: "pending" | "registering" | "registered" | "failed" | "unknown"; instances: number; hasPromise: boolean; } > {
       return this.#kernel.runSync(services.getServiceHealth())
     }

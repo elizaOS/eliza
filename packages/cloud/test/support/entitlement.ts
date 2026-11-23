@@ -1,4 +1,6 @@
 // spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"
+import { createPrivateKey, sign } from "node:crypto";
+
 export interface PublishedKey {
   readonly kid: string;
   readonly kty: string;
@@ -33,4 +35,11 @@ export async function verifyEntitlement(
   if (claims.iss !== expected.issuer || claims.aud !== expected.audience) throw new Error("issuer or audience differs");
   if (!(exp > iat && exp - iat <= 3600 && iat <= expected.nowSeconds + 60)) throw new Error("times out of bounds");
   return { header, claims };
+}
+
+export function resignedEntitlement(token: string, changed: Readonly<Record<string, unknown>>, pkcs8: string): string {
+  const [head = "", body = ""] = token.split(".");
+  const payload = Buffer.from(JSON.stringify({ ...decode(body), ...changed }), "utf8").toString("base64url");
+  const key = createPrivateKey({ key: Buffer.from(pkcs8, "base64"), format: "der", type: "pkcs8" });
+  return `${head}.${payload}.${sign("sha256", Buffer.from(`${head}.${payload}`, "utf8"), { key, dsaEncoding: "ieee-p1363" }).toString("base64url")}`;
 }

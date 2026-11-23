@@ -743,8 +743,10 @@ export function proofPaths(unit: string) {
   return { dir: `gen/proof/${base}`, log: `gen/proof/${base}.log`, dfy: `gen/proof/${base}/${base}.dfy`, scaffold: `gen/proof/${base}/${base}.scaffold.dfy` };
 }
 
+export const abandonedProof = Symbol("abandoned proof");
+
 /** Prove one unit in a directory of its own, so that nothing left over from another run or project can vouch for it. */
-export async function prove(memory: Memory, u: Unit, offered: { proof?: { file: string; text: string }; lib?: string; axioms: Offered[] }): Promise<Proof> {
+export async function prove(memory: Memory, u: Unit, offered: { proof?: { file: string; text: string }; lib?: string; axioms: Offered[] }, discarded?: () => boolean): Promise<Proof | typeof abandonedProof> {
   const { root } = memory;
   const where = proofPaths(u.unit);
   const dir = path.join(root, where.dir);
@@ -799,6 +801,7 @@ export async function prove(memory: Memory, u: Unit, offered: { proof?: { file: 
   if (!v.errors.size && (!finished(checked.out) || (!checked.ok && !v.unproved.size))) v.errors.add(lastLines(checked.out) || "Dafny produced no verdict");
   // A definition that fails whole is verified again with every assertion isolated, and that verdict replaces its own.
   if (!v.errors.size && v.failing.size) {
+    if (discarded?.()) return abandonedProof;
     const isolated = await verifyAgain(memory, dir, spliced, file, "isolated", new Map([...v.failing.keys()].map((def) => [def, (ensures) => [ensures]])), selectedSolver.path);
     log += `\n---- each definition with a failure, every assertion isolated ----\n${isolated.log}`;
     for (const [k, def] of v.unproved) if (isolated.copied.has(def)) { v.unproved.delete(k); v.exhausted.delete(k); }
@@ -809,6 +812,7 @@ export async function prove(memory: Memory, u: Unit, offered: { proof?: { file: 
   // (A failure in a body fails every postcondition of its definition: readVerdict.) Not in a definition that rests on
   // another's failure, all of whose obligations are counted as not proved below anyway.
   if (!v.errors.size && v.failing.size) {
+    if (discarded?.()) return abandonedProof;
     const rests = restingOn(spliced, v.unproved);
     const alone = await verifyAgain(memory, dir, spliced, file, "alone", new Map([...v.failing].filter(([def]) => !rests.has(def)).map(([def, failed]) => [def, (ensures) => {
       const first = Math.min(...failed);

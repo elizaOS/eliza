@@ -81,7 +81,7 @@ module node {
     return "PlainSetting"
   }
 
-  export const workflowWorkerServiceType = "workflow-worker"
+  const workflowWorkerServiceType = "workflow-worker"
 
   export function workflowWorkerService(installed: () => WorkflowWorkerHost | undefined): ServiceClass {
     return class WorkflowWorker extends Service {
@@ -110,11 +110,15 @@ module node {
     secrets: WorkerSecrets,
     permit: (offered: readonly ProcessValue[]) => Promise<readonly ProcessValue[]>,
   ): WorkflowWorkerHost {
+    const temporaryDirectory = process.env.TMPDIR
     return {
       runtimeDir: pinned.runtimeDir,
       executable: pinned.executable,
       async spawnWorker(args, options = {}) {
-        const offered = Object.entries({ ...settings, ...options.env })
+        const workerSettings = { ...settings, ...options.env }
+        if (temporaryDirectory === undefined) delete workerSettings.TMPDIR
+        else workerSettings.TMPDIR = temporaryDirectory
+        const offered = Object.entries(workerSettings)
         const classes = offered.map(([, value]) => valueClass(value, secrets))
         const allowed = new Set(await permit([...new Set(classes)]))
         const env = Object.fromEntries(offered.filter((_entry, index) => allowed.has(classes[index])))
@@ -134,4 +138,4 @@ module node {
   }
 }
 
-export { measureWorker, workerHost, workflowWorkerService, workflowWorkerServiceType, type PinnedWorker, type WorkflowWorkerLaunch, type WorkerMeasure, type WorkerSecrets, type WorkerSpawnOptions, type WorkflowWorkerHost } from node
+export { measureWorker, workerHost, workflowWorkerService, type PinnedWorker, type WorkflowWorkerLaunch, type WorkerMeasure, type WorkerSecrets, type WorkerSpawnOptions, type WorkflowWorkerHost } from node

@@ -29,12 +29,10 @@ import ai.eliza.plugins.signin.SignInPolicy.Step;
 import ai.eliza.plugins.signin.SignInPolicy.Verdict;
 import android.app.Activity;
 import android.content.Context;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.CancellationSignal;
+import android.util.Log;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -60,6 +58,7 @@ import org.json.JSONObject;
 
 @CapacitorPlugin(name = "ElizaSignIn")
 public class ElizaSignInPlugin extends Plugin {
+  private static final String TAG = "ElizaSignIn";
   private static final class Attempt {
     final int number;
     final SignInRegistration.Environment environment;
@@ -111,9 +110,7 @@ public class ElizaSignInPlugin extends Plugin {
   protected DeviceFacts deviceFacts() {
     Context context = getContext();
     boolean verified = registration.environments().stream().allMatch(environment -> BrowserSignIn.appLinkVerified(context, environment));
-    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(registration.production().apiOrigin)).addCategory(Intent.CATEGORY_BROWSABLE);
-    boolean browserApp = context.getPackageManager().resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY) != null;
-    return new DeviceFacts(registration.googleMode, verified, browserApp);
+    return new DeviceFacts(registration.googleMode, verified, BrowserSignIn.externalBrowser(context, registration.production().apiOrigin) != null);
   }
 
   @Override public void load() {
@@ -334,9 +331,8 @@ public class ElizaSignInPlugin extends Plugin {
   private DeviceFacts startDeviceFacts(SignInRegistration.Environment environment, Method method) {
     if (method != Method.GOOGLE_BROWSER || !registration.googleBrowserFallback) return deviceFacts();
     Context context = getContext();
-    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(environment.apiOrigin)).addCategory(Intent.CATEGORY_BROWSABLE);
     return new DeviceFacts(registration.googleMode, BrowserSignIn.appLinkVerified(context, environment),
-      context.getPackageManager().resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY) != null, true);
+      BrowserSignIn.externalBrowser(context, environment.apiOrigin) != null, true);
   }
 
   private void picked(Attempt attempt, Picked picked) {
@@ -452,8 +448,14 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   private void connectGoogle(Attempt attempt, SecretServerCode code) {
-    Held held = custody.held(attempt.environment);
-    boolean connected = held != null && google.connectNative(attempt.environment, held.key(), code);
+    boolean connected;
+    try {
+      Held held = custody.held(attempt.environment);
+      connected = held != null && google.connectNative(attempt.environment, held.key(), code);
+    } catch (RuntimeException failed) {
+      Log.e(TAG, "Google connect for attempt " + attempt.number + " failed, so the attempt settles unconnected", failed);
+      connected = false;
+    }
     if (code != null) code.drop();
     dispatch(new Event.GoogleConnected(attempt.number, connected));
   }

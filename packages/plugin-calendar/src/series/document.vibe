@@ -3,10 +3,8 @@ import { effectiveScope, excludeStart, explicitSeriesScope, movedWall, scopeAllo
 import { generatedOccurrence, occurrenceId, repeatingRow, seriesOccursAt, seriesZone } from "../availability/recurrence.vibe"
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "../clock.vibe"
 
-/** How a document Calendar row repeats. */
 export type CalendarRepeat = "none" | "daily" | "weekdays" | "weekly"
 
-/** One stored or generated row of the app's own document Calendar, its instants in UTC milliseconds. */
 export interface CalendarRow {
   readonly id: string
   readonly calendarId: string
@@ -27,16 +25,13 @@ export interface CalendarRow {
   readonly until?: number
 }
 
-/** The fields an edit may change on a row. */
 export type CalendarRowFields = Partial<Pick<CalendarRow, "title" | "body" | "location" | "begin" | "end" | "allDay" | "timeZone" | "repeat" | "who" | "responses">>
 
-/** The exact row a change was reviewed against: its ID and revision. */
 export interface ReviewedRow {
   readonly id: string
   readonly revision: string
 }
 
-/** What a whole-series review chose: the selected occurrence and the parent series, each at its checked revision. */
 export interface SeriesReview {
   readonly occurrenceId: string
   readonly occurrenceRevision: string
@@ -47,17 +42,12 @@ export interface SeriesReview {
   readonly confirmed: boolean
 }
 
-/** The row, its occurrence or its parent series is not the revision the change was reviewed against. */
 export error SeriesChanged { id: string }
-/** A wall time could not be resolved in the zone a series moves to. */
 export error InvalidSeriesTime { zone: string; wall: number }
-/** The scope a write names does not fit the row: only this event for a one-off, and a series scope only from a series. */
 export error ScopeMismatch { id: string; scope: CalendarWriteScope }
 
-/** The scope a change to a repeating event names, in the wire's words: this event, this and following, or all. */
 export type CalendarWriteScope = "instance" | "this_and_following" | "series"
 
-/** A scoped edit after it is saved: the rows, and the ID the edited selection now reads under. */
 export interface ScopedEdit {
   readonly rows: readonly CalendarRow[]
   readonly selected: string
@@ -85,7 +75,6 @@ function civilDay(instant: number, zone: string): number | undefined {
 
 const repeating = repeatingRow
 
-/** The stored row with this ID, else the occurrence its series generates at that start, which a stored row always takes precedence over. */
 export function findRow(rows: readonly CalendarRow[], id: string): CalendarRow | undefined {
   const direct = rows.find((row) => row.id === id)
   if (direct !== undefined) return direct
@@ -97,7 +86,6 @@ export function findRow(rows: readonly CalendarRow[], id: string): CalendarRow |
   return generatedOccurrence(series, begin)
 }
 
-/** Whether a row is stored in the document rather than generated from its series. */
 export function storedRow(rows: readonly CalendarRow[], row: CalendarRow): boolean {
   return rows.some((stored) => stored.id === row.id)
 }
@@ -123,7 +111,6 @@ effect function parentOf(rows: readonly CalendarRow[], seriesId: string): Calend
   return parent
 }
 
-/** The exclusions a still repeating series keeps when it moves: each deleted or edited date at its civil-day offset from the new anchor, deduplicated. */
 export effect function remapExclusions(rows: readonly CalendarRow[], before: CalendarRow, next: CalendarRow): number[]!InvalidSeriesTime {
   const oldZone = zoneOf(before)
   const newZone = zoneOf(next)
@@ -142,7 +129,6 @@ export effect function remapExclusions(rows: readonly CalendarRow[], before: Cal
   return kept
 }
 
-/** Saves an edit of the reviewed row: an occurrence becomes an override under its series, a series changed to Once detaches its overrides, and a moved series keeps its exclusions. */
 export effect function saveEdit(rows: readonly CalendarRow[], reviewed: ReviewedRow, fields: CalendarRowFields, mint: () => string) {
   const before = findRow(rows, reviewed.id)
   if (before === undefined || before.revision !== reviewed.revision) throw new SeriesChanged({ id: reviewed.id })
@@ -162,7 +148,6 @@ export effect function saveEdit(rows: readonly CalendarRow[], reviewed: Reviewed
   return replace(rows, { ...updated, excluded: try remapExclusions(rows, before, updated) })
 }
 
-/** The rows after a settled deletion: an occurrence leaves an exclusion on its series, which receives `revision`, and a series takes its overrides with it. */
 export effect function removeRow(rows: readonly CalendarRow[], row: CalendarRow, revision: string): CalendarRow[]!SeriesChanged {
   if (row.seriesId === undefined) return rows.filter((stored) => stored.id !== row.id && stored.seriesId !== row.id)
   const parent = try parentOf(rows, row.seriesId)
@@ -170,7 +155,6 @@ export effect function removeRow(rows: readonly CalendarRow[], row: CalendarRow,
   return replace(rows, { ...parent, excluded, revision }).filter((stored) => stored.id !== row.id)
 }
 
-/** Reviews whole-series scope from a selected occurrence at its checked revision: finds its parent and asks the owner, without changing anything. */
 export effect function reviewSeries<E>(rows: readonly CalendarRow[], selected: ReviewedRow, confirm: (parent: CalendarRow) => boolean!E): SeriesReview!(SeriesChanged | E) {
   const occurrence = findRow(rows, selected.id)
   const seriesId = occurrence?.revision === selected.revision ? occurrence.seriesId : undefined
@@ -182,7 +166,6 @@ export effect function reviewSeries<E>(rows: readonly CalendarRow[], selected: R
   return { occurrenceId: selected.id, occurrenceRevision: selected.revision, parentId: parent.id, parentRevision: parent.revision, occurrenceExact, parentFound: true, confirmed }
 }
 
-/** Saves a reviewed whole-series edit, reopening the same parent revision and checking it again at save. */
 export effect function saveSeriesEdit(rows: readonly CalendarRow[], review: SeriesReview, fields: CalendarRowFields, mint: () => string) {
   if (!explicitSeriesScope(review.occurrenceExact, review.parentFound, review.confirmed)) throw new SeriesChanged({ id: review.parentId })
   return try saveEdit(rows, { id: review.parentId, revision: review.parentRevision }, fields, mint)
@@ -210,7 +193,6 @@ effect function reviewed(rows: readonly CalendarRow[], selected: ReviewedRow): C
   return row
 }
 
-/** Saves a reviewed edit under the scope it names: this event as an override, all from the selection's reviewed time, or this and following as a new series split off at the selection. */
 export effect function saveScopedEdit(rows: readonly CalendarRow[], selected: ReviewedRow, scope: CalendarWriteScope, fields: CalendarRowFields,
   mint: () => string, newSeriesId: string): ScopedEdit!(SeriesChanged | ScopeMismatch | InvalidSeriesTime) {
   const row = try reviewed(rows, selected)
@@ -224,7 +206,10 @@ export effect function saveScopedEdit(rows: readonly CalendarRow[], selected: Re
     const parentFields: CalendarRowFields = { ...fields, begin: parentBegin, end: parentBegin + end - begin }
     const saved = parent.id === row.id ? try saveEdit(rows, { id: parent.id, revision: parent.revision }, parentFields, mint)
       : try saveSeriesEdit(rows, try reviewSeries(rows, selected, effect () => true), parentFields, mint)
-    return { rows: saved, selected: occurrenceId(parent.id, begin) }
+    if (parent.id !== row.id && storedRow(rows, row)) return { rows: try saveEdit(saved, selected, fields, mint), selected: row.id }
+    const moved = occurrenceId(parent.id, begin)
+    if (findRow(saved, moved) === undefined) throw new InvalidSeriesTime({ zone: zoneOf(parent), wall: begin })
+    return { rows: saved, selected: moved }
   }
   const { kept, moved } = splitStarts([...parent.excluded ?? []], splitAt)
   const following = rows.filter((stored) => stored.seriesId === parent.id && stored.id !== row.id && (stored.occurrenceBegin ?? stored.begin) >= splitAt)
@@ -238,7 +223,6 @@ export effect function saveScopedEdit(rows: readonly CalendarRow[], selected: Re
   return { rows: [...remaining, { ...tail, excluded }], selected: occurrenceId(newSeriesId, begin) }
 }
 
-/** Removes the reviewed row under the scope it names: this event as an exclusion, all with the series' overrides, or this and following by ending the series before it. */
 export effect function removeScoped(rows: readonly CalendarRow[], selected: ReviewedRow, scope: CalendarWriteScope, mint: () => string): CalendarRow[]!(SeriesChanged | ScopeMismatch) {
   const row = try reviewed(rows, selected)
   const plan = try planScope(rows, row, scope)

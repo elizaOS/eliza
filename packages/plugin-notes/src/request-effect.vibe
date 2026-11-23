@@ -12,21 +12,21 @@ import type { NotesCollection } from "./service.vibe"
 module edge {
   import {
     BoundRequestOperationError, checkBoundNotesOperation, getActionRoutingContext, READ_ONLY_VIEW_CAPABILITY_IDS, readTaskExtractionNotesRestriction,
-    type IAgentRuntime, type Memory, type NotesRequestOperation, type State,
+    type IAgentRuntime, type Memory, type NotesRequestOperation, type State, type ViewDeclaration,
   } from "@elizaos/core"
   const capabilityOperations: Readonly<Record<string, NotesRequestOperation>> = {
     "get-notes": "list", "get-note": "get", "get-notes-trash": "list", "create-note": "create",
     "update-note": "update", "delete-note": "delete", "clear-notes": "delete", "restore-note": "update",
   }
   /** @throws {never} */
-  export function decisionFor(runtime: IAgentRuntime, state: State | undefined, message: Memory | undefined, operation: NotesRequestOperation) {
+  export function decisionFor(runtime: IAgentRuntime, state: State | undefined, message: Memory | undefined, operation: NotesRequestOperation): ReturnType<typeof checkBoundNotesOperation> {
     const canonical: NotesRequestOperation = operation === "patch" ? "update" : operation
     const routing = getActionRoutingContext()
     if (routing === undefined || routing.requestRuntime !== runtime) return checkBoundNotesOperation(undefined, undefined, canonical)
     return checkBoundNotesOperation(state, message, canonical, routing.requestOperationAttempt, operation)
   }
   /** @throws {BoundRequestOperationError} */
-  export function assertNotesAgentViewOperation(capability: string, _params: Record<string, unknown> | undefined, context: { runtime: IAgentRuntime }): void {
+  function assertNotesAgentViewOperation(capability: string, _params: Record<string, unknown> | undefined, context: { runtime: IAgentRuntime }): void {
     const routing = getActionRoutingContext()
     if (routing === undefined || READ_ONLY_VIEW_CAPABILITY_IDS.has(capability)) return
     const operation = capabilityOperations[capability]
@@ -36,12 +36,14 @@ module edge {
       : decisionFor(context.runtime, routing.requestState, routing.requestMessage, operation)
     if (!decision.allowed) throw new BoundRequestOperationError(decision)
   }
+  export const notesViewOperation: Pick<ViewDeclaration, "beforeAgentInteract"> = {
+    beforeAgentInteract: assertNotesAgentViewOperation,
+  }
 }
-import { assertNotesAgentViewOperation, decisionFor } from edge
+import { decisionFor, notesViewOperation } from edge
 
-export { assertNotesAgentViewOperation }
+export { notesViewOperation }
 
-/** A write refused because the turn bound to it did not classify a Notes change; undefined when the write may run. */
 export effect function restrictNotesWrite(runtime: IAgentRuntime, message: Memory, state: State | undefined, operation: NotesRequestOperation): (ActionResult | undefined)!! {
   const decision = decisionFor(runtime, state, message, operation)
   const classification: NotesClassification = decision.allowed ? "MutationTurn" : decision.code === "REQUEST_OPERATION_RESTRICTED" ? "ReadOnlyTurn" : "UnresolvedTurn"
@@ -56,7 +58,7 @@ export effect function restrictNotesWrite(runtime: IAgentRuntime, message: Memor
     data: { code: decision.code, acceptance: "rejected", executionStatus: "not_started", executed: false, retryable: false },
   }
   const attempt = getActionRoutingContext()?.requestOperationAttempt
-  if (attempt !== undefined) try (Effect.try(() => bindRequestOperationResult(result, attempt)) catch () => undefined)
+  if (attempt !== undefined) Effect.try(() => bindRequestOperationResult(result, attempt)) catch () => undefined
   return copyBoundOperationDenial(decision, result, attempt)
 }
 
@@ -91,7 +93,6 @@ function parseEffect(value: unknown): NotesFieldValue {
   return Object.freeze({ classification, ...interpretation })
 }
 
-/** The planner field that records what Notes operation the current message asks for; it restricts writes and never grants one. */
 export const notesRequestEffectField: ResponseHandlerFieldEvaluator<NotesFieldValue> = {
   name: "notesRequestEffect",
   priority: 19.5,
@@ -131,7 +132,6 @@ Include both reads and writes without duplicates for compound requests. Classifi
 
 const turnClassification = { read_only: "ReadOnlyTurn", mutation_requested: "MutationTurn", unresolved: "UnresolvedTurn" } as const satisfies Record<RequestOperationClassification, NotesClassification>
 
-/** Routes a turn that only reads one note it names to that note's exact ID through NOTES_GET. */
 export function namedNoteReadEvaluator(notes: NotesCollection): ResponseHandlerEvaluator {
   return {
     name: "notes.named-note-read",
@@ -146,18 +146,17 @@ export function namedNoteReadEvaluator(notes: NotesCollection): ResponseHandlerE
         && plan.notesRequestHostRestriction === undefined && wholeRequestOwner === undefined && plan.deterministicToolCall === undefined
         && !(plan.candidateActions ?? []).some((action) => action !== "NOTES" && action !== "NOTES_GET")
     },
-    evaluate: ({ messageHandler, message }) => runPromise(effect {
+    evaluate: ({ messageHandler, message }) => runPromise(Effect.orElseSucceed(effect {
       const plan = messageHandler.plan
       const onlyGet = plan.notesRequestInterpretation?.operations.length === 1 && plan.notesRequestInterpretation.operations[0] === "get"
       const named = notesNamedIn(try ownerRequestText(message), (try notes.snapshot()).notes)
       const note = named[0]
       if (note === undefined || !namedReadRoutes(turnClassification[plan.notesRequestEffect ?? "unresolved"], onlyGet, named.length)) return undefined
       return { requiresTool: true, clearReply: true, deterministicToolCall: { name: "NOTES_GET", params: { noteId: note.id } } }
-    } catch () => undefined),
+    }, () => undefined)),
   }
 }
 
-/** Registers the direct routes for explicit Notes create and read commands. */
 export function registerNotesDirectRoutes(runtime: IAgentRuntime): void {
   registerDirectActionRoutingRule(runtime, {
     id: "notes.create",

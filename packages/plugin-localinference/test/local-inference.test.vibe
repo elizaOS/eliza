@@ -15,7 +15,7 @@ import { localInferencePlugin, localInferenceProvider } from "../src/plugin.vibe
 import { localInferenceRoutes } from "../src/routes.vibe"
 import { bootstrapStreamedSpeech, cancelReply, publishReply, speechOutput, type BootstrapRequest, type Connection, type Playback, type PlaybackSlot } from "../src/speech-output.vibe"
 import {
-  MisroutedSpeech, SpeechAttemptFailed, SpeechRoutingMachine, SpeechUnavailable, nextSpeechRoute, serviceLimitOf, speakOnRoute, speechFailureOf, speechKeyChanged,
+  type MisroutedSpeech, SpeechAttemptFailed, SpeechRoutingMachine, SpeechUnavailable, nextSpeechRoute, serviceLimitOf, speakOnRoute, speechFailureOf, speechKeyChanged,
   speechLimitChanged, speechRouting, type SpeechFailure, type SpeechRoute,
 } from "../src/speech-route.vibe"
 import { decodeWav, encodeWav } from "../src/wav.ts"
@@ -37,12 +37,24 @@ const manifest = (passed: boolean) => JSON.stringify({
   evals: { textEval: { score: 0.9, passed } },
 })
 
+type LoadHold = { readonly name: string; readonly started: Deferred.Deferred<void>; readonly released: Deferred.Deferred<void> }
+
+effect function holdLoad(name: string) {
+  return { name, started: try Deferred.make<void>(), released: try Deferred.make<void>() } satisfies LoadHold
+}
+
 function fakeEngine() {
   const calls: string[] = []
-  const controls = { pooling: "ClsPooling" as "ClsPooling" | "MeanPooling", failLoad: false }
+  const controls = { pooling: "ClsPooling" as "ClsPooling" | "MeanPooling", failLoad: false, holdLoad: undefined as LoadHold | undefined }
   const engine: InferenceEngine.Shape = {
     effect load(model: InstalledModel) {
       calls.push(`load ${model.model.name} ${model.files.length}`)
+      const hold = controls.holdLoad
+      if (hold !== undefined) {
+        try Deferred.succeed(hold.started, undefined)
+        try Deferred.await(hold.released)
+        calls.push(`loaded ${hold.name}`)
+      }
       if (controls.failLoad) throw new EngineFailed({ capability: "text", reason: "out of memory" })
     },
     effect unload() { calls.push("unload") },
@@ -64,6 +76,16 @@ function fakeEngine() {
 
 effect function settled(models: LocalModelsApi, id: CatalogId) {
   try Stream.runHead(Stream.filter(models.changes, (state) => modelOf(state, id).install !== "Downloading"))
+}
+
+effect function activated(models: LocalModelsApi, id: CatalogId) {
+  try models.activate(id)
+  return try loaded(models)
+}
+
+effect function loaded(models: LocalModelsApi) {
+  const state = try Stream.runHead(Stream.filter(models.changes, (current) => current.activeStatus !== "ActiveLoading"))
+  return Option.getOrThrow(state).activeStatus
 }
 
 effect function call(routes: readonly LocalRoute[], method: string, path: string, input: { readonly body?: unknown; readonly parameters?: Record<string, string> } = {}) {
@@ -115,14 +137,31 @@ it.effect('Download, verify, assign, activate and remove models, keeping the own
     published.serve("https://hub.test/e2b/eliza-1.manifest.json", manifest(true))
     try models.download("model1")
     try settled(models, "model1")
-    assert.strictEqual(try models.activate("model1"), "ActiveReady")
-    assert.deepStrictEqual(calls, ["load eliza-1-2b 2"])
+    const modelRoutes = localInferenceRoutes(models, engine)
+    const abandoned = try holdLoad("abandoned")
+    controls.holdLoad = abandoned
+    const loading = try call(modelRoutes, "POST", "/api/local-inference/active", { body: { modelId: "eliza-1-2b" } })
+    try Deferred.await(abandoned.started)
+    assert.deepStrictEqual(loading, { status: 202, body: try models.view() })
+    assert.deepStrictEqual((try models.view()).active, { model: "eliza-1-2b", status: "loading", servesText: false })
+    assert.strictEqual((try call(modelRoutes, "DELETE", "/api/local-inference/active"))?.status, 200)
+    assert.deepStrictEqual((try models.view()).active, { model: null, status: "idle", servesText: false })
+    assert.deepStrictEqual(calls, ["load eliza-1-2b 2", "unload"])
+    const chosen = try holdLoad("chosen")
+    controls.holdLoad = chosen
+    assert.strictEqual((try call(modelRoutes, "POST", "/api/local-inference/active", { body: { modelId: "eliza-1-2b" } }))?.status, 202)
+    try Deferred.await(chosen.started)
+    try Deferred.succeed(abandoned.released, undefined)
+    try Deferred.succeed(chosen.released, undefined)
+    assert.strictEqual(try loaded(models), "ActiveReady")
+    assert.deepStrictEqual(calls, ["load eliza-1-2b 2", "unload", "load eliza-1-2b 2", "loaded chosen"])
+    controls.holdLoad = undefined
     assert.deepStrictEqual((try models.view()).active, { model: "eliza-1-2b", status: "ready", servesText: true })
     try models.assign("EmbeddingSlot", "model2")
     assert.deepStrictEqual((try models.view()).models.map((model) => model.slots), [["TEXT_SMALL", "TEXT_LARGE", "TEXT_TO_SPEECH", "TRANSCRIPTION"], ["TEXT_EMBEDDING"]])
     try models.deactivate()
     controls.failLoad = true
-    assert.strictEqual(try models.activate("model1"), "ActiveFailed")
+    assert.strictEqual(try activated(models, "model1"), "ActiveFailed")
     assert.isUndefined(try models.textModel())
     try models.assign("EmbeddingSlot", "model2")
     try models.close()
@@ -180,7 +219,7 @@ it.effect('Embed with the assigned model in its vector space and serve speech on
       model: { backend: "none" }, embeddings: "local", embeddingDimensions: 384, callerRole: "owner",
     })
     const plugin = try localInferencePlugin(engine, { launch, stateDirectory: state }, testCatalog)
-    const runtime = new AgentRuntime({ character: { name: "Eliza", bio: [] } })
+    const runtime = try Effect.try(() => new AgentRuntime({ character: { name: "Eliza", bio: [] } }))
     try promise(() => Promise.resolve(plugin.init?.({}, runtime)))
     assert.deepStrictEqual(runtime.getModelRegistrations().map((entry) => [entry.modelType, entry.provider, entry.metadata?.displayModel]), [
       [ModelType.TEXT_EMBEDDING, localInferenceProvider, "bge-small-en-v1.5"], [ModelType.TEXT_TO_SPEECH, localInferenceProvider, undefined], [ModelType.TRANSCRIPTION, localInferenceProvider, undefined],
@@ -193,10 +232,10 @@ it.effect('Embed with the assigned model in its vector space and serve speech on
     const heard = try promise(() => runtime.getModel(ModelType.TRANSCRIPTION)!(runtime, { audio: encodeWav({ sampleRate: 16000, samples: new Float32Array(8) }) }))
     assert.strictEqual(heard, "heard 8 samples at 16000")
     assert.includeMembers(calls, ["warm bge-small-en-v1.5", "speak Your keys are on the hook."])
-    try promise(() => Promise.resolve(plugin.dispose?.(runtime)))
+    try promise(() => Promise.resolve(plugin.dispose?.()))
 
     const withoutEmbeddings = try localInferencePlugin(engine, { launch: { ...launch, embeddings: "none" }, stateDirectory: state }, testCatalog)
-    const plain = new AgentRuntime({ character: { name: "Eliza", bio: [] } })
+    const plain = try Effect.try(() => new AgentRuntime({ character: { name: "Eliza", bio: [] } }))
     try promise(() => Promise.resolve(withoutEmbeddings.init?.({}, plain)))
     assert.isUndefined(plain.getModel(ModelType.TEXT_EMBEDDING))
     const unassigned = try openLocalModels(state, testCatalog)
@@ -265,7 +304,7 @@ it.effect('Hear each reply on its admitted route, on this phone when the network
       }
       return try speaks(route, heard)
     }
-    const unavailable = <E extends { readonly _tag: string }>(work: SpeechRoute!E) => map(Effect.flip(work), (failure: E | SpeechUnavailable) =>
+    const unavailable = <E extends { readonly _tag: string }, R>(work: SpeechRoute!E!R) => map(Effect.flip(work), (failure: E | SpeechUnavailable) =>
       failure instanceof SpeechUnavailable ? { route: failure.route, failure: failure.failure, fellBackFrom: failure.fellBackFrom } : failure._tag)
 
     assert.strictEqual(try speakOnRoute(speaks), "DeviceRoute")
@@ -300,7 +339,7 @@ it.effect('Hear each reply on its admitted route, on this phone when the network
         throw failing({ code: "voice-http-429", data: { retryAfterSeconds: 2.5 } })
       }
       const late = stale
-      if (late !== undefined) misrouted.push(try (map(late(), () => "played") catch (failure) => failure._tag))
+      if (late !== undefined) misrouted.push((map(late(), () => "played") catch (failure) => failure._tag))
       return try speaks(route, heard)
     }), "DeviceRoute")
     assert.deepStrictEqual(misrouted, ["MisroutedSpeech"])

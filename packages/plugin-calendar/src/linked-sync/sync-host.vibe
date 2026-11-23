@@ -1,13 +1,12 @@
 // spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedReconcile.md, "Story: Bring the two versions together without overwriting an independent edit"; spec/calendar/syncSettlement.md, "Story: Resume sync in the foreground only from a current opt-in read"; spec/calendar/syncSettlement.md, "A foreground read of the opt-in has exactly one outcome"; spec/calendar/syncSettlement.md, "Stopping or hiding retires the generation and cancels its running pass"; spec/calendar/syncSettlement.md, "Only a current enabled opt-in starts a pass, and a stale read changes nothing visible"
 import { canReadOptIn, type OptInResult } from "../../gen/calendar__syncSettlement.effect.vibe"
 import { SyncSettings } from "./wire.schema.vibe"
-import { CalendarSyncAborted, CalendarSyncRefused, ProviderRefused, ProviderUncertain, type LinkedCalendarEventRecord, type LinkedCalendarLocalPort } from "./linked.vibe"
+import { CalendarSyncAborted, CalendarSyncRefused, type ProviderRefused, type ProviderUncertain, type LinkedCalendarEventRecord, type LinkedCalendarLocalPort } from "./linked.vibe"
 import { CALENDAR_LINK_LIMIT, CalendarLinkedStore, type CalendarLinkedStoreOptions, type CalendarLinkStorage, type CalendarSyncBinding } from "./linked-store.vibe"
 import { googleCalendarSyncPort, type CalendarSyncClient, type GoogleCalendarSyncPortOptions } from "./google-port.vibe"
-import { LinkedCalendarReconciler, type LinkedCalendarReconcileOutcome } from "./reconcile.vibe"
+import { LinkedCalendarReconciler, type LinkedCalendarReconcileOutcome, type LinkedCalendarRecoveryOutcome } from "./reconcile.vibe"
 import { foregroundSyncMachine } from "./settlement.vibe"
 
-/** Everything one sync pass is bound to, as the host prepared it. */
 export interface CalendarSyncContext {
   readonly reviewIdentity: string
   readonly binding: CalendarSyncBinding
@@ -19,13 +18,11 @@ export interface CalendarSyncContext {
   readonly events: () => Promise<ReadonlyArray<{ readonly id: string; readonly revision: string }>>
 }
 
-/** The owner's opt-in for one reviewed scope. */
 export interface CalendarSyncPreference {
   read(scope: string): boolean!(CalendarSyncRefused | CalendarSyncAborted)
   write(scope: string, enabled: boolean): void!(CalendarSyncRefused | CalendarSyncAborted)
 }
 
-/** What the owner reviewed before enabling sync: the binding, its scope and every local event at its revision. */
 export interface CalendarSyncReview {
   readonly reviewIdentity: string
   readonly scope: string
@@ -33,22 +30,17 @@ export interface CalendarSyncReview {
   readonly events: ReadonlyArray<{ readonly id: string; readonly revision: string }>
 }
 
-/** How many links one pass left in each outcome. */
 export type CalendarSyncReport = Record<LinkedCalendarReconcileOutcome, number>
 
-/** Options for the link store and the provider port of a controller. */
 export type CalendarSyncControllerOptions = CalendarLinkedStoreOptions & GoogleCalendarSyncPortOptions
 
-/** The account and calendar names the owner sees for the destination. */
 export interface CalendarSyncDestination {
   readonly account: string
   readonly calendar: string
 }
 
-/** A prepared context with the destination it names. */
 export type CalendarSyncPrepared = CalendarSyncContext & { readonly destination?: CalendarSyncDestination }
 
-/** The identity a device sync opt-in is for. */
 export interface CalendarSyncTarget {
   readonly environment: CalendarSyncBinding["environment"]
   readonly userId: string
@@ -58,16 +50,13 @@ export interface CalendarSyncTarget {
   readonly agentId: string
 }
 
-/** The owner's saved opt-in for one reviewed binding. */
 export type CalendarSyncSettings = typeof SyncSettings.Type
 
-/** Where the opt-in is kept; each edit applies to the value as it is read. */
 export interface CalendarSyncSettingsStore {
   read(): Promise<unknown | null>
   edit(edit: (value: CalendarSyncSettings | null) => CalendarSyncSettings | null): Promise<void>
 }
 
-/** A device-level gate on sync, such as the Android calendar sync switch. */
 export interface CalendarSyncDeviceGate {
   enabled(): Promise<boolean>
   enable(current: () => boolean): Promise<void>
@@ -75,13 +64,11 @@ export interface CalendarSyncDeviceGate {
   cancel(): void
 }
 
-/** The revision of the local calendar source and whether its device switch is on. */
 export interface CalendarSyncLocalSource {
   readonly revision: string
   readonly deviceEnabled?: boolean
 }
 
-/** What a sync host needs from the app that runs it. */
 export interface CalendarSyncHostOptions {
   prepare(signal: AbortSignal, request: { readonly interactive: boolean }): Promise<CalendarSyncPrepared>
   readonly settings: CalendarSyncSettingsStore
@@ -97,7 +84,6 @@ export interface CalendarSyncHostOptions {
   readonly localChangeDelayMs?: number
 }
 
-/** What a sync host shows: its status line, whether it runs, and whether sync is on. */
 export interface CalendarSyncHostSnapshot {
   readonly status: string
   readonly running: boolean
@@ -108,22 +94,21 @@ type SyncFailure = CalendarSyncRefused | CalendarSyncAborted | ProviderRefused |
 
 const refuse = (message: string) => new CalendarSyncRefused({ message })
 const decodeSettings = Schema.decodeUnknownEffect(SyncSettings, { onExcessProperty: "error" })
+const dispatchSettleMs = 300_000
+const recoveredAs = { landed: "clean", not_landed: "dirty", unresolved: "quarantined" } as const satisfies Record<LinkedCalendarRecoveryOutcome, LinkedCalendarReconcileOutcome>
 const emptyReport = (): CalendarSyncReport => ({ clean: 0, pushed: 0, pulled: 0, conflicted: 0, quarantined: 0, paused: 0, dirty: 0 })
 
-/** The saved opt-in, refusing a value that is not one so nothing is written over it. */
 export effect function readCalendarSyncSettings(value: unknown): (CalendarSyncSettings | null)!CalendarSyncRefused {
   if (value === null || value === undefined) return null
   return try mapError(decodeSettings(value), () => refuse("Calendar sync settings need recovery. Saved events are retained."))
 }
 
-/** Whether a saved binding is for exactly this owner, connection, calendar and agent. */
 export function calendarSyncTargetMatches(binding: CalendarSyncBinding | undefined, target: CalendarSyncTarget): boolean {
   return binding !== undefined && binding.environment === target.environment && binding.userId === target.userId
     && binding.organizationId === target.organizationId && binding.connectionId === target.connectionId
     && binding.calendarId === target.calendarId && binding.agentId === target.agentId
 }
 
-/** A settings store over one storage slot, editing by compare and exchange with a bounded number of retries. */
 export function calendarSyncSettingsSlot(storage: CalendarLinkStorage, slot: string, attempts = 8): CalendarSyncSettingsStore {
   return {
     read: () => storage.read(slot),
@@ -138,7 +123,6 @@ export function calendarSyncSettingsSlot(storage: CalendarLinkStorage, slot: str
   }
 }
 
-/** The status line for a failed pass. */
 export function calendarSyncFailureMessage(error: SyncFailure): string {
   switch (error._tag) {
     case "CalendarSyncAborted": return "Sync paused or the selected account changed. Check linked events before retrying."
@@ -149,7 +133,6 @@ export function calendarSyncFailureMessage(error: SyncFailure): string {
   }
 }
 
-/** The status line for a finished pass. */
 export function calendarSyncReportMessage(result: CalendarSyncReport): string {
   const warnings = result.conflicted + result.quarantined + result.dirty
   return warnings > 0
@@ -157,7 +140,6 @@ export function calendarSyncReportMessage(result: CalendarSyncReport): string {
     : `Synced: ${result.pushed} sent to Google, ${result.pulled} received, ${result.clean} unchanged.${result.paused > 0 ? ` ${result.paused} links paused.` : ""}`
 }
 
-/** One device sync at a time: review, enable, pause and a full reconciliation pass over every linked local event. */
 export class CalendarSyncController {
   #running = false
   #generation = 0
@@ -171,7 +153,6 @@ export class CalendarSyncController {
     this.#options = options
   }
 
-  /** Retires the running operation: its next check refuses and nothing more is written. */
   cancel(): void {
     this.#generation++
   }
@@ -210,7 +191,6 @@ export class CalendarSyncController {
     return try ensuring(task, sync(() => { this.#running = false }))
   }
 
-  /** Reads the binding and every local event at its revision for the owner to review, changing nothing. */
   effect review(): CalendarSyncReview!SyncFailure {
     return try this.#work(effect {
       const { context, check, store } = try this.#context()
@@ -223,7 +203,6 @@ export class CalendarSyncController {
     })
   }
 
-  /** Whether the owner opted this scope into sync. */
   effect enabled(): boolean!SyncFailure {
     return try this.#work(effect {
       const { store } = try this.#context()
@@ -231,7 +210,6 @@ export class CalendarSyncController {
     })
   }
 
-  /** Turns sync on only for exactly what the owner reviewed: the same binding, scope and event revisions. */
   effect enable(review: CalendarSyncReview): void!SyncFailure {
     try this.#work(effect {
       const { context, check, store } = try this.#context()
@@ -249,14 +227,12 @@ export class CalendarSyncController {
     })
   }
 
-  /** Retires any running pass and turns sync off for the current scope. */
   effect pause(): void!(CalendarSyncRefused | CalendarSyncAborted) {
     this.cancel()
     const { store } = try this.#context()
     try this.#preference.write(store.scope, false)
   }
 
-  /** Links every local event, then reconciles or recovers each link while the opt-in stays on. */
   effect sync(): CalendarSyncReport!SyncFailure {
     return try this.#work(effect {
       const { context, check, store } = try this.#context()
@@ -281,8 +257,8 @@ export class CalendarSyncController {
       for (const listed of try store.list()) {
         try opted()
         if (listed.state === "quarantined") {
-          if ((try engine.recoverDispatch(listed)) === "landed") report.clean++
-          else report.quarantined++
+          const release = { dispatchedAt: Date.parse(listed.updatedAt), settleMs: dispatchSettleMs, now: DateTime.toEpochMillis(try DateTime.now) }
+          report[recoveredAs[try engine.recoverDispatch(listed, release)]]++
           continue
         }
         const row: LinkedCalendarEventRecord = !events.some((event) => event.id === listed.localEventId) && listed.providerEventId !== null
@@ -306,7 +282,6 @@ export class CalendarSyncController {
   }
 }
 
-/** A device's sync host: the owner's opt-in, reviewed enable, pause, passes, and foreground resume from a current opt-in read. */
 export effect function createCalendarSyncHost(options: CalendarSyncHostOptions) {
   const gate = () => options.device?.()
   const reviewMessage = options.reviewMessage ?? ((events: number) => `Ready to link ${events} local events.`)
@@ -352,10 +327,10 @@ export effect function createCalendarSyncHost(options: CalendarSyncHostOptions) 
     running = true
     status = progress
     changed()
-    const reported = action catch effect (error) => {
+    const reported = Effect.catch(action, effect (error) => {
       status = calendarSyncFailureMessage(error)
       throw error
-    }
+    })
     return try onExit(reported, (result) => sync(() => {
       if (Exit.isSuccess(result)) status = success(result.value)
       running = false
@@ -423,14 +398,11 @@ export effect function createCalendarSyncHost(options: CalendarSyncHostOptions) 
   }
 
   return {
-    /** Calls the listener whenever the snapshot changes; the returned function stops it. */
     subscribe(listener: () => void): () => void {
       listeners.add(listener)
       return () => { listeners.delete(listener) }
     },
-    /** The status line, whether a pass runs, and whether sync is on. */
     snapshot: (): CalendarSyncHostSnapshot => ({ status, running, enabled }),
-    /** Rereads the saved opt-in for the current target and the device switch. */
     effect settings() {
       const loaded = effect {
         const config = try saved()
@@ -447,7 +419,6 @@ export effect function createCalendarSyncHost(options: CalendarSyncHostOptions) 
       enabled = loaded
       changed()
     },
-    /** The provider event IDs of clean or dirty links of the saved binding, for exact mapped-copy suppression. */
     effect linkedProviderEvents() {
       const config = try saved()
       const target = options.target()
@@ -459,14 +430,11 @@ export effect function createCalendarSyncHost(options: CalendarSyncHostOptions) 
       const store = try CalendarLinkedStore.open(config.binding, current, options.storage, { idempotencyNamespace: options.controller?.idempotencyNamespace })
       return new Set((try store.list()).flatMap((row) => row.providerEventId !== null && (row.state === "clean" || row.state === "dirty") ? [row.providerEventId] : []))
     },
-    /** The destination names the last prepared context gave. */
     destination: (): CalendarSyncDestination => ({ ...destination }),
-    /** Prepares a review of the destination and every local event. */
     review: () => work(effect {
       interactive = true
       return try ensuring(controller.review(), sync(() => { interactive = false }))
     }, (review) => reviewMessage(review.events.length), "Reviewing calendar…"),
-    /** Enables sync for exactly what was reviewed, through the device switch when there is one, then runs a pass. */
     effect enable(review: CalendarSyncReview) {
       try work(effect {
         const device = gate()
@@ -482,9 +450,7 @@ export effect function createCalendarSyncHost(options: CalendarSyncHostOptions) 
         } }, () => "Sync enabled.", "Enabling sync…")
       return try syncPass()
     },
-    /** Runs one pass now. */
     sync: syncPass,
-    /** Retires any pass and turns sync off, keeping saved events and links. */
     effect pause() {
       controller.cancel()
       const device = gate()
@@ -495,11 +461,8 @@ export effect function createCalendarSyncHost(options: CalendarSyncHostOptions) 
       status = "Sync is off. Saved events and links are retained."
       changed()
     },
-    /** Retires the running operation. */
     cancel,
-    /** Reads the opt-in for the current foreground generation and runs a pass only if it is still current and enabled. */
     resume,
-    /** Starts following the foreground: resumes now, and stops, hides, owner changes and local edits from here on. */
     effect start() {
       let stopped = false
       let key = options.identity()
@@ -511,7 +474,6 @@ export effect function createCalendarSyncHost(options: CalendarSyncHostOptions) 
       settledListeners.add(settled)
       try resume()
       return {
-        /** The signed-in owner changed: retire this generation, pause a device gate, and resume for the new owner. */
         ownerChanged: () => effect {
           if (stopped || options.identity() === key) return
           const changedExistingOwner = key !== ""
@@ -526,22 +488,18 @@ export effect function createCalendarSyncHost(options: CalendarSyncHostOptions) 
           changed()
           try revive()
         },
-        /** A local event changed: sync after a short quiet period, or after the running pass settles. */
         localChanged: () => stopped ? Effect.void : localChanged(),
-        /** The app was shown or hidden: resume from a fresh opt-in read, or retire the generation. */
         visibilityChanged: () => effect {
           if (stopped) return
           if (options.foreground()) try revive()
           else try retire("hideForeground")
         },
-        /** Another view changed the settings: retire this operation. */
         settingsChangedElsewhere: () => sync(() => {
           if (stopped) return
           cancel()
           status = "Sync settings changed in another view."
           changed()
         }),
-        /** Stops following the foreground and retires the generation. */
         stop: () => effect {
           if (stopped) return
           stopped = true

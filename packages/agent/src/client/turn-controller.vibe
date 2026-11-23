@@ -1,11 +1,11 @@
-// spec/agent/client/turns.md, "Story: Stop a reply without sending the next message against an uncertain room"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"; spec/agent/client/turns.md, "A message is posted only to the bound room, one turn at a time, and never while a Stop is waiting or uncertain"; spec/agent/client/turns.md, "Stop is posted once for the posted turn, and only a receipt for its room and reason confirms it"; spec/agent/client/turns.md, "An uncertain Stop refuses the next send once and unbinds only the stopped conversation"; spec/agent/client/turns.md, "Binding another conversation or resetting starts a new generation with no open or stopped turn"; spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"; spec/agent/client/turns.md, "A conversation the agent no longer has ends the turn as a conversation failure and unbinds it"
+// spec/agent/client/turns.md, "Story: Stop a reply without sending the next message against an uncertain room"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"; spec/agent/client/turns.md, "A message is posted only to the bound room, one turn at a time, and never while a Stop is waiting or uncertain"; spec/agent/client/turns.md, "Stop is posted once for the posted turn, and only a receipt for its room and reason confirms it"; spec/agent/client/turns.md, "An uncertain Stop refuses the next send once and unbinds only the stopped conversation"; spec/agent/client/turns.md, "Binding another conversation or resetting starts a new generation with no open or stopped turn"; spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"; spec/agent/client/turns.md, "A conversation the agent no longer has ends the turn as a conversation failure and unbinds it"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import {
   Machine, boundConversation, boundRoom, enabled, heldConversation, machine, stopConfirmedBy, stopReason, stopTurn, turnId,
   type Attempt, type ClientCall, type ClientStep, type Event, type StopReceipt, type StreamEnd, type TurnClient,
 } from "../../gen/agent__client__turns.effect.vibe"
 import type { RuntimeStream } from "./index.vibe"
 import type { TaskPresentation } from "../tasks/chat-task.vibe"
-import { ActionResultFrame } from "./reply-frame.schema.vibe"
+import { ActionResultFrame, PlanAction, ProviderWait } from "./reply-frame.schema.vibe" // eslint-disable-line @typescript-eslint/consistent-type-imports -- BufferedReply uses these Vibe schemas as runtime codecs.
 import { readReplyStream, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
 import { newClientMessageId, type ClientMessageId } from "./stopped-turn.vibe"
 
@@ -19,6 +19,8 @@ schema BufferedReply {
   readonly actionResults: readonly ActionResultFrame[]
   readonly taskChoices?: readonly Schema.Unknown[]
   readonly failureKind?: Schema.NonEmptyString
+  readonly planAction?: PlanAction
+  readonly retryAfterMs?: ProviderWait
 }
 schema StopAnswer { readonly aborted: boolean; readonly roomId: string; readonly reason: string; readonly outcome: "stopped" | "nothingRunning" | "uncertain" }
 schema RefusedRequest { readonly name: "RuntimeRequestError"; readonly status: Schema.Int; readonly message: string; readonly code?: string }

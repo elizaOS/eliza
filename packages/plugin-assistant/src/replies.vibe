@@ -8,7 +8,6 @@ const waitCue = /^(?:on it|(?:one|just a) (?:sec|second|moment))$/iu
 const progressLead = /^(?:let me (?:check|look|open|pull up|take a look|have a look)|checking|looking|searching|reading)\b/iu
 const statedFact = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|hundred|thousand|million|half|quarter|dozen|minutes?|seconds?|hours?|days?|weeks?|months?|years?|ms|milliseconds?|ago|after|before|until|tomorrow|today|tonight|noon|midnight|am|pm|set|saved|done|created|sent|deleted)\b/iu
 
-/** Whether a reply is a brief cue, an answer, or nothing: a cue names no person, item, time or outcome. */
 export function replyKind(text: string): ReplyKind {
   const reply = text.trim()
   if (reply === "") return "EmptyReply"
@@ -19,20 +18,17 @@ export function replyKind(text: string): ReplyKind {
   return pieces.length > 0 && pieces.length <= 3 && pieces.every((piece) => cue(piece) || progress(piece)) ? "CueReply" : "AnswerReply"
 }
 
-/** The reply the owner hears for this text while the work is in `phase`, or undefined when it is held back. */
 export function heardReply(phase: WorkPhase, text: string): string | undefined {
   return heardWhile(phase, replyKind(text)) === "EmptyReply" ? undefined : text
 }
 
-/** One action's results in this turn. */
 export interface Attempt {
   readonly actionName: string
   readonly success: boolean
   readonly receipts: readonly EffectReceipt[]
 }
 
-/** The record a receipt names, as a claim targets it. */
-export function receiptTarget(receipt: EffectReceipt): string {
+function receiptTarget(receipt: EffectReceipt): string {
   return `${receipt.resource.kind}:${receipt.resource.id}`
 }
 
@@ -47,7 +43,6 @@ function ended(receipt: EffectReceipt, reverted: ReadonlySet<string>): ResultEnd
   }
 }
 
-/** This turn's attempts as the results a claim is checked against, rollbacks applied. */
 export function turnResults(attempts: readonly Attempt[]): TurnResult[] {
   const reverted = revertedEffectReceiptIds(attempts.flatMap((attempt) => attempt.receipts))
   return attempts.flatMap(({ actionName, success, receipts }) => receipts.length === 0
@@ -56,13 +51,11 @@ export function turnResults(attempts: readonly Attempt[]): TurnResult[] {
       .map((receipt) => ({ actionName, target: receiptTarget(receipt), ended: ended(receipt, reverted) } satisfies TurnResult)))
 }
 
-/** What this turn's attempts prove about one record. */
 export type Proven =
   | { readonly kind: "done"; readonly receiptIds: readonly string[] }
   | { readonly kind: "notDone"; readonly cited: number }
   | { readonly kind: "unproven" }
 
-/** Whether this turn's attempts prove the record `target` was done, prove it was not, or prove neither. */
 export function proven(attempts: readonly Attempt[], target: string): Proven {
   const results = turnResults(attempts)
   if (claimSupported(results, "ClaimedDone", target, 0)) {
@@ -74,14 +67,12 @@ export function proven(attempts: readonly Attempt[], target: string): Proven {
   return cited >= 0 ? { kind: "notDone", cited } : { kind: "unproven" }
 }
 
-/** What to tell the owner for each thing the turn can prove. */
 export interface Telling {
   readonly done: string
   readonly notDone: string
   readonly unproven: string
 }
 
-/** The action result for one record, saying only what this turn's attempts prove, with its receipts bound to the text. */
 export function attributed(attempts: readonly Attempt[], target: string, telling: Telling, data: ProviderDataRecord = {}): ActionResult {
   const effectReceipts = attempts.flatMap((attempt) => attempt.receipts)
   const proof = proven(attempts, target)
@@ -110,24 +101,20 @@ function base({ operation, kind, id, key, at }: ReceiptFacts, replayed: boolean,
   }
 }
 
-/** A receipt for a change the agent's store committed. */
 export function appliedReceipt(facts: ReceiptFacts, replayed = false): EffectReceipt {
   return replayed
     ? { ...base(facts, true, "noop"), outcome: "noop", reason: "Replayed the committed result of this request" }
     : { ...base(facts, false, "applied"), outcome: "applied", commit: { kind: "durable", id: `${facts.kind}:${facts.id}`, committedAt: new Date(facts.at).toISOString() } }
 }
 
-/** A receipt for a change that was not made, saying whether the store refused it or its acceptance is unknown. */
 export function failedReceipt(facts: ReceiptFacts, code: string, acceptance: "rejected" | "unknown"): EffectReceipt {
   return { ...base(facts, false, "failed"), outcome: "failed", failure: { code, retryable: acceptance === "unknown", acceptance } }
 }
 
-/** A receipt for a request that changed nothing, such as an ambiguous match. */
 export function unchangedReceipt(facts: ReceiptFacts, reason: string): EffectReceipt {
   return { ...base(facts, false, "noop"), outcome: "noop", reason }
 }
 
-/** A receipt for a change shown to the owner and not yet made. */
 export function previewReceipt(facts: ReceiptFacts): EffectReceipt {
   return { ...base(facts, false, "preview"), outcome: "preview" }
 }

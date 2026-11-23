@@ -115,6 +115,7 @@ describe("Device key renewal (spec/cloud/nativeClients/deviceKeys.md)", () => {
     const signed = try signedIn(cloud, "reuse@example.com")
     const old = try signedInDevice(cloud, signed.accessToken)
     const superseded = try renew(cloud, old.secret, "c")
+    const abandoned = try renew(cloud, old.secret, "x")
     const renewed = try renew(cloud, old.secret, "d")
     const stale = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: (superseded.answer.body as { readonly code: string }).code, state: superseded.state, codeVerifier: superseded.verifier } })
     const successor = try finish(cloud, (renewed.answer.body as { readonly code: string }).code, renewed.state, renewed.verifier)
@@ -122,11 +123,13 @@ describe("Device key renewal (spec/cloud/nativeClients/deviceKeys.md)", () => {
     const after = [try usable(cloud, old.secret), try usable(cloud, successor.key.secret)]
     try check(() => assert.deepStrictEqual({
       superseded: [superseded.answer.status, stale.status],
+      abandoned: abandoned.answer.status,
       successor: [successor.minted.status, successor.acked.status],
       reused: [reused.answer.status, failure(reused.answer.body)],
       after
     }, {
       superseded: [200, 401],
+      abandoned: 200,
       successor: [200, 200],
       reused: [401, ["authentication_required", "credential_revoked"]],
       after: [401, 401]

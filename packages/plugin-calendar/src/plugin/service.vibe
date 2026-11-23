@@ -5,9 +5,7 @@ import { calendarHost, type CalendarApprovalRecord, type CalendarApprovalRow, ty
 import type { CalendarEvent } from "../model.vibe"
 import type { CalendarAccount, CalendarProviderPort } from "./providers.vibe"
 
-/** The service type the Calendar plugin registers its host under. */
 export const calendarServiceType = "calendar"
-/** The service type the owner approval queue runs approved calendar changes through. */
 export const calendarApprovalExecutorServiceType = "calendar_approval_executor"
 const ownerApprovalsServiceType = "owner_approvals"
 
@@ -28,7 +26,6 @@ function approvalsOf(runtime: IAgentRuntime): CalendarApprovals | undefined {
   }
 }
 
-/** What a check-in reads of one event: its title and start, whether it is a provider copy, and the clocks its change is read from. */
 export interface CalendarEventFacts {
   readonly title: string
   readonly startAt: number
@@ -53,35 +50,40 @@ function eventFacts(event: CalendarEvent): CalendarEventFacts {
   }
 }
 
-/** The Calendar plugin's runtime service: the calendar host over the agent's durable cache. */
 export class CalendarService extends Service {
   static override serviceType = calendarServiceType
   override capabilityDescription = "The owner's calendars: the resident calendar, connected providers, reads and ledgered changes"
-  readonly host: CalendarHost
+  readonly host: CalendarHost | undefined
 
-  constructor(runtime: IAgentRuntime, host: CalendarHost) {
+  constructor(runtime?: IAgentRuntime, host?: CalendarHost) {
     super(runtime)
     this.host = host
   }
 
-  static override async start(runtime: IAgentRuntime): Promise<Service> {
+  static override async start(runtime: IAgentRuntime): Promise<CalendarService> {
     const host = await runPromise(calendarHost({ cache: runtime, agentId: runtime.agentId, approvals: () => approvalsOf(runtime) }))
     return new CalendarService(runtime, host)
   }
 
+  async #readyHost(): Promise<CalendarHost> {
+    if (this.host === undefined) throw new Error("Start CalendarService before using its host.")
+    return this.host
+  }
+
   async eventsBetween(window: { readonly startAt: number; readonly endAt: number }): Promise<readonly CalendarEventFacts[]> {
-    const found = await runPromise(this.host.search({ timeMin: window.startAt, timeMax: window.endAt }))
+    const host = await this.#readyHost()
+    const found = await runPromise(host.search({ timeMin: window.startAt, timeMax: window.endAt }))
     if (found === undefined) return []
     if (!found.complete) throw new Error(`The calendar could not read every listed source: ${found.unavailable.join(", ")}`)
     return found.events.map(eventFacts)
   }
 
-  register(port: CalendarProviderPort): Promise<void> {
-    return runPromise(this.host.register(port))
+  async register(port: CalendarProviderPort): Promise<void> {
+    return runPromise((await this.#readyHost()).register(port))
   }
 
-  bindAccount(account: CalendarAccount | undefined): Promise<void> {
-    return runPromise(this.host.bindAccount(account))
+  async bindAccount(account: CalendarAccount | undefined): Promise<void> {
+    return runPromise((await this.#readyHost()).bindAccount(account))
   }
 
   override stop(): Promise<void> {
@@ -89,7 +91,6 @@ export class CalendarService extends Service {
   }
 }
 
-/** The executor the owner approval queue hands an approved calendar change to. */
 export class CalendarApprovalExecutorService extends Service {
   static override serviceType = calendarApprovalExecutorServiceType
   override capabilityDescription = "Runs an owner-approved calendar change once through the calendar mutation ledger"
@@ -100,10 +101,11 @@ export class CalendarApprovalExecutorService extends Service {
 
   async execute(record: CalendarApprovalRecord): Promise<CalendarLedgerOutcome> {
     const calendar = await this.runtime.getServiceLoadPromise(calendarServiceType)
-    if (!(calendar instanceof CalendarService)) {
+    const host = calendar instanceof CalendarService ? calendar.host : undefined
+    if (host === undefined) {
       return { result: "ChangeRetryable", text: "The calendar is not running yet.", failure: { code: "CALENDAR_SERVICE_UNAVAILABLE", retryable: true, acceptance: "not_accepted" } }
     }
-    return runPromise(calendar.host.executeApproval(record))
+    return runPromise(host.executeApproval(record))
   }
 
   override stop(): Promise<void> {

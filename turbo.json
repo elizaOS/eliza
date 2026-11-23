@@ -110,7 +110,10 @@
         "apps/*/spec/**",
         "packages/*/package.json",
         "packages/*/spec/**",
-        "package.json"
+        "package.json",
+        "!spec/**/*.proof.dfy",
+        "!apps/*/spec/**/*.proof.dfy",
+        "!packages/*/spec/**/*.proof.dfy"
       ],
       "outputs": [
         "gen/**",
@@ -254,6 +257,7 @@
         "vibestack-studio#test:browser"
       ],
       "inputs": [
+        ".gitignore",
         "vibestack/**",
         "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!vibestack/selftests/{docs,examples}.ts",

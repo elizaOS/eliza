@@ -6,7 +6,7 @@ import { dossierRoutes } from "./dossier.vibe"
 import { runEvaluators, type EvaluatorRun } from "./evaluators/runner.vibe"
 import { deliverFollowupTick, followupTickCron, followupTickKind } from "./followups.vibe"
 import { deliverGoalCheckin, goalCheckinKind, ownerGoalsAction, ownerGoalsProvider } from "./goals.vibe"
-import { Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { Facts, Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminderKind } from "./reminders.vibe"
 import { deliverRoutine, routineKind, routineRoutes } from "./routines.vibe"
 import { ownerClockAt, ownerTimezoneEvaluator } from "./timezone.vibe"
@@ -21,7 +21,6 @@ export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dos
 export { BriefSources, PriorityModel, ownerBrief, rankOwnerEntries } from "./owner-brief.vibe"
 export { BillEvidencePort, keepObservedBill, findBillReceipt } from "./bill-evidence.vibe"
 
-/** The name the agent loads this plugin by. */
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
 
 type Deliverer = (task: TaskRow) => DeliveryAnswer!unknown!AssistantPorts
@@ -31,8 +30,26 @@ const deliverers: ReadonlyArray<readonly [string, Deliverer]> = [
   [goalCheckinKind, deliverGoalCheckin],
   [routineKind, deliverRoutine],
   [checkinKind, deliverCheckin],
-  [followupTickKind, () => deliverFollowupTick()],
+  [followupTickKind, () => effect {
+    followOwnerClock() catch effect (failure) => {
+      try annotateLogs(logWarning("the owner's clock could not be read for the standing tasks"), { failure: failure._tag })
+    }
+    return try deliverFollowupTick()
+  }],
 ]
+
+const ownerClockKinds = new Set([checkinKind, goalCheckinKind, routineKind])
+
+export effect function followOwnerClock() {
+  const zone = try ownerClockAt(try (try Facts).now())
+  const scheduler = try Scheduler
+  for (const task of try scheduler.list()) {
+    if (!ownerClockKinds.has(task.kind) || task.trigger.kind !== "cron" || task.trigger.tz === zone || task.status === "Dismissed") continue
+    scheduler.retrigger(task.taskId, { ...task.trigger, tz: zone }, `clock:${task.taskId}:${task.revision}:${zone}`) catch effect (failure) => {
+      try annotateLogs(logWarning("a standing task could not move to the owner's zone"), { taskId: task.taskId, zone, failure: failure._tag })
+    }
+  }
+}
 
 effect function scheduleStandingTasks() {
   const zone = try ownerClockAt(try Clock.currentTimeMillis)
@@ -45,9 +62,9 @@ effect function scheduleStandingTasks() {
     kind: followupTickKind, ownerVisible: false, promptInstructions: "Follow up on approvals left open",
     trigger: { kind: "cron", expression: followupTickCron, tz: zone }, metadata: {}, idempotencyKey: "followups:tick",
   })
+  try followOwnerClock()
 }
 
-/** Registers how the assistant's scheduled tasks reach the owner, and keeps the morning check-in scheduled. */
 export class PersonalAssistantService extends Service {
   static override serviceType = "personal-assistant"
   override capabilityDescription = "Delivers the owner's reminders, goal check-ins, routines and daily check-in at the owner's local time"
@@ -65,7 +82,6 @@ export class PersonalAssistantService extends Service {
   }
 }
 
-/** Runs the evaluators of a turn under the runner's rules, with their durable progress kept in the agent's store. */
 export class PersonalAssistantEvaluators extends Service {
   static override serviceType = "personal-assistant-evaluators"
   override capabilityDescription = "Runs registered evaluators in batches by input route, with durable incremental progress"
@@ -96,7 +112,6 @@ const ownerClockProvider: Provider = {
 
 let running: IAgentRuntime | undefined
 
-/** The personal assistant: reminders, goals, to-dos, routines, the daily check-in and the owner's clock. */
 export const personalAssistantPlugin = {
   name: personalAssistantPluginName,
   description: "Personal assistance: reminders, time zones, check-ins, goals, to-dos and routines, kept in the owner's agent.",

@@ -31,6 +31,7 @@ const standup: CalendarEvent = {
 function port(provider: "eliza" | "google", rows: readonly CalendarSummary[], events: readonly CalendarEvent[]): CalendarProviderPort {
   return {
     provider,
+    recurrenceLines: false,
     effect sources() { return rows },
     effect read() { return { events, complete: true } },
     effect get(_account, _source, eventId) { return events.find((event) => event.id === eventId) },
@@ -81,7 +82,7 @@ it.effect('Link my resident calendar to a verified provider destination, then ke
 
   const resumed = try call("POST", "/sync-control", ask({ operation: "resume", expectedRevision: 1, idempotencyKey: "resume-1" }))
   assert.deepEqual([resumed.status, "paused" in resumed.body && resumed.body.paused], [200, false])
-  assert.deepEqual((try call("GET", "/sync-control/report", ask(undefined, { expectedRevision: "2" }))).body, { report: "synced" })
+  assert.deepEqual((try call("GET", "/sync-control/report", ask(undefined, { expectedRevision: "2" }))).body, { report: "unconfirmed" })
   assert.deepEqual((try call("GET", "/sync-control/report", ask(undefined, { expectedRevision: "1" }))).body, { report: "changed" })
 
   const { event: _event, ...reviewed } = view

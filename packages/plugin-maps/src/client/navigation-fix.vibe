@@ -7,7 +7,6 @@ function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value)
 }
 
-/** A device fix as the planning rules read it: its age at `now`, rounded against the fix. */
 export function navigationFix(position: Position | undefined, now: number): Fix {
   if (position === undefined || !finiteNumber(position.timestamp) || !finiteNumber(position.accuracyMeters)) {
     return { present: false, precise: false, age: 0, accuracy: 0 }
@@ -15,7 +14,6 @@ export function navigationFix(position: Position | undefined, now: number): Fix 
   return { present: true, precise: position.precision === "precise", age: Math.ceil(now - position.timestamp), accuracy: Math.ceil(position.accuracyMeters) }
 }
 
-/** Whether a fix is still fresh and precise enough to plan or reroute from; recheck at use time, since a fix ages without another event. */
 export function usableNavigationFix(position: Position | undefined, now: number): position is Position {
   return usableFix(navigationFix(position, now))
 }
@@ -33,12 +31,10 @@ function watchFix(position: Position, exactCallback: boolean, now: number): Loca
   }
 }
 
-/** Whether the watch may report this fix from the listener that delivered it. */
 export function reportableWatchFix(position: Position, exactCallback: boolean, now: number): boolean {
   return reportableFix(watchFix(position, exactCallback, now))
 }
 
-/** Whether turn guidance may follow this fix; an approximate or stale one pauses voice until a fresh precise fix. */
 export function guidingWatchFix(position: Position, exactCallback: boolean, now: number): boolean {
   return guidesFix(watchFix(position, exactCallback, now))
 }

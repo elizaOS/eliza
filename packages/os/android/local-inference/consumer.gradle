@@ -76,7 +76,7 @@ if (assetsOnly) { preBuild.dependsOn(stageInstaller) }
 preBuild.doFirst {
     if (omittedAssets) return
     def record = new File(paradeeNative, 'build-record.json')
-    if (!record.isFile()) throw new GradleException("[paradee-voice] ${record} missing; run packages/app/scripts/paradee-voice/build-native.ts")
+    if (!record.isFile()) throw new GradleException("[paradee-voice] ${record} missing; run packages/os/android/local-inference/scripts/build-native.ts")
     def approved = new groovy.json.JsonSlurper().parse(record)
     if (!(approved.abis instanceof List) || (!assetsOnly && !approved.abis.containsAll(paradeeAbis))) throw new GradleException('[paradee-voice] missing requested ABI in build-record.json')
     if (!(approved.files instanceof List) || approved.files.any { !(it.path instanceof String) } || approved.files*.path.toSet().size() != approved.files.size()) throw new GradleException('[paradee-voice] invalid or duplicate build-record paths')

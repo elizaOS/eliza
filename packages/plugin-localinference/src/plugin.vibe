@@ -10,10 +10,8 @@ import { openLocalModels, type LocalModelsApi } from "./models.vibe"
 import { localInferenceRoutes } from "./routes.vibe"
 import { SpeechInputRefused, speakLocally, transcribeLocally } from "./speech.vibe"
 
-/** The plugin's name, as load lists and the bundle manifest name it. */
 export const localInferencePluginName = "@elizaos/plugin-local-inference"
 
-/** The provider name core knows as an on-device embedding and speech provider. */
 export const localInferenceProvider = "eliza-local-inference"
 
 const localPriority = -100
@@ -70,11 +68,10 @@ function registerHandlers(runtime: IAgentRuntime, launch: LaunchDocument, models
   }, localInferenceProvider, localPriority, { local: true })
 }
 
-/** The local inference plugin over the engine the host provides and the launch's state directory: model routes, local embeddings when the launch asks for them, and on-device speech. */
 export effect function localInferencePlugin(engine: InferenceEngine.Shape, host: Pick<ModuleContext, "launch" | "stateDirectory">, catalog: Catalog = curatedModels) {
   const launch = host.launch
   const opened = Effect.provide(Effect.provideService(openLocalModels(host.stateDirectory, catalog), InferenceEngine, engine), Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer))
-  const models = try (opened catch effect (failure) => { throw new ModuleRefused({ module: localInferencePluginName, reason: failure.reason }) })
+  const models = (opened catch effect (failure) => { throw new ModuleRefused({ module: localInferencePluginName, reason: failure.reason }) })
   const space = (try models.embeddingModel())?.model.embedding?.space
   if (launch.embeddings === "local" && space !== undefined && launch.embeddingDimensions !== undefined && launch.embeddingDimensions !== space.dimensions) {
     throw new ModuleRefused({ module: localInferencePluginName, reason: `the launch asks for ${launch.embeddingDimensions}-dimensional embeddings and the local model writes ${space.dimensions}` })
@@ -88,7 +85,6 @@ export effect function localInferencePlugin(engine: InferenceEngine.Shape, host:
   } satisfies AgentPlugin
 }
 
-/** The agent module of the local inference plugin over the engine the host provides. */
 export function localInferenceModule(engine: InferenceEngine.Shape): ModuleFactory<never> {
   return (context) => map(localInferencePlugin(engine, context), (plugin): AgentModule => ({ name: localInferencePluginName, plugin }))
 }

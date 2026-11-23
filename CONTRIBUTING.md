@@ -6,7 +6,7 @@ Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang
 
 ## Pull requests
 
-`vibestack` is the primary branch and the base for every pull request.
+The default branch is the primary branch and the base for every pull request.
 
 - Verify through the application's normal entry points that the top-level
   stories, rules, and Quint models are fully implemented and integrated.
@@ -20,9 +20,9 @@ Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang
   before and after the change under comparable conditions. For UI changes,
   attach screenshots of the same flow and state before and after.
 - Keep the diff tidy and focused. Remove unnecessary files and dead,
-  redundant, or superseded code and legacy paths. Prose comments in code
-  are banned. Keep only required machine-readable directives in comment
-  syntax.
+  redundant, or superseded code and legacy paths. Follow the code comment
+  rule in AGENTS.md; keep only its permitted machine-readable directives
+  and generated component metadata.
 - Satisfy all Vibestack requirements and TypeScript conventions before
   merging. [Vibestack spec reference](SPEC.md) · [Required stack](AGENTS.md#the-stack) · [TypeScript conventions](AGENTS.md#typescript-best-practices)
 
@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `ed55453`](https://github.com/lalalune/vibestack/commit/ed55453d0da56f135e79b5fc15563b256288dbec).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `5f25987`](https://github.com/lalalune/vibestack/commit/5f259878cd436c3d7cdc3cec5e3955c5130a19ac).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -183,7 +183,7 @@ errors in subscribers, since Node reports a thrown subscriber error as an uncaug
 
 ## Releasing
 
-Set `version` in the root `package.json`, merge to `vibestack`, and push the tag `vibestack-v<version>` from it.
+Set `version` in the root `package.json`, merge to the default branch, and push the tag `vibestack-v<version>` from it.
 `.github/workflows/release.yml` builds, packs with `pnpm pack`, materializes the shard prerequisites and runs `pnpm selftest --only --concurrency=1` using the same keys as CI, and attaches the tarball to a GitHub release of that tag.
 A project installs it as [the Vibestack guide, "Using it from another package"](vibestack/README.md#using-it-from-another-package) says.
 ## Architecture
@@ -257,7 +257,8 @@ the same module, the check renders that module once for each name prefix and cit
 A unit offered
 what the units it imports proved is proved once when their results are
 remembered, and meanwhile, to be proved again if they fail, only while one of
-them is still being proved. A test run
+them is still being proved. The first attempt starts no further checks of failed
+assertions once a finished import removes one of its assumptions. A test run
 may run any tool, as Studio's do, so it is keyed by all of them, and with a
 typecheck, a driver's run and an exploration by VibeLang's version and bytes.
 An exploration is keyed by the code that explores and what its page reads
@@ -289,6 +290,24 @@ by trusted runs. It holds
 the completed Quint, LemmaScript, and Dafny actions, keyed by the installed
 tools and their inputs. The project directory holds its lock, generated files,
 and stage results. An acceptance or nightly check always reads fresh inputs.
+
+To precompute normal-profile simulations for a subset of a disposable project,
+use `precomputeSimulations(projectDirectory, readSpecs(projectDirectory), moduleNames)`
+from the same entry point inside `withFormalCache`. It compiles the selected
+modules and their transitive imports, runs the selected simulations and replay,
+and returns their verdicts in the requested module order. Treat a failed verdict
+or rejection as a failed precomputation. Run the full check with the shared
+actions to verify the whole project.
+
+For a transfer between trusted runners, call `prepareSimulationReceipts` with
+the same three arguments and an existing private scratch directory as the
+fourth. It returns `results` and, when all requested simulations passed and
+their receipts are complete, `seedDirectory`. Transfer only the files in that
+returned directory. They hold the model typechecks and simulation results the
+ordinary check can reuse. Copy them into the receiving project's `.spec-cache`
+before the full normal check. Match the checkout and toolchain, and keep the
+seed within the same trust boundary as other spec cache entries. The check
+computes its own keys and recomputes a missing or unreadable result.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
@@ -422,7 +441,14 @@ compare screenshots.
 Asynchronous Effect programs are tested, not proved. Each `proof` line says
 how many obligations are proved and how many are simulated only.
 
-ESLint enforces package exports and the stack boundaries. Knip finds unused
+ESLint enforces package exports and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
+citation or tool directive, no effect hook, timer or `console`, and no inline
+config but a reasoned `eslint-disable` of another rule. `commented` and
+`scheduled` in `eslint.config.js` give each file that still breaks them the
+count it may keep; one more fails, and cleaning a file lowers or deletes its
+entry. Eliza's native logger bridge keeps its three existing console accesses
+under the same count limit, enforced by the built-in diagnostics; new files
+and any increase fail. Knip finds unused
 files, exports and dependencies, reading `.vibe` and `.vibex` through VibeLang's
 compiler. Madge checks cycles in `.ts` and `.tsx` imports. jscpd fails on any
 duplicated block of code outside the examples and test fixtures. Their
@@ -433,8 +459,8 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
-| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `vibestack`. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
+| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
@@ -444,8 +470,10 @@ The run summary lists Turbo task times, cache status and exit codes.
 
 Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
-tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job and
-the commit: what a job of the same name last saved, or else another job's that holds the same.
+tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job, the
+lockfile and the commit. A job tries both key layouts for its own name and current lockfile, then tries the current
+layout for another lockfile. Each entry is named by the tools and inputs that produced it, so a job reads only the
+entries that still apply.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
 The default branch's `verify` job publishes the pnpm store after the frozen
@@ -454,16 +482,21 @@ public packages only because fork pull requests can read it.
 Verification and release install both Chromium executables. In CI and nightly
 runs, shard A needs full Chromium for Bombadil. The other self-test shards
 run without a browser.
-CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache.
+CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache, only those a job
+of the same name saved.
 Branch pushes save results that later pushes and pull requests can restore. A pull request's
 own saves are scoped to that pull request. Newer commits replace an older run of the same pull
-request. Every branch push runs application verification and the Android Node lock check.
-Each tool self-test shard can finish and save its cache. The last job to enter
-its queue replaces any pending job for the same shard. Re-run a specific
-commit when you need the tool self-test results for that revision.
+request. Pushes to one branch run one at a time. A run that has started
+finishes and saves its caches, and the newest pushed commit replaces any run
+still waiting. Re-run a specific commit when you need the results for that
+revision; a re-run starts at once.
 The task entry point disables Turbo telemetry. Local `selftest:tools` tasks wait for the
 root and Studio tests. In CI, the verify job runs those integration tests once.
 Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
+Fixture selftests on a pull request first restore an archive scoped to its PR number and lockfile. A complete cached task reuses it only when setup preserves its evaluator; inherited archives, evaluator changes and actual fixture execution retain normal publication.
+
+The canonical nightly install builds the tools and defers application generation to its unchanged nightly task graph. Verification and release install full Chromium and its headless shell. Hosted shard A installs Chromium when its Bombadil journey runs; nightly setup still provisions it, and other tool shards need no browser.
+
 All three tool shards skip workspace generation. The two fixture shards use their scratch inputs, and the packaged CLI test builds its workspace copy.
 Release materializes the prerequisites before running the isolated shards.
 Packing the Vibestack CLI builds the toolchain and Studio. The package's

@@ -4,6 +4,7 @@ import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
 import { act, completed, violated, type Input } from "./action.ts";
 import { entry, evaluatorForCheck, remembered, type Memory } from "./cache.ts";
+import { InstallationChanged } from "./installed.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { positiveGuardEvaluation, positiveGuardProbe, simulated, witnessAction, witnessFile } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
@@ -13,7 +14,7 @@ import { allDone, digest, indent, SIMULATIONS } from "./util.ts";
 
 const SAMPLES = 10000;
 const WITNESS_SAMPLES = 20 * SAMPLES;
-const WITNESS_PREFLIGHT_SAMPLES = [32, 1024];
+const WITNESS_PREFLIGHT_SAMPLES = 32;
 const COMPARED_SAMPLES = 2000;
 const REPLAYED = 200;
 /** Traces of the first simulation kept, for a spec with `leadsTo` rules, to look for runs that break one (`lasso`). */
@@ -166,9 +167,9 @@ export async function simulate(harness: Harness, invariant: string, traces: numb
 export async function search(harness: Harness, invariant: string, step = "step", depths = DEPTHS, samples = WITNESS_SAMPLES, seed = 1): ReturnType<typeof simulate> {
   const searches = depths.map((steps) => ({ steps, budget: Math.ceil(samples * STEPS / steps) }));
   if (searches.length > 1) {
-    for (const limit of WITNESS_PREFLIGHT_SAMPLES) for (const { steps, budget } of searches) {
-      if (budget <= limit) continue;
-      const run = await simulate(harness, invariant, 1, budget, step, false, steps, seed, limit);
+    for (const { steps, budget } of searches) {
+      if (budget <= WITNESS_PREFLIGHT_SAMPLES) continue;
+      const run = await simulate(harness, invariant, 1, budget, step, false, steps, seed, WITNESS_PREFLIGHT_SAMPLES);
       if (run.broken) return run;
     }
   }
@@ -495,6 +496,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
         + (missed.length ? `; not compared on their own, because the simulator had no arguments for them: ${missed.join(", ")}` : ""));
       if (model.stateType) tested = conformanceFound(model, spec, traces, journeys);
     } catch (e) {
+      if (e instanceof InstallationChanged) throw e;
       const mismatch = (e as Error).message.startsWith("TypeScript and Quint disagree");
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
     }

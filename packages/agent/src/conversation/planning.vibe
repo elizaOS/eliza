@@ -17,7 +17,6 @@ const toolMessageLimit = 4_000
 const answerNow = "Note from the agent host, not the person: no further work will run in this turn. Answer the person's latest message now with what this turn holds."
 const messageServiceActions = new Set(["REPLY", "IGNORE", "NONE"])
 
-/** One tool call the turn ran, with its settled result and the text the action meant the owner to see. */
 export interface PlannedStep {
   readonly action: string
   readonly params: Record<string, unknown>
@@ -26,14 +25,12 @@ export interface PlannedStep {
   readonly outcomes: readonly PlanStep[]
 }
 
-/** What one planned turn hands back: the reply to store, every step it ran and the text last streamed. */
 export interface PlannedTurn {
   readonly reply: string
   readonly steps: readonly PlannedStep[]
   readonly streamed: string
 }
 
-/** The model, conversation, authority and display hooks one planned turn runs with. */
 export interface PlanInput {
   readonly runtime: AgentRuntime
   readonly message: Memory
@@ -43,15 +40,13 @@ export interface PlanInput {
   readonly system: string
   readonly messages: readonly ChatMessage[]
   readonly signal: AbortSignal
-  readonly maxTokens: number
   readonly onStreamChunk?: StreamChunkCallback
   readonly onReplyRestart?: (fullText: string) => void
   readonly onPlanningAcknowledgment?: (text: string) => void | Promise<void>
   readonly onActivityStatus?: (activity: { actionName: string; label: string }) => void | Promise<void>
-  readonly onStepResult?: (result: ActionResult) => void
+  readonly onStepResult?: (result: ActionResult) => void | Promise<void>
 }
 
-/** The registered actions this turn may offer the model: allowed by the launch's gate, valid for this message, and nameable as a tool. */
 export async function offeredActions(runtime: AgentRuntime, message: Memory, state: State, actionGate: PlanInput["actionGate"]): Promise<Action[]> {
   const registered = runtime.actions.filter(({ name }) => !messageServiceActions.has(name) && toolNamePattern.test(name))
   const allowed = new Set(offered(registered.map(({ name }) => name), registered.flatMap((action) => actionGate(action) === undefined ? [action.name] : [])))
@@ -88,17 +83,17 @@ function notStarted(result: ActionResult): boolean {
   return data?.executionStatus === "not_started" && (result.effectReceipts ?? []).length === 0
 }
 
-/** The plan entries one settled result contributes: one per effect receipt, or one keyed by the action and its parameters. */
-export function planStepsOf(action: string, params: Record<string, unknown>, result: ActionResult): PlanStep[] {
+function planStepsOf(action: string, params: Record<string, unknown>, result: ActionResult): PlanStep[] {
   const receipts = result.effectReceipts ?? []
   if (receipts.length > 0) {
     return receipts.map((receipt) => ({
-      actionName: action, outcome: outcomeOf(receipt), operation: `${action}\u0000${receipt.operation}\u0000${receipt.resource.kind}\u0000${receipt.resource.id}`,
+      outcome: outcomeOf(receipt),
+      identity: { tag: "ReceiptOperation", key: `${action}\u0000${receipt.operation}\u0000${receipt.resource.kind}\u0000${receipt.resource.id}` },
     }))
   }
-  const operation = `${action}\u0000${canonical(params)}`
-  if (!result.success || result.error !== undefined) return [{ actionName: action, outcome: notStarted(result) ? "Rejected" : "Failed", operation }]
-  return [{ actionName: action, outcome: "NoEffect", operation }]
+  const identity = { tag: "RequestAttempt", key: `${action}\u0000${canonical(params)}` } as const
+  if (!result.success || result.error !== undefined) return [{ outcome: notStarted(result) ? "Rejected" : "Failed", identity }]
+  return [{ outcome: "NoEffect", identity }]
 }
 
 function paramsOf(call: ToolCall): Record<string, unknown> {
@@ -151,15 +146,15 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
 }
 
 function failureNotice(step: PlannedStep): string {
+  if (step.outcomes.some(({ outcome }) => outcome === "Rejected")) return `A ${step.action} call did not start.`
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
 
-function entryKey({ actionName, outcome, operation }: PlanStep): string {
-  return `${actionName}\u0000${outcome}\u0000${operation}`
+function entryKey({ outcome, identity }: PlanStep): string {
+  return `${outcome}\u0000${identity.tag}\u0000${identity.key}`
 }
 
-/** Composes the reply from the steps' own text, the model's prose and every failure the turn still holds open. */
-export function settleReply(steps: readonly PlannedStep[], prose: string | undefined): string {
+function settleReply(steps: readonly PlannedStep[], prose: string | undefined): string {
   const plan = steps.flatMap(({ outcomes }) => outcomes)
   const open = openOutcomes(plan)
   const failed = failedOpen(plan)
@@ -173,7 +168,6 @@ export function settleReply(steps: readonly PlannedStep[], prose: string | undef
   return [composed, ...notices].filter((part) => part.trim()).join("\n\n")
 }
 
-/** Runs one turn's planning loop: the model calls offered actions as tools until it answers, and the reply is composed from what the turn proved. */
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
   const { runtime, message, state, roles, signal } = input
   const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions)
@@ -190,7 +184,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     streamed = ""
     const onStreamChunk = input.onStreamChunk
     const answered = answerOf(await runtime.useModel(ModelType.TEXT_LARGE, {
-      system: input.system, messages: conversation, maxTokens: input.maxTokens, signal,
+      system: input.system, messages: conversation, signal,
       ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
       ...(onStreamChunk === undefined ? {} : {
         stream: true,
@@ -231,7 +225,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
             return []
           },
         }, { id: call.id, name: call.name, params }, { abortSignal: signal })
-        input.onStepResult?.(result)
+        await input.onStepResult?.(result)
         steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
         conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
       }

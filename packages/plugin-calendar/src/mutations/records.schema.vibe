@@ -4,7 +4,6 @@ import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 
 const Text = Schema.String.check(Schema.isMaxLength(16_000))
 
-/** A provider calendar's exact identity as stored or sent. */
 export const SourceKeyRecord = Schema.Struct({
   provider: Schema.Literals(["eliza", "google", "microsoft", "apple_calendar", "ics", "device"]),
   side: Schema.Literals(["owner", "agent"]),
@@ -22,7 +21,6 @@ const Attendee = Schema.Struct({
   optional: Schema.Boolean,
 })
 
-/** One calendar event as a store or a provider holds it. */
 export const EventRecord = Schema.Struct({
   id: Schema.String.check(Schema.isMinLength(1)),
   externalId: Schema.String,
@@ -53,9 +51,9 @@ export const EventRecord = Schema.Struct({
   accountEmail: Schema.optionalKey(Schema.String),
 })
 
-/** The exact fields an owner reviews for a create or an update. */
 export const FieldsRecord = Schema.Struct({
-  title: Schema.String.check(Schema.isMaxLength(500), Schema.makeFilter((title) => title.trim() !== "" && !title.includes("\0"))),
+  // eslint-disable-next-line no-control-regex -- The title schema rejects NUL and requires one non-whitespace character.
+  title: Schema.String.check(Schema.isMaxLength(500), Schema.isPattern(/^\s*[^\s\u0000][^\u0000]*$/)),
   description: Text,
   location: Schema.String.check(Schema.isMaxLength(2_000)),
   startAt: Schema.String,
@@ -70,14 +68,12 @@ const Target = Schema.Struct({
   expectedVersion: Schema.String.check(Schema.isMinLength(1)),
 })
 
-/** The reviewed change itself: its operation, the account that approved it, its target and its fields. */
 export const PayloadRecord = Schema.Union([
   Schema.Struct({ action: Schema.Literal("schedule_event"), account: Schema.String, source: SourceKeyRecord, fields: FieldsRecord, recurrence: Schema.NullOr(RecurrenceRecord) }),
   Schema.Struct({ action: Schema.Literal("modify_event"), account: Schema.String, target: Target, scope: WriteScopeRecord, fields: FieldsRecord }),
   Schema.Struct({ action: Schema.Literal("cancel_event"), account: Schema.String, target: Target, scope: WriteScopeRecord }),
 ])
 
-/** The provider's receipt for one applied change. */
 export const ReceiptRecord = Schema.Struct({
   operation: Schema.Literals(["schedule_event", "modify_event", "cancel_event"]),
   source: SourceKeyRecord,
@@ -88,19 +84,13 @@ export const ReceiptRecord = Schema.Struct({
   acceptedAt: Schema.String,
 })
 
-/** Why an attempt did not apply. */
 export const FailureRecord = Schema.Struct({ code: Schema.String, message: Schema.String, retryable: Schema.Boolean })
 
-/** The durable receipt row: the claim token it was recorded under, and the receipt. */
 export const ReceiptRow = Schema.Struct({ token: Schema.Int.check(Schema.isGreaterThan(0)), receipt: ReceiptRecord })
 
-/** The durable request row: the reviewed digest and payload the ledger first saw under this id. */
 export const RequestRow = Schema.Struct({ digest: Schema.String.check(Schema.isMinLength(1)), payload: PayloadRecord })
 
 type Assignable<A, B extends A> = B
-/** The stored event shape is the model's event shape. */
 export type StoredEvent = Assignable<CalendarEvent, typeof EventRecord.Type>
-/** The stored source shape is the model's source key shape. */
 export type StoredSource = Assignable<CalendarSourceKey, typeof SourceKeyRecord.Type>
-/** The stored fields are the model's reviewed fields. */
 export type StoredFields = Assignable<CalendarEventFields, typeof FieldsRecord.Type>

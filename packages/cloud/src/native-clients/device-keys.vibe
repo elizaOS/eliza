@@ -1,5 +1,5 @@
 // spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Keep my phone signed in without a browser"; spec/cloud/nativeClients/deviceKeys.md, "Signing out ends the presenting key and every key renewed from it, unless it names its acknowledged successor"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
-import { ackOutcome, ackPerIp, apply, recordedExpiryReached, grantBindingMatches, nativeOutcome, renewableUntil, renewalCheck, renewPerIp, reusedRefusal, revokeAll as revokeDeviceEpoch, signOutEndsSuccessor, successorMayFinish, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant, type GrantEffect, type RenewalFacts } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
+import { ackOutcome, ackPerIp, apply, recordedExpiryReached, grantBindingMatches, lapsed, nativeOutcome, renewableUntil, renewalCheck, renewPerIp, reusedRefusal, revokeAll as revokeDeviceEpoch, signOutEndsSuccessor, successorMayFinish, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant, type GrantEffect, type RenewalFacts } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 import { clientCheck, codeChallengeMethod, faultRefusal, type ClientCheck, type ClientRequest, type Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { NativeVerdict, SignInYield } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
 import type { CodeBinding } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
@@ -368,7 +368,7 @@ effect function ack(context: RouteContext) {
   return json(acknowledged.answer)
 }
 
-export effect function signOutKey(tx: Tx, grantKey: string, namedSuccessor: string) {
+effect function signOutKey(tx: Tx, grantKey: string, namedSuccessor: string) {
   const row = try grantBy(tx, "key", grantKey)
   if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
   const now = try Clock.currentTimeMillis
@@ -403,6 +403,15 @@ export interface Renewing {
   readonly request: typeof ConnectBody.Type
 }
 
+effect function acknowledgedSuccessor(chain: ReadonlyArray<Row>, predecessorKey: string, now: number) {
+  for (const successor of chain) {
+    if (toText(successor.renewed_from) !== predecessorKey || pending(successor)) continue
+    const key = inspectKey(successor, now) catch effect () => { throw refused("ServiceUnavailable", "NoReason", now + 5000) }
+    if (key.authority.tag === "RecordedAuthority" || !lapsed(key.authority.grant)) return true
+  }
+  return false
+}
+
 export effect function renewGrant(tx: Tx, renewing: Renewing) {
   const { predecessorKey, request: body } = renewing
   const name = openingName(body)
@@ -424,7 +433,7 @@ export effect function renewGrant(tx: Tx, renewing: Renewing) {
     clientMatches: check.tag === "ClientAdmitted" && registration !== undefined && predecessor !== undefined && grantBindingMatches(predecessor, bindingOf(registration)),
     predecessorExpiresAt: key.expiresAt,
     signInAt: toInt(row.sign_in_at),
-    successorAcknowledged: chain.some((successor) => toText(successor.renewed_from) === predecessorKey && !pending(successor))
+    successorAcknowledged: try acknowledgedSuccessor(chain, predecessorKey, now)
   }
   const checked = renewalCheck(facts, now, registration?.credentialTtl ?? 0)
   if (checked.tag === "RenewalRefused") throw new Refused({ refusal: checked.refusal })

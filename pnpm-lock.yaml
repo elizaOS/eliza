@@ -162,7 +162,7 @@ importers:
         version: 0.7.10
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@informalsystems/quint':
         specifier: ^0.33.1
         version: 0.33.1
@@ -180,7 +180,7 @@ importers:
         version: 6.0.3
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.1
@@ -199,10 +199,10 @@ importers:
         version: 26.6.6
       '@vitest/browser':
         specifier: 'catalog:'
-        version: 5.1.0(bufferutil@4.2.0)(utf-8-validate@6.1.0)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0)
+        version: 5.1.0(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0)
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 5.1.0(bufferutil@4.2.0)(playwright@1.65.0)(utf-8-validate@6.1.0)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0)
+        version: 5.1.0(playwright@1.65.0)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0)
       eslint:
         specifier: 'catalog:'
         version: 10.14.0(jiti@2.7.0)
@@ -220,13 +220,13 @@ importers:
         version: 7.1.1(eslint@10.14.0(jiti@2.7.0))
       happy-dom:
         specifier: 'catalog:'
-        version: 21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0)
+        version: 21.0.4
       jscpd:
         specifier: 'catalog:'
         version: 5.4.3
       jsdom:
         specifier: 'catalog:'
-        version: 31.0.1(@noble/hashes@1.8.0)
+        version: 31.0.1
       knip:
         specifier: 'catalog:'
         version: 6.45.1
@@ -235,7 +235,7 @@ importers:
         version: 8.0.0(typescript@6.0.3)
       miniflare:
         specifier: 5.20261113.0-beta
-        version: 5.20261113.0-beta(@types/node@26.6.6)(bufferutil@4.2.0)(utf-8-validate@6.1.0)
+        version: 5.20261113.0-beta(@types/node@26.6.6)
       stylelint:
         specifier: 'catalog:'
         version: 18.0.0
@@ -259,7 +259,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 5.1.0
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       yaml:
         specifier: 2.9.1
         version: 2.9.1
@@ -268,7 +268,7 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@electric-sql/pglite':
         specifier: 'catalog:'
         version: 0.4.6
@@ -283,7 +283,7 @@ importers:
         version: 4.1.1
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
       vite:
         specifier: 'catalog:'
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
@@ -308,17 +308,17 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
     publishDirectory: dist
 
   packages/cloud:
     dependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/platform-node-shared':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)
       '@electric-sql/pglite':
         specifier: 'catalog:'
         version: 0.4.6
@@ -339,7 +339,7 @@ importers:
         version: 23.1.0(@types/node@26.6.6)
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@antithesishq/bombadil':
         specifier: 0.7.10
@@ -394,17 +394,17 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
     publishDirectory: dist
 
   packages/core:
     dependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/platform-node-shared':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)
       adze:
         specifier: ^2.2.5
         version: 2.3.0
@@ -422,7 +422,7 @@ importers:
         version: 15.0.3
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -456,7 +456,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
     publishDirectory: dist
 
   packages/design-system:
@@ -478,10 +478,10 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/platform-node-shared':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -499,7 +499,7 @@ importers:
         version: 7.4.16
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@capacitor/core':
         specifier: 8.5.2
@@ -533,7 +533,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-agent-orchestrator:
     dependencies:
@@ -589,11 +589,11 @@ importers:
         version: 4.1.1
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
@@ -611,7 +611,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-blocker:
     dependencies:
@@ -651,11 +651,11 @@ importers:
         version: 4.1.1
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
@@ -673,7 +673,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-calendar:
     dependencies:
@@ -688,11 +688,11 @@ importers:
         version: 4.1.1
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
@@ -710,7 +710,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-coding-tools:
     dependencies:
@@ -827,9 +827,6 @@ importers:
 
   packages/plugin-files:
     dependencies:
-      '@elizaos/agent':
-        specifier: workspace:*
-        version: link:../agent
       '@elizaos/core':
         specifier: workspace:*
         version: link:../core
@@ -844,23 +841,20 @@ importers:
         version: 1.17.1
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@capacitor/core':
         specifier: 8.5.2
         version: 8.5.2
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
-      playwright:
-        specifier: 'catalog:'
-        version: 1.65.0
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -878,7 +872,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-form:
     dependencies:
@@ -1013,11 +1007,11 @@ importers:
         version: 4.1.1
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
@@ -1035,7 +1029,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-knowledge:
     dependencies:
@@ -1060,7 +1054,7 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@elizaos/agent':
         specifier: workspace:*
         version: link:../agent
@@ -1072,7 +1066,7 @@ importers:
         version: 4.1.1
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.1
@@ -1091,7 +1085,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-maps:
     dependencies:
@@ -1109,11 +1103,11 @@ importers:
         version: 4.1.1
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
@@ -1131,7 +1125,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-mcp:
     dependencies:
@@ -2009,11 +2003,11 @@ importers:
         version: 4.1.1
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
@@ -2031,7 +2025,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-openai:
     dependencies:
@@ -2464,11 +2458,11 @@ importers:
         version: 6.0.3
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
@@ -2486,7 +2480,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-x:
     dependencies:
@@ -2545,13 +2539,13 @@ importers:
         version: link:../design-system
       '@storybook/addon-a11y':
         specifier: 'catalog:'
-        version: 10.6.7(storybook@10.6.7(@types/react@19.3.0)(bufferutil@4.2.0)(react@19.3.1)(utf-8-validate@6.1.0))
+        version: 10.6.7(storybook@10.6.7(@types/react@19.3.0)(react@19.3.1))
       '@storybook/addon-vitest':
         specifier: 'catalog:'
-        version: 10.6.7(@vitest/browser-playwright@5.1.0)(@vitest/browser@5.1.0(bufferutil@4.2.0)(utf-8-validate@6.1.0)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0))(react@19.3.1)(storybook@10.6.7(@types/react@19.3.0)(bufferutil@4.2.0)(react@19.3.1)(utf-8-validate@6.1.0))(vitest@5.1.0)
+        version: 10.6.7(@vitest/browser-playwright@5.1.0)(@vitest/browser@5.1.0(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0))(react@19.3.1)(storybook@10.6.7(@types/react@19.3.0)(react@19.3.1))(vitest@5.1.0)
       '@storybook/react-vite':
         specifier: 'catalog:'
-        version: 10.6.7(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(storybook@10.6.7(@types/react@19.3.0)(bufferutil@4.2.0)(react@19.3.1)(utf-8-validate@6.1.0))(typescript@6.0.3)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 10.6.7(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(storybook@10.6.7(@types/react@19.3.0)(react@19.3.1))(typescript@6.0.3)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.3.5(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
@@ -2563,10 +2557,10 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 5.1.0(bufferutil@4.2.0)(playwright@1.65.0)(utf-8-validate@6.1.0)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0)
+        version: 5.1.0(playwright@1.65.0)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0)
       happy-dom:
         specifier: 'catalog:'
-        version: 21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0)
+        version: 21.0.4
       playwright:
         specifier: 'catalog:'
         version: 1.65.0
@@ -2578,7 +2572,7 @@ importers:
         version: 19.3.1(react@19.3.1)
       storybook:
         specifier: 'catalog:'
-        version: 10.6.7(@types/react@19.3.0)(bufferutil@4.2.0)(react@19.3.1)(utf-8-validate@6.1.0)
+        version: 10.6.7(@types/react@19.3.0)(react@19.3.1)
       tailwindcss:
         specifier: 'catalog:'
         version: 4.3.5
@@ -2596,19 +2590,19 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   vibestack/studio:
     dependencies:
       '@effect/platform-node':
         specifier: 4.1.1
-        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       effect:
         specifier: 4.1.1
         version: 4.1.1
       vibelang-runtime:
         specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+        version: 0.0.13(@effect/platform-node@4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0)))(effect@4.1.1)
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.1
@@ -2651,7 +2645,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
 packages:
 

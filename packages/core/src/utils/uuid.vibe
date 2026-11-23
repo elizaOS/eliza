@@ -36,7 +36,7 @@ export effect function uuidFromString(target: string | number, sha1: (input: str
   if (typeof text !== "string") throw new InvalidUuidSource({ message: "Value must be string" })
   const existing = validateUuid(text)
   if (existing) return existing
-  const bytes = sha1(encodeURIComponent(text)).slice(0, 16)
+  const bytes = sha1(encodeURIComponent(text.toWellFormed())).slice(0, 16)
   bytes[8] = (bytes[8] & 0x3f) | 0x80
   bytes[6] = bytes[6] & 0x0f
   return bytesToUuid(bytes)

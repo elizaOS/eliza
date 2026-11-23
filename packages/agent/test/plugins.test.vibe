@@ -1,7 +1,7 @@
 // spec/agent/plugins/profile.md, "Story: Load only the plugins my product lists"; spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"
 import { assert, it } from "@effect/vitest"
 import { addLogListener, type LogEntry } from "@elizaos/core"
-import { builtinModules, cloudLinkPlugin, storagePlugin } from "../gen/agent__plugins__profile.ts"
+import { builtinModules, cloudLinkPlugin, privacyPlugin, storagePlugin } from "../gen/agent__plugins__profile.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import type { AgentPlugin } from "../src/host/module.vibe"
 import { startAgent, type StartAgentInput } from "../src/host/process.vibe"
@@ -81,9 +81,15 @@ it.effect.skipIf(!builtinModuleFactories.has(tasksModule))(`A product route unde
   try Effect.try(() => assert.strictEqual(phase, "Config"))
 }, 120_000)
 
-it.effect('A bundled package whose plugin has another name is refused (spec/agent/plugins/profile.md, "The product plugin must be in the bundle")', effect () => {
+it.effect('A bundled package whose plugin has another name is refused, and one that exports no plugin is carried only as a hosted module (spec/agent/plugins/profile.md, "The product plugin must be in the bundle"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent\'s own modules")', effect () => {
   const failed = try Effect.flip(bundledPluginMap([{ packageName: "@product/plugin", plugin: productPlugin }]))
-  try Effect.try(() => assert.deepStrictEqual({ tag: failed._tag, packageName: failed.packageName }, { tag: "BundleEntryRefused", packageName: "@product/plugin" }))
+  const hostedName = "@elizaos/plugin-local-inference"
+  const unexported = try Effect.flip(bundledPluginMap([{ packageName: hostedName, plugin: undefined }]))
+  const hosted = try bundledPluginMap([{ packageName: hostedName, plugin: undefined }], new Set([hostedName]))
+  try Effect.try(() => assert.deepStrictEqual(
+    { renamed: [failed._tag, failed.packageName], unexported: [unexported._tag, unexported.packageName], hosted: [...hosted.keys()].map((name) => [name, hosted.get(name)?.name]) },
+    { renamed: ["BundleEntryRefused", "@product/plugin"], unexported: ["BundleEntryRefused", hostedName], hosted: [[hostedName, hostedName]] },
+  ))
 })
 
 it.effect('A malformed product route refuses the whole list, then a corrected launch serves its action and route (spec/agent/plugins/profile.md, "Story: Register my product\'s own actions and routes"; spec/agent/access/routes.md, "A list is loaded whole or not at all")', effect () => {
@@ -146,8 +152,8 @@ it.effect('An agent with a cloud backend and no plugins is ready and registers s
   try Effect.try(() => assert.strictEqual(registered.length, 2))
 }, 180_000)
 
-it.effect('Plugins register as storage, the cloud link, the listed plugins and the product last (spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last")', effect () => {
-  const order = [storagePlugin, cloudLinkPlugin, listedPlugin.name, productPlugin.name]
+it.effect('Plugins register as storage, the cloud link, the privacy service in the launch\'s mode, the listed plugins and the product last (spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last")', effect () => {
+  const order = [storagePlugin, cloudLinkPlugin, privacyPlugin, listedPlugin.name, productPlugin.name]
   const registered: string[] = []
   const listen = (entry: LogEntry) => {
     if (!entry.msg.includes("Plugin registered")) return
@@ -157,9 +163,13 @@ it.effect('Plugins register as storage, the cloud link, the listed plugins and t
   try acquireRelease(Effect.sync(() => addLogListener(listen)), (remove) => Effect.sync(() => { remove() }))
   const state = try scratch("plan-state")
   const { input } = try launched(state, {
-    launch: { load: [listedPlugin.name], productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] },
+    launch: {
+      load: [listedPlugin.name], productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName],
+      privacy: { secretSwap: true, piiSwap: false }, environment: { ELIZA_SECRET_SWAP_STABLE_REFERENCES: "true" },
+    },
     bundled: [listedPlugin, productPlugin],
   })
   const running = try acquireRelease(startAgent(input), (agent) => orDie(host("retire agent", () => agent.stop())))
-  try Effect.try(() => assert.deepStrictEqual({ ready: running.status.ready, registered }, { ready: true, registered: order }))
+  const swaps = ["ELIZA_SECRET_SWAP_ENABLED", "ELIZA_PII_SWAP_ENABLED", "ELIZA_SECRET_SWAP_STABLE_REFERENCES"].map((key) => running.runtime.getSetting(key))
+  try Effect.try(() => assert.deepStrictEqual({ ready: running.status.ready, registered, swaps }, { ready: true, registered: order, swaps: [true, false, true] }))
 }, 120_000)

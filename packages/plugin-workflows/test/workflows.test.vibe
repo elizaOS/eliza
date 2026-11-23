@@ -1,7 +1,7 @@
 // spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { computeNextCronRunAtMs, type ActionResult, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { computeNextCronRunAtMs, type ActionResult, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
 import { workflowAction, workflowInstances } from "../src/agent.vibe"
 import {
   keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
@@ -11,7 +11,7 @@ import {
 import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
 import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
 import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
-import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
+import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort } from "../src/service/host.vibe"
 import { workflowRoutes } from "../src/routes.vibe"
 import { workflowHttpError } from "../src/client/workflow-client.vibe"
@@ -88,7 +88,7 @@ interface Phone {
   notes: readonly { readonly id: string; readonly title: string; readonly text: string }[]
 }
 
-effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string; readonly google?: ManagedGoogleReads } = {}) {
+effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests } = {}) {
   const db = try acquireRelease(promise(() => openDatabase()), (opened) => promise(() => opened.close()))
   const wakeups = new Map<string, { readonly dueAt: number; readonly metadata: Readonly<Record<string, string | number>> }>()
   const notices: WorkflowNotice[] = []
@@ -106,7 +106,10 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
   const draft = options.draft
   const host: WorkflowHost = {
     sql: db.sql as WorkflowSql, owner, agentId: "agent", origin: "agent:test", worker: try inProcessWorkerPort(), device: port,
-    draft: draft === undefined ? undefined : (prompt) => sync(() => draft(prompt)), nativeDigests: undefined, google: options.google,
+    draft: draft === undefined ? undefined : (prompt) => Effect.suspend(() => {
+      const text = draft(prompt)
+      return text === undefined ? Effect.never : succeed(text)
+    }), nativeDigests: options.native, google: options.google,
     notify: (notice) => sync(() => { notices.push(notice) }),
     scheduler: {
       set: (key, dueAt, metadata) => sync(() => { wakeups.set(key, { dueAt, metadata }) }),
@@ -127,7 +130,7 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
     if (answer.status >= 300) throw workflowHttpError(answer.status, answer.body)
     return answer.body
   }
-  return { service, digests, generated, wakeups, notices, request, client: workflowClient(request), routes }
+  return { host, service, digests, generated, wakeups, notices, request, client: workflowClient(request), routes }
 }
 
 type Harness = Effect.Success<ReturnType<typeof harness>>
@@ -185,7 +188,14 @@ it.live('Recover one reviewed run across an interrupted reply (spec/workflow/ind
     const finished = try settled(rig.client, run)
     try check(() => assert.deepStrictEqual([finished.status, finished.output], ["finished", "Say: good morning!"]))
 
-    const renamed = try rig.client.changeMetadata(receipt.workflowId, receipt.versionId, "Renamed note", "", () => succeed(undefined))
+    const reviewed = try rig.client.validatePhone({ ...greeting, name: "Renamed note" }, catalog)
+    const renamed = try rig.client.savePhone(reviewed.spec, catalog, {
+      mutationId: "11111111-1111-4111-8111-111111111111",
+      specDigest: reviewed.specDigest,
+      compilerRevision: catalog.compilerRevision,
+      workflowId: receipt.workflowId,
+      versionId: receipt.versionId,
+    })
     const current = try rig.client.detail(receipt.workflowId)
     const recovered = try rig.client.reconcile(receipt.workflowId, receipt.versionId, submitted)
     try check(() => assert.deepStrictEqual([recovered?.id, current.versionId === renamed.versionId, current.versionId !== receipt.versionId], [run.id, true, true]))
@@ -219,7 +229,7 @@ it.live('Run the version I reviewed, and turn a schedule on or off only at that 
 
   const runtime = {} as IAgentRuntime
   workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
-  const act = (parameters: Record<string, unknown>) => promise(() => workflowAction.handler(runtime, { content: { text: "" } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
+  const act = (parameters: JsonObject) => promise(() => workflowAction.handler(runtime, { content: { text: "" } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
   const read = try act({ action: "list" })
   const malformed = try act({ action: "deactivate", workflowId: receipt.workflowId, versionId: "" })
   const passed = try act({ action: "deactivate", workflowId: receipt.workflowId, versionId: receipt.versionId })
@@ -233,9 +243,18 @@ it.live('Run the version I reviewed, and turn a schedule on or off only at that 
   try check(() => assert.deepStrictEqual([onFromChat.success, stillOff], [false, false]))
 })
 
-it.live('Remove a workflow only when its runs are settled and restore it safely (spec/workflow/lifecycle.md, "Story: Remove a workflow only when its runs are settled and restore it safely")', effect () => {
+it.live('Remove a workflow only when its runs are settled and restore it safely (spec/workflow/lifecycle.md, "Story: Remove a workflow only when its runs are settled and restore it safely"; spec/workflow/execution.md, "Retirement releases host reservations without rewriting the terminal result")', effect () => {
   const phone: Phone = { performed: [], notes: [] }
-  const rig = try harness({ phone })
+  let drafting = false
+  const rig = try harness({ phone, draft: () => { drafting = true; return undefined } })
+  const slow = try saved(rig, manual("Slow draft", [
+    { id: "text", kind: "Read", operation: "supplied_text", text: "Stand up" },
+    { id: "line", kind: "Write", operation: "model_draft", source: "text", instruction: "Rephrase" },
+  ]))
+  const hung = try rig.client.run(slow.receipt.workflowId, slow.receipt.versionId, () => succeed(undefined))
+  for (let attempt = 0; attempt < 400 && !drafting; attempt++) try sleep("5 millis")
+  const stopped = try rig.client.cancel(hung.id, hung.workflowId)
+  try check(() => assert.deepStrictEqual([drafting, stopped.status], [true, "cancelled"]))
   const spec = manual("Notify me", [
     { id: "text", kind: "Read", operation: "supplied_text", text: "Stand up" },
     { id: "tell", kind: "Notify", operation: "app_notification", source: "text", title: "Reminder" },
@@ -256,6 +275,22 @@ it.live('Remove a workflow only when its runs are settled and restore it safely 
   const back = try rig.client.detail(receipt.workflowId)
   try check(() => assert.deepStrictEqual([back.removed, back.active, back.versionId], [false, false, restored.versionId]))
   try check(() => assert.deepStrictEqual(phone.performed, []))
+})
+
+it.live('Change only the workflow I named in chat (spec/workflow/index.md, "Story: Change only the workflow I named in chat")', effect () => {
+  const rig = try harness()
+  const named = (try saved(rig, manual("Morning digest", greeting.steps))).receipt.workflowId
+  const other = (try saved(rig, manual("Evening digest", greeting.steps))).receipt.workflowId
+  const runtime = {} as IAgentRuntime
+  workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
+  const said = (text: string, parameters: JsonObject) => promise(() => workflowAction.handler(runtime, { content: { text } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
+  const command = "Please rename workflow Morning digest to “Daily brief”."
+  const conflicting = try said(command, { action: "remove", workflowId: other })
+  const renamed = try said(command, { action: "rename", workflowId: other, name: "Night brief" })
+  const [first, second] = [try rig.client.detail(named), try rig.client.detail(other)]
+  try check(() => assert.deepStrictEqual(
+    [conflicting.data?.code, renamed.success, first.name, second.name, second.removed],
+    ["WORKFLOW_REQUEST_CONFLICT", true, "Daily brief", "Evening digest", false]))
 })
 
 it.live('Decide one reviewed approval once and run its device step only as reviewed (spec/workflow/approvals.md, "Story: Decide one reviewed approval once and run its device step only as reviewed"; spec/workflow/runScope.md, "Story: A reviewed calendar read stays inside its run\'s scope")', effect () => {
@@ -279,9 +314,10 @@ it.live('Decide one reviewed approval once and run its device step only as revie
   try check(() => assert.equal(forged._tag === "WorkflowHttpError" ? forged.code : undefined, "WORKFLOW_APPROVAL_NOT_APPLIED"))
   const [approved, again] = try.all [rig.client.decideApproval(first, read, true), rig.client.decideApproval(first, read, true)]
   try check(() => assert.deepStrictEqual([approved.approvals[0].status, again.approvals[0].status], ["approved", "approved"]))
-  const second = try settled(rig.client, first, (found) => found.status === "waiting-approval" && phone.performed.length === 1)
+  const second = try settled(rig.client, first, (found) => found.finished || (found.status === "waiting-approval"
+    && found.events.some((event) => event.type === "ApprovalRequested" && event.node === "tell")))
   const notify = (try rig.client.approvals(second))?.approvals.find((approval) => approval.nodeId === "tell")
-  if (notify === undefined) return try die(new Error("No notification approval was requested"))
+  if (notify === undefined) return try die(new Error(second.error ?? "No notification approval was requested"))
   try check(() => assert.include(notify.summary, "Ship it"))
   try rig.client.decideApproval(second, notify, false)
   const done = try settled(rig.client, second)
@@ -322,8 +358,21 @@ it.live('An automation runs at its reviewed local time or records why it skipped
   try rig.service.fire({ workflowId: receipt.workflowId, armVersion: version, scheduledAt: midnight - 86_400_000 }, rig.digests.fire)
   const runs = try rig.client.executions(receipt.workflowId)
   try check(() => assert.deepStrictEqual(runs.map((found) => [found.occurrence?.status, found.finished]), [["missed", true]]))
-  const armed = rig.wakeups.get(`workflow:${receipt.workflowId}`)
+  const key = `workflow:${receipt.workflowId}`
+  const armed = rig.wakeups.get(key)
   try check(() => assert.isTrue(armed !== undefined && armed.dueAt > Date.now() && armed.metadata.armVersion === version))
+
+  const whileDown = midnight - 2 * 86_400_000
+  const due = { dueAt: whileDown, metadata: { workflowId: receipt.workflowId, armVersion: version, scheduledAt: whileDown } }
+  rig.wakeups.set(key, due)
+  const restarted = try openWorkflows(rig.host)
+  try restarted.start()
+  try check(() => assert.deepStrictEqual(rig.wakeups.get(key), due))
+  try restarted.fire(due.metadata, hostedDigests(restarted).fire)
+  const recorded = try rig.client.executions(receipt.workflowId)
+  const rearmed = rig.wakeups.get(key)
+  try check(() => assert.deepStrictEqual([recorded.map((found) => [found.occurrence?.status, found.occurrence?.scheduledAt]), (rearmed?.dueAt ?? 0) > Date.now()],
+    [[["missed", new Date(whileDown).toISOString()], ["missed", new Date(midnight - 86_400_000).toISOString()]], true]))
 })
 
 it.live('Acknowledge a page of digests only after it is stored (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Story: Review a missed digest only while its source and result are current")', effect () => {
@@ -359,6 +408,13 @@ it.live('Acknowledge a page of digests only after it is stored (spec/workflow/ho
     const index = try Effect.try(() => JSON.parse(String(raw)) as { readonly clientId: string })
     const drained = try protocol.results(index.clientId)
     try check(() => assert.deepStrictEqual(drained, []))
+
+    try Effect.flip(Effect.timeout(inbox.sync({ ...protocol, results: () => Effect.never }, 1), "20 millis"))
+    const afterInterrupt = try inbox.sync(protocol, 1)
+    const retiring = { ...protocol, results: (clientId: string) => Effect.andThen(inbox.retire(), protocol.results(clientId)) }
+    const retired = try Effect.flip(inbox.sync(retiring, 1))
+    const nextGeneration = try inbox.sync(protocol, 2)
+    try check(() => assert.deepStrictEqual([afterInterrupt.length, retired._tag, nextGeneration.length], [2, "DigestInboxFailed", 2]))
   }
 })
 
@@ -377,7 +433,20 @@ it.live('Run a digest over a live Google source read through managed Google (spe
       }),
       calendarFeed: () => Promise.resolve({ calendarId: "work@example.com", events: [], syncedAt: new Date().toISOString() }),
     } as unknown as ManagedGoogleReads
-    const rig = try harness({ google, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
+    const reads: string[] = []
+    let held: { readonly granting: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> } | undefined
+    const native: WorkflowNativeDigests = {
+      grant: () => effect {
+        const gate = held
+        if (gate !== undefined) {
+          try Deferred.succeed(gate.granting, undefined)
+          try Deferred.await(gate.release)
+        }
+        return { timeZone: "UTC" }
+      },
+      read: (selection) => sync(() => { reads.push(selection.sourceId); return "Water the plants" }),
+    }
+    const rig = try harness({ google, native, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
     const protocol = hostedDigestProtocol(rig.request)
     const [account] = try protocol.liveAccounts()
     const calendars = try protocol.liveCalendars(account)
@@ -396,7 +465,28 @@ it.live('Run a digest over a live Google source read through managed Google (spe
     const done = try settled(rig.client, run)
     const inbox = try digestInbox("scope-google")
     const results = try inbox.sync(protocol, 1)
-    try check(() => assert.deepStrictEqual([done.status, results.map((result) => result.status), prompts.some((prompt) => prompt.includes("live_selected_google_read") && prompt.includes("Release"))], ["finished", ["finished"], true]))
+    try check(() => assert.deepStrictEqual([done.status, results.map((result) => result.status), prompts.some((prompt) => prompt.includes("live_selected_google_read") && prompt.includes("Release"))], ["finished", ["finished"], true], done.error))
+
+    const phoneLive = { provider: "native", ownerId: owner, agentId: "agent", ...device, sourceId: "tasks", revision: "a".repeat(64) }
+    const phoneSaved = try protocol.mutate("sources", { id: "phone-1", kind: "tasks", label: "Tasks", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, live: phoneLive, confirmed: true })
+    const phoneRevision = (phoneSaved.source as { readonly revision: string }).revision
+    const asked = { sourceId: "phone-1", sourceRevision: phoneRevision, mutationId: "dossier-1", confirmed: true }
+    const granting = try Deferred.make<void>()
+    const release = try Deferred.make<void>()
+    held = { granting, release }
+    const asking = try forkChild(protocol.mutate("dossier", asked))
+    try Deferred.await(granting)
+    held = undefined
+    const meanwhile = try Effect.timeout(protocol.mutate("sources", { id: "notes-1", kind: "notes", label: "Notes", text: "Buy milk", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, confirmed: true }), "60 seconds")
+    try Deferred.succeed(release, undefined)
+    const dossier = try Fiber.join(asking)
+    const dossierRun = (dossier.execution as { readonly id: string }).id
+    try protocol.mutate("sources/revoke", { id: "phone-1", confirmed: true })
+    const replayed = try protocol.mutate("dossier", asked)
+    const afterRevoke = try Effect.flip(rig.request("/api/workflow/hosted/dossier", { ...asked, mutationId: "dossier-2" }))
+    try check(() => assert.deepStrictEqual(
+      [(meanwhile.source as { readonly id: string }).id, (replayed.execution as { readonly id: string }).id, afterRevoke._tag === "WorkflowHttpError" ? afterRevoke.status : 0, reads],
+      ["notes-1", dossierRun, 409, ["tasks"]]))
   }
 })
 
@@ -449,7 +539,7 @@ it.live('Turn on generated code only after review and resume it without repeatin
   const result: unknown = try Effect.try(() => JSON.parse(done.output ?? "null"))
   try check(() => assert.deepStrictEqual([done.status, drafts, result], ["finished", 1, { text: "Your summary", signal: { received: true, payload: { ok: true } } }]))
 
-  const edited = try rig.request(`/api/workflow/workflows/${receipt.workflowId}`, { name: "Summary", description: "", source: "export default async function () { for (;;) {} }", mutationId: "55555555-5555-4555-8555-555555555555", expectedVersionId: on.versionId })
+  const edited = try rig.request(`/api/workflow/workflows/${receipt.workflowId}`, { name: "Summary", description: "", source: "export default async function (): Promise<never> { for (;;) {} }", mutationId: "55555555-5555-4555-8555-555555555555", expectedVersionId: on.versionId })
   const after = try rig.client.detail(receipt.workflowId)
   const editedReceipt = (edited as { readonly receipt: { readonly versionId: string; readonly sourceDigest: string } }).receipt
   const editedVersion = editedReceipt.versionId
@@ -489,14 +579,19 @@ it.live('Import only complete reviewed workflow source, and run only a worker bu
       "node_modules/typescript/lib/lib.es5.d.ts": "interface Object {}\n",
       "dist/gen/helper.js": "export const helper = 1\n",
       "dist/src/unused.js": "export const unused = 1\n",
-      "node_modules/dep-a/package.json": JSON.stringify({ name: "dep-a", version: "1.2.3", type: "module", exports: { ".": { types: "./index.d.ts", import: "./dist/index.js" } } }),
-      "node_modules/dep-a/dist/index.js": "export * as Effect from './namespace.mjs'\n",
+      "node_modules/dep-a/package.json": JSON.stringify({ name: "dep-a", version: "1.2.3", type: "module", exports: {
+        ".": { types: "./index.d.ts", "module-sync": "./dist/index.js", node: "./dist/unused.js", import: "./dist/unused.js" },
+        "./guard": { import: "./dist/unused.js", require: "./dist/guard.cjs", default: "./dist/unused.js" },
+      } }),
+      "node_modules/dep-a/dist/index.js": "import './bridge.cjs'\nexport * as Effect from './namespace.mjs'\n",
+      "node_modules/dep-a/dist/bridge.cjs": "module.exports = require('dep-a/guard')\n",
+      "node_modules/dep-a/dist/guard.cjs": "module.exports = true\n",
       "node_modules/dep-a/dist/namespace.mjs": "export const value = 1\n",
       "node_modules/dep-a/dist/unused.js": "export {}\n",
     }))
     const closure = try workerArtifactClosure(worker.path)
     try check(() => assert.deepStrictEqual([closure.entries.map((entry) => entry.path).sort(), closure.dependencies], [
-      ["gen/helper.js", "node_modules/dep-a/dist/index.js", "node_modules/dep-a/dist/namespace.mjs", "node_modules/dep-a/package.json", "node_modules/typescript/lib/typescript.js", "node_modules/typescript/package.json",
+      ["gen/helper.js", "node_modules/dep-a/dist/bridge.cjs", "node_modules/dep-a/dist/guard.cjs", "node_modules/dep-a/dist/index.js", "node_modules/dep-a/dist/namespace.mjs", "node_modules/dep-a/package.json", "node_modules/typescript/lib/typescript.js", "node_modules/typescript/package.json",
         "src/worker/compiler.js", "src/worker/engine.js", "src/worker/guest.js", "src/worker/main.js", "src/worker/protocol.js"], { "dep-a": "1.2.3", typescript: "6.0.3" },
     ]))
     const identity = { sourceStampSha256: "a".repeat(64), lockSha256: "b".repeat(64) }
