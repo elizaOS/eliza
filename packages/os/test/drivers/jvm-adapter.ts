@@ -1,8 +1,8 @@
 // spec/os/appUpdate/install.md, "Story: Install an app update without running the agent mid-install"; spec/os/android/secureStore.md, "Story: Persist a value without losing a newer edit"; spec/os/browser/surface/profiles.md, "Story: Keep two sites' storage apart unless I share a profile"
-import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, constants, copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -121,27 +121,104 @@ function sources(trees: readonly string[] = SOURCE_TREES, adapterTrees: readonly
   return { digest: digest.digest("hex").slice(0, 24), roots: [...roots], adapters };
 }
 
+interface FileStamp {
+  readonly file: string;
+  readonly stamp: string;
+}
+
+interface JarIdentity extends FileStamp {
+  readonly digest: string;
+}
+
+const jarIdentities = new Map<string, JarIdentity>();
+
+function fileStamp(file: string): string {
+  const stat = statSync(file, { bigint: true, throwIfNoEntry: false });
+  return stat ? `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}` : "missing";
+}
+
+function identifyJar(file: string): JarIdentity {
+  const stamp = fileStamp(file);
+  const cached = jarIdentities.get(file);
+  if (cached?.stamp === stamp) return cached;
+  const digest = createHash("sha256").update(readFileSync(file)).digest("hex");
+  const identity = { file, stamp, digest };
+  assertInputs([identity]);
+  jarIdentities.set(file, identity);
+  return identity;
+}
+
+function assertInputs(inputs: readonly FileStamp[]) {
+  for (const { file, stamp } of inputs)
+    if (fileStamp(file) !== stamp) throw new Error(`JVM compiler input changed while using ${file}`);
+}
+
+function compilerInputs() {
+  const name = process.platform === "win32" ? "javac.exe" : "javac";
+  const candidates = process.env.JAVA_HOME
+    ? [path.join(process.env.JAVA_HOME, "bin", name)]
+    : (process.env.PATH ?? "").split(path.delimiter).map((directory) => path.resolve(directory, name));
+  const launcher = candidates.find((file) => {
+    try { accessSync(file, constants.X_OK); return statSync(file).isFile(); }
+    catch { return false; }
+  });
+  if (!launcher) throw new Error("javac is required to compile or reuse JVM fixtures");
+  const compiler = realpathSync(launcher);
+  let home = path.dirname(path.dirname(compiler));
+  let command = launcher;
+  if (process.platform === "darwin" && compiler === "/usr/bin/javac") {
+    home = execFileSync("/usr/libexec/java_home", { encoding: "utf8" }).trim();
+    command = path.join(home, "bin", name);
+  } else if (!existsSync(path.join(home, "lib", "modules"))) {
+    const probe = spawnSync(launcher, ["-J-XshowSettings:properties", "-version"], { encoding: "utf8" });
+    const reported = /^\s*java\.home = (.+)$/m.exec(probe.stderr ?? "")?.[1]?.trim();
+    if (probe.status !== 0 || !reported) throw new Error(`Cannot determine the JDK used by ${launcher}`);
+    home = reported;
+  }
+  const files = [
+    command,
+    path.join(home, "bin", name),
+    path.join(home, "release"),
+    path.join(home, "lib", "modules"),
+    path.join(home, "lib", "ct.sym"),
+  ];
+  return { command, inputs: files.map((file) => ({ file, stamp: fileStamp(file) })) };
+}
+
 export function compileAdapter(main: string, found: Sources = sources(), dependencies: readonly string[] = []): string {
   const adapter = found.adapters.get(main);
   if (adapter === undefined) throw new Error(`no JVM adapter ${main} under ${ADAPTERS}`);
   const tools = androidTools();
   const classpath = [...dependencies, ...(tools.kind === "present" ? [tools.androidJar] : [])];
-  const dependencyKey = dependencies.length
-    ? createHash("sha256").update(JSON.stringify(classpath.map((jar) => createHash("sha256").update(readFileSync(jar)).digest("hex")))).digest("hex")
-    : "";
-  const classes = path.join(CACHE, `${found.digest}-${main}${dependencyKey ? "-" + dependencyKey : ""}`);
-  if (existsSync(classes)) return classes;
+  const jars = classpath.map(identifyJar);
+  const compiler = compilerInputs();
+  const inputs = [...compiler.inputs, ...jars];
+  const key = [
+    compiler.inputs.map((input) => input.stamp),
+    jars.map((jar) => jar.digest),
+    process.env.JDK_JAVAC_OPTIONS,
+    process.env.JAVA_TOOL_OPTIONS,
+    process.env._JAVA_OPTIONS,
+  ];
+  const dependencyKey = createHash("sha256").update(JSON.stringify(key)).digest("hex");
+  const classes = path.join(CACHE, `${found.digest}-${main}-${dependencyKey}`);
+  if (existsSync(classes)) {
+    assertInputs(inputs);
+    return classes;
+  }
   mkdirSync(CACHE, { recursive: true });
   const staging = mkdtempSync(path.join(CACHE, ".compiling-"));
   try {
-    execFileSync(javaTool("javac"), [
+    execFileSync(compiler.command, [
       "--release", "21", "-encoding", "UTF-8", "-nowarn", "-implicit:class", "-d", staging,
-      ...(classpath.length ? ["-classpath", classpath.join(path.delimiter)] : []),
+      "-classpath", classpath.length ? classpath.join(path.delimiter) : staging,
       "-sourcepath", found.roots.join(path.delimiter), adapter,
     ], { stdio: ["ignore", "ignore", "pipe"] });
+    assertInputs(inputs);
     renameSync(staging, classes);
   } catch (error) {
     rmSync(staging, { recursive: true, force: true });
+    assertInputs(inputs);
     if (existsSync(classes)) return classes;
     const stderr = (error as { stderr?: Buffer }).stderr?.toString("utf8") ?? "";
     throw new Error(`javac could not compile ${main}:\n${stderr || String(error)}`, { cause: error });
