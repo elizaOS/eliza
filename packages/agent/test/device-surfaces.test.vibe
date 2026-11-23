@@ -119,14 +119,14 @@ module node {
     cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: { ...place, revision: "6" } })), text("Okay."))
     const staleMaps = await say("How far is this place?", onMaps)
     cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), text("Okay."))
-    await say("How far is this place?", onMaps)
-    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), text("Okay."))
     const hiddenMaps = await say("How far is this place?", { observation: { ...onMaps.observation, sensitive: true, selectedObject: undefined } })
+    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), text("Okay."))
+    await say("How far is this place?", onMaps)
 
     cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), text("Okay."))
-    await say("Share this photo", onPhotos)
-    cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), text("Okay."))
     const notShown = await say("Share this photo", { observation: { view: "home", revision: 3, sensitive: false } })
+    cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), text("Okay."))
+    await say("Share this photo", onPhotos)
     cloud.script(toolCalls("", propose({ type: "photos_share", ids: ["lib:i:99:1"] })), text("Okay."))
     const guessed = await say("Share my latest photo")
     cloud.script(toolCalls("", propose({ type: "photos_open", id: openPhoto.id })), text("Okay."))
@@ -162,8 +162,8 @@ module node {
     const remembered = JSON.stringify(recalled?.messages?.at(-1) ?? "")
 
     await client.call("POST", "/api/client-devices/view-profile", { version: 1, expectedRevision: null, views: ["home", "photos"] })
-    cloud.script(toolCalls("", propose({ type: "open_view", view: "files" })), text("Okay."))
-    const disabled = await say("Open Files")
+    cloud.script(toolCalls("", propose({ type: "open_view", view: "settings" })), text("Okay."))
+    const disabled = await say("Open Settings")
     const profiled = offered(cloud, 2)
 
     return {
