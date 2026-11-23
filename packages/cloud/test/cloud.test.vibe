@@ -700,8 +700,8 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     return `${answer.status} ${body.error}${body.reason === undefined ? "" : ` ${body.reason}`}`
   }
 
-  effect function nativeCloud(edit: ProfileEdit | undefined, registration: typeof native) {
-    const google = try Effect.try(() => googleIdentityFake(secrets.GOOGLE_CLIENT_SECRET ?? ""))
+  effect function nativeCloud(edit: ProfileEdit | undefined, registration: typeof native, googleClock?: Clock.Clock) {
+    const google = try Effect.try(() => googleIdentityFake(secrets.GOOGLE_CLIENT_SECRET ?? "", googleClock))
     const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", google.handler), ...(edit === undefined ? {} : { edit }) })
     const profile = try parseProfile(try sync(() => { const base = testProfile(cloud.fakes.url); return edit === undefined ? base : edit(base) }))
     const now = try Clock.currentTimeMillis
@@ -730,7 +730,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     const retryAt = firstAt + windowMs
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(firstAt))
-    const { cloud, google } = try provideService(nativeCloud(undefined, native), Clock.Clock, clock.clock)
+    const { cloud, google } = try provideService(nativeCloud(undefined, native, clock.clock), Clock.Clock, clock.clock)
     const opened = try challenge(cloud)
     const idToken = try promise(() => google.idToken(person, { audience: "google-server-client", nonce: opened.nonce }))
     const serverAuthCode = try sync(() => google.serverAuthCode(person, scopes))
