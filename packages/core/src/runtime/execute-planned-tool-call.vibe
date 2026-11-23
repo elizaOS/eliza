@@ -825,7 +825,7 @@ effect function admitHandler(
         failureResult(
           action.name,
           stringifyError(error),
-          { error },
+          { error, executionStatus: "not_started" },
           {
             kind: "handler_error",
             boundary: "handler",
@@ -840,8 +840,8 @@ effect function admitHandler(
       return early(
         failureResult(
           action.name,
-          `Action ${action.name} is not available for the current state`,
-          {},
+          `Action ${action.name} is not available for the current state, so it did not run`,
+          { executionStatus: "not_started" },
           {
             kind: "missing_capability",
             boundary: "capability",
