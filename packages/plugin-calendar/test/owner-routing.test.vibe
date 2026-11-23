@@ -11,11 +11,15 @@ it.effect('Recognize current Calendar words and keep other records out (spec/cal
     calendarEventRequest("Please add a dentist appointment tomorrow."),
     calendarEventRequest("Move the roadshow to 4pm."),
     calendarEventRequest("Delete the calendar event migration planning."),
+    calendarEventRequest("删除牙医预约"),
+    calendarEventRequest("歯医者を削除して"),
+    calendarEventRequest("치과를 삭제해줘"),
     calendarEventRequest("Move the note migration planning to 4pm."),
     calendarEventRequest("Move it to 4pm."),
     calendarEventRequest("Add a meeting in the calendar app on this phone."),
     calendarEventRequest("Delete the meeting notes."),
-  ], ["CreateEventIntent", "UpdateEventIntent", "DeleteEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent"]))
+  ], ["CreateEventIntent", "UpdateEventIntent", "DeleteEventIntent", "DeleteEventIntent", "DeleteEventIntent", "DeleteEventIntent",
+    "NoEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent"]))
 })
 
 it.live('Create a resident event and keep the other work while Contacts is open (spec/calendar/requestRouting.md, "Story: Change a calendar event from the view I am using")', effect () => {
@@ -38,7 +42,7 @@ it.live('Create a resident event and keep the other work while Contacts is open 
     bundled: new Map<string, AgentPlugin>([[calendar.name, calendar], [other.name, other]]),
   })
 
-  const title = "Migration planning"
+  const title = "歯医者"
   const startAt = "2035-03-04T09:00:00Z"
   const endAt = "2035-03-04T10:00:00Z"
   const opened = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
@@ -48,7 +52,7 @@ it.live('Create a resident event and keep the other work while Contacts is open 
   try Effect.sync(() => cloud.script(toolCalls("",
     { name: "CALENDAR", arguments: { subaction: "create_event", title, startAt, endAt, timeZone: "UTC", reviewBeforeCreate: false } },
     { name: "READ_EXTRA_FIXTURE", arguments: {} },
-  ), text("I saved Migration planning and checked the other fixture.")))
+  ), text("I saved 歯医者 and checked the other fixture.")))
   const reply = try call(agent, {
     method: "POST", path: `/api/conversations/${id}/messages`, body: { text: asked,
       metadata: { observation: { view: "contacts", revision: 1, sensitive: false } } },
@@ -58,6 +62,13 @@ it.live('Create a resident event and keep the other work while Contacts is open 
   })
   const feed = try call(agent, { method: "GET", path: `/api/lifeops/calendar/feed?${window}` })
   const plan = cloud.calls.find(({ path }) => path.endsWith("/chat/completions"))
+  const beforeDelete = cloud.calls.length
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALENDAR", arguments: { subaction: "delete_event", query: title,
+    timeMin: "2035-03-04T00:00:00Z", timeMax: "2035-03-05T00:00:00Z" } }), text("歯医者を削除しました。")))
+  const deleted = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`,
+    body: { text: "歯医者を削除して", metadata: { observation: { view: "contacts", revision: 2, sensitive: false } } } })
+  const afterDelete = try call(agent, { method: "GET", path: `/api/lifeops/calendar/feed?${window}` })
+  const deletePlan = cloud.calls.slice(beforeDelete).find(({ path }) => path.endsWith("/chat/completions"))
   try Effect.try(() => {
     assert.include(JSON.stringify(plan?.body), "Use CALENDAR's create_event")
     if (!("status" in reply) || !("status" in feed)) throw new Error("A signed fixture route refused")
@@ -66,5 +77,12 @@ it.live('Create a resident event and keep the other work while Contacts is open 
     const result = reply.json as { actionResults: readonly { action: string }[] }
     assert.includeMembers(result.actionResults.map(({ action }) => action), ["CALENDAR", "READ_EXTRA_FIXTURE"])
     assert.include(JSON.stringify(feed.json), title)
+    assert.include(JSON.stringify(deletePlan?.body), "Use CALENDAR's delete_event")
+    if (!("status" in deleted) || !("status" in afterDelete)) throw new Error("A signed delete fixture route refused")
+    assert.strictEqual(deleted.status, 200)
+    const deletion = deleted.json as { actionResults: readonly { action: string; data: { deleted?: boolean } }[] }
+    assert.isTrue(deletion.actionResults.some(({ action, data }) => action === "CALENDAR" && data.deleted === true))
+    assert.strictEqual(afterDelete.status, 200)
+    assert.notInclude(JSON.stringify(afterDelete.json), title)
   })
 }, 120_000)

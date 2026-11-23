@@ -32,3 +32,22 @@ pure def lawTheAddedContextIsOnlyForTheAskedOperation(relevant: CalendarIntent, 
 The note identifies the applicable Calendar operation and carries no
 event title, provider data or view selection. Dispatch still has to pass
 the action's own owner, audience, target and review rules.
+
+### A dense delete request reaches Calendar and the named title decides the target
+
+A Chinese, Japanese or Korean delete command of the form recognized by
+the Calendar action adds delete context for that operation. Its explicit
+title takes priority over a selected event on the screen. A new deletion
+still requires a complete read and exactly one named resident occurrence
+to run immediately. A pending confirmation keeps its existing checks.
+
+```quint
+pure def denseCalendarDeleteContext(matchesDenseDelete: bool): CalendarIntent =
+  if (matchesDenseDelete) DeleteEventIntent else NoEventIntent
+pure def selectedCalendarDeleteTarget(matchesDenseDelete: bool, selected: bool): bool =
+  not(matchesDenseDelete) and selected
+pure def lawDenseDeleteAddsOnlyDeleteContext(matchesDenseDelete: bool): bool =
+  matchesDenseDelete iff denseCalendarDeleteContext(matchesDenseDelete) == DeleteEventIntent
+pure def lawDenseDeleteNeverUsesTheSelection(selected: bool): bool =
+  not(selectedCalendarDeleteTarget(true, selected))
+```

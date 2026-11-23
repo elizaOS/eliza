@@ -1,7 +1,8 @@
 // spec/calendar/requestRouting.md, "An explicit event change adds Calendar relevance only to its admitted action"
 import type { Memory } from "@elizaos/core"
-import { canAddEventContext, type CalendarIntent } from "../../gen/calendar__requestRouting.ts"
+import { canAddEventContext, denseCalendarDeleteContext, type CalendarIntent } from "../../gen/calendar__requestRouting.ts"
 import { calendarAsk } from "./actions.vibe"
+import { denseDeleteTarget } from "../request-time.vibe"
 
 // "please", "can you", "hey, could you please".
 const COURTESY = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
@@ -95,6 +96,8 @@ export function calendarEventRequest(
 ): CalendarIntent {
   const request = text.trim()
   if (!request || request.length > 300 || PHONE_CALENDAR.test(request)) return "NoEventIntent"
+  const denseDelete = denseCalendarDeleteContext(denseDeleteTarget(request) !== undefined)
+  if (denseDelete !== "NoEventIntent") return denseDelete
   if (
     eventMatch(DELETE_EVENT, request) ||
     subjectMatch(DELETE_FROM_CALENDAR, request)

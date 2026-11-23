@@ -139,7 +139,11 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   assert.deepStrictEqual([at(deleted.data, "deleted"), at(deleted.data, "targetEvent", "id"), at(deleted.data, "targetEvent", "metadata", "etag"), filed.length], [true, id, changedEtag, 0])
   assert.deepStrictEqual([at(deleted.effectReceipts?.[0], "operation"), at(deleted.effectReceipts?.[0], "resource", "kind"), at(deleted.effectReceipts?.[0], "resource", "version")], ["calendar.event.delete", "calendar.event", `deleted:${changedEtag}`])
   assert.strictEqual(at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length"), 0)
-  try runCalendarAction(host, { ...ask, id: "message-3b" }, { ...dentist, title: "歯医者" })
+  const selected = try runCalendarAction(host, { ...ask, id: "message-3b" }, { ...dentist, title: "歯医者" })
+  const selectedId = String(at(selected.data, "event", "id"))
+  const wrongSelection = try runCalendarAction(host, { ...ask, id: "message-other-del", text: "小児歯医者を削除して", selected: selectedId },
+    { subaction: "delete_event", eventId: selectedId })
+  assert.deepStrictEqual([wrongSelection.success, at(wrongSelection.data, "requiresInput"), try stillThere("歯医者")], [false, true, 1])
   const unspaced = try runCalendarAction(host, { ...ask, id: "message-3c", text: "歯医者を削除して" }, { subaction: "delete_event", query: "歯医者", ...march })
   assert.deepStrictEqual([at(unspaced.data, "deleted"), filed.length], [true, 0])
   try runCalendarAction(host, { ...ask, id: "message-3e" }, { ...dentist, title: "Vet" })
