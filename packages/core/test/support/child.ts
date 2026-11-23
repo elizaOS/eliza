@@ -234,7 +234,7 @@ export async function installPacked(packed: Packed, directory: string, withTypes
   }
   await mkdir(directory, { recursive: true });
   await writeFile(path.join(directory, "package.json"), JSON.stringify({ name: "packed-core-consumer", private: true, type: "module", packageManager, dependencies: { "@elizaos/core": `file:${packed.tarball}` }, devDependencies }, null, 2) + "\n");
-  await run("pnpm", ["install", "--strict-peer-dependencies", "--reporter", "append-only"], { cwd: directory, maxBuffer: 64 * 1024 * 1024, timeout: 300_000 });
+  await run("pnpm", ["install", "--config.package-import-method=clone-or-copy", "--strict-peer-dependencies", "--reporter", "append-only"], { cwd: directory, maxBuffer: 64 * 1024 * 1024, timeout: 300_000 });
   const packageDirectory = await realpath(path.join(directory, "node_modules/@elizaos/core"));
   const manifest = manifestSchema.parse(JSON.parse(await readFile(path.join(packageDirectory, "package.json"), "utf8")));
   return { packageDirectory, manifest };
