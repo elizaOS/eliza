@@ -835,6 +835,15 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     });
     expect(first.applied).toBe(true);
     expect(first.replayed).toBe(false);
+    await service.applyMutation({
+      scope: scope(entityId),
+      idempotencyKey: "e9-noop-conflict-rename",
+      mutation: {
+        action: "update",
+        id: created.id,
+        patch: { content: "Buy oat milk" },
+      },
+    });
     const second = await service.applyMutation({
       scope: scope(entityId),
       idempotencyKey: "e9-noop-conflict-k2",
@@ -843,6 +852,10 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     expect(second.replayed).toBe(true);
     expect(second.applied).toBe(false);
     expect(second.idempotencyKey).toBe("e9-noop-conflict-k2");
+    expect(second.result).toMatchObject({
+      action: "complete",
+      todo: { content: "Buy oat milk", status: "completed" },
+    });
     await expect(
       service.applyMutation({
         scope: scope(entityId),

@@ -1168,22 +1168,6 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
         })),
       );
     }
-    // Restating the current state changes nothing: leave the row (and its
-    // updatedAt) untouched, like writeListInTransaction's needsUpdate check.
-    const [current] = await tx
-      .select()
-      .from(todosTable)
-      .where(
-        and(
-          eq(todosTable.id, id as UUID),
-          eq(todosTable.agentId, scope.agentId as UUID),
-          eq(todosTable.entityId, scope.entityId as UUID),
-        ),
-      )
-      .limit(1);
-    if (!current) return null;
-    const currentTodo = rowToTodo(current);
-    if (todoPatchIsNoop(currentTodo, patch)) return currentTodo;
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.content !== undefined) set.content = patch.content;
     if (patch.activeForm !== undefined) set.activeForm = patch.activeForm;
@@ -1682,36 +1666,28 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
     return row ? rowToTodo(row) : null;
   }
 
-  /**
-   * Latest applied record of `operation` whose committed result covers
-   * `todoId`. A re-complete (or re-cancel, or identical re-update) with no
-   * verified prior commit has nothing to bind a no-op receipt to, so it
-   * falls through to the normal write path instead.
-   */
-  private async latestAppliedRecordForTodo(
+  private async hasAppliedRequestForTodo(
     tx: TodoTransaction<TSchema>,
     scope: TodoScope,
     operation: "update" | "complete" | "cancel",
     todoId: string,
-  ): Promise<TodoMutationRecord | null> {
+    requestDigest: string,
+  ): Promise<boolean> {
     const [row] = await tx
-      .select()
+      .select({ mutationId: todoMutationsTable.mutationId })
       .from(todoMutationsTable)
       .where(
         and(
           eq(todoMutationsTable.agentId, scope.agentId as UUID),
           eq(todoMutationsTable.entityId, scope.entityId as UUID),
           eq(todoMutationsTable.operation, operation),
+          eq(todoMutationsTable.requestDigest, requestDigest),
           eq(todoMutationsTable.applied, true),
           sql`${todoMutationsTable.resultJson} -> 'result' -> 'todo' ->> 'id' = ${todoId}`,
         ),
       )
-      .orderBy(
-        desc(todoMutationsTable.committedAt),
-        desc(todoMutationsTable.mutationId),
-      )
       .limit(1);
-    return row ? rowToMutationRecord(row) : null;
+    return row !== undefined;
   }
 
   /** Latest record of one operation, only while its confirmation window is open. */
@@ -1894,6 +1870,7 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
       }
 
       let result: TodoMutationResult;
+      let replayedNoop = false;
       const mutation = input.mutation;
       switch (mutation.action) {
         case "create":
@@ -1923,52 +1900,20 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
             input.scope,
             target.id,
           );
-          if (current && todoPatchIsNoop(current, patch)) {
-            // Nothing changed. Bind the no-op receipt to the earlier
-            // committed record for this operation, like the PA sibling
-            // ("was already marked done — nothing changed") and the
-            // replayed-noop receipt contract in core effects: a noop
-            // without a verified prior commit proves nothing, so without
-            // one fall through to the normal write below.
-            const prior = await this.latestAppliedRecordForTodo(
+          if (
+            current &&
+            todoPatchIsNoop(current, patch) &&
+            (await this.hasAppliedRequestForTodo(
               tx,
               input.scope,
               mutation.action,
               target.id,
-            );
-            if (prior) {
-              // Persist this request under its OWN key, or a later retry
-              // of it looks like a new request and re-applies the change
-              // once the todo moves on (e.g. back to pending). The row
-              // records the verified prior result, not a new application:
-              // applied stays false, and the receipt reuses the prior
-              // effect while keeping this request's identifier.
-              const [inserted] = await tx
-                .insert(todoMutationsTable)
-                .values({
-                  agentId: input.scope.agentId as UUID,
-                  entityId: input.scope.entityId as UUID,
-                  idempotencyKey: input.idempotencyKey,
-                  operation: input.mutation.action,
-                  requestDigest,
-                  resultJson: serializeMutationResult(prior.result),
-                  applied: false,
-                })
-                .returning();
-              if (!inserted) {
-                throw new Error(
-                  `${TODOS_LOG_PREFIX} mutation insert returned no row`,
-                );
-              }
-              return {
-                mutationId: inserted.mutationId,
-                idempotencyKey: inserted.idempotencyKey,
-                replayed: true,
-                committedAt: inserted.committedAt,
-                applied: inserted.applied,
-                result: prior.result,
-              };
-            }
+              requestDigest,
+            ))
+          ) {
+            result = { action: mutation.action, todo: current };
+            replayedNoop = true;
+            break;
           }
           result = {
             action: mutation.action,
@@ -2019,7 +1964,7 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
                 };
           break;
       }
-      const applied = mutationApplied(result);
+      const applied = !replayedNoop && mutationApplied(result);
       const [inserted] = await tx
         .insert(todoMutationsTable)
         .values({
@@ -2038,7 +1983,7 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
       return {
         mutationId: inserted.mutationId,
         idempotencyKey: inserted.idempotencyKey,
-        replayed: false,
+        replayed: replayedNoop,
         committedAt: inserted.committedAt,
         applied: inserted.applied,
         result,
