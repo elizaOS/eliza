@@ -286,7 +286,7 @@ pure def upgradePrompt(s: StandaloneUpgrade): UpgradePrompt = match s {
   | _ => NoUpgradePrompt
 }
 pure def beginStandaloneUpgrade(s: StandaloneUpgrade, attempt: int): StandaloneUpgrade = match s {
-  | LegacyDeviceKey(k) => UpgradeBrowser({ prior: k, attempt: attempt })
+  | LegacyDeviceKey(k) => UpgradeBrowser({ prior: { owner: k.owner, version: k.version }, attempt: attempt })
   | _ => s
 }
 pure def cancelStandaloneUpgrade(s: StandaloneUpgrade, attempt: int): StandaloneUpgrade = match s {
@@ -297,7 +297,7 @@ pure def stageStandaloneUpgrade(s: StandaloneUpgrade, attempt: int, response: Up
   | UpgradeBrowser(p) => if (p.attempt != attempt) s else match response {
       | NoLeaseReply => LegacyDeviceKey(p.prior)
       | LeaseReply(k) => if (k.owner == p.prior.owner and k.version != p.prior.version)
-          UpgradeAcknowledging({ prior: p.prior, replacement: k }) else LegacyDeviceKey(p.prior)
+          UpgradeAcknowledging({ prior: p.prior, replacement: { owner: k.owner, version: k.version } }) else LegacyDeviceKey(p.prior)
     }
   | _ => s
 }
