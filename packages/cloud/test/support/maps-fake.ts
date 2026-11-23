@@ -5,7 +5,7 @@ export type GoogleOperation = "searchText" | "searchNearby" | "details" | "geoco
 
 export type GoogleScript =
   | { readonly kind: "answer" }
-  | { readonly kind: "slow"; readonly delayMs: number }
+  | { readonly kind: "hold"; readonly wait: () => Promise<void> }
   | { readonly kind: "empty" }
   | { readonly kind: "notJson" }
   | { readonly kind: "outage" }
@@ -138,8 +138,8 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
   switch (script.kind) {
     case "answer":
       return answerOf(operation, request);
-    case "slow":
-      await new Promise((resolve) => setTimeout(resolve, script.delayMs));
+    case "hold":
+      await script.wait();
       return answerOf(operation, request);
     case "empty":
       return emptyOf(operation, request);
