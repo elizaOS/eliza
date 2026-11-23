@@ -1581,9 +1581,9 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
 // spec/core/models.md, "Story: Get a whole answer from a busy provider"; spec/core/models.md, "A model call takes no output cap from settings"; spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more"
 it.live("Get a whole answer from a busy provider: no setting caps output, and each extractor pass waits out a rate limit once (spec/core/models.md, \"Story: Get a whole answer from a busy provider\")", () => scoped(effect {
   const limited = () => Object.assign(new Error("Too many requests"), { status: 429, retryAfterMs: 200 })
-  const models = scriptedModels("busy", 10, {
+  const models = try Effect.try(() => scriptedModels("busy", 10, {
     [ModelType.TEXT_LARGE]: [{ fail: limited() }, { reply: "unreadable" }, { fail: limited() }, { reply: "ok" }, { fail: limited() }, { fail: limited() }],
-  })
+  }))
   const runtime = try kernel({ settings: { TEXT_LARGE_MAX_TOKENS: "16", DEFAULT_MAX_TOKENS: "16", DEFAULT_TEMPERATURE: "0.2" } })
   try Effect.sync(() => models.register(runtime))
   const parser = (raw: string) => raw === "ok" ? raw : null
@@ -1592,10 +1592,13 @@ it.live("Get a whole answer from a busy provider: no setting caps output, and ea
   const repaired = try host(() => runExtractorPipeline({ runtime, prompt: "Plan the reminder.", providerOptions, parser, buildRepairPrompt: () => "Repair it." }))
   const waited = Date.now() - began
   const refused = try host(() => runExtractorPipeline({ runtime, prompt: "Plan another.", parser }).then(() => "resolved", (error: unknown) => (error as { status?: unknown }).status))
-  const sent = models.seen.map(({ params }) => params as { prompt?: unknown; maxTokens?: unknown; temperature?: unknown; providerOptions?: unknown })
+  const sent = models.seen.map(({ params }) => params as { prompt?: unknown; maxTokens?: unknown; temperature?: unknown; providerOptions?: { eliza?: { modelInputBudget?: unknown } } })
   try Effect.try(() => assert.deepStrictEqual({
     repaired, refused, waitedForBoth: waited >= 400,
-    sent: sent.map(({ prompt, maxTokens, temperature, providerOptions: options }) => ({ prompt, capped: maxTokens !== undefined, temperature, options })),
+    sent: sent.map(({ prompt, maxTokens, temperature, providerOptions: options }) => {
+      const { modelInputBudget: _budget, ...eliza } = options?.eliza ?? {}
+      return { prompt, capped: maxTokens !== undefined, temperature, options: Object.keys(eliza).length ? { ...options, eliza } : undefined }
+    }),
   }, {
     repaired: { parsed: "ok", raw: "ok", repaired: true }, refused: 429, waitedForBoth: true,
     sent: [
