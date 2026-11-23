@@ -22,7 +22,6 @@ export interface LlmAnswer {
 
 const providerBudget: Millis = 800_000
 export const maxReplyBytes = 16 * 1024 * 1024
-const rejectionBytes = 16 * 1024
 const absent: ProviderField = { tag: "FieldAbsent" }
 
 type LlmContext = Deployment | HttpClient.HttpClient
@@ -56,7 +55,7 @@ function messageOf(value: unknown, cacheKey: unknown): ProviderField {
 }
 
 effect function rejectionOf(response: HttpClientResponse.HttpClientResponse, body: ChatBody): ProviderDetail!! {
-  const text = boundedText(response, rejectionBytes) catch effect () => {
+  const text = boundedText(response, maxReplyBytes) catch effect () => {
     try released(response)
     return ""
   }

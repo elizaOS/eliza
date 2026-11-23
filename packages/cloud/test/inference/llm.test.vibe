@@ -70,7 +70,7 @@ describe("WP5 Inference: provider adapter", () => {
       try sync(() => llm.script({ kind: "whole" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "refuse" },
         { kind: "reject", status: 400, body: { ...parserError, message: `  ${cacheKey} ${"x".repeat(1_000)}` } },
         { kind: "reject", status: 400, body: { error: { message: "Too long", code: "context_length_exceeded", param: "messages" } } },
-        { kind: "reject", status: 500, body: parserError }))
+        { kind: "reject", status: 500, body: parserError }, { kind: "reject", status: 400, body: { ...parserError, failed_generation: "g".repeat(64 * 1024) } }))
       const whole = try complete(provider, request)
       const refused = try outcome(complete(provider, request))
       const invalid = try outcome(complete(provider, request))
@@ -78,6 +78,7 @@ describe("WP5 Inference: provider adapter", () => {
       const unparsed = try outcome(stream(provider, keyed))
       const tooLong = try outcome(complete(provider, request))
       const failed = try outcome(complete(provider, request))
+      const unparsedLong = try outcome(complete(provider, request))
       try check(() => assert.deepStrictEqual(
         {
           whole: [whole.json, whole.usage],
@@ -87,6 +88,7 @@ describe("WP5 Inference: provider adapter", () => {
           unparsed,
           tooLong,
           failed,
+          unparsedLong,
           sent: llm.bodies,
           authorization: llm.headers.map((headers) => [headers.authorization, headers["idempotency-key"]])
         },
@@ -104,9 +106,12 @@ describe("WP5 Inference: provider adapter", () => {
             code: { tag: "FieldSent", value: "context_length_exceeded" }, param: { tag: "FieldSent", value: "messages" }, message: { tag: "FieldSent", value: "Too long" }
           }],
           failed: ["ProviderRefused", 500, undefined, undefined],
+          unparsedLong: ["ProviderRefused", 400, undefined, {
+            code: { tag: "FieldSent", value: "parser_error" }, param: { tag: "FieldSent", value: "tool_calls" }, message: { tag: "FieldSent", value: parserError.message }
+          }],
           sent: [request, request, request, { ...request, stream: true, stream_options: { include_usage: true } },
-            { ...keyed, stream: true, stream_options: { include_usage: true } }, request, request],
-          authorization: Array.from({ length: 7 }, () => [`Bearer ${secrets.LLM_API_KEY}`, undefined])
+            { ...keyed, stream: true, stream_options: { include_usage: true } }, request, request, request],
+          authorization: Array.from({ length: 8 }, () => [`Bearer ${secrets.LLM_API_KEY}`, undefined])
         }
       ))
     }
