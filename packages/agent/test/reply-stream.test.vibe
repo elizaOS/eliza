@@ -4,7 +4,7 @@ import { held, insufficientCredits, partial, text, type CloudFake } from "./supp
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import type { StreamCut, StreamedAnswer } from "./support/socket-client.ts"
 
-type Frame = { readonly type: string; readonly text?: string; readonly fullText?: string; readonly failureKind?: string; readonly provisional?: boolean }
+type Frame = { readonly type: string; readonly text?: string; readonly fullText?: string; readonly failureKind?: string; readonly provisional?: boolean; readonly actionResults?: readonly unknown[] }
 
 schema Created { conversation: { id: string } }
 const created = Schema.decodeUnknownOption(Created)
@@ -41,7 +41,7 @@ const piece = (letter: string) => letter.repeat(1500)
 
 for (const transport of ["socket", "http"] as const) {
   describe(`See a reply as it is written over the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
-    it.live('Appended text carries the whole text again at the cadence, and retries receive only the same done (spec/agent/conversation/replyStream.md, "Appended text carries the whole text again once the units appended since the last whole text reach the larger of 2048 and that text\'s length"; spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream")', effect () => {
+    it.live('Appended text carries the whole text again at the cadence, the settled reply is announced before done, and retries receive only the same done (spec/agent/conversation/replyStream.md, "Appended text carries the whole text again once the units appended since the last whole text reach the larger of 2048 and that text\'s length"; spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream"; spec/agent/conversation/replyStream.md, "The early reply is written at most once, and a stream that announced it ends with an answered done carrying the same action results")', effect () => {
       const cloud = try cloudFake(deviceKey)
       const agent = try cloudAgent(cloud, transport === "http")
       const id = try conversation(agent)
@@ -77,11 +77,13 @@ for (const transport of ["socket", "http"] as const) {
         status: answer.status, error: answer.error, first: frames[0], ends: frames.filter((frame) => frame.type === "done" || frame.type === "error").length,
         terminal: terminal?.type === "done" ? "done" : JSON.stringify([terminal, cloud.calls.map((made) => made.path)]), fullText: terminal?.fullText, rebuilt: rebuilt(frames),
         snapshots: kinds(frames).includes("snapshot"), provisional: frames.some((frame) => frame.provisional === true),
+        announced: frames.filter((frame) => frame.type === "reply_ready"), beforeDone: kinds(frames).at(-2),
         refused: [refused.status, refused.json],
       }, {
         status: 200, error: undefined, first: { type: "status", activity: "thinking" }, ends: 1,
         terminal: "done", fullText: piece("a") + piece("b") + piece("c"), rebuilt: piece("a") + piece("b") + piece("c"),
         snapshots: true, provisional: false,
+        announced: [{ type: "reply_ready", fullText: piece("a") + piece("b") + piece("c"), actionResults: [] }], beforeDone: "reply_ready",
         refused: [400, { error: "stream_protocol_unsupported" }],
       }))
       if (!("status" in buffered) || terminal === undefined) return try die(new Error("The buffered reply did not complete"))
@@ -126,7 +128,7 @@ for (const transport of ["socket", "http"] as const) {
       const answer = try send(agent, id, { text: "Answer me." })
       const frames = framesOf(answer)
       try Effect.try(() => assert.deepStrictEqual(
-        { status: answer.status, ends: kinds(frames).filter((kind) => kind === "done" || kind === "error"), failureKind: frames.at(-1)?.failureKind },
+        { status: answer.status, ends: kinds(frames).filter((kind) => kind === "done" || kind === "error" || kind === "reply_ready"), failureKind: frames.at(-1)?.failureKind },
         { status: 200, ends: ["done"], failureKind: "insufficient_credits" }))
     }, 120_000)
   })
