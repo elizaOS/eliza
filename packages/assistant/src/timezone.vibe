@@ -1,6 +1,7 @@
-// spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/timezone.md, "Whether a name is a zone is the host's zone database to say, and the empty name never is"; spec/assistant/timezone.md, "A stated zone replaces the stored zone only when the resolver knows it"; spec/assistant/timezone.md, "The calendar reads the stored zone, or the agent's zone when none is stored"; spec/assistant/timezone.md, "At a tick, the owner's clock is the travel zone while travelling, else the first zone known"
+// spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "A return ends the trip, a trip starts at the message, and anything else leaves the trip as it was"; spec/assistant/timezone.md, "Whether a name is a zone is the host's zone database to say, and the empty name never is"; spec/assistant/timezone.md, "A stated zone replaces the stored zone only when the resolver knows it"; spec/assistant/timezone.md, "The calendar reads the stored zone, or the agent's zone when none is stored"; spec/assistant/timezone.md, "At a tick, the owner's clock is the travel zone while travelling, else the first zone known"
 import type { RegisteredEvaluator } from "@elizaos/core"
 import { Machine, calendarZone, opaque, ownerClockZone, stored, type ClockFacts } from "../gen/assistant__timezone.effect.vibe"
+import { travellingAt } from "../gen/assistant__travel.effect.vibe"
 import { Facts, onAgent, readRecord, writeRecord } from "./host.vibe"
 
 module node {
@@ -49,7 +50,7 @@ export function statedName(text: string): string | undefined {
 }
 
 const Travel = Schema.Struct({ startAt: Schema.Number, endAt: Schema.Number, zone: Schema.String })
-/** A trip the owner told the assistant about. */
+/** A trip the owner told the assistant about; a trip told in conversation names no zone. */
 export type Travel = typeof Travel.Type
 const decodeTravel = Schema.decodeUnknownOption(Travel)
 const travelKey = "owner-travel"
@@ -82,11 +83,16 @@ export effect function stateOwnerZone(text: string) {
   }
 }
 
+/** Keeps the owner's trip as it now stands. */
+export effect function keepTrip(trip: Travel) {
+  try writeRecord(travelKey, trip)
+}
+
 /** Records a trip: while a tick falls within it, the owner's clock is the trip's zone. */
 export effect function recordTravel(startAt: number, endAt: number, named: string) {
   const zone = resolveZone(named)
   if (zone === undefined || endAt <= startAt) return false
-  try writeRecord(travelKey, { startAt, endAt, zone })
+  try keepTrip({ startAt, endAt, zone })
   return true
 }
 
@@ -98,7 +104,7 @@ export effect function ownerClockAt(at: number) {
   const clock: ClockFacts = {
     ownerZone: facts.zone, schedulingZone: resolveZone(try host.schedulingZone()) ?? "",
     runtimeZone: resolveZone(try host.runtimeZone()) ?? "", hostZone: resolveZone(try host.hostZone()) ?? "UTC",
-    travellingAtTick: travel !== undefined && at >= travel.startAt && at < travel.endAt,
+    travellingAtTick: travel !== undefined && travellingAt(travel, at),
     hostTravelling: false, travelZone: travel?.zone ?? "",
   }
   return ownerClockZone(clock)

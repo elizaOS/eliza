@@ -1,4 +1,4 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"
 import { Service, type EvaluatorRunResult, type IAgentRuntime, type Provider } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
 import { checkinKind, deliverCheckin } from "./checkin.vibe"
@@ -11,6 +11,7 @@ import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminder
 import { deliverRoutine, routineKind, routineRoutes } from "./routines.vibe"
 import { ownerClockAt, ownerTimezoneEvaluator } from "./timezone.vibe"
 import { currentTodosProvider, todosAction } from "./todos.vibe"
+import { ownerTravelEvaluator } from "./travel.vibe"
 
 export { heardReply, replyKind, proven, turnResults, type Attempt, type Proven, type ReplyKind, type TurnResult, type WorkPhase } from "./replies.vibe"
 export { runtimeLayer, onAgent, type AssistantPorts } from "./host.vibe"
@@ -103,7 +104,7 @@ export const personalAssistantPlugin = {
   },
   actions: [ownerRemindersAction, ownerGoalsAction, todosAction],
   providers: [ownerRemindersProvider, ownerGoalsProvider, currentTodosProvider, ownerClockProvider],
-  evaluators: [ownerTimezoneEvaluator],
+  evaluators: [ownerTimezoneEvaluator, ownerTravelEvaluator],
   services: [PersonalAssistantService, PersonalAssistantEvaluators],
   routes: [...routineRoutes(() => running), ...dossierRoutes(() => running)],
 } satisfies AgentPlugin
