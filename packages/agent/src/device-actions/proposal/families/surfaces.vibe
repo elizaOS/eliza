@@ -32,7 +32,7 @@ const mapsGuidance = "maps_read_selected requires the exact current observation 
 const noteGuidance = "create_note creates a text note in the phone's own Notes. It can be proposed only on a message whose Notes screen selects the phone's own Notes; on any other message a request to make or save a note uses the canonical NOTES service."
 const canonicalNoteGuidance = "This phone offers no note of its own to chat: a request to make or save a note uses the canonical NOTES service."
 const photoCommandLead = "The owner's whole message asks for a photo now: use camera_capture_photo for it. No other device operation is accepted on this message, and VIEWS, which would open Camera without taking a photo, is refused on it."
-const viewsLead = "Open app views with VIEWS (mode show) on this message; ordinary navigation does not need a phone approval. Use the device tool only for the remaining reviewed device actions."
+const viewsLead = "Open app views with VIEWS (mode show) on this message."
 const viewsUnavailable = "VIEWS cannot show a view on this message."
 const recordSourceGuidance = "Phone-native Notes and Calendar data uses these device reviews. A lookup, named record or new event the phone resolves itself works from Home or the Notes or Calendar view; an operation on an exact record or source needs it selected on the phone. Other Notes and Calendar requests, and any turn with a canonical Notes or Calendar selection, use the canonical NOTES or CALENDAR service; a phone capability never redirects a canonical record."
 
@@ -56,7 +56,7 @@ function notesSelected(turn: DeviceTurn): boolean {
 }
 
 const noteNow: MessageAvailability = {
-  unavailable: "the owner's Notes screen does not select the phone's own Notes, so a request to make or save a note uses the canonical NOTES service",
+  unavailable: "the owner's Notes screen does not select the phone's own Notes",
   available: notesSelected,
 }
 const openViewNow: MessageAvailability = {

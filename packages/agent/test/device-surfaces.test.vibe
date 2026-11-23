@@ -191,7 +191,8 @@ module node {
       },
       notes: {
         fromHome: { quiet: fromHome === "Okay.", told: homeTold.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW") }, homeOffer: homeOffer.types.includes("create_note"),
-        toldCanonical: homeOffer.note.includes("create_note is not available on this message: the owner's Notes screen does not select the phone's own Notes, so a request to make or save a note uses the canonical NOTES service"),
+        toldCanonical: homeOffer.note.includes("create_note is not available on this message: the owner's Notes screen does not select the phone's own Notes.") &&
+          homeOffer.description.includes("on any other message a request to make or save a note uses the canonical NOTES service"),
         sameTools: homeOffer.tools === notesOffer.tools && homeOffer.tools === firstOffer.tools, notesNote: notesOffer.note.includes("create_note is not available"),
         notesOffer: notesOffer.types.includes("create_note"), canonical: notesOffer.description.includes("use the canonical NOTES or CALENDAR service"),
         summarized: summarized.includes(reviewText),
@@ -265,6 +266,7 @@ module node {
         note: JSON.stringify((first?.messages ?? []).filter(({ role }) => role === "user").at(-1)?.content ?? ""),
         ranFirst: (first?.messages ?? []).some((said) => said.role === "assistant" && JSON.stringify(said).includes("camera_capture_photo")),
         toolText, fresh, reply: turn.text, userMessageId: turn.userMessageId,
+        description: first?.tools?.find(({ function: called }) => called?.name === proposeTool)?.function?.description ?? "",
       }
     }
     const onMaps = { observation: { view: "maps", revision: 4, sensitive: false, selectedObject: place } }
@@ -280,8 +282,15 @@ module node {
       toolCalls("", propose({ type: "maps_read_selected", target: place })), text("Okay."))
     const guessedId = await send("Open my latest photo", undefined, toolCalls("", propose({ type: "photos_open", id: "lib:i:99:1" })), text("Okay."))
     const turns = [notes, maps, sensitive, photo, plain, noteElsewhere, noSelection, guessedId]
+    const everyTurn = ["Device approval outcomes can change after an earlier reply", "ordinary navigation does not need a phone approval"]
     return {
       sameTools: new Set(turns.map(({ tools }) => tools)).size,
+      tail: {
+        hostLabels: [...new Set(turns.map(({ note }) => note.split("Note from the agent host").length - 1))],
+        outcomesNote: turns.some(({ note }) => note.includes("device request outcomes")),
+        guidanceInTool: everyTurn.every((guidance) => notes.description.includes(guidance)),
+        guidanceInNote: turns.some(({ note }) => everyTurn.some((guidance) => note.includes(guidance))),
+      },
       offersBoth: notes.tools.includes(`"name":"${proposeTool}"`) && notes.tools.includes('"name":"VIEWS"'),
       notes: { noteHere: !notes.note.includes("create_note is not available"), viewsNotHere: notes.note.includes("VIEWS cannot show a view on this message") },
       maps: { noteNotHere: maps.note.includes("create_note is not available on this message") },
@@ -388,6 +397,7 @@ it.live(`One device conversation sends the same tools on every message, whatever
   const observed = try host("one device conversation", () => oneConversation(agent.agent.runtime, socket, agent.frame.token, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed, {
     sameTools: 1,
+    tail: { hostLabels: [1], outcomesNote: false, guidanceInTool: true, guidanceInNote: false },
     offersBoth: true,
     notes: { noteHere: true, viewsNotHere: true },
     maps: { noteNotHere: true },
