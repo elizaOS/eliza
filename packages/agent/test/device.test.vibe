@@ -19,22 +19,22 @@ const Reply = Schema.Struct({
   messageId: Schema.optionalKey(Schema.String), userMessageId: Schema.optionalKey(Schema.String),
 })
 const response = Schema.decodeUnknownOption(Schema.fromJsonString(Reply))
+const replyText = Schema.decodeUnknownOption(Schema.Struct({ text: Schema.String }))
 
-it.effect('An owner starts the agent and receives a complete streamed reply (spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
+it.effect('An owner starts the agent and receives a complete streamed reply (spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared")', effect () => {
   const state = try scratch("ez-test")
   const cloud = try cloudFake(deviceKey)
   const socket = state.file("agent.sock")
   const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
   const token = frame.token
   const name = "Device Stream QA"
-  const config = try Effect.try(() => launchDocument({ name, callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin } }))
+  const config = try Effect.try(() => launchDocument({ name, callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, hostContextRevision: 1 }))
   const parsed = try parseLaunch(JSON.stringify(config), JSON.stringify(frame))
   const running = try acquireRelease(
     startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket } }),
     (agent) => orDie(host("retire agent", () => agent.stop())),
   )
   const started = try host("agent health", () => request(socket, { method: "GET", path: "/api/health" }))
-  try Effect.sync(() => cloud.script(text("Hello", " from the device agent.")))
   const stale = try host("stale launch token", () => request(socket, { method: "GET", path: "/api/status", token: "stale" }))
   const publicAuth = try host("anonymous authorization status", () => request(socket, { method: "GET", path: "/api/auth/status" }))
   const noIdentity = try host("anonymous identity refused", () => request(socket, { method: "GET", path: "/api/auth/me" }))
@@ -54,10 +54,23 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
   const anotherKey = try host("reject another key", () => request(socket, {
     method: "GET", path: contextPath, token, headers: { ...deviceHeaders, "x-eliza-device-key": "b".repeat(64) },
   }))
+  const calendarRoom = try host("open a conversation on the calendar view", () => request(socket, { method: "POST", path: "/api/conversations", token, body: {} }))
+  if (!("json" in calendarRoom)) return try die("The calendar conversation was refused")
+  const { conversation: calendarView } = try Schema.decodeUnknownEffect(Conversation)(calendarRoom.json)
+  try Effect.sync(() => cloud.script(text("I can answer without your agenda.")))
+  const undeclaredAgenda = try host("ask for the agenda from a device that never declared it", () => request(socket, {
+    method: "POST", path: `/api/conversations/${calendarView.id}/messages`, token,
+    headers: { ...deviceHeaders, "x-eliza-device-capabilities": "calendar.agenda-read.v1" },
+    body: { text: "Read my agenda for today.", metadata: { clientDevice: {
+      calendarAgendaSource: { sourceId: "calendar-1", sourceRevision: "c".repeat(64) },
+      context: { view: "calendar", revision: 1, sensitive: false, timeZone: "Etc/UTC", calendarDay: { date: "2026-11-18", timeZone: "Etc/UTC" } },
+    } } },
+  }))
   const revokedDevice = try host("revoke the device over the socket", () => request(socket, {
     method: "POST", path: "/api/client-devices/revoke", token, headers: deviceHeaders,
   }))
   const revokedContext = try host("refuse context from a revoked device", () => request(socket, { method: "GET", path: contextPath, token, headers: deviceHeaders }))
+  try Effect.sync(() => cloud.script(text("Hello", " from the device agent.")))
   const opened = try host("create conversation", () => request(socket, { method: "POST", path: "/api/conversations", token, body: {} }))
   if (!("json" in opened)) return try die("The owner conversation was refused")
   const { conversation } = try Schema.decodeUnknownEffect(Conversation)(opened.json)
@@ -86,6 +99,7 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
         .map((answer) => "status" in answer ? answer.status : undefined),
       bound: [deviceContext.agentId, deviceContext.installationId, deviceContext.enrollmentId],
     },
+    undeclaredAgenda: "json" in undeclaredAgenda ? [undeclaredAgenda.status, Option.getOrUndefined(replyText(undeclaredAgenda.json))?.text] : undeclaredAgenda,
     stream: turn.status, terminal: frames.at(-1), containsTokens: frames.some(({type}) => type === "token"),
     fault: turn.error, upstream: cloud.calls.map(({path,authorization}) => ({path,authorization})),
   }, {
@@ -96,8 +110,9 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
       statuses: [401, 401, 200, 200, 401, 200, 401],
       bound: [running.status.agentId, enrollment.installationId, enrollment.enrollmentId],
     },
+    undeclaredAgenda: [200, "I can answer without your agenda."],
     terminal: { type: "done", fullText: "Hello from the device agent.", agentName: name, messageId: replyId, userMessageId: inputId }, containsTokens: true,
-    fault: undefined, upstream: [{ path: "/api/v1/chat/completions", authorization: "Bearer " + deviceKey }],
+    fault: undefined, upstream: Array.from({ length: 2 }, () => ({ path: "/api/v1/chat/completions", authorization: "Bearer " + deviceKey })),
   }))
 }, 180_000)
 
