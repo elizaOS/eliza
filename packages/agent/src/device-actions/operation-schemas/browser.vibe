@@ -22,6 +22,7 @@ const BrowserTabClose = Schema.Union([
   Schema.Struct({ type: Schema.Literal("browser_tab_close"), target: words(128) }),
   Schema.Struct({ type: Schema.Literal("browser_tab_close"), all: Schema.Literal(true) }),
 ])
+const BrowserTabsShow = Schema.Struct({ type: Schema.Literal("browser_tabs_show") })
 const BrowserFind = Schema.Struct({ type: Schema.Literal("browser_find"), text: words(256) })
 const BrowserHistory = Schema.Struct({ type: Schema.Literal("browser_history"), action: Schema.Literals(["back", "forward", "reload", "stop"]) })
 
@@ -30,6 +31,7 @@ export const browserOperations = {
   browser_tab_new: withoutResult(BrowserTabNew, "BrowserTabNew"),
   browser_tab_switch: withoutResult(BrowserTabSwitch, "BrowserTabSwitch"),
   browser_tab_close: withoutResult(BrowserTabClose, "BrowserTabClose", (operation) => "all" in operation),
+  browser_tabs_show: withoutResult(BrowserTabsShow, "BrowserTabsShow"),
   browser_find: withoutResult(BrowserFind, "BrowserFind"),
   browser_history: withoutResult(BrowserHistory, "BrowserHistory"),
 } satisfies FamilySchemas

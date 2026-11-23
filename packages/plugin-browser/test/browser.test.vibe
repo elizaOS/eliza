@@ -2,15 +2,15 @@
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, AgentRuntime, IAgentRuntime, Memory } from "@elizaos/core"
 import { offeredActions } from "@elizaos/agent"
-import { registerDeviceProposalFamily, type DeviceOperation } from "@elizaos/agent/device-actions"
+import { negotiation, receiptOutcome, registerDeviceProposalFamily, validate, type DeviceOperation } from "@elizaos/agent/device-actions"
 import {
   BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_NO_TABS_TO_CLOSE_NOTICE, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY,
-  BROWSER_TABS_CLOSE_ALL_CAPABILITY, BROWSER_TABS_UNLISTED_NOTICE, browserCloseAllApprovable, browserCloseAllNotice, browserControlCapabilityAvailable,
+  BROWSER_TABS_CLOSE_ALL_CAPABILITY, BROWSER_TABS_SHOW_CAPABILITY, BROWSER_TABS_UNLISTED_NOTICE, browserCloseAllApprovable, browserCloseAllNotice, browserControlCapabilityAvailable,
   browserControlFormAvailable, browserControlRefusal, browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable,
   describeBrowserControl, parseBrowserControl, parseBrowserNavigate,
 } from "../src/contract.vibe"
 import {
-  browserDestinationMatches, browserSearchQueryMatches, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination,
+  asksToSeeBrowserTabs, browserDestinationMatches, browserSearchQueryMatches, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination,
   groundBrowserSearchQuery, spokenBrowserDestination,
 } from "../src/grounding.vibe"
 import { browserPlugin } from "../src/index.vibe"
@@ -94,7 +94,7 @@ it.effect(`Offer a Browser control only as negotiated and review it only on the 
       [{ type: "browser_navigate", url: "http://example.com" }, { type: "browser_navigate", url: "https://owner:pw@example.com" }, { type: "browser_navigate", url: "https://example.com", private: true }]
         .map((value) => parseBrowserNavigate(value).ok),
       [false, false, false])
-    assert.deepStrictEqual(BROWSER_CONTROL_DIRECT_TYPES, ["browser_search", "browser_tab_new", "browser_tab_switch", "browser_find", "browser_history"])
+    assert.deepStrictEqual(BROWSER_CONTROL_DIRECT_TYPES, ["browser_search", "browser_tab_new", "browser_tab_switch", "browser_tabs_show", "browser_find", "browser_history"])
     assert.deepStrictEqual(
       [
         browserControlRunsUnreviewed({ type: "browser_tab_close" }, { boundToMessage: true, wordsTyped: true }),
@@ -361,5 +361,37 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     assert.deepStrictEqual(offeredForms(ownerTurn("", tabsOnly)), ["browser_navigate url", "browser_tab_new private", "browser_tab_switch target", "browser_tab_close target all"])
     assert.deepStrictEqual(offeredForms(ownerTurn("", [])), [])
     assert.deepStrictEqual([Result.isSuccess(again), Result.isFailure(rival) ? rival.failure._tag : "registered"], [true, "FamilyConflict"])
+  })
+})
+
+it.effect('Show the tabs I have open on my phone without returning tab data (spec/browser/control.md, "Story: Show the tabs I have open on my phone")', effect () => {
+  const capability = BROWSER_TABS_SHOW_CAPABILITY
+  const operation = { type: "browser_tabs_show" } as const
+  const enrolled = negotiation(true, capability)
+  const checked = validate(operation, enrolled, "NoBinding")
+  assert.isDefined(checked)
+  if (checked === undefined) return
+  const now = "Show my open tabs."
+  const selected = ownerTurn(now, [capability])
+  const locked = ownerTurn(now, [capability], undefined, { view: "browser", revision: 1, sensitive: true })
+  const shown = try browserProposalFamily.ground(checked, selected)
+  const mixed = try browserProposalFamily.ground(checked, ownerTurn("Show and close my tabs.", [capability]))
+  try Effect.try(() => {
+    assert.deepStrictEqual(["show my open tabs", "Alpha, show my tabs, please", "What tabs do I have open?"].map((text) => asksToSeeBrowserTabs(text, "Alpha")), [true, true, true])
+    assert.deepStrictEqual(["Don't show my tabs", "Show my tabs and their URLs", "How many tabs are open?", "Show the tabs in Chrome", "I asked you to list the tabs yesterday"].map((text) => asksToSeeBrowserTabs(text, "Alpha")), [false, false, false, false, false])
+    assert.deepStrictEqual(parseBrowserControl(operation), { ok: true, operation })
+    assert.isFalse(parseBrowserControl({ ...operation, count: 0 }).ok)
+    assert.isUndefined(validate(operation, negotiation(true, BROWSER_TABS_CAPABILITY), "NoBinding"))
+    assert.isUndefined(validate({ ...operation, count: 0 }, enrolled, "NoBinding"))
+    assert.deepStrictEqual(browserProposalFamily.wholeMessageOperation?.(selected), operation)
+    assert.isUndefined(browserProposalFamily.wholeMessageOperation?.(locked))
+    assert.isUndefined(browserProposalFamily.wholeMessageOperation?.(ownerTurn(now, [BROWSER_TABS_CAPABILITY])))
+    assert.deepStrictEqual(browserProposalFamily.route?.claims(selected).map(({ types }) => types), [["browser_tabs_show"]])
+    assert.deepStrictEqual(browserProposalFamily.route?.claims(locked), [])
+    assert.deepStrictEqual(shown, { kind: "Grounded", operation, grounding: "GroundedAsAsked" })
+    assert.strictEqual(mixed.kind, "Refused")
+    const applied = { outcome: "applied", operationId: "overview-1" }
+    assert.notStrictEqual(receiptOutcome(checked, applied, "overview-1").kind, "refused")
+    assert.strictEqual(receiptOutcome(checked, { ...applied, result: { tabs: [{ title: "private fixture" }] } }, "overview-1").kind, "refused")
   })
 })

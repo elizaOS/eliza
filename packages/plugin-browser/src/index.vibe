@@ -1,6 +1,6 @@
 // spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"
 import { offeredOnlyWhere } from "@elizaos/agent"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { registerDeviceProposalFamily, registerDeviceProposalRoute } from "@elizaos/agent/device-actions"
 import { promoteSubactionsToActions, type Plugin } from "@elizaos/core"
 import { browserAction, historyAsCommand } from "./native-browser.vibe"
 import { browserProposalFamily } from "./proposal.vibe"
@@ -16,7 +16,10 @@ export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
   description: "Authenticated native device browser control",
   actions: [...browserActions],
-  init: (_config, runtime) => runPromise(registerDeviceProposalFamily(runtime, browserProposalFamily)),
+  init: (_config, runtime) => runPromise(effect {
+    try registerDeviceProposalFamily(runtime, browserProposalFamily)
+    if (browserProposalFamily.route !== undefined) registerDeviceProposalRoute(runtime, browserProposalFamily.route)
+  }),
 }
 
 export default browserPlugin

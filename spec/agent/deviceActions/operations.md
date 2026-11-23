@@ -41,7 +41,7 @@ type OperationType =
   | SmsDraft | PhoneKeypad | ContactShow | ContactReadSelected
   | ReadSelectedNotes | ReadCalendarRange | ReadSelectedReminders | PostNotification | SpeakText
   | CreateNote | CreateReminder | OpenView | BrowserNavigate
-  | BrowserSearch | BrowserTabNew | BrowserTabSwitch | BrowserTabClose | BrowserFind | BrowserHistory
+  | BrowserSearch | BrowserTabNew | BrowserTabSwitch | BrowserTabClose | BrowserTabsShow | BrowserFind | BrowserHistory
 type Family = CalendarFamily | ReminderFamily | ReminderCreateFamily | CameraFamily | FilesFamily | ReviewFamily | MapsFamily | NotesFamily
   | NotesOrganizeFamily | NotesQueryFamily | PhotoLibraryFamily | PhotosViewFamily | TelephonyFamily | ClockFamily | WorkflowFamily | BaseFamily
   | BrowserFamily
@@ -69,7 +69,7 @@ pure def wireType(t: OperationType): str = match t {
   | PostNotification => "post_notification" | SpeakText => "speak_text"
   | CreateNote => "create_note" | CreateReminder => "create_reminder" | OpenView => "open_view" | BrowserNavigate => "browser_navigate"
   | BrowserSearch => "browser_search" | BrowserTabNew => "browser_tab_new" | BrowserTabSwitch => "browser_tab_switch"
-  | BrowserTabClose => "browser_tab_close" | BrowserFind => "browser_find" | BrowserHistory => "browser_history"
+  | BrowserTabClose => "browser_tab_close" | BrowserTabsShow => "browser_tabs_show" | BrowserFind => "browser_find" | BrowserHistory => "browser_history"
 }
 pure def family(t: OperationType): Family = match t {
   | CalendarCreateLocal => CalendarFamily | CalendarReadNext => CalendarFamily | CalendarCreate => CalendarFamily
@@ -95,7 +95,7 @@ pure def family(t: OperationType): Family = match t {
   | PostNotification => WorkflowFamily | SpeakText => WorkflowFamily
   | CreateNote => BaseFamily | CreateReminder => BaseFamily | OpenView => BaseFamily | BrowserNavigate => BaseFamily
   | BrowserSearch => BrowserFamily | BrowserTabNew => BrowserFamily | BrowserTabSwitch => BrowserFamily
-  | BrowserTabClose => BrowserFamily | BrowserFind => BrowserFamily | BrowserHistory => BrowserFamily
+  | BrowserTabClose => BrowserFamily | BrowserTabsShow => BrowserFamily | BrowserFind => BrowserFamily | BrowserHistory => BrowserFamily
 }
 pure def lawOneWireTypeIsOneOperation(a: OperationType, b: OperationType): bool =
   wireType(a) == wireType(b) implies
@@ -129,7 +129,7 @@ number filled in (`phone.keypad.v1`), showing a contact search
 paths, which needs `files.shown-target.v1` beside `files.browser.v1`
 ([shown targets](../../files/shownTargets.md)); a typed address opened in a
 tab of its own (`newTab`), which needs `browser.open-new-tab.v1`; a tab
-close that names `all`, which needs `browser.tabs.close-all.v1` beside
+tab overview, which needs `browser.tabs.show.v1`; a close that names `all`, which needs `browser.tabs.close-all.v1` beside
 `browser.tabs.v1`; and each other Browser control, which needs its
 group's capability
 ([Browser controls](../../browser/control.md)). The base and workflow
@@ -180,7 +180,8 @@ pure def familyNeed(f: Family, t: OperationType, versionTwo: bool): Need = match
       else if (t == OpenView and versionTwo) needOne(TelephonyViewsV1) else anyButClock
   | BrowserFamily =>
       if (t == BrowserSearch) needOne(BrowserSearchV1) else if (t == BrowserFind) needOne(BrowserFindV1)
-      else if (t == BrowserHistory) needOne(BrowserHistoryV1) else if (t == BrowserTabClose and versionTwo) needAll(BrowserTabsV1, BrowserTabsCloseAllV1)
+      else if (t == BrowserHistory) needOne(BrowserHistoryV1) else if (t == BrowserTabsShow) needOne(BrowserTabsShowV1)
+      else if (t == BrowserTabClose and versionTwo) needAll(BrowserTabsV1, BrowserTabsCloseAllV1)
       else needOne(BrowserTabsV1)
 }
 pure val negValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: Set() }), Negotiated({ capabilities: Set(ClockHandoffV1) }),
@@ -317,7 +318,7 @@ pure def lawACaptureWithoutALensNeedsNoLens(neg: Negotiation): bool =
 
 Filtering or opening files, notes and photos, starting or stopping a voice
 note in the open Notes view, creating a note, opening a view or a web page,
-a Browser search, new tab, tab switch, find or history move, taking a photo,
+a Browser search, new tab, tab switch, tab overview, find or history move, taking a photo,
 selecting library photos, placing a reply draft in the open conversation or
 a Messages draft (which never sends), opening the Phone keypad (which never
 dials) and reading the latest SMS sender may skip the separate review, and
@@ -333,7 +334,7 @@ the [Browser](../../browser/control.md)'s.
 pure def directEligible(t: OperationType): bool =
   t == FilesFilter or t == FilesOpen or t == NotesFilter or t == NotesListFilter or t == NotesRecord or t == PhotosFilter or t == PhotosOpen
   or t == CreateNote or t == OpenView or t == BrowserNavigate or t == CameraCapturePhoto or t == PhotoLibrarySelect or t == SmsReplySelected
-  or t == BrowserSearch or t == BrowserTabNew or t == BrowserTabSwitch or t == BrowserFind or t == BrowserHistory
+  or t == BrowserSearch or t == BrowserTabNew or t == BrowserTabSwitch or t == BrowserTabsShow or t == BrowserFind or t == BrowserHistory
   or t == SmsDraft or t == PhoneKeypad or t == SmsLatestSender
 pure def mayRunDirectly(prop: Proposal, boundToCurrentMessage: bool): bool =
   directEligible(prop.opType) and prop.binding == NoBinding and boundToCurrentMessage
@@ -538,7 +539,7 @@ pure def changesNothing(t: OperationType): bool =
   or t == ReminderReadSelected or t == CalendarReadNext or t == CalendarReadSelected or t == CalendarNamedRead
   or t == ReadSelectedNotes or t == ReadCalendarRange or t == ReadSelectedReminders
   or t == MessagesReadSelected or t == SmsLatestSender or t == VoicemailReadSelected or t == ContactReadSelected
-  or t == PhoneKeypad or t == ContactShow
+  or t == PhoneKeypad or t == ContactShow or t == BrowserTabsShow
   or t == PhotosFilter or t == PhotosOpen or t == PhotoLibrarySearch or t == PhotoLibraryInspect or t == PhotoLibrarySelect
   or t == FilesFilter or t == FilesOpen or t == PhotosAlbumCreate or t == PhotosShare or t == PhotoLibraryReview
 pure def lawEveryCompletableReadChangesNothing(t: OperationType, binding: ReadBinding): bool = completableRead(t, binding) implies changesNothing(t)

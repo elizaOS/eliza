@@ -26,15 +26,16 @@ in the phone's own earlier tab, replacing that page. A private tab is asked
 for explicitly, opens empty, and is never where an address is placed.
 
 ```quint
-type BrowserControl = SearchControl | TabNewControl | TabSwitchControl | TabCloseControl | FindControl | HistoryControl
-type ControlFamily = SearchFamily | TabsFamily | FindFamily | HistoryFamily
-type Negotiated = { searchCapability: bool, tabsCapability: bool, findCapability: bool, historyCapability: bool, newTabCapability: bool, closeAllCapability: bool }
+type BrowserControl = SearchControl | TabNewControl | TabSwitchControl | TabCloseControl | TabsShowControl | FindControl | HistoryControl
+type ControlFamily = SearchFamily | TabsFamily | TabsShowFamily | FindFamily | HistoryFamily
+type Negotiated = { searchCapability: bool, tabsCapability: bool, findCapability: bool, historyCapability: bool, newTabCapability: bool, closeAllCapability: bool, tabsShowCapability: bool }
 pure def controlFamily(control: BrowserControl): ControlFamily =
   match control {
     | SearchControl => SearchFamily
     | TabNewControl => TabsFamily
     | TabSwitchControl => TabsFamily
     | TabCloseControl => TabsFamily
+    | TabsShowControl => TabsShowFamily
     | FindControl => FindFamily
     | HistoryControl => HistoryFamily
   }
@@ -42,21 +43,22 @@ pure def familyNegotiated(family: ControlFamily, negotiated: Negotiated): bool =
   match family {
     | SearchFamily => negotiated.searchCapability
     | TabsFamily => negotiated.tabsCapability
+    | TabsShowFamily => negotiated.tabsShowCapability
     | FindFamily => negotiated.findCapability
     | HistoryFamily => negotiated.historyCapability
   }
 pure def controlOffered(control: BrowserControl, negotiated: Negotiated): bool = familyNegotiated(controlFamily(control), negotiated)
 pure def navigationOffered(newTab: bool, negotiated: Negotiated): bool = not(newTab) or negotiated.newTabCapability
 pure def lawOfferedControlWasNegotiated(control: BrowserControl, negotiated: Negotiated): bool =
-  controlOffered(control, negotiated) implies (negotiated.searchCapability or negotiated.tabsCapability or negotiated.findCapability or negotiated.historyCapability)
+  controlOffered(control, negotiated) implies (negotiated.searchCapability or negotiated.tabsCapability or negotiated.findCapability or negotiated.historyCapability or negotiated.tabsShowCapability)
 pure def lawTabControlsShareTheTabsCapability(negotiated: Negotiated): bool =
   not(negotiated.tabsCapability) implies not(controlOffered(TabNewControl, negotiated) or controlOffered(TabSwitchControl, negotiated) or controlOffered(TabCloseControl, negotiated))
 pure def lawNewTabNeedsItsCapability(negotiated: Negotiated): bool =
   not(negotiated.newTabCapability) implies (not(navigationOffered(true, negotiated)) and navigationOffered(false, negotiated))
-pure val nothingNegotiated: Negotiated = { searchCapability: false, tabsCapability: false, findCapability: false, historyCapability: false, newTabCapability: false, closeAllCapability: false }
+pure val nothingNegotiated: Negotiated = { searchCapability: false, tabsCapability: false, findCapability: false, historyCapability: false, newTabCapability: false, closeAllCapability: false, tabsShowCapability: false }
 pure val negotiatedValues = Set(nothingNegotiated, { ...nothingNegotiated, searchCapability: true }, { ...nothingNegotiated, tabsCapability: true, newTabCapability: true },
-  { searchCapability: true, tabsCapability: true, findCapability: true, historyCapability: true, newTabCapability: false, closeAllCapability: false },
-  { ...nothingNegotiated, tabsCapability: true, closeAllCapability: true }, { ...nothingNegotiated, closeAllCapability: true })
+  { searchCapability: true, tabsCapability: true, findCapability: true, historyCapability: true, newTabCapability: false, closeAllCapability: false, tabsShowCapability: false },
+  { ...nothingNegotiated, tabsCapability: true, closeAllCapability: true }, { ...nothingNegotiated, closeAllCapability: true }, { ...nothingNegotiated, tabsShowCapability: true })
 ```
 
 ### Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs
@@ -214,6 +216,7 @@ owner's tabs or page. A tab close is reviewed however it is bound.
 type ProposedControl = { control: BrowserControl, wholeMessage: bool, wordsTyped: bool }
 pure def controlBound(proposed: ProposedControl): bool =
   if (proposed.control == SearchControl) proposed.wholeMessage and proposed.wordsTyped
+  else if (proposed.control == TabsShowControl) proposed.wholeMessage
   else not(needsTypedWords(proposed.control)) or proposed.wordsTyped
 pure def lawUntypedWordsAreNeverBound(proposed: ProposedControl): bool =
   (needsTypedWords(proposed.control) and not(proposed.wordsTyped)) implies not(controlBound(proposed))
@@ -270,4 +273,30 @@ pure def lawARefusedOpenAsksOnlyWithoutAnAddress(addressInWords: bool): bool =
   (refusalReply(DestinationNotRequested, addressInWords) == AskForAddress) iff not(addressInWords)
 pure def lawOnlyARefusedOpenSpeaksOfAnAddress(refusal: BrowserRefusal, addressInWords: bool): bool =
   (refusalReply(refusal, addressInWords) == AskForAddress or refusalReply(refusal, addressInWords) == SayAddressNotOpened) implies refusal == DestinationNotRequested
+```
+
+## Story: Show the tabs I have open on my phone
+
+> As the owner, I want my phone to display its own open tabs when I ask
+> in chat, with the list and its details kept on the phone.
+
+### The tab overview runs only for the current request on the enrolled phone
+
+The owner asks to see or list the open tabs as the whole current message.
+The action owns that request only while the enrolled phone offers
+`browser.tabs.show.v1` and the screen allows it. It has no arguments
+beyond its operation name. The phone's review preference still applies.
+The phone brings its own overview to the foreground and reports the
+outcome after it is shown. The reply and receipt carry no tab titles,
+addresses, identifiers, private flags or count.
+
+```quint
+pure def tabsOverviewClaimed(wholeMessage: bool, negotiated: bool, sensitive: bool): bool =
+  wholeMessage and negotiated and not(sensitive)
+pure def lawOverviewNeverClaimsAnUnqualifiedRequest(wholeMessage: bool, negotiated: bool, sensitive: bool): bool =
+  tabsOverviewClaimed(wholeMessage, negotiated, sensitive) implies (wholeMessage and negotiated and not(sensitive))
+pure def lawOverviewNeedsItsOwnNegotiation(negotiated: Negotiated): bool =
+  controlOffered(TabsShowControl, negotiated) == negotiated.tabsShowCapability
+pure def lawOnlyMyWholeMessageCanBindAnOverview(proposed: ProposedControl): bool =
+  (proposed.control == TabsShowControl and controlBound(proposed)) implies proposed.wholeMessage
 ```

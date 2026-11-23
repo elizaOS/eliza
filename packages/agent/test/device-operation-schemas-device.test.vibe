@@ -63,6 +63,7 @@ const samples: Record<string, unknown> = {
   BrowserTabNew: { type: "browser_tab_new", private: false },
   BrowserTabSwitch: { type: "browser_tab_switch", target: "news" },
   BrowserTabClose: { type: "browser_tab_close", all: true },
+  BrowserTabsShow: { type: "browser_tabs_show" },
   BrowserFind: { type: "browser_find", text: "opening hours" },
   BrowserHistory: { type: "browser_history", action: "back" },
 }
