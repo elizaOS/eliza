@@ -1,0 +1,86 @@
+// spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"
+import { stableStringify, type ActionParameterSchema } from "@elizaos/core"
+import { branchShare } from "../../../gen/agent__deviceActions.effect.vibe"
+
+interface Shaped {
+  readonly branch: ActionParameterSchema
+  readonly frame?: string
+  readonly outline: string
+  readonly fields: Readonly<Record<string, string>>
+  readonly required: string
+}
+
+const names = (list: readonly string[] = []) => JSON.stringify(list.toSorted())
+
+function shaped(branch: ActionParameterSchema): Shaped {
+  const { properties = {}, required, ...rest } = branch
+  return {
+    branch,
+    ...(branch.type === "object" && branch.additionalProperties === false ? { frame: stableStringify(rest) } : {}),
+    outline: `${names(Object.keys(properties))}${names(required)}`,
+    fields: Object.fromEntries(Object.entries(properties).map(([name, field]) => [name, stableStringify(field)])),
+    required: names(required),
+  }
+}
+
+function stringValues(field: ActionParameterSchema | undefined): string[] | undefined {
+  const values = field?.type === "string" ? field.enum : undefined
+  return values !== undefined && values.length > 0 && values.every((value): value is string => typeof value === "string") ? values : undefined
+}
+
+function besideValues(field: ActionParameterSchema | undefined): string {
+  const { enum: _values, ...rest } = field ?? {}
+  return stableStringify(rest)
+}
+
+function valuesShared(left: ActionParameterSchema, right: ActionParameterSchema, name: string): ActionParameterSchema | undefined {
+  const field = left.properties?.[name]
+  const leftValues = stringValues(field), rightValues = stringValues(right.properties?.[name])
+  if (leftValues === undefined || rightValues === undefined || besideValues(field) !== besideValues(right.properties?.[name])) return undefined
+  return { ...left, properties: { ...left.properties, [name]: { ...field, enum: [...leftValues, ...rightValues.filter((value) => !leftValues.includes(value))] } } }
+}
+
+function fieldShared(short: Shaped, long: Shaped): ActionParameterSchema | undefined {
+  const added = Object.keys(long.fields).filter((name) => !Object.hasOwn(short.fields, name))
+  const kept = Object.entries(short.fields).every(([name, field]) => long.fields[name] === field)
+  if (added.length !== 1 || !kept || long.required !== names([...(short.branch.required ?? []), ...added])) return undefined
+  const { required: _required, ...open } = long.branch
+  return short.branch.required === undefined ? open : { ...long.branch, required: short.branch.required }
+}
+
+function requiresEveryField(schema: ActionParameterSchema): boolean {
+  return Object.entries(schema.properties ?? {}).every(([name, field]) => schema.required?.includes(name) === true && requiresEveryField(field)) &&
+    (schema.items === undefined || requiresEveryField(schema.items)) && [...(schema.anyOf ?? []), ...(schema.oneOf ?? [])].every(requiresEveryField)
+}
+
+function shared(left: Shaped, right: Shaped, everyFieldRequired: boolean): ActionParameterSchema | undefined {
+  const differing = Object.keys(left.fields).filter((name) => left.fields[name] !== right.fields[name])
+  const [name, ...more] = differing
+  const byValues = name !== undefined && more.length === 0 ? valuesShared(left.branch, right.branch, name) : undefined
+  const [short, long] = Object.keys(left.fields).length <= Object.keys(right.fields).length ? [left, right] : [right, left]
+  const byField = Object.keys(long.fields).length === Object.keys(short.fields).length + 1 ? fieldShared(short, long) : undefined
+  switch (branchShare(left.frame !== undefined && left.frame === right.frame, left.outline === right.outline, differing.length, byValues !== undefined, byField !== undefined, everyFieldRequired)) {
+    case "SharedByValues": return byValues
+    case "SharedByOptionalField": return byField
+    case "KeptApart": return undefined
+  }
+}
+
+function sharedOnce(shapes: readonly Shaped[], everyFieldRequired: boolean): readonly Shaped[] | undefined {
+  for (const [at, left] of shapes.entries()) {
+    for (const [other, right] of shapes.entries()) {
+      const branch = other > at ? shared(left, right, everyFieldRequired) : undefined
+      if (branch !== undefined) return shapes.flatMap((shape, index) => index === at ? [shaped(branch)] : index === other ? [] : [shape])
+    }
+  }
+  return undefined
+}
+
+function settled(shapes: readonly Shaped[], everyFieldRequired: boolean): readonly Shaped[] {
+  const next = sharedOnce(shapes, everyFieldRequired)
+  return next === undefined ? shapes : settled(next, everyFieldRequired)
+}
+
+export function sharedBranches(branches: readonly ActionParameterSchema[]): readonly ActionParameterSchema[] {
+  return settled(branches.map(shaped), branches.every(requiresEveryField)).map(({ branch }) => branch)
+}
