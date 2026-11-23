@@ -403,8 +403,10 @@ it.effect(`The provisioning helper a consumer imports by path names only compone
       const written = try readTree(byPath)
       const expected = try readTree(ruled)
       for (const file of ["provisioning/preferred-apps/launcher-home.xml", "provisioning/overlay/frameworks/base/core/res/res/values/config.xml"]) {
+        for (const comment of (written[file] ?? "").matchAll(/<!--([\s\S]*?)-->/g)) assert.notInclude(comment[1] ?? "", "--", `${file}: AAPT2 refuses a double hyphen inside an XML comment`)
         assert.strictEqual(uncommented(written[file]), expected[file], file)
       }
+      if (components.assistant === null) assert.notMatch(written["provisioning/README.md"] ?? "", /Assistant role|null/, "a product without the assistant role names none")
       assert.include(written["product.mk"] ?? "", "PRODUCT_PACKAGE_OVERLAYS += $(launcher_provisioning_dir)/overlay\nPRODUCT_COPY_FILES += $(launcher_provisioning_dir)/preferred-apps/launcher-home.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/preferred-apps/launcher-home.xml\n")
       assert.notMatch(written["product.mk"] ?? "", /LOCAL_OVERRIDES_PACKAGES|Launcher3/)
       const again = (Effect.try({ try: () => helper.writeProvisioningOverlay(byPath, PACKAGE, components), catch: (cause) => (cause instanceof Error ? cause.message : String(cause)) }) |> map(%, () => "written")) catch (message) => message
