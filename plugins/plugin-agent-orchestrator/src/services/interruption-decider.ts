@@ -46,6 +46,11 @@ export interface InterruptionInput {
   /** True when the room has participants beyond the user + this sub-agent. */
   multiParty?: boolean;
   /**
+   * Labels of the other live sub-agents bound to the room. An @-mention of one
+   * of them names that sub-agent, so it does not address this one.
+   */
+  peerLabels?: readonly string[];
+  /**
    * True when the message arrived via the session's ORIGIN connector channel
    * (originRoomId/sourceRoomId) rather than a room dedicated to this task
    * (task room / thread). The origin channel is shared with the orchestrator
@@ -87,16 +92,43 @@ const ADDITIVE_PATTERN =
 const REDIRECT_PATTERN =
   /\b(no,? (?:stop|don'?t|do not|not that)|that'?s wrong|that is wrong|wrong (?:approach|direction|file|way|thing)|scrap (?:that|this|it)|start over|undo (?:that|this|it)|revert (?:that|this|it)|instead of|change of plan|actually,? (?:stop|cancel|no|don'?t|do not|wait|hold|revert))\b/i;
 
+// A message addresses this agent when it names the agent's label. An "@"
+// (a connector mention such as "<@1234567890>", the bot's own handle) also
+// addresses every sub-agent, unless it is an @-mention of another sub-agent's
+// label: "@Ada stop" names Ada only.
+function isAddressed(
+  text: string,
+  agentLabel?: string,
+  peerLabels: readonly string[] = [],
+): boolean {
+  if (agentLabel && labelNamed(text, agentLabel)) return true;
+  if (!text.includes("@")) return false;
+  return !peerLabels.some((peer) => mentionsLabel(text, peer));
+}
+
 // ASCII labels keep word boundaries ("Ada" is not addressed by "Adam"). JS
 // `\b` never fires beside letters outside ASCII, so labels in other scripts or
 // with accents ("민수", "Zoë") use the shared keyword match instead.
-function isAddressed(text: string, agentLabel?: string): boolean {
-  if (text.includes("@")) return true;
-  if (!agentLabel) return false;
-  if (/^[\x20-\x7e]+$/.test(agentLabel)) {
-    return new RegExp(`\\b${escapeRegExp(agentLabel)}\\b`, "i").test(text);
+function labelNamed(text: string, label: string): boolean {
+  if (/^[\x20-\x7e]+$/.test(label)) {
+    return new RegExp(`\\b${escapeRegExp(label)}\\b`, "i").test(text);
   }
-  return textIncludesKeywordTerm(text, agentLabel);
+  return textIncludesKeywordTerm(text, label);
+}
+
+// True when an "@" is directly followed by the label ("@Ada", not "@Adam").
+function mentionsLabel(text: string, label: string): boolean {
+  const ascii = /^[\x20-\x7e]+$/.test(label);
+  const start = new RegExp(`^${escapeRegExp(label)}\\b`, "i");
+  for (const match of text.matchAll(/@/g)) {
+    const rest = text.slice(match.index + 1);
+    if (
+      ascii ? start.test(rest) : labelNamed(rest.split(/\s/, 1)[0] ?? "", label)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function escapeRegExp(value: string): string {
@@ -127,7 +159,7 @@ export function decideInterruption(
     }
   }
 
-  const addressed = isAddressed(text, input.agentLabel);
+  const addressed = isAddressed(text, input.agentLabel, input.peerLabels);
   const additive = ADDITIVE_PATTERN.test(text);
 
   // Explicit stop interrupts (busy or not), unless the message is really an
