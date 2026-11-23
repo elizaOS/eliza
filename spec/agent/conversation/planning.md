@@ -11,6 +11,7 @@ action's own callback text is the action's verified presentation and is
 held for the reply, never delivered as a second message. After the reply
 is stored, the evaluators plugins registered run on the finished turn.
 
+Every model call of a turn sends no output cap ([binding](../models/binding.md)).
 The shell (`conversation/planning.vibe`) hands this library the facts it
 reads: which actions are registered and allowed, each step's outcome and
 operation key, the shape of the model's text, and the shape of the tool
@@ -47,6 +48,89 @@ pure def lawOnlyAllowedRegisteredActionsAreOffered(registered: Set[str], allowed
 pure def lawPlanningStopsAtTheBound(taken: int, calls: int, terminal: bool): bool =
   taken >= maxPlanSteps implies not(keepsPlanning(taken, calls, terminal))
 pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool = not(keepsPlanning(taken, 0, terminal))
+```
+
+### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
+
+The system prompt is the character's alone: its system text, bio, style
+and message examples. The offered tools are sent in the order of their
+names. The history follows, then the person's latest message, and only
+after it what this turn adds: the screen context, the task the turn runs
+for and the note that older history is not shown, each labelled as a note
+from the agent host. A provider reuses a request's prompt cache up to its
+first changed byte, and the cached prefix is the tools, then the system
+prompt, then the messages, so a part that changes with the turn placed
+before the history costs every message after it.
+
+```quint
+type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | TaskNote | WindowNotice
+pure def promptPosition(p: PromptPart): int = match p {
+  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | TaskNote => 5 | WindowNotice => 6
+}
+pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == TaskNote or p == WindowNotice
+pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, TaskNote, WindowNotice)
+pure def lawNothingPerTurnPrecedesTheHistory(p: PromptPart): bool = changesPerTurn(p) implies promptPosition(p) > promptPosition(PriorHistory)
+pure def lawTheConstantPartsLead(p: PromptPart): bool = not(changesPerTurn(p)) implies promptPosition(p) <= promptPosition(PriorHistory)
+```
+
+### The model reads what was said in the conversation, in a window taken once for the whole turn
+
+A host notice the agent process stored in the conversation (a message of
+the agent carrying `systemNotice`, such as "Eliza needs attention") was
+never said by the agent and is left out of the model's history: read back
+as its own reply it would tell the model it cannot act. The window over
+history is taken when the turn starts and holds for every step of it, so a
+message or an outcome that lands while the turn runs changes neither the
+window nor what the next step sends.
+
+```quint
+type HistoryRow = { fromAgent: bool, hostNotice: bool }
+pure def readByTheModel(row: HistoryRow): bool = not(row.fromAgent and row.hostNotice)
+pure val rowValues = Set({ fromAgent: true, hostNotice: true }, { fromAgent: true, hostNotice: false }, { fromAgent: false, hostNotice: false })
+pure def lawAHostNoticeIsNeverTheAgentsWords(row: HistoryRow): bool = (row.fromAgent and row.hostNotice) implies not(readByTheModel(row))
+pure def lawWhatWasSaidIsRead(row: HistoryRow): bool = not(row.hostNotice) implies readByTheModel(row)
+```
+
+### A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse
+
+A step's model call refused with a temporary rate limit waits for the time
+the refusal names, at most five seconds and five seconds when it names
+none, and is sent once more; a call the provider refused because it could
+not parse the model's tool call is sent once more at once. The wait ends
+with the turn's cancellation. A second refusal, spent credit, a used-up
+allowance and every other failure end the call as they are. A call that
+stopped at the model's own output limit is never sent again: it ran to the
+model's whole maximum, and a second try would stop the same way at the
+same cost.
+
+```quint
+type CallFailure = RateLimitedFor({ hintMs: int }) | RateLimitedWithoutHint | ToolCallUnparsed | OutputLimitReached | OtherFailure
+pure val resendWaitMaxMs = 5000
+pure def resendWait(failure: CallFailure, resent: bool): int = if (resent) -1 else match failure {
+  | RateLimitedFor(x) => if (x.hintMs < 0) 0 else if (x.hintMs > resendWaitMaxMs) resendWaitMaxMs else x.hintMs
+  | RateLimitedWithoutHint => resendWaitMaxMs
+  | ToolCallUnparsed => 0
+  | _ => -1
+}
+pure def resends(failure: CallFailure, resent: bool): bool = resendWait(failure, resent) >= 0
+pure val failureValues = Set(RateLimitedFor({ hintMs: 1200 }), RateLimitedFor({ hintMs: 59000 }), RateLimitedFor({ hintMs: -5 }), RateLimitedWithoutHint, ToolCallUnparsed, OutputLimitReached, OtherFailure)
+pure def lawACallIsSentAgainAtMostOnce(failure: CallFailure): bool = not(resends(failure, true))
+pure def lawAResendWaitsAtMostFiveSeconds(failure: CallFailure, resent: bool): bool = resendWait(failure, resent) <= resendWaitMaxMs
+pure def lawAnOutputLimitOrAnotherFailureIsNeverSentAgain(resent: bool): bool = not(resends(OutputLimitReached, resent)) and not(resends(OtherFailure, resent))
+```
+
+### A call that stopped at the model's own output limit ends planning
+
+When the step's own call stops there, the turn answers that the reply was
+cut off, with every failure it still holds open. When an action's own model
+call stops there, the action is not called again in this turn and planning
+ends with what the turn holds.
+
+```quint
+pure val cutOffReply = "That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format."
+pure def plansOn(cutOff: bool, taken: int, calls: int, terminal: bool): bool = not(cutOff) and keepsPlanning(taken, calls, terminal)
+pure def lawACutOffEndsPlanning(taken: int, calls: int, terminal: bool): bool = not(plansOn(true, taken, calls, terminal))
+pure def lawWithoutACutOffPlanningGoesOn(taken: int, calls: int, terminal: bool): bool = plansOn(false, taken, calls, terminal) == keepsPlanning(taken, calls, terminal)
 ```
 
 ### A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it
@@ -182,7 +266,10 @@ pure def lawTheLabelNamesTheLastAction(ran: List[str], card: bool, verbatim: boo
 Evaluators run by ascending priority (100 when unset), then name. One whose
 `shouldRun` declines is skipped. An evaluator with a local resolver that
 applies uses its output; otherwise one model call with its prompt and
-schema produces the output its `parse` admits. Its processors then run in
+schema produces the output its `parse` admits. That call carries the
+evaluator's own response schema, the same on every turn, and nothing the
+planner was told about choosing tools; it sends no output cap, and a
+temporary rate limit sends it once more as a planning call is. Its processors then run in
 their priority order. A failure in a gate, the model, a parse or a
 processor ends that evaluator only. Background and incremental evaluators
 belong to the assistant's [evaluator runner](../../assistant/evaluatorRunner.md)
