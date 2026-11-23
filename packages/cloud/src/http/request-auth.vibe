@@ -118,9 +118,14 @@ effect function leaseCaller(token: string, routeClass: RouteClass, countRequest:
   if (countRequest) try admit({ subject: digest, scope: "device-key", limit: deviceKeyPerMinute, widthMs: minute })
   const store = try Store
   return try store.transaction(effect (tx) => {
+    const candidate = (try tx.query(
+      "SELECT key, user_id FROM sessions WHERE kind = 'device_lease' AND (access_digest = $1 OR offered_access_digest = $1)", [digest]
+    )))[0]
+    if (candidate === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+    try tx.query("SELECT key FROM accounts WHERE key = $1 FOR UPDATE", [candidate.user_id])
     const row = (try tx.query(
-      "SELECT s.key, s.state, s.access_digest = $1 AS current, s.user_id, s.grant_key, a.organization_id, a.status, a.sessions_revoked_before, a.device_epoch AS account_epoch, g.phase AS grant_phase, g.device_epoch AS grant_epoch FROM sessions s JOIN accounts a ON a.key = s.user_id LEFT JOIN device_grants g ON g.key = s.grant_key WHERE s.kind = 'device_lease' AND (s.access_digest = $1 OR s.offered_access_digest = $1) FOR UPDATE OF s",
-      [digest]
+      "SELECT s.key, s.state, s.access_digest = $1 AS current, s.user_id, s.grant_key, a.organization_id, a.status, a.sessions_revoked_before, a.device_epoch AS account_epoch, g.phase AS grant_phase, g.device_epoch AS grant_epoch FROM sessions s JOIN accounts a ON a.key = s.user_id LEFT JOIN device_grants g ON g.key = s.grant_key WHERE s.key = $2 AND s.kind = 'device_lease' AND (s.access_digest = $1 OR s.offered_access_digest = $1) FOR UPDATE OF s",
+      [digest, candidate.key]
     ))[0]
     if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
     const now = try Clock.currentTimeMillis
@@ -130,7 +135,7 @@ effect function leaseCaller(token: string, routeClass: RouteClass, countRequest:
     const presented = row.current === true ? family.generation : offeredGeneration(family)
     const reason = sessionRefusal(presented, family, epoch)
     if (reason !== "NoReason") throw refused("AuthenticationRequired", reason)
-    if (row.grant_phase === null || row.grant_phase === "ended" || toInt(row.grant_epoch) !== toInt(row.account_epoch)) throw refused("AuthenticationRequired", "CredentialRevoked")
+    if ((row.grant_phase !== "active" && row.grant_phase !== "expired") || toInt(row.grant_epoch) !== toInt(row.account_epoch)) throw refused("AuthenticationRequired", "CredentialRevoked")
     try verdict(admitPrincipal({ accountStatus: status(row), credential: { tag: "LeasePrincipal" } }, routeClass, now))
     const sessionKey = toText(row.key) ?? ""
     if (presented !== family.generation) {

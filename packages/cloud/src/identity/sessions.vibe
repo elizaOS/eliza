@@ -317,19 +317,25 @@ effect function commitOffered(tx: Tx, key: string, generation: number): void!Sto
   try tx.query("UPDATE sessions SET refresh_digest = offered_refresh_digest, access_digest = offered_access_digest, offered_refresh_digest = NULL, offered_access_digest = NULL WHERE key = $1", [key])
 }
 
-export effect function presentedLease(tx: Tx, refresh: string, now: number): (PresentedLease | undefined)!(StoreFailure | RowCorrupt | Refused) {
-  if (!leaseRefreshPattern.test(refresh)) return undefined
-  const digest = tokenDigest(refresh)
-  const found = (try tx.query(
+effect function leaseSlot(tx: Tx, digest: string) {
+  return (try tx.query(
     "SELECT key, 0 AS slot, NULL::integer AS generation FROM sessions WHERE kind = 'device_lease' AND refresh_digest = $1 UNION ALL SELECT key, 1, NULL FROM sessions WHERE offered_refresh_digest = $1 UNION ALL SELECT session_key, 2, generation FROM cloud_spent_refresh WHERE digest = $1",
     [digest]
   ))[0]
-  if (found === undefined) return undefined
-  const { family, epoch, userId } = try liveFamily(tx, toText(found.key) ?? "", now)
+}
+
+export effect function presentedLease(tx: Tx, refresh: string, now: number): (PresentedLease | undefined)!(StoreFailure | RowCorrupt | Refused) {
+  if (!leaseRefreshPattern.test(refresh)) return undefined
+  const digest = tokenDigest(refresh)
+  const key = toText((try leaseSlot(tx, digest))?.key)
+  if (key === undefined) return undefined
+  const { family, epoch, userId } = try liveFamily(tx, key, now)
   if (family.kind.tag !== "DeviceLease") return undefined
+  const found = try leaseSlot(tx, digest)
+  if (found === undefined || found.key !== key) return undefined
   const slot = toInt(found.slot)
   const presented = slot === 0 ? family.generation : slot === 1 ? offeredGeneration(family) : toInt(found.generation)
-  return { key: toText(found.key) ?? "", userId, grantKey: family.kind.grantKey, family, epoch, presented }
+  return { key, userId, grantKey: family.kind.grantKey, family, epoch, presented }
 }
 
 effect function endStolenLease(tx: Tx, lease: PresentedLease, out: ReadonlyArray<SessionEffect>): void!(StoreFailure | RowCorrupt | RowConflict) {
