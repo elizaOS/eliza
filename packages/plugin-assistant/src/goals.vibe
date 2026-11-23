@@ -182,7 +182,9 @@ export effect function deliverGoalCheckin(task: TaskRow) {
   const room = task.metadata.roomId
   const shown = (try Presenter).present({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation }) catch (failed) => failed
   if (shown instanceof DeliveryFailed) return { kind: "retry", afterMs: 60_000, reason: shown.reason } satisfies DeliveryAnswer
-  stepGoal({ ...record, lastFired: slot }, { type: "fireCheckin", slot }, `goal:fire:${task.taskId}:${task.revision}`) catch () => undefined
+  stepGoal({ ...record, lastFired: slot }, { type: "fireCheckin", slot }, `goal:fire:${task.taskId}:${task.revision}`) catch effect (failure) => {
+    try annotateLogs(logWarning("a shown goal check-in was not counted fired, so its answer will be refused"), { goalId, slot, failure: failure._tag })
+  }
   return { kind: "delivered" } satisfies DeliveryAnswer
 }
 
