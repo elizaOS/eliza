@@ -260,6 +260,25 @@ it.live('The boundary refuses a malformed body, client id or voice view context,
 
 const planning = 'spec/agent/conversation/planning.md'
 
+it.live(`An explicit calculator command reaches its tool before the only model call (${planning}, "An explicit calculator command uses its literal expression first")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const { id } = try conversation(agent)
+  const before = completions(cloud)
+  try Effect.sync(() => cloud.script(text("It is 408.")))
+  const answered = replyOf(try send(agent, id, { text: "Use the calculator for (17 * 24)." }))
+  try Effect.try(() => {
+    assert.deepStrictEqual([answered.text, answered.actionResults.map(({ action }) => action), completions(cloud) - before], ["It is 408.", ["CALCULATE"], 1])
+    assert.include(lastTurnPrompt(cloud), "408")
+  })
+}, 120_000)
+
 it.live(`Competing terminal decisions run no sibling tool and get one repair round (${planning}, "A response with competing terminal decisions runs no sibling action and can be repaired once")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
