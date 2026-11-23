@@ -17,9 +17,10 @@ module node {
     return encoding
   }
 
-  export function postOpenAi(address: string, key: string, payload: object, signal: AbortSignal) {
+  export function postOpenAi(address: string, key: string, payload: object, signal: AbortSignal, timeoutMs?: number) {
     return fetchWithConfidentialInference(address, {
-      method: "POST", redirect: "error", signal,
+      method: "POST", redirect: "error",
+      signal: timeoutMs === undefined ? signal : AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }, globalThis.fetch)
@@ -50,7 +51,7 @@ function callOpenAi(runtime: IAgentRuntime, path: string, body: object, selected
     const key = setting(runtime, "OPENAI_API_KEY")
     if (key === "" && setting(runtime, "OPENAI_BASE_URL") === "") throw new OpenAiFailure({ reason: "No OpenAI connection is configured.", retryable: false })
     const response = try tryPromise({
-      try: (signal) => postOpenAi(base + path, key, body, AbortSignal.any([signal, AbortSignal.timeout(120000)])),
+      try: (signal) => postOpenAi(base + path, key, body, signal, 120000),
       catch: () => new OpenAiFailure({ reason: "The OpenAI endpoint could not be reached.", retryable: true }),
     })
     if (!response.ok) {
@@ -84,7 +85,7 @@ function observed<T>(promise: Promise<T>): Promise<T> {
   return promise
 }
 
-effect function streamAnswer(response: Response, model: Machine.Shape, attempt: OpenAiAttempt, signal?: AbortSignal) {
+effect function streamAnswer(response: Response, model: Machine.Shape, attempt: OpenAiAttempt) {
   if (response.body === null || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "text/event-stream") {
     try Effect.ignore(tryPromise(async () => { await response.body?.cancel() }))
     throw new OpenAiFailure({ reason: "OpenAI did not return a completion event stream.", retryable: false })
@@ -120,15 +121,13 @@ effect function streamAnswer(response: Response, model: Machine.Shape, attempt: 
     try model.send({ type: "acceptOpenAi", attempt, terminal: true, shapeMatches: true })
     return { text, reason, usage }
   }
-  const completion = observed(runPromise(Effect.onExit(produce, (outcome) => Exit.isSuccess(outcome)
-    ? Queue.end(queue)
-    : Queue.fail(queue, new OpenAiFailure({ reason: "OpenAI did not complete the event stream.", retryable: false }))), { signal }))
   return {
-    textStream: Stream.toAsyncIterable(Stream.fromQueue(queue)),
-    text: observed(completion.then((result) => result.text)),
-    finishReason: observed(completion.then((result) => result.reason)),
-    usage: observed(completion.then((result) => result.usage)),
-  } satisfies TextStreamResult
+    kind: "live",
+    queue,
+    produce: Effect.onExit(produce, (outcome) => Exit.isSuccess(outcome)
+      ? Queue.end(queue)
+      : Queue.fail(queue, new OpenAiFailure({ reason: "OpenAI did not complete the event stream.", retryable: false }))),
+  } as const
 }
 
 const chatResponse = Schema.Struct({
@@ -167,15 +166,14 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
         }
         if (wantsEvents) {
           const response = try callOpenAi(runtime, "/chat/completions", { ...payload, stream_options: { include_usage: true } }, endpoint.address)
-          const live = try streamAnswer(response, model, run.attempt, params.signal)
-          return { kind: "live", live } as const
+          return try streamAnswer(response, model, run.attempt)
         }
         const known = try jsonPost(runtime, "/chat/completions", payload, endpoint.address)
         const full = decodeChat(known) catch effect () => { throw new OpenAiFailure({ reason: "OpenAI reply had an invalid completion shape.", retryable: false }) }
         return { kind: "full", full } as const
       })
       if (result._tag === "Success") {
-        if (result.value.kind === "live") return result.value.live
+        if (result.value.kind === "live") return result.value
         const complete = result.value.full
         const choice = complete.choices[0]
         const valid = choice.finish_reason === "stop" || choice.finish_reason === "tool_calls"
@@ -185,12 +183,12 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
         const reported = complete.usage
         if (!params.stream && choice.message.tool_calls === undefined) return text
         return {
-          textStream: (async function* () { if (text !== "") yield text })(),
-          text: Promise.resolve(text),
-          usage: Promise.resolve(reported && { promptTokens: reported.prompt_tokens, completionTokens: reported.completion_tokens, totalTokens: reported.total_tokens }),
-          finishReason: Promise.resolve(choice.finish_reason),
+          kind: "full",
+          text,
+          usage: reported && { promptTokens: reported.prompt_tokens, completionTokens: reported.completion_tokens, totalTokens: reported.total_tokens },
+          finishReason: choice.finish_reason,
           toolCalls: choice.message.tool_calls,
-        } satisfies TextStreamResult
+        } as const
       }
       if (Cause.hasInterruptsOnly(result.cause)) return try Effect.failCause(result.cause)
       const failure = Cause.squash(result.cause)
@@ -220,7 +218,27 @@ function describe(runtime: IAgentRuntime, input: ImageDescriptionParams | string
 }
 
 function textHandler(tier: string) {
-  return (runtime: IAgentRuntime, params: GenerateTextParams) => runPromise(textRequest(runtime, params, tier), { signal: params.signal })
+  return async (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | TextStreamResult> => {
+    const answer = await runPromise(textRequest(runtime, params, tier), { signal: params.signal })
+    if (typeof answer === "string") return answer
+    if (answer.kind === "full") {
+      const { text, usage, finishReason, toolCalls } = answer
+      return {
+        textStream: (async function* () { if (text !== "") yield text })(),
+        text: Promise.resolve(text),
+        usage: Promise.resolve(usage),
+        finishReason: Promise.resolve(finishReason),
+        toolCalls,
+      }
+    }
+    const completion = observed(runPromise(answer.produce, { signal: params.signal }))
+    return {
+      textStream: Stream.toAsyncIterable(Stream.fromQueue(answer.queue)),
+      text: observed(completion.then((result) => result.text)),
+      finishReason: observed(completion.then((result) => result.reason)),
+      usage: observed(completion.then((result) => result.usage)),
+    }
+  }
 }
 
 export const plugin: Plugin = {
