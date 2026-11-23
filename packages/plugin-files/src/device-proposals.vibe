@@ -41,7 +41,7 @@ export const filesProposalFamily: DeviceProposalFamily = {
   name: "files",
   types: FILES_OPERATION_TYPES,
   forms,
-  guidance: (turn) => [filesGuidance, ...filesToolSurface(turn.capabilities).guidance].join(" "),
+  guidance: (turn) => [filesGuidance, ...filesToolSurface(turn.capabilities).guidance],
   effect ground(proposed: CheckedOperation, turn: DeviceTurn) {
     const decoded = try Effect.result(decodeFilesOperation(proposed.operation))
     if (Result.isFailure(decoded)) return invalid(decoded.failure.reason)

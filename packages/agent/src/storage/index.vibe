@@ -325,8 +325,22 @@ module node {
     }
 
     async getMemories(input: Parameters<IDatabaseAdapter["getMemories"]>[0]): Promise<Memory[]> {
-      if (input.agentId !== undefined) this.own(input.agentId)
+      const { roomId, tableName, count, limit: requestedLimit, orderBy, orderDirection, includeEmbedding, agentId, unique, ...filters } = input
+      if (agentId !== undefined) this.own(agentId)
       if (input.cursor && input.offset !== undefined) throw new Error("Choose cursor or offset")
+      const pageLimit = requestedLimit ?? count
+      if (roomId !== undefined && tableName === "messages" && !unique && (orderBy === undefined || orderBy === "createdAt")
+        && pageLimit !== undefined && Number.isSafeInteger(pageLimit) && pageLimit >= 0
+        && Object.values(filters).every((filter) => filter === undefined)) {
+        const order = orderDirection === "asc" ? "ASC" : "DESC"
+        const result = await this.dispatch(() => this.db.query<{ data: Memory }>(
+          `SELECT data FROM device_records
+             WHERE collection = 'memories' AND room_id = $1 AND table_name = $2
+             ORDER BY created_at ${order}, key ${order} LIMIT $3::bigint`,
+          [roomId, tableName, pageLimit],
+        ))
+        return result.rows.map(({ data }) => includeEmbedding === false ? { ...data, embedding: undefined } : data)
+      }
       const rows = await this.values<Memory>("memories", {
         rooms: input.roomId === undefined ? undefined : [input.roomId],
         worlds: input.worldId === undefined ? undefined : [input.worldId],
@@ -375,6 +389,15 @@ module node {
 
     async countMemories(params: Parameters<IDatabaseAdapter["countMemories"]>[0]): Promise<number> {
       if (params.agentId !== undefined) this.own(params.agentId)
+      if (params.roomIds !== undefined && params.tableName === "messages" && !params.unique
+        && params.entityId === undefined && params.metadata === undefined) {
+        const result = await this.dispatch(() => this.db.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM device_records
+             WHERE collection = 'memories' AND room_id = ANY($1::text[]) AND table_name = $2`,
+          [params.roomIds, params.tableName],
+        ))
+        return Number(result.rows[0].count)
+      }
       const rows = await this.values<Memory>("memories", { rooms: params.roomIds, tableName: params.tableName })
       return rows.filter((memory) => (!params.unique || memory.unique === true)
         && (params.entityId === undefined || memory.entityId === params.entityId)
