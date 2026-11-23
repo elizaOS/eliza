@@ -357,6 +357,27 @@ pure def lawOnlyOpenCallsRunAcrossResponses(previousSettlement: ToolSettlement):
   (toolDispatch(false, previousSettlement) == FreshCall) == (previousSettlement == ToolOpen)
 ```
 
+### A response with competing terminal decisions runs no sibling action and can be repaired once
+
+One model response can carry at most one terminal decision. If it offers
+more than one, none of its tool calls run and its draft is cleared. The
+planner can ask for a corrected decision one time within the turn's
+existing step budget. A second ambiguous response stops planning. Work
+settled by an earlier response remains in the reply's record.
+
+```quint
+type TerminalAnswer = AdmitTerminalAnswer | RepairTerminalAnswer | RefuseTerminalAnswer
+pure def terminalAnswerOf(terminalDecisions: int, terminalRepairSent: bool, hasSteps: bool): TerminalAnswer =
+  if (terminalDecisions <= 1) AdmitTerminalAnswer
+  else if (not(terminalRepairSent) and hasSteps) RepairTerminalAnswer
+  else RefuseTerminalAnswer
+pure val terminalDecisionsValues = Set(0, 1, 2, 3)
+pure def lawCompetingTerminalDecisionsAreNeverAdmitted(terminalDecisions: int, terminalRepairSent: bool, hasSteps: bool): bool =
+  terminalDecisions > 1 implies terminalAnswerOf(terminalDecisions, terminalRepairSent, hasSteps) != AdmitTerminalAnswer
+pure def lawATerminalRepairUsesOneRemainingStep(terminalDecisions: int, terminalRepairSent: bool, hasSteps: bool): bool =
+  terminalAnswerOf(terminalDecisions, terminalRepairSent, hasSteps) == RepairTerminalAnswer implies not(terminalRepairSent) and hasSteps
+```
+
 ### A call that stopped at the model's own output limit ends planning
 
 When the step's own call stops there, the turn answers that the reply was
