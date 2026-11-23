@@ -16,23 +16,19 @@ import type { createScanDraftStore, ScanDraft } from "./scan-draft.vibe"
 import type { ScanTextLine } from "./scan-text-layer.vibe"
 import { reviewId } from browser
 
-/** One page of a scan document: a stable identity, its image and its reviewed text, if any. */
 export interface ScanPage {
   readonly id: number
   readonly image: Blob
   readonly textLayer: readonly ScanTextLine[] | null
 }
 
-/** The device draft store the document saves to and restores from. */
 export type ScanDraftPort = ReturnType<typeof createScanDraftStore>
 
-/** What the host's exporter answered; `status` decides whether the pages stay editable. */
 export interface ScanExportResult {
   readonly status: string
   readonly message: string
 }
 
-/** Whether each control may act now. */
 export interface ScanDocumentControls {
   readonly addPage: boolean
   readonly export: boolean
@@ -43,20 +39,16 @@ export interface ScanDocumentControls {
   readonly keep: boolean
 }
 
-/** The document as the review shows it. */
 export interface ScanDocumentSnapshot {
   readonly pages: readonly ScanPage[]
   readonly state: ScanState
   readonly controls: ScanDocumentControls
 }
 
-/** A page edit, draft action or export the document's rules or the device store refused. */
 export error ScanDocumentRefused { reason: "busy" | "page" | "slot" | "draft" | "closed" }
 
-/** What a Keep of an unsaved page answered. */
 export interface ScanKeepOutcome { readonly status: "saved" | "failed" | "unknown"; readonly message: string }
 
-/** The host's library port for an unsaved page, keyed by the review's operation identity. */
 export type ScanKeepPort = (image: Blob, operationId: string) => ScanKeepOutcome!!
 
 const formats: Readonly<Record<string, ScanFormat>> = { "image/jpeg": "ScanJpeg", "image/png": "ScanPng", "image/webp": "ScanWebp" }
@@ -72,7 +64,6 @@ function exportVerdict(status: string): ScanExport {
   return status === "exported" || status === "saved" ? "ExportConfirmed" : "ExportUnknown"
 }
 
-/** Options for one scan review. */
 export interface ScanDocumentOptions {
   readonly first?: Blob
   readonly drafts?: ScanDraftPort
@@ -81,7 +72,6 @@ export interface ScanDocumentOptions {
   readonly native?: boolean
 }
 
-/** One scan review: ordered pages, one in-flight edit, draft action or export at a time, exact-revision drafts and explicit Keep. */
 export effect function createScanDocument(options: ScanDocumentOptions = {}) {
   const state = try Ref.make<ScanState>(initial)
   const machine = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))

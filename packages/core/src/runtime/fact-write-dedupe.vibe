@@ -4,8 +4,6 @@ import { isActiveMemoryEvidence } from "../utils/extraction-evidence.vibe"
 import type { CustomMetadata, FactMetadata, Memory, MemoryMetadata } from "../types/memory.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 
-const DEDUPE_CANDIDATE_POOL = 120
-
 export effect function findEquivalentFact(
   runtime: Pick<IAgentRuntime, "getMemories">,
   memory: Memory,
@@ -17,7 +15,7 @@ export effect function findEquivalentFact(
   const existing = try foreign(() => runtime.getMemories({
     tableName: "facts",
     roomId,
-    count: DEDUPE_CANDIDATE_POOL,
+    textContains: key,
     unique: false,
   }))
   for (const candidate of existing) {

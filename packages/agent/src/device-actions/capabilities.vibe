@@ -1,5 +1,5 @@
-// spec/agent/deviceActions/capabilities.md, "A request negotiates exactly the capabilities its header names, and only on a live enrollment"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "An open-view proposal runs only on the profile revision it bound and a view the profile enables"
-import { negotiate, openViewAdmitted, type DeviceView, type Negotiation, type RevisionRead, type ViewProfile } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
+// spec/agent/deviceActions/capabilities.md, "A request negotiates exactly the capabilities its header names, and only on a live enrollment"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "Phone, Messages and Contacts are offered and enabled only on a request that negotiated the telephony views"; spec/agent/deviceActions/capabilities.md, "An open-view proposal runs only on the profile revision it bound and a view the profile enables"
+import { negotiate, offeredViews, openViewAdmitted, telephonyView, viewsOffered, type DeviceView, type Negotiation, type RevisionRead, type ViewProfile } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 
 export const capabilitiesHeader = "x-eliza-device-capabilities"
 
@@ -12,6 +12,7 @@ export function negotiation(liveEnrollment: boolean, header: string | undefined)
 const viewNames = {
   HomeView: "home", NotesView: "notes", RemindersView: "reminders", BrowserView: "browser", CalendarView: "calendar", FilesView: "files",
   PhotosView: "photos", CameraView: "camera", MapsView: "maps", InboxView: "inbox", SettingsView: "settings", WorkflowsView: "workflows",
+  PhoneView: "phone", MessagesView: "messages", ContactsView: "contacts",
 } as const satisfies Record<DeviceView, string>
 
 type ViewName = (typeof viewNames)[DeviceView]
@@ -24,8 +25,17 @@ function viewName(view: DeviceView): ViewName {
   return viewNames[view]
 }
 
+export function offeredViewNames(negotiated: Negotiation): readonly ViewName[] {
+  return offeredViews(negotiated).map(viewName)
+}
+
 function deviceView(name: string): DeviceView | undefined {
   return viewsByName.get(name)
+}
+
+export function opensTelephonyView(name: string): boolean {
+  const view = deviceView(name)
+  return view !== undefined && telephonyView(view)
 }
 
 const ViewProfileChange = Schema.Struct({
@@ -40,14 +50,15 @@ export interface ViewProfileChange {
   readonly views: readonly DeviceView[]
 }
 
-export function readViewProfileChange(body: unknown): ViewProfileChange | undefined {
+export function readViewProfileChange(body: unknown, negotiated: Negotiation): ViewProfileChange | undefined {
   const found = decodeChange(body)
   if (found._tag === "None") return undefined
   const { expectedRevision, views } = found.value
-  return {
+  const wanted = views.flatMap((name) => deviceView(name) ?? [])
+  return viewsOffered(negotiated, wanted) ? {
     read: expectedRevision === null ? { tag: "NoRevisionRead" } : { tag: "ReadAt", revision: expectedRevision },
-    views: views.flatMap((name) => deviceView(name) ?? []),
-  }
+    views: wanted,
+  } : undefined
 }
 
 export interface ViewProfileWire {

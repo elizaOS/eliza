@@ -51,7 +51,7 @@ module host {
     }
   }
 
-  /** A stand-in for the Android app's inference host at its socket: the native engine cannot run here. @throws {never} */
+  /** @throws {never} */
   export async function startHost(): Promise<Host> {
     const path = join(mkdtempSync(join(tmpdir(), "eliza-inference-")), "host.sock")
     const state: Host = {

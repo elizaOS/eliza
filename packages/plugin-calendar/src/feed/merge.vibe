@@ -5,23 +5,18 @@ import { managedAggregateState } from "../../gen/calendar__managedFeed.effect.vi
 import type { LinkedCalendarEventRecord, LinkedCalendarOperation, LinkedCalendarState } from "../linked-sync/linked.vibe"
 import type { CalendarEvent, CalendarFeed, CalendarFeedState, CalendarProvider, CalendarSummary } from "../model.vibe"
 
-/** Where a linked event stands in its reconciliation. */
 export type CalendarLinkState = LinkedCalendarState
 
-/** The provider operation a dirty link still owes. */
 export type CalendarLinkOperation = LinkedCalendarOperation
 
-/** One link between a resident event at an exact revision and a provider event at an exact etag. */
 export type CalendarLinkRecord = Pick<LinkedCalendarEventRecord, "id" | "agentId" | "localEventId" | "localRevision" | "connectorAccountId"
   | "providerCalendarId" | "providerEventId" | "providerEtag" | "state" | "pendingOperation">
 
-/** One source's feed in a merge, with the calendar it was read from. */
 export interface FeedComponent {
   readonly calendar: CalendarSummary
   readonly feed: CalendarFeed
 }
 
-/** The exact source of one copy in a merged row. */
 export interface MergedSourceReference {
   readonly eventId: string
   readonly provider: CalendarProvider
@@ -53,7 +48,6 @@ function instantText(value: string): string | undefined {
   return Number.isFinite(stamp) ? new Date(stamp).toISOString() : undefined
 }
 
-/** The civil date of an instant or date token in a zone, UTC when no zone is given; undefined when either cannot be read. */
 export function civilDateOf(value: string, zone: string | null): string | undefined {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
   const stamp = Date.parse(value)
@@ -69,7 +63,6 @@ export function civilDateOf(value: string, zone: string | null): string | undefi
   }
 }
 
-/** An event's portable occurrence identity: its first nonblank UID, and its original occurrence as an instant or, all day, a civil date. */
 export function portableOccurrence(event: CalendarEvent): PortableCalendarOccurrence {
   const occurrence = firstText(event.metadata, occurrenceKeys) || event.startAt
   const normalized = event.isAllDay ? civilDateOf(occurrence, event.timezone) : instantText(occurrence)
@@ -168,7 +161,6 @@ function pairings(events: readonly CalendarEvent[], links: readonly CalendarLink
   return paired
 }
 
-/** One row per occurrence across every component, each the visible copy with its source evidence, sorted by start then event ID. */
 export function mergeFeedEvents(components: readonly FeedComponent[], links: readonly CalendarLinkRecord[]): CalendarEvent[] {
   const paired = pairings(components.flatMap(({ feed }) => feed.events), links)
   const linkedLocal = new Set(links.flatMap((link) => paired.has(link.localEventId) ? [link.localEventId] : []))
@@ -216,7 +208,6 @@ const aggregateStates = {
   ManagedAggregateUnavailable: "unavailable",
 } as const satisfies Record<string, CalendarFeedState>
 
-/** The merged feed over a window: complete only when every listed source is fresh and every component complete. */
 export function assembleFeed(components: readonly FeedComponent[], links: readonly CalendarLinkRecord[], window: { readonly timeMin: string; readonly timeMax: string }): CalendarFeed {
   const health = components.flatMap(({ feed }) => feed.sources)
   const state = managedAggregateState(health.every((source) => source.status === "fresh"),

@@ -1,14 +1,12 @@
 // spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series"
 import type { CalendarRow } from "./document.vibe"
 
-/** How a reviewed new series repeats: its rule, the last start it may have, and the starts it skips; its zone is the reviewed fields' zone. */
 export interface CalendarRecurrence {
   readonly rule: "daily" | "weekdays" | "weekly"
   readonly until?: string
   readonly excluded?: readonly string[]
 }
 
-/** The repeat part of a document row: its rule, its exclusive end and its exclusions. */
 export type RowRecurrence = Pick<CalendarRow, "repeat" | "until" | "excluded">
 
 const rules: Record<CalendarRecurrence["rule"], string> = { daily: "RRULE:FREQ=DAILY", weekdays: "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", weekly: "RRULE:FREQ=WEEKLY" }
@@ -17,7 +15,6 @@ function stamp(instant: number): string {
   return new Date(Math.floor(instant / 1000) * 1000).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")
 }
 
-/** The document row form of a reviewed recurrence: the rule, an end just past its last allowed start, and its skipped starts. */
 export function rowRecurrence(recurrence: CalendarRecurrence): RowRecurrence {
   return {
     repeat: recurrence.rule,
@@ -26,19 +23,16 @@ export function rowRecurrence(recurrence: CalendarRecurrence): RowRecurrence {
   }
 }
 
-/** The RFC 5545 recurrence lines of a repeating row: its RRULE with any UNTIL, then one EXDATE per skipped start, in time order; none for a row that does not repeat. */
 export function recurrenceLines(row: RowRecurrence): string[] {
   if (row.repeat === undefined || row.repeat === "none") return []
   const rule = rules[row.repeat] + (row.until === undefined ? "" : `;UNTIL=${stamp(row.until - 1)}`)
   return [rule, ...[...new Set((row.excluded ?? []).map(stamp))].sort().map((at) => `EXDATE:${at}`)]
 }
 
-/** The RFC 5545 recurrence lines a provider writes for a reviewed recurrence. */
 export function reviewedRecurrenceLines(recurrence: CalendarRecurrence | null): string[] {
   return recurrence === null ? [] : recurrenceLines(rowRecurrence(recurrence))
 }
 
-/** Whether recurrence lines read back from a calendar are exactly the reviewed ones, in any order. */
 export function holdsRecurrence(lines: readonly string[] | null | undefined, recurrence: CalendarRecurrence | null): boolean {
   const read = [...new Set(lines ?? [])].sort()
   const reviewed = reviewedRecurrenceLines(recurrence).sort()

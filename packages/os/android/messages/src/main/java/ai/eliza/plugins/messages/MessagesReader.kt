@@ -5,17 +5,6 @@ import android.content.Context
 import android.net.Uri
 import android.provider.Telephony
 
-/**
- * Pure, [Context]-backed reader for the SMS query that
- * [MessagesPlugin.listMessages] exposes (id / thread / address / body / date /
- * type / read), optionally filtered by thread, newest-first.
- *
- * Extracted from the Capacitor plugin so the real `content://sms` query can be
- * exercised by an instrumented `androidTest` against the real SMS provider,
- * without a Capacitor `Bridge`/WebView (issue #9967). Requires `READ_SMS`;
- * [MessagesPlugin] delegates to it and marshals each record into the unchanged
- * JS shape.
- */
 class MessagesReader(private val context: Context) {
 
     data class SmsRecord(

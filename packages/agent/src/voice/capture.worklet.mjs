@@ -7,11 +7,14 @@ class CaptureSamples extends AudioWorkletProcessor {
     super()
     this.block = new Float32Array(blockSamples)
     this.filled = 0
+    this.stopped = false
+    this.port.onmessage = () => { this.stopped = true }
   }
 
   /** @param {AudioWorkletInputs} inputs */
   process(inputs) {
     const channel = inputs[0]?.[0]
+    if (this.stopped) return false
     if (channel === undefined) return true
     for (const sample of channel) {
       this.block[this.filled++] = sample

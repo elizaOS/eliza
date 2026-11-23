@@ -1,0 +1,23 @@
+// spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last"
+import type { Plugin } from "../types/plugin.vibe"
+import { PII_SWAP_ENABLED_SETTING } from "./pii-pseudonymizer.vibe"
+import { SECRET_SWAP_ENABLED_SETTING } from "./secret-swap.vibe"
+
+export interface PrivacyMode {
+  readonly secretSwap: boolean
+  readonly piiSwap: boolean
+}
+
+export function privacyPlugin(mode: PrivacyMode): Plugin {
+  return {
+    name: "@elizaos/core/privacy",
+    description: "Swap credentials, contacts and names out of model input in the launch's mode",
+    config: {
+      [SECRET_SWAP_ENABLED_SETTING]: mode.secretSwap,
+      [PII_SWAP_ENABLED_SETTING]: mode.piiSwap,
+    },
+    init: (config, runtime) => {
+      for (const [key, value] of Object.entries(config)) runtime.setSetting(key, value)
+    },
+  }
+}

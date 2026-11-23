@@ -39,12 +39,9 @@ import {
 } from "../../gen/files__sourceReferences.effect.vibe"
 import { decodeBase64, parsedUrl, sha256Hex, utf8 } from browser
 
-/** Document types a source link may name. */
 export const SOURCE_DOCUMENT_TYPES = ["text/plain", "application/pdf", "image/png", "image/jpeg", "image/webp"] as const
-/** Largest linked source document. */
 export const SOURCE_DOCUMENT_MAX_BYTES = 5 * 1024 * 1024
 
-/** A version-1 link to a document by its exact bytes, with an optional device or browser reference. */
 export interface DocumentSourceLink {
   readonly version: 1
   readonly name: string
@@ -53,11 +50,8 @@ export interface DocumentSourceLink {
   readonly size: number
   readonly reference?: string
 }
-/** A link to the current page at a safe HTTPS address; never proof of the page's earlier bytes. */
 export interface WebSourceLink { readonly kind: "web-page"; readonly version: 1; readonly name: string; readonly url: string }
-/** A link to an exact recording note revision. */
 export interface RecordingSourceLink { readonly kind: "recording"; readonly version: 1; readonly name: string; readonly noteId: string; readonly revision: string }
-/** Any link a summary keeps to where it came from. */
 export type SummarySourceLink = DocumentSourceLink | WebSourceLink | RecordingSourceLink
 
 const mimes: Readonly<Record<string, SourceMime>> = {
@@ -94,7 +88,6 @@ function descriptorOf(value: unknown): SourceDescriptor {
   }
 }
 
-/** A normalized document link, dropping extra fields and a malformed reference, or undefined when it is not one. */
 export function documentSourceOf(value: unknown): DocumentSourceLink | undefined {
   const descriptor = descriptorOf(value)
   if (!validDescriptor(descriptor)) return undefined
@@ -105,7 +98,6 @@ export function documentSourceOf(value: unknown): DocumentSourceLink | undefined
   }
 }
 
-/** A normalized recording link, or undefined when it is not one. */
 export function recordingSourceOf(value: unknown): RecordingSourceLink | undefined {
   const name = field(value, "name"), noteId = field(value, "noteId"), revision = field(value, "revision")
   if (field(value, "kind") !== "recording" || field(value, "version") !== 1 || !label(name) || typeof noteId !== "string" || noteId === ""
@@ -113,7 +105,6 @@ export function recordingSourceOf(value: unknown): RecordingSourceLink | undefin
   return { kind: "recording", version: 1, name, noteId, revision }
 }
 
-/** A normalized HTTPS page link without credentials that the host's reading policy does not treat as sensitive. */
 export function webSourceOf(value: unknown, isSensitiveUrl: (url: string) => boolean = () => false): WebSourceLink | undefined {
   const name = field(value, "name"), raw = field(value, "url")
   if (field(value, "kind") !== "web-page" || field(value, "version") !== 1 || !label(name) || typeof raw !== "string" || raw.length > 4096
@@ -123,33 +114,27 @@ export function webSourceOf(value: unknown, isSensitiveUrl: (url: string) => boo
   return { kind: "web-page", version: 1, name, url: url.href }
 }
 
-/** Any summary link, checked by the rules of its own kind. */
 export function summarySourceOf(value: unknown, isSensitiveUrl?: (url: string) => boolean): SummarySourceLink | undefined {
   return recordingSourceOf(value) ?? webSourceOf(value, isSensitiveUrl) ?? documentSourceOf(value)
 }
 
-/** Whether a link of this kind can prove the bytes its source had when it was made. */
 export function sourceProvesPast(link: SummarySourceLink): boolean {
   const kind: SourceKind = "kind" in link ? (link.kind === "web-page" ? "WebLink" : "RecordingLink") : "DocumentLink"
   return sourceProvesPastBytes(kind, true)
 }
 
-/** The lowercase SHA-256 of a recording note's JSON, its exact revision. */
 export effect function recordingRevision(note: unknown): string!SourceRefused {
   const json: string | undefined = try Effect.try({ try: () => JSON.stringify(note), catch: () => sourceRefused("unreadable") })
   if (typeof json !== "string") throw sourceRefused("unreadable")
   return try tryPromise({ try: () => sha256Hex(new TextEncoder().encode(json)), catch: () => sourceRefused("unreadable") })
 }
 
-/** The largest keep set a reconciliation accepts. */
 export const SOURCE_KEEP_MAX = 20_000
 
-/** The durable `a1:` references that saved and restorable items still name, each once. */
 export function retainedSourceReferences(items: readonly unknown[], link: (item: unknown) => unknown = (item) => field(item, "documentSource")): string[] {
   return [...new Set(items.map((item) => documentSourceOf(link(item))?.reference).filter((reference): reference is string => reference?.startsWith("a1:") === true))]
 }
 
-/** The complete validated keep set for reconciliation, refused whole when any identity is invalid or there are too many. */
 export effect function sourceKeepSet(references: readonly unknown[]): string[]!SourceRefused {
   if (references.length > SOURCE_KEEP_MAX || !references.every((reference) => referenceKind(reference) === "AndroidRef")) throw sourceRefused("invalid-keep-set")
   return [...new Set(references as readonly string[])]
@@ -167,15 +152,12 @@ const sourceText: Readonly<Record<SourceRefusal, string>> = {
   "invalid-keep-set": "The kept document references are not all valid.",
 }
 
-/** A document whose bytes, type or review no longer allow it to be linked or reopened. */
 export error SourceRefused { reason: SourceRefusal; message: string }
 
-/** The refusal for a reason, worded as the reviewed text. */
 export function sourceRefused(reason: SourceRefusal): SourceRefused {
   return new SourceRefused({ reason, message: sourceText[reason] })
 }
 
-/** A reviewed document: its link metadata, and its text when it is plain text. */
 export interface ReviewedDocument {
   readonly name: string
   readonly mimeType: string
@@ -200,7 +182,6 @@ function contentMatches(mimeType: string, bytes: Uint8Array): { readonly matches
   return { matches: mimeType === "image/webp" && ascii(bytes, 0, "RIFF") && ascii(bytes, 8, "WEBP") }
 }
 
-/** Reviews exact document bytes: safe name, extension, type and leading signature or strict UTF-8, within 5 MiB. */
 export effect function reviewDocumentBytes(name: string, mimeType: string, bytes: Uint8Array<ArrayBuffer>): ReviewedDocument!SourceRefused {
   if (bytes.length > SOURCE_DOCUMENT_MAX_BYTES) throw sourceRefused("too-large")
   const content = contentMatches(mimeType, bytes)
@@ -211,14 +192,12 @@ export effect function reviewDocumentBytes(name: string, mimeType: string, bytes
   return { name, mimeType, size: bytes.length, sha256, ...(content.text === undefined ? {} : { text: content.text }) }
 }
 
-/** A mail attachment as base64, as a picker or mailbox hands it over. */
 export interface MailAttachment {
   readonly name: string
   readonly mimeType: string
   readonly dataBase64: string
 }
 
-/** Decodes canonical base64 within its bound and reviews the attachment's exact bytes. */
 export effect function reviewMailAttachment(file: MailAttachment): ReviewedDocument!SourceRefused {
   if (typeof file.name !== "string" || file.name.length > 120 || control(file.name, "\\/") || typeof file.dataBase64 !== "string"
     || file.dataBase64.length > 7 * 1024 * 1024) throw sourceRefused("invalid-attachment")
@@ -227,7 +206,6 @@ export effect function reviewMailAttachment(file: MailAttachment): ReviewedDocum
   return try reviewDocumentBytes(file.name, file.mimeType, bytes)
 }
 
-/** The facts of a reopen request the shell observed: the bridge's fresh read and the review that asked for it. */
 export interface SourceReopen {
   readonly link: DocumentSourceLink
   readonly mimeType: string
@@ -238,7 +216,6 @@ export interface SourceReopen {
   readonly focused: boolean
 }
 
-/** Rechecks a fresh read against the linked identity and the live review, then allows the viewer handoff or refuses. */
 export effect function admitSourceReopen(reopen: SourceReopen): DocumentSourceLink!SourceRefused {
   const descriptor = descriptorOf(reopen.link)
   const sha256 = try tryPromise({ try: () => sha256Hex(reopen.bytes), catch: () => sourceRefused("unreadable") })

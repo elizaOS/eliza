@@ -18,21 +18,17 @@ module edge {
 }
 import { namedPhrase } from edge
 
-/** A note found by lookup, with its position in the list it was found in. */
 export interface Indexed {
   readonly index: number
   readonly note: StickyNote
 }
 
-/** How a lookup names its note: by exact title, or by text the note contains. */
 export type NoteSelector = "title" | "query"
 
-/** Lookup text folded for comparison: NFC, trimmed, lowercase, single spaces. */
 function normalizedLookup(value: string): string {
   return value.normalize("NFC").trim().toLowerCase().normalize("NFC").replace(/\s+/gu, " ")
 }
 
-/** Whether the text names the title as a whole phrase. */
 export function titleAppearsAsNamedPhrase(text: string, title: string): boolean {
   return namedPhrase(normalizedLookup(text), normalizedLookup(title))
 }
@@ -41,7 +37,6 @@ function searchable(note: StickyNote): string {
   return `${reconstructNoteContent(note)} ${authoredNoteText(note.format)} ${note.color}`
 }
 
-/** Notes a query names: an exact title first, then whole-phrase, then contained text, then a title inside the query. */
 function queryMatches(notes: readonly StickyNote[], value: string): Indexed[] {
   const target = normalizedLookup(value)
   if (target === "") return []
@@ -55,7 +50,6 @@ function queryMatches(notes: readonly StickyNote[], value: string): Indexed[] {
   return tiers.find((tier) => tier.length > 0) ?? []
 }
 
-/** Notes a selector names: exact titles only for a title, the query tiers otherwise. */
 export function lookupMatches(notes: readonly StickyNote[], selector: NoteSelector, value: string): Indexed[] {
   const target = normalizedLookup(value)
   if (target === "") return []
@@ -64,17 +58,14 @@ export function lookupMatches(notes: readonly StickyNote[], selector: NoteSelect
     : queryMatches(notes, value)
 }
 
-/** The key under which byte-identical copies are one logical note. */
 export function noteContentKey(note: StickyNote): string {
   return [note.format === undefined ? "" : note.id, note.title, note.body, note.color].join("\u0000")
 }
 
-/** Notes whose titles the owner's words name. */
 export function notesNamedIn(text: string, notes: readonly StickyNote[]): StickyNote[] {
   return text === "" ? [] : notes.filter((note) => titleAppearsAsNamedPhrase(text, note.title))
 }
 
-/** The owner's own words for this turn: the request the host bound to it, else the message's text without its envelopes. */
 export effect function ownerRequestText(message: Memory): string!! {
   const bound = Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => null
   if (bound === null) return ""

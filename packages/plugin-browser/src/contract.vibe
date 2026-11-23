@@ -2,32 +2,21 @@
 import { closeOffered, controlOffered, navigationOffered, reviewAdmitted, runsUnreviewed, type BrowserControl, type Negotiated, type TabClose } from "../gen/browser__control.effect.vibe"
 import { BROWSER_SEARCH_QUERY_MAX } from "./grounding.vibe"
 
-/** The capability a phone advertises to run web searches from chat. */
 export const BROWSER_SEARCH_CAPABILITY = "browser.search.v1"
-/** The capability a phone advertises to open, switch and close tabs from chat. */
 export const BROWSER_TABS_CAPABILITY = "browser.tabs.v1"
-/** The capability a phone advertises to find words in the shown page from chat. */
 export const BROWSER_FIND_CAPABILITY = "browser.find.v1"
-/** The capability a phone advertises to go back, forward, reload or stop from chat. */
 export const BROWSER_HISTORY_CAPABILITY = "browser.history.v1"
-/** The capability a phone advertises to open a typed address in a tab of its own instead of reusing its earlier tab. */
 export const BROWSER_OPEN_NEW_TAB_CAPABILITY = "browser.open-new-tab.v1"
 /** The capability a phone advertises, beside `browser.tabs.v1`, to close every open tab from one review that lists them. */
 export const BROWSER_TABS_CLOSE_ALL_CAPABILITY = "browser.tabs.close-all.v1"
 
-/** The longest tab title or host word a tab switch or close may name. */
 export const BROWSER_TAB_TARGET_MAX = 128
-/** The longest text a find in page may look for. */
 export const BROWSER_FIND_TEXT_MAX = 256
-/** The longest address a reviewed navigation may carry. */
 export const BROWSER_NAVIGATE_URL_MAX = 4096
-/** The page history moves a Browser control may ask for. */
 export const BROWSER_HISTORY_ACTIONS = ["back", "forward", "reload", "stop"] as const
 
-/** One page history move. */
 export type BrowserHistoryAction = (typeof BROWSER_HISTORY_ACTIONS)[number]
 
-/** A Browser control the agent proposes for the phone; the phone keeps tabs, titles, addresses and page content to itself. */
 export type BrowserControlOperation =
   | { readonly type: "browser_search"; readonly query: string }
   | { readonly type: "browser_tab_new"; readonly private?: true }
@@ -37,10 +26,8 @@ export type BrowserControlOperation =
   | { readonly type: "browser_find"; readonly text: string }
   | { readonly type: "browser_history"; readonly action: BrowserHistoryAction }
 
-/** The kind of a Browser control. */
 export type BrowserControlType = BrowserControlOperation["type"]
 
-/** A typed address to open, in a tab of its own only when `newTab` is set. */
 export interface BrowserNavigateOperation {
   readonly type: "browser_navigate"
   readonly url: string
@@ -57,7 +44,6 @@ export interface BrowserTabLine {
 /** The outcome of reading an untrusted value as a Browser control or navigation. */
 export type BrowserParse<A> = { readonly ok: true; readonly operation: A } | { readonly ok: false; readonly reason: string }
 
-/** An untrusted value that is not a Browser control this contract allows. */
 export error BrowserControlRefused { reason: string }
 
 const CONTROLS: Readonly<Record<BrowserControlType, BrowserControl>> = {
@@ -69,16 +55,15 @@ const CONTROLS: Readonly<Record<BrowserControlType, BrowserControl>> = {
   browser_history: "HistoryControl",
 }
 
-/** Every Browser control kind, in a stable order. */
 export const BROWSER_CONTROL_TYPES: readonly BrowserControlType[] = [
   "browser_search", "browser_tab_new", "browser_tab_switch", "browser_tab_close", "browser_find", "browser_history",
 ]
 
-/** The controls that may run without a review when bound to the owner's own current message. */
 export const BROWSER_CONTROL_DIRECT_TYPES: readonly BrowserControlType[] = BROWSER_CONTROL_TYPES.filter((type) =>
   runsUnreviewed({ control: CONTROLS[type], boundToMessage: true, wordsTyped: true }))
 
 const UNLOCK_NOTICE = "Unlock the phone to review this action."
+// eslint-disable-next-line no-control-regex -- Browser control input excludes C0 controls and DEL.
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/
 
 function negotiatedOf(capabilities: readonly string[] | undefined): Negotiated {
@@ -93,17 +78,14 @@ function negotiatedOf(capabilities: readonly string[] | undefined): Negotiated {
   }
 }
 
-/** Whether a value names a Browser control kind. */
 export function isBrowserControlType(type: unknown): type is BrowserControlType {
   return typeof type === "string" && Object.hasOwn(CONTROLS, type)
 }
 
-/** Whether a value has the type of a Browser control; `parseBrowserControl` checks the rest. */
 export function isBrowserControl(value: unknown): value is BrowserControlOperation {
   return typeof value === "object" && value !== null && "type" in value && isBrowserControlType(value.type)
 }
 
-/** Whether the phone negotiated the capability of this control's group. */
 export function browserControlCapabilityAvailable(type: BrowserControlType, capabilities?: readonly string[]): boolean {
   return controlOffered(CONTROLS[type], negotiatedOf(capabilities))
 }
@@ -128,12 +110,10 @@ export function browserNavigationAvailable(newTab: boolean, capabilities?: reado
   return navigationOffered(newTab, negotiatedOf(capabilities))
 }
 
-/** Whether a control may run without the owner's review, given whether it is bound to the current message and its words were typed there. */
 export function browserControlRunsUnreviewed(operation: BrowserControlOperation, binding: { readonly boundToMessage: boolean; readonly wordsTyped: boolean }): boolean {
   return runsUnreviewed({ control: CONTROLS[operation.type], boundToMessage: binding.boundToMessage, wordsTyped: binding.wordsTyped })
 }
 
-/** Why a Browser control cannot be reviewed on this screen, or undefined where it can. */
 export function browserControlReviewNotice(context: { readonly sensitive: boolean }): string | undefined {
   return reviewAdmitted(context.sensitive) ? undefined : UNLOCK_NOTICE
 }
@@ -154,7 +134,6 @@ function field(value: object, key: string): unknown {
 
 const refuse = (reason: string): BrowserParse<never> => ({ ok: false, reason })
 
-/** Reads an untrusted value as a Browser control, normalizing its words and refusing rather than truncating. */
 export function parseBrowserControl(value: unknown): BrowserParse<BrowserControlOperation> {
   if (!isBrowserControl(value)) return refuse("Unsupported Browser operation")
   const accept = (operation: BrowserControlOperation): BrowserParse<BrowserControlOperation> => ({ ok: true, operation })
@@ -198,14 +177,12 @@ export function parseBrowserControl(value: unknown): BrowserParse<BrowserControl
   }
 }
 
-/** `parseBrowserControl`, failing with BrowserControlRefused where it refuses. */
 export effect function validateBrowserControl(value: unknown): BrowserControlOperation!BrowserControlRefused {
   const parsed = parseBrowserControl(value)
   if (!parsed.ok) throw new BrowserControlRefused({ reason: parsed.reason })
   return parsed.operation
 }
 
-/** Reads an untrusted value as a reviewed navigation to an HTTPS address without credentials. */
 export function parseBrowserNavigate(value: unknown): BrowserParse<BrowserNavigateOperation> {
   if (typeof value !== "object" || value === null || field(value, "type") !== "browser_navigate") return refuse("Unsupported Browser operation")
   const newTab = field(value, "newTab")

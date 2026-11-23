@@ -26,7 +26,7 @@ module node {
   const wireTime = (instant: number) => new Date(instant).toISOString()
 
   export type AgendaOperation = Extract<DeviceOperation, { type: "read_calendar_range" }>
-  export type RequestScope =
+  type RequestScope =
     | { readonly calendarAgendaSource: { readonly sourceId: string; readonly sourceRevision: string } }
     | { readonly workflow: { readonly workflowId: string; readonly versionId: string; readonly runId: string; readonly stepId: string; readonly specDigest: string } }
   type ReviewedRequest = {
@@ -66,7 +66,6 @@ module node {
     }
   }
 
-  /** The payload a device reviews: its installation and enrollment, the operation, and the agenda source or workflow step that bounds it. */
   export function devicePayload(
     request: Pick<ReviewedRequest, "operation" | "scope">,
     by: SessionOwner,
@@ -239,4 +238,4 @@ module node {
   }
 }
 
-export { devicePayload, proposalReviewRoutes, type AgendaOperation, type RequestScope } from node
+export { devicePayload, proposalReviewRoutes, type AgendaOperation } from node

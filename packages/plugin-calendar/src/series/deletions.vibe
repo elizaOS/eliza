@@ -6,7 +6,6 @@ import { findRow, removeRow, storedRow, type CalendarRow, type ReviewedRow, type
 
 export { clockUsable, deleteUndoMs, type DeletionClock, type DeletionDeadline } from "@elizaos/os/bridges/deletion-window"
 
-/** The facts that identify an enrolled agent owner, and the session it runs in. */
 export interface OwnerFacts {
   readonly origin: string
   readonly ownerId: string
@@ -16,12 +15,10 @@ export interface OwnerFacts {
   readonly sessionId: string
 }
 
-/** Who staged a deletion: the owner by hand, bound to the source revision, or an enrolled agent with its proposal binding. */
 export type DeletionOwner =
   | { readonly kind: "manual"; readonly sourceRevision: string }
   | { readonly kind: "agent"; readonly facts: OwnerFacts; readonly proposalId: string; readonly operationId: string; readonly operationDigest: string }
 
-/** One pending or settled deletion kept in the Calendar document. */
 export interface CalendarDeletion {
   readonly id: string
   readonly owner: DeletionOwner
@@ -31,7 +28,6 @@ export interface CalendarDeletion {
   readonly acknowledged?: boolean
 }
 
-/** The app's own Calendar document: its source revision, rows, deletion journal and agent replay claims. */
 export interface CalendarDocument {
   readonly sourceRevision: string
   readonly events: readonly CalendarRow[]
@@ -39,21 +35,16 @@ export interface CalendarDocument {
   readonly deleteClaims: Readonly<Record<string, string>>
 }
 
-/** Why a deletion could not be staged, undone or settled. */
 export type DeletionRefusal = "pending" | "duplicate" | "history-full" | "clock-unavailable" | "changed" | "owner-changed" | "window-closed" | "unknown-outcome" | "not-found"
 
-/** A deletion was refused, with the reason. */
 export error DeletionRefused { reason: DeletionRefusal }
-/** A write would change a row or source while its deletion is still queued or paused. */
 export error PendingDeletionBlocks { id: string }
 
-/** A document and the journal entry a call staged or settled in it. */
 export interface JournalChange {
   readonly document: CalendarDocument
   readonly entry: CalendarDeletion
 }
 
-/** Where a later clock reading falls in a deletion's window: open, expired, or on a clock that lost continuity. */
 export function windowView(deadline: DeletionDeadline, later: DeletionClock): DeadlineView {
   return deletionWindow(deadline, later)
 }
@@ -63,12 +54,10 @@ function sameEnrollment(held: OwnerFacts, now: OwnerFacts): boolean {
     && held.installationId === now.installationId && held.enrollmentId === now.enrollmentId
 }
 
-/** Whether the owner that staged a deletion may still Undo it: the same enrolled agent owner, across session restarts. */
 export function ownerVisible(owner: DeletionOwner, now: OwnerFacts | undefined): boolean {
   return owner.kind === "manual" || (now !== undefined && sameEnrollment(owner.facts, now))
 }
 
-/** Whether the owner that staged a deletion may still dispatch it: the same enrolled agent owner in the exact session. */
 export function ownerCurrent(owner: DeletionOwner, now: OwnerFacts | undefined): boolean {
   return owner.kind === "manual" || (now !== undefined && sameEnrollment(owner.facts, now) && owner.facts.sessionId === now.sessionId)
 }
@@ -86,7 +75,6 @@ function own(row: CalendarRow): string {
   return JSON.stringify(rest)
 }
 
-/** How a row now compares with the copy staged for deletion: stored rows compare exactly, a computed occurrence without its copied parent revision and exclusions. */
 export function rowMatch(rows: readonly CalendarRow[], current: CalendarRow | undefined, staged: CalendarRow | undefined): RowMatch {
   return {
     existsNow: current !== undefined,
@@ -108,7 +96,6 @@ function interned(): (id: string | undefined) => number {
   }
 }
 
-/** Whether a queued or paused deletion blocks deleting this row: the same row, its parent from a pending occurrence, or an occurrence of a series pending deletion. */
 export function deletionPending(document: CalendarDocument, row: CalendarRow): boolean {
   const key = interned()
   return Object.values(document.deletions).some((entry) => blocksSiblingOrParent(entry.tx.phase, key(entry.target.row.id), key(entry.target.row.seriesId),
@@ -117,7 +104,6 @@ export function deletionPending(document: CalendarDocument, row: CalendarRow): b
 
 const definite = (entry: CalendarDeletion) => entry.tx.phase === "DeleteDeleted" || entry.tx.phase === "DeleteUndone" || entry.tx.phase === "DeleteConflict"
 
-/** The journal without its oldest definite entries beyond 127; unresolved and unknown entries, and the agent claims of kept entries, stay. */
 export function trimJournal(document: CalendarDocument): CalendarDocument {
   const terminal = Object.values(document.deletions).filter(definite).sort((left, right) => left.deadline.createdElapsed - right.deadline.createdElapsed)
   const retired = new Set(terminal.slice(0, terminal.length - afterTerminalTrim(terminal.length)).map((entry) => entry.id))
@@ -142,14 +128,12 @@ effect function stage(document: CalendarDocument, row: CalendarRow, scope: "even
   return { document: claimed, entry: structuredClone(entry) }
 }
 
-/** Stages a confirmed deletion of the reviewed row, leaving the events intact until its window expires. */
 export effect function stageDeletion(document: CalendarDocument, reviewed: ReviewedRow & { readonly calendarId: string }, owner: DeletionOwner, id: string, clock: DeletionClock): JournalChange!DeletionRefused {
   const row = findRow(document.events, reviewed.id)
   if (row === undefined || row.revision !== reviewed.revision || row.calendarId !== reviewed.calendarId) throw new DeletionRefused({ reason: "changed" })
   return try stage(document, row, "event", owner, id, clock)
 }
 
-/** Stages a reviewed whole-series deletion, checking both the parent and the selected occurrence revisions again inside the transaction. */
 export effect function stageSeriesDeletion(document: CalendarDocument, review: SeriesReview, owner: DeletionOwner, id: string, clock: DeletionClock): JournalChange!DeletionRefused {
   const occurrence = findRow(document.events, review.occurrenceId)
   const parent = document.events.find((row) => row.id === review.parentId && row.seriesId === undefined)
@@ -158,7 +142,6 @@ export effect function stageSeriesDeletion(document: CalendarDocument, review: S
   return try stage(document, parent, "series", owner, id, clock)
 }
 
-/** The document after settling every queued deletion whose window expired, or undefined when none has, so that an empty settlement mints no revision. */
 export effect function settleDeletions(document: CalendarDocument, clock: DeletionClock, now: OwnerFacts | undefined, mint: () => string): (CalendarDocument | undefined)!! {
   const expired = (entry: CalendarDeletion) => entry.tx.phase === "DeleteQueued" && windowView(entry.deadline, clock) === "WindowExpired"
   if (!Object.values(document.deletions).some(expired)) return undefined
@@ -176,7 +159,6 @@ export effect function settleDeletions(document: CalendarDocument, clock: Deleti
   return settled
 }
 
-/** Undoes a deletion its owner can still see: a queued one in its open window or on a lost clock, a paused one, or one already undone, which returns the same receipt. */
 export effect function undoDeletion(document: CalendarDocument, id: string, clock: DeletionClock, now: OwnerFacts | undefined): JournalChange!DeletionRefused {
   const entry = entryOf(document, id)
   if (entry === undefined) throw new DeletionRefused({ reason: "not-found" })
@@ -189,7 +171,6 @@ export effect function undoDeletion(document: CalendarDocument, id: string, cloc
   return { document: withEntry(document, undone), entry: structuredClone(undone) }
 }
 
-/** Refuses a document write that changes a row or source while its deletion is still queued or paused; every document writer applies it. */
 export effect function guardPendingChanges(before: CalendarDocument, after: CalendarDocument): void!PendingDeletionBlocks {
   for (const entry of Object.values(before.deletions)) {
     if (!unresolvedDeletion(entry.tx.phase)) continue
@@ -202,13 +183,11 @@ export effect function guardPendingChanges(before: CalendarDocument, after: Cale
   }
 }
 
-/** A deletion still awaiting its owner, with where its window stands now. */
 export interface PendingDeletionView {
   readonly entry: CalendarDeletion
   readonly window: DeadlineView | undefined
 }
 
-/** The deletions an owner still has to see: queued, paused or of unknown outcome, not yet acknowledged. */
 export function pendingDeletions(document: CalendarDocument, clock: DeletionClock, now: OwnerFacts | undefined): PendingDeletionView[] {
   return Object.values(document.deletions)
     .filter((entry) => entry.acknowledged !== true && ownerVisible(entry.owner, now)
@@ -216,7 +195,6 @@ export function pendingDeletions(document: CalendarDocument, clock: DeletionCloc
     .map((entry) => ({ entry: structuredClone(entry), window: entry.tx.phase === "DeleteQueued" ? windowView(entry.deadline, clock) : undefined }))
 }
 
-/** The journal entry a deletion ID names, as its receipt. */
 export function deletionReceipt(document: CalendarDocument, id: string): CalendarDeletion | undefined {
   const entry = entryOf(document, id)
   return entry === undefined ? undefined : structuredClone(entry)

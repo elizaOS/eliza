@@ -7,9 +7,7 @@ import { publishEventServiceType, type PublishEventService } from "../conversati
 import { encodeMonoPcm16WavChunks } from "./capture.vibe"
 import { VOICE_TRANSCRIPT_STREAM } from "./live-session.vibe"
 
-/** The route a screen posts captured audio and its speech edges to for on-device recognition. */
 export const liveAsrPath = "/api/asr/local-inference/live"
-/** The route that answers whether on-device live recognition can run. */
 export const liveAsrStatusPath = "/api/asr/local-inference/live/status"
 
 const sampleRate = 16_000
@@ -72,7 +70,6 @@ function localTranscriber(runtime: AgentRuntime): string | undefined {
   return runtime.getModelRegistrations().find(({ modelType, metadata }) => modelType === ModelType.TRANSCRIPTION && metadata?.local === true)?.provider
 }
 
-/** The live recognition routes over one runtime: each session's segments go to the device's local transcription model and their words to the voice-transcript stream. */
 export function liveAsrRoutes(runtime: AgentRuntime, now: () => number = Date.now): readonly LocalRoute[] {
   const sessions = new Map<string, LiveSession>()
   let turns = 0

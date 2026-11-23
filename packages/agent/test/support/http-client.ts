@@ -1,5 +1,5 @@
 // spec/agent/access/transport.md, "Story: Answer each local request exactly once"; spec/agent/access/transport.md, "Story: Stream a response and end it once"; spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
-import type { LocalAnswer, LocalRequest, StreamedAnswer, Subscription } from "./socket-client.ts";
+import type { LocalAnswer, LocalRequest, StreamCut, StreamedAnswer, Subscription } from "./socket-client.ts";
 
 function parseJson(text: string): unknown {
   try {
@@ -30,7 +30,7 @@ export async function httpRequest(port: number, call: LocalRequest): Promise<Loc
   return { status: response.status, headers: headersOf(response), text, json: parseJson(text) };
 }
 
-export async function httpRequestStream(port: number, call: LocalRequest, leave?: import("./socket-client.ts").StreamCut, opened?: (status: number) => void): Promise<StreamedAnswer> {
+export async function httpRequestStream(port: number, call: LocalRequest, leave?: StreamCut, opened?: (status: number) => void): Promise<StreamedAnswer> {
   const cut = new AbortController();
   const response = await fetch(`${origin(port)}${call.path}`, init(call, cut.signal));
   opened?.(response.status);

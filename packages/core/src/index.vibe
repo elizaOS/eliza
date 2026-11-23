@@ -1006,6 +1006,7 @@ export {
   type SecretSwapSessionOptions,
   SecretSwapUnresolvedPlaceholderError,
 } from "./security/secret-swap.vibe"
+export { privacyPlugin, type PrivacyMode } from "./security/privacy-plugin.vibe"
 export { AgentEventService, resolveHeartbeatIndicator } from "./services/agent-event.vibe"
 export {
   bridgeActionCompletedToStreams,

@@ -4,20 +4,17 @@ import { freshRequestId } from "./digest.vibe"
 import { MailProtocolFailed, type MailFailure } from "./failures.vibe"
 import type { GmailInboxReceipt } from "./types.vibe"
 
-/** The two reviewed calls a read-state change makes. */
 export interface GmailReadStateClient {
   gmailPrepareOperation(grantId: string, requestId: string, proposal: Readonly<Record<string, unknown>>): { readonly receipt: GmailInboxReceipt; readonly review: Readonly<Record<string, unknown>> }!MailFailure
   gmailDispatchOperation(grantId: string, requestId: string, reviewDigest: string, proposal: Readonly<Record<string, unknown>>): GmailInboxReceipt!MailFailure
 }
 
-/** One loaded message and the read state the owner chose for it. */
 export interface ReadStateChange {
   readonly messageId: string
   readonly expectedHistoryId: string
   readonly unread: boolean
 }
 
-/** What one read-state request did. */
 export type MailReadStateOutcome =
   | { readonly status: "busy" }
   | { readonly status: "skipped" }
@@ -27,7 +24,6 @@ export type MailReadStateOutcome =
 
 const mismatch = () => new MailProtocolFailed({ code: "invalid-response", status: 0, reason: "" })
 
-/** Marks one loaded message read or unread through its reviewed operation, dispatched once; null when Gmail's result was not confirmed. */
 export effect function setGmailReadState(client: GmailReadStateClient, grantId: string, input: ReadStateChange) {
   const requestId = try freshRequestId()
   const kind = input.unread ? "mark-unread" : "mark-read"
@@ -43,7 +39,6 @@ export effect function setGmailReadState(client: GmailReadStateClient, grantId: 
   return { unread: input.unread, historyId: typeof result.historyId === "string" ? result.historyId : null }
 }
 
-/** The read-state changes of one mailbox view: one in flight per message, and no repeat of an unconfirmed automatic change. */
 export interface MailReadStateGuard {
   set(client: GmailReadStateClient, grantId: string, input: ReadStateChange, explicit: boolean): MailReadStateOutcome!!
   clear(): void!!
@@ -51,7 +46,6 @@ export interface MailReadStateGuard {
   state(): ReadStateView!!
 }
 
-/** A read-state guard for one mailbox view. */
 export effect function mailReadStateGuard(): MailReadStateGuard!! {
   const kept = try Ref.make(initial)
   const view = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))

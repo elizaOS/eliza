@@ -2,10 +2,8 @@
 import { EngineUnavailable, InferenceEngine } from "./engine.vibe"
 import { decodeWav, encodeWav } from "./wav.ts"
 
-/** Speech input the device's engines cannot take. */
 export error SpeechInputRefused { reason: "empty-text" | "not-wav" | "no-audio" }
 
-/** Synthesizes text on this device as a 16-bit WAV file. */
 export effect function speakLocally(text: string) {
   const engine = try InferenceEngine
   if (text.trim() === "") throw new SpeechInputRefused({ reason: "empty-text" })
@@ -13,7 +11,6 @@ export effect function speakLocally(text: string) {
   return encodeWav(try engine.synthesize(text))
 }
 
-/** Transcribes a mono 16-bit WAV recording on this device. */
 export effect function transcribeLocally(audio: Uint8Array) {
   const engine = try InferenceEngine
   const pcm = decodeWav(audio)
