@@ -97,7 +97,7 @@ it.effect('A second prepare supersedes an unclaimed navigation, waits for a clai
   const superseded = try first!.wait
   const claimed = try views.claim(second!.binding)
   const whileClaimed = try fork views.prepare("r3", "c1", "notes")
-  try Effect.yieldNow
+  for (let round = 0; round < 20; round += 1) try Effect.yieldNow
   try TestClock.adjust(Duration.millis(navigationBusyWaitMs))
   const refused = try join whileClaimed
   try TestClock.adjust(Duration.millis(navigationClaimLeaseMs - navigationBusyWaitMs))
@@ -118,7 +118,7 @@ it.effect('A second prepare supersedes an unclaimed navigation, waits for a clai
   const fourth = bindingOf(afterLease.body)
   const fourthClaim = try views.claim(fourth)
   const waited = try fork views.prepare("r5", "c1", "chat")
-  try Effect.yieldNow
+  for (let round = 0; round < 20; round += 1) try Effect.yieldNow
   const switched = try result(agent, fourth, fourthClaim!, true)
   const fifth = try join waited
   const unclaimed = try views.prepare("r6", "c1", "notes")
