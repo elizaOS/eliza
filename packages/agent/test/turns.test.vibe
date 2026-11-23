@@ -8,6 +8,7 @@ import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
 import { call, cloudFake, deviceKey, host, scratch, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
+import { clearingProductPlugin, productClearActionName } from "./support/product-plugin/index.ts"
 import type { Scratch } from "./support/scratch.ts"
 import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
 
@@ -296,14 +297,14 @@ it.live(`Competing terminal decisions run no sibling tool and get one repair rou
   })
 })
 
-it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording")`, effect () => {
+it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, a proposal with no copy of its own is asked by the model, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A model reply whose every call left an open proposal with its own copy ends planning, and keeps every proposal it made"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
       backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
-      load: [basicActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE", "VIEWS"],
+      load: [basicActionsModuleName, viewsModuleName], productPlugin: clearingProductPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE", "VIEWS", productClearActionName],
     },
-    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[clearingProductPlugin.name, clearingProductPlugin]]),
   })
   const { id } = try conversation(agent)
   const completionsSent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { tools?: { function?: { name?: string } }[]; messages: { role: string; content?: unknown }[] })
@@ -342,6 +343,11 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "12 * 3" } }), text("It is 36.")))
   const spoken = replyOf(try send(agent, id, { text: "Read me the number for 12 times 3.", channelType: "VOICE_DM" }))
 
+  const beforeClear = completionsSent().length
+  try Effect.sync(() => cloud.script(toolCalls("", { name: productClearActionName, arguments: {} }), text("This clears 3 items. Reply yes to clear them, or anything else to keep them.")))
+  const asksToClear = replyOf(try send(agent, id, { text: "Clear my list." }))
+  const clearCalls = completionsSent().length - beforeClear
+
   try Effect.try(() => assert.deepStrictEqual({
     offered: asked?.tools?.map((tool) => tool.function?.name),
     sameTools: JSON.stringify(asked?.tools) === JSON.stringify(rendered?.tools),
@@ -355,8 +361,9 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     refusalStatuses: [separate, corrected].map(({ actionResults }) => actionResults.map(({ data }) => data.executionStatus)),
     duration: duration.text,
     labels: { text: solved.action, voice: spoken.action },
+    uncopiedProposal: { text: asksToClear.text, failureKind: asksToClear.failureKind, calls: clearCalls },
   }, {
-    offered: ["RESTORE_CONTEXT", "CALCULATE", "VIEWS"],
+    offered: ["RESTORE_CONTEXT", "CALCULATE", productClearActionName, "VIEWS"],
     sameTools: true,
     declined: [true, `I can't switch screens from this chat.\n\n${unavailableNotice}`],
     toolResult: true,
@@ -368,6 +375,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     refusalStatuses: [["not_started", undefined], ["not_started", undefined]],
     duration: "One second is 1,000 milliseconds.",
     labels: { text: undefined, voice: { kind: "CALCULATE", validatedCard: false, verbatimAsked: true } },
+    uncopiedProposal: { text: "This clears 3 items. Reply yes to clear them, or anything else to keep them.", failureKind: undefined, calls: 2 },
   }))
 }, 120_000)
 
