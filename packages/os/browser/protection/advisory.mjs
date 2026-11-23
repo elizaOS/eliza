@@ -246,13 +246,15 @@ export function createProtectionAdvisory(
     void show(tabId, address).catch(() => {
       displays.delete(tabId);
     });
-  async function refreshAll() {
+  async function refreshAll(except) {
     const tabs = await api.tabs.query({});
     const results = await Promise.all(
       tabs
         .filter(
           (tab) =>
-            Number.isInteger(tab.id) && /^https?:\/\//.test(tab.url ?? ""),
+            Number.isInteger(tab.id) &&
+            tab.id !== except &&
+            /^https?:\/\//.test(tab.url ?? ""),
         )
         .map((tab) =>
           show(tab.id, tab.url).catch(() => {
@@ -299,9 +301,14 @@ export function createProtectionAdvisory(
     if (origin !== shown.origin) return;
     if (message.marked) acknowledgements.set(origin, shown.evidence);
     else acknowledgements.delete(origin);
-    void refreshAll().then(
-      (result) => respond({ accepted: result.unavailable === 0 }),
-      () => respond({ accepted: false }),
+    const tabId = sender.tab.id;
+    void refreshAll(tabId).catch(() => {});
+    void show(tabId, sender.url).then(
+      (drawn) => respond({ accepted: drawn === true }),
+      () => {
+        displays.delete(tabId);
+        respond({ accepted: false });
+      },
     );
     return true;
   });

@@ -476,7 +476,7 @@ it.live("Prepare the owned browser's component against the pinned sources (spec/
     name: "Test",
     version: "1.0",
     key: identity.chromeDevManifestKey,
-    permissions: ["tabs", "scripting", "webNavigation", "webRequest", "storage", "nativeMessaging", "alarms"],
+    permissions: ["tabs", "scripting", "webNavigation", "webRequest", "storage", "unlimitedStorage", "nativeMessaging", "alarms"],
     host_permissions: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"],
     background: { service_worker: "background.mjs", type: "module" },
   })
