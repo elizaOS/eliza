@@ -1,9 +1,10 @@
-// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/maps/phonePosition.md, "Where the owner is names the place at a recent position, and only the area when it is rough"; spec/maps/routing.md, "A phone selection handle cannot become a provider place identifier"
+// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/maps/phonePosition.md, "Where the owner is names the place at a recent position, and only the area when it is rough"; spec/maps/routing.md, "A phone selection handle cannot become a provider place identifier"; spec/maps/chatCards.md, "A successful Maps result with a valid card supplies verified reply text"
 import type { AgentPlugin } from "@elizaos/agent"
 import type { Action, ActionResult, IAgentRuntime, Memory, Provider } from "@elizaos/core"
-import { appendMapsCard, type MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
+import { appendMapsCard, MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
 import { MapsFailure, TravelMode, travelModes, type Coordinate, type Place } from "./client/contracts.vibe"
 import type { AgentPlaceRef, DeviceNavigationFailure, MapsDeviceNavigationStatus } from "./client/device-navigation.vibe"
+import { cardCopyAdmitted } from "../gen/maps__chatCards.effect.vibe"
 import { whereAnswer } from "../gen/maps__phonePosition.effect.vibe"
 import { messageLocation, nearbyPoint } from "./client/location.vibe"
 import type { MapsDeviceNavigation } from "./relay.vibe"
@@ -78,9 +79,15 @@ function metersBetween(a: Coordinate, b: Coordinate): number {
 }
 
 type Data = Readonly<Record<string, object | string | number | boolean | null | undefined>>
+const isMapsCard = Schema.is(MapsCard)
 
 function reply(success: boolean, said: string, data: Data = {}, card?: MapsCard): ActionResult {
-  return { success, text: card === undefined ? said : appendMapsCard(said, card), data: { ...data, ...(card === undefined ? {} : { card }) } }
+  if (card === undefined) return { success, text: said, data }
+  const rendered = appendMapsCard(said, card)
+  return {
+    success, text: rendered, data: { ...data, card },
+    ...(cardCopyAdmitted(success, isMapsCard(card)) ? { userFacingText: rendered, verifiedUserFacing: true } : {}),
+  }
 }
 
 function locate(prompt: string, extra: { readonly query?: string; readonly destination?: MapsCardPlace; readonly travelMode?: TravelMode }, intent: "place-near" | "route-origin"): ActionResult {

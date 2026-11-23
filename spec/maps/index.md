@@ -11,4 +11,5 @@ data comes from the Cloud's [maps](../cloud/index.md) service.
 | Planning and guidance | [Planning and navigation](./navigation.md), [guidance speech](./guidanceVoice.md), [guidance recovery](./guidanceRecovery.md), [screen-off guidance](./navigationService.md), [relay delivery](./relay.md), [reroute of the owner's session](./sessionReroute.md), [turn routing](./routing.md) |
 | Provider | [Cloud Maps connection](./cloudConnection.md), [request pause](./requests.md), [attribution](./attribution.md) |
 | What the agent sees | [Observation and locate](./observation.md), [phone position for the turn](./phonePosition.md) |
+| Chat | [Map cards in replies](./chatCards.md) |
 | On the phone | [Saved places](./savedPlaces.md) |
