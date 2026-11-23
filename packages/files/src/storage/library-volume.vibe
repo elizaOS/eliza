@@ -35,7 +35,6 @@ import { chatLimit, mailLimit, selectionReadable, textLimit } from "../../gen/fi
 import { batchMax, validSelection, type FileOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
 import { fileArchive } from "../documents/archive.vibe"
 import { baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry } from "./model.vibe"
-import { downloadsCreatesParent } from "../../gen/files__requests.effect.vibe"
 import { deletePlan, insertPlan, LibraryStore, LIBRARY_ROOT, childrenOf, newId, placePlan, subtreeOf, type LibraryRow } from "./library.vibe"
 import { FilesVolume, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
 
@@ -364,7 +363,7 @@ export function libraryVolume(archiveName = "Files.zip") {
         const at = validPath(parent, true)
         const valid = validName(folderName)
         if (at === undefined || valid === undefined || valid.startsWith(".")) throw refused("invalid", "Invalid name")
-        const id = try folder(at, at === DOWNLOAD_FOLDER && downloadsCreatesParent(folderIdAt(try rows(), DOWNLOAD_FOLDER) === undefined ? "DownloadFolderAbsent" : "DownloadFolderListed"))
+        const id = try folder(at, at === DOWNLOAD_FOLDER)
         const name = try freeIn(id, valid, true)
         try commit(insertPlan({ id: newId(), parentId: id, name, mimeType: "", directory: true, size: 0 }, try now))
         return joinPath(at, name)

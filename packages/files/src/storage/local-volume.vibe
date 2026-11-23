@@ -23,7 +23,6 @@ module node {
 import { identityOf, linked, trashId } from node
 import { canPrune, classifyRow, listed, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
 import { renameOutcome, validSelection, batchMax, type FilesOp, type FilesRowCheck, type FileOutcome } from "../../gen/os__android__files__storage.effect.vibe"
-import { downloadsCreatesParent } from "../../gen/files__requests.effect.vibe"
 import { baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER,
   type StorageEntry, type TrashEntry } from "./model.vibe"
 import { FilesVolume, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
@@ -285,9 +284,7 @@ export function localVolume(root: string, name = "Internal storage") {
         return count
       }),
       effect createFolder(parent, folderName) {
-        if (parent === DOWNLOAD_FOLDER && downloadsCreatesParent((try exists(at(DOWNLOAD_FOLDER))) ? "DownloadFolderListed" : "DownloadFolderAbsent")) {
-          try mapError(fs.makeDirectory(at(DOWNLOAD_FOLDER)), () => refused("failed", "The folder was not created"))
-        }
+        if (parent === DOWNLOAD_FOLDER) try mapError(fs.makeDirectory(at(DOWNLOAD_FOLDER), { recursive: true }), () => refused("failed", "The folder was not created"))
         const folder = try folderPath(parent)
         const valid = validName(folderName)
         if (valid === undefined || valid.startsWith(".")) throw refused("invalid", "Invalid name")
