@@ -235,7 +235,8 @@ pure def sometimesSteppedUpAtSignIn(f: Family): bool = isActive(f, f.seenEpoch) 
 > mail and calendar like a phone app does, without asking me to sign in
 > again every week, while the assistant on it can never read or send my mail
 > with its own key, so that only signing out, removing the account, a
-> revoked device or a stolen secret ever signs the tablet out.
+> revoked device or a stolen secret ever signs the tablet out, and only 90
+> days switched off or offline asks me to sign in once more.
 
 A device lease is a session family bound to one device grant. Only the
 tablet's native shell holds its secrets, in the secure-store slots that hold
@@ -283,13 +284,22 @@ pure def sometimesLeaseLive(f: Family): bool = isLease(f) and f.phase == Live
 ### A lease's refresh ends 90 days after its last refresh, with no end counted from its sign-in
 
 Each refresh with a current secret sets the end to 90 days later, the
-longest key lifetime a client may register (`registry`), so a tablet in use
-never signs out by time alone. A lease that goes 90 days without a refresh
-ends, and the tablet signs in again.
+longest key lifetime a client may register (`registry`). Only a refresh
+moves the end: a key renewal (`nativeClients/deviceKeys`) presents the
+refresh and moves nothing. So the device refreshes the lease just before
+every renewal and renews with the refresh that answer offered, and its
+daily job refreshes a lease it has not refreshed for a day; a tablet that is
+switched on and online never reaches the end. A lease that goes 90 days
+without a refresh ends, and the cloud forgets it and answers
+`credential_unknown`. The device knows the end it was last given and takes
+that answer past it as an expiry: the person signs in once and keeps the
+account and the tablet's data (`spec/os/signIn/credential.md`).
 
 ```quint
 pure def alwaysALeaseEndsNinetyDaysAfterItsLastRefresh(f: Family): bool =
   isLease(f) implies (f.authAt + leaseIdleLifetime <= f.refreshExpiresAt and f.refreshExpiresAt <= f.now + leaseIdleLifetime)
+pure def stepOnlyALeaseRefreshMovesItsEnd(before: Family, via: str, after: Family): bool =
+  (isLease(before) and after.refreshExpiresAt != before.refreshExpiresAt) implies via == "refresh"
 pure def sometimesLeaseLapsedAfterNinetyIdleDays(f: Family): bool = isLease(f) and f.phase == Live and f.now >= f.refreshExpiresAt
 pure def sometimesLeaseOutlivedThirtyDays(f: Family): bool = isActive(f, f.seenEpoch) and isLease(f) and f.now > f.authAt + refreshLifetime
 ```

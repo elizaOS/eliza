@@ -1,4 +1,4 @@
-// spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/deviceKeys.md, "A renewed key's acknowledgement ends the key it replaces and moves its lease to it"
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/deviceKeys.md, "A renewed key's acknowledgement ends the key it replaces and moves its lease to it"; spec/cloud/identity/sessions.md, "A lease's refresh ends 90 days after its last refresh, with no end counted from its sign-in"
 import { assert, describe, it } from "@effect/vitest"
 import { seedClients } from "../../src/operator/clients.vibe"
 import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
@@ -66,7 +66,7 @@ effect function usable(cloud: TestCloud, secret: string) {
 }
 
 describe("Device key renewal through the lease (spec/cloud/nativeClients/deviceKeys.md, \"Story: Keep a tablet's key without signing in again\")", () => {
-  it.live("Only the lease renews a key, a renewed key replaces the old one at its acknowledgement, and renewal has no cap while the lease is used (spec/cloud/nativeClients/deviceKeys.md, \"Only a live lease renews a key, and only while the key it replaces is live or merely expired and of the person's current device epoch\")", () => scoped(effect {
+  it.live("Only the lease renews a key, a renewed key replaces the old one at its acknowledgement, renewal has no cap while each renewal follows a lease refresh, and a renewal alone never moves the lease's end (spec/cloud/nativeClients/deviceKeys.md, \"Only a live lease renews a key, and only while the key it replaces is live or merely expired and of the person's current device epoch\"; spec/cloud/identity/sessions.md, \"A lease's refresh ends 90 days after its last refresh, with no end counted from its sign-in\")", () => scoped(effect {
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(start))
     provide Clock.Clock = clock.clock {
@@ -74,11 +74,13 @@ describe("Device key renewal through the lease (spec/cloud/nativeClients/deviceK
     try seeded(cloud)
     const signed = try signedIn(cloud, "renewal@example.com")
     const tablet = try signedInTablet(cloud, signed.accessToken)
+    const unrefreshed = try signedInTablet(cloud, signed.accessToken)
     const bySession = try renew(cloud, signed.accessToken)
     const byKey = try renew(cloud, tablet.key.secret)
     let refresh = tablet.refresh
     let held: Key = tablet.key
     const rounds: Array<unknown> = []
+    const alone: Array<unknown> = []
     for (const after of [70, 140, 210]) {
       try sync(() => clock.set(start + after * day))
       refresh = try rotated(cloud, refresh)
@@ -87,15 +89,19 @@ describe("Device key renewal through the lease (spec/cloud/nativeClients/deviceK
       const acked = try acknowledge(cloud, successor)
       rounds.push([answer.status, acked, try usable(cloud, held.secret), try usable(cloud, successor.secret)])
       held = successor
+      const renewedAlone = try renew(cloud, unrefreshed.refresh)
+      alone.push([renewedAlone.status, renewedAlone.status === 200 ? try acknowledge(cloud, renewedAlone.body as Key) : failure(renewedAlone.body)])
     }
     try check(() => assert.deepStrictEqual({
       bySession: [bySession.status, failure(bySession.body)],
       byKey: [byKey.status, failure(byKey.body)],
-      rounds
+      rounds,
+      alone
     }, {
       bySession: [401, ["authentication_required", "credential_unknown"]],
       byKey: [401, ["authentication_required", "credential_unknown"]],
-      rounds: [[200, 200, 401, 200], [200, 200, 401, 200], [200, 200, 401, 200]]
+      rounds: [[200, 200, 401, 200], [200, 200, 401, 200], [200, 200, 401, 200]],
+      alone: [[200, 200], [401, ["authentication_required", "credential_unknown"]], [401, ["authentication_required", "credential_unknown"]]]
     }))
     }
   }))
