@@ -106,7 +106,12 @@ of the day on their clock, or turns either off, from the conversation or
 from their own client. Until they choose, the morning check-in comes at
 08:00 and no night check-in comes. A new time replaces the check-in
 already scheduled for that slot, so it comes once a day at the new time
-and never at the old one too.
+and never at the old one too, and the owner hears it was changed only when
+the scheduler applied the change. A check-in the owner dismissed from
+their scheduled tasks is off until they choose a time for it again, so a
+restart never brings it back. Every check-in follows the owner's clock:
+when the owner states a new zone, the daily check-ins, goal check-ins,
+routines and repeating reminders are rescheduled on it at once.
 
 ```quint
 type CheckinSlot = MorningCheckin | NightCheckin
@@ -123,25 +128,36 @@ pure def lawNoNightCheckinComesUntilChosen(slot: CheckinSlot): bool =
   slot == NightCheckin implies checkinSchedule(slot, CheckinUnset) == CheckinOff
 pure def lawAChosenCheckinIsKept(slot: CheckinSlot, setting: CheckinSetting): bool =
   setting != CheckinUnset implies checkinSchedule(slot, setting) == setting
+pure def checkinAfterDismissal(chosenAgain: bool, setting: CheckinSetting): CheckinSetting = if (chosenAgain) setting else CheckinOff
+pure def lawADismissedCheckinStaysOffUntilChosen(slot: CheckinSlot, setting: CheckinSetting): bool =
+  checkinSchedule(slot, checkinAfterDismissal(false, setting)) == CheckinOff
 ```
 
 ## Story: Brief me on my morning, evening or week when I ask
 
 > As an owner, I want a brief of my morning, my evening or my week when I
-> ask for one, told only from what my calendar, to-dos, goals and
-> reminders hold, and told plainly when one of them could not be read.
+> ask for one, told only from what my calendar, to-dos, goals, routines
+> and reminders hold, and told plainly when one of them could not be read.
 
 ### A brief is the kind the owner named, else the morning one before five in the evening and the evening one from then
 
 A morning or evening brief covers today and a weekly brief the seven days
-from today, unless the owner names today, tomorrow or this week. A brief
-that names no kind is the morning brief before 17:00 on the owner's clock
-and the evening brief from then. The brief holds the calendar events of
-its days, the open to-dos, the active goals with how they are going, and
-the reminders due in its days; only the evening brief recaps the day,
-with the goal check-ins the owner answered today. The planner tells it
-from those facts alone, and a source that could not be read is said to be
-unchecked.
+from today, unless the owner names today, tomorrow or this week. The kind
+and the days are what the owner's own message names: the planner's choice
+counts only when the message says it too, a weekly brief or a week's span
+is never read from a passing mention of the week, and a brief that names
+no kind is the morning brief before 17:00 on the owner's clock and the
+evening brief from then. The brief holds every calendar event that
+overlaps its days, with its end and place when known, the open to-dos,
+the active goals with how they are going, the active routines with when
+they come, and the reminders due in its days; only the evening brief
+recaps the day, with the to-dos, routines and reminders the owner
+finished today and the goal check-ins they answered. Each source is read
+on its own: one that could not be read is said to be unchecked and the
+rest are still told. A section the owner asked to leave out of their
+briefs stays out until they ask for it back. The model writes the brief
+from the whole fact sheet, with no output limit, and the owner hears what
+it wrote whole.
 
 ```quint
 type BriefKind = MorningBrief | EveningBrief | WeeklyBrief
