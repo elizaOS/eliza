@@ -1,12 +1,14 @@
-lemma lawOnlyAllowedRegisteredActionsAreOffered_ensures(registered: seq<string>, allowed: seq<string>)
-  ensures (lawOnlyAllowedRegisteredActionsAreOffered(registered, allowed) == true)
+lemma lawOnlyAllowedRegisteredActionsAreOffered_ensures(registered: seq<string>, allowed: seq<string>, formless: seq<string>)
+  ensures (lawOnlyAllowedRegisteredActionsAreOffered(registered, allowed, formless) == true)
 {
   var permitted := ProofLib.Filter((set_x: string) => (set_x in allowed), registered);
-  var visible := ProofLib.Filter((set_x: string) => !((set_x in messageServiceActions)), permitted);
-  assert visible == offered(registered, allowed);
+  var advertised := ProofLib.Filter((set_x: string) => !((set_x in messageServiceActions)), permitted);
+  var visible := ProofLib.Filter((set_x: string) => !((set_x in formless)), advertised);
+  assert visible == offered(registered, allowed, formless);
   forall entry | entry in visible
     ensures entry in allowed && entry in registered && entry !in messageServiceActions
   {
+    ProofLib.FilterMember((set_x: string) => !((set_x in formless)), advertised, entry);
     ProofLib.FilterMember((set_x: string) => !((set_x in messageServiceActions)), permitted, entry);
     ProofLib.FilterMember((set_x: string) => (set_x in allowed), registered, entry);
   }

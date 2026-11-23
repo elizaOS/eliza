@@ -386,6 +386,7 @@ const forms = (form: Form, key: string): Form[] => {
   const value = form[key];
   return Array.isArray(value) ? value.filter(isForm) : [];
 };
+const answeredOnlyWhenExpanded = new Set(["refunds"]);
 const strings = (form: Form, key: string): string[] => {
   const value = form[key];
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
@@ -463,7 +464,7 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
   function expanded(object: StripeObject | List<StripeObject>, form: Form): unknown {
     const fields = strings(form, "expand");
     const one = (value: StripeObject) =>
-      Object.fromEntries(Object.entries(value).map(([key, field]) => {
+      Object.fromEntries(Object.entries(value).filter(([key]) => !answeredOnlyWhenExpanded.has(key) || fields.includes(key)).map(([key, field]) => {
         const target = typeof field === "string" && fields.includes(key) ? objects.get(field) : undefined;
         return [key, target === undefined ? field : clone(target)];
       }));

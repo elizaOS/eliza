@@ -76,6 +76,41 @@ pure def lawMutationDefaultsToInline(knownRequest: bool, uniqueBinding: bool, ca
   not(historicalEvidenceMayFollowRequest(knownRequest, uniqueBinding, canonicalReceipt, true, false, settledOnly, committedOutcome, trustedTerminal))
 ```
 
+### A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind
+
+Only an exact canonical record the runtime wrote (historical navigation,
+effects or observations, with a normalized receipt) is reprinted; anything
+else stays as it is. An effect receipt keeps what was done (operation,
+outcome, a no-op's reason, a failure, a commit's kind and its id when it
+differs from the resource's) and what it was done to (the resource's kind
+and id, each artifact's kind and id). Retry keys, observation times, store
+versions and receipt identities bound proof inside the turn that made them,
+so they are dropped, except that a request holding a rollback keeps its
+receipt ids, which the rollback names. A navigation receipt drops its effect
+name, step and handoff identities. A receipt in one of four fixed shapes
+(the base, or the base with a reason, a commit kind or a failure) is printed
+as `[shape, values]`; any other receipt is printed as an object. Each record
+kind has one legend, which depends only on the kind, its columns and its
+scope, never on which records are shown, and says each rule once: a row
+depends only on its record and the label of its request, so the same input
+gives the same bytes. A request inside the current dialogue window is named
+`history:hN`, the label the request already carries, as are its
+interruption and read-continuation notes. A later proposal state takes the
+place of the one preview it supersedes, in that preview's own row.
+
+```quint
+type ReceiptField = OperationField | ResourceField | ArtifactsField | OutcomeField | ReasonField | CommitField | FailureField | RollbackField | ReceiptIdField | IdempotencyField | ObservedAtField
+pure def slimKeeps(part: ReceiptField, rolledBack: bool): bool =
+  if (part == IdempotencyField or part == ObservedAtField) false
+  else if (part == ReceiptIdField) rolledBack
+  else true
+pure val partValues = Set(OperationField, ResourceField, ArtifactsField, OutcomeField, ReasonField, CommitField, FailureField, RollbackField, ReceiptIdField, IdempotencyField, ObservedAtField)
+pure def lawRetryKeysAndTimesNeverReachTheWire(rolledBack: bool): bool = not(slimKeeps(IdempotencyField, rolledBack)) and not(slimKeeps(ObservedAtField, rolledBack))
+pure def lawAReceiptIdStaysOnlyBesideARollback(rolledBack: bool): bool = slimKeeps(ReceiptIdField, rolledBack) iff rolledBack
+pure def lawWhatWasDoneAndToWhatIsKept(part: ReceiptField, rolledBack: bool): bool =
+  (part != ReceiptIdField and part != IdempotencyField and part != ObservedAtField) implies slimKeeps(part, rolledBack)
+```
+
 ### Provider discovery preserves originals and requires source-bound review before selection
 
 Only providers which explicitly publish an index may use discovery text. A restored source body can then participate in review. Discovery availability and selected relevance do not claim that an external operation ran.
@@ -93,7 +128,7 @@ pure def lawUnloadedProviderCannotBeReviewed(hasIndex: bool, uniqueSources: bool
 > unrelated old messages crowding out what this request needs, so that every
 > turn stays fast and still sees the facts and instructions it depends on.
 
-A host where no history reviewer runs, such as the phone, still bounds the history each model call carries. Once more than `maxSources` originals follow the reviewed boundary, the boundary moves to the first user message at or after the newest multiple of `maxSources - keepSources` that leaves `keepSources` originals after it. It depends only on how many originals there are and where the user messages are, so between two moves the history shown only grows at its end and a provider can reuse the prompt prefix. The boundary starts on a user message, so a reply is never shown without its request. It is a deferral by position, never a review: the deferred originals keep every byte, stay readable through the history references, and the model is told how many are not shown. User messages worded as standing instructions, and up to three earlier exchanges that share distinctive words with the current request, stay in view. Word and wording matches are external judgments of the shell.
+A host where no history reviewer runs, such as the phone, still bounds the history each model call carries. Once more than `maxSources` originals follow the reviewed boundary, the boundary moves to the first user message at or after the newest multiple of `maxSources - keepSources` that leaves `keepSources` originals after it. It depends only on how many messages the conversation stores and where the user messages are among them, counting the older messages a turn does not read as reviewed and counting every stored message, even a notice or an empty failed reply the history never shows, so it moves only in steps as the conversation grows, never with each turn's read or with which messages that read leaves out. While the latest exchange and the most recent originals lie past it, the history shown starts at the boundary, so between two moves it only grows at its end and a provider can reuse the prompt prefix. The boundary starts on a user message, so a reply is never shown without its request. It is a deferral by position, never a review: the deferred originals keep every byte, stay readable through the history references, and the model is told how many are not shown. User messages worded as standing instructions stay in the history. Up to three earlier exchanges that share distinctive words with the current request are recalled for that turn alone: they follow the latest message, after the notice, labelled as recalled and in their original order, the notice tells the model to answer from them as from the messages shown, and they never enter the history, so what a request says never changes the history before it. Word and wording matches are external judgments of the shell.
 
 ### A host with no reviewer defers old history by position, in fixed steps from a user message
 
@@ -122,6 +157,8 @@ pure def lawEverythingPastTheBoundaryIsShown(count: int, boundary: int, exchange
   shownFrom(count, boundary, exchangeStart, maxSources, continuitySources) <= boundary
 pure def lawRecentContinuityIsShown(count: int, boundary: int, exchangeStart: int, maxSources: int, continuitySources: int): bool =
   shownFrom(count, boundary, exchangeStart, maxSources, continuitySources) <= (if (count < continuitySources) 0 else count - continuitySources)
+pure def lawTheShownHistoryStartsAtTheBoundary(count: int, boundary: int, exchangeStart: int, maxSources: int, continuitySources: int): bool =
+  (exchangeStart >= boundary and count >= continuitySources and count - continuitySources >= boundary) implies shownFrom(count, boundary, exchangeStart, maxSources, continuitySources) == boundary
 ```
 
 ### A note about one request leaves the view with that request

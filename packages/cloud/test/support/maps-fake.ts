@@ -1,4 +1,4 @@
-// spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"
+// spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"
 import type { FakeAnswer, FakeHandler, FakeRequest } from "./fakes.ts";
 
 export type GoogleOperation = "searchText" | "searchNearby" | "details" | "geocode" | "computeRoutes" | "createSession" | "tile" | "viewport";
@@ -9,15 +9,19 @@ export type GoogleScript =
   | { readonly kind: "empty" }
   | { readonly kind: "notJson" }
   | { readonly kind: "outage" }
-  | { readonly kind: "oversized" };
+  | { readonly kind: "oversized" }
+  | { readonly kind: "geocodeReply"; readonly status: number; readonly geocode: string };
 
 export interface GoogleMapsFake {
   readonly handler: FakeHandler;
   readonly calls: ReadonlyArray<{ readonly operation: GoogleOperation; readonly request: FakeRequest }>;
+  readonly sessionRequested: Promise<void>;
   /** @throws {never} */
   count(operation: GoogleOperation): number;
   /** @throws {never} */
   script(...next: ReadonlyArray<GoogleScript>): void;
+  /** @throws {never} */
+  delaySessions(delayMs: number): void;
 }
 
 export const googleKey = "maps-key";
@@ -149,6 +153,8 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
       return { status: 503, body: { error: { code: 503, status: "UNAVAILABLE" } } };
     case "oversized":
       return { status: 200, body: "x".repeat(2 * 1024 * 1024 + 1) };
+    case "geocodeReply":
+      return operation === "geocode" ? { status: script.status, body: { status: script.geocode, results: [] } } : answerOf(operation, request);
   }
 }
 
@@ -156,18 +162,29 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
 export function googleMapsFake(): GoogleMapsFake {
   const calls: Array<{ operation: GoogleOperation; request: FakeRequest }> = [];
   const queue: GoogleScript[] = [];
+  let sessionDelayMs = 0;
+  let sessionAsked: () => void = () => undefined;
+  const sessionRequested = new Promise<void>((resolve) => {
+    sessionAsked = resolve;
+  });
   return {
     handler: async (request) => {
       const operation = operationOf(request);
       if (operation === undefined) return undefined;
       calls.push({ operation, request });
+      if (operation === "createSession") sessionAsked();
       if (keyOf(request) !== googleKey) return { status: 403, body: { error: { code: 403, status: "PERMISSION_DENIED" } } };
-      return scripted(operation === "createSession" ? { kind: "answer" } : queue.shift() ?? { kind: "answer" }, operation, request);
+      const session: GoogleScript = sessionDelayMs > 0 ? { kind: "hold", wait: () => new Promise<void>((resolve) => setTimeout(resolve, sessionDelayMs)) } : { kind: "answer" };
+      return scripted(operation === "createSession" ? session : queue.shift() ?? { kind: "answer" }, operation, request);
     },
     calls,
+    sessionRequested,
     count: (operation) => calls.filter((call) => call.operation === operation).length,
     script: (...next) => {
       queue.push(...next);
+    },
+    delaySessions: (delayMs) => {
+      sessionDelayMs = delayMs;
     },
   };
 }

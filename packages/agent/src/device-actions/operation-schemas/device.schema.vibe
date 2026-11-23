@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it"; spec/agent/deviceActions/operations.md, "A photo capture names the front or back lens only when the request negotiated it"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"
+// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it"; spec/agent/deviceActions/operations.md, "A photo capture names the front or back lens only when the request negotiated it"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"
 import { libraryIdAdmitted, photoTargets, type OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import { opensTelephonyView, supportedViews } from "../capabilities.vibe"
 import { digestOf as revisionOf } from "./digest.vibe"
@@ -14,8 +14,8 @@ const bounded = (minimum: number, maximum: number) => Schema.Int.check(Schema.is
 const operationId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/))
 const applied: Evidence = { shows: "ReportsApplied", nothingSubmitted: false }
 
-function withoutResult<S extends Schema.Decoder<WireOperation>>(operation: S, opType: OperationType) {
-  return { operation, result: undefined, classify: () => ({ opType, versionTwo: false }) }
+export function withoutResult<S extends Schema.Decoder<WireOperation>>(operation: S, opType: OperationType, versionTwo: (operation: S["Type"]) => boolean = () => false) {
+  return { operation, result: undefined, classify: (op: S["Type"]) => ({ opType, versionTwo: versionTwo(op) }) }
 }
 
 const CameraCapture = Schema.Struct({ type: Schema.Literal("camera_capture_photo"), lens: Schema.optionalKey(Schema.Literals(["front", "back"])) })
@@ -73,15 +73,28 @@ const FilesOpen = Schema.Union([
   Schema.Struct({ type: Schema.Literal("files_open"), path: FilePath }),
   Schema.Struct({ type: Schema.Literal("files_open"), shown: bounded(1, Number.MAX_SAFE_INTEGER) })
 ])
-const FilesShare = Schema.Struct({ type: Schema.Literal("files_share"), paths: Paths })
+const Shown = Schema.Array(bounded(1, Number.MAX_SAFE_INTEGER)).check(
+  Schema.isMinLength(1), Schema.isMaxLength(50), Schema.makeFilter((shown) => new Set(shown).size === shown.length)
+)
+const FilesShare = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("files_share"), paths: Paths }),
+  Schema.Struct({ type: Schema.Literal("files_share"), shown: Shown }),
+])
 const reviewMatches = ({ paths, reviewed }: { readonly paths: readonly string[]; readonly reviewed?: readonly string[] }) =>
   reviewed === undefined || reviewed.length === paths.length
-const FilesMove = Schema.Struct({
-  type: Schema.Literal("files_move"), paths: Paths, dest: FolderPath, reviewed: Schema.optionalKey(Reviewed)
-}).check(Schema.makeFilter(reviewMatches))
-const FilesTrash = Schema.Struct({
-  type: Schema.Literal("files_trash"), paths: Paths, reviewed: Schema.optionalKey(Reviewed)
-}).check(Schema.makeFilter(reviewMatches))
+const FilesMove = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("files_move"), paths: Paths, dest: FolderPath, reviewed: Schema.optionalKey(Reviewed)
+  }).check(Schema.makeFilter(reviewMatches)),
+  Schema.Struct({ type: Schema.Literal("files_move"), shown: Shown, dest: FolderPath }),
+])
+const FilesTrash = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("files_trash"), paths: Paths, reviewed: Schema.optionalKey(Reviewed)
+  }).check(Schema.makeFilter(reviewMatches)),
+  Schema.Struct({ type: Schema.Literal("files_trash"), shown: Shown }),
+])
+const namesShown = (operation: object) => "shown" in operation
 const FilesFolderCreate = Schema.Struct({ type: Schema.Literal("files_folder_create"), parent: FolderPath, name: FileName })
 
 function absoluteUtc(value: string): boolean {
@@ -350,14 +363,14 @@ const viewAndFileOperations = {
   camera_capture_photo: capture,
   files_filter: withoutResult(FilesFilter, "FilesFilter"),
   files_open: withoutResult(FilesOpen, "FilesOpen"),
-  files_share: withoutResult(FilesShare, "FilesShare"),
-  files_move: withoutResult(FilesMove, "FilesMove"),
-  files_trash: withoutResult(FilesTrash, "FilesTrash"),
+  files_share: withoutResult(FilesShare, "FilesShare", namesShown),
+  files_move: withoutResult(FilesMove, "FilesMove", namesShown),
+  files_trash: withoutResult(FilesTrash, "FilesTrash", namesShown),
   files_folder_create: withoutResult(FilesFolderCreate, "FilesFolderCreate"),
   create_note: withoutResult(CreateNote, "CreateNote"),
   create_reminder: withoutResult(CreateReminder, "CreateReminder"),
-  open_view: { ...withoutResult(OpenView, "OpenView"), classify: ({ view }: typeof OpenView.Type) => ({ opType: "OpenView", versionTwo: opensTelephonyView(view) }) },
-  browser_navigate: browserNavigate
+  open_view: withoutResult(OpenView, "OpenView", ({ view }) => opensTelephonyView(view)),
+  browser_navigate: withoutResult(BrowserNavigate, "BrowserNavigate", (operation) => operation.newTab === true)
 } satisfies FamilySchemas
 
 export const deviceOperations = { ...viewAndFileOperations, ...workflowOperations, ...photoOperations, ...telephonyOperations } satisfies FamilySchemas

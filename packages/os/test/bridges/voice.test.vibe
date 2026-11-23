@@ -1,6 +1,6 @@
 // spec/os/voice/cloudSpeech.md, "Story: Talk to the agent through the cloud speech relay"; spec/os/voice/cloudSpeech.md, "A provider speech edge belongs to the capture live when it began, and a retired capture owns none"; spec/os/voice/cloudSpeech.md, "A reply settles once: completed when all its audio has played, or cancelled"; spec/os/voice/cloudSpeech.md, "Every end of a session releases the microphone, settles the reply, revokes the session and reports a failure once"; spec/os/voice/cloudSpeech.md, "An open session and every waiting batch request run under the current key, and a key change ends them"
 import { assert, it } from "@effect/vitest"
-import { CloudSpeechCleanupUnconfirmed, CloudSpeechRefused, CloudSpeechUnavailable, createCloudStreamingSpeech, createNativeSpeechRequests } from "../../src/bridges/voice.vibe"
+import { CloudSpeechCleanupUnconfirmed, CloudSpeechInterrupted, CloudSpeechRefused, CloudSpeechUnavailable, createCloudStreamingSpeech, createNativeSpeechRequests } from "../../src/bridges/voice.vibe"
 import type { CredentialId, EnvironmentName } from "../../src/bridges/definitions/voice.ts"
 
 module android {
@@ -189,7 +189,7 @@ it.live("Talk to the agent through the cloud speech relay (spec/os/voice/cloudSp
   assert.deepStrictEqual(phone.calls, ["start production key-1", "unmute", "mute", "speaker off", "speak Hi there", "stop", "removed"])
 })
 
-it.live("A reply completes when its audio played and otherwise settles cancelled (spec/os/voice/cloudSpeech.md, \"A reply settles once: completed when all its audio has played, or cancelled\")", () => effect {
+it.live("A reply completes when its audio played and otherwise settles cancelled (spec/os/voice/cloudSpeech.md, \"A reply settles once: completed when all its audio has played, or cancelled\"; spec/os/voice/cloudSpeech.md, \"A transient focus loss pauses listening and speaking until focus returns\")", () => effect {
   const phone = device()
   const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(phone))
   try promise(() => speech.listen(heard(new AbortController().signal).handlers))
@@ -210,6 +210,21 @@ it.live("A reply completes when its audio played and otherwise settles cancelled
   const empty = try failure(() => silent.settled)
   assert.instanceOf(empty, CloudSpeechRefused)
   assert.strictEqual((empty as CloudSpeechRefused).reason, "ended-without-audio")
+
+  const paused = begin(() => speech.speak("Paused", new AbortController().signal, () => {}))
+  try sleep("5 millis")
+  emit(phone, { type: "audio-start", utteranceId: phone.utterances[2] })
+  emit(phone, { type: "focus-paused" })
+  emit(phone, { type: "audio-end", utteranceId: phone.utterances[2], interrupted: "audio-focus-lost" })
+  const interrupted = try failure(() => paused.settled)
+  assert.instanceOf(interrupted, CloudSpeechInterrupted)
+  assert.strictEqual((interrupted as CloudSpeechInterrupted).code, "audio-focus-lost")
+  emit(phone, { type: "focus-resumed" })
+  const resumed = begin(() => speech.speak("Resumed", new AbortController().signal, () => {}))
+  try sleep("5 millis")
+  emit(phone, { type: "audio-start", utteranceId: phone.utterances[3] })
+  emit(phone, { type: "audio-end", utteranceId: phone.utterances[3] })
+  try promise(() => resumed.settled)
 
   const controller = new AbortController()
   const cancelled = begin(() => speech.speak("Three", controller.signal, () => {}))

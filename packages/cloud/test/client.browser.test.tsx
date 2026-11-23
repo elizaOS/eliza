@@ -50,11 +50,11 @@ describe("Cloud client in Chromium", () => {
     const client = createCloudClient({
       baseUrl: "https://api.example.com",
       credential,
-      fetch: (input: RequestInfo | URL, init?: RequestInit) => new Promise((resolve) => {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
         const request = new globalThis.Request(input, init)
         sent.push({ path: new URL(request.url).pathname, authorization: request.headers.get("authorization"), redirect: request.redirect, credentials: request.credentials })
-        resolve(globalThis.Response.json({ object: "list", data: [{ id: "test-chat", object: "model", owned_by: "llm" }] }))
-      })
+        return Promise.resolve(globalThis.Response.json({ object: "list", data: [{ id: "test-chat", object: "model", owned_by: "llm" }] }))
+      }
     })
     await client.models()
     held = "eliza_mobile_second"

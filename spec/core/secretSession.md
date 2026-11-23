@@ -88,14 +88,14 @@ pure def sometimesSecretLearned(s: Secrets): bool = s.entries.length() > 0 and s
 
 ### A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote
 
-When the host turns on `ELIZA_SECRET_SWAP_STABLE_REFERENCES`, the runtime
+Whenever secret swap is on (`ELIZA_SECRET_SWAP_ENABLED`), the runtime
 holds one random key in memory for its life, never stored or logged, and
 each conversation's sessions derive from that key and the conversation's
 room both the nonce and each value's number, from a keyed SHA-256 of the
 value rather than the order a session met it, so an earlier turn's text
 stays byte-identical and a provider can reuse the prompt prefix. The
 conversation's pseudonym salt is a digest under its own label. A call
-outside a conversation, or with the setting off, draws a fresh nonce and
+outside a conversation, or with secret swap off, draws a fresh nonce and
 numbers values in order. Because a reference now outlives its session,
 restoration and the unresolved check accept only references the current
 session wrote into text: one that arrives in input the session did not
@@ -118,35 +118,68 @@ pure def lawOnlyAWrittenReferenceRestores(written: Set[str], reference: str): bo
   referenceRestorable(written, reference) implies written.contains(reference)
 ```
 
-### At the action boundary pseudonyms are restored before references, and local name recognition never reads this session's references
+### A reserved example contact in a tool definition or response schema stays as written
 
-A prompt is protected in two layers: credentials and contacts become this
-session's references first, then the names in it become pseudonyms. A local
-name recognizer can take a reference for part of a name, so a pseudonym may
-wrap a reference. Restoring an action's arguments peels the layers in the
-reverse order: pseudonyms first, leaving what it does not know, then
-references, strictly. An SMS or call target therefore reaches its validator
-as the real number, and a reference of this session that it never wrote
-still refuses the action. Before local name recognition reads the prompt,
-each of this session's references is replaced by spaces of the same width,
-so the recognizer never learns a reference as a name and the offsets of the
-names around it stay where they were; the provider still receives the
-references.
+A model request's `tools` and `responseSchema` are authored text, and a
+schema description documents a format with an example such as
+`+1 415 555 0100`. A phone number in the fictional range 555-0100 to
+555-0199 (with or without an area code and country code 1), or an email
+address at `example.com`, `example.org` or `example.net` or under
+`.example`, `.test`, `.invalid` or `.localhost`, belongs to nobody: it is
+never learned from an authored field nor replaced in one, so a definition's
+bytes do not change with the session's nonce or with what the conversation
+mentions. A field of the request outside the conversation (`messages`,
+`prompt`, `system`, `promptSegments`) treats such an example the same way,
+so the request lists a contact only when the conversation carries it. Every
+other value, a real number or address written in a definition included, is
+learned and replaced wherever it is written.
 
 ```quint
-type PrivacyLayer = PseudonymLayer | ReferenceLayer
-type PromptPiece = { ownReference: bool, text: str, width: int }
-pure val wrappingValues = Set(List(), List(ReferenceLayer), List(PseudonymLayer), List(PseudonymLayer, ReferenceLayer), List(ReferenceLayer, PseudonymLayer))
-pure val pieceValues = Set({ ownReference: true, text: "reference", width: 9 }, { ownReference: false, text: "Alice", width: 5 }, { ownReference: false, text: "", width: 0 })
-pure def peelLayer(wrapping: List[PrivacyLayer], layer: PrivacyLayer): List[PrivacyLayer] =
-  if (wrapping.length() > 0 and wrapping.nthOr(0, layer) == layer) wrapping.removeAt(0) else wrapping
-pure def restoreForAction(wrapping: List[PrivacyLayer]): List[PrivacyLayer] = peelLayer(peelLayer(wrapping, PseudonymLayer), ReferenceLayer)
-pure def ingressWrapping(wrapping: List[PrivacyLayer]): bool =
-  wrapping == List() or wrapping == List(ReferenceLayer) or wrapping == List(PseudonymLayer) or wrapping == List(PseudonymLayer, ReferenceLayer)
-pure def maskForRecognition(piece: PromptPiece): PromptPiece = if (piece.ownReference) { ownReference: false, text: "", width: piece.width } else piece
-pure def lawActionArgumentsReachTheirRealValue(wrapping: List[PrivacyLayer]): bool = ingressWrapping(wrapping) implies restoreForAction(wrapping) == List()
-pure def lawRecognitionNeverReadsAnOwnReference(piece: PromptPiece): bool =
-  maskForRecognition(piece).width == piece.width and (piece.ownReference implies maskForRecognition(piece).text == "") and (not(piece.ownReference) implies maskForRecognition(piece) == piece)
+type SwapField = AuthoredField | ConversationField | OtherRequestField
+pure def keepsExamples(part: SwapField): bool = part != ConversationField
+pure def contactSwapped(part: SwapField, reservedExample: bool): bool = not(reservedExample and keepsExamples(part))
+pure val partValues = Set(AuthoredField, ConversationField, OtherRequestField)
+pure def lawAReservedExampleOutsideTheConversationStaysAsWritten(part: SwapField): bool = part != ConversationField implies not(contactSwapped(part, true))
+pure def lawARealContactIsSwappedEverywhere(part: SwapField): bool = contactSwapped(part, false)
+pure def lawTheConversationSwapsEveryContact(reservedExample: bool): bool = contactSwapped(ConversationField, reservedExample)
+```
+
+### Egress restores pseudonyms before placeholders, and recognition never reads a placeholder
+
+Ingress replaces a credential or contact value with its placeholder first
+and names with pseudonyms second. The local recogniser reads each of the
+session's placeholders as blanks of the same length, so it never learns a
+placeholder as a name: the model keeps the placeholder and is told its
+kind. Every egress undoes the layers in reverse order: the action execution
+boundary restores pseudonyms and then placeholders, strictly, and a
+connector send to a target restores pseudonyms and then applies the secret
+reply policy. A phone or email target that a pseudonym carried therefore
+reaches the handler as its value, never as a placeholder the phone and
+email validators refuse.
+
+```quint
+type PrivacyLayer = PlaceholderLayer | PseudonymLayer
+pure val ingressLayers: List[PrivacyLayer] = List(PlaceholderLayer, PseudonymLayer)
+pure val egressLayers: List[PrivacyLayer] = List(PseudonymLayer, PlaceholderLayer)
+type CarriedTarget = { value: str, placeholder: str, pseudonym: str }
+pure val carriedValues = Set(
+  { value: "+15550100", placeholder: "__ELIZA_CONTACT_n_1__", pseudonym: "Aria Larsson" },
+  { value: "ann@example.com", placeholder: "__ELIZA_CONTACT_n_2__", pseudonym: "Esme Weber" }
+)
+pure def carriedIsDistinct(carried: CarriedTarget): bool = carried.value != "" and carried.placeholder != "" and carried.pseudonym != "" and carried.value != carried.placeholder and carried.value != carried.pseudonym and carried.placeholder != carried.pseudonym
+pure def recognisedText(carried: CarriedTarget, masked: bool): str = if (masked) "" else carried.placeholder
+pure def ingressLayer(carried: CarriedTarget, masked: bool, shown: str, layer: PrivacyLayer): str =
+  if (layer == PlaceholderLayer) (if (shown == carried.value) carried.placeholder else shown)
+  else (if (shown != "" and shown == recognisedText(carried, masked)) carried.pseudonym else shown)
+pure def egressLayer(carried: CarriedTarget, masked: bool, shown: str, layer: PrivacyLayer): str =
+  if (layer == PseudonymLayer) (if (not(masked) and shown == carried.pseudonym) carried.placeholder else shown)
+  else (if (shown == carried.placeholder) carried.value else shown)
+pure def ingressOf(carried: CarriedTarget, masked: bool): str = ingressLayers.foldl(carried.value, (shown, layer) => ingressLayer(carried, masked, shown, layer))
+pure def egressOf(carried: CarriedTarget, masked: bool, shown: str): str = egressLayers.foldl(shown, (restored, layer) => egressLayer(carried, masked, restored, layer))
+pure def lawEgressRestoresTheCarriedValue(carried: CarriedTarget, masked: bool): bool =
+  carriedIsDistinct(carried) implies egressOf(carried, masked, ingressOf(carried, masked)) == carried.value
+pure def lawTheModelKeepsTheMaskedPlaceholder(carried: CarriedTarget): bool =
+  carriedIsDistinct(carried) implies ingressOf(carried, true) == carried.placeholder
 ```
 
 ### A map coordinate never becomes a contact reference

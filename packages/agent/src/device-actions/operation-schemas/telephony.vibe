@@ -1,7 +1,7 @@
-// spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "Only an applied receipt settles applied, and only a trusted refusal settles that nothing ran"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
+// spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "Only an applied receipt settles applied, and only a trusted refusal settles that nothing ran"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
 import { digestOf } from "./digest.vibe"
 import type { OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
-import type { Evidence, FamilySchemas, OperationSchema, ReceiptContext, WireOperation } from "./family.vibe"
+import type { Classification, Evidence, FamilySchemas, OperationSchema, ReceiptContext, WireOperation } from "./family.vibe"
 
 export function bindingHash(operation: object): string | undefined {
   return digestOf(operation)
@@ -25,16 +25,18 @@ const Recipient = Schema.Union([
 ])
 
 function outcome<Op extends WireOperation, Result>(
-  operation: Schema.Decoder<Op>, result: Schema.Decoder<Result>, opType: OperationType,
-  evidence: (result: Result, operation: Op, context: ReceiptContext) => Evidence | undefined,
-  newer: (operation: Op) => boolean = () => false
+  operation: Schema.Decoder<Op>, result: Schema.Decoder<Result>, opType: OperationType | ((operation: Op) => Classification),
+  evidence: (result: Result, operation: Op, context: ReceiptContext) => Evidence | undefined
 ): OperationSchema<Op, Result> {
-  return { operation, result, classify: (op) => ({ opType, versionTwo: newer(op) }), evidence }
+  return { operation, result, classify: typeof opType === "function" ? opType : () => ({ opType, versionTwo: false }), evidence }
 }
+
+const appliedWhen = (status: string) => (result: { readonly status: string }): Evidence => result.status === status ? applied : failed
 
 const SubscriptionId = integer(0, 2_147_483_647)
 const OperationId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/))
 const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const ThreadId = Schema.String.check(Schema.isPattern(/^thread:[1-9][0-9]{0,17}$/))
 const recipients = (maximum: number) => Schema.Array(PhoneNumber).check(
   Schema.isMinLength(1), Schema.isMaxLength(maximum), Schema.makeFilter((values) => new Set(values).size === values.length)
 )
@@ -106,6 +108,8 @@ function mmsEvidence(result: typeof MmsSent.Type, operation: typeof MmsSend.Type
 
 const PhoneDial = Schema.Struct({ type: Schema.Literal("phone_dial"), target: Recipient })
 const PhoneCall = Schema.Struct({ type: Schema.Literal("phone_call"), target: Recipient })
+const PhoneKeypad = Schema.Struct({ type: Schema.Literal("phone_keypad"), number: Schema.optionalKey(PhoneNumber) })
+const KeypadOpened = Schema.Struct({ kind: Schema.Literal("phone-keypad"), status: Schema.Literals(["opened", "unavailable"]) })
 const Dialed = Schema.Struct({
   kind: Schema.Literal("phone-dial"), status: Schema.Literals(["handed-off", "unavailable", "cancelled", "failed"]),
   handler: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256), Schema.makeFilter(safeText))),
@@ -131,12 +135,13 @@ const ContactValues = Schema.Struct({
 const valueFields = ["phoneNumbers", "emailAddresses"] as const
 const ContactUpdate = Schema.Struct({
   type: Schema.Literal("contact_update"), query: Query,
-  set: Schema.optionalKey(ContactChanges), add: Schema.optionalKey(ContactValues), remove: Schema.optionalKey(ContactValues)
+  set: Schema.optionalKey(ContactChanges), add: Schema.optionalKey(ContactValues), remove: Schema.optionalKey(ContactValues),
 }).check(Schema.makeFilter(({ set, add, remove }) => (set !== undefined || add !== undefined || remove !== undefined) &&
   valueFields.every((field) => (set?.[field] === undefined || (add?.[field] === undefined && remove?.[field] === undefined)) &&
-    !(add?.[field] ?? []).some((value) => (remove?.[field] ?? []).includes(value)))
-))
+    !(add?.[field] ?? []).some((value) => (remove?.[field] ?? []).includes(value)))))
 const ContactDelete = Schema.Struct({ type: Schema.Literal("contact_delete"), query: Query })
+const ContactShow = Schema.Struct({ type: Schema.Literal("contact_show"), query: Query })
+const ContactShown = Schema.Struct({ kind: Schema.Literal("contact-show"), status: Schema.Literals(["shown", "not-found", "unavailable"]) })
 const ContactWritten = Schema.Struct({
   kind: Schema.Literal("contact-write"),
   status: Schema.Literals(["saved", "deleted", "not-found", "stale", "unavailable", "cancelled", "failed", "unknown"])
@@ -155,8 +160,23 @@ function contactEvidence(result: typeof ContactWritten.Type, operation: typeof C
 const MessageBody = BodyText(1_600).check(Schema.makeFilter((value: string) => value.trim() !== ""))
 const SmsCompose = Schema.Union([
   Schema.Struct({ type: Schema.Literal("sms_compose"), query: Query, body: MessageBody }),
-  Schema.Struct({ type: Schema.Literal("sms_compose"), target: Recipient, body: MessageBody, draft: Schema.optionalKey(Schema.Boolean) })
+  Schema.Struct({
+    type: Schema.Literal("sms_compose"), target: Recipient, body: MessageBody,
+    draft: Schema.optionalKey(Schema.Literal(true)), replyThreadId: Schema.optionalKey(ThreadId),
+  }).check(Schema.makeFilter(({ target, draft, replyThreadId }) => replyThreadId === undefined || (draft === true && target.kind === "number"))),
 ])
+
+export type SmsComposeOperation = typeof SmsCompose.Type
+
+export function smsComposeTarget(operation: SmsComposeOperation): typeof Recipient.Type {
+  return "target" in operation ? operation.target : { kind: "contact", query: operation.query }
+}
+
+function composeKind(operation: SmsComposeOperation): Classification {
+  return "target" in operation && operation.draft === true
+    ? { opType: "SmsDraft", versionTwo: operation.replyThreadId !== undefined }
+    : { opType: "SmsCompose", versionTwo: "target" in operation }
+}
 const SmsComposed = Schema.Struct({
   kind: Schema.Literal("sms-compose"),
   status: Schema.Literals(["drafted", "submitted", "sent", "delivered", "unknown", "not-found", "unavailable", "cancelled", "failed"])
@@ -166,11 +186,11 @@ const SmsReplied = Schema.Struct({
   kind: Schema.Literal("sms-reply"), status: Schema.Literals(["drafted", "none-selected", "occupied", "unavailable"])
 })
 
-function composeEvidence({ status }: typeof SmsComposed.Type, operation: typeof SmsCompose.Type): Evidence | undefined {
-  const draftOnly = "draft" in operation && operation.draft === true
-  const toNumber = "target" in operation && operation.target.kind === "number"
-  if (draftOnly && (status === "submitted" || status === "sent" || status === "delivered" || status === "unknown")) return undefined
-  if (toNumber && status === "not-found") return undefined
+const sendStatuses: ReadonlySet<string> = new Set(["submitted", "sent", "delivered", "unknown"])
+
+function composeEvidence({ status }: typeof SmsComposed.Type, operation: SmsComposeOperation): Evidence | undefined {
+  if (composeKind(operation).opType === "SmsDraft" && sendStatuses.has(status)) return undefined
+  if (status === "not-found" && smsComposeTarget(operation).kind !== "contact") return undefined
   switch (status) {
     case "drafted": case "submitted": case "sent": case "delivered": return applied
     case "not-found": case "unavailable": case "cancelled": return noSubmission
@@ -179,28 +199,12 @@ function composeEvidence({ status }: typeof SmsComposed.Type, operation: typeof 
   }
 }
 
-const NoSelection = Schema.Literals(["none-selected", "unavailable"])
-const ContactShow = Schema.Struct({ type: Schema.Literal("contact_show"), query: Query })
-const ContactShown = Schema.Struct({ kind: Schema.Literal("contact-show"), status: Schema.Literals(["shown", "not-found", "unavailable"]) })
-const ContactRead = Schema.Struct({ type: Schema.Literal("contact_read_selected") })
-const SharedValue = (maximum: number) => Schema.Array(Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(maximum), Schema.makeFilter(safeText)))
-  .check(Schema.isMaxLength(32))
-const ContactTail = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("contact-read"), status: Schema.Literal("read"),
-    contact: Schema.Struct({ displayName: Schema.NullOr(Query), phoneNumbers: SharedValue(64), emailAddresses: SharedValue(254) })
-  }),
-  Schema.Struct({ kind: Schema.Literal("contact-read"), status: NoSelection })
-])
-const PhoneKeypad = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("phone_keypad") }),
-  Schema.Struct({ type: Schema.Literal("phone_keypad"), number: PhoneNumber })
-])
-const KeypadOpened = Schema.Struct({ kind: Schema.Literal("phone-keypad"), status: Schema.Literals(["opened", "unavailable"]) })
 const MessagesRead = Schema.Struct({ type: Schema.Literal("messages_read_selected") })
 const VoicemailRead = Schema.Struct({ type: Schema.Literal("voicemail_read_selected") })
 const VoicemailDelete = Schema.Struct({ type: Schema.Literal("voicemail_delete_selected") })
+const ContactRead = Schema.Struct({ type: Schema.Literal("contact_read_selected") })
 const ReadMessage = Schema.Struct({ direction: Schema.Literals(["in", "out"]), date: count, body: BodyText(1_600) })
+const NoSelection = Schema.Literals(["none-selected", "unavailable"])
 const MessagesTail = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("messages-read"), status: Schema.Literal("read"), participant: Schema.NullOr(Label),
@@ -225,11 +229,19 @@ const Voicemail = Schema.Union([
   }),
   Schema.Struct({ kind: Schema.Literal("voicemail-read"), status: NoSelection })
 ])
+const SharedValue = (maximum: number) => Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(maximum), Schema.makeFilter(safeText))
+const SharedValues = (maximum: number) => Schema.Array(SharedValue(maximum)).check(Schema.isMaxLength(32))
+const ContactShared = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("contact-read"), status: Schema.Literal("read"),
+    contact: Schema.Struct({ displayName: Schema.NullOr(Query), phoneNumbers: SharedValues(64), emailAddresses: SharedValues(254) }),
+  }),
+  Schema.Struct({ kind: Schema.Literal("contact-read"), status: NoSelection })
+])
 const SmsLatestSender = Schema.Union([
   Schema.Struct({ type: Schema.Literal("sms_latest_sender") }),
   Schema.Struct({ type: Schema.Literal("sms_latest_sender"), includeAddress: Schema.Literal(true) })
 ])
-const ThreadId = Schema.String.check(Schema.isPattern(/^thread:[1-9][0-9]{0,17}$/))
 const senderKind = { kind: Schema.Literal("sms-latest-sender") }
 const LatestSender = Schema.Union([
   Schema.Struct({ ...senderKind, status: Schema.Literal("found"), numberEnding: Schema.String.check(Schema.isPattern(/^[0-9]{4}$/)) }),
@@ -255,22 +267,24 @@ const VoicemailDeleted = Schema.Struct({
 export const telephonyOperations = {
   sms_send: outcome(SmsSend, SmsSent, "SmsSend", smsEvidence),
   mms_send: outcome(MmsSend, MmsSent, "MmsSend", mmsEvidence),
-  phone_dial: outcome(PhoneDial, Dialed, "PhoneDial", (result, operation) =>
+  phone_dial: outcome(PhoneDial, Dialed, (operation) => ({ opType: "PhoneDial", versionTwo: operation.target.kind === "contact" }), (result, operation) =>
     result.contact && operation.target.kind !== "contact" ? undefined : result.status === "handed-off" ? applied : failed),
   phone_call: outcome(PhoneCall, Called, "PhoneCall", (result, operation) =>
     operation.target.kind !== "contact" && (result.contact || result.status === "not-found") ? undefined :
     result.status === "placed" || result.status === "emergency-handoff" ? applied : failed),
   contact_create: outcome(ContactCreate, ContactWritten, "ContactCreate", contactEvidence),
-  contact_update: outcome(ContactUpdate, ContactWritten, "ContactUpdate", contactEvidence, (operation) => "add" in operation || "remove" in operation),
+  contact_update: outcome(ContactUpdate, ContactWritten, (operation) => ({
+    opType: "ContactUpdate", versionTwo: operation.add !== undefined || operation.remove !== undefined,
+  }), contactEvidence),
   contact_delete: outcome(ContactDelete, ContactWritten, "ContactDelete", contactEvidence),
-  contact_show: outcome(ContactShow, ContactShown, "ContactShow", (result) => result.status === "shown" ? applied : failed),
-  contact_read_selected: outcome(ContactRead, ContactTail, "ContactReadSelected", (result) => result.status === "read" ? applied : failed),
-  phone_keypad: outcome(PhoneKeypad, KeypadOpened, "PhoneKeypad", (result) => result.status === "opened" ? applied : failed, (operation) => "number" in operation),
-  sms_compose: outcome(SmsCompose, SmsComposed, "SmsCompose", composeEvidence, (operation) => "target" in operation),
+  contact_show: outcome(ContactShow, ContactShown, "ContactShow", appliedWhen("shown")),
+  contact_read_selected: outcome(ContactRead, ContactShared, "ContactReadSelected", appliedWhen("read")),
+  phone_keypad: outcome(PhoneKeypad, KeypadOpened, "PhoneKeypad", appliedWhen("opened")),
+  sms_compose: outcome(SmsCompose, SmsComposed, composeKind, composeEvidence),
   sms_reply_selected: outcome(SmsReply, SmsReplied, "SmsReplySelected", (result) => result.status === "drafted" ? applied : noSubmission),
-  messages_read_selected: outcome(MessagesRead, MessagesTail, "MessagesReadSelected", (result) => result.status === "read" ? applied : failed),
-  voicemail_read_selected: outcome(VoicemailRead, Voicemail, "VoicemailReadSelected", (result) => result.status === "read" ? applied : failed),
-  voicemail_delete_selected: outcome(VoicemailDelete, VoicemailDeleted, "VoicemailDeleteSelected", (result) => result.status === "deleted" ? applied : failed),
+  messages_read_selected: outcome(MessagesRead, MessagesTail, "MessagesReadSelected", appliedWhen("read")),
+  voicemail_read_selected: outcome(VoicemailRead, Voicemail, "VoicemailReadSelected", appliedWhen("read")),
+  voicemail_delete_selected: outcome(VoicemailDelete, VoicemailDeleted, "VoicemailDeleteSelected", appliedWhen("deleted")),
   sms_latest_sender: {
     operation: SmsLatestSender, result: LatestSender, evidence: senderEvidence,
     classify: (operation: typeof SmsLatestSender.Type) => ({ opType: "SmsLatestSender", versionTwo: "includeAddress" in operation }),

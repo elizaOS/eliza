@@ -1,4 +1,4 @@
-// spec/os/voice/speechOutput.md, "Story: Prime the audio output without playing over anything"; spec/os/voice/speechOutput.md, "Story: Start a reply's audio promptly without playing over anything"
+// spec/os/voice/speechOutput.md, "Story: Prime the audio output without playing over anything"; spec/os/voice/speechOutput.md, "Story: Start a reply's audio promptly without playing over anything"; spec/os/voice/speechOutput.md, "A listener holds focus while its microphone is open, and a transient loss pauses it until focus returns"
 package ai.eliza.voice;
 
 import java.io.BufferedReader;
@@ -284,6 +284,12 @@ public final class SpeechOutputReplay {
         return notices(gate.end());
       case "cancelSpeech":
         return notices(gate.cancel());
+      case "openListening": {
+        boolean granted = flag(body, "granted");
+        return notices(gate.openListening(() -> granted));
+      }
+      case "closeListening":
+        return notices(gate.closeListening());
       case "focusChanged":
         return notices(gate.focusChanged(switch (text(body, "change")) {
           case "FocusGain" -> SpeechAudioFocusPolicy.Event.GAIN;
@@ -314,11 +320,15 @@ public final class SpeechOutputReplay {
     return switch (notice) {
       case REFUSED_CALL_ACTIVE -> "RefusedCallActive";
       case REFUSED_FOCUS_DENIED -> "RefusedFocusDenied";
+      case REFUSED_FOCUS_PAUSED -> "RefusedFocusPaused";
       case STOP_PLAYBACK -> "StopPlayback";
       case ABANDON_FOCUS -> "AbandonFocus";
       case DUCK_VOLUME -> "DuckVolume";
       case RESTORE_VOLUME -> "RestoreVolume";
       case STOP_CAPTURE -> "StopCapture";
+      case PAUSE_LISTENING -> "PauseListening";
+      case RESUME_LISTENING -> "ResumeListening";
+      case PERMANENT_LOSS -> "PermanentLoss";
     };
   }
 
@@ -332,12 +342,16 @@ public final class SpeechOutputReplay {
       listed.add("{\"workerId\":" + worker.id + ",\"phase\":" + quoted(worker.stage().phase)
           + ",\"closed\":" + worker.warmup.closed() + ",\"elapsedMs\":" + worker.elapsedMs() + "}");
     }
+    String volume = quoted(gate.ducked() ? "Ducked" : "FullVolume");
     String speech = utterance == null
         ? "{\"tag\":\"Silent\"}"
         : "{\"tag\":\"Speaking\",\"utteranceId\":" + utterance.id() + ",\"written\":" + utterance.speaker().written
-            + ",\"volume\":" + quoted(gate.ducked() ? "Ducked" : "FullVolume") + "}";
+            + ",\"volume\":" + volume + "}";
+    String hold = !gate.listening() ? "{\"tag\":\"NoHold\"}"
+        : gate.paused() ? "{\"tag\":\"HoldPaused\"}"
+        : "{\"tag\":\"Holding\",\"volume\":" + volume + "}";
     return "{\"owner\":" + ownerId + ",\"workers\":[" + String.join(",", listed) + "],\"speech\":" + speech
-        + ",\"mode\":" + quoted(gate.callActive() ? "CallAudio" : "NormalAudio") + "}";
+        + ",\"mode\":" + quoted(gate.callActive() ? "CallAudio" : "NormalAudio") + ",\"hold\":" + hold + "}";
   }
 
   private static Matcher field(String body, String name, String value) {

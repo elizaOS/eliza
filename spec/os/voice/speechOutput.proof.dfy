@@ -31,11 +31,12 @@ lemma focusChanged_ensures(s: SpeechOutput, change: FocusChange)
   ensures (inv(s) ==> canFocusChanged(s, change) ==> alwaysWorkerIdsAreUnique(focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> alwaysNoSpeechDuringCall(focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> alwaysSpeakingHasPositiveUtteranceId(focusChanged(s, change).state))
+  ensures (inv(s) ==> canFocusChanged(s, change) ==> alwaysPausedListeningIsSilent(focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> stepRetiredWorkerNeverStartsPlaying(s, focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> stepNoWriteAfterRetireOrTimeout(s, focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> stepOutputReleasedOnce(s, focusChanged(s, change).state))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> stepFirstAudioReportedOnce(s, "focusChanged", focusChanged(s, change).state, focusChanged(s, change).out))
-  ensures (inv(s) ==> canFocusChanged(s, change) ==> stepFocusAbandonedWhenSpeechStops(s, "focusChanged", focusChanged(s, change).state, focusChanged(s, change).out))
+  ensures (inv(s) ==> canFocusChanged(s, change) ==> stepFocusAbandonedWhenUnused(s, "focusChanged", focusChanged(s, change).state, focusChanged(s, change).out))
   ensures (inv(s) ==> canFocusChanged(s, change) ==> stepStoppedSpeechDropsItsAudio(s, "focusChanged", focusChanged(s, change).state, focusChanged(s, change).out))
 {
   if inv(s) && canFocusChanged(s, change) {
@@ -49,11 +50,12 @@ lemma writeSpeech_ensures(s: SpeechOutput)
   ensures (inv(s) ==> canWriteSpeech(s) ==> alwaysWorkerIdsAreUnique(writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> alwaysNoSpeechDuringCall(writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> alwaysSpeakingHasPositiveUtteranceId(writeSpeech(s).state))
+  ensures (inv(s) ==> canWriteSpeech(s) ==> alwaysPausedListeningIsSilent(writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> stepRetiredWorkerNeverStartsPlaying(s, writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> stepNoWriteAfterRetireOrTimeout(s, writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> stepOutputReleasedOnce(s, writeSpeech(s).state))
   ensures (inv(s) ==> canWriteSpeech(s) ==> stepFirstAudioReportedOnce(s, "writeSpeech", writeSpeech(s).state, writeSpeech(s).out))
-  ensures (inv(s) ==> canWriteSpeech(s) ==> stepFocusAbandonedWhenSpeechStops(s, "writeSpeech", writeSpeech(s).state, writeSpeech(s).out))
+  ensures (inv(s) ==> canWriteSpeech(s) ==> stepFocusAbandonedWhenUnused(s, "writeSpeech", writeSpeech(s).state, writeSpeech(s).out))
   ensures (inv(s) ==> canWriteSpeech(s) ==> stepStoppedSpeechDropsItsAudio(s, "writeSpeech", writeSpeech(s).state, writeSpeech(s).out))
 {
   if inv(s) && canWriteSpeech(s) {
@@ -78,11 +80,12 @@ lemma endSpeech_ensures(s: SpeechOutput)
   ensures (inv(s) ==> canEndSpeech(s) ==> alwaysWorkerIdsAreUnique(endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> alwaysNoSpeechDuringCall(endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> alwaysSpeakingHasPositiveUtteranceId(endSpeech(s).state))
+  ensures (inv(s) ==> canEndSpeech(s) ==> alwaysPausedListeningIsSilent(endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> stepRetiredWorkerNeverStartsPlaying(s, endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> stepNoWriteAfterRetireOrTimeout(s, endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> stepOutputReleasedOnce(s, endSpeech(s).state))
   ensures (inv(s) ==> canEndSpeech(s) ==> stepFirstAudioReportedOnce(s, "endSpeech", endSpeech(s).state, endSpeech(s).out))
-  ensures (inv(s) ==> canEndSpeech(s) ==> stepFocusAbandonedWhenSpeechStops(s, "endSpeech", endSpeech(s).state, endSpeech(s).out))
+  ensures (inv(s) ==> canEndSpeech(s) ==> stepFocusAbandonedWhenUnused(s, "endSpeech", endSpeech(s).state, endSpeech(s).out))
   ensures (inv(s) ==> canEndSpeech(s) ==> stepStoppedSpeechDropsItsAudio(s, "endSpeech", endSpeech(s).state, endSpeech(s).out))
 {
   if inv(s) && canEndSpeech(s) {
@@ -96,11 +99,12 @@ lemma cancelSpeech_ensures(s: SpeechOutput)
   ensures (inv(s) ==> canCancelSpeech(s) ==> alwaysWorkerIdsAreUnique(cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> alwaysNoSpeechDuringCall(cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> alwaysSpeakingHasPositiveUtteranceId(cancelSpeech(s).state))
+  ensures (inv(s) ==> canCancelSpeech(s) ==> alwaysPausedListeningIsSilent(cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> stepRetiredWorkerNeverStartsPlaying(s, cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> stepNoWriteAfterRetireOrTimeout(s, cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> stepOutputReleasedOnce(s, cancelSpeech(s).state))
   ensures (inv(s) ==> canCancelSpeech(s) ==> stepFirstAudioReportedOnce(s, "cancelSpeech", cancelSpeech(s).state, cancelSpeech(s).out))
-  ensures (inv(s) ==> canCancelSpeech(s) ==> stepFocusAbandonedWhenSpeechStops(s, "cancelSpeech", cancelSpeech(s).state, cancelSpeech(s).out))
+  ensures (inv(s) ==> canCancelSpeech(s) ==> stepFocusAbandonedWhenUnused(s, "cancelSpeech", cancelSpeech(s).state, cancelSpeech(s).out))
   ensures (inv(s) ==> canCancelSpeech(s) ==> stepStoppedSpeechDropsItsAudio(s, "cancelSpeech", cancelSpeech(s).state, cancelSpeech(s).out))
 {
   if inv(s) && canCancelSpeech(s) {
@@ -189,11 +193,12 @@ lemma stopWarmup_ensures(s: SpeechOutput)
   ensures (inv(s) ==> canStopWarmup(s) ==> alwaysWorkerIdsAreUnique(stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> alwaysNoSpeechDuringCall(stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> alwaysSpeakingHasPositiveUtteranceId(stopWarmup(s)))
+  ensures (inv(s) ==> canStopWarmup(s) ==> alwaysPausedListeningIsSilent(stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> stepRetiredWorkerNeverStartsPlaying(s, stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> stepNoWriteAfterRetireOrTimeout(s, stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> stepOutputReleasedOnce(s, stopWarmup(s)))
   ensures (inv(s) ==> canStopWarmup(s) ==> stepFirstAudioReportedOnce(s, "stopWarmup", stopWarmup(s), []))
-  ensures (inv(s) ==> canStopWarmup(s) ==> stepFocusAbandonedWhenSpeechStops(s, "stopWarmup", stopWarmup(s), []))
+  ensures (inv(s) ==> canStopWarmup(s) ==> stepFocusAbandonedWhenUnused(s, "stopWarmup", stopWarmup(s), []))
   ensures (inv(s) ==> canStopWarmup(s) ==> stepStoppedSpeechDropsItsAudio(s, "stopWarmup", stopWarmup(s), []))
 {
   if inv(s) && canStopWarmup(s) {
@@ -207,16 +212,17 @@ lemma startSpeech_ensures(s: SpeechOutput, utteranceId: int, granted: bool)
   ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> alwaysWorkerIdsAreUnique(startSpeech(s, utteranceId, granted).state))
   ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> alwaysNoSpeechDuringCall(startSpeech(s, utteranceId, granted).state))
   ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> alwaysSpeakingHasPositiveUtteranceId(startSpeech(s, utteranceId, granted).state))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> alwaysPausedListeningIsSilent(startSpeech(s, utteranceId, granted).state))
   ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepRetiredWorkerNeverStartsPlaying(s, startSpeech(s, utteranceId, granted).state))
   ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepNoWriteAfterRetireOrTimeout(s, startSpeech(s, utteranceId, granted).state))
   ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepOutputReleasedOnce(s, startSpeech(s, utteranceId, granted).state))
   ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepFirstAudioReportedOnce(s, "startSpeech", startSpeech(s, utteranceId, granted).state, startSpeech(s, utteranceId, granted).out))
-  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepFocusAbandonedWhenSpeechStops(s, "startSpeech", startSpeech(s, utteranceId, granted).state, startSpeech(s, utteranceId, granted).out))
+  ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepFocusAbandonedWhenUnused(s, "startSpeech", startSpeech(s, utteranceId, granted).state, startSpeech(s, utteranceId, granted).out))
   ensures (inv(s) ==> canStartSpeech(s, utteranceId) ==> stepStoppedSpeechDropsItsAudio(s, "startSpeech", startSpeech(s, utteranceId, granted).state, startSpeech(s, utteranceId, granted).out))
 {
   if inv(s) && canStartSpeech(s, utteranceId) {
     var after := startSpeech(s, utteranceId, granted).state;
-    if s.mode.CallAudio? || !granted {
+    if s.mode.CallAudio? || s.hold.HoldPaused? || (!granted && s.hold.NoHold?) {
       UnchangedWorkersKeepPhaseRules(s, after);
     } else {
       RetiringWorkersKeepsRules(s, after);
@@ -230,11 +236,12 @@ lemma audioModeChanged_ensures(s: SpeechOutput, mode: AudioMode)
   ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> alwaysWorkerIdsAreUnique(audioModeChanged(s, mode).state))
   ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> alwaysNoSpeechDuringCall(audioModeChanged(s, mode).state))
   ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> alwaysSpeakingHasPositiveUtteranceId(audioModeChanged(s, mode).state))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> alwaysPausedListeningIsSilent(audioModeChanged(s, mode).state))
   ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepRetiredWorkerNeverStartsPlaying(s, audioModeChanged(s, mode).state))
   ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepNoWriteAfterRetireOrTimeout(s, audioModeChanged(s, mode).state))
   ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepOutputReleasedOnce(s, audioModeChanged(s, mode).state))
   ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepFirstAudioReportedOnce(s, "audioModeChanged", audioModeChanged(s, mode).state, audioModeChanged(s, mode).out))
-  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepFocusAbandonedWhenSpeechStops(s, "audioModeChanged", audioModeChanged(s, mode).state, audioModeChanged(s, mode).out))
+  ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepFocusAbandonedWhenUnused(s, "audioModeChanged", audioModeChanged(s, mode).state, audioModeChanged(s, mode).out))
   ensures (inv(s) ==> canAudioModeChanged(s, mode) ==> stepStoppedSpeechDropsItsAudio(s, "audioModeChanged", audioModeChanged(s, mode).state, audioModeChanged(s, mode).out))
 {
   if inv(s) && canAudioModeChanged(s, mode) {
@@ -321,11 +328,12 @@ lemma openWarmup_ensures(s: SpeechOutput, id: int, opened_: OpenOutcome)
   ensures (inv(s) ==> canOpenWarmup(s, id) ==> alwaysWorkerIdsAreUnique(openWarmup(s, id, opened_)))
   ensures (inv(s) ==> canOpenWarmup(s, id) ==> alwaysNoSpeechDuringCall(openWarmup(s, id, opened_)))
   ensures (inv(s) ==> canOpenWarmup(s, id) ==> alwaysSpeakingHasPositiveUtteranceId(openWarmup(s, id, opened_)))
+  ensures (inv(s) ==> canOpenWarmup(s, id) ==> alwaysPausedListeningIsSilent(openWarmup(s, id, opened_)))
   ensures (inv(s) ==> canOpenWarmup(s, id) ==> stepRetiredWorkerNeverStartsPlaying(s, openWarmup(s, id, opened_)))
   ensures (inv(s) ==> canOpenWarmup(s, id) ==> stepNoWriteAfterRetireOrTimeout(s, openWarmup(s, id, opened_)))
   ensures (inv(s) ==> canOpenWarmup(s, id) ==> stepOutputReleasedOnce(s, openWarmup(s, id, opened_)))
   ensures (inv(s) ==> canOpenWarmup(s, id) ==> stepFirstAudioReportedOnce(s, "openWarmup", openWarmup(s, id, opened_), []))
-  ensures (inv(s) ==> canOpenWarmup(s, id) ==> stepFocusAbandonedWhenSpeechStops(s, "openWarmup", openWarmup(s, id, opened_), []))
+  ensures (inv(s) ==> canOpenWarmup(s, id) ==> stepFocusAbandonedWhenUnused(s, "openWarmup", openWarmup(s, id, opened_), []))
   ensures (inv(s) ==> canOpenWarmup(s, id) ==> stepStoppedSpeechDropsItsAudio(s, "openWarmup", openWarmup(s, id, opened_), []))
 {
   if inv(s) && canOpenWarmup(s, id) {
@@ -343,11 +351,12 @@ lemma checkWarmupLoop_ensures(s: SpeechOutput, id: int, elapsedMs: int)
   ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> alwaysWorkerIdsAreUnique(checkWarmupLoop(s, id, elapsedMs)))
   ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> alwaysNoSpeechDuringCall(checkWarmupLoop(s, id, elapsedMs)))
   ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> alwaysSpeakingHasPositiveUtteranceId(checkWarmupLoop(s, id, elapsedMs)))
+  ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> alwaysPausedListeningIsSilent(checkWarmupLoop(s, id, elapsedMs)))
   ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> stepRetiredWorkerNeverStartsPlaying(s, checkWarmupLoop(s, id, elapsedMs)))
   ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> stepNoWriteAfterRetireOrTimeout(s, checkWarmupLoop(s, id, elapsedMs)))
   ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> stepOutputReleasedOnce(s, checkWarmupLoop(s, id, elapsedMs)))
   ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> stepFirstAudioReportedOnce(s, "checkWarmupLoop", checkWarmupLoop(s, id, elapsedMs), []))
-  ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> stepFocusAbandonedWhenSpeechStops(s, "checkWarmupLoop", checkWarmupLoop(s, id, elapsedMs), []))
+  ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> stepFocusAbandonedWhenUnused(s, "checkWarmupLoop", checkWarmupLoop(s, id, elapsedMs), []))
   ensures (inv(s) ==> canCheckWarmupLoop(s, id, elapsedMs) ==> stepStoppedSpeechDropsItsAudio(s, "checkWarmupLoop", checkWarmupLoop(s, id, elapsedMs), []))
 {
   if inv(s) && canCheckWarmupLoop(s, id, elapsedMs) {
@@ -364,11 +373,12 @@ lemma finishWarmupWrite_ensures(s: SpeechOutput, id: int, written: bool)
   ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> alwaysWorkerIdsAreUnique(finishWarmupWrite(s, id, written)))
   ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> alwaysNoSpeechDuringCall(finishWarmupWrite(s, id, written)))
   ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> alwaysSpeakingHasPositiveUtteranceId(finishWarmupWrite(s, id, written)))
+  ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> alwaysPausedListeningIsSilent(finishWarmupWrite(s, id, written)))
   ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> stepRetiredWorkerNeverStartsPlaying(s, finishWarmupWrite(s, id, written)))
   ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> stepNoWriteAfterRetireOrTimeout(s, finishWarmupWrite(s, id, written)))
   ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> stepOutputReleasedOnce(s, finishWarmupWrite(s, id, written)))
   ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> stepFirstAudioReportedOnce(s, "finishWarmupWrite", finishWarmupWrite(s, id, written), []))
-  ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> stepFocusAbandonedWhenSpeechStops(s, "finishWarmupWrite", finishWarmupWrite(s, id, written), []))
+  ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> stepFocusAbandonedWhenUnused(s, "finishWarmupWrite", finishWarmupWrite(s, id, written), []))
   ensures (inv(s) ==> canFinishWarmupWrite(s, id) ==> stepStoppedSpeechDropsItsAudio(s, "finishWarmupWrite", finishWarmupWrite(s, id, written), []))
 {
   if inv(s) && canFinishWarmupWrite(s, id) {
@@ -385,11 +395,12 @@ lemma releaseWarmup_ensures(s: SpeechOutput, id: int)
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysWorkerIdsAreUnique(releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysNoSpeechDuringCall(releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysSpeakingHasPositiveUtteranceId(releaseWarmup(s, id)))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysPausedListeningIsSilent(releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepRetiredWorkerNeverStartsPlaying(s, releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepNoWriteAfterRetireOrTimeout(s, releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepOutputReleasedOnce(s, releaseWarmup(s, id)))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepFirstAudioReportedOnce(s, "releaseWarmup", releaseWarmup(s, id), []))
-  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepFocusAbandonedWhenSpeechStops(s, "releaseWarmup", releaseWarmup(s, id), []))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepFocusAbandonedWhenUnused(s, "releaseWarmup", releaseWarmup(s, id), []))
   ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepStoppedSpeechDropsItsAudio(s, "releaseWarmup", releaseWarmup(s, id), []))
 {
   if inv(s) && canReleaseWarmup(s, id) {
@@ -405,11 +416,12 @@ lemma requestWarmup_ensures(s: SpeechOutput, id: int)
   ensures (inv(s) ==> canRequestWarmup(s, id) ==> alwaysWorkerIdsAreUnique(requestWarmup(s, id)))
   ensures (inv(s) ==> canRequestWarmup(s, id) ==> alwaysNoSpeechDuringCall(requestWarmup(s, id)))
   ensures (inv(s) ==> canRequestWarmup(s, id) ==> alwaysSpeakingHasPositiveUtteranceId(requestWarmup(s, id)))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> alwaysPausedListeningIsSilent(requestWarmup(s, id)))
   ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepRetiredWorkerNeverStartsPlaying(s, requestWarmup(s, id)))
   ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepNoWriteAfterRetireOrTimeout(s, requestWarmup(s, id)))
   ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepOutputReleasedOnce(s, requestWarmup(s, id)))
   ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepFirstAudioReportedOnce(s, "requestWarmup", requestWarmup(s, id), []))
-  ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepFocusAbandonedWhenSpeechStops(s, "requestWarmup", requestWarmup(s, id), []))
+  ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepFocusAbandonedWhenUnused(s, "requestWarmup", requestWarmup(s, id), []))
   ensures (inv(s) ==> canRequestWarmup(s, id) ==> stepStoppedSpeechDropsItsAudio(s, "requestWarmup", requestWarmup(s, id), []))
 {
   if inv(s) && canRequestWarmup(s, id) {
@@ -456,5 +468,43 @@ lemma requestWarmup_ensures(s: SpeechOutput, id: int)
       ProofLib.FilterAppend(matches, retired.workers, opening);
       assert workerOf(w.workerId, after) == workerOf(w.workerId, retired);
     }
+  }
+}
+
+lemma openListening_ensures(s: SpeechOutput, granted: bool)
+  ensures (inv(s) ==> canOpenListening(s) ==> alwaysWarmupOnlyWhileIdle(openListening(s, granted).state))
+  ensures (inv(s) ==> canOpenListening(s) ==> alwaysOnlyTheOwnerIsOpen(openListening(s, granted).state))
+  ensures (inv(s) ==> canOpenListening(s) ==> alwaysWorkerIdsAreUnique(openListening(s, granted).state))
+  ensures (inv(s) ==> canOpenListening(s) ==> alwaysNoSpeechDuringCall(openListening(s, granted).state))
+  ensures (inv(s) ==> canOpenListening(s) ==> alwaysSpeakingHasPositiveUtteranceId(openListening(s, granted).state))
+  ensures (inv(s) ==> canOpenListening(s) ==> alwaysPausedListeningIsSilent(openListening(s, granted).state))
+  ensures (inv(s) ==> canOpenListening(s) ==> stepRetiredWorkerNeverStartsPlaying(s, openListening(s, granted).state))
+  ensures (inv(s) ==> canOpenListening(s) ==> stepNoWriteAfterRetireOrTimeout(s, openListening(s, granted).state))
+  ensures (inv(s) ==> canOpenListening(s) ==> stepOutputReleasedOnce(s, openListening(s, granted).state))
+  ensures (inv(s) ==> canOpenListening(s) ==> stepFirstAudioReportedOnce(s, "openListening", openListening(s, granted).state, openListening(s, granted).out))
+  ensures (inv(s) ==> canOpenListening(s) ==> stepFocusAbandonedWhenUnused(s, "openListening", openListening(s, granted).state, openListening(s, granted).out))
+  ensures (inv(s) ==> canOpenListening(s) ==> stepStoppedSpeechDropsItsAudio(s, "openListening", openListening(s, granted).state, openListening(s, granted).out))
+{
+  if inv(s) && canOpenListening(s) {
+    UnchangedWorkersKeepPhaseRules(s, openListening(s, granted).state);
+  }
+}
+
+lemma closeListening_ensures(s: SpeechOutput)
+  ensures (inv(s) ==> canCloseListening(s) ==> alwaysWarmupOnlyWhileIdle(closeListening(s).state))
+  ensures (inv(s) ==> canCloseListening(s) ==> alwaysOnlyTheOwnerIsOpen(closeListening(s).state))
+  ensures (inv(s) ==> canCloseListening(s) ==> alwaysWorkerIdsAreUnique(closeListening(s).state))
+  ensures (inv(s) ==> canCloseListening(s) ==> alwaysNoSpeechDuringCall(closeListening(s).state))
+  ensures (inv(s) ==> canCloseListening(s) ==> alwaysSpeakingHasPositiveUtteranceId(closeListening(s).state))
+  ensures (inv(s) ==> canCloseListening(s) ==> alwaysPausedListeningIsSilent(closeListening(s).state))
+  ensures (inv(s) ==> canCloseListening(s) ==> stepRetiredWorkerNeverStartsPlaying(s, closeListening(s).state))
+  ensures (inv(s) ==> canCloseListening(s) ==> stepNoWriteAfterRetireOrTimeout(s, closeListening(s).state))
+  ensures (inv(s) ==> canCloseListening(s) ==> stepOutputReleasedOnce(s, closeListening(s).state))
+  ensures (inv(s) ==> canCloseListening(s) ==> stepFirstAudioReportedOnce(s, "closeListening", closeListening(s).state, closeListening(s).out))
+  ensures (inv(s) ==> canCloseListening(s) ==> stepFocusAbandonedWhenUnused(s, "closeListening", closeListening(s).state, closeListening(s).out))
+  ensures (inv(s) ==> canCloseListening(s) ==> stepStoppedSpeechDropsItsAudio(s, "closeListening", closeListening(s).state, closeListening(s).out))
+{
+  if inv(s) && canCloseListening(s) {
+    UnchangedWorkersKeepPhaseRules(s, closeListening(s).state);
   }
 }
