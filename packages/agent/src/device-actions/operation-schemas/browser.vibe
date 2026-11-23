@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"
+// spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"
 import { withoutResult } from "./device.schema.vibe"
 import type { FamilySchemas } from "./family.vibe"
 
@@ -22,6 +22,7 @@ const BrowserTabClose = Schema.Union([
   Schema.Struct({ type: Schema.Literal("browser_tab_close"), target: words(128) }),
   Schema.Struct({ type: Schema.Literal("browser_tab_close"), all: Schema.Literal(true) }),
 ])
+const BrowserTabsShow = Schema.Struct({ type: Schema.Literal("browser_tabs_show") })
 const BrowserFind = Schema.Struct({ type: Schema.Literal("browser_find"), text: words(256) })
 const BrowserHistory = Schema.Struct({ type: Schema.Literal("browser_history"), action: Schema.Literals(["back", "forward", "reload", "stop"]) })
 
@@ -30,6 +31,7 @@ export const browserOperations = {
   browser_tab_new: withoutResult(BrowserTabNew, "BrowserTabNew"),
   browser_tab_switch: withoutResult(BrowserTabSwitch, "BrowserTabSwitch"),
   browser_tab_close: withoutResult(BrowserTabClose, "BrowserTabClose", (operation) => "all" in operation),
+  browser_tabs_show: withoutResult(BrowserTabsShow, "BrowserTabsShow"),
   browser_find: withoutResult(BrowserFind, "BrowserFind"),
   browser_history: withoutResult(BrowserHistory, "BrowserHistory"),
 } satisfies FamilySchemas
