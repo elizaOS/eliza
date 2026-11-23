@@ -1,5 +1,6 @@
 // Shared bounded execution for the Quint, TypeScript, test and proof stages.
 import { execFile, spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { addAbortListener } from "node:events";
 import fs from "node:fs";
 import { availableParallelism } from "node:os";
 import path from "node:path";
@@ -60,9 +61,13 @@ const processTable = (output: string) => output.trim().split("\n").filter(Boolea
 const processes = () => WINDOWS ? [] : processTable(spawnSync("ps", psArgs, { encoding: "utf8", timeout: ACCOUNTING_TIMEOUT, killSignal: "SIGKILL" }).stdout ?? "");
 
 const execFileAsync = promisify(execFile);
-async function readCounters(command: string, args: string[], signal?: AbortSignal) {
-  try { return (await execFileAsync(command, args, { encoding: "utf8", timeout: WATCH, killSignal: "SIGKILL", signal })).stdout; }
+async function readCounters(command: string, args: string[], signal: AbortSignal) {
+  if (signal.aborted) return "";
+  const running = execFileAsync(command, args, { encoding: "utf8", timeout: WATCH, killSignal: "SIGKILL" });
+  const stop = addAbortListener(signal, () => running.child.kill("SIGKILL"));
+  try { return (await running).stdout; }
   catch { return ""; }
+  finally { stop[Symbol.dispose](); }
 }
 
 /** The processes in `table` that `child` started, itself included. */
@@ -94,7 +99,7 @@ function run(pids) {
 }`;
 
 let linuxTicksPerSecond: number | undefined;
-async function cpuCounters(pids: number[], table: number[][], signal?: AbortSignal) {
+async function cpuCounters(pids: number[], table: number[][], signal: AbortSignal) {
   const readings = new Map<number, number>();
   if (!pids.length) return readings;
   if (process.platform === "darwin") {
@@ -168,7 +173,7 @@ function watchCpu(child: ChildProcess, check: (reading: CpuReading | undefined, 
     try {
       const jobs = [...watched];
       const readings = WINDOWS ? [] : await toolCpuSeconds(jobs.map(([job]) => job), cycle.signal);
-      await Promise.all(jobs.map(([job, report], index) => watched.has(job) && report(readings[index], cycle.signal)));
+      await Promise.all(jobs.flatMap(([job, report], index) => watched.has(job) ? [report(readings[index], cycle.signal)] : []));
     } finally { polling = undefined; }
   }, WATCH);
   return () => {
