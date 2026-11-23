@@ -5,29 +5,23 @@ import { historyReport, type HistoryReceipt, type HistoryReport } from "../gen/b
 import { browserHistoryHome } from "./contract.vibe"
 import { NATIVE_HISTORY_SUBACTIONS, isNativeHistorySubaction, observedNativeHistorySelection, type NativeHistorySelection, type NativeHistorySubaction } from "./native-command.vibe"
 
-/** The browser view and the capability through which the agent asks the requesting device's mounted browser. */
 export const BROWSER_VIEW = { viewId: "browser", capability: "browser-command" } as const
 
-/** The failure codes a mounted browser gives when it refused a command before acting on it. */
 export const TYPED_REFUSAL_CODES = ["UNAVAILABLE", "UNSUPPORTED", "STALE_REF", "SESSION_GONE", "AUTH_REQUIRED", "POLICY_BLOCKED"] as const
 
-/** The code of a failed or uncertain browser command. */
 export type BrowserFailureCode = (typeof TYPED_REFUSAL_CODES)[number] | "UNCERTAIN_OUTCOME"
 
-/** What the agent's view host answers when it asks a view, in the shape this plugin reads. */
 export type BrowserViewWait =
   | { readonly kind: "Replied"; readonly reply: string; readonly answer: { readonly success: boolean; readonly result?: unknown; readonly error?: string } }
   | { readonly kind: "Unknown" }
   | { readonly kind: "Superseded" }
   | { readonly kind: "Stopped" }
 
-/** Whether the view host published the ask, and how to wait for its answer. */
 export type BrowserViewAsked =
   | { readonly kind: "asked"; readonly wait: BrowserViewWait!! }
   | { readonly kind: "unavailable" }
   | { readonly kind: "refused" }
 
-/** The view host's grant facts for an ask, as its spec names them. */
 export interface BrowserViewGrant {
   readonly roleAllowed: boolean
   readonly standard: boolean
@@ -36,7 +30,6 @@ export interface BrowserViewGrant {
   readonly agentAuthority: boolean
 }
 
-/** The part of the agent's view host that asks the requesting client's browser view. */
 export interface BrowserViewAsker {
   ask(request: {
     readonly clientId: string
@@ -47,19 +40,16 @@ export interface BrowserViewAsker {
   }): BrowserViewAsked!!
 }
 
-/** A history move for the requesting client's mounted browser, bound to the tab its turn observed. */
 export interface HistoryRequest {
   readonly clientId: string
   readonly subaction: NativeHistorySubaction
   readonly selection?: NativeHistorySelection
 }
 
-/** How a history command ended: dispatched only, refused with a typed code, never sent, or uncertain. */
 export type HistoryOutcome =
   | { readonly report: "HistoryDispatched"; readonly subaction: NativeHistorySubaction }
   | { readonly report: Exclude<HistoryReport, "HistoryDispatched">; readonly code: BrowserFailureCode; readonly message: string }
 
-/** The requesting client's mounted browser, which runs one history move per command and never twice. */
 export service NativeBrowser {
   static readonly key = "@elizaos/plugin-browser/NativeBrowser"
   history(request: HistoryRequest): HistoryOutcome!!
@@ -115,7 +105,6 @@ function outcomeOf(read: ReadReceipt, subaction: NativeHistorySubaction): Histor
   return report === "HistoryDispatched" ? { report, subaction } : { report, code: read.code, message: read.message }
 }
 
-/** NativeBrowser over the agent's view host: each command is one ask of the requesting client's browser view, never repeated. */
 export function viewNativeBrowser(views: BrowserViewAsker) {
   return Layer.succeed(NativeBrowser, {
     effect history(request: HistoryRequest) {
@@ -137,7 +126,6 @@ function isViewAsker(value: unknown): value is BrowserViewAsker {
   return views !== undefined && typeof field(views, "ask") === "function"
 }
 
-/** The view host the agent registered on this runtime, as the asker this plugin needs, or undefined. */
 export function browserViewAsker(runtime: IAgentRuntime): BrowserViewAsker | undefined {
   const service = record(runtime.getService(viewHostServiceType))
   const views = service === undefined ? undefined : field(service, "views")
@@ -163,7 +151,6 @@ function failed(code: BrowserFailureCode, text: string): ActionResult {
   }
 }
 
-/** The planner-facing result of a history command: a dispatch receipt owns the turn's reply and never claims the page finished. */
 export function historyActionResult(outcome: HistoryOutcome): ActionResult {
   if (outcome.report !== "HistoryDispatched") return failed(outcome.code, outcome.message)
   const result = { targetId: "native-client", mode: "web", subaction: outcome.subaction, value: { dispatched: true, completed: false, requiresReadback: false } }
@@ -192,7 +179,6 @@ async function runHistory(runtime: IAgentRuntime, message: Memory, options: Hand
   return historyActionResult(await runPromise(program))
 }
 
-/** The BROWSER action for the page showing in the requesting device's own browser: back, forward and reload, each only on the tab the turn observed. */
 export const browserAction: Action = {
   name: "BROWSER",
   description: `Control the page that is showing in the requesting device's own browser. Only these commands are available: ${NATIVE_HISTORY_SUBACTIONS.join(", ")}. Do not offer any other browser command through this tool. Accepted dispatch does not prove website completion.`,
