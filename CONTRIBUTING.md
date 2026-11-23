@@ -49,8 +49,9 @@ with the exact name below. A Markdown bullet before the field name is optional.
   and trace or run ID where available. Show failure and recovery for a fix.
   For model-backed behavior, include the provider and exact model ID.
 - `UI video:` Attach before-and-after video of the same changed flow and state
-  in the application or Studio. Include the before-and-after screenshots
-  required above and steps a reviewer can repeat.
+  in the application or Studio. Include steps a reviewer can repeat.
+- `UI screenshots:` Attach the required before-and-after screenshots of the
+  same flow and state.
 - `Benchmarks:` Show comparable base and PR runs for every performance claim.
   Give the command, workload, environment, samples, metric and units, and the
   before-and-after results. Report any quality change or failure.

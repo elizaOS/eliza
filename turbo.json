@@ -111,10 +111,7 @@
         "apps/*/spec/**",
         "packages/*/package.json",
         "packages/*/spec/**",
-        "package.json",
-        "!spec/**/*.proof.dfy",
-        "!apps/*/spec/**/*.proof.dfy",
-        "!packages/*/spec/**/*.proof.dfy"
+        "package.json"
       ],
       "outputs": [
         "gen/**",
