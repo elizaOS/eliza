@@ -1,6 +1,7 @@
 // spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"
 import { assert, it } from "@effect/vitest"
-import { attestAuthenticatedApiDeliveryAudience, bindIncomingMessagePersistence, canActionRun, disclosureGateFailure, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+import { attestAuthenticatedApiDeliveryAudience, bindIncomingMessagePersistence, canActionRun, disclosureGateFailure, sha256Hex, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+import { sourceKeyId } from "../src/model.vibe"
 import {
   calendarAction, calendarAsk, calendarHost, calendarProvider, calendarRoutes, CalendarWriteNotAccepted, runCalendarAction,
   type CalendarAccount, type CalendarApprovalRow, type CalendarCache, type CalendarEvent, type CalendarProviderPort, type CalendarRouteInput,
@@ -354,6 +355,42 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   google.health.complete = false
   const stale = try asked("Do I have 20 minutes tomorrow morning?", morning)
   assert.deepStrictEqual([stale.success, at(stale.data, "availability"), at(stale.data, "slots")], [false, "unknown", undefined])
+
+  google.health.complete = true
+  const catalog = try google.port.sources(owner)
+  const workRow = catalog[0]
+  if (workRow === undefined) return try Effect.die(new Error("The Work source fixture did not load"))
+  const personal = { ...workRow, grantId: "personal-grant", summary: "Personal" }
+  const reads: string[] = []
+  try host.register({ ...google.port,
+    effect sources() { return [workRow, personal, { ...personal, grantId: "other-personal-grant", summary: "Shared" }, { ...personal, grantId: "shared-2", summary: "Shared" }] },
+    effect read(account, source, begin, end) {
+      reads.push(source.grantId)
+      return source.grantId === work.grantId ? try google.port.read(account, source, begin, end) : { events: [], complete: true }
+    },
+  })
+  const selectedWork = try asked("Am I free tomorrow morning on my Work calendar?", requestedMorning)
+  const selectedPersonal = try asked("Am I free tomorrow morning on my Personal calendar?", requestedMorning)
+  const ambiguous = try asked("Am I free tomorrow morning on my Shared calendar?", requestedMorning)
+  const unknownSource = try asked("Am I free tomorrow morning on my Missing calendar?", requestedMorning)
+  const ambiguousId = try asked("Am I free tomorrow morning?", { ...requestedMorning, calendarId: work.calendarId })
+  const aggregate = try asked("Am I free from 9am to noon on my calendar?", { ...requestedMorning, timeMin: "2030-03-04T09:00:00-08:00" })
+  assert.deepStrictEqual(at(aggregate.data, "calendarScope"), { kind: "aggregate" })
+  assert.deepStrictEqual(reads.splice(2), [work.grantId, personal.grantId, "other-personal-grant", "shared-2"])
+  const observation = { view: "calendar", revision: 1, sensitive: false, selectedObject: {
+    kind: "canonical-calendar-source", id: personal.calendarId, accountId: personal.grantId, sourceRevision: sha256Hex(sourceKeyId(personal)),
+  } }
+  const pointed = { ...late, id: "source-ask", content: { text: "Am I free tomorrow morning on this calendar?", metadata: { observation } } } as Memory
+  const selected = try runCalendarAction(host, calendarAsk(pointed), requestedMorning)
+  const staleSelection = { ...pointed, content: { ...pointed.content, metadata: { observation: {
+    ...observation, selectedObject: { ...observation.selectedObject, sourceRevision: "stale" },
+  } } } } as Memory
+  const noSelection = try runCalendarAction(host, calendarAsk(staleSelection), requestedMorning)
+  assert.deepStrictEqual([at(selectedWork.data, "isFree"), at(selectedPersonal.data, "isFree"), at(selected.data, "isFree")], [false, true, true])
+  assert.deepStrictEqual(at(selectedPersonal.data, "calendarScope"), { kind: "selected", name: "Personal" })
+  assert.deepStrictEqual([ambiguous, unknownSource, ambiguousId, noSelection].map(({ data }) => at(data, "code")),
+    Array(4).fill("CALENDAR_AVAILABILITY_SOURCE_REQUIRED"))
+  assert.deepStrictEqual(reads, [work.grantId, personal.grantId, personal.grantId])
 })
 
 it.effect(`Answer an invitation only as its invitee (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline")`, effect () => {

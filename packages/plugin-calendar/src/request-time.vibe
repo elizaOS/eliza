@@ -197,7 +197,7 @@ export function parseStatedClockTimes(value: string): StatedClockTimes {
   return distinct.size > 1 ? { kind: "several" } : { kind: "one", start: only }
 }
 
-export const residentCalendarWords = /\b(?:resident|eliza|app)\s+calendar\b/iu
+export const residentCalendarWords = /\b(?:resident|eliza|app|built-in)\s+calendar\b/iu
 
 export function statedLengths(value: string): readonly number[] | undefined {
   const found = [...value.matchAll(/\b(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?)\b/giu)]

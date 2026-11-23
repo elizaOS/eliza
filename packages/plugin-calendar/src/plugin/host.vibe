@@ -2,7 +2,7 @@
 import { sha256Hex } from "@elizaos/core"
 import { FetchHttpClient } from "effect/http"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { attendeeNotice, eventVisible, invitationVerdict, readScope, sourceRead, writeRoute, type AttendeeNotice, type SourceRead } from "../../gen/calendar__actions.effect.vibe"
+import { attendeeNotice, availabilityCatalogAdmitted, eventVisible, invitationVerdict, readScope, sourceRead, writeRoute, type AttendeeNotice, type SourceRead } from "../../gen/calendar__actions.effect.vibe"
 import type { ManagedCalendarBroker } from "../feed/broker.vibe"
 import {
   sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceHealth, type CalendarSourceKey, type CalendarSourceStatus, type CalendarSummary,
@@ -70,6 +70,16 @@ export interface CalendarSearchResult {
   readonly timeMin: string
   readonly timeMax: string
 }
+
+export type AvailabilityScope =
+  | { readonly kind: "all" | "builtin" | "unresolved" }
+  | { readonly kind: "named"; readonly name: string }
+  | { readonly kind: "legacy"; readonly calendarId: string }
+  | { readonly kind: "selected"; readonly calendarId: string; readonly grantId: string; readonly sourceRevision: string }
+
+type CalendarListing = { readonly port: CalendarProviderPort; readonly row: CalendarSummary }
+
+const calendarLabel = (text: string) => text.normalize("NFKC").trim().toLowerCase()
 
 export interface CalendarFound {
   readonly event: CalendarEvent
@@ -164,7 +174,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
   }
 
   effect function listed(account: CalendarAccount) {
-    const found: { readonly port: CalendarProviderPort; readonly row: CalendarSummary }[] = []
+    const found: CalendarListing[] = []
     const unavailable: CalendarProvider[] = []
     for (const provider of (try Ref.get(providers)).values()) {
       const rows = provider.sources(account) catch () => undefined
@@ -184,18 +194,14 @@ export effect function calendarHost(options: CalendarHostOptions) {
     return account === undefined ? undefined : (try listed(account)).found.map(({ row }) => row)
   }
 
-  effect function search(request: CalendarSearch): (CalendarSearchResult | undefined)!! {
-    const account = try Ref.get(active)
-    if (account === undefined) return undefined
-    const { found, unavailable } = try listed(account)
+  effect function readSources(account: CalendarAccount, request: CalendarSearch, found: readonly CalendarListing[], unavailableSources: readonly CalendarProvider[]): CalendarSearchResult!! {
+    const unavailable = [...unavailableSources]
     const events: CalendarEvent[] = []
     const sources: CalendarSourceHealth[] = []
     let complete = unavailable.length === 0
     const seen = new Set<string>()
     const readAt = new Date(try Clock.currentTimeMillis).toISOString()
-    const calendarId = narrowedTo(found, request.calendarId)
     for (const { port, row } of found) {
-      if (calendarId !== undefined && row.calendarId !== calendarId) continue
       const read = port.read(account, row, request.timeMin, request.timeMax) catch () => undefined
       const status = sourceStatus[sourceRead(read !== undefined, read?.complete === true, (read?.events.length ?? 0) > 0)]
       sources.push({ key: { provider: row.provider, side: row.side, grantId: row.grantId, connectorAccountId: row.connectorAccountId, calendarId: row.calendarId },
@@ -213,6 +219,44 @@ export effect function calendarHost(options: CalendarHostOptions) {
       account, events: (request.query === undefined ? events : lookupMatches(events, request.query)).sort(byStart), complete, sources, unavailable: [...new Set(unavailable)],
       timeMin: new Date(request.timeMin).toISOString(), timeMax: new Date(request.timeMax).toISOString(),
     }
+  }
+
+  effect function search(request: CalendarSearch): (CalendarSearchResult | undefined)!! {
+    const account = try Ref.get(active)
+    if (account === undefined) return undefined
+    const { found, unavailable } = try listed(account)
+    const calendarId = narrowedTo(found, request.calendarId)
+    return try readSources(account, request, calendarId === undefined ? found : found.filter(({ row }) => row.calendarId === calendarId), unavailable)
+  }
+
+  effect function searchAvailability(request: Pick<CalendarSearch, "timeMin" | "timeMax">, scope: AvailabilityScope) {
+    if (scope.kind === "unresolved") return { kind: "source_required" as const }
+    const account = try Ref.get(active)
+    if (account === undefined) return { kind: "no_account" as const }
+    const { found, unavailable } = try listed(account)
+    const candidates = [...new Map(found.map((entry) => [sourceKeyId(entry.row), entry])).values()]
+    const matches = candidates.filter(({ row }) => {
+      switch (scope.kind) {
+        case "all": return row.includeInFeed
+        case "builtin": return row.provider === "eliza"
+        case "named": return calendarLabel(row.summary) === calendarLabel(scope.name)
+        case "legacy": return row.calendarId === scope.calendarId
+        case "selected": return row.calendarId === scope.calendarId && row.grantId === scope.grantId
+          && sha256Hex(sourceKeyId(row)) === scope.sourceRevision
+      }
+    })
+    const aggregate = scope.kind === "all"
+    const needsCompleteCatalog = aggregate || scope.kind === "named" || scope.kind === "legacy"
+    if (!availabilityCatalogAdmitted(!aggregate, needsCompleteCatalog, matches.length, unavailable.length === 0)) {
+      return aggregate ? { kind: "incomplete" as const } : { kind: "source_required" as const }
+    }
+    if ((try Ref.get(active)) !== account) return { kind: "incomplete" as const }
+    const result = try readSources(account, request, matches, [])
+    if ((try Ref.get(active)) !== account) return { kind: "incomplete" as const }
+    if (result.events.some((event) => !matches.some(({ row }) => event.provider === row.provider && event.side === row.side
+      && event.calendarId === row.calendarId && (event.grantId === undefined || event.grantId === row.grantId))))
+      return { kind: "incomplete" as const }
+    return { kind: "read" as const, result, calendarName: aggregate ? undefined : matches[0]?.row.summary }
   }
 
   effect function find(eventId: string, calendarId?: string, exactSource?: CalendarSourceKey): (CalendarFound | undefined)!! {
@@ -328,7 +372,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
   }
 
   return {
-    register, bindAccount, calendars, search, find, writeTarget, notifies, change, executeApproval, deleteQuestion, askToDelete, settleDeleteQuestion,
+    register, bindAccount, calendars, search, searchAvailability, find, writeTarget, notifies, change, executeApproval, deleteQuestion, askToDelete, settleDeleteQuestion,
     active: () => Ref.get(active),
     ledger: {
       inspect: (id: string) => Effect.provide(ledger.inspect(id), rows),

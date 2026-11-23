@@ -19,7 +19,7 @@ import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import { tripEvents } from "./lookup.vibe"
 import { asksOnlyAboutTomorrowMorning, blockingSpans, openings, spanText, tomorrowMorning, windowFitsWeek } from "./free-time.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
-import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearchResult } from "./host.vibe"
+import type { AvailabilityScope, CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearchResult } from "./host.vibe"
 import { eventVersion, guestAddresses } from "./providers.vibe"
 import { CalendarService, calendarServiceType } from "./service.vibe"
 
@@ -186,6 +186,7 @@ export interface CalendarAsk {
   readonly clientZone?: string
   readonly ownerZone?: string
   readonly receivedAt?: number
+  readonly availabilitySelection?: Extract<AvailabilityScope, { kind: "selected" }>
 }
 
 function askTextOf(ask: CalendarAsk): string {
@@ -212,6 +213,9 @@ export function calendarAsk(message: Memory, ownerZone?: string): CalendarAsk {
   const observation = context.observation
   const selected = observation?.sensitive === false && observation.selectedObject?.kind === "canonical-calendar-event" ? observation.selectedObject.id : undefined
   const receivedAt = incomingRequestTime(message)
+  const source = observation?.view === "calendar" && observation.sensitive === false ? observation.selectedObject : undefined
+  const availabilitySelection = source?.kind === "canonical-calendar-source" && source.accountId !== undefined && source.sourceRevision !== undefined
+    ? { kind: "selected" as const, calendarId: source.id, grantId: source.accountId, sourceRevision: source.sourceRevision } : undefined
   return {
     by: String(message.entityId), id: String(message.id ?? `${message.roomId}:${message.createdAt ?? 0}`),
     conversation: `${message.roomId}:${message.entityId}`, text: ownerWords(message),
@@ -219,6 +223,7 @@ export function calendarAsk(message: Memory, ownerZone?: string): CalendarAsk {
     ...(clientZone === undefined ? {} : { clientZone }),
     ...(ownerZone === undefined ? {} : { ownerZone }),
     ...(receivedAt === undefined ? {} : { receivedAt }),
+    ...(availabilitySelection === undefined ? {} : { availabilitySelection }),
   }
 }
 
@@ -341,6 +346,25 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
   }
 }
 
+const selectedAvailabilityWords = /\b(?:on|in|using|from)\s+(?:this|the selected|the open)\s+calendar\b/iu
+const calendarLabelWord = String.raw`(?!(?:at|to|on|in|from|using|until|and|or)\b)[\p{L}\p{N}][\p{L}\p{N}'’.-]*`
+const namedAvailabilityWords = new RegExp(
+  String.raw`\b(?:on|in|using|from)\s+(?:(?:my|the|our)\s+)?(?:"([^"]{1,120})"|(${calendarLabelWord}(?:\s+${calendarLabelWord}){0,3}))\s+calendar\b`,
+  "giu",
+)
+
+function availabilityScope(ask: CalendarAsk, calendarId: string | undefined): AvailabilityScope {
+  const text = askTextOf(ask).normalize("NFKC")
+  const named = [...text.matchAll(namedAvailabilityWords)].map((match) => (match[1] ?? match[2] ?? "").trim())
+    .filter((label) => !/^(?:my|the|our|this|selected|open|app)$/iu.test(label))
+  if (selectedAvailabilityWords.test(text)) return named.length === 0 && calendarId === undefined
+    ? ask.availabilitySelection ?? { kind: "unresolved" } : { kind: "unresolved" }
+  if (named.length > 1 || (named.length === 1 && calendarId !== undefined)) return { kind: "unresolved" }
+  const name = named[0]
+  if (name !== undefined) return /^(?:built-in|resident|eliza)$/iu.test(name) ? { kind: "builtin" } : { kind: "named", name }
+  return calendarId === undefined ? { kind: "all" } : { kind: "legacy", calendarId }
+}
+
 effect function freeTime(host: CalendarHost, ask: CalendarAsk, parameters: Parameters, now: number, zone: string): ActionResult!! {
   const subaction = parameters.subaction === "propose_times" ? "propose_times" : "check_availability"
   const propose = subaction === "propose_times"
@@ -357,25 +381,32 @@ effect function freeTime(host: CalendarHost, ask: CalendarAsk, parameters: Param
     return failed(subaction, "The owner asked about tomorrow morning. Keep the window on tomorrow's date and end it by noon in the request's zone; for a shorter opening inside the morning, use propose_times.",
       { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
   }
-  const found = try host.search({ timeMin: Math.max(0, begin - day), timeMax: finish + day, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
-  if (found === undefined) return failed(subaction, "No calendar account is active right now.")
+  const read = try host.searchAvailability({ timeMin: Math.max(0, begin - day), timeMax: finish + day }, availabilityScope(ask, parameters.calendarId))
+  if (read.kind === "no_account") return failed(subaction, "No calendar account is active right now.")
+  if (read.kind === "source_required") return failed(subaction, "I couldn't verify one exact Calendar source. Which calendar should I check?", { code: "CALENDAR_AVAILABILITY_SOURCE_REQUIRED" })
+  const unknown = () => failed(subaction, "The requested calendars could not be read completely, so I can't tell whether that time is free.",
+    { code: "CALENDAR_AVAILABILITY_INCOMPLETE", availability: "unknown" })
+  if (read.kind === "incomplete") return unknown()
+  const found = read.result
   const asked = { begin, finish }
   const busy = blockingSpans(found.events, zone)?.filter((span) => positiveOverlap(asked, span))
   if (busy === undefined || freeTimeRead(windowValid, durationValid, found.complete) !== "AvailabilityKnown") {
-    return failed(subaction, "Some calendars could not be read completely, so I can't tell whether that time is free.", { code: "CALENDAR_AVAILABILITY_INCOMPLETE", availability: "unknown" })
+    return unknown()
   }
-  const range = { windowStart: new Date(begin).toISOString(), windowEnd: new Date(finish).toISOString(), timeZone: zone, accountId: found.account.accountId }
+  const range = { windowStart: new Date(begin).toISOString(), windowEnd: new Date(finish).toISOString(), timeZone: zone, accountId: found.account.accountId,
+    calendarScope: read.calendarName === undefined ? { kind: "aggregate" } : { kind: "selected", name: read.calendarName } }
+  const onCalendar = read.calendarName === undefined ? "" : ` on “${read.calendarName}”`
   if (!propose) {
     const free = intervalFree(asked, busy)
     return {
-      success: true, text: free ? `You're free ${spanText(asked, zone)}.` : `That time isn't free: ${busy.map((span) => spanText(span, zone)).join("; ")}.`,
+      success: true, text: free ? `You're free ${spanText(asked, zone)}${onCalendar}.` : `That time isn't free${onCalendar}: ${busy.map((span) => spanText(span, zone)).join("; ")}.`,
       data: { subaction, ...range, isFree: free, conflicts: busy.map((span) => ({ startAt: new Date(span.begin).toISOString(), endAt: new Date(span.finish).toISOString() })) },
     }
   }
   const slots = openings(asked, minutes * 60_000, busy)
   return {
     success: true,
-    text: slots.length === 0 ? `I found no ${minutes}-minute opening on the quarter hour in that time.` : `I found these ${minutes}-minute openings: ${slots.map((slot) => spanText(slot, zone)).join(" and ")}.`,
+    text: slots.length === 0 ? `I found no ${minutes}-minute opening on the quarter hour in that time${onCalendar}.` : `I found these ${minutes}-minute openings${onCalendar}: ${slots.map((slot) => spanText(slot, zone)).join(" and ")}.`,
     data: {
       subaction, ...range, durationMinutes: minutes,
       slots: slots.map((slot) => ({ startAt: new Date(slot.begin).toISOString(), endAt: new Date(slot.finish).toISOString(), durationMinutes: minutes, timeZone: zone })),
@@ -467,6 +498,9 @@ export effect function runCalendarAction(host: CalendarHost, ask: CalendarAsk, i
   const parameters = parametersOf({ parameters: input })
   if (parameters === undefined) return { success: false, text: `${calendarActionName} needs a subaction: ${subactions.join(", ")}.` }
   const { subaction } = parameters
+  if ((subaction === "check_availability" || subaction === "propose_times") && message !== undefined && parameters.calendarId !== undefined) {
+    return failed(subaction, "I need the Calendar source from your request.", { code: "CALENDAR_AVAILABILITY_SOURCE_REQUIRED" })
+  }
   if ((subaction === "check_availability" || subaction === "propose_times") && !availabilityRequestTimeAdmitted(message !== undefined, ask.receivedAt !== undefined)) {
     return failed(subaction, "I couldn't verify when this request arrived. Please send the Calendar request again.",
       { code: "CALENDAR_AVAILABILITY_REQUEST_TIME_UNAVAILABLE" })

@@ -145,6 +145,28 @@ pure def lawSlotLengthIsBounded(minutes: int): bool =
 pure val minutesValues = Set(4, 5, 480, 481)
 ```
 
+### An availability read stays with the calendar the owner named or selected
+
+An unscoped request reads the active account's included calendars
+and needs at least one source. A named calendar or an older caller's
+calendar ID must resolve to exactly one source in a complete catalog.
+A selection of this calendar uses the current source identity from the
+owner's Calendar view. It needs exactly one matching row, even when an
+unrelated provider's catalog is unavailable. An unresolved request never
+widens to the aggregate. The chosen rows and account used to resolve the
+request are the rows and account used for the event read.
+
+```quint
+pure def availabilityCatalogAdmitted(scoped: bool, needsCompleteCatalog: bool, matchesCount: int, catalogComplete: bool): bool =
+  (if (scoped) matchesCount == 1 else matchesCount > 0)
+    and (not(needsCompleteCatalog) or catalogComplete)
+pure val matchesCountValues = Set(0, 1, 2)
+pure def lawScopedAvailabilityRequiresExactlyOneSource(needsCompleteCatalog: bool, matchesCount: int, catalogComplete: bool): bool =
+  availabilityCatalogAdmitted(true, needsCompleteCatalog, matchesCount, catalogComplete) implies matchesCount == 1
+pure def lawAnIncompleteCatalogDoesNotProveAnUnqualifiedSelection(scoped: bool, matchesCount: int): bool =
+  not(availabilityCatalogAdmitted(scoped, true, matchesCount, false))
+```
+
 ### A tomorrow-morning question reads only tomorrow, from midnight to noon
 
 When the owner's words ask about tomorrow morning and no other period,
