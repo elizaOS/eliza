@@ -122,9 +122,11 @@ never needs or guesses that item's ID. That form needs
 marks a Files share, move or trash that names `shown` positions in place of
 paths, which needs `files.shown-target.v1` beside `files.browser.v1`
 ([shown targets](../../files/shownTargets.md)); a typed address opened in a
-tab of its own (`newTab`), which needs `browser.open-new-tab.v1`; and a tab
+tab of its own (`newTab`), which needs `browser.open-new-tab.v1`; a tab
 close that names `all`, which needs `browser.tabs.close-all.v1` beside
-`browser.tabs.v1`. Each other Browser control needs its group's capability
+`browser.tabs.v1`; and an opening of the Phone, Messages or Contacts view,
+which needs `views.telephony.v1`. Each other Browser control needs its
+group's capability
 ([Browser controls](../../browser/control.md)). The base and workflow operations
 need any capability other than the Clock handoff, so a device that
 advertised only the Clock handoff never receives them.
@@ -168,7 +170,9 @@ pure def familyNeed(f: Family, t: OperationType, versionTwo: bool): Need = match
       else needOne(ContactsWriteV1)
   | ClockFamily => clockHandoffNeed(versionTwo)
   | WorkflowFamily => anyButClock
-  | BaseFamily => if (t == BrowserNavigate and versionTwo) needOne(BrowserOpenNewTabV1) else anyButClock
+  | BaseFamily =>
+      if (t == BrowserNavigate and versionTwo) needOne(BrowserOpenNewTabV1)
+      else if (t == OpenView and versionTwo) needOne(TelephonyViewsV1) else anyButClock
   | BrowserFamily =>
       if (t == BrowserSearch) needOne(BrowserSearchV1) else if (t == BrowserFind) needOne(BrowserFindV1)
       else if (t == BrowserHistory) needOne(BrowserHistoryV1) else if (t == BrowserTabClose and versionTwo) needAll(BrowserTabsV1, BrowserTabsCloseAllV1)
@@ -188,6 +192,8 @@ pure def lawTheLegacyPairStillRecords(neg: Negotiation): bool =
 pure def lawTheOpenPhotoFormNeedsItsCapability(t: OperationType, neg: Negotiation): bool =
   ((t == PhotosAlbumCreate or t == PhotosShare) and meets(neg, operationNeed(t, true))) implies
     (negotiatedHas(neg, PhotosViewSelectedV1) and negotiatedHas(neg, PhotosLibraryV1) and negotiatedHas(neg, PhotosViewV1))
+pure def lawATelephonyViewOpensOnlyUnderItsCapability(neg: Negotiation): bool =
+  meets(neg, operationNeed(OpenView, true)) implies negotiatedHas(neg, TelephonyViewsV1)
 pure def lawEveryOperationNamesANeed(t: OperationType, versionTwo: bool): bool =
   namesSome(operationNeed(t, versionTwo).required) or namesSome(operationNeed(t, versionTwo).oneOf)
 pure def lawAClockOnlyDeviceReceivesOnlyClockHandoffs(t: OperationType, versionTwo: bool, neg: Negotiation): bool =
@@ -360,7 +366,9 @@ could not run reports failed. A Messages draft never reports a send, and
 only a text or draft to a contact can report that no contact matched. A
 keypad that opened, contacts that were shown and an open contact that was
 shared are applied; a keypad that could not open, a search that matched no
-contact and a contact read with nothing open report failed.
+contact and a contact read with nothing open report failed. A keypad
+result never says that a number was dialed or called, and a contact search
+result names no contact, number or count.
 
 ```quint
 type ReportedOutcome = ReportsApplied | ReportsFailed | ReportsUnknown

@@ -26,6 +26,7 @@ export function textLayerRefused(reason: TextLayerRefusal): TextLayerRefused {
   return new TextLayerRefused({ reason, message: layerText[reason] })
 }
 
+// eslint-disable-next-line no-control-regex -- An extracted line permits tab and rejects the listed C0 controls, including line breaks.
 const lineControl = /[\r\n\u0000-\u0008\u000b-\u001f]/
 
 function record(value: unknown): value is Record<string, unknown> {

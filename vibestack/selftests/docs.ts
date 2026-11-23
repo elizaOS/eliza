@@ -242,5 +242,43 @@ describe("the documents name what exists", () => {
       frameworkTest: { build: false, test: true },
       independentOwner: true, leftovers: [],
     }, "the owners' tasks, @repo/kit's among them, wait for the root's gen, and install's //#build does not, so `gen --if-valid` after it keeps a half-edited spec from failing install");
+
+    const generationPlan = async (...options: string[]) => {
+      const dry = await exec(process.execPath, [path.join(project, "vibestack/spec.ts"), "tasks", "//#gen", "//#lint:css", "--dry=json", ...options], root,
+        { ...process.env, TURBO_TOKEN: "", TURBO_CACHE: "local:rw" });
+      assert.equal(dry.status, 0, dry.stderr);
+      const tasks: { taskId: string; hash: string; resolvedTaskDefinition: { cache: boolean; env: string[] } }[] = JSON.parse(dry.stdout).tasks;
+      return Object.fromEntries(tasks.map(({ taskId, hash, resolvedTaskDefinition }) => [taskId, { hash, ...resolvedTaskDefinition }]));
+    };
+    fs.mkdirSync(path.join(root, "apps/app/spec"));
+    fs.writeFileSync(path.join(root, "apps/app/spec/index.md"), "# Standalone app\n");
+    const proofs = ["spec/audit.proof.dfy", "apps/app/spec/index.proof.dfy", "packages/kit/spec/index.proof.dfy"];
+    for (const file of proofs) fs.writeFileSync(path.join(root, file), "lemma One() {}\n");
+    const beforeProofs = await generationPlan();
+    for (const file of proofs) append(file, "lemma Two() {}\n")();
+    const afterProofs = await generationPlan();
+    assert.equal(afterProofs["//#gen"].hash, beforeProofs["//#gen"].hash);
+    assert.equal(afterProofs["//#gen"].cache, true);
+    append("spec/app/index.md")();
+    assert.notEqual((await generationPlan())["//#gen"].hash, afterProofs["//#gen"].hash);
+
+    const alternate = "other turbo.jsonc";
+    const config = JSON.parse(read("turbo.json", root));
+    config.tasks["//#gen"].cache = true;
+    config.tasks["//#lint:css"].env = ["AUDIT_CONFIG"];
+    fs.writeFileSync(path.join(root, alternate), JSON.stringify(config).replace(/^{/, "{\n// Explicit workspace config\n"));
+    const explicit = await generationPlan("--root-turbo-json", alternate);
+    fs.unlinkSync(path.join(root, proofs[0]));
+    fs.symlinkSync("../missing-proof.dfy", path.join(root, proofs[0]));
+    const invalid = await generationPlan(`--root-turbo-json=${alternate}`);
+    assert.ok(invalid["//#lint:css"].env.includes("AUDIT_CONFIG"));
+    assert.deepEqual(invalid, { ...explicit, "//#gen": { ...explicit["//#gen"], cache: false } });
+    assert.equal((await generationPlan("--cwd", root))["//#gen"].cache, false);
+    assert.equal((await generationPlan("--cwd=packages/kit"))["//#gen"].cache, false);
+    fs.unlinkSync(path.join(root, proofs[0]));
+    fs.writeFileSync(path.join(root, proofs[0]), "lemma Two() {}\n");
+    assert.deepEqual(await generationPlan("--root-turbo-json", alternate), explicit);
+    const passThrough = await generationPlan("--", "--root-turbo-json", alternate);
+    assert.ok(!passThrough["//#lint:css"].env.includes("AUDIT_CONFIG"));
   });
 });

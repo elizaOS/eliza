@@ -222,6 +222,34 @@ pure val foundStartValues = Set(0, 900000, 1000000)
 pure val atValues = Set(-1, 0, 1, 900000, 1350000)
 ```
 
+### The calendar reaches the agent only in a turn whose audience is the owner alone
+
+The upcoming-events context and the Calendar action are disclosed only
+when the owner asks and the turn's attested audience is the owner alone.
+In a room anyone else can read, or with no attested audience, the owner's
+events stay out of the prompt and the action does not run.
+
+```quint
+pure def calendarDisclosed(isOwner: bool, ownerAlone: bool): bool = isOwner and ownerAlone
+pure def lawSharedAudienceSeesNoCalendar(isOwner: bool): bool = not(calendarDisclosed(isOwner, false))
+pure def lawOthersSeeNoCalendar(ownerAlone: bool): bool = not(calendarDisclosed(false, ownerAlone))
+```
+
+### A calendar the active account does not list never narrows a read
+
+A read or a lookup narrows to the calendar it names only when the active
+account lists that calendar. A name no listed calendar has, such as a
+masked or invented id, is dropped, and the read covers every listed
+calendar of the account, so it never answers "nothing" from a calendar
+that does not exist.
+
+```quint
+type ReadScope = AllListed | OneListed
+pure def readScope(named: bool, namedListed: bool): ReadScope =
+  if (named and namedListed) OneListed else AllListed
+pure def lawUnlistedNameNeverNarrows(named: bool): bool = readScope(named, false) == AllListed
+```
+
 ## Story: Change my calendar only as I asked and know it happened
 
 > As the owner, I want a change the agent makes to my calendar to carry
@@ -267,7 +295,9 @@ queues for approval like any other reviewed change, and nothing is saved
 before the owner approves it. A resident delete runs at once only as the
 next rule allows. Any provider calendar queues the exact fields for the
 owner's approval. A write for another account, or to a calendar it cannot
-write, is refused.
+write, is refused. A new event proposed in chat goes to the owner's review
+unless the owner plainly chose to save now. A save from the owner's own
+calendar editor is that choice. An explicit request to review is preserved.
 
 ```quint
 type WriteProvider = ResidentProvider | AccountProvider
@@ -276,6 +306,9 @@ pure def writeRoute(provider: WriteProvider, sameAccount: bool, writable: bool, 
   if (not(sameAccount and writable)) RefuseWrite
   else if (provider == ResidentProvider and not(reviewFirst)) ApplyNow
   else QueueApproval
+pure def chatCreateReviewed(saveNowChosen: bool): bool = not(saveNowChosen)
+pure def lawUnsaidChatCreateIsReviewed(provider: WriteProvider): bool =
+  writeRoute(provider, true, true, chatCreateReviewed(false)) == QueueApproval
 pure def lawProviderWriteWaitsForApproval(sameAccount: bool, writable: bool, reviewFirst: bool): bool =
   writeRoute(AccountProvider, sameAccount, writable, reviewFirst) != ApplyNow
 pure def lawForeignAccountRefused(provider: WriteProvider, writable: bool, reviewFirst: bool): bool =
@@ -377,6 +410,28 @@ pure def lawAModelFlagAloneAsksNothing(ownerWordsDecline: bool): bool =
   not(noticeAsked(true, false, ownerWordsDecline))
 pure def lawAClientNoticeIsRefusedWhereNobodyCanBeTold(noticeWanted: bool): bool =
   clientNoticeRefused(noticeWanted, false) == noticeWanted
+```
+
+### Declining an invitation never deletes the event
+
+A removal from the owner's client names how it ends the owner's part in
+the event: the organizer cancels it (`organizer_cancel`), the owner
+removes a private copy (`remove_private_copy`), or the owner declines an
+invitation (`decline_invitation`). A removal with any other mode, or
+none, is refused before anything is read. The first two remove the event
+as any delete does, under the invitation rule below. Declining an
+invitation is a reply to the organizer, not a removal: it is the owner's
+answer declined to that invitation, under the same rule, so it runs only
+for an invitee on a calendar that can answer, and otherwise is refused.
+Either way the event stays on the organizer's calendar.
+
+```quint
+type CancellationMode = OrganizerCancel | DeclineInvitation | RemovePrivateCopy
+type CancellationRoute = RemoveEvent | AnswerDeclined
+pure def cancellationRoute(mode: CancellationMode): CancellationRoute =
+  if (mode == DeclineInvitation) AnswerDeclined else RemoveEvent
+pure def lawDeclineNeverDeletes(mode: CancellationMode): bool =
+  mode == DeclineInvitation implies cancellationRoute(mode) != RemoveEvent
 ```
 
 ### An approved change runs only with its reviewed fields for the account that approved it

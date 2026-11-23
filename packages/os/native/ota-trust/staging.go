@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -167,6 +168,9 @@ func (s *PreparedStager) StageWithTimeSource(authorizationDirectory, admissionDi
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	candidate, recovery := record.Descriptor.Candidate, record.Descriptor.Recovery
+	if err = pruneArtifacts(cacheDirectory, candidate.SHA256, recovery.SHA256); err != nil {
+		return nil, err
+	}
 	// Reserve space for the candidate while obtaining recovery first. A verified
 	// cached candidate already occupies its bytes and needs no second reservation.
 	candidateNeed := candidate.Length
@@ -214,6 +218,57 @@ func (s *PreparedStager) StageWithTimeSource(authorizationDirectory, admissionDi
 		return nil, err
 	}
 	return &StagedPair{AuthorizationID: identity, CandidatePath: candidatePath, RecoveryPath: recoveryPath, Descriptor: descriptor, Generation: generation}, nil
+}
+
+func pruneArtifacts(directory string, keep ...string) error {
+	lock, err := os.OpenFile(filepath.Join(directory, ".download.lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if info, e := lock.Stat(); e != nil || !info.Mode().IsRegular() {
+		return errors.New("unsafe artifact lock")
+	}
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return errors.New("artifact download busy")
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return err
+	}
+	var obsolete []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == ".pair.lock" || name == ".download.lock" {
+			continue
+		}
+		temporary := strings.HasPrefix(name, artifactResumeTempPrefix)
+		extension := filepath.Ext(name)
+		digest := strings.TrimSuffix(name, extension)
+		if !temporary && (!validHex(digest) || (extension != ".apk" && extension != ".part" && extension != ".resume")) {
+			return errors.New("unknown artifact cache entry")
+		}
+		if !entry.Type().IsRegular() {
+			return errors.New("unsafe artifact cache entry")
+		}
+		if temporary || !slices.Contains(keep, digest) {
+			obsolete = append(obsolete, name)
+		}
+	}
+	for _, name := range obsolete {
+		if err = os.Remove(filepath.Join(directory, name)); err != nil {
+			return err
+		}
+	}
+	if len(obsolete) == 0 {
+		return nil
+	}
+	dir, err := os.Open(directory)
+	if err != nil {
+		return err
+	}
+	return errors.Join(dir.Sync(), dir.Close())
 }
 
 func (s *PreparedStager) download(directory string, artifact releaseArtifact, reserve int64) (string, error) {

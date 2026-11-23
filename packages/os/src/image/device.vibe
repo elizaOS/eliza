@@ -517,7 +517,7 @@ effect function releaseLease(held: DeviceLease) {
     try removeIfUnchanged(held.path, current)
 }
 
-export effect function writeDurableDeviceState(file: string, content: string) {
+export effect function writeDurableDeviceState(file: string, content: string, create = false) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
   const pending = `${file}.${processId()}.${uniqueToken()}.tmp`
@@ -525,7 +525,8 @@ export effect function writeDurableDeviceState(file: string, content: string) {
     const written = try files.open(pending, { flag: "wx", mode: 0o600 })
     try written.writeAll(new TextEncoder().encode(content))
     try written.sync
-    try files.rename(pending, file)
+    if (create) try files.link(pending, file)
+    else try files.rename(pending, file)
     const directory = try files.open(path.dirname(file), { flag: "r" })
     try directory.sync
   }), ignore(files.remove(pending, { force: true })))
@@ -783,8 +784,8 @@ export effect function rebootAndroidFixture(
   }
   let after = before
   try waitFor(effect () => {
-    after = try bootId()
-    return after !== before && (try call("shell", "getprop", "sys.boot_completed")) === "1"
+    after = bootId() catch () => before
+    return after !== before && (call("shell", "getprop", "sys.boot_completed") catch () => "") === "1"
   }, "Changed boot ID and completed boot required")
   try fixtureCheck((try avd()) === options.expectedAvdName, "The fixture AVD changed across the reboot")
   try call("shell", "am", "start-user", "-w", user)

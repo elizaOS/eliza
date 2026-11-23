@@ -1,7 +1,7 @@
 // spec/agent/views.md, "Story: Switch to the view the agent named"; spec/agent/views.md, "Story: Answer what the agent asks a view"; spec/agent/views.md, "Story: Stop waiting when my agent stops"
 import { assert, it } from "@effect/vitest"
 import { findViewActionHandoff, type Action, type ActionResult, type Memory, type UUID } from "@elizaos/core"
-import { navigationBusyWaitMs, navigationClaimLeaseMs } from "../gen/agent__views.effect.vibe"
+import { navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs } from "../gen/agent__views.effect.vibe"
 import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
 import { viewHostServiceType, viewsModuleName } from "../src/views/module.vibe"
 import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
@@ -88,7 +88,7 @@ it.effect('Prepare, claim and confirm a switch through the routes; only a confir
   })
 }, 120_000)
 
-it.effect('A second prepare supersedes an unclaimed navigation, is refused while one is claimed, and a lost wait is unknown (spec/agent/views.md, "Preparing again supersedes the client\'s unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again")', effect () => {
+it.effect('A second prepare supersedes an unclaimed navigation, waits for a claimed one and is refused only if it stays claimed, and a lost claim or wait is unknown (spec/agent/views.md, "Preparing again supersedes the client\'s unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again")', effect () => {
   const agent = try startInProcess(loaded)
   const { views } = try viewHost(agent)
 
@@ -97,6 +97,7 @@ it.effect('A second prepare supersedes an unclaimed navigation, is refused while
   const superseded = try first!.wait
   const claimed = try claim(agent, second!.binding)
   const waitingPrepare = fork views.prepare("r3", "c1", "notes")
+  for (let round = 0; round < 20; round += 1) try Effect.yieldNow
   try TestClock.adjust(Duration.millis(navigationBusyWaitMs))
   const whileClaimed = join waitingPrepare
   try TestClock.adjust(Duration.millis(navigationClaimLeaseMs - navigationBusyWaitMs))
@@ -112,6 +113,23 @@ it.effect('A second prepare supersedes an unclaimed navigation, is refused while
     assert.isUndefined(shown)
     assert.deepStrictEqual(late.body, { ok: true, accepted: false })
     assert.strictEqual(afterLease.status, 200)
+  })
+
+  const fourth = bindingOf(afterLease.body)
+  const fourthClaim = try claim(agent, fourth)
+  const waited = fork views.prepare("r5", "c1", "chat")
+  for (let round = 0; round < 20; round += 1) try Effect.yieldNow
+  const switched = try result(agent, fourth, claimIdOf(fourthClaim.body), true)
+  const fifth = join waited
+  const unclaimed = try views.prepare("r6", "c1", "notes")
+  const retired = try fifth!.wait
+  try TestClock.adjust(Duration.millis(navigationWaitMs))
+  const expired = try unclaimed!.wait
+  try Effect.try(() => {
+    assert.deepStrictEqual(switched.body, { ok: true, accepted: true })
+    assert.strictEqual(fifth?.binding.requestId, "r5")
+    assert.deepStrictEqual(retired, { kind: "Superseded" })
+    assert.deepStrictEqual(expired, { kind: "Unknown" })
   })
 }, 120_000)
 

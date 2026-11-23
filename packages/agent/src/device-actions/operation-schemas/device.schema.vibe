@@ -1,11 +1,12 @@
 // spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"
 import { libraryIdAdmitted, photoTargets, type OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
-import { supportedViews } from "../capabilities.vibe"
+import { opensTelephonyView, supportedViews } from "../capabilities.vibe"
 import { digestOf as revisionOf } from "./digest.vibe"
 import type { Evidence, FamilySchemas, OperationSchema, WireOperation } from "./family.vibe"
 import { civilDay, day, isoInstant, knownZone, realDate, utf8Bytes, zonedWall } from "./personal.schema.vibe"
 import { telephonyOperations } from "./telephony.vibe"
 
+// eslint-disable-next-line no-control-regex -- Device identifiers exclude the ASCII control range and DEL.
 const noControl = (value: string) => !/[\u0000-\u001f\u007f]/.test(value)
 const filled = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum), Schema.makeFilter((value: string) => value.trim() !== "" && !value.includes("\0")))
 const blank = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum), Schema.makeFilter((value: string) => !value.includes("\0")))
@@ -363,7 +364,7 @@ const viewAndFileOperations = {
   files_folder_create: withoutResult(FilesFolderCreate, "FilesFolderCreate"),
   create_note: withoutResult(CreateNote, "CreateNote"),
   create_reminder: withoutResult(CreateReminder, "CreateReminder"),
-  open_view: withoutResult(OpenView, "OpenView"),
+  open_view: withoutResult(OpenView, "OpenView", ({ view }) => opensTelephonyView(view)),
   browser_navigate: withoutResult(BrowserNavigate, "BrowserNavigate", (operation) => operation.newTab === true)
 } satisfies FamilySchemas
 

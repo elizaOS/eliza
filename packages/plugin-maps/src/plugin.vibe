@@ -15,7 +15,7 @@ export const mapsPluginName = "@elizaos/plugin-maps"
 
 export interface MapsPluginPorts {
   cloud(runtime: IAgentRuntime): MapsCloudLink | undefined
-  navigation(runtime: IAgentRuntime, message: Memory): MapsDeviceNavigation | undefined
+  navigation(runtime: IAgentRuntime, message: Memory): (MapsDeviceNavigation | undefined)!MapsFailure
   savedPlaces(runtime: IAgentRuntime): AgentSavedPlaceStore | undefined
   namesView(runtime: IAgentRuntime, destination: string): boolean | undefined
 }
@@ -456,7 +456,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       const ask: Ask = (field, choices, asked = params) => {
         if (operation !== undefined) openChoice(runtime, message.roomId, { operation, field, options: choices, params: asked, askedAt: Date.now() })
       }
-      return settle(linked(ports, runtime, (service) => work(service, ports.navigation(runtime, message), message, params, ask, runtime)))
+      return settle(linked(ports, runtime, effect (service) => try work(service, try ports.navigation(runtime, message), message, params, ask, runtime)))
     }
   const always: Action["validate"] = () => Promise.resolve(true)
   return [
@@ -475,6 +475,15 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       ],
       validate: always,
       handler: handle("place", (service, _navigation, message, params, ask) => findPlaces(service, message, params, ask)),
+    },
+    {
+      name: "MAPS_WHERE_AM_I",
+      description: "Where the owner is now, from the position the phone reported with this message: the place there, or only the area when the phone knows its position only roughly.",
+      similes: ["WHERE_AM_I", "MY_LOCATION", "CURRENT_LOCATION"],
+      tags: ["domain:maps", "capability:read"],
+      roleGate: ownerOnly,
+      validate: always,
+      handler: handle(undefined, (service, _navigation, message) => whereAmI(service, message)),
     },
     {
       name: "MAPS_ROUTE",
@@ -586,7 +595,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
 
 export const phonePositionProvider: Provider = {
   name: "MAPS_PHONE_POSITION",
-  description: "Whether the phone reported a recent position with this message, which a nearby Maps search uses.",
+  description: "Whether the phone reported a recent position with this message, which a nearby Maps search and MAPS_WHERE_AM_I use.",
   dynamic: true,
   contexts: ["maps"],
   roleGate: ownerOnly,

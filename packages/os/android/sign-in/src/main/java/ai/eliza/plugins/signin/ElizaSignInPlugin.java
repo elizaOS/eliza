@@ -32,6 +32,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.os.CancellationSignal;
+import android.util.Log;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -57,6 +58,7 @@ import org.json.JSONObject;
 
 @CapacitorPlugin(name = "ElizaSignIn")
 public class ElizaSignInPlugin extends Plugin {
+  private static final String TAG = "ElizaSignIn";
   private static final class Attempt {
     final int number;
     final SignInRegistration.Environment environment;
@@ -446,8 +448,14 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   private void connectGoogle(Attempt attempt, SecretServerCode code) {
-    Held held = custody.held(attempt.environment);
-    boolean connected = held != null && google.connectNative(attempt.environment, held.key(), code);
+    boolean connected;
+    try {
+      Held held = custody.held(attempt.environment);
+      connected = held != null && google.connectNative(attempt.environment, held.key(), code);
+    } catch (RuntimeException failed) {
+      Log.e(TAG, "Google connect for attempt " + attempt.number + " failed, so the attempt settles unconnected", failed);
+      connected = false;
+    }
     if (code != null) code.drop();
     dispatch(new Event.GoogleConnected(attempt.number, connected));
   }

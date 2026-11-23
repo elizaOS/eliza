@@ -34,6 +34,7 @@ export function scannedLinks(text: unknown): string[] {
     const url = parsedUrl(/^www\./i.test(raw) ? "https://" + raw : raw)
     urls = addScanLink(urls, url?.href ?? "", {
       textString: true, textUnits: units, explicitPrefix: true, boundaryRecognized: true, tokenUnits: raw.length,
+      // eslint-disable-next-line no-control-regex -- A link token rejects backslash, C0 controls, and DEL before URL parsing.
       badAuthorityStart: /^https?:\/\/[/?#]/i.test(raw), invalidCharacter: /[\\\u0000-\u001f\u007f]/.test(raw),
       parsed: url !== undefined, permittedProtocol: url?.protocol === "https:" || url?.protocol === "http:",
       hostname: url !== undefined && url.hostname !== "", hasCredentials: url !== undefined && (url.username !== "" || url.password !== ""),

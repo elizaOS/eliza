@@ -29,6 +29,9 @@ describe("Show only the methods the cloud is ready for", () => {
     expect([...names].filter((name) => typeof functions[name] !== "function")).toEqual([]);
     const differing = cases.filter((c) => JSON.stringify(functions[c.fn](...c.args)) !== JSON.stringify(c.result));
     expect(differing.slice(0, 5)).toEqual([]);
+    const opened = (handlers: readonly string[]) => cases.filter((c) => c.fn === "browserToOpen" && JSON.stringify(c.args[0]) === JSON.stringify(handlers)).map((c) => c.result);
+    expect(new Set(opened(["ai.example.phone", "org.chromium.webview_shell"]))).toEqual(new Set([""]));
+    expect(new Set(opened(["org.chromium.webview_shell", "com.android.chrome"]))).toEqual(new Set(["com.android.chrome"]));
     for (const law of [...names].filter((name) => name.startsWith("law"))) {
       expect(cases.filter((c) => c.fn === law && c.result !== true)).toEqual([]);
     }

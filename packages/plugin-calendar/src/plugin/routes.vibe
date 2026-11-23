@@ -1,5 +1,5 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
-import { clientNoticeRefused } from "../../gen/calendar__actions.effect.vibe"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "Declining an invitation never deletes the event"
+import { cancellationRoute, clientNoticeRefused } from "../../gen/calendar__actions.effect.vibe"
 import type { CalendarEvent } from "../model.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
@@ -45,6 +45,8 @@ const RespondBody = Schema.Struct({
   responseStatus: Schema.Literals(["accepted", "tentative", "declined"]), recurrenceScope: Schema.optionalKey(Schema.Literals(["instance", "series"])),
   calendarId: Schema.optionalKey(Schema.String), notifyAttendees: Schema.optionalKey(Schema.Boolean), expectedProviderVersion: Key, idempotencyKey: Key,
 })
+const cancellationModes = { organizer_cancel: "OrganizerCancel", decline_invitation: "DeclineInvitation", remove_private_copy: "RemovePrivateCopy" } as const
+const decodeCancellation = Schema.decodeUnknownOption(Schema.Literals(["organizer_cancel", "decline_invitation", "remove_private_copy"]))
 const decodeScope = Schema.decodeUnknownOption(WriteScopeRecord)
 const decodeRespond = Schema.decodeUnknownOption(RespondBody)
 const refusalStatus: Partial<Record<CalendarRefusal, number>> = { no_account: 409, answers_unsupported: 501, deletes_unsupported: 501, answer_scope: 400 }
@@ -195,15 +197,22 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
       handler: (input) => withHost(async (calendar) => {
         const expected = input.query.get("expectedProviderVersion") ?? ""
         const key = input.query.get("idempotencyKey") ?? ""
-        if (expected === "" || key.trim() === "" || !input.query.has("cancellationMode")) {
+        const mode = decodeCancellation(input.query.get("cancellationMode"))
+        if (expected === "" || key.trim() === "" || Option.isNone(mode)) {
           return refused(400, "CALENDAR_REQUEST_INVALID", "A deletion needs expectedProviderVersion, an idempotency key and a cancellation mode.")
         }
         const scope = input.query.has("recurrenceScope") ? decodeScope(input.query.get("recurrenceScope")) : Option.some("instance" as const)
         if (Option.isNone(scope)) return refused(400, "CALENDAR_SCOPE_INVALID", "The recurrence scope is instance, this_and_following or series.")
+        const declines = cancellationRoute(cancellationModes[mode.value]) === "AnswerDeclined"
+        if (declines && scope.value === "this_and_following") return refused(400, "CALENDAR_ANSWER_SCOPE", "An answer covers this event or the whole series, so the event was kept.")
         const found = await target(calendar, input, input.query.get("calendarId"), expected)
         if (!("event" in found)) return found
         const silent = await unannounced(calendar, found, input.query.get("notifyAttendees") === "true")
         if (silent !== undefined) return silent
+        if (declines) {
+          return changed(await runPromise(Effect.option(calendar.change({ kind: "respond", target: found, scope: scope.value === "series" ? "series" : "instance", response: "declined",
+            notifyAttendees: input.query.get("notifyAttendees") === "true", askedBy: "owner", askId: key }))))
+        }
         return changed(await runPromise(Effect.option(calendar.change({ kind: "delete", target: found, scope: scope.value, notifyAttendees: input.query.get("notifyAttendees") === "true", askedBy: "owner", askId: key }))))
       }) },
   ]

@@ -1,6 +1,6 @@
 // spec/core/index.md, "Each boundary operation has one owning layer"
 import { once } from "node:events";
-import { setImmediate } from "node:timers/promises";
+import { Effect } from "effect";
 import { type TextStreamResult } from "../../src/types/model.vibe";
 import { type Plugin } from "../../src/types/plugin.vibe";
 import { type IAgentRuntime } from "../../src/types/runtime.vibe";
@@ -64,7 +64,7 @@ async function readBody(url: string, signal: AbortSignal | undefined): Promise<s
 
 async function* streamOf(chunks: readonly string[], signal: AbortSignal | undefined): AsyncGenerator<string> {
   for (const chunk of chunks) {
-    await setImmediate();
+    await Effect.runPromise(Effect.yieldNow);
     signal?.throwIfAborted();
     yield chunk;
   }

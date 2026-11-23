@@ -22,7 +22,9 @@ schema ReadThread {
 
 const decodeThread = Schema.decodeUnknownOption(ReadThread, { onExcessProperty: "error" })
 
+// eslint-disable-next-line no-control-regex -- Single-line draft metadata excludes control and bidirectional formatting characters.
 const unsafeText = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/
+// eslint-disable-next-line no-control-regex -- Draft bodies retain tab and line breaks while excluding the other listed control characters.
 const unsafeBody = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]/
 const digits = /^[0-9]+$/
 const saysNone = /^none[.!]?$/i

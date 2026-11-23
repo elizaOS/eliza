@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "The device context is served only for a live enrollment"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"
+// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "The device context is served only for a live enrollment"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "Phone, Messages and Contacts are offered and enabled only on a request that negotiated the telephony views"
 module node {
   import { createHash, timingSafeEqual } from "node:crypto"
 
@@ -19,7 +19,7 @@ import { allCapabilities, capabilityName, distinctNames, isCapabilityName } from
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
 import type { LocalRoute, RouteInput } from "../access/routes.vibe"
 import type { ModuleContext } from "../host/module.vibe"
-import { readViewProfileChange, supportedViews, viewProfileWire } from "./capabilities.vibe"
+import { capabilitiesHeader, negotiation, offeredViewNames, readViewProfileChange, viewProfileWire } from "./capabilities.vibe"
 import { changeEnrollment, changeViewProfile, enrollment, viewProfile, DeviceStoreUnavailable, type EnrollmentEvent } from "./store.vibe"
 import { hashOf, sameHash } from node
 
@@ -126,11 +126,12 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
 
   effect function profile(input: RouteInput): Answer!DeviceStoreUnavailable {
     if ((try deviceSender(input)) === undefined) return failure(401, "device_unauthorized")
+    const supportedViews = offeredViewNames(negotiation(true, input.headers.get(capabilitiesHeader)))
     return { status: 200, body: { version: 1, supportedViews, profile: viewProfileWire(try viewProfile(adapter)) } }
   }
 
   effect function setProfile(input: RouteInput): Answer!DeviceStoreUnavailable {
-    const change = readViewProfileChange(input.body ?? {})
+    const change = readViewProfileChange(input.body ?? {}, negotiation(true, input.headers.get(capabilitiesHeader)))
     if (change === undefined) return failure(400, "invalid_view_profile")
     if ((try deviceSender(input)) === undefined) return failure(401, "device_unauthorized")
     const written = try lock.withPermits(1)(changeViewProfile(adapter, change.read, change.views))

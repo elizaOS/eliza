@@ -181,3 +181,23 @@ pure def lawEgressRestoresTheCarriedValue(carried: CarriedTarget, masked: bool):
 pure def lawTheModelKeepsTheMaskedPlaceholder(carried: CarriedTarget): bool =
   carriedIsDistinct(carried) implies ingressOf(carried, true) == carried.placeholder
 ```
+
+### A map coordinate never becomes a contact reference
+
+A phone-shaped digit run is a map coordinate, and stays as it is, when it
+lies inside a Maps card (the `[MAPSCARD]` marker and the one complete JSON
+line after it), follows a latitude or longitude key, or is a single decimal
+with at least four fractional digits that follows a minus sign, sits beside
+the other half of a coordinate pair, or has a geographic word within the 160
+characters before it. A card marker with no complete JSON line after it
+exempts nothing, so a number the owner writes after a truncated card is
+still a phone number. Every other phone-shaped run is a phone number, which
+the session swaps for a contact reference.
+
+```quint
+type PhoneShapedContext = InMapsCard | AfterCoordinateKey | SignedDecimal | PairedDecimal | GeoWordDecimal | AfterOpenCardMarker | PlainText
+pure def mapCoordinate(phoneContext: PhoneShapedContext): bool = phoneContext != PlainText and phoneContext != AfterOpenCardMarker
+pure def detectedPhone(phoneContext: PhoneShapedContext): bool = not(mapCoordinate(phoneContext))
+pure def lawACoordinateNeverBecomesAContact(phoneContext: PhoneShapedContext): bool = mapCoordinate(phoneContext) implies not(detectedPhone(phoneContext))
+pure def lawAnOpenCardMarkerHidesNoPhone(phoneContext: PhoneShapedContext): bool = (phoneContext == AfterOpenCardMarker or phoneContext == PlainText) implies detectedPhone(phoneContext)
+```

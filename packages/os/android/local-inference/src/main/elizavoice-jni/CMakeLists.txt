@@ -64,7 +64,7 @@ set(ELIZAVOICE_PREBUILT_SO "${ELIZAVOICE_LIB_DIR}/libelizainference.so")
 if(NOT EXISTS "${ELIZAVOICE_PREBUILT_SO}")
     message(FATAL_ERROR
         "[elizavoice-jni] prebuilt libelizainference.so missing at "
-        "${ELIZAVOICE_PREBUILT_SO}; run packages/app/scripts/stage-elizavoice-lib.ts first.")
+        "${ELIZAVOICE_PREBUILT_SO}; run packages/os/android/local-inference/scripts/stage-elizavoice-lib.ts first.")
 endif()
 
 add_library(elizainference SHARED IMPORTED)

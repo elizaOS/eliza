@@ -197,6 +197,7 @@ export type NoteOriginKind = "event" | "reminder"
 export type NoteLinkResolution = { status: "missing" } | { status: "found"; origin: NoteLink; note: Record<string, unknown> }
 
 function controlFree(value: unknown, max: number): value is string {
+  // eslint-disable-next-line no-control-regex -- Notes receipt identifiers exclude C0 controls and DEL.
   return typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value)
 }
 
@@ -249,6 +250,7 @@ export function resolveNoteLink(value: unknown, notes: readonly unknown[]): Note
 
 export function noteOriginTitle(note: unknown, fallback = "Voice note"): string {
   const title = typeof note === "object" && note !== null && "title" in note && typeof note.title === "string" ? note.title : ""
+  // eslint-disable-next-line no-control-regex -- Note list titles replace each consecutive run of C0 controls and DEL.
   return title.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 120) || fallback
 }
 

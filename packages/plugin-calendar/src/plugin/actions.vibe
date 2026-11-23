@@ -1,8 +1,8 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"
 import { readTurnContext } from "@elizaos/agent"
-import { extractUserText, incomingMessagePersistenceSnapshot, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
+import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
+  chatCreateReviewed, deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import { createNeedsConfirmation, statedYearCreate } from "../clock.vibe"
@@ -52,6 +52,7 @@ const Parameters = Schema.Struct({
   attendees: Schema.optionalKey(Schema.Array(Words(320))),
   addGuests: Schema.optionalKey(Schema.Array(Words(320))),
   removeGuests: Schema.optionalKey(Schema.Array(Words(320))),
+  reviewBeforeCreate: Schema.optionalKey(Schema.Boolean),
   recurrenceScope: Schema.optionalKey(WriteScopeRecord),
   repeat: Schema.optionalKey(RecurrenceRecord.fields.rule),
   repeatUntil: Schema.optionalKey(Instant),
@@ -407,7 +408,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
       }
       const source = try host.writeTarget(parameters.calendarId)
       if (source === undefined) return failed(subaction, "There's no calendar this account can write to.")
-      const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: parameters.reviewBeforeSaving === true, askedBy, askId }) catch () => undefined
+      const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: chatCreateReviewed(parameters.reviewBeforeCreate === false && parameters.reviewBeforeSaving !== true), askedBy, askId }) catch () => undefined
       return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
     case "update_event":
@@ -446,7 +447,7 @@ function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
 
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), applied at once on the agent's own calendar and through the owner's approval on a connected provider calendar, or on any calendar when the owner asked to review a new event before it is saved; a delete on the agent's own calendar runs at once only when the owner's words ask to delete and hold the whole title of one event, or it is the event selected on screen; otherwise nothing is deleted and the reply asks the owner, and after the owner's yes call delete_event again with the eventId it returned.",
+  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. Chat creates are reviewed unless the owner plainly asked to save now; a delete on the agent's own calendar runs at once only when the owner's words ask to delete and hold the whole title of one event, or it is the event selected on screen; otherwise nothing is deleted and the reply asks the owner, and after the owner's yes call delete_event again with the eventId it returned.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CALENDAR_TRIP_WINDOW", "CALENDAR_CHECK_AVAILABILITY", "CALENDAR_PROPOSE_TIMES", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [
@@ -465,7 +466,8 @@ export const calendarAction: Action = {
     { name: "timeZone", required: false, description: "The IANA zone the owner named for this request.", schema: { type: "string" } },
     { name: "durationMinutes", required: false, description: "For propose_times: the exact number of minutes each opening needs. Do not guess a missing length.", schema: { type: "integer", minimum: 5, maximum: 480 } },
     { name: "confirmedPastStart", required: false, description: "The owner confirmed creating an event whose start has passed.", schema: { type: "boolean" } },
-    { name: "reviewBeforeSaving", required: false, description: "For a new event: true when the owner asked to preview, review or confirm it before it is saved, or to prepare it without saving yet; it then waits for the owner's approval instead of a chat summary. Keep it when the owner adds missing details to that event. False or omitted for an ordinary create.", schema: { type: "boolean" } },
+    { name: "reviewBeforeCreate", required: false, description: "For a new event: false only when the owner plainly asked to save it now; true, or left out, puts it up for the owner's review first.", schema: { type: "boolean" } },
+    { name: "reviewBeforeSaving", required: false, description: "For a new event: true when the owner asked to preview, review or confirm it before it is saved, or to prepare it without saving yet; it then waits for the owner's approval instead of a chat summary. Keep it when the owner adds missing details to that event. An explicit request to review takes priority.", schema: { type: "boolean" } },
     { name: "repeat", required: false, description: "For a new repeating event: daily, weekdays or weekly.", schema: { type: "string", enum: ["daily", "weekdays", "weekly"] } },
     { name: "repeatUntil", required: false, description: "For a new repeating event: the last start it may have, ISO 8601 with an offset.", schema: { type: "string" } },
     { name: "skipStarts", required: false, description: "For a new repeating event: starts it skips, ISO 8601 with an offset.", schema: { type: "array", items: { type: "string" } } },
@@ -476,6 +478,7 @@ export const calendarAction: Action = {
     { name: "recurrenceScope", required: false, description: "For a repeating event: instance (this event), this_and_following, or series (all). Defaults to instance.", schema: { type: "string", enum: ["instance", "this_and_following", "series"] } },
   ],
   roleGate: { minRole: "OWNER" },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   validate: async (runtime) => serviceOf(runtime) !== undefined,
   handler: async (runtime, message, _state, options) => {
     const host = serviceOf(runtime)
@@ -490,6 +493,8 @@ export const calendarProvider: Provider = {
   description: "The owner's events over the next 24 hours from the active account's calendars",
   dynamic: true,
   roleGate: { minRole: "OWNER" },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+
   get: async (runtime) => {
     const host = serviceOf(runtime)
     if (host === undefined) return {}

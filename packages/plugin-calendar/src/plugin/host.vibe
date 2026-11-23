@@ -2,7 +2,7 @@
 import { sha256Hex } from "@elizaos/core"
 import { FetchHttpClient } from "effect/http"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { attendeeNotice, eventVisible, invitationVerdict, sourceRead, writeRoute, type AttendeeNotice, type SourceRead } from "../../gen/calendar__actions.effect.vibe"
+import { attendeeNotice, eventVisible, invitationVerdict, readScope, sourceRead, writeRoute, type AttendeeNotice, type SourceRead } from "../../gen/calendar__actions.effect.vibe"
 import type { ManagedCalendarBroker } from "../feed/broker.vibe"
 import {
   sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceHealth, type CalendarSourceKey, type CalendarSourceStatus, type CalendarSummary,
@@ -164,6 +164,11 @@ export effect function calendarHost(options: CalendarHostOptions) {
     return { found, unavailable }
   }
 
+  function narrowedTo(found: readonly { readonly row: CalendarSummary }[], calendarId: string | undefined): string | undefined {
+    if (calendarId === undefined) return undefined
+    return readScope(true, found.some(({ row }) => row.calendarId === calendarId)) === "OneListed" ? calendarId : undefined
+  }
+
   effect function calendars(): (readonly CalendarSummary[] | undefined)!! {
     const account = try Ref.get(active)
     return account === undefined ? undefined : (try listed(account)).found.map(({ row }) => row)
@@ -178,8 +183,9 @@ export effect function calendarHost(options: CalendarHostOptions) {
     let complete = unavailable.length === 0
     const seen = new Set<string>()
     const readAt = new Date(try Clock.currentTimeMillis).toISOString()
+    const calendarId = narrowedTo(found, request.calendarId)
     for (const { port, row } of found) {
-      if (request.calendarId !== undefined && row.calendarId !== request.calendarId) continue
+      if (calendarId !== undefined && row.calendarId !== calendarId) continue
       const read = port.read(account, row, request.timeMin, request.timeMax) catch () => undefined
       const status = sourceStatus[sourceRead(read !== undefined, read?.complete === true, (read?.events.length ?? 0) > 0)]
       sources.push({ key: { provider: row.provider, side: row.side, grantId: row.grantId, connectorAccountId: row.connectorAccountId, calendarId: row.calendarId },
@@ -202,8 +208,10 @@ export effect function calendarHost(options: CalendarHostOptions) {
   effect function find(eventId: string, calendarId?: string): (CalendarFound | undefined)!! {
     const account = try Ref.get(active)
     if (account === undefined) return undefined
-    for (const { port, row } of (try listed(account)).found) {
-      if (calendarId !== undefined && row.calendarId !== calendarId) continue
+    const { found } = try listed(account)
+    const narrowed = narrowedTo(found, calendarId)
+    for (const { port, row } of found) {
+      if (narrowed !== undefined && row.calendarId !== narrowed) continue
       const event = port.get(account, row, eventId) catch () => undefined
       if (event !== undefined && eventVisible(event.connectorAccountId ?? row.connectorAccountId, account.accountId, true)) {
         return { event, source: { provider: row.provider, side: row.side, grantId: row.grantId, connectorAccountId: row.connectorAccountId, calendarId: row.calendarId } }

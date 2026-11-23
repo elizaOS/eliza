@@ -52,6 +52,7 @@ export const EventRecord = Schema.Struct({
 })
 
 export const FieldsRecord = Schema.Struct({
+  // eslint-disable-next-line no-control-regex -- The title schema rejects NUL and requires one non-whitespace character.
   title: Schema.String.check(Schema.isMaxLength(500), Schema.isPattern(/^\s*[^\s\u0000][^\u0000]*$/)),
   description: Text,
   location: Schema.String.check(Schema.isMaxLength(2_000)),
