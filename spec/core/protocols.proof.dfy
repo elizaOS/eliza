@@ -225,22 +225,55 @@ lemma lawHexRoundTripReturnsTheBytes_ensures(byteList: seq<int>)
 
 // UUID: the derived bytes stay bytes, so every digit is a hex digit.
 
-lemma UuidDerivedBytes(digest: seq<int>)
+lemma {:induction false} UuidDerivedBytes(digest: seq<int>)
   requires allBytes(digest)
   ensures |uuidBytesFromDigest(digest)| == 16
   ensures forall i :: 0 <= i < 16 ==> 0 <= uuidBytesFromDigest(digest)[i] <= 255
   ensures 0 <= uuidBytesFromDigest(digest)[6] < 16
   ensures 128 <= uuidBytesFromDigest(digest)[8] < 192
 {
-  forall i | 0 <= i < 16 && i < |digest|
-    ensures 0 <= digest[i] <= 255
+  UuidVersionByteBound(digest);
+  UuidVariantByteBound(digest);
+  var bytes := uuidBytesFromDigest(digest);
+  forall i | 0 <= i < 16
+    ensures 0 <= bytes[i] <= 255
   {
-    assert digest[i] in digest;
+    if i != 6 && i != 8 {
+      UuidOtherByteBound(digest, i);
+    }
   }
-  var six := if 6 < |digest| then digest[6] else 0;
-  var eight := if 8 < |digest| then digest[8] else 0;
-  assert quotient_core__protocols(six, 16) == six / 16;
-  assert quotient_core__protocols(eight, 64) == eight / 64;
+}
+
+lemma {:induction false} UuidVersionByteBound(digest: seq<int>)
+  requires allBytes(digest)
+  ensures |uuidBytesFromDigest(digest)| == 16
+  ensures 0 <= uuidBytesFromDigest(digest)[6] < 16
+{
+  var value := if 6 < |digest| then digest[6] else 0;
+  if 6 < |digest| { assert digest[6] in digest; }
+  assert 0 <= value;
+  assert quotient_core__protocols(value, 16) == value / 16;
+  assert uuidBytesFromDigest(digest)[6] == value % 16;
+}
+
+lemma {:induction false} UuidVariantByteBound(digest: seq<int>)
+  requires allBytes(digest)
+  ensures 128 <= uuidBytesFromDigest(digest)[8] < 192
+{
+  var value := if 8 < |digest| then digest[8] else 0;
+  if 8 < |digest| { assert digest[8] in digest; }
+  assert 0 <= value;
+  assert quotient_core__protocols(value, 64) == value / 64;
+  assert uuidBytesFromDigest(digest)[8] == value % 64 + 128;
+}
+
+lemma {:induction false} UuidOtherByteBound(digest: seq<int>, i: int)
+  requires allBytes(digest)
+  requires 0 <= i < 16 && i != 6 && i != 8
+  ensures 0 <= uuidBytesFromDigest(digest)[i] <= 255
+{
+  lawDerivedUuidKeepsTheOtherDigestBytes_ensures(digest, i);
+  if i < |digest| { assert digest[i] in digest; }
 }
 
 lemma lawDerivedUuidHasVersionZeroAndVariantBits_ensures(digest: seq<int>)

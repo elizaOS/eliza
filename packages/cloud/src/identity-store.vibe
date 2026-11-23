@@ -1,6 +1,6 @@
 // spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or everywhere"; spec/cloud/identity/accounts.md, "A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active"
 import type { Client } from "pg"
-import { foreign, type Tx } from "./store/connection.vibe"
+import { foreign, toInt, type Tx } from "./store/connection.vibe"
 import { SecureRandom } from "effect/crypto"
 import { apply, decodeState, initial, accepts, canRefresh, canLogout, type Family } from "../gen/cloud__identity__sessions.effect.vibe"
 import { firstSight, apply as applyAccount, decodeState as decodeAccount, initial as unopened, type Owner } from "../gen/cloud__identity__accounts.effect.vibe"
@@ -33,18 +33,42 @@ export function identityTx(db: Client): Tx {
   }
 }
 
-export effect function rateLimit(db: Client, scope: string, key: string, maximum: number, seconds: number) {
-  const hash = try digestCredential(key)
-  const { rows } = try authQuery<{ hits: number }>(db, `
+interface AuthLimit {
+  readonly scope: string
+  readonly subject: string
+  readonly maximum: number
+  readonly seconds: number
+}
+
+effect function countAuthLimit(tx: Tx, limit: AuthLimit, now?: number) {
+  const hash = try digestCredential(limit.subject)
+  const rows = try tx.query(`
     INSERT INTO cloud_auth_limits (scope, subject_hash, expires_at, hits)
-    VALUES ($1, $2, now() + $3 * interval '1 second', 1)
+    VALUES ($1, $2, COALESCE(to_timestamp($5::double precision / 1000), now()) + $3 * interval '1 second', 1)
     ON CONFLICT (scope, subject_hash) DO UPDATE
-    SET hits = CASE WHEN cloud_auth_limits.expires_at <= now() THEN 1 ELSE cloud_auth_limits.hits + 1 END,
-        expires_at = CASE WHEN cloud_auth_limits.expires_at <= now() THEN EXCLUDED.expires_at ELSE cloud_auth_limits.expires_at END
-    WHERE cloud_auth_limits.expires_at <= now() OR cloud_auth_limits.hits < $4
+    SET hits = CASE WHEN cloud_auth_limits.expires_at <= COALESCE(to_timestamp($5::double precision / 1000), now()) THEN 1 ELSE cloud_auth_limits.hits + 1 END,
+        expires_at = CASE WHEN cloud_auth_limits.expires_at <= COALESCE(to_timestamp($5::double precision / 1000), now()) THEN EXCLUDED.expires_at ELSE cloud_auth_limits.expires_at END
+    WHERE cloud_auth_limits.expires_at <= COALESCE(to_timestamp($5::double precision / 1000), now()) OR cloud_auth_limits.hits < $4
     RETURNING hits
-  `, [scope, hash, seconds, maximum])
-  if (rows.length === 0) throw new RateLimited()
+  `, [limit.scope, hash, limit.seconds, limit.maximum, now ?? null])
+  return { admitted: rows.length > 0, hash }
+}
+
+export effect function rateLimitRetryAt(tx: Tx, limit: AuthLimit, now: number) {
+  const { admitted, hash } = try countAuthLimit(tx, limit, now)
+  if (admitted) return undefined
+  const rows = try tx.query(`
+    SELECT CEIL(EXTRACT(EPOCH FROM expires_at) * 1000)::bigint AS retry_at
+    FROM cloud_auth_limits WHERE scope = $1 AND subject_hash = $2
+  `, [limit.scope, hash])
+  const retryAt = toInt(rows[0]?.retry_at)
+  if (!Number.isSafeInteger(retryAt) || retryAt <= now) throw new StorageUnavailable()
+  return retryAt
+}
+
+export effect function rateLimit(db: Client, scope: string, key: string, maximum: number, seconds: number) {
+  const { admitted } = try mapError(countAuthLimit(identityTx(db), { scope, subject: key, maximum, seconds }), () => new StorageUnavailable())
+  if (!admitted) throw new RateLimited()
 }
 
 export effect function accountTransaction<A, E, R>(db: Client, body: A!E!R) {
@@ -179,7 +203,7 @@ function browserSession(account: AccountRow, access: string, refresh: string, se
   }
 }
 
-export effect function openSignInFamily(db: Client, identity: Identity) {
+effect function openSignInFamily(db: Client, identity: Identity) {
   const now = try Clock.currentTimeMillis
   const account = try accountForIdentity(db, identity, now)
   const epoch = Number(account.sessions_revoked_before)

@@ -1,4 +1,4 @@
-// spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
+// spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
 import { allowedMethods, allowedRequestHeaders, exposedResponseHeaders, gateOf, routeOpen } from "../../gen/cloud__deployment.effect.vibe"
 import { planRpm } from "../billing/plans.vibe"
 import { readPolicy } from "../billing/policy.vibe"
@@ -11,6 +11,7 @@ import { authenticate, type Caller } from "./request-auth.vibe"
 import { defaultMaxBodyBytes, matchRoute, type CloudContext, type Route } from "./routes.vibe"
 
 const requestIdPattern = /^[A-Za-z0-9._:-]{8,128}$/
+type Compatibility = (route: Route) => (HttpServerResponse.HttpServerResponse | undefined)!Refused
 
 function corsHeaders(origin: string | undefined, settings: EnvironmentProfile): Readonly<Record<string, string>> {
   if (origin === undefined) return {}
@@ -46,7 +47,7 @@ effect function admitPlanRate(route: Route, caller: Caller, now: number): void!R
   try admit({ subject: caller.organizationId, scope: `plan-${route.rateClass}`, limit: planRpm(policy.planKey, route.rateClass), widthMs: minute })
 }
 
-effect function dispatch(routes: ReadonlyArray<Route>, fallback: Route | undefined, requestId: string, now: number): HttpServerResponse.HttpServerResponse!Refused!(HttpServerRequest.HttpServerRequest | CloudContext) {
+effect function dispatch(routes: ReadonlyArray<Route>, fallback: Route | undefined, requestId: string, now: number, compatibility?: Compatibility): HttpServerResponse.HttpServerResponse!Refused!(HttpServerRequest.HttpServerRequest | CloudContext) {
   const request = try HttpServerRequest.HttpServerRequest
   const deployment = try Deployment
   const url = new URL(request.url, deployment.settings.api)
@@ -59,12 +60,24 @@ effect function dispatch(routes: ReadonlyArray<Route>, fallback: Route | undefin
   const limit = route.maxBodyBytes ?? defaultMaxBodyBytes
   const declared = Number(request.headers["content-length"] ?? "0")
   if (offered && (!Number.isSafeInteger(declared) || declared > limit)) throw refused("ContentTooLarge")
-  const caller = authenticate(request.headers.authorization, route.auth) catch effect (failure) => match (failure) {
+  const authorization = request.headers.authorization
+  const compatibleResponse = effect {
+    if (offered && compatibility !== undefined) return try compatibility(route)
+  }
+  if (authorization === undefined) {
+    const compatible = try compatibleResponse
+    if (compatible !== undefined) return compatible
+  }
+  const caller = authenticate(authorization, route.auth) catch effect (failure) => match (failure) {
     when Refused: throw failure;
     default: throw refused("ServiceUnavailable", "NoReason", now + 5000);
   }
   if (!offered) throw refused("CapabilityUnavailable")
   try admitPlanRate(route, caller, now)
+  if (authorization !== undefined) {
+    const compatible = try compatibleResponse
+    if (compatible !== undefined) return compatible
+  }
   const response = provideService(
     route.handler({ request, params, query: url.searchParams, caller, requestId, now }),
     HttpServerRequest.MaxBodySize,
@@ -77,7 +90,7 @@ effect function dispatch(routes: ReadonlyArray<Route>, fallback: Route | undefin
   return response
 }
 
-export effect function respond(routes: ReadonlyArray<Route>, fallback?: Route): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | CloudContext) {
+export effect function respond(routes: ReadonlyArray<Route>, fallback?: Route, compatibility?: Compatibility): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | CloudContext) {
   const request = try HttpServerRequest.HttpServerRequest
   const deployment = try Deployment
   const now = try Clock.currentTimeMillis
@@ -87,7 +100,7 @@ export effect function respond(routes: ReadonlyArray<Route>, fallback?: Route): 
   const response = request.method === "OPTIONS" && request.headers["access-control-request-method"] !== undefined
     ? HttpServerResponse.empty({ status: 204, headers: preflightHeaders(origin, deployment.settings) })
     : HttpServerResponse.setHeaders(
-        dispatch(routes, fallback, requestId, now) catch effect (failure) => refusalResponse(failure.refusal, try Clock.currentTimeMillis),
+        dispatch(routes, fallback, requestId, now, compatibility) catch effect (failure) => refusalResponse(failure.refusal, try Clock.currentTimeMillis),
         corsHeaders(origin, deployment.settings)
       )
   return HttpServerResponse.setHeader(response, "x-request-id", requestId)

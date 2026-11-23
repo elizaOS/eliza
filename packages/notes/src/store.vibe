@@ -98,7 +98,7 @@ export function notesStore(storage: NotesStorage, prior?: PriorImport): NotesSto
   effect function imported(source: PriorImport): NotesDocument!NotesUnavailable {
     const found = try foreign("read the earlier Notes document", () => source.read())
     const document = found === undefined ? undefined
-      : try (importPriorDocument(found, try source.at) catch () => undefined)
+      : (importPriorDocument(found, try source.at) catch () => undefined)
     switch (importStep("NothingSaved", found === undefined ? "PriorAbsent" : document === undefined ? "PriorInvalid" : "PriorValid")) {
       case "KeepCollection":
       case "StartEmpty":
@@ -126,8 +126,8 @@ export function notesStore(storage: NotesStorage, prior?: PriorImport): NotesSto
 
   effect function commit(next: NotesDocument): EraseCommit!! {
     const encoded = plain(next)
-    const kept = try (tryPromise(() => storage.set(encoded)) catch () => false)
-    const readback = try (tryPromise(() => storage.get()) catch () => undefined)
+    const kept = tryPromise(() => storage.set(encoded)) catch () => false
+    const readback = tryPromise(() => storage.get()) catch () => undefined
     if (kept && sameJson(readback, encoded)) return "CommitSaved"
     return sameJson(readback, encoded) ? "CommitUnknownApplied" : "CommitUnknownNotApplied"
   }

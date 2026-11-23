@@ -57,31 +57,37 @@ function eventFacts(event: CalendarEvent): CalendarEventFacts {
 export class CalendarService extends Service {
   static override serviceType = calendarServiceType
   override capabilityDescription = "The owner's calendars: the resident calendar, connected providers, reads and ledgered changes"
-  readonly host: CalendarHost
+  readonly host: CalendarHost | undefined
 
-  constructor(runtime: IAgentRuntime, host: CalendarHost) {
+  constructor(runtime?: IAgentRuntime, host?: CalendarHost) {
     super(runtime)
     this.host = host
   }
 
-  static override async start(runtime: IAgentRuntime): Promise<Service> {
+  static override async start(runtime: IAgentRuntime): Promise<CalendarService> {
     const host = await runPromise(calendarHost({ cache: runtime, agentId: runtime.agentId, approvals: () => approvalsOf(runtime) }))
     return new CalendarService(runtime, host)
   }
 
+  async #readyHost(): Promise<CalendarHost> {
+    if (this.host === undefined) throw new Error("Start CalendarService before using its host.")
+    return this.host
+  }
+
   async eventsBetween(window: { readonly startAt: number; readonly endAt: number }): Promise<readonly CalendarEventFacts[]> {
-    const found = await runPromise(this.host.search({ timeMin: window.startAt, timeMax: window.endAt }))
+    const host = await this.#readyHost()
+    const found = await runPromise(host.search({ timeMin: window.startAt, timeMax: window.endAt }))
     if (found === undefined) return []
     if (!found.complete) throw new Error(`The calendar could not read every listed source: ${found.unavailable.join(", ")}`)
     return found.events.map(eventFacts)
   }
 
-  register(port: CalendarProviderPort): Promise<void> {
-    return runPromise(this.host.register(port))
+  async register(port: CalendarProviderPort): Promise<void> {
+    return runPromise((await this.#readyHost()).register(port))
   }
 
-  bindAccount(account: CalendarAccount | undefined): Promise<void> {
-    return runPromise(this.host.bindAccount(account))
+  async bindAccount(account: CalendarAccount | undefined): Promise<void> {
+    return runPromise((await this.#readyHost()).bindAccount(account))
   }
 
   override stop(): Promise<void> {
@@ -100,10 +106,11 @@ export class CalendarApprovalExecutorService extends Service {
 
   async execute(record: CalendarApprovalRecord): Promise<CalendarLedgerOutcome> {
     const calendar = await this.runtime.getServiceLoadPromise(calendarServiceType)
-    if (!(calendar instanceof CalendarService)) {
+    const host = calendar instanceof CalendarService ? calendar.host : undefined
+    if (host === undefined) {
       return { result: "ChangeRetryable", text: "The calendar is not running yet.", failure: { code: "CALENDAR_SERVICE_UNAVAILABLE", retryable: true, acceptance: "not_accepted" } }
     }
-    return runPromise(calendar.host.executeApproval(record))
+    return runPromise(host.executeApproval(record))
   }
 
   override stop(): Promise<void> {

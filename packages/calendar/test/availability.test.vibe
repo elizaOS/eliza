@@ -124,13 +124,13 @@ it.effect('Read the reviewed local source with its actual calendar rules (spec/c
   assert.deepStrictEqual(try readDeviceAvailability(port, request), { status: "timezone-changed" })
 
   const at = (iso: string) => Date.parse(iso)
-  const row = (fields: Pick<CalendarRow, "id" | "begin" | "end"> & Partial<CalendarRow>): CalendarRow =>
+  const calendarRow = (fields: Pick<CalendarRow, "id" | "begin" | "end"> & Partial<CalendarRow>): CalendarRow =>
     ({ calendarId: "home", title: "Standup", body: "", location: "", revision: "r1", ...fields })
-  const weekly = row({ id: "standup", begin: at("2026-03-02T17:00:00.000Z"), end: at("2026-03-02T17:30:00.000Z"), allDay: false,
+  const weekly = calendarRow({ id: "standup", begin: at("2026-03-02T17:00:00.000Z"), end: at("2026-03-02T17:30:00.000Z"), allDay: false,
     timeZone: zone, repeat: "weekly", excluded: [at("2026-03-16T16:00:00.000Z")] })
-  const moved = row({ id: occurrenceId("standup", at("2026-03-23T16:00:00.000Z")), begin: at("2026-03-24T18:00:00.000Z"), end: at("2026-03-24T18:30:00.000Z"),
+  const moved = calendarRow({ id: occurrenceId("standup", at("2026-03-23T16:00:00.000Z")), begin: at("2026-03-24T18:00:00.000Z"), end: at("2026-03-24T18:30:00.000Z"),
     allDay: false, repeat: "none", seriesId: "standup", occurrenceBegin: at("2026-03-23T16:00:00.000Z") })
-  const weekdays = row({ id: "gym", begin: at("2026-03-06T00:00:00.000Z"), end: at("2026-03-07T00:00:00.000Z"), allDay: true, repeat: "weekdays" })
+  const weekdays = calendarRow({ id: "gym", begin: at("2026-03-06T00:00:00.000Z"), end: at("2026-03-07T00:00:00.000Z"), allDay: true, repeat: "weekdays" })
   const month = { start: "2026-03-01T00:00:00.000Z", end: "2026-04-01T00:00:00.000Z" }
   const standups = expandDocumentCalendar([weekly, moved], month)?.rows.map((found) => [found.id, new Date(found.begin).toISOString()])
   assert.deepStrictEqual(standups, [
@@ -142,7 +142,7 @@ it.effect('Read the reviewed local source with its actual calendar rules (spec/c
   assert.deepStrictEqual(expandDocumentCalendar([weekdays], week)?.rows.map((found) => new Date(found.begin).toISOString().slice(0, 10)),
     ["2026-03-06", "2026-03-09", "2026-03-10"])
   const crowded = Array.from({ length: 201 }, (_, index) =>
-    row({ id: `e${index}`, begin: at("2026-03-09T10:00:00.000Z"), end: at("2026-03-09T11:00:00.000Z"), allDay: false, repeat: "none" }))
+    calendarRow({ id: `e${index}`, begin: at("2026-03-09T10:00:00.000Z"), end: at("2026-03-09T11:00:00.000Z"), allDay: false, repeat: "none" }))
   assert.deepStrictEqual(documentAvailability(crowded, week), { status: "too-many" })
   assert.strictEqual(expandDocumentCalendar([weekly], month, 0), undefined)
 })

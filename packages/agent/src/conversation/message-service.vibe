@@ -2,7 +2,7 @@
 import {
   type Action, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
-  executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
+  executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
 import type { BindingView, FailureKind } from "../models/binding.vibe"
 import { groundedTimeReply, turnClock } from "./clock.vibe"
@@ -189,7 +189,10 @@ async function respond(
         const actions = await offeredActions(runtime, message, state, actionGate)
         const planned = await planTurn({
           runtime, message, state, roles, actionGate, system, messages, signal,
-          onStepResult: (result) => terminal.recordActionResult(result),
+          onStepResult: (result) => Effect.runPromise(Effect.try({
+            try: () => terminal.recordActionResult(result),
+            catch: toElizaError,
+          })),
           ...(onStreamChunk === undefined ? {} : {
             onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
               written = accumulated ?? written + chunk

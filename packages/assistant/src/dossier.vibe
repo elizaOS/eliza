@@ -38,7 +38,7 @@ export effect function setDossier(turnOn: boolean, boundary: number, reopened: b
 }
 
 /** What became of one activity signal from the owner's device. */
-export type ActivityOutcome =
+type ActivityOutcome =
   | { readonly kind: "ignored"; readonly control: DossierControl }
   | { readonly kind: "admitted"; readonly control: DossierControl }
   | { readonly kind: "fired"; readonly control: DossierControl; readonly presented: boolean }

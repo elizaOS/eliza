@@ -87,7 +87,7 @@ export function linkedCalendarSemanticText(event: LinkedCalendarSemanticEvent): 
 }
 
 /** The pre-normalization text older checkpoints hashed, still read until their next clean save. */
-export function legacySemanticText(event: LinkedCalendarSemanticEvent): string {
+function legacySemanticText(event: LinkedCalendarSemanticEvent): string {
   return semanticText(event, false)
 }
 
@@ -96,12 +96,15 @@ module browser {
     const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))
     return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("")
   }
-  export function randomId(): string {
+  export function randomUuid(): string {
     return crypto.randomUUID()
   }
 }
-import { sha256, randomId } from browser
-export { randomId }
+import { sha256, randomUuid } from browser
+
+export effect function randomId(): string!CalendarSyncRefused {
+  return try Effect.try({ try: randomUuid, catch: () => new CalendarSyncRefused({ message: "Calendar sync could not create a receipt identifier. Nothing changed." }) })
+}
 
 /** The SHA-256 hex digest of a text, failing as a refusal where the platform cannot hash. */
 export effect function digestText(text: string): string!CalendarSyncRefused {

@@ -257,9 +257,10 @@ export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) 
     const destinationVerified = request.operation === "pause" ? false : try verified(wanted)
     const pendingLink = linkOf(names, control.pendingLink)
     const running = pendingLink !== undefined && ((try Ref.get(active)).has(nameOf(names, control.pendingToken) ?? "") || ports.dispatchRunning?.(pendingLink) === true)
+    const unresolved = { linkExact: false, outcome: "unresolved" as const }
     const recovery = request.operation === "recover" && current !== null && pendingLink !== undefined && !running
-      ? try tryPromise({ try: () => ports.recoverDispatch(pendingLink, current, document.dispatchedAt), catch: () => ({ linkExact: false, outcome: "unresolved" as const }) })
-      : { linkExact: false, outcome: "unresolved" as const }
+      ? (tryPromise(() => ports.recoverDispatch(pendingLink, current, document.dispatchedAt)) catch () => unresolved)
+      : unresolved
     const proof = {
       authority: ports.authority(), lexicalRequest: lexical(request), expectedRevision: request.expectedRevision, wantsDestination,
       destinationVerified, mappingsCompatible: document.mappings.every((mapping) => mapping.state === "paused" || mapping.localOnly
@@ -271,7 +272,7 @@ export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) 
     const keyId = intern(names, `key:${request.idempotencyKey}`)
     const fingerprintId = intern(names, `fingerprint:${fingerprint}`)
     const ledger = try mapError(apply(document.ledger, { type: "commitReviewed", op: operations[request.operation], proof, operationKey: keyId, fingerprint: fingerprintId, casSaved: true }), rejected)
-    const receipt: StoredReceipt = { id: randomId(), key: keyId, fingerprint: fingerprintId, committedRevision: ledger.activeControl.revision,
+    const receipt: StoredReceipt = { id: try nextId(), key: keyId, fingerprint: fingerprintId, committedRevision: ledger.activeControl.revision,
       committedAt: DateTime.formatIso(try DateTime.now) }
     const next: ControlDocument = { ...document, ledger, names, destinations, receipts: [receipt],
       dispatchedAt: ledger.activeControl.pendingToken === 0 ? null : document.dispatchedAt,
@@ -287,6 +288,10 @@ export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) 
 
   effect function bootstrap(destination: LinkedCalendarDestination): void!LinkedControlUncertain {
     try tryPromise({ try: () => ports.bootstrap(destination), catch: () => new LinkedControlUncertain({ message: "Sync resumed, but its first pass could not be confirmed." }) })
+  }
+
+  effect function nextId(): string!LinkedControlRefused {
+    return try mapError(randomId(), (error) => refused("LINKED_CALENDAR_CONTROL_WRITE_FAILED", error.message))
   }
 
   effect function fingerprintOf(request: LinkedCalendarControlRequest): string!LinkedControlRefused {
@@ -313,11 +318,11 @@ export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) 
     acquireDispatch: (expectedRevision: number, linkId: string, destination: LinkedCalendarDestination) => serialize(effect {
       const { before, document } = try load()
       const names = [...document.names]
-      const token = randomId()
+      const token = try nextId()
       const ledger = try mapError(apply(document.ledger, { type: "acquirePending", expectedRevision, dispatchDestination: names.indexOf(destinationName(destination)) + 1,
         linkId: plain(linkId) ? intern(names, `link:${linkId}`) : 0, token: intern(names, `token:${token}`) }),
         () => refused("LINKED_CALENDAR_DISPATCH_REJECTED", "Calendar dispatch is paused, busy, or its destination changed. Refresh sync status."))
-      if (!(try save(before, { ...document, ledger, names, dispatchedAt: DateTime.formatIso(try DateTime.now), dispatchReference: randomId() }))) {
+      if (!(try save(before, { ...document, ledger, names, dispatchedAt: DateTime.formatIso(try DateTime.now), dispatchReference: try nextId() }))) {
         throw refused("LINKED_CALENDAR_DISPATCH_REJECTED", "Calendar dispatch is paused, busy, or its destination changed. Refresh sync status.")
       }
       try Ref.update(active, (tokens) => new Set([...tokens, `token:${token}`]))
@@ -386,10 +391,10 @@ export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) 
         proof: { authority: ports.authority(), lexicalRequest: true, expectedRevision: edit.expectedRevision, wantsDestination: control.destination,
           destinationVerified: true, mappingsCompatible: true, dispatchActive: false, linkExact: true, recoverySettled: true, capturedToken: control.pendingToken } }), rejected)
       const mapping: LinkedCalendarMapping = op === "RetainLocal" ? { ...current, localOnly: true, state: "local_only" } : {
-        ...current, destination: destinationOf(names, edited.destination, destinations), providerEventId: null, handoffKey: `linked-calendar:handoff:${randomId()}`,
+        ...current, destination: destinationOf(names, edited.destination, destinations), providerEventId: null, handoffKey: `linked-calendar:handoff:${try nextId()}`,
         localOnly: false, staged: edited.staged, state: "dirty",
       }
-      const receipt: StoredReceipt = { id: randomId(), key: keyId, fingerprint: fingerprintId, committedRevision: ledger.activeControl.revision, committedAt: DateTime.formatIso(try DateTime.now) }
+      const receipt: StoredReceipt = { id: try nextId(), key: keyId, fingerprint: fingerprintId, committedRevision: ledger.activeControl.revision, committedAt: DateTime.formatIso(try DateTime.now) }
       const next: ControlDocument = { ...document, ledger, names, destinations, receipts: [receipt],
         mappings: document.mappings.map((row) => row.linkId === edit.linkId ? mapping : row),
         mappingReceipts: [...document.mappingReceipts, { key: operationKey, reviewed: reviewOf(current), revision: ledger.activeControl.revision, op, requestDestination }] }

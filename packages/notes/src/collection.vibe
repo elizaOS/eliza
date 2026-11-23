@@ -134,7 +134,7 @@ export effect function createIn(document: NotesDocument, request: CreateRequest,
 }
 
 /** The position of the one note a target names; distinct notes that all match need the owner's choice. */
-export effect function resolveIndex(notes: readonly StickyNote[], target: NoteTarget): number!NotesRefused {
+effect function resolveIndex(notes: readonly StickyNote[], target: NoteTarget): number!NotesRefused {
   if ("id" in target) {
     const index = notes.findIndex((note) => note.id === target.id)
     if (index < 0) throw refused("NOTES_NOT_FOUND", `Note "${target.id}" was not found.`)
@@ -201,13 +201,13 @@ function occurrences(text: string, part: string): number {
 }
 
 /** The note after one edit, keeping every field the edit does not name. */
-export effect function applyPatch(existing: StickyNote, patch: UpdateRequest, updatedAt: string): StickyNote!NotesRefused {
+effect function applyPatch(existing: StickyNote, patch: UpdateRequest, updatedAt: string): StickyNote!NotesRefused {
   const updated: StickyNote = { ...existing, updatedAt }
   const { textEdit, authoredEdit } = editsOf(existing, patch)
   if (authoredEdit !== undefined && textEdit === undefined) {
-    const format = try (editAuthoredNoteFormat(existing.format, authoredEdit) catch effect (error) => {
+    const format = editAuthoredNoteFormat(existing.format, authoredEdit) catch effect (error) => {
       throw refused("NOTES_EDIT_CONFLICT", `Authored note edit conflicts with its current format or text: ${error.reason}`)
-    })
+    }
     return try checked({ ...updated, format })
   }
   const rich = existing.format !== undefined && existing.format.kind !== "text"
@@ -326,7 +326,7 @@ export effect function moveIn(document: NotesDocument, target: NoteTarget, folde
 }
 
 /** The recording a voice note owns: undefined for none, null when its attachment needs review. */
-export function noteRecordingId(note: StickyNote): string | null | undefined {
+function noteRecordingId(note: StickyNote): string | null | undefined {
   if (note.format?.kind !== "voice") return undefined
   const { audio, recordingId } = note.format.data
   if (audio === undefined) return undefined
@@ -343,7 +343,7 @@ function recordingReferences(note: StickyNote): string[] {
 }
 
 /** How many saved or trashed notes still reference each recording. */
-export function recordingReferenceCounts(document: NotesDocument): ReadonlyMap<string, number> {
+function recordingReferenceCounts(document: NotesDocument): ReadonlyMap<string, number> {
   const counts = new Map<string, number>()
   for (const note of [...document.notes, ...document.trash.map((entry) => entry.note)]) {
     for (const id of recordingReferences(note)) counts.set(id, (counts.get(id) ?? 0) + 1)

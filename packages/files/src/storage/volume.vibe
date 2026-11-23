@@ -65,7 +65,7 @@ effect function read<R extends FilesResult>(call: () => Promise<R>): R!VolumeRef
 }
 
 effect function written(requested: readonly string[], call: () => Promise<FilesResult & { readonly outcomes?: readonly FileOutcomeRow[] }>): readonly RowOutcome[]!VolumeRefused {
-  const result = try (tryPromise(call) catch () => undefined)
+  const result = (tryPromise(call) catch () => undefined)
   if (result === undefined) return settleRows(requested, undefined)
   if (result.status !== "ready" && result.outcomes === undefined) throw refusal(result)
   return settleRows(requested, result.outcomes)

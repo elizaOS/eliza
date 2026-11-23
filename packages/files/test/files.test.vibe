@@ -83,7 +83,7 @@ it.effect('Claim an empty or complete folder only when the listing knows (spec/f
   provide NodeServices.layer {
     try scoped(effect {
       const { root } = try storage({ "Empty/.keep": "" })
-      const local = try on(localVolume(root), effect { return try ((try FilesVolume).list("Download") catch () => undefined) })
+      const local = try on(localVolume(root), effect { return ((try FilesVolume).list("Download") catch () => undefined) })
       const empty = try on(localVolume(root), effect { return try (try FilesVolume).query({ text: "nothing" }) })
       const partial = try on(nativeVolume(fakeDevice(() => [], { truncated: true }).plugin), effect { return try (try FilesVolume).list("Download") })
       const unknown = try on(nativeVolume(fakeDevice(() => [], { entries: false }).plugin), effect { return try (try FilesVolume).list("Download") })

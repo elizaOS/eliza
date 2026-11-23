@@ -128,7 +128,7 @@ export class CalendarLinkedStore implements LinkedCalendarCheckpointStore {
     if ((before?.links.length ?? 0) >= CALENDAR_LINK_LIMIT) throw refused()
     const now = DateTime.formatIso(try DateTime.now)
     const row = try this.#validate({
-      id: randomId(), agentId: this.#binding.agentId, localEventId, connectorAccountId: this.#binding.connectionId,
+      id: try randomId(), agentId: this.#binding.agentId, localEventId, connectorAccountId: this.#binding.connectionId,
       providerCalendarId: this.#binding.calendarId, providerEventId: null, providerEtag: null, localRevision,
       lastCommonSemanticHash: null, state: "dirty", pendingOperation: "create",
       idempotencyKey: `${this.#namespace}:${this.#sourceScope}:${localEventId}`, lastErrorCode: null, lastErrorMessage: null,

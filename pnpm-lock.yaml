@@ -587,9 +587,6 @@ importers:
 
   packages/files:
     dependencies:
-      '@elizaos/agent':
-        specifier: workspace:*
-        version: link:../agent
       '@elizaos/core':
         specifier: workspace:*
         version: link:../core
@@ -618,9 +615,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
-      playwright:
-        specifier: 'catalog:'
-        version: 1.65.0
       typescript:
         specifier: 'catalog:'
         version: 6.0.3

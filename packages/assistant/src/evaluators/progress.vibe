@@ -32,7 +32,7 @@ export function evidenceOf(evidenceId: string, trigger: Memory, selected: readon
 const bytesOf = (text: string) => new TextEncoder().encode(text).length
 
 /** What staging or committing an evaluator's output came to. */
-export type ProgressAnswer =
+type ProgressAnswer =
   | { readonly kind: "kept"; readonly state: EvaluatorProgress }
   | { readonly kind: "refused"; readonly failure: ProgressFailure; readonly state: EvaluatorProgress }
 
@@ -82,7 +82,7 @@ export effect function commitEvaluatorProgress(scope: ProgressScope, effectsSucc
 }
 
 /** Retires evidence that was edited or removed: the audit is prepared first, then the reducers retire, then the progress, then the audit is recorded. */
-export effect function reconcileEvaluatorEvidence(scope: ProgressScope, observed: readonly SourceRevision[], retire: (reprocess: readonly string[]) => boolean!unknown) {
+effect function reconcileEvaluatorEvidence(scope: ProgressScope, observed: readonly SourceRevision[], retire: (reprocess: readonly string[]) => boolean!unknown) {
   provide stored(progressKey(scope)) {
     const progress = try Machine
     const refreshed = try orDie(progress.send({ type: "refreshSources", observed: [...observed] }))

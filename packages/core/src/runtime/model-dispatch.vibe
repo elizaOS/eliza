@@ -842,7 +842,7 @@ function toolLogEntry(tool: unknown): ModelLogTool[] {
 }
 
 /** The request parts a logged prompt omits: each tool schema by size and digest, and the output cap when one was sent. */
-export function modelCallRequestSizes(request: unknown): { tools?: ModelLogTool[]; maxTokens?: number } {
+function modelCallRequestSizes(request: unknown): { tools?: ModelLogTool[]; maxTokens?: number } {
   if (!isPlainObject(request)) return {}
   return {
     tools: Array.isArray(request.tools) ? request.tools.flatMap(toolLogEntry) : [],

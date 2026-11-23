@@ -111,7 +111,6 @@ export interface RunRow {
 /** One retained mutation receipt, by its mutation id. */
 export interface ReceiptRow { readonly mutationId: string; readonly owner: string; readonly kind: "typed" | "metadata" | "lifecycle" | "digest" | "generated"; readonly data: Readonly<Record<string, unknown>> }
 /** One digest result row with its delivery cursor. */
-export interface DigestResultRow { readonly cursor: number; readonly runId: string; readonly workflowId: string; readonly result: Readonly<Record<string, unknown>> }
 
 const schema = `
 CREATE TABLE IF NOT EXISTS workflow_definitions (id text PRIMARY KEY, owner text NOT NULL, revision integer NOT NULL CHECK (revision > 0), data jsonb NOT NULL);
@@ -311,7 +310,5 @@ export function workflowStore(sql: WorkflowSql) {
   }
 }
 
-/** The workflow store over one database. */
-export type WorkflowStore = ReturnType<typeof workflowStore>
 /** A stored definition with the revision it was read at. */
 export type StoredDefinition = Stored<DefinitionRow>

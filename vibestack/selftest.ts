@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { stripVTControlCharacters } from "node:util";
+import { isDeepStrictEqual, stripVTControlCharacters } from "node:util";
 import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
 import { cacheCredentials, collectGarbage, isActionEntry, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
@@ -798,6 +798,40 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.ok(!failed.includes("sometimes"), text);
   });
 
+  test("an explicitly reached probe goal keeps the independent search that exposes a broken rule", async () => {
+    const root = oneRule("counter", "The counter stays under 22", `pure val initial: int = 0
+pure val choiceValues = Set(${Array.from({ length: 64 }, (_, i) => i).join(", ")})
+pure def advance(n: int, choice: int): int = if (n == -1 or (n == 0 and choice == 0)) -1 else n + 1
+pure def alwaysBelowTwentyTwo(n: int): bool = n < 22
+pure def sometimesExit(n: int): bool = n == -1`);
+    const result = await run(root);
+    const broken = result.said("always", /a reachable state breaks/);
+    assert.ok(broken && !broken.ok, result.text);
+    assert.match(broken.detail, /-> state = 22\b/);
+    assert.match(broken.detail, /never_sometimesExit .*--max-steps 40/);
+    assert.ok(!result.said("sometimes", /is reachable/), result.text);
+    assert.ok(result.said("skipped", /^types, proof,/), result.text);
+    const probe = fs.globSync("gen/traces/counter.inv.probe/**/*.itf.json", { cwd: root });
+    assert.ok(probe.some((file) => JSON.parse(read(file, root)).states.some((s: Record<string, unknown>) =>
+      s["mbt::actionTaken"] === "eval_sometimesExit" && isDeepStrictEqual(s.outcome, { tag: "Out_sometimesExit", value: true }))));
+  });
+
+  test("a deeper reachable goal does not preempt a shallow safety counterexample", async () => {
+    const root = oneRule("rare", "Find a rare choice after counting", `pure val initial: int = 0
+pure val pValues = 0.to(127)
+pure val qValues = 0.to(127)
+pure def up(n: int, p: int, q: int): int = if (n == 0 and p == 109 and q == 71) -2 else if (n == 38 and p < 16 and q < 6) -1 else n + 1
+pure def alwaysSafe(n: int): bool = n >= -1
+pure def sometimesMarked(n: int): bool = n == -1`);
+    const result = await run(root);
+    const broken = result.said("always", /a reachable state breaks/);
+    assert.ok(broken && !broken.ok, result.text);
+    assert.match(broken.detail, /-> state = -2\b/);
+    assert.match(broken.detail, /never_sometimesMarked .*--max-samples 200000 --max-steps 20\b/);
+    assert.ok(!result.said("sometimes", /is reachable/), result.text);
+    assert.ok(result.said("skipped", /^types, proof,/), result.text);
+  });
+
   test("a deep witness is found in the short sweep before the full search", async () => {
     const quint = "pure val initial: int = 0\npure def up(n: int): int = n + 1\npure def sometimesLate(n: int): bool = n == 38";
     const root = oneRule("t", "Counting", quint);
@@ -819,7 +853,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     const rareModel = await gen(rare, readSpecs(rare)[0]);
     const found = await search({ memory: { root: rare, fresh: true, used: new Set() }, model: rareModel, files: harnessFiles(readSpecs(rare)[0], readSpecs(rare), rareModel) }, "never_sometimesMarked", "step", [20, 40], 4096);
     assert.equal(found.broken, true, found.again);
-    assert.match(found.again, /--max-samples 1024 --max-steps 40\b/);
+    assert.match(found.again, /--max-samples 2048 --max-steps 40\b/);
     assert.equal(found.traces[0]?.at(-1)?.state, -1);
 
     const lateGuard = oneRule("gate", "Allow completion after counting", [
@@ -836,6 +870,22 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.deepEqual(trace?.at(-1)?.evaluated, { name: "canFinish", picks: {}, result: true });
     replay(await import(path.join(lateGuard, "gen/gate.ts")), trace, guardModel);
     assert.match(allowed.again, /gen\/gate\.guard\.run\.qnt/);
+  });
+
+  test("shallow and deep goals each supply a journey and receive their independent search", async () => {
+    const root = oneRule("route", "Take one step and then continue", `pure val initial: int = 0
+pure def advance(n: int): int = n + 1
+pure def sometimesStarted(n: int): bool = n > 0
+pure def sometimesLate(n: int): bool = n == 38`);
+    const spec = readSpecs(root)[0];
+    const model = await gen(root, spec);
+    const domain = await import(pathToFileURL(path.join(root, "gen", "route.ts")).href);
+    const { said, tested } = await simulation({ root, fresh: true, used: new Set() }, spec, [spec], model, domain, 1);
+    assert.ok(said.every((r) => r.ok), JSON.stringify(said));
+    assert.deepEqual(tested?.journeys.map(({ events }) => events.length), [1, 38]);
+    const actions = fs.readdirSync(path.join(root, "gen", "traces"));
+    assert.ok(actions.some((name) => name.startsWith("route.never_sometimesLate.")));
+    assert.ok(actions.some((name) => name.startsWith("route.never_sometimesStarted.")));
   });
 
   test("simulation and probes preserve guarded transitions and outputs when only the state enables an event", async () => {

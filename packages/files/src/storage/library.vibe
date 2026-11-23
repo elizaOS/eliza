@@ -96,6 +96,8 @@ export { newId, newRevision, type LibraryPlan, type LibraryRow }
 export const LIBRARY_ROOT = "root"
 
 export error LibraryFailed { message: string }
+export const allocateLibraryId = Effect.try({ try: newId, catch: () => new LibraryFailed({ message: "A file identity could not be generated." }) })
+export const allocateLibraryRevision = Effect.try({ try: newRevision, catch: () => new LibraryFailed({ message: "A file revision could not be generated." }) })
 /** Why a plan refused to change the library. */
 export type LibraryRefusal = LibraryAnswer | "LibraryBatchRefused" | "FolderImportRefused" | AttachmentAnswer
 
@@ -132,11 +134,11 @@ export function childrenOf(rows: readonly LibraryRow[], folderId: string): Libra
 }
 
 /** Whether a folder is the row itself or lies inside it. */
-export function insideOf(rows: readonly LibraryRow[], folderId: string, rowId: string): boolean {
+function insideOf(rows: readonly LibraryRow[], folderId: string, rowId: string): boolean {
   let current: string | undefined = folderId
   for (let depth = 0; current !== undefined && current !== "" && depth <= rows.length + 1; depth++) {
     if (current === rowId) return true
-    const at = current
+    const at: string = current
     current = rows.find((row) => row.id === at)?.parentId
   }
   return false

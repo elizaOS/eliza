@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
-import type { IAgentRuntime, Memory } from "@elizaos/core"
+import type { IAgentRuntime, JsonObject, Memory } from "@elizaos/core"
 import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
 import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
 import { MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route } from "../src/client/contracts.vibe"
@@ -46,12 +46,16 @@ const offer = {
 
 function cloudFake() {
   const calls: string[] = []
-  const gates: { search?: Promise<void>; refuseSearch?: CloudError } = {}
+  const gates: { search?: { started: Deferred.Deferred<void>; finish: Deferred.Deferred<void> }; refuseSearch?: CloudError } = {}
   const client = {
     async mapsCapabilities() { calls.push("capabilities"); return offer },
     async mapsPlacesSearch(request: { readonly query: string }) {
       calls.push(`search:${request.query}`)
-      await gates.search
+      const search = gates.search
+      if (search !== undefined) {
+        await runPromise(Deferred.succeed(search.started, undefined))
+        await runPromise(Deferred.await(search.finish))
+      }
       if (gates.refuseSearch !== undefined) throw gates.refuseSearch
       return { providerId: "google", attribution: "Google", places: [{ providerId: "google", id: "ferry", name: "Ferry Building", coordinate: ferry, attribution: "Google", fetchedAt: Date.now() }] }
     },
@@ -79,12 +83,12 @@ it.live('Keep Cloud Maps on the account that requested it: coverage installs the
   const installed = holder.provider
   if (installed === undefined) return try Effect.die(new Error("Cloud Maps installed no provider"))
   const found = try installed.search("ferry building")
-  let release = () => {}
-  cloud.gates.search = new Promise<void>((resolve) => { release = resolve })
+  const gate = { started: try Deferred.make<void>(), finish: try Deferred.make<void>() }
+  cloud.gates.search = gate
   const inFlight = fork installed.search("coit tower")
-  try sleep("20 millis")
+  try Deferred.await(gate.started)
   try maps.bind({ session: "s2", credential: "k2", client: cloud.client })
-  release()
+  try Deferred.succeed(gate.finish, undefined)
   const fenced = try Fiber.await(inFlight)
   cloud.gates.search = undefined
   try maps.initialize()
@@ -460,7 +464,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const { link, bodies } = linkFake()
   const plugin = createMapsPlugin({ cloud: () => link, navigation: () => undefined, savedPlaces: () => undefined, namesView: () => false })
   const runtime = {} as IAgentRuntime
-  const act = (name: string, message: Memory, parameters: Record<string, unknown>) => promise(async () => {
+  const act = (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
     const action = plugin.actions?.find((found) => found.name === name)
     if (action === undefined) throw new Error(`${name} is not registered`)
     return await action.handler(runtime, message, undefined, { parameters })
@@ -470,6 +474,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const old = messageWith({ latitude: here.latitude, longitude: here.longitude, capturedAt: now - 31 * 60_000 })
   const nearby = try act("MAPS_PLACE", recent, { query: "pharmacy", useCurrentLocation: true })
   const asked = try act("MAPS_PLACE", old, { query: "nearest pharmacy" })
+  const nearBy = try act("MAPS_PLACE", old, { query: "pharmacy near by" })
   const route = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Coit Tower", travelMode: "walk" })
   const fromHere = try act("MAPS_ROUTE", recent, { origin: "here", destination: "Coit Tower" })
   const park = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Golden Gate Park", travelMode: "walk" })
@@ -479,12 +484,14 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const namesake = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Union Station in Washington", travelMode: "walk" })
   const provider = try promise(() => phonePositionProvider.get(runtime, recent, {} as never))
   const routeText = route.text ?? ""
+  const nearByCard = recognizedMapsCards(nearBy.text ?? "")[0]?.card
   const fenced = `\`\`\`\n${appendMapsCard("", { kind: "place", place: { name: "X", latitude: 1, longitude: 1, provider: "p", providerPlaceId: "x", categories: [] }, attribution: null })}\n\`\`\``
   const searched = bodies.find((made) => made.path === "/api/v1/maps/places/search")
   try Effect.try(() => assert.deepStrictEqual({
     nearby: [nearby.success, (nearby.data as { readonly places: ReadonlyArray<{ readonly providerPlaceId: string }> }).places.map((item) => item.providerPlaceId)],
     searchedNear: (searched?.body as { readonly near?: unknown } | undefined)?.near, keyed: searched?.key,
     asked: [asked.success, (asked.data as { readonly state: string }).state, recognizedMapsCards(asked.text ?? "")[0]?.card.kind],
+    nearBy: [nearBy.success, nearByCard?.kind, nearByCard?.kind === "locate" ? nearByCard.query : undefined],
     route: [route.success, routeText.includes("Alternatives: 1. 20 min"), routeText.includes("Google Maps Platform via Eliza Cloud"), recognizedMapsCards(routeText).map((found) => found.card.kind)],
     plain: withoutMapsCards(routeText).includes("MAPSCARD"),
     fromHere: [fromHere.success, (fromHere.data as { readonly origin: string }).origin],
@@ -501,6 +508,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     nearby: [true, ["near", "far"]],
     searchedNear: { latitude: here.latitude, longitude: here.longitude }, keyed: true,
     asked: [false, "awaiting-location", "locate"],
+    nearBy: [false, "locate", "pharmacy"],
     route: [true, true, true, ["route"]],
     plain: false,
     fromHere: [false, "own-position"],
@@ -584,7 +592,7 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
   const store = memoryStore()
   const plugin = createMapsPlugin({ cloud: () => link, navigation: () => undefined, savedPlaces: () => store, namesView: (_runtime, destination) => destination === "settings" })
   const runtime = {} as IAgentRuntime
-  const act = (name: string, message: Memory, parameters: Record<string, unknown>) => promise(async () => {
+  const act = (name: string, message: Memory, parameters: JsonObject) => promise(async () => {
     const action = plugin.actions?.find((found) => found.name === name)
     if (action === undefined) throw new Error(`${name} is not registered`)
     return await action.handler(runtime, message, undefined, { parameters })

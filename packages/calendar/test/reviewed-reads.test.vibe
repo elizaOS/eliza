@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import { machine } from "../gen/calendar__reviewedReads.effect.vibe"
 import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
   requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
-import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, NamedReadRefused, executeNamedCalendarRead, namedCalendarReadTarget, namedReadWindow,
+import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, NamedReadRefused, executeNamedCalendarRead, namedReadWindow,
   type NamedCalendarReadContext, type NamedCalendarReadProvider } from "../src/client/named-read.vibe"
 
 const selected = { kind: "calendar-event", accountId: "device-home", sourceRevision: "a".repeat(64), id: "evt-1", revision: "b".repeat(64) }
@@ -11,7 +11,7 @@ const context: NamedCalendarReadContext = { view: "calendar", owner: "alice", se
 const read = { type: "calendar_named", action: "read", name: " dentist " } as const
 const capabilities = [CALENDAR_NAMED_READ_CAPABILITY, CALENDAR_CAPABILITY]
 const fields = { title: "Ｄentist check-up", description: "", location: "", start: "2026-05-04T16:00:00.000Z", end: "2026-05-04T17:00:00.000Z", timeZone: "UTC" }
-const record = { version: 1, kind: "calendar_read_selected", sourceId: "device-home", eventId: "evt-1", revision: selected.revision, fields }
+const record = { version: 1, kind: "calendar_read_selected", sourceId: "device-home", eventId: "evt-1", revision: selected.revision, fields } as const
 
 function share() {
   const controls = { status: "applied", result: record as unknown, feedComplete: true, cancelled: [] as string[], afterRead: () => {} }
@@ -35,7 +35,7 @@ it.effect('Share only the exact current Calendar information I reviewed (spec/ca
     assert.deepStrictEqual(shared, {
       status: "succeeded", summary: "Shared the matching event you chose. Its requested update still requires a separate review.",
       foregroundResult: { version: 1, kind: "calendar_named", action: "read", name: read.name, basis: "owner-chosen",
-        operation: { type: "calendar_read_selected", target: namedCalendarReadTarget(context) }, record },
+        operation: { type: "calendar_read_selected", target: { sourceId: selected.accountId, sourceRevision: selected.sourceRevision, eventId: selected.id, revision: selected.revision } }, record },
     })
     assert.strictEqual((try run({ ...read, name: "plumber" })).summary, "The selected event does not match the requested name. Nothing was shared or changed.")
     const refusedSummary = "The event was not shared. Its selection, access or review changed; nothing was changed."

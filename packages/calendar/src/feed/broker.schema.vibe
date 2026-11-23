@@ -1,7 +1,9 @@
 // spec/calendar/managedFeed.md, "The resident accepts only complete broker data for the exact selected source and window"
+import { sampledWireInstant } from "../availability/availability.schema.vibe"
+
 const Text = Schema.String
 const NullableText = Schema.NullOr(Schema.String)
-const Instant = Schema.String.check(Schema.makeFilter((value) => Number.isFinite(Date.parse(value))))
+const Instant = sampledWireInstant(Schema.String.check(Schema.makeFilter((value) => Number.isFinite(Date.parse(value)))))
 
 /** A managed owner grant as the private broker scopes it. */
 export const ScopedGrant = Schema.String.check(Schema.isPattern(/^alpha-google:[a-f0-9]{64}$/))

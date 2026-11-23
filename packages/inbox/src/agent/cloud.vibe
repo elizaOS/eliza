@@ -9,7 +9,7 @@ function refusalCode(body: unknown): string {
 }
 
 /** The owner's cloud link of this runtime, when the agent runs on a cloud backend. */
-export function cloudLinkOf(runtime: IAgentRuntime): CloudLinkService | undefined {
+function cloudLinkOf(runtime: IAgentRuntime): CloudLinkService | undefined {
   const found = runtime.getService<CloudLinkService>(cloudServiceType)
   return found === null || typeof found.request !== "function" ? undefined : found
 }

@@ -76,7 +76,8 @@ it.effect('A fired reminder reaches the owner as the exact presentation issued f
     const [row] = rowsOf(seen, reminderKind)
     const delivered = try deliverReminder(row)
     const shown = seen.presented[0]?.presentation
-    try equal({ delivered, trusted: readReminderPresentation(shown) === shown, chatText: shown?.chatText, copy: readReminderPresentation(JSON.parse(JSON.stringify(shown))) },
+    const copy: unknown = try Effect.try(() => JSON.parse(JSON.stringify(shown)))
+    try equal({ delivered, trusted: readReminderPresentation(shown) === shown, chatText: shown?.chatText, copy: readReminderPresentation(copy) },
       { delivered: { kind: "delivered" }, trusted: true, chatText: "Call the dentist", copy: null })
     const dismissed = try answerReminder({ op: "dismiss", target: "call the dentist" }, "m8")
     try equal([dismissed.success, seen.tasks.get(row.taskId)?.status], [true, "Dismissed"])

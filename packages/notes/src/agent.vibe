@@ -6,7 +6,7 @@ import type { NoteTarget, NotesQuery } from "./collection.vibe"
 import { notesNamedIn, ownerRequestText } from "./lookup.vibe"
 import { findNoteFolder, noteFolderId, readNoteFolders } from "./organize.vibe"
 import { noteIdPattern } from "./records.schema.vibe"
-import { assertNotesAgentViewOperation, namedNoteReadEvaluator, notesRequestEffectField, registerNotesDirectRoutes, restrictNotesWrite } from "./request-effect.vibe"
+import { namedNoteReadEvaluator, notesRequestEffectField, notesViewOperation, registerNotesDirectRoutes, restrictNotesWrite } from "./request-effect.vibe"
 import {
   notesCollection, notesServiceClass, notesStateUpdatedEvent, runtimeNotesHost,
   type NotesCollection, type NotesFailure, type NotesOptions,
@@ -99,12 +99,12 @@ function notesAction(spec: NotesActionSpec): Action {
     roleGate: { minRole: "OWNER" },
     tags: ["resource:notes", spec.operation === undefined ? "capability:read" : "capability:write"],
     validate: async () => true,
-    handler: (runtime, message, state, options) => runPromise(effect {
+    handler: (runtime, message, state, options) => runPromise(Effect.catch(effect {
       const operation = spec.operation
       const denied = operation === undefined ? undefined : try restrictNotesWrite(runtime, message, state, operation)
       if (denied !== undefined) return denied
       return try spec.run(paramsOf(options), message)
-    } catch (error) => failureOf(error)),
+    }, (error) => Effect.succeed(failureOf(error)))),
   }
 }
 
@@ -306,7 +306,7 @@ function providers(notes: NotesCollection): Provider[] {
     position: -5,
     contexts: ["notes", "general", "memory"],
     roleGate: { minRole: "OWNER" },
-    get: (_runtime, message) => runPromise(effect {
+    get: (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
       const snapshot = try notes.snapshot()
       if (snapshot.notes.length === 0) return { text: "", values: { savedNotesAvailable: true, savedNoteCount: 0 }, data: { savedNotes: [] } } satisfies ProviderResult
       return {
@@ -321,7 +321,7 @@ function providers(notes: NotesCollection): Provider[] {
         values: { savedNotesAvailable: true, savedNoteCount: snapshot.notes.length },
         data: { savedNotes: snapshot.notes.map(projectNoteForModel), notesRevision: snapshot.revision },
       } satisfies ProviderResult
-    } catch () => unavailable),
+    }, () => unavailable)),
   }
   const namedNotes: Provider = {
     name: "NAMED_NOTES",
@@ -330,7 +330,7 @@ function providers(notes: NotesCollection): Provider[] {
     position: -5,
     contexts: ["notes", "general", "memory"],
     roleGate: { minRole: "OWNER" },
-    get: (_runtime, message) => runPromise(effect {
+    get: (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
       const words = try ownerRequestText(message)
       if (words === "") return { text: "", values: {}, data: {} } satisfies ProviderResult
       const snapshot = try notes.snapshot()
@@ -349,14 +349,14 @@ function providers(notes: NotesCollection): Provider[] {
         values: {},
         data: { namedNotes: named.map(projectNoteForModel), ...(deleted.length > 0 ? { namedDeletedNotes: deleted } : {}), notesRevision: snapshot.revision },
       } satisfies ProviderResult
-    } catch () => ({ text: "Current named notes could not be read. Do not claim current note contents from history.", values: {}, data: { namedNotes: null } } satisfies ProviderResult)),
+    }, () => ({ text: "Current named notes could not be read. Do not claim current note contents from history.", values: {}, data: { namedNotes: null } } satisfies ProviderResult))),
   }
   const namedNoteRouting: Provider = {
     ...namedNotes,
     name: "NAMED_NOTE_ROUTING",
     description: "Fresh authorized exact-name availability for lean context routing.",
     alwaysInResponseState: false,
-    get: (_runtime, message) => runPromise(effect {
+    get: (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
       const words = try ownerRequestText(message)
       if (words === "") return { text: "", values: {}, data: {} } satisfies ProviderResult
       const snapshot = try notes.snapshot()
@@ -366,7 +366,7 @@ function providers(notes: NotesCollection): Provider[] {
         values: {},
         data: { namedNoteMatchAvailable: available },
       } satisfies ProviderResult
-    } catch () => ({ text: "Current named-note match availability is unconfirmed.", values: {}, data: { namedNoteMatchAvailable: null } } satisfies ProviderResult)),
+    }, () => ({ text: "Current named-note match availability is unconfirmed.", values: {}, data: { namedNoteMatchAvailable: null } } satisfies ProviderResult))),
   }
   return [savedNotes, namedNotes, namedNoteRouting]
 }
@@ -485,9 +485,9 @@ effect function interactWith(notes: NotesCollection, capability: string, params:
 
 /** Runs one view capability against the collection; a refusal is a result, never a thrown error. */
 export function notesInteract(notes: NotesCollection, capability: string, params?: Record<string, unknown>): Promise<NotesInteraction> {
-  return runPromise(interactWith(notes, capability, params ?? {}) catch (error) => ({
+  return runPromise(Effect.catch(interactWith(notes, capability, params ?? {}), (error) => Effect.succeed({
     success: false, text: error._tag === "NotesRefused" ? error.message : error.reason, code: error.code,
-  }) satisfies NotesInteraction)
+  } satisfies NotesInteraction)))
 }
 
 const statusOf: Readonly<Record<string, number>> = {
@@ -501,11 +501,12 @@ function failureBody(error: NotesFailure) {
 }
 
 function answered<A>(work: A!NotesFailure, signal: AbortSignal) {
-  return runPromise(effect {
-    const data = try work
-    if (signal.aborted) return { status: 499, body: { success: false, error: { code: "NOTES_REQUEST_CANCELLED" } } }
-    return { status: 200, body: { success: true, data } }
-  } catch (error) => failureBody(error))
+  return runPromise(Effect.match(work, {
+    onFailure: failureBody,
+    onSuccess: (data) => signal.aborted
+      ? { status: 499, body: { success: false, error: { code: "NOTES_REQUEST_CANCELLED" } } }
+      : { status: 200, body: { success: true, data } },
+  }))
 }
 
 function bodyOf(input: RouteInput): Params {
@@ -554,7 +555,7 @@ export function notesView(notes: NotesCollection): ViewDeclaration {
     icon: "StickyNote", path: "/notes", order: 920, viewKind: "preview", modalities: ["gui"],
     tags: ["notes", "notepad", "sticky notes", "scratchpad"], responseContext: { primaryContext: "notes" },
     capabilities: NOTES_CAPABILITIES, relatedActions: ["NOTES_LIST", "NOTES_CREATE", "NOTES_UPDATE", "NOTES_DELETE"],
-    beforeAgentInteract: assertNotesAgentViewOperation,
+    ...notesViewOperation,
     serverInteract: (capability, params) => notesInteract(notes, capability, params),
     visibleInManager: true,
   }

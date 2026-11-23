@@ -116,8 +116,10 @@ export function cloudCredential(request: Request) {
   return runPromise(Effect.provide(requestCredential(request), cryptoServices))
 }
 
-effect function accountForInference(request: Request, db: Client, env: NativeRegistryEnv | undefined) {
-  if (!request.headers.has("authorization")) return (try browserAccount(request, db))?.id ?? null
+type DeviceAuthority = "any" | "recorded"
+
+effect function accountForInference(request: Request, db: Client, env: NativeRegistryEnv | undefined, authority: DeviceAuthority) {
+  if (!request.headers.has("authorization")) return authority === "recorded" ? null : (try browserAccount(request, db))?.id ?? null
   const registration = env ? browserNativeRegistration(env) : null
   const hash = try deviceDigest(request)
   if (hash === null || !registration) return null
@@ -130,11 +132,11 @@ effect function accountForInference(request: Request, db: Client, env: NativeReg
   const row = rows[0]
   if (row === undefined) return null
   const key = inspectKey(row, now) catch effect () => { throw new StorageUnavailable() }
-  return key.reason === "NoReason" && typeof row.user_id === "string" ? row.user_id : null
+  return key.reason === "NoReason" && (authority === "any" || key.authority.tag === "RecordedAuthority") && typeof row.user_id === "string" ? row.user_id : null
 }
 
-export function inferenceAccount(request: Request, db: Client, env?: NativeRegistryEnv): Promise<string | null> {
-  return runPromise(Effect.provide(accountForInference(request, db, env), cryptoServices))
+export function inferenceAccount(request: Request, db: Client, env?: NativeRegistryEnv, authority: DeviceAuthority = "any"): Promise<string | null> {
+  return runPromise(Effect.provide(accountForInference(request, db, env, authority), cryptoServices))
 }
 
 function json(status: number, body: object) {

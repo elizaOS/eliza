@@ -91,7 +91,7 @@ function residentModules<R>(cli: AgentCli<R>, host: ResidentHost): ReadonlyMap<s
 let released: number | undefined
 
 effect function serve<R>(cli: AgentCli<R>) {
-  try (configureMobileDns() catch effect () => { throw new AgentBootFailed({ phase: "Config" }) })
+  configureMobileDns() catch effect () => { throw new AgentBootFailed({ phase: "Config" }) }
   const input = try readLaunch()
   const hostModules = residentModules(cli, { stateDirectory: input.stateDirectory })
   const runtimeServices = cli.runtimeServices?.({ stateDirectory: input.stateDirectory })

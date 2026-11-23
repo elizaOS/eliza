@@ -1,10 +1,16 @@
-// spec/files/scan/review.md, "Story: Assemble a document and retain a reviewable draft"; spec/files/scan/review.md, "Story: Save only the reviewed scan and see whether the save completed"; spec/files/scan/drafts.md, "Story: Restore the same scan and edits after reopening the app"; spec/files/scan/correction.md, "Story: Preview a perspective correction and decide whether to replace my page"
+// spec/files/scan/review.md, "Story: Assemble a document and retain a reviewable draft"; spec/files/scan/review.md, "Story: Save only the reviewed scan and see whether the save completed"; spec/files/scan/drafts.md, "Story: Restore the same scan and edits after reopening the app"; spec/files/scan/correction.md, "Story: Preview a perspective correction and decide whether to replace my page"; spec/files/scan/drafts.md, "Story: Save or delete a specific revision and know whether storage committed"; spec/files/scan/searchablePdf.md, "Story: Save the reviewed text beside the image of its own page"
+module browser {
+  export function unreadablePage(): Blob {
+    return new Blob(["not an image"], { type: "image/png" })
+  }
+}
 import { assert, it } from "@effect/vitest"
 import { encoded, rasterOf, readBytes } from "../src/documents/images.vibe"
 import { correctionReview, validateScanCorners } from "../src/documents/scan-correction.vibe"
 import { createScanDocument } from "../src/documents/scan-document.vibe"
 import { createScanDraftStore } from "../src/documents/scan-draft.vibe"
 import { createScanPdf } from "../src/documents/scan-pdf.vibe"
+import { unreadablePage } from browser
 
 effect function page(width: number, height: number) {
   return try orDie(encoded(try orDie(rasterOf(undefined, width, height)), "image/png"))
@@ -13,7 +19,7 @@ effect function page(width: number, height: number) {
 const reason = <A, E extends { readonly reason: string }>(plan: A!E) => map(Effect.flip(plan), (error) => error.reason)
 const line = { text: "Total 12", x: 0.1, y: 0.1, width: 0.5, height: 0.1 }
 
-it.effect('Assemble a document, keep its draft and restore it after reopening (spec/files/scan/review.md, "Story: Assemble a document and retain a reviewable draft"; spec/files/scan/drafts.md, "Story: Restore the same scan and edits after reopening the app"; spec/files/scan/drafts.md, "Story: Save or delete a specific revision and know whether storage committed")', effect () => {
+it.effect('Assemble a document, keep its draft and restore it after reopening (spec/files/scan/review.md, "Story: Assemble a document and retain a reviewable draft")', effect () => {
   const store = createScanDraftStore(`scan-journey-${Date.now()}`)
   const first = try page(40, 30), second = try page(30, 40)
   const document = try createScanDocument({ drafts: store, autosave: true })
@@ -37,12 +43,12 @@ it.effect('Assemble a document, keep its draft and restore it after reopening (s
   assert.deepEqual((try reopened.snapshot()).pages.map((item) => item.textLayer), [null, [line]])
   assert.equal(try reopened.deleteDraft(effect () => true), true)
   assert.equal(try store.readScanDraft(), undefined)
-  assert.equal(try reason(document.put(new Blob(["not an image"], { type: "image/png" }))), "page")
+  assert.equal(try reason(document.put(try Effect.try(unreadablePage))), "page")
   assert.equal((try document.close()).length, 2)
   assert.equal((try document.snapshot()).state.closed, true)
 })
 
-it.effect('Save only the reviewed scan and see whether the save completed (spec/files/scan/review.md, "Story: Save only the reviewed scan and see whether the save completed"; spec/files/scan/searchablePdf.md, "Story: Save the reviewed text beside the image of its own page")', effect () => {
+it.effect('Save only the reviewed scan and see whether the save completed (spec/files/scan/review.md, "Story: Save only the reviewed scan and see whether the save completed")', effect () => {
   const image = try page(60, 40)
   const document = try createScanDocument({ first: image })
   const exported: Uint8Array[] = []

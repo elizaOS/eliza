@@ -1,8 +1,11 @@
 // spec/calendar/linkedReconcile.md, "A push retains its operation and uses the exact provider preconditions"; spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"
+import { sampledWireInstant } from "../availability/availability.schema.vibe"
 
 const plain = /^[^\u0000-\u001f\u007f]+$/
 const Text = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max), Schema.isPattern(plain))
-const Instant = Schema.String.check(Schema.isMaxLength(64), Schema.makeFilter((value) => Number.isFinite(Date.parse(value))))
+const InstantWire = Schema.String.check(Schema.isMaxLength(64), Schema.makeFilter((value) => Number.isFinite(Date.parse(value))))
+const Instant = sampledWireInstant(InstantWire)
+const TimedInstant = sampledWireInstant(InstantWire.check(Schema.isPattern(/(Z|[+-]\d{2}:\d{2})$/)), { allowDateOnly: false })
 const CivilDate = Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
 
 /** One attendee as the sync protocol carries it. */
@@ -27,8 +30,8 @@ const TimedEvent = Schema.Struct({
   description: Schema.String,
   location: Schema.String,
   isAllDay: Schema.Literal(false),
-  startAt: Instant.check(Schema.isPattern(/(Z|[+-]\d{2}:\d{2})$/)),
-  endAt: Instant.check(Schema.isPattern(/(Z|[+-]\d{2}:\d{2})$/)),
+  startAt: TimedInstant,
+  endAt: TimedInstant,
   timeZone: Text(128),
   attendees: Schema.Array(SemanticAttendee),
   recurrence: Schema.optionalKey(Schema.Array(Text(2048))),

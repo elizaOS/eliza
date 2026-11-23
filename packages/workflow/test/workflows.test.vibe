@@ -1,7 +1,7 @@
 // spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { computeNextCronRunAtMs, type ActionResult, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { computeNextCronRunAtMs, type ActionResult, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
 import { workflowAction, workflowInstances } from "../src/agent.vibe"
 import {
   keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
@@ -185,7 +185,14 @@ it.live('Recover one reviewed run across an interrupted reply (spec/workflow/ind
     const finished = try settled(rig.client, run)
     try check(() => assert.deepStrictEqual([finished.status, finished.output], ["finished", "Say: good morning!"]))
 
-    const renamed = try rig.client.changeMetadata(receipt.workflowId, receipt.versionId, "Renamed note", "", () => succeed(undefined))
+    const reviewed = try rig.client.validatePhone({ ...greeting, name: "Renamed note" }, catalog)
+    const renamed = try rig.client.savePhone(reviewed.spec, catalog, {
+      mutationId: "11111111-1111-4111-8111-111111111111",
+      specDigest: reviewed.specDigest,
+      compilerRevision: catalog.compilerRevision,
+      workflowId: receipt.workflowId,
+      versionId: receipt.versionId,
+    })
     const current = try rig.client.detail(receipt.workflowId)
     const recovered = try rig.client.reconcile(receipt.workflowId, receipt.versionId, submitted)
     try check(() => assert.deepStrictEqual([recovered?.id, current.versionId === renamed.versionId, current.versionId !== receipt.versionId], [run.id, true, true]))
@@ -219,7 +226,7 @@ it.live('Run the version I reviewed, and turn a schedule on or off only at that 
 
   const runtime = {} as IAgentRuntime
   workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
-  const act = (parameters: Record<string, unknown>) => promise(() => workflowAction.handler(runtime, { content: { text: "" } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
+  const act = (parameters: JsonObject) => promise(() => workflowAction.handler(runtime, { content: { text: "" } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
   const read = try act({ action: "list" })
   const malformed = try act({ action: "deactivate", workflowId: receipt.workflowId, versionId: "" })
   const passed = try act({ action: "deactivate", workflowId: receipt.workflowId, versionId: receipt.versionId })
@@ -279,9 +286,10 @@ it.live('Decide one reviewed approval once and run its device step only as revie
   try check(() => assert.equal(forged._tag === "WorkflowHttpError" ? forged.code : undefined, "WORKFLOW_APPROVAL_NOT_APPLIED"))
   const [approved, again] = try.all [rig.client.decideApproval(first, read, true), rig.client.decideApproval(first, read, true)]
   try check(() => assert.deepStrictEqual([approved.approvals[0].status, again.approvals[0].status], ["approved", "approved"]))
-  const second = try settled(rig.client, first, (found) => found.status === "waiting-approval" && phone.performed.length === 1)
+  const second = try settled(rig.client, first, (found) => found.finished || (found.status === "waiting-approval"
+    && found.events.some((event) => event.type === "ApprovalRequested" && event.node === "tell")))
   const notify = (try rig.client.approvals(second))?.approvals.find((approval) => approval.nodeId === "tell")
-  if (notify === undefined) return try die(new Error("No notification approval was requested"))
+  if (notify === undefined) return try die(new Error(second.error ?? "No notification approval was requested"))
   try check(() => assert.include(notify.summary, "Ship it"))
   try rig.client.decideApproval(second, notify, false)
   const done = try settled(rig.client, second)
@@ -396,7 +404,7 @@ it.live('Run a digest over a live Google source read through managed Google (spe
     const done = try settled(rig.client, run)
     const inbox = try digestInbox("scope-google")
     const results = try inbox.sync(protocol, 1)
-    try check(() => assert.deepStrictEqual([done.status, results.map((result) => result.status), prompts.some((prompt) => prompt.includes("live_selected_google_read") && prompt.includes("Release"))], ["finished", ["finished"], true]))
+    try check(() => assert.deepStrictEqual([done.status, results.map((result) => result.status), prompts.some((prompt) => prompt.includes("live_selected_google_read") && prompt.includes("Release"))], ["finished", ["finished"], true], done.error))
   }
 })
 
@@ -449,7 +457,7 @@ it.live('Turn on generated code only after review and resume it without repeatin
   const result: unknown = try Effect.try(() => JSON.parse(done.output ?? "null"))
   try check(() => assert.deepStrictEqual([done.status, drafts, result], ["finished", 1, { text: "Your summary", signal: { received: true, payload: { ok: true } } }]))
 
-  const edited = try rig.request(`/api/workflow/workflows/${receipt.workflowId}`, { name: "Summary", description: "", source: "export default async function () { for (;;) {} }", mutationId: "55555555-5555-4555-8555-555555555555", expectedVersionId: on.versionId })
+  const edited = try rig.request(`/api/workflow/workflows/${receipt.workflowId}`, { name: "Summary", description: "", source: "export default async function (): Promise<never> { for (;;) {} }", mutationId: "55555555-5555-4555-8555-555555555555", expectedVersionId: on.versionId })
   const after = try rig.client.detail(receipt.workflowId)
   const editedReceipt = (edited as { readonly receipt: { readonly versionId: string; readonly sourceDigest: string } }).receipt
   const editedVersion = editedReceipt.versionId
@@ -489,14 +497,19 @@ it.live('Import only complete reviewed workflow source, and run only a worker bu
       "node_modules/typescript/lib/lib.es5.d.ts": "interface Object {}\n",
       "dist/gen/helper.js": "export const helper = 1\n",
       "dist/src/unused.js": "export const unused = 1\n",
-      "node_modules/dep-a/package.json": JSON.stringify({ name: "dep-a", version: "1.2.3", type: "module", exports: { ".": { types: "./index.d.ts", import: "./dist/index.js" } } }),
-      "node_modules/dep-a/dist/index.js": "export * as Effect from './namespace.mjs'\n",
+      "node_modules/dep-a/package.json": JSON.stringify({ name: "dep-a", version: "1.2.3", type: "module", exports: {
+        ".": { types: "./index.d.ts", "module-sync": "./dist/index.js", node: "./dist/unused.js", import: "./dist/unused.js" },
+        "./guard": { import: "./dist/unused.js", require: "./dist/guard.cjs", default: "./dist/unused.js" },
+      } }),
+      "node_modules/dep-a/dist/index.js": "import './bridge.cjs'\nexport * as Effect from './namespace.mjs'\n",
+      "node_modules/dep-a/dist/bridge.cjs": "module.exports = require('dep-a/guard')\n",
+      "node_modules/dep-a/dist/guard.cjs": "module.exports = true\n",
       "node_modules/dep-a/dist/namespace.mjs": "export const value = 1\n",
       "node_modules/dep-a/dist/unused.js": "export {}\n",
     }))
     const closure = try workerArtifactClosure(worker.path)
     try check(() => assert.deepStrictEqual([closure.entries.map((entry) => entry.path).sort(), closure.dependencies], [
-      ["gen/helper.js", "node_modules/dep-a/dist/index.js", "node_modules/dep-a/dist/namespace.mjs", "node_modules/dep-a/package.json", "node_modules/typescript/lib/typescript.js", "node_modules/typescript/package.json",
+      ["gen/helper.js", "node_modules/dep-a/dist/bridge.cjs", "node_modules/dep-a/dist/guard.cjs", "node_modules/dep-a/dist/index.js", "node_modules/dep-a/dist/namespace.mjs", "node_modules/dep-a/package.json", "node_modules/typescript/lib/typescript.js", "node_modules/typescript/package.json",
         "src/worker/compiler.js", "src/worker/engine.js", "src/worker/guest.js", "src/worker/main.js", "src/worker/protocol.js"], { "dep-a": "1.2.3", typescript: "6.0.3" },
     ]))
     const identity = { sourceStampSha256: "a".repeat(64), lockSha256: "b".repeat(64) }
