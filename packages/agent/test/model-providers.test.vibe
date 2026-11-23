@@ -49,9 +49,13 @@ it.effect('A cloud text call keeps its image parts, streams, and an image descri
   assert.strictEqual(said, "images:https://example.test/cat.png")
   assert.deepStrictEqual(chunks, ["images:https://example.test/cat.png"])
   assert.deepStrictEqual(described, { title: "A cat", description: "Title: A cat\nA cat on a mat." })
-  assert.deepStrictEqual(cloud.calls.map((call) => [call.path, (call.body as { model: string }).model, call.authorization]), [
-    ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`],
-    ["/api/v1/chat/completions", "vision", `Bearer ${deviceKey}`],
+  assert.deepStrictEqual(cloud.calls.map((call) => {
+    const body = call.body
+    assert.ok(body !== null && typeof body === "object" && "model" in body)
+    return [call.path, body.model, call.authorization, "max_tokens" in body ? body.max_tokens : undefined]
+  }), [
+    ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`, 1024],
+    ["/api/v1/chat/completions", "vision", `Bearer ${deviceKey}`, undefined],
   ])
   assert.strictEqual((try binding.read()).accountState, "usable")
 })
@@ -195,10 +199,10 @@ it.effect('An own-key overload or timeout is a provider issue and is retried, an
   registerOwnKeyModels(made.runtime, made.binding, own)
   try Effect.sync(() => cloud.script(refusal(400, "server_error"), text("after overload"), refusal(408, "timeout"), text("after timeout"), refusal(400, "invalid_request_error")))
   const first = try host("overload then answer", () => made.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "One.", temperature: 0.2, stopSequences: ["\n\n"] }))
-  const second = try host("timeout then answer", () => made.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Two." }))
+  const second = try host("timeout then answer", () => made.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Two.", maxTokens: 256 }))
   const third = try refusalOf(made.runtime, { prompt: "Three." })
   assert.deepStrictEqual([first, second, third?.status], ["after overload", "after timeout", 400])
   const bodies = cloud.calls.filter((call) => call.path.endsWith("/chat/completions")).map((call) => call.body as Record<string, unknown>)
   assert.strictEqual(bodies.length, 5)
-  assert.deepStrictEqual([bodies[0]?.temperature, bodies[0]?.stop, "max_tokens" in (bodies[0] ?? {}), typeof bodies[0]?.max_completion_tokens], [0.2, ["\n\n"], false, "number"])
+  assert.deepStrictEqual([bodies[0]?.temperature, bodies[0]?.stop, "max_tokens" in (bodies[0] ?? {}), "max_completion_tokens" in (bodies[0] ?? {}), bodies[2]?.max_completion_tokens], [0.2, ["\n\n"], false, false, 256])
 })
