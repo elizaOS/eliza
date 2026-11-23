@@ -17,6 +17,7 @@ import {
   type AuthoredTelephonyTarget,
   authoredTelephonyTarget,
   emergencyServicesRequest,
+  isWrittenCallbackName,
   namesEmergencyService,
 } from "./telephony-request.ts";
 
@@ -256,14 +257,13 @@ export function samePhoneNumber(a: string, b: string): boolean {
   );
 }
 
-function normalizedWords(text: string): string {
+function normalizedWords(text: string, preserveCase = false): string {
+  const normalized = text.normalize("NFKC");
   return (
-    text
-      .normalize("NFKC")
-      .toLowerCase()
+    (preserveCase ? normalized : normalized.toLowerCase())
       .replace(/[’‘]/g, "'")
       // "Maya's cell" names Maya.
-      .replace(/'s(?![\p{L}\p{N}])/gu, "")
+      .replace(/'s(?![\p{L}\p{N}])/giu, "")
       .replace(/[^\p{L}\p{N}']+/gu, " ")
       .trim()
   );
@@ -547,14 +547,24 @@ const NOT_A_NAME_AROUND = new Set([
  * is never taken: it would match more contacts than the owner named.
  */
 function ownerNameWithoutFiller(authored: string, proposed: string): boolean {
-  const owner = normalizedWords(authored).split(" ");
+  const owner = normalizedWords(authored, true)
+    .split(" ")
+    .flatMap((spelling) =>
+      normalizedWords(spelling)
+        .split(" ")
+        .map((word) => ({
+          word,
+          omittable:
+            NOT_A_NAME_AROUND.has(word) && !isWrittenCallbackName(spelling),
+        })),
+    );
   const name = normalizedWords(proposed).split(" ");
   if (!name[0] || name.length >= owner.length) return false;
   for (let at = 0; at + name.length <= owner.length; at++)
     if (
-      name.every((word, i) => owner[at + i] === word) &&
-      [...owner.slice(0, at), ...owner.slice(at + name.length)].every((word) =>
-        NOT_A_NAME_AROUND.has(word),
+      name.every((word, i) => owner[at + i]?.word === word) &&
+      [...owner.slice(0, at), ...owner.slice(at + name.length)].every(
+        ({ omittable }) => omittable,
       )
     )
       return true;

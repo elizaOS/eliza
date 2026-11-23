@@ -534,6 +534,10 @@ describe("authoredTelephonyTarget", () => {
     ["call my wife's phone", "call", "wife"],
     ["text mom back saying I'm here", "text", "mom"],
     ["call Sam Back", "call", "Sam Back"],
+    ["Call Sam Back please", "call", "Sam Back"],
+    ["call Ana Maria Silva Back", "call", "Ana Maria Silva Back"],
+    ["call Sam back", "call", "Sam"],
+    ["text Sam Back saying hi", "text", "Sam Back"],
   ])("names the contact in %j", (request, kind, query) => {
     expect(authoredTelephonyTarget(request)).toEqual({
       request: kind,
@@ -673,6 +677,9 @@ describe("a whole-message call keeps only the name the owner wrote", () => {
     ["Call Maya's mobile please", "Maya", "Maya"],
     ["call my mom's cell", "mom", "mom"],
     ["ring Sam Lee right away", "Sam Lee", "Sam Lee"],
+    ["call Sam back", "Sam", "Sam"],
+    ["Call Sam Back please", "Sam", "Sam Back"],
+    ["call Ana Maria Silva Back", "Ana Maria Silva", "Ana Maria Silva Back"],
   ])("%s calls %s", (request, proposed, query) => {
     expect(authoredTelephonyTarget(request)?.target).toEqual({
       kind: "contact",
@@ -688,6 +695,30 @@ describe("a whole-message call keeps only the name the owner wrote", () => {
     expect(
       groundTelephonyTarget(callContact("Sam"), "call Sam Lee").operation,
     ).toEqual(callContact("Sam Lee"));
+  });
+
+  it("preserves the fallback for a prefix callback", () => {
+    expect(groundTelephonyTarget(callContact("Sam"), "call back Sam")).toEqual({
+      operation: callContact("Sam"),
+      handedThrough: false,
+    });
+  });
+
+  it("preserves the full authored contact when composing a text", () => {
+    const operation = {
+      type: "sms_compose",
+      target: { kind: "contact", query: "Sam" },
+      body: "hi",
+    } satisfies DeviceOperation;
+    expect(groundTelephonyTarget(operation, "text Sam Back saying hi")).toEqual(
+      {
+        operation: {
+          ...operation,
+          target: { kind: "contact", query: "Sam Back" },
+        },
+        handedThrough: true,
+      },
+    );
   });
 
   it("leaves two callees to the planner and grounds the model's one", () => {
