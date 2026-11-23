@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
-import { cutOffReply } from "../gen/agent__conversation__planning.ts"
+import { cutOffReply, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
@@ -250,7 +250,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   try Effect.try(() => assert.deepStrictEqual({
     offered: asked?.tools?.map((tool) => tool.function?.name),
     sameTools: JSON.stringify(asked?.tools) === JSON.stringify(rendered?.tools),
-    declined: [typeof declined === "string" && declined.includes('"executionStatus":"not_started"') && declined.includes("did not run"), unrendered.text],
+    declined: [typeof declined === "string" && declined.includes('"executionStatus":"not_started"') && declined.includes("did not run: answer without it or use another offered action"), unrendered.text],
     toolResult: grounded?.messages.some(({ role, content }) => role === "tool" && typeof content === "string" && content.includes("1123324")),
     solved: solved.text,
     actions: solved.actionResults.map((entry) => (entry as { action: string }).action),
@@ -260,7 +260,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   }, {
     offered: ["CALCULATE", "VIEWS"],
     sameTools: true,
-    declined: [true, "I can't switch screens from this chat.\n\nAction VIEWS is not available for the current state, so it did not run"],
+    declined: [true, `I can't switch screens from this chat.\n\n${unavailableNotice}`],
     toolResult: true,
     solved: "That is 1,123,324.",
     actions: ["CALCULATE"],

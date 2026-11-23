@@ -7,7 +7,7 @@ import {
 } from "@elizaos/core"
 import {
   acknowledges, callRunsFirst, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, toolActivity, turnNarrowed,
-  withdrawnByRoute, type CallFailure, type PlanStep, type StepOutcome,
+  unavailableNotice, withdrawnByRoute, type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
 import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
@@ -243,6 +243,7 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
 }
 
 function failureNotice(step: PlannedStep): string {
+  if (notStarted(step.result) && step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return unavailableNotice
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
 

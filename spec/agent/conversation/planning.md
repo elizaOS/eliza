@@ -42,14 +42,18 @@ message says or carries, unless it has no tool form for the turn (below).
 An action's own check of the message (its `validate`) never decides what
 is offered: it runs when the model calls the action, and a call it
 declines, or that fails to check, is refused before the action runs. The
-model reads in that call's result that the action did not run, and the
-refusal stays reported as any other refusal before dispatch.
+model reads in that call's result that the action did not run, so it may
+answer without it or call another offered action, and the refusal stays
+reported as any other refusal before dispatch. The owner hears a call the
+action's own check declined as `unavailableNotice`, which names no action,
+never as the action's internal name.
 
 ```quint
 type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect
 type PlanStep = { actionName: str, outcome: StepOutcome, operation: str }
 pure val maxPlanSteps = 8
 pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
+pure val unavailableNotice = "I can't do that from here, so it wasn't done."
 pure def offered(registered: Set[str], allowed: Set[str], formless: Set[str]): Set[str] =
   registered.intersect(allowed).exclude(messageServiceActions).exclude(formless)
 pure def keepsPlanning(taken: int, calls: int, terminal: bool): bool = calls > 0 and not(terminal) and taken < maxPlanSteps
