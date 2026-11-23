@@ -161,9 +161,10 @@ failed, so the transport never re-sends it and the turn decides whether it
 gets one more try ([planning](../conversation/planning.md)). A streamed
 answer whose provider sends no bytes for 60 seconds, first its headers and
 then each next chunk, is abandoned and not re-sent, and the turn ends with
-its failure reply. Only the time between bytes is bounded, never the whole
-answer, so a long answer is never cut. Both are a provider issue in the
-account state.
+its failure reply. Only the time between bytes before the provider's
+`[DONE]` marker is bounded, never the whole answer. The marker ends
+collection even if the HTTP connection remains open. A parse failure and
+a silent stream both count as a provider issue in the account state.
 
 ```quint
 type ShellRefusal = ToolCallUnparsed | SilentStream
@@ -185,9 +186,9 @@ sends an output cap only when the caller or its admitted lease sets one;
 otherwise the backend owns the output limit. A
 streamed call asks for its token use (`stream_options.include_usage`), which
 the provider sends in a last chunk without choices, and a call that is not
-streamed sends no stream options. The token use carries the prompt tokens
-the provider read from its prompt cache, when it names any, so a streamed
-call is measured as a whole one is.
+streamed sends no stream options. The token use carries the provider's
+cache-read and reasoning counts when supplied, including an explicit zero.
+A missing count stays absent, so a streamed call is measured as a whole one is.
 
 ```quint
 type ChatAsk = { offersTools: bool, choosesTool: bool, asksSchema: bool }

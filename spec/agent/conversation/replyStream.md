@@ -13,7 +13,7 @@ framing and its heartbeats. The frames are:
 | `status` | `{activity}`: what the turn is doing, display only |
 | `tool` | `{name, label}`: a tool the turn runs and its label for the owner, `Using <app>` or `Working` ([planning](./planning.md)), display only |
 | `reply_ready` | `{fullText, actionResults}`: the settled reply before it is stored |
-| `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, planAction?, retryAfterMs?}`, the fix and live wait of [turns](./turns.md) |
+| `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, planAction?, retryAfterMs?, cutOffEffect?}`, with the fix, live wait and negotiated effect marker of [turns](./turns.md) |
 | `error` | `{code, message}`: the turn left no reply |
 
 One machine follows one request. The turn itself (admission, deadline,
@@ -278,7 +278,9 @@ A stored reply ends with `done`, its failure kind included (account
 failure, `timeout` or `aborted`); a turn that left no reply ends with
 `error` (`ASSISTANT_RESPONSE_UNAVAILABLE`, or a server failure). The
 terminal replaces whatever text was still waiting, and the response ends
-once it has left.
+once it has left. The client returns the failure as soon as it reads a
+complete `error` event, even if the transport has yet to close. After
+`done` it still checks that no further events arrive before EOF.
 
 ```quint
 pure def canFinish(s: ReplyStream, reply: int, kind: T::ReplyKind, results: int): bool =
