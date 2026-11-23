@@ -283,7 +283,7 @@ pure def actionNoteSent(actionOffered: bool, noted: bool): bool = actionOffered 
 pure def lawOnlyAnOfferedActionNotesTheMessage(noted: bool): bool = not(actionNoteSent(false, noted))
 ```
 
-### The model may search what this conversation said, and a windowed history asks it to search before it answers that something was not said
+### Where the launch allows it, the model may search what this conversation said, and a windowed history asks it to search before it answers that something was not said
 
 The message service registers `SEARCH_CONVERSATION` beside `REPLY`,
 `IGNORE` and `NONE`. Unlike them it is offered as a tool, like any action
