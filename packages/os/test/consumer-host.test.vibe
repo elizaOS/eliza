@@ -120,6 +120,7 @@ it.effect('The packaged device account keeps mail on a lease the agent never hol
     redirectNotFollowed: true,
     refusedRoutes: 5,
     lostReply: [true, true, 200, 0],
+    renewRefused: [false, true, false],
     renewedAfterHalfLife: true,
     renewal: [true, true, true, 1],
     afterRenewal: [0, 200, 0],
