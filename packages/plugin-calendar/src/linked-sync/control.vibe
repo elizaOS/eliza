@@ -353,7 +353,7 @@ export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) 
       const control = loaded.ledger.activeControl
       const destination = destinationOf(loaded.names, control.destination, loaded.destinations)
       const held = loaded.mappings.filter((mapping) => sameDestination(mapping.destination, destination)
-        && (mapping.state === "conflicted" || mapping.state === "quarantined")).length
+        && (mapping.staged || mapping.state === "dirty" || mapping.state === "conflicted" || mapping.state === "quarantined")).length
       const pendingLink = linkOf(loaded.names, control.pendingLink)
       const moved = (try Ref.get(active)).has(nameOf(loaded.names, control.pendingToken) ?? "") || (pendingLink !== undefined && ports.dispatchRunning?.(pendingLink) === true)
       return reports[syncReport(control.revision === expectedRevision, !control.paused && destination !== null && ports.authority(),

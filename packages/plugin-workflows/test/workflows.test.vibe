@@ -11,7 +11,7 @@ import {
 import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
 import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
 import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
-import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
+import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort } from "../src/service/host.vibe"
 import { workflowRoutes } from "../src/routes.vibe"
 import { workflowHttpError } from "../src/client/workflow-client.vibe"
@@ -88,7 +88,7 @@ interface Phone {
   notes: readonly { readonly id: string; readonly title: string; readonly text: string }[]
 }
 
-effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string; readonly google?: ManagedGoogleReads } = {}) {
+effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests } = {}) {
   const db = try acquireRelease(promise(() => openDatabase()), (opened) => promise(() => opened.close()))
   const wakeups = new Map<string, { readonly dueAt: number; readonly metadata: Readonly<Record<string, string | number>> }>()
   const notices: WorkflowNotice[] = []
@@ -106,7 +106,10 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
   const draft = options.draft
   const host: WorkflowHost = {
     sql: db.sql as WorkflowSql, owner, agentId: "agent", origin: "agent:test", worker: try inProcessWorkerPort(), device: port,
-    draft: draft === undefined ? undefined : (prompt) => sync(() => draft(prompt)), nativeDigests: undefined, google: options.google,
+    draft: draft === undefined ? undefined : (prompt) => Effect.suspend(() => {
+      const text = draft(prompt)
+      return text === undefined ? Effect.never : succeed(text)
+    }), nativeDigests: options.native, google: options.google,
     notify: (notice) => sync(() => { notices.push(notice) }),
     scheduler: {
       set: (key, dueAt, metadata) => sync(() => { wakeups.set(key, { dueAt, metadata }) }),
@@ -127,7 +130,7 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
     if (answer.status >= 300) throw workflowHttpError(answer.status, answer.body)
     return answer.body
   }
-  return { service, digests, generated, wakeups, notices, request, client: workflowClient(request), routes }
+  return { host, service, digests, generated, wakeups, notices, request, client: workflowClient(request), routes }
 }
 
 type Harness = Effect.Success<ReturnType<typeof harness>>
@@ -240,9 +243,18 @@ it.live('Run the version I reviewed, and turn a schedule on or off only at that 
   try check(() => assert.deepStrictEqual([onFromChat.success, stillOff], [false, false]))
 })
 
-it.live('Remove a workflow only when its runs are settled and restore it safely (spec/workflow/lifecycle.md, "Story: Remove a workflow only when its runs are settled and restore it safely")', effect () => {
+it.live('Remove a workflow only when its runs are settled and restore it safely (spec/workflow/lifecycle.md, "Story: Remove a workflow only when its runs are settled and restore it safely"; spec/workflow/execution.md, "Retirement releases host reservations without rewriting the terminal result")', effect () => {
   const phone: Phone = { performed: [], notes: [] }
-  const rig = try harness({ phone })
+  let drafting = false
+  const rig = try harness({ phone, draft: () => { drafting = true; return undefined } })
+  const slow = try saved(rig, manual("Slow draft", [
+    { id: "text", kind: "Read", operation: "supplied_text", text: "Stand up" },
+    { id: "line", kind: "Write", operation: "model_draft", source: "text", instruction: "Rephrase" },
+  ]))
+  const hung = try rig.client.run(slow.receipt.workflowId, slow.receipt.versionId, () => succeed(undefined))
+  for (let attempt = 0; attempt < 400 && !drafting; attempt++) try sleep("5 millis")
+  const stopped = try rig.client.cancel(hung.id, hung.workflowId)
+  try check(() => assert.deepStrictEqual([drafting, stopped.status], [true, "cancelled"]))
   const spec = manual("Notify me", [
     { id: "text", kind: "Read", operation: "supplied_text", text: "Stand up" },
     { id: "tell", kind: "Notify", operation: "app_notification", source: "text", title: "Reminder" },
@@ -330,8 +342,21 @@ it.live('An automation runs at its reviewed local time or records why it skipped
   try rig.service.fire({ workflowId: receipt.workflowId, armVersion: version, scheduledAt: midnight - 86_400_000 }, rig.digests.fire)
   const runs = try rig.client.executions(receipt.workflowId)
   try check(() => assert.deepStrictEqual(runs.map((found) => [found.occurrence?.status, found.finished]), [["missed", true]]))
-  const armed = rig.wakeups.get(`workflow:${receipt.workflowId}`)
+  const key = `workflow:${receipt.workflowId}`
+  const armed = rig.wakeups.get(key)
   try check(() => assert.isTrue(armed !== undefined && armed.dueAt > Date.now() && armed.metadata.armVersion === version))
+
+  const whileDown = midnight - 2 * 86_400_000
+  const due = { dueAt: whileDown, metadata: { workflowId: receipt.workflowId, armVersion: version, scheduledAt: whileDown } }
+  rig.wakeups.set(key, due)
+  const restarted = try openWorkflows(rig.host)
+  try restarted.start()
+  try check(() => assert.deepStrictEqual(rig.wakeups.get(key), due))
+  try restarted.fire(due.metadata, hostedDigests(restarted).fire)
+  const recorded = try rig.client.executions(receipt.workflowId)
+  const rearmed = rig.wakeups.get(key)
+  try check(() => assert.deepStrictEqual([recorded.map((found) => [found.occurrence?.status, found.occurrence?.scheduledAt]), (rearmed?.dueAt ?? 0) > Date.now()],
+    [[["missed", new Date(whileDown).toISOString()], ["missed", new Date(midnight - 86_400_000).toISOString()]], true]))
 })
 
 it.live('Acknowledge a page of digests only after it is stored (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Story: Review a missed digest only while its source and result are current")', effect () => {
@@ -367,6 +392,13 @@ it.live('Acknowledge a page of digests only after it is stored (spec/workflow/ho
     const index = try Effect.try(() => JSON.parse(String(raw)) as { readonly clientId: string })
     const drained = try protocol.results(index.clientId)
     try check(() => assert.deepStrictEqual(drained, []))
+
+    try Effect.flip(Effect.timeout(inbox.sync({ ...protocol, results: () => Effect.never }, 1), "20 millis"))
+    const afterInterrupt = try inbox.sync(protocol, 1)
+    const retiring = { ...protocol, results: (clientId: string) => Effect.andThen(inbox.retire(), protocol.results(clientId)) }
+    const retired = try Effect.flip(inbox.sync(retiring, 1))
+    const nextGeneration = try inbox.sync(protocol, 2)
+    try check(() => assert.deepStrictEqual([afterInterrupt.length, retired._tag, nextGeneration.length], [2, "DigestInboxFailed", 2]))
   }
 })
 
@@ -385,7 +417,9 @@ it.live('Run a digest over a live Google source read through managed Google (spe
       }),
       calendarFeed: () => Promise.resolve({ calendarId: "work@example.com", events: [], syncedAt: new Date().toISOString() }),
     } as unknown as ManagedGoogleReads
-    const rig = try harness({ google, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
+    const reads: string[] = []
+    const native: WorkflowNativeDigests = { grant: () => succeed({ timeZone: "UTC" }), read: (selection) => sync(() => { reads.push(selection.sourceId); return "Water the plants" }) }
+    const rig = try harness({ google, native, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
     const protocol = hostedDigestProtocol(rig.request)
     const [account] = try protocol.liveAccounts()
     const calendars = try protocol.liveCalendars(account)
@@ -405,6 +439,17 @@ it.live('Run a digest over a live Google source read through managed Google (spe
     const inbox = try digestInbox("scope-google")
     const results = try inbox.sync(protocol, 1)
     try check(() => assert.deepStrictEqual([done.status, results.map((result) => result.status), prompts.some((prompt) => prompt.includes("live_selected_google_read") && prompt.includes("Release"))], ["finished", ["finished"], true], done.error))
+
+    const phoneLive = { provider: "native", ownerId: owner, agentId: "agent", ...device, sourceId: "tasks", revision: "a".repeat(64) }
+    const phoneSaved = try protocol.mutate("sources", { id: "phone-1", kind: "tasks", label: "Tasks", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, live: phoneLive, confirmed: true })
+    const phoneRevision = (phoneSaved.source as { readonly revision: string }).revision
+    const asked = { sourceId: "phone-1", sourceRevision: phoneRevision, mutationId: "dossier-1", confirmed: true }
+    const dossier = try protocol.mutate("dossier", asked)
+    const dossierRun = (dossier.execution as { readonly id: string }).id
+    try protocol.mutate("sources/revoke", { id: "phone-1", confirmed: true })
+    const replayed = try protocol.mutate("dossier", asked)
+    const afterRevoke = try Effect.flip(rig.request("/api/workflow/hosted/dossier", { ...asked, mutationId: "dossier-2" }))
+    try check(() => assert.deepStrictEqual([(replayed.execution as { readonly id: string }).id, afterRevoke._tag === "WorkflowHttpError" ? afterRevoke.status : 0, reads], [dossierRun, 409, ["tasks"]]))
   }
 })
 

@@ -628,7 +628,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     | { readonly row: RunRow; readonly done: true }
     | { readonly row: RunRow; readonly done: false; readonly reply?: ParentMessage }
 
-  effect function handle(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection): WorkerTurn!WorkflowRefused {
+  effect function handle(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection, drafted: string | undefined): WorkerTurn!WorkflowRefused {
     if (message === undefined) {
       const live = try connection.alive
       const uncertain = try executed(row, { type: "observeUncertain", workerKnownLive: live })
@@ -641,9 +641,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         return { row: { ...row, values: { ...row.values, [message.result.id]: message.result.text }, results: [...row.results, message.result], next: message.next, allowed: message.allowed, events }, done: false }
       }
       case "needsDraft": {
-        const draft = host.draft
-        const text = draft === undefined ? undefined : draft(message.prompt) catch () => undefined
-        const reply: ParentMessage = text === undefined ? { type: "draftFailed", stepId: message.stepId, message: "The text model could not draft this step" } : { type: "draft", stepId: message.stepId, text }
+        const reply: ParentMessage = drafted === undefined ? { type: "draftFailed", stepId: message.stepId, message: "The text model could not draft this step" } : { type: "draft", stepId: message.stepId, text: drafted }
         return { row, done: false, reply }
       }
       case "needsDevice": {
@@ -710,8 +708,8 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     return waiting
   }
 
-  effect function handleGenerated(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection): WorkerTurn!WorkflowRefused {
-    if (message === undefined) return try handle(row, message, connection)
+  effect function handleGenerated(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection, drafted: string | undefined): WorkerTurn!WorkflowRefused {
+    if (message === undefined) return try handle(row, message, connection, drafted)
     switch (message.type) {
       case "checkpoint": {
         const next = try journaled(row, { type: "checkpointStep", call: message.call, digest: message.digest })
@@ -721,14 +719,10 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         }
       }
       case "needsEffect": {
-        const pending = try journaled(row, { type: "dispatchEffect", call: message.call, digest: message.digest })
-        try persist(pending)
-        const draft = host.draft
-        const text = draft === undefined ? undefined : draft(message.request.prompt) catch () => undefined
-        const committed = try journaled(pending, { type: "commitEffect" })
-        const reply: ParentMessage = text === undefined ? { type: "effectFailed", call: message.call, message: "The text model could not draft this call" } : { type: "effect", call: message.call, text }
+        const committed = try journaled(row, { type: "commitEffect" })
+        const reply: ParentMessage = drafted === undefined ? { type: "effectFailed", call: message.call, message: "The text model could not draft this call" } : { type: "effect", call: message.call, text: drafted }
         return {
-          row: { ...committed, journalValues: { ...(row.journalValues ?? {}), [message.call]: text ?? null }, events: [...row.events, try event(text === undefined ? "NodeFailed" : "NodeFinished", message.call)] },
+          row: { ...committed, journalValues: { ...(row.journalValues ?? {}), [message.call]: drafted ?? null }, events: [...row.events, try event(drafted === undefined ? "NodeFailed" : "NodeFinished", message.call)] },
           done: false, reply,
         }
       }
@@ -746,7 +740,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         const done = try executed({ ...settled, output: message.output ?? message.text, events: [...row.events, try event("RunFinished")] }, { type: "finishWork", succeeded: true })
         return { row: try finishApprovals(done), done: true }
       }
-      case "failed": return try handle(row, message, connection)
+      case "failed": return try handle(row, message, connection, drafted)
       default:
         return { row: try executed({ ...row, error: `The worker sent ${message.type} to a generated run` }, { type: "finishWork", succeeded: false }), done: true }
     }
@@ -798,9 +792,14 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
       let current = starting
       for (;;) {
         const message = try connection.next
+        const effectCall = generated && message?.type === "needsEffect" ? message : undefined
+        if (effectCall !== undefined) try lock(effect { try persist(try journaled(try runOf(runId), { type: "dispatchEffect", call: effectCall.call, digest: effectCall.digest })) })
+        const prompt = message?.type === "needsDraft" ? message.prompt : effectCall?.request.prompt
+        const draft = host.draft
+        const drafted = prompt === undefined || draft === undefined ? undefined : draft(prompt) catch () => undefined
         const handled = try lock(effect {
           const stored = try runOf(runId)
-          const next = generated ? try handleGenerated(stored, message, connection) : try handle(stored, message, connection)
+          const next = generated ? try handleGenerated(stored, message, connection, drafted) : try handle(stored, message, connection, drafted)
           try persist(next.row)
           return next
         })
@@ -1004,12 +1003,15 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     return trigger === undefined ? undefined : { cron: phoneTimeTriggerCron(trigger), timeZone: trigger.timeZone }
   }
 
+  function scheduleWanted(row: DefinitionRow): boolean {
+    return scheduleOf(row) !== undefined && row.admission.active && !row.lifecycleState.removed
+  }
+
   effect function arm(row: DefinitionRow, after?: number): void!! {
     const key = scheduleKey(row)
-    const schedule = scheduleOf(row)
-    const wanted = schedule !== undefined && row.admission.active && !row.lifecycleState.removed
+    const schedule = scheduleWanted(row) ? scheduleOf(row) : undefined
     void (effect {
-      if (!wanted) {
+      if (schedule === undefined) {
         try host.scheduler.clear(key)
         return
       }
@@ -1120,8 +1122,9 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
           try launch(restarted.id)
         } else if (restarted !== row) try persist(restarted)
       }
+      const held: readonly string[] = host.scheduler.keys catch () => []
       for (const stored of try db(store.definitions(owner))) {
-        try arm(stored.row)
+        if (!held.includes(scheduleKey(stored.row)) || !scheduleWanted(stored.row)) try arm(stored.row)
         if (stored.row.lifecycleState.removed && !stored.row.lifecycleState.cleaned) (cleanup(stored.row.id) catch () => undefined)
       }
     } catch effect (error) => try log("workflow service could not recover its runs", "start", error))
