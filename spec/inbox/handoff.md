@@ -49,8 +49,8 @@ pure def lawOldReviewExpires(reviewedAt: int, now: int, unchanged: bool): bool =
 
 ### An agent's new email reaches only the requesting phone's composer
 
-An owner's request for a new email to explicit recipients, made from a
-phone whose composer can take it, answers with the draft for that composer
+An owner's request for a new email, made from a phone whose composer can
+take it, answers with the draft for that composer
 and the identity of the request; no provider draft is made and no chat
 confirmation is armed. The owner turn is the live
 [device turn](../agent/deviceActions/index.md) of the very message that
@@ -78,6 +78,49 @@ pure val requestValues = Set(plainCompose, { ...plainCompose, ownerTurn: false }
   { ...plainCompose, richerFields: true }, { ...plainCompose, composerAvailable: false })
 pure def lawOnlyTheOwnerTurnHandsOff(request: ComposeRequest): bool =
   composeAnswer(request) == ComposeOnPhone implies request.ownerTurn and not(request.threaded) and not(request.richerFields)
+```
+
+### A draft keeps each recipient as the owner named it and is handed over only whole
+
+A recipient the owner called "me", "myself" or "self", in any letter case,
+is handed over as `self`, which the phone shows as the selected mailbox's
+own address. Every other recipient goes as it was written, trimmed: an
+address stays an address, and a name the owner gave without one stays that
+name for the owner to address on the phone, never turned into an address
+and never dropped. A blank entry is left out. A draft with no recipient or
+a blank body is not handed over: the agent asks who the email is to and
+what it should say. A draft the phone's compact editor cannot show whole,
+with more than twenty recipients, a recipient over 254 characters or with a
+line break, a subject over 998 characters or on more than one line, or a
+body over 64,000 characters, is sent to Inbox instead; nothing is cut to
+fit.
+
+```quint
+type RecipientForm = BlankRecipient | OwnerRecipient | WrittenRecipient
+type RecipientKept = RecipientDropped | RecipientAsSelf | RecipientAsWritten
+pure def recipientKept(form: RecipientForm): RecipientKept =
+  if (form == BlankRecipient) RecipientDropped else if (form == OwnerRecipient) RecipientAsSelf else RecipientAsWritten
+type DraftFacts = { recipients: int, recipientsFit: bool, subjectUnits: int, subjectOneLine: bool, bodyUnits: int, bodyBlank: bool }
+type DraftAnswer = DraftIncomplete | DraftInInbox | DraftWhole
+pure val draftRecipientLimit: int = 20
+pure val draftRecipientMaximum: int = 254
+pure val draftSubjectMaximum: int = 998
+pure def draftFits(draft: DraftFacts): bool =
+  draft.recipients <= draftRecipientLimit and draft.recipientsFit and draft.subjectUnits <= draftSubjectMaximum
+    and draft.subjectOneLine and draft.bodyUnits <= insertMaximum
+pure def draftAnswer(draft: DraftFacts): DraftAnswer =
+  if (draft.recipients < 1 or draft.bodyBlank) DraftIncomplete else if (draftFits(draft)) DraftWhole else DraftInInbox
+pure val wholeDraft: DraftFacts = { recipients: 1, recipientsFit: true, subjectUnits: 5, subjectOneLine: true, bodyUnits: 5, bodyBlank: false }
+pure val draftValues = Set(wholeDraft, { ...wholeDraft, recipients: 0 }, { ...wholeDraft, recipients: 20 }, { ...wholeDraft, recipients: 21 },
+  { ...wholeDraft, recipientsFit: false }, { ...wholeDraft, subjectUnits: 999 }, { ...wholeDraft, subjectOneLine: false },
+  { ...wholeDraft, bodyUnits: 64001 }, { ...wholeDraft, bodyBlank: true })
+pure def lawANamedRecipientIsKeptAsWritten(form: RecipientForm): bool =
+  (form == WrittenRecipient implies recipientKept(form) == RecipientAsWritten) and (recipientKept(form) == RecipientDropped implies form == BlankRecipient)
+pure def lawAWholeDraftFitsTheComposer(draft: DraftFacts): bool =
+  draftAnswer(draft) == DraftWhole implies draft.recipients >= 1 and draft.recipients <= draftRecipientLimit and draft.recipientsFit
+    and draft.subjectUnits <= draftSubjectMaximum and draft.subjectOneLine and not(draft.bodyBlank) and draft.bodyUnits <= insertMaximum
+pure def lawNoRecipientOrBodyIsNeverADraft(draft: DraftFacts): bool =
+  (draft.recipients < 1 or draft.bodyBlank) implies draftAnswer(draft) == DraftIncomplete
 ```
 
 ### An inserted reply lands whole in the reviewed draft or is blocked

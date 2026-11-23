@@ -1,7 +1,7 @@
-// spec/inbox/handoff.md, "An agent's new email reaches only the requesting phone's composer"; spec/inbox/outgoing.md, "A send keeps the request identity of the owner turn that asked for it"
+// spec/inbox/handoff.md, "An agent's new email reaches only the requesting phone's composer"; spec/inbox/handoff.md, "A draft keeps each recipient as the owner named it and is handed over only whole"; spec/inbox/outgoing.md, "A send keeps the request identity of the owner turn that asked for it"
 import { deviceTurnFor, type DeviceTurn } from "@elizaos/agent/device-actions"
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult } from "@elizaos/core"
-import { composeAnswer } from "../../gen/inbox__handoff.effect.vibe"
+import { composeAnswer, draftAnswer, draftRecipientMaximum, recipientKept, type RecipientForm } from "../../gen/inbox__handoff.effect.vibe"
 import { canonicalUuid } from "../mailbox/digest.vibe"
 
 export const inboxComposeActionName = "INBOX_COMPOSE_EMAIL"
@@ -19,7 +19,8 @@ export interface EmailDraftHandoff {
 
 const richerFields = ["accountId", "connectorAccountId", "from", "cc", "bcc", "attachments", "sendAt", "sendAtMs", "at"] as const
 const threadFields = ["thread", "threadId", "inReplyToId", "channelId", "worldId"] as const
-const address = /^[^\s@]{1,64}@[^\s@]{1,189}$/
+const ownerWord = /^(?:self|me|myself)$/i
+const lineBreak = /[\r\n]/
 
 function given(options: unknown): Readonly<Record<string, unknown>> {
   const raw = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
@@ -28,10 +29,23 @@ function given(options: unknown): Readonly<Record<string, unknown>> {
 
 const named = (value: unknown) => Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== "" && value !== false
 
-function recipients(value: unknown): string[] {
-  const listed = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : []
-  return listed.flatMap((entry) => typeof entry === "string" && address.test(entry.trim()) ? [entry.trim()] : [])
+function formOf(written: string): RecipientForm {
+  return written === "" ? "BlankRecipient" : ownerWord.test(written) ? "OwnerRecipient" : "WrittenRecipient"
 }
+
+function recipients(value: unknown): string[] {
+  const listed: readonly unknown[] = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[,;]/) : []
+  return listed.flatMap((entry) => {
+    const written = typeof entry === "string" ? entry.trim() : ""
+    switch (recipientKept(formOf(written))) {
+      case "RecipientDropped": return []
+      case "RecipientAsSelf": return ["self"]
+      case "RecipientAsWritten": return [written]
+    }
+  })
+}
+
+const inInbox = (): ActionResult => ({ success: false, text: "Open Inbox to prepare this email with those details.", continueChain: false, data: { handoff: "inbox" } })
 
 const takesDraft = (turn: ComposeTurn | undefined) => turn?.capabilities.includes(localComposeCapability) === true
 
@@ -39,6 +53,7 @@ export function emailDraftAnswer(turn: ComposeTurn | undefined, options: unknown
   if (turn === undefined) return undefined
   const parameters = given(options)
   const to = recipients(parameters.to)
+  const subject = typeof parameters.subject === "string" ? parameters.subject : ""
   const body = typeof parameters.body === "string" ? parameters.body : ""
   const answer = composeAnswer({
     ownerTurn: canonicalUuid(turn.message.id),
@@ -47,14 +62,17 @@ export function emailDraftAnswer(turn: ComposeTurn | undefined, options: unknown
     threaded: threadFields.some((field) => named(parameters[field])),
     richerFields: richerFields.some((field) => named(parameters[field])),
   })
-  switch (answer) {
-    case "ComposeNotOffered": return undefined
-    case "ComposeInInbox": return { success: false, text: "Open Inbox to prepare this email with those details.", continueChain: false, data: { handoff: "inbox" } }
-    case "ComposeOnPhone": {
-      if (to.length === 0 || body.trim() === "") return { success: false, text: "Say who the email is to and what it should say.", data: { handoff: "incomplete" } }
-      const emailDraft = {
-        version: 1, requestMessageId: turn.message.id.toLowerCase(), to, subject: typeof parameters.subject === "string" ? parameters.subject : "", body,
-      } satisfies EmailDraftHandoff
+  if (answer === "ComposeNotOffered") return undefined
+  if (answer === "ComposeInInbox") return inInbox()
+  const whole = draftAnswer({
+    recipients: to.length, recipientsFit: to.every((entry) => entry.length <= draftRecipientMaximum && !lineBreak.test(entry)),
+    subjectUnits: subject.length, subjectOneLine: !lineBreak.test(subject), bodyUnits: body.length, bodyBlank: body.trim() === "",
+  })
+  switch (whole) {
+    case "DraftIncomplete": return { success: false, text: "Say who the email is to and what it should say.", data: { handoff: "incomplete" } }
+    case "DraftInInbox": return inInbox()
+    case "DraftWhole": {
+      const emailDraft = { version: 1, requestMessageId: turn.message.id.toLowerCase(), to, subject, body } satisfies EmailDraftHandoff
       const text = "Here’s the draft."
       return {
         success: true, text, userFacingText: text, verifiedUserFacing: true, turnComplete: true, continueChain: false,
@@ -66,10 +84,10 @@ export function emailDraftAnswer(turn: ComposeTurn | undefined, options: unknown
 
 export const inboxComposeAction: Action = {
   name: inboxComposeActionName,
-  description: "Draft a new email for the owner to review and send from their phone's Inbox composer: explicit recipient addresses, a subject and the text. It sends nothing; replies, copies, attachments and scheduled sends are made in Inbox.",
+  description: "Draft a new email for the owner to review and send from their phone's Inbox composer: recipients, a subject and the text. “To me” or “to myself” already names the recipient: pass to:[\"self\"] and the phone resolves the selected Gmail mailbox. Pass a recipient named without an address as that name, for the owner to address on the phone; never turn a name into an address. If the owner asks for a draft and says not to send it, composing is still the pending work: prepare the draft. A retry such as “let’s do it again” right after a new email draft is the same request: recover its recipient, subject and body from this chat and compose again, without searching or triaging the mailbox to recreate an unsent draft. Ask for any missing details. It sends nothing; replies, copies, attachments and scheduled sends are made in Inbox.",
   similes: ["DRAFT_EMAIL", "WRITE_EMAIL", "COMPOSE_EMAIL"],
   parameters: [
-    { name: "to", required: true, schema: { type: "array", items: { type: "string" } }, description: "Recipient email addresses." },
+    { name: "to", required: true, schema: { type: "array", items: { type: "string" } }, description: "Recipients: email addresses, \"self\" for the owner, or a name exactly as the owner gave it." },
     { name: "subject", required: false, schema: { type: "string" }, description: "The subject line." },
     { name: "body", required: true, schema: { type: "string" }, description: "The email text, written as the owner." },
   ],
