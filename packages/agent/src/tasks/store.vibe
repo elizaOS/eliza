@@ -32,6 +32,7 @@ module node {
   import { DatabaseSync } from "node:sqlite"
   import { Redacted, Result } from "effect"
   import { ElizaError, validateInteractiveTask, validateTaskEvent, type InteractiveTask, type TaskEvent } from "@elizaos/core"
+  import { processAlive, processStart } from "../host/process-owner.vibe"
   import { deriveTaskKeys, isPrivateFile, privateDirectory, storageCorrupt, type TaskKeys } from "./sealing.vibe"
   import type { KeyRead } from "../../gen/agent__tasks__store.ts"
 
@@ -93,6 +94,7 @@ module node {
 
   export interface LockIdentity {
     readonly path: string
+    readonly owner: string
     readonly dev: number
     readonly ino: number
   }
@@ -101,42 +103,41 @@ module node {
     return typeof error === "object" && error !== null && "code" in error ? error.code : undefined
   }
 
-  function alive(pid: number): boolean {
-    try {
-      process.kill(pid, 0)
-      return true
-    } catch (error) {
-      return errorCode(error) !== "ESRCH"
-    }
-  }
+  const heldOwners = new Set<string>()
 
   function holderGone(path: string): boolean {
     const holder: unknown = JSON.parse(readFileSync(path, "utf8"))
-    const pid = typeof holder === "object" && holder !== null && "pid" in holder ? holder.pid : undefined
-    return typeof pid === "number" && Number.isSafeInteger(pid) && pid > 0 && pid !== process.pid && !alive(pid)
+    const field = (name: string): unknown => typeof holder === "object" && holder !== null && name in holder ? (holder as Record<string, unknown>)[name] : undefined
+    const [pid, owner, start] = [field("pid"), field("owner"), field("start")]
+    if (typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 0) return false
+    if (pid === process.pid) return typeof owner !== "string" || !heldOwners.has(owner)
+    return !processAlive(pid, typeof start === "string" ? start : undefined)
   }
 
   export function takeLock(path: string): LockIdentity | undefined {
     const staged = `${path}.${randomUUID()}`
+    const owner = randomUUID()
     const fd = openSync(staged, "wx", 0o600)
     let identity: LockIdentity
     try {
-      writeSync(fd, JSON.stringify({ pid: process.pid, owner: randomUUID() }))
+      writeSync(fd, JSON.stringify({ pid: process.pid, start: processStart(process.pid), owner }))
       fsyncSync(fd)
       const status = fstatSync(fd)
-      identity = { path, dev: status.dev, ino: status.ino }
+      identity = { path, owner, dev: status.dev, ino: status.ino }
     } finally {
       closeSync(fd)
     }
     try {
       try {
         linkSync(staged, path)
+        heldOwners.add(owner)
         return identity
       } catch (error) {
         if (errorCode(error) !== "EEXIST") throw error
       }
       if (!holderGone(path)) return undefined
       renameSync(staged, path)
+      heldOwners.add(owner)
       return identity
     } finally {
       rmSync(staged, { force: true })
@@ -149,6 +150,7 @@ module node {
   }
 
   export function releaseLock(lock: LockIdentity): void {
+    heldOwners.delete(lock.owner)
     if (lockIntact(lock)) unlinkSync(lock.path)
   }
 
