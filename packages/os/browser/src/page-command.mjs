@@ -1488,20 +1488,25 @@ export function pageCommand(
       if (areas.length > 1) return incomplete;
       const scope = areas[0] ?? document.body;
       const excluded =
-        'nav,aside,header,footer,form,input,textarea,select,button,iframe,frame,object,embed,script,style,template,noscript,[contenteditable],[role="navigation"],[role="complementary"],[role="banner"],[role="contentinfo"],[hidden],[aria-hidden="true"],[inert]';
-      if (!scope || scope.closest(excluded)) return incomplete;
+        'nav,aside,footer,form,input,textarea,select,button,iframe,frame,object,embed,script,style,template,noscript,[contenteditable],[role="navigation"],[role="complementary"],[role="banner"],[role="contentinfo"],[hidden],[aria-hidden="true"],[inert]';
+      const interactive = 'a,[role="link"],[role="button"]';
+      const labelExcluded = excluded + "," + interactive;
+      if (!scope || scope.closest(excluded + ",header")) return incomplete;
       for (let ancestor = scope.parentElement; ancestor; ancestor = ancestor.parentElement) {
         const style = styleOf(ancestor);
         if (style.display === "none" || style.opacity === "0") return incomplete;
       }
 
       const groups = new Map();
+      const ownersByNode = new WeakMap();
+      const owners = new Map();
+      const headingSelector = 'h1,h2,h3,h4,h5,h6,[role="heading"]';
       const startsSection = (node, region) =>
         node.matches('article,[role="article"],[role="region"]') ||
         (node.matches("section") &&
           (!region || node.hasAttribute("aria-label") ||
             node.hasAttribute("aria-labelledby") ||
-            node.querySelector(":scope > :is(h1,h2,h3,h4,h5,h6), :scope > header > :is(h1,h2,h3,h4,h5,h6)")));
+            node.querySelector(`:scope > :is(${headingSelector}), :scope > header :is(${headingSelector})`)));
       const startsRow = (node) => {
         if (!is(node, "HTMLTableRowElement") || !node.cells.length) return false;
         const header = node.closest("table")?.tHead?.rows[0]?.cells;
@@ -1512,7 +1517,7 @@ export function pageCommand(
       let fragments = 0;
       let characters = 0;
       let previousRun;
-      const visit = (node, key, region, line, depth) => {
+      const visit = (node, key, region, line, depth, insideHeader) => {
         if (++visited > 4096 || depth > 40) return false;
         if (node.nodeType === Node.TEXT_NODE) {
           const text = node.textContent;
@@ -1532,6 +1537,13 @@ export function pageCommand(
           return true;
         }
         if (!is(node, "Element") || node.matches(excluded)) return true;
+        if (insideHeader && node.matches(interactive)) {
+          previousRun = undefined;
+          return true;
+        }
+        if (node.localName === "header" &&
+            !owners.get(region)?.node.matches('article,section,[role="article"],[role="region"]')) return true;
+        const inHeader = insideHeader || node.localName === "header";
         const style = styleOf(node);
         if (style.display === "none" || style.opacity === "0") return true;
         if (
@@ -1539,28 +1551,112 @@ export function pageCommand(
           (startsSection(node, region) ||
             (node.parentElement === scope && node.matches("p,dl,table,ol,ul")) ||
             startsRow(node))
-        ) region = key;
+        ) {
+          const owner = { node, parent: region, headings: [] };
+          ownersByNode.set(node, owner);
+          owners.set(key, owner);
+          region = key;
+        }
         if (style.display !== "contents" && !style.display.startsWith("inline")) line = key;
         if (node.localName === "br") previousRun = undefined;
         if (is(node, "HTMLDetailsElement") && !node.open) {
           const summary = node.querySelector(":scope > summary");
-          return summary === null || visit(summary, key + ".summary", region, line, depth + 1);
+          return summary === null || visit(summary, key + ".summary", region, line, depth + 1, inHeader);
         }
         let index = 0;
         for (const child of node.childNodes) {
           const childKey = child.nodeType === Node.ELEMENT_NODE ? key + "." + index++ : key;
-          if (!visit(child, childKey, region, line, depth + 1)) return false;
+          if (!visit(child, childKey, region, line, depth + 1, inHeader)) return false;
         }
         return true;
       };
-      if (!visit(scope, "main", undefined, "main", 0)) return incomplete;
-      return {
-        complete: true,
-        regions: [...groups].flatMap(([key, runs]) => {
-          const fragments = runs.map((run) => withoutSecrets(run.trim())).filter(Boolean);
-          return fragments.length ? [{ key, fragments }] : [];
-        }),
+      if (!visit(scope, "main", undefined, "main", 0, false)) return incomplete;
+      const ownerOf = (node) => {
+        for (let parent = node.parentElement; parent && parent !== scope; parent = parent.parentElement) {
+          const owner = ownersByNode.get(parent);
+          if (owner) return owner;
+        }
       };
+      let labelNodes = 0;
+      const visibleLabel = (root) => {
+        if (!root || !scope.contains(root) || root.closest(labelExcluded)) return undefined;
+        const header = root.closest("header");
+        if (header && scope === document.body && !ownerOf(header)) return undefined;
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let text = "";
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (++labelNodes > 1024) return null;
+          const parent = node.parentElement;
+          if (!parent || parent.closest(labelExcluded) ||
+              !parent.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          if (!range.getClientRects().length) continue;
+          text += node.textContent;
+          if (text.length > 192) return null;
+        }
+        return withoutSecrets(text.replace(/\s+/gu, " ").trim()) || undefined;
+      };
+      const primary = [];
+      const headings = scope.querySelectorAll(headingSelector);
+      if (headings.length > 256) return incomplete;
+      for (const node of headings) {
+        const level = /^h[1-6]$/u.test(node.localName)
+          ? Number(node.localName[1]) : Number(node.getAttribute("aria-level") ?? 2);
+        if (level < 1 || level > 6 || !Number.isInteger(level)) continue;
+        const owner = ownerOf(node);
+        if (!owner && level !== 1) continue;
+        const text = visibleLabel(node);
+        if (text !== undefined) (owner?.headings ?? primary).push({ level, text });
+      }
+      const headingOf = (headings) => {
+        const level = Math.min(...headings.map((heading) => heading.level));
+        const choices = [...new Set(headings.filter((heading) => heading.level === level).map((heading) => heading.text))];
+        return choices.length > 1 ? null : choices[0];
+      };
+      const authorLabelOf = (owner) => {
+        const ids = owner.node.getAttribute("aria-labelledby")?.trim().split(/\s+/gu) ?? [];
+        if (ids.length > 4 || ids.some((id) => id.length > 128)) return null;
+        const labels = [];
+        for (const id of new Set(ids.filter(Boolean))) {
+          const nodes = document.querySelectorAll("#" + CSS.escape(id));
+          if (nodes.length > 1) return null;
+          const label = visibleLabel(nodes[0]);
+          if (label === null) return null;
+          if (label) labels.push(label);
+        }
+        return labels.length > 1 ? null : labels[0];
+      };
+      const primaryHeading = headingOf(primary);
+      if (primaryHeading === null) return incomplete;
+      const readings = new Map();
+      const readOwner = (key) => {
+        if (readings.has(key)) return readings.get(key);
+        const owner = owners.get(key);
+        const heading = headingOf(owner.headings);
+        const authorLabel = authorLabelOf(owner);
+        const enclosing = owner.parent === undefined ? {} : readOwner(owner.parent);
+        const ancestorLabels = [...new Set([enclosing.heading, enclosing.authorLabel, ...(enclosing.ancestorLabels ?? [])].filter(Boolean))];
+        const result = {
+          ...(heading && { heading }),
+          ...(authorLabel && { authorLabel }),
+          ...(ancestorLabels.length <= 8 && ancestorLabels.length > 0 && { ancestorLabels }),
+          ...((heading === null || authorLabel === null || enclosing.ambiguous || ancestorLabels.length > 8) && { ambiguous: true }),
+        };
+        readings.set(key, result);
+        return result;
+      };
+      let metadataSize = primaryHeading?.length ?? 0;
+      const regions = [...groups].flatMap(([key, runs]) => {
+        const fragments = runs.map((run) => withoutSecrets(run.trim())).filter(Boolean);
+        if (!fragments.length) return [];
+        const metadata = readOwner(key);
+        metadataSize += (metadata.heading?.length ?? 0) + (metadata.authorLabel?.length ?? 0) +
+          (metadata.ancestorLabels ?? []).reduce((size, label) => size + label.length, 0);
+        return [{ key, fragments, ...metadata }];
+      });
+      if (metadataSize > 8192 || labelNodes > 1024) return incomplete;
+      return { complete: true, ...(primaryHeading && { primaryHeading }), regions };
     };
     const clickReadback = monitor.clickReadback;
     delete monitor.clickReadback;
