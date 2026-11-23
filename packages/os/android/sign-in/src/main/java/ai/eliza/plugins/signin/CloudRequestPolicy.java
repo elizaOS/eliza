@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
+// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.os.agent.RouteGate;
@@ -30,22 +30,29 @@ public final class CloudRequestPolicy {
     public DeviceRoute { path = List.copyOf(path); headers = List.copyOf(headers); }
   }
 
-  public record Holding(int key, boolean sessionHeld, boolean sessionLive) {}
+  public record Holding(int key, boolean sessionHeld, boolean sessionLive, boolean leaseHeld, boolean leaseLive) {}
 
-  public sealed interface Attach permits Bare, WithKey, WithSession {}
+  public sealed interface Attach permits Bare, WithKey, WithSession, WithLease {}
   public record Bare() implements Attach {}
   public record WithKey(int version) implements Attach {}
   public record WithSession(int version) implements Attach {}
+  public record WithLease(int version) implements Attach {}
 
-  public sealed interface CallPlan permits Send, RefreshSessionFirst, Refuse {}
+  public sealed interface CallPlan permits Send, RefreshSessionFirst, RefreshLeaseFirst, Refuse {}
   public record Send(Attach attach) implements CallPlan {}
   public record RefreshSessionFirst() implements CallPlan {}
+  public record RefreshLeaseFirst() implements CallPlan {}
   public record Refuse(Refusal why) implements CallPlan {}
 
-  public sealed interface Report permits NoReport, KeyRejected, SessionRejected {}
+  public sealed interface Report permits NoReport, KeyRejected, LeaseRejected, SessionRejected {}
   public record NoReport() implements Report {}
   public record KeyRejected(int version, Reason reason, RejectedOn on) implements Report {}
+  public record LeaseRejected(int version, Reason reason) implements Report {}
   public record SessionRejected() implements Report {}
+
+  public record RouteName(Method method, List<String> path) {
+    public RouteName { path = List.copyOf(path); }
+  }
 
   public record Origin(Scheme scheme, boolean loopback, boolean hasPath, boolean hasQueryOrFragment) {}
   public record ExternalLink(boolean https, String host, boolean defaultPort, boolean userInfo) {}
@@ -54,6 +61,7 @@ public final class CloudRequestPolicy {
 
   public static final DeviceRoute NO_DEVICE_ROUTE = new DeviceRoute(Method.GET, List.of(), Auth.PUBLIC, List.of());
   public static final List<DeviceRoute> DEVICE_ROUTES = deviceRoutes();
+  public static final List<RouteName> MAIL_ROUTES = mailRoutes();
 
   private static final List<String> KNOWN_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate", ACCEPT, IF_NONE_MATCH, IF_MATCH, IDEMPOTENCY_KEY);
   private static final Pattern HEADER_VALUE = Pattern.compile("[\\x20-\\x7e\\t]*");
@@ -128,9 +136,13 @@ public final class CloudRequestPolicy {
     return auth == Auth.SESSION || auth == Auth.SESSION_FAMILY || auth == Auth.FRESH_SESSION || auth == Auth.STEP_UP;
   }
 
-  public static CallPlan attachFor(Holding h, Auth auth) {
+  public static boolean mailRoute(DeviceRoute d) { return MAIL_ROUTES.contains(new RouteName(d.method(), d.path())); }
+
+  public static CallPlan attachFor(Holding h, DeviceRoute d) {
+    Auth auth = d.auth();
     if (auth == Auth.PUBLIC) return new Send(new Bare());
     if (sessionOnly(auth)) return h.sessionLive() ? new Send(new WithSession(h.key())) : h.sessionHeld() ? new RefreshSessionFirst() : new Refuse(Refusal.REAUTH_REQUIRED);
+    if (mailRoute(d)) return h.leaseLive() ? new Send(new WithLease(h.key())) : h.leaseHeld() ? new RefreshLeaseFirst() : new Refuse(Refusal.SIGN_IN_REQUIRED);
     return h.key() >= 1 ? new Send(new WithKey(h.key())) : new Refuse(Refusal.SIGN_IN_REQUIRED);
   }
 
@@ -164,7 +176,7 @@ public final class CloudRequestPolicy {
     if (a.verdict() == RouteGate.Verdict.TOO_LARGE) return new Refuse(Refusal.BODY_TOO_LARGE);
     if (a.verdict() != RouteGate.Verdict.ADMITTED || found.size() != 1) return new Refuse(Refusal.NOT_LISTED);
     for (String header : headers) if (!headerAllowed(d, header)) return new Refuse(Refusal.HEADER_REFUSED);
-    return attachFor(h, d.auth());
+    return attachFor(h, d);
   }
 
   public static boolean isAccountRead(DeviceRoute d) { return d.method() == Method.GET && d.path().equals(List.of("api", "v1", "user")); }
@@ -176,6 +188,7 @@ public final class CloudRequestPolicy {
     return switch (attach) {
       case WithKey k -> new KeyRejected(k.version(), credentialReasonOf(reason), isAccountRead(d) ? RejectedOn.ACCOUNT_READ : RejectedOn.OTHER_REQUEST);
       case WithSession s -> new SessionRejected();
+      case WithLease l -> new LeaseRejected(l.version(), credentialReasonOf(reason));
       case Bare b -> new NoReport();
     };
   }
@@ -229,6 +242,27 @@ public final class CloudRequestPolicy {
   private static DeviceRoute route(Method method, List<String> path, Auth auth) { return new DeviceRoute(method, path, auth, List.of()); }
 
   private static DeviceRoute keyed(Method method, List<String> path, String header) { return new DeviceRoute(method, path, Auth.KEY_OR_SESSION, List.of(header)); }
+
+  private static List<RouteName> mailRoutes() {
+    Method get = Method.GET, post = Method.POST, patch = Method.PATCH, delete = Method.DELETE;
+    return List.of(
+      new RouteName(get, google("status")),
+      new RouteName(get, google("accounts")),
+      new RouteName(post, google("connect", "initiate")),
+      new RouteName(post, google("disconnect")),
+      new RouteName(get, google("gmail", "search")),
+      new RouteName(get, google("gmail", "read")),
+      new RouteName(get, google("gmail", "inbox-v1", "attachment")),
+      new RouteName(get, google("gmail", "inbox-v1", "drafts")),
+      new RouteName(get, google("gmail", "inbox-v1", "draft")),
+      new RouteName(post, google("gmail", "inbox-v1", "operations")),
+      new RouteName(post, google("gmail", "inbox-v1", "operations", ":requestId", "dispatch")),
+      new RouteName(get, google("gmail", "inbox-v1", "operations", ":requestId")),
+      new RouteName(get, google("calendar", "feed")),
+      new RouteName(post, google("calendar", "events")),
+      new RouteName(patch, google("calendar", "events", ":eventId")),
+      new RouteName(delete, google("calendar", "events", ":eventId")));
+  }
 
   private static List<DeviceRoute> deviceRoutes() {
     Method get = Method.GET, post = Method.POST, patch = Method.PATCH, delete = Method.DELETE;

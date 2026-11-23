@@ -2,9 +2,12 @@
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
+import ai.eliza.plugins.signin.CredentialPolicy.LeaseUse;
 import ai.eliza.plugins.signin.CredentialPolicy.Reason;
 import ai.eliza.plugins.signin.CredentialPolicy.RejectedOn;
+import ai.eliza.plugins.signin.DeviceCredentialStore.HeldLease;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Kept;
+import ai.eliza.plugins.signin.DeviceCredentialStore.LeaseSecret;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Owed;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Outcome;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Pending;
@@ -19,12 +22,18 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
+import java.util.function.LongSupplier;
+import java.util.regex.Pattern;
 
 public final class DeviceKeyClient {
   public static final String CONNECT = "/api/v1/app-auth/connect";
   public static final String TOKEN = "/api/v1/app-auth/mobile/token";
   public static final String ACK = "/api/v1/app-auth/mobile/ack";
   public static final String REVOKE = "/api/v1/api-keys/current";
+  public static final String LEASE = "/api/v1/app-auth/mobile/lease";
+  public static final String RENEW = "/api/v1/app-auth/mobile/renew";
+  public static final Pattern LEASE_REFRESH = Pattern.compile("eliza_lease_refresh_[A-Za-z0-9_-]{54}");
+  public static final Pattern LEASE_ACCESS = Pattern.compile("eliza_lease_[A-Za-z0-9_-]{43}");
   public static final String USER = "/api/v1/user";
   public static final String CODE_CHALLENGE_METHOD = "S256";
   public static final int CONNECT_TIMEOUT_MS = 8_000;
@@ -45,6 +54,14 @@ public final class DeviceKeyClient {
 
   public record Acknowledgement(String credentialId, long expiresAt) {}
 
+  public record Rotated(String access, long accessExpiresAt, String refresh, long refreshExpiresAt) {
+    @Override public String toString() { return "Rotated[accessExpiresAt=" + accessExpiresAt + ", refreshExpiresAt=" + refreshExpiresAt + "]"; }
+  }
+
+  public record Renewed(String credentialId, String secret, long expiresAt) {
+    @Override public String toString() { return "Renewed[credentialId=" + credentialId + ", expiresAt=" + expiresAt + "]"; }
+  }
+
   public sealed interface Answer<T> {
     record Answered<T>(T value) implements Answer<T> {}
     record Refused<T>(int status, String error, Reason reason) implements Answer<T> {
@@ -64,11 +81,18 @@ public final class DeviceKeyClient {
   private final URI origin;
   private final DeviceCredentialStore store;
   private final Pause pause;
+  private final LongSupplier clock;
+  private final Object presenting = new Object();
 
   public DeviceKeyClient(URI origin, DeviceCredentialStore store, Pause pause) {
+    this(origin, store, pause, System::currentTimeMillis);
+  }
+
+  public DeviceKeyClient(URI origin, DeviceCredentialStore store, Pause pause, LongSupplier clock) {
     this.origin = origin;
     this.store = store;
     this.pause = pause;
+    this.clock = clock;
   }
 
   public Answer<Grant> connect(String sessionToken, Binding binding, String state, String codeChallenge, String deviceName) {
@@ -84,10 +108,10 @@ public final class DeviceKeyClient {
     String body = binding(binding).append(",\"grantType\":\"authorization_code\",\"code\":").append(CredentialJson.quote(proof.code()))
       .append(",\"state\":").append(CredentialJson.quote(proof.state())).append(",\"codeVerifier\":").append(CredentialJson.quote(proof.verifier()))
       .append('}').toString();
-    return ask("POST", TOKEN, null, body, 200, DeviceKeyClient::token);
+    return ask("POST", TOKEN, null, body, 200, this::token);
   }
 
-  public static Token minted(String answer) {
+  public Token minted(String answer) {
     try {
       return token(CredentialJson.object(CredentialJson.parse(answer), "answer"));
     } catch (IllegalArgumentException unreadable) {
@@ -95,10 +119,60 @@ public final class DeviceKeyClient {
     }
   }
 
-  private static Token token(Map<String, Object> answer) {
+  private Token token(Map<String, Object> answer) {
+    LeaseSecret lease = null;
+    if (answer.get("lease") != null) {
+      Map<String, Object> offered = CredentialJson.object(answer.get("lease"), "lease");
+      lease = new LeaseSecret(secret(offered, "refresh", LEASE_REFRESH), after(offered, "refreshExpiresIn"));
+    }
     return new Token(CredentialJson.text(answer, "credentialId"), CredentialJson.text(answer, "secret"),
       new Account(CredentialJson.text(CredentialJson.object(answer.get("user"), "user"), "id"), CredentialJson.text(answer, "organizationId")),
-      instant(answer, "expiresAt"));
+      instant(answer, "expiresAt"), lease);
+  }
+
+  private static String secret(Map<String, Object> answer, String key, Pattern shape) {
+    String value = CredentialJson.text(answer, key);
+    if (!shape.matcher(value).matches()) throw new CredentialJson.Malformed(key);
+    return value;
+  }
+
+  private long after(Map<String, Object> answer, String key) {
+    long seconds = CredentialJson.whole(answer, key);
+    if (seconds <= 0 || seconds > Integer.MAX_VALUE) throw new CredentialJson.Malformed(key);
+    return clock.getAsLong() + seconds * 1000L;
+  }
+
+  public <T> Answer<T> presentLease(String method, String path, String body, Reading<T> reading) {
+    synchronized (presenting) {
+      HeldLease held = store.lease();
+      if (held == null) return new Answer.Refused<>(401, "authentication_required", Reason.CREDENTIAL_UNKNOWN);
+      Answer<T> answer = ask(method, path, held.refresh(), body, 200, reading);
+      if (answer instanceof Answer.Refused<T> refused && refused.status() == 401)
+        store.leaseRejected(held.version(), CloudRequestPolicy.credentialReasonOf(refused.reason()), LeaseUse.REFRESH_USE);
+      return answer;
+    }
+  }
+
+  public Answer<Rotated> rotateLease() {
+    return presentLease("POST", LEASE, "{}", answer -> new Rotated(secret(answer, "access", LEASE_ACCESS), after(answer, "accessExpiresIn"),
+      secret(answer, "refresh", LEASE_REFRESH), after(answer, "refreshExpiresIn")));
+  }
+
+  public Exchange renew() {
+    int attempt = store.beginRenewal();
+    if (attempt == 0) return Exchange.SUPERSEDED;
+    Account account = store.account();
+    Answer<Renewed> answer = presentLease("POST", RENEW, "{}",
+      body -> new Renewed(CredentialJson.text(body, "credentialId"), CredentialJson.text(body, "secret"), after(body, "expiresIn")));
+    if (!(answer instanceof Answer.Answered<Renewed> renewed)) return end(attempt);
+    Kept kept = store.tokenAnswered(attempt, new Token(renewed.value().credentialId(), renewed.value().secret(), account, renewed.value().expiresAt()));
+    if (kept != Kept.KEPT) return end(attempt);
+    Pending pending = store.pending();
+    return pending == null || pending.attempt() != attempt ? Exchange.SUPERSEDED : acknowledge(pending);
+  }
+
+  public void renewIfDue() {
+    if (store.renewDue()) renew();
   }
 
   public Answer<Acknowledgement> ack(String credentialId, String secret) {
@@ -110,7 +184,14 @@ public final class DeviceKeyClient {
   }
 
   public boolean revoke(String secret) {
-    Answer<Boolean> answer = ask("DELETE", REVOKE, secret, null, 200, body -> true);
+    return settles(ask("DELETE", REVOKE, secret, null, 200, body -> true));
+  }
+
+  public boolean revokeLease(String refresh) {
+    return settles(ask("DELETE", LEASE, refresh, null, 200, body -> true));
+  }
+
+  private static boolean settles(Answer<Boolean> answer) {
     return answer instanceof Answer.Answered<Boolean> || answer instanceof Answer.Refused<Boolean> r && r.status() == 401;
   }
 
@@ -155,7 +236,8 @@ public final class DeviceKeyClient {
     for (Owed owed : store.owed()) {
       for (int ask = 0; ask < owed.tries(); ask++) {
         if (ask > 0 && !rest(ask)) return;
-        if (store.revokeAnswered(owed.version(), revoke(owed.value())) == Outcome.REFUSED) break;
+        boolean settled = (owed.lease() == null || revokeLease(owed.lease())) & revoke(owed.value());
+        if (store.revokeAnswered(owed.version(), settled) == Outcome.REFUSED) break;
         if (store.owed().stream().noneMatch(o -> o.version() == owed.version())) break;
       }
     }

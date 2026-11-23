@@ -42,8 +42,19 @@ public final class DeviceKeyJourney {
     final String challenge, state;
     int asks;
     String credentialId, secret;
+    Family lease;
     Grant1(String challenge, String state) { this.challenge = challenge; this.state = state; }
   }
+
+  private static final class Family {
+    String grant, refresh, access, offeredRefresh, offeredAccess;
+    long accessExpiresAt;
+    boolean ended;
+    final List<String> spent = new ArrayList<>();
+    boolean holds(String bearer) { return bearer.equals(refresh) || bearer.equals(offeredRefresh) || spent.contains(bearer); }
+  }
+
+  private record Renewal(String secret, Family lease, String from) {}
 
   private static final class FakeCloud {
     final AtomicLong clock;
@@ -52,7 +63,11 @@ public final class DeviceKeyJourney {
     final List<String> revoked = new CopyOnWriteArrayList<>();
     final List<String> proofs = new CopyOnWriteArrayList<>();
     final AtomicInteger issued = new AtomicInteger(), tokenAsks = new AtomicInteger(), revokeAsks = new AtomicInteger(), refreshes = new AtomicInteger();
-    volatile boolean offline;
+    final AtomicInteger rotations = new AtomicInteger(), reused = new AtomicInteger(), secrets = new AtomicInteger();
+    final List<Family> families = new CopyOnWriteArrayList<>();
+    final Map<String, Renewal> renewals = new ConcurrentHashMap<>();
+    final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>();
+    volatile boolean offline, leases, dropNextRotation;
     final HttpServer server;
 
     FakeCloud(AtomicLong clock) throws IOException {
@@ -70,6 +85,55 @@ public final class DeviceKeyJourney {
     private String bearer(HttpExchange x) {
       String value = x.getRequestHeaders().getFirst("Authorization");
       return value != null && value.startsWith("Bearer ") ? value.substring(7) : "";
+    }
+
+    private String minted(String prefix, int length) {
+      String serial = Integer.toString(secrets.incrementAndGet());
+      return prefix + "s".repeat(length - serial.length()) + serial;
+    }
+
+    private Family family(String bearer) {
+      for (Family f : families) if (f.holds(bearer)) return f;
+      return null;
+    }
+
+    private void endGrant(String credentialId) {
+      live.values().removeIf(credentialId::equals);
+      for (Family f : families) if (credentialId.equals(f.grant)) f.ended = true;
+    }
+
+    private boolean presented(HttpExchange x, Family f, String bearer) throws IOException {
+      if (f == null) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return false; }
+      if (!f.ended && f.spent.contains(bearer)) {
+        reused.incrementAndGet();
+        endGrant(f.grant);
+      }
+      if (f.ended) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_revoked\"}"); return false; }
+      if (bearer.equals(f.offeredRefresh)) commit(f);
+      return true;
+    }
+
+    private void commit(Family f) {
+      f.spent.add(f.refresh);
+      f.refresh = f.offeredRefresh;
+      f.access = f.offeredAccess;
+      f.offeredRefresh = f.offeredAccess = null;
+    }
+
+    private String offer(Family f, long now) {
+      f.offeredRefresh = minted("eliza_lease_refresh_", 54);
+      f.offeredAccess = minted("eliza_lease_", 43);
+      f.accessExpiresAt = now + 900_000;
+      return "{\"access\":\"" + f.offeredAccess + "\",\"accessExpiresIn\":900,\"refresh\":\"" + f.offeredRefresh + "\",\"refreshExpiresIn\":7776000}";
+    }
+
+    private boolean leaseAccess(String bearer, long now) {
+      for (Family f : families) {
+        if (f.ended || now >= f.accessExpiresAt) continue;
+        if (bearer.equals(f.offeredAccess)) commit(f);
+        if (bearer.equals(f.access)) return true;
+      }
+      return false;
     }
 
     private void handle(HttpExchange x) throws IOException {
@@ -96,16 +160,28 @@ public final class DeviceKeyJourney {
           if (grant.credentialId == null) {
             grant.credentialId = "cred-" + issued.incrementAndGet();
             grant.secret = "eliza_mobile_" + grant.credentialId;
+            if (leases) {
+              grant.lease = new Family();
+              grant.lease.grant = grant.credentialId;
+              grant.lease.refresh = minted("eliza_lease_refresh_", 54);
+            }
           }
           if (grant.asks++ == 0) { x.close(); return; }
+          String lease = grant.lease == null ? "" : ",\"lease\":{\"refresh\":\"" + grant.lease.refresh + "\",\"refreshExpiresIn\":7776000}";
           answer(x, 200, "{\"credentialId\":\"" + grant.credentialId + "\",\"secret\":\"" + grant.secret + "\",\"tokenType\":\"Bearer\",\"expiresAt\":\""
-            + iso(now + 30 * DAY_MS) + "\",\"user\":{\"id\":\"" + ACCOUNT.userId() + "\"},\"organizationId\":\"" + ACCOUNT.organizationId() + "\"}");
+            + iso(now + 30 * DAY_MS) + "\",\"user\":{\"id\":\"" + ACCOUNT.userId() + "\"},\"organizationId\":\"" + ACCOUNT.organizationId() + "\"" + lease + "}");
         }
         case "POST " + DeviceKeyClient.ACK -> {
-          String credentialId = CredentialJson.text(body, "credentialId");
-          boolean known = codes.values().stream().anyMatch(g -> credentialId.equals(g.credentialId) && CredentialJson.text(body, "secret").equals(g.secret));
-          if (!known) { answer(x, 401, "{\"error\":\"credential_proof_invalid\"}"); return; }
-          live.put(CredentialJson.text(body, "secret"), credentialId);
+          String credentialId = CredentialJson.text(body, "credentialId"), secret = CredentialJson.text(body, "secret");
+          Grant1 signedIn = codes.values().stream().filter(g -> credentialId.equals(g.credentialId) && secret.equals(g.secret)).findFirst().orElse(null);
+          Renewal renewed = renewals.get(credentialId);
+          if (signedIn == null && (renewed == null || !renewed.secret().equals(secret))) { answer(x, 401, "{\"error\":\"credential_proof_invalid\"}"); return; }
+          if (signedIn != null && signedIn.lease != null && !families.contains(signedIn.lease)) families.add(signedIn.lease);
+          if (renewed != null) {
+            live.values().removeIf(renewed.from()::equals);
+            renewed.lease().grant = credentialId;
+          }
+          live.put(secret, credentialId);
           answer(x, 200, "{\"status\":\"acknowledged\",\"credentialId\":\"" + credentialId + "\",\"expiresAt\":\"" + iso(now + 30 * DAY_MS) + "\"}");
         }
         case "DELETE " + DeviceKeyClient.REVOKE -> {
@@ -114,7 +190,42 @@ public final class DeviceKeyJourney {
           String credentialId = live.remove(bearer(x));
           if (credentialId == null) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
           revoked.add(credentialId);
+          endGrant(credentialId);
           x.sendResponseHeaders(204, -1);
+        }
+        case "POST " + DeviceKeyClient.LEASE -> {
+          Family f = family(bearer(x));
+          if (!presented(x, f, bearer(x))) return;
+          rotations.incrementAndGet();
+          String pair = offer(f, now);
+          if (dropNextRotation) { dropNextRotation = false; x.close(); return; }
+          answer(x, 200, pair);
+        }
+        case "DELETE " + DeviceKeyClient.LEASE -> {
+          if (offline) { answer(x, 503, "{\"error\":\"service_unavailable\"}"); return; }
+          Family f = family(bearer(x));
+          if (!presented(x, f, bearer(x))) return;
+          f.ended = true;
+          x.sendResponseHeaders(204, -1);
+        }
+        case "POST " + DeviceKeyClient.RENEW -> {
+          Family f = family(bearer(x));
+          if (!presented(x, f, bearer(x))) return;
+          String credentialId = "cred-" + issued.incrementAndGet();
+          renewals.put(credentialId, new Renewal("eliza_mobile_" + credentialId, f, f.grant));
+          answer(x, 200, "{\"credentialId\":\"" + credentialId + "\",\"secret\":\"eliza_mobile_" + credentialId + "\",\"expiresIn\":" + 30 * DAY_MS / 1000 + "}");
+        }
+        case "GET /api/v1/eliza/google/calendar/feed" -> {
+          String bearer = bearer(x);
+          if (live.containsKey(bearer)) { mailBearers.add("key"); answer(x, 403, "{\"error\":\"forbidden\",\"reason\":\"device_key_not_allowed\"}"); return; }
+          if (!leaseAccess(bearer, now)) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
+          mailBearers.add("lease");
+          answer(x, 200, "{\"events\":[]}");
+        }
+        case "GET /api/v1/models" -> {
+          if (!live.containsKey(bearer(x))) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
+          modelBearers.add("key");
+          answer(x, 200, "{\"data\":[]}");
         }
         case "GET " + DeviceKeyClient.USER -> {
           if (!live.containsKey(bearer(x))) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_revoked\"}"); return; }
@@ -151,6 +262,7 @@ public final class DeviceKeyJourney {
   private final FakeCloud cloud;
   private DeviceCredentialStore store;
   private DeviceKeyClient client;
+  private DeviceLease lease;
 
   private DeviceKeyJourney() throws IOException {
     cloud = new FakeCloud(clock);
@@ -159,9 +271,86 @@ public final class DeviceKeyJourney {
 
   private void start() {
     store = new DeviceCredentialStore(slots, DeviceCredentialStore.authorityDigest(cloud.origin().toString()), clock::get);
-    client = new DeviceKeyClient(cloud.origin(), store, ms -> {});
+    client = new DeviceKeyClient(cloud.origin(), store, ms -> {}, clock::get);
     store.listen(notice -> notices.add(CredentialPolicy.json(notice)));
     store.onVerifyAccount(() -> { notices.add(CredentialPolicy.json(new Notice.VerifyAccount())); client.verifyAccount(); });
+    store.onRenewKey(() -> client.renew());
+    lease = new DeviceLease(store, client, () -> client.renewIfDue());
+  }
+
+  private long leaseSlots(String prefix) {
+    return slots.held.keySet().stream().filter(slot -> slot.startsWith(prefix) && (slot.contains(":key:") || slot.contains(":lease:"))).count();
+  }
+
+  private String leaseJourney(List<String> seen, String prefix) {
+    int before = notices.size();
+    cloud.leases = true;
+    seen.add(take("leasedSignIn", signIn()));
+    client.settleDuties();
+    cloud.dropNextRotation = true;
+    seen.add(take("lostRotation", String.valueOf(lease.accessToken())));
+    DeviceLease.Held rotated = lease.accessToken();
+    clock.addAndGet(16 * 60_000L);
+    DeviceLease.Held again = lease.accessToken();
+    seen.add(take("rotatedAfterLostReply", rotated != null && again != null && !rotated.token().equals(again.token())));
+    seen.add(take("rotationsAsked", cloud.rotations.get()));
+    String leased = store.current().credentialId();
+    clock.addAndGet(15 * DAY_MS);
+    DeviceLease.Held renewing = lease.accessToken();
+    seen.add(take("renewedBeforeHalfLife", renewing != null && !store.current().credentialId().equals(leased) ? held() : "not renewed"));
+    seen.add(take("owedAfterRenewal", store.owed().size() == 1 && store.owed().get(0).lease() == null));
+    client.settleDuties();
+    seen.add(take("replacedKeyEnded", !cloud.live.containsValue(leased) && store.owed().isEmpty()));
+    clock.addAndGet(16 * 60_000L);
+    seen.add(take("leaseKeptByRenewal", lease.accessToken() != null));
+    String renewed = store.current().credentialId();
+    cloud.families.get(cloud.families.size() - 1).ended = true;
+    clock.addAndGet(16 * 60_000L);
+    seen.add(take("accessAfterRevokedLease", String.valueOf(lease.accessToken())));
+    seen.add(take("afterRevokedLease", held()));
+    seen.add(take("owedAfterRevokedLease", store.owed().size() == 1 && store.owed().get(0).lease() == null));
+    client.settleDuties();
+    seen.add(take("keyRevokedAfterLease", cloud.revoked.contains(renewed)));
+    seen.add(take("slotsAfterLeaseSignOut", leaseSlots(prefix)));
+    seen.add(take("leaseReuses", cloud.reused.get()));
+    return CredentialJson.quote("leaseNotices") + ":[" + String.join(",", notices.subList(before, notices.size())) + "]";
+  }
+
+  private static final String MAIL_TABLE = "[{\"prefixes\":[\"/api/v1\"],\"routes\":["
+    + "{\"method\":\"GET\",\"path\":\"/api/v1/eliza/google/calendar/feed\"},{\"method\":\"GET\",\"path\":\"/api/v1/models\"}]}]";
+
+  private static String outcome(CloudRequests.Outcome outcome) {
+    return switch (outcome) {
+      case CloudRequests.Answered answered -> String.valueOf(answered.status());
+      case CloudRequests.Failed failed -> failed.failure().name();
+    };
+  }
+
+  private String cloudJourney() throws Exception {
+    Path cache = Files.createTempDirectory("device-cloud-requests-");
+    try {
+      CloudRequests requests = new CloudRequests(new CloudRequestPolicy(MAIL_TABLE), new LargeBodyGrant(cache.toFile()));
+      CloudRequests.Custody custody = new CloudRequests.Custody(store, new AccountSession(store, client), lease);
+      String origin = cloud.origin().toString();
+      String feed = "/api/v1/eliza/google/calendar/feed", models = "/api/v1/models";
+      List<String> seen = new ArrayList<>();
+      seen.add(take("keyOnlySignIn", signIn()));
+      seen.add(take("mailWithoutLease", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
+      cloud.leases = true;
+      seen.add(take("leasedSignIn", signIn()));
+      cloud.dropNextRotation = true;
+      seen.add(take("mailAfterLostRotation", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
+      seen.add(take("mailWithLease", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
+      seen.add(take("inferenceWithKey", outcome(requests.send(origin, custody, "GET", models, Map.of(), null))));
+      seen.add(take("bearers", String.join(",", cloud.mailBearers) + "/" + String.join(",", cloud.modelBearers)));
+      seen.add(take("leaseReuses", cloud.reused.get()));
+      cloud.server.stop(0);
+      return "{" + String.join(",", seen) + "}";
+    } finally {
+      try (var files = Files.walk(cache)) {
+        for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(file);
+      }
+    }
   }
 
   private String signIn() {
@@ -243,10 +432,11 @@ public final class DeviceKeyJourney {
     clock.addAndGet(3_000_000);
     seen.add(take("afterTheHour", String.valueOf(session.accessToken())));
 
+    seen.add(CredentialJson.quote("notices") + ":[" + String.join(",", notices) + "]");
+    seen.add(leaseJourney(seen, prefix));
     Map<String, Integer> kinds = new HashMap<>();
     for (String slot : slots.held.keySet()) kinds.merge(slot.startsWith(prefix) ? "prefixed" : "other", 1, Integer::sum);
     seen.add(take("unprefixedSlots", kinds.getOrDefault("other", 0)));
-    seen.add(CredentialJson.quote("notices") + ":[" + String.join(",", notices) + "]");
     cloud.server.stop(0);
     return "{" + String.join(",", seen) + "}";
   }
@@ -357,6 +547,7 @@ public final class DeviceKeyJourney {
 
   public static void main(String[] args) throws Exception {
     if (args.length == 1 && args[0].equals("browser")) System.out.println(browserReturn());
+    else if (args.length == 1 && args[0].equals("cloud")) System.out.println(new DeviceKeyJourney().cloudJourney());
     else System.out.println(new DeviceKeyJourney().run());
     System.exit(0);
   }
