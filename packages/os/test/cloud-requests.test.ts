@@ -76,9 +76,11 @@ describe("Reach my account's cloud services without holding my key", () => {
       leaseReuses: 0,
       replyFromPreviousEnrollment: "SIGN_IN_REQUIRED",
       sameOwnerReEnrolledAtNewVersion: true,
+      legacyVaultBindingMatches: true,
       replyFromBeforeRenewal: "SIGN_IN_REQUIRED",
       sameOwnerRenewedAtNewVersion: true,
       readAfterRenewal: "200",
+      vaultBindingAfterRenewalRestart: true,
     });
   });
 

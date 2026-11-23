@@ -17,12 +17,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.Key;
 import java.security.KeyStoreSpi;
+import java.security.MessageDigest;
 import java.security.Provider;
 import java.security.SecureRandom;
 import java.security.Security;
 import java.security.cert.Certificate;
 import java.security.spec.AlgorithmParameterSpec;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
@@ -429,6 +431,9 @@ public final class CloudDeviceAccountJourney {
     seen.put("signedIn", signIn(account));
     long signedInAt = System.currentTimeMillis();
     String firstKey = account.session().token();
+    String legacyBinding = Base64.getUrlEncoder().withoutPadding().encodeToString(
+      MessageDigest.getInstance("SHA-256").digest(firstKey.getBytes(StandardCharsets.UTF_8)));
+    seen.put("legacyVaultBindingMatches", legacyBinding.equals(account.accountBinding(firstKey)));
     seen.put("renewedBeforeHalfLife", account.renewIfDue());
 
     cloud.leaseDelayMs = 300;
@@ -495,6 +500,9 @@ public final class CloudDeviceAccountJourney {
     if (wait > 0) Thread.sleep(wait);
     seen.put("renewedAfterHalfLife", account.renewIfDue());
     String secondKey = account.session().token();
+    CloudDeviceAccount reopened = deviceAccount(home);
+    seen.put("vaultBindingAfterRenewalRestart", legacyBinding.equals(reopened.accountBinding(secondKey))
+        && reopened.accountBinding(firstKey) == null && !authority.epoch().equals(reopened.mailAuthority().epoch()));
     Grant first = cloud.grant(firstKey);
     seen.put("renewal", new JSONArray().put(!secondKey.equals(firstKey)).put(first.ended).put(first.family.grant.key.equals(secondKey)).put(duties(slots)));
     account.retryRevocation();
@@ -524,8 +532,9 @@ public final class CloudDeviceAccountJourney {
     String nativeKey = account.session().token();
     seen.put("nativeMail", status(account));
     Thread.sleep(Math.max(0, nativeAt + 3100 - System.currentTimeMillis()));
-    seen.put("nativeRenewed", account.renewIfDue());
+    account.maintainLease();
     String nativeSuccessor = account.session().token();
+    seen.put("nativeRenewed", !nativeSuccessor.equals(nativeKey));
     Grant nativeFirst = cloud.grant(nativeKey);
     seen.put("nativeRenewal", new JSONArray().put(!nativeSuccessor.equals(nativeKey)).put(nativeFirst.ended).put(nativeFirst.family.grant.key.equals(nativeSuccessor)).put(status(account)));
     account.clear();

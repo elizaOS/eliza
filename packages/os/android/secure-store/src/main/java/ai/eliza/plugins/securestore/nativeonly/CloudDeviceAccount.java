@@ -468,6 +468,7 @@ public final class CloudDeviceAccount {
    slots.write(CREDENTIAL, acknowledged.toString());
   } else if (current != null && replaces.equals(current.getString("token"))) {
    JSONObject replaced = new JSONObject().put("token", replaces).putOpt("credentialId", current.optString("credentialId", null));
+   current.put("binding", bindingOf(current));
    for (String key : List.of("token", "credentialId", "issuedAt", "expiresAt")) current.putOpt(key, acknowledged.opt(key));
    slots.write(CREDENTIAL, current.toString());
    oweRevocation(replaced);
@@ -481,6 +482,19 @@ public final class CloudDeviceAccount {
 
  public Session session() throws Exception {
   return sessionOf(stored());
+ }
+
+ private static String bindingOf(JSONObject credential) throws Exception {
+  if (credential.has("binding")) return credential.getString("binding");
+  return base64Url(MessageDigest.getInstance("SHA-256").digest(credential.getString("token").getBytes(StandardCharsets.UTF_8)));
+ }
+
+ public String accountBinding(String currentSecret) throws Exception {
+  synchronized (LOCK) {
+   JSONObject credential = stored();
+   Session current = sessionOf(credential);
+   return current != null && current.token().equals(currentSecret) ? bindingOf(credential) : null;
+  }
  }
 
  public MailAuthority mailAuthority() throws Exception {
@@ -699,6 +713,14 @@ public final class CloudDeviceAccount {
    accessRefused(token);
   }
   return new MailResponse(answer.status(), answer.body());
+ }
+
+ public void maintainLease() throws Exception {
+  JSONObject credential = stored();
+  JSONObject lease = credential == null ? null : credential.optJSONObject("lease");
+  if (lease != null && newestExpiry(lease) - System.currentTimeMillis() <= 7L * 24 * 60 * 60_000) leaseAccess();
+  renewIfDue();
+  retryRevocation();
  }
 
  public boolean renewIfDue() throws Exception {

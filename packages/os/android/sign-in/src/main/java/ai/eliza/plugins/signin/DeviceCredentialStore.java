@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -190,7 +191,10 @@ public final class DeviceCredentialStore implements CredentialReader {
       advance();
       if (!CredentialPolicy.canTokenAnswered(state, attempt, token.credentialId(), token.account(), token.keyExpiresAt(), token.offer())) return Kept.REFUSED;
       int version = state.lastVersion() + 1;
-      Stored stored = writeKey(version, token);
+      int active = CredentialPolicy.activeVersion(state);
+      String binding = CredentialPolicy.isRenewal(state.attempt()) && active > 0
+        ? bindingOf(active) : fingerprint(token.value());
+      Stored stored = writeKey(version, token, binding);
       if (stored == Stored.WRITTEN && token.lease() != null) stored = writeLease(version, token.lease().refresh());
       commit(new Step(CredentialPolicy.tokenAnswered(state, attempt, token.credentialId(), token.account(), token.keyExpiresAt(), token.offer(), stored), List.of()));
       return stored == Stored.WRITTEN ? Kept.KEPT : Kept.NOT_KEPT;
@@ -489,8 +493,9 @@ public final class DeviceCredentialStore implements CredentialReader {
     sweep.addAll(dropped);
   }
 
-  private Stored writeKey(int version, Token token) {
-    String value = "{\"credentialId\":" + CredentialJson.quote(token.credentialId()) + ",\"key\":" + CredentialJson.quote(token.value()) + "}";
+  private Stored writeKey(int version, Token token, String binding) {
+    String value = "{\"credentialId\":" + CredentialJson.quote(token.credentialId()) + ",\"key\":" + CredentialJson.quote(token.value())
+      + ",\"binding\":" + CredentialJson.quote(binding) + "}";
     try {
       slots.write(keySlot(version), value);
     } catch (Exception failed) {
@@ -519,10 +524,35 @@ public final class DeviceCredentialStore implements CredentialReader {
     }
   }
 
-  private String keyOf(int version) {
+  private Map<String, Object> keyRecord(int version) {
     String saved = readSlot(keySlot(version));
     if (saved == null) throw new StorageFailure("key " + version + " is missing", null);
-    return CredentialJson.text(CredentialJson.object(CredentialJson.parse(saved), "key"), "key");
+    return CredentialJson.object(CredentialJson.parse(saved), "key");
+  }
+
+  private String keyOf(int version) {
+    return CredentialJson.text(keyRecord(version), "key");
+  }
+
+  private String bindingOf(int version) {
+    Map<String, Object> stored = keyRecord(version);
+    return stored.containsKey("binding") ? CredentialJson.text(stored, "binding") : fingerprint(CredentialJson.text(stored, "key"));
+  }
+
+  String accountBinding(String currentSecret) {
+    synchronized (lock) {
+      Credential current = current();
+      return current != null && current.value().equals(currentSecret) ? bindingOf(current.version()) : null;
+    }
+  }
+
+  private static String fingerprint(String key) {
+    try {
+      return Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256")
+        .digest(key.getBytes(StandardCharsets.UTF_8)));
+    } catch (NoSuchAlgorithmException unavailable) {
+      throw new IllegalStateException(unavailable);
+    }
   }
 
   private String leaseOf(int version) {

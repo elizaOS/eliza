@@ -112,6 +112,7 @@ it.effect('The packaged device account keeps mail on a lease the agent never hol
   const seen = try tryPromise(() => walkDeviceAccount())
   try Effect.try(() => assert.deepStrictEqual(seen, {
     signedIn: true,
+    legacyVaultBindingMatches: true,
     renewedBeforeHalfLife: false,
     refreshesForFourReaders: 1,
     readersShareOneAccess: true,
@@ -123,6 +124,7 @@ it.effect('The packaged device account keeps mail on a lease the agent never hol
     refusedRoutes: 5,
     lostReply: [true, true, 200, 0],
     renewedAfterHalfLife: true,
+    vaultBindingAfterRenewalRestart: true,
     renewal: [true, true, true, 1],
     afterRenewal: [0, 200, 0],
     signedOut: [401, true, true, true, 1],

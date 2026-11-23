@@ -18,8 +18,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -424,6 +426,16 @@ public final class DeviceKeyJourney {
       var reEnrolled = requireMailAuthority(custody);
       seen.add(take("sameOwnerReEnrolledAtNewVersion", previous.account().equals(reEnrolled.account()) && previous.version() < reEnrolled.version()));
 
+      var beforeRenewal = store.current();
+      String legacyBinding = Base64.getUrlEncoder().withoutPadding().encodeToString(
+        MessageDigest.getInstance("SHA-256").digest(beforeRenewal.value().getBytes(StandardCharsets.UTF_8)));
+      String keySlot = DeviceCredentialStore.NAMESPACE + ":" + DeviceCredentialStore.authorityDigest(origin) + ":key:" + beforeRenewal.version();
+      String written = slots.read(keySlot);
+      String installed = written.replace(",\"binding\":" + CredentialJson.quote(legacyBinding), "");
+      if (written.equals(installed)) throw new IllegalStateException("The test did not restore the pre-binding record shape");
+      slots.write(keySlot, installed);
+      seen.add(take("legacyVaultBindingMatches", legacyBinding.equals(store.accountBinding(beforeRenewal.value()))));
+
       cloud.beforeMailReply.set(() -> {
         clock.addAndGet(16 * DAY_MS);
         client.renewIfDue();
@@ -432,6 +444,9 @@ public final class DeviceKeyJourney {
       var renewed = requireMailAuthority(custody);
       seen.add(take("sameOwnerRenewedAtNewVersion", reEnrolled.account().equals(renewed.account()) && reEnrolled.version() < renewed.version()));
       seen.add(take("readAfterRenewal", outcome(managed.readMail(origin, custody, renewed, feed, Map.of()))));
+      var restored = new DeviceCredentialStore(slots, DeviceCredentialStore.authorityDigest(origin), clock::get);
+      seen.add(take("vaultBindingAfterRenewalRestart", legacyBinding.equals(restored.accountBinding(store.current().value()))
+          && restored.accountBinding(beforeRenewal.value()) == null));
       cloud.server.stop(0);
       return "{" + String.join(",", seen) + "}";
     } finally {

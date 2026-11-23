@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public final class DeviceCustody implements SignInCustody {
   private record Authority(DeviceCredentialStore store, DeviceKeyClient client, AccountSession session, DeviceLease lease) {}
@@ -63,6 +64,23 @@ public final class DeviceCustody implements SignInCustody {
     public boolean revoke(String secret) {
       return client.revoke(secret);
     }
+  }
+
+  public static String accountBinding(Context context, String apiOrigin, String currentSecret) {
+    return authority(context, apiOrigin).store().accountBinding(currentSecret);
+  }
+
+  public static void maintain(Context context, String apiOrigin) {
+    Authority authority = authority(context, apiOrigin);
+    CredentialPolicy.State state = authority.store().state();
+    if (state.lease() instanceof CredentialPolicy.Lease.Held held
+        && held.refreshExpiresAt() - state.now() <= TimeUnit.DAYS.toMillis(7)
+        && authority.lease().accessToken() == null && authority.store().lease() != null)
+      throw new IllegalStateException("Cloud device lease refresh is pending");
+    authority.client().renewIfDue();
+    authority.client().settleDuties();
+    if (authority.store().renewDue() || authority.store().pendingRenewal() != null)
+      throw new IllegalStateException("Cloud device renewal is pending");
   }
 
   public static boolean deviceOnly(Context context, String apiOrigin) {
