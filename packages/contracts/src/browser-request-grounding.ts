@@ -562,8 +562,9 @@ export function browserDestinationMatches(
 // it: "reload", "refresh", "re-open", "open it again", "try reloading".
 const RELOAD_VERB =
   /\b(?:re-?load|refresh|re-?open|(?:load|open)\s+(?:it|this|that|(?:the|this|that)\s+(?:page|site|tab))\s+again)(ing)?\b/gi;
-// Clauses end at punctuation and at a joining word: "it won't load, so reload it".
-const RELOAD_CLAUSE_END = /[.!?;,:]|\b(?:and|so|then|but|or)\b/gi;
+// Coordinated verbs can share a negation: "don't reopen or refresh it".
+// A separate instruction can follow a transition such as "it won't load, so reload it".
+const RELOAD_CLAUSE_END = /[.!?;,:]|\b(?:so|then|but)\b/gi;
 // What may come before the verb in a request, and nothing else: an imperative
 // ("reload it"), "please", "can you", "I need you to", "try", "hit the". So a
 // negation ("don't reload", "no need to refresh", "without reloading"), a noun

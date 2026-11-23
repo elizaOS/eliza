@@ -1477,6 +1477,8 @@ describe("reloading a page the phone withheld", () => {
     "summarize this page in two sentences",
     "what is this page about?",
     "don't reload the page",
+    "do not reopen or refresh this page",
+    "please do not close this tab and reload it",
     "do not refresh it, just tell me what it says",
     "summarize it without reloading",
     "no need to reload, just read it",
