@@ -18,7 +18,7 @@ export function socketPath(name: string): string {
 export function exchange(socket: string, request: object, signal?: AbortSignal): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(signal.reason);
+      reject(new HostUnreachable("cancelled"));
       return;
     }
     const body = Buffer.from(JSON.stringify(request), "utf8");
@@ -28,7 +28,7 @@ export function exchange(socket: string, request: object, signal?: AbortSignal):
     const parts: Buffer[] = [];
     let received = 0;
     let settled = false;
-    const done = (fail: unknown, value?: unknown) => {
+    const done = (fail: HostUnreachable | undefined, value?: unknown) => {
       if (settled) return;
       settled = true;
       signal?.removeEventListener("abort", abort);
@@ -36,7 +36,7 @@ export function exchange(socket: string, request: object, signal?: AbortSignal):
       if (fail === undefined) resolve(value);
       else reject(fail);
     };
-    const abort = () => done(signal?.reason ?? new HostUnreachable("cancelled"));
+    const abort = () => done(new HostUnreachable("cancelled"));
     signal?.addEventListener("abort", abort, { once: true });
     connection.on("connect", () => connection.write(Buffer.concat([head, body])));
     connection.on("data", (chunk: Buffer) => {
