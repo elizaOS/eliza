@@ -2,14 +2,19 @@
 
 The owner's Google grant, held by the cloud. Sources: develop
 `agent-google-connector/shared.ts`, `oauth/{oauth2.ts,token-cache.ts}`,
-`api/v1/oauth/app-oauth-return.ts`. Routes under `/api/v1/eliza/google/` (device
-key or session): `POST connect/initiate {side, capabilities, redirectUrl?}`,
-`POST connect/native {serverAuthCode}`, `GET status`, `GET accounts` (every
-connection's status), `POST disconnect {side, connectionId?}`; Google calls
-`GET /api/v1/oauth/google/callback`. One instance is one connection row; the
-shell seals tokens (purpose `GoogleTokens`), keeps identity, `linkedAt` and
-`lastUsedAt`, and deletes rows left `Pending`. A unique index keeps one
-connection per (organization, Google subject).
+`api/v1/oauth/app-oauth-return.ts`. Routes under `/api/v1/eliza/google/` (a
+session or a device lease): `POST connect/initiate {side, capabilities,
+redirectUrl?}`, `GET status`, `GET accounts` (every connection's status),
+`POST disconnect {side, grantId?}` (`connectionId` is the same field's older
+name), `POST confirm {grantId, address}`; `POST connect/native
+{serverAuthCode}` takes the device key. A tablet's sign-in sessions are `POST
+/api/v1/eliza/connections/google/sessions {loginHint?}` and `GET` or `DELETE
+/api/v1/eliza/connections/sessions/{sessionId}`. Google calls `GET
+/api/v1/oauth/google/callback`. One instance is one connection row, and a
+Grace account holds as many as it connects; the shell seals tokens (purpose
+`GoogleTokens`), keeps identity, `linkedAt` and `lastUsedAt`, and deletes rows
+left `Pending`. A unique index keeps one connection per (organization, Google
+subject).
 
 ## Story: Connect my Google account with the access I chose
 
@@ -92,7 +97,7 @@ verifier is always required and nothing is compensated. A row has no attempt
 fields before its attempt begins.
 
 ```quint
-type ConnectionStatus = Pending | Active | Expired | Revoked | Errored
+type ConnectionStatus = Pending | Unconfirmed | Active | Expired | Revoked | Errored
 type GrantTokens = NoTokens | SealedTokens({ expiresAt: Millis, hasRefreshToken: bool })
 type Exchange = NotExchanged | Exchanged({ subject: str, accessUntil: Millis, refreshable: bool })
 type CallbackKind = NoCallback | CodeCallback | DeniedCallback | IncompleteCallback
@@ -146,23 +151,26 @@ lifetime and whether a refresh token came. A failed exchange supplies no
 subject or access lifetime. When the organization already
 holds that subject (`subjectHeld`), the grant goes to that row by
 `receiveGrant` and this attempt row stays `Pending`; otherwise this row
-becomes the subject's connection. A row's subject, once set, never changes.
+becomes the subject's connection: `Active`, or `Unconfirmed` when a tablet's
+sign-in session began the attempt (`confirmFirst`). A row's subject, once set,
+never changes.
 
 ```quint
 pure def canProviderResult(c: Connection, success: bool, hasAccount: bool, subject: str, lifetime: Millis): bool = O::canProviderResult(c.flow) and hasAccount and (not(success) or (subject != "" and lifetime > 0))
 pure def providerResult(c: Connection, success: bool, hasAccount: bool, subject: str, granted: List[GoogleScope], lifetime: Millis, refreshable: bool): Connection =
   { ...c, flow: O::providerResult(c.flow, success, hasAccount), exchange: if (success) Exchanged({ subject: subject, accessUntil: c.now + lifetime, refreshable: refreshable }) else NotExchanged, offered: if (success) scopesOf(granted) else List() }
 pure def canAccountResult(c: Connection): bool = O::canAccountResult(c.flow) and c.exchange != NotExchanged
-pure def accountResult(c: Connection, success: bool, subjectHeld: bool): Connection = {
+pure def accountResult(c: Connection, success: bool, subjectHeld: bool, confirmFirst: bool): Connection = {
   val x = c.exchange
   val flow = O::accountResult(c.flow, success)
   match x {
-    | Exchanged(e) => if (success and not(subjectHeld)) { ...c, flow: flow, status: Active, subject: e.subject, scopes: c.offered, tokens: SealedTokens({ expiresAt: e.accessUntil, hasRefreshToken: e.refreshable }), landedOnHeld: false }
+    | Exchanged(e) => if (success and not(subjectHeld)) { ...c, flow: flow, status: if (confirmFirst) Unconfirmed else Active, subject: e.subject, scopes: c.offered, tokens: SealedTokens({ expiresAt: e.accessUntil, hasRefreshToken: e.refreshable }), landedOnHeld: false }
         else { ...c, flow: flow, landedOnHeld: success }
     | NotExchanged => { ...c, flow: flow }
   }
 }
 pure val hasAccountValues = Set(true)
+pure val confirmFirstValues = Set(true, false)
 pure val subjectValues = Set("", "sub1", "sub2")
 pure val grantedValues = Set(List(ScopeUserinfoEmail, ScopeGmailReadonly), List(ScopeUserinfoEmail, ScopeGmailModify, ScopeCalendarEvents, ScopeGmailSend))
 pure val lifetimeValues = Set(0, 120000, 3600000)
@@ -198,7 +206,7 @@ pure def sometimesDeniedAtGoogle(c: Connection): bool = callbackAnswerOf(c) == R
 pure def sometimesExpiredAttemptShownOnTheCloud(c: Connection): bool = callbackAnswerOf(c) == ShowFailedPage and c.callback == CodeCallback
 ```
 
-### A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active
+### A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active unless its address must first be confirmed
 
 `connect/native` exchanges the device's one-time server auth code (Google
 refuses a used one) for Cloud's configured native server client, with no
@@ -208,15 +216,18 @@ attempt. A native sign-in continuation can provide `expectedGoogleSubject`.
 A different returned subject stores nothing. The answer names the connection
 and its reported scopes, with verified email and display name when available.
 If Google omits a refresh token, a verified refresh token from the same
-active grant can be retained only with the same reported scopes.
+active grant can be retained only with the same reported scopes. A grant for
+an `Unconfirmed` row leaves it `Unconfirmed`, and one a sign-in session brings
+to a `Revoked` row makes it `Unconfirmed` (`confirmFirst`): only the person
+confirming its address makes either `Active`.
 
 ```quint
 pure def canReceiveGrant(c: Connection, subject: str, lifetime: Millis): bool =
   subject != "" and lifetime > 0 and ((c.status != Pending and subject == c.subject) or (c.status == Pending and c.flow.phase == O::FlowIdle))
-pure def receiveGrant(c: Connection, subject: str, granted: List[GoogleScope], lifetime: Millis, refreshable: bool): Connection =
-  { ...c, status: Active, subject: subject, scopes: scopesOf(granted), tokens: SealedTokens({ expiresAt: c.now + lifetime, hasRefreshToken: refreshable }), refreshing: false }
-pure def stepOnlyANewGrantRevivesAConnection(before: Connection, via: str, after: Connection): bool =
-  (before.status != Active and after.status == Active) implies (via == "accountResult" or via == "receiveGrant")
+pure def receiveGrant(c: Connection, subject: str, granted: List[GoogleScope], lifetime: Millis, refreshable: bool, confirmFirst: bool): Connection =
+  { ...c, status: if (c.status == Unconfirmed or (confirmFirst and c.status == Revoked)) Unconfirmed else Active, subject: subject, scopes: scopesOf(granted), tokens: SealedTokens({ expiresAt: c.now + lifetime, hasRefreshToken: refreshable }), refreshing: false }
+pure def stepOnlyANewGrantOrAConfirmationActivatesAConnection(before: Connection, via: str, after: Connection): bool =
+  (before.status != Active and after.status == Active) implies (via == "accountResult" or via == "receiveGrant" or (via == "confirmAddress" and before.status == Unconfirmed))
 pure def sometimesLinkedNatively(c: Connection): bool = c.status == Active and c.flow.phase == O::FlowIdle
 ```
 
@@ -246,7 +257,7 @@ pure def finishRefresh(c: Connection, answer: RefreshOutcome, lifetime: Millis):
 }
 pure val weight_beginRefresh = 3
 pure val weight_finishRefresh = 3
-pure def alwaysTokensExactlyWhileGranted(c: Connection): bool = hasTokens(c) iff (c.status == Active or c.status == Expired or c.status == Errored)
+pure def alwaysTokensExactlyWhileGranted(c: Connection): bool = hasTokens(c) iff (c.status == Unconfirmed or c.status == Active or c.status == Expired or c.status == Errored)
 pure def holdsRefreshToken(c: Connection): bool = { val t = c.tokens
   match t { | SealedTokens(x) => x.hasRefreshToken | NoTokens => false } }
 pure def alwaysOneRefreshOnlyWhileActive(c: Connection): bool = c.refreshing implies (c.status == Active and holdsRefreshToken(c))
@@ -327,8 +338,9 @@ grantedCapabilities, grantedScopes, expiresAt, hasRefreshToken,
 connectionId, linkedAt, lastUsedAt}` for the selected connection, with
 `grantedCapabilities` = `capabilitiesOf` the scopes. Google off is
 `config_missing` and names nothing; no connection or a revoked one is
-`disconnected`; an active one whose access is lost is `token_missing`; an
-expired or errored one is `needs_reauth`. Status and account listing expose
+`disconnected`; one whose address awaits confirmation is
+`awaiting_confirmation` and names that address; an active one whose access is
+lost is `token_missing`; an expired or errored one is `needs_reauth`. Status and account listing expose
 only established connections held for the caller's cloud user and organization.
 `GET accounts` returns the same status records in a bare array, newest first,
 and an empty array if Google is off. These reads do not refresh the grant or
@@ -336,9 +348,10 @@ change when it was last used. The status route refuses a consent `purpose`
 selector because it reports the managed grant only.
 
 ```quint
-type StatusReason = ReasonConnected | ReasonDisconnected | ReasonConfigMissing | ReasonTokenMissing | ReasonNeedsReauth
+type StatusReason = ReasonConnected | ReasonDisconnected | ReasonConfigMissing | ReasonAwaitingConfirmation | ReasonTokenMissing | ReasonNeedsReauth
 pure def reasonOf(configured: bool, status: ConnectionStatus, access: AccessState): StatusReason =
   if (not(configured)) ReasonConfigMissing
+  else if (status == Unconfirmed) ReasonAwaitingConfirmation
   else if (status == Active and access != AccessLost) ReasonConnected
   else if (status == Active) ReasonTokenMissing
   else if (status == Expired or status == Errored) ReasonNeedsReauth
@@ -359,11 +372,66 @@ pure def lawConnectedExactlyWhenUseCanSucceed(status: ConnectionStatus, access: 
 The shell calls Google's revoke endpoint with the refresh token (else the
 access token) first; a Google failure is logged and does not keep the
 tokens. Disconnecting a connection already revoked answers `{ok: true}` and
-changes nothing; only a new grant for the same subject makes it active again.
+changes nothing; only a new grant for the same subject makes it active again,
+after the person confirms its address when a sign-in session brought it.
+Disconnect names one grant and ends only that one; declining an address that
+awaits confirmation is a disconnect of its grant.
 
 ```quint
 pure def canDisconnect(c: Connection): bool = hasTokens(c)
 pure def disconnect(c: Connection): Connection = { ...c, status: Revoked, tokens: NoTokens, scopes: List(), refreshing: false }
 pure def alwaysARevokedConnectionGrantsNothing(c: Connection): bool = c.status == Revoked implies c.scopes == List()
 pure def sometimesRevoked(c: Connection): bool = c.status == Revoked
+```
+
+## Story: Add another Google account from the tablet and confirm it is mine
+
+> As an owner on my Grace tablet, I want to sign in to another Google account
+> on a page the tablet opens, see which address it connected, and have Grace
+> use it only after I confirm that address, so that my accounts work side by
+> side and no one else's account slips in.
+
+### A tablet's sign-in session asks for every mail and calendar capability with no app return, and ends allowed, cancelled or refused
+
+`POST connections/google/sessions` begins a connect attempt for the caller
+and answers `{sessionId, pageUrl, embeddable: false}`, where `pageUrl` is the
+Google page and `loginHint`, when given, is passed to it. The state is bound
+to the attempt, so no cookie is needed. `GET` on the session waits until it
+ends and answers `{status}`: `allowed` with the connected `address`, its
+`grantId` and what it `granted` (`mail`, `calendar`, `contacts`) once the
+grant is stored; `cancelled` when the person declined at Google, the tablet
+withdrew it by `DELETE`, or its ten minutes lapsed; `refused` when the
+connection failed. The first ending is kept. A session belongs to the caller
+who began it; another caller's is `404 not_found`.
+
+```quint
+type SessionOutcome = SessionOpen | SessionAllowed | SessionCancelled | SessionRefused
+pure val sessionCapabilities: List[GoogleCapability] = List(GmailTriage, GmailSend, GmailManage, GmailDrafts, GmailMailbox, CalendarRead, CalendarWrite)
+pure val sessionRequest: ConnectRequest = { side: OwnerSide, capabilities: sessionCapabilities, appReturn: NoAppReturn }
+pure def sessionOutcomeOf(answer: CallbackAnswer, withdrawn: bool, lapsed: bool): SessionOutcome = match answer {
+  | ReturnResult(r) => if (r.result == Connected) SessionAllowed else if (r.result == Denied) SessionCancelled else SessionRefused
+  | ShowFailedPage => if (withdrawn or lapsed) SessionCancelled else SessionRefused
+  | AwaitingResult => if (withdrawn or lapsed) SessionCancelled else SessionOpen
+}
+pure def lawASessionIsAdmittedWheneverGoogleIsConfigured(configured: bool): bool = initiateAdmitted(configured, sessionRequest) iff configured
+pure def alwaysAnAllowedSessionHoldsItsGrant(c: Connection): bool = sessionOutcomeOf(callbackAnswerOf(c), false, false) == SessionAllowed implies (c.status != Pending or c.landedOnHeld)
+pure def sometimesASessionIsAllowed(c: Connection): bool = sessionOutcomeOf(callbackAnswerOf(c), false, false) == SessionAllowed and c.status == Unconfirmed
+```
+
+### A connection a sign-in session first made is not used until the person confirms its address, and only that address confirms it
+
+`POST confirm {grantId, address}` makes an `Unconfirmed` connection `Active`
+when `address` is the one it connected; another address is `400
+invalid_request`. Confirming an `Active` connection at its own address
+answers `{ok: true}` and changes nothing; any other connection is `409
+google_reauth_required`. Until then every use is refused as for a connection
+that is not active, and `GET accounts` lists it with `connected: false`.
+
+```quint
+pure def canConfirmAddress(c: Connection, sameAddress: bool): bool = c.status == Unconfirmed and sameAddress
+pure def confirmAddress(c: Connection, sameAddress: bool): Connection = { ...c, status: Active }
+pure val sameAddressValues = Set(true, false)
+pure val weight_confirmAddress = 3
+pure def alwaysAnUnconfirmedConnectionIsNeverUsed(c: Connection): bool = c.status == Unconfirmed implies allCapabilities.every(k => not(usable(c, k)))
+pure def lawAnUnconfirmedAddressIsNotConnected(access: AccessState): bool = reasonOf(true, Unconfirmed, access) == ReasonAwaitingConfirmation and not(useAllowed(Unconfirmed, access, true))
 ```

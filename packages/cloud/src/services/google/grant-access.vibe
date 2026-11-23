@@ -1,4 +1,4 @@
-// spec/cloud/services/google/connection.md, "Each capability asks for its scopes from one table, and a grant's capabilities come from its granted scopes alone"; spec/cloud/services/google/connection.md, "Access is refreshed within five minutes of expiry, one refresh at a time, and Google's invalid_grant expires the connection"; spec/cloud/services/google/connection.md, "A request names a grant or uses the only active connection, never another organization's, and only the owner side"; spec/cloud/services/google/connection.md, "Use needs an active connection whose access is live and which holds the capability"; spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"; spec/cloud/services/google/connection.md, "Story: Disconnect it"; spec/cloud/services/google/connection.md, "A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active"
+// spec/cloud/services/google/connection.md, "Each capability asks for its scopes from one table, and a grant's capabilities come from its granted scopes alone"; spec/cloud/services/google/connection.md, "Access is refreshed within five minutes of expiry, one refresh at a time, and Google's invalid_grant expires the connection"; spec/cloud/services/google/connection.md, "A request names a grant or uses the only active connection, never another organization's, and only the owner side"; spec/cloud/services/google/connection.md, "Use needs an active connection whose access is live and which holds the capability"; spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"; spec/cloud/services/google/connection.md, "Story: Disconnect it"; spec/cloud/services/google/connection.md, "A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active unless its address must first be confirmed"; spec/cloud/services/google/connection.md, "A connection a sign-in session first made is not used until the person confirms its address, and only that address confirms it"
 import {
   accessOf, allScopes, apply, canBeginRefresh, canDisconnect, decodeState, elapse, grantsCapability, holdsRefreshToken, initial, reasonOf, receiveGrant, requestedScopes, scopesFor, statusReason,
   selectGrant as choose, selectionRefusal, useAllowed, useRefusal,
@@ -53,7 +53,7 @@ export interface GrantLanding {
 
 const refreshLease = 15 * millisPerSecond
 const refreshPoll = 100
-const statuses: ReadonlyArray<Connection["status"]> = ["Pending", "Active", "Expired", "Revoked", "Errored"]
+const statuses: ReadonlyArray<Connection["status"]> = ["Pending", "Unconfirmed", "Active", "Expired", "Revoked", "Errored"]
 
 const kindOf: Readonly<Record<GoogleCapability, CapabilityKind>> = {
   "google.basic_identity": "BasicIdentity",
@@ -174,7 +174,7 @@ effect function legacyConnection(row: Row) {
       const heldLease = Number(row.refreshing_until)
       if (active && refreshable && Number.isSafeInteger(heldLease) && heldLease > 0 && heldLease === legacy?.refreshingUntil) lease = heldLease
       restored = {
-        ...receiveGrant(initial, subject, scopes, Number.isSafeInteger(expiry) && expiry > 0 ? expiry : 1, refreshable),
+        ...receiveGrant(initial, subject, scopes, Number.isSafeInteger(expiry) && expiry > 0 ? expiry : 1, refreshable, false),
         status: active ? "Active" : status === "Errored" && row.status === status ? "Errored" : "Expired",
         refreshing: lease !== 0
       }
@@ -198,7 +198,7 @@ effect function restoreLegacyConnection(tx: Tx, owner: Owner, connectionId: stri
   )
 }
 
-export effect function storeGrant(tx: Tx, landing: GrantLanding) {
+export effect function storeGrant(tx: Tx, landing: GrantLanding, confirmFirst = false) {
   const sealed = try sealTokens(landing.tokens)
   try restoreLegacyConnection(tx, landing.owner, landing.connectionId)
   const event: Event = {
@@ -206,7 +206,8 @@ export effect function storeGrant(tx: Tx, landing: GrantLanding) {
     subject: landing.subject,
     granted: knownScopes(landing.grantedScopes),
     lifetime: landing.tokens.expiresAt - landing.now,
-    refreshable: landing.tokens.refreshToken !== ""
+    refreshable: landing.tokens.refreshToken !== "",
+    confirmFirst
   }
   return try stepRow(tx, connectionRows, landing.connectionId, { at: landing.now, event }, connectionColumns({
     organization_id: landing.owner.organizationId,
@@ -285,6 +286,7 @@ const reasonName = {
   ReasonConnected: "connected",
   ReasonDisconnected: "disconnected",
   ReasonConfigMissing: "config_missing",
+  ReasonAwaitingConfirmation: "awaiting_confirmation",
   ReasonTokenMissing: "token_missing",
   ReasonNeedsReauth: "needs_reauth"
 } as const satisfies Readonly<Record<StatusReason, string>>
@@ -304,7 +306,7 @@ function isoTime(value: unknown): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null
 }
 
-const recordedScopes = Schema.decodeUnknownOption(Schema.Array(Schema.String))
+export const recordedScopes = Schema.decodeUnknownOption(Schema.Array(Schema.String))
 const modeledScopeNames = new Set(Object.values(scopeNames))
 
 effect function grantStatus(row: Row, time: number) {
@@ -394,6 +396,23 @@ export effect function disconnectGrant(owner: Owner, grantId: string | undefined
     const at = try Clock.currentTimeMillis
     try stepRow(tx, connectionRows, selected, { at, event: { type: "disconnect" } }, connectionColumns({ granted_scopes: "[]" }))
   }))
+}
+
+const sameAddress = (held: unknown, address: string) => (toText(held) ?? "").toLowerCase() === address.trim().toLowerCase()
+
+export effect function confirmGrant(owner: Owner, grantId: string, address: string) {
+  const store = try Store
+  try store.transaction(effect (tx: Tx) => {
+    const held = (try tx.query(
+      "SELECT status, email FROM google_connections WHERE key = $1 AND organization_id = $2 AND user_id = $3 AND status <> 'Pending' FOR UPDATE",
+      [grantId, owner.organizationId, owner.userId]
+    ))[0]
+    if (held === undefined) throw refused("NotFound")
+    if (!sameAddress(held.email, address)) throw refused("InvalidRequest")
+    if (held.status === "Active") return
+    if (held.status !== "Unconfirmed") throw refused("GoogleReauthRequired")
+    try stepRow(tx, connectionRows, grantId, { at: try Clock.currentTimeMillis, event: { type: "confirmAddress", sameAddress: true } }, connectionColumns())
+  })
 }
 
 type Claimed =
