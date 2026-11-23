@@ -247,7 +247,9 @@ exchange (`nativeClients/deviceKeys`), so a holder of the device key alone
 can never mint one. `POST /api/v1/app-auth/mobile/lease`, with `Authorization:
 Bearer <lease refresh>`, answers `{access, accessExpiresIn, refresh,
 refreshExpiresIn}`; `DELETE` on the same path ends the lease alone, which
-works with an expired key. Devices signed in before leases existed get one at
+works with an expired key. Revoking the person's devices
+(`nativeClients/deviceKeys`, `revokeAll`) ends every lease of the person in
+the same transaction, so a revoked tablet's lease neither rotates nor renews. Devices signed in before leases existed get one at
 their next sign-in; no migration invents one.
 
 ### A device's sign-in offers one lease bound to its key, and its acknowledgement makes the lease live

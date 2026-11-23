@@ -435,9 +435,11 @@ pure def sometimesSignedOut(g: Grant): bool = g.phase == Ended({ endedBy: SelfRe
 ### Ending every key of a person moves the person's device epoch, which revokes every key issued before it
 
 The operator's `account revoke-devices` and account deletion emit
-`revokeAll` and apply it to the account in their own transaction; sessions
-are revoked separately (`identity/sessions`). A grant still waiting for its
-exchange or acknowledgement is refused as well.
+`revokeAll` and apply it to the account in their own transaction, which
+also ends every device lease of the person, so a revoked tablet can neither
+rotate its lease nor renew its key; browser sessions are revoked separately
+(`identity/sessions`). A grant still waiting for its exchange or
+acknowledgement is refused as well.
 
 ```quint
 type DeviceKeysRevoked = { toDeviceEpoch: int }

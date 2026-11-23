@@ -623,6 +623,40 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
       signedOut: [204, 401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked"],
       lapsed: [401, "authentication_required", "credential_unknown"]
     }))
+    const awake = try signedIn(cloud, "tablet@example.com")
+    const sleeping = try device(cloud, awake.accessToken, "Sleeping tablet")
+    const sleepingLease = lease(sleeping.minted)
+    const keyLife = (sleeping.minted.body as { readonly expiresIn: number }).expiresIn
+    try sync(() => clock.set(1_200_000 + 7_776_000_000 + keyLife * 1000 + 1))
+    provide Store = cloud.store {
+      try sweepGrants()
+    }
+    const renew = (refresh: string) => cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(refresh) })
+    const expiredKey = try cloud.call("/api/v1/user", { headers: bearer(sleeping.credential.secret) })
+    const grantPhase = try sql(cloud, "SELECT phase FROM device_grants WHERE credential_id = $1", [sleeping.credential.credentialId])
+    const woken = pairOf(try rotate(sleepingLease.refresh))
+    const mailAfterExpiry = try mail(woken.access)
+    const heirMinted = try renew(woken.refresh)
+    const heir = heirMinted.body as { readonly credentialId: string; readonly secret: string }
+    const heirAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: heir.credentialId, secret: heir.secret } })
+    const heirKey = try cloud.call("/api/v1/user", { headers: bearer(heir.secret) })
+    const moved = pairOf(try rotate(woken.refresh))
+    const mailOnMoved = try mail(moved.access)
+    const now = try Clock.currentTimeMillis
+    try cloud.store.transaction((tx) => revokeAll(tx, signed.user.id, now))
+    const renewAfterRevoke = try renew(moved.refresh)
+    const rotateAfterRevoke = try rotate(moved.refresh)
+    const mailAfterRevoke = try mail(moved.access)
+    const liveLeases = try sql(cloud, "SELECT key FROM sessions WHERE kind = 'device_lease' AND user_id = $1 AND live", [signed.user.id])
+    try check(() => assert.deepStrictEqual({
+      expired: [expiredKey.status, ...refusal(expiredKey.body), grantPhase[0]?.phase, mailAfterExpiry.status],
+      renewedFromExpired: [heirMinted.status, heirAck.status, heirKey.status, mailOnMoved.status],
+      revoked: [renewAfterRevoke.status, ...refusal(renewAfterRevoke.body), rotateAfterRevoke.status, ...refusal(rotateAfterRevoke.body), mailAfterRevoke.status, ...refusal(mailAfterRevoke.body), liveLeases.length]
+    }, {
+      expired: [401, "authentication_required", "credential_expired", "expired", 200],
+      renewedFromExpired: [200, 200, 200, 200],
+      revoked: [401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 0]
+    }))
     }
   }))
 })

@@ -287,11 +287,21 @@ export effect function activateLease(tx: Tx, grantKey: string, now: number): voi
   if (canActivateLease(family, epoch)) try stepFamily(tx, key, { type: "activateLease", personEpoch: epoch }, now)
 }
 
-export effect function endLease(tx: Tx, grantKey: string, now: number): void!SessionFailure {
-  const key = try leaseKeyOf(tx, grantKey)
-  if (key === undefined) return
+effect function endFamily(tx: Tx, key: string, now: number): void!SessionFailure {
   const family = advanced((try loadRow(tx, familyRows, key)).state, now)
   if (family.phase === "Live" || family.phase === "Offered") try stepFamily(tx, key, { type: "logout" }, now, () => ({ offered_access_digest: null, offered_refresh_digest: null }))
+}
+
+export effect function endLease(tx: Tx, grantKey: string, now: number): void!SessionFailure {
+  const key = try leaseKeyOf(tx, grantKey)
+  if (key !== undefined) try endFamily(tx, key, now)
+}
+
+export effect function endLeasesOf(tx: Tx, userId: string, now: number): void!SessionFailure {
+  const leases = try tx.query("SELECT key FROM sessions WHERE kind = 'device_lease' AND user_id = $1 FOR UPDATE", [userId])
+  for (const row of leases) {
+    try endFamily(tx, toText(row.key) ?? "", now)
+  }
 }
 
 export effect function moveLease(tx: Tx, fromKey: string, toKey: string, now: number): void!SessionFailure {

@@ -14,7 +14,7 @@ import { newId, sameText, seal, secretText, tokenDigest, unseal } from "../share
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
 import { type Columns } from "../store/rows.vibe"
 import { currentGrant, decodeGrant, endKey, grants, inspectKey, isFlatGrant, keyExpiresAt, phaseColumn, stepGrant, supersedeGrant } from "./grants.vibe"
-import { activateLease, admitLeaseRefresh, bearerToken, endLease, leaseRefreshExpiresIn, leaseRefreshPattern, leaseRefusedOr, moveLease, offerLease, type LeaseRefresh } from "../identity/sessions.vibe"
+import { activateLease, admitLeaseRefresh, bearerToken, endLease, endLeasesOf, leaseRefreshExpiresIn, leaseRefreshPattern, leaseRefusedOr, moveLease, offerLease, type LeaseRefresh } from "../identity/sessions.vibe"
 import { admitClient, parseReturn, readRegistry, servedEnvironment } from "./registry.vibe"
 
 export { grants, s256 }
@@ -275,6 +275,7 @@ export effect function revokeAll(tx: Tx, userId: string, now: number) {
   const live = try Effect.forEach(rows, effect (row) => { return inspectKey(row, now) catch () => undefined })
   const changed = revokeDeviceEpoch(toInt(owner.device_epoch))
   try tx.query("UPDATE accounts SET device_epoch = $2, updated_at = $3 WHERE key = $1", [userId, changed.toDeviceEpoch, now])
+  try endLeasesOf(tx, userId, now)
   return live.filter((key) => key?.reason === "NoReason").length
 }
 
@@ -341,7 +342,7 @@ export effect function acknowledgeGrant(tx: Tx, body: typeof AckBody.Type) {
   const origin = stepped.state.origin
   if (stepped.out.out.includes("SupersedePredecessor") && origin.tag === "Renewed") {
     try moveLease(tx, origin.fromKey, grantKey, now)
-    try supersedeGrant(tx, origin.fromKey)
+    if (!(try supersedeGrant(tx, origin.fromKey))) throw refused("AuthenticationRequired", "CredentialRevoked")
   }
   return { answer: { status: "acknowledged", credentialId: body.credentialId, expiresAt: iso(keyExpiresAt(stepped.state)), scopes }, out: stepped.out.out }
 }
