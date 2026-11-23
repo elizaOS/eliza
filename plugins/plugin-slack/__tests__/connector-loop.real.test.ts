@@ -134,6 +134,7 @@ describe("slack connector loop (keyless)", () => {
       policy,
       client: captureClient,
       userClient: null,
+      outboundClient: captureClient,
       botUserId: BOT_USER_ID,
       teamId: TEAM_ID,
       settings,
@@ -178,12 +179,11 @@ describe("slack connector loop (keyless)", () => {
       service as unknown as {
         handleMessage: (
           message: typeof inboundEvent,
-          client: typeof captureClient,
           accountId?: string,
           body?: unknown,
         ) => Promise<void>;
       }
-    ).handleMessage(inboundEvent, captureClient, ACCOUNT_ID, {
+    ).handleMessage(inboundEvent, ACCOUNT_ID, {
       team_id: TEAM_ID,
       event_id: "Ev09TEST001",
     });

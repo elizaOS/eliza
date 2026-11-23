@@ -235,7 +235,8 @@ const TRAVEL_UNTIL_PATTERN =
  * it cannot resolve a real future date within `MAX_TRAVEL_HORIZON_MS`; the
  * caller then falls back to the horizon cap. `Date.parse` handles common forms
  * ("July 20", "2026-07-20", "Aug 3") but rejects an ordinal day ("November 21st").
- * A bare month/day uses the current year, then the next year if it has passed.
+ * A bare month/day uses the current year, then the next year if that calendar
+ * day is before today. Midnight on the stated day is not "already past".
  */
 const HAS_EXPLICIT_YEAR = /\b\d{4}\b/;
 const ISO_DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -275,6 +276,11 @@ function parseLocalDate(value: string): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function localCalendarDay(ms: number): number {
+  const date = new Date(ms);
+  return date.getFullYear() * 10000 + date.getMonth() * 100 + date.getDate();
+}
+
 function parseTravelReturnIso(phrase: string, now: Date): string | null {
   const cleaned = phrase.trim().replace(/[.,]+$/u, "");
   const ordinal = /\b(\d{1,2})(?:st|nd|rd|th)\b/iu.exec(cleaned);
@@ -293,10 +299,14 @@ function parseTravelReturnIso(phrase: string, now: Date): string | null {
     : `${trimmed} ${now.getFullYear()}`;
   let parsed = parseLocalDate(candidate);
   if (parsed === null) return null;
-  // A month/day that resolves to the past almost always means next year.
-  if (parsed < now.getTime()) {
+  // Compare calendar days, not instants. Local midnight on the stated day is
+  // already earlier than an afternoon clock, but that day has not passed.
+  // Treating it as past rolls the date into next year, which is outside the
+  // horizon, so the stated day is discarded and the caller keeps 30 days.
+  const today = localCalendarDay(now.getTime());
+  if (localCalendarDay(parsed) < today) {
     const nextYear = parseLocalDate(`${trimmed} ${now.getFullYear() + 1}`);
-    if (nextYear === null || nextYear < now.getTime()) return null;
+    if (nextYear === null || localCalendarDay(nextYear) < today) return null;
     parsed = nextYear;
   }
   if (parsed - now.getTime() > MAX_TRAVEL_HORIZON_MS) return null;

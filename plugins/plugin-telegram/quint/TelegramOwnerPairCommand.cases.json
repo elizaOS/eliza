@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "plugins/plugin-telegram/src/owner-pairing-service.ts",
+    "plugins/plugin-telegram/src/service.ts",
+    "plugins/plugin-telegram/src/index.ts",
+    "plugins/plugin-telegram/__tests__/owner-pair-command.real.test.ts",
+    "plugins/plugin-telegram/quint/check-telegram-owner-pair-command.mjs"
+  ],
+  "conformance": "plugins/plugin-telegram/quint/check-telegram-owner-pair-command.mjs",
+  "bounds": "One agent and one Telegram bot account, with or without an OWNER_BIND_VERIFY service. Each case is four private messages: `/eliza_pair <code>` from a chat that TELEGRAM_ALLOWED_CHATS allows, `/eliza_pair <code>` from a chat it does not list, or plain text from the allowed chat. The conformance script boots the telegram plugin on a PGlite runtime (TelegramService and TelegramOwnerPairingServiceImpl start through the runtime), sends each message through TelegramService's own Telegraf instance against a loopback Bot API, and compares the codes relayed to OWNER_BIND_VERIFY, the messages that reach the message handler and the bot's replies with the model, for all 162 generated sequences. The verifier accepts every code; the code check, its expiry and attempt limit (packages/agent owner-binding.ts) and the per-user rate limit of 5 attempts a minute are not modeled. The DM pairing policy for chats without an allowlist, group chats, `/eliza_pair@bot` mentions, several bot accounts, the owner login DM link and an agent turn itself are not covered. Under weak fairness of the replay step all four messages arrive. Explicit stuttering lets the replay stop before them, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "owner-pair-command",
+      "main": "TelegramOwnerPairCommand",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "AllowedPairsRelayed",
+        "DeniedReachesNothing",
+        "PairNotAgentTurn",
+        "RelayReplies",
+        "TypeOK"
+      ],
+      "temporal": ["ReplayEnds", "ReplayEndsWithoutFairness"],
+      "maxSteps": 8,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "ReplayEnds",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled replay step eventually runs (weak fairness). This checks that the replay then sends all four messages, not how long the database or loopback work takes."
+          ]
+        },
+        {
+          "property": "ReplayEndsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The replay may stop before the four messages, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

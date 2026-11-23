@@ -1,6 +1,6 @@
 /**
  * "find the nearest pharmacy" on a phone with no location fix (v612,
- * 2026-11-18). The agent never receives the phone's position, so a nearby
+ * 2026-11-18). Without a position reported with the message, a nearby
  * search hands the query to the phone in a locate card. The reply now also
  * says what to do when the phone cannot get a fix: name a place or area to
  * search near. "pharmacy near the Ferry Building" is that search: it needs no
@@ -320,6 +320,10 @@ describe("a kind of place near a named place", () => {
       kind: "pharmacy",
       anchor: "us post office",
     });
+    expect(anchoredPlaceQuery("find a pharmacy near Here East")).toEqual({
+      kind: "pharmacy",
+      anchor: "Here East",
+    });
   });
 
   it.each([
@@ -396,6 +400,14 @@ describe("phone chat routes a search near a named place to Maps", () => {
     // A time, not a place.
     "find a pharmacy open around midnight",
     "get coffee around noon",
+    // Weather, traffic and news around a place, and a price.
+    "what's the weather near Austin",
+    "weather near Austin",
+    "traffic near the Bay Bridge",
+    "news around Austin",
+    "find a TV around 500 dollars",
+    "find a hotel around 150 a night",
+    "find a hotel around 100 euros a night",
     // A verb or a question, not a kind of place.
     "Meet John near the Ferry Building",
     "Text Sarah around Union Square",

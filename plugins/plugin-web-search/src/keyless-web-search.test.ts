@@ -27,7 +27,7 @@ describe("searchKeylessWeb", () => {
         });
         expect(fetchImpl).toHaveBeenCalledTimes(1);
         const [url, init] = fetchImpl.mock.calls[0] ?? [];
-        expect(url).toBe("https://search.parallel.ai/mcp");
+        expect(url).toBe("https://mcp.parallel.ai/mcp");
         expect(init).toMatchObject({ method: "POST", redirect: "manual" });
         expect(String(init?.body)).not.toContain("TAVILY");
         expect(JSON.parse(String(init?.body))).toMatchObject({

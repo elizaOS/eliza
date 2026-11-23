@@ -265,7 +265,7 @@ function extractHostsFromIntent(text: string): string[] {
   return normalizeWebsiteCandidates([...explicitHosts, ...fromAliases]);
 }
 
-function extractHeuristicDurationMinutes(
+export function extractHeuristicDurationMinutes(
   text: string,
 ): number | null | undefined {
   const normalized = text.toLowerCase();

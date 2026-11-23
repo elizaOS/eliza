@@ -515,6 +515,14 @@ export class BirdeyeService extends Service {
         `${this.birdeyeUrl("defi/v3/token/trade-data/single")}?address=${tokenAddress}&frames=${frames}`,
         this.getBirdeyeFetchOptions(chain),
       );
+      if (!resp.ok) {
+        // A 401/429/5xx body (`{ success: false, message }`) is an error, not
+        // token data. Parsing and caching it made a transient failure look like
+        // a real answer for the whole TTL.
+        throw new Error(
+          `Birdeye API error ${resp.status}: ${(await resp.text()) || resp.statusText}`,
+        );
+      }
       const data = (await resp.json()) as TokenTradeDataSingleResponse;
       if (data) {
         this.setCacheTimed(key, data, tsInMs);
@@ -709,6 +717,13 @@ export class BirdeyeService extends Service {
         `${this.birdeyeUrl("defi/token_security")}?address=${tokenAddress}`,
         this.getBirdeyeFetchOptions(chain),
       );
+      if (!resp.ok) {
+        // Same as the trade-data lookup: an error body must not be cached as
+        // security data for the 30-minute TTL.
+        throw new Error(
+          `Birdeye API error ${resp.status}: ${(await resp.text()) || resp.statusText}`,
+        );
+      }
       const data = (await resp.json()) as TokenSecurityResponse;
       if (data) {
         this.setCacheTimed(key, data, tsInMs);

@@ -23,12 +23,32 @@ const COURTESY = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:
 const END = String.raw`(?:,?\s+(?:please|for\s+me))?[.!?]*$`;
 // A short name, optionally quoted. Clauses after it ("that runs every
 // morning", "and turn it on") are more than a name and keep the planner path.
-const NAME = String.raw`["“'‘]?([\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`;
+const NAME = String.raw`(["“'‘]?[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`;
+const CLOSING_QUOTE: Readonly<Record<string, RegExp>> = {
+  '"': /["”]$/u,
+  '“': /["”]$/u,
+  "'": /['’]$/u,
+  '‘': /['’]$/u,
+};
+// "delete the new workflow", "remove this workflow" and "the workflow I just
+// created" describe a workflow instead of naming it. Read as a name, "new"
+// matched "Morning news" and "this" matched nothing, and the owner's request
+// could not complete, so these stay with the planner, which knows the context.
+const DESCRIPTIVE_WORD =
+  '(?:this|that|these|those|it|one|ones|the|my|last|latest|newest|new|old|oldest|older|newer|first|second|other|another|current|same|previous|recent|most|earlier|above|below|only|just|made|created|added)';
+const DESCRIBES_NOT_NAMES = new RegExp(`^${DESCRIPTIVE_WORD}(?:\\s+${DESCRIPTIVE_WORD})*$`, 'iu');
+// "the workflow I just created" and "the one you made" are clauses, but "IT
+// backup", "I/O monitor" and "we-love-cats" are names, so a pronoun counts only
+// before a clause word.
+const PRONOUN_CLAUSE =
+  /^(?:i|we|you|they|it)(?:['’](?:ve|d|ll|m|re|s))?\s+(?:just|recently|earlier|already|today|yesterday|made|make|created|create|added|add|set|setup|built|build|wrote|write|have|had|did|do|was|were|is|are|asked|told|mentioned|named|called|started|use|used|got|showed|saw)\b/iu;
 const NOT_A_NAME =
   /\b(?:that|which|who|to|and|then|also|but|or|if|when|whenever|unless|every|each|daily|weekly|at|on|for|with|from|after|before|until|not|don['’]?t|never)\b/iu;
 
+// "start workflow named Morning brief" asks to run one, so "start" creates
+// only as "start a new workflow called ...".
 const CREATE = new RegExp(
-  `${COURTESY}(?:create|make|add|set\\s+up|build|start)\\s+(?:(?:a|an|another|one)\\s+)?(?:new\\s+)?workflow\\s+(?:called|named|titled)\\s+${NAME}${END}`,
+  `${COURTESY}(?:(?:create|make|add|set\\s+up|build)\\s+(?:(?:a|an|another|one)\\s+)?(?:new\\s+)?|start\\s+(?:(?:a|another)\\s+)?new\\s+)workflow\\s+(?:called|named|titled)\\s+${NAME}${END}`,
   'iu'
 );
 const RENAME = new RegExp(
@@ -47,10 +67,13 @@ const WHAT_DO_I_HAVE = new RegExp(`${COURTESY}what\\s+workflows\\s+do\\s+i\\s+ha
 
 function name(value: string | undefined): string | undefined {
   // The sentence's own full stop is not part of the name ("v1.2" keeps its dot).
-  const trimmed = value?.trim().replace(/[.]+$/u, '');
+  const written = value?.trim().replace(/[.]+$/u, '');
+  const closing = written ? CLOSING_QUOTE[written.charAt(0)] : undefined;
+  const trimmed = closing && written ? written.slice(1).replace(closing, '') : written;
   if (!trimmed || trimmed.length > 80 || NOT_A_NAME.test(trimmed)) return undefined;
   // "the Alpha check workflow" and "workflow Alpha check" name the same one.
   if (/^(?:the|my|a|an)$/iu.test(trimmed) || /^workflows?$/iu.test(trimmed)) return undefined;
+  if (DESCRIBES_NOT_NAMES.test(trimmed) || PRONOUN_CLAUSE.test(trimmed)) return undefined;
   return trimmed;
 }
 

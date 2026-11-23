@@ -31,11 +31,14 @@ import {
   guardOutboundEnvelopeText,
   HANDLE_RESPONSE_TOOL_NAME,
   hashString,
+  isModelOutputLimitFinishReason,
   isObjectRecord,
   ModelType,
+  modelOutputIncompleteEvidence,
   providerReviewSources,
   recordInferenceSpan,
   sanitizeUserVisibleModelOutput,
+  sleepWithAbort,
   TurnAbortedError,
   timeInferenceSpan,
   withGuidedDecodeProviderOptions,
@@ -52,9 +55,15 @@ import {
   replyTextFieldEvaluator,
   topicsFieldEvaluator,
 } from "../../runtime/builtin-field-evaluators";
+import { rateLimitRetryWaitMs } from "../../runtime/evaluator.ts";
+import { windowHistoryRetention } from "../../runtime/history-retention.ts";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
-import { getEvaluatorProgressState } from "../evaluator-progress.ts";
+import { isProviderToolCallParseFailure } from "../../runtime/tool-call-parse-failure.ts";
+import {
+  getEvaluatorProgressState,
+  postTurnReviewRuns,
+} from "../evaluator-progress.ts";
 import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
 import { resolveStage1SenderRole } from "./addressing.js";
@@ -86,6 +95,7 @@ import {
   nativeHistoryReadBinding,
   projectReviewedHistory,
   readHistoryContextRequests,
+  recallDeferredHistory,
   repairableHistorySourceIds,
   requestedHistory,
   withReviewedHistorySelection,
@@ -276,22 +286,37 @@ export async function generateStage1Decision(
     )
   ) {
     try {
-      const checkpoint = await getEvaluatorProgressState(
+      const scope = {
+        agentId: args.runtime.agentId,
+        roomId: args.message.roomId,
+        entityId: args.message.entityId,
+        roles: [senderRole],
+      };
+      const reviewed = await getEvaluatorProgressState(
         args.runtime,
         args.message,
         HISTORY_RETENTION_EVALUATOR,
       );
       stage1TurnSignal.throwIfAborted();
+      // Where post-turn review is skipped nothing else advances the boundary.
+      const window = postTurnReviewRuns(args.message)
+        ? undefined
+        : windowHistoryRetention(context, scope, reviewed);
       history = projectReviewedHistory(
         context,
-        {
-          agentId: args.runtime.agentId,
-          roomId: args.message.roomId,
-          entityId: args.message.entityId,
-          roles: [senderRole],
-        },
-        checkpoint,
+        scope,
+        window ? window.checkpoint : reviewed,
       );
+      if (history && window?.windowed) {
+        history.windowed = true;
+        history = recallDeferredHistory(
+          context,
+          history,
+          typeof args.message.content.text === "string"
+            ? args.message.content.text
+            : "",
+        );
+      }
     } catch (error) {
       stage1TurnSignal.throwIfAborted();
       args.runtime.reportError("MessageService.historyRetention", error, {
@@ -833,22 +858,20 @@ export async function generateStage1Decision(
     tools: messageHandlerTools,
     toolChoice: "required" as const,
     // Stage 1 packs the complete structured response and user-visible answer
-    // into one generation on every channel, so it stays uncapped: the adapter
-    // uses the selected provider/model maximum, and an application ceiling
-    // could turn a valid long answer into an incomplete envelope. Only the
-    // non-coding planner's planning rounds take a default cap, on remote
-    // providers, after a live runaway tool call streamed 40,960 tokens (see
-    // plannerDefaultMaxTokens).
-    maxTokens: undefined,
+    // into one generation on every channel, so it sends no output cap: the
+    // adapter uses the selected provider/model maximum, and an application
+    // ceiling could turn a valid long answer into an incomplete envelope. A
+    // generation that stops at that maximum gets the completion-limit reply.
     omitMaxTokens: true,
     // Streamed structured generation: the provider streams the
     // HANDLE_RESPONSE envelope and the runtime parses it incrementally. Only
     // `replyText` reaches the user's stream, and only when the routing fields
     // generated before it settle a direct answer (stage1-reply-stream.ts);
     // routing JSON, acknowledgements for planned work and source quotations
-    // never stream. Each attempt (retry, repair, context read) is its own
-    // stream revision and the validated final reply stays authoritative. A
-    // decision-only call delivers no reply, so it streams nothing.
+    // never stream. Each attempt (retry, re-send, repair, context read) is
+    // its own stream revision and the validated final reply stays
+    // authoritative. A decision-only call delivers no reply, so it streams
+    // nothing.
     streamStructured: true,
     ...(args.stage1DecisionOnly
       ? {}
@@ -878,7 +901,7 @@ export async function generateStage1Decision(
     providerOptions: stage1ProviderOptions,
   };
   let recordedCallCount = 0;
-  const generateRecordedStage1 = async (params: typeof stage1ModelParams) => {
+  const sendRecordedStage1 = async (params: typeof stage1ModelParams) => {
     // A cancelled turn that never enters useModel has no attempted model stage.
     params.signal.throwIfAborted();
     const startedAt = Date.now();
@@ -903,6 +926,16 @@ export async function generateStage1Decision(
       return raw;
     } catch (error) {
       outcome = { error };
+      // The runtime rejects a generation that stopped at its output limit
+      // instead of returning it. Stage 1 sends no cap, so that is the model's
+      // own maximum and a cut-off envelope: it takes the completion-limit
+      // handling rather than failing the turn.
+      if (
+        isModelOutputLimitFinishReason(
+          modelOutputIncompleteEvidence(error)?.finishReason,
+        )
+      )
+        return { text: "", finishReason: "length" };
       throw error;
     } finally {
       // This semantic stage records an attempted runtime request, not proof of
@@ -937,6 +970,44 @@ export async function generateStage1Decision(
           }),
         );
       }
+    }
+  };
+  // Every Stage 1 request passes through here (first attempt, empty-output
+  // retry, repair, context read), and a refusal of any of them ends the turn.
+  // They share one re-send, so a run that keeps being refused waits only once.
+  let rateLimitResendUsed = false;
+  // A provider that could not parse the model's own tool call failed on that
+  // sample, not on the request: sent again 20 times live, the request that
+  // failed answered every time. Once per Stage 1 run, without a wait.
+  let toolCallParseResendUsed = false;
+  const generateRecordedStage1 = async (params: typeof stage1ModelParams) => {
+    try {
+      return await sendRecordedStage1(params);
+    } catch (error) {
+      // error-policy:J2 A chat turn waits out a temporary rate limit once and
+      // re-sends the same request, and re-sends once a request whose tool call
+      // the provider could not parse; every other failure propagates unchanged.
+      // The refusal is recorded as its own failed attempt and spends none of
+      // the empty-output retry budget: no answer came back to be judged.
+      if (!toolCallParseResendUsed && isProviderToolCallParseFailure(error)) {
+        toolCallParseResendUsed = true;
+        args.runtime.logger?.warn?.(
+          { src: "service:message" },
+          "[message] Stage 1 provider could not parse the model's tool call; re-sending the request once",
+        );
+        return await sendRecordedStage1(params);
+      }
+      const waitMs = rateLimitResendUsed
+        ? undefined
+        : rateLimitRetryWaitMs(error);
+      if (waitMs === undefined) throw error;
+      rateLimitResendUsed = true;
+      args.runtime.logger?.warn?.(
+        { src: "service:message", delayMs: waitMs },
+        "[message] Stage 1 inference is rate limited; waiting before one re-send",
+      );
+      await sleepWithAbort(waitMs, params.signal);
+      return await sendRecordedStage1(params);
     }
   };
   // Invalid model-authored source parts must never become trusted quotes or
@@ -1033,11 +1104,7 @@ export async function generateStage1Decision(
   while (
     !args.codingMode &&
     stage1RetryCount < stage1RetryLimit &&
-    shouldRetryStage1Generation(
-      stage1RetryReason,
-      rawMessageHandler,
-      stage1ModelParams.maxTokens,
-    )
+    shouldRetryStage1Generation(stage1RetryReason, rawMessageHandler)
   ) {
     stage1RetryCount += 1;
     args.runtime.logger?.warn?.(
@@ -1178,7 +1245,7 @@ export async function generateStage1Decision(
           "CONTEXT_DISCOVERY_INVALID_REQUEST",
           "CONTEXT_DISCOVERY_INVALID_READ",
         ].includes(error.code) ||
-        stage1HitCompletionLimit(rawMessageHandler, stage1ModelParams.maxTokens)
+        stage1HitCompletionLimit(rawMessageHandler)
       )
         throw error;
       // Nothing from an invalid control call can authorize a provider read,
@@ -1190,7 +1257,7 @@ export async function generateStage1Decision(
           ? [`Rejected references: ${JSON.stringify(rejected)}.`]
           : []),
         nativeReadContract
-          ? `Use READ_CONTEXT reads with the offered provider references ${JSON.stringify([...nativeReadContract.providers])}. History selectors, when offered by that tool, require its exact sourceSetId and typed sourceOrdinals or speaker/query fields. Do not put string history references in HANDLE_RESPONSE or reads.`
+          ? `Use READ_CONTEXT reads with the offered provider references ${JSON.stringify([...nativeReadContract.providers])}. History selectors, when offered by that tool, take typed sourceOrdinals or speaker/query fields. Do not put string history references in HANDLE_RESPONSE or reads.`
           : `Available provider reference IDs: ${JSON.stringify([...discovery.available].filter((name) => !name.startsWith(HISTORY_REFERENCE_PREFIX)))}.${historyReferenceNotice(context, history)}`,
         "READ_CONTEXT reads only those advertised references or the advertised conversation-history syntax. Routing-context names, tools and filesystem paths are not provider references. For requested file/tool operations or current stored-record data unavailable from advertised providers, use HANDLE_RESPONSE to select the appropriate available contexts and requested outcomes for the planner. Do not use history:all as a fallback for an unknown routing-context or tool name; history does not establish current timestamps or state. Do not claim the capability is unavailable merely because it is not a readable context reference. Otherwise request only a needed authorized reference. Reconsider the original request and preserve its constraints; return one valid Stage-1 operation.",
         // A rejected READ_CONTEXT call carries no decision to keep.
@@ -1802,10 +1869,7 @@ export async function generateStage1Decision(
     )
   )
     messageHandler.plan.completionContext = undefined;
-  const stage1CompletionLimitHit = stage1HitCompletionLimit(
-    rawMessageHandler,
-    stage1ModelParams.maxTokens,
-  );
+  const stage1CompletionLimitHit = stage1HitCompletionLimit(rawMessageHandler);
   if (stage1CompletionLimitHit) {
     args.runtime.logger?.warn?.(
       {
@@ -1815,7 +1879,6 @@ export async function generateStage1Decision(
           typeof rawMessageHandler === "string"
             ? undefined
             : rawMessageHandler.usage,
-        maxTokens: stage1ModelParams.maxTokens,
         recovered: Boolean(messageHandler),
       },
       "[message] Stage 1 hit the completion-token limit",

@@ -979,9 +979,10 @@ const ACKNOWLEDGMENT_VERBS: readonly (readonly [string, string])[] = [
   ],
 ];
 // An app the owner can open, with or without a capital ("Let me open
-// Calendar.").
+// Calendar."), including the phone's own Contacts, Messages, Phone and Clock.
+// The name alone says nothing about what the app holds.
 const ACKNOWLEDGMENT_APP =
-  "(?:calendar|notes|inbox|maps|files|photos|settings|workflows|camera|browser)";
+  "(?:calendar|notes|inbox|maps|files|photos|settings|workflows|camera|browser|contacts|messages|phone|clock)";
 // One definite item. "It" and indefinite objects are not listed: "Adding it
 // now." after "Is the dentist on my calendar?" says the item is missing.
 const ACKNOWLEDGMENT_ITEM =
@@ -1066,7 +1067,7 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  *   (joined by and, or, commas), then optionally today, tomorrow, this week
  *   or next week;
  * - open: an app (calendar, notes, inbox, maps, files, photos, settings,
- *   workflows, camera, browser) or an item;
+ *   workflows, camera, browser, contacts, messages, phone, clock) or an item;
  * - read: a container list or an item;
  * - save, create, update: an item.
  * An item is your, the or that with note, reminder, event, appointment,

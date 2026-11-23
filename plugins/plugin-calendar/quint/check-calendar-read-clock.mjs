@@ -117,6 +117,8 @@ checkReadSuite(
     "reads the window for a wider request: Check today or tomorrow morning.",
     "reads the window for a wider request: Do I have time after tomorrow morning?",
     "reads the window for a wider request: Is Friday or tomorrow morning free?",
+    "reads the window for a wider request: Am I free tomorrow morning from 10 to 12:30?",
+    "reads the window for a wider request: Am I free tomorrow morning until 13:00?",
     "recognises only a tomorrow-morning-only request",
     "does not substitute the runtime calendar for a selected device source",
     "does not infer a free slot when one source is stale",

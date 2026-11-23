@@ -532,7 +532,7 @@ public abstract class TelephonyPlugin extends Plugin {
  /** Latest incoming SMS sender metadata, without loading or disclosing message content. */
  @PluginMethod public void latestIncomingSender(PluginCall call) {
   if (refused(call)) return;
-  fencedRead(call, "sms", "Messages", cancel -> SmsProviderReader.latestIncomingSender(getContext(), cancel));
+  fencedRead(call, "sms", "Messages", cancel -> SmsProviderReader.latestIncomingSender(getContext(), cancel, call.getBoolean("includeAddress", false)));
  }
 
  /**

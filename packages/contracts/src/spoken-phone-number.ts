@@ -9,51 +9,59 @@
  * digit the words do not carry.
  */
 
-const UNITS: Readonly<Record<string, string>> = {
-  zero: "0",
-  oh: "0",
-  o: "0",
-  one: "1",
-  two: "2",
-  three: "3",
-  four: "4",
-  five: "5",
-  six: "6",
-  seven: "7",
-  eight: "8",
-  nine: "9",
-};
+const UNITS = new Map(
+  Object.entries({
+    zero: "0",
+    oh: "0",
+    o: "0",
+    one: "1",
+    two: "2",
+    three: "3",
+    four: "4",
+    five: "5",
+    six: "6",
+    seven: "7",
+    eight: "8",
+    nine: "9",
+  }),
+);
 // "four fifteen" is 4 1 5: a spoken pair is its two digits.
-const TEENS: Readonly<Record<string, string>> = {
-  ten: "10",
-  eleven: "11",
-  twelve: "12",
-  thirteen: "13",
-  fourteen: "14",
-  fifteen: "15",
-  sixteen: "16",
-  seventeen: "17",
-  eighteen: "18",
-  nineteen: "19",
-};
-const TENS: Readonly<Record<string, string>> = {
-  twenty: "2",
-  thirty: "3",
-  forty: "4",
-  fifty: "5",
-  sixty: "6",
-  seventy: "7",
-  eighty: "8",
-  ninety: "9",
-};
-const REPEATS: Readonly<Record<string, number>> = { double: 2, triple: 3 };
+const TEENS = new Map(
+  Object.entries({
+    ten: "10",
+    eleven: "11",
+    twelve: "12",
+    thirteen: "13",
+    fourteen: "14",
+    fifteen: "15",
+    sixteen: "16",
+    seventeen: "17",
+    eighteen: "18",
+    nineteen: "19",
+  }),
+);
+const TENS = new Map(
+  Object.entries({
+    twenty: "2",
+    thirty: "3",
+    forty: "4",
+    fifty: "5",
+    sixty: "6",
+    seventy: "7",
+    eighty: "8",
+    ninety: "9",
+  }),
+);
+const REPEATS = new Map(Object.entries({ double: 2, triple: 3 }));
 // Words an ASR writes for a spoken digit; a digit only beside other digits
 // ("Call for 15." is 4 15), never on its own ("text Sam to say hi").
-const HOMOPHONES: Readonly<Record<string, string>> = {
-  for: "4",
-  to: "2",
-  too: "2",
-};
+const HOMOPHONES = new Map(
+  Object.entries({
+    for: "4",
+    to: "2",
+    too: "2",
+  }),
+);
 // Pauses inside one spoken number: "four one five, five five five".
 const SEPARATORS = new Set([",", ".", "-", "(", ")"]);
 // Shorter candidates are times, counts and list numbers; 3 keeps 911.
@@ -66,7 +74,7 @@ type Fragment = { digits: string; homophone: boolean };
 function unitDigit(token: string | undefined): string | undefined {
   if (token === undefined) return;
   if (/^\d$/.test(token)) return token;
-  return UNITS[token];
+  return UNITS.get(token);
 }
 
 /**
@@ -74,7 +82,7 @@ function unitDigit(token: string | undefined): string | undefined {
  * not a number word, a digit group or a pause. A fragment ends at a pause and
  * a homophone is a fragment of its own.
  */
-function spokenRuns(text: string): Fragment[][] {
+function spokenRuns(text: string, wholeNumber = false): Fragment[][] {
   const tokens =
     text
       .normalize("NFKC")
@@ -96,32 +104,29 @@ function spokenRuns(text: string): Fragment[][] {
     open = !homophone;
   };
   for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i] ?? "";
-    const units = UNITS[token];
-    const teens = TEENS[token];
-    const tens = TENS[token];
-    const repeats = REPEATS[token];
-    const homophone = HOMOPHONES[token];
+    const token = tokens[i];
+    if (token === undefined) break;
+    const digit = UNITS.get(token);
+    const teen = TEENS.get(token);
+    const tens = TENS.get(token);
+    const repeats = REPEATS.get(token);
+    const homophone = HOMOPHONES.get(token);
     if (/^\d+$/.test(token)) add(token);
-    else if (units !== undefined) add(units);
-    else if (teens !== undefined) add(teens);
+    else if (digit !== undefined) add(digit);
+    else if (teen !== undefined) add(teen);
     else if (tens !== undefined) {
       // "forty two", "forty-two" or a bare "forty".
       const hyphen = tokens[i + 1] === "-" ? 1 : 0;
-      const next = tokens[i + 1 + hyphen];
-      const unit = unitDigit(next);
-      if (
-        unit &&
-        unit !== "0" &&
-        next !== undefined &&
-        /^\p{L}+$/u.test(next)
-      ) {
+      const nextWord = tokens[i + 1 + hyphen];
+      const unit = unitDigit(nextWord);
+      if (unit && unit !== "0" && nextWord && /^\p{L}+$/u.test(nextWord)) {
         add(tens + unit);
         i += 1 + hyphen;
       } else add(`${tens}0`);
     } else if (repeats !== undefined) {
       const unit = unitDigit(tokens[i + 1]);
       if (!unit) {
+        if (wholeNumber) return [];
         end();
         continue;
       }
@@ -129,24 +134,40 @@ function spokenRuns(text: string): Fragment[][] {
       i += 1;
     } else if (homophone !== undefined) add(homophone, true);
     else if (SEPARATORS.has(token)) open = false;
+    else if (wholeNumber) return [];
     else end();
   }
   end();
   // A homophone counts only beside a fragment of real digits.
   return runs.flatMap((fragments) => {
-    const split: Fragment[][] = [[]];
-    fragments.forEach((fragment, i) => {
+    let part: Fragment[] = [];
+    const split = [part];
+    for (const [i, fragment] of fragments.entries()) {
       const beside =
         !fragment.homophone ||
         [fragments[i - 1], fragments[i + 1]].some(
           (neighbor) => neighbor && !neighbor.homophone,
         );
-      const current = split.at(-1);
-      if (beside && current) current.push(fragment);
-      else split.push([]);
-    });
+      if (beside) part.push(fragment);
+      else if (wholeNumber) return [];
+      else {
+        part = [];
+        split.push(part);
+      }
+    }
     return split.filter((part) => part.length);
   });
+}
+
+/** A whole spoken address, with no name or message-body words. */
+export function completeSpokenPhoneNumber(text: string): string | undefined {
+  if (!/[a-z]/iu.test(text)) return;
+  const prefix = /^(?:plus\s+|\+)/iu.exec(text);
+  const [run, second] = spokenRuns(text.slice(prefix?.[0].length ?? 0), true);
+  if (!run || second) return;
+  const digits = run.map(({ digits }) => digits).join("");
+  if (digits.length >= MIN_DIGITS && digits.length <= MAX_DIGITS)
+    return prefix ? `+${digits}` : digits;
 }
 
 /**
@@ -160,7 +181,9 @@ export function spokenPhoneNumbers(text: string): string[] {
     for (let i = 0; i < run.length; i++) {
       let digits = "";
       for (let j = i; j < run.length; j++) {
-        digits += run[j]?.digits ?? "";
+        const fragment = run[j];
+        if (!fragment) break;
+        digits += fragment.digits;
         if (digits.length > MAX_DIGITS) break;
         if (digits.length >= MIN_DIGITS) numbers.add(digits);
       }

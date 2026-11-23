@@ -18,6 +18,7 @@ import {
 import twitterText from "twitter-text";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
+import { quoteTweetText } from "./client/tweets";
 import { TWEET_MAX_LENGTH } from "./constants";
 import { countTwitterWeightedLength } from "./tweet-length";
 import type { ActionResponse, MediaData } from "./types";
@@ -109,9 +110,14 @@ export async function sendTextAsTweetThread(
     index: number,
   ) => Promise<SentTweet>,
   maxLength: number = TWEET_MAX_LENGTH,
+  firstChunkMaxLength: number = maxLength,
 ): Promise<TweetThreadReceipt[]> {
   const receipts: TweetThreadReceipt[] = [];
-  for (const [index, chunk] of splitTweetContent(text, maxLength).entries()) {
+  for (const [index, chunk] of splitTweetContent(
+    text,
+    maxLength,
+    firstChunkMaxLength,
+  ).entries()) {
     let receipt: SentTweet;
     try {
       receipt = await sendChunk(chunk, receipts[index - 1]?.id, index);
@@ -129,6 +135,20 @@ export async function sendTextAsTweetThread(
     receipts.push({ id: receipt.id, text: chunk });
   }
   return receipts;
+}
+
+/**
+ * Weighted limit for the first post of a quote thread. createQuoteTweetRequest
+ * appends the quoted post's status URL to that post, so the post keeps room
+ * for it; the later posts of the thread are plain replies.
+ */
+export function quoteThreadFirstChunkMaxLength(
+  quotedTweetId: string,
+  maxLength: number = TWEET_MAX_LENGTH,
+): number {
+  return (
+    maxLength - countTwitterWeightedLength(quoteTweetText("", quotedTweetId))
+  );
 }
 
 function errorDetail(error: unknown): string {
@@ -400,12 +420,18 @@ export async function sendChunkedTweet(
 export function splitTweetContent(
   content: string,
   maxLength: number,
+  firstMaxLength: number = maxLength,
 ): string[] {
-  if (!Number.isSafeInteger(maxLength) || maxLength <= 0) {
-    throw new ElizaError("X post chunk limit must be a positive safe integer", {
-      code: "X_POST_CHUNK_LIMIT_INVALID",
-      context: { maxLength },
-    });
+  for (const limit of [maxLength, firstMaxLength]) {
+    if (!Number.isSafeInteger(limit) || limit <= 0) {
+      throw new ElizaError(
+        "X post chunk limit must be a positive safe integer",
+        {
+          code: "X_POST_CHUNK_LIMIT_INVALID",
+          context: { maxLength: limit },
+        },
+      );
+    }
   }
   if (!content) return [];
 
@@ -430,21 +456,23 @@ export function splitTweetContent(
   const chunks: string[] = [];
   let start = 0;
   while (start < units.length) {
+    // The first post can have a smaller limit (a quote post's status URL).
+    const limit = chunks.length === 0 ? firstMaxLength : maxLength;
     let end = start;
     let chunk = "";
     for (; end < units.length; end += 1) {
       const unit = units[end] as string;
-      if (countTwitterWeightedLength(unit) > maxLength) {
+      if (countTwitterWeightedLength(unit) > limit) {
         throw new ElizaError(
           "An indivisible X post token exceeds the provider limit",
           {
             code: "X_POST_TOKEN_TOO_LONG",
-            context: { maxLength },
+            context: { maxLength: limit },
           },
         );
       }
       const candidate = `${chunk}${unit}`;
-      if (chunk && countTwitterWeightedLength(candidate) > maxLength) break;
+      if (chunk && countTwitterWeightedLength(candidate) > limit) break;
       chunk = candidate;
     }
 
@@ -456,10 +484,7 @@ export function splitTweetContent(
       while (cut > start && !isWhitespace(units[cut])) cut -= 1;
       if (cut > start) {
         const kept = units.slice(start, cut + 1).join("");
-        if (
-          /\S/u.test(kept) &&
-          countTwitterWeightedLength(kept) > maxLength / 2
-        ) {
+        if (/\S/u.test(kept) && countTwitterWeightedLength(kept) > limit / 2) {
           chunk = kept;
           end = cut + 1;
         }

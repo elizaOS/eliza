@@ -25,6 +25,12 @@ receivers, deadline and teardown settlement. A timeout means unknown send status
 and must not trigger an automatic resend. Only the default SMS app persists sent
 rows; other apps leave platform-owned persistence alone.
 
+The latest-sender lookup reads one incoming SMS without its message body. The legacy
+`sms.latest-sender.v1` response returns a four-digit suffix. With `sms.latest-sender.v2`,
+a current owner request can obtain the complete replyable address and its thread identity.
+A follow-up draft can use the delivered lookup in the same conversation and enrollment.
+The phone presents the draft; only the owner's Send tap submits it.
+
 ## Android modem verification
 
 `bun packages/app/scripts/android-native-sms.ts --sender emulator-5580 --receiver emulator-5582`

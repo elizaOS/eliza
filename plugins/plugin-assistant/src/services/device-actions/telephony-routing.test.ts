@@ -27,6 +27,8 @@ const TELEPHONY = [
   "phone.call.v1",
   "sms.compose.v1",
   "sms.compose.v2",
+  "sms.latest-sender.v1",
+  "sms.latest-sender.v2",
   "contacts.show.v1",
   "phone.keypad.v1",
 ];
@@ -121,6 +123,8 @@ const refusalPlan = () => ({
 
 describe("a whole-message call or text reaches the phone's own operation", () => {
   it.each([
+    ["Who texted me?", "sender"],
+    ["Draft a text asking them to bring the tripod.", "text"],
     ["text shaw saying I'm running late", "text"],
     ["send a text to 415-302-4399 saying hello from Alpha", "text"],
     ["Text Sam Lee that the door is open", "text"],
@@ -163,8 +167,23 @@ describe("a whole-message call or text reaches the phone's own operation", () =>
     "how do I text Sam saying hi?",
     "don't call mom",
     "who should I call",
+    // A message from a named sender, or another service's, is not a sender lookup.
+    "What was the last message from Sam?",
+    "Check the latest message from Sam on Slack",
   ])("leaves %s to the planner", (request) => {
     expect(authoredTelephonyRequest(request)).toBeUndefined();
+  });
+
+  // A place on this phone ("in my inbox", "in Messages") or a time is not a
+  // named sender or another service.
+  it.each([
+    "What's the number on my latest text?",
+    "Who sent the last text message in my inbox?",
+    "Who sent me the latest text in the last hour?",
+    "Check who sent my latest text in Messages",
+    "Who sent my most recent text, from what number?",
+  ])("routes %s as a sender lookup", (request) => {
+    expect(authoredTelephonyRequest(request)).toBe("sender");
   });
 
   it("claims nothing without the phone's call or SMS capability or off phone chat", async () => {
@@ -194,5 +213,50 @@ describe("contact changes and deletions name a contact the agent cannot see", ()
       "The phone looks up a change's or deletion's name before it offers the review, and when no contact matches it tells the owner instead",
     );
     expect(description).toContain("never say the contact exists");
+  });
+});
+
+/**
+ * Review (2026-11-20): "call 911" was no call command, and an emergency
+ * request in words ("call an ambulance") was left to Stage 1.
+ */
+describe("emergency and short-number calls reach the phone", () => {
+  it.each([
+    "call 911",
+    "Call 911!",
+    "dial 112",
+    "call 311",
+    "call an ambulance",
+    "call the police",
+    "call for help",
+    "I need help, call emergency services now",
+    "call mom again",
+    "Call Maya's mobile please",
+  ])("routes %s to the phone's operation", async (request) => {
+    const f = await fixture(request);
+    await inTurn(f, TELEPHONY, async () => {
+      expect(f.rule.matches(request, f.message)).toBe(true);
+    });
+  });
+
+  it("routes an emergency request to a phone with only its keypad", async () => {
+    const request = "call an ambulance";
+    const f = await fixture(request);
+    await inTurn(f, ["phone.keypad.v1"], async () => {
+      expect(f.rule.matches(request, f.message)).toBe(true);
+    });
+  });
+
+  it.each([
+    "she said she'd call the police",
+    "call 5 people",
+    "call mom and dad",
+    "Send the police department an email",
+    "Get the police report from my email",
+  ])("leaves %s to the planner", async (request) => {
+    const f = await fixture(request);
+    await inTurn(f, TELEPHONY, async () => {
+      expect(f.rule.matches(request, f.message)).toBe(false);
+    });
   });
 });

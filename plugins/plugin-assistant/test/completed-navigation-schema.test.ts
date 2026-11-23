@@ -175,9 +175,16 @@ it("offers a camera lens and an SMS target only to a phone that negotiated them"
   expect(branches(next, "sms_compose")).toHaveLength(1);
   expect(branches(next, "sms_compose")[0].properties).toHaveProperty("target");
   expect(branches(next, "sms_compose")[0].properties).toHaveProperty("draft");
-  expect(newer.description).toContain("front for a selfie");
-  expect(newer.description).toContain("sms_compose {target, body}");
-  expect(newer.description).not.toContain("sms_compose {query, body}");
+  // The lens field says which lens; the prose does not say it again.
+  expect(
+    branches(next, "camera_capture_photo")[0].properties?.lens.description,
+  ).toContain("front for a selfie");
+  expect(newer.description).toContain(
+    "sms_compose is a reviewed SMS to one recipient",
+  );
+  expect(newer.description).not.toContain(
+    "sms_compose is a reviewed SMS to one contact named by text",
+  );
   const payload = (operation: unknown) =>
     validateDevicePayload({
       action: "device_action",
@@ -296,7 +303,9 @@ it("describes only the operations this connection's schema offers", () => {
     "notes.local-record.v1",
     "sms.send.v1",
   ]).description;
-  expect(withSms).toContain("Reviewed SIM SMS requires sms.send.v1");
+  expect(withSms).toContain(
+    "Reviewed SIM SMS (sms_send) requires exact canonical recipients",
+  );
 });
 
 it("offers each telephony action only with its own capability and states its limits", () => {
@@ -337,19 +346,30 @@ it("offers each telephony action only with its own capability and states its lim
     for (const type of all)
       expect(offered.includes(type)).toBe(own.includes(type));
   }
-  const text = deviceActionForCapabilities(proposeDeviceAction, [
+  const everyTelephony = deviceActionForCapabilities(proposeDeviceAction, [
     "notes.local-record.v1",
     ...Object.keys(telephony),
-  ]).description;
+  ]);
+  const text = everyTelephony.description;
+  const fieldsOf = (type: string) =>
+    everyTelephony.parameters
+      ?.find((parameter) => parameter.name === "operation")
+      ?.schema.anyOf?.find((branch) =>
+        branch.properties?.type?.enum?.includes(type),
+      )?.properties ?? {};
+  // What a field is and which fields a reply takes are stated by the schema.
+  expect(fieldsOf("contact_update").query?.description).toContain(
+    "The contact's name as search text, exactly as the owner said it",
+  );
+  expect(Object.keys(fieldsOf("sms_reply_selected"))).toEqual(["type", "body"]);
   for (const required of [
     "phone_call places a call only after the owner approves",
     "never report a connected, answered or completed call",
     "hands it to the system dialer",
-    "query names the contact by search text",
     "never the address book",
     "Use sms_send instead when the exact number is known",
-    "An unknown outcome must never be automatically retried",
-    "sms_reply_selected {body} takes only body",
+    "Never retry or repeat an operation automatically after an unknown, uncertain or partial outcome",
+    "sms_reply_selected puts body into the text field of the conversation the owner has open in Messages",
     "prefer it over sms_compose whenever the owner is talking about the open conversation",
     "Typically call messages_read_selected first",
     "never a sent message",
@@ -358,7 +378,7 @@ it("offers each telephony action only with its own capability and states its lim
     "you receive only shown or not-found, never a name, number or count",
     "returns only the one contact the owner has open in Contacts",
     "This phone cannot add one number or email address to a contact",
-    "phone_keypad {number?} (phone.keypad.v1) opens the Phone keypad",
+    "phone_keypad opens the Phone keypad on the phone, with number filled in when the owner gave one",
     "It never dials or calls: the owner taps Call there.",
     "It proposes a reviewed read of one sender number suffix only.",
   ])
@@ -442,9 +462,12 @@ it("offers each Browser control only with its own capability and validates its e
       "notes.local-record.v1",
       capability,
     ]);
-    for (const type of all)
+    for (const type of all) {
       expect(types(offered).includes(type)).toBe(own.includes(type));
-    expect(offered.description).toContain(capability);
+      // The prose names an operation the schema offers, never its capability.
+      expect(offered.description.includes(type)).toBe(own.includes(type));
+    }
+    expect(offered.description).not.toContain(capability);
   }
   const text = deviceActionForCapabilities(proposeDeviceAction, [
     "notes.local-record.v1",
@@ -472,6 +495,7 @@ it("offers each Browser control only with its own capability and validates its e
     { type: "browser_tab_switch", target: "bbc" },
     { type: "browser_tab_close" },
     { type: "browser_tab_close", target: "bbc" },
+    { type: "browser_tab_close", all: true },
     { type: "browser_find", text: "refund" },
     { type: "browser_history", action: "stop" },
   ])
@@ -484,6 +508,10 @@ it("offers each Browser control only with its own capability and validates its e
     { type: "browser_tab_switch" },
     { type: "browser_tab_switch", target: "bbc", id: "3" },
     { type: "browser_tab_close", target: "a\nb" },
+    // Closing every tab is its own form: never a flag that narrows to one tab.
+    { type: "browser_tab_close", all: false },
+    { type: "browser_tab_close", all: "yes" },
+    { type: "browser_tab_close", all: true, target: "bbc" },
     { type: "browser_find", text: "" },
     { type: "browser_history", action: "home" },
   ])

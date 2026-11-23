@@ -27,6 +27,7 @@ import {
   stopAppBlock,
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
 import { formatPromptSection } from "./lib/prompt-format.js";
+import { extractHeuristicDurationMinutes } from "./website-block.js";
 
 const ACTION_NAME = "BLOCK";
 
@@ -93,10 +94,7 @@ function normalizePlannerResponse(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function normalizePackageNames(
-  value: unknown,
-  allowedPackageNames?: ReadonlySet<string>,
-): string[] {
+function normalizePackageNames(value: unknown): string[] {
   const values = Array.isArray(value)
     ? value
     : typeof value === "string"
@@ -104,17 +102,47 @@ function normalizePackageNames(
       : [];
   const normalized = values
     .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim().toLowerCase())
+    .map((item) => item.trim())
     .filter((item) => item.length > 0);
-  const unique = [...new Set(normalized)];
-  if (!allowedPackageNames) return unique;
-  return unique.filter((item) => allowedPackageNames.has(item));
+  return [...new Set(normalized)];
+}
+
+// Android package ids are case-sensitive (Slack ships as "com.Slack") and the
+// native blocker compares the foreground package id exactly, so a requested id
+// is sent with the case of the installed app it names.
+function findInstalledPackageName(
+  packageName: string,
+  installedApps: readonly InstalledAppEntry[],
+): string | undefined {
+  if (installedApps.some((app) => app.packageName === packageName)) {
+    return packageName;
+  }
+  const lower = packageName.toLowerCase();
+  const matches = installedApps.filter(
+    (app) => app.packageName.toLowerCase() === lower,
+  );
+  return matches.length === 1 ? matches[0]?.packageName : undefined;
+}
+
+function toInstalledPackageNames(
+  packageNames: readonly string[],
+  installedApps: readonly InstalledAppEntry[],
+  keepUnknown: boolean,
+): string[] {
+  const resolved = packageNames.flatMap((packageName) => {
+    const installed = findInstalledPackageName(packageName, installedApps);
+    if (installed) return [installed];
+    return keepUnknown ? [packageName] : [];
+  });
+  return [...new Set(resolved)];
 }
 
 function normalizeDurationMinutes(value: unknown): number | null | undefined {
   if (value === null) return null;
+  // A positive duration never rounds to 0: the Android plugin reads 0 as no
+  // end time, so a sub-minute block would never end.
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return Math.round(value);
+    return Math.max(1, Math.round(value));
   }
   if (typeof value === "string") {
     const trimmed = value.trim().toLowerCase();
@@ -128,7 +156,9 @@ function normalizeDurationMinutes(value: unknown): number | null | undefined {
       return null;
     }
     const parsed = Number.parseFloat(trimmed);
-    if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.max(1, Math.round(parsed));
+    }
   }
   return undefined;
 }
@@ -190,7 +220,7 @@ function inferAndroidPackageNamesFromIntent(
     );
   });
 
-  return matches.map((app) => app.packageName.toLowerCase());
+  return matches.map((app) => app.packageName);
 }
 
 async function resolveAppBlockPlanWithLlm(args: {
@@ -208,9 +238,6 @@ async function resolveAppBlockPlanWithLlm(args: {
     })
   ).join("\n");
   const currentMessage = getMessageText(args.message).trim();
-  const allowedPackageNames = new Set(
-    args.installedApps.map((app) => app.packageName.toLowerCase()),
-  );
   const prompt = [
     "Plan the app blocking action for this request.",
     "Use the current request plus recent conversation context.",
@@ -256,9 +283,10 @@ async function resolveAppBlockPlanWithLlm(args: {
     return {
       shouldAct: normalizeShouldAct(parsed.shouldAct),
       response: normalizePlannerResponse(parsed.response),
-      packageNames: normalizePackageNames(
-        parsed.packageNames ?? parsed.packages,
-        allowedPackageNames,
+      packageNames: toInstalledPackageNames(
+        normalizePackageNames(parsed.packageNames ?? parsed.packages),
+        args.installedApps,
+        false,
       ),
       durationMinutes: normalizeDurationMinutes(parsed.durationMinutes),
     };
@@ -301,6 +329,16 @@ async function handleBlock(
   const explicitDurationMinutes = normalizeDurationMinutes(
     params.durationMinutes,
   );
+  // The action planner can omit durationMinutes, and the planning model below
+  // does not run when the request names the apps, so a duration written in
+  // the message is read here, as the website target does. Only Android reads
+  // it: the iPhone plugin refuses a timed block.
+  const statedDurationMinutes =
+    explicitDurationMinutes === undefined && status.platform === "android"
+      ? extractHeuristicDurationMinutes(
+          [params.intent, getMessageText(message)].filter(Boolean).join("\n"),
+        )
+      : undefined;
 
   let installedApps: InstalledAppEntry[] = [];
   if (status.platform === "android") {
@@ -364,16 +402,19 @@ async function handleBlock(
     };
   }
 
+  // An explicit id that names no installed app is passed on as given.
   const packageNames =
     explicitPackageNames.length > 0
-      ? explicitPackageNames
+      ? toInstalledPackageNames(explicitPackageNames, installedApps, true)
       : inferredPackageNames.length > 0
         ? inferredPackageNames
         : (llmPlan?.packageNames ?? []);
   const durationMinutes =
     explicitDurationMinutes !== undefined
       ? explicitDurationMinutes
-      : llmPlan?.durationMinutes;
+      : statedDurationMinutes !== undefined
+        ? statedDurationMinutes
+        : llmPlan?.durationMinutes;
 
   if (
     (!packageNames || packageNames.length === 0) &&

@@ -50,9 +50,11 @@ import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import {
   fetchMediaData,
+  quoteThreadFirstChunkMaxLength,
   sendTextAsTweetThread,
   splitXDirectMessageContent,
 } from "../utils";
+import { getTwitterProviderStatus } from "../utils/error-handler";
 import { normalizeXReceiptId } from "../utils/provider-receipt";
 import { getSetting } from "../utils/settings";
 import { getEpochMs } from "../utils/time";
@@ -999,6 +1001,9 @@ export class XService extends Service {
           return { id: post.id };
         },
         X_MAX_POST_LENGTH,
+        quotedPostId
+          ? quoteThreadFirstChunkMaxLength(quotedPostId, X_MAX_POST_LENGTH)
+          : undefined,
       );
       const memories = posts.map((post) =>
         this.buildXPostMemory(runtime, {
@@ -1349,6 +1354,18 @@ export class XService extends Service {
         this.buildUserTarget(profile.id, profile.username, 0.95, accountId),
       ];
     } catch (error) {
+      // A provider 404 is the real "no such handle" answer: fetchProfile wraps
+      // it in X_PROFILE_NOT_FOUND. Auth expiry, rate limiting and network
+      // faults are lookup failures, so they must reach the caller instead of
+      // reading as "no matching target" and silently dropping the recipient.
+      if (
+        !(
+          error instanceof ElizaError && error.code === "X_PROFILE_NOT_FOUND"
+        ) &&
+        getTwitterProviderStatus(error) !== 404
+      ) {
+        throw error;
+      }
       logger.debug(
         {
           src: "plugin:x",

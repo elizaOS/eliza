@@ -99,7 +99,11 @@ async function fixture() {
   runtime.registerAction(proposeDeviceAction);
   runtime.registerAction(browser);
   for (const tool of deviceActionTools)
-    if (tool.name.startsWith("DEVICE_BROWSER_") && tool !== browser)
+    if (
+      (tool.name.startsWith("DEVICE_BROWSER_") ||
+        tool.name === "DEVICE_CAMERA_CAPTURE") &&
+      tool !== browser
+    )
       runtime.registerAction(tool);
   const enqueue = vi.spyOn(PgApprovalQueue.prototype, "enqueueTransactional");
   const decide = vi.spyOn(DeviceActionService.prototype, "decide");
@@ -211,6 +215,26 @@ async function fixture() {
             () => action.handler!(runtime, original, undefined, options),
           );
         if (custody === "replay") await invoke();
+        if (custody === "twokeys") {
+          await invoke();
+          options.parameters.operationKey = randomUUID();
+        }
+        // The planner proposes the same capture twice in the turn: once here
+        // and once through the routed camera tool, each with its own key.
+        if (custody === "camera-double") {
+          const first = await invoke();
+          const capture = runtime.actions.find(
+            (a) => a.name === "DEVICE_CAMERA_CAPTURE",
+          )!;
+          const second = await capture.handler!(runtime, original, undefined, {
+            parameters: {
+              operation,
+              operationKey: randomUUID(),
+              reason: "Take the photo the owner asked for",
+            },
+          });
+          return { first, second };
+        }
         // The planner also calls the routed open for the same address in the
         // same turn, with its own operation key.
         if (custody === "double") {
@@ -743,7 +767,7 @@ it.each([
           verifiedUserFacing: true,
           userFacingText: typed
             ? "I didn't open that address."
-            : 'Tell me the address, like "open nytimes.com".',
+            : "Tell me the address, like example.com.",
           data: {
             code: "DEVICE_BROWSER_NOT_REQUESTED",
             proposalCreated: false,
@@ -781,6 +805,91 @@ it.each([
     }
   },
 );
+it.each([
+  // [request, runs without a review]
+  ["Open alphacompute.ai in the browser.", true],
+  // A spoken hostname grounds the open, but the owner always reviews it.
+  ["Open alphacompute dot ai in the browser.", false],
+] as const)(
+  "reviews a spoken hostname even in direct request mode: %s",
+  async (request, handoff) => {
+    const f = await fixture();
+    try {
+      const result = await f.run(
+        request,
+        false,
+        true,
+        "https://alphacompute.ai/",
+      );
+      expect(result).toMatchObject(
+        handoff
+          ? {
+              success: true,
+              userFacingText: "Opening alphacompute.ai.",
+              data: { directRequest: true, approvalRequired: false },
+            }
+          : {
+              success: true,
+              userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+              data: { awaitingUserInput: true, approvalRequired: true },
+            },
+      );
+      expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
+        !handoff,
+      );
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows.map((row) => row.payload.operation)).toEqual([
+        { type: "browser_navigate", url: "https://alphacompute.ai/" },
+      ]);
+      // Only a direct request binds the phone's no-review open to the message.
+      expect("requestMessageId" in rows[0].payload).toBe(handoff);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it("turns an empty tab proposed for a spoken hostname into a reviewed open in a new tab", async () => {
+  // The v610 blank-tab fix covers spoken hostnames too, and the open they
+  // become is still reviewed because a spoken hostname is never direct.
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, {
+      capabilities: ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    });
+    const result = await f.run(
+      "Open alphacompute dot ai in a new tab.",
+      false,
+      true,
+      undefined,
+      "current",
+      { type: "browser_tab_new" },
+    );
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+      data: { awaitingUserInput: true, approvalRequired: true },
+    });
+    const rows = (
+      await f.pg.query<{ payload: Record<string, unknown> }>(
+        "SELECT payload FROM approval_requests",
+      )
+    ).rows;
+    expect(rows.map((row) => row.payload.operation)).toEqual([
+      {
+        type: "browser_navigate",
+        url: "https://alphacompute.ai/",
+        newTab: true,
+      },
+    ]);
+    expect("requestMessageId" in rows[0].payload).toBe(false);
+  } finally {
+    await f.pg.close();
+  }
+});
 it("does not treat a matching hostname as authority for a different path", async () => {
   const f = await fixture();
   try {
@@ -1037,6 +1146,26 @@ it("refuses a search for words the user did not type, and an unnegotiated Browse
     await f.pg.close();
   }
 });
+// v620 (Pixel, 8 tabs open): "close all the browser tabs" became one card that
+// closed only the tab showing. A phone that cannot close every tab refuses with
+// a reason the agent can tell the owner; nothing is queued in its place.
+it("refuses closing every tab on a phone that closes one at a time, never narrowing it", async () => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, { capabilities: ["browser.tabs.v1"] });
+    await expect(
+      f.run("close all the browser tabs", false, true, undefined, "current", {
+        type: "browser_tab_close",
+        all: true,
+      }),
+    ).rejects.toThrow(
+      "This phone's Browser closes one tab at a time and cannot close all tabs at once. Nothing was closed.",
+    );
+    expect(f.enqueue).not.toHaveBeenCalled();
+  } finally {
+    await f.pg.close();
+  }
+});
 const generic = "do that in the browser";
 it.each([
   [
@@ -1079,12 +1208,18 @@ it.each([
     false,
     "close the bbc tab",
   ],
+  [
+    { type: "browser_tab_close", all: true },
+    "browser.tabs.v1 browser.tabs.close-all.v1",
+    false,
+    "close all the browser tabs",
+  ],
 ] as const)(
   "queues the negotiated Browser control %o",
   async (operation, capability, handoff, request) => {
     const f = await fixture();
     try {
-      Object.assign(f.credential, { capabilities: [capability] });
+      Object.assign(f.credential, { capabilities: capability.split(" ") });
       for (const direct of [true, false]) {
         const result = await f.run(
           request,
@@ -1443,3 +1578,146 @@ it("opens the address once when the model proposes an empty tab and the routed o
     await f.pg.close();
   }
 });
+
+// Fable review (camera 1): in direct-request mode a capture the model proposed
+// for a message that never asked for a photo was bound to that message, so
+// the phone took a front-camera photo with no card.
+it.each([
+  "summarize the page I have open",
+  "what's on my calendar tomorrow?",
+  "don't take a photo",
+  "did you take a photo?",
+  "take a photo in five minutes",
+])(
+  "keeps the Take photo card for a capture %j never asked for",
+  async (text) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, {
+        capabilities: ["camera.capture-photo.v1", "camera.capture-lens.v1"],
+      });
+      const result = await f.run(text, false, true, undefined, "current", {
+        type: "camera_capture_photo",
+        lens: "front",
+      });
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload).not.toHaveProperty("requestMessageId");
+      expect(result).toMatchObject({
+        userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+        data: { approvalRequired: true },
+      });
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it.each([
+  "take a photo",
+  "Eliza, snap a picture please",
+  "can you take a picture?",
+  "could you please take a selfie",
+])("runs the photo the owner asked for (%j) without a card", async (text) => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, { capabilities: ["camera.capture-photo.v1"] });
+    const result = await f.run(text, false, true, undefined, "current", {
+      type: "camera_capture_photo",
+    });
+    const rows = (
+      await f.pg.query<{ payload: Record<string, unknown> }>(
+        "SELECT payload FROM approval_requests",
+      )
+    ).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload.requestMessageId).toEqual(expect.any(String));
+    expect(result).toMatchObject({
+      userFacingText: "Opening Camera to take the photo.",
+      data: { directRequest: true, approvalRequired: false },
+    });
+  } finally {
+    await f.pg.close();
+  }
+});
+// Fable review (camera 2): the camera the owner named was honoured only
+// through DEVICE_CAMERA_CAPTURE; PROPOSE_DEVICE_ACTION kept the model's lens.
+it.each([
+  ["take a selfie", undefined, "front"],
+  ["take a picture with the back camera", "front", "back"],
+  ["take a picture", "front", undefined],
+  ["can you take a picture with the front camera?", "back", "front"],
+] as const)(
+  "shoots with the camera the owner named in %j (model lens %s) through either tool",
+  async (text, modelLens, lens) => {
+    for (const direct of [true, false])
+      for (const tool of [false, "DEVICE_CAMERA_CAPTURE"] as const) {
+        const f = await fixture();
+        try {
+          Object.assign(f.credential, {
+            capabilities: ["camera.capture-photo.v1", "camera.capture-lens.v1"],
+          });
+          await f.run(text, tool, direct, undefined, "current", {
+            type: "camera_capture_photo",
+            ...(modelLens ? { lens: modelLens } : {}),
+          });
+          const rows = (
+            await f.pg.query<{ payload: Record<string, unknown> }>(
+              "SELECT payload FROM approval_requests",
+            )
+          ).rows;
+          expect(rows).toHaveLength(1);
+          // The review card names the same camera in review mode.
+          expect(rows[0].payload.operation).toEqual({
+            type: "camera_capture_photo",
+            ...(lens ? { lens } : {}),
+          });
+          expect(rows[0].payload.requestMessageId !== undefined).toBe(direct);
+        } finally {
+          await f.pg.close();
+        }
+      }
+  },
+);
+// Fable review (camera 3): two capture proposals in one direct turn, each with
+// its own operation key, were two photos.
+it.each(["twokeys", "camera-double"] as const)(
+  "takes one photo for one request however often the turn proposes it (%s)",
+  async (custody) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, {
+        capabilities: ["camera.capture-photo.v1", "camera.capture-lens.v1"],
+      });
+      const result = (await f.run(
+        "take a picture",
+        false,
+        true,
+        undefined,
+        custody,
+        { type: "camera_capture_photo", lens: "front" },
+      )) as PlannerToolResult & {
+        first?: PlannerToolResult;
+        second?: PlannerToolResult;
+      };
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload.operation).toEqual({
+        type: "camera_capture_photo",
+      });
+      if (custody === "camera-double")
+        expect(result.second?.data?.proposalId).toBe(
+          result.first?.data?.proposalId,
+        );
+    } finally {
+      await f.pg.close();
+    }
+  },
+);

@@ -40,9 +40,11 @@ import {
   promotedSubactionParent,
   readActionFailureProvenance,
   stableJsonStringify,
+  TrajectoryLimitExceeded,
 } from "@elizaos/core";
 import {
   actionResultToPlannerToolResult,
+  modelOutputLimitStop,
   type PlannerLoopParams,
   type PlannerLoopResult,
   type PlannerRuntime,
@@ -387,6 +389,28 @@ export async function runSubPlanner(
     params.runtime,
     params.ctx.message,
   );
+  // The latest child call's model output-limit stop, if it had one; see
+  // carryChildModelOutputLimitStop.
+  let childModelOutputLimitStop: unknown;
+  const observeChildModelOutputLimitStop =
+    (
+      executeChild: PlannerLoopParams["executeToolCall"],
+    ): PlannerLoopParams["executeToolCall"] =>
+    async (toolCall, loopContext) => {
+      try {
+        const result = await executeChild(toolCall, loopContext);
+        childModelOutputLimitStop = modelOutputLimitStop(result);
+        return result;
+      } catch (error) {
+        // error-policy:J1 observe only: the inner loop's tool boundary turns
+        // the throw into the child's failed result, as it reads it here.
+        childModelOutputLimitStop = modelOutputLimitStop({
+          success: false,
+          error,
+        });
+        throw error;
+      }
+    };
   return runPlannerLoop({
     requestOperationIssuer,
     runtime: params.runtime,
@@ -405,7 +429,7 @@ export async function runSubPlanner(
     recorder: params.recorder,
     trajectoryId: params.trajectoryId,
     parentStageId: subPlannerStageId ?? params.parentStageId,
-    executeToolCall: async (toolCall) => {
+    executeToolCall: observeChildModelOutputLimitStop(async (toolCall) => {
       if (!toolCall.name) {
         return {
           success: false,
@@ -497,8 +521,45 @@ export async function runSubPlanner(
           params.runtime,
         ),
       });
-    },
+    }),
+  }).catch((error: unknown) => {
+    // error-policy:J4 the inner loop's limit stays the umbrella's stop signal;
+    // only its cause is added.
+    throw carryChildModelOutputLimitStop(error, childModelOutputLimitStop);
   });
+}
+
+/**
+ * The inner loop ends the first time a child's own model call sent no cap and
+ * still stopped at an output limit (planner-loop's `modelOutputLimitStop`), by
+ * throwing its repeated-failure limit. That limit alone does not say why, so
+ * the outer planner saw an ordinary failed umbrella call and re-called the
+ * umbrella up to its own repeat budget, each call running the child's model to
+ * its maximum again. Rethrown with the child's model error as its cause, the
+ * stop reaches the outer planner's check, which reads a thrown tool error
+ * through its cause chain, and the umbrella is not called again. The limit's
+ * kind, counts, message and provenance are unchanged; a cut-off under a cap
+ * that was sent, or any other limit, passes through as it is.
+ */
+function carryChildModelOutputLimitStop(
+  error: unknown,
+  childStop: unknown,
+): unknown {
+  if (
+    childStop === undefined ||
+    !(error instanceof TrajectoryLimitExceeded) ||
+    error.kind !== "repeated_failures" ||
+    error.cause !== undefined
+  ) {
+    return error;
+  }
+  // Non-enumerable, as a cause given to the Error constructor is.
+  Object.defineProperty(error, "cause", {
+    value: childStop,
+    configurable: true,
+    writable: true,
+  });
+  return error;
 }
 
 function unionContexts(

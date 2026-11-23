@@ -207,7 +207,7 @@ export type ModelDefinitionConfig = {
     cacheWrite: number;
   };
   contextWindow: number;
-  /** Optional caller-selected output ceiling; omission delegates to the model. */
+  /** The model's output limit, as metadata only: it is never sent as a cap. */
   maxTokens?: number;
   headers?: Record<string, string>;
   compat?: ModelCompatConfig;

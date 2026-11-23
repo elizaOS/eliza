@@ -16,6 +16,7 @@ import {
   buildResolvedClient,
   confirmPreviewedRequest,
   describeSelection,
+  readParameters,
   requireNumber,
   requireString,
   resolveAccountSelection,
@@ -78,18 +79,25 @@ const EVENT_BY_ACTION: Record<
 
 function parseOp(value: unknown): GitHubPrOp | null {
   if (typeof value !== "string") return null;
-  return SUPPORTED_OPS.has(value as GitHubPrOp) ? (value as GitHubPrOp) : null;
+  const normalized = value.trim().toLowerCase();
+  return SUPPORTED_OPS.has(normalized as GitHubPrOp)
+    ? (normalized as GitHubPrOp)
+    : null;
 }
 
 function parseState(value: unknown): PRState {
-  return value === "closed" || value === "all" ? value : "open";
+  if (typeof value !== "string") return "open";
+  const normalized = value.trim().toLowerCase();
+  return normalized === "closed" || normalized === "all" ? normalized : "open";
 }
 
 function parseReviewAction(value: unknown): ReviewAction | null {
-  return value === "approve" ||
-    value === "request-changes" ||
-    value === "comment"
-    ? value
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase().replace(/_/g, "-");
+  return normalized === "approve" ||
+    normalized === "request-changes" ||
+    normalized === "comment"
+    ? (normalized as ReviewAction)
     : null;
 }
 
@@ -406,7 +414,8 @@ export const prOpAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<GitHubActionResult<GitHubPrOpResult>> => {
-    const op = parseOp(options?.op);
+    const params = readParameters(options);
+    const op = parseOp(params.op ?? params.subaction);
     if (!op) {
       const err = "GITHUB_PR_OP requires op (list|review)";
       await callback?.({ text: err });
@@ -415,8 +424,8 @@ export const prOpAction: Action = {
 
     try {
       return op === "list"
-        ? await runList(runtime, options, callback)
-        : await runReview(runtime, message, options, callback);
+        ? await runList(runtime, params, callback)
+        : await runReview(runtime, message, params, callback);
     } catch (err) {
       const rl = inspectRateLimit(err);
       const message = rl.isRateLimited

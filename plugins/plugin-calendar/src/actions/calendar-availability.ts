@@ -16,6 +16,10 @@ import {
   stringToUuid,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import {
+  ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_ID,
+} from "../internal/eliza-calendar.js";
 import { parseExplicitLocalDate } from "../internal/request-time.js";
 import {
   addDaysToLocalDate,
@@ -23,6 +27,7 @@ import {
   calendarRangeFitsLocalDays,
   getZonedDateParts,
 } from "../internal/time.js";
+import { boundCalendarReadSource } from "../search-filter-evidence.js";
 import { evaluateCalendarAvailability } from "../service/availability.js";
 import {
   feedSourcesForAvailability,
@@ -69,7 +74,10 @@ export function asksOnlyAboutTomorrowMorning(
     !/\b(?:morning|afternoon|evening|tonight|night|noon|midday|lunch(?:time)?|all\s+day|whole\s+day|full\s+day|rest\s+of\s+the\s+day|week)\b/i.test(
       otherPeriods,
     ) &&
-    !/\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*p\.?\s*m\b/i.test(otherPeriods)
+    // An afternoon clock time: 1-12 pm, 12:01-12:59 without "am", or 13:00-23:59.
+    !/\b(?:(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*p\.?\s*m|12:(?:0[1-9]|[1-5]\d)(?!\s*a\.?\s*m)|(?:1[3-9]|2[0-3]):[0-5]\d)\b/i.test(
+      otherPeriods,
+    )
   );
 }
 
@@ -119,7 +127,7 @@ export function calendarAvailabilityActions(
         {
           name: "grantId",
           description:
-            "Exact connected grant from CALENDAR_SOURCES when the user named a source. Pair with calendarId.",
+            "For built-in Calendar use eliza-calendar and primary. For a connected calendar, use its exact grant and calendar IDs from CALENDAR_SOURCES.",
           schema: { type: "string" },
         },
         {
@@ -169,15 +177,39 @@ export function calendarAvailabilityActions(
           grantId,
           calendarId,
         } = isObjectRecord(params) ? params : {};
-        const selectedSource =
+        const requestedSource =
           typeof grantId === "string" &&
           grantId.trim() &&
           typeof calendarId === "string" &&
           calendarId.trim()
             ? { grantId, calendarId }
             : undefined;
+        const scope = boundCalendarReadSource(
+          getStreamingContext()?.actionConstraints,
+          message,
+          String(runtime.agentId),
+          operation,
+        );
         if (
-          (grantId !== undefined || calendarId !== undefined) &&
+          scope === "builtin" &&
+          grantId !== undefined &&
+          grantId !== ELIZA_CALENDAR_GRANT_ID
+        )
+          return unavailable(
+            "CALENDAR_SOURCE_CONFLICT",
+            "The selected source disagrees with the requested built-in Calendar.",
+          );
+        const selectedSource =
+          scope === "builtin" || grantId === ELIZA_CALENDAR_GRANT_ID
+            ? {
+                grantId: ELIZA_CALENDAR_GRANT_ID,
+                calendarId: ELIZA_CALENDAR_ID,
+              }
+            : requestedSource;
+        if (
+          (scope === "explicit" ||
+            grantId !== undefined ||
+            calendarId !== undefined) &&
           !selectedSource
         )
           return unavailable(
@@ -319,6 +351,39 @@ export function calendarAvailabilityActions(
           resource: receipt.resource,
           observedAt: receipt.observedAt,
         };
+        const slots =
+          propose && typeof durationMinutes === "number"
+            ? findCalendarFreeSlots({
+                range,
+                timeZone,
+                sources,
+                durationMs: durationMinutes * 60_000,
+              }).map((slot) => ({
+                startAt: slot.start,
+                endAt: slot.end,
+                durationMinutes,
+                timeZone,
+              }))
+            : undefined;
+        let slotReply: string | undefined;
+        if (slots?.length) {
+          const formatter = new Intl.DateTimeFormat("en-US", {
+            timeZone,
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            timeZoneName: "short",
+          });
+          slotReply = new Intl.ListFormat("en-US", {
+            type: "conjunction",
+          }).format(
+            slots.map(({ startAt, endAt }) =>
+              formatter.formatRange(new Date(startAt), new Date(endAt)),
+            ),
+          );
+        }
         const effect = {
           ...snapshot,
           receiptId: stringToUuid(
@@ -355,22 +420,21 @@ export function calendarAvailabilityActions(
             windowStart: range.start,
             windowEnd: range.end,
             timeZone,
-            ...(propose && typeof durationMinutes === "number"
+            ...(slots
               ? {
                   durationMinutes,
                   availabilityEvidence:
                     "Slots are quarter-hour-aligned suggestions from this exact snapshot. An empty list does not rule out an off-grid time.",
-                  slots: findCalendarFreeSlots({
-                    range,
-                    timeZone,
-                    sources,
-                    durationMs: durationMinutes * 60_000,
-                  }).map((slot) => ({
-                    startAt: slot.start,
-                    endAt: slot.end,
-                    durationMinutes,
-                    timeZone,
-                  })),
+                  slots,
+                  ...(slotReply
+                    ? {
+                        replyContext: {
+                          domain: "calendar",
+                          scenario: "propose_times",
+                          userFacingFacts: `I found these ${durationMinutes}-minute openings. ${slotReply}.`,
+                        },
+                      }
+                    : {}),
                 }
               : {
                   isFree: evaluation.conflicts.length === 0,

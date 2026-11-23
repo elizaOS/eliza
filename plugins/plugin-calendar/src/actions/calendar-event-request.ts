@@ -46,20 +46,39 @@ const DELETE_EVENT = new RegExp(
   `${COURTESY}${DELETE_VERB}\\s+${DETERMINER}${DESCRIBING}${EVENT_NOUN}\\b(.*)$`,
   "isu",
 );
-// "take v613 check off my calendar", "remove lunch from the calendar".
-const DELETE_FROM_CALENDAR = new RegExp(
-  `${COURTESY}(?:delete|remove|take|clear|drop)\\s+(\\S[\\s\\S]*?)\\s+(?:off|from|out\\s+of)\\s+(?:my|the|our)\\s+calendar[.!?]*$`,
-  "iu",
-);
-const DAY = String.raw`(?:today|tonight|tomorrow|(?:this|next)\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))`;
+const MONTH = String.raw`(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?`;
+const ORDINAL = String.raw`\d{1,2}(?:st|nd|rd|th)?`;
+// A calendar date: "November 25", "Nov 25th, 2026", "the 25th of November",
+// "11/25", "2026-11-25".
+const DATE = String.raw`(?:${MONTH}\s+${ORDINAL}(?:,?\s+\d{4})?|(?:the\s+)?${ORDINAL}\s+(?:of\s+)?${MONTH}(?:,?\s+\d{4})?|the\s+\d{1,2}(?:st|nd|rd|th)|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|\d{4}-\d{2}-\d{2})`;
+const DAY = String.raw`(?:today|tonight|tomorrow|(?:this|next)\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+)?(?:(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:,?\s+${DATE})?|${DATE}))`;
 // A written clock time: "4pm", "4:30", "10 a.m.", "noon". A bare number
 // ("change my status to 5") is not one.
 const CLOCK = String.raw`(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)|\d{1,2}:\d{2}|noon|midnight)`;
 const WHEN = String.raw`(?:${DAY}(?:\s+(?:at\s+)?${CLOCK})?|${CLOCK}(?:\s+${DAY})?)`;
-// "move v613 check to 4pm", "reschedule the standup to tomorrow at 10".
+// "take v613 check off my calendar", "remove lunch from the calendar",
+// "remove v613 check from my calendar tomorrow".
+const DELETE_FROM_CALENDAR = new RegExp(
+  `${COURTESY}(?:delete|remove|take|clear|drop)\\s+(\\S[\\s\\S]*?)\\s+(?:off|from|out\\s+of)\\s+(?:my|the|our)\\s+calendar(?:\\s+(?:for\\s+)?${WHEN})?[.!?]*$`,
+  "iu",
+);
+// "move v613 check to 4pm", "reschedule the standup to tomorrow at 10",
+// "move v613 check to November 25 at 2pm".
 const MOVE_EVENT = new RegExp(
   `${COURTESY}(?:move|reschedule|push(?:\\s+back)?|shift|bump|change)\\s+(\\S[\\s\\S]*?)\\s+(?:to|until|till|for)\\s+${WHEN}(?:,?\\s+(?:please|now|instead))?[.!?]*$`,
   "iu",
+);
+const AMOUNT = String.raw`(?:(?:an?|one|two|three|four|five|six|half\s+an?|a\s+couple\s+of|\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h|minutes?|mins?|days?|weeks?)|half\s+an\s+hour)`;
+// "push v613 check back an hour", "move v613 check up 30 minutes",
+// "bump the standup a day later".
+const SHIFT_EVENT = new RegExp(
+  `${COURTESY}(?:move|reschedule|push|shift|bump|delay|postpone)\\s+(\\S[\\s\\S]*?)\\s+(?:(?:back|forward|up|ahead|out|later|earlier)\\s+(?:by\\s+)?${AMOUNT}(?:\\s+(?:later|earlier))?|(?:by\\s+)?${AMOUNT}\\s+(?:later|earlier|back|forward|ahead|out))(?:,?\\s+(?:please|now|instead))?[.!?]*$`,
+  "iu",
+);
+// "rename the event v613 check to v614 check", "edit my dentist appointment".
+const EDIT_EVENT = new RegExp(
+  `${COURTESY}(?:rename|update|edit|change|modify|retitle)\\s+${DETERMINER}${DESCRIBING}${EVENT_NOUN}\\b(.*)$`,
+  "isu",
 );
 // Things other than events that the same verbs act on in this phone's apps.
 const NOT_AN_EVENT =
@@ -76,8 +95,10 @@ const IN_OTHER_RECORD =
   /\b(?:from|in|into|to|on|onto|off)\s+(?:my|the|our|a|an|this|that)\s+(?:[\p{L}\p{N}'’-]+\s+)?(?:notes?|files?|folders?|reminders?|alarms?|timers?|contacts?|tabs?|photos?|albums?|messages?|texts?|emails?|tasks?|to-?dos?|workflows?|lists?|playlists?)\b/iu;
 // A pronoun ("move it to 4pm") names its target only through the turn's
 // history, which the referential effect reroute owns; the target may be an
-// alarm, a reminder or a workflow rather than an event.
-const PRONOUN = /^(?:it|that|this|them|those|these|that\s+one|this\s+one)$/iu;
+// alarm, a reminder or a workflow rather than an event. A particle after it
+// ("push it back to 5pm", "move it up to 2pm") leaves it a pronoun.
+const PRONOUN =
+  /^(?:it|that|this|them|those|these|that\s+one|this\s+one)(?:\s+(?:all|back|up|forward|ahead|over|out))?$/iu;
 // Non-event settings the same move/change verbs set to a time.
 const NOT_AN_EVENT_TIME =
   /\b(?:status|clocks?|time\s*zone|timezone|thermostat|temperature|wake[\s-]?up|bedtime|sleep|quiet\s+hours|do\s+not\s+disturb|dnd|focus|schedule\s+send)\b/iu;
@@ -126,15 +147,18 @@ export function calendarEventRequest(
     subjectMatch(CREATE_ON_CALENDAR, request)
   )
     return "create";
-  const move = MOVE_EVENT.exec(request);
-  const subject = (move?.[1] ?? "").trim();
-  if (
-    move &&
-    !PRONOUN.test(subject) &&
-    !NOT_AN_EVENT.test(subject) &&
-    !NOT_AN_EVENT_TIME.test(subject)
-  )
-    return "update";
+  for (const pattern of [MOVE_EVENT, SHIFT_EVENT]) {
+    const move = pattern.exec(request);
+    const subject = (move?.[1] ?? "").trim();
+    if (
+      move &&
+      !PRONOUN.test(subject) &&
+      !NOT_AN_EVENT.test(subject) &&
+      !NOT_AN_EVENT_TIME.test(subject)
+    )
+      return "update";
+  }
+  if (eventMatch(EDIT_EVENT, request)) return "update";
   return;
 }
 
