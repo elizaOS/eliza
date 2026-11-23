@@ -437,7 +437,7 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   }))
 }, 120_000)
 
-it.live(`A long conversation sends the same history turn after turn, the exchanges a request's words recall follow its latest message, and the model finds by search what the window defers (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; ${planning}, "The model may search what this conversation said, and a windowed history asks it to search before it answers that something was not said"; spec/core/context.md, "A search of the conversation finds what it holds as written, else what best shares the words of the query")`, effect () => {
+it.live(`A long conversation sends the same history turn after turn, the exchanges a request's words recall follow its latest message, and the model finds by search what the window defers, or is told it is not in view where no search is offered (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; ${planning}, "The model may search what this conversation said, and a windowed history asks it to search before it answers that something was not said"; spec/core/context.md, "A search of the conversation finds what it holds as written, else what best shares the words of the query")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true, allowed: ["REPLY", "IGNORE", "NONE", "SEARCH_CONVERSATION"] },
@@ -473,6 +473,14 @@ it.live(`A long conversation sends the same history turn after turn, the exchang
   const second = turnFor(boilerAsk)
   const searching = turnFor(wifiAsk)
   const searched = (bodies.at(-1)?.messages ?? []).filter(({ role }) => role === "tool").map(({ content }) => textOf(content))
+  const unsearching = try cloudAgent(cloud)
+  const plain = try conversation(unsearching)
+  try Effect.sync(() => cloud.script(text("Hello."), text("That part of our conversation is not in view.")))
+  const plainOpened = replyOf(try send(unsearching, plain.id, { text: "Hi" }))
+  try host("long history without search", () => seedHistory(unsearching.agent.runtime, plainOpened.userMessageId as UUID, exchanges))
+  try send(unsearching, plain.id, { text: wifiAsk })
+  const unsearched = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { tools?: unknown; messages?: { role: string; content?: unknown }[] }).at(-1)
+  const unsearchedNotice = textOf(unsearched?.messages?.at(-1)?.content)
   const before = (messages: readonly { content?: unknown }[]) => messages.slice(0, -1).map(({ content }) => textOf(content)).join("\n")
   try Effect.try(() => assert.deepStrictEqual({
     windowed: first.length < 60,
@@ -487,6 +495,7 @@ it.live(`A long conversation sends the same history turn after turn, the exchang
     deferred: [before(searching).includes(wifi[0]), textOf(searching.at(-1)?.content).includes(wifi[0])],
     searched: searched.map((told) => JSON.parse(told) as { text?: string; data?: { messages?: unknown } }).map(({ text: said, data }) => [said?.includes("as written; these best share its words") === true, data?.messages]),
     answered: found.text,
+    withoutSearch: [JSON.stringify(unsearched?.tools ?? []).includes("SEARCH_CONVERSATION"), unsearchedNotice.includes("read first through"), unsearchedNotice.includes("is not in view rather than guessing")],
   }, {
     windowed: true,
     samePrefix: true,
@@ -503,6 +512,7 @@ it.live(`A long conversation sends the same history turn after turn, the exchang
       [false, [{ role: "user", text: garage[0] }, { role: "assistant", text: garage[1] }]],
     ],
     answered: "The cabin wifi password is fernhill-42.",
+    withoutSearch: [false, false, true],
   }))
 }, 240_000)
 
