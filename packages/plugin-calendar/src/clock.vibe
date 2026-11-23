@@ -184,7 +184,7 @@ export function createYear(text: string, today: LocalDate, extractedYear: number
   return createStartYear(cue, statedYear, trailingYear, today.year, namesDate, extractedYear)
 }
 
-export function statedYearCreate(fields: CalendarEventFields, text: string, now: Date): { readonly fields: CalendarEventFields; readonly move: (instant: string) => string } {
+export function statedYearCreate(fields: CalendarEventFields, text: string, now: Date): { readonly fields: CalendarEventFields; readonly move: (instant: string) => string } | undefined {
   const zone = fields.isAllDay ? "UTC" : fields.timeZone
   const start = getZonedDateParts(new Date(fields.startAt), zone)
   const today = getZonedDateParts(now, fields.timeZone)
@@ -194,6 +194,10 @@ export function statedYearCreate(fields: CalendarEventFields, text: string, now:
     return parts === undefined ? instant : buildUtcDateFromLocalParts(zone, { ...parts, year: parts.year + years })?.toISOString() ?? instant
   }
   const startAt = move(fields.startAt)
+  if (start !== undefined && years !== 0) {
+    const shifted = getZonedDateParts(new Date(startAt), zone)
+    if (shifted?.year !== start.year + years || shifted.month !== start.month || shifted.day !== start.day) return undefined
+  }
   return { fields: { ...fields, startAt, endAt: new Date(Date.parse(startAt) + Date.parse(fields.endAt) - Date.parse(fields.startAt)).toISOString() }, move }
 }
 

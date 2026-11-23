@@ -169,6 +169,12 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   assert.deepStrictEqual(try said("lunch-2", "Add lunch next Friday on March 4"), [false, "past_start", "2026-03-04T20:00:00.000Z", "2026-03-04T21:30:00.000Z"])
   assert.deepStrictEqual(try said("lunch-3", "Add lunch next March 4"), [true, null, "2027-03-04T20:00:00.000Z", "2027-03-04T21:30:00.000Z"])
   assert.deepStrictEqual(try said("lunch-4", "Add lunch tomorrow at noon"), [true, null, "2031-03-04T20:00:00.000Z", "2031-03-04T21:30:00.000Z"])
+  const leapDay = { ...dentist, title: "Leap appointment", startAt: "2028-02-29T12:00:00Z", endAt: "2028-02-29T13:00:00Z", timeZone: "UTC" }
+  const missingLeapDay = try runCalendarAction(host, { ...ask, id: "leap-1", text: "Add Leap appointment on February 29, 2027" }, leapDay)
+  const validLeapDay = try runCalendarAction(host, { ...ask, id: "leap-2", text: "Add Leap appointment on February 29, 2028" }, leapDay)
+  const leapAppointments = try runCalendarAction(host, ask, { subaction: "search_events", query: leapDay.title, timeMin: "2027-02-28T00:00:00Z", timeMax: "2028-03-02T00:00:00Z" })
+  assert.deepStrictEqual([missingLeapDay.success, missingLeapDay.effectReceipts?.length ?? 0, validLeapDay.success, at(validLeapDay.data, "event", "startAt"), at(leapAppointments.data, "events", "length")],
+    [false, 0, true, "2028-02-29T12:00:00.000Z", 1])
   const checkups = effect () => at((try runCalendarAction(host, ask, { subaction: "search_events", query: "Checkup", ...march })).data, "events", "length")
   const preview = try runCalendarAction(host, { ...ask, id: "message-review" }, { ...dentist, title: "Checkup", reviewBeforeSaving: true })
   assert.deepStrictEqual([preview.success, at(preview.data, "approvalRequestId"), at(preview.data, "change", "source", "provider"), try checkups()], [true, filed[0]?.id, "eliza", 0])

@@ -408,7 +408,9 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
         isAllDay: parameters.isAllDay ?? false, timeZone: createZone, ...(guests.attendees === undefined ? {} : { attendees: guests.attendees }),
       })
       if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return failed(subaction, "A new event needs a title and a start before its end.")
-      const { fields: asked, move } = statedYearCreate(fields.value, askTextOf(ask), new Date(now))
+      const timed = statedYearCreate(fields.value, askTextOf(ask), new Date(now))
+      if (timed === undefined) return failed(subaction, "That date doesn't exist in the year you named.")
+      const { fields: asked, move } = timed
       const recurrence = parameters.repeat === undefined ? Option.some(null) : decodeRecurrence({ rule: parameters.repeat,
         ...(parameters.repeatUntil === undefined ? {} : { until: move(canonical(parameters.repeatUntil)) }),
         ...(parameters.skipStarts === undefined ? {} : { excluded: parameters.skipStarts.map((start) => move(canonical(start))) }) })
