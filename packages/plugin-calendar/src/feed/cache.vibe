@@ -24,11 +24,11 @@ export interface CacheWrite {
   readonly conflicts: readonly string[]
 }
 
-type CacheIdentityField = "agentId" | "provider" | "side" | "grantId" | "calendarId" | "externalId" | "connectorAccountId"
+type IdentityField = "agentId" | "provider" | "side" | "grantId" | "calendarId" | "externalId" | "connectorAccountId"
 const sameField: CacheIdentity = { agent: 0, provider: 0, side: 0, grant: 0, calendar: 0, external: 0, account: 0 }
 
 export function cacheWriteAllowed(cached: CalendarEvent | undefined, candidate: CalendarEvent): boolean {
-  const differs = (field: CacheIdentityField) => cached !== undefined && cached[field] !== candidate[field] ? 1 : 0
+  const differs = (field: IdentityField) => cached !== undefined && cached[field] !== candidate[field] ? 1 : 0
   return cacheWriteResult({ present: cached !== undefined, identity: sameField, payload: 0 }, {
     agent: differs("agentId"), provider: differs("provider"), side: differs("side"), grant: differs("grantId"),
     calendar: differs("calendarId"), external: differs("externalId"), account: differs("connectorAccountId"),

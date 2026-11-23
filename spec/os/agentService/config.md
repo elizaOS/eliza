@@ -187,7 +187,7 @@ pure val providerVersionValues = Set(0, 1, 2)
 For a launch the service judged ready and an admitted frame, the agent
 returns its credential error when the backend needs a credential and the
 frame lacks one that fits. This includes a missing credential and a provider
-key longer than the own-key slot. Otherwise the agent admits the launch.
+key longer than the own-key slot’s 1,024-character limit. Otherwise the agent admits the launch.
 An admitted frame never makes the agent refuse a ready launch as a
 configuration error.
 

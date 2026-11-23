@@ -133,9 +133,9 @@ pure def lawAcceptedConnectClearsRefusals(w: HealthWatch, child: JournaledChild,
 
 ### The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s
 
-The lifecycle restarts every crash and resets the count after
-`stableRunMs` of running; the table's tail caps any longer count at 60 s,
-so an agent that keeps crashing is restarted at most once a minute.
+The lifecycle restarts after every crash and resets the count after
+`stableRunMs` of running; the table's tail caps every longer count at 60 s,
+so a crash loop starts the agent at most once a minute.
 
 ```quint
 pure val stableRunMs = 300000

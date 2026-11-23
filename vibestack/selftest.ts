@@ -667,7 +667,8 @@ export const driver = {
     const prepare = (project: string, names = selected) => withFormalCache(cache, () => prepareSimulationReceipts(project, readSpecs(project), names, seedParent));
     const invalid = ruleSpec("pure val bad = unknownValue");
     const first = scratch({ ...sources, "spec/untouched.md": invalid });
-    const { results: cold, seedDirectory: coldSeed } = await prepare(first);
+    const { results: cold, seedDirectory: coldSeed, partialDirectory: coldPartial } = await prepare(first);
+    assert.equal(coldPartial, undefined);
     assert.deepEqual([...new Set(cold.map((row) => row.where))], ["spec/other.md", "spec/counter.md"]);
     assert.ok(cold.every((row) => row.ok) && cold.some((row) => row.stage === "sometimes"), JSON.stringify(cold));
     assert.ok(cold.some((row) => row.stage === "replay" && row.where === "spec/counter.md"), JSON.stringify(cold));
@@ -689,11 +690,26 @@ export const driver = {
     assert.ok(!fs.existsSync(path.join(same, "gen/traces")), "ordinary check reused every simulation action");
     assert.ok(receipts.every((file) => fs.existsSync(path.join(cache, file))));
 
-    const changed = scratch({ ...sources, "spec/base.md": sources["spec/base.md"].replace("= 2", "= -1") });
-    const rejected = await prepare(changed, ["counter"]);
-    assert.ok(rejected.results.some((row) => row.stage === "always" && !row.ok && row.detail.includes("initial")), JSON.stringify(rejected));
+    const changedSources = { ...sources, "spec/base.md": sources["spec/base.md"].replace("= 2", "= -1") };
+    const changed = scratch(changedSources);
+    const rejected = await prepare(changed);
+    assert.ok(rejected.results.some((row) => row.where === "spec/counter.md" && row.stage === "always" && !row.ok && row.detail.includes("initial")), JSON.stringify(rejected));
+    assert.ok(rejected.results.some((row) => row.where === "spec/other.md" && row.stage === "replay" && row.ok), JSON.stringify(rejected));
     assert.equal(rejected.seedDirectory, undefined);
-    assert.equal(fs.readdirSync(seedParent).length, 1);
+    const partial = rejected.partialDirectory;
+    assert.ok(partial);
+    const partialNames = fs.readdirSync(partial);
+    assert.deepEqual([partialNames.filter(isActionEntry).length, partialNames.filter((name) => name.startsWith("simulate-")).length, partialNames.length], [4, 2, 6]);
+    assert.equal(fs.readdirSync(seedParent).length, 2);
+    fs.rmSync(changed, { recursive: true, force: true });
+
+    const mixed = scratch(changedSources);
+    fs.cpSync(partial, path.join(mixed, ".spec-cache"), { recursive: true });
+    const received = await run(mixed);
+    assert.deepEqual(received.results.filter(({ stage }) => ["always", "sometimes", "replay"].includes(stage)),
+      [...rejected.results].sort((a, b) => a.where!.localeCompare(b.where!)));
+    assert.ok(received.failed.includes("always"), received.text);
+    assert.ok(!fs.existsSync(path.join(mixed, "gen/traces")), "the ordinary check reused the mixed simulation receipts");
 
     const typecheck = names.find(isActionEntry);
     assert.ok(typecheck);

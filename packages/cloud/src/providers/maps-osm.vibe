@@ -1,6 +1,6 @@
 // spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { billingOf, upstreamBodyCap, upstreamTimeout } from "../../gen/cloud__services__maps.effect.vibe"
+import { billingOf, unclearAnswerIsInvalid, upstreamBodyCap, upstreamTimeout } from "../../gen/cloud__services__maps.effect.vibe"
 import type { MapsSettings } from "../profile/profile.schema.ts"
 import type { Coordinate, Maneuver, MapsPlace, MapsPlaceResponse, MapsRoute, MapsPlacesResponse, MapsRoutesResponse, PlaceDetailsRequest, ReverseRequest, RoutesRequest, TextSearchRequest } from "../services/maps.schema.ts"
 import type { MapsProvider, MapsReply, ProviderRefusal } from "./maps.vibe"
@@ -239,9 +239,9 @@ function reply<A, B>(outcome: Call, read: (json: unknown, status: number) => Par
     case "rejected":
       return { kind: "refused", code: "ProviderUnavailable", observedMicros: 0 }
     case "unclear":
-      return { kind: "unknown", cause: `status ${outcome.status}` }
+      return { kind: "unknown", cause: `status ${outcome.status}`, code: unclearAnswerIsInvalid(outcome.status) ? "ProviderInvalidResponse" : "ProviderUnavailable" }
     case "lost":
-      return { kind: "unknown", cause: outcome.cause }
+      return { kind: "unknown", cause: outcome.cause, code: "ProviderUnavailable" }
   }
 }
 

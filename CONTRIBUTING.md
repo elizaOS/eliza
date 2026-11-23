@@ -116,7 +116,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `70d6024`](https://github.com/lalalune/vibestack/commit/70d60241dfa56d71faa6ed2a85dcda48358e60aa).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `03ed430`](https://github.com/lalalune/vibestack/commit/03ed43079689961c290d2548e850f6c0c0266a7d).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -307,12 +307,13 @@ actions to verify the whole project.
 For a transfer between trusted runners, call `prepareSimulationReceipts` with
 the same three arguments and an existing private scratch directory as the
 fourth. It returns `results` and, when all requested simulations passed and
-their receipts are complete, `seedDirectory`. Transfer only the files in that
-returned directory. They hold the model typechecks and simulation results the
-ordinary check can reuse. Copy them into the receiving project's `.spec-cache`
-before the full normal check. Match the checkout and toolchain, and keep the
-seed within the same trust boundary as other spec cache entries. The check
-computes its own keys and recomputes a missing or unreadable result.
+their receipts are complete, `seedDirectory`. Otherwise `partialDirectory`
+can hold the certified model typechecks and simulation results available from
+the run, including reproducible failures. Transfer only the files in the
+returned directory. Copy them into the receiving project's `.spec-cache`
+before the full normal check and keep them within the same trust boundary as
+other spec cache entries. The check computes its own keys and recomputes a
+missing or unreadable result.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
@@ -468,7 +469,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each simulate the specs assigned by file hash, starting from the spec cache `verify` saved. A complete shard transfers its simulation and imported typecheck receipts. An incomplete shard transfers the new simulation aggregates it produced and reports its failures. When the shards finish, `verify` keeps its restored receipts, imports missing keys on which the shards agree, computes the rest, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each simulate the specs assigned by file hash, starting from the spec cache `verify` saved. A shard fills missing receipts from an earlier run of its layout and lockfile. When it creates simulation aggregates, it saves its certified typechecks and simulation results for later runs, including reproducible failures. It transfers the available receipts to verification and reports failures. When the shards finish, `verify` keeps its restored receipts, imports missing keys on which the shards agree, computes the rest, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 

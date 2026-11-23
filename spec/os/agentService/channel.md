@@ -10,7 +10,9 @@ checked by the imported route gate (`spec/agent/access/routes.md`). An
 admitted call goes to the agent's owner-only socket as one frame of the
 agent's transport (`http_request`, `http_request_stream` or
 `events_subscribe`, one call per connection), with the launch's root token
-attached by the service.
+attached by the service. The renderer's `request` and `requestStream` may
+name request headers, which cross only as the runtime client carries them
+(`spec/agent/client/runtimeClient.md`); native callers name none.
 
 The channel holds no lifecycle state of its own: the shell forwards the
 service's launches (`spec/os/agentService/lifecycle.md`) as `open` when a
@@ -71,27 +73,27 @@ pure def alwaysTokenOnlyWhileServing(s: AgentChannel): bool = s.launch == NotSer
 
 The checks run in this order: no serving launch is `NotReady`; an id
 already pending is `IdInUse`; then the caller kind's gate decides, and its
-`RouteRefused` and `TooLarge` (a body over the route's limit) are passed on.
-A refused call opens no connection. A streamed request matches only a
-streaming route and a plain one only a route that does not stream; that is
-the gate's rule.
+`RouteRefused` and `TooLarge` (a body over the route's limit) are passed on;
+last, the call's headers decide (next rule). A refused call opens no
+connection. A streamed request matches only a streaming route and a plain one
+only a route that does not stream; that is the gate's rule.
 
 ```quint
 pure def launchEpoch(launch: Launch): int = match launch { | Serving(l) => l.epoch | NotServing => 0 }
 pure def servingEpoch(s: AgentChannel): int = launchEpoch(s.launch)
 pure def idPending(s: AgentChannel, id: str): bool = s.pending.some(e => e.id == id)
-pure def refusalOf(s: AgentChannel, kind: CallerKind, id: str, request: Routes::Request): List[FailCode] = {
+pure def refusalOf(s: AgentChannel, kind: CallerKind, id: str, request: Routes::Request, headers: List[RC::RequestHeader]): List[FailCode] = {
   val a = Routes::admission(Routes::served(gateOf(kind, s).table), request)
   if (s.launch == NotServing) List(NotReady)
   else if (id == "" or idPending(s, id)) List(IdInUse)
   else if (a == Routes::RouteRefused) List(RouteRefused)
   else if (a == Routes::TooLarge) List(TooLarge)
-  else List()
+  else headerRefusal(headers)
 }
 pure def admitEntry(id: str, owner: str, mode: Mode, s: AgentChannel): ChannelStep =
   emit(List(Accepted({ id: id, seq: s.nextSeq })), { ...s, nextSeq: s.nextSeq + 1, pending: s.pending.append({ seq: s.nextSeq, id: id, owner: owner, mode: mode, epoch: servingEpoch(s), delivered: 0 }) })
-pure def ask(s: AgentChannel, kind: CallerKind, owner: str, id: str, request: Routes::Request): ChannelStep = {
-  val refused = refusalOf(s, kind, id, request)
+pure def ask(s: AgentChannel, kind: CallerKind, owner: str, id: str, request: Routes::Request, headers: List[RC::RequestHeader]): ChannelStep = {
+  val refused = refusalOf(s, kind, id, request, headers)
   if (refused.length() > 0) emit(List(Refused({ id: id, code: refused.nthOr(0, NotReady) })), s)
   else admitEntry(id, owner, if (request.delivery == Routes::Streamed) Stream else Plain, s)
 }
@@ -99,6 +101,35 @@ pure val idValues = Set("call1", "call2", "call3")
 pure val ownerValues = Set("screen1", "screen2")
 pure def stepRefusalOpensNothing(before: AgentChannel, via: str, after: AgentChannel, out: List[ChannelOut]): bool =
   out.some(o => match o { | Refused(r) => true | _ => false }) implies (after.pending == before.pending and after.nextSeq == before.nextSeq)
+```
+
+### Only the device headers and client id the runtime client carries cross the channel
+
+The service classifies a call's headers by the runtime client's rule: a call
+naming a header the client would not carry (a credential such as
+`x-eliza-device-token`, an `x-eliza-device-key` whose value is not 64
+lowercase hexadecimal digits, an authorization, cookie or hop-by-hop header,
+any name outside `x-eliza-device-*` and `x-elizaos-client-id`, a value that
+is not printable ASCII or a name given twice) is `RouteRefused`, and one with
+more headers or bytes than the client's bounds is `TooLarge`. A well-formed
+`x-eliza-device-key` crosses: this channel is an owner-only boundary on the
+same device, where the root token proves the owner but not which enrolled
+installation is speaking, and enrollment is keyed per installation. An
+admitted call's
+headers reach the agent's socket with lowercase names, beside the
+`authorization` and content type the service sets, which no carried name can
+replace; the agent's routes read them as they read headers over HTTP.
+
+```quint
+import runtimeClient as RC from "../../agent/client/runtimeClient"
+pure def headerRefusal(headers: List[RC::RequestHeader]): List[FailCode] =
+  if (not(RC::headersCross(headers))) List(RouteRefused) else if (not(RC::headersFit(headers))) List(TooLarge) else List()
+pure def lawWithheldHeadersAreRefused(headers: List[RC::RequestHeader]): bool =
+  headers.some(h => h.name == RC::DeviceCredential or h.name == RC::OtherHeader or not(h.printable)) implies headerRefusal(headers) == List(RouteRefused)
+pure def lawOnlyCarriedHeadersAreAdmitted(headers: List[RC::RequestHeader]): bool =
+  headerRefusal(headers).length() == 0 iff RC::headersCarried(headers)
+pure def lawAWellFormedEnrollmentKeyCrosses(headers: List[RC::RequestHeader]): bool =
+  (headers.length() == 1 and headers.every(h => h.name == RC::EnrollmentKey and h.printable and h.bytes <= RC::headerBytesLimit)) implies headerRefusal(headers) == List()
 ```
 
 ### An admitted call is bound to the serving launch and gets a sequence number never used before

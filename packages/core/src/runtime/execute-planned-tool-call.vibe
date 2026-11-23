@@ -1,4 +1,4 @@
-// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"; spec/core/secretSession.md, "At the action boundary pseudonyms are restored before references, and local name recognition never reads this session's references"
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"; spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"
 import { errorText } from "../utils/errors.vibe"
 import { randomUuid } from "../utils/uuid.vibe"
 import {
@@ -825,7 +825,7 @@ effect function admitHandler(
         failureResult(
           action.name,
           stringifyError(error),
-          { error },
+          { error, executionStatus: "not_started" },
           {
             kind: "handler_error",
             boundary: "handler",
@@ -840,8 +840,8 @@ effect function admitHandler(
       return early(
         failureResult(
           action.name,
-          `Action ${action.name} is not available for the current state`,
-          {},
+          `Action ${action.name} is not available for the current state, so it did not run: answer without it or use another offered action`,
+          { executionStatus: "not_started" },
           {
             kind: "missing_capability",
             boundary: "capability",

@@ -55,9 +55,9 @@ export function recordingFetch(answer: unknown): RecordingFetch {
   const authorizations: Array<string | null> = [];
   return {
     authorizations,
-    fetch: (input, init) => new Promise((resolve) => {
+    fetch: (input, init) => {
       authorizations.push(new Request(input, init).headers.get("authorization"));
-      resolve(Response.json(answer));
-    }),
+      return Promise.resolve(Response.json(answer));
+    },
   };
 }

@@ -66,7 +66,7 @@ module android {
       restart: status,
       request: async (route) => {
         await admit(phone.routes, route)
-        return wire({ status: 200, data: { ready: true, echo: route.body ?? null } })
+        return wire({ status: 200, data: { ready: true, echo: route.body ?? null, ...(route.headers === undefined ? {} : { headers: route.headers }) } })
       },
       requestStream: async (route) => {
         await admit(phone.streams, route)
@@ -104,11 +104,12 @@ effect function settle() {
   try sleep("10 millis")
 }
 
-it.live("Ask the agent only on the routes my app allows, and read its status without the plugin (spec/os/agentService/channel.md, \"Story: Ask the agent only on the routes my app allows\"; spec/os/agentService/channel.md, \"A call is refused before any I/O unless the agent is serving, its id is free and its list admits it\"; spec/os/agentService/channel.md, \"The launch's root token stays inside the service\")", () => effect {
+it.live("Ask the agent only on the routes my app allows, and read its status without the plugin (spec/os/agentService/channel.md, \"Story: Ask the agent only on the routes my app allows\"; spec/os/agentService/channel.md, \"A call is refused before any I/O unless the agent is serving, its id is free and its list admits it\"; spec/os/agentService/channel.md, \"The launch's root token stays inside the service\"; spec/os/agentService/channel.md, \"Only the device headers and client id the runtime client carries cross the channel\")", () => effect {
   const phone = device()
   const agent = agentClient(androidAgent(phone))
   const running = try promise(() => agent.getStatus())
   const health = try promise(() => agent.request({ method: "GET", path: "/api/health" }))
+  const described = try promise(() => agent.request({ method: "GET", path: "/api/health", headers: { "x-eliza-device-capabilities": "notes.query.v1", "x-elizaos-client-id": "screen-1" } }))
   const refused = try refusal(() => agent.request({ method: "DELETE", path: "/api/agent/state" }))
   const streamOnPlain = try refusal(() => agent.request({ method: "POST", path: "/api/conversations/messages/stream" }))
   phone.status = { available: true, state: "failed", failure: "storage", error: "store opened under another account", epoch: 4, requestBodyLimit: 1048576 }
@@ -121,10 +122,11 @@ it.live("Ask the agent only on the routes my app allows, and read its status wit
   const startMissing = try refusal(() => agent.start())
 
   try Effect.try(() => assert.deepStrictEqual(
-    { running, health, refused, streamOnPlain, failed, unnamed, review, missing, startMissing },
+    { running, health, described, refused, streamOnPlain, failed, unnamed, review, missing, startMissing },
     {
       running: { available: true, state: "running", epoch: 3, requestBodyLimit: 1048576 },
       health: { status: 200, data: { ready: true, echo: null } },
+      described: { status: 200, data: { ready: true, echo: null, headers: { "x-eliza-device-capabilities": "notes.query.v1", "x-elizaos-client-id": "screen-1" } } },
       refused: "rejected RouteRefused",
       streamOnPlain: "rejected RouteRefused",
       failed: { available: true, state: "failed", failure: "storage", error: "store opened under another account", epoch: 4, requestBodyLimit: 1048576 },
