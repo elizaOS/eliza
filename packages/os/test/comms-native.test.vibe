@@ -1,0 +1,21 @@
+// spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"
+import { assert, it } from "@effect/vitest"
+
+module node {
+  import { execFileSync } from "node:child_process"
+  import path from "node:path"
+  import { orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
+
+  const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+  const DELETION = "ai.eliza.plugins.actionjournal.deletion.DeferredDeletionTest"
+
+  export async function deletionJournal(): Promise<string> {
+    return execFileSync(java, ["-cp", await orgJsonAdapterClasspath(DELETION), DELETION], { encoding: "utf8", timeout: 120_000 }).trim()
+  }
+}
+import { deletionJournal } from node
+
+it.effect('The native journal keeps one winner between Undo and the provider, never replays a lost write, and settles a message, conversation, voicemail or contact through its own module (spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent")', effect () => {
+  const answer = try tryPromise(() => deletionJournal())
+  try Effect.try(() => assert.match(answer, /^\d+ assertions passed$/))
+}, 180_000)
