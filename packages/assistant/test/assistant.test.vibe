@@ -110,7 +110,7 @@ it.effect('A goal checks in on its cadence, a dismissed check-in stays gone, an 
   }
 })
 
-it.effect('To-dos change once per request, never on a guess between two items, and clear only after the owner confirms (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once")', effect () => {
+it.effect('To-dos change once per request, never on a guess between two items or on a near miss, and clear only after the owner confirms (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches")', effect () => {
   const seen = ports()
   provide portsLayer(seen) {
     try changeTodos({ op: "create", content: "buy milk" }, "t1", "add buy milk")
@@ -122,6 +122,13 @@ it.effect('To-dos change once per request, never on a guess between two items, a
     try equal([duplicate, ambiguous, byRef].map(outcomeOf).map(({ success, outcome }) => [success, outcome ?? null]), [[false, "duplicate"], [false, "ambiguous"], [false, "ambiguous"]])
     try changeTodos({ op: "create", content: "call mom" }, "t6", "add call mom")
     try changeTodos({ op: "complete", target: "call mom" }, "t7", "called mom")
+    const news = try changeTodos({ op: "create", content: "Read the news" }, "n1", "add read the news")
+    const notNews = try changeTodos({ op: "create", content: "Read the new" }, "n2", "add read the new")
+    try changeTodos({ op: "complete", target: "Read the new" }, "n3", "read the new one")
+    try changeTodos({ op: "create", content: "Pay electricity bill" }, "n4", "add pay electricity bill")
+    const swapped = try changeTodos({ op: "delete", target: "Pay water bill" }, "n5", "delete pay water bill")
+    try equal([news, notNews, swapped].map(outcomeOf).map(({ success, outcome }) => [success, outcome ?? null]), [[true, null], [true, null], [false, "not_found"]])
+    try equal((try currentTodos()).todos.slice(-3).map(({ content, todoStatus }) => [content, todoStatus]), [["Read the news", "TodoPending"], ["Read the new", "TodoCompleted"], ["Pay electricity bill", "TodoPending"]])
     const preview = try changeTodos({ op: "clear" }, "t8", "clear my list")
     try changeTodos({ op: "create", content: "water plants" }, "t9", "add water plants")
     const cleared = try changeTodos({ op: "clear" }, "t10", "yes")
