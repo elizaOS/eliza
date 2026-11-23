@@ -16,7 +16,7 @@ import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
 import { cacheCredentials, collectGarbage, isActionEntry, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
-import { precomputeSimulations } from "./formal.ts";
+import { precomputeSimulations, prepareSimulationReceipts } from "./formal.ts";
 import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
 import { filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
@@ -652,6 +652,7 @@ export const driver = {
 
   test("selected simulations warm the ordinary check in another project and reject failed inputs", async () => {
     const cache = path.join(scratch({}), "formal-cache");
+    const seedParent = scratch({});
     const sources = {
       "spec/base.md": ruleSpec("pure val limit = 2"),
       "spec/limit.md": ruleSpec('import base as B from "./base"\npure val top = B::limit'),
@@ -660,9 +661,10 @@ export const driver = {
     };
     const selected = ["other", "counter", "other"];
     const simulations = (project: string, names = selected) => withFormalCache(cache, () => precomputeSimulations(project, readSpecs(project), names));
+    const prepare = (project: string, names = selected) => withFormalCache(cache, () => prepareSimulationReceipts(project, readSpecs(project), names, seedParent));
     const invalid = ruleSpec("pure val bad = unknownValue");
     const first = scratch({ ...sources, "spec/untouched.md": invalid });
-    const cold = await simulations(first);
+    const { results: cold, seedDirectory: coldSeed } = await prepare(first);
     assert.deepEqual([...new Set(cold.map((row) => row.where))], ["spec/other.md", "spec/counter.md"]);
     assert.ok(cold.every((row) => row.ok) && cold.some((row) => row.stage === "sometimes"), JSON.stringify(cold));
     assert.ok(cold.some((row) => row.stage === "replay" && row.where === "spec/counter.md"), JSON.stringify(cold));
@@ -670,6 +672,11 @@ export const driver = {
     assert.ok(!fs.existsSync(path.join(first, "gen/counter.ts")), "partial precomputation does not publish generated modules");
     const receipts = fs.readdirSync(cache);
     assert.ok(receipts.length > 0 && receipts.every(isActionEntry));
+    assert.ok(coldSeed);
+    const names = fs.readdirSync(coldSeed);
+    assert.equal(names.filter(isActionEntry).length, 4);
+    assert.equal(names.filter((name) => name.startsWith("simulate-")).length, 2);
+    assert.equal(names.length, 6);
     fs.rmSync(first, { recursive: true, force: true });
 
     const same = scratch(sources);
@@ -680,8 +687,40 @@ export const driver = {
     assert.ok(receipts.every((file) => fs.existsSync(path.join(cache, file))));
 
     const changed = scratch({ ...sources, "spec/base.md": sources["spec/base.md"].replace("= 2", "= -1") });
-    const rejected = await simulations(changed, ["counter"]);
-    assert.ok(rejected.some((row) => row.stage === "always" && !row.ok && row.detail.includes("initial")), JSON.stringify(rejected));
+    const rejected = await prepare(changed, ["counter"]);
+    assert.ok(rejected.results.some((row) => row.stage === "always" && !row.ok && row.detail.includes("initial")), JSON.stringify(rejected));
+    assert.equal(rejected.seedDirectory, undefined);
+    assert.equal(fs.readdirSync(seedParent).length, 1);
+
+    const typecheck = names.find(isActionEntry);
+    assert.ok(typecheck);
+    const legacy = typecheck.replace(/\.zst$/, ".gz");
+    assert.notEqual(legacy, typecheck);
+    fs.writeFileSync(path.join(cache, legacy), gzipSync(zstdDecompressSync(fs.readFileSync(path.join(cache, typecheck)))));
+    fs.rmSync(path.join(cache, typecheck));
+    const warmProducer = scratch(sources);
+    fs.cpSync(coldSeed, path.join(warmProducer, ".spec-cache"), { recursive: true });
+    const prepared = await prepare(warmProducer);
+    assert.deepEqual(prepared.results, cold);
+    const seed = prepared.seedDirectory;
+    assert.ok(seed && seed !== coldSeed);
+    assert.deepEqual(fs.readdirSync(seed).sort(), [...names.filter((name) => name !== typecheck), legacy].sort());
+    assert.deepEqual(fs.readFileSync(path.join(seed, legacy)), fs.readFileSync(path.join(cache, legacy)));
+
+    const compact = scratch(sources);
+    fs.cpSync(seed, path.join(compact, ".spec-cache"), { recursive: true });
+    assert.deepEqual((await run(compact)).results, warm.results);
+    assert.ok(!fs.existsSync(path.join(compact, "gen/traces")), "the ordinary check reused the compact seed");
+
+    const fallback = scratch(sources);
+    const restored = path.join(fallback, ".spec-cache");
+    fs.cpSync(seed, restored, { recursive: true });
+    const damaged = names.find((name) => name.startsWith("simulate-"));
+    assert.ok(damaged);
+    fs.writeFileSync(path.join(restored, damaged), "truncated receipt");
+    assert.deepEqual((await run(fallback)).results, warm.results);
+    assert.ok(fs.existsSync(path.join(fallback, "gen/traces")), "the ordinary check recomputed a damaged result");
+
     const malformed = scratch({ ...sources, "spec/untouched.md": invalid,
       "spec/other.md": sources["spec/other.md"].replace("n + 1", "n + 2") });
     await assert.rejects(simulations(malformed, ["other", "untouched"]), /spec\/untouched.md[^]*unknownValue/);

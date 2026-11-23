@@ -16,7 +16,7 @@ import { abandonedProof, ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, typ
 import { bin, run, startAttached } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
+import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, evaluatorForCheck, isActionEntry, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, owner, specOwnerPaths, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
@@ -133,8 +133,35 @@ const canSimulate = (model: Model) => !!model.stateType || !!model.laws.length |
 
 /** Warm the normal simulation actions for these module names in a disposable project, using a snapshot from readSpecs. */
 export async function precomputeSimulations(root: string, specs: Spec[], targets: readonly string[]): Promise<Result[]> {
+  return (await precomputedSimulations(root, specs, targets)).results;
+}
+
+interface SimulationPreparation { results: Result[]; seedDirectory?: string }
+
+/** Prepare the selected simulations and, when complete, a compact seed for a trusted job's ordinary check. */
+export async function prepareSimulationReceipts(root: string, specs: Spec[], targets: readonly string[], seedParent: string): Promise<SimulationPreparation> {
+  const { results, receipts } = await precomputedSimulations(root, specs, targets, true);
+  return receipts ? { results, seedDirectory: writeSimulationSeed(seedParent, receipts) } : { results };
+}
+
+function writeSimulationSeed(parent: string, receipts: ReadonlyMap<string, Uint8Array>): string {
+  const owned = fs.mkdtempSync(path.join(path.resolve(parent), "simulation-receipts-"));
+  const writing = path.join(owned, "writing");
+  const seed = path.join(owned, "seed");
+  try {
+    fs.mkdirSync(writing);
+    for (const [name, bytes] of receipts) fs.writeFileSync(path.join(writing, name), bytes, { flag: "wx" });
+    fs.renameSync(writing, seed);
+    return seed;
+  } catch (error) {
+    fs.rmSync(owned, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function precomputedSimulations(root: string, specs: Spec[], targets: readonly string[], capture = false): Promise<{ results: Result[]; receipts?: Map<string, Uint8Array> }> {
   const requested = new Set(targets);
-  if (!requested.size) return [];
+  if (!requested.size) return { results: [] };
   const byName = new Map(specs.map((spec) => [spec.name, spec]));
   const selected = new Map<string, Spec>();
   const include = (name: string) => {
@@ -150,24 +177,36 @@ export async function precomputeSimulations(root: string, specs: Spec[], targets
   try {
     return await withStableInstallation(async () => {
       const memory: Memory = { root, fresh: false, used: new Set() };
+      const receipts = capture ? { typechecks: new Map<string, Uint8Array>(), simulations: new Map<string, Uint8Array>() } : undefined;
+      const generation: Memory = receipts ? { ...memory, captureReceipt: ({ name, bytes }) => {
+        if (isActionEntry(name)) receipts.typechecks.set(name, bytes);
+      } } : memory;
+      const simulators: Memory = receipts ? { ...memory, captureReceipt: ({ name, bytes }) => {
+        if (name.startsWith("simulate-")) receipts.simulations.set(name, bytes);
+      } } : memory;
       const loaded = fs.mkdtempSync(path.join(root, ".spec-cache", "precompute-"));
       const started = new Map<string, Promise<Simulation>>();
       const { seed } = profile("normal");
       try {
         fs.writeFileSync(path.join(loaded, "package.json"), '{"type":"module"}\n');
-        for await (const { spec, model, error } of generating(memory, [...selected.values()], root, new Map())) {
+        for await (const { spec, model, error } of generating(generation, [...selected.values()], root, new Map())) {
           if (!model) throw error;
           const file = path.join(loaded, `${spec.name}.ts`);
           fs.writeFileSync(file, model.ts);
           if (!requested.has(spec.name) || !canSimulate(model)) continue;
           const domain = await import(pathToFileURL(file).href);
-          const result = simulation(memory, spec, specs, model, domain, seed);
+          const result = simulation(simulators, spec, specs, model, domain, seed);
           void result.catch(() => {});
           started.set(spec.name, result);
         }
-        const results = await allDone([...requested].map((name) => started.get(name)).filter((result) => result !== undefined));
+        const simulations = await allDone([...requested].map((name) => started.get(name)).filter((result) => result !== undefined));
         certifyInstallation();
-        return results.flatMap(({ said }) => said);
+        const results = simulations.flatMap(({ said }) => said);
+        return receipts && receipts.typechecks.size === selected.size &&
+          receipts.simulations.size === started.size && results.every((row) => row.ok) &&
+          (!started.size || evaluatorForCheck(root) === evaluatorIdentity(root))
+          ? { results, receipts: new Map([...receipts.typechecks, ...receipts.simulations]) }
+          : { results };
       } finally {
         await Promise.allSettled(started.values());
         fs.rmSync(loaded, { recursive: true, force: true });
