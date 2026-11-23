@@ -83,18 +83,24 @@ owner's words, never from the year the extractor guessed: a trailing
 year wins. Otherwise "next year" chooses the coming year, and so does
 "next" before a month or a date that is not later than today, as in
 "next March 3" said in June or "next November" said in November. A
-stated numeric year comes next, and a date with no year or "this year"
-chooses the current year. "next" before anything else is no year cue:
-"next Friday on March 3" names March 3 of the current year. A year named
-before the month or a numeric date counts the same way: "2027년" and
-"2027年" state 2027, "내년" and "明年" say next year, and "올해" and
-"今年" say this year. A marker inside a longer word or number, as in
-"국내년" or "12027년", is no cue. A create that names neither a date
-nor a year, as "tomorrow" or "next Friday", keeps the date the extractor
-resolved from those words. The wall clock and duration stay as
-extracted, and only the year moves. A start that is already past in the
-create's zone must be confirmed by the owner before anything is stored;
-a future start is ready.
+stated numeric year comes next, wherever the request states it: before
+the month, before a slash date, anywhere else in the request, or as a
+two-digit year after a slash date, as in "3/5/28". A date with no year
+or "this year" chooses the current year in the create's zone. "next"
+before anything else is no year cue: "next Friday on March 3" names
+March 3 of the current year. A year named before the month or a numeric
+date counts the same way: "2027년" and "2027年" state 2027, "내년" and
+"明年" say next year, and "올해" and "今年" say this year. A marker
+inside a longer word or number, as in "국내년" or "12027년", is no cue,
+and neither is a clock time such as "20:30". A create that names neither
+a date nor a year, as "tomorrow" or "next Friday", keeps the date the
+extractor resolved from those words. The wall clock and duration stay
+as extracted, and only the year moves; when that month and day do not
+exist in the chosen year, as February 29 outside a leap year, the
+create is refused and nothing is stored rather than rolled to another
+day. A start that is already past in the create's zone must be
+confirmed by the owner before anything is stored; a future start is
+ready.
 
 ```quint
 type YearCue = NoYearCue | ThisYearCue | NextYearCue | StatedYearCue

@@ -164,8 +164,8 @@ function notLaterThanToday(month: number, day: number | undefined, today: LocalD
 
 export function yearCueOf(text: string, today: LocalDate): { readonly cue: YearCue; readonly statedYear: number; readonly trailingYear: number; readonly namesDate: boolean } {
   const folded = text.normalize("NFKC").toLowerCase()
-  const trailing = /\b(\d{4})\s*[.!?]?\s*$/.exec(folded)
-  const stated = /\b(19|20|21)\d{2}\b/.exec(folded)
+  const trailing = /(?<!\d)((?:19|20|21)\d{2})\s*[.!?]?\s*$/.exec(folded)
+  const stated = /(?<![\d:])((?:19|20|21)\d{2})(?![\d:])/.exec(folded) ?? /\b\d{1,2}\/\d{1,2}\/(\d{2})\b/.exec(folded)
   const next = nextDate.exec(folded)
   const named = next?.[1]
   const month = next === null ? 0 : named !== undefined ? monthNames.indexOf(named.slice(0, 3)) + 1 : Number(next[3])
@@ -173,7 +173,7 @@ export function yearCueOf(text: string, today: LocalDate): { readonly cue: YearC
   const saysNextYear = nextMeansNextYear(nextYearWord.test(folded), next !== null, next !== null && notLaterThanToday(month, day, today))
   return {
     cue: yearCueFrom(saysNextYear, stated !== null, thisYearWord.test(folded)),
-    statedYear: stated === null ? 0 : Number(stated[0]),
+    statedYear: stated === null ? 0 : stated[1].length === 2 ? 2000 + Number(stated[1]) : Number(stated[1]),
     trailingYear: trailing === null ? 0 : Number(trailing[1]),
     namesDate: next !== null || namesCalendarDate(folded),
   }
@@ -184,7 +184,7 @@ export function createYear(text: string, today: LocalDate, extractedYear: number
   return createStartYear(cue, statedYear, trailingYear, today.year, namesDate, extractedYear)
 }
 
-export function statedYearCreate(fields: CalendarEventFields, text: string, now: Date): { readonly fields: CalendarEventFields; readonly move: (instant: string) => string } {
+export function statedYearCreate(fields: CalendarEventFields, text: string, now: Date): { readonly fields: CalendarEventFields; readonly move: (instant: string) => string } | undefined {
   const zone = fields.isAllDay ? "UTC" : fields.timeZone
   const start = getZonedDateParts(new Date(fields.startAt), zone)
   const today = getZonedDateParts(now, fields.timeZone)
@@ -194,6 +194,8 @@ export function statedYearCreate(fields: CalendarEventFields, text: string, now:
     return parts === undefined ? instant : buildUtcDateFromLocalParts(zone, { ...parts, year: parts.year + years })?.toISOString() ?? instant
   }
   const startAt = move(fields.startAt)
+  const kept = years === 0 ? start : getZonedDateParts(new Date(startAt), zone)
+  if (start !== undefined && (kept?.month !== start.month || kept.day !== start.day)) return undefined
   return { fields: { ...fields, startAt, endAt: new Date(Date.parse(startAt) + Date.parse(fields.endAt) - Date.parse(fields.startAt)).toISOString() }, move }
 }
 

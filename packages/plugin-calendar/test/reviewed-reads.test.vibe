@@ -5,7 +5,7 @@ import { negotiation, readOperation, validate, type CheckedOperation, type Devic
 import { calendarProposalFamily } from "../src/plugin/device-proposals.vibe"
 import { machine } from "../gen/calendar__reviewedReads.effect.vibe"
 import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
-  requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
+  requestTimeZone, startOfCivilDay, statedYearCreate } from "../src/clock.vibe"
 import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, NamedReadRefused, executeNamedCalendarRead, namedReadWindow,
   type NamedCalendarReadContext, type NamedCalendarReadProvider } from "../src/client/named-read.vibe"
 
@@ -92,6 +92,11 @@ it.effect('See and create times in the zone I am asking about (spec/calendar/rea
   assert.deepStrictEqual(["2027년 1월 5일", "내년 1월 5일", "올해 1월 5일", "请安排明年 1月 5日", "2027年 1月 5日", "今年 1月 5日", "12027년 1월 5일", "국내년 1월 5일",
     "내년 January 5, 2028", "2027년 12/25", "내년 12/25", "明年 12-25", "今年 12/25", "국내년 12/25"].map((text) => createYear(text, june, 2030)),
     [2027, 2027, 2026, 2027, 2027, 2026, 2026, 2026, 2028, 2027, 2027, 2027, 2026, 2026])
+  assert.deepStrictEqual(["2027 3/5 dentist", "2027년 3월 5일 치과", "dentist 3/5/28", "lunch next Friday at 12:30", "lunch on 12 March this year", "lunch on March 3"].map((text) => createYear(text, june, 2031)),
+    [2027, 2027, 2028, 2031, 2026, 2026])
+  const leapDay = { title: "Dentist", description: "", location: "", startAt: "2028-02-29T12:00:00.000Z", endAt: "2028-02-29T13:00:00.000Z", isAllDay: false, timeZone: "UTC" }
+  assert.deepStrictEqual([statedYearCreate(leapDay, "dentist on Feb 29 2027", new Date("2026-06-01T12:00:00.000Z")),
+    statedYearCreate(leapDay, "dentist on Feb 29 2028", new Date("2026-06-01T12:00:00.000Z"))?.fields.startAt], [undefined, "2028-02-29T12:00:00.000Z"])
   const now = new Date("2026-06-01T12:00:00.000Z")
   assert.deepStrictEqual([createNeedsConfirmation("2026-01-01T10:00:00.000Z", now, "UTC"), createNeedsConfirmation("2026-06-02T10:00:00.000Z", now, "UTC"),
     createNeedsConfirmation("2025-12-31T10:00:00.000Z", now, "UTC")], [true, false, true])
