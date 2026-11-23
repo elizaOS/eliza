@@ -125,7 +125,7 @@ it("Share only plain web addresses: one test for every feature that saves, reads
   ])
 })
 
-it.effect("Keep my normal tabs and history across restarts, and restore them only into an untouched new tab (spec/os/browser/tabHost/storage.md, \"Story: Keep my normal tabs and history across restarts\"; spec/os/browser/tabHost/storage.md, \"An address is saved only when it is a web address of at most 4,096 units, and bookmarked only over HTTPS\"; spec/os/browser/tabHost/storage.md, \"A saved session keeps the first valid row of each tab and address\"; spec/os/browser/tabHost/storage.md, \"A snapshot offers the codec at most eight normal tabs whose address is known\"; spec/os/browser/tabHost/storage.md, \"Story: Restore my tabs only when nothing is open\"; spec/os/browser/tabHost/storage.md, \"Saved tabs replace only an untouched single new tab, and otherwise only history is merged\")", () => effect {
+it.effect("Keep my normal tabs and history across restarts, and restore them only into an untouched new tab (spec/os/browser/tabHost/storage.md, \"Story: Keep my normal tabs and history across restarts\"; spec/os/browser/tabHost/storage.md, \"An address is saved only when it is a web address of at most 4,096 units, and bookmarked only over HTTPS\"; spec/os/browser/tabHost/storage.md, \"A saved session keeps the first valid row of each tab and address\"; spec/os/browser/tabHost/storage.md, \"A visit time is kept only for a kept history address, as a positive whole number of milliseconds\"; spec/os/browser/tabHost/storage.md, \"A snapshot offers the codec at most eight normal tabs whose address is known\"; spec/os/browser/tabHost/storage.md, \"Story: Restore my tabs only when nothing is open\"; spec/os/browser/tabHost/storage.md, \"Saved tabs replace only an untouched single new tab, and otherwise only history is merged\")", () => effect {
   const asked: string[] = []
   const pages: Readonly<Record<string, { url?: string; title?: string }>> = {
     mail: { url: "https://user:pw@mail.example.test/", title: "Mail" },
@@ -179,6 +179,18 @@ it.effect("Keep my normal tabs and history across restarts, and restore them onl
   })
   assert.deepStrictEqual([damaged.history.length, damaged.history[0], damaged.tabs.map((tab) => tab.id), damaged.cur], [100, "https://example.test/a", many.slice(0, 8).map((tab) => tab.id), ""])
   assert.deepStrictEqual(normalizeBrowsing("garbled"), { history: [], tabs: [], cur: "" })
+  const visited = { "https://news.example.test/today": 1_700_000_000_000 }
+  const timed = browsingSnapshot(
+    { tabs: [], visits: saved.history, cur: "", visitTimes: { ...visited, "http://docs.example.test/guide": 1.5, "https://elsewhere.example.test/": 9, "javascript:alert(1)": 7 } },
+    () => undefined,
+  )
+  assert.deepStrictEqual(timed, { history: saved.history, tabs: [], cur: "", visitTimes: visited })
+  assert.deepStrictEqual(normalizeBrowsing({ ...timed, visitTimes: { "http://docs.example.test/guide": 0 } }), { history: saved.history, tabs: [], cur: "" })
+  assert.deepStrictEqual(restoreBrowsing(timed, { visits: ["https://start.example.test/"] }, false), {
+    visits: ["https://start.example.test/", ...saved.history],
+    restored: [],
+    visitTimes: visited,
+  })
   assert.deepStrictEqual(
     [savedBrowserUrl(`https://example.test/${"a".repeat(4075)}`), savedBrowserUrl(`https://example.test/${"a".repeat(4076)}`), bookmarkBrowserUrl("https://example.test/"), bookmarkBrowserUrl("http://example.test/")],
     [true, false, true, false],
