@@ -16,6 +16,16 @@ digest, the socket, the provider calls and the database stay in
 and writes it back by compare-and-set, in the same transaction as the
 window's holds and the day's usage.
 
+The consent and mint routes time their phases, by name and duration only,
+never by account or content: `speech_identity_rate` (request
+authentication and the plan's rate limit, until the route begins),
+`speech_consent_write` (a consent's insert) and, for a mint,
+`speech_consent_consume` (the one transaction that consumes the consent and
+records the session). In production each phase is logged as it ends,
+`cloud_speech_phase_v1` with the route, the request id, the duration and
+whether the phase returned or threw; in staging an answer carries its
+phases in `Server-Timing` instead.
+
 ## Story: Start speech only from a consent I gave
 
 > As a person, I want a speech session to start only from a fresh consent I

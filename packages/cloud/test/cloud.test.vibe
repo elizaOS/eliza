@@ -1420,6 +1420,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     try check(() => assert.deepStrictEqual(
       {
         minted: [minted.status, minted.headers["x-eliza-speech-extend"], session.wsUrl.endsWith(`/api/v1/voice/speech/ws?sessionId=${session.sessionId}`)],
+        phases: [consent.headers["server-timing"], minted.headers["server-timing"]].map((value) => (value ?? "").split(", ").map((entry) => entry.replace(/;dur=\d+$/, ""))),
         second: [second.status, (second.body as { readonly error?: string }).error],
         opened: shown(opened),
         heard: shown(heard),
@@ -1434,6 +1435,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       },
       {
         minted: [200, "1", true],
+        phases: [["speech_identity_rate", "speech_consent_write"], ["speech_identity_rate", "speech_consent_consume"]],
         second: [410, "session_closed"],
         opened: [
           { t: "ready", version: 1, sampleRate: 16_000, channels: 1, expiresAt: session.expiresAt },
