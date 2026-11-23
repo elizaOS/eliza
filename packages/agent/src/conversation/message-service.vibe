@@ -183,7 +183,8 @@ async function respond(
           const content = previous.id === message.id ? "" : await spoken(runtime, previous)
           return content ? [{ id: previous.id ?? "", fromUser: previous.entityId !== runtime.agentId, text: content }] : []
         }))).flat()
-        const window = windowHistory(sources, asked)
+        const earlier = recent.length < historyReadCount ? 0 : await runtime.countMemories(message.roomId, false, "messages") - recent.length
+        const window = windowHistory(sources, asked, { earlier })
         const history: ChatMessage[] = window.shown.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
         const notes = [contextNote(message), hostNote(clock.line), hostNote(options?.deviceContext), hostNote(options?.taskContext), window.windowed ? hostNote(historyWindowNotice(window)) : undefined]
           .filter((note): note is string => note !== undefined)
