@@ -37,21 +37,26 @@ pure val activeAccountValues = Set("owner", "other")
 ### A write goes to the active account's writable calendar, at once only for the resident calendar
 
 A write needs the active account and a calendar that account can write.
-The resident calendar applies it at once for the owner who asked. Any
-provider calendar queues the exact fields for the owner's approval. A
-write for another account, or to a calendar it cannot write, is refused.
+The resident calendar applies it at once for the owner who asked, unless
+the owner asked to review the new event before it is saved: that create
+queues for approval like any other reviewed change, and nothing is saved
+before the owner approves it. Any provider calendar queues the exact
+fields for the owner's approval. A write for another account, or to a
+calendar it cannot write, is refused.
 
 ```quint
 type WriteProvider = ResidentProvider | AccountProvider
 type WriteRoute = RefuseWrite | ApplyNow | QueueApproval
-pure def writeRoute(provider: WriteProvider, sameAccount: bool, writable: bool): WriteRoute =
+pure def writeRoute(provider: WriteProvider, sameAccount: bool, writable: bool, reviewFirst: bool): WriteRoute =
   if (not(sameAccount and writable)) RefuseWrite
-  else if (provider == ResidentProvider) ApplyNow
+  else if (provider == ResidentProvider and not(reviewFirst)) ApplyNow
   else QueueApproval
-pure def lawProviderWriteWaitsForApproval(sameAccount: bool, writable: bool): bool =
-  writeRoute(AccountProvider, sameAccount, writable) != ApplyNow
-pure def lawForeignAccountRefused(provider: WriteProvider, writable: bool): bool =
-  writeRoute(provider, false, writable) == RefuseWrite
+pure def lawProviderWriteWaitsForApproval(sameAccount: bool, writable: bool, reviewFirst: bool): bool =
+  writeRoute(AccountProvider, sameAccount, writable, reviewFirst) != ApplyNow
+pure def lawForeignAccountRefused(provider: WriteProvider, writable: bool, reviewFirst: bool): bool =
+  writeRoute(provider, false, writable, reviewFirst) == RefuseWrite
+pure def lawAskedReviewWaitsForApproval(provider: WriteProvider, sameAccount: bool, writable: bool): bool =
+  writeRoute(provider, sameAccount, writable, true) != ApplyNow
 ```
 
 ### An approved change runs only with its reviewed fields for the account that approved it

@@ -103,6 +103,13 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   assert.strictEqual(at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length"), 0)
   const past = try runCalendarAction(host, { ...ask, id: "message-4" }, { ...dentist, startAt: "1969-12-31T09:00:00Z", endAt: "1969-12-31T10:00:00Z" })
   assert.deepStrictEqual([past.success, at(past.data, "needsConfirmation")], [false, "past_start"])
+  const checkups = effect () => at((try runCalendarAction(host, ask, { subaction: "search_events", query: "Checkup", ...march })).data, "events", "length")
+  const preview = try runCalendarAction(host, { ...ask, id: "message-review" }, { ...dentist, title: "Checkup", reviewBeforeSaving: true })
+  assert.deepStrictEqual([preview.success, at(preview.data, "approvalRequestId"), at(preview.data, "change", "source", "provider"), try checkups()], [true, filed[0]?.id, "eliza", 0])
+  const held = filed.splice(0)[0]
+  if (held === undefined) return
+  assert.strictEqual((try host.executeApproval({ id: held.id, action: held.action, payload: held.payload })).result, "ChangeSucceeded")
+  assert.strictEqual(try checkups(), 1)
 
   const google = googleCalendar()
   try host.register(google.port)
