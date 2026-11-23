@@ -3,9 +3,14 @@ import { assert, it } from "@effect/vitest"
 import { planLegacyHistory, reservedLegacySend } from "../src/storage/legacy-history.vibe"
 
 module node {
+  import { mkdtemp, readdir, rm } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
   import { PGlite } from "@electric-sql/pglite"
   import { conversationClientUserMemoryId, stringToUuid } from "@elizaos/core"
-  import type { LegacyConversation, LegacyMessage } from "../src/storage/legacy-history.vibe"
+  import type { LegacyConversation, LegacyMessage, PreparedLegacyHistory } from "../src/storage/legacy-history.vibe"
+  import { legacyReservationKey, stageLegacyHistory } from "../src/storage/legacy-history-stage.vibe"
+  import { openDeviceStorage } from "../src/storage/index.vibe"
 
   export const owner = {
     agentId: stringToUuid("installed-agent"), ownerId: stringToUuid("installed-owner"), worldId: stringToUuid("installed-world"),
@@ -43,8 +48,31 @@ module node {
       await db.close()
     }
   }
+
+  export async function staged(history: PreparedLegacyHistory) {
+    const parent = await mkdtemp(join(tmpdir(), "eliza-history-adoption-"))
+    const account = { userId: "fixture-owner", organizationId: "fixture-organization" }
+    try {
+      const stage = await stageLegacyHistory(parent, account, 0, history)
+      const options = { stateDirectory: stage.stateDirectory, persistMemory: true, account, embeddingDimensions: 0 }
+      const reopened = await openDeviceStorage(options)
+      let kept
+      try {
+        kept = { agentId: reopened.agentId, rooms: await reopened.adapter.getRoomsByWorlds([owner.worldId]),
+          messages: await reopened.adapter.getMemoriesByIds([inputId, replyId], "messages"),
+          reservation: (await reopened.adapter.getCaches([legacyReservationKey(history.reservations[0])])).values().next().value }
+      } finally { await reopened.adapter.close() }
+      const other = await openDeviceStorage({ ...options, account: { ...account, organizationId: "other-organization" } }).then(async (opened) => {
+        await opened.adapter.close()
+        return "opened"
+      }, (error: unknown) => typeof error === "object" && error !== null && "fault" in error ? String(error.fault) : "unknown")
+      const interrupted = await stageLegacyHistory(parent, account, 0, { ...history,
+        messages: [{ ...history.messages[0], content: { text: "\0" } }] }).then(() => "staged", () => "refused")
+      return { ...kept, stageKind: stage.kind, other, interrupted, directories: (await readdir(parent)).length }
+    } finally { await rm(parent, { recursive: true, force: true }) }
+  }
 }
-import { catalogue, conversationId, fingerprint, foreignRoomId, inputId, key, owner, replyId, roomId } from node
+import { catalogue, conversationId, fingerprint, foreignRoomId, inputId, key, owner, replyId, roomId, staged } from node
 
 it.live('Prepare installed conversation and message identities without releasing old dispatch authority (spec/agent/storage/legacyAdoption.md, "Story: Keep the conversations and turns from my installed agent")', effect () => {
   const { conversations, messages } = try Effect.tryPromise(() => catalogue())
@@ -73,4 +101,18 @@ it.live('Prepare installed conversation and message identities without releasing
   assert.equal(missingInput.reason, "reference")
   const wrongMarker = try Effect.flip(planLegacyHistory(owner, conversations, [{ ...messages[0], id: foreignRoomId }]))
   assert.equal(wrongMarker.reason, "marker")
+}, 120_000)
+
+it.live('Reopen staged history with the installed identity and keep an unsuccessful stage private (spec/agent/storage/legacyAdoption.md, "The projected history is staged and verified before it can be published")', effect () => {
+  const { conversations, messages } = try Effect.tryPromise(() => catalogue())
+  const history = try planLegacyHistory(owner, conversations, messages)
+  const readback = try Effect.tryPromise(() => staged(history))
+  assert.equal(readback.agentId, owner.agentId)
+  assert.deepEqual(readback.rooms, history.rooms)
+  assert.deepEqual(readback.messages, history.messages)
+  assert.deepEqual(readback.reservation, history.reservations[0])
+  assert.equal(readback.stageKind, "HistoryOnly")
+  assert.equal(readback.other, "OtherOwner")
+  assert.equal(readback.interrupted, "refused")
+  assert.equal(readback.directories, 1)
 }, 120_000)

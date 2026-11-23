@@ -32,6 +32,7 @@ export type LegacySendReservation = LegacyHistoryOwner & {
 }
 
 export type PreparedLegacyHistory = {
+  readonly owner: LegacyHistoryOwner
   readonly rooms: readonly Room[]
   readonly messages: readonly Memory[]
   readonly reservations: readonly LegacySendReservation[]
@@ -95,6 +96,7 @@ export effect function planLegacyHistory(owner: LegacyHistoryOwner, conversation
   }
   const ordered = [...conversations].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
   return {
+    owner,
     rooms: ordered.map((entry, index) => ({ id: entry.roomId, agentId: owner.agentId, worldId: owner.worldId, name: entry.title,
       source: "device", channelId: entry.roomId, type: ChannelType.DM,
       metadata: { ownership: { ownerId: owner.ownerId }, deviceConversation: { id: entry.id,

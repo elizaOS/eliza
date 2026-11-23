@@ -1,0 +1,86 @@
+// spec/agent/storage/legacyAdoption.md, "The projected history is staged and verified before it can be published"
+module node {
+  import { lstat, mkdtemp, open, rm } from "node:fs/promises"
+  import { join } from "node:path"
+  import { isDeepStrictEqual } from "node:util"
+  import type { IDatabaseAdapter } from "@elizaos/core"
+  import type { LegacySendReservation, PreparedLegacyHistory } from "./legacy-history.vibe"
+  import { openDeviceStorage } from "./index.vibe"
+
+  type BoundAccount = { readonly userId: string; readonly organizationId: string }
+  export type LegacyHistoryStage = { readonly kind: "HistoryOnly"; readonly stateDirectory: string }
+
+  const stagingRecord = "resident-adoption:projected-history"
+  export function legacyReservationKey(reservation: Pick<LegacySendReservation, "roomId" | "ownerId" | "clientMessageId">): string {
+    return `resident-adoption:installed-send:${JSON.stringify([reservation.roomId, reservation.ownerId, reservation.clientMessageId])}`
+  }
+
+  function verifyRows<T extends { readonly id?: string }>(found: readonly T[], expected: readonly T[]): boolean {
+    if (found.length !== expected.length) return false
+    const kept = new Map(found.map((record) => [record.id, record]))
+    return expected.every((item) => isDeepStrictEqual(kept.get(item.id), item))
+  }
+
+  async function writeHistory(adapter: IDatabaseAdapter, history: PreparedLegacyHistory): Promise<void> {
+    await adapter.transaction(async (transaction) => {
+      const rooms = await transaction.createRooms([...history.rooms])
+      const messages = await transaction.createMemories(history.messages.map((memory) => ({ memory, tableName: "messages" })))
+      const reservations = await transaction.setCaches(history.reservations.map((value) => ({ key: legacyReservationKey(value), value })))
+      const bound = await transaction.setCaches([{ key: stagingRecord, value: history.owner }])
+      if (rooms.length !== history.rooms.length || messages.length !== history.messages.length || !reservations || !bound)
+        throw new Error("The history did not stage completely")
+    })
+  }
+
+  async function checkHistory(adapter: IDatabaseAdapter, history: PreparedLegacyHistory): Promise<void> {
+    const rooms = await adapter.getRoomsByIds(history.rooms.map(({ id }) => id))
+    const ids = history.messages.map(({ id }) => id).filter((id) => id !== undefined)
+    const messages = await adapter.getMemoriesByIds(ids, "messages")
+    const binding = (await adapter.getCaches([stagingRecord])).get(stagingRecord)
+    const saved = await adapter.getCaches(history.reservations.map(legacyReservationKey))
+    if (!verifyRows(rooms, history.rooms) || !verifyRows(messages, history.messages) || !isDeepStrictEqual(binding, history.owner)
+        || saved.size !== history.reservations.length
+        || !history.reservations.every((item) => isDeepStrictEqual(saved.get(legacyReservationKey(item)), item)))
+      throw new Error("The staged history did not read back as expected")
+  }
+
+  /** A stage has no activation receipt and is never put at the resident's launch path. */
+  export async function stageLegacyHistory(stagingParent: string, account: BoundAccount | null,
+      embeddingDimensions: number, history: PreparedLegacyHistory): Promise<LegacyHistoryStage> {
+    const parent = await lstat(stagingParent)
+    if (!parent.isDirectory() || (parent.mode & 0o077) !== 0 || parent.uid !== process.getuid?.())
+      throw new Error("The staging parent must be private to the resident")
+    const directory = await mkdtemp(join(stagingParent, ".resident-adoption-"))
+    try {
+      const marker = await open(join(directory, "agent-id"), "wx", 0o600)
+      try {
+        await marker.writeFile(`${history.owner.agentId}\n`, "utf8")
+        await marker.sync()
+      } finally {
+        await marker.close()
+      }
+      const options = { stateDirectory: directory, persistMemory: true, account, embeddingDimensions }
+      const written = await openDeviceStorage(options)
+      try {
+        if (written.agentId !== history.owner.agentId) throw new Error("The staged agent identity changed")
+        await writeHistory(written.adapter, history)
+      } finally {
+        await written.adapter.close()
+      }
+      const reopened = await openDeviceStorage(options)
+      try {
+        if (reopened.agentId !== history.owner.agentId) throw new Error("The reopened agent identity changed")
+        await checkHistory(reopened.adapter, history)
+      } finally {
+        await reopened.adapter.close()
+      }
+      return { kind: "HistoryOnly", stateDirectory: directory }
+    } catch (error) {
+      await rm(directory, { recursive: true, force: true })
+      throw error
+    }
+  }
+}
+
+import { legacyReservationKey, stageLegacyHistory, type LegacyHistoryStage } from node
+export { legacyReservationKey, stageLegacyHistory, type LegacyHistoryStage }

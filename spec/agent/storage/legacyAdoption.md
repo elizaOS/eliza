@@ -69,3 +69,14 @@ pure def lawInstalledKeysNeverDispatch(prior: PriorSend, sameFingerprint: bool):
 pure def lawHistoricalReplyNeedsExactTerminalProof(prior: PriorSend, sameFingerprint: bool): bool =
   installedReplay(prior, sameFingerprint) == HistoricalReply iff (prior == InstalledTerminal and sameFingerprint)
 ```
+
+### The projected history is staged and verified before it can be published
+
+A history-only stage uses a fresh directory beneath a private parent. Its
+identity file names the installed agent. The usual v4 device store writes
+rooms, messages and reserved send keys in one transaction. The stage is
+closed, reopened with the exact identity and account, and read back. A
+stage that fails preparation or verification is removed. Even a verified
+history-only stage remains outside the live launch path. The later handover
+must also admit the installed task, device and vault domains before it can
+publish a generation.
