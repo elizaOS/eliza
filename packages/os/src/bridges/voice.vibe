@@ -64,6 +64,9 @@ export error CloudSpeechRefused {
   reason: "owner-changed" | "session-changed" | "not-connected" | "output-mute-unavailable" | "phrase-too-long" | "mute-unconfirmed" | "ended-without-audio"
 }
 
+/** A reply stopped before it finished, with the device's reason, such as `audio-focus-lost`; the session stays open. */
+export error CloudSpeechInterrupted { code: string }
+
 export error CloudSpeechCleanupUnconfirmed {
   utteranceId: UtteranceId
   get code() {
@@ -80,7 +83,7 @@ const Heard = Schema.String.check(Schema.isMaxLength(MAX_HEARD_TEXT))
 const session = { sessionId: Schema.String }
 const StreamEvent = Schema.Union([
   Schema.Struct({ ...session, type: Schema.Literal("error"), code: Schema.optionalKey(Schema.Unknown), data: Schema.optionalKey(Schema.Unknown) }),
-  Schema.Struct({ ...session, type: Schema.Literals(["audio-start", "audio-end"]), utteranceId: Schema.String }),
+  Schema.Struct({ ...session, type: Schema.Literals(["audio-start", "audio-end"]), utteranceId: Schema.String, interrupted: Schema.optionalKey(Schema.String) }),
   Schema.Struct({ ...session, type: Schema.Literal("speech-start") }),
   Schema.Struct({ ...session, type: Schema.Literals(["speech-end", "transcript"]), text: Heard }),
   Schema.Struct({ ...session, type: Schema.Literal("level"), peak: Schema.Finite }),
@@ -171,7 +174,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     }
   }
 
-  const settleAudio = (type: "audio-start" | "audio-end", utteranceId: string) => {
+  const settleAudio = (type: "audio-start" | "audio-end", utteranceId: string, interrupted: string | undefined) => {
     const pending = utterances.get(utteranceId)
     if (!pending) return
     if (type === "audio-start") {
@@ -181,7 +184,8 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
       return
     }
     utterances.delete(utteranceId)
-    if (pending.started) pending.resolve()
+    if (interrupted !== undefined) pending.reject(new CloudSpeechInterrupted({ code: interrupted }))
+    else if (pending.started) pending.resolve()
     else pending.reject(new CloudSpeechRefused({ reason: "ended-without-audio" }))
   }
 
@@ -198,7 +202,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
           return fail(unavailable(event))
         case "audio-start":
         case "audio-end":
-          return settleAudio(event.type, event.utteranceId)
+          return settleAudio(event.type, event.utteranceId, event.interrupted)
         case "speech-start":
           if (speechActive) return
           speechActive = true

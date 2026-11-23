@@ -1,0 +1,79 @@
+// spec/agent/host/launch.md, "A phone agent without a usable system resolver resolves external names through the native host's resolvers"
+module node {
+  import dns, { type LookupAddress } from "node:dns"
+  import { isIP } from "node:net"
+  import { lookupRoute, resolverListAdmitted, type LookupName, type ResolverHost } from "../../gen/agent__host__launch.ts"
+
+  const publicResolvers = ["1.1.1.1", "8.8.8.8"]
+  let configured = false
+
+  type Answer = (error: NodeJS.ErrnoException | null, address: unknown, family?: number) => void
+
+  function resolverHost(): ResolverHost {
+    const platform = process.env.ELIZA_PLATFORM?.trim().toLowerCase()
+    if (platform !== "android" && platform !== "ios") return "NotMobile"
+    return process.platform === "android" ? "NativeAndroid" : "OtherMobile"
+  }
+
+  function nameOf(hostname: string): LookupName {
+    return isIP(hostname) !== 0 ? "AddressLiteral" : hostname === "localhost" ? "LoopbackName" : "ExternalName"
+  }
+
+  function explicitLookup(resolver: dns.Resolver): typeof dns.lookup {
+    return ((hostname: string, options: unknown, callback?: unknown) => {
+      const answer = (typeof options === "function" ? options : callback) as Answer
+      const all = typeof options === "object" && options !== null && "all" in options && options.all === true
+      if (lookupRoute("OtherMobile", nameOf(hostname)) === "NoLookup") {
+        const address = hostname === "localhost" ? "127.0.0.1" : hostname
+        const family = isIP(address)
+        answer(null, all ? [{ address, family }] : address, family)
+        return
+      }
+      resolver.resolve4(hostname, (error, addresses) => {
+        if (error || addresses.length === 0) {
+          answer(error ?? Object.assign(new Error(`No A record for ${hostname}`), { code: "ENOTFOUND" }), undefined, undefined)
+          return
+        }
+        answer(null, all ? addresses.map((address) => ({ address, family: 4 })) : addresses[0], 4)
+      })
+    }) as typeof dns.lookup
+  }
+
+  /** @throws {never} */
+  export function configureResolvers(): string | undefined {
+    if (configured || resolverHost() !== "OtherMobile") return undefined
+    const listed = process.env.ELIZA_MOBILE_DNS_SERVERS
+    const servers = listed === undefined ? publicResolvers : listed.split(",").map((server) => server.trim())
+    if (!resolverListAdmitted(servers.length, servers.every((server) => isIP(server) !== 0))) return listed ?? ""
+    configured = true
+    const unique = [...new Set(servers)]
+    try {
+      dns.setServers(unique)
+    } catch {}
+    const resolver = new dns.Resolver()
+    try {
+      resolver.setServers(unique)
+    } catch {
+      return undefined
+    }
+    const lookup = explicitLookup(resolver)
+    dns.lookup = lookup
+    dns.promises.lookup = ((hostname: string, options?: { all?: boolean }) => new Promise((resolve, reject) => {
+      lookup(hostname, options ?? {}, ((error, address, family) => {
+        if (error) reject(error)
+        else resolve((options?.all ? address : { address, family }) as LookupAddress[] | LookupAddress)
+      }) as Answer)
+    })) as typeof dns.promises.lookup
+    return undefined
+  }
+}
+import { configureResolvers } from node
+
+/** The native host's resolver list is not one to eight IP addresses. */
+export error MobileDnsRefused { servers: string }
+
+/** Points the agent's name lookups at the native host's resolvers on a phone whose runtime cannot use the system resolver; elsewhere it changes nothing. */
+export effect function configureMobileDns() {
+  const refused = try sync(configureResolvers)
+  if (refused !== undefined) throw new MobileDnsRefused({ servers: refused })
+}

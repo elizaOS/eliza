@@ -74,7 +74,7 @@ function registerHandlers(runtime: IAgentRuntime, launch: LaunchDocument, models
 export effect function localInferencePlugin(engine: InferenceEngine.Shape, host: Pick<ModuleContext, "launch" | "stateDirectory">, catalog: Catalog = curatedModels) {
   const launch = host.launch
   const opened = Effect.provide(Effect.provideService(openLocalModels(host.stateDirectory, catalog), InferenceEngine, engine), Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer))
-  const models = try (opened catch effect (failure) => { throw new ModuleRefused({ module: localInferencePluginName, reason: failure.reason }) })
+  const models = try opened
   const space = (try models.embeddingModel())?.model.embedding?.space
   if (launch.embeddings === "local" && space !== undefined && launch.embeddingDimensions !== undefined && launch.embeddingDimensions !== space.dimensions) {
     throw new ModuleRefused({ module: localInferencePluginName, reason: `the launch asks for ${launch.embeddingDimensions}-dimensional embeddings and the local model writes ${space.dimensions}` })
