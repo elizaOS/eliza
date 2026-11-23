@@ -63,11 +63,12 @@ const processes = () => WINDOWS ? [] : processTable(spawnSync("ps", psArgs, { en
 const execFileAsync = promisify(execFile);
 async function readCounters(command: string, args: string[], signal: AbortSignal) {
   if (signal.aborted) return "";
-  const running = execFileAsync(command, args, { encoding: "utf8", timeout: WATCH, killSignal: "SIGKILL" });
-  const stop = addAbortListener(signal, () => running.child.kill("SIGKILL"));
-  try { return (await running).stdout; }
-  catch { return ""; }
-  finally { stop[Symbol.dispose](); }
+  try {
+    const running = execFileAsync(command, args, { encoding: "utf8", timeout: WATCH, killSignal: "SIGKILL" });
+    const stop = addAbortListener(signal, () => running.child.kill("SIGKILL"));
+    try { return (await running).stdout; }
+    finally { stop[Symbol.dispose](); }
+  } catch { return ""; }
 }
 
 /** The processes in `table` that `child` started, itself included. */
@@ -197,7 +198,11 @@ function signal(child: ChildProcess, name: NodeJS.Signals, table: number[][] = [
 
 /** How each tool still running is ended: an interrupted check ends them and what they started before it ends itself, and so does one that exits. A tool is asked to end, so that one that is a check ends its own tools; a shell command is killed. */
 const ending = new Map<ChildProcess, NodeJS.Signals>();
-const endAll = () => { const table = ending.size ? processes() : []; for (const [child, name] of ending) signal(child, name, table); };
+const endAll = () => {
+  polling?.abort();
+  const table = ending.size ? processes() : [];
+  for (const [child, name] of ending) signal(child, name, table);
+};
 process.once("exit", endAll);
 for (const name of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.once(name, () => { endAll(); process.kill(process.pid, name); });
 
@@ -240,15 +245,18 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
       const minutes = TOOL_TIMEOUT / 60_000;
       let lastComplete: { seconds: number; since: number } | undefined;
       let observedAt = started;
-      let previous = new Map<number, number>();
+      const partialHigh = new Map<number, number>();
       const observe = (sample: CpuReading | undefined, now: number) => {
         if (!sample) return;
         if (sample.complete) {
           observedAt = now;
-          previous.clear();
+          partialHigh.clear();
         } else {
-          if ([...sample.known].some(([pid, used]) => used > (previous.get(pid) ?? 0))) observedAt = now;
-          previous = sample.known;
+          for (const [pid, used] of sample.known) {
+            if (used <= (partialHigh.get(pid) ?? 0)) continue;
+            partialHigh.set(pid, used);
+            observedAt = now;
+          }
         }
       };
       unwatch = watchCpu(child, async (reading, signal) => {
