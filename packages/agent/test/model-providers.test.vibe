@@ -217,7 +217,8 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
   assert.strictEqual((try binding.read()).accountState, "usable")
 
   const scripted = try cloudFake(deviceKey)
-  const streaming = try cloudAgent(scripted)
+  const streamingStore = try providerStore()
+  const streaming = try cloudAgent(streamingStore, scripted)
   try Effect.sync(() => scripted.script(text("Whole."), cachedText(48, "Four.")))
   try host("whole call", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hi." }))
   const chunks: string[] = []
