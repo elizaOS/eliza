@@ -1,5 +1,6 @@
 // spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminders.md, "Story: Move the reminder I just saved"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"; spec/assistant/reminders.md, "A reminder is high priority only when the owner's message says so"; spec/assistant/reminders.md, "A stated time moves a waiting reminder to that time, and a time already passed changes nothing"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminders.md, "Listing reminders changes nothing, and a rename changes the title of the one reminder named"
-import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type IAgentRuntime, type Provider, type UUID } from "@elizaos/core"
+import { showsApp } from "@elizaos/agent"
+import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type ContextDefinition, type IAgentRuntime, type Provider, type UUID } from "@elizaos/core"
 import { Machine, machine, moveAdmitted, moveToAdmitted, movedDueAt, maxMoveDelayMs, recoveredChoice, renameAdmitted, retractsRecentSave, type DeliveryChoice, type ReminderClock, type ReminderIntent } from "../gen/assistant__reminders.effect.vibe"
 import {
   Facts, Model, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, removeRecord, requestOf, writeRecord,
@@ -130,6 +131,11 @@ export type ReminderOutcome =
   | { readonly kind: "settled"; readonly intent: ReminderIntent; readonly attempts: readonly Attempt[]; readonly target: string; readonly said: string; readonly taskId: string | undefined }
 
 const saveAction = "OWNER_REMINDERS"
+
+export const remindersContext: ContextDefinition = {
+  id: "reminders", label: "Reminders", description: "The owner's reminders.", descriptionCompressed: "The owner's reminders.",
+  sensitivity: "personal", cacheScope: "agent",
+}
 
 const RecentSave = Schema.Struct({ taskId: Schema.String, title: Schema.String, messageId: Schema.String, savedAt: Schema.Number })
 const decodeRecentSave = Schema.decodeUnknownOption(RecentSave)
@@ -524,6 +530,8 @@ export const ownerRemindersAction: Action = {
     }
   },
 }
+
+showsApp(ownerRemindersAction, remindersContext.id)
 
 export const ownerRemindersProvider: Provider = {
   name: "PERSONAL_ASSISTANT_REMINDERS",

@@ -1,8 +1,8 @@
 // spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Where I am is the place at my phone's recent position, and only its area when that position is rough"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "Coordinates the owner names are looked up or searched around as given, never the phone's position"; spec/maps/routing.md, "A route's destination that names no locality is taken from within 100 km of its start when any result is there"; spec/maps/routing.md, "A place's location is shared only after the owner's own later yes to sharing that place"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"
-import { readTurnContext, type AgentPlugin } from "@elizaos/agent"
+import { readTurnContext, showsApp, type AgentPlugin } from "@elizaos/agent"
 import { nearbyPositionUsable, pointRequest, roughPosition, searchAround, whereAnswer, type PhonePosition } from "../gen/maps__phonePosition.effect.vibe"
 import { aroundTheStart, coverageAnswer, mapsSelectionTarget, placePick, sameLandmark, sharesLocation, type ShareDecision } from "../gen/maps__routing.effect.vibe"
-import { appendInteractionBlock, requireConfirmation, type Action, type ActionResult, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
+import { appendInteractionBlock, requireConfirmation, type Action, type ActionResult, type ContextDefinition, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import { appendMapsCard, type MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
 import { MapsFailure, TravelMode, travelModes, type Coordinate, type Place } from "./client/contracts.vibe"
 import type { AgentPlaceRef, DeviceNavigationFailure, MapsDeviceNavigationStatus } from "./client/device-navigation.vibe"
@@ -482,6 +482,12 @@ async function settle(work: ActionResult!Refusal): Promise<ActionResult> {
 }
 
 const ownerOnly = { minRole: "OWNER" as const }
+
+const mapsContext: ContextDefinition = {
+  id: "maps", aliases: ["map"], label: "Maps", description: "Places, routes and navigation.", descriptionCompressed: "Places, routes and navigation.",
+  sensitivity: "personal", cacheScope: "agent",
+}
+
 const modeParameter = { name: "travelMode", required: false, description: "drive, walk, bicycle or transit; drive when the owner named none.", schema: { type: "string" as const, enum: [...travelModes] } }
 
 function mapsActions(ports: MapsPluginPorts): Action[] {
@@ -654,11 +660,16 @@ export const phonePositionProvider: Provider = {
 }
 
 export function createMapsPlugin(ports: MapsPluginPorts): AgentPlugin {
+  const actions = mapsActions(ports)
+  for (const action of actions) showsApp(action, mapsContext.id)
   return {
     name: mapsPluginName,
     description: "Place search, routes with alternatives, navigation the owner starts on the phone, sharing a place once the owner agrees, and what Maps covers, through the owner's Cloud Maps account.",
-    actions: mapsActions(ports),
+    actions,
     providers: [phonePositionProvider],
-    init: (_config, runtime) => registerMapsRouting(runtime, (destination) => ports.namesView(runtime, destination) ?? true),
+    init: async (_config, runtime) => {
+      runtime.contexts.tryRegister(mapsContext)
+      registerMapsRouting(runtime, (destination) => ports.namesView(runtime, destination) ?? true)
+    },
   }
 }

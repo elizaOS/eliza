@@ -1,8 +1,9 @@
 // spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"
 import { assert, it } from "@effect/vitest"
-import { attestAuthenticatedApiDeliveryAudience, canActionRun, disclosureGateFailure, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+import { activityLabel } from "@elizaos/agent"
+import { attestAuthenticatedApiDeliveryAudience, canActionRun, ContextRegistry, disclosureGateFailure, resolveActionContexts, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
 import {
-  calendarAction, calendarAsk, calendarHost, calendarProvider, calendarRoutes, CalendarWriteNotAccepted, runCalendarAction,
+  calendarAction, calendarAsk, calendarHost, calendarPlugin, calendarProvider, calendarRoutes, CalendarWriteNotAccepted, runCalendarAction,
   type CalendarAccount, type CalendarApprovalRow, type CalendarCache, type CalendarEvent, type CalendarProviderPort, type CalendarRouteInput,
 } from "../src/index.vibe"
 
@@ -205,7 +206,7 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   assert.deepStrictEqual([google.scopes, [...google.events.values()].map((event) => event.title)], [["series"], ["Standup, all"]])
 })
 
-it.effect(`Ask the agent about my calendar and get my active account's events (spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it")`, effect () => {
+it.effect(`Ask the agent about my calendar and get my active account's events, showing Calendar while it reads (spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it")`, effect () => {
   const filed: CalendarApprovalRow[] = []
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
   const google = googleCalendar()
@@ -214,6 +215,10 @@ it.effect(`Ask the agent about my calendar and get my active account's events (s
   const ask = { by: "owner-entity", conversation: "room:owner", id: "message-1", text: "" }
   const disclosed = (message: Memory) => [canActionRun(calendarAction, { message, userRoles: ["OWNER"] }), disclosureGateFailure(calendarProvider.disclosureGate, message) === undefined]
   assert.deepStrictEqual([disclosed(try ownerTurn([ownerEntity, agentEntity])), disclosed(try ownerTurn([ownerEntity, agentEntity, guestEntity]))], [[true, true], [false, false]])
+  const registered = { ...calendarAction, contexts: try Effect.try(() => resolveActionContexts(calendarAction)) }
+  const ownerOnly = try ownerTurn([ownerEntity, agentEntity])
+  const runsOnTurn = try Effect.try(() => canActionRun(registered, { message: ownerOnly, userRoles: ["OWNER"], activeContexts: ["general"] }))
+  assert.deepStrictEqual([calendarAction.contexts, registered.contexts, runsOnTurn], [undefined, ["calendar", "automation"], false])
   const lunch = try runCalendarAction(host, ask, { subaction: "create_event", title: "Private lunch", startAt: "2030-03-04T12:00:00Z", endAt: "2030-03-04T13:00:00Z", reviewBeforeCreate: false })
   assert.deepStrictEqual([lunch.success, at(lunch.effectReceipts?.[0], "operation"), filed.length], [true, "calendar.event.create", 0])
   try runCalendarAction(host, { ...ask, id: "message-2" }, { subaction: "create_event", calendarId: "work", title: "Board review", startAt: "2030-03-05T12:00:00Z", endAt: "2030-03-05T13:00:00Z" })
@@ -232,6 +237,9 @@ it.effect(`Ask the agent about my calendar and get my active account's events (s
   assert.strictEqual(at(removal.payload.change, "scope"), "instance")
   const invalidated = try host.executeApproval({ id: removal.id, action: removal.action, payload: removal.payload })
   assert.deepStrictEqual([invalidated.result, invalidated.failure?.code, google.events.size], ["ChangeInvalidated", "CALENDAR_REVIEW_UNBOUND", 1])
+  const runtime = { contexts: try Effect.try(() => new ContextRegistry()) } as unknown as IAgentRuntime
+  try promise(() => Promise.resolve(calendarPlugin().init?.({}, runtime)))
+  assert.strictEqual(activityLabel(runtime, calendarAction), "Using Calendar")
 })
 
 it.effect(`Find my events by their words, and what is on while I am away (spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last")`, effect () => {

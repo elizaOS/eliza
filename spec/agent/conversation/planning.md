@@ -475,16 +475,32 @@ pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: 
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
 
 When a tool call starts, its progress carries the action's name and a
-label for the owner: `Using <label>` when, among the action's declared
-contexts (core's catalog when it declares none) other than the catch-all
-`general` and `simple` and any `system` context, exactly one applies and
-the runtime's context registry gives it a label, and `Working` otherwise.
-Contexts with the same label count once; an unlabelled context counts by
-its id, so an action that may also reach an unnamed app is `Working`. The
-registry starts empty: an app is named only once it registers its own
-labelled context when it loads (Notes registers `Notes`) and its actions
-declare that context; an action that declares no context, or only contexts
-nobody labelled, is `Working`.
+label for the owner: `Using <label>` when, among the contexts the call
+shows other than the catch-all `general` and `simple` and any `system`
+context, exactly one applies and the runtime's context registry gives it a
+label, and `Working` otherwise. A call shows the app its action names for
+its progress, and otherwise the action's declared contexts (core's catalog
+when it declares none). The device tool names its app for each call from
+its arguments: the app its operation's proposal family declares, and no app
+when that family declares none, so a device call is named only by its
+family's app and the arguments never appear in the label. Contexts with the
+same label count once; an unlabelled context counts by its id, so an action
+that may also reach an unnamed app is `Working`. The registry starts empty:
+an app is named only once it registers its own labelled context when it
+loads and its actions, or its proposal family, name that context. Maps
+registers `Maps`, Calendar `Calendar`, Browser `Browser`, Files `Files`,
+Inbox `Inbox`, Workflows `Workflows`, Notes `Notes`, and the assistant
+`Reminders` for its reminders. An action that names no app and declares no
+context, or only contexts nobody labelled, is `Working`: the views tool,
+which opens any app, the assistant's goals, to-dos, routines and
+briefings, the phone's call, message and surface operations, the reminders
+family's operations, which reach both Reminders and Clock, and a helper
+such as `CALCULATE`.
+
+The app a call shows is its label and nothing else. Naming it never
+changes the action's declared contexts, its role gate or the contexts the
+call runs under, so it never widens or narrows which calls run, and it is
+never part of the tools, the system prompt or the history.
 
 ```quint
 type ToolActivity = UsingApp | Working
@@ -493,6 +509,13 @@ pure val applicableValues = Set(0, 1, 2)
 pure val labelledValues = Set(0, 1, 2)
 pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatApplies(applicable: int, labelled: int): bool =
   toolActivity(applicable, labelled) == UsingApp implies (applicable == 1 and labelled == 1)
+type DeviceFamilyApp = FamilyApp({ app: str }) | NoFamilyApp
+pure def deviceCallReach(deviceFamily: DeviceFamilyApp): Set[str] = match deviceFamily { | FamilyApp(f) => Set(f.app) | NoFamilyApp => Set() }
+pure val deviceFamilyValues = Set(FamilyApp({ app: "calendar" }), FamilyApp({ app: "notes" }), NoFamilyApp)
+pure def lawADeviceCallReachesAtMostItsFamilysApp(deviceFamily: DeviceFamilyApp): bool = match deviceFamily {
+  | FamilyApp(f) => deviceCallReach(deviceFamily).size() == 1 and deviceCallReach(deviceFamily).contains(f.app) | NoFamilyApp => deviceCallReach(deviceFamily).size() == 0 }
+pure def lawADeviceCallIsNamedOnlyByItsFamilysApp(deviceFamily: DeviceFamilyApp, labelled: int): bool =
+  toolActivity(deviceCallReach(deviceFamily).size(), labelled) == UsingApp implies deviceFamily != NoFamilyApp
 ```
 
 ### A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other

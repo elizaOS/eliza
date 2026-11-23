@@ -1,7 +1,7 @@
 // spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request refuses the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
-  type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
+  type AgentContext, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
   buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
@@ -68,6 +68,13 @@ export interface ServedElsewhere {
 }
 
 export const turnElsewhere = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory, params: Record<string, unknown>) => ServedElsewhere | undefined>()
+
+// The contexts a call's progress label names. A label only: the action's declared contexts, and so which calls run, never change.
+export const progressContexts = new WeakMap<Action, (runtime: IAgentRuntime, params: Record<string, unknown>) => readonly AgentContext[]>()
+
+export function showsApp(action: Action, app: AgentContext): void {
+  progressContexts.set(action, () => [app])
+}
 
 export const turnNotes = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => string | undefined>()
 
@@ -292,10 +299,11 @@ function failureNotice(step: PlannedStep): string {
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
 
-function toolLabel(runtime: AgentRuntime, action: Action | undefined): string {
+export function activityLabel(runtime: IAgentRuntime, action: Action | undefined, params: Record<string, unknown> = {}): string {
   const applicable = new Set<string>()
   const labels = new Set<string>()
-  for (const context of action === undefined ? [] : resolveActionContexts(action)) {
+  const reached = action === undefined ? [] : progressContexts.get(action)?.(runtime, params) ?? resolveActionContexts(action)
+  for (const context of reached) {
     if (context === "general" || context === "simple") continue
     const definition = runtime.contexts.get(context)
     if (definition?.sensitivity === "system") continue
@@ -347,7 +355,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(refusal) })
       return refusal
     }
-    await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name)) })
+    await input.onActivityStatus?.({ actionName: call.name, label: activityLabel(runtime, named.get(call.name), params) })
     const captured: string[] = []
     const result = await executePlannedToolCall(runtime, {
       message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),

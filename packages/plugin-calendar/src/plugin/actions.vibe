@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"
-import { readTurnContext } from "@elizaos/agent"
-import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
+import { readTurnContext, showsApp } from "@elizaos/agent"
+import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type ContextDefinition, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
   chatCreateReviewed, deleteAnswer, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
@@ -22,6 +22,11 @@ import { guestAddresses } from "./providers.vibe"
 import { CalendarService, calendarServiceType } from "./service.vibe"
 
 export const calendarActionName = "CALENDAR"
+
+export const calendarContext: ContextDefinition = {
+  id: "calendar", label: "Calendar", description: "The owner's calendars and events.", descriptionCompressed: "Calendars and events.",
+  sensitivity: "personal", cacheScope: "agent",
+}
 
 const day = 86_400_000
 const maxSpan = 370 * day
@@ -509,6 +514,8 @@ export const calendarAction: Action = {
     return runPromise(runCalendarAction(host, calendarAsk(message, await ownerZone(runtime)), input, message))
   },
 }
+
+showsApp(calendarAction, calendarContext.id)
 
 export const calendarProvider: Provider = {
   name: "CALENDAR_CONTEXT",
