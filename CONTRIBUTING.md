@@ -197,9 +197,10 @@ shell applies events through `Machine` or the generated Effect adapter.
 
 ### Sources and generated files
 
-Every root spec module is generated into the root's `gen/`. Modules owned by
-`apps/<name>` or `packages/<name>`, and the modules they import, are also
-written into that owner's `gen/`; packages import their own generated files.
+Every root spec module is generated into the root's `gen/`. A workspace
+receives the modules it owns and their imports in its own `gen/`. The root
+`package.json` maps plugin spec areas to their `plugin-*` workspace directories
+through `specOwners`. Packages import their own generated files.
 See [SPEC.md, "One spec tree"](SPEC.md#one-spec-tree).
 
 | Source | Output | Written by; kept in Git |

@@ -208,7 +208,7 @@ The repository has one spec tree, at its root, and one check of it.
 | Path | Is |
 |---|---|
 | `spec/index.md` | the product's requirements: an introduction, and a link to each area |
-| `spec/<name>/` | the requirements of the package `apps/<name>` or `packages/<name>`, its *owner*, when there is one with no `spec/` of its own. Nothing else says so: the name does |
+| `spec/<name>/` | the requirements of its *owner*: the workspace directory named by `specOwners` in the root `package.json`, or `apps/<name>` or `packages/<name>` by default. The owner has no `spec/` of its own |
 | `spec/<name>/` with no such package | an area of the root project; its modules stay in the root's `gen/` |
 | a package with its own `spec/` | a project of its own, checked on its own: Studio, each example |
 
@@ -232,6 +232,10 @@ it does for the root's own `src/` and `test/`:
   `// spec/agent/index.md, "A rule"`.
 
 An owner has no `check`, `gen` or `accept` script: the root's are its own.
+When its directory differs from the spec area, the root `package.json` maps
+that area to its workspace directory, for example
+`"specOwners": { "workflow": "packages/plugin-workflows" }`. Each directory
+can own one area. The `--owner` argument is the spec area name.
 
 For an independent owner build, `pnpm gen --owner <name>` reads every spec
 in `spec/<name>/` and follows its imports and links to check references.

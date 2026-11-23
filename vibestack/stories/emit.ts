@@ -11,7 +11,7 @@ import { type Plan, type Story, plan } from "./variants.ts";
 export type { Prop, Story };
 
 /** Part of every hash: raise it when the same inputs would be written differently. */
-const VERSION = 7;
+const VERSION = 8;
 
 export interface Component {
   id: string;
@@ -44,10 +44,10 @@ const COMPONENTS = ["src/**/*.tsx", "packages/*/src/**/*.tsx"];
 export const outOf = (root: string) => join(root, "generated", "stories");
 /** What each source gave, kept in a hidden directory, which no stage's key reads: it changes when only its inputs' hashes do. */
 const MANIFEST = ".cache/manifest.json";
-/** Whether a changed path can change the stories: the project's source and tsconfig, outside `out`, dot-directories and `node_modules`. */
+/** Whether a changed path can change the stories. */
 export const watched = (root: string, out = outOf(root)) => (file: string) => {
   const path = relative(root, resolve(root, file));
-  return /\.tsx?$|^tsconfig\.json$/.test(path) && !/(^|[\\/])(node_modules|\.[^\\/]+)[\\/]/.test(path) && relative(resolve(root, out), resolve(root, file)).startsWith("..");
+  return /\.tsx?$|^tsconfig\.json$|(^|[\\/])package\.json$/.test(path) && !/(^|[\\/])(node_modules|\.[^\\/]+)[\\/]/.test(path) && relative(resolve(root, out), resolve(root, file)).startsWith("..");
 };
 /** A listener for changed paths: it runs `run` once they go quiet, and reports what `run` throws so the next change is still heard. */
 export function listener(root: string, out: string | undefined, run: () => void): (file: string) => void {
