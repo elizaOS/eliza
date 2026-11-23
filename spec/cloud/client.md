@@ -276,8 +276,10 @@ pure def lawAMatchedRouteMatches(method: HttpMethod, parts: List[str]): bool = {
 
 The shell reads the refusal body (`{error, errorDescription, retryable,
 retryAt?, resetsAt?, reason?}`) and passes its code, reason and times
-(epoch milliseconds, `0` when absent; a `Retry-After` header gives `retryAt`
-when the body has none). A body that is not a refusal body is read as the
+(epoch milliseconds, `0` when absent). A `Retry-After` header gives
+`retryAt` in place of the body's, its seconds counted from when the answer
+arrived, so a device whose clock differs from the cloud's waits as long as
+the cloud asked. A body that is not a refusal body is read as the
 default code of its status. A failure before any answer is
 `CloudNetwork`. The variants are those of the agent's model binding, plus
 the credential reason and `CloudRefused` for a refusal that needs the

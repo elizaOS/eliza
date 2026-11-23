@@ -2685,18 +2685,25 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     const kept = try failureOf(() => client.account())
 
     const resetsAt = now + 3_600_000
-    const retryAt = now + 60_000
-    const backAt = now + 30_000
-    const probe = try refusingServer(cloud, [refused("InsufficientCredits"), refused("AllowanceExhausted", "NoReason", resetsAt), refused("RateLimited", "NoReason", retryAt), refused("ServiceUnavailable", "NoReason", backAt)])
+    const cloudClock = try sync(() => manualClock())
+    const cloudNow = now + 3_600_000
+    try sync(() => cloudClock.set(cloudNow))
+    const probe = try provideService(refusingServer(cloud, [refused("InsufficientCredits"), refused("AllowanceExhausted", "NoReason", resetsAt),
+      refused("RateLimited", "NoReason", cloudNow + 60_000), refused("ServiceUnavailable", "NoReason", cloudNow + 30_000)]), Clock.Clock, cloudClock.clock)
     const refusing = clientOf(probe, () => live)
+    const asked = try Clock.currentTimeMillis
     const answers = [
       try failureOf(() => refusing.models()),
       try failureOf(() => refusing.models()),
       try failureOf(() => refusing.models()),
       try failureOf(() => refusing.models())
     ]
+    const answered = try Clock.currentTimeMillis
+    const fromArrival = (at: number, seconds: number) => at >= asked + seconds * 1_000 && at <= answered + seconds * 1_000
+    const retryAt = typeof answers[2] === "object" && answers[2].tag === "CloudRateLimited" && fromArrival(answers[2].retryAt, 60) ? "a minute after it arrived" : answers[2]
+    const backAt = typeof answers[3] === "object" && answers[3].tag === "CloudUnavailable" && fromArrival(answers[3].retryAfter, 30) ? "half a minute after it arrived" : answers[3]
     try check(() => assert.deepStrictEqual(
-      { unknown, expired, revoked, kept, answers, read, held },
+      { unknown, expired, revoked, kept, answers: [answers[0], answers[1], retryAt, backAt], read, held },
       {
         unknown: { tag: "CloudCredentialInvalid", reason: "CredentialUnknown" },
         expired: { tag: "CloudCredentialInvalid", reason: "CredentialExpired" },
@@ -2705,8 +2712,8 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
         answers: [
           { tag: "CloudInsufficientCredits" },
           { tag: "CloudAllowanceExhausted", resetsAt },
-          { tag: "CloudRateLimited", retryAt },
-          { tag: "CloudUnavailable", retryAfter: backAt }
+          "a minute after it arrived",
+          "half a minute after it arrived"
         ],
         read: [unknownKey, expiring, ended, live],
         held: live
