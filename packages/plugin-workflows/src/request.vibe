@@ -10,7 +10,8 @@ import type { WorkflowRefused, WorkflowService } from "./service/workflows.vibe"
 module edge {
   const courtesy = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
   const end = String.raw`(?:,?\s+(?:please|for\s+me))?[.!?]*$`
-  const name = String.raw`(["“'‘]?[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`
+  const words = String.raw`[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?`
+  const name = String.raw`(["“][^"”\r\n]{1,80}["”]|['‘]${words}['’]|${words})`
   const closingQuote: Readonly<Partial<Record<string, RegExp>>> = { '"': /["”]$/u, "“": /["”]$/u, "'": /['’]$/u, "‘": /['’]$/u }
   const descriptiveWord = "(?:this|that|these|those|it|one|ones|the|my|last|latest|newest|new|old|oldest|older|newer|first|second|other|another|current|same|previous|recent|most|earlier|above|below|only|just|made|created|added)"
   const describesNotNames = new RegExp(`^${descriptiveWord}(?:\\s+${descriptiveWord})*$`, "iu")
@@ -34,7 +35,7 @@ module edge {
     const written = value?.trim().replace(fullStop, "")
     const closing = written === undefined ? undefined : closingQuote[written.charAt(0)]
     const trimmed = (closing === undefined || written === undefined ? written : written.slice(1).replace(closing, ""))?.replace(fullStop, "")
-    if (!trimmed || trimmed.length > 80 || notAName.test(trimmed)) return undefined
+    if (!trimmed || trimmed.length > 80 || (closing === undefined && notAName.test(trimmed))) return undefined
     if (/^(?:the|my|a|an)$/iu.test(trimmed) || /^workflows?$/iu.test(trimmed)) return undefined
     return describesNotNames.test(trimmed) || pronounClause.test(trimmed) ? undefined : trimmed
   }

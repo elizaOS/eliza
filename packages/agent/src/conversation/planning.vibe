@@ -185,12 +185,13 @@ function planStepsOf(action: string, params: Record<string, unknown>, result: Ac
   const receipts = result.effectReceipts ?? []
   if (receipts.length > 0) {
     return receipts.map((receipt) => ({
-      actionName: action, outcome: outcomeOf(receipt), operation: `${action}\u0000${receipt.operation}\u0000${receipt.resource.kind}\u0000${receipt.resource.id}`,
+      outcome: outcomeOf(receipt),
+      identity: { tag: "ReceiptOperation", key: `${action}\u0000${receipt.operation}\u0000${receipt.resource.kind}\u0000${receipt.resource.id}` },
     }))
   }
-  const operation = `${action}\u0000${canonical(params)}`
-  if (!result.success || result.error !== undefined) return [{ actionName: action, outcome: notStarted(result) ? "Rejected" : "Failed", operation }]
-  return [{ actionName: action, outcome: "NoEffect", operation }]
+  const identity = { tag: "RequestAttempt", key: `${action}\u0000${canonical(params)}` } as const
+  if (!result.success || result.error !== undefined) return [{ outcome: notStarted(result) ? "Rejected" : "Failed", identity }]
+  return [{ outcome: "NoEffect", identity }]
 }
 
 function paramsOf(call: ToolCall): Record<string, unknown> {
@@ -283,7 +284,9 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
 }
 
 function failureNotice(step: PlannedStep): string {
-  if (notStarted(step.result) && step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return unavailableNotice
+  if (step.outcomes.some(({ outcome }) => outcome === "Rejected")) {
+    return step.result.failureProvenance?.code === "ACTION_UNAVAILABLE" ? unavailableNotice : `A ${step.action} call did not start.`
+  }
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
 
@@ -302,8 +305,8 @@ function toolLabel(runtime: AgentRuntime, action: Action | undefined): string {
   return toolActivity(applicable.size, labels.size) === "UsingApp" && only !== undefined ? `Using ${only}` : "Working"
 }
 
-function entryKey({ actionName, outcome, operation }: PlanStep): string {
-  return `${actionName}\u0000${outcome}\u0000${operation}`
+function entryKey({ outcome, identity }: PlanStep): string {
+  return `${outcome}\u0000${identity.tag}\u0000${identity.key}`
 }
 
 function settleReply(steps: readonly PlannedStep[], prose: string | undefined): string {

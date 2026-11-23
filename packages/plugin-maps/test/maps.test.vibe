@@ -734,7 +734,8 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
     routeOf("directions to Coit Tower", { ...ownerTurn("x"), content: { text: "x", source: "discord", channelType: "GROUP" } } as unknown as Memory, false, () => false),
     routeOf("directions to assemble the shelf", ownerTurn("x"), false, () => false),
     ...["go to coit tower", "go to the ferry building", "go to SFO", "go to UCSF Medical Center", "go to Starbucks", "go to the Presidio",
-      "go to Sam", "go to Notion", "go to sleep", "go to the PDF", "go to my inbox", "go to the right place"]
+      "go to US 101", "go to gate 12", "go to la jolla",
+      "go to Sam", "go to Notion", "go to sleep", "go to the PDF", "go to my inbox", "go to the right place", "go to main branch", "go to test results"]
       .map((text) => routeOf(text, ownerTurn(text), false, () => false)),
     routeOf("how do I get to see the Eiffel Tower", ownerTurn("x"), false, () => false),
     routeOf("how do I get to See's Candies?", ownerTurn("x"), false, () => false),
@@ -765,8 +766,8 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
     answered: [true, "near"],
     elsewhere: false,
     routes: ["ToDirections", "ToTravel", "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner", "ToPlanner",
-      "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel",
-      "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner",
+      "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel",
+      "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner",
       "ToTravel", "ToTravel", "ToPlanner", "ToPlanner",
       "ToPlaceSearch", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner",
       "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner"],

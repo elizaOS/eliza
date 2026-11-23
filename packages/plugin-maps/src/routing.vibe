@@ -27,10 +27,10 @@ const compoundRequest = /\b(?:then|if|unless|when|once)\b/iu
 const businessNames = new Set(["7-eleven", "albertsons", "aldi", "applebees", "arbys", "arco", "carrefour", "chevron", "chilis", "chipotle", "costco", "dennys", "dunkin", "exxon", "familymart", "h&m", "hilton", "hyatt", "ikea", "in-n-out", "kmart", "kohls", "kroger", "lawson", "lidl", "lowes", "macys", "marriott", "mcdonalds", "meijer", "nordstrom", "panera", "peets", "petco", "petsmart", "popeyes", "publix", "safeway", "sephora", "sheraton", "staples", "starbucks", "target", "tesco", "texaco", "ulta", "uniqlo", "valero", "walgreens", "walmart", "wegmans", "wendys", "westin", "yodobashi", "zara"])
 const placeCode = /^(?!(?:PDF|FAQ|URL|API|TODO|HTML|CSS|JSON|XML|SQL|CSV|USB|TV|AM|PM|OK|ASAP|FYI|AI|ML|UI|UX|IT|HR|PR|CI|QA|SDK|CLI|GUI|OS|AWS|VPN|DNS|SSH|IDE|DM|DMS|SMS|MMS|BIOS)\b)\p{Lu}{2,5}(?=\s|$)/u
 const streetName = /\p{L}\s+(?:street|st|avenue|ave|boulevard|blvd|road|rd|lane|ln|parkway|pkwy|highway|hwy)\.?(?:,|$)/iu
-const placeNameCue = /^(?:cathedral|college|museum|university)\s+of\s+\p{L}|\b(?:airport|aquarium|beach|bridge|building|caf[eé]|cathedral|center|centre|cinema|clinic|college|court|garden|hospital|hotel|library|market|museum|park|pharmacy|pier|plaza|restaurant|shop|square|stadium|station|store|terminal|theat(?:er|re)|tower|trail|university|zoo)(?:\s+\d+[a-z]?)?$/iu
 const spokenIdiom = /^(?:sleep|bed|work|school|church|war|waste|town|pieces|great\s+lengths)\b/u
 const spokenFirstWord = /^(?:right|wrong|left|main|current|latest|original|default|following|above|below|more|less|all|any|some|every|each|no|one|two|three|second|third|fourth|fifth|see|watch|pick|check|look|find|buy|grab|eat|drink|meet|visit|help|talk|ask|tell|say|take|bring|go|come|stay|lunch|dinner|breakfast|brunch|class|practice|rehearsal|apple|microsoft|app|apps|play|android|iphone|ios|windows|mac|phone|device|system|control|bing|yahoo|duckduckgo)\b/u
 const spokenNotAPlace = /\b(?:i|me|my|mine|you|your|yours|we|us|our|he|him|his|she|her|they|them|their|it|its|this|that|these|those|today|tomorrow|tonight|yesterday|now|later|soon|morning|afternoon|evening|weekend|with|for|and|or|but|so|to|about|after|before|without|because|until|while)\b/u
+const spokenNonPlaceTail = /\b(?:branch|commit|function|method|class|error|warning|bug|issue|test|log|result|results|answer|question|topic|point|problem|one|ones|side|way|thing|things|list|table|chart|graph|image|picture|photo|video|song|track|playlist|album|episode|verse|note|notes|reminder|event|meeting|call|comment|post|story|profile|account|app|game|room|channel|server|repo|repository|directory|dashboard)$/u
 const spokenNearest = /^(?:nearest|closest)\b/u
 const addressWithLocality = /^\d+[a-z]?\s+[^,]+(?:,\s*[\p{Lu}\d][\p{L}\d.'’ -]*)+$/u
 const notAPlaceKind = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`
@@ -119,16 +119,17 @@ function compound(destination: string): boolean {
 }
 
 function spokenPlaceName(name: string): boolean {
-  return /^\p{Ll}/u.test(name) && /\s/u.test(name) && placeNameCue.test(name) && !spokenIdiom.test(name) && !spokenFirstWord.test(name)
-    && !spokenNotAPlace.test(name) && (!spokenNearest.test(name) || spokenNearestPlace.test(name))
+  return /^\p{Ll}/u.test(name) && /\s/u.test(name) && !spokenIdiom.test(name) && !spokenFirstWord.test(name)
+    && !spokenNotAPlace.test(name) && !spokenNonPlaceTail.test(name) && (!spokenNearest.test(name) || spokenNearestPlace.test(name))
 }
 
 function goToPlace(destination: string): boolean {
   const name = destination.replace(/^the\s+/iu, "")
   const code = placeCode.exec(name)?.[0]
+  const remainder = code === undefined ? "" : name.slice(code.length).trim().toLowerCase()
   return !goToNotAPlace.test(name) && (businessNames.has(name.toLowerCase().replace(/['’]/gu, ""))
     || (properName.test(name) && (name !== destination || /\s/u.test(name)))
-    || (code !== undefined && (code === name || (placeNameCue.test(name) && !spokenNotAPlace.test(name.toLowerCase()))))
+    || (code !== undefined && !spokenNotAPlace.test(remainder) && !spokenNonPlaceTail.test(remainder))
     || streetAddress.test(name) || streetName.test(name) || spokenPlaceName(name))
 }
 

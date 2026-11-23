@@ -354,18 +354,18 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
 
 it.live('Change only the workflow I named in chat, whatever workflow the planner proposed (spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name")', effect () => {
   const rig = try harness()
-  const named = (try saved(rig, manual("Morning digest", greeting.steps))).receipt.workflowId
+  const named = (try saved(rig, manual("Lunch and Learn", greeting.steps))).receipt.workflowId
   const other = (try saved(rig, manual("Evening digest", greeting.steps))).receipt.workflowId
   const runtime = chatRuntime()
   workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
   const said = (text: string, parameters: JsonObject) => promise(() => workflowAction.handler(runtime, { content: { text } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
-  const command = "Please rename workflow Morning digest to “Daily brief”."
+  const command = "Please rename workflow “Lunch and Learn” to “Talk and Learn: Q4”."
   const conflicting = try said(command, { action: "remove", workflowId: other })
   const renamed = try said(command, { action: "rename", workflowId: other, name: "Night brief" })
   const [first, second] = [try rig.client.detail(named), try rig.client.detail(other)]
   try check(() => assert.deepStrictEqual(
     [(conflicting.data as { readonly code?: string } | undefined)?.code, renamed.success, first.name, second.name, second.removed],
-    ["WORKFLOW_REQUEST_CONFLICT", true, "Daily brief", "Evening digest", false]))
+    ["WORKFLOW_REQUEST_CONFLICT", true, "Talk and Learn: Q4", "Evening digest", false]))
 })
 
 it.live('Decide one reviewed approval once and run its device step only as reviewed (spec/workflow/approvals.md, "Story: Decide one reviewed approval once and run its device step only as reviewed"; spec/workflow/runScope.md, "Story: A reviewed calendar read stays inside its run\'s scope")', effect () => {
