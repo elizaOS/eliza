@@ -104,7 +104,8 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   const past = try runCalendarAction(host, { ...ask, id: "message-4" }, { ...dentist, startAt: "1969-12-31T09:00:00Z", endAt: "1969-12-31T10:00:00Z" })
   assert.deepStrictEqual([past.success, at(past.data, "needsConfirmation")], [false, "past_start"])
   const pointDay = try runCalendarAction(host, { ...ask, id: "message-4b" }, { ...dentist, isAllDay: true, startAt: "2030-03-04T00:00:00Z", endAt: "2030-03-04T00:00:00Z" })
-  assert.strictEqual(pointDay.success, false)
+  assert.deepStrictEqual([pointDay.success, pointDay.text, at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length")],
+    [false, "A new event needs a title and a start before its end.", 0])
 
   const google = googleCalendar()
   try host.register(google.port)
