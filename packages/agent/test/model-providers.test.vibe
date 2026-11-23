@@ -22,8 +22,8 @@ module node {
 }
 import { digest } from node
 
-effect function bound(backend: Backend, key: string, environment?: Readonly<Record<string, string>>) {
-  const parsed = try parseLaunch(JSON.stringify(launchDocument({ backend, ...(environment === undefined ? {} : { environment }) })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
+effect function bound(backend: Backend, key: string) {
+  const parsed = try parseLaunch(JSON.stringify(launchDocument({ backend })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
   const binding = try bindModels(parsed.launch, parsed.authority)
   const state = try scratch("model-providers")
   const store = try acquireRelease(host("device storage", () => openDeviceStorage({ stateDirectory: state.path, persistMemory: false, account: null, embeddingDimensions: 0 })),
@@ -295,7 +295,7 @@ it.effect('An own-key overload or timeout is a provider issue and is retried, an
   assert.deepStrictEqual([bodies[0]?.temperature, bodies[0]?.stop, "max_tokens" in (bodies[0] ?? {}), "max_completion_tokens" in (bodies[0] ?? {}), bodies[2]?.max_completion_tokens], [0.2, ["\n\n"], false, false, 256])
 })
 
-it.effect('A rate limit holds a cloud account for the provider\'s whole retry time and a Cerebras own-key account for at most 4 s, a refusal carries the provider\'s time left, a parse failure is not retried, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider\'s whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
+it.effect('A rate limit holds a cloud account for the provider\'s whole retry time and a Cerebras own-key account for at most 4 s, a refusal carries the provider\'s time left and none when it names no wait, a parse failure is not retried, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider\'s whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const held = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
   registerCloudModels(held.runtime, held.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })
@@ -319,6 +319,22 @@ it.effect('A rate limit holds a cloud account for the provider\'s whole retry ti
   const afterHold = try cerebras.binding.startCall("TextSmall", at + 4_000)
   assert.deepStrictEqual([cerebrasView.lastCloudFailure?.retryAt, duringHold, typeof afterHold], [at + 4_000, { limitedUntil: at + 60_000 }, "number"])
 
+  const unhinted = try cloudAgent(cloud)
+  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "qwen-3.8-27b", large: "large" }
+  const ownKey = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large }, cloud.ownKey)
+  registerOwnKeyModels(ownKey.runtime, ownKey.binding, own)
+  try Effect.sync(() => cloud.script(refusal(429, "rate_limited", { retryable: true }), text("cloud admitted"), refusal(429, "queue_exceeded"), text("own key admitted")))
+  const sentBefore = completions(cloud)
+  const cloudBusy = try refusalOf(unhinted.runtime, { prompt: "Busy." })
+  const cloudAdmitted = try host("cloud call after a hintless limit", () => unhinted.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Again." }))
+  const ownBusy = try refusalOf(ownKey.runtime, { prompt: "Busy." })
+  const ownAdmitted = try host("own-key call after a hintless limit", () => ownKey.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Again." }))
+  const hintless = (failure: { status?: unknown; retryAfterMs?: unknown } | undefined, view: { lastCloudFailure?: { kind: string; retryAt?: number } }) =>
+    [failure?.status, failure?.retryAfterMs, view.lastCloudFailure?.kind, view.lastCloudFailure?.retryAt]
+  assert.deepStrictEqual([
+    hintless(cloudBusy, try unhinted.binding.read()), hintless(ownBusy, try ownKey.binding.read()), cloudAdmitted, ownAdmitted, completions(cloud) - sentBefore,
+  ], [[429, undefined, "limit_reached", undefined], [429, undefined, "limit_reached", undefined], "cloud admitted", "own key admitted", 4])
+
   const hinted = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
   registerCloudModels(hinted.runtime, hinted.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })
   const room = "00000000-0000-4000-8000-0000000000aa"
@@ -335,9 +351,6 @@ it.effect('A rate limit holds a cloud account for the provider\'s whole retry ti
     [["none", false, false, undefined], ["low", false, false, undefined], [undefined, false, false, undefined],
       [undefined, false, false, plannerKey], [undefined, false, false, undefined]])
 
-  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "qwen-3.8-27b", large: "large" }
-  const ownKey = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large }, cloud.ownKey)
-  registerOwnKeyModels(ownKey.runtime, ownKey.binding, own)
   try Effect.sync(() => cloud.script(refusal(400, "generation_error", { reason: "parser_error" }), text("not on cerebras")))
   const calls = completions(cloud)
   const unparsed = try refusalOf(ownKey.runtime, { prompt: "Call a tool." })

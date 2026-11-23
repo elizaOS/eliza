@@ -129,13 +129,21 @@ the call. Both attempts of one call carry the same `Idempotency-Key`, fresh
 for each call, so a connection lost after the cloud dispatched the first
 attempt is answered `409 already_dispatched` instead of running and charging
 the generation again; for a rate limit, the transport never re-sends it;
-the refusal carries the time left until the provider's retry time, and the turn
-that made the call waits for that, at most five seconds, and sends it once more
-([planning](../conversation/planning.md)).
+the refusal carries the time left until the provider's retry time, and no
+wait at all when the refusal named no retry time and no time a refusal
+named is still ahead; the turn that made the call waits for that, at most
+five seconds and five seconds when the refusal carries none, and sends it
+once more ([planning](../conversation/planning.md)).
 
 ```quint
 import models as M from "../../core/models"
 import client as C from "../../cloud/client"
+pure def refusalWait(reported: int, held: int, t: int): int = if (reported > t) reported - t else if (held > 0) 0 else -1
+pure val reportedValues = Set(-1, 0, 3, 59000)
+pure val heldValues = Set(-1, 0, 3, 4000)
+pure def lawAHintlessRefusalWithNothingAheadCarriesNoWait(reported: int, t: int): bool = reported <= t implies refusalWait(reported, 0, t) < 0
+pure def lawAWaitEndsAtTheReportedTime(reported: int, held: int, t: int): bool = refusalWait(reported, held, t) > 0 implies t + refusalWait(reported, held, t) == reported
+pure def lawANamedRefusalAlwaysCarriesAWait(reported: int, held: int, t: int): bool = held > 0 implies refusalWait(reported, held, t) >= 0
 pure def outcomeOf(e: C::CloudError): M::Outcome = match e {
   | CloudNetwork => M::RefusedConnection
   | CloudUnavailable(_) => M::RetryEnvelope
@@ -281,7 +289,8 @@ pure def lawOnlyQwenOnACerebrasRouteSendsTheKey(family: ReasoningFamily, cerebra
 `limit_reached` with its retry time, and `provider_issue` (an outage, a
 provider issue, a network failure, or a refused request or consent) are the one failure vocabulary: turns put
 them on the reply and status reports them. `lastCloudFailure` is
-`{kind, at, retryAt?}`; it never holds message text or a credential.
+`{kind, at, retryAt?}`, with `retryAt` only when the provider named one; it
+never holds message text or a credential.
 
 ```quint
 pure def failureOf(e: C::CloudError, version: int): AccountFailure = match e {
@@ -296,6 +305,7 @@ pure def failureName(f: AccountFailure): str = match f {
 }
 pure def accountStateName(st: AccountState): str = match st { | Usable => "usable" | Failing(x) => failureName(x.failure) }
 pure def retryAtOf(f: AccountFailure): int = match f { | LimitReached(x) => x.retryAt | _ => -1 }
+pure def namedRetryAt(f: AccountFailure): int = if (retryAtOf(f) > 0) retryAtOf(f) else -1
 pure def lastFailureKind(f: LastCloudFailure): str = match f { | CloudFailedAt(x) => failureName(x.failure) | NoCloudFailure => "" }
 pure def callVersion(calls: List[Call], id: int): int = calls.select(c => c.id == id).nthOr(0, { id: -1, credentialVersion: 0 }).credentialVersion
 pure def canRefuseCall(s: ModelBinding, id: int): bool = s.calls.some(c => c.id == id)
