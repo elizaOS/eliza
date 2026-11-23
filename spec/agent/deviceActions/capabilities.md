@@ -38,6 +38,7 @@ type Capability =
   | FilesBrowserV1 | MapsSelectedReadV1 | ClockHandoffV1 | ClockHandoffV2 | SmsSendV1 | MmsSendV1 | SmsComposeV1
   | MessagesReadV1 | PhoneDialV1 | PhoneCallV1 | ContactsWriteV1 | VoicemailReadV1 | VoicemailDeleteV1
   | SmsLatestSenderV1 | SmsLatestSenderV2 | NotesRecordV1 | PhotosViewSelectedV1 | CameraLibraryIdV1
+  | SmsComposeV2 | ContactsWriteV2 | ContactsShowV1 | ContactsReadV1 | ContactsLookupV1 | PhoneKeypadV1
   | BrowserSearchV1 | BrowserTabsV1 | BrowserTabsCloseAllV1 | BrowserFindV1 | BrowserHistoryV1 | BrowserOpenNewTabV1 | FilesShownTargetV1
 pure def capabilityName(c: Capability): str = match c {
   | CalendarLocalEventV1 => "calendar.local-event.v1" | CalendarCreateV1 => "calendar.create.v1" | CalendarNextReadV1 => "calendar.next-read.v1"
@@ -52,6 +53,8 @@ pure def capabilityName(c: Capability): str = match c {
   | ContactsWriteV1 => "contacts.write.v1" | VoicemailReadV1 => "voicemail.read.v1" | VoicemailDeleteV1 => "voicemail.delete.v1"
   | SmsLatestSenderV1 => "sms.latest-sender.v1" | SmsLatestSenderV2 => "sms.latest-sender.v2" | NotesRecordV1 => "notes.record.v1"
   | PhotosViewSelectedV1 => "photos.view-selected.v1" | CameraLibraryIdV1 => "camera.capture-library-id.v1"
+  | SmsComposeV2 => "sms.compose.v2" | ContactsWriteV2 => "contacts.write.v2" | ContactsShowV1 => "contacts.show.v1"
+  | ContactsReadV1 => "contacts.read.v1" | ContactsLookupV1 => "contacts.lookup.v1" | PhoneKeypadV1 => "phone.keypad.v1"
   | BrowserSearchV1 => "browser.search.v1" | BrowserTabsV1 => "browser.tabs.v1" | BrowserTabsCloseAllV1 => "browser.tabs.close-all.v1"
   | BrowserFindV1 => "browser.find.v1" | BrowserHistoryV1 => "browser.history.v1" | BrowserOpenNewTabV1 => "browser.open-new-tab.v1"
   | FilesShownTargetV1 => "files.shown-target.v1"
@@ -62,7 +65,8 @@ pure val allCapabilities: Set[Capability] = Set(
   RemindersLocalRecordV2, RemindersCreateV1, PhotosLibraryV1, PhotosViewV1, CameraCapturePhotoV1, FilesBrowserV1,
   MapsSelectedReadV1, ClockHandoffV1, ClockHandoffV2, SmsSendV1, MmsSendV1, SmsComposeV1, MessagesReadV1, PhoneDialV1,
   PhoneCallV1, ContactsWriteV1, VoicemailReadV1, VoicemailDeleteV1, SmsLatestSenderV1, SmsLatestSenderV2, NotesRecordV1,
-  PhotosViewSelectedV1, CameraLibraryIdV1, BrowserSearchV1, BrowserTabsV1, BrowserTabsCloseAllV1, BrowserFindV1, BrowserHistoryV1,
+  PhotosViewSelectedV1, CameraLibraryIdV1, SmsComposeV2, ContactsWriteV2, ContactsShowV1, ContactsReadV1, ContactsLookupV1,
+  PhoneKeypadV1, BrowserSearchV1, BrowserTabsV1, BrowserTabsCloseAllV1, BrowserFindV1, BrowserHistoryV1,
   BrowserOpenNewTabV1, FilesShownTargetV1)
 pure def isCapabilityName(name: str): bool = allCapabilities.exists(c => capabilityName(c) == name)
 pure def lawTheVocabularyListsEveryCapability(c: Capability): bool = allCapabilities.contains(c)
@@ -139,7 +143,14 @@ reminder read or edit whose target or timing is version two needs
 `reminders.local-record.v2`; otherwise it runs under either record version.
 A latest-sender read that asks for the sender's whole address and thread
 needs `sms.latest-sender.v2`; one that names only the last four digits runs
-under either version.
+under either version. A Messages text that names its recipient as a target,
+a number or a contact, needs `sms.compose.v2` beside `sms.compose.v1`, and a
+Messages draft tied to the latest sender's thread also needs
+`sms.latest-sender.v2`; one that names a contact only by its `query` runs
+under `sms.compose.v1`. A contact change that adds or removes single numbers
+or email addresses needs `contacts.write.v2` beside `contacts.write.v1`, and
+a dial to a contact needs `contacts.lookup.v1` beside `phone.dial.v1`, since
+only that phone looks the name up for the owner to pick a number.
 
 ```quint
 pure def clockHandoffNeed(withRepeatDays: bool): Need =
@@ -148,6 +159,22 @@ pure def reminderRecordNeed(timingV2: bool): Need =
   if (timingV2) needOne(RemindersLocalRecordV2) else { required: Set(), oneOf: Set(RemindersLocalRecordV1, RemindersLocalRecordV2) }
 pure def smsLatestSenderNeed(withAddress: bool): Need =
   if (withAddress) needOne(SmsLatestSenderV2) else { required: Set(), oneOf: Set(SmsLatestSenderV1, SmsLatestSenderV2) }
+pure def smsComposeNeed(targetForm: bool, senderThread: bool): Need =
+  if (senderThread) { required: Set(SmsComposeV1, SmsComposeV2, SmsLatestSenderV2), oneOf: Set() }
+  else if (targetForm) { required: Set(SmsComposeV1, SmsComposeV2), oneOf: Set() }
+  else needOne(SmsComposeV1)
+pure def contactUpdateNeed(byValue: bool): Need =
+  if (byValue) { required: Set(ContactsWriteV1, ContactsWriteV2), oneOf: Set() } else needOne(ContactsWriteV1)
+pure def phoneDialNeed(toContact: bool): Need =
+  if (toContact) { required: Set(PhoneDialV1, ContactsLookupV1), oneOf: Set() } else needOne(PhoneDialV1)
+pure def lawATargetedTextNeedsTheNewerCompose(n: Negotiation, senderThread: bool): bool =
+  meets(n, smsComposeNeed(true, senderThread)) implies (negotiatedHas(n, SmsComposeV1) and negotiatedHas(n, SmsComposeV2))
+pure def lawADraftInTheSendersThreadNeedsTheWholeSender(n: Negotiation): bool = meets(n, smsComposeNeed(true, true)) implies negotiatedHas(n, SmsLatestSenderV2)
+pure def lawAContactChangeByValueNeedsTheNewerWrite(n: Negotiation): bool = meets(n, contactUpdateNeed(true)) implies negotiatedHas(n, ContactsWriteV2)
+pure def lawADialToAContactNeedsTheLookup(n: Negotiation): bool = meets(n, phoneDialNeed(true)) implies negotiatedHas(n, ContactsLookupV1)
+pure def lawTheOlderFormsRunUnderTheOlderCapability(n: Negotiation): bool =
+  (negotiatedHas(n, SmsComposeV1) implies meets(n, smsComposeNeed(false, false))) and (negotiatedHas(n, ContactsWriteV1) implies meets(n, contactUpdateNeed(false)))
+    and (negotiatedHas(n, PhoneDialV1) implies meets(n, phoneDialNeed(false)))
 pure def lawTheWholeSenderAddressNeedsTheNewerRead(n: Negotiation): bool = meets(n, smsLatestSenderNeed(true)) implies negotiatedHas(n, SmsLatestSenderV2)
 pure def lawEitherSenderVersionNamesTheSuffix(n: Negotiation): bool =
   (negotiatedHas(n, SmsLatestSenderV1) or negotiatedHas(n, SmsLatestSenderV2)) implies meets(n, smsLatestSenderNeed(false))
