@@ -216,12 +216,11 @@ pure def readyLaunchMatchesCredential(doc: Launch::LaunchDocument, f: Launch::La
 pure def lawReadyLaunchFollowsFrameCredential(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool = {
   val v = startVerdict(d, cred, worker)
   Launch::frameAdmitted(f) implies (match v {
-    | LaunchReady(r) => {
-        val oversized = oversizedOwnKey(r.launch.document.backend, f.credential)
-        match finalFrame(v, f) {
-          | FrameWithheld(w) => oversized and w.cause == Launch::Config
-          | FrameReady(ready) => not(oversized) and readyLaunchMatchesCredential(ready.launch.document, ready.frame)
-        }
+    | LaunchReady(r) => match finalFrame(v, f) {
+        | FrameWithheld(w) => oversizedOwnKey(r.launch.document.backend, f.credential) and w.cause == Launch::Config
+        | FrameReady(ready) =>
+            not(oversizedOwnKey(r.launch.document.backend, f.credential)) and
+            readyLaunchMatchesCredential(ready.launch.document, ready.frame)
       }
     | LaunchWithheld(_) => true
   })
