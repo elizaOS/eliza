@@ -4063,6 +4063,9 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
       response.writeHead(200)
       response.write(new Uint8Array(3000))
       response.write(new Uint8Array(3000))
+    } else if (path === "/oversized") {
+      response.writeHead(200, { "content-length": String(60 * 1024 * 1024) })
+      response.write(new Uint8Array(1000))
     } else if (path === "/sized") {
       response.writeHead(200, { "content-length": "6000" })
       response.end(new Uint8Array(6000))
@@ -4151,6 +4154,7 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
     try media("/encoded", { rejectContentEncoding: true }),
     try media("/big", { maxBytes: 4000 }),
     try media("/sized", { maxBytes: 4000 }),
+    try media("/oversized"),
     try timed(fetchMedia("/stall", { timeoutMs: 300 })),
     try Effect.andThen(
       Effect.forkScoped(Effect.delay(Effect.sync(() => hold.abort()), "200 millis")),
@@ -4204,6 +4208,7 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
       failure(at("/encoded"), "encoded response bodies are not accepted", "invalid_response"),
       { rejected: { MediaFetchError: "max_bytes", message: "Failed to fetch media from response: payload exceeds maxBytes 4000", cause: undefined } },
       failure(at("/sized"), "content length 6000 exceeds maxBytes 4000", "max_bytes"),
+      failure(at("/oversized"), "content length 62914560 exceeds maxBytes 52428800", "max_bytes"),
       { value: { rejected: { Error: "ECONNRESET", message: "aborted" } }, withinDeadline: true },
       { value: { rejected: { Error: "ECONNRESET", message: "aborted" } }, withinDeadline: true },
       { value: failure(at("/photo"), "TimeoutError: The operation was aborted due to timeout", "fetch_failed", "TimeoutError"), withinDeadline: true },
