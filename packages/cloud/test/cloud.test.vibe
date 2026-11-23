@@ -228,7 +228,7 @@ describe("WP0 Foundation", () => {
       [catalog, stripeReads("catalog") > 0, served.store.location.kind, health.status, identity.map((row) => [row.digest, row.environment])],
       ["CatalogMismatch", true, "pg", 200, [["a".repeat(64), "staging"]]]
     ))
-  }))
+  }), 180_000)
 })
 
 describe.todo("WP2 Native clients and pages (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")")

@@ -92,6 +92,9 @@ export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
               // One page at a time in the one browser, so a journey never sees another file's storage or focus.
               fileParallelism: false,
               browser: {
+                // Launching Chromium and serving its first page shares a busy machine with every other task: CI's
+                // verify job has taken over 60 s, Vitest's default, to connect a session it then ran in seconds.
+                connectTimeout: 180_000,
                 enabled: true, provider: (await import("@vitest/browser-playwright")).playwright(), headless: true,
                 instances: [{ browser: "chromium" as const }], screenshotFailures: true, trace: "retain-on-failure" as const,
               },

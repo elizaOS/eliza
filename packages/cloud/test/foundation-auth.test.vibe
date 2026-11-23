@@ -365,7 +365,7 @@ describe("WP0 Foundation: request authentication", () => {
       [statuses.every((status) => status === 200), over.status, overBody.error, typeof overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length, unknownStatuses.slice(0, 120).every((status) => status === 401), unknownStatuses[120]],
       [true, 429, "rate_limited", "number", true, 120, true, 429]
     ))
-  }))
+  }), 180_000)
 })
 
 schema PlanReviewBody { targetPlanKey: "plus_monthly" | "pro_monthly" }
@@ -1005,7 +1005,7 @@ describe("Node subscriptions", () => {
         200, 200, 200, "succeeded"],
       revoked: ["canceled", 200, "free", "closed", 0]
     }))
-  }))
+  }), 180_000)
 })
 
 

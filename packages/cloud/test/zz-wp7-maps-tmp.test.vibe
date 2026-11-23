@@ -95,7 +95,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         off: [200, { available: false }, 404, "capability_unavailable"]
       }
     ))
-  }), 60_000)
+  }), 180_000)
 
   it.live("Answer maps requests from the operator's own OpenStreetMap stack at no charge, with no tiles, nearby lookup or transit (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")", () => scoped(effect {
     const osm = try sync(() => osmFake())
