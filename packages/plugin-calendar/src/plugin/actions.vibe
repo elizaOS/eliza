@@ -1,10 +1,10 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"
 import { readTurnContext } from "@elizaos/agent"
 // spec/calendar/requestRouting.md, "A dense delete request reaches Calendar and the named title decides the target"
-import { selectedCalendarDeleteTarget } from "../../gen/calendar__requestRouting.ts"
+import { calendarAnswerAdmitted, selectedCalendarDeleteTarget } from "../../gen/calendar__requestRouting.ts"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  chatCreateReviewed, deleteAnswer, deleteQuestionMatches, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
+  chatCreateReviewed, deleteAnswer, deleteQuestionLifetime, deleteQuestionMatches, freeTimeRead, guestChange, intervalFree, morningAdmission, noticeAsked, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, type GuestChange,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import { createNeedsConfirmation, createTimeZone, deviceTimeZone, knownTimeZone, requestTimeZone, statedYearCreate } from "../clock.vibe"
@@ -296,7 +296,7 @@ effect function namedRead(host: CalendarHost, event: CalendarEvent, text: string
   return { complete: read.complete, only: named.size === 1 && named.has(eventKey(event)) }
 }
 
-effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: CalendarFound, scope: CalendarWriteScope, notifyAttendees: boolean, now: number, zone: string): ActionResult!! {
+effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: CalendarFound, scope: CalendarWriteScope, notifyAttendees: boolean, now: number, zone: string, allowStoredAnswer: boolean): ActionResult!! {
   const subaction = "delete_event"
   const event = found.event
   const text = askTextOf(ask)
@@ -309,7 +309,7 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
   if (question !== undefined && !exact && saysYes(text) && !declines) {
     return failed(subaction, "The event or its source changed since I asked. Nothing was deleted.")
   }
-  const answer = deleteAnswer(exact, question !== undefined && question.askedIn !== ask.id, question === undefined ? -1 : now - question.askedAt,
+  const answer = deleteAnswer(allowStoredAnswer && exact, question !== undefined && question.askedIn !== ask.id, question === undefined ? -1 : now - question.askedAt,
     saysYes(text) || exactTitleAnswer(event.title, text), declines, text.normalize("NFKC").includes("?"))
   const selected = selectedCalendarDeleteTarget(denseDeleteTarget(text) !== undefined, ask.selected === event.id)
   switch (residentDeleteStep(ownerPointedAt(titled, read.only, read.complete, selected), asksToDeleteInWords(text), declines, answer)) {
@@ -318,13 +318,14 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
       return failed(subaction, `Nothing was deleted. You turned down deleting “${event.title}”, so it stays on your calendar.`, { declined: true, eventId: event.id })
     }
     case "AskInChat": {
-      try host.askToDelete(conversation, { eventId: event.id, source: found.source, version: eventVersion(event),
-        scope, notifyAttendees, askedIn: ask.id, askedAt: now })
       const unread = read.complete ? "" : " Another calendar could not be read, so the event you meant may be there."
       const which = scope === "series" ? "the entire series" : scope === "this_and_following" ? "this and following occurrences" : "it"
       const notice = notifyAttendees ? " and notify its attendees" : ""
-      return failed(subaction, `Nothing was deleted. Your request didn't name one exact event; the closest match is “${event.title}”, ${wallTime(event, zone)}.${unread} Should I delete ${which}${notice}?`,
-        { requiresInput: true, missing: ["delete confirmation"], eventId: event.id, targetEvent: event })
+      const prompt = `Nothing was deleted. Your request didn't name one exact event; the closest match is “${event.title}”, ${wallTime(event, zone)}.${unread} Should I delete ${which}${notice}?`
+      try host.askToDelete(conversation, { eventId: event.id, source: found.source, version: eventVersion(event),
+        scope, notifyAttendees, askedIn: ask.id, askedAt: now, prompt })
+      return { ...failed(subaction, prompt, { requiresInput: true, missing: ["delete confirmation"], eventId: event.id, targetEvent: event }),
+        verifiedUserFacing: true, userFacingText: prompt }
     }
     case "DeleteNow": {
       const confirmed = answer === "AnsweredYes" ? question : undefined
@@ -380,7 +381,7 @@ effect function freeTime(host: CalendarHost, ask: CalendarAsk, parameters: Param
   }
 }
 
-effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Parameters): ActionResult!! {
+effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Parameters, allowStoredAnswer: boolean): ActionResult!! {
   const subaction = parameters.subaction
   const now = try Clock.currentTimeMillis
   const zones = zonesOf(ask)
@@ -444,7 +445,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
       if (lookup.kind === "missing") return failed(subaction, "I couldn't find that event in this account's calendars.")
       const notifyAttendees = noticeAsked(parameters.notifyAttendees === true, noticeAskedInWords(askTextOf(ask)), noticeDeclinedInWords(askTextOf(ask)))
       const scope = parameters.recurrenceScope ?? "instance"
-      if (subaction === "delete_event" && lookup.found.source.provider === "eliza") return try residentDelete(host, ask, lookup.found, scope, notifyAttendees, now, zone)
+      if (subaction === "delete_event" && lookup.found.source.provider === "eliza") return try residentDelete(host, ask, lookup.found, scope, notifyAttendees, now, zone, allowStoredAnswer)
       const guests: Guests = subaction === "update_event" ? changedGuests(lookup.found.event, parameters, askTextOf(ask)) : { kind: "guests" }
       if (guests.kind === "refused") return failed(subaction, guests.text, { code: "CALENDAR_GUEST_NOT_GROUNDED" })
       const asked = subaction === "update_event"
@@ -458,15 +459,65 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
 }
 
 /** One Calendar action run for an ask, from the planner's untrusted parameters. */
-export effect function runCalendarAction(host: CalendarHost, ask: CalendarAsk, input: unknown, _message?: Memory): ActionResult!! {
+export effect function runCalendarAction(host: CalendarHost, ask: CalendarAsk, input: unknown, message?: Memory): ActionResult!! {
+  if (isDeleteAnswerCall(input)) return try applyDeleteAnswer(host, ask, message)
   const parameters = parametersOf({ parameters: input })
   if (parameters === undefined) return { success: false, text: `${calendarActionName} needs a subaction: ${subactions.join(", ")}.` }
-  return try handle(host, ask, parameters)
+  return try handle(host, ask, parameters, message === undefined)
 }
 
 function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
   const found: unknown = runtime.getService(calendarServiceType)
   return found instanceof CalendarService ? found.host : undefined
+}
+
+const deleteAnswers = new WeakMap<Memory, { askedIn: string; decision: "yes" | "no" }>()
+const deleteAnswerOperation = "answer_delete"
+
+export function isDeleteAnswerCall(input: unknown): boolean {
+  return typeof input === "object" && input !== null && !Array.isArray(input)
+    && Object.keys(input).length === 1 && "subaction" in input && input.subaction === deleteAnswerOperation
+}
+
+export async function bindCalendarDeleteAnswer(runtime: IAgentRuntime, message: Memory, previous?: { readonly askedIn: string; readonly text: string }): Promise<boolean> {
+  if (previous === undefined) return false
+  const ask = calendarAsk(message)
+  const text = askTextOf(ask).trim().normalize("NFKC")
+  if (text.includes("?")) return false
+  const no = /^(?:no|nope|nah|keep it|leave it|no[, ]+keep it)[.!]*$/iu.test(text)
+  const yes = saysYes(text)
+  if (!no && !yes) return false
+  const host = serviceOf(runtime)
+  if (host === undefined) return false
+  const question = await runPromise(host.deleteQuestion(askConversationOf(ask)))
+  if (question === undefined) return false
+  const age = Date.now() - question.askedAt
+  if (!calendarAnswerAdmitted(true, age >= 0 && age < deleteQuestionLifetime, previous.askedIn === question.askedIn,
+    question.prompt !== "" && previous.text.includes(question.prompt))) return false
+  deleteAnswers.set(message, { askedIn: question.askedIn, decision: no ? "no" : "yes" })
+  return true
+}
+
+effect function applyDeleteAnswer(host: CalendarHost, ask: CalendarAsk, message: Memory | undefined): ActionResult!! {
+  const bound = message === undefined ? undefined : deleteAnswers.get(message)
+  const conversation = askConversationOf(ask)
+  const held = try host.deleteQuestion(conversation)
+  const now = try Clock.currentTimeMillis
+  if (bound === undefined || held === undefined || held.askedIn !== bound.askedIn || held.askedIn === ask.id
+    || now < held.askedAt || now - held.askedAt >= deleteQuestionLifetime)
+    return failed("delete_event", "There is no matching Calendar question to answer.")
+  if (bound.decision === "no") {
+    try host.settleDeleteQuestion(conversation, held.askedIn)
+    const text = "Nothing was deleted. I kept the event."
+    return { ...failed("delete_event", text, { declined: true }), verifiedUserFacing: true, userFacingText: text }
+  }
+  const target = try host.find(held.eventId, held.source.calendarId, held.source)
+  if (target === undefined || eventVersion(target.event) !== held.version)
+    return failed("delete_event", "The event changed since I asked. Nothing was deleted.")
+  const result = host.change({ kind: "delete", target, scope: held.scope, notifyAttendees: held.notifyAttendees,
+    askedBy: ask.by, askId: `${held.askedIn}:delete_event:confirmed` }) catch () => undefined
+  if (result?.kind === "ran") try host.settleDeleteQuestion(conversation, held.askedIn)
+  return result === undefined ? failed("delete_event", ledgerDown) : changeResult("delete_event", result, requestTimeZone(zonesOf(ask)))
 }
 
 const assistantServiceType = "personal-assistant"
@@ -482,11 +533,11 @@ async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
 /** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. Chat creates are reviewed unless the owner plainly asked to save now; a delete on the agent's own calendar runs at once only when the owner's words ask to delete and hold the whole title of one event, or it is the event selected on screen; otherwise nothing is deleted and the reply asks the owner, and after the owner's yes call delete_event again with the eventId it returned.",
+  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. Chat creates are reviewed unless the owner plainly asked to save now; a delete on the agent's own calendar runs at once only when the owner's words ask to delete and hold the whole title of one event, or it is the event selected on screen. When the owner answers a Calendar confirmation and the host offers answer_delete, use that subaction alone.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CALENDAR_TRIP_WINDOW", "CALENDAR_CHECK_AVAILABILITY", "CALENDAR_PROPOSE_TIMES", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [
-    { name: "subaction", required: true, description: "What to do.", schema: { type: "string", enum: [...subactions] } },
+    { name: "subaction", required: true, description: "Use answer_delete alone for a bound Calendar confirmation.", schema: { type: "string", enum: [...subactions, deleteAnswerOperation] } },
     { name: "query", required: false, description: "Words of the event to look for: its title, notes, place or a guest. For trip_window, the place.", schema: { type: "string" } },
     { name: "timeMin", required: false, description: "Start of the range to read, ISO 8601 with an offset. Required for check_availability and propose_times.", schema: { type: "string" } },
     { name: "timeMax", required: false, description: "End of the range to read, ISO 8601 with an offset. Required for check_availability and propose_times; a morning-only request ends no later than noon in the request's zone.", schema: { type: "string" } },

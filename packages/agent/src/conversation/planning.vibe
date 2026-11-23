@@ -94,16 +94,24 @@ export interface OwnerActionRelevance {
   readonly matches: (params: Readonly<Record<string, unknown>>) => boolean
 }
 
-const ownerActionRelevance = new WeakMap<Action, (message: Memory) => OwnerActionRelevance | undefined>()
+interface PriorOwnerReply {
+  readonly askedIn: string
+  readonly text: string
+}
 
-export function registerOwnerActionRelevance(action: Action, read: (message: Memory) => OwnerActionRelevance | undefined): void {
+type ReadOwnerActionRelevance = (runtime: IAgentRuntime, message: Memory, previous?: PriorOwnerReply) =>
+  OwnerActionRelevance | undefined | Promise<OwnerActionRelevance | undefined>
+
+const ownerActionRelevance = new WeakMap<Action, ReadOwnerActionRelevance>()
+
+export function registerOwnerActionRelevance(action: Action, read: ReadOwnerActionRelevance): void {
   ownerActionRelevance.set(action, read)
 }
 
-export function ownerRelevanceOf(message: Memory, actions: readonly Action[]): ReadonlyMap<Action, OwnerActionRelevance> {
+export async function ownerRelevanceOf(runtime: IAgentRuntime, message: Memory, actions: readonly Action[], previous?: PriorOwnerReply): Promise<ReadonlyMap<Action, OwnerActionRelevance>> {
   const found = new Map<Action, OwnerActionRelevance>()
   for (const action of actions) {
-    const relevance = ownerActionRelevance.get(action)?.(message)
+    const relevance = await ownerActionRelevance.get(action)?.(runtime, message, previous)
     if (relevance !== undefined) found.set(action, relevance)
   }
   return found

@@ -9,7 +9,7 @@ import { privateAudienceCheckNeeded } from "../../gen/agent__conversation__owner
 import { hostNoteLabels } from "../../gen/agent__conversation__planning.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { groundedEventReply, groundedTimeReply, turnClock } from "./clock.vibe"
-import { textForTurn } from "./heard.vibe"
+import { heardView, textForTurn } from "./heard.vibe"
 import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { withOwnerResend } from "../models/owner-resend.vibe"
@@ -204,9 +204,15 @@ async function respond(
           if (audience !== undefined) releaseAudience = beginTrustedDeliveryAudienceTurn(runtime, message, { signal })
         }
         const disclosure = releaseAudience === undefined ? undefined : evaluateOwnerExclusiveDisclosure(message)
-        const relevance = disclosure?.allowed && disclosure.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
-          ? ownerRelevanceOf(message, actions)
+        const previous = recent.find(({ id }) => id !== message.id)
+        const previousAsk = previous?.content.inReplyTo
+        const privateOwner = disclosure?.allowed && disclosure.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+        const previousReply = privateOwner && previous?.entityId === runtime.agentId && typeof previousAsk === "string"
+          && previous.content.failureKind === undefined && previous.content.systemNotice === undefined
+          ? await storedText(runtime.adapter, previous).then((text) => ({ askedIn: previousAsk, text: heardView(previous, text).heard }), () => undefined)
           : undefined
+        const relevance = privateOwner ? await ownerRelevanceOf(runtime, message, actions, previousReply) : undefined
+        signal.throwIfAborted()
         const relevanceNotes = [...(relevance?.values() ?? [])].map(({ note }) => note)
         const notes = [contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), ...relevanceNotes, options?.taskContext]
         const notice = window.windowed ? historyWindowNotice(window, window.deferred.length > 0 ? "RESTORE_CONTEXT" : undefined) : undefined

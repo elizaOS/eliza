@@ -1,7 +1,7 @@
 // spec/calendar/requestRouting.md, "An explicit event change adds Calendar relevance only to its admitted action"
-import type { Memory } from "@elizaos/core"
+import type { IAgentRuntime, Memory } from "@elizaos/core"
 import { canAddEventContext, denseCalendarDeleteContext, type CalendarIntent } from "../../gen/calendar__requestRouting.ts"
-import { calendarAsk } from "./actions.vibe"
+import { bindCalendarDeleteAnswer, calendarAsk, isDeleteAnswerCall } from "./actions.vibe"
 import { denseDeleteTarget } from "../request-time.vibe"
 
 // "please", "can you", "hey, could you please".
@@ -133,7 +133,12 @@ function eventIntentForCall(subaction: unknown): CalendarIntent {
   return "NoEventIntent"
 }
 
-export function calendarRequestRelevance(message: Memory) {
+export async function calendarRequestRelevance(runtime: IAgentRuntime, message: Memory, previous?: { readonly askedIn: string; readonly text: string }) {
+  if (await bindCalendarDeleteAnswer(runtime, message, previous)) return {
+    note: "The owner answered the preceding Calendar delete question. Use CALENDAR's answer_delete with no other parameters.",
+    context: "calendar" as const,
+    matches: isDeleteAnswerCall,
+  }
   const intent = calendarEventRequest(calendarAsk(message).text)
   if (intent === "NoEventIntent") return undefined
   const operation = requestedOperation[intent]

@@ -51,3 +51,19 @@ pure def lawDenseDeleteAddsOnlyDeleteContext(matchesDenseDelete: bool): bool =
 pure def lawDenseDeleteNeverUsesTheSelection(selected: bool): bool =
   not(selectedCalendarDeleteTarget(true, selected))
 ```
+
+### A short answer applies only to the immediately preceding Calendar question
+
+The agent takes the preceding ordinary reply from the same private owner
+conversation and checks its originating message and the exact Calendar
+question text. For a reply with reported audio playback it uses the heard
+portion. A recognized answer to that live question adds only the
+confirmation operation. That operation takes no target, scope or notice
+fields from the model.
+
+```quint
+pure def calendarAnswerAdmitted(answerRecognized: bool, liveQuestion: bool, sameOrigin: bool, promptPresent: bool): bool =
+  answerRecognized and liveQuestion and sameOrigin and promptPresent
+pure def lawAnotherPromptDoesNotAdmitTheAnswer(answerRecognized: bool, liveQuestion: bool, sameOrigin: bool, promptPresent: bool): bool =
+  (not(sameOrigin) or not(promptPresent)) implies not(calendarAnswerAdmitted(answerRecognized, liveQuestion, sameOrigin, promptPresent))
+```

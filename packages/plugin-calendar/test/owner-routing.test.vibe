@@ -69,6 +69,24 @@ it.live('Create a resident event and keep the other work while Contacts is open 
     body: { text: "歯医者を削除して", metadata: { observation: { view: "contacts", revision: 2, sensitive: false } } } })
   const afterDelete = try call(agent, { method: "GET", path: `/api/lifeops/calendar/feed?${window}` })
   const deletePlan = cloud.calls.slice(beforeDelete).find(({ path }) => path.endsWith("/chat/completions"))
+  const confirmationTitle = "Vet consultation"
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALENDAR", arguments: {
+    subaction: "create_event", title: confirmationTitle, startAt, endAt, timeZone: "UTC", reviewBeforeCreate: false,
+  } }), text("I saved the Vet consultation.")))
+  const seeded = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`,
+    body: { text: "Add an event called Vet consultation on March 4, 2035 at 9am UTC and save it now." } })
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALENDAR", arguments: {
+    subaction: "delete_event", query: "vet", timeMin: "2035-03-04T00:00:00Z", timeMax: "2035-03-05T00:00:00Z",
+  } }), text("I found the Vet consultation.")))
+  const pending = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`,
+    body: { text: "Cancel the animal appointment.", metadata: { observation: { view: "contacts", revision: 3, sensitive: false } } } })
+  const beforeAnswer = cloud.calls.length
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALENDAR", arguments: { subaction: "answer_delete" } }),
+    text("I deleted the Vet consultation.")))
+  const confirmed = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`,
+    body: { text: "Yes, delete it.", metadata: { observation: { view: "contacts", revision: 4, sensitive: false } } } })
+  const afterAnswer = try call(agent, { method: "GET", path: `/api/lifeops/calendar/feed?${window}` })
+  const answerPlan = cloud.calls.slice(beforeAnswer).find(({ path }) => path.endsWith("/chat/completions"))
   try Effect.try(() => {
     assert.include(JSON.stringify(plan?.body), "Use CALENDAR's create_event")
     if (!("status" in reply) || !("status" in feed)) throw new Error("A signed fixture route refused")
@@ -84,5 +102,16 @@ it.live('Create a resident event and keep the other work while Contacts is open 
     assert.isTrue(deletion.actionResults.some(({ action, data }) => action === "CALENDAR" && data.deleted === true))
     assert.strictEqual(afterDelete.status, 200)
     assert.notInclude(JSON.stringify(afterDelete.json), title)
+    if (!("status" in seeded) || !("status" in pending) || !("status" in confirmed) || !("status" in afterAnswer))
+      throw new Error("A Calendar confirmation fixture route refused")
+    assert.strictEqual(seeded.status, 200)
+    assert.strictEqual(pending.status, 200)
+    assert.include((pending.json as { text: string }).text, "Should I delete it?")
+    assert.include(JSON.stringify(answerPlan?.body), "Use CALENDAR's answer_delete")
+    assert.strictEqual(confirmed.status, 200)
+    const confirmation = confirmed.json as { actionResults: readonly { action: string; data: { deleted?: boolean } }[] }
+    assert.isTrue(confirmation.actionResults.some(({ action, data }) => action === "CALENDAR" && data.deleted === true))
+    assert.strictEqual(afterAnswer.status, 200)
+    assert.notInclude(JSON.stringify(afterAnswer.json), confirmationTitle)
   })
 }, 120_000)
