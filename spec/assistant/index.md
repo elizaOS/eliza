@@ -13,8 +13,9 @@ The scheduled-task runner, the agent's approvals and the device's native
 reminders are owned elsewhere ([agent scheduled tasks](../agent/schedule/scheduledTasks.md),
 [device action custody](../agent/deviceActions/execution.md),
 [device reminder alarms](../os/android/deepLinks.md)); the specs here say what
-the assistant asks of them and what it keeps itself. Household, family,
-travel booking, health, bill and blocking services are not part of this package.
+the assistant asks of them and what it keeps itself. Guided bill evidence
+belongs to this package. Household, family, travel booking, health, bill
+payment and blocking services belong to their domain owners.
 
 | Area | Specification |
 | --- | --- |
@@ -28,5 +29,7 @@ travel booking, health, bill and blocking services are not part of this package.
 | To-dos | [To-dos](./todos.md) |
 | Routines and their occurrences | [Routines](./routines.md) |
 | The daily dossier | [Scheduled dossiers](./scheduledDossiers.md) |
+| On-demand briefs and prioritization | [Owner briefs](./ownerBrief.md) |
+| Evidence for bills the owner submits | [Guided bill evidence](./billEvidence.md) |
 | What the owner hears about the assistant's work | [Replies](./replies.md) |
 | Evaluating finished turns in batches | [Evaluator runner](./evaluatorRunner.md), [durable progress](./evaluatorProgress.md), [evidence pages](./evaluatorEvidencePages.md) |

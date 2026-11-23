@@ -1,0 +1,83 @@
+// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
+import { Ajv } from "ajv"
+import { connectionAllowed, Machine, machine, type McpServer } from "../gen/mcp.effect.vibe"
+
+export error McpUnavailable { serverId: string; operation: string }
+export error McpRefused { serverId: string; reason: string }
+
+export type McpConnection =
+  | { readonly kind: "http"; readonly url: URL; readonly fetch: typeof fetch }
+  | { readonly kind: "stdio"; readonly command: string; readonly args: readonly string[]; readonly env: Readonly<Record<string, string>> }
+
+export service McpConnectionPolicy {
+  admit(server: McpServer): (McpConnection | undefined)!McpRefused
+}
+
+effect function withClient<A, E, R>(server: McpServer, run: (client: Client) => A!E!R) {
+  const policy = try McpConnectionPolicy
+  const connection = try policy.admit(server)
+  if (connection === undefined || !connectionAllowed(server, true) ||
+    ((server.transport === "HttpTransport") !== (connection.kind === "http"))) {
+    throw new McpRefused({ serverId: server.serverId, reason: "connection not authorized" })
+  }
+  const session = try Effect.try({
+    try: () => ({
+      client: new Client({ name: "eliza", version: "4.0.0" }),
+      transport: connection.kind === "http"
+        ? new StreamableHTTPClientTransport(connection.url, { fetch: connection.fetch })
+        : new StdioClientTransport({ command: connection.command, args: [...connection.args], env: { ...connection.env }, stderr: "pipe" }),
+    }),
+    catch: () => new McpUnavailable({ serverId: server.serverId, operation: "create transport" }),
+  })
+  return try ensuring(effect {
+    try tryPromise({
+      try: () => session.client.connect(session.transport),
+      catch: () => new McpUnavailable({ serverId: server.serverId, operation: "connect" }),
+    })
+    return try run(session.client)
+  }, effect {
+    tryPromise({ try: () => session.client.close(), catch: () => undefined }) catch () => undefined
+  })
+}
+
+export effect function listMcpTools(server: McpServer) {
+  return try withClient(server, effect (client) =>
+    try tryPromise({ try: () => client.listTools(), catch: () => new McpUnavailable({ serverId: server.serverId, operation: "list tools" }) }))
+}
+
+export effect function callMcpTool(server: McpServer, toolName: string, argumentsToTry: readonly Readonly<Record<string, unknown>>[]) {
+  return try withClient(server, effect (client) => {
+    const listed = try tryPromise({
+      try: () => client.listTools(),
+      catch: () => new McpUnavailable({ serverId: server.serverId, operation: "list tools" }),
+    })
+    const matches = listed.tools.filter((tool) => tool.name === toolName)
+    const tool = matches[0]
+    if (matches.length !== 1 || tool === undefined) throw new McpRefused({ serverId: server.serverId, reason: "unknown or ambiguous tool" })
+    const validate = try Effect.try({
+      try: () => new Ajv({ strict: true, allErrors: false }).compile(tool.inputSchema),
+      catch: () => new McpRefused({ serverId: server.serverId, reason: "unsupported tool input schema" }),
+    })
+    provide machine() {
+      const invocation = try Machine
+      for (const candidate of argumentsToTry) {
+        const valid = try Effect.try({
+          try: () => validate(candidate),
+          catch: () => new McpRefused({ serverId: server.serverId, reason: "argument validation failed" }),
+        })
+        const result = try invocation.send({ type: "observeArguments", valid })
+        if (result.phase === "InvocationRefused") break
+        if (result.phase !== "ReadyToInvoke") continue
+        try invocation.send({ type: "authorizeInvocation" })
+        return try tryPromise({
+          try: () => client.callTool({ name: toolName, arguments: { ...candidate } }),
+          catch: () => new McpUnavailable({ serverId: server.serverId, operation: "invoke tool" }),
+        })
+      }
+      throw new McpRefused({ serverId: server.serverId, reason: "invalid tool arguments" })
+    }
+  })
+}

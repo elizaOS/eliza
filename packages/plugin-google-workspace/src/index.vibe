@@ -1,0 +1,73 @@
+// spec/googleWorkspace/index.md, "Story: Use only the Google account and permissions I connected"; spec/googleWorkspace/index.md, "Story: Send Gmail to the confirmed recipient"
+import * as HttpClient from "effect/unstable/http/HttpClient"
+import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest"
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
+import { selectRecipient, workspaceAllowed, type GoogleScope, type MailboxClaim, type WorkspaceAccount } from "../gen/googleWorkspace.effect.vibe"
+
+export error WorkspaceAccessRefused { accountId: string }
+export error GoogleWorkspaceFailure { source: string; status: number }
+
+export interface WorkspaceCredential {
+  readonly account: WorkspaceAccount
+  readonly token: Redacted.Redacted<string>
+}
+
+export service WorkspaceCredentials {
+  account(ownerId: string, accountId: string): (WorkspaceCredential | undefined)!WorkspaceAccessRefused
+}
+
+export type WorkspaceQuery =
+  | { readonly kind: "gmail"; readonly query: string }
+  | { readonly kind: "calendar"; readonly calendarId: string; readonly updatedMin?: string }
+  | { readonly kind: "drive"; readonly query: string }
+  | { readonly kind: "meet"; readonly meetingCode: string }
+  | { readonly kind: "contacts"; readonly query: string }
+
+export interface WorkspacePrincipal {
+  readonly ownerId: string
+  readonly accountId: string
+  readonly seenEpoch: number
+}
+
+export effect function queryWorkspace(principal: WorkspacePrincipal, query: WorkspaceQuery) {
+  const target = workspaceQuery(query)
+  const credentials = try WorkspaceCredentials
+  const credential = try credentials.account(principal.ownerId, principal.accountId)
+  if (credential === undefined || !workspaceAllowed(credential.account, {
+    callerId: principal.ownerId,
+    requestedAccount: principal.accountId,
+    seenEpoch: principal.seenEpoch,
+    permissions: [target.scope],
+  })) throw new WorkspaceAccessRefused({ accountId: principal.accountId })
+  const request = HttpClientRequest.get(target.url, { urlParams: target.parameters }).pipe(
+    HttpClientRequest.bearerToken(Redacted.value(credential.token)),
+    HttpClientRequest.acceptJson,
+  )
+  const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+    throw new GoogleWorkspaceFailure({ source: query.kind, status: 0 })
+  }
+  if (response.status < 200 || response.status >= 300) throw new GoogleWorkspaceFailure({ source: query.kind, status: response.status })
+  const data = response.json catch effect () => { throw new GoogleWorkspaceFailure({ source: query.kind, status: response.status }) }
+  const current = try credentials.account(principal.ownerId, principal.accountId)
+  if (current === undefined || !workspaceAllowed(current.account, {
+    callerId: principal.ownerId,
+    requestedAccount: principal.accountId,
+    seenEpoch: principal.seenEpoch,
+    permissions: [target.scope],
+  })) throw new WorkspaceAccessRefused({ accountId: principal.accountId })
+  return data
+}
+
+export function confirmedMailRecipient(claim: MailboxClaim, contactAddress: string, exactAddresses: readonly string[]) {
+  return selectRecipient(claim, contactAddress, [...new Set(exactAddresses)])
+}
+
+function workspaceQuery(query: WorkspaceQuery): { scope: GoogleScope; url: string; parameters: Record<string, string> } {
+  switch (query.kind) {
+    case "gmail": return { scope: "GmailRead", url: "https://gmail.googleapis.com/gmail/v1/users/me/messages", parameters: { q: query.query } }
+    case "calendar": return { scope: "CalendarRead", url: "https://www.googleapis.com/calendar/v3/calendars/" + encodeURIComponent(query.calendarId) + "/events", parameters: query.updatedMin ? { updatedMin: query.updatedMin } : {} }
+    case "drive": return { scope: "DriveRead", url: "https://www.googleapis.com/drive/v3/files", parameters: { q: query.query } }
+    case "meet": return { scope: "MeetRead", url: "https://meet.googleapis.com/v2/spaces/" + encodeURIComponent(query.meetingCode), parameters: {} }
+    case "contacts": return { scope: "ContactsRead", url: "https://people.googleapis.com/v1/people:searchContacts", parameters: { query: query.query, readMask: "names,emailAddresses,phoneNumbers" } }
+  }
+}
