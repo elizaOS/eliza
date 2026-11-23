@@ -122,8 +122,8 @@ const selectionUnseen: Refusal = {
   forOwner: "Select the place or route in Maps, then ask me again.",
 }
 
-function grounded(turn: DeviceTurn, decided: SurfaceVerdict, operation: DeviceOperation): Grounding {
-  return { kind: "Grounded", operation, reviewed: !surfaceBound(directRequests(turn), decided) }
+function grounded(turn: DeviceTurn, verdict: SurfaceVerdict, operation: DeviceOperation): Grounding {
+  return { kind: "Grounded", operation, reviewed: !surfaceBound(directRequests(turn), verdict) }
 }
 
 function decided(turn: DeviceTurn, verdict: SurfaceVerdict, operation: DeviceOperation, refusal: Refusal): Grounding {
