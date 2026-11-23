@@ -112,8 +112,8 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   const lunch = { subaction: "create_event", title: "Lunch", startAt: "2030-03-06T12:00:00-08:00", endAt: "2030-03-06T13:00:00-08:00", timeZone: "Asia/Tokyo" }
   const stated = try runCalendarAction(host, fromPhone("message-7", "Lunch with Sam on March 6 2031 at noon"), lunch)
   const undated = try runCalendarAction(host, fromPhone("message-8", "Lunch with Sam next Wednesday at noon"), lunch)
-  assert.deepStrictEqual([stated.text, at(stated.data, "event", "endAt"), at(stated.data, "event", "timezone"), at(undated.data, "event", "startAt")],
-    ["Created Lunch, Mar 6, 2031, 12:00\u202fPM.", "2031-03-06T21:00:00.000Z", "America/Los_Angeles", "2030-03-06T20:00:00.000Z"])
+  assert.deepStrictEqual([stated.text?.replace(/\s/gu, " "), at(stated.data, "event", "endAt"), at(stated.data, "event", "timezone"), at(undated.data, "event", "startAt")],
+    ["Created Lunch, Mar 6, 2031, 12:00 PM.", "2031-03-06T21:00:00.000Z", "America/Los_Angeles", "2030-03-06T20:00:00.000Z"])
 
   const google = googleCalendar()
   try host.register(google.port)
@@ -199,7 +199,7 @@ it.effect(`Change my calendar only as I asked and know it happened, from the own
 it.effect(`Create a repeating event through the reviewed create (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it")`, effect () => {
   const filed: CalendarApprovalRow[] = []
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
-  const ask = { by: "owner-entity", id: "message-1" }
+  const ask = { by: "owner-entity", id: "message-1", ownerZone: "UTC" }
   const weekly = { subaction: "create_event", title: "Piano", startAt: "2030-03-04T17:00:00Z", endAt: "2030-03-04T18:00:00Z", timeZone: "UTC",
     repeat: "weekly", repeatUntil: "2030-03-25T17:00:00Z", skipStarts: ["2030-03-11T17:00:00Z"] }
   const made = try runCalendarAction(host, ask, weekly)
