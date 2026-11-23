@@ -60,6 +60,7 @@ function fakeCloud() {
     paths: [] as string[],
     rowFields: new Map<string, Readonly<Record<string, unknown>>>(),
     attachmentCap: 8388608,
+    bodyText: new Map<string, string>(),
   }
 
   const connection = (id: string) => state.connections.find((row) => row.id === id)
@@ -137,7 +138,7 @@ function fakeCloud() {
       }
       if (at === "/gmail/read") {
         const id = url.searchParams.get("messageId") ?? ""
-        return { message: { ...wireCard(card(id)), ...state.rowFields.get(id) }, bodyText: `Body of ${id}, see https://example.com/a).`, bodyHtml: null, bodyHtmlStatus: "none", attachments: [], authenticationResults: null }
+        return { message: { ...wireCard(card(id)), ...state.rowFields.get(id) }, bodyText: state.bodyText.get(id) ?? `Body of ${id}, see https://example.com/a).`, bodyHtml: null, bodyHtmlStatus: "none", attachments: [], authenticationResults: null }
       }
       if (at === "/gmail/inbox-v1/capabilities") {
         return { version: 1, from: "ana@example.com", kinds: kindsOf(connection(url.searchParams.get("grantId") ?? "")?.capabilities ?? []), attachmentPolicy: { mimeTypes: ["application/pdf"], maxBytes: state.attachmentCap } }
@@ -255,6 +256,9 @@ it.effect(`Page a folder once per message, notice a changed mailbox, and keep ca
   const body = try cloud.client.gmailRead("grant-a", "m1")
   assert.deepEqual(body.links, [{ href: "https://example.com/a", text: "https://example.com/a" }])
   const plain = (try cloud.client.gmailRead("grant-a", "m2")).message
+  cloud.state.bodyText.set("m3", Array.from({ length: 52 }, (_, at) => `https://example.com/${at} https://example.com/${at}`).join(" "))
+  const crowded = try cloud.client.gmailRead("grant-a", "m3")
+  assert.deepEqual([crowded.links.length, crowded.links.at(-1)?.href, crowded.omittedLinks, body.omittedLinks], [50, "https://example.com/49", 2, undefined])
   assert.deepEqual([body.message.replyTo, body.message.hasAttachments, plain.replyTo, plain.hasAttachments], ["plans@example.org", true, undefined, undefined])
   try caches.rememberBody({ key: "m1", account: "grant-a", at: now, body })
   assert.isTrue((try caches.body("m1", now + 1000))?.skipsRead)

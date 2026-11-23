@@ -24,7 +24,6 @@ export type SearchSize = 10 | 25 | 50 | 100
 const google = "/api/v1/eliza/google"
 const inbox = `${google}/gmail/inbox-v1`
 const dispatchTimeoutMs = 45_000
-const maxLinks = 50
 const maxHtmlBytes = 512 * 1024
 const sha = /^[a-f0-9]{64}$/
 const revision = /^\d{1,20}$/
@@ -82,7 +81,7 @@ function accountOf(row: typeof ConnectionWire.Type): GmailAccount {
 }
 
 effect function readOf(value: typeof MessageWire.Type, historyId: string | null): GmailReadResult!MailProtocolFailed {
-  const links = linkifyMailText(value.bodyText)
+  const found = linkifyMailText(value.bodyText)
   const html = value.bodyHtml
   const shownHtml = html !== null && value.bodyHtmlStatus === "available" && utf8Length(html) <= maxHtmlBytes ? html : undefined
   return {
@@ -90,8 +89,8 @@ effect function readOf(value: typeof MessageWire.Type, historyId: string | null)
     bodyText: value.bodyText,
     ...(shownHtml === undefined ? {} : { bodyHtml: shownHtml }),
     ...(shownHtml === undefined && (value.bodyHtmlStatus === "too_large" || html !== null) ? { bodyHtmlOmitted: true } : {}),
-    links: links.slice(0, maxLinks),
-    ...(links.length > maxLinks ? { omittedLinks: links.length - maxLinks } : {}),
+    links: found.links,
+    ...(found.omitted > 0 ? { omittedLinks: found.omitted } : {}),
     historyId,
     attachments: value.attachments.map((row) => ({ ...row })),
     authenticationResults: value.authenticationResults ?? null,

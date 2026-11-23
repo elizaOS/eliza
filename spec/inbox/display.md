@@ -17,8 +17,9 @@ at most 2,048 characters with a host and no user name or password. Its text
 has control characters replaced, runs of space collapsed and is at most 200
 characters, or is the host when empty. Plain-text `https` URLs in a body
 become at most 50 distinct links, trimmed of trailing punctuation except a
-closing bracket that closes one in the URL. A link whose text names a
-different site than its destination is marked.
+closing bracket that closes one in the URL; a body with more says how many
+further distinct links it left out, so none is dropped unannounced. A link
+whose text names a different site than its destination is marked.
 
 ```quint
 type LinkFacts = { units: int, absolute: bool, webScheme: bool, hasHost: bool, hasCredentials: bool }
@@ -27,6 +28,11 @@ pure def linkKept(facts: LinkFacts): bool =
 pure def textMismatch(namesHost: bool, sameSite: bool): bool = namesHost and not(sameSite)
 pure val okLink: LinkFacts = { units: 20, absolute: true, webScheme: true, hasHost: true, hasCredentials: false }
 pure val factsValues = Set(okLink, { ...okLink, webScheme: false }, { ...okLink, hasCredentials: true }, { ...okLink, units: 2049 })
+pure val linkMaximum: int = 50
+pure def linksShown(found: int): int = if (found > linkMaximum) linkMaximum else found
+pure def linksOmitted(found: int): int = if (found > linkMaximum) found - linkMaximum else 0
+pure val foundValues = Set(0, 1, 50, 51, 120)
+pure def lawEveryLinkIsShownOrCounted(found: int): bool = found >= 0 implies linksShown(found) + linksOmitted(found) == found
 pure def lawCredentialLinksAreDropped(facts: LinkFacts): bool = facts.hasCredentials implies not(linkKept(facts))
 pure def lawOnlyWebLinksAreKept(facts: LinkFacts): bool = linkKept(facts) implies facts.webScheme and facts.absolute
 ```

@@ -1,5 +1,5 @@
 // spec/inbox/display.md, "Only an absolute web link without credentials is kept, and its shown text is plain"
-import { linkKept, textMismatch } from "../../gen/inbox__display.effect.vibe"
+import { linkKept, linksOmitted, linksShown, textMismatch } from "../../gen/inbox__display.effect.vibe"
 import type { GmailLink } from "./types.vibe"
 
 // eslint-disable-next-line no-control-regex -- Displayed link labels replace each consecutive run of C0 controls and DEL.
@@ -42,19 +42,17 @@ function trimmed(raw: string): string {
   return raw.slice(0, end)
 }
 
-export function linkifyMailText(text: string): GmailLink[] {
+export function linkifyMailText(text: string): { readonly links: GmailLink[]; readonly omitted: number } {
   const links: GmailLink[] = []
   const seen = new Set<string>()
   for (const match of text.matchAll(/https:\/\/[^\s<>"'`]+/gi)) {
     const raw = trimmed(match[0])
     const link = safeMailLink({ href: raw, text: raw })
-    if (link !== null && !seen.has(link.href)) {
-      seen.add(link.href)
-      links.push(link)
-    }
-    if (links.length >= 50) break
+    if (link === null || seen.has(link.href)) continue
+    seen.add(link.href)
+    if (links.length < linksShown(seen.size)) links.push(link)
   }
-  return links
+  return { links, omitted: linksOmitted(seen.size) }
 }
 
 export function linkTextMismatch(link: GmailLink): boolean {

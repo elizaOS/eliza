@@ -156,7 +156,7 @@ pure def lawASearchPageNeverLoops(asked: Continuation, answered: Continuation, m
 
 `read(messageId)` answers the triage row of the message, `bodyText` (the
 plain part, else the HTML part as text, else the snippet), `bodyHtml` and
-`bodyHtmlStatus` (`available`, `none`, `too_large`), its links, its
+`bodyHtmlStatus` (`available`, `none`, `too_large`), its
 attachment descriptors and `authenticationResults`: the Authentication-Results
 header Google's receiving server wrote, or null when the read cannot tell it
 from one a sender wrote. That header is the first one, it names
