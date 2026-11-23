@@ -78,7 +78,7 @@ const march = { timeMin: "2030-03-01T00:00:00Z", timeMax: "2030-03-10T00:00:00Z"
 it.effect(`Change my calendar only as I asked and know it happened (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "A chat delete runs directly only for the exact one-off event the owner named"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all")`, effect () => {
   const filed: CalendarApprovalRow[] = []
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
-  const ask = { by: stringToUuid("owner-entity"), id: "message-1" }
+  const ask = { by: try Effect.try(() => stringToUuid("owner-entity")), id: "message-1" }
   const dentist = { subaction: "create_event", title: "Dentist", location: "Main St", startAt: "2030-03-04T09:00:00-08:00", endAt: "2030-03-04T10:00:00-08:00", timeZone: "America/Los_Angeles" }
 
   const created = try runCalendarAction(host, ask, dentist)
@@ -99,10 +99,10 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   assert.deepStrictEqual([at(updated.effectReceipts?.[0], "operation"), at(updated.effectReceipts?.[0], "outcome"), at(updated.effectReceipts?.[0], "resource", "version")], ["calendar.event.update", "applied", changedEtag])
 
   effect function deleteTurn(key: string, words: string, parameters: Record<string, unknown>, routedWords = words) {
-    const message: Memory = {
+    const message: Memory = try Effect.try(() => ({
       id: stringToUuid(key), entityId: ask.by, agentId: stringToUuid("agent"), roomId: stringToUuid("calendar-chat"),
       content: { text: routedWords, source: "device" },
-    }
+    }))
     try Effect.try(() => bindIncomingMessagePersistence(message, { ...message, content: { text: words, source: "device" } }))
     return try runCalendarAction(host, { by: message.entityId, id: message.id ?? key }, { subaction: "delete_event", ...parameters }, message)
   }
