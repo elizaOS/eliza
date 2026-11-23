@@ -81,7 +81,8 @@ start a new workflow called one; rename the workflow X to Y, or rename the X
 workflow to Y; delete or remove the workflow X, or the X workflow; list,
 show or what are my workflows, or what workflows do I have. A name is one
 to six words of at most 80 characters, optionally quoted, without its own
-full stop. A name that opens with a quote mark loses that mark and one
+full stop, inside or outside its closing quote: "'Morning brief.'" names
+Morning brief, without the stop. A name that opens with a quote mark loses that mark and one
 closing mark of its kind, straight or curly, at its end, so "'Parents' Day'"
 names Parents' Day; an apostrophe inside or at the end of an unquoted name
 (Mom’s birthday, Parents') is part of it. A name with a clause word (that,
@@ -126,12 +127,17 @@ owner's own words, a name that names no workflow in full falls back to the
 ID only when the ID's workflow answers the name. One partial match is the
 workflow, except that a remove or rename asks the owner first and does
 nothing in the turn. Several partial matches are ambiguous, and no match
-lists the workflows. A restore looks among removed workflows only, and
-every other operation among current ones, by ID as by name: an ID that
-names no workflow there is read as a name. Same-named workflows are told
-apart by their on state and creation time in the owner's zone: the turn's
-observed zone, else the zone the phone's interface reported, else the
-agent's TIMEZONE setting, else the host's, else UTC.
+lists the workflows. A restore looks a name up among removed workflows
+only, and every other operation among current ones; an ID reads its
+workflow in either list, and an ID that names no workflow is read as a
+name. The workflow found is then answered by its state: a restore of a
+current workflow says it is not removed, a remove of a removed one says it
+is already removed, and any other change or a run of a removed one says it
+was removed and must be restored first, each with nothing changed; a read
+answers either. Same-named workflows are told apart by their on state and
+creation time in the owner's zone: the turn's observed zone, else the zone
+the phone's interface reported, else the agent's TIMEZONE setting, else the
+host's, else UTC.
 
 ```quint
 type WorkflowResolution = RefResolved | RefAmbiguous | RefConfirmFirst | RefNotFound | RefMismatch | RefMissing
@@ -155,6 +161,16 @@ pure def lawSameNamedWorkflowsNeedAChoice(ownerWords: bool, idAgrees: bool, part
   resolveWorkflow(false, true, true, ownerWords, idAgrees, 2, false, partialMatches, strict) == RefAmbiguous
 pure def lawAMispairedPlannerIdChangesNothing(fullMatches: int, idAmongFull: bool, partialMatches: int, strict: bool): bool =
   resolveWorkflow(true, true, true, false, false, fullMatches, idAmongFull, partialMatches, strict) == RefMismatch
+type ReferenceOp = RestoreReference | RemoveReference | ReadReference | ChangeReference
+type ReferenceAnswer = ActOnWorkflow | NotRemovedAnswer | AlreadyRemovedAnswer | RestoreFirstAnswer
+pure def referenceAnswer(op: ReferenceOp, removed: bool): ReferenceAnswer =
+  if (op == RestoreReference) (if (removed) ActOnWorkflow else NotRemovedAnswer)
+  else if (op == ReadReference or not(removed)) ActOnWorkflow
+  else if (op == RemoveReference) AlreadyRemovedAnswer
+  else RestoreFirstAnswer
+pure def lawARemovedWorkflowIsOnlyReadOrRestored(op: ReferenceOp): bool =
+  referenceAnswer(op, true) == ActOnWorkflow implies (op == RestoreReference or op == ReadReference)
+pure def lawOnlyARemovedWorkflowIsRestored(removed: bool): bool = referenceAnswer(RestoreReference, removed) == ActOnWorkflow iff removed
 ```
 
 ### A workflow the owner names never shares its name
@@ -171,4 +187,61 @@ pure def createdName(source: CreatedName, taken: bool): NamingOutcome =
   if (not(taken)) KeepsName else if (source == OwnerChosenName) NameRefused else TakesNumber
 pure def lawAnOwnerNameIsNeverNumbered(taken: bool): bool = createdName(OwnerChosenName, taken) != TakesNumber
 pure def lawAFreeNameIsKept(source: CreatedName): bool = createdName(source, false) == KeepsName
+```
+
+## Story: Hear from chat what my workflows are and what happened to them
+
+> As the owner, I want chat to find a workflow by what it does, to show a
+> run's steps as it goes, and to tell me plainly when a change may have
+> gone through or my workflows could not be read.
+
+A list or search shows at most its limit of workflows, 20 unless the
+request asks for up to 50, names each with its on state, and says when it
+shows only the first of them. A run started from chat answers with the
+workflow's run card: its run, title and steps, each pending. A created
+workflow carries its workflow card. A removed workflow's reply says it can
+be restored later.
+
+### A search ranks workflows by how many of its words their name or description holds
+
+A search splits its words on spaces and scores each current workflow by how
+many of them its name or description contains, ignoring case, one point for
+each word. A workflow that holds none is left out, and the rest are listed
+highest score first, ties by ID. The workflows context the agent reads on a
+turn whose words mention workflows or automations is that search over the
+owner's own words, and otherwise every current workflow.
+
+```quint
+pure def searchHit(hit: bool): int = if (hit) 1 else 0
+pure def searchScore(hits: List[bool]): int = hits.foldl(0, (score, hit) => score + searchHit(hit))
+pure def searchKeeps(score: int): bool = score > 0
+pure def lawAWordScoresAtMostOnePoint(hit: bool): bool = searchHit(hit) == 0 or searchHit(hit) == 1
+pure def lawAWorkflowWithNoWordIsLeftOut(score: int): bool = searchKeeps(score) iff score >= 1
+```
+
+### Only a change refused before it wrote says nothing changed, and an unread list is never an empty one
+
+A change that failed before its write, while the workflow was read, drafted
+or checked, or whose write the service refused as malformed, missing,
+failing its code check or not applied, says nothing was changed and may be
+retried. Any other failure of a write, and a failed readback after a write
+returned, may have committed: the reply asks the owner to check before
+trying again, and the planner is told not to retry. A failed read says the
+read failed. The workflows context the agent reads reports a failed read as
+a failure, never as the owner having no workflows, and a search that
+matches nothing says so.
+
+```quint
+type FailureReport = ReadFailed | NothingChanged | ReconcileFirst
+pure def failureReport(read: bool, beforeWrite: bool): FailureReport =
+  if (read) ReadFailed else if (beforeWrite) NothingChanged else ReconcileFirst
+type WorkflowListing = ListingFailed | NoWorkflows | NoMatches | Listed
+pure def workflowListing(readOk: bool, searched: bool, shown: int): WorkflowListing =
+  if (not(readOk)) ListingFailed else if (shown > 0) Listed else if (searched) NoMatches else NoWorkflows
+pure val shownValues = Set(0, 1, 2)
+pure def lawOnlyAnUnwrittenChangeSaysNothingChanged(read: bool, beforeWrite: bool): bool =
+  failureReport(read, beforeWrite) == NothingChanged iff (not(read) and beforeWrite)
+pure def lawAFailedReadIsNeverEmpty(searched: bool, shown: int): bool = workflowListing(false, searched, shown) == ListingFailed
+pure def lawAReadWorkflowIsListedOrSaidMissing(searched: bool, shown: int): bool =
+  workflowListing(true, searched, shown) != ListingFailed
 ```

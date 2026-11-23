@@ -1,8 +1,8 @@
 // spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { computeNextCronRunAtMs, type ActionResult, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
-import { workflowAction, workflowInstances } from "../src/agent.vibe"
+import { computeNextCronRunAtMs, type ActionResult, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
+import { activeWorkflowsProvider, workflowAction, workflowInstances } from "../src/agent.vibe"
 import {
   keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
   workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected,
@@ -267,7 +267,7 @@ it.live('Remove a workflow only when its runs are settled and restore it safely 
   try check(() => assert.deepStrictEqual(phone.performed, []))
 })
 
-it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name")', effect () => {
+it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")', effect () => {
   const rig = try harness({ draft: () => JSON.stringify({ name: "Drafted", description: "Drafts a summary", source: generatedSource }) })
   const morning = (try saved(rig, greeting)).receipt
   const garden = (try saved(rig, manual("Garden digest", greeting.steps))).receipt
@@ -299,11 +299,26 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
     try say("rename the workflow 'Evening note' to 'Parents' Day'", { action: "rename", workflowName: "Evening note'", name: "Parents' Day'" }),
     try say("Create a workflow called ‘Morning brief’.", { action: "create", name: "Morning brief’" }),
     try say("create a workflow called Mom’s birthday", { action: "create", name: "Mom" }),
+    try say("create a workflow called 'Weekly plan.'", { action: "create", name: "Weekly plan.'" }),
   ]
+  const again = try say("remove it", { action: "remove", workflowId: backup.workflowId })
   const names = ((try rig.service.list(false)) as { readonly name: string }[]).map(({ name }) => name).sort()
+  const listed = try say("list my workflows", { action: "list", limit: 2 })
+  const found = try say("which workflow drafts a summary?", { action: "search", query: "summary drafts" })
+  const ran = try say("run the Garden digest workflow", { action: "run", workflowName: "Garden digest" })
+  const dossier = try say("give me today's dossier", { action: "dossier" })
+  const context = (words: string) => promise(() => activeWorkflowsProvider.get(runtime, { content: { text: words } } as Memory, {} as Parameters<Provider["get"]>[2]))
+  const matching = try context("which workflow drafts a summary")
+  const unmatched = try context("payroll automation")
+  const namesOf = (data: unknown) => ((data as { readonly workflows?: readonly { readonly name: string }[] } | undefined)?.workflows ?? []).map(({ name }) => name)
+  const widget = (result: ActionResult) => (result.data as { readonly widget?: { readonly type: string; readonly workflowId: string } } | undefined)?.widget
   try check(() => assert.deepStrictEqual({
-    codes: [conflict, renamed, partial, descriptive, mispaired, twins, taken, created, unknown, exactName, removedId, currentId].map(code),
+    codes: [conflict, renamed, partial, descriptive, mispaired, twins, taken, created, unknown, exactName, removedId, currentId, again, dossier].map(code),
     quoted: quoted.map(code),
+    listed: { ...(listed.data as { readonly total: number; readonly truncated: boolean }), workflows: namesOf(listed.data).length },
+    found: namesOf(found.data).sort(),
+    cards: [widget(created)?.type, widget(ran)?.type, widget(ran)?.workflowId],
+    context: { matching: namesOf(matching.data).slice(0, 4).sort(), twin: namesOf(matching.data).includes("Twin"), unmatched: [unmatched.values?.hasWorkflows, namesOf(unmatched.data)] },
     twins: (twins.data as { readonly matches?: readonly unknown[] } | undefined)?.matches?.length,
     ownerZone: twins.userFacingText?.includes(`created ${kiritimati}`),
     confirm: partial.userFacingText,
@@ -311,13 +326,17 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   }, {
     codes: [
       "WORKFLOW_REQUEST_CONFLICT", "applied", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_REF_MISMATCH", "WORKFLOW_AMBIGUOUS", "WORKFLOW_NAME_TAKEN", "applied",
-      "WORKFLOW_NOT_FOUND", "applied", "WORKFLOW_NOT_FOUND", "WORKFLOW_NOT_FOUND",
+      "WORKFLOW_NOT_FOUND", "applied", "WORKFLOW_REMOVED", "WORKFLOW_NOT_REMOVED", "WORKFLOW_REMOVED", "NATIVE_DOSSIER_SOURCE_REVIEW_REQUIRED",
     ],
-    quoted: ["applied", "applied", "applied"],
+    quoted: ["applied", "applied", "applied", "applied"],
+    listed: { total: names.length, truncated: true, workflows: 2 },
+    found: ["Fresh one", "Mom’s birthday", "Morning brief", "Weekly plan"],
+    cards: ["workflow", "workflow-run", garden.workflowId],
+    context: { matching: ["Fresh one", "Mom’s birthday", "Morning brief", "Weekly plan"], twin: false, unmatched: [false, []] },
     twins: 2,
     ownerZone: true,
     confirm: "Do you mean “Garden digest”? I left it unchanged.",
-    names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Twin", "Twin"],
+    names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Twin", "Twin", "Weekly plan"],
   }))
 })
 

@@ -1,8 +1,13 @@
-// spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner's words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"
+// spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner's words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "Story: Get my on-demand dossier in chat from the phone source I chose"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose"; spec/workflow/hostedDigest.md, "A chat dossier is one run for each owner message and answers with its finished briefing"
 import type { Action, ActionResult, EffectReceipt, HandlerCallback, IAgentRuntime, Memory, Provider } from "@elizaos/core"
-import { createdName, type ProposedWorkflowChange } from "../gen/workflow__lifecycle.effect.vibe"
+import { createdName, failureReport, workflowListing, type ProposedWorkflowChange, type ReferenceOp } from "../gen/workflow__lifecycle.effect.vibe"
+import { dossierReply, dossierSource, dossierStarts } from "../gen/workflow__hostedDigest.effect.vibe"
+import { typedStepsText } from "./client/workflow-client.vibe"
 import { workflowSha, workflowUuid } from "./contract/phone.vibe"
-import { commandBinding, normalizeWorkflowName, ownerWords, ownerZone, resolveWorkflowReference, type ReferenceOptions, type WorkflowReferenceRefused, type WorkflowView } from "./request.vibe"
+import {
+  commandBinding, normalizeWorkflowName, ownerWords, ownerZone, resolveWorkflowReference, searchWorkflows,
+  type ReferenceOptions, type WorkflowReferenceRefused, type WorkflowView,
+} from "./request.vibe"
 import { WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
 import type { hostedDigests } from "./service/digests.vibe"
 import type { generatedWorkflows } from "./service/generated.vibe"
@@ -25,6 +30,21 @@ const NOTIFY_REQUEST = /\b(?:remind\w*|notif\w*|alert\w*|(?:ping|tell|text|messa
 
 type Bag = Record<string, unknown>
 type Reading = Pick<ReferenceOptions, "ownerWords" | "timeZone">
+
+error WorkflowWriteFailed { refused: WorkflowRefused; beforeWrite: boolean }
+
+function refusedBeforeWrite(refused: WorkflowRefused): boolean {
+  const code = refused.code ?? ""
+  return refused.status === 400 || refused.status === 404 || code === "WORKFLOW_CODE_REFUSED" || (refused.status === 409 && code.endsWith("_NOT_APPLIED"))
+}
+
+effect function writing<A>(write: A!WorkflowRefused): A!WorkflowWriteFailed {
+  return (write catch effect (refused) => { throw new WorkflowWriteFailed({ refused, beforeWrite: refusedBeforeWrite(refused) }) })
+}
+
+effect function readBack<A>(read: A!WorkflowRefused): A!WorkflowWriteFailed {
+  return (read catch effect (refused) => { throw new WorkflowWriteFailed({ refused, beforeWrite: false }) })
+}
 
 function text(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined
@@ -66,29 +86,43 @@ function proposedChange(op: WorkflowOp): ProposedWorkflowChange {
   }
 }
 
+function referenceOp(op: WorkflowOp): ReferenceOp {
+  if (READ_OPS.includes(op)) return "ReadReference"
+  return op === "restore_removed" ? "RestoreReference" : op === "remove" ? "RemoveReference" : "ChangeReference"
+}
+
 function resolve(service: WorkflowService, params: Bag, op: WorkflowOp, reading: Reading) {
   const workflowId = text(params.workflowId)
   const workflowName = text(params.workflowName) ?? (op === "rename" || op === "create" ? undefined : text(params.name))
   return resolveWorkflowReference(service, { ...(workflowId === undefined ? {} : { workflowId }), ...(workflowName === undefined ? {} : { workflowName }) },
-    { removed: op === "restore_removed", strict: op === "remove" || op === "rename", ownerWords: reading.ownerWords, timeZone: reading.timeZone })
+    { op: referenceOp(op), strict: op === "remove" || op === "rename", ownerWords: reading.ownerWords, timeZone: reading.timeZone })
 }
+
+const DOSSIER_UNREAD = "The selected phone sources could not be read. No dossier was completed."
 
 function unusedName(name: string, taken: ReadonlySet<string>): string {
   if (!taken.has(normalizeWorkflowName(name))) return name
   for (let n = 2; ; n++) if (!taken.has(normalizeWorkflowName(`${name} ${n}`))) return `${name} ${n}`
 }
 
-effect function perform(instance: WorkflowInstance, op: WorkflowOp, params: Bag, request: string, reading: Reading): ActionResult!(WorkflowRefused | WorkflowReferenceRefused) {
+effect function perform(
+  instance: WorkflowInstance, op: WorkflowOp, params: Bag, request: string, reading: Reading, messageId: string | undefined,
+): ActionResult!(WorkflowRefused | WorkflowReferenceRefused | WorkflowWriteFailed) {
   const { service, digests } = instance
-  const at = new Date(try service.now).toISOString()
+  const nowMs = try service.now
+  const at = new Date(nowMs).toISOString()
   switch (op) {
     case "list":
     case "search": {
-      const query = text(params.query)
+      const query = text(params.query) ?? ""
       const workflows = (try service.list(false)) as WorkflowView[]
-      const shown = query === undefined ? workflows : workflows.filter((workflow) => normalizeWorkflowName(workflow.name).includes(normalizeWorkflowName(query)))
+      const found = op === "search" ? searchWorkflows(workflows, query) : workflows
+      const limit = Math.min(50, Math.max(1, Math.trunc(Number(params.limit)) || 20))
+      const shown = found.slice(0, limit)
       const lines = shown.map((workflow) => `- ${workflow.name} (ID: ${workflow.id}, ${workflow.active ? "on" : "off"}, ${workflow.steps.length} steps)`)
-      return { success: true, text: lines.length === 0 ? "No workflows are saved." : `Workflows:\n${lines.join("\n")}`, data: { workflows: shown } }
+      const heading = found.length > limit ? `Showing the first ${limit} of ${found.length} workflows:` : "Workflows:"
+      const none = op === "search" ? `No workflows match “${query}”.` : "No workflows are saved."
+      return { success: true, text: found.length === 0 ? none : `${heading}\n${lines.join("\n")}`, data: { workflows: shown, total: found.length, truncated: found.length > limit } }
     }
     case "get": {
       const workflow = try resolve(service, params, op, reading)
@@ -111,11 +145,12 @@ effect function perform(instance: WorkflowInstance, op: WorkflowOp, params: Bag,
       const drafted = try instance.generated.draft({ prompt: instruction })
       if (!drafted.ok) return notApplied("WORKFLOW_CODE_REFUSED", `The drafted workflow code failed its check: ${drafted.diagnostics.join("; ")}. Nothing was saved.`, "I couldn't write workflow code that passes its check, so nothing was saved.")
       const name = requested ?? unusedName(drafted.name, taken)
-      const saved = try instance.generated.save({ name, description: drafted.description, source: drafted.source, mutationId: try workflowUuid() })
-      const workflow = (try service.detail(String(saved.receipt.workflowId))) as WorkflowView
+      const saved = try writing(instance.generated.save({ name, description: drafted.description, source: drafted.source, mutationId: try workflowUuid() }))
+      const workflow = (try readBack(service.detail(String(saved.receipt.workflowId)))) as WorkflowView
       return {
         success: true, text: `Created “${workflow.name}”. It is off and runs only when you start it; review its code in Workflows before it runs on a schedule.${NOTIFY_REQUEST.test(instruction) ? NO_NOTIFICATION : ""}`,
-        effectReceipts: [committed("workflow.create", "workflow.definition", workflow.id, workflow.versionId, workflow.updatedAt, at)], data: { workflow },
+        effectReceipts: [committed("workflow.create", "workflow.definition", workflow.id, workflow.versionId, workflow.updatedAt, at)],
+        data: { workflow, widget: { type: "workflow", workflowId: workflow.id } },
       }
     }
     case "modify": {
@@ -125,8 +160,8 @@ effect function perform(instance: WorkflowInstance, op: WorkflowOp, params: Bag,
       const drafted = try instance.generated.draft({ prompt: instruction, workflowId: current.id })
       if (!drafted.ok) return notApplied("WORKFLOW_CODE_REFUSED", `The revised workflow code failed its check: ${drafted.diagnostics.join("; ")}. Nothing was changed.`, "I couldn't write revised code that passes its check, so nothing was changed.")
       const row = (try service.definitionOf(current.id)).row
-      const saved = try instance.generated.save({ name: current.name, description: drafted.description, source: drafted.source, trigger: row.spec.trigger, mutationId: try workflowUuid(), expectedVersionId: current.versionId }, current.id)
-      const workflow = (try service.detail(String(saved.receipt.workflowId))) as WorkflowView
+      const saved = try writing(instance.generated.save({ name: current.name, description: drafted.description, source: drafted.source, trigger: row.spec.trigger, mutationId: try workflowUuid(), expectedVersionId: current.versionId }, current.id))
+      const workflow = (try readBack(service.detail(String(saved.receipt.workflowId)))) as WorkflowView
       return {
         success: true, text: `Updated “${workflow.name}”.${current.active ? " It was on, so it is now off. Review the change, then turn it on again." : " Review its code before it runs on a schedule."}${NOTIFY_REQUEST.test(instruction) ? NO_NOTIFICATION : ""}`,
         effectReceipts: [committed("workflow.modify", "workflow.definition", workflow.id, workflow.versionId, workflow.updatedAt, at)], data: { workflow },
@@ -142,9 +177,9 @@ effect function perform(instance: WorkflowInstance, op: WorkflowOp, params: Bag,
       const row = (try service.definitionOf(current.id)).row
       if (row.origin === "digest") return notApplied("WORKFLOW_RENAME_IN_SETTINGS", `${current.name} is a digest. Rename it in the digest settings.`)
       const changedVersion = row.origin === "generated"
-        ? String((try service.metadata(current.id, { mutationId: try workflowUuid(), expectedVersionId: current.versionId, name, description: row.description })).receipt.versionId)
-        : String((try service.save({ spec: { ...row.spec, name }, catalogRevision: service.catalog().catalogRevision, compilerRevision: service.catalog().compilerRevision, mutationId: try workflowUuid(), expectedVersionId: current.versionId }, current.id)).receipt.versionId)
-      const workflow = (try service.detail(current.id)) as WorkflowView
+        ? String((try writing(service.metadata(current.id, { mutationId: try workflowUuid(), expectedVersionId: current.versionId, name, description: row.description }))).receipt.versionId)
+        : String((try writing(service.save({ spec: { ...row.spec, name }, catalogRevision: service.catalog().catalogRevision, compilerRevision: service.catalog().compilerRevision, mutationId: try workflowUuid(), expectedVersionId: current.versionId }, current.id))).receipt.versionId)
+      const workflow = (try readBack(service.detail(current.id))) as WorkflowView
       return {
         success: true, text: `Renamed ${current.name} to “${workflow.name}”.${current.active && !workflow.active ? " Its schedule is now paused. Turn it on again in Workflows." : ""}`,
         effectReceipts: [committed("workflow.rename", "workflow.definition", workflow.id, changedVersion, workflow.updatedAt, at)], data: { workflow },
@@ -163,7 +198,7 @@ effect function perform(instance: WorkflowInstance, op: WorkflowOp, params: Bag,
       const current = try resolve(service, params, op, reading)
       const expectedVersionId = text(params.versionId)
       if (params.versionId !== undefined && expectedVersionId === undefined) throw new WorkflowRefused({ status: 400, message: "Select a valid workflow version before changing activation.", code: "WORKFLOW_VERSION_INVALID" })
-      const workflow = (try service.activation(current.id, expectedVersionId === undefined ? {} : { expectedVersionId }, false)) as WorkflowView
+      const workflow = (try writing(service.activation(current.id, expectedVersionId === undefined ? {} : { expectedVersionId }, false))) as WorkflowView
       return {
         success: true, text: `${workflow.name} is now inactive.`,
         effectReceipts: [committed("workflow.deactivate", "workflow.definition", workflow.id, workflow.versionId, workflow.updatedAt, at)], data: { workflow },
@@ -173,28 +208,33 @@ effect function perform(instance: WorkflowInstance, op: WorkflowOp, params: Bag,
     case "restore_removed": {
       const current = try resolve(service, params, op, reading)
       const operation = op === "remove" ? "remove" : "restore"
-      const { receipt } = try service.lifecycle(current.id, { mutationId: try workflowUuid(), expectedVersionId: current.versionId, operation })
+      const { receipt } = try writing(service.lifecycle(current.id, { mutationId: try workflowUuid(), expectedVersionId: current.versionId, operation }))
       if (receipt === null || typeof receipt !== "object") return notApplied("WORKFLOW_LIFECYCLE_UNKNOWN", "The change could not be confirmed.")
       const versionId = String((receipt as Bag).versionId)
       return {
-        success: true, text: op === "remove" ? `Removed ${current.name}. Its schedule is off.` : `Restored ${current.name}. It is off until you turn it on.`,
+        success: true, text: op === "remove" ? `Removed ${current.name}. Its schedule is off. You can restore it later.` : `Restored ${current.name}. It is off until you turn it on.`,
         effectReceipts: [committed(`workflow.${op}`, "workflow.definition", current.id, versionId, String((receipt as Bag).appliedAt), at)], data: { receipt },
       }
     }
     case "run": {
       const current = try resolve(service, params, op, reading)
       const input = typeof params.input === "object" && params.input !== null && !Array.isArray(params.input) ? params.input as Bag : {}
-      const started = try service.run(current.id, { input, submissionId: try workflowUuid(), expectedVersionId: current.versionId })
+      const started = try writing(service.run(current.id, { input, submissionId: try workflowUuid(), expectedVersionId: current.versionId }))
       const execution = started.execution
+      const card = JSON.stringify({
+        id: execution.id, workflowId: current.id, runId: execution.id, title: current.name,
+        steps: current.steps.map((step) => ({ label: step.label, nodeId: step.id, status: "pending" })), widgets: [],
+      })
       return {
-        success: true, text: `Started ${current.name}. Its result appears in its run history.`,
-        effectReceipts: [committed("workflow.run.submit", "workflow.execution", execution.id, execution.workflowVersionId, execution.startedAt, at)], data: { execution },
+        success: true, text: `Started ${current.name}. Its result appears in its run history.\n\n[WORKFLOW]\n${card}\n[/WORKFLOW]`,
+        effectReceipts: [committed("workflow.run.submit", "workflow.execution", execution.id, execution.workflowVersionId, execution.startedAt, at)],
+        data: { execution, widget: { type: "workflow-run", workflowId: current.id, runId: execution.id } },
       }
     }
     case "cancel_run": {
       const runId = text(params.executionId)
       if (runId === undefined) return notApplied("WORKFLOW_EXECUTION_REQUIRED", "executionId is required.")
-      const { execution } = try service.cancel(runId)
+      const { execution } = try writing(service.cancel(runId))
       const requested = execution.cancellationRequestedAt
       return {
         success: true, text: execution.status === "cancelled" ? "The run was cancelled." : execution.finished ? "That run had already finished." : "Cancellation was requested.",
@@ -211,7 +251,7 @@ effect function perform(instance: WorkflowInstance, op: WorkflowOp, params: Bag,
       const current = try resolve(service, params, op, reading)
       const wanted = text(params.versionId)
       if (wanted === undefined) return notApplied("WORKFLOW_VERSION_REQUIRED", "versionId is required.")
-      const workflow = (try service.restoreRevision(current.id, wanted)) as WorkflowView
+      const workflow = (try writing(service.restoreRevision(current.id, wanted))) as WorkflowView
       return {
         success: true, text: `Restored “${workflow.name}”.${current.active ? " It was on, so it is now off. Review it, then turn it on again." : ""}`,
         effectReceipts: [committed("workflow.restore", "workflow.definition", workflow.id, workflow.versionId, workflow.updatedAt, at)], data: { workflow },
@@ -223,14 +263,31 @@ effect function perform(instance: WorkflowInstance, op: WorkflowOp, params: Bag,
       return { success: true, text: `Collected ${suite.sampleCount} evaluation sample${suite.sampleCount === 1 ? "" : "s"} from recent runs.`, data: { suite } }
     }
     case "dossier": {
-      const sources = (try digests.sources()).sources.filter((source) => source.live?.provider === "native" && !source.revoked)
-      const source = sources.find((candidate) => candidate.id === text(params.sourceId)) ?? sources.at(-1)
-      if (source === undefined) return notApplied("WORKFLOW_DOSSIER_SOURCE_REQUIRED", "No reviewed phone source is selected. Ask the owner to select it in digest settings.")
-      const { execution } = try digests.dossier({ sourceId: source.id, sourceRevision: source.revision, mutationId: `dossier-${(try workflowSha([source.id, at])).slice(0, 32)}`, confirmed: true })
-      return {
-        success: true, text: "Started the on-demand dossier from your reviewed phone sources.",
-        effectReceipts: [committed("workflow.run.submit", "workflow.execution", execution.id, execution.workflowVersionId, execution.startedAt, at)], data: { execution },
+      const sources = (try digests.sources()).sources.filter((source) => source.live?.provider === "native" && !source.revoked && Date.parse(source.expiresAt) > nowMs)
+      const named = text(params.sourceId)
+      const source = named === undefined ? (sources.length === 1 ? sources[0] : undefined) : sources.find((candidate) => candidate.id === named)
+      const choice = dossierSource(named !== undefined, named !== undefined && source !== undefined, sources.length)
+      if (source === undefined || !dossierStarts(messageId !== undefined, choice)) {
+        if (choice !== "ChooseSource" && choice !== "ReviewSourceFirst") {
+          return notApplied("WORKFLOW_DOSSIER_MESSAGE_REQUIRED", "This dossier request needs a current owner message. Nothing was started.", "I couldn't start that dossier from this message.", { retryable: false })
+        }
+        const asked = choice === "ChooseSource" ? "Choose which reviewed phone source to use for this dossier." : "Choose the Calendar sources or reminders you want to share in the phone’s digest settings first."
+        return notApplied("NATIVE_DOSSIER_SOURCE_REVIEW_REQUIRED", `${asked} Nothing was started.`, asked, {
+          retryable: false, sources: sources.map(({ id, label, observedAt, expiresAt }) => ({ id, label, reviewedAt: observedAt, expiresAt })),
+        })
       }
+      const mutationId = try workflowSha(["native-dossier", service.owner, messageId])
+      const { execution } = try writing(digests.dossier({ sourceId: source.id, sourceRevision: source.revision, mutationId, confirmed: true }))
+      const run = try readBack(service.settle(execution.id))
+      const briefing = typedStepsText(run.output, run.id)
+      if (dossierReply(run.status === "finished", briefing !== undefined) === "DossierBriefing" && briefing !== undefined) {
+        return {
+          success: true, text: briefing,
+          effectReceipts: [committed("workflow.run.submit", "workflow.execution", execution.id, execution.workflowVersionId, execution.startedAt, at)],
+          data: { summary: briefing, manualOnly: true, execution: run },
+        }
+      }
+      return notApplied("WORKFLOW_DOSSIER_NOT_COMPLETED", run.error === undefined ? DOSSIER_UNREAD : `${DOSSIER_UNREAD} ${run.error.message}`, DOSSIER_UNREAD, { retryable: false, execution: run })
     }
   }
 }
@@ -249,11 +306,11 @@ export const workflowAction: Action = {
     { name: "workflowName", required: false, description: "The workflow's exact name when no ID is known.", schema: { type: "string" } },
     { name: "name", required: false, description: "The new name for rename, or the name of a created workflow.", schema: { type: "string" } },
     { name: "instruction", required: false, description: "What a created or modified workflow does.", schema: { type: "string" } },
-    { name: "query", required: false, description: "Text to search workflow names for.", schema: { type: "string" } },
+    { name: "query", required: false, description: "Words to search workflow names and descriptions for.", schema: { type: "string" } },
     { name: "executionId", required: false, description: "The run to cancel.", schema: { type: "string" } },
     { name: "versionId", required: false, description: "Revision version id. Required for restore. For deactivate, the change applies only if this is still the current version.", schema: { type: "string" } },
-    { name: "sourceId", required: false, description: "The reviewed phone source for dossier.", schema: { type: "string" } },
-    { name: "limit", required: false, description: "How many runs executions lists.", schema: { type: "number" } },
+    { name: "sourceId", required: false, description: "The reviewed phone source for dossier, when the owner chose one of several.", schema: { type: "string" } },
+    { name: "limit", required: false, description: "How many workflows list or search shows (at most 50), runs executions lists, or revisions lists.", schema: { type: "number" } },
     { name: "input", required: false, description: "Run input.", schema: { type: "object" } },
   ],
   validate: async (runtime) => workflowInstances.has(runtime),
@@ -272,16 +329,23 @@ export const workflowAction: Action = {
     const workflowId = text(params.workflowId)
     const asked: Bag = bound ? { ...names, instruction: words, ...(workflowId === undefined ? {} : { workflowId }) } : params
     const request = bound ? words : typeof message.content.text === "string" ? message.content.text : ""
-    const outcome = await runPromise(Effect.result(perform(instance, op, asked, request, { ownerWords: bound, timeZone: ownerZone(runtime, message) })))
+    const outcome = await runPromise(Effect.result(perform(instance, op, asked, request, { ownerWords: bound, timeZone: ownerZone(runtime, message) }, text(message.id))))
     if (!Result.isFailure(outcome)) return respond(callback, outcome.success)
     const failure = outcome.failure
     if (failure._tag === "WorkflowReferenceRefused") {
       return respond(callback, notApplied(failure.code, failure.text, failure.userFacingText, { ...failure.data, retryable: failure.retryable }))
     }
-    return respond(callback, {
-      ...notApplied(failure.code ?? "WORKFLOW_NOT_APPLIED", `${failure.message}${READ_OPS.includes(op) ? "" : " Nothing was changed."}`, failure.message),
-      ...(READ_OPS.includes(op) ? {} : { data: { code: failure.code ?? "WORKFLOW_NOT_APPLIED", status: failure.status } }),
-    })
+    const refused = failure._tag === "WorkflowWriteFailed" ? failure.refused : failure
+    switch (failureReport(READ_OPS.includes(op), failure._tag === "WorkflowWriteFailed" ? failure.beforeWrite : true)) {
+      case "ReadFailed":
+        return respond(callback, notApplied(refused.code ?? "WORKFLOW_READ_FAILED", refused.message, refused.message, { status: refused.status, retryable: true }))
+      case "NothingChanged":
+        return respond(callback, notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, refused.message, { status: refused.status, retryable: true }))
+      case "ReconcileFirst":
+        return respond(callback, notApplied("WORKFLOW_OPERATION_FAILED_RECONCILE_BEFORE_RETRY",
+          `${refused.message} The change may have gone through. Check the workflow's current state before trying again, and never retry it automatically.`,
+          "I couldn't confirm whether that change went through. Check Workflows before trying again.", { status: refused.status, cause: refused.code ?? null, retryable: false }))
+    }
   },
 }
 
@@ -328,18 +392,30 @@ export const activeWorkflowsProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory) => {
     const instance = workflowInstances.get(runtime)
     if (instance === undefined) return { text: "", data: {}, values: {} }
-    const request = typeof message.content.text === "string" ? message.content.text : ""
-    const query = /\b(workflow|workflows|automation|automations)\b/i.test(request) ? request : undefined
+    const words = await runPromise(ownerWords(message))
+    const query = /\b(workflow|workflows|automation|automations)\b/i.test(words) ? words : undefined
     const listed = await runPromise(Effect.result(instance.service.list(false)))
     const workflows = Result.isFailure(listed) ? [] : listed.success as WorkflowView[]
-    const matched = query === undefined ? workflows : workflows.filter((workflow) => request.toLocaleLowerCase("en-US").includes(workflow.name.toLocaleLowerCase("en-US")))
-    const shown = matched.length > 0 ? matched : workflows
-    if (shown.length === 0) return { text: "", data: { workflows: [] }, values: { hasWorkflows: false } }
-    const lines = shown.map((workflow) => `- **${workflow.name}** (ID: ${workflow.id}, Status: ${workflow.active ? "ACTIVE" : "INACTIVE"}, Steps: ${workflow.steps.length})`)
-    return {
-      text: `# Available Workflows\n\n${lines.join("\n")}`,
-      data: { workflows: shown.map((workflow) => ({ id: workflow.id, name: workflow.name, active: workflow.active, stepCount: workflow.steps.length, versionId: workflow.versionId })) },
-      values: { hasWorkflows: true, workflowCount: shown.length },
+    const shown = query === undefined ? workflows : searchWorkflows(workflows, query)
+    const searched = query === undefined ? {} : { searchQuery: query }
+    switch (workflowListing(!Result.isFailure(listed), query !== undefined, shown.length)) {
+      case "ListingFailed":
+        runtime.logger.warn({ src: "workflow", code: "WORKFLOW_PROVIDER_ACTIVE_LOAD_FAILED" }, "The owner's workflows could not be read for the turn")
+        return {
+          text: "# Available Workflows\n\nThe owner's workflows could not be read right now. Never tell the owner they have none; say the workflows could not be read.",
+          data: { code: "WORKFLOW_PROVIDER_ACTIVE_LOAD_FAILED", ...searched }, values: { workflowsUnavailable: true },
+        }
+      case "NoWorkflows": return { text: "", data: { workflows: [] }, values: { hasWorkflows: false } }
+      case "NoMatches":
+        return { text: `# Matching Workflows\n\nNo workflows match "${query ?? ""}".`, data: { workflows: [], ...searched }, values: { hasWorkflows: false, workflowCount: 0, workflowSearchQuery: query ?? "" } }
+      case "Listed": {
+        const lines = shown.map((workflow) => `- **${workflow.name}** (ID: ${workflow.id}, Status: ${workflow.active ? "ACTIVE" : "INACTIVE"}, Steps: ${workflow.steps.length})`)
+        return {
+          text: `${query === undefined ? "# Available Workflows" : "# Matching Workflows"}\n\n${lines.join("\n")}`,
+          data: { workflows: shown.map((workflow) => ({ id: workflow.id, name: workflow.name, active: workflow.active, stepCount: workflow.steps.length, versionId: workflow.versionId })), ...searched },
+          values: { hasWorkflows: true, workflowCount: shown.length, ...(query === undefined ? {} : { workflowSearchQuery: query }) },
+        }
+      }
     }
   },
 }

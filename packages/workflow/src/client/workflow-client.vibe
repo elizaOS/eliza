@@ -217,16 +217,18 @@ effect function reconciliation(value: unknown): (WorkflowRunReconciliation | und
   return { state: r.state, message: r.message.slice(0, 2000) }
 }
 
+export function typedStepsText(value: unknown, runId: string): string | undefined {
+  if (!Array.isArray(value) || value.length !== 1) return undefined
+  const item: unknown = value[0]
+  return typeof item === "object" && item !== null && "nodeId" in item && item.nodeId === "typed-steps" && "runId" in item && item.runId === runId
+    && "text" in item && typeof item.text === "string" ? item.text : undefined
+}
+
 function workflowOutput(value: unknown, runId: string, hostedDigest: boolean): string {
   if (typeof value === "string") return value.slice(0, 4000)
   const settled = workflowOccurrenceNotRun(value, hostedDigest)
   if (settled !== undefined) return settled.text
-  if (Array.isArray(value) && value.length === 1) {
-    const item: unknown = value[0]
-    if (typeof item === "object" && item !== null && "nodeId" in item && item.nodeId === "typed-steps" && "runId" in item && item.runId === runId
-      && "text" in item && typeof item.text === "string") return item.text.slice(0, 4000)
-  }
-  return (JSON.stringify(value) ?? "").slice(0, 4000)
+  return (typedStepsText(value, runId) ?? JSON.stringify(value) ?? "").slice(0, 4000)
 }
 
 function storedPhoneSpec(value: unknown): { readonly phoneSpec?: unknown } {
