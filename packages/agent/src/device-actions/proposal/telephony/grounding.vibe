@@ -1,11 +1,12 @@
-// spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner is told to dial it themselves"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"
+// spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner is told to dial it themselves"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers the owner wrote"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"
 import {
-  commandVerdict, contactNumbersGrounded, emergencyVerdict, nameVerdict, numberVerdict, ownedMatch, refusalReply,
+  commandVerdict, emergencyVerdict, nameVerdict, numberVerdict, ownedMatch, refusalReply,
   type CommandRecipient, type NumberMatch, type TargetVerdict,
 } from "../../../../gen/agent__deviceActions__telephony.effect.vibe"
 import type { DeviceOperation } from "../../operations.schema.vibe"
 import type { SwappedValue } from "../family.vibe"
-import { dialForms, dialNumberShape, samePhoneNumber, writesUnreadableNumber, writtenPhoneNumbers } from "./dial-number.vibe"
+import { dialForms, phoneDialNumber, samePhoneNumber, writesUnreadableNumber, writtenPhoneNumbers } from "./dial-number.vibe"
+import { ownerNameWithoutFiller, writesContactName } from "./names.vibe"
 import { authoredKeypadNumber, authoredTelephonyTarget, emergencyServicesRequest, namesEmergencyService, type PhoneTarget } from "./request.vibe"
 import { spokenPhoneNumbers } from "./spoken-number.vibe"
 
@@ -19,6 +20,7 @@ export type Refused = Extract<TargetGrounding, { kind: "refused" }>
 type Owned<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly refused: Refused }
 type Tiers = readonly [written: readonly string[], spoken: readonly string[]]
 type ContactNumbers = Extract<DeviceOperation, { type: "contact_create" | "contact_update" }>
+type ContactChange = Extract<DeviceOperation, { type: "contact_create" | "contact_update" | "contact_delete" }>
 
 export interface SwappedPhoneReference {
   readonly placeholder: string
@@ -27,12 +29,6 @@ export interface SwappedPhoneReference {
 
 const referencePrefix = "__ELIZA_CONTACT_"
 const wordCharacter = /[\p{L}\p{N}]/u
-const notAName: ReadonlySet<string> = new Set((
-  "a an the this that these those it its me my mine myself i you your yours he him his she her hers we us our ours they them their " +
-  "someone somebody anyone anybody everyone back up now please thanks thank and or to for of at on in with from about call ring phone " +
-  "dial text sms message send tell ask say saying number cell mobile contact"
-).split(" "))
-const notANameAround: ReadonlySet<string> = new Set([...notAName, ..."again right away asap home work office landline line phone".split(" ")])
 
 function refusal(verdict: TargetRefusal, references: readonly string[] = []): Refused {
   return { kind: "refused", verdict, references }
@@ -116,28 +112,9 @@ function groundedNumber(proposed: string, owned: Tiers, references: readonly Swa
   return { ok: false, refused: refusal(refused ?? "NumberNotWritten", refused === "NumberCopyReference" ? copyable : []) }
 }
 
-function normalizedWords(text: string): string {
-  return text.normalize("NFKC").toLowerCase().replace(/[’‘]/g, "'").replace(/'s(?![\p{L}\p{N}])/gu, "").replace(/[^\p{L}\p{N}']+/gu, " ").trim()
-}
-
-export function writesContactName(text: string, name: string): boolean {
-  const query = normalizedWords(name)
-  if (query === "" || /^[\d\s+]+$/.test(query) || query.split(" ").every((word) => notAName.has(word))) return false
-  return ` ${normalizedWords(text)} `.includes(` ${query} `)
-}
-
-function ownerNameWithoutFiller(authored: string, proposed: string): boolean {
-  const owner = normalizedWords(authored).split(" "), name = normalizedWords(proposed).split(" ")
-  if (name[0] === undefined || name[0] === "" || name.length >= owner.length) return false
-  for (let at = 0; at + name.length <= owner.length; at++) {
-    const here = name.every((word, index) => owner[at + index] === word)
-    if (here && [...owner.slice(0, at), ...owner.slice(at + name.length)].every((word) => notANameAround.has(word))) return true
-  }
-  return false
-}
-
 export function composeTarget(query: string): PhoneTarget {
-  return dialNumberShape.test(query) ? { kind: "number", number: query } : { kind: "contact", query }
+  if (!/^\+?\(?\d/.test(query.trim())) return { kind: "contact", query }
+  return { kind: "number", number: phoneDialNumber(query) ?? query.replace(/[^\d+]/g, "") }
 }
 
 function groundTarget(target: PhoneTarget, text: string, body: string | undefined, references: readonly SwappedPhoneReference[]): Owned<PhoneTarget> {
@@ -196,7 +173,7 @@ function handedThrough(operation: DeviceOperation, target: PhoneTarget | undefin
   return verdict === "TargetHandedThrough" && offered === undefined ? refusal("RecipientForm") : decided(verdict, offered ?? operation)
 }
 
-function recipientsGrounded(operation: Extract<DeviceOperation, { type: "sms_send" | "mms_send" }>, text: string, references: readonly SwappedPhoneReference[]): TargetGrounding {
+function recipientsGrounded(operation: Extract<DeviceOperation, { type: "sms_send" }>, text: string, references: readonly SwappedPhoneReference[]): TargetGrounding {
   const rest = textWithoutBody(text, operation.body).text
   const recipients: string[] = []
   for (const recipient of operation.recipients) {
@@ -207,14 +184,22 @@ function recipientsGrounded(operation: Extract<DeviceOperation, { type: "sms_sen
   return decided("TargetGrounded", { ...operation, recipients })
 }
 
-function contactNumbersOf(operation: ContactNumbers): readonly string[] {
-  return operation.type === "contact_create" ? operation.contact.phoneNumbers : operation.set.phoneNumbers ?? []
+function contactNumbersOf(operation: ContactNumbers): readonly string[] | undefined {
+  return operation.type === "contact_create" ? operation.contact.phoneNumbers : operation.set.phoneNumbers
+}
+
+function contactNamesOf(operation: ContactChange): readonly string[] {
+  switch (operation.type) {
+    case "contact_create": return [operation.contact.displayName]
+    case "contact_update": return operation.set.displayName === undefined ? [operation.query] : [operation.query, operation.set.displayName]
+    case "contact_delete": return [operation.query]
+  }
 }
 
 function contactNumbersGroundedIn(operation: ContactNumbers, text: string, references: readonly SwappedPhoneReference[]): TargetGrounding {
-  const owned = ownerTiers(text)
   const numbers = contactNumbersOf(operation)
-  if (!contactNumbersGrounded(owned[0].length + owned[1].length > 0, numbers.length > 0)) return decided("TargetGrounded", operation)
+  if (numbers === undefined) return decided("TargetGrounded", operation)
+  const owned = ownerTiers(text)
   const grounded: string[] = []
   for (const number of numbers) {
     const own = groundedNumber(number, owned, references, text)
@@ -224,6 +209,11 @@ function contactNumbersGroundedIn(operation: ContactNumbers, text: string, refer
   return decided("TargetGrounded", operation.type === "contact_create"
     ? { ...operation, contact: { ...operation.contact, phoneNumbers: grounded } }
     : { ...operation, set: { ...operation.set, phoneNumbers: grounded } })
+}
+
+function contactGrounded(operation: ContactChange, text: string, references: readonly SwappedPhoneReference[]): TargetGrounding {
+  if (contactNamesOf(operation).some((name) => nameVerdict(writesContactName(text, name)) === "ContactNotWritten")) return refusal("ContactNotWritten")
+  return operation.type === "contact_delete" ? decided("TargetGrounded", operation) : contactNumbersGroundedIn(operation, text, references)
 }
 
 function ownerTarget(operation: DeviceOperation, text: string, references: readonly SwappedPhoneReference[]): TargetGrounding {
@@ -241,11 +231,11 @@ function ownerTarget(operation: DeviceOperation, text: string, references: reado
       return decided("TargetGrounded", target.value.kind === "number" ? { ...operation, query: target.value.number } : operation)
     }
     case "sms_send":
-    case "mms_send":
       return recipientsGrounded(operation, text, references)
     case "contact_create":
     case "contact_update":
-      return contactNumbersGroundedIn(operation, text, references)
+    case "contact_delete":
+      return contactGrounded(operation, text, references)
     default:
       return decided("TargetGrounded", operation)
   }
@@ -263,32 +253,38 @@ export function groundTelephonyTarget(operation: DeviceOperation, text: string, 
   return emergencyVerdict(emergencyServicesRequest(text), callOrDial, namesService, verdictOf(grounded)) === "EmergencyDial" ? refusal("EmergencyDial") : grounded
 }
 
-function copyText(references: readonly string[]): string {
+function copyText(references: readonly string[], nothingRan: string): string {
   return references.length > 0
-    ? `The current original request does not contain this phone number. The owner's number reaches you only as a contact reference, so digits you write for it are invented. Copy ${references.length === 1 ? "this reference" : "one of these references"} verbatim as the number, every character and underscore (a country code such as +1 before it is allowed): ${references.join(", ")}. No proposal was created; nothing was called or sent.`
-    : "The current original request does not contain this phone number. Use only a number the owner wrote in this message, by copying its contact reference exactly. No proposal was created; nothing was called or sent."
+    ? `The current original request does not contain this phone number. The owner's number reaches you only as a contact reference, so digits you write for it are invented. Copy ${references.length === 1 ? "this reference" : "one of these references"} verbatim as the number, every character and underscore (a country code such as +1 before it is allowed): ${references.join(", ")}. No proposal was created; ${nothingRan}.`
+    : `The current original request does not contain this phone number. Use only a number the owner wrote in this message, by copying its contact reference exactly. No proposal was created; ${nothingRan}.`
 }
 
-function modelText({ verdict, references }: Refused): string {
+function modelText({ verdict, references }: Refused, contactChange: boolean): string {
+  const nothingRan = contactChange ? "nothing was saved or changed" : "nothing was called or sent"
   switch (verdict) {
     case "EmergencyDial": return "The owner asked for emergency services, and this phone cannot open its keypad. No proposal was created; nothing was called. Tell the owner to dial their local emergency number on the phone's own dialer now."
-    case "NumberUnreadable": return "The owner wrote a phone number this request cannot read as one dial number (mixed or unusual separators). No proposal was created; nothing was called or sent. Ask the owner to type the number again with digits only."
-    case "RecipientForm": return "This phone cannot take the recipient the owner wrote in this form. No proposal was created; nothing was called or sent."
-    case "ContactNotWritten": return "The current original request does not name this contact. Use only the name the owner wrote in this message. No proposal was created; nothing was called or sent."
+    case "NumberUnreadable": return `The owner wrote a phone number this request cannot read as one dial number (mixed or unusual separators). No proposal was created; ${nothingRan}. Ask the owner to type the number again with digits only.`
+    case "RecipientForm": return `This phone cannot take ${contactChange ? "the contact" : "the recipient"} the owner wrote in this form. No proposal was created; ${nothingRan}.`
+    case "ContactNotWritten": return `The current original request does not name this contact. Use only the name the owner wrote in this message. No proposal was created; ${nothingRan}.`
     case "NumberCopyReference":
-    case "NumberNotWritten": return copyText(references)
+    case "NumberNotWritten": return copyText(references, nothingRan)
   }
 }
 
-function ownerText(refused: Refused, text: string, operation: DeviceOperation): string {
-  const contactChange = operation.type === "contact_create" || operation.type === "contact_update"
+function changesContacts(operation: DeviceOperation): boolean {
+  return operation.type === "contact_create" || operation.type === "contact_update" || operation.type === "contact_delete"
+}
+
+function ownerText(refused: Refused, text: string, contactChange: boolean): string {
   switch (refusalReply(refused.verdict, contactChange, /\d/.test(text) || spokenPhoneNumbers(text).length > 0)) {
     case "ReplyDialEmergency": return "I can't open the keypad on this phone. For an emergency, dial your local emergency number (911 in the US and Canada, 112 in most of Europe) on your phone's dialer now."
     case "ReplyRetypeSavedNumber": return "I couldn't read that as one phone number, so I didn't save it. Nothing was saved. Type the number again with digits only, like 4155550100."
     case "ReplyRetypeNumber": return "I couldn't read that as one phone number, so I didn't set it up. Nothing was called or sent. Type the number again with digits only, like 4155550100."
     case "ReplyNumberNotSaved": return "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use."
     case "ReplyNoNumberWritten": return "I didn't set that up, because your message doesn't include a phone number. Nothing was called or sent. Tell me the number to use, or the name saved in Contacts."
-    case "ReplyRecipientForm": return "I can't set that up on this phone with that recipient. Tell me the number to use."
+    case "ReplyRecipientForm": return "I can't set that up on this phone with that recipient. Nothing was called or sent. Tell me the number to use."
+    case "ReplyContactForm": return "I can't save that contact on this phone in that form. Nothing in your contacts was changed. Tell me the name, number or email address to use."
+    case "ReplyContactNameNotWritten": return "I didn't change your contacts, because that name isn't one you wrote in your message. Nothing in your contacts was changed. Tell me the contact's name as you say it."
     case "ReplyNameNotWritten": return "I didn't set that up, because that name isn't one you wrote in your message. Nothing was called or sent. Tell me who, by their name as saved in Contacts or their number."
     case "NoRefusalReply":
     case "ReplyNumberNotWritten": return "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use."
@@ -298,5 +294,6 @@ function ownerText(refused: Refused, text: string, operation: DeviceOperation): 
 const telephonyTargetCode = "DEVICE_TELEPHONY_TARGET_NOT_REQUESTED"
 
 export function telephonyTargetRefusalReply(refused: Refused, text: string, operation: DeviceOperation) {
-  return { kind: "Refused" as const, code: telephonyTargetCode, forModel: modelText(refused), forOwner: ownerText(refused, text, operation) }
+  const contactChange = changesContacts(operation)
+  return { kind: "Refused" as const, code: telephonyTargetCode, forModel: modelText(refused, contactChange), forOwner: ownerText(refused, text, contactChange) }
 }
