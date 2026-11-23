@@ -1,9 +1,13 @@
 // spec/inbox/handoff.md, "An agent's new email reaches only the requesting phone's composer"; spec/inbox/outgoing.md, "A send keeps the request identity of the owner turn that asked for it"
-import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type Memory } from "@elizaos/core"
+import { deviceTurnFor, type DeviceTurn } from "@elizaos/agent/device-actions"
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult } from "@elizaos/core"
 import { composeAnswer } from "../../gen/inbox__handoff.effect.vibe"
 import { canonicalUuid } from "../mailbox/digest.vibe"
 
 export const inboxComposeActionName = "INBOX_COMPOSE_EMAIL"
+export const localComposeCapability = "gmail.local-compose.v1"
+
+export type ComposeTurn = Pick<DeviceTurn, "capabilities" | "message">
 
 export interface EmailDraftHandoff {
   readonly version: 1
@@ -29,27 +33,33 @@ function recipients(value: unknown): string[] {
   return listed.flatMap((entry) => typeof entry === "string" && address.test(entry.trim()) ? [entry.trim()] : [])
 }
 
-export function emailDraftAnswer(message: Memory, options: unknown): ActionResult | undefined {
+const takesDraft = (turn: ComposeTurn | undefined) => turn?.capabilities.includes(localComposeCapability) === true
+
+export function emailDraftAnswer(turn: ComposeTurn | undefined, options: unknown): ActionResult | undefined {
+  if (turn === undefined) return undefined
   const parameters = given(options)
   const to = recipients(parameters.to)
   const body = typeof parameters.body === "string" ? parameters.body : ""
   const answer = composeAnswer({
-    ownerTurn: typeof message.id === "string" && canonicalUuid(message.id),
-    composerAvailable: message.content.source === "device",
+    ownerTurn: canonicalUuid(turn.message.id),
+    composerAvailable: takesDraft(turn),
     gmailSource: true,
     threaded: threadFields.some((field) => named(parameters[field])),
     richerFields: richerFields.some((field) => named(parameters[field])),
   })
   switch (answer) {
     case "ComposeNotOffered": return undefined
-    case "ComposeInInbox": return { success: false, text: "Open Inbox to prepare this email with those details.", data: { handoff: "inbox" } }
+    case "ComposeInInbox": return { success: false, text: "Open Inbox to prepare this email with those details.", continueChain: false, data: { handoff: "inbox" } }
     case "ComposeOnPhone": {
       if (to.length === 0 || body.trim() === "") return { success: false, text: "Say who the email is to and what it should say.", data: { handoff: "incomplete" } }
       const emailDraft = {
-        version: 1, requestMessageId: (message.id ?? "").toLowerCase(), to, subject: typeof parameters.subject === "string" ? parameters.subject : "", body,
+        version: 1, requestMessageId: turn.message.id.toLowerCase(), to, subject: typeof parameters.subject === "string" ? parameters.subject : "", body,
       } satisfies EmailDraftHandoff
       const text = "Here’s the draft."
-      return { success: true, text, userFacingText: text, verifiedUserFacing: true, data: { actionName: inboxComposeActionName, ...emailDraft } }
+      return {
+        success: true, text, userFacingText: text, verifiedUserFacing: true, turnComplete: true, continueChain: false,
+        data: { actionName: inboxComposeActionName, ...emailDraft },
+      }
     }
   }
 }
@@ -65,7 +75,7 @@ export const inboxComposeAction: Action = {
   ],
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-  validate: async (_runtime, message) => message.content.source === "device",
-  handler: async (_runtime, message, _state, options) =>
-    emailDraftAnswer(message, options) ?? { success: false, text: "Open Inbox on the phone to write this email.", data: { handoff: "none" } },
+  validate: async (runtime, message) => takesDraft(deviceTurnFor(runtime, message)),
+  handler: async (runtime, message, _state, options) =>
+    emailDraftAnswer(deviceTurnFor(runtime, message), options) ?? { success: false, text: "Open Inbox on the phone to write this email.", data: { handoff: "none" } },
 }

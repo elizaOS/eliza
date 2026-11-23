@@ -1,8 +1,8 @@
 // spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"; spec/inbox/reads.md, "Story: Read my mailbox without mixing account pages or endlessly reusing a cursor"; spec/inbox/drafts.md, "Story: Keep drafts recoverable across account switches and provider failures"; spec/inbox/readState.md, "Story: Change a message's read state once, and never repeat a change I did not ask for"; spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"; spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/failures.md, "Story: Know what happened when Gmail fails"; spec/inbox/outgoing.md, "Story: Attach files and send exactly the email I reviewed"
 import { assert, it } from "@effect/vitest"
-import type { Memory } from "@elizaos/core"
+import { negotiation } from "@elizaos/agent/device-actions"
 import { managedGmailClient, type ManagedGmailTransport } from "../src/client/index.vibe"
-import { emailDraftAnswer, managedInboxRead } from "../src/index.vibe"
+import { emailDraftAnswer, localComposeCapability, managedInboxRead, type ComposeTurn } from "../src/index.vibe"
 import {
   AttachmentRefused, MailProtocolFailed, MailUnreachable, checkOutgoingAttachments, classifyGmailFailure, createMailBackground, disconnectGmailAccount,
   encodeInboxUnsaved, gmailActionGrant, gmailConsentCapabilities, gmailGrantChange, gmailReadCacheKey, gmailReadable, inboxOperation,
@@ -438,11 +438,15 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
 
   const request = {
     id: "5f0c1d2e-3a4b-4c5d-8e9f-a0b1c2d3e4f5", entityId: "6a1b2c3d-4e5f-4a6b-8c7d-e8f9a0b1c2d3", agentId: "7b2c3d4e-5f6a-4b7c-8d9e-f0a1b2c3d4e5",
-    roomId: "8c3d4e5f-6a7b-4c8d-9e0f-a1b2c3d4e5f6", content: { text: "Email Bo about lunch", source: "device" },
-  } as Memory
-  const handed = emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], subject: "Lunch", body: "Noon?" } })
-  assert.deepEqual(handed?.data, { actionName: "INBOX_COMPOSE_EMAIL", version: 1, requestMessageId: request.id, to: ["bo@example.com"], subject: "Lunch", body: "Noon?" })
-  assert.equal(emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], body: "Noon?", cc: ["cy@example.com"] } })?.data?.handoff, "inbox")
-  assert.isUndefined(emailDraftAnswer({ ...request, content: { text: "Email Bo", source: "discord" } }, { parameters: { to: ["bo@example.com"], body: "Noon?" } }))
+    roomId: "8c3d4e5f-6a7b-4c8d-9e0f-a1b2c3d4e5f6", content: { text: "Email Bo about lunch" },
+  } as ComposeTurn["message"]
+  assert.equal(negotiation(true, `calendar.create.v1, ${localComposeCapability}`).tag, "Negotiated")
+  const phone: ComposeTurn = { capabilities: ["calendar.create.v1", localComposeCapability], message: request }
+  const lunch = { parameters: { to: ["bo@example.com"], subject: "Lunch", body: "Noon?" } }
+  const handed = emailDraftAnswer(phone, lunch)
+  assert.deepEqual([handed?.turnComplete, handed?.data], [true, { actionName: "INBOX_COMPOSE_EMAIL", version: 1, requestMessageId: request.id, to: ["bo@example.com"], subject: "Lunch", body: "Noon?" }])
+  assert.equal(emailDraftAnswer(phone, { parameters: { to: ["bo@example.com"], body: "Noon?", cc: ["cy@example.com"] } })?.data?.handoff, "inbox")
+  assert.isUndefined(emailDraftAnswer({ ...phone, capabilities: ["calendar.create.v1"] }, lunch))
+  assert.isUndefined(emailDraftAnswer(undefined, lunch))
   assert.equal(cloud.state.dispatches, 0)
 })

@@ -27,8 +27,10 @@ an effect.
 
 Every capability has one wire name, which ends in its version, and no two
 capabilities share a name. Nothing outside this table is a capability. The
-Browser controls' groups are the [Browser](../../browser/control.md)'s, and
-naming Files by their shown positions is [Files](../../files/shownTargets.md)'.
+Browser controls' groups are the [Browser](../../browser/control.md)'s,
+naming Files by their shown positions is [Files](../../files/shownTargets.md)',
+and taking an email the agent drafted into the phone's own composer is
+[Inbox](../../inbox/handoff.md)'s.
 
 ```quint
 type Capability =
@@ -40,6 +42,7 @@ type Capability =
   | SmsLatestSenderV1 | SmsLatestSenderV2 | NotesRecordV1 | PhotosViewSelectedV1 | CameraLibraryIdV1 | CameraCaptureLensV1
   | SmsComposeV2 | ContactsWriteV2 | ContactsShowV1 | ContactsReadV1 | ContactsLookupV1 | PhoneKeypadV1
   | BrowserSearchV1 | BrowserTabsV1 | BrowserTabsCloseAllV1 | BrowserTabsShowV1 | BrowserFindV1 | BrowserHistoryV1 | BrowserOpenNewTabV1 | FilesShownTargetV1 | TelephonyViewsV1
+  | GmailLocalComposeV1
 pure def capabilityName(c: Capability): str = match c {
   | CalendarLocalEventV1 => "calendar.local-event.v1" | CalendarCreateV1 => "calendar.create.v1" | CalendarNextReadV1 => "calendar.next-read.v1"
   | CalendarAgendaReadV1 => "calendar.agenda-read.v1" | CalendarAvailabilityReadV1 => "calendar.availability-read.v1"
@@ -59,6 +62,7 @@ pure def capabilityName(c: Capability): str = match c {
   | BrowserTabsShowV1 => "browser.tabs.show.v1"
   | BrowserFindV1 => "browser.find.v1" | BrowserHistoryV1 => "browser.history.v1" | BrowserOpenNewTabV1 => "browser.open-new-tab.v1"
   | FilesShownTargetV1 => "files.shown-target.v1" | TelephonyViewsV1 => "views.telephony.v1"
+  | GmailLocalComposeV1 => "gmail.local-compose.v1"
 }
 pure val allCapabilities: Set[Capability] = Set(
   CalendarLocalEventV1, CalendarCreateV1, CalendarNextReadV1, CalendarAgendaReadV1, CalendarAvailabilityReadV1, CalendarNamedReadV1,
@@ -68,7 +72,7 @@ pure val allCapabilities: Set[Capability] = Set(
   PhoneCallV1, ContactsWriteV1, VoicemailReadV1, VoicemailDeleteV1, SmsLatestSenderV1, SmsLatestSenderV2, NotesRecordV1,
   PhotosViewSelectedV1, CameraLibraryIdV1, CameraCaptureLensV1, SmsComposeV2, ContactsWriteV2, ContactsShowV1, ContactsReadV1, ContactsLookupV1,
   PhoneKeypadV1, BrowserSearchV1, BrowserTabsV1, BrowserTabsCloseAllV1, BrowserTabsShowV1, BrowserFindV1, BrowserHistoryV1,
-  BrowserOpenNewTabV1, FilesShownTargetV1, TelephonyViewsV1)
+  BrowserOpenNewTabV1, FilesShownTargetV1, TelephonyViewsV1, GmailLocalComposeV1)
 pure def isCapabilityName(name: str): bool = allCapabilities.exists(c => capabilityName(c) == name)
 pure def lawTheVocabularyListsEveryCapability(c: Capability): bool = allCapabilities.contains(c)
 pure def lawNoTwoCapabilitiesShareAName(a: Capability, b: Capability): bool = capabilityName(a) == capabilityName(b) implies a == b

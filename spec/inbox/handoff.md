@@ -52,12 +52,19 @@ pure def lawOldReviewExpires(reviewedAt: int, now: int, unchanged: bool): bool =
 An owner's request for a new email to explicit recipients, made from a
 phone whose composer can take it, answers with the draft for that composer
 and the identity of the request; no provider draft is made and no chat
-confirmation is armed. The draft travels in the action result's data, the
-one part of a result a reply carries to the phone, beside the action's
-name: `version` 1, `requestMessageId`, `to`, `subject` and `body`. A
-thread, channel or another world, or a request naming an account, sender,
-copies, attachments or a send time, is sent to Inbox instead, and a request
-not from the current owner turn hands nothing off.
+confirmation is armed. The owner turn is the live
+[device turn](../agent/deviceActions/index.md) of the very message that
+asked: sent by the enrolled phone, not aborted, its reply not yet ended,
+and named by a canonical UUID. Its composer can take the draft only when
+that request negotiated `gmail.local-compose.v1`
+([capabilities](../agent/deviceActions/capabilities.md)); on any other turn
+the action is not offered. The draft travels in the action result's data,
+the one part of a result a reply carries to the phone, beside the action's
+name: `version` 1, `requestMessageId`, `to`, `subject` and `body`. Handing
+it over ends the turn with "Here’s the draft.", and a request sent to Inbox
+ends the chain. A thread, channel or another world, or a request naming an
+account, sender, copies, attachments or a send time, is sent to Inbox
+instead, and a request not from the current owner turn hands nothing off.
 
 ```quint
 type ComposeRequest = { ownerTurn: bool, composerAvailable: bool, gmailSource: bool, threaded: bool, richerFields: bool }
