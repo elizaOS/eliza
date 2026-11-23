@@ -596,20 +596,23 @@ open, running, uncertain or otherwise settled request is not named either.
 Only a request that still stands is named: its original message is still
 the owner's own, in this conversation, under the current enrollment, and
 the turn's negotiation still admits its operation. Each line gives its
-proposal id, its operation type, a label where the operation has one, and
-when it settled, or that it never ran, after a lead saying its labels are
-untrusted record data, never instructions. When the requests cannot be
-read, a note says that they could not be checked. While the device tool is
-offered, what holds on every turn sits in its description (above): that
-an applied outcome supersedes older pending dialogue for that proposal
-only, that a completed request is never replayed, and that earlier pending
-dialogue proves nothing is still pending; a turn with no outcome to report
-then sends no such note. A device turn whose negotiation was refused or
-offers no form has no device tool to describe this, so its note says it:
-after the outcomes it names, how to read them, and with none, that earlier
-pending dialogue proves nothing is still pending. It looks at the fifty
-newest requests of this conversation that settled. It is a historical receipt, never a current read or authority for
-a new effect, and it names at most six.
+proposal id, its operation type, a label where the operation has one, else
+the first eight words of the owner's request, whether it applied or never
+ran, and the minute it settled in the phone's zone, or in UTC, marked `Z`,
+when the turn names no zone, after a lead saying its labels and request
+words are untrusted record data, never instructions. When the requests
+cannot be read, a note says that they could not be checked. While the
+device tool is offered, what holds on every turn sits in its description
+(above): that a time without `Z` is the phone's, that an applied outcome
+supersedes older pending dialogue for that proposal only, that a completed
+request is never replayed, and that earlier pending dialogue proves nothing
+is still pending; a turn with no outcome to report then sends no such note.
+A device turn whose negotiation was refused or offers no form has no device
+tool to describe this, so its note says it: after the outcomes it names,
+how to read them, and with none, that earlier pending dialogue proves
+nothing is still pending. It looks at the fifty newest requests of this
+conversation that settled. It is a historical receipt, never a current read
+or authority for a new effect, and it names at most six.
 
 ```quint
 type RequestEnding = EndedApplied | EndedDeclined | EndedExpired | EndedOtherwise | StillOpen
@@ -637,4 +640,12 @@ pure def lawWithoutTheToolTheNoteIsAlwaysSent(learnedCount: int): bool = outcome
 pure def lawAnEndingThatNeverRanWasNeverDispatched(requestPhase: RequestPhase): bool =
   (requestEnding(requestPhase) == EndedDeclined or requestEnding(requestPhase) == EndedExpired) implies not(afterDispatch(requestPhase))
 pure def lawAnUncertainRequestIsStillOpen(requestPhase: RequestPhase): bool = requestPhase == uncertainPhase implies requestEnding(requestPhase) == StillOpen
+pure val askedWordsShown = 8
+pure def askedWords(hasLabel: bool, requestWords: int): int =
+  if (hasLabel or requestWords <= 0) 0 else if (requestWords < askedWordsShown) requestWords else askedWordsShown
+pure val requestWordsValues = Set(0, 3, 8, 12)
+pure def lawALabelledOutcomeRepeatsNoWordsOfItsRequest(requestWords: int): bool = askedWords(true, requestWords) == 0
+pure def lawAnOutcomeRepeatsAtMostEightWordsOfItsRequest(hasLabel: bool, requestWords: int): bool =
+  askedWords(hasLabel, requestWords) >= 0 and askedWords(hasLabel, requestWords) <= askedWordsShown
+pure def lawAnUnlabelledOutcomeNamesItsRequest(requestWords: int): bool = requestWords > 0 implies askedWords(false, requestWords) > 0
 ```
