@@ -1,4 +1,5 @@
-// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/reads.md, "A message names where its replies go only as one literal address, and marks attachments only as Cloud hinted"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"; spec/inbox/outgoing.md, "A saved attachment of any type is a checked byte copy, never opened"; spec/inbox/display.md, "Only an absolute web link without credentials is kept, and its shown text is plain"
+// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/reads.md, "A message names where its replies go only as one literal address, and marks attachments only as Cloud hinted"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"; spec/inbox/outgoing.md, "A saved attachment of any type is a checked byte copy, never opened"; spec/inbox/outgoing.md, "An account's capabilities are read from the kinds Cloud offers and its one attachment cap"; spec/inbox/display.md, "Only an absolute web link without credentials is kept, and its shown text is plain"
+import { attachmentsOffered, capAdmitted, forwardOffered, maximumFiles } from "../../gen/inbox__outgoing.effect.vibe"
 import { attachmentMark, replyToKept } from "../../gen/inbox__reads.effect.vibe"
 import { reviewOpaqueAttachment, type MailAttachmentReviewer, type OpaqueMailAttachment, type ReviewedMailAttachment } from "../mailbox/attachments.vibe"
 import { utf8Length } from "../mailbox/digest.vibe"
@@ -114,7 +115,7 @@ function capabilitiesOf(value: typeof CapabilitiesWire.Type): GmailInboxCapabili
   const kinds = value.kinds
   const has = (...wanted: readonly GmailInboxOperationKind[]) => wanted.every((kind) => kinds.includes(kind))
   const providerDrafts = has("draft-create", "draft-replace", "draft-delete")
-  const maximumBytes = Math.max(0, value.attachmentPolicy.maxBytes)
+  const maximumBytes = value.attachmentPolicy.maxBytes
   return {
     version: 1,
     from: value.from,
@@ -123,16 +124,16 @@ function capabilitiesOf(value: typeof CapabilitiesWire.Type): GmailInboxCapabili
     send: has("send"),
     providerDrafts,
     mailboxMutations: has(...labelKinds),
-    attachments: maximumBytes > 0,
+    attachments: attachmentsOffered(maximumBytes),
     providerExactlyOnce: false,
     atomicDraftReplacement: false,
     readState: has("mark-read", "mark-unread"),
     stars: has("star", "unstar"),
     draftsList: providerDrafts,
-    forwardAttachments: has("send") || providerDrafts,
+    forwardAttachments: forwardOffered(has("send"), providerDrafts),
     searchTrash: true,
-    opaqueAttachments: maximumBytes > 0,
-    attachmentPolicy: { maximumOutgoing: 10, maximumBytes, maximumTotalBytes: maximumBytes, mimeTypes: value.attachmentPolicy.mimeTypes },
+    opaqueAttachments: attachmentsOffered(maximumBytes),
+    attachmentPolicy: { maximumOutgoing: maximumFiles, maximumBytes, maximumTotalBytes: maximumBytes, mimeTypes: value.attachmentPolicy.mimeTypes },
   }
 }
 
@@ -190,6 +191,7 @@ export function managedGmailClient(transport: ManagedGmailTransport) {
     effect gmailInboxCapabilities(grantId: string): GmailInboxCapabilities!MailFailure {
       const value = try decoded(CapabilitiesWire, try call(`${inbox}/capabilities?${query({ grantId: try present(grantId) })}`))
       try present(value.from)
+      if (!Number.isSafeInteger(value.attachmentPolicy.maxBytes) || !capAdmitted(value.attachmentPolicy.maxBytes)) throw invalid()
       return capabilitiesOf(value)
     },
 

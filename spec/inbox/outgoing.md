@@ -47,6 +47,31 @@ pure def lawFittingAttachmentsStayWithinSharedLimits(files: int, distinctNames: 
 pure def lawEncodedSizeIsNeverNegative(encodedLength: int, padding: int): bool = encodedLength >= 0 implies encodedBytes(encodedLength, padding) >= 0
 ```
 
+### An account's capabilities are read from the kinds Cloud offers and its one attachment cap
+
+Cloud answers the operation kinds the grant allows and one attachment
+policy: the media types it takes and a byte cap. Sending is offered when
+`send` is among the kinds; provider drafts, and listing them, when create,
+replace and delete all are; mailbox moves when archive, unarchive, trash
+and untrash all are; read state and stars when both of their directions
+are. Forwarding a message's attachments needs sending or provider drafts.
+The cap is a whole number of bytes from 0 to 25 MiB, and an answer with
+any other cap is refused as invalid; attachments, opaque ones included,
+are offered only when it is positive. One email takes at most ten files
+whose bytes, each and combined, stay within the cap. Threads and a search
+of Trash are always offered by this Cloud, and neither a provider request
+made exactly once nor a draft replaced atomically is ever claimed.
+
+```quint
+pure val capCeiling: int = 26214400
+pure def capAdmitted(capBytes: int): bool = capBytes >= 0 and capBytes <= capCeiling
+pure def attachmentsOffered(capBytes: int): bool = capAdmitted(capBytes) and capBytes > 0
+pure def forwardOffered(sends: bool, providerDrafts: bool): bool = sends or providerDrafts
+pure val capBytesValues = Set(-1, 0, 1, 8388608, 26214400, 26214401)
+pure def lawNoCapOffersNoAttachments(capBytes: int): bool = capBytes <= 0 implies not(attachmentsOffered(capBytes))
+pure def lawACapOverTheCeilingIsRefused(capBytes: int): bool = capBytes > capCeiling implies not(capAdmitted(capBytes)) and not(attachmentsOffered(capBytes))
+```
+
 ### A saved attachment of any type is a checked byte copy, never opened
 
 An attachment saved as an opaque copy has a name of 1 to 120 characters

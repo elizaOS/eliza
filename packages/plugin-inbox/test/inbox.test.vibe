@@ -59,6 +59,7 @@ function fakeCloud() {
     afterSearch: () => {},
     paths: [] as string[],
     rowFields: new Map<string, Readonly<Record<string, unknown>>>(),
+    attachmentCap: 8388608,
   }
 
   const connection = (id: string) => state.connections.find((row) => row.id === id)
@@ -139,7 +140,7 @@ function fakeCloud() {
         return { message: { ...wireCard(card(id)), ...state.rowFields.get(id) }, bodyText: `Body of ${id}, see https://example.com/a).`, bodyHtml: null, bodyHtmlStatus: "none", attachments: [], authenticationResults: null }
       }
       if (at === "/gmail/inbox-v1/capabilities") {
-        return { version: 1, from: "ana@example.com", kinds: kindsOf(connection(url.searchParams.get("grantId") ?? "")?.capabilities ?? []), attachmentPolicy: { mimeTypes: ["application/pdf"], maxBytes: 8388608 } }
+        return { version: 1, from: "ana@example.com", kinds: kindsOf(connection(url.searchParams.get("grantId") ?? "")?.capabilities ?? []), attachmentPolicy: { mimeTypes: ["application/pdf"], maxBytes: state.attachmentCap } }
       }
       if (at === "/gmail/inbox-v1/draft") {
         const draftId = url.searchParams.get("draftId") ?? ""
@@ -300,6 +301,14 @@ it.effect(`Send a reviewed email once under its owner request, and recover a los
   const connector = cloud.state.connections[0]
   if (connector !== undefined) connector.capabilities = [...modify]
   const caps = try cloud.client.gmailInboxCapabilities("grant-a")
+  assert.deepEqual([caps.send, caps.providerDrafts, caps.forwardAttachments, caps.attachments, caps.attachmentPolicy],
+    [true, true, true, true, { maximumOutgoing: 10, maximumBytes: 8388608, maximumTotalBytes: 8388608, mimeTypes: ["application/pdf"] }])
+  cloud.state.attachmentCap = 0
+  assert.isFalse((try cloud.client.gmailInboxCapabilities("grant-a")).attachments)
+  cloud.state.attachmentCap = 26214401
+  const overCap = Effect.flip(cloud.client.gmailInboxCapabilities("grant-a")) catch () => new MailUnreachable({ cause: "" })
+  assert.equal(overCap._tag === "MailProtocolFailed" && overCap.code, "invalid-response")
+  cloud.state.attachmentCap = 8388608
   const store = memoryStore()
   const deps = { owner: "ana", grantId: "grant-a", active: () => true, capabilities: () => caps, store, client: cloud.client, reviewAttachment: cloud.transport.reviewAttachment }
   const operation = try inboxOperation(deps)
