@@ -8,7 +8,7 @@ module node {
   import { capabilitiesHeader, negotiation } from "./capabilities.vibe"
   import { enrollmentId, type DeviceEnrollment } from "./enrollment.vibe"
   import { receiptOutcome, validate, type CheckedOperation, type DeviceOperation, type DeviceReceipt } from "./operations.schema.vibe"
-  import { deviceReviewRows, openRequest, recordRequestClaim, recordRequestDecision, recordRequestReceipt, recordRequestReview, type DeviceRequestRecord, type RequestRow } from "./store.vibe"
+  import { deviceReviewRows, recordRequestClaim, recordRequestDecision, recordRequestReceipt, recordRequestReview, requestSnapshot, type ProposalReviewScope, type RequestRow } from "./store.vibe"
 
   const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
   const Decision = Schema.Struct({ digest: Digest, decision: Schema.Literals(["approve", "reject"]) })
@@ -49,7 +49,7 @@ module node {
       readonly providerReceipt?: DeviceReceipt
     } }
 
-  function reviewedRequest(record: Pick<DeviceRequestRecord, "terms">, header: string | undefined): ReviewedRequest | undefined {
+  function reviewedRequest(record: Pick<RequestRow, "terms">, header: string | undefined): ReviewedRequest | undefined {
     const binding = record.terms.binding
     if (typeof binding === "string") return undefined
     const checked = validate(record.terms.operation, negotiation(true, header), binding.kind)
@@ -118,13 +118,13 @@ module node {
     }
   }
 
-  export function proposalReviewRoutes(adapter: IDatabaseAdapter, sender: DeviceEnrollment["deviceSender"]): LocalRoute[] {
+  export function proposalReviewRoutes(adapter: IDatabaseAdapter, sender: DeviceEnrollment["deviceSender"], scope: ProposalReviewScope): LocalRoute[] {
     async function handle(input: RouteInput, event: Request) {
       try {
         const by = await Effect.runPromise(sender(input))
         if (by === undefined) return failure(401, "device_unauthorized")
         const proposalId = input.parameters.get("id") ?? ""
-        const record = await Effect.runPromise(openRequest(adapter, proposalId))
+        const record = await Effect.runPromise(requestSnapshot(adapter, proposalId, scope))
         if (record === undefined) return failure(404, "unknown_proposal")
         const reviewed = reviewedRequest(record, input.headers.get(capabilitiesHeader))
         if (reviewed === undefined) return failure(409, "proposal_scope_refused")
@@ -189,7 +189,7 @@ module node {
           try {
             const by = await Effect.runPromise(sender(input))
             if (by === undefined) return failure(401, "device_unauthorized")
-            const rows = await Effect.runPromise(deviceReviewRows(adapter, by))
+            const rows = await Effect.runPromise(deviceReviewRows(adapter, by, scope))
             const header = input.headers.get(capabilitiesHeader)
             const proposals = rows.flatMap((row) => {
               const reviewed = reviewedRequest(row, header)
