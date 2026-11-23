@@ -38,6 +38,7 @@ module node {
     readonly report: (code: string, cause: string, quiet: boolean, store: (kind: ReturnType<typeof noticeName>) => Promise<void>) => Promise<void>
     readonly stop: () => Promise<void>
     readonly conversationUpdated: (payload: unknown) => void
+    readonly proactiveMessage: (payload: unknown) => void
     readonly inboxChanged: ObserveInbox
   }
 
