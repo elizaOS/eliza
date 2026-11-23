@@ -673,6 +673,7 @@ export interface ElizaSurfaceManagerPlugin {
           | "scroll"
           | "follow"
           | "guide";
+        statementRegions?: true;
         /** Check the target without consuming the snapshot or dispatching input. */
         validateOnly?: boolean;
         guidance?: NativePageGuidance;
