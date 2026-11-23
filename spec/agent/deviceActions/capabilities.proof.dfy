@@ -79,6 +79,39 @@ lemma lawTheOlderFormsRunUnderTheOlderCapability_ensures(n: Negotiation)
   assert Capability.PhoneDialV1 in phoneDialNeed(false).required;
 }
 
+lemma AlternativeIsEnough(n: Negotiation, need: Need, capability: Capability)
+  requires need.required == []
+  requires capability in need.oneOf
+  requires negotiatedHas(n, capability)
+  ensures meets(n, need)
+{
+  assert n.Negotiated? && capability in n.capabilities;
+  assert namesSome(need.oneOf);
+  assert exists c :: c in need.oneOf && c in n.capabilities;
+}
+
+lemma lawEitherSenderVersionNamesTheSuffix_ensures(n: Negotiation)
+  ensures (lawEitherSenderVersionNamesTheSuffix(n) == true)
+{
+  var need := smsLatestSenderNeed(false);
+  if negotiatedHas(n, Capability.SmsLatestSenderV1) {
+    AlternativeIsEnough(n, need, Capability.SmsLatestSenderV1);
+  } else if negotiatedHas(n, Capability.SmsLatestSenderV2) {
+    AlternativeIsEnough(n, need, Capability.SmsLatestSenderV2);
+  }
+}
+
+lemma lawEitherClockVersionRunsAnOrdinaryHandoff_ensures(n: Negotiation)
+  ensures (lawEitherClockVersionRunsAnOrdinaryHandoff(n) == true)
+{
+  var need := clockHandoffNeed(false);
+  if negotiatedHas(n, Capability.ClockHandoffV1) {
+    AlternativeIsEnough(n, need, Capability.ClockHandoffV1);
+  } else if negotiatedHas(n, Capability.ClockHandoffV2) {
+    AlternativeIsEnough(n, need, Capability.ClockHandoffV2);
+  }
+}
+
 lemma lawEveryOtherViewIsOffered_ensures(n: Negotiation, view: DeviceView)
   ensures (lawEveryOtherViewIsOffered(n, view) == true)
 {
