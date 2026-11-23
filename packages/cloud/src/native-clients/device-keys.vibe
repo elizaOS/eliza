@@ -1,5 +1,5 @@
 // spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
-import { ackOutcome, ackPerIp, apply, recordedExpiryReached, grantBindingMatches, nativeOutcome, revokeAll as revokeDeviceEpoch, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant, type GrantEffect } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
+import { ackOutcome, ackPerIp, apply, recordedExpiryReached, grantBindingMatches, nativeOutcome, revokeAll as revokeDeviceEpoch, signOutEndsSuccessor, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant, type GrantEffect } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 import { clientCheck, codeChallengeMethod, faultRefusal, type ClientCheck, type ClientRequest, type Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { NativeVerdict, SignInYield } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
 import type { CodeBinding } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
@@ -180,7 +180,7 @@ export effect function openGrant(tx: Tx, opening: Opening) {
   return { key: opening.grantKey, code, codeExpiresAt: stepped.state.codeExpiresAt, out: stepped.out.out }
 }
 
-const grantColumns = "g.key, g.state, g.phase, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.sealed_lease, g.issued_at, g.key_expires_at, a.organization_id, a.status, a.device_epoch"
+const grantColumns = "g.key, g.state, g.phase, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.sealed_lease, g.issued_at, g.key_expires_at, g.renewed_from, a.organization_id, a.status, a.device_epoch"
 
 effect function grantBy(tx: Tx, column: "code_digest" | "credential_id" | "key", value: string) {
   return (try tx.query(`SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.${column} = $1 FOR UPDATE OF a, g`, [value]))[0]
@@ -353,9 +353,41 @@ effect function ack(context: RouteContext) {
   return json(acknowledged.answer)
 }
 
+effect function endLegacyRenewals(tx: Tx, root: Row, named: string, now: number) {
+  const chain = try tx.query(`
+    WITH RECURSIVE descendants(key) AS (
+      SELECT key FROM device_grants WHERE renewed_from = $1 AND sign_in_at IS NOT NULL
+        AND user_id = $2 AND client_id = $3 AND device_epoch = $4
+      UNION
+      SELECT d.key FROM device_grants d JOIN descendants p ON d.renewed_from = p.key
+        WHERE d.sign_in_at IS NOT NULL AND d.user_id = $2 AND d.client_id = $3 AND d.device_epoch = $4
+    )
+    SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id
+      WHERE g.key IN (SELECT key FROM descendants) FOR UPDATE OF g
+  `, [root.key, root.user_id, root.client_id, root.grant_epoch])
+  let keepChain = false
+  for (const successor of chain) {
+    if (successor.renewed_from !== root.key || successor.phase !== "active") continue
+    const held = try inspectKey(successor, now)
+    if (!signOutEndsSuccessor(named, toText(successor.credential_id) ?? "", held.reason === "NoReason")) keepChain = true
+  }
+  for (const successor of chain) {
+    const pending = successor.phase === "code_issued" || successor.phase === "exchanged"
+    if (keepChain && (!pending || successor.renewed_from !== root.key)) continue
+    if (pending) {
+      try stepGrant(tx, toText(successor.key) ?? "", { type: "cancelLegacySuccessor", legacy: true }, (grant) =>
+        ({ phase: phaseColumn(grant), sealed_copy: null, sealed_lease: null, updated_at: grant.now }))
+    } else {
+      try endKey(tx, successor, now)
+    }
+  }
+}
+
 effect function selfRevoke(context: RouteContext) {
   const caller = context.caller
   if (caller.kind !== "deviceKey") throw refused("AuthenticationRequired", "CredentialUnknown")
+  const named = context.request.headers["x-renewed-credential-id"]
+  if (named !== undefined && !uuidText.test(named)) throw refused("InvalidRequest")
   const store = try Store
   try store.transaction(effect (tx: Tx) => {
     const row = try grantBy(tx, "key", caller.grantKey)
@@ -364,6 +396,7 @@ effect function selfRevoke(context: RouteContext) {
     const reason = try endKey(tx, row, now)
     if (reason !== "NoReason") throw refused("AuthenticationRequired", reason)
     try endLease(tx, caller.grantKey, now)
+    try endLegacyRenewals(tx, row, named ?? "", now)
   })
   return HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
 }
