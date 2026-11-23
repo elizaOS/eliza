@@ -4,7 +4,8 @@ A phone that holds the location permission, with the owner's agent location
 setting on, reports its last known position with every message it sends.
 The agent reads that position for the message it came with only and stores
 none of it. [Maps navigation](./navigation.md) owns the precise fix a route
-from here is planned from, which the phone takes itself.
+from here is planned from, which the phone takes itself. The same position
+answers where the owner is.
 
 ## Story: Search near me with where my phone is now
 
@@ -46,4 +47,45 @@ fresh fix, and the agent only names the destination.
 ```quint
 pure def asRouteFix(p: PhonePosition): N::Fix = { present: p.present, precise: false, age: p.age, accuracy: p.accuracy }
 pure def lawReportedPositionIsNeverARouteOrigin(p: PhonePosition): bool = not(N::usableFix(asRouteFix(p)))
+```
+
+## Story: Ask where I am
+
+> As the owner, I want "where am I?" answered from where my phone says it
+> is, and when my phone only knows roughly, to hear the area I am in and
+> never the one building nearest a guess, so that I am not told I am
+> somewhere I am not.
+
+### Where I am is the place at my phone's recent position, and only its area when that position is rough
+
+Asked where the owner is, Maps looks up the place at the position the
+phone reported with the message, through Cloud Maps' reverse lookup, and
+never guesses a street, neighbourhood or city from the coordinates. The
+position answers only while it is recent, as for a nearby search, at any
+reported accuracy; without one Maps says it cannot tell and looks nothing
+up. A position reported as accurate to more than 1 km is a rough
+estimate, such as a Wi-Fi or cell fix, whose nearest address is not where
+the owner is: the reply names only the area of the address found there
+(the address without its street part or any word with a digit, at most
+its last three parts), says the position is approximate and how far, and
+shows no place card. A precise position, or one with no reported
+accuracy, names the place found there with its card. Nothing found, or no
+area in what was found, is said as such.
+
+```quint
+type WhereAnswer = NoRecentPosition | NamePlace | NameArea | NothingThere
+pure val roughPositionMeters = 1000
+pure def positionRecent(p: PhonePosition): bool =
+  p.present and p.age >= 0 - nearbyMaxAhead and p.age <= nearbyMaxAge
+pure def roughPosition(p: PhonePosition): bool = p.hasAccuracy and p.accuracy > roughPositionMeters
+pure def whereAnswer(p: PhonePosition, placeFound: bool, areaKnown: bool): WhereAnswer =
+  if (not(positionRecent(p))) NoRecentPosition
+  else if (roughPosition(p)) (if (areaKnown) NameArea else NothingThere)
+  else if (placeFound) NamePlace else NothingThere
+pure def lawARoughPositionNeverNamesAPlace(p: PhonePosition, placeFound: bool, areaKnown: bool): bool =
+  roughPosition(p) implies whereAnswer(p, placeFound, areaKnown) != NamePlace
+pure def lawAStalePositionAnswersNothing(p: PhonePosition, placeFound: bool, areaKnown: bool): bool =
+  p.age > nearbyMaxAge implies whereAnswer(p, placeFound, areaKnown) == NoRecentPosition
+pure def lawAPreciseRecentPositionNamesWhatIsThere(p: PhonePosition, areaKnown: bool): bool =
+  (positionRecent(p) and not(roughPosition(p))) implies whereAnswer(p, true, areaKnown) == NamePlace
 ```

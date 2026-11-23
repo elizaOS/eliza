@@ -16,7 +16,7 @@ import { usableNavigationFix } from "../src/client/navigation-fix.vibe"
 import { mapsObservation } from "../src/client/observation.vibe"
 import { routeProgress } from "../src/client/route-distance.vibe"
 import { savedPlaces } from "../src/client/saved-places.vibe"
-import { createMapsPlugin, nearbyPlaceKind, phonePositionProvider } from "../src/plugin.vibe"
+import { addressArea, createMapsPlugin, nearbyPlaceKind, phonePositionProvider } from "../src/plugin.vibe"
 import { mapsNavigationRelay } from "../src/relay.vibe"
 import { routeOf } from "../src/routing.vibe"
 import type { AgentSavedPlaceStore } from "../src/saves.vibe"
@@ -445,6 +445,11 @@ function linkFake() {
           const known = [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry), place("tower", "Coit Tower", tower)].find((item) => item.id === id)
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: known ?? null } }
         }
+        case "/api/v1/maps/reverse": {
+          const at = (request.body as { readonly coordinate: { readonly latitude: number } }).coordinate
+          const sun = place("sun", "The Sun Building", { latitude: 40.7128, longitude: -74.006 }, "278 W Broadway, New York, NY 10006, USA")
+          return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: at.latitude === 40.7128 ? sun : at.latitude === 0 ? place("sea", "Gulf of Guinea", { latitude: 0, longitude: 0 }, "12345") : null } }
+        }
         case "/api/v1/maps/routes": {
           const planned = (id: string, minutes: number) => ({ providerId: "google", id, from: ferry, to: tower, mode: "walk", geometry: [ferry, tower], distanceMeters: minutes * 80, durationSeconds: minutes * 60, steps: [], attribution: "Google", fetchedAt: at, traffic: "none" })
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google Maps Platform via Eliza Cloud", routes: [planned("best", 20), planned("other", 24)] } }
@@ -518,6 +523,39 @@ it.live('Search near me with where my phone is now: a recent reported position s
     provider: { phonePositionAvailable: true },
     fenced: 0,
     kinds: ["pharmacy", undefined, "coffee"],
+  }))
+})
+
+it.live('Ask where I am: a recent precise position names the place there, a rough one names only its area with no card, an old one looks nothing up, and the screen note never guesses a street (spec/maps/phonePosition.md, "Story: Ask where I am"; spec/maps/phonePosition.md, "Where I am is the place at my phone\'s recent position, and only its area when that position is rough")', effect () => {
+  const { link, bodies } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => undefined, savedPlaces: () => undefined, namesView: () => false })
+  const action = plugin.actions?.find((found) => found.name === "MAPS_PLACE")
+  const ask = (location: unknown) => promise(async () => {
+    if (action === undefined) throw new Error("MAPS_PLACE is not registered")
+    return await action.handler({} as IAgentRuntime, messageWith(location), undefined, { parameters: { useCurrentLocation: true } })
+  })
+  const now = Date.now()
+  const nyc = { latitude: 40.7128, longitude: -74.006 }
+  const rough = try ask({ ...nyc, accuracyMeters: 25_000, capturedAt: now - 60_000 })
+  const precise = try ask({ ...nyc, accuracyMeters: 20, capturedAt: now - 60_000 })
+  const unknownArea = try ask({ latitude: 0, longitude: 0, accuracyMeters: 1_500, capturedAt: now })
+  const nothing = try ask({ latitude: 1, longitude: 1, capturedAt: now })
+  const before = bodies.length
+  const old = try ask({ ...nyc, accuracyMeters: 20, capturedAt: now - 31 * 60_000 })
+  const missing = try ask(undefined)
+  const shown = (result: { readonly userFacingText?: string; readonly text?: string }) => [result.userFacingText, recognizedMapsCards(result.text ?? "").map((found) => found.card.kind)]
+  try Effect.try(() => assert.deepStrictEqual({
+    rough: [...shown(rough), rough.data], precise: [precise.success, withoutMapsCards(precise.userFacingText ?? ""), recognizedMapsCards(precise.text ?? "").map((found) => found.card.kind)],
+    unknownArea: shown(unknownArea), nothing: shown(nothing), lookups: bodies.length - before,
+    old: [old.success, old.text], missing: [missing.success, missing.data],
+    areas: [addressArea("278 W Broadway, New York, NY 10006, USA"), addressArea("Unter den Linden 77, 10117 Berlin, Germany"), addressArea("Paris, France"), addressArea("12345")],
+  }, {
+    rough: ["Your phone's position is approximate (within about 25 km): somewhere around New York, NY, USA.", [], { status: "approximate", accuracyMeters: 25_000, area: "New York, NY, USA", place: null }],
+    precise: [true, "The Sun Building — 278 W Broadway, New York, NY 10006, USA", ["place"]],
+    unknownArea: ["Your phone's position is approximate (within about 1.5 km), and no area is known there.", []],
+    nothing: ["No named place is known where your phone is.", []], lookups: 0,
+    old: [false, "Your phone didn't report a recent position with this message, so I can't tell where you are."], missing: [false, { state: "no-position" }],
+    areas: ["New York, NY, USA", "Berlin, Germany", "Paris, France", undefined],
   }))
 })
 

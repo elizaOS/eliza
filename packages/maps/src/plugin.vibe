@@ -1,5 +1,6 @@
-// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"
+// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Where I am is the place at my phone's recent position, and only its area when that position is rough"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"
 import type { AgentPlugin } from "@elizaos/agent"
+import { positionRecent, roughPosition, whereAnswer, type PhonePosition } from "../gen/maps__phonePosition.effect.vibe"
 import { placePick, sameLandmark } from "../gen/maps__routing.effect.vibe"
 import type { Action, ActionResult, IAgentRuntime, Memory, Provider } from "@elizaos/core"
 import { appendMapsCard, type MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
@@ -105,8 +106,50 @@ effect function nearHere(message: Memory): (Coordinate | undefined)!! {
   return nearbyPoint(messageLocation(message.content.metadata), try Clock.currentTimeMillis)
 }
 
+/** The area part of an address: without its street part (a first part with a number, or the first of three or more) or any word with a digit, at most its last three parts. */
+export function addressArea(address: string | undefined): string | undefined {
+  const parts = (address ?? "").split(",").map((part) => part.trim()).filter(Boolean)
+  const street = parts.length > 1 && (parts.length >= 3 || /\d/.test(parts[0] ?? ""))
+  const area = (street ? parts.slice(1) : parts).map((part) => part.split(/\s+/).filter((word) => !/\d/.test(word)).join(" ")).filter(Boolean).slice(-3)
+  return area.length === 0 ? undefined : area.join(", ")
+}
+
+function aboutDistance(meters: number): string {
+  const km = meters / 1000
+  return `within about ${km >= 10 ? Math.round(km) : Math.round(km * 10) / 10} km`
+}
+
+function answered(said: string, note: string, data: Data, card?: MapsCard): ActionResult {
+  return { ...reply(true, `${said} ${note}`.trim(), data, card), userFacingText: card === undefined ? said : appendMapsCard(said, card), verifiedUserFacing: true }
+}
+
+const noPosition = "Your phone didn't report a recent position with this message, so I can't tell where you are."
+
+effect function whereAmI(service: MapsService, message: Memory): ActionResult!Refusal {
+  const reported = messageLocation(message.content.metadata)
+  const now = try Clock.currentTimeMillis
+  const position: PhonePosition = reported === undefined
+    ? { present: false, age: 0, hasAccuracy: false, accuracy: 0 }
+    : { present: true, age: now - reported.capturedAt, hasAccuracy: reported.accuracyMeters !== undefined, accuracy: Math.round(reported.accuracyMeters ?? 0) }
+  if (reported === undefined || !positionRecent(position)) return reply(false, noPosition, { state: "no-position" })
+  const { place, attribution } = try service.reverse({ latitude: reported.latitude, longitude: reported.longitude })
+  const area = addressArea(place?.address)
+  const about = aboutDistance(position.accuracy)
+  const answer = whereAnswer(position, place !== null, area !== undefined)
+  if (answer === "NameArea" && area !== undefined) {
+    return answered(`Your phone's position is approximate (${about}): somewhere around ${area}.`, "Name only this area; the exact street or building is not known.",
+      { status: "approximate", accuracyMeters: position.accuracy, area, place: null })
+  }
+  if (answer === "NamePlace" && place !== null) {
+    return answered(`${place.name}${place.address === undefined ? "" : ` — ${place.address}`}`, "", { status: "found", place: agentPlace(place) },
+      { kind: "place", place: cardPlace(place), attribution })
+  }
+  return answered(roughPosition(position) ? `Your phone's position is approximate (${about}), and no area is known there.` : "No named place is known where your phone is.", "", { status: "empty", place: null })
+}
+
 effect function findPlaces(service: MapsService, message: Memory, params: Params): ActionResult!Refusal {
   const query = text(params.query)
+  if (query === undefined && params.useCurrentLocation === true) return try whereAmI(service, message)
   if (query === undefined) return reply(false, "What place or address should I look up?", { missing: "query" })
   const kind = nearbyPlaceKind(query)
   const aroundMe = params.useCurrentLocation === true || kind !== undefined
@@ -311,13 +354,13 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
   return [
     {
       name: "MAPS_PLACE",
-      description: "Find places by name, category or address. For near me, nearby or nearest, set useCurrentLocation; the phone's reported position for this turn is used when it is recent, and otherwise the phone is asked for its location.",
+      description: "Find places by name, category or address. For near me, nearby or nearest, set useCurrentLocation; the phone's reported position for this turn is used when it is recent, and otherwise the phone is asked for its location. Asked where the owner is, set useCurrentLocation and leave query out: the place at the phone's reported position is looked up, and only its area when that position is rough.",
       similes: ["FIND_PLACE", "NEARBY", "NEAREST", "NEAR_ME"],
       tags: ["domain:maps", "capability:read"],
       roleGate: ownerOnly,
       parameters: [
-        { name: "query", required: true, description: "The place name, kind of place or address.", schema: { type: "string" } },
-        { name: "useCurrentLocation", required: false, description: "True when the owner asked for places near where they are.", schema: { type: "boolean" } },
+        { name: "query", required: false, description: "The place name, kind of place or address; left out when the owner asked where they are.", schema: { type: "string" } },
+        { name: "useCurrentLocation", required: false, description: "True when the owner asked for places near where they are, or where they are.", schema: { type: "boolean" } },
         { name: "limit", required: false, description: "At most this many results, from 1 to 20.", schema: { type: "number" } },
       ],
       validate: always,
