@@ -138,7 +138,14 @@ public final class AgentChannel {
   }
 
   public FailCode ask(CallerKind kind, String owner, String id, String method, String path, boolean streamed, byte[] body, Listener listener) {
-    HttpCall call = new HttpCall(method, path, body, streamed);
+    return ask(kind, owner, id, method, path, streamed, body, Map.of(), listener);
+  }
+
+  FailCode ask(CallerKind kind, String owner, String id, String method, String path, boolean streamed, byte[] body,
+               Map<String, String> deviceHeaders, Listener listener) {
+    HttpCall call;
+    try { call = new HttpCall(method, path, body, streamed, deviceHeaders); }
+    catch (IllegalArgumentException refused) { return FailCode.ROUTE_REFUSED; }
     synchronized (policy) { return begin(policy.ask(kind, owner, id, method, path, streamed, body), listener, call); }
   }
 

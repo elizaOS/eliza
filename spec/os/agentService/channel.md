@@ -67,6 +67,31 @@ pure val rootTokenValues = Set("token1", "token2")
 pure def alwaysTokenOnlyWhileServing(s: AgentChannel): bool = s.launch == NotServing implies s.rootToken == ""
 ```
 
+### Only admitted renderer headers accompany the service token
+
+Both buffered and streamed renderer requests can carry the device id, device
+key, capabilities and client id to an admitted route. The channel sends
+their lower-case names. Each value is a single bounded line, and the client
+id follows the agent's token form. A message POST may also advertise
+`x-elizaos-cut-off-effect: applied` to opt in to the extended reply.
+If a renderer supplies another name, a duplicate independent of case,
+or an invalid value, its envelope is refused before it opens a connection.
+The service supplies its own Authorization and content type.
+
+```quint
+type RendererHeaderKind = DeviceIdentityHeader | RendererClientHeader | CutOffReplyHeader | ReservedRendererHeader
+pure val rendererHeaderLimit = 2048
+pure def admitsRendererHeader(headerKind: RendererHeaderKind, headerLength: int, lineValue: bool, repeatedName: bool, typedValue: bool, messagePost: bool): bool =
+  headerKind != ReservedRendererHeader and headerLength <= rendererHeaderLimit and lineValue and not(repeatedName)
+    and (headerKind == RendererClientHeader implies typedValue)
+    and (headerKind == CutOffReplyHeader implies typedValue and messagePost)
+pure val headerLengthValues = Set(0, 128, 2048, 2049)
+pure def lawNoRendererHeaderCanReplaceTheServiceHeaders(headerLength: int, lineValue: bool, repeatedName: bool, typedValue: bool, messagePost: bool): bool =
+  not(admitsRendererHeader(ReservedRendererHeader, headerLength, lineValue, repeatedName, typedValue, messagePost))
+pure def lawReplyOptInOnlyTravelsOnAMessagePost(headerLength: int, lineValue: bool, repeatedName: bool, typedValue: bool, messagePost: bool): bool =
+  admitsRendererHeader(CutOffReplyHeader, headerLength, lineValue, repeatedName, typedValue, messagePost) implies typedValue and messagePost
+```
+
 ### A call is refused before any I/O unless the agent is serving, its id is free and its list admits it
 
 The checks run in this order: no serving launch is `NotReady`; an id

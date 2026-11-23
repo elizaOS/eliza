@@ -1,4 +1,4 @@
-// spec/os/agentService/channel.md, "The launch's root token stays inside the service"; spec/os/agentService/channel.md, "A pending call settles exactly once, and nothing else leaves the pending list"; spec/agent/access/transport.md, "A request gets 10 seconds, or 600 on a message, speech or stream route"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"
+// spec/os/agentService/channel.md, "The launch's root token stays inside the service"; spec/os/agentService/channel.md, "A pending call settles exactly once, and nothing else leaves the pending list"; spec/os/agentService/channel.md, "Only admitted renderer headers accompany the service token"; spec/agent/access/transport.md, "A request gets 10 seconds, or 600 on a message, speech or stream route"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"
 package ai.eliza.os.agent;
 
 import android.net.LocalSocket;
@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
@@ -35,6 +36,8 @@ public final class AgentSocketClient {
   public static final String CREDENTIAL_ROUTE = "/api/host/cloud-credential";
   private static final Pattern MESSAGE_ROUTE = Pattern.compile("^/api/conversations/[^/]+/messages(?:/stream)?$");
   private static final Pattern SPEECH_ROUTE = Pattern.compile("^/api/asr/local-inference(?:/|$)");
+  private static final Pattern CLIENT_ID = Pattern.compile("[A-Za-z0-9._-]{1,128}");
+  private static final int HEADER_LIMIT = 2048;
   private static final ScheduledThreadPoolExecutor TIMERS = new ScheduledThreadPoolExecutor(1, task -> {
     Thread thread = new Thread(task, "AgentSocketDeadline");
     thread.setDaemon(true);
@@ -62,7 +65,29 @@ public final class AgentSocketClient {
   public record Event(JSONObject event) implements Frame {}
 
   public sealed interface Outgoing permits HttpCall, Subscription {}
-  public record HttpCall(String method, String path, byte[] body, boolean streamed) implements Outgoing {}
+  public record HttpCall(String method, String path, byte[] body, boolean streamed, Map<String, String> deviceHeaders) implements Outgoing {
+    public HttpCall(String method, String path, byte[] body, boolean streamed) {
+      this(method, path, body, streamed, Map.of());
+    }
+
+    public HttpCall {
+      Map<String, String> normalized = new LinkedHashMap<>();
+      for (Map.Entry<String, String> entry : deviceHeaders.entrySet()) {
+        String value = entry.getValue();
+        if (entry.getKey() == null || value == null) throw new IllegalArgumentException("Invalid renderer header");
+        String name = entry.getKey().toLowerCase(Locale.ROOT);
+        boolean admitted = switch (name) {
+          case "x-eliza-device-id", "x-eliza-device-key", "x-eliza-device-capabilities" -> true;
+          case "x-elizaos-client-id" -> CLIENT_ID.matcher(value).matches();
+          case "x-elizaos-cut-off-effect" -> "applied".equals(value) && "POST".equals(method) && MESSAGE_ROUTE.matcher(path).matches();
+          default -> false;
+        };
+        if (!admitted || value.length() > HEADER_LIMIT || value.chars().anyMatch(code -> code < 32 || code == 127)
+            || normalized.putIfAbsent(name, value) != null) throw new IllegalArgumentException("Invalid renderer header");
+      }
+      deviceHeaders = Map.copyOf(normalized);
+    }
+  }
   public record Subscription(List<String> streams, String clientId) implements Outgoing {}
 
   public record Account(String userId, String organizationId) {}
@@ -159,6 +184,7 @@ public final class AgentSocketClient {
   private static JSONObject frameOf(String token, String id, Outgoing outgoing) throws JSONException {
     JSONObject headers = new JSONObject().put("authorization", "Bearer " + token);
     if (outgoing instanceof HttpCall call) {
+      for (Map.Entry<String, String> entry : call.deviceHeaders().entrySet()) headers.put(entry.getKey(), entry.getValue());
       JSONObject payload = new JSONObject().put("path", call.path()).put("method", call.method()).put("headers", headers);
       if (call.body() != null) {
         headers.put("content-type", "application/json");
@@ -221,7 +247,7 @@ public final class AgentSocketClient {
     if (headers == null) return out;
     for (var keys = headers.keys(); keys.hasNext();) {
       String key = keys.next();
-      out.put(key.toLowerCase(java.util.Locale.ROOT), headers.getString(key));
+      out.put(key.toLowerCase(Locale.ROOT), headers.getString(key));
     }
     return out;
   }

@@ -1,0 +1,20 @@
+// spec/os/agentService/channel.md, "Only admitted renderer headers accompany the service token"
+import { assert, it } from "@effect/vitest"
+
+module node {
+  import { execFileSync } from "node:child_process"
+  import path from "node:path"
+  import { orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
+
+  export async function ownerRouteHeaders(): Promise<string> {
+    const main = "ai.eliza.os.agent.OwnerRouteHeadersJourney"
+    const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+    return execFileSync(java, ["-cp", await orgJsonAdapterClasspath(main), main], { encoding: "utf8", timeout: 120_000 }).trim()
+  }
+}
+import { ownerRouteHeaders } from node
+
+it.live('Only admitted device and reply protocol headers reach the resident socket (spec/os/agentService/channel.md, "Only admitted renderer headers accompany the service token")', effect () => {
+  const observed = try tryPromise(ownerRouteHeaders)
+  try Effect.try(() => assert.strictEqual(observed, "owner route header journey passed"))
+}, 180_000)

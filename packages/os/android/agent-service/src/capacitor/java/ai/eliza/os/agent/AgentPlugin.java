@@ -1,6 +1,7 @@
 // spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"; spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"
 package ai.eliza.os.agent;
 
+import ai.eliza.os.agent.ChannelPolicy.CallerKind;
 import ai.eliza.os.agent.ChannelPolicy.FailCode;
 import ai.eliza.os.agent.ChannelPolicy.Outcome;
 import ai.eliza.os.agent.ChannelPolicy.Topic;
@@ -11,6 +12,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.json.JSONException;
@@ -121,10 +123,20 @@ public class AgentPlugin extends Plugin {
   }
 
   private FailCode ask(PluginCall call, String id, boolean streamed, AgentChannel.Listener listener) {
+    Map<String, String> headers = new LinkedHashMap<>();
+    Object rawHeaders = call.getData().opt("headers");
+    if (rawHeaders != null) {
+      if (!(rawHeaders instanceof JSONObject supplied)) return FailCode.ROUTE_REFUSED;
+      for (var keys = supplied.keys(); keys.hasNext();) {
+        String name = keys.next();
+        if (!(supplied.opt(name) instanceof String value)) return FailCode.ROUTE_REFUSED;
+        headers.put(name, value);
+      }
+    }
     Object body = call.getData().opt("body");
     String text = body == null || body == JSONObject.NULL ? null : body instanceof String plain ? JSONObject.quote(plain) : body.toString();
     byte[] bytes = text == null ? null : text.getBytes(StandardCharsets.UTF_8);
-    return AgentService.channel().ask(owner, id, call.getString("method", ""), call.getString("path", ""), streamed, bytes, listener);
+    return AgentService.channel().ask(CallerKind.RENDERER, owner, id, call.getString("method", ""), call.getString("path", ""), streamed, bytes, headers, listener);
   }
 
   private static Topic topic(String name) {
