@@ -11,8 +11,8 @@ effect function check(run: () => void) {
   try Effect.try(run)
 }
 
-describe("WP9 U5 views scratch", () => {
-  it.live("views over real snapshots", () => scoped(effect {
+describe("Cloud account views (spec/cloud/client.md, \"Story: Tell an account that needs attention from a failing service\")", () => {
+  it.live("Read a free and a granted account from the snapshots the cloud answers, and refuse a snapshot of another version", () => scoped(effect {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis
     const signed = try signedIn(cloud, "views@example.com")
