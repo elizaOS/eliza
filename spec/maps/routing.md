@@ -23,6 +23,10 @@ map goes to showing or finding it; travelling to a destination, or going to
 a named place or street address, goes to navigation from here unless the
 destination names one of the agent's views; a nearby or nearest kind of
 place, and a kind of place near a named place, go to place search.
+"Get to" before a verb is a chance to do something, not a trip: "how do I
+get to talk to someone" or "can I get to see my results" is no travel
+request. See, hear and try still travel before a place ("get to see the
+Eiffel Tower") and stop it only before a possessive or a person.
 
 ```quint
 type RequestShape = DirectionsRequest | PlaceOnMap | TravelTo | GoToNamedPlace | NearbyKind | KindNearNamedPlace | ChoiceReply | OtherRequest
