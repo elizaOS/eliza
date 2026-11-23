@@ -245,9 +245,10 @@ it.effect('A host hold shortens a rate limit and the refusal carries the time le
   try host("planner key on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Plan.", providerOptions: planner }))
   try host("planner key elsewhere", () => hinted.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: planner }))
   const sent = cloud.calls.slice(-5).map((call) => call.body as Record<string, unknown>)
+  const plannerKey = try Effect.try(() => `eliza-workflow-v1:${digest(`${JSON.stringify([hinted.runtime.agentId, room])}:planner`)}`)
   assert.deepStrictEqual(sent.map((body) => [body.reasoning_effort, "max_tokens" in body, JSON.stringify(body).includes("thinking"), body.prompt_cache_key]),
     [["none", false, false, undefined], ["low", false, false, undefined], [undefined, false, false, undefined],
-      [undefined, false, false, `eliza-workflow-v1:${digest(`${JSON.stringify([hinted.runtime.agentId, room])}:planner`)}`], [undefined, false, false, undefined]])
+      [undefined, false, false, plannerKey], [undefined, false, false, undefined]])
 
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "qwen-3.8-27b", large: "large" }
   const ownKey = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large }, cloud.ownKey)
