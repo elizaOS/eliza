@@ -526,12 +526,12 @@ function phoneModel(replies: string[]) {
   return { runtime, asked }
 }
 
-function phoneTurn(runtime: IAgentRuntime, words: string, observation: DeviceTurn["observation"], metadata: Record<string, unknown> = {}, earlier: readonly EarlierRequest[] = []): DeviceTurn {
+function phoneTurn(runtime: IAgentRuntime, words: string, observation: DeviceTurn["observation"], metadata: Record<string, unknown> = {}, earlier: readonly EarlierRequest[] = [], completesReads = true): DeviceTurn {
   const negotiated = negotiation(true, phoneCapabilities)
   return {
     runtime, by: {} as DeviceTurn["by"], negotiation: negotiated, capabilities: phoneCapabilities.split(","),
     message: { ...owner, id: stringToUuid(words), content: { text: words, metadata: { ...metadata, ...(observation === undefined ? {} : { observation }) } } } as DeviceTurn["message"],
-    ownerText: words, observation, completedActionNavigation: false, completesReads: false, conversationId: "conversation", requestId: "request", assistantName: "Eliza",
+    ownerText: words, observation, completedActionNavigation: false, completesReads, conversationId: "conversation", requestId: "request", assistantName: "Eliza",
     swapped: [], startedAt: start, timeZone: "Etc/UTC", signal: new AbortController().signal,
     admit: (operation) => validate(operation, negotiated, "NoBinding"),
     earlier: () => succeed(earlier),
@@ -543,7 +543,7 @@ const titleFound = (text: string, body: string) => ({ version: 1, kind: "notes_q
 const patch = (textEdit: unknown, changes: unknown[] = []) => JSON.stringify({ requiresInput: false, clarification: null, changes, textEdit })
 const question = "What should the note say instead?"
 
-it.effect('Ask about, delete or change a phone note only as the owner said it (spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn\'s own screen selects the phone\'s Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner\'s direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes")', effect () => {
+it.effect('Ask about, delete or change a phone note only as the owner said it (spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn\'s own screen selects the phone\'s Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner\'s direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly")', effect () => {
   const model = phoneModel([patch(null), patch(null), patch({ action: "append", field: "item", text: "eggs" }), JSON.stringify({ requiresInput: true, clarification: question, changes: [], textEdit: null })])
   const family = notesDeviceFamily(model.runtime)
   const home = { view: "home", revision: 1, sensitive: false }
@@ -565,8 +565,8 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
     unobserved: ["notes_filter", "notes_folder_create", "notes_restore", "notes_record"],
   })
 
-  const grounding = (words: string, observation: DeviceTurn["observation"], operation: unknown, metadata?: Record<string, unknown>, earlier?: readonly EarlierRequest[]) => {
-    const turn = phoneTurn(model.runtime, words, observation, metadata, earlier)
+  const grounding = (words: string, observation: DeviceTurn["observation"], operation: unknown, metadata?: Record<string, unknown>, earlier?: readonly EarlierRequest[], completesReads?: boolean) => {
+    const turn = phoneTurn(model.runtime, words, observation, metadata, earlier, completesReads)
     const checked = turn.admit(operation)
     assert.isDefined(checked)
     return map(family.ground(checked!, turn), (found) => found.kind === "Grounded" ? found.operation : found.code)
@@ -581,6 +581,8 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
     try grounding("Delete this note", opened, { type: "notes_delete", target: { ...phoneNote, noteId: "note-8" } }),
     try grounding("Add eggs to this note", opened, { type: "notes_update", target: phoneNote, fields: noFields }),
     try grounding("Change this note", opened, { type: "notes_update", target: phoneNote, fields: noFields }),
+    try grounding("Add milk to this note", opened, { type: "notes_update", target: phoneNote, fields: noFields }, {}, [], false),
+    try grounding("Add milk to my Shopping note", home, { type: "notes_named", action: "update", name: "Shopping", fields: { title: "Shopping", body: "milk" } }, {}, [], false),
     try grounding("Add eggs to that other note", opened, { type: "notes_update", target: { ...phoneNote, noteId: "note-8" }, fields: noFields }),
     try grounding("Move this note to errands", opened, { type: "notes_move", target: phoneNote, folder: "errands" }, folders),
     try grounding("Move this note to Work", opened, { type: "notes_move", target: phoneNote, folder: "Work" }, folders),
@@ -595,6 +597,8 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
     "NOTES_TARGET_NOT_SELECTED",
     { type: "notes_read_selected", target: phoneNote },
     { type: "notes_read_selected", target: phoneNote },
+    "NOTES_UPDATE_UNAVAILABLE",
+    "NOTES_UPDATE_UNAVAILABLE",
     "NOTES_TARGET_NOT_SELECTED",
     { type: "notes_move", target: phoneNote, folder: "Errands" },
     "NOTES_FOLDER_UNKNOWN",
@@ -602,6 +606,21 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
     "NOTES_FOLDER_NOT_REQUESTED",
     { type: "notes_restore", noteId: phoneNote.noteId },
     "NOTES_RESTORE_UNKNOWN",
+  ])
+
+  const pending = (operation: DeviceOperation, direct: boolean) => family.proposedText(operation, { direct, timeZone: "Etc/UTC" })?.forOwner
+  assert.deepEqual([
+    pending({ type: "notes_record", action: "start" }, true),
+    pending({ type: "notes_record", action: "start" }, false),
+    pending({ type: "notes_filter", kind: "list" }, true),
+    pending({ type: "notes_filter", kind: "list" }, false),
+    pending({ type: "notes_delete", target: phoneNote }, true),
+  ], [
+    "Your phone will start recording a voice note in Notes.",
+    undefined,
+    "Your phone will show the matching notes.",
+    undefined,
+    "Review deleting this note on your phone. Nothing has been deleted yet.",
   ])
 
   const negotiated = negotiation(true, phoneCapabilities)
