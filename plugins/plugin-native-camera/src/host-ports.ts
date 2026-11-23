@@ -146,7 +146,14 @@ export function capturedLibraryId(photo: PhotoResult): string | undefined {
   const id = photo.libraryId;
   if (typeof id !== "string") return undefined;
   const match = CAPTURED_LIBRARY_ID.exec(id);
-  if (!match || match[1] === "external" || match[1] === "internal")
+  if (
+    !match ||
+    match[0] !== id ||
+    match[1] === "external" ||
+    match[1] === "internal"
+  )
+    return undefined;
+  if (match[2].length === 19 && match[2] > "9223372036854775807")
     return undefined;
   return id;
 }

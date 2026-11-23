@@ -190,6 +190,15 @@ describe("keepRecording", () => {
 describe("capturedLibraryId", () => {
   const withId = (libraryId: unknown) =>
     ({ ...photo, libraryId }) as PhotoResult;
+  expect(
+    capturedLibraryId(withId("m:external_primary:i:9223372036854775807")),
+  ).toBe("m:external_primary:i:9223372036854775807");
+  expect(
+    capturedLibraryId(withId("m:external_primary:i:9223372036854775808")),
+  ).toBeUndefined();
+  expect(
+    capturedLibraryId(withId("m:external_primary:i:123\n")),
+  ).toBeUndefined();
 
   it("returns a volume-qualified image id", () => {
     expect(capturedLibraryId(withId("m:external_primary:i:42"))).toBe(
