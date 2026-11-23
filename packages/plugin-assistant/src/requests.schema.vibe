@@ -61,6 +61,8 @@ export type ReminderEscalation = typeof ReminderEscalation.Type
 export const GoalRequest = Schema.Union([
   Schema.Struct({ op: Schema.Literal("create"), title: Text(200), description: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))), cadence: Schema.Literals(["none", "daily", "weekly"]) }),
   Schema.Struct({ op: Schema.Literal("update"), target: Text(200), status: Schema.Literals(["active", "paused", "archived", "satisfied"]), cadence: Schema.optionalKey(Schema.Literals(["none", "daily", "weekly"])) }),
+  Schema.Struct({ op: Schema.Literal("rename"), target: Text(200), title: Text(200) }),
+  Schema.Struct({ op: Schema.Literal("list") }),
   Schema.Struct({ op: Schema.Literal("delete"), target: Text(200) }),
   Schema.Struct({ op: Schema.Literal("dismiss_checkin"), target: Text(200), slot: Schema.Literals(["morning", "evening", "weekly"]) }),
   Schema.Struct({ op: Schema.Literal("checkin"), target: Text(200), progress: Schema.Literals(["on_track", "at_risk", "needs_attention"]), note: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))) }),
