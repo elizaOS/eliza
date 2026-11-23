@@ -81,7 +81,7 @@
     "runtime": "both",
     "platformDetails": {
       "browser": "Support via Web Speech API (limited timing data, no Whisper). Wake word detection and basic STT.",
-      "node": "Full support via Electrobun with Whisper.cpp for high-quality STT and precise timing data",
+      "node": "Not supported; there is no Node or desktop implementation.",
       "ios": true,
       "android": true
     }

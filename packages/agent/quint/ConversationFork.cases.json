@@ -1,0 +1,5 @@
+{
+ "sources":["packages/agent/src/api/conversation-routes.ts","packages/agent/src/services/conversation-fork.ts","packages/agent/src/api/conversation-restore.ts","packages/agent/test/conversation-fork.test.ts"],
+ "bounds":{"domain":"One owner, one original with three messages, a two-message prefix, one deterministic branch, at most two calls.","limitations":["The model covers publication ordering and original retention. Real SQLite tests cover source-linked copying and reload. Database crashes, topology races, authorization and arbitrary message contents require implementation tests, not this finite model."]},
+ "cases":[{"name":"branch-publication","main":"ConversationFork","init":"init","step":"step","invariants":["OriginalPreserved","CompleteBeforeVisible","Bounded"],"temporal":[],"maxSteps":12,"samples":1000}]
+}

@@ -31,6 +31,7 @@ import {
 } from "./base";
 import { SearchMode } from "./client/index";
 import type { Tweet as ClientTweet } from "./client/tweets";
+import { TWEET_MAX_LENGTH } from "./constants";
 import {
   getRandomInterval,
   getTargetUsers,
@@ -51,6 +52,7 @@ import {
 } from "./types";
 import {
   parseActionResponseFromText,
+  quoteThreadFirstChunkMaxLength,
   sendChunkedTweet,
   sendTextAsTweetThread,
 } from "./utils";
@@ -709,6 +711,8 @@ ${tweet.text}`;
           }
           return { id };
         },
+        TWEET_MAX_LENGTH,
+        quoteThreadFirstChunkMaxLength(tweet.id),
       );
       logger.info(`Quoted tweet ${tweet.id}`);
       return true;

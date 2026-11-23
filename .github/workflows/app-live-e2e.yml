@@ -723,7 +723,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup JDK 21
-        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880
         with:
           distribution: temurin
           java-version: "21"
@@ -835,7 +835,7 @@ jobs:
     env:
       ELIZA_NATIVE_STAGING_ACCEPTANCE: "1"
       ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
-      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

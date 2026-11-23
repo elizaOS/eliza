@@ -16,10 +16,12 @@ import type {
   StateData,
 } from "@elizaos/core";
 import {
+  activeCommittedEffectReceipts,
   composeToolDiagnosticRedactor,
   ElizaError,
   effectDeliveryBindingIsValid,
   effectDeliveryBindingProvesApplication,
+  getActionResultActionName,
   getEffectDeliveryBinding,
   getStreamingContext,
   getTrustedDeliveryAudience,
@@ -42,6 +44,7 @@ import {
   validateUuid,
 } from "@elizaos/core";
 import type { EvaluatorOutput } from "../../runtime/evaluator";
+import { requiredViewNavigationStatus } from "../../runtime/nav-evaluator-eligibility";
 import { renderActionResultsForModel } from "../../runtime/planner-rendering";
 import { resolveCallbackActionName } from "./action-identifiers.js";
 import { renderActionCallbackInCharacter } from "./delivery.js";
@@ -53,6 +56,7 @@ import {
 } from "./financial-observations.ts";
 import { projectBackgroundHistory } from "./history-discovery.ts";
 import { referenceRepeatedHistory } from "./history-wire.ts";
+import { historicalReceiptGroups } from "./navigation-history.ts";
 import {
   type RecoveredReplyClaim,
   reviewRecoveredReply,
@@ -463,6 +467,34 @@ export type PlannedReplyEgressDecision =
       kind: PlannedReplyClaimKind;
     };
 
+/** Find only a leading registered-view confirmation and its exact text span. */
+function leadingViewConfirmation(reply: string, evidence: unknown) {
+  if (!isRecord(evidence) || !Array.isArray(evidence.views)) return;
+  for (const view of evidence.views) {
+    if (
+      !isRecord(view) ||
+      typeof view.id !== "string" ||
+      typeof view.label !== "string"
+    )
+      continue;
+    for (const name of [
+      view.id,
+      view.label,
+      ...(Array.isArray(view.aliases) ? view.aliases : []),
+    ]) {
+      if (typeof name !== "string" || !name.trim()) continue;
+      const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const target = `(?:the\\s+)?${escaped}(?:\\s+(?:view|screen|app))?`;
+      const found = new RegExp(
+        `^(?:Done[.!]?\\s*[-—:]?\\s*)?(?:${target}\\s+(?:(?:is|are)\\s+)?(?:now\\s+)?open|(?:I(?:['’]ve| have)?\\s+)?opened\\s+${target}|you(?:['’]re| are)\\s+(?:now\\s+)?on\\s+${target}|back\\s+on\\s+${target})(?:[.!]+(?=\\s|$)|$)`,
+        "iu",
+      ).exec(reply);
+      if (found)
+        return { id: view.id, label: view.label, end: found[0].length };
+    }
+  }
+}
+
 /** Leading confirmations about registered views need current identity or delivery evidence.
  * This validates reply prose only; it never selects or authorizes an action.
  */
@@ -472,38 +504,13 @@ function navigationClaimIsUngrounded(args: {
   actionResults: readonly ActionResult[];
 }): boolean {
   const evidence = args.providers?.VIEW_NAVIGATION?.data;
-  if (!Array.isArray(evidence?.views)) return false;
-  const views = evidence.views.filter(
-    (view): view is { id: string; label: string; aliases?: string[] } =>
-      isRecord(view) &&
-      typeof view.id === "string" &&
-      typeof view.label === "string",
-  );
-  const claimed = views.find((view) =>
-    [
-      view.id,
-      view.label,
-      ...(Array.isArray(view.aliases)
-        ? view.aliases.filter(
-            (alias: unknown): alias is string => typeof alias === "string",
-          )
-        : []),
-    ].some((name) => {
-      if (!name.trim()) return false;
-      const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const target = `(?:the\\s+)?${escaped}(?:\\s+(?:view|screen|app))?`;
-      return new RegExp(
-        `^(?:Done[.!]?\\s*[-—:]?\\s*)?(?:${target}\\s+(?:(?:is|are)\\s+)?(?:now\\s+)?open|(?:I(?:['’]ve| have)?\\s+)?opened\\s+${target}|you(?:['’]re| are)\\s+(?:now\\s+)?on\\s+${target}|back\\s+on\\s+${target})(?:[.!]+(?=\\s|$)|$)`,
-        "iu",
-      ).test(args.reply.trim());
-    }),
-  );
+  const claimed = leadingViewConfirmation(args.reply.trim(), evidence);
   if (!claimed) return false;
   const claimsDelivery =
     /^(?:Done[.!]?\s*[-—:]?\s*)?(?:I(?:['’]ve| have)?\s+)?opened\s/iu.test(
       args.reply.trim(),
     );
-  let currentViewId = claimsDelivery ? null : evidence.currentViewId;
+  let currentViewId = claimsDelivery ? null : evidence?.currentViewId;
   for (const result of args.actionResults) {
     const navigation = result.data?.navigation;
     if (!isRecord(navigation) || navigation.effect !== "view_navigation")
@@ -807,26 +814,28 @@ export async function resolvePlannedReplyEgress(args: {
   providers?: StateData["providers"];
   actionResults: readonly ActionResult[];
   evaluator?: EvaluatorOutput;
+  /** Only live planner egress can repair prose around a pending view handoff. */
+  trajectory?: PlannerTrajectory;
   recovery?: MessageReplyRecoveryContext;
   /** Capture this turn's authorized originals only when a rewrite is required. */
   prepareRecovery?: () => Promise<MessageReplyRecoveryContext | undefined>;
   /** Revalidate the host-owned recovery lease and audience before reading originals. */
   beforeContextRestore?: () => Promise<void>;
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
-  const decision = evaluatePlannedReplyEgress({
+  const egress = {
     currentScope: {
       agentId: args.runtime.agentId,
       entityId: args.message.entityId,
       id: args.message.id,
     },
-    reply: args.reply,
     request: getUserMessageText(args.message),
     contexts: args.contexts,
     providers: args.providers,
     actionResults: args.actionResults,
     actions: args.runtime.actions,
     evaluator: args.evaluator,
-  });
+  };
+  const decision = evaluatePlannedReplyEgress({ ...egress, reply: args.reply });
   if (args.reply.trim() && decision.verdict === "allow") {
     return {
       text: args.reply,
@@ -863,6 +872,61 @@ export async function resolvePlannedReplyEgress(args: {
           context: { roomId: args.message.roomId, reason: admission.reason },
         },
       );
+    }
+  }
+  if (
+    reason === "view_navigation" &&
+    args.trajectory &&
+    args.trajectory.plannedQueue.length === 0 &&
+    !recovery?.pendingToolCalls?.length &&
+    requiredViewNavigationStatus(args.trajectory) === "prepared"
+  ) {
+    const required = (
+      args.trajectory.modelBaseContext ?? args.trajectory.context
+    ).metadata?.requiredViewNavigation;
+    const rejected = args.reply.trim();
+    const claimed = leadingViewConfirmation(
+      rejected,
+      args.providers?.VIEW_NAVIGATION?.data,
+    );
+    if (claimed && isRecord(required) && claimed.id === required.viewId) {
+      const rest = rejected.slice(claimed.end).trimStart();
+      // Use the same exact producer declarations and canonical no-op proofs
+      // as the observation partition. An unrelated action's success is not
+      // sufficient to preserve a model's answer.
+      const reads = args.trajectory.steps.flatMap((step) => {
+        const { toolCall, result } = step;
+        return !step.terminalOnly &&
+          toolCall &&
+          result?.success === true &&
+          result.error == null &&
+          !result.replyFailure &&
+          result.transcriptVisibility === "internal" &&
+          result.effectReceipts?.length
+          ? [
+              {
+                actionName: toolCall.name,
+                success: true,
+                effectReceipts: result.effectReceipts,
+              },
+            ]
+          : [];
+      });
+      const receipts = historicalReceiptGroups(reads, args.runtime.actions);
+      if (
+        rest &&
+        receipts.observations.length > 0 &&
+        receipts.effects.length === 0 &&
+        evaluatePlannedReplyEgress({ ...egress, reply: rest }).verdict ===
+          "allow"
+      ) {
+        const text = `I’ll open ${claimed.label}. ${rest}`;
+        if (
+          evaluatePlannedReplyEgress({ ...egress, reply: text }).verdict ===
+          "allow"
+        )
+          return { text, effectReceiptIds: [] };
+      }
     }
   }
   // Re-read both collections after async model calls so additions or replacements
@@ -1103,11 +1167,70 @@ export async function resolvePlannedReplyEgress(args: {
     )
       return fail("Recovered reply asserts an unsupported outcome");
     // The judge attributes each claim; only the assistant's own changes need
-    // this turn's receipt, and that proof stays in code.
+    // this turn's proof, and that proof stays in code. A change that occurred
+    // needs a selected applied receipt. A change reported as not having
+    // occurred needs the cited result of this turn to have failed or left its
+    // effect unapplied: an honest failure report has no applied receipt to
+    // cite, while a failure no result records stays unsupported. A receipt
+    // whose provider acceptance is unknown proves neither polarity. The cited
+    // attempt must also not be superseded within the turn: a committed receipt
+    // for the same operation and resource, or (for a receipt-less attempt)
+    // another result of the same action that succeeded or committed, means the
+    // change did happen and the failure report would be false.
+    const results = actionResults();
+    const committedReceipts = activeCommittedEffectReceipts(
+      mergeEffectReceipts(...results.map((result) => result.effectReceipts)),
+    );
+    const committed = new Set(
+      committedReceipts.map((receipt) => receipt.receiptId),
+    );
+    const targetKey = (receipt: {
+      operation: string;
+      resource: { kind: string; id: string };
+    }) =>
+      JSON.stringify([
+        receipt.operation,
+        receipt.resource.kind,
+        receipt.resource.id,
+      ]);
+    const committedTargets = new Set(committedReceipts.map(targetKey));
+    const reportsUnappliedResult = (claim: RecoveredReplyClaim) => {
+      const index =
+        typeof claim.failedResult === "number" ? claim.failedResult - 1 : -1;
+      const result = index >= 0 ? results[index] : undefined;
+      if (result === undefined) return false;
+      const receipts = result.effectReceipts ?? [];
+      if (result.success !== false && receipts.length === 0) return false;
+      if (
+        receipts.some(
+          (receipt) =>
+            committed.has(receipt.receiptId) ||
+            committedTargets.has(targetKey(receipt)) ||
+            (receipt.outcome === "failed" &&
+              receipt.failure.acceptance === "unknown"),
+        )
+      )
+        return false;
+      if (receipts.length > 0) return true;
+      const actionName = getActionResultActionName(result);
+      return !results.some((other, otherIndex) => {
+        if (otherIndex === index) return false;
+        if (getActionResultActionName(other) !== actionName) return false;
+        const otherReceipts = other.effectReceipts ?? [];
+        return (
+          (other.success !== false && otherReceipts.length === 0) ||
+          otherReceipts.some((receipt) => committed.has(receipt.receiptId))
+        );
+      });
+    };
     const unsupportedClaims = grounding.claims.filter(
       (claim) =>
         !claim.supported ||
-        (claim.change && claim.actor === "assistant" && !finalProof),
+        (claim.change &&
+          claim.actor === "assistant" &&
+          (claim.outcome === "not_occurred"
+            ? !reportsUnappliedResult(claim)
+            : !finalProof)),
     );
     return unsupportedClaims.length === 0
       ? {

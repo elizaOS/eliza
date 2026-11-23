@@ -223,23 +223,44 @@ function resolveBundleContentsDir(execPath = process.execPath): string {
 }
 
 /**
- * Best-effort entitlement check against the running app's embedded
- * provisioning profile. Unsigned dev builds do not have this file.
+ * Entitlement check against the running app's embedded provisioning profile.
+ *
+ * A missing profile is the ordinary unsigned dev build and answers `false`.
+ * A profile that exists but cannot be read means the bundle is damaged or
+ * unreadable, which is a fault: folding it into `false` made the Health and
+ * Screen Time probers report `restricted`/`entitlement_required` ("this build
+ * is not entitled") for a permission the profile may well grant.
  */
 export function hasEmbeddedProvisioningEntitlement(
   entitlement: string,
   execPath = process.execPath,
 ): boolean {
+  const embedded = path.join(
+    resolveBundleContentsDir(execPath),
+    "embedded.provisionprofile",
+  );
+  let profile: Buffer;
   try {
-    const embedded = path.join(
-      resolveBundleContentsDir(execPath),
-      "embedded.provisionprofile",
+    profile = readFileSync(embedded);
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return false;
+    }
+    throw new ElizaError(
+      `Could not read the embedded provisioning profile at ${embedded}`,
+      {
+        code: "PROVISIONING_PROFILE_UNREADABLE",
+        context: { path: embedded, entitlement },
+        cause: error,
+      },
     );
-    if (!existsSync(embedded)) return false;
-    return readFileSync(embedded).includes(Buffer.from(entitlement));
-  } catch {
-    return false;
   }
+  return profile.includes(Buffer.from(entitlement));
 }
 
 /* --------------------------------------------------------------------------

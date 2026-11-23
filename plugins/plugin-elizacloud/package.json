@@ -345,12 +345,6 @@
         "default": "gpt-5.4-mini",
         "sensitive": false
       },
-      "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS": {
-        "type": "number",
-        "description": "Optional positive-integer image-description output limit; unset sends no provider cap.",
-        "required": false,
-        "sensitive": false
-      },
       "ELIZAOS_CLOUD_TTS_MODEL": {
         "type": "string",
         "description": "Identifier of the model used for text-to-speech generation.",

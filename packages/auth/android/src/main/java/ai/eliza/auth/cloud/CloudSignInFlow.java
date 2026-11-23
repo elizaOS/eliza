@@ -196,12 +196,14 @@ public final class CloudSignInFlow {
   if (stage == null) throw new IllegalArgumentException("Google stage required");
   if (stage == GoogleStage.LOCAL_DEADLINE) return new GoogleFailure("expired", "local-deadline");
   if (status == 200) return new GoogleFailure(null, "response-received");
+  if (stage == GoogleStage.VERIFY && status == 401 && "google_identity_rejected".equals(error)) return new GoogleFailure("provider-refused", "google-identity-rejected");
   if (Boolean.FALSE.equals(ok) && error instanceof String) {
    if (status == 400 && "A valid tenantId and clientId are required".equals(error)) return new GoogleFailure("invalid-request", "invalid-binding-input");
    if (status == 400 && "tenantId does not match X-Steward-Tenant".equals(error)) return new GoogleFailure("state-mismatch", "tenant-binding-mismatch");
    if (status == 404 && "App client not found or disabled".equals(error)) return new GoogleFailure("provider-refused", "client-unavailable");
    if (status == 503 && "Native Google sign-in is not configured for this app".equals(error)) return new GoogleFailure("unavailable", "native-google-unconfigured");
    if (status == 400 && stage == GoogleStage.CHALLENGE && "An S256 code challenge is required".equals(error)) return new GoogleFailure("invalid-request", "pkce-challenge-invalid");
+   // Steward's own native verify, which a password-backup confirmation still uses.
    if (status == 400 && stage == GoogleStage.VERIFY && "challengeId, idToken and codeVerifier are required".equals(error)) return new GoogleFailure("invalid-request", "verification-input-invalid");
    if (status == 401 && stage == GoogleStage.VERIFY && "Sign-in challenge expired or was already used".equals(error)) return new GoogleFailure("expired", "challenge-unavailable");
    if (status == 401 && stage == GoogleStage.VERIFY && "Sign-in challenge does not match this request".equals(error)) return new GoogleFailure("state-mismatch", "challenge-request-mismatch");

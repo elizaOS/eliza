@@ -15,7 +15,7 @@ export type AgentPlatform = "web" | "desktop" | "ios" | "android";
  *
  * Resolution order:
  * 1. `X-Eliza-Platform` header — set by native Capacitor shells.
- * 2. `User-Agent` — Capacitor injects platform markers; Electrobun sets its own.
+ * 2. `User-Agent` — Capacitor injects platform markers.
  * 3. Default: "web".
  */
 export function detectClientPlatform(req: IncomingMessage): AgentPlatform {
@@ -27,7 +27,6 @@ export function detectClientPlatform(req: IncomingMessage): AgentPlatform {
   const ua = (headers["user-agent"] as string | undefined) ?? "";
   if (/Capacitor.*iOS/i.test(ua)) return "ios";
   if (/Capacitor.*Android/i.test(ua)) return "android";
-  if (/Electrobun/i.test(ua)) return "desktop";
 
   return "web";
 }

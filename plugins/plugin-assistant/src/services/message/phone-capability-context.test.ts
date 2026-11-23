@@ -15,6 +15,7 @@ const binding = vi.hoisted(() => ({
   turn: undefined as unknown,
   notes: "runtime",
   calendar: "runtime",
+  localCalendarCreate: true,
 }));
 vi.mock("../device-actions/service.ts", async (original) => ({
   ...(await original<typeof import("../device-actions/service.ts")>()),
@@ -22,6 +23,11 @@ vi.mock("../device-actions/service.ts", async (original) => ({
   currentAppRecordSource: (_runtime: unknown, domain: string) =>
     domain === "notes" ? binding.notes : binding.calendar,
   readDeviceConversationReceipts: async () => [],
+  deviceAppRecordOperationAvailable: (
+    _runtime: unknown,
+    operation: { type: string },
+  ) =>
+    operation.type !== "calendar_create_local" || binding.localCalendarCreate,
 }));
 
 import { ACKNOWLEDGMENT_RULE } from "../../prompts/acknowledgment.ts";
@@ -55,6 +61,7 @@ function fixture() {
     character: { name: "Alpha", bio: [], system: "Answer." },
     contexts: new ContextRegistry([
       { id: "general", description: "General tasks" },
+      { id: "messaging", description: "Messages" },
       { id: "notes", description: "Saved notes" },
     ]),
     actions: [notes, native],
@@ -97,7 +104,140 @@ async function guidance(options: Record<string, unknown> = {}) {
   return { text: String(event.content), context, args };
 }
 
+// The X-Eliza-Device-Capabilities a v609 Alpha image sent (captured on the
+// phone), plus phone.keypad.v1 for the keypad handoff.
+const ALPHA_IMAGE_CAPABILITIES = [
+  "calendar.local-event.v1",
+  "notes.local-record.v1",
+  "camera.capture-photo.v1",
+  "camera.capture-lens.v1",
+  "reminders.local-record.v2",
+  "notes.list-filter.v1",
+  "reminders.create.v1",
+  "calendar.create.v1",
+  "calendar.next-read.v1",
+  "maps.selected-read.v1",
+  "files.browser.v1",
+  "browser.search.v1",
+  "browser.tabs.v1",
+  "browser.history.v1",
+  "browser.find.v1",
+  "calendar.availability-read.v1",
+  "photos.library.v1",
+  "calendar.named-read.v1",
+  "clock.handoff.v1",
+  "clock.handoff.v2",
+  "views.telephony.v1",
+  "sms.send.v1",
+  "phone.dial.v1",
+  "phone.call.v1",
+  "contacts.write.v1",
+  "contacts.show.v1",
+  "contacts.read.v1",
+  "sms.compose.v1",
+  "messages.read.v1",
+  "voicemail.read.v1",
+  "voicemail.delete.v1",
+  "sms.compose.v2",
+  "contacts.write.v2",
+  "phone.keypad.v1",
+];
+
+describe("phone telephony routing on the Alpha image", () => {
+  async function withImage(options: Record<string, unknown>) {
+    const args = fixture();
+    const turn = binding.turn as {
+      credential: { capabilities: string[] };
+      isCurrent?: () => boolean;
+    };
+    turn.credential.capabilities = ALPHA_IMAGE_CAPABILITIES;
+    turn.isCurrent = () => true;
+    const context = await createV5MessageContextObject({
+      ...args,
+      ...options,
+    });
+    const event = context.events.find(
+      (event) => event.id === "authenticated-phone-capability",
+    );
+    return event && "content" in event ? String(event.content) : "";
+  }
+  it("names the device operation for a call, a text, showing contacts and the dialer while routing", async () => {
+    // v609: the call went to Twilio VOICE_CALL, the text to PAGE_DELEGATE,
+    // "show my contacts" to the relationship store, "open the dialer" was refused.
+    const routing = await withImage({ providerPhase: "response" });
+    for (const route of [
+      "call a number or contact: phone_call",
+      "text or draft a text to a number or contact: sms_compose with target",
+      "find or show a named contact, or a named contact's number: contact_show with the name as the query",
+      "open the dialer or keypad, with or without a number: phone_keypad, which fills in the keypad and never calls",
+      "in the general, phone, messaging or contacts context",
+      'a plain request to open or show the Phone, Messages or Contacts app, including "show my contacts" with no name, is navigation to that view',
+      // v609 peer evidence: an earlier "no SMS connector" reply was repeated.
+      "an earlier reply in this conversation saying calls, texts or contacts were unavailable is outdated",
+      "VOICE_CALL (a Twilio call from the agent's number)",
+    ])
+      expect(routing).toContain(route);
+    expect(routing).not.toContain("PROPOSE_DEVICE_ACTION cannot");
+    // contact_show needs a non-empty name; an unfiltered "show my contacts"
+    // is the Contacts view, which views.explicit-navigation also resolves.
+    expect(routing).not.toContain("show contacts or open the dialer");
+    expect(routing).not.toMatch(/show[^.;]*the owner's contacts: contact_show/);
+  });
+  it("keeps the device routes when the planner selected the phone or messaging context", async () => {
+    for (const context of ["phone", "messaging"]) {
+      const planning = await withImage({
+        includeTools: true,
+        providerPhase: "planning",
+        selectedContexts: [context],
+      });
+      // The detailed native instructions follow a selected context that carries the device tool.
+      expect(planning).toContain("phone_keypad");
+      expect(planning).toContain(
+        "The authenticated installation enabled-view profile",
+      );
+    }
+  });
+  it("names no phone route for a phone without telephony", async () => {
+    const routing = (await guidance({ providerPhase: "response" })).text;
+    expect(routing).not.toContain("phone_call");
+    expect(routing).not.toContain("phone_keypad");
+  });
+});
+
 describe("selected phone capability guidance", () => {
+  it("keeps an explicit self-addressed Gmail draft actionable when sending is prohibited", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    const self =
+      '“To me” or “to myself” already names the recipient. Pass to:["self"] and let the phone resolve the selected Gmail mailbox.';
+    const pending =
+      "If the user explicitly requests a draft and says not to send it, composing is still pending work. Prepare the draft without sending it.";
+    expect(await routing()).not.toContain(self);
+    capabilities.push("gmail.local-compose.v1");
+    try {
+      const text = await routing();
+      expect(text).toContain(self);
+      expect(text).toContain(pending);
+    } finally {
+      capabilities.pop();
+    }
+  });
+
+  it("routes a retry of an unsent Gmail draft through the negotiated composer", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    expect(await routing()).not.toContain("MESSAGE_DRAFT_FOLLOWUP");
+    capabilities.push("gmail.local-compose.v1");
+    try {
+      const text = await routing();
+      expect(text).toContain("MESSAGE_DRAFT_FOLLOWUP");
+      expect(text).toContain("Do not search or triage the mailbox");
+      expect(text).toContain("never sent by this action");
+    } finally {
+      capabilities.pop();
+    }
+  });
+
   it("keeps compact authenticated availability and permission boundaries during routing", async () => {
     const { text } = await guidance({ providerPhase: "response" });
     expect(text).toContain("notes.local-record.v1");
@@ -105,6 +245,89 @@ describe("selected phone capability guidance", () => {
     expect(text).toContain("phone owner's approval");
     expect(text).toContain("VIEWS or VIEWS_SHOW");
     expect(text).not.toContain("Snooze means ten minutes");
+  });
+  it("closes only the device tool's calls and texts unless the phone negotiated them", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    const all = await routing();
+    expect(all).toContain(
+      "PROPOSE_DEVICE_ACTION cannot place or dial calls or send or draft text messages with this phone's own Phone and Messages apps.",
+    );
+    // The runtime may have another call or message tool: it is never told
+    // to refuse, or to hide that tool's result.
+    expect(all).toContain(
+      "Another exposed tool that calls or messages works as usual. When no tool can do it, say plainly",
+    );
+    expect(all).toContain("was started without a tool result");
+    capabilities.push("phone.call.v1");
+    try {
+      expect(await routing()).toContain(
+        "PROPOSE_DEVICE_ACTION cannot send or draft text messages with",
+      );
+      capabilities.push("sms.compose.v1");
+      expect(await routing()).not.toContain("PROPOSE_DEVICE_ACTION cannot");
+    } finally {
+      capabilities.splice(capabilities.indexOf("phone.call.v1"));
+    }
+  });
+  it("routes the latest SMS sender read only when the phone offers it", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    expect(await routing()).not.toContain("pending phone lookup");
+    capabilities.push("sms.latest-sender.v1");
+    try {
+      const text = await routing();
+      expect(text).toContain("pending phone lookup");
+      expect(text).toContain("PROPOSE_DEVICE_ACTION sms_latest_sender");
+      expect(text).toContain("approved sender suffix");
+      const planning = await guidance({
+        includeTools: true,
+        providerPhase: "planning",
+        selectedContexts: ["messaging"],
+      });
+      expect(planning.text).toContain("phone owner must separately approve");
+      const tool = planning.context.events.find(
+        (event) => event.type === "tool" && event.tool.name === native.name,
+      );
+      expect(tool?.type === "tool" && tool.tool.description).toContain(
+        "Use sms_latest_sender for an explicit question about who sent the newest incoming SMS",
+      );
+    } finally {
+      capabilities.pop();
+    }
+  });
+  it("grounds a requested reply draft in the negotiated latest sender address", async () => {
+    capabilities.push(
+      "sms.latest-sender.v1",
+      "sms.latest-sender.v2",
+      "sms.compose.v1",
+      "sms.compose.v2",
+    );
+    try {
+      const routing = await guidance({ providerPhase: "response" });
+      expect(routing.text).toContain("returned recipient, draft:true");
+      expect(routing.text).not.toContain("approved sender suffix");
+    } finally {
+      capabilities.splice(-4);
+    }
+  });
+  it("names the phone's own calendar create only on a turn that offers it", async () => {
+    const planning = async () =>
+      (
+        await guidance({
+          includeTools: true,
+          providerPhase: "planning",
+          selectedContexts: ["general"],
+          preselectedActions: [native],
+        })
+      ).text;
+    expect(await planning()).toContain("calendar_create_local resolves");
+    binding.localCalendarCreate = false;
+    try {
+      expect(await planning()).not.toContain("calendar_create_local");
+    } finally {
+      binding.localCalendarCreate = true;
+    }
   });
   it("does not expand unrelated native instructions for canonical Notes", async () => {
     const { text } = await guidance({
@@ -131,6 +354,76 @@ describe("selected phone capability guidance", () => {
       "only a native receipt establishes completion",
     ])
       expect(text).toContain(required);
+  });
+  it("routes a phone contact request to the address-book tool, not the relationship store", async () => {
+    const withAddressBook = async (options: Record<string, unknown>) => {
+      const args = fixture();
+      (
+        binding.turn as { credential: { capabilities: string[] } }
+      ).credential.capabilities = [...capabilities, "contacts.write.v1"];
+      const context = await createV5MessageContextObject({
+        ...args,
+        ...options,
+      });
+      const event = context.events.find(
+        (event) => event.id === "authenticated-phone-capability",
+      );
+      return event && "content" in event ? String(event.content) : "";
+    };
+    // The response handler picks contexts from this compact text.
+    const routing = await withAddressBook({ providerPhase: "response" });
+    expect(routing).toContain("PROPOSE_DEVICE_ACTION contact_create");
+    expect(routing).toContain("never ask for a handle, username or platform");
+    // A turn planned under the contacts context alone still exposes the tool
+    // and its detailed native instructions.
+    expect(native.contexts).toContain("contacts");
+    const planning = await withAddressBook({
+      includeTools: true,
+      providerPhase: "planning",
+      selectedContexts: ["contacts"],
+    });
+    expect(planning).toContain("PROPOSE_DEVICE_ACTION contact_create");
+    expect(planning).toContain("only a native receipt establishes completion");
+    // A phone without the capability is told nothing about its address book.
+    const { text } = await guidance({ providerPhase: "response" });
+    expect(text).not.toContain("contact_create");
+  });
+  it("names photo capture as device work, not Camera navigation, on a phone that negotiated it", async () => {
+    // v609 real turn: "take a picture" was judged navigation to Camera and the
+    // planner finished on VIEWS_SHOW; nothing it always saw named the capture.
+    const withCamera = async (options: Record<string, unknown>) => {
+      const args = fixture();
+      (
+        binding.turn as { credential: { capabilities: string[] } }
+      ).credential.capabilities = [
+        ...capabilities,
+        "camera.capture-photo.v1",
+        "camera.capture-lens.v1",
+      ];
+      const context = await createV5MessageContextObject({
+        ...args,
+        ...options,
+      });
+      const event = context.events.find(
+        (event) => event.id === "authenticated-phone-capability",
+      );
+      return event && "content" in event ? String(event.content) : "";
+    };
+    for (const text of [
+      await withCamera({ providerPhase: "response" }),
+      await withCamera({
+        includeTools: true,
+        providerPhase: "planning",
+        selectedContexts: ["general"],
+        preselectedActions: [native],
+      }),
+    ]) {
+      expect(text).toContain("camera_capture_photo (DEVICE_CAMERA_CAPTURE)");
+      expect(text).toContain("opening the Camera view takes no photo");
+      expect(text).toContain("never navigation alone");
+    }
+    const { text } = await guidance({ providerPhase: "response" });
+    expect(text).not.toContain("camera_capture_photo");
   });
   it("retains Android Clock handoff constraints on a Clock-only installation", async () => {
     const args = fixture();
@@ -360,32 +653,102 @@ describe("voice response policy", () => {
 });
 
 describe("model acknowledgment authoring grammar", () => {
-  it.each([
+  // Each cue the rule offers as something to write, listed here rather than
+  // parsed from prose so a rewording fails loudly instead of silently
+  // narrowing the check. The rule's other quotes are forms not to write.
+  const offered = [
     "Let me check.",
-    "I'll search.",
-    "Let me take a look.",
-    "I'll look into that.",
-    "Checking both.",
-    "Let me check your notes.",
-    "I'll pull up your calendar.",
-    "Let me open Calendar.",
-    "I’ll open Calendar.",
-  ])("advertises only admitted short prospective forms: %s", (cue) => {
+    "Let me check your calendar.",
+    "Let me check the weather.",
+    "Let me open Maps.",
+    "On it.",
+    "One sec.",
+  ];
+  const forbidden = ["Calling...", "Opening...", "Setting..."];
+  // The sources the rule lets stand in for "your calendar".
+  const sources = [
+    "notes",
+    "inbox",
+    "messages",
+    "reminders",
+    "tasks",
+    "files",
+    "photos",
+    "contacts",
+  ];
+  it.each(offered)("offers only cues the closed grammar speaks: %s", (cue) => {
+    expect(ACKNOWLEDGMENT_RULE).toContain(`"${cue}"`);
     expect(replyIsClaimSafeAcknowledgment(cue)).toBe(true);
   });
-  it("explains arbitrary topics through referents and forbids the incomplete live form", () => {
-    expect(ACKNOWLEDGMENT_RULE).toContain(
-      "These references work for any topic",
+  it.each(forbidden)(
+    "quotes as forbidden only forms the grammar drops: %s",
+    (form) => {
+      expect(ACKNOWLEDGMENT_RULE).toContain(`"${form}"`);
+      expect(replyIsClaimSafeAcknowledgment(form)).toBe(false);
+    },
+  );
+  it("quotes nothing but the offered cues and forbidden forms", () => {
+    const quoted = [...ACKNOWLEDGMENT_RULE.matchAll(/"([^"]+)"/gu)].map(
+      (match) => match[1],
     );
-    expect(ACKNOWLEDGMENT_RULE).toContain("a complete lookup phrase");
+    expect(new Set(quoted)).toEqual(new Set([...offered, ...forbidden]));
+  });
+  it.each(sources)(
+    "speaks the lookup cue for each listed source: %s",
+    (source) => {
+      expect(ACKNOWLEDGMENT_RULE).toContain(`(or your ${sources.join(", ")})`);
+      expect(
+        replyIsClaimSafeAcknowledgment(`Let me check your ${source}.`),
+      ).toBe(true);
+    },
+  );
+  it("keeps silence and forbids naming data or repeating the request", () => {
     expect(ACKNOWLEDGMENT_RULE).toContain(
-      "Do not invent other forms or synonyms",
+      "If the user asked for silence or no acknowledgment, leave it empty and still do the work.",
     );
     expect(ACKNOWLEDGMENT_RULE).toContain(
-      "leave it empty and still do authorized work",
+      "never name the people, items, times or outcome",
     );
+    expect(ACKNOWLEDGMENT_RULE).toContain("never repeat the request");
     expect(replyIsClaimSafeAcknowledgment("let me pull the latest.")).toBe(
       false,
+    );
+  });
+  it("leaves a navigation-only request to the held destination confirmation", () => {
+    // The cue list would otherwise contradict visualContinuation's direct
+    // disposition, which holds a destination confirmation as the final reply.
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      "A request whose only work is opening one app is not covered here: confirm that destination instead, as navigation-only replies do.",
+    );
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      'When opening an app is part of other planned work: "Let me open Maps."',
+    );
+    // visualContinuation is not in every Stage 1 schema (the phone's has none),
+    // so the rule must not send the model to a field it may never see.
+    expect(ACKNOWLEDGMENT_RULE).not.toContain("visualContinuation");
+  });
+  it("names no field, so the READ_CONTEXT acknowledgment can share it", () => {
+    // Field names are camelCase; the rule's prose has none.
+    expect(ACKNOWLEDGMENT_RULE).not.toMatch(/\b[a-z]+[A-Z]\w*\b/u);
+  });
+  it("names every app the open form accepts, and only those", () => {
+    const listed = /by its bare name: ([^;]+);/u
+      .exec(ACKNOWLEDGMENT_RULE)?.[1]
+      ?.split(/, | or /u);
+    expect(listed).toHaveLength(14);
+    for (const app of listed ?? [])
+      expect(replyIsClaimSafeAcknowledgment(`Let me open ${app}.`)).toBe(true);
+    for (const app of ["Reminders", "Google Maps", "the Camera app"])
+      expect(replyIsClaimSafeAcknowledgment(`Let me open ${app}.`)).toBe(false);
+  });
+  it("limits the no-reuse sentence to the cue", () => {
+    // A bare "never reuse an earlier reply" would contradict the "what?"
+    // source-quote repeat guidance appended after the rule.
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      "Never copy an earlier answer into the cue.",
+    );
+    expect(ACKNOWLEDGMENT_RULE).not.toMatch(
+      /\b(?:reuse|repeat|copy)\b[^.]*\b(?:earlier|previous|last) (?:reply|replies|message)/iu,
     );
   });
 });

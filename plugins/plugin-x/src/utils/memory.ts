@@ -330,6 +330,10 @@ export async function isDuplicateTweet(
   }
 
   const normalizedNew = normalizeTweetForDuplicateCheck(tweetText);
+  // The normalized text is words separated by single spaces. With a space on
+  // each side, containment matches whole words only: a recent "gm" matches the
+  // word "gm" but not the letters inside "paradigm" or "wagmi".
+  const paddedNew = ` ${normalizedNew} `;
   for (const recent of recentTweets) {
     const normalizedRecent = normalizeTweetForDuplicateCheck(recent);
     // A tweet that normalizes to "" (URL-only or emoji-only) carries no
@@ -343,10 +347,8 @@ export async function isDuplicateTweet(
     if (normalizedNew === normalizedRecent) {
       return true;
     }
-    if (
-      normalizedNew.includes(normalizedRecent) ||
-      normalizedRecent.includes(normalizedNew)
-    ) {
+    const paddedRecent = ` ${normalizedRecent} `;
+    if (paddedNew.includes(paddedRecent) || paddedRecent.includes(paddedNew)) {
       return true;
     }
     if (

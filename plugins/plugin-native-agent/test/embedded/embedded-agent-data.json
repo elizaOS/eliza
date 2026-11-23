@@ -1,0 +1,330 @@
+{
+  "valid": {
+    "host": {
+      "schema": 1,
+      "service": "example.consumer.HelperService",
+      "notification": {
+        "channel": "Helper",
+        "title": "Helper",
+        "text": "Helper is ready"
+      },
+      "cloud": {
+        "baseUrl": "https://cloud.example",
+        "smallModel": "small-1",
+        "largeModel": "large-1"
+      },
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/api/status"
+        },
+        {
+          "method": "POST",
+          "path": "/api/conversations"
+        },
+        {
+          "method": "POST",
+          "path": "/api/conversations/{id}/messages/stream",
+          "stream": true
+        },
+        {
+          "method": "POST",
+          "path": "/api/turns/{room}/abort"
+        }
+      ],
+      "environment": {
+        "ELIZA_PLUGIN_SET": "lean-chat"
+      }
+    },
+    "character": {
+      "name": "Helper",
+      "system": "Answer briefly.",
+      "bio": ["Kind"]
+    },
+    "policy": {
+      "schema": 1,
+      "actions": {
+        "allowed": {
+          "REPLY": "talk",
+          "NONE": "stay quiet"
+        },
+        "refused": {
+          "BROWSE": "the page owns the browser"
+        }
+      },
+      "plugins": {
+        "denied": ["@elizaos/plugin-browser"]
+      }
+    }
+  },
+  "refused": [
+    {
+      "host": {
+        "environment": {
+          "ELIZAOS_CLOUD_API_KEY": "x"
+        }
+      }
+    },
+    {
+      "host": {
+        "environment": {
+          "ELIZA_PROVIDER": "x"
+        }
+      }
+    },
+    {
+      "host": {
+        "environment": {
+          "ELIZA_API_TOKEN": "x"
+        }
+      }
+    },
+    {
+      "host": {
+        "environment": {
+          "ELIZA_ACTION_ALLOWLIST": "x"
+        }
+      }
+    },
+    {
+      "host": {
+        "environment": {
+          "LD_PRELOAD": "x"
+        }
+      }
+    },
+    {
+      "host": {
+        "environment": {
+          "PATH": "x"
+        }
+      }
+    },
+    {
+      "host": {
+        "environment": {
+          "ELIZA_PLUGIN_SET": 1
+        }
+      }
+    },
+    {
+      "host": {
+        "environment": "ELIZA_PLUGIN_SET=lean-chat"
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "http://cloud.example"
+        }
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "HTTPS://cloud.example"
+        }
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "https:cloud.example"
+        }
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "https://b\u00fccher.example"
+        }
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "https://:p@cloud.example"
+        }
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "https://cloud.example/a b"
+        }
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "https://cloud.example?x=1"
+        }
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "https://cloud.example#x"
+        }
+      }
+    },
+    {
+      "host": {
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/../status"
+          }
+        ]
+      }
+    },
+    {
+      "host": {
+        "routes": []
+      }
+    },
+    {
+      "character": {
+        "name": ""
+      }
+    },
+    {
+      "policy": {
+        "actions": {
+          "allowed": {}
+        }
+      }
+    },
+    {
+      "policy": {
+        "actions": {
+          "allowed": ["REPLY"]
+        }
+      }
+    },
+    {
+      "policy": {
+        "actions": {
+          "allowed": {
+            "REPLY": ""
+          },
+          "refused": {
+            "REPLY": ""
+          }
+        }
+      }
+    },
+    {
+      "policy": {
+        "plugins": {
+          "denied": [1]
+        }
+      }
+    },
+    {
+      "policy": {
+        "plugins": {
+          "denied": "@elizaos/plugin-browser"
+        }
+      }
+    },
+    {
+      "host": {
+        "schema": "1"
+      }
+    },
+    {
+      "policy": {
+        "schema": "1"
+      }
+    },
+    {
+      "host": {
+        "notification": {
+          "channel": 5,
+          "title": "Helper",
+          "text": "Helper is ready"
+        }
+      }
+    },
+    {
+      "character": {
+        "name": 5
+      }
+    },
+    {
+      "character": {
+        "system": 5
+      }
+    },
+    {
+      "host": {
+        "persistMemory": "true"
+      }
+    },
+    {
+      "host": {
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/status",
+            "stream": "true"
+          }
+        ]
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "https://cloud.example",
+          "smallModel": 5
+        }
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "https://cloud.example",
+          "largeModel": null
+        }
+      }
+    },
+    {
+      "host": {
+        "service": ["example.consumer.HelperService"]
+      }
+    },
+    {
+      "host": {
+        "schema": 1.5
+      }
+    },
+    {
+      "policy": {
+        "plugins": {
+          "denied": null
+        }
+      }
+    },
+    {
+      "policy": {
+        "actions": {
+          "allowed": {
+            "REPLY": ""
+          },
+          "refused": []
+        }
+      }
+    },
+    {
+      "policy": {
+        "actions": {
+          "allowed": {
+            "length": ""
+          },
+          "refused": "REPLY"
+        }
+      }
+    }
+  ]
+}

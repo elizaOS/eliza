@@ -7,6 +7,7 @@ import java.net.URI;
  * Best-effort server-side revocation of a saved Cloud sign-in key: one DELETE of the presented key's
  * own self-revocation route, short timeouts, never retried, and every failure is ignored. Used for a
  * key a new sign-in replaced and for a confirmed local reset; the key also expires on its own.
+ * {@link #signOut} is the same request for a key the owner signed out of, whose duty is stored.
  *
  * <p>To Cloud {@link #revoke} is a sign-out: it ends the presented key and every other key of the
  * same sign-in. {@link #retire} is the last step of a renewal and ends the replaced key only.
@@ -113,6 +114,14 @@ public final class CloudKeyRevocation {
  public static boolean retire(CloudSignInConfig config, CloudSignInEnvironment environment, String token, String successorCredentialId) {
   String successor = renewedCredential(successorCredentialId);
   return successor != null && retired(request(config, environment, token, successor));
+ }
+ /**
+  * One attempt to end a key the owner signed out of: a bare self-revocation, which to Cloud ends the
+  * key and every other key of its sign-in. True for a 2xx answer and for 401 (Cloud no longer accepts
+  * the key). Never throws.
+  */
+ public static boolean signOut(CloudSignInConfig config, CloudSignInEnvironment environment, String token) {
+  return retired(request(config, environment, token));
  }
  public static boolean retired(int status) { return status >= 200 && status < 300 || status == 401; }
  private static int request(CloudSignInConfig config, CloudSignInEnvironment environment, String token) { return request(config, environment, token, null); }

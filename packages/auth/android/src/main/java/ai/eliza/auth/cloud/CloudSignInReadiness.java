@@ -57,6 +57,11 @@ public final class CloudSignInReadiness {
  /** The email code route exists: a bodiless request is refused as invalid, not as unknown. */
  public static boolean emailRoutePresent(int status) { return status >= 400 && status < 500 && status != 404 && status != 405; }
 
+ /** HTTPS intent support alone does not make the AOSP WebView test shell a Google OAuth browser. */
+ public static boolean browserPackageAllowed(String candidate, String hostPackage) {
+  return candidate != null && !candidate.equals(hostPackage) && !"org.chromium.webview_shell".equals(candidate);
+ }
+
  /** A probe must redirect directly to Google's HTTPS account origin; no redirect is followed. */
  public static boolean redirectAllowed(int status, String location) {
   if ((status != 302 && status != 303 && status != 307) || location == null) return false;

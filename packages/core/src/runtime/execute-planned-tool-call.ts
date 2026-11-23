@@ -1088,6 +1088,18 @@ export async function executePlannedToolCall(
 							if (currentGateFailure)
 								return failureResult(action.name, currentGateFailure);
 							options.abortSignal?.throwIfAborted();
+							// Reverse ingress order: restore named-entity PII before secrets —
+							// including the REPLY action's own text, so the tool call runs against the
+							// real recipient and the user sees their real contacts, while the model,
+							// trajectory, and logs kept the surrogates. Best-effort (no failOnUnresolved):
+							// a surrogate the model rewrote, or a genuinely new name it introduced, is
+							// simply left as-is.
+							const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
+							if (piiSwapSession && handlerOptions.parameters !== undefined) {
+								handlerOptions.parameters = piiSwapSession.restoreInValue(
+									handlerOptions.parameters,
+								);
+							}
 							// Egress: this is the true execution boundary. Restore real
 							// secrets into the handler args ONLY here — the model, transcripts, logs,
 							// and trajectory upstream kept the placeholders. Fail loud if the model
@@ -1103,18 +1115,6 @@ export async function executePlannedToolCall(
 								handlerOptions.parameters = secretSwapSession.restoreInValue(
 									handlerOptions.parameters,
 									{ failOnUnresolved: true },
-								);
-							}
-							// Egress: restore real named-entity PII here too —
-							// including the REPLY action's own text, so the tool call runs against the
-							// real recipient and the user sees their real contacts, while the model,
-							// trajectory, and logs kept the surrogates. Best-effort (no failOnUnresolved):
-							// a surrogate the model rewrote, or a genuinely new name it introduced, is
-							// simply left as-is.
-							const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
-							if (piiSwapSession && handlerOptions.parameters !== undefined) {
-								handlerOptions.parameters = piiSwapSession.restoreInValue(
-									handlerOptions.parameters,
 								);
 							}
 							observeOwnerToolExecution(runtime, () => ({

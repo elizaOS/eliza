@@ -304,6 +304,56 @@ function isHistoricalRequestEvidenceEvent(
 	);
 }
 
+/**
+ * The original a request-bound note needs in view to mean anything: the
+ * request for a read-continuation record, the request or the interrupted reply
+ * itself for an interruption note. Undefined for any other or malformed event.
+ */
+function requestNoteSources(event: ContextEvent): string[] | undefined {
+	if (
+		event.type !== "segment" ||
+		event.source !== "message-service" ||
+		!("segment" in event)
+	)
+		return undefined;
+	const segment = event.segment;
+	if (
+		!segment ||
+		typeof segment !== "object" ||
+		Array.isArray(segment) ||
+		!("label" in segment) ||
+		(segment.label !== "runtime:interrupted_turn" &&
+			segment.label !== "runtime:historical_read_continuations") ||
+		!("content" in segment) ||
+		typeof segment.content !== "string" ||
+		!("id" in segment) ||
+		segment.id !== event.id
+	)
+		return undefined;
+	try {
+		const note: unknown = JSON.parse(segment.content);
+		if (
+			!note ||
+			typeof note !== "object" ||
+			Array.isArray(note) ||
+			!("requestSourceEventId" in note) ||
+			typeof note.requestSourceEventId !== "string"
+		)
+			return undefined;
+		const interrupted = "interrupted-turn:";
+		return segment.label === "runtime:interrupted_turn" &&
+			event.id.startsWith(interrupted)
+			? [
+					note.requestSourceEventId,
+					`history:${event.id.slice(interrupted.length)}`,
+				]
+			: [note.requestSourceEventId];
+	} catch {
+		// error-policy:J3 A malformed note stays inline.
+		return undefined;
+	}
+}
+
 /** Historical navigation and owner-declared read observations follow their
  * original requests, never current state or mutation authority. Completion may
  * also defer validated historical outcomes for reviewed omitted requests;
@@ -313,7 +363,12 @@ function isHistoricalRequestEvidenceEvent(
 export function selectHistoricalNavigation(
 	context: ContextObject,
 	includedEventIds: ReadonlySet<string>,
-	options: { historicalEffects?: boolean | "settled" } = {},
+	options: {
+		historicalEffects?: boolean | "settled";
+		/** Interruption notes and read-continuation records describe one request;
+		 * let them follow it out of a background projection. */
+		requestNotes?: boolean;
+	} = {},
 ): ContextObject {
 	const sources = collectCompletionContextSources(context);
 	if (sources.length === 0) return context;
@@ -329,6 +384,15 @@ export function selectHistoricalNavigation(
 	return {
 		...context,
 		events: context.events.filter((event) => {
+			const noteSources = options.requestNotes
+				? requestNoteSources(event)
+				: undefined;
+			// Only a note bound to a known request may leave with it.
+			if (noteSources !== undefined)
+				return (
+					!requests.has(noteSources[0]) ||
+					noteSources.some((id) => includedEventIds.has(id))
+				);
 			if (!isHistoricalRequestEvidenceEvent(event)) return true;
 			const effects = event.segment.label === "runtime:historical_effects";
 			// Historical mutation evidence stays inline unless a reviewed model

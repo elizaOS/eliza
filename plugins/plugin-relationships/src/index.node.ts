@@ -10,6 +10,21 @@ export {
   relationshipsSchema,
   relationshipsTable,
 } from "./db/schema.js";
+// The identity-merge engine is pure runtime code. Bundles that alias this
+// package to the node entry (the mobile agent) resolve it from here; a name
+// exported only by the renderer entry is an undefined binding in that bundle.
+export type {
+  IdentityMatchInput,
+  IdentityObserveOutcome,
+} from "./identity-merge.js";
+export {
+  AUTO_MERGE_CONFIDENCE_THRESHOLD,
+  decideIdentityOutcome,
+  findIdentityMatches,
+  foldIdentity,
+  mergeEntities,
+  OVERRIDE_CONFIDENCE_DELTA,
+} from "./identity-merge.js";
 export {
   archiveCoreRelationshipsInventory,
   type CoreRelationshipsInventoryDatabase,

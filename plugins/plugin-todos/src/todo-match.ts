@@ -47,6 +47,10 @@ function singularize(token: string): string {
   if (token.length > 4 && /(?:[sxz]|ch|sh|o)es$/u.test(token)) {
     return token.slice(0, -2);
   }
+  // "news" is one word, not the plural of "new". Stripping the final s made
+  // "Read the news" and "Read the new" the same todo, so a command for one
+  // completed or blocked the other.
+  if (token === "news") return token;
   if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
     return token.slice(0, -1);
   }
@@ -121,6 +125,20 @@ function paraphraseScore(query: string, content: string): number {
   let shared = 0;
   for (const token of left) if (right.has(token)) shared++;
   return (2 * shared) / (left.size + right.size);
+}
+
+/**
+ * True when each side has a word the other lacks ("Pay water bill" against
+ * "Pay electricity bill"). Such a paraphrase may name a different todo, while
+ * one that only drops or adds words names the same one.
+ */
+export function swapsWords(query: string, content: string): boolean {
+  const left = new Set(contentTokens(query));
+  const right = new Set(contentTokens(content));
+  return (
+    [...left].some((token) => !right.has(token)) &&
+    [...right].some((token) => !left.has(token))
+  );
 }
 
 /** True when two contents name the same todo for duplicate detection. */
