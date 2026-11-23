@@ -1,5 +1,9 @@
 // spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "A change commits only at the revision it expected, never takes a name in use, and never puts a folder inside itself"; spec/files/library.md, "A batch of library changes commits every row or none"
+import { LibraryOpenFailure, type InstalledLibrary } from "./library-adoption.vibe"
+
 module browser {
+  import { LIBRARY_BLOCKED, LibraryOpenFailure, openInstalled, type InstalledLibrary } from "./library-adoption.vibe"
+
   export type LibraryRow = {
     readonly id: string
     readonly parentId: string
@@ -8,43 +12,56 @@ module browser {
     readonly directory: boolean
     readonly size: number
     readonly revision: string
-    readonly createdAt: number
-    readonly modifiedAt: number
+    readonly createdAt?: number
+    readonly modifiedAt?: number
     readonly bytes?: Uint8Array<ArrayBuffer>
   }
   export type LibraryPlan = { readonly put: readonly LibraryRow[]; readonly remove: readonly string[] }
   type Stored = Omit<LibraryRow, "bytes"> & { readonly bytes?: ArrayBuffer }
 
-  const opened = new Map<string, Promise<IDBDatabase>>()
+  const opened = new Map<string, { readonly binding: string; readonly db: Promise<IDBDatabase> }>()
 
-  function database(name: string): Promise<IDBDatabase> {
+  function database(name: string, installed?: InstalledLibrary): Promise<IDBDatabase> {
+    const binding = installed === undefined ? "" : JSON.stringify([installed.trashFolder, installed.trashKey])
     const known = opened.get(name)
-    if (known !== undefined) return known
-    const opening = new Promise<IDBDatabase>((resolve, reject) => {
+    if (known !== undefined) return known.binding === binding ? known.db : Promise.reject(new Error("This file library is already open with a different format binding."))
+    const opening = (installed === undefined ? openLibrary(name) : openInstalled(name, installed)).then((db) => {
+      db.onversionchange = () => {
+        db.close()
+        opened.delete(name)
+      }
+      return db
+    })
+    opened.set(name, { binding, db: opening })
+    opening.catch(() => opened.delete(name))
+    return opening
+  }
+
+  function openLibrary(name: string): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
       const request = indexedDB.open(name, 2)
-      request.onblocked = () => reject(new Error("Close other tabs for this app and retry Files."))
+      let blocked = false
+      request.onblocked = () => {
+        blocked = true
+        reject(new LibraryOpenFailure(LIBRARY_BLOCKED))
+      }
       request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains("entries")) request.result.createObjectStore("entries", { keyPath: "id" })
+        if (blocked) request.transaction?.abort()
+        else if (!request.result.objectStoreNames.contains("entries")) request.result.createObjectStore("entries", { keyPath: "id" })
       }
       request.onsuccess = () => {
-        request.result.onversionchange = () => {
-          request.result.close()
-          opened.delete(name)
-        }
-        resolve(request.result)
+        if (blocked) request.result.close()
+        else resolve(request.result)
       }
       request.onerror = () => reject(request.error)
     })
-    opened.set(name, opening)
-    opening.catch(() => opened.delete(name))
-    return opening
   }
 
   const row = ({ bytes, ...rest }: Stored): LibraryRow => bytes === undefined ? rest : { ...rest, bytes: new Uint8Array(bytes) }
   const stored = ({ bytes, ...rest }: LibraryRow): Stored => bytes === undefined ? rest : { ...rest, bytes: bytes.slice().buffer }
 
-  export async function readRows(name: string): Promise<LibraryRow[]> {
-    const db = await database(name)
+  export async function readRows(name: string, installed?: InstalledLibrary): Promise<LibraryRow[]> {
+    const db = await database(name, installed)
     return new Promise((resolve, reject) => {
       const request = db.transaction("entries").objectStore("entries").getAll()
       request.onsuccess = () => resolve((request.result as Stored[]).map(row))
@@ -52,8 +69,8 @@ module browser {
     })
   }
 
-  export async function commitRows(name: string, plan: (rows: readonly LibraryRow[]) => LibraryPlan | string): Promise<string | undefined> {
-    const db = await database(name)
+  export async function commitRows(name: string, plan: (rows: readonly LibraryRow[]) => LibraryPlan | string, installed?: InstalledLibrary): Promise<string | undefined> {
+    const db = await database(name, installed)
     return new Promise((resolve, reject) => {
       const tx = db.transaction("entries", "readwrite")
       const store = tx.objectStore("entries")
@@ -117,11 +134,11 @@ export service LibraryStore {
   commit(plan: (rows: readonly LibraryRow[]) => LibraryPlan | LibraryRefusal): void!(LibraryFailed | LibraryRefused)
 }
 
-export function indexedLibrary(databaseName: string) {
+export function indexedLibrary(databaseName: string, installed?: InstalledLibrary) {
   return Layer.succeed(LibraryStore, {
-    rows: () => tryPromise({ try: () => readRows(databaseName), catch: () => new LibraryFailed({ message: "File storage could not be read." }) }),
+    rows: () => tryPromise({ try: () => readRows(databaseName, installed), catch: (cause) => new LibraryFailed({ message: cause instanceof LibraryOpenFailure ? cause.message : "File storage could not be read." }) }),
     effect commit(plan) {
-      const refused = try tryPromise({ try: () => commitRows(databaseName, plan), catch: () => new LibraryFailed({ message: "File storage failed." }) })
+      const refused = try tryPromise({ try: () => commitRows(databaseName, plan, installed), catch: (cause) => new LibraryFailed({ message: cause instanceof LibraryOpenFailure ? cause.message : "File storage failed." }) })
       if (refused !== undefined) throw new LibraryRefused({ answer: refused as LibraryRefusal, message: MESSAGES[refused as LibraryRefusal] ?? MESSAGES.LibraryBatchRefused })
     },
   })

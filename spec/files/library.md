@@ -6,6 +6,57 @@ and a revision, each change committed in one transaction across every tab.
 The [reviewed operations](./reviewedOperations.md) act on it by path as on
 the device, and its Trash keeps the same journal.
 
+## Story: Keep my existing browser files when Files is upgraded
+
+> As the owner, I want my browser files, links, Trash and workflow receipts
+> to survive an update, including a receipt for a file I already deleted.
+
+### A browser library changes format only from the exact complete source
+
+An installed library can store file bytes as Blobs or byte buffers, keep
+its Trash journal separately, and hold workflow receipts in their own
+store. The upgrade holds the installed Trash writer's lock. It can prepare
+file bytes before opening the version change, then checks again that the
+source rows and receipts match the prepared snapshot. The version change
+excludes previous versions' file writers. The upgrade commits the whole
+conversion with the storage version, or retains the previous version and
+all its records. Opening a committed version again does not copy records.
+
+The conversion keeps file IDs, revisions and payloads, keeps each paired
+Trash item's identifier and deletion time, and appends the original name
+to the recorded parent path for restore. A valid journal-only record can
+belong to an interrupted move or cleanup. The upgrade keeps that record
+without representing it as a live trashed file. A file in Trash with no
+readable record prevents conversion. A receipt retains its operation ID,
+fingerprint and original result even when the referenced file is absent.
+The upgrade does not perform periodic Trash pruning.
+
+```quint
+type LibraryVersion = InstalledLibrary | CurrentLibrary
+type UpgradeEvidence = { fenced: bool, snapshotMatches: bool, rowsReadable: bool, trashReadable: bool, receiptsReadable: bool }
+type UpgradeAnswer = KeepCurrentLibrary | AdoptInstalledLibrary | KeepInstalledLibrary
+pure def upgradeAnswer(v: LibraryVersion, e: UpgradeEvidence): UpgradeAnswer =
+  if (v == CurrentLibrary) KeepCurrentLibrary
+  else if (e.fenced and e.snapshotMatches and e.rowsReadable and e.trashReadable and e.receiptsReadable) AdoptInstalledLibrary
+  else KeepInstalledLibrary
+pure def versionAfterUpgrade(v: LibraryVersion, e: UpgradeEvidence, committed: bool): LibraryVersion =
+  if (upgradeAnswer(v, e) == AdoptInstalledLibrary and committed) CurrentLibrary else v
+pure val eValues = Set(
+  { fenced: true, snapshotMatches: true, rowsReadable: true, trashReadable: true, receiptsReadable: true },
+  { fenced: false, snapshotMatches: true, rowsReadable: true, trashReadable: true, receiptsReadable: true },
+  { fenced: true, snapshotMatches: false, rowsReadable: true, trashReadable: true, receiptsReadable: true },
+  { fenced: true, snapshotMatches: true, rowsReadable: false, trashReadable: true, receiptsReadable: true },
+  { fenced: true, snapshotMatches: true, rowsReadable: true, trashReadable: false, receiptsReadable: true },
+  { fenced: true, snapshotMatches: true, rowsReadable: true, trashReadable: true, receiptsReadable: false })
+pure def lawUpgradeNeedsAnExactAndReadableSource(e: UpgradeEvidence): bool =
+  upgradeAnswer(InstalledLibrary, e) == AdoptInstalledLibrary iff
+    (e.fenced and e.snapshotMatches and e.rowsReadable and e.trashReadable and e.receiptsReadable)
+pure def lawInterruptedUpgradeKeepsTheInstalledVersion(e: UpgradeEvidence): bool =
+  versionAfterUpgrade(InstalledLibrary, e, false) == InstalledLibrary
+pure def lawReopeningNeverAdoptsAgain(e: UpgradeEvidence, committed: bool): bool =
+  upgradeAnswer(CurrentLibrary, e) == KeepCurrentLibrary and versionAfterUpgrade(CurrentLibrary, e, committed) == CurrentLibrary
+```
+
 ## Story: Keep my browser files and change each only as I last saw it
 
 > As the owner, I want files I keep in the browser to change only at the

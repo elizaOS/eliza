@@ -30,10 +30,10 @@ import { attachmentAnswer, folderImported, recentFilesLimit, sourceAdmitted, sou
 import { reviewMailAttachment, type MailAttachment } from "../documents/source-links.vibe"
 import { freeName, validName } from "./model.vibe"
 import { allocateLibraryId, allocateLibraryRevision, childrenOf, LibraryStore, LIBRARY_ROOT, newId, newRevision, type LibraryRow } from "./library.vibe"
+import { BROWSER_RECEIPT_FOLDER as RECEIPT_STORE } from "./library-adoption.vibe"
 import { VolumeRefused } from "./volume.vibe"
 
 const RECEIPTS = "Receipts"
-const RECEIPT_STORE = ".Workflow-receipts"
 const TEXT_TYPES = ["application/json", "application/xml", "application/javascript"]
 
 const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
@@ -48,8 +48,8 @@ export type WorkflowFile = {
   readonly mimeType: string
   readonly size: number
   readonly revision: string
-  readonly createdAt: number
-  readonly modifiedAt: number
+  readonly createdAt: number | null
+  readonly modifiedAt: number | null
   readonly contentStatus: "text" | "binary"
   readonly text?: string
 }
@@ -118,7 +118,7 @@ effect function sourceRows(recent: boolean) {
   const library = try LibraryStore
   const rows = try mapError(library.rows(), unavailable)
   const files = rows.filter((row) => !row.directory && !hidden(rows, row))
-  const chosen = [...files].sort((a, b) => b.modifiedAt - a.modifiedAt || a.id.localeCompare(b.id)).slice(0, recent ? recentFilesLimit : sourceFilesLimit)
+  const chosen = [...files].sort((a, b) => (b.modifiedAt ?? -1) - (a.modifiedAt ?? -1) || a.id.localeCompare(b.id)).slice(0, recent ? recentFilesLimit : sourceFilesLimit)
   return { count: files.length, chosen }
 }
 
@@ -132,8 +132,8 @@ export effect function workflowFiles(recent: boolean) {
     if (textual && !read(row.size > sourceTextLimit, false)) throw refused("invalid", "A selected Files text source exceeds the 16,000-byte read limit. No partial source was returned.")
     const decoded = textual && row.bytes !== undefined ? (Effect.try(() => new TextDecoder("utf-8", { fatal: true }).decode(row.bytes)) catch () => undefined) : undefined
     const text = decoded !== undefined && !decoded.includes("\0") ? decoded : undefined
-    files.push({ id: row.id, parentId: row.parentId, name: row.name, mimeType: row.mimeType, size: row.size, revision: row.revision, createdAt: row.createdAt,
-      modifiedAt: row.modifiedAt, contentStatus: text === undefined ? "binary" : "text", ...(text === undefined ? {} : { text }) })
+    files.push({ id: row.id, parentId: row.parentId, name: row.name, mimeType: row.mimeType, size: row.size, revision: row.revision, createdAt: row.createdAt ?? null,
+      modifiedAt: row.modifiedAt ?? null, contentStatus: text === undefined ? "binary" : "text", ...(text === undefined ? {} : { text }) })
   }
   const after = try sourceRows(recent)
   const same = JSON.stringify(after.chosen.map((row) => [row.id, row.revision])) === JSON.stringify(before.chosen.map((row) => [row.id, row.revision]))
