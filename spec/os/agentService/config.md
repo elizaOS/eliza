@@ -215,8 +215,9 @@ pure def readyLaunchMatchesCredential(doc: Launch::LaunchDocument, f: Launch::La
 }
 pure def lawReadyLaunchFollowsFrameCredential(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool = {
   val v = startVerdict(d, cred, worker)
+  val checked = finalFrame(v, f)
   Launch::frameAdmitted(f) implies (match v {
-    | LaunchReady(r) => match finalFrame(v, f) {
+    | LaunchReady(r) => match checked {
         | FrameWithheld(w) => oversizedOwnKey(r.launch.document.backend, f.credential) and w.cause == Launch::Config
         | FrameReady(ready) =>
             not(oversizedOwnKey(r.launch.document.backend, f.credential)) and
