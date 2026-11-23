@@ -144,7 +144,7 @@ effect function served(env: ProfileBindings, lifetime?: WorkerLifetime): HttpSer
     const seen = request.modify({ remoteAddress: clientAddress(request) })
     provide platformLayer(env, ready, store) {
       try start(env, ready)
-      return try provideService(respond(workerRoutes, returnPageRoute), HttpServerRequest.HttpServerRequest, seen)
+      return try Effect.interruptible(provideService(respond(workerRoutes, returnPageRoute), HttpServerRequest.HttpServerRequest, seen))
     }
   }
   return answered catch effect (unready) => {
