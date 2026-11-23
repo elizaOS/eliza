@@ -113,7 +113,6 @@ schema Photo {
   width: number
   height: number
   path?: string
-  libraryId?: string
   exif?: Record<string, string | number>
 }
 schema Video { path: string; duration: number; width: number; height: number; fileSize: number; mimeType: string }

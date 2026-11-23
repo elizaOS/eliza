@@ -255,37 +255,3 @@ pure def stepConfirmationFollowsFinalization(before: CameraView, via: str, after
 pure def sometimesVideoConfirmed(s: CameraView): bool = s.finished == RecordingConfirmed
 pure def sometimesVideoFailed(s: CameraView): bool = s.finished == RecordingFailed
 ```
-
-### A saved photo names its library id only by its own storage volume and row
-
-On Android 10 and later a photo saved to the gallery also answers with its
-library id, `m:<volume>:i:<row>`, the key the media library reads: the
-volume the saved row reports as its own and that row's number. The
-aggregate `external` and `internal` volumes name no single row, so they give
-no id, and neither does a volume that is not 1 to 80 letters, digits,
-underscores or dashes, or a row number that is not positive. Below Android
-10, or when the provider reports no usable row, the id is left out; the
-photo is still saved, so a missing id never fails the capture.
-
-```quint
-type SavedPhotoRow = { volume: str, volumeWellFormed: bool, row: int }
-type PhotoLibraryId = NoLibraryId | VolumeRow({ volume: str, row: int })
-pure val aggregateVolumes = Set("external", "internal")
-pure def photoLibraryId(saved: SavedPhotoRow): PhotoLibraryId =
-  if (saved.volumeWellFormed and not(aggregateVolumes.contains(saved.volume)) and saved.row > 0) VolumeRow({ volume: saved.volume, row: saved.row })
-  else NoLibraryId
-pure val savedValues: Set[SavedPhotoRow] = List(
-  { volume: "external_primary", volumeWellFormed: true, row: 42 },
-  { volume: "1a2b-3c4d", volumeWellFormed: true, row: 7 },
-  { volume: "external", volumeWellFormed: true, row: 42 },
-  { volume: "internal", volumeWellFormed: true, row: 42 },
-  { volume: "a:b", volumeWellFormed: false, row: 1 },
-  { volume: "external_primary", volumeWellFormed: true, row: 0 }
-).foldl(Set(), (acc, r) => acc.union(Set(r)))
-pure def lawAggregateVolumeNamesNoPhoto(saved: SavedPhotoRow): bool =
-  aggregateVolumes.contains(saved.volume) implies photoLibraryId(saved) == NoLibraryId
-pure def lawLibraryIdNamesTheSavedRow(saved: SavedPhotoRow): bool = {
-  val found = photoLibraryId(saved)
-  match found { | VolumeRow(id) => saved.volumeWellFormed and id.volume == saved.volume and id.row == saved.row and id.row > 0 | _ => true }
-}
-```

@@ -918,7 +918,6 @@ class CameraPlugin : Plugin() {
             check(bitmap.compress(Bitmap.CompressFormat.JPEG, 80, output)) { "Thumbnail encoder did not produce output" }
             return JSObject().apply {
                 put("path", uri.toString())
-                savedImageLibraryId(resolver, uri)?.let { put("libraryId", it) }
                 put("format", "jpeg")
                 put("width", if (swapped) sourceHeight else sourceWidth)
                 put("height", if (swapped) sourceWidth else sourceHeight)
@@ -1005,20 +1004,18 @@ class CameraPlugin : Plugin() {
                         // Finish fallible metadata work before publishing the external effect.
                         // An unscaled JPEG saves the camera's own file with its EXIF and full
                         // encoder quality; a re-encoded image gets the camera's tags copied over.
-                        val galleryUri = if (saveToGallery) {
+                        val galleryPath = if (saveToGallery) {
                             val galleryBytes = if (format == "jpeg" && targetWidth == null && targetHeight == null) bytes
                                 else withCameraExif(outputBytes, exif, format)
                             saveImageToGallery(galleryBytes, format)
                         } else null
-                        val libraryId = galleryUri?.let { savedImageLibraryId(context.contentResolver, it) }
 
                         ticket.resolve(JSObject().apply {
                             put("base64", base64)
                             put("format", format)
                             put("width", finalWidth)
                             put("height", finalHeight)
-                            galleryUri?.let { put("path", it.toString()) }
-                            libraryId?.let { put("libraryId", it) }
+                            galleryPath?.let { put("path", it) }
                             exifData?.let { put("exif", it) }
                         })
                     } catch (e: GalleryImageWriteException) {
@@ -1154,8 +1151,8 @@ class CameraPlugin : Plugin() {
     }
 
     // Every API level writes through MediaStore into DCIM/Camera and returns a content:// URI.
-    private fun saveImageToGallery(bytes: ByteArray, format: String): Uri =
-        GalleryImageWriter(context.contentResolver).save(bytes, format)
+    private fun saveImageToGallery(bytes: ByteArray, format: String): String =
+        GalleryImageWriter(context.contentResolver).save(bytes, format).toString()
 
     // ---- Video Recording ----
 
