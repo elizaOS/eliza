@@ -8,6 +8,7 @@ import type {
   AgentContext,
   Content,
   ContextObject,
+  EffectReceipt,
   IAgentRuntime,
   JsonValue,
   Memory,
@@ -1172,11 +1173,21 @@ export async function resolvePlannedReplyEgress(args: {
     // occurred needs the cited result of this turn to have failed or left its
     // effect unapplied: an honest failure report has no applied receipt to
     // cite, while a failure no result records stays unsupported. A receipt
-    // whose provider acceptance is unknown proves neither polarity. The cited
-    // attempt must also not be superseded within the turn: a committed receipt
-    // for the same operation and resource, or (for a receipt-less attempt)
-    // another result of the same action that succeeded or committed, means the
-    // change did happen and the failure report would be false.
+    // whose provider acceptance is unknown proves neither polarity.
+    //
+    // The cited attempt must also not be superseded within the turn, and
+    // supersession is judged per target, not per action name: one turn can
+    // call an action for several targets, and a success for one target says
+    // nothing about another target's failure.
+    // - A committed receipt for the same operation and resource, or with the
+    //   same idempotency key, supersedes a cited receipt wherever it appears.
+    // - A later call of the same named action supersedes the cited attempt
+    //   when its target cannot be told apart: it committed a receipt that is
+    //   not known to address a different resource of the same operation and
+    //   kind, or (for a receipt-less attempt) it succeeded or committed.
+    // Only later results are retries, and "Unknown Action" names no action.
+    // When a cited result carries several receipts, a claim whose evidence
+    // names one of them is checked against that receipt only.
     const results = actionResults();
     const committedReceipts = activeCommittedEffectReceipts(
       mergeEffectReceipts(...results.map((result) => result.effectReceipts)),
@@ -1184,16 +1195,31 @@ export async function resolvePlannedReplyEgress(args: {
     const committed = new Set(
       committedReceipts.map((receipt) => receipt.receiptId),
     );
-    const targetKey = (receipt: {
-      operation: string;
-      resource: { kind: string; id: string };
-    }) =>
+    const targetKey = (receipt: EffectReceipt) =>
       JSON.stringify([
         receipt.operation,
         receipt.resource.kind,
         receipt.resource.id,
       ]);
     const committedTargets = new Set(committedReceipts.map(targetKey));
+    const committedIdempotencyKeys = new Set(
+      committedReceipts.flatMap((receipt) =>
+        receipt.idempotency.key === null ? [] : [receipt.idempotency.key],
+      ),
+    );
+    const namedAction = (result: ActionResult) => {
+      const name = getActionResultActionName(result);
+      return name === "Unknown Action" ? undefined : name;
+    };
+    const committedOf = (result: ActionResult) =>
+      (result.effectReceipts ?? []).filter((receipt) =>
+        committed.has(receipt.receiptId),
+      );
+    const knownDifferentTarget = (a: EffectReceipt, b: EffectReceipt) =>
+      a.operation === b.operation &&
+      a.resource.kind === b.resource.kind &&
+      a.resource.id !== b.resource.id &&
+      (a.idempotency.key === null || a.idempotency.key !== b.idempotency.key);
     const reportsUnappliedResult = (claim: RecoveredReplyClaim) => {
       const index =
         typeof claim.failedResult === "number" ? claim.failedResult - 1 : -1;
@@ -1201,27 +1227,42 @@ export async function resolvePlannedReplyEgress(args: {
       if (result === undefined) return false;
       const receipts = result.effectReceipts ?? [];
       if (result.success !== false && receipts.length === 0) return false;
-      if (
-        receipts.some(
-          (receipt) =>
-            committed.has(receipt.receiptId) ||
-            committedTargets.has(targetKey(receipt)) ||
-            (receipt.outcome === "failed" &&
-              receipt.failure.acceptance === "unknown"),
-        )
-      )
-        return false;
-      if (receipts.length > 0) return true;
-      const actionName = getActionResultActionName(result);
-      return !results.some((other, otherIndex) => {
-        if (otherIndex === index) return false;
-        if (getActionResultActionName(other) !== actionName) return false;
-        const otherReceipts = other.effectReceipts ?? [];
-        return (
-          (other.success !== false && otherReceipts.length === 0) ||
-          otherReceipts.some((receipt) => committed.has(receipt.receiptId))
+      const actionName = namedAction(result);
+      const laterRetries = results
+        .slice(index + 1)
+        .filter(
+          (other) =>
+            actionName !== undefined && namedAction(other) === actionName,
         );
-      });
+      if (receipts.length === 0) {
+        return !laterRetries.some(
+          (other) =>
+            (other.success !== false &&
+              (other.effectReceipts ?? []).length === 0) ||
+            committedOf(other).length > 0,
+        );
+      }
+      const evidence = claim.evidence.trim();
+      const named = receipts.filter(
+        (receipt) => receipt.receiptId === evidence,
+      );
+      const reportable = (receipt: EffectReceipt) =>
+        !committed.has(receipt.receiptId) &&
+        !committedTargets.has(targetKey(receipt)) &&
+        !(
+          receipt.idempotency.key !== null &&
+          committedIdempotencyKeys.has(receipt.idempotency.key)
+        ) &&
+        !(
+          receipt.outcome === "failed" &&
+          receipt.failure.acceptance === "unknown"
+        ) &&
+        !laterRetries.some((other) =>
+          committedOf(other).some(
+            (retry) => !knownDifferentTarget(receipt, retry),
+          ),
+        );
+      return (named.length > 0 ? named : receipts).some(reportable);
     };
     const unsupportedClaims = grounding.claims.filter(
       (claim) =>

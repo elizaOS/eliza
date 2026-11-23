@@ -559,3 +559,272 @@ it("treats a change claim without an outcome as one that occurred", async () => 
     code: "REPLY_GROUNDING_FAILED",
   });
 });
+
+// Two calls of one action for different targets in the same turn: the
+// success for one target is not a retry of the other target's failure.
+const smsReceipt = (
+  receiptId: string,
+  thread: string,
+  outcome: "applied" | "rejected",
+): EffectReceipt => {
+  const base = {
+    receiptId,
+    operation: "sms.send",
+    resource: { kind: "sms.thread", id: thread },
+    artifacts: [],
+    idempotency: { key: `send-${thread}`, replayed: false },
+    observedAt: OBSERVED_AT,
+  };
+  return outcome === "applied"
+    ? {
+        ...base,
+        outcome: "applied",
+        commit: {
+          kind: "provider_accepted",
+          id: `${receiptId}-commit`,
+          committedAt: OBSERVED_AT,
+        },
+      }
+    : {
+        ...base,
+        outcome: "failed",
+        failure: {
+          code: "NO_NUMBER",
+          retryable: false,
+          acceptance: "rejected",
+        },
+      };
+};
+const MIXED_REPLY =
+  "sent bob the text. alice's text didn't go through: she has no number saved.";
+const bobSent = (): RecoveredReplyClaim => ({
+  quote: "sent bob the text",
+  actor: "assistant",
+  change: true,
+  outcome: "occurred",
+  failedResult: null,
+  supported: true,
+  evidence: "sms-bob",
+});
+const aliceFailed = (
+  failedResult: number,
+  evidence = "No number saved for Alice.",
+): RecoveredReplyClaim => ({
+  quote: "alice's text didn't go through",
+  actor: "assistant",
+  change: true,
+  outcome: "not_occurred",
+  failedResult,
+  supported: true,
+  evidence,
+});
+const bobResult: ActionResult = {
+  success: true,
+  text: "Sent to Bob.",
+  data: { actionName: "MESSAGE" },
+  effectReceipts: [smsReceipt("sms-bob", "bob", "applied")],
+};
+const aliceResult: ActionResult = {
+  success: false,
+  text: "No number saved for Alice.",
+  data: { actionName: "MESSAGE" },
+};
+
+it.each([
+  [
+    "a receipt-less failure after another target's success",
+    [bobResult, aliceResult],
+    aliceFailed(2),
+  ],
+  [
+    "a rejected receipt for one target before another target's success",
+    [
+      {
+        ...aliceResult,
+        effectReceipts: [smsReceipt("sms-alice", "alice", "rejected")],
+      },
+      bobResult,
+    ],
+    aliceFailed(1),
+  ],
+  [
+    "a rejected receipt the claim names beside another target's applied receipt",
+    [
+      {
+        success: true,
+        text: "Sent to Bob. No number saved for Alice.",
+        data: { actionName: "MESSAGE" },
+        effectReceipts: [
+          smsReceipt("sms-bob", "bob", "applied"),
+          smsReceipt("sms-alice", "alice", "rejected"),
+        ],
+      },
+    ],
+    aliceFailed(1, "sms-alice"),
+  ],
+  [
+    "a rejected receipt beside another target's applied receipt on one result",
+    [
+      {
+        success: true,
+        text: "Sent to Bob. No number saved for Alice.",
+        data: { actionName: "MESSAGE" },
+        effectReceipts: [
+          smsReceipt("sms-bob", "bob", "applied"),
+          smsReceipt("sms-alice", "alice", "rejected"),
+        ],
+      },
+    ],
+    aliceFailed(1),
+  ],
+] as [string, ActionResult[], RecoveredReplyClaim][])(
+  "keeps an honest failure report for %s of the same action",
+  async (_label, results, claim) => {
+    const f = fixture(
+      [{ response: MIXED_REPLY, effectReceiptIds: ["sms-bob"] }],
+      [{ grounded: true, claims: [bobSent(), claim] }],
+    );
+    await expect(f.recover(results)).resolves.toEqual({
+      text: MIXED_REPLY,
+      effectReceiptIds: ["sms-bob"],
+    });
+    expect(f.renderPrompts).toHaveLength(1);
+  },
+);
+
+it("does not treat an unnamed earlier success as a retry of an unnamed failure", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }],
+    [{ grounded: true, claims: [failureClaim({ failedResult: 2 })] }],
+  );
+  await expect(
+    f.recover([
+      { success: true, text: "Read the view list." },
+      {
+        success: false,
+        text: "Navigation rejected (HTTP 409).",
+        error: "HTTP 409",
+      },
+    ]),
+  ).resolves.toEqual({ text: HONEST_FAILURE, effectReceiptIds: [] });
+});
+
+it("does not treat an unnamed later success as a retry of an unnamed failure", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }],
+    [{ grounded: true, claims: [failureClaim()] }],
+  );
+  await expect(
+    f.recover([
+      {
+        success: false,
+        text: "Navigation rejected (HTTP 409).",
+        error: "HTTP 409",
+      },
+      { success: true, text: "Read the view list." },
+    ]),
+  ).resolves.toEqual({ text: HONEST_FAILURE, effectReceiptIds: [] });
+});
+
+const calendarFailed: ActionResult = {
+  success: false,
+  text: "Calendar source required.",
+  data: { actionName: "CALENDAR" },
+  effectReceipts: [
+    {
+      receiptId: "calendar-evaluate-failed",
+      operation: "calendar.request.evaluate",
+      resource: { kind: "calendar.operation", id: "op-hash-1" },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: OBSERVED_AT,
+      outcome: "failed",
+      failure: {
+        code: "CALENDAR_NATIVE_RESOURCE_REQUIRED",
+        retryable: true,
+        acceptance: "rejected",
+      },
+    },
+  ],
+};
+const calendarCreated = (
+  receipt: Partial<EffectReceipt> = {},
+): ActionResult => ({
+  success: true,
+  text: "Added the event.",
+  data: { actionName: "CALENDAR" },
+  effectReceipts: [
+    {
+      receiptId: "calendar-event-9",
+      operation: "calendar.event.create",
+      resource: { kind: "calendar.event", id: "event-9" },
+      artifacts: [],
+      idempotency: { key: "create-dentist", replayed: false },
+      observedAt: OBSERVED_AT,
+      outcome: "applied",
+      commit: {
+        kind: "provider_accepted",
+        id: "event-9-commit",
+        committedAt: OBSERVED_AT,
+      },
+      ...receipt,
+    } as EffectReceipt,
+  ],
+});
+
+it.each([
+  [
+    "a cited rejected receipt a later call of the same action superseded",
+    [calendarFailed, calendarCreated()],
+    failureClaim({ failedResult: 1 }),
+  ],
+  [
+    "a cited rejected receipt whose retry committed under the same idempotency key",
+    [
+      {
+        ...calendarFailed,
+        data: { actionName: "CALENDAR_CREATE" },
+        effectReceipts: [
+          {
+            ...smsReceipt("create-draft-1", "x", "rejected"),
+            operation: "calendar.event.create",
+            resource: { kind: "calendar.event", id: "draft-1" },
+            idempotency: { key: "create-dentist", replayed: false },
+          },
+        ],
+      },
+      calendarCreated(),
+    ],
+    failureClaim({ failedResult: 1 }),
+  ],
+  [
+    "a cited receipt the claim names that committed elsewhere",
+    [
+      {
+        success: true,
+        text: "Sent to Bob. No number saved for Alice.",
+        data: { actionName: "MESSAGE" },
+        effectReceipts: [
+          smsReceipt("sms-bob", "bob", "applied"),
+          smsReceipt("sms-alice", "alice", "rejected"),
+        ],
+      },
+    ],
+    failureClaim({ failedResult: 1, evidence: "sms-bob" }),
+  ],
+] as [string, ActionResult[], RecoveredReplyClaim][])(
+  "rejects a did-not-happen claim with %s",
+  async (_label, results, claim) => {
+    const f = fixture(
+      [{ response: HONEST_FAILURE }, { response: HONEST_FAILURE }],
+      [
+        { grounded: true, claims: [claim] },
+        { grounded: true, claims: [claim] },
+      ],
+    );
+    await expect(f.recover(results)).rejects.toMatchObject({
+      code: "REPLY_GROUNDING_FAILED",
+      message: "Recovered reply asserts an unsupported outcome",
+    });
+  },
+);
