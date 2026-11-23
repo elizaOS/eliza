@@ -789,6 +789,8 @@ export interface Memory {
   fresh: boolean;
   used: Set<string>;
   actionProjection?: { version: string; encode: (value: unknown) => unknown };
+  /** Actual receipt bytes, including writes pending installation certification. */
+  captureReceipt?: (receipt: { name: string; bytes: Uint8Array }) => void;
 }
 /** An entry of `.spec-cache`: JSON, compressed, since a run of the simulator says megabytes. */
 interface Entry { name: string; file: string; reusable: boolean; evaluator?: string }
@@ -851,13 +853,17 @@ function readReceipt<T>(memory: Memory, { name, file }: Entry): T | undefined {
     } catch {
       continue;
     }
+    let value: T;
     try {
-      const value = JSON.parse(decompress(bytes).toString("utf8")) as T;
-      use(memory, `${nameBase}.${extension}`);
-      return value;
+      value = JSON.parse(decompress(bytes).toString("utf8")) as T;
     } catch {
       fs.rmSync(stored, { force: true });
+      continue;
     }
+    const actual = `${nameBase}.${extension}`;
+    use(memory, actual);
+    memory.captureReceipt?.({ name: actual, bytes });
+    return value;
   }
   return undefined;
 }
@@ -877,14 +883,14 @@ export function store(memory: Memory, raw: Entry, value: unknown, action?: { pro
   sharedCache(name)?.used.add(name);
   if (action) check?.verify.add(action.program);
   else if (check) includePrograms(check);
-  if (!check?.verify.size) {
-    writeWhole(file, bytes);
-    return;
+  if (!check?.verify.size) writeWhole(file, bytes);
+  else {
+    check.bytes += bytes.length - (check.pending.get(file)?.length ?? 0);
+    check.pending.set(file, bytes);
+    if (!action || check.pending.size >= MAX_PENDING_ENTRIES || check.bytes >= MAX_PENDING_BYTES
+      || performance.now() - Math.min(check.lastPublished, action.began) >= PUBLISH_INTERVAL_MS) publishChecked();
   }
-  check.bytes += bytes.length - (check.pending.get(file)?.length ?? 0);
-  check.pending.set(file, bytes);
-  if (!action || check.pending.size >= MAX_PENDING_ENTRIES || check.bytes >= MAX_PENDING_BYTES
-    || performance.now() - Math.min(check.lastPublished, action.began) >= PUBLISH_INTERVAL_MS) publishChecked();
+  memory.captureReceipt?.({ name, bytes });
 }
 
 /**
