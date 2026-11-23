@@ -107,7 +107,8 @@ and the store holds the native codec's form of what was committed.
 
 ```quint
 type ClearState = NoClear | ClearingSiteData | Cleared | ClearFailed({ sessionDeleted: bool })
-type Bookmarks = BookmarksUnread | BookmarksIntact({ urls: List[str] }) | BookmarksDamaged
+type Mark = { href: str, title: str }
+type Bookmarks = BookmarksUnread | BookmarksIntact({ marks: List[Mark] }) | BookmarksDamaged
 type RestoreOutcome = NotRestored | ReplacedNewTab | MergedHistoryOnly
 type NativeBrowserStore = { session: int, clear: ClearState, saved: SavedSession, bookmarks: Bookmarks, lastRestore: RestoreOutcome }
 pure val initial: NativeBrowserStore = { session: 0, clear: NoClear, saved: emptySession, bookmarks: BookmarksUnread, lastRestore: NotRestored }
@@ -173,22 +174,33 @@ pure def sometimesOnlyHistoryMerged(s: NativeBrowserStore): bool = s.lastRestore
 
 ### A bookmark list is read whole, and a damaged record is never replaced
 
-The first read takes the whole record. A record that cannot be opened,
-holds more than 100 addresses, an address that is not a bookmark address,
-or one address twice, is damaged: every later read and change is refused
-and the record stays as it is.
+The first read takes the whole record. Each row is an address, with the
+title saved with it or none (`title` is empty). A record that cannot be
+opened, holds more than 100 rows, an address that is not a bookmark
+address, one address twice, or a title that is not in its stored form
+(empty, or not as a save would have stored it), is damaged: every later
+read and change is refused and the record stays as it is.
 
 ```quint
-type BookmarkRecord = { readable: bool, urls: List[WebAddress] }
+type BookmarkRow = { address: WebAddress, title: str, titleStored: bool }
+type BookmarkRecord = { readable: bool, rows: List[BookmarkRow] }
 pure val maxBookmarks = 100
 pure def wholeBookmarks(found: BookmarkRecord): bool =
-  found.readable and found.urls.length() <= maxBookmarks and found.urls.every(a => bookmarkAddress(a)) and
-    found.urls.foldl(Set(), (hrefs, a) => hrefs.union(Set(a.href))).size() == found.urls.length()
+  found.readable and found.rows.length() <= maxBookmarks and found.rows.every(r => bookmarkAddress(r.address) and r.titleStored) and
+    found.rows.foldl(Set(), (hrefs, r) => hrefs.union(Set(r.address.href))).size() == found.rows.length()
 pure def canReadBookmarks(s: NativeBrowserStore, ticket: int): bool = owns(s, ticket) and s.bookmarks == BookmarksUnread
 pure def readBookmarks(s: NativeBrowserStore, ticket: int, found: BookmarkRecord): NativeBrowserStore =
-  { ...s, session: ticket, bookmarks: if (wholeBookmarks(found)) BookmarksIntact({ urls: found.urls.listMap(a => a.href) }) else BookmarksDamaged }
-pure val foundValues = Set({ readable: true, urls: List() }, { readable: false, urls: List() },
-  { readable: true, urls: List(secureAddress, secureAddress) }, { readable: true, urls: List({ ...secureAddress, scheme: HttpScheme }) })
+  { ...s, session: ticket,
+    bookmarks: if (wholeBookmarks(found)) BookmarksIntact({ marks: found.rows.listMap(r => { href: r.address.href, title: r.title }) }) else BookmarksDamaged }
+pure val savedRow: BookmarkRow = { address: secureAddress, title: "", titleStored: true }
+pure val foundValues: Set[BookmarkRecord] = List(
+  { readable: true, rows: List() },
+  { readable: false, rows: List() },
+  { readable: true, rows: List(savedRow, savedRow) },
+  { readable: true, rows: List({ ...savedRow, address: { ...secureAddress, scheme: HttpScheme } }) },
+  { readable: true, rows: List({ ...savedRow, title: "Garden" }) },
+  { readable: true, rows: List({ ...savedRow, title: " Garden", titleStored: false }) }
+).foldl(Set(), (acc, r) => acc.union(Set(r)))
 pure def stepDamagedBookmarksStayDamaged(before: NativeBrowserStore, after: NativeBrowserStore): bool =
   before.bookmarks == BookmarksDamaged implies after.bookmarks == BookmarksDamaged
 pure def sometimesBookmarksDamaged(s: NativeBrowserStore): bool = s.bookmarks == BookmarksDamaged
@@ -197,29 +209,62 @@ pure def sometimesBookmarksDamaged(s: NativeBrowserStore): bool = s.bookmarks ==
 ### A bookmark change moves its address to the front or removes it, keeps at most 100, and is kept only when its commit succeeded
 
 Removal uses the exact address. A present bookmark can move to the front
-even at 100; a new one at 100 is refused.
+even at 100; a new one at 100 is refused. A change may also name the
+bookmark's title, as the next rule says.
 
 ```quint
-pure def changeBookmarks(urls: List[str], href: str, keep: bool): List[str] = {
-  val rest = urls.select(u => u != href)
-  if (keep) List(href).concat(rest) else rest
+type TitleChange = KeepTitle | NewTitle({ text: str })
+pure def titleAfter(kept: str, title: TitleChange): str = match title { | NewTitle(t) => t.text | _ => kept }
+pure def titleOf(marks: List[Mark], href: str): str = marks.foldl("", (found, m) => if (m.href == href) m.title else found)
+pure def changeBookmarks(marks: List[Mark], href: str, keep: bool, title: TitleChange): List[Mark] = {
+  val rest = marks.select(m => m.href != href)
+  if (keep) List({ href: href, title: titleAfter(titleOf(marks, href), title) }).concat(rest) else rest
 }
-pure def bookmarkUrls(s: NativeBrowserStore): List[str] = {
+pure def savedMarks(s: NativeBrowserStore): List[Mark] = {
   val stored = s.bookmarks
-  match stored { | BookmarksIntact(b) => b.urls | _ => List() }
+  match stored { | BookmarksIntact(b) => b.marks | _ => List() }
 }
 pure def bookmarksIntact(s: NativeBrowserStore): bool = {
   val stored = s.bookmarks
   match stored { | BookmarksIntact(b) => true | _ => false }
 }
-pure def canSetBookmark(s: NativeBrowserStore, ticket: int, address: WebAddress, keep: bool): bool =
+pure def canSetBookmark(s: NativeBrowserStore, ticket: int, address: WebAddress, keep: bool, title: TitleChange): bool =
   owns(s, ticket) and bookmarkAddress(address) and bookmarksIntact(s) and
-    changeBookmarks(bookmarkUrls(s), address.href, keep).length() <= maxBookmarks
-pure def setBookmark(s: NativeBrowserStore, ticket: int, address: WebAddress, keep: bool, committed: bool): NativeBrowserStore =
+    changeBookmarks(savedMarks(s), address.href, keep, title).length() <= maxBookmarks
+pure def setBookmark(s: NativeBrowserStore, ticket: int, address: WebAddress, keep: bool, title: TitleChange, committed: bool): NativeBrowserStore =
   { ...s, session: ticket,
-    bookmarks: if (committed) BookmarksIntact({ urls: changeBookmarks(bookmarkUrls(s), address.href, keep) }) else s.bookmarks }
-pure def alwaysBookmarksWithinLimit(s: NativeBrowserStore): bool = bookmarkUrls(s).length() <= maxBookmarks
-pure def sometimesBookmarkKept(s: NativeBrowserStore): bool = bookmarkUrls(s).length() > 0
+    bookmarks: if (committed) BookmarksIntact({ marks: changeBookmarks(savedMarks(s), address.href, keep, title) }) else s.bookmarks }
+pure val titleValues: Set[TitleChange] = List(KeepTitle, NewTitle({ text: "" }), NewTitle({ text: "Garden" })).foldl(Set(), (acc, t) => acc.union(Set(t)))
+pure def alwaysBookmarksWithinLimit(s: NativeBrowserStore): bool = savedMarks(s).length() <= maxBookmarks
+pure def sometimesBookmarkKept(s: NativeBrowserStore): bool = savedMarks(s).length() > 0
+```
+
+### A bookmark keeps the title last saved with it until a new one replaces it, a blank one removes it, or the bookmark is removed
+
+The phone saves a page's name with its bookmark. The host stores a title in
+its stored form: control characters become spaces, surrounding whitespace
+is trimmed, and at most 300 units are kept without splitting a surrogate
+pair; a title that is then empty is no title. A change that names no title
+keeps the one the address has, so a caller that never names titles leaves
+them as they were. The title is sealed in the same record as its address,
+and a row without a title is written as the bare address, so a record
+written before titles reads back unchanged, with no titles.
+
+```quint
+pure val noMark: Mark = { href: "", title: "" }
+pure val marksValues: Set[List[Mark]] = List(
+  List(),
+  List({ href: "https://example.test/", title: "Garden" }),
+  List({ href: "https://other.test/", title: "" }, { href: "https://example.test/", title: "Porch" })
+).foldl(Set(), (acc, m) => acc.union(Set(m)))
+pure val hrefValues = Set("https://example.test/", "https://new.test/")
+pure def lawUnnamedChangeKeepsTitle(marks: List[Mark], href: str): bool =
+  changeBookmarks(marks, href, true, KeepTitle).nthOr(0, noMark).title == titleOf(marks, href)
+pure def lawNamedChangeReplacesTitle(marks: List[Mark], href: str, title: TitleChange): bool =
+  title != KeepTitle implies changeBookmarks(marks, href, true, title).nthOr(0, noMark).title == titleAfter("", title)
+pure def lawRemovedBookmarkForgetsTitle(marks: List[Mark], href: str, title: TitleChange): bool =
+  titleOf(changeBookmarks(marks, href, false, title), href) == ""
+pure def sometimesBookmarkTitled(s: NativeBrowserStore): bool = savedMarks(s).some(m => m.title != "")
 ```
 
 ## Story: Clear my browsing data for good

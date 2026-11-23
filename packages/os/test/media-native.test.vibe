@@ -1,4 +1,4 @@
-// spec/os/android/media/trash.md, "Story: Delete only the trash I confirmed"; spec/os/android/media/catalog.md, "Story: Page my photos without repeats"; spec/os/android/media/editCopy.md, "Story: Save an edited copy exactly once"; spec/os/android/files/documentGrants.md, "Story: Keep only the documents I selected"
+// spec/os/android/media/trash.md, "Story: Delete only the trash I confirmed"; spec/os/android/media/catalog.md, "Story: Page my photos without repeats"; spec/os/android/media/editCopy.md, "Story: Save an edited copy exactly once"; spec/os/android/files/documentGrants.md, "Story: Keep only the documents I selected"; spec/os/browser/tabHost/storage.md, "Story: Keep my bookmarks whole"
 import { assert, it } from "@effect/vitest"
 
 module node {
@@ -7,13 +7,14 @@ module node {
   import { orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
 
   export type Check =
-    | "TrashDeleteRequestTest" | "PermittedMediaTest" | "PhotoCropTest" | "SelectedDocumentsTest" | "PhotoLibraryAccessTest"
-    | "OwnedMediaTest" | "RecordingStoreTest" | "FolderSessionTest" | "DocumentExportTest" | "OwnedCapturesTest"
+    | "media.TrashDeleteRequestTest" | "media.PermittedMediaTest" | "media.PhotoCropTest" | "media.SelectedDocumentsTest"
+    | "media.PhotoLibraryAccessTest" | "media.OwnedMediaTest" | "media.RecordingStoreTest" | "media.FolderSessionTest"
+    | "media.DocumentExportTest" | "media.OwnedCapturesTest" | "browsersurface.BrowserBookmarkRecordTest"
 
   const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
 
   export async function passed(check: Check): Promise<number> {
-    const main = `ai.eliza.plugins.media.${check}`
+    const main = `ai.eliza.plugins.${check}`
     const answer = execFileSync(java, ["-cp", await orgJsonAdapterClasspath(main), main], { encoding: "utf8", timeout: 120_000 })
     const count = /^(\d+) [\w ]*passed|checks: (\d+)/m.exec(answer)
     if (count === null) throw new Error(`${check} reported no passed checks: ${answer}`)
@@ -28,41 +29,45 @@ effect function checked(check: Check) {
 }
 
 it.effect('A trash removal names its exact rows, or everything only on an explicit intent (spec/os/android/media/trash.md, "Preparing snapshots exactly the trashed rows asked for and writes nothing")', effect () => {
-  try checked("TrashDeleteRequestTest")
+  try checked("media.TrashDeleteRequestTest")
 }, 180_000)
 
 it.effect('Library identities are volume-qualified and kind-specific, and a video copy keeps its range, geometry and host placement (spec/os/android/media/catalog.md, "A query applies the catalog\'s filters and provider bounds"; spec/os/android/media/editCopy.md, "Only the active editor\'s unchanged source and a new changed edit reserve a copy")', effect () => {
-  try checked("PermittedMediaTest")
+  try checked("media.PermittedMediaTest")
 }, 180_000)
 
 it.effect('A photo crop keeps the fixed centered crop or the chosen rectangle and its stored identity tells them apart (spec/os/android/media/photoReplace.md, "An operation stays bound to the edit it first reserved")', effect () => {
-  try checked("PhotoCropTest")
+  try checked("media.PhotoCropTest")
 }, 180_000)
 
 it.effect('A selected copy is exact, document bytes agree with their type, and a grant stays while a saved item names it (spec/os/android/files/documentGrants.md, "Forgetting gives back the exact grant only when no selection and no note still name the document"; spec/os/android/media/isolatedPdf.md, "A selected-document render accepts only the reply to its own request")', effect () => {
-  try checked("SelectedDocumentsTest")
+  try checked("media.SelectedDocumentsTest")
 }, 180_000)
 
 it.effect('The Photos bridge reports scope per kind, maps listings to catalog filters and binds reviewed selections to exact ids and revisions (spec/os/android/media/catalog.md, "A query applies the catalog\'s filters and provider bounds"; spec/os/android/media/review.md, "A review admits only one valid selection at a time"; spec/os/android/media/trash.md, "A batch names 1 to 20 distinct items and reports each one in its order")', effect () => {
-  try checked("PhotoLibraryAccessTest")
+  try checked("media.PhotoLibraryAccessTest")
 }, 180_000)
 
 it.effect('Owned media keeps host placement, bounded filter math and exact readback (spec/os/android/media/editCopy.md, "A copy reaches the library only after its bytes and source agree")', effect () => {
-  try checked("OwnedMediaTest")
+  try checked("media.OwnedMediaTest")
 }, 180_000)
 
 it.effect('A recording is saved only on a committed receipt, and its owner fences, trash window and legacy migration hold (spec/os/android/camera.md, "A recording is confirmed only by a complete bridge receipt that the host read back")', effect () => {
-  try checked("RecordingStoreTest")
+  try checked("media.RecordingStoreTest")
 }, 180_000)
 
 it.effect('A folder session stays bounded, evicts outside the listed chain and continues a page only from its own cursor (spec/os/android/files/documentGrants.md, "A rename rebinds the same selection to the provider\'s returned document only while access allows"; spec/os/android/files/documentGrants.md, "The registry never holds more than 32 selections, and a new pick evicts the oldest")', effect () => {
-  try checked("FolderSessionTest")
+  try checked("media.FolderSessionTest")
 }, 180_000)
 
 it.effect('An export is verified by exact readback or answered unverified, and PDF pages stay within their bounds (spec/os/android/media/rows.md, "A write whose effect is unknown is unverified, never stale"; spec/os/android/media/isolatedPdf.md, "A worker admits one bounded request at a time and ends itself past its limits")', effect () => {
-  try checked("DocumentExportTest")
+  try checked("media.DocumentExportTest")
 }, 180_000)
 
 it.effect('A capture is admitted only as a bounded JPEG and owned-media selections stay within their own rows (spec/os/android/camera.md, "A capture, a viewfinder control and a recording share one slot"; spec/os/android/media/catalog.md, "A query applies the catalog\'s filters and provider bounds")', effect () => {
-  try checked("OwnedCapturesTest")
+  try checked("media.OwnedCapturesTest")
+}, 180_000)
+
+it.effect('A bookmark record keeps each address with the title last saved with it, reads an earlier record without titles and refuses a damaged one whole (spec/os/browser/tabHost/storage.md, "A bookmark list is read whole, and a damaged record is never replaced"; spec/os/browser/tabHost/storage.md, "A bookmark change moves its address to the front or removes it, keeps at most 100, and is kept only when its commit succeeded"; spec/os/browser/tabHost/storage.md, "A bookmark keeps the title last saved with it until a new one replaces it, a blank one removes it, or the bookmark is removed")', effect () => {
+  try checked("browsersurface.BrowserBookmarkRecordTest")
 }, 180_000)
