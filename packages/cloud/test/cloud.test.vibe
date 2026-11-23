@@ -30,13 +30,13 @@ import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profil
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity-fixture.ts"
-import { connectionColumns, connectionRows, scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
+import { connectionColumns, connectionRows, scopeFor, storeGrant, useGrant, type GoogleCapability, type Owner } from "../src/services/google/grant-access.vibe"
 import { issueSession } from "../src/identity/sessions.vibe"
 import { sealTokens } from "../src/providers/google.vibe"
 import { bearerGrant, googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
 import { gmailReads, mimeBoundaryPayload, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
-import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
+import { draftTexts, gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
 import { leasedCaller, signedCaller } from "./support/caller.vibe"
@@ -2090,8 +2090,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         [missing, missing, missing, missing, missing, missing, missing, ["send"]],
       ],
       advertised: [
-        [["triage", "capabilities"], false],
-        [["triage", "search", "read", "thread", "attachment", "capabilities"], false],
+        [["triage", "contacts", "capabilities"], false],
+        [["triage", "search", "read", "thread", "attachment", "contacts", "capabilities"], false],
         [["drafts", "draft", "capabilities"], false],
         [["capabilities"], false],
       ],
@@ -2150,7 +2150,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
           ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
         oversized: [413, "content_too_large"],
-        capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"],
+        capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "contacts", "capabilities"],
           kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 }, providerExactlyOnce: false }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
         thread: [200, "1001", 1, ["Please review the plan."]],
@@ -2248,6 +2248,87 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       }
     ))
   }))
+  it.live("Permanently delete a message only when I confirm the purge Grace staged, never with the device key (spec/cloud/services/google/mailOperations.md, \"A permanent delete is dispatched only with the person's confirmation of the staged purge\"; spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\")", () => scoped(effect {
+    const { mailbox, switches, operation, gmail, grantId, deviceKey } = try mailOperationSetup("ops-purge", ["google.gmail.purge"])
+    const requestId = "4e5f6071-8293-4dae-8f20-3b4c5d6e7f80"
+    const proposal = { kind: "purge", messageId: "msg-plan", expectedHistoryId: "1001", confirmPermanentDelete: true }
+    const capabilities = try gmail("GET", `/inbox-v1/capabilities?grantId=${grantId}`)
+    const agent = try gmail("POST", "/inbox-v1/operations", { grantId, requestId, proposal }, deviceKey)
+    const unconfirmedShape = try operation("", { grantId, requestId, proposal: { kind: "purge", messageId: "msg-plan", expectedHistoryId: "1001" } })
+    const staged = try operation("", { grantId, requestId, proposal })
+    const again = try operation("", { grantId, requestId, proposal })
+    const { receipt, confirmation } = staged.body as OperationAnswer & { readonly confirmation: string }
+    const withoutToken = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: receipt.reviewDigest, proposal })
+    const otherToken = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: receipt.reviewDigest, proposal, confirmation: "0".repeat(64) })
+    const confirmed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: receipt.reviewDigest, proposal, confirmation })
+    const replayed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: receipt.reviewDigest, proposal })
+    const offered = capabilities.body as { readonly kinds: ReadonlyArray<string>; readonly reads: ReadonlyArray<string> }
+    try check(() => assert.deepStrictEqual(
+      {
+        offered: [offered.kinds.includes("purge"), offered.reads.includes("contacts")],
+        agent: [...errorOf(agent), (agent.body as { readonly reason?: string }).reason],
+        unconfirmedShape: errorOf(unconfirmedShape),
+        staged: [staged.status, receiptOf(staged), (staged.body as OperationAnswer).review, /^[0-9a-f]{64}$/.test(confirmation)],
+        again: (again.body as { readonly confirmation?: string }).confirmation === confirmation,
+        withoutToken: errorOf(withoutToken),
+        otherToken: errorOf(otherToken),
+        confirmed: [confirmed.status, receiptOf(confirmed), (confirmed.body as OperationAnswer).receipt.providerResult],
+        replayed: [replayed.status, receiptOf(replayed)],
+        mailbox: [mailbox.messages.has("msg-plan"), switches.calls.filter((call) => call.method === "DELETE" && call.path === "/messages/msg-plan").length]
+      },
+      {
+        offered: [true, true],
+        agent: [403, "access_denied", "device_key_not_allowed"],
+        unconfirmedShape: [400, "invalid_request"],
+        staged: [200, ["purge", "prepared", null, false, false], { kind: "purge", messageId: "msg-plan", expectedHistoryId: "1001", from: "ops-ops-purge@example.com", permanent: true }, true],
+        again: true,
+        withoutToken: [403, "access_denied"],
+        otherToken: [403, "access_denied"],
+        confirmed: [200, ["purge", "succeeded", null, true, true], { messageId: "msg-plan", purged: true }],
+        replayed: [200, ["purge", "succeeded", null, true, true]],
+        mailbox: [false, 1]
+      }
+    ))
+  }))
+
+  it.live("Write to Ada found among my contacts, keep the email as one draft under the tablet's id though a save is repeated, then discard it (spec/cloud/services/google/mailOperations.md, \"Story: Keep the email I am writing as one draft under the tablet's name for it\"; spec/cloud/services/google/mailRead.md, \"Contacts are the named addresses of recent sent and received mail, each address once, those matching the query\")", () => scoped(effect {
+    const { mailbox, gmail, grantId, deviceKey } = try mailOperationSetup("ops-drafts", ["google.gmail.triage", "google.gmail.drafts"])
+    const found = try gmail("GET", `/contacts?grantId=${grantId}&query=ADA`)
+    const everyone = try gmail("GET", `/contacts?grantId=${grantId}`)
+    const tooLong = try gmail("GET", `/contacts?grantId=${grantId}&query=${"a".repeat(201)}`)
+    const ada = (found.body as { readonly contacts: ReadonlyArray<{ readonly name: string; readonly email: string }> }).contacts[0]
+    const draftId = "tablet draft/7"
+    const draft = (bodyText: string) => ({ grantId, draftId, to: [ada?.email ?? ""], cc: [], bcc: [], subject: "Lunch", bodyText, attachments: [{ name: "menu.txt", mimeType: "text/plain", dataBase64: btoa("Soup") }] })
+    const first = try gmail("POST", "/drafts", draft("Are you free?"))
+    const repeated = try gmail("POST", "/drafts", draft("Are you free on Friday?"))
+    const held = try Effect.try(() => draftTexts(mailbox))
+    const stored = held[0] ?? ""
+    const agent = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}?grantId=${grantId}`, undefined, deviceKey)
+    const discarded = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}?grantId=${grantId}`)
+    const gone = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}?grantId=${grantId}`)
+    try check(() => assert.deepStrictEqual(
+      {
+        found: [found.status, (found.body as { readonly contacts: unknown }).contacts],
+        everyone: (everyone.body as { readonly contacts: ReadonlyArray<{ readonly email: string }> }).contacts.map((contact) => contact.email),
+        tooLong: errorOf(tooLong),
+        saved: [first.status, first.body, repeated.status, repeated.body],
+        held: [held.length, stored.includes(`Message-ID: <eliza-draft-${sha256Hex(draftId)}@message.invalid>`), stored.includes(btoa("Are you free on Friday?")), stored.includes("filename*=UTF-8''menu.txt")],
+        agent: [...errorOf(agent), (agent.body as { readonly reason?: string }).reason],
+        discarded: [discarded.status, discarded.body, mailbox.drafts.size],
+        gone: errorOf(gone)
+      },
+      {
+        found: [200, [{ name: "Ada", email: "ada@example.org" }]],
+        everyone: ["ada@example.org"],
+        tooLong: [400, "invalid_request"],
+        saved: [200, { draftId }, 200, { draftId }],
+        held: [1, true, true, true],
+        agent: [403, "access_denied", "device_key_not_allowed"],
+        discarded: [200, { ok: true }, 0],
+        gone: [404, "not_found"]
+      }
+    ))
+  }))
 })
 
 type OperationAnswer = {
@@ -2266,7 +2347,7 @@ function errorOf(answer: { readonly status: number; readonly body: unknown }): R
   return [answer.status, (answer.body as { readonly error?: string }).error]
 }
 
-effect function mailOperationSetup(name: string) {
+effect function mailOperationSetup(name: string, capabilities: ReadonlyArray<GoogleCapability> = ["google.gmail.manage", "google.gmail.send"]) {
   const google = try Effect.try(() => googleFakeState())
   const now = try Clock.currentTimeMillis
   const mailbox = try Effect.try(() => readableMailbox([{
@@ -2280,15 +2361,18 @@ effect function mailOperationSetup(name: string) {
     fakes.mount("/google/api/", gmailReads(mailbox))
     fakes.mount("/google/api/", gmailChanges(mailbox, switches))
   } })
-  const token = (try leasedCaller(cloud, name)).bearer
+  const tablet = try leasedCaller(cloud, name)
+  const token = tablet.bearer
   const owner: Owner = { organizationId: `org-${name}`, userId: `user-${name}` }
   const grantId = `ops-${name}`
-  const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.manage"), ...scopeFor("google.gmail.send")]
+  const scopes = [...scopeFor("google.basic_identity"), ...capabilities.flatMap(scopeFor)]
   const refreshToken = try Effect.try(() => seedGrant(google, { subject: `subject-${grantId}`, email: `${grantId}@example.com`, scopes }))
   try cloud.inside(linkedGrant(cloud, owner, grantId, refreshToken, scopes, now - 1000))
   const headers = { authorization: `Bearer ${token}` }
   const operation = (path: string, json?: unknown) => cloud.call(`/api/v1/eliza/google/gmail/inbox-v1/operations${path}`, json === undefined ? { headers } : { method: "POST", headers, json })
-  return { mailbox, switches, operation, grantId }
+  const gmail = (method: "GET" | "POST" | "DELETE", path: string, json?: unknown, key = token) =>
+    cloud.call(`/api/v1/eliza/google/gmail${path}`, { method, headers: { authorization: `Bearer ${key}` }, ...(json === undefined ? {} : { json }) })
+  return { mailbox, switches, operation, gmail, grantId, deviceKey: tablet.deviceKey }
 }
 
 effect function grantRefusal<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {

@@ -20,6 +20,7 @@ export type GoogleCapability =
   | "google.gmail.manage"
   | "google.gmail.drafts"
   | "google.gmail.mailbox"
+  | "google.gmail.purge"
   | "google.calendar.read"
   | "google.calendar.write"
 
@@ -62,6 +63,7 @@ const kindOf: Readonly<Record<GoogleCapability, CapabilityKind>> = {
   "google.gmail.manage": "GmailManage",
   "google.gmail.drafts": "GmailDrafts",
   "google.gmail.mailbox": "GmailMailbox",
+  "google.gmail.purge": "GmailPurge",
   "google.calendar.read": "CalendarRead",
   "google.calendar.write": "CalendarWrite"
 }
@@ -78,7 +80,8 @@ const scopeNames: Readonly<Record<GoogleScope, string>> = {
   ScopeGmailReadonly: `${auth}gmail.readonly`,
   ScopeGmailCompose: `${auth}gmail.compose`,
   ScopeGmailModify: `${auth}gmail.modify`,
-  ScopeGmailSend: `${auth}gmail.send`
+  ScopeGmailSend: `${auth}gmail.send`,
+  ScopeGmailFull: "https://mail.google.com/"
 }
 
 export const googleCapabilities = Object.keys(kindOf) as ReadonlyArray<GoogleCapability>

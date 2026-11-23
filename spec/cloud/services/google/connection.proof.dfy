@@ -48,11 +48,16 @@ lemma lawStrongerAccessImpliesWeaker_ensures(scopes: seq<GoogleScope>)
   CapabilityMembership(scopes, GmailMailbox);
   CapabilityMembership(scopes, GmailTriage);
   CapabilityMembership(scopes, GmailDrafts);
+  CapabilityMembership(scopes, GmailSend);
+  CapabilityMembership(scopes, GmailPurge);
   if grantsCapability(scopes, CalendarWrite) {
     assert ScopeCalendarEvents in scopes || ScopeCalendar in scopes;
   }
   if grantsCapability(scopes, GmailMailbox) {
-    assert ScopeGmailModify in scopes;
+    assert ScopeGmailModify in scopes || ScopeGmailFull in scopes;
+  }
+  if grantsCapability(scopes, GmailPurge) {
+    assert ScopeGmailFull in scopes;
   }
 }
 
