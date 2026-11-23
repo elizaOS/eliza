@@ -10,16 +10,20 @@ it.effect('Recognize current Calendar words and keep other records out (spec/cal
   try Effect.try(() => assert.deepStrictEqual([
     calendarEventRequest("Please add a dentist appointment tomorrow."),
     calendarEventRequest("Move the roadshow to 4pm."),
+    calendarEventRequest("Push the standup back to 5pm."),
     calendarEventRequest("Delete the calendar event migration planning."),
     calendarEventRequest("删除牙医预约"),
     calendarEventRequest("歯医者を削除して"),
     calendarEventRequest("치과를 삭제해줘"),
     calendarEventRequest("Move the note migration planning to 4pm."),
     calendarEventRequest("Move it to 4pm."),
+    calendarEventRequest("Push it back to 5pm."),
+    calendarEventRequest("Can you push that back to 4pm?"),
+    calendarEventRequest("Move it up to 2pm."),
     calendarEventRequest("Add a meeting in the calendar app on this phone."),
     calendarEventRequest("Delete the meeting notes."),
-  ], ["CreateEventIntent", "UpdateEventIntent", "DeleteEventIntent", "DeleteEventIntent", "DeleteEventIntent", "DeleteEventIntent",
-    "NoEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent"]))
+  ], ["CreateEventIntent", "UpdateEventIntent", "UpdateEventIntent", "DeleteEventIntent", "DeleteEventIntent", "DeleteEventIntent", "DeleteEventIntent",
+    "NoEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent"]))
   try Effect.try(() => assert.deepStrictEqual([
     calendarAvailabilityRequest("Am I free tomorrow morning and set a 20-minute timer?"),
     calendarAvailabilityRequest("Do I have 20 minutes tomorrow morning?"),
