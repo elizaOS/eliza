@@ -1,6 +1,6 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
-import { Refused, generateText, listModels, registerTwice, type Binding } from "./chat.vibe"
+import { Refused, describeImage, generateText, listModels, registerTwice, type Binding } from "./chat.vibe"
 
 /** The own-key endpoint and the two model ids the launch named for it. */
 export interface OwnKeyModels {
@@ -9,12 +9,13 @@ export interface OwnKeyModels {
   readonly large: string
 }
 
-/** Registers the own-key text handlers for the launch's OpenAI-compatible endpoint. */
+/** Registers the own-key text and image description handlers for the launch's OpenAI-compatible endpoint, describing images with the large model. */
 export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, own: OwnKeyModels): void {
-  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large }, maxTokensField: "max_completion_tokens" } as const
+  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large, ImageDescription: own.large }, maxTokensField: "max_completion_tokens" } as const
   registerTwice(runtime, "@elizaos/agent/own-key", {
     [ModelType.TEXT_SMALL]: generateText(binding, endpoint, "TextSmall"),
     [ModelType.TEXT_LARGE]: generateText(binding, endpoint, "TextLarge"),
+    [ModelType.IMAGE_DESCRIPTION]: describeImage(binding, endpoint),
   }, { streamable: true })
 }
 

@@ -269,6 +269,23 @@ module edge {
 }
 import { run } from edge
 
+module calls {
+  import { randomUUID } from "node:crypto"
+  import { MODEL_PROVIDER_ATTEMPTS } from "@elizaos/core"
+
+  const keys = new WeakMap<object, string>()
+
+  /** @throws {never} */
+  export function callKeyOf(params: object): string {
+    const attempts: unknown = (params as { [MODEL_PROVIDER_ATTEMPTS]?: unknown })[MODEL_PROVIDER_ATTEMPTS]
+    if (typeof attempts !== "object" || attempts === null) return randomUUID()
+    const kept = keys.get(attempts) ?? randomUUID()
+    keys.set(attempts, kept)
+    return kept
+  }
+}
+import { callKeyOf } from calls
+
 function refusalOf(cloud: CloudFailure): ModelRefusal {
   const failure = failureOf(cloud, 0)
   const failureKind = failureKindName(failure)
@@ -385,11 +402,11 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
   return try answered({ text, toolCalls, finishReason, usage, reasoning }, ask)
 }
 
-effect function send(url: string, credential: Redacted.Redacted<string>, body: object | undefined, sink: Sink, ask: ChatAsk) {
+effect function send(url: string, credential: Redacted.Redacted<string>, callKey: string, body: object | undefined, sink: Sink, ask: ChatAsk) {
   if (body === undefined) throw providerIssue()
   const encoded = try Effect.try({ try: () => JSON.stringify(body), catch: () => providerIssue() })
-  const request = HttpClientRequest.bodyText(HttpClientRequest.setHeader(
-    HttpClientRequest.post(url), "authorization", "Bearer " + Redacted.value(credential),
+  const request = HttpClientRequest.bodyText(HttpClientRequest.setHeaders(
+    HttpClientRequest.post(url), { authorization: "Bearer " + Redacted.value(credential), "idempotency-key": callKey },
   ), encoded, "application/json")
   const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" })
   const result = timeout(response, "90 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
@@ -410,12 +427,12 @@ effect function send(url: string, credential: Redacted.Redacted<string>, body: o
   }, ask)
 }
 
-effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, fields: object | undefined, sink: Sink, ask: ChatAsk) {
+effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, callKey: string, fields: object | undefined, sink: Sink, ask: ChatAsk) {
   const began = try Clock.currentTimeMillis
   const started = try binding.startCall(handler, began)
   if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil })
   const body = fields === undefined ? undefined : { model: endpoint.models[handler], stream: sink.stream === true, ...fields }
-  const answer = send(endpoint.url, binding.credential(), body, sink, ask) catch effect (failure) => {
+  const answer = send(endpoint.url, binding.credential(), callKey, body, sink, ask) catch effect (failure) => {
     if (!(failure instanceof Refused)) throw failure
     const refused = try Clock.currentTimeMillis
     try binding.refuseCall(started, refused, failure.cloud)
@@ -426,7 +443,7 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
   return answer
 }
 
-function requestOf(endpoint: Endpoint, params: GenerateTextParams): object | undefined {
+function requestOf(endpoint: Endpoint, agentId: string, params: GenerateTextParams): object | undefined {
   const messages = conversation(params)
   if (messages === undefined) return undefined
   const max = params.omitMaxTokens ? undefined : params.maxTokens
@@ -445,6 +462,7 @@ function requestOf(endpoint: Endpoint, params: GenerateTextParams): object | und
     ...(tools === undefined ? {} : { tools }),
     ...(toolChoice === undefined || tools === undefined ? {} : { tool_choice: toolChoice }),
     ...(format === undefined ? {} : { response_format: format }),
+    prompt_cache_key: agentId,
   }
 }
 
@@ -470,8 +488,8 @@ function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProvi
 
 /** Serves a text handler: the reply text, or one result with tool calls, finish reason and token use when the call offers tools or asks for a schema. */
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
-  return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
-    Effect.provide(Effect.map(serve(binding, handler, endpoint, requestOf(endpoint, params), params, askOf(params)), returned), FetchHttpClient.layer),
+  return (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
+    Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, runtime.agentId, params), params, askOf(params)), returned), FetchHttpClient.layer),
     params.signal,
   )
 }
@@ -482,7 +500,7 @@ export function describeImage(binding: Binding, endpoint: Endpoint) {
     const input = typeof params === "string" ? { imageUrl: params } : params
     const messages = description(input.prompt ?? "Please analyze this image and provide a title and detailed description.", input.imageUrl)
     return run(
-      Effect.provide(Effect.map(serve(binding, "ImageDescription", endpoint, { messages }, typeof params === "string" ? {} : params, textAsk),
+      Effect.provide(Effect.map(serve(binding, "ImageDescription", endpoint, callKeyOf(input), { messages }, typeof params === "string" ? {} : params, textAsk),
         ({ reply }) => ({ title: titleOf(reply.text), description: reply.text })), FetchHttpClient.layer),
       typeof params === "string" ? undefined : params.signal,
     )
