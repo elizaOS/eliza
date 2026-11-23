@@ -194,9 +194,8 @@ export function statedYearCreate(fields: CalendarEventFields, text: string, now:
     return parts === undefined ? instant : buildUtcDateFromLocalParts(zone, { ...parts, year: parts.year + years })?.toISOString() ?? instant
   }
   const startAt = move(fields.startAt)
-  if (start !== undefined && years !== 0) {
-    const shifted = getZonedDateParts(new Date(startAt), zone)
-    if (shifted?.year !== start.year + years || shifted.month !== start.month || shifted.day !== start.day) return undefined
+  if (start !== undefined && years !== 0 && !sameParts(getZonedDateParts(new Date(startAt), zone), { ...start, year: start.year + years })) {
+    return undefined
   }
   return { fields: { ...fields, startAt, endAt: new Date(Date.parse(startAt) + Date.parse(fields.endAt) - Date.parse(fields.startAt)).toISOString() }, move }
 }

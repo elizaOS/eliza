@@ -409,7 +409,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
       })
       if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return failed(subaction, "A new event needs a title and a start before its end.")
       const timed = statedYearCreate(fields.value, askTextOf(ask), new Date(now))
-      if (timed === undefined) return failed(subaction, "That date doesn't exist in the year you named.")
+      if (timed === undefined) return failed(subaction, "That start time doesn't exist in the requested year and time zone.")
       const { fields: asked, move } = timed
       const recurrence = parameters.repeat === undefined ? Option.some(null) : decodeRecurrence({ rule: parameters.repeat,
         ...(parameters.repeatUntil === undefined ? {} : { until: move(canonical(parameters.repeatUntil)) }),
