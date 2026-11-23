@@ -176,6 +176,7 @@ import {
 import {
   replyClaimsInProgressWork,
   replyIsClaimSafeAcknowledgment,
+  requestIsInstruction,
 } from "./side-effect-claims.ts";
 import {
   getSourceReplyRendering,
@@ -1052,13 +1053,15 @@ export async function runV5MessageRuntimeStage1(
       // keeps the model's forward-looking wording; the durable early reply
       // stays whole-reply progress. Answer-like text (including progress plus
       // an answer) waits for the normal grounded final path. Never fabricate a
-      // substitute.
+      // substitute. Bare assent ("Sure.") agrees only to an instruction; on
+      // a question it would be heard as the answer.
+      const request = getUserMessageText(args.message);
       if (
-        !(
-          args.onPlanningAcknowledgment
-            ? replyIsClaimSafeAcknowledgment
-            : replyClaimsInProgressWork
-        )(earlyReplyText)
+        !(args.onPlanningAcknowledgment
+          ? replyIsClaimSafeAcknowledgment(earlyReplyText, {
+              assent: requestIsInstruction(request),
+            })
+          : replyClaimsInProgressWork(earlyReplyText))
       )
         earlyReplyText = "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
@@ -1069,7 +1072,7 @@ export async function runV5MessageRuntimeStage1(
         },
         pendingWork: prePatchStageOneReplyEffectStatus === "pending",
         providers: args.state.data.providers,
-        request: getUserMessageText(args.message),
+        request,
         contexts: selectedContexts,
         reply: earlyReplyText,
         actionResults: [],

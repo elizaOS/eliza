@@ -30,6 +30,7 @@ async function ownerModelAcknowledgment(
     changeAudienceBeforeAcknowledgment = false,
     abortDuringRevalidation = false,
     acknowledgment = "Let me check.",
+    request = undefined as string | undefined,
     toolCategories = [] as string[],
     toolName = "LOOKUP",
     stage1Contexts = ["general"] as string[],
@@ -326,13 +327,15 @@ async function ownerModelAcknowledgment(
     agentId: runtime.agentId,
     roomId: ROOM_ID,
     content: {
-      text: contextRead
-        ? requestSilence || !acknowledgment
-          ? "Open Calendar and look up this week without saying anything or acknowledging it."
-          : "Open Calendar and look up this week."
-        : acknowledgment
-          ? "Look up this week."
-          : "Look up this week without saying anything or acknowledging it.",
+      text: request
+        ? request
+        : contextRead
+          ? requestSilence || !acknowledgment
+            ? "Open Calendar and look up this week without saying anything or acknowledging it."
+            : "Open Calendar and look up this week."
+          : acknowledgment
+            ? "Look up this week."
+            : "Look up this week without saying anything or acknowledging it.",
       source: "client_chat",
       channelType: ChannelType.DM,
     },
@@ -456,6 +459,35 @@ describe("awaited owner model acknowledgments", () => {
     "keeps a completion or result claim out of early progress: %s",
     async (acknowledgment) => {
       const result = await ownerModelAcknowledgment(true, { acknowledgment });
+      expect(result.acknowledgments).toEqual([]);
+      expect(result.events).toEqual(["tool"]);
+    },
+  );
+
+  it.each(["Sure.", "Sure, one sec.", "Yeah, one sec."])(
+    "speaks assent before the work of an instruction: %s",
+    async (acknowledgment) => {
+      const result = await ownerModelAcknowledgment(true, {
+        acknowledgment,
+        request: "Text Sam that I'm running late",
+      });
+      expect(result.acknowledgments).toEqual([acknowledgment]);
+      expect(result.events).toEqual(["ack-start", "ack-end", "tool"]);
+    },
+  );
+
+  it.each([
+    ["Sure.", "Am I free Friday"],
+    ["Sure.", "Is the dentist on my calendar?"],
+    ["Sure, one sec.", "Can you text Sam that I'm running late"],
+    ["Yeah.", "Hey, what's on my calendar today"],
+  ])(
+    "keeps assent that would answer a question out of early progress: %s for %s",
+    async (acknowledgment, request) => {
+      const result = await ownerModelAcknowledgment(true, {
+        acknowledgment,
+        request,
+      });
       expect(result.acknowledgments).toEqual([]);
       expect(result.events).toEqual(["tool"]);
     },

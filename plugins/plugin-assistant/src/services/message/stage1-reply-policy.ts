@@ -55,14 +55,25 @@ export const PROGRESS_ONLY_REPLY_REGEX = new RegExp(
   `^(?:${PROGRESS_ONLY_REPLY_OPENERS_PATTERN})\\b`,
 );
 
-export function looksLikeProgressOnlyReply(replyText: string): boolean {
+/**
+ * True when the reply only acknowledges or reports progress. Bare assent
+ * ("Sure.", "Yeah.") counts unless `bareAssent` is false: a caller that knows
+ * the reply was declared a complete answer passes false, since there "Sure."
+ * is a yes. Assent before more progress ("Sure, one sec.") always counts.
+ */
+export function looksLikeProgressOnlyReply(
+  replyText: string,
+  { bareAssent = true }: { bareAssent?: boolean } = {},
+): boolean {
   const normalized = replyText.trim().toLowerCase();
   if (!normalized) return false;
   if (PLANNING_ACK_REPLIES.has(normalized)) return true;
   // Whatever the acknowledgment grammar would speak before a tool runs is an
-  // ack here too ("One sec.", "On it, let me check your calendar."). The
-  // grammar is a closed list, so no answer passes it.
-  if (replyIsClaimSafeAcknowledgment(replyText)) return true;
+  // ack here too ("One sec.", "On it, let me check your calendar.", and for
+  // an instruction "Sure."). The grammar is a closed list, so no answer
+  // passes it.
+  if (replyIsClaimSafeAcknowledgment(replyText, { assent: bareAssent }))
+    return true;
   return PROGRESS_ONLY_REPLY_REGEX.test(normalized);
 }
 
@@ -424,7 +435,13 @@ export function shouldSuppressInferredCandidateEscalation(args: {
   // ack as the whole turn with nothing behind it (the ack-rescue paths only
   // cover shell/web/coding, never views). Only a genuinely answer-shaped
   // replyText qualifies the turn as "already answered".
-  if (looksLikeProgressOnlyReply(args.stageOneReplyText)) return false;
+  // Bare "Sure." acknowledges only pending work; a declared answer's is a yes.
+  if (
+    looksLikeProgressOnlyReply(args.stageOneReplyText, {
+      bareAssent: args.stageOneReplyEffectStatus === "pending",
+    })
+  )
+    return false;
   return !args.stageOneContexts.some(
     (context) => context.trim().toLowerCase() !== SIMPLE_CONTEXT_ID,
   );

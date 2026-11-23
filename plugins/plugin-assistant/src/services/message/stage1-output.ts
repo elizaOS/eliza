@@ -698,7 +698,8 @@ export function messageHandlerFromFieldResult(
     candidateActions.length === 0 &&
     runnableCandidateActions.length === 0 &&
     replyTextRaw.trim().length > 0 &&
-    !looksLikeProgressOnlyReply(replyTextRaw);
+    // A declared answer's bare "Sure." is a yes, not an acknowledgement.
+    !looksLikeProgressOnlyReply(replyTextRaw, { bareAssent: false });
   const shouldPlan =
     !preemptDirect &&
     requestedPlanning &&

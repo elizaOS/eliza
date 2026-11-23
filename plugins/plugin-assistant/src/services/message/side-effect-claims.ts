@@ -927,8 +927,12 @@ const ACKNOWLEDGMENT_DATA_TOKEN =
 // Friday?"), "okay", "ok" and "alright" say it is fine, "no problem" says
 // nothing is wrong, "got it" says it arrived and "good question" gives an
 // opinion. "Hang tight" and "hang on" advise waiting ("Should I leave now?")
-// and "will do" agrees ("Will you...?"). Only "Sure!" is read, and only to
-// open a reply whose next sentence names the work after a lead.
+// and "will do" agrees ("Will you...?"). "Sure" and "yeah" say yes too, so
+// they are read alone or before more acknowledgement only when the caller
+// knows the request was an instruction ("Text Sam I'm late."), never a
+// question. Otherwise only "Sure!" is read, and only to open a reply whose
+// next sentence names the work after a lead.
+const ACKNOWLEDGMENT_ASSENT = /^(?:sure|yeah)(?:$|, |[.!…]+ | ?[—–:;] ?| - )/u;
 const ACKNOWLEDGMENT_WAIT_CUE =
   "(?:on it|(?:one|just a) (?:sec|second|moment))";
 // Owner-bound containers or a relative-day scope exist regardless of lookup
@@ -1031,6 +1035,192 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
   "u",
 );
 
+// Words that may come before the request's first word ("hey", "ok so",
+// "please"). A greeting may also be followed by the agent's wake name
+// ("hey alpha text Sam").
+const REQUEST_FILLER = new Set([
+  "hey",
+  "hi",
+  "hello",
+  "ok",
+  "okay",
+  "alright",
+  "so",
+  "please",
+  "oh",
+  "um",
+  "uh",
+  "well",
+  "yo",
+  "and",
+  "also",
+  "but",
+  "then",
+  "now",
+  "actually",
+]);
+const REQUEST_GREETING = new Set(["hey", "hi", "hello", "ok", "okay", "yo"]);
+// Wh-words and auxiliaries open a question even without a question mark,
+// which a voice transcript often drops ("am I free Friday"). Contractions
+// are read with their apostrophes removed ("what's", "don't").
+const REQUEST_QUESTION_OPENER =
+  /^(?:(?:what|when|where|who|whom|whose|why|how|which)(?:s|re|d|ll|ve)?|am|is|are|was|were|do|does|did|can|could|will|would|should|shall|may|might|have|has|had|must|isnt|arent|wasnt|werent|dont|doesnt|didnt|cant|cannot|couldnt|wont|wouldnt|shouldnt|shant|havent|hasnt|hadnt|mustnt|aint)$/u;
+// Verbs that open a command to the assistant. A request that opens any other
+// way ("Any meetings today", "You free Friday", "Weather tomorrow") may be a
+// question with its question mark and auxiliary dropped, so it is not read as
+// an instruction.
+const REQUEST_IMPERATIVE_VERB = new Set([
+  "accept",
+  "add",
+  "answer",
+  "archive",
+  "ask",
+  "block",
+  "book",
+  "bring",
+  "call",
+  "cancel",
+  "capture",
+  "change",
+  "check",
+  "clear",
+  "close",
+  "compose",
+  "copy",
+  "create",
+  "decline",
+  "delete",
+  "dial",
+  "disable",
+  "dismiss",
+  "draft",
+  "edit",
+  "email",
+  "enable",
+  "end",
+  "erase",
+  "find",
+  "flag",
+  "forward",
+  "get",
+  "give",
+  "go",
+  "hang",
+  "invite",
+  "launch",
+  "let",
+  "lets",
+  "list",
+  "locate",
+  "lock",
+  "look",
+  "make",
+  "mark",
+  "message",
+  "move",
+  "mute",
+  "navigate",
+  "note",
+  "open",
+  "order",
+  "pause",
+  "phone",
+  "pin",
+  "play",
+  "post",
+  "pull",
+  "put",
+  "read",
+  "record",
+  "remember",
+  "remind",
+  "remove",
+  "rename",
+  "reply",
+  "reschedule",
+  "respond",
+  "restart",
+  "resume",
+  "ring",
+  "run",
+  "save",
+  "schedule",
+  "search",
+  "send",
+  "set",
+  "share",
+  "show",
+  "silence",
+  "skip",
+  "snap",
+  "snooze",
+  "start",
+  "stop",
+  "switch",
+  "take",
+  "tell",
+  "text",
+  "toggle",
+  "translate",
+  "turn",
+  "unlock",
+  "unmute",
+  "update",
+  "wake",
+  "write",
+]);
+
+function requestClauseWords(clause: string): string[] {
+  return [...clause.matchAll(/[\p{L}'‘’ʼ]+/gu)].map((match) =>
+    match[0].toLowerCase().replace(/['‘’ʼ]/gu, ""),
+  );
+}
+
+/**
+ * True when the user's request reads as an instruction ("Text Sam I'm late",
+ * "Set an alarm for seven"), so a bare "Sure." before the work agrees to do it
+ * rather than answering. The request must open, after lead-ins such as
+ * "hey", "ok", "so", "please" or a name and comma (or a greeting and a wake
+ * name), with a command verb. It is never an instruction when it is empty,
+ * has a question mark, or has any sentence or comma clause that opens with a
+ * wh-word or an auxiliary ("Text Sam. Am I free Friday", "Is, uh, the dentist
+ * on my calendar"). A polite question ("Can you text Sam") is a question
+ * here: "Sure." would answer it before anything is done.
+ */
+export function requestIsInstruction(request: string | undefined): boolean {
+  const text = (request ?? "").trim();
+  if (!text || text.includes("?")) return false;
+  const clauses = text
+    .split(/[.!…;:,\n]+|\s[—–-]+\s/u)
+    .map(requestClauseWords)
+    .filter((words) => words.length > 0);
+  const opening = (words: string[]) => {
+    let index = 0;
+    while (index < words.length && REQUEST_FILLER.has(words[index] ?? ""))
+      index += 1;
+    return index;
+  };
+  if (
+    clauses.some((words) =>
+      REQUEST_QUESTION_OPENER.test(words[opening(words)] ?? ""),
+    )
+  )
+    return false;
+  for (const words of clauses) {
+    const index = opening(words);
+    const first = words[index];
+    if (first === undefined) continue;
+    if (REQUEST_IMPERATIVE_VERB.has(first)) return true;
+    // A lone name or interjection before a comma ("Eliza, add milk").
+    if (index === words.length - 1) continue;
+    const greeted = words
+      .slice(0, index)
+      .some((word) => REQUEST_GREETING.has(word));
+    return greeted && REQUEST_IMPERATIVE_VERB.has(words[index + 1] ?? "");
+  }
+  return false;
+}
+
 /**
  * True when a short model-authored reply may be shown and spoken before
  * pending tools as their acknowledgement. The wording stays the model's own;
@@ -1045,6 +1235,12 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  *   or intent in base form, or an optional "I'm" and a look-up verb's gerund
  *   ("Checking…"), then up to two of now, for you, real quick, quickly.
  * The reply may open with "Sure!" when the sentence after it has a lead.
+ * With `assent` (the request was an instruction, see
+ * {@link requestIsInstruction}), the reply may instead be "Sure" or "Yeah"
+ * alone, or either one and a comma, dash, colon, semicolon or sentence break
+ * before one or two sentences of the above ("Sure, one sec.", "Yeah. Let me
+ * check your calendar."). Without it, bare assent answers a question ("Am I
+ * free Friday?" "Sure.") and is dropped.
  *
  * Look-up verbs and their objects:
  * - check (base form: object optional), look into, dig into: a container
@@ -1083,7 +1279,10 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  * characters, and passes the completed-effect and empty-state detectors.
  * Callers still run the planned-reply egress checks on an accepted one.
  */
-export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
+export function replyIsClaimSafeAcknowledgment(
+  reply: string,
+  options: { assent?: boolean } = {},
+): boolean {
   const text = reply.trim();
   if (!text || text.length > ACKNOWLEDGMENT_MAX_LENGTH) return false;
   if (
@@ -1099,11 +1298,19 @@ export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
     .replace(/[‘’ʼ]/gu, "'")
     .replace(/ ?, ?/gu, ", ")
     .replace(/[.!…]+$/u, "");
-  const assent = words.startsWith("sure! ");
-  const sentences = words.slice(assent ? "sure! ".length : 0).split(/[.!…]+ /u);
+  const instructionAssent = options.assent
+    ? ACKNOWLEDGMENT_ASSENT.exec(words)?.[0]
+    : undefined;
+  const assent =
+    instructionAssent ?? (words.startsWith("sure! ") ? "sure! " : "");
+  const rest = words.slice(assent.length);
+  const sentences = rest ? rest.split(/[.!…]+ /u) : [];
   return (
+    (sentences.length > 0 || instructionAssent !== undefined) &&
     sentences.length <= (assent ? 2 : 3) &&
-    (!assent || ACKNOWLEDGMENT_AFTER_ASSENT.test(sentences[0] ?? "")) &&
+    (!assent ||
+      instructionAssent !== undefined ||
+      ACKNOWLEDGMENT_AFTER_ASSENT.test(sentences[0] ?? "")) &&
     sentences.every(
       (sentence) =>
         ACKNOWLEDGMENT_WAIT_SENTENCE.test(sentence) ||

@@ -26,12 +26,16 @@ const schemaAck = /Planning=brief ack \(([^)]*)\)/u.exec(
   handleResponseReplyText ?? "",
 )?.[1];
 
-const taughtCues = [
+const allTaughtCues = [
   ...new Set([
     ...quotedCues(ACKNOWLEDGMENT_RULE),
     ...quotedCues(schemaAck ?? ""),
   ]),
 ];
+// Assent is taught only for an action or change, never for a question.
+const isAssentCue = (cue: string) => /^(?:sure|yeah)\b/iu.test(cue);
+const taughtCues = allTaughtCues.filter((cue) => !isAssentCue(cue));
+const taughtAssentCues = allTaughtCues.filter(isAssentCue);
 const waitCueVariants = [
   "On it!",
   "on it",
@@ -50,7 +54,32 @@ describe("acknowledgment cues and the routing classifiers", () => {
     expect(taughtCues).toEqual(
       expect.arrayContaining(["On it.", "One sec.", "Let me check."]),
     );
+    expect(taughtAssentCues).toEqual(
+      expect.arrayContaining(["Sure.", "Sure, one sec."]),
+    );
   });
+
+  it.each(taughtAssentCues)(
+    "speaks a taught assent cue only for an instruction and routes it as an ack: %s",
+    (cue) => {
+      expect(replyIsClaimSafeAcknowledgment(cue, { assent: true })).toBe(true);
+      expect(replyIsClaimSafeAcknowledgment(cue, { assent: false })).toBe(
+        false,
+      );
+      expect(looksLikeProgressOnlyReply(cue)).toBe(true);
+      expect(looksLikeCompleteDirectReply(cue)).toBe(false);
+      expect(
+        shouldSuppressInferredCandidateEscalation({
+          inference: { names: ["VIEWS"], kind: "view-capability" },
+          stageOneContexts: ["simple"],
+          stageOneReplyText: cue,
+          stageOneCandidateActions: [],
+          stageOneReplyEffectStatus: "pending",
+          stageOneIntents: [],
+        }),
+      ).toBe(false);
+    },
+  );
 
   it.each([...taughtCues, ...waitCueVariants])(
     "treats the taught cue as an ack everywhere: %s",
@@ -124,5 +153,65 @@ describe("acknowledgment cues and the routing classifiers", () => {
   ])("reads a cue before more progress as progress: %s", (reply) => {
     expect(looksLikeProgressOnlyReply(reply)).toBe(true);
     expect(PROGRESS_ONLY_ANSWER_REJECT.test(reply)).toBe(true);
+  });
+
+  it.each([
+    "Sure.",
+    "Sure!",
+    "Yeah.",
+    "Sure, one sec.",
+    "Sure, on it.",
+    "Yeah, one sec.",
+    "Sure. One sec.",
+    "Sure, let me check your calendar.",
+    "Sure! Let me open Maps.",
+  ])("reads an assent cue as progress: %s", (reply) => {
+    expect(looksLikeProgressOnlyReply(reply)).toBe(true);
+    expect(looksLikeCompleteDirectReply(reply)).toBe(false);
+  });
+
+  // Openers screen non-pending Stage-1 text as a final answer, where a bare
+  // "Sure." is a yes, so only assent before more progress opens progress.
+  it.each([
+    ["Sure, one sec.", true],
+    ["Yeah, one sec.", true],
+    ["Sure — on it.", true],
+    ["Sure, let me check your calendar.", true],
+    ["Sure! Let me open Maps.", true],
+    ["Sure.", false],
+    ["Yeah.", false],
+  ] as const)("screens assent as an opener: %s", (reply, progress) => {
+    expect(PROGRESS_ONLY_ANSWER_REJECT.test(reply)).toBe(progress);
+  });
+
+  it("keeps a declared answer's bare assent an answer", () => {
+    expect(looksLikeProgressOnlyReply("Sure.", { bareAssent: false })).toBe(
+      false,
+    );
+    expect(
+      looksLikeProgressOnlyReply("Sure, one sec.", { bareAssent: false }),
+    ).toBe(true);
+    for (const stageOneReplyEffectStatus of ["none", "non_applied"] as const)
+      expect(
+        shouldSuppressInferredCandidateEscalation({
+          inference: { names: ["VIEWS"], kind: "view-capability" },
+          stageOneContexts: ["simple"],
+          stageOneReplyText: "Sure.",
+          stageOneCandidateActions: [],
+          stageOneReplyEffectStatus,
+          stageOneIntents: [],
+        }),
+      ).toBe(true);
+  });
+
+  it.each([
+    "Sure, your dentist is Thursday.",
+    "Sure, you're free Friday.",
+    "Yeah, it's raining.",
+    "Sure, one sec, your dentist is Thursday.",
+    "Sure thing, the alarm is set for seven.",
+  ])("keeps an answer that opens with assent an answer: %s", (reply) => {
+    expect(looksLikeProgressOnlyReply(reply)).toBe(false);
+    expect(PROGRESS_ONLY_ANSWER_REJECT.test(reply)).toBe(false);
   });
 });

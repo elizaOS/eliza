@@ -41,7 +41,10 @@ import { scheduledTaskAction } from "../../../plugin-personal-assistant/src/acti
 import { createOwnerReminderDirectRoutingRule } from "../../../plugin-personal-assistant/src/lifeops/reminders/direct-routing.ts";
 import { createScheduledTaskCandidateBackstopRule } from "../../../plugin-personal-assistant/src/lifeops/scheduled-task/candidate-backstop";
 import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";
-import { replyIsClaimSafeAcknowledgment } from "./message/side-effect-claims.ts";
+import {
+  replyIsClaimSafeAcknowledgment,
+  requestIsInstruction,
+} from "./message/side-effect-claims.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   evaluatePlannedReplyEgress,
@@ -3024,5 +3027,146 @@ describe("complete acknowledgment lookup contract without incomplete latest exce
     "Let me check the news.",
   ])("retains complete pull-up, check and referent forms: %s", (reply) => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(true);
+  });
+});
+
+describe("assent acknowledgement for an instruction", () => {
+  it.each([
+    "Sure.",
+    "Sure!",
+    "sure",
+    "Yeah.",
+    "Sure, one sec.",
+    "Sure, on it.",
+    "Yeah, one sec.",
+    "Sure — one sec.",
+    "Sure. One sec.",
+    "Sure, let me check your calendar.",
+    "Yeah. Let me check your calendar.",
+    "Sure, one sec. Let me check your calendar.",
+  ])("admits assent only for an instruction: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply, { assent: true })).toBe(true);
+    expect(replyIsClaimSafeAcknowledgment(reply, { assent: false })).toBe(
+      false,
+    );
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+    expect(
+      evaluatePlannedReplyEgress({
+        reply,
+        pendingWork: true,
+        request: "Text Sam that I'm running late",
+        actionResults: [],
+        actions: [],
+      }).verdict,
+    ).not.toBe("reject");
+  });
+
+  it.each(["Sure! Let me open Maps.", "Sure! Let me check your calendar."])(
+    "keeps the lead form after Sure! without the instruction gate: %s",
+    (reply) => {
+      for (const assent of [true, false])
+        expect(replyIsClaimSafeAcknowledgment(reply, { assent })).toBe(true);
+    },
+  );
+
+  it.each([
+    "Okay.",
+    "Ok, one sec.",
+    "Got it.",
+    "Got it, one sec.",
+    "Of course.",
+    "Absolutely, one sec.",
+    "Sure thing.",
+    "No problem.",
+    "Will do.",
+    "Alright, on it.",
+    "Surely.",
+    "Yeah yeah.",
+    "Sure, sure.",
+    "Sure one sec.",
+    "Sure, your dentist is Thursday.",
+    "Sure, you're free Friday.",
+    "Yeah, it's raining.",
+    "Sure, one sec, your dentist is Thursday.",
+    "Sure. You have two meetings.",
+    "Sure, I've texted Sam.",
+    "Sure, done.",
+    "Sure?",
+  ])("rejects other assent and assent before an answer: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply, { assent: true })).toBe(false);
+  });
+});
+
+describe("requestIsInstruction", () => {
+  it.each([
+    "Text Sam that I'm running late",
+    "Find a coffee shop near me",
+    "Take a picture",
+    "Set an alarm for 7am",
+    "Remind me to call Mom tomorrow",
+    "Open Maps",
+    "Please call Dana.",
+    "Hey, text Sam I'm late",
+    "ok so set a timer for ten minutes",
+    "Eliza, add milk to my list",
+    "Let me know when Sam replies",
+    "hey alpha text Sam I'm late",
+    "Okay, Eliza, set an alarm for 7:30",
+    "Set an alarm for 7 a.m. tomorrow",
+    "Text Sam, tell him I'm late",
+  ])("reads an imperative as an instruction: %s", (request) => {
+    expect(requestIsInstruction(request)).toBe(true);
+  });
+
+  it.each([
+    "",
+    "   ",
+    undefined,
+    "Am I free Friday",
+    "Am I free Friday?",
+    "Is the dentist on my calendar",
+    "What's on my calendar today",
+    "whats the weather",
+    "When is my flight",
+    "How long until sunset",
+    "Which meeting is first",
+    "Do I have any reminders",
+    "Don't I have a call at noon",
+    "Can you text Sam",
+    "Could you set an alarm",
+    "Would you call Mom",
+    "Will it rain tomorrow",
+    "Should I leave now",
+    "Have I got mail",
+    "Hey, am I free Friday",
+    "Ok so is it raining",
+    "Please can you call Dana",
+    "Eliza, are you there",
+    "Text Sam. Wait, is he free?",
+    "Set an alarm for 7am?",
+    "?",
+    // A filler after the auxiliary does not hide it.
+    "Is, uh, the dentist on my calendar",
+    "Am, um, I free Friday",
+    "Can, uh, you text Sam",
+    // A wake name, an interjection or a later sentence does not hide it.
+    "hey alpha is it raining",
+    "Okay Eliza am I free friday",
+    "Thanks. Am I free Friday",
+    "Wait. Am I free friday",
+    "Sorry is it raining",
+    "Quick question am I free friday",
+    "Look, am I free Friday",
+    "Text Sam I'm late. Am I free Friday",
+    // A question with its auxiliary dropped opens with no command verb.
+    "Any meetings today",
+    "Anything on my calendar",
+    "You free Friday",
+    "I'm free Friday right",
+    "Dentist on my calendar",
+    "Weather tomorrow",
+    "Got anything Friday",
+  ])("does not read a question as an instruction: %s", (request) => {
+    expect(requestIsInstruction(request)).toBe(false);
   });
 });

@@ -108,7 +108,10 @@ import {
 } from "./native-context-read.ts";
 import { composeResponseState } from "./provider-state.js";
 import { restorePiiInUserReplyText } from "./reply-policy.ts";
-import { replyIsClaimSafeAcknowledgment } from "./side-effect-claims.ts";
+import {
+  replyIsClaimSafeAcknowledgment,
+  requestIsInstruction,
+} from "./side-effect-claims.ts";
 import {
   createSourceReplySnapshot,
   isNativeReplyPartsCandidate,
@@ -1553,7 +1556,9 @@ export async function generateStage1Decision(
             actionResults: [],
             actions: args.runtime.actions,
           }).verdict !== "reject" &&
-          replyIsClaimSafeAcknowledgment(progress.text)
+          replyIsClaimSafeAcknowledgment(progress.text, {
+            assent: requestIsInstruction(getUserMessageText(args.message)),
+          })
         ) {
           stage1TurnSignal.throwIfAborted();
           await args.onPlanningAcknowledgment?.(
