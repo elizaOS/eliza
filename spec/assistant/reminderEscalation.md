@@ -123,3 +123,55 @@ pure def lawADeliveryThatMayHaveReachedTheOwnerIsNeverSentAgain(ending: Delivery
   (ending == DeliveryShown or ending == AcceptanceUnknown) implies not(sentAgain(ending))
 pure def lawOnlyADeliveryThatNeverLeftIsTriedAgain(ending: DeliveryEnd): bool = sentAgain(ending) iff ending == NothingSent
 ```
+
+## Story: Chase me about my reminders only as hard as I asked
+
+> As an owner, I want to say how persistently my reminders follow up, for
+> all of them or for one, and to still get each reminder's first alert.
+
+### A reminder's own intensity wins over the owner's, and an unset one is normal
+
+The owner sets an intensity, minimal, normal, persistent or high priority
+only, for every reminder or for one they name. A name that matches no live
+reminder, or several, sets nothing. Intensity is read when a reminder
+fires, so a change applies from its next firing.
+
+```quint
+type ReminderIntensity = IntensityUnset | IntensityMinimal | IntensityNormal | IntensityPersistent | IntensityHighPriorityOnly
+pure def effectiveIntensity(own: ReminderIntensity, owners: ReminderIntensity): ReminderIntensity =
+  if (own != IntensityUnset) own else if (owners != IntensityUnset) owners else IntensityNormal
+pure def lawAReminderOwnIntensityWins(own: ReminderIntensity, owners: ReminderIntensity): bool =
+  own != IntensityUnset implies effectiveIntensity(own, owners) == own
+pure def lawAnUnsetIntensityIsNormal(owners: ReminderIntensity): bool =
+  effectiveIntensity(IntensityUnset, owners) == (if (owners == IntensityUnset) IntensityNormal else owners)
+```
+
+### Intensity shapes only the follow-ups: minimal drops them, persistent adds one, and high priority only keeps them for a high-priority reminder
+
+A reminder's first alert always comes. Minimal schedules no follow-up, and
+high priority only schedules them only for a reminder the owner said was
+high priority. Persistent adds one more nudge in the conversation an hour
+after the plan's last step, or an hour after the reminder fired when it
+has none. Normal keeps the plan, and every intensity keeps its quiet hours.
+
+```quint
+pure val persistentNudgeMinutes = 60
+pure def lastStepMinute(plan: EscalationPlan): int =
+  plan.inAppAfter.concat(plan.pushAfter).foldl(0, (latest, minute) => if (minute > latest) minute else latest)
+pure def followupsUnder(plan: EscalationPlan, intensity: ReminderIntensity, highPriority: bool): EscalationPlan = {
+  val nudge = lastStepMinute(plan) + persistentNudgeMinutes
+  if (intensity == IntensityMinimal or (intensity == IntensityHighPriorityOnly and not(highPriority))) { ...plan, inAppAfter: List(), pushAfter: List() }
+  else if (intensity == IntensityPersistent and not(plan.inAppAfter.includes(nudge))) { ...plan, inAppAfter: plan.inAppAfter.append(nudge) }
+  else plan
+}
+pure def lawMinimalSendsNoFollowup(plan: EscalationPlan, highPriority: bool): bool =
+  followupsUnder(plan, IntensityMinimal, highPriority).inAppAfter.length() == 0 and followupsUnder(plan, IntensityMinimal, highPriority).pushAfter.length() == 0
+pure def lawHighPriorityOnlyKeepsAHighPriorityPlan(plan: EscalationPlan): bool = followupsUnder(plan, IntensityHighPriorityOnly, true) == plan
+pure def lawHighPriorityOnlyDropsAnOrdinaryPlan(plan: EscalationPlan): bool =
+  followupsUnder(plan, IntensityHighPriorityOnly, false) == { ...plan, inAppAfter: List(), pushAfter: List() }
+pure def lawPersistentNudgesAnHourAfterTheLastStep(plan: EscalationPlan, highPriority: bool): bool =
+  followupsUnder(plan, IntensityPersistent, highPriority).inAppAfter.includes(lastStepMinute(plan) + persistentNudgeMinutes)
+pure def lawNormalKeepsThePlan(plan: EscalationPlan, highPriority: bool): bool = followupsUnder(plan, IntensityNormal, highPriority) == plan
+pure def lawIntensityKeepsTheQuietHours(plan: EscalationPlan, intensity: ReminderIntensity, highPriority: bool): bool =
+  followupsUnder(plan, intensity, highPriority).quiet == plan.quiet
+```

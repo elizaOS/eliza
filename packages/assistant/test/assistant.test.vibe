@@ -11,7 +11,7 @@ import { runEvaluators } from "../src/evaluators/runner.vibe"
 import { followupIndex, followupTick } from "../src/followups.vibe"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
 import { heardReply, replyKind } from "../src/replies.vibe"
-import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, moveReminder, reminderKind, reminderReply, retractRecentSave } from "../src/reminders.vibe"
+import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, moveReminder, reminderKind, reminderReply, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
 import { onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
 import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKind, updateRoutine } from "../src/routines.vibe"
@@ -179,6 +179,37 @@ it.effect('A reminder I named nudges me again on the channels I chose until I an
     try equal(seen.presented.map((shown) => [shown.presentation.chatText, shown.conversationOnly ?? false]), [
       ["Call the dentist", false], ["Call the dentist still needs your attention", true],
     ])
+  }
+})
+
+it.effect('Reminders chase me only as hard as I asked: the first alert always comes, minimal drops follow-ups, and a reminder\'s own persistent setting adds a nudge an hour after its last step (spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder\'s own intensity wins over the owner\'s, and an unset one is normal"; spec/assistant/reminderEscalation.md, "Intensity shapes only the follow-ups: minimal drops them, persistent adds one, and high priority only keeps them for a high-priority reminder")', effect () => {
+  const seen = ports()
+  seen.answers.push(check({}), check({}))
+  const roomId = "room-4" as UUID
+  provide portsLayer(seen) {
+    try createReminder({ ...asked("i1"), roomId })
+    try createReminder({ ...asked("i2"), plan: { ...plan, title: "Take pills", priority: "high" }, roomId })
+    const replies = [
+      try setReminderIntensity("loud", undefined, "i3"),
+      try setReminderIntensity("minimal", undefined, "i4"),
+      try setReminderIntensity("persistent", "take pills", "i5"),
+      try setReminderIntensity("persistent", "Water the plants", "i6"),
+    ]
+    try escalateReminder({ op: "escalate", target: "Call the dentist", afterMinutes: 10 }, "i7")
+    try escalateReminder({ op: "escalate", target: "take pills", afterMinutes: 30 }, "i8")
+    const [dentist, pills] = rowsOf(seen, reminderKind)
+    try deliverReminder(dentist)
+    try deliverReminder(pills)
+    const once = (minutes: number) => ({ kind: "once", atIso: new Date(seen.now + minutes * 60_000).toISOString() })
+    try equal({
+      replies: replies.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]),
+      alerts: seen.presented.map((shown) => shown.presentation.chatText),
+      steps: rowsOf(seen, escalationKind).map((row) => [row.metadata.reminderTaskId, row.metadata.channel, row.trigger]),
+    }, {
+      replies: [[false, "REMINDER_INTENSITY_MISSING"], [true, "Your reminders are now minimal."], [true, 'Reminder intensity for "Take pills" is now persistent.'], [false, "not_found"]],
+      alerts: ["Call the dentist", "Take pills"],
+      steps: [[pills.taskId, "in_app", once(90)], [pills.taskId, "push", once(30)]],
+    })
   }
 })
 

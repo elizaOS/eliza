@@ -22,6 +22,7 @@ export const ReminderPlan = Schema.Struct({
   due: ReminderDue,
   destination: Destination,
   alert: Alert,
+  priority: Schema.optionalKey(Schema.Literals(["normal", "high"])),
 })
 /** The planner's reminder plan. */
 export type ReminderPlan = typeof ReminderPlan.Type

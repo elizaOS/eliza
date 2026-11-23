@@ -1,11 +1,11 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminders.md, "Story: Move the reminder I just saved"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminders.md, "Story: Move the reminder I just saved"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"
 import { createReminderPresentation, type Action, type ActionResult, type IAgentRuntime, type Memory, type Provider, type UUID } from "@elizaos/core"
 import { Machine, machine, moveAdmitted, movedDueAt, maxMoveDelayMs, recoveredChoice, retractsRecentSave, type DeliveryChoice, type ReminderClock, type ReminderIntent } from "../gen/assistant__reminders.effect.vibe"
 import {
   Facts, Model, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, removeRecord, writeRecord,
   type DeliveryAnswer, type TaskRow, type TaskVerb, type VerbAnswer,
 } from "./host.vibe"
-import { changeEscalation, scheduleEscalation } from "./escalation.vibe"
+import { changeEscalation, changeIntensity, isIntensityName, scheduleEscalation } from "./escalation.vibe"
 import { appliedReceipt, attributed, failedReceipt, unchangedReceipt, type Attempt } from "./replies.vibe"
 import { ReminderAnswer, ReminderCheck, ReminderEscalation, ReminderPlan } from "./requests.schema.vibe"
 import { ownerClockAt } from "./timezone.vibe"
@@ -114,7 +114,7 @@ export effect function createReminder(request: ReminderRequest) {
       kind: reminderKind, ownerVisible: true, promptInstructions: plan.title, idempotencyKey: key,
       trigger: { kind: "once", atIso: new Date(at).toISOString() } as const,
       metadata: {
-        title: plan.title, body: plan.body ?? "", destination, alert: alert === "SecondChoice" ? "silent" : "alert",
+        title: plan.title, body: plan.body ?? "", destination, alert: alert === "SecondChoice" ? "silent" : "alert", priority: plan.priority ?? "normal",
         clock: checked.plannedClock, zone, roomId: request.roomId ?? null, requestMessageId: request.messageId,
       },
     }
@@ -251,7 +251,7 @@ export effect function escalateReminder(input: unknown, messageId: string) {
 
 const retraction = /^\s*(?:(?:oh|ok|okay|wait|actually|no|nah|hmm|sorry|ugh)\b[\s,.!-]*)*(?:(?:don['’]?t|do not)\b(?!\s+forget\b)[^.!?\n]{0,40}\b(?:save|keep|schedule|add|create)\b\s+(?:that(?:\s+one)?|this(?:\s+one)?|it)\b|(?:cancel|undo|scrap|delete|remove|drop)\s+(?:that(?:\s+one)?|it|this(?:\s+one)?|the last one)\b|never\s?mind\b|get rid of (?:that|it)\b)/iu
 const deictic = /^(?:(?:that|this)(?:\s+one)?|it|the last one)$/iu
-const retractionBlockers = new Set<unknown>(["complete", "snooze", "acknowledge", "escalate", "move"])
+const retractionBlockers = new Set<unknown>(["complete", "snooze", "acknowledge", "escalate", "move", "intensity"])
 const namedTarget = (target: unknown) => typeof target === "string" && target.trim() !== "" && !deictic.test(target.trim()) ? target : undefined
 
 /** Takes back the reminder this conversation just saved when a later message retracts it, or answers undefined when the message is no retraction of it. */
@@ -339,6 +339,18 @@ export effect function moveReminder(move: MoveRequest, request: OwnerRequest) {
   }, { taskId: task.taskId, dueAt: new Date(at).toISOString() })
 }
 
+/** Sets how hard every reminder, or the one live reminder the owner named, follows up; a name that matches none or several sets nothing. */
+export effect function setReminderIntensity(intensity: unknown, target: unknown, messageId: string) {
+  if (!isIntensityName(intensity)) {
+    return { success: false, text: "I need to know whether you want reminders minimal, normal, persistent, or high priority only.", data: { outcome: "REMINDER_INTENSITY_MISSING" } } satisfies ActionResult
+  }
+  const named = typeof target === "string" && target.trim() !== "" ? target : undefined
+  if (named === undefined) return try changeIntensity(intensity, undefined, messageId)
+  const matches = try namedReminders(named)
+  if (matches.length !== 1) return unmatched("intensity", named, matches, `reminder:intensity:${messageId}`, try (try Facts).now())
+  return try changeIntensity(intensity, matches[0], messageId)
+}
+
 const escalationFields = ["target", "steps", "afterMinutes", "replace", "quietHours"] as const
 
 function parameters(options: unknown): Readonly<Record<string, unknown>> {
@@ -360,15 +372,16 @@ export type OwnerRequest = ReturnType<typeof requestOf>
 /** Saves, completes, dismisses, snoozes or acknowledges the owner's own reminders. */
 export const ownerRemindersAction: Action = {
   name: saveAction,
-  description: "Save a one-shot reminder the owner asked for in this message, complete, dismiss, snooze or acknowledge one of their saved reminders, move one by a delay from now (\"actually make that 30 minutes\" is op move with delayMinutes 30), set how one saved reminder escalates while they do not answer it, or take back the reminder just saved when the owner says \"actually, don't save that one\" (op dismiss). A reminder is saved only after the owner's own message is checked again.",
+  description: "Save a one-shot reminder the owner asked for in this message, complete, dismiss, snooze or acknowledge one of their saved reminders, move one by a delay from now (\"actually make that 30 minutes\" is op move with delayMinutes 30), set how one saved reminder escalates while they do not answer it, set how persistently all reminders or one follow up (op intensity), or take back the reminder just saved when the owner says \"actually, don't save that one\" (op dismiss). A reminder is saved only after the owner's own message is checked again.",
   similes: ["REMINDER", "REMINDERS", "SET_REMINDER", "REMIND_ME", "REMIND_ME_TO", "CREATE_REMINDER", "SNOOZE_REMINDER", "DISMISS_REMINDER", "COMPLETE_REMINDER", "ESCALATE_REMINDER"],
   parameters: [
-    { name: "op", required: true, description: "create, complete, dismiss, snooze, acknowledge, move or escalate.", schema: { type: "string", enum: ["create", "complete", "dismiss", "snooze", "acknowledge", "move", "escalate"] } },
-    { name: "plan", required: false, description: 'For create: {"title", "body"?, "due": {"kind":"in","minutes"} | {"kind":"at","instant" with Z or ±HH:MM} | {"kind":"local","date":"YYYY-MM-DD","time":"HH:MM"}, "destination": "chat"|"device"|null, "alert": "alert"|"silent"|null}. Leave a choice null unless the owner stated it.', schema: { type: "object" } },
+    { name: "op", required: true, description: "create, complete, dismiss, snooze, acknowledge, move, escalate or intensity.", schema: { type: "string", enum: ["create", "complete", "dismiss", "snooze", "acknowledge", "move", "escalate", "intensity"] } },
+    { name: "plan", required: false, description: 'For create: {"title", "body"?, "due": {"kind":"in","minutes"} | {"kind":"at","instant" with Z or ±HH:MM} | {"kind":"local","date":"YYYY-MM-DD","time":"HH:MM"}, "destination": "chat"|"device"|null, "alert": "alert"|"silent"|null, "priority"?: "high" only when the owner said it is important or urgent}. Leave a choice null unless the owner stated it.', schema: { type: "object" } },
     { name: "target", required: false, description: "For any other op: the saved reminder's title or id; for move, \"that\" means the reminder just saved.", schema: { type: "string" } },
     { name: "minutes", required: false, description: "For snooze: minutes, 1 to 1440; 10 when omitted.", schema: { type: "number" } },
     { name: "delayMinutes", required: false, description: "For move: whole minutes from now until the reminder goes off.", schema: { type: "integer" } },
     { name: "delaySeconds", required: false, description: "For move: whole seconds from now, when the owner gave seconds; wins over delayMinutes.", schema: { type: "integer" } },
+    { name: "intensity", required: false, description: "For intensity: minimal (no follow-ups), normal, persistent (one more nudge an hour after the last) or high_priority_only (follow-ups only for high-priority reminders). Give target only for one reminder.", schema: { type: "string", enum: ["minimal", "normal", "persistent", "high_priority_only"] } },
     { name: "steps", required: false, description: 'For escalate: [{"channel": "push" | "in_app", "afterMinutes": 1 to 1440}], each counted from when the reminder fires. push is a phone notification, in_app a message in this conversation. Name any other channel the owner asked for, such as voice or sms, as they said it.', schema: { type: "array" } },
     { name: "afterMinutes", required: false, description: "For escalate: one phone notification this many minutes after the reminder fires, when steps is omitted.", schema: { type: "number" } },
     { name: "replace", required: false, description: "For escalate: true only when the owner asked to replace every earlier step.", schema: { type: "boolean" } },
@@ -383,6 +396,7 @@ export const ownerRemindersAction: Action = {
     const retracted = retractionBlockers.has(given.op) ? undefined : await onAgent(runtime, retractRecentSave(request, given.target))
     if (retracted !== undefined && given.op !== "create") return retracted
     if (given.op === "create") return reminderReply(await onAgent(runtime, createReminder({ ...request, plan: given.plan })))
+    if (given.op === "intensity") return onAgent(runtime, setReminderIntensity(given.intensity, given.target, request.messageId))
     if (given.op === "move") return onAgent(runtime, moveReminder({ target: given.target, delaySeconds: given.delaySeconds, delayMinutes: given.delayMinutes }, request))
     if (given.op === "escalate") {
       const asked = Object.fromEntries(escalationFields.flatMap((field) => given[field] === undefined || given[field] === null ? [] : [[field, given[field]] as const]))
