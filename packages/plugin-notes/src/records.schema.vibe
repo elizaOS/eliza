@@ -1,5 +1,5 @@
 // spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
-import { sampledSchema } from "@elizaos/core"
+import { sampledSchema } from "@elizaos/agent/device-actions"
 import { SchemaGetter } from "effect"
 import { authoredNoteText, parseNoteFormat } from "./format.vibe"
 import { STICKY_COLORS, type NoteFormat } from "./types.vibe"

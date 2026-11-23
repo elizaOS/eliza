@@ -1,5 +1,5 @@
 // spec/calendar/availability.md, "Choose a bounded interval and accept occupancy-only rows"; spec/calendar/availability.md, "Return sorted rows and preserve their multiplicity"
-import { sampledSchema } from "@elizaos/core"
+import { sampledSchema } from "@elizaos/agent/device-actions"
 import { knownTimeZone } from "../clock.vibe"
 
 const day = 86_400_000

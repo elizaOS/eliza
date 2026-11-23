@@ -1,5 +1,6 @@
 // spec/agent/approvals.md, "Story: Resolve what I reviewed, only on the screen"; spec/agent/approvals.md, "Only the resolve route moves a request out of an open phase"; spec/agent/approvals.md, "A passed expiry changes no phase and no revision until a decision meets it"; spec/agent/approvals.md, "The list shows at most 500 requests of the asked phase, newest first, and changes nothing"
-import { runSquashed, Service, type IAgentRuntime } from "@elizaos/core"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import { runSquashed } from "../models/run-squashed.vibe"
 import {
   canLapse, decodeState, initial, machineOver, rowAt, verdict,
   type ApprovalKind, type Decision, type PageQuery, type Phase, type Queue, type Refusal, type Reply, type ResolveKind,

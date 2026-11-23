@@ -1,4 +1,4 @@
-// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+// spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"
 export function regexMatches(text: string, pattern: RegExp): RegExpExecArray[] {
   const found: RegExpExecArray[] = []
   pattern.lastIndex = 0

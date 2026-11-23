@@ -1,5 +1,6 @@
 // spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"
-import { runSquashed, Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
+import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
+import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import type { Backend, GoogleConsent } from "../../gen/agent__host__launch.ts"
 import { googleAdmitted, pluginCloudPathAllowed, type GoogleOperation } from "../../gen/agent__models__binding.effect.vibe"

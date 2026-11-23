@@ -1,4 +1,4 @@
-// spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"
 module edge {
   import { Cause, Effect, Exit } from "effect"
 

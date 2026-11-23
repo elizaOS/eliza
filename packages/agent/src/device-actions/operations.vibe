@@ -8,6 +8,8 @@ export { bindingHash, readLatestSender, type LatestSenderResult } from "./operat
 export { latestSenderGuidance, latestSenderReply, latestSenderReplyFor } from "./latest-sender.vibe"
 export { photosViewGuidance, shownPhoto, type ShownPhoto } from "./photos-view.vibe"
 export { deviceTurnFor } from "./proposal/turn.vibe"
+export { regexMatches } from "./proposal/regex-matches.vibe"
+export { sampledSchema } from "./operation-schemas/sampled-schema.vibe"
 export {
   directRequests, FamilyConflict, registerDeviceProposalFamily, unoffered,
   type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type FamilyName, type Grounding, type NegotiatedDevice, type PendingRequest, type ProposalForm,

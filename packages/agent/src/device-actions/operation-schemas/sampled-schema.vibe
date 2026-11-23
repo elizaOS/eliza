@@ -1,4 +1,4 @@
-// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"
 import { SchemaGetter } from "effect"
 
 export function sampledSchema<Wire extends Schema.Constraint, Seed extends Schema.Constraint>(wire: Wire, seed: Seed, build: (seed: Seed["Type"]) => Wire["Type"]) {
