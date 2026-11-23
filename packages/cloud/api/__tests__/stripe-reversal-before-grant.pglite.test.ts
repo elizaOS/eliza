@@ -436,68 +436,72 @@ test("a refund for a payment request settled by another payment intent is acknow
   ).toBe("ack");
 });
 
-test.each(["before", "during"] as const)("a refund out of attempts %s Stripe payment-request settlement still claws back the grant", async (timing) => {
-  const request = await pendingPaymentRequest(2500);
-  const refund = refundEvent(
-    `ch_${randomUUID()}`,
-    2500,
-    request.paymentIntentId,
-  );
-  // The webhook route stores the verified event in its outbox row.
-  await dbWrite.insert(webhookEvents).values({
-    event_id: refund.body.eventId,
-    provider: "stripe",
-    event_type: refund.body.eventType,
-    payload_hash: "b".repeat(64),
-    delivery_payload: {
-      ...refund.body,
-      paymentIntentId: request.paymentIntentId,
-    },
-  });
-  const drain = (handler = processStripeEvent) =>
-    drainStripeDeliveries(handler, {
-      maxAttempts: 8,
-      retryBaseDelayMs: 0,
-      retryMaxDelayMs: 0,
+test.each(["before", "during"] as const)(
+  "a refund out of attempts %s Stripe payment-request settlement still claws back the grant",
+  async (timing) => {
+    const request = await pendingPaymentRequest(2500);
+    const refund = refundEvent(
+      `ch_${randomUUID()}`,
+      2500,
+      request.paymentIntentId,
+    );
+    // The webhook route stores the verified event in its outbox row.
+    await dbWrite.insert(webhookEvents).values({
+      event_id: refund.body.eventId,
+      provider: "stripe",
+      event_type: refund.body.eventType,
+      payload_hash: "b".repeat(64),
+      delivery_payload: {
+        ...refund.body,
+        paymentIntentId: request.paymentIntentId,
+      },
     });
-  const outbox = async () =>
-    (
-      await pg().query<{ attempts: number; dead: boolean; done: boolean }>(
-        `SELECT delivery_attempts AS attempts, delivery_dead_lettered_at IS NOT NULL AS dead,
+    const drain = (handler = processStripeEvent) =>
+      drainStripeDeliveries(handler, {
+        maxAttempts: 8,
+        retryBaseDelayMs: 0,
+        retryMaxDelayMs: 0,
+      });
+    const outbox = async () =>
+      (
+        await pg().query<{ attempts: number; dead: boolean; done: boolean }>(
+          `SELECT delivery_attempts AS attempts, delivery_dead_lettered_at IS NOT NULL AS dead,
                 delivery_completed_at IS NOT NULL AS done
          FROM webhook_events WHERE event_id=$1`,
-        [refund.body.eventId],
-      )
-    ).rows[0];
+          [refund.body.eventId],
+        )
+      ).rows[0];
 
-  for (let run = 0; run < 7; run++) await drain();
-  if (timing === "before") {
-    await drain();
-    expect(await outbox()).toEqual({ attempts: 8, dead: true, done: false });
-    await request.settle();
-  } else {
-    const observed = Promise.withResolvers<Awaited<ReturnType<typeof processStripeEvent>>>();
-    const finish = Promise.withResolvers<void>();
-    const inFlight = drain(async (input) => {
-      const result = await processStripeEvent(input);
-      observed.resolve(result);
-      await finish.promise;
-      return result;
-    });
-    try {
-      const result = await Promise.race([observed.promise, inFlight]);
-      expect(result).toBe("retry");
+    for (let run = 0; run < 7; run++) await drain();
+    if (timing === "before") {
+      await drain();
+      expect(await outbox()).toEqual({ attempts: 8, dead: true, done: false });
       await request.settle();
-    } finally {
-      finish.resolve();
-      await inFlight;
+    } else {
+      const observed =
+        Promise.withResolvers<Awaited<ReturnType<typeof processStripeEvent>>>();
+      const finish = Promise.withResolvers<void>();
+      const inFlight = drain(async (input) => {
+        const result = await processStripeEvent(input);
+        observed.resolve(result);
+        await finish.promise;
+        return result;
+      });
+      try {
+        const result = await Promise.race([observed.promise, inFlight]);
+        expect(result).toBe("retry");
+        await request.settle();
+      } finally {
+        finish.resolve();
+        await inFlight;
+      }
     }
-  }
-  expect(await outbox()).toEqual({ attempts: 0, dead: false, done: false });
-  expect(await balance(request.org)).toBe(25);
+    expect(await outbox()).toEqual({ attempts: 0, dead: false, done: false });
+    expect(await balance(request.org)).toBe(25);
 
-  await drain();
-  expect((await outbox())?.done).toBe(true);
-  expect(await balance(request.org)).toBe(0);
-  expect(await ledger(request.org)).toEqual(["credit", "clawback"]);
-});
+    await drain();
+    expect((await outbox())?.done).toBe(true);
+    expect(await balance(request.org)).toBe(0);
+    expect(await ledger(request.org)).toEqual(["credit", "clawback"]);
+  },
+);
