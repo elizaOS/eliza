@@ -427,31 +427,6 @@ it.each([
     failureClaim(),
   ],
   [
-    "a cited receipt-less failure superseded by a successful retry",
-    [
-      FAILED_NAVIGATION,
-      {
-        success: true,
-        text: "Opened Maps.",
-        data: { actionName: "OPEN_VIEW" },
-        effectReceipts: [appliedReceipt("view-open-retry")],
-      },
-    ],
-    failureClaim(),
-  ],
-  [
-    "a cited receipt-less failure followed by a bare successful retry",
-    [
-      FAILED_NAVIGATION,
-      {
-        success: true,
-        text: "Opened Maps.",
-        data: { actionName: "OPEN_VIEW" },
-      },
-    ],
-    failureClaim(),
-  ],
-  [
     "a cited rejected receipt whose operation and resource a retry applied",
     [
       {
@@ -493,6 +468,52 @@ it.each([
       message: "Recovered reply asserts an unsupported outcome",
     });
     expect(f.reviewPrompts).toHaveLength(2);
+  },
+);
+
+// A receipt-less failure names no target, so a later success of the same
+// action gives code no target evidence: it may be a retry or a call for
+// another target. These two cases used to be rejected in code even when the
+// judge supported the report, which also stripped honest multi-target
+// failures; whether the later call was a retry is now the judge's call, and
+// an unsupported verdict still fails the turn.
+it.each([
+  [
+    "a successful call with an applied receipt",
+    {
+      success: true,
+      text: "Opened Maps.",
+      data: { actionName: "OPEN_VIEW" },
+      effectReceipts: [appliedReceipt("view-open-retry")],
+    },
+  ],
+  [
+    "a bare successful call",
+    { success: true, text: "Opened Maps.", data: { actionName: "OPEN_VIEW" } },
+  ],
+] as [string, ActionResult][])(
+  "leaves a receipt-less failure followed by %s of the same action to the judge",
+  async (_label, later) => {
+    const supported = fixture(
+      [{ response: HONEST_FAILURE }],
+      [{ grounded: true, claims: [failureClaim()] }],
+    );
+    await expect(
+      supported.recover([FAILED_NAVIGATION, later]),
+    ).resolves.toEqual({ text: HONEST_FAILURE, effectReceiptIds: [] });
+    const unsupported = fixture(
+      [{ response: HONEST_FAILURE }, { response: HONEST_FAILURE }],
+      [
+        { grounded: true, claims: [failureClaim({ supported: false })] },
+        { grounded: true, claims: [failureClaim({ supported: false })] },
+      ],
+    );
+    await expect(
+      unsupported.recover([FAILED_NAVIGATION, later]),
+    ).rejects.toMatchObject({
+      code: "REPLY_GROUNDING_FAILED",
+      message: "Recovered reply asserts an unsupported outcome",
+    });
   },
 );
 
@@ -632,6 +653,11 @@ const aliceResult: ActionResult = {
 
 it.each([
   [
+    "a receipt-less failure before another target's success",
+    [aliceResult, bobResult],
+    aliceFailed(1),
+  ],
+  [
     "a receipt-less failure after another target's success",
     [bobResult, aliceResult],
     aliceFailed(2),
@@ -691,6 +717,71 @@ it.each([
     expect(f.renderPrompts).toHaveLength(1);
   },
 );
+
+// The review repro: Alice has no number and no receipt, Bob's text applied,
+// and the judge supports both claims. Both orders keep Alice's failure.
+const ALICE_BOB_REPLY =
+  "sent bob the text. i couldn't text alice: no number saved for her.";
+it.each([
+  ["Alice's failure first", [aliceResult, bobResult], 1],
+  ["Bob's success first", [bobResult, aliceResult], 2],
+] as [string, ActionResult[], number][])(
+  "delivers both halves of the Alice/Bob reply with %s",
+  async (_label, results, failedResult) => {
+    const f = fixture(
+      [{ response: ALICE_BOB_REPLY, effectReceiptIds: ["sms-bob"] }],
+      [
+        {
+          grounded: true,
+          claims: [
+            bobSent(),
+            {
+              ...aliceFailed(failedResult),
+              quote: "i couldn't text alice",
+            },
+          ],
+        },
+      ],
+    );
+    await expect(f.recover(results)).resolves.toEqual({
+      text: ALICE_BOB_REPLY,
+      effectReceiptIds: ["sms-bob"],
+    });
+    expect(f.renderPrompts).toHaveLength(1);
+    expect(f.reviewPrompts).toHaveLength(1);
+  },
+);
+
+it("rejects a did-not-happen claim for a failure retried to the same target under the same key", async () => {
+  // Target evidence stays code-side: the judge wrongly supports both drafts.
+  const aliceRetried: ActionResult = {
+    success: true,
+    text: "Sent to Alice.",
+    data: { actionName: "MESSAGE" },
+    effectReceipts: [smsReceipt("sms-alice-retry", "alice", "applied")],
+  };
+  const claim = aliceFailed(1, "sms-alice");
+  const f = fixture(
+    [{ response: HONEST_FAILURE }, { response: HONEST_FAILURE }],
+    [
+      { grounded: true, claims: [claim] },
+      { grounded: true, claims: [claim] },
+    ],
+  );
+  await expect(
+    f.recover([
+      {
+        ...aliceResult,
+        effectReceipts: [smsReceipt("sms-alice", "alice", "rejected")],
+      },
+      aliceRetried,
+    ]),
+  ).rejects.toMatchObject({
+    code: "REPLY_GROUNDING_FAILED",
+    message: "Recovered reply asserts an unsupported outcome",
+  });
+  expect(f.reviewPrompts).toHaveLength(2);
+});
 
 it("does not treat an unnamed earlier success as a retry of an unnamed failure", async () => {
   const f = fixture(

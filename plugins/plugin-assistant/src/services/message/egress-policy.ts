@@ -22,7 +22,6 @@ import {
   ElizaError,
   effectDeliveryBindingIsValid,
   effectDeliveryBindingProvesApplication,
-  getActionResultActionName,
   getEffectDeliveryBinding,
   getStreamingContext,
   getTrustedDeliveryAudience,
@@ -1189,9 +1188,14 @@ export async function resolvePlannedReplyEgress(args: {
     //   and code cannot tell which. Rejecting both would strip every honest
     //   multi-target report, so whether such a create was a retry is left to
     //   the judge, which sees the ordered results.
-    // - A receipt-less attempt has no target to compare, so a later call of
-    //   the same named action that succeeded or committed supersedes it.
-    // Only later results are retries, and "Unknown Action" names no action.
+    // - A receipt-less failed attempt names no target, so code has no target
+    //   evidence against it: a later success of the same named action may be
+    //   a retry or a call for another target ("sent bob the text. i couldn't
+    //   text alice"), and code cannot tell which. As for receipts of kinds
+    //   that do not compare, whether it was a retry is left to the judge,
+    //   which sees the ordered results; code still requires the cited result
+    //   to have failed. Earlier results and "Unknown Action" therefore never
+    //   supersede it either.
     // When a cited result carries several receipts, a claim whose evidence
     // names one of them is checked against that receipt only.
     const results = actionResults();
@@ -1213,34 +1217,13 @@ export async function resolvePlannedReplyEgress(args: {
         receipt.idempotency.key === null ? [] : [receipt.idempotency.key],
       ),
     );
-    const namedAction = (result: ActionResult) => {
-      const name = getActionResultActionName(result);
-      return name === "Unknown Action" ? undefined : name;
-    };
-    const committedOf = (result: ActionResult) =>
-      (result.effectReceipts ?? []).filter((receipt) =>
-        committed.has(receipt.receiptId),
-      );
     const reportsUnappliedResult = (claim: RecoveredReplyClaim) => {
       const index =
         typeof claim.failedResult === "number" ? claim.failedResult - 1 : -1;
       const result = index >= 0 ? results[index] : undefined;
       if (result === undefined) return false;
       const receipts = result.effectReceipts ?? [];
-      if (result.success !== false && receipts.length === 0) return false;
-      if (receipts.length === 0) {
-        const actionName = namedAction(result);
-        if (actionName === undefined) return true;
-        return !results
-          .slice(index + 1)
-          .some(
-            (other) =>
-              namedAction(other) === actionName &&
-              ((other.success !== false &&
-                (other.effectReceipts ?? []).length === 0) ||
-                committedOf(other).length > 0),
-          );
-      }
+      if (receipts.length === 0) return result.success === false;
       const evidence = claim.evidence.trim();
       const named = receipts.filter(
         (receipt) => receipt.receiptId === evidence,
