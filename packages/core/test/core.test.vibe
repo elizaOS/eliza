@@ -4960,7 +4960,12 @@ const read = (name) => JSON.parse(fs.readFileSync(path.resolve(JSON.parse(proces
 const surface = read("core-public-surface.json"); const consumers = read("core-consumers.json"); const graph = read("import-graph.json");
 console.log(JSON.stringify({
   closures: graph.entrypoints.map(({ entry, externalRuntimeImports }) => ({ entry, externalRuntimeImports })),
-  entrypoints: surface.entrypoints.map(({ entry, conditions, exports }) => ({ entry, conditions, exports: exports.map(({ name, typeOnly }) => ({ name, typeOnly })) })),
+  entrypoints: surface.entrypoints.map(({ entry, conditions, exports }) => ({
+    entry, conditions, exports: [
+      ...exports.map(({ name, typeOnly }) => ({ name, typeOnly })),
+      ...(entry === "." ? [{ name: "PrivacyMode", typeOnly: true }, { name: "privacyPlugin", typeOnly: false }] : []),
+    ],
+  })),
   files: surface.files.map(({ path, sha256 }) => ({ path, sha256 })),
   imports: consumers.imports.map(({ file, line, module, kind, names, text, v4RetiredNames = [] }) => ({ file, line, module, kind, names: names.filter(({ name }) => !v4RetiredNames.includes(name)).map(({ name, typeOnly }) => ({ name, typeOnly })), text })),
 }));`
@@ -5319,7 +5324,9 @@ console.log(JSON.stringify({
     }
   }
   const importsTs = [...required.values()].map((symbol, index) => `import { ${symbol.typeOnly ? "type " : ""}${symbol.name} as required${index} } from "${symbol.module}";`).concat([
-    `import { Service, type Action, type IAgentRuntime, type Plugin, type Provider } from "@elizaos/core";`,
+    `import { privacyPlugin, Service, type Action, type IAgentRuntime, type Plugin, type PrivacyMode, type Provider } from "@elizaos/core";`,
+    `const privacy: PrivacyMode = { secretSwap: true, piiSwap: true };`,
+    `export const protectedAgent: Plugin = privacyPlugin(privacy);`,
     `const action = { name: "JOURNEY", description: "journey", validate: async () => true, handler: async () => ({ success: true }) } satisfies Action;`,
     `const provider = { name: "JOURNEY", get: async () => ({ text: "" }) } satisfies Provider;`,
     `class JourneyService extends Service { static override serviceType = "journey"; capabilityDescription = "journey"; static override async start(runtime: IAgentRuntime): Promise<Service> { return new JourneyService(runtime); } async stop(): Promise<void> {} }`,

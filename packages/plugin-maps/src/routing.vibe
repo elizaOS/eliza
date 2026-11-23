@@ -45,8 +45,8 @@ const nearMeRequest = new RegExp([
   String.raw`^\s*${courtesy}${findVerb}${placeKind}\s+${nearby}${end}`,
   String.raw`^\s*${courtesy}(?:is|are)\s+there\s+${notAThere}${placeKind}\s+${nearby}${end}`,
   String.raw`^\s*${courtesy}where\s+(?:can|could|should|do)\s+(?:i|we)\s+(?:get|find|buy|grab)\s+${placeKind}\s+${nearby}${end}`,
-  String.raw`^\s*${courtesy}(?:any|some)\s+[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3}\s+${nearby}${end}`,
-  String.raw`^\s*${courtesy}(?!(?:stay|sit|come|be|keep|stand|get|move|go|walk|park|i|i'm|i’m|im|you|he|she|they|we|it|is|are|was|were)\b)${placeKind}\s+near\s+me${end}`,
+  String.raw`^\s*${courtesy}(?:any|some)\s+${placeKind}\s+${nearby}${end}`,
+  String.raw`^\s*${courtesy}(?!(?:stay|sit|come|be|keep|stand|get|move|go|walk|park|i|i'm|i’m|im|you|he|she|they|we|it|is|are|was|were|what|where|which|who|when|why|how)\b)${placeKind}\s+near\s+me${end}`,
 ].join("|"), "iu")
 const kindNearNamedRequest = new RegExp(String.raw`^\s*${courtesy}(?:${findVerb}|(?:is|are)\s+there\s+${notAThere})(${placeKind})\s+(?:near|around|close\s+to|next\s+to)\s+((?:the\s+)?\p{Lu}[\p{L}\p{N}'’&.-]*(?:\s+[\p{L}\p{N}'’&.-]+){0,5})${end}`, "u")
 const ownPosition = /^(?:me|here|us|by|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:me|here|us|myself)\b(?=[,\s]+(?:that|which|who|where|for|to|with|and|so|if|in|at|on|by|open|right|now|tonight|today|please|thanks|thank)\b)|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu

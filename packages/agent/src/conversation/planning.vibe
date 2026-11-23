@@ -285,7 +285,9 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
 
 function failureNotice(step: PlannedStep): string {
   if (step.outcomes.some(({ outcome }) => outcome === "Rejected")) {
-    return step.result.failureProvenance?.code === "ACTION_UNAVAILABLE" ? unavailableNotice : `A ${step.action} call did not start.`
+    if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return unavailableNotice
+    const words = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
+    return words || `A ${step.action} call did not start.`
   }
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
