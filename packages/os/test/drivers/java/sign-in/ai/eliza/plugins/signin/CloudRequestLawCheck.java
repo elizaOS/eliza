@@ -16,15 +16,16 @@ import java.util.stream.Collectors;
 public final class CloudRequestLawCheck {
   private CloudRequestLawCheck() {}
 
-  private static final List<Holding> HOLDINGS = List.of(new Holding(0, false, false), new Holding(1, false, false),
-    new Holding(2, true, false), new Holding(2, true, true), new Holding(0, true, true));
+  private static final List<Holding> HOLDINGS = List.of(new Holding(0, false, false, false, false), new Holding(1, false, false, false, false),
+    new Holding(2, true, false, true, false), new Holding(2, true, true, true, true), new Holding(0, true, true, false, false),
+    new Holding(3, false, false, true, true), new Holding(3, false, false, true, false));
   private static final List<Origin> ORIGINS = List.of(new Origin(Scheme.HTTPS, false, false, false), new Origin(Scheme.HTTPS, false, true, false),
     new Origin(Scheme.HTTP, true, false, false), new Origin(Scheme.HTTP, false, false, false), new Origin(Scheme.OTHER_SCHEME, false, false, true));
   private static final List<List<String>> HEADER_LISTS = List.of(List.of(), List.of("Idempotency-Key"), List.of("If-Match"), List.of("Authorization"),
     List.of("Accept", "If-None-Match"), List.of("Cookie"), List.of("Content-Type", "X-Request-ID"));
   private static final List<String> HEADERS = List.of("Authorization", "Content-Type", "X-Request-ID", "Traceparent", "Tracestate", "Accept",
     "If-None-Match", "If-Match", "Idempotency-Key", "Cookie", "ETag");
-  private static final List<Attach> ATTACHES = List.of(new Bare(), new WithKey(1), new WithSession(1), new WithKey(3));
+  private static final List<Attach> ATTACHES = List.of(new Bare(), new WithKey(1), new WithSession(1), new WithKey(3), new WithLease(1));
   private static final List<Long> BYTES = List.of(0L, 8_388_608L, 8_388_609L, 67_108_864L, 67_108_865L);
   private static final List<String> WEB_HOSTS = List.of("web.cloud.test");
   private static final List<ExternalLink> LINKS = List.of(new ExternalLink(true, "billing.stripe.com", true, false),
@@ -108,12 +109,18 @@ public final class CloudRequestLawCheck {
       + ",\"flaws\":" + texts(r.flaws().stream().map(f -> camel(f.name())).toList()) + ",\"body\":" + body + "}";
   }
 
-  private static String deviceRoute(DeviceRoute d) {
-    List<String> path = d.path().stream().map(s -> s.startsWith(":") ? "{\"tag\":\"Param\",\"name\":" + q(s.substring(1)) + "}" : "{\"tag\":\"Literal\",\"text\":" + q(s) + "}").toList();
-    return "{\"method\":" + method(d.method()) + ",\"path\":" + list(path) + ",\"auth\":" + q(camel(d.auth().name())) + ",\"headers\":" + texts(d.headers()) + "}";
+  private static String segments(List<String> path) {
+    return list(path.stream().map(s -> s.startsWith(":") ? "{\"tag\":\"Param\",\"name\":" + q(s.substring(1)) + "}" : "{\"tag\":\"Literal\",\"text\":" + q(s) + "}").toList());
   }
 
-  private static String holding(Holding h) { return "{\"key\":" + h.key() + ",\"sessionHeld\":" + h.sessionHeld() + ",\"sessionLive\":" + h.sessionLive() + "}"; }
+  private static String deviceRoute(DeviceRoute d) {
+    return "{\"method\":" + method(d.method()) + ",\"path\":" + segments(d.path()) + ",\"auth\":" + q(camel(d.auth().name())) + ",\"headers\":" + texts(d.headers()) + "}";
+  }
+
+  private static String holding(Holding h) {
+    return "{\"key\":" + h.key() + ",\"sessionHeld\":" + h.sessionHeld() + ",\"sessionLive\":" + h.sessionLive()
+      + ",\"leaseHeld\":" + h.leaseHeld() + ",\"leaseLive\":" + h.leaseLive() + "}";
+  }
 
   private static String origin(Origin u) {
     return "{\"scheme\":" + q(camel(u.scheme().name())) + ",\"loopback\":" + u.loopback() + ",\"hasPath\":" + u.hasPath() + ",\"hasQueryOrFragment\":" + u.hasQueryOrFragment() + "}";
@@ -124,6 +131,7 @@ public final class CloudRequestLawCheck {
       case Bare b -> tag("Bare");
       case WithKey k -> "{\"tag\":\"WithKey\",\"version\":" + k.version() + "}";
       case WithSession s -> "{\"tag\":\"WithSession\",\"version\":" + s.version() + "}";
+      case WithLease l -> "{\"tag\":\"WithLease\",\"version\":" + l.version() + "}";
     };
   }
 
@@ -131,6 +139,7 @@ public final class CloudRequestLawCheck {
     return switch (p) {
       case Send s -> "{\"tag\":\"Send\",\"attach\":" + attach(s.attach()) + "}";
       case RefreshSessionFirst r -> tag("RefreshSessionFirst");
+      case RefreshLeaseFirst r -> tag("RefreshLeaseFirst");
       case Refuse r -> "{\"tag\":\"Refuse\",\"why\":" + q(camel(r.why().name())) + "}";
     };
   }
@@ -139,6 +148,7 @@ public final class CloudRequestLawCheck {
     return switch (r) {
       case NoReport n -> tag("NoReport");
       case KeyRejected k -> "{\"tag\":\"KeyRejected\",\"version\":" + k.version() + ",\"reason\":" + q(k.reason().tag) + ",\"on\":" + q(camel(k.on().name())) + "}";
+      case LeaseRejected l -> "{\"tag\":\"LeaseRejected\",\"version\":" + l.version() + ",\"reason\":" + q(l.reason().tag) + "}";
       case SessionRejected s -> tag("SessionRejected");
     };
   }
@@ -196,22 +206,31 @@ public final class CloudRequestLawCheck {
 
   private static int sentKey(CallPlan p) { return p instanceof Send s && s.attach() instanceof WithKey k ? k.version() : 0; }
 
+  private static int sentLease(CallPlan p) { return p instanceof Send s && s.attach() instanceof WithLease l ? l.version() : 0; }
+
   private static void specCases() {
     emit("deviceRoutes", list(CloudRequestPolicy.DEVICE_ROUTES.stream().map(CloudRequestLawCheck::deviceRoute).toList()));
+    List<DeviceRoute> attachRoutes = new ArrayList<>(CloudRequestPolicy.DEVICE_ROUTES);
+    attachRoutes.add(CloudRequestPolicy.NO_DEVICE_ROUTE);
     for (Holding h : HOLDINGS)
-      for (Auth auth : Auth.values()) {
-        String a = q(camel(auth.name()));
-        CallPlan p = CloudRequestPolicy.attachFor(h, auth);
-        emit("attachFor", plan(p), holding(h), a);
-        emit("lawASessionRouteNeverCarriesTheKey", String.valueOf(!CloudRequestPolicy.sessionOnly(auth) || sentKey(p) == 0), holding(h), a);
-        emit("lawAKeyRouteWithoutAKeyIsNotSent", String.valueOf(!(auth == Auth.KEY_OR_SESSION && h.key() < 1) || p.equals(new Refuse(Refusal.SIGN_IN_REQUIRED))), holding(h), a);
+      for (DeviceRoute d : attachRoutes) {
+        String[] args = {holding(h), deviceRoute(d)};
+        CallPlan p = CloudRequestPolicy.attachFor(h, d);
+        boolean mail = CloudRequestPolicy.mailRoute(d);
+        emit("attachFor", plan(p), args);
+        emit("lawASessionRouteNeverCarriesTheKey", String.valueOf(!CloudRequestPolicy.sessionOnly(d.auth()) || sentKey(p) == 0), args);
+        emit("lawAKeyRouteWithoutAKeyIsNotSent", String.valueOf(!(d.auth() == Auth.KEY_OR_SESSION && h.key() < 1) || p.equals(new Refuse(Refusal.SIGN_IN_REQUIRED))), args);
+        emit("lawAMailRouteNeverCarriesTheKey", String.valueOf(!mail || sentKey(p) == 0), args);
+        emit("lawTheLeaseGoesOnlyToAMailRoute", String.valueOf(sentLease(p) < 1 || mail), args);
       }
     for (DeviceRoute d : CloudRequestPolicy.DEVICE_ROUTES) {
+      emit("mailRoute", String.valueOf(CloudRequestPolicy.mailRoute(d)), deviceRoute(d));
       emit("signInOwned", String.valueOf(CloudRequestPolicy.signInOwned(d)), deviceRoute(d));
       emit("isAccountRead", String.valueOf(CloudRequestPolicy.isAccountRead(d)), deviceRoute(d));
       for (String header : HEADERS) emit("headerAllowed", String.valueOf(CloudRequestPolicy.headerAllowed(d, header)), deviceRoute(d), q(header));
     }
     List<DeviceRoute> reportRoutes = List.of(CloudRequestPolicy.NO_DEVICE_ROUTE, new DeviceRoute(Method.GET, List.of("api", "v1", "user"), Auth.KEY_OR_SESSION, List.of()),
+      new DeviceRoute(Method.GET, List.of("api", "v1", "eliza", "google", "calendar", "feed"), Auth.MAIL, List.of()),
       new DeviceRoute(Method.GET, List.of("api", "v1", "models"), Auth.KEY_OR_SESSION, List.of()));
     for (Attach a : ATTACHES)
       for (DeviceRoute d : reportRoutes)

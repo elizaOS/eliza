@@ -13,14 +13,14 @@ const codeTable = {
   AccessDenied: 0, ClientDisabled: 0, SpeechConsentRequired: 0, NotFound: 0, CapabilityUnavailable: 0,
   IdempotencyConflict: 0, AlreadyDispatched: 0, StaleRevision: 0, BillingStateConflict: 0, IdentityInUse: 0, LastMethod: 0,
   GoogleReauthRequired: 0, SubscriptionGrantAlreadyRedeemed: 0, SubscriptionGrantPaidPlanActive: 0,
-  ReferralAlreadyApplied: 0, RenewalWindowClosed: 0, SessionClosed: 0, PreconditionFailed: 0, ContentTooLarge: 0, NoRoute: 0,
+  ReferralAlreadyApplied: 0, SessionClosed: 0, PreconditionFailed: 0, ContentTooLarge: 0, NoRoute: 0,
   UnsupportedMode: 0, UnsupportedRegion: 0, FreshSessionRequired: 0, RateLimited: 0, ProviderInvalidResponse: 0,
   ServiceUnavailable: 0, ProviderUnavailable: 0, RateLimitUnavailable: 0
 } satisfies Record<RefusalCode, 0>
 
 const reasonTable = {
   GrantRequired: 0, UnsupportedField: 0, CredentialExpired: 0, CredentialRevoked: 0, CredentialUnknown: 0,
-  ChallengeLocked: 0, GoogleAccountChanged: 0, AccountInactive: 0, CapabilityMissing: 0, GoogleNotConfigured: 0
+  ChallengeLocked: 0, GoogleAccountChanged: 0, AccountInactive: 0, CapabilityMissing: 0, GoogleNotConfigured: 0, DeviceKeyNotAllowed: 0
 } satisfies Record<Exclude<RefusalReason, "NoReason">, 0>
 
 function wireName(name: string): string {

@@ -1,4 +1,4 @@
-// spec/cloud/deployment.md, "A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve"; spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Story: Back up my passwords for another device"; spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page"
+// spec/cloud/deployment.md, "A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve"; spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Story: Back up my passwords for another device"; spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page"; spec/cloud/index.md, "An approved connection grants the owner only the selected reads"
 import type { Client } from "pg"
 import { CLEF_DECISIONS_PATH } from "../clef-decisions.vibe"
 import { clefRequest, type ClefEnv } from "../clef-worker.vibe"
@@ -35,14 +35,14 @@ export async function legacyGmailResponse(request: Request, routePath: string, e
   if (credential === null) return undefined
   const browser = credential.kind === "browser"
   const account = () => browser ? sessionAccount(request, db) : inferenceAccount(request, db, env, "recorded")
+  const arrival = routePath === inboxArrivalPath
+  if (!browser && !arrival) return undefined
   const owner = await account()
   if (!owner) return undefined
   const canonical = async () => (await db.query("SELECT 1 FROM google_connections WHERE user_id = $1 AND status <> 'Pending' LIMIT 1", [owner])).rows.length > 0
   if (await canonical()) return undefined
   const denied = (status: number, error: string) => HttpServerResponse.jsonUnsafe({ error }, { status, headers: { "cache-control": "no-store" } })
   if (corsFor(request, env, routePath).foreign) return denied(403, "forbidden_origin")
-  const arrival = routePath === inboxArrivalPath
-  if (!browser && !arrival) return denied(401, "authentication_required")
   const current = async () => await account() === owner && !await canonical()
   const response = await googleResponse(request, env, db, owner, providerFetch, arrival ? { credential, current } : undefined)
   return response.status === 200 && !arrival && !await current() ? denied(401, "authentication_required") : response
