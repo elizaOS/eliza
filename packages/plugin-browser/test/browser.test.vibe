@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, AgentRuntime, IAgentRuntime, Memory } from "@elizaos/core"
 import { offeredActions } from "@elizaos/agent"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { registerDeviceProposalFamily, type DeviceOperation } from "@elizaos/agent/device-actions"
 import {
   BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_NO_TABS_TO_CLOSE_NOTICE, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY,
   BROWSER_TABS_CLOSE_ALL_CAPABILITY, BROWSER_TABS_UNLISTED_NOTICE, browserCloseAllApprovable, browserCloseAllNotice, browserControlCapabilityAvailable,
@@ -218,11 +218,15 @@ module node {
   export const everyBrowserCapability = ["browser.search.v1", "browser.tabs.v1", "browser.tabs.close-all.v1", "browser.find.v1", "browser.history.v1", "browser.open-new-tab.v1"]
   export const pageObservation = { view: "browser", revision: 1, sensitive: false, selectedObject: { kind: "browser-tab", id: "session:tab", revision: "4" } }
   export const pageLinks = [{ text: "The first story", url: "https://one.example/story" }, { text: "The second story", url: "https://two.example/post?id=2" }]
-  export const frontPage = (revision = "4") => ({
-    tabId: "session:tab", revision, url: "https://news.example/", title: "Front page", capturedAt: 1,
-    text: "1. The first story\n2. The second story", truncated: false, links: pageLinks,
-  })
+  /** @throws {never} */
+  export function frontPage(revision = "4") {
+    return {
+      tabId: "session:tab", revision, url: "https://news.example/", title: "Front page", capturedAt: 1,
+      text: "1. The first story\n2. The second story", truncated: false, links: pageLinks,
+    }
+  }
 
+  /** @throws {never} */
   export function ownerTurn(ownerText: string, capabilities: readonly string[], browserPage?: unknown, observation: unknown = pageObservation): DeviceTurn {
     const negotiated = negotiation(true, capabilities.join(","))
     return {
@@ -245,6 +249,7 @@ module node {
     return read
   }
 
+  /** @throws {never} */
   export function offeredForms(turn: DeviceTurn) {
     return browserProposalFamily.forms.filter((form) => form.offered(turn)).map((form) => [form.types[0], ...Object.keys(form.schema.properties ?? {}).filter((key) => key !== "type")].join(" "))
   }
@@ -255,12 +260,13 @@ import { checked, everyBrowserCapability, frontPage, offeredForms, ownerTurn, pa
 it.effect(`Ground a Browser proposal in the owner's own words or an exact page link, bind only a whole-message request, or offer nothing (spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "My whole-message open command opens the address without waiting on the model's choice"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished")`, effect () => {
   const tabsOnly = ["browser.tabs.v1"]
   const propose = effect (ownerText: string, operation: unknown, capabilities: readonly string[] = everyBrowserCapability, page?: unknown, observation: unknown = pageObservation) => {
-    const grounding = try browserProposalFamily.ground(checked(operation), ownerTurn(ownerText, capabilities, page, observation))
+    const proposed = try Effect.try(() => checked(operation))
+    const grounding = try browserProposalFamily.ground(proposed, ownerTurn(ownerText, capabilities, page, observation))
     return grounding.kind === "Grounded" ? { operation: grounding.operation, reviewed: grounding.grounding === "GroundedForReview" } : grounding.code
   }
-  const navigate = (url: string, newTab?: true) => ({ type: "browser_navigate", url, ...(newTab === undefined ? {} : { newTab }) })
-  const direct = (operation: unknown) => ({ operation, reviewed: false })
-  const reviewed = (operation: unknown) => ({ operation, reviewed: true })
+  const navigate = (url: string, newTab?: true): DeviceOperation => ({ type: "browser_navigate", url, ...(newTab === undefined ? {} : { newTab }) })
+  const direct = (operation: DeviceOperation) => ({ operation, reviewed: false })
+  const reviewed = (operation: DeviceOperation) => ({ operation, reviewed: true })
   const notRequested = "DEVICE_BROWSER_NOT_REQUESTED"
   const opened = [
     try propose("can you open wikipedia.org in a new tab?", navigate("wikipedia.org")),
@@ -271,7 +277,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     try propose("open example.com", navigate("https://evil.example/")),
     try propose("do that in the browser", navigate("https://example.com/")),
   ]
-  const emptyTab = { type: "browser_tab_new" }
+  const emptyTab: DeviceOperation = { type: "browser_tab_new" }
   const tabbed = [
     try propose("open wikipedia.org in a new tab", emptyTab),
     try propose("open example dot com in a new tab", emptyTab),
@@ -309,10 +315,10 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     ownerTurn("open example.com", []),
   ].map((turn) => browserProposalFamily.wholeMessageOperation?.(turn))
   const asked = try propose("open example.com in a new tab", outright[0])
-  const wikipedia = checked(navigate("https://wikipedia.org/", true)).operation
+  const wikipedia = (try Effect.try(() => checked(navigate("https://wikipedia.org/", true)))).operation
   const told = [
-    browserProposalFamily.proposedText(wikipedia, { direct: true, timeZone: undefined })?.forOwner,
-    browserProposalFamily.proposedText(wikipedia, { direct: false, timeZone: undefined }),
+    browserProposalFamily.proposedText(wikipedia, { direct: true, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" })?.forOwner,
+    browserProposalFamily.proposedText(wikipedia, { direct: false, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" }),
     browserProposalFamily.settledText(wikipedia, { outcome: "applied" }, undefined),
   ]
   const runtime = {} as IAgentRuntime
