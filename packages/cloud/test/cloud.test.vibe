@@ -1394,7 +1394,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
   }), 60_000)
 })
 describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
-  it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew a window and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\")", () => scoped(effect {
+  it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew while each ended window settles at its use, and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\"; spec/cloud/services/speechRelay.md, \"Each admitted window settles once, and a retiring session closes only after all its receipts\")", () => scoped(effect {
     try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
     const speech = try sync(() => speechFake())
     const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
@@ -1422,9 +1422,19 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     const extended = try promise(() => socket.next())
     try TestClock.adjust(Duration.seconds(10))
     try TestClock.withLive(sleep(Duration.millis(200)))
+    const longReply = "Here is the whole story again. ".repeat(26).slice(0, 800)
+    try sync(() => {
+      socket.send({ t: "prepare", id: "reply-2" })
+      for (const flush of [false, false, true]) socket.send({ t: "tts", id: "reply-2", text: longReply, flush })
+      socket.send({ t: "finish", id: "reply-2" })
+    })
+    try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "complete"))
     try TestClock.adjust(Duration.seconds(50))
-    try TestClock.withLive(sleep(Duration.millis(200)))
-    try TestClock.adjust(Duration.seconds(10))
+    const extendedAgain = try promise(() => socket.next())
+    for (const step of [10, 50, 10]) {
+      try TestClock.withLive(sleep(Duration.millis(200)))
+      try TestClock.adjust(Duration.seconds(step))
+    }
     const ending = try promise(() => socket.until((received) => received.kind === "close"))
     let phase: unknown = undefined
     for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
@@ -1432,7 +1442,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
     }
     const windows = try sql(cloud, "SELECT number, expires_at, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
-    const usage = try sql(cloud, `SELECT w.number, u.quote, u.outcome,
+    const usage = try sql(cloud, `SELECT w.number, u.quote, u.charged, u.outcome,
       CASE WHEN u.hold_key = w.transcribe_hold THEN 'transcribe' ELSE 'synthesize' END AS direction
       FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
       WHERE w.session_id = $1 AND u.organization_id = $2 ORDER BY w.number, direction DESC`, [session.sessionId, caller.organizationId])
@@ -1453,12 +1463,12 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         opened: shown(opened),
         heard: shown(heard),
         spoken: shown(spoken),
-        extended: shown([extended]),
+        extended: shown([extended, extendedAgain]),
         ending: shown(ending),
         forwarded: speech.sttPcmBytes,
         phase,
         windows: windows.map((row) => [Number(row.number), Number(row.expires_at) - mintedAt, row.settled]),
-        usage: usage.map((row) => [Number(row.number), row.direction, Number(row.quote), row.outcome]),
+        usage: usage.map((row) => [Number(row.number), row.direction, Number(row.quote), row.outcome === "known" ? Number(row.charged) : row.outcome]),
         spent: [spent.status, (spent.body as { readonly error?: string }).error]
       },
       {
@@ -1480,12 +1490,16 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
           { t: "flush_complete", id: "reply-1" },
           { t: "complete", id: "reply-1" }
         ],
-        extended: [{ t: "extended", expiresAt: new Date(mintedAt + 120_000).toISOString() }],
+        extended: [{ t: "extended", expiresAt: new Date(mintedAt + 120_000).toISOString() }, { t: "extended", expiresAt: new Date(mintedAt + 180_000).toISOString() }],
         ending: [{ t: "error", code: "unavailable", reason: "insufficient_credits" }, { close: 4402 }],
         forwarded: 3_200,
         phase: "closed",
-        windows: [[1, 60_000, true], [2, 120_000, true]],
-        usage: [[1, "transcribe", 6_000, "unknown"], [1, "synthesize", 122_880, "unknown"], [2, "transcribe", 6_000, "unknown"], [2, "synthesize", 122_880, "unknown"]],
+        windows: [[1, 60_000, true], [2, 120_000, true], [3, 180_000, true]],
+        usage: [
+          [1, "transcribe", 6_000, 10], [1, "synthesize", 122_880, 18 * 30],
+          [2, "transcribe", 6_000, 0], [2, "synthesize", 122_880, 3 * 800 * 30],
+          [3, "transcribe", 6_000, "unknown"], [3, "synthesize", 122_880, "unknown"]
+        ],
         spent: [402, "allowance_exhausted"]
       }
     ))
