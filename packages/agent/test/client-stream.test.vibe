@@ -147,7 +147,7 @@ for (const rolledBack of [false, true]) {
     const id = try conversation(agent)
     const path = `/api/conversations/${id}/messages`
     const body = { text: "Make the requested change.", clientMessageId: "effect-proof" }
-    const headers = { "x-elizaos-cut-off-effect": "applied" }
+    const headers = { "x-eliza-device-cut-off-effect": "applied" }
     try Effect.sync(() => {
       const patch = toolCalls("", { name: "APPLY_FIXTURE", arguments: {} })
       const undo = toolCalls("", { name: "ROLL_BACK_FIXTURE", arguments: {} })

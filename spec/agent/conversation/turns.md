@@ -232,7 +232,7 @@ approval request provide no proof of an applied change. The marker is
 absent when the turn was cut before the receipt arrived or is recovered
 after a restart with no stored reply.
 
-A message POST with the request header `x-elizaos-cut-off-effect: applied`
+A message POST with the request header `x-eliza-device-cut-off-effect: applied`
 gets the stored marker on its buffered or streamed reply. The header does
 not change the key, content, or outcome of a turn. An initial answer, a
 joined request and a same-key replay each honor their own header. No
