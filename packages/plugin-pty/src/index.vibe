@@ -1,5 +1,5 @@
 // spec/pty/index.md, "Story: Open and close an owner-bound terminal session"
-import { Machine, machineOver, initial, terminalAcceptsInput } from "../gen/pty.effect.vibe"
+import { machineOver, initial, terminalAcceptsInput } from "../gen/pty.effect.vibe"
 
 export error TerminalUnavailable { terminalId: string }
 export error TerminalRequestRefused { terminalId: string }
@@ -15,11 +15,13 @@ export interface TerminalLaunch {
 
 module node {
   import { spawn, type IDisposable, type IPty } from "@lydell/node-pty"
+  import type { TerminalLaunch } from "./index.vibe"
 
   interface PtyConnection {
     readonly process: IPty
     readonly dispose: IDisposable
     readonly exit: IDisposable
+    /** @throws {never} */
     readonly snapshot: () => { sequence: number; output: string }
   }
 
