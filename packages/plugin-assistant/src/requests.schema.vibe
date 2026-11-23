@@ -3,19 +3,15 @@
 const Text = (most: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(most))
 const Minutes = (least: number, most: number) => Schema.Int.check(Schema.isBetween({ minimum: least, maximum: most }))
 
-/** When the plan says the reminder is due: after a duration, at an instant with its offset, or at a wall time on the owner's clock. */
 export const ReminderDue = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("in"), minutes: Minutes(1, 525_600) }),
   Schema.Struct({ kind: Schema.Literal("at"), instant: Text(40) }),
   Schema.Struct({ kind: Schema.Literal("local"), date: Text(10), time: Text(5) }),
 ])
 
-/** A delivery choice the plan or the message states, or null when neither does. */
 export const Destination = Schema.NullOr(Schema.Literals(["chat", "device"]))
-/** Whether the reminder alerts, or null when unstated. */
 export const Alert = Schema.NullOr(Schema.Literals(["alert", "silent"]))
 
-/** The planner's reminder plan. */
 export const ReminderPlan = Schema.Struct({
   title: Text(200),
   body: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))),
@@ -23,29 +19,23 @@ export const ReminderPlan = Schema.Struct({
   destination: Destination,
   alert: Alert,
 })
-/** The planner's reminder plan. */
 export type ReminderPlan = typeof ReminderPlan.Type
 
-/** What the owner's original message asks, as the verification reads it again. */
 export const ReminderCheck = Schema.Struct({
   requested: Schema.Boolean,
   clock: Schema.Literals(["utc", "owner_local"]),
   destination: Destination,
   alert: Alert,
 })
-/** What the owner's original message asks, as the verification reads it again. */
 export type ReminderCheck = typeof ReminderCheck.Type
 
-/** A change to a saved reminder the owner asks for. */
 export const ReminderAnswer = Schema.Struct({
   op: Schema.Literals(["complete", "dismiss", "snooze", "acknowledge"]),
   target: Text(200),
   minutes: Schema.optionalKey(Minutes(1, 1_440)),
 })
-/** A change to a saved reminder the owner asks for. */
 export type ReminderAnswer = typeof ReminderAnswer.Type
 
-/** A goal change the owner asks for. */
 export const GoalRequest = Schema.Union([
   Schema.Struct({ op: Schema.Literal("create"), title: Text(200), description: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))), cadence: Schema.Literals(["none", "daily", "weekly"]) }),
   Schema.Struct({ op: Schema.Literal("update"), target: Text(200), status: Schema.Literals(["active", "paused", "archived", "satisfied"]), cadence: Schema.optionalKey(Schema.Literals(["none", "daily", "weekly"])) }),
@@ -53,34 +43,25 @@ export const GoalRequest = Schema.Union([
   Schema.Struct({ op: Schema.Literal("dismiss_checkin"), target: Text(200), slot: Schema.Literals(["morning", "evening", "weekly"]) }),
   Schema.Struct({ op: Schema.Literal("checkin"), target: Text(200), progress: Schema.Literals(["on_track", "at_risk", "needs_attention"]), note: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))) }),
 ])
-/** A goal change the owner asks for. */
 export type GoalRequest = typeof GoalRequest.Type
 
-/** A to-do change the owner asks for. */
 export const TodoRequest = Schema.Union([
   Schema.Struct({ op: Schema.Literal("create"), content: Text(500) }),
   Schema.Struct({ op: Schema.Literals(["start", "complete", "cancel", "reopen", "delete"]), target: Text(500) }),
   Schema.Struct({ op: Schema.Literal("clear") }),
   Schema.Struct({ op: Schema.Literal("list") }),
 ])
-/** A to-do change the owner asks for. */
 export type TodoRequest = typeof TodoRequest.Type
 
-/** A routine the owner's client creates. */
 export const RoutineCreate = Schema.Struct({
   idempotencyKey: Text(256),
   title: Text(200),
   windows: Schema.Array(Schema.Literals(["morning", "afternoon", "evening", "night"])).check(Schema.isMinLength(1), Schema.isMaxLength(4)),
 })
-/** A routine the owner's client creates. */
 export type RoutineCreate = typeof RoutineCreate.Type
 
-/** A change of a routine's status from the owner's client. */
 export const RoutineUpdate = Schema.Struct({ status: Schema.Literals(["active", "paused", "archived"]) })
-/** A change of a routine's status from the owner's client. */
 export type RoutineUpdate = typeof RoutineUpdate.Type
 
-/** An answer to a routine's current occurrence. */
 export const OccurrenceAnswer = Schema.Struct({ op: Schema.Literals(["complete", "skip", "snooze", "mute", "unmute"]) })
-/** An answer to a routine's current occurrence. */
 export type OccurrenceAnswer = typeof OccurrenceAnswer.Type

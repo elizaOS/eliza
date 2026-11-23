@@ -14,29 +14,22 @@ import { area as providerEvents } from "../http/routes/provider-events.vibe"
 import { area as speech } from "../http/routes/speech.vibe"
 import { relaySpeechRoutes } from "../services/speech-relay.vibe"
 
-/** The server's areas a Worker mounts: all of them. */
 const workerAreas: ReadonlyArray<Area> = [foundation, identity, nativeClients, checkout, providerEvents, billing, inference, speech, maps, google, operator]
 
-/** Every route of the server's table that a Worker answers. */
 export const workerRoutes: ReadonlyArray<Route> = workerAreas.flatMap((each) => each.routes)
 
-/** The speech relay's socket routes, which a Worker answers on a socket pair instead of a buffered answer. */
 export const relayRoutes: ReadonlyArray<Route> = relaySpeechRoutes
 
-/** Whether a request opens the speech relay's socket. */
 export function opensRelay(method: string, pathname: string): boolean {
   return matchRoute(relayRoutes, method, pathname).kind === "route"
 }
 
-/** Every sweep of the areas a Worker mounts. */
 const workerSweeps: ReadonlyArray<Sweep> = workerAreas.flatMap((each) => each.sweeps)
 
-/** Who answers a request: the server's table, a Worker-only route, or the table's fallback. */
 export function answerOf(method: string, pathname: string, workerOnly: (pathname: string) => boolean): WorkerAnswer {
   return workerAnswer(matchRoute(workerRoutes, method, pathname).kind !== "none", workerOnly(pathname))
 }
 
-/** The sweeps due at a scheduled tick. */
 export function dueSweeps(scheduledAt: number): ReadonlyArray<Sweep> {
   return workerSweeps.filter((sweep) => sweepDue(scheduledAt, sweep.everyMs))
 }

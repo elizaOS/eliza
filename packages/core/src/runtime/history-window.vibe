@@ -1,13 +1,9 @@
 // spec/core/context.md, "Story: Keep a long conversation within reach on a host with no reviewer"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"
 import { shownFrom, windowBoundary } from "../../gen/core__context.ts"
 
-/** Most originals a host without a reviewer keeps inline before it defers a batch. */
 export const HISTORY_WINDOW_MAX_SOURCES = 40
-/** Originals left inline directly after a batch is deferred. */
 export const HISTORY_WINDOW_KEEP_SOURCES = 20
-/** Deferred user messages kept inline because their wording reads as standing. */
 export const HISTORY_WINDOW_STANDING_SOURCES = 12
-/** Most recent originals always shown, whatever the boundary. */
 export const HISTORY_CONTINUITY_SOURCES = 10
 
 const RECALL_SOURCES = 3
@@ -18,20 +14,17 @@ const WORD_MATCHES = 5
 const STANDING_WORDING =
   /\b(?:always|never|from now on|going forward|in (?:the )?future|every time|each time|whenever|remember (?:that|to|my)|don['’]?t (?:ever|forget)|do not (?:ever|forget)|i prefer|call me|my name is|i(?:['’]m| am) allergic|unless i)\b/i
 
-/** One original of a conversation, in chronological order, as the history window reads it. */
 export interface HistorySource {
   readonly id: string
   readonly fromUser: boolean
   readonly text: string
 }
 
-/** A boundary a reviewer or an earlier window recorded: the originals before `reviewedCount` are deferred except `retainedIds`. */
 export interface HistoryReview {
   readonly reviewedCount: number
   readonly retainedIds: readonly string[]
 }
 
-/** What one turn shows of a conversation and what it defers, with the boundary to record for the next turn. */
 export interface HistoryWindow<S extends HistorySource> {
   readonly shown: readonly S[]
   readonly deferred: readonly S[]
@@ -40,7 +33,6 @@ export interface HistoryWindow<S extends HistorySource> {
   readonly windowed: boolean
 }
 
-/** Search results over a conversation: literal matches when any exist, otherwise the best matches by shared words. */
 export interface HistorySearch<S extends HistorySource> {
   readonly matches: readonly S[]
   readonly byWords: boolean
@@ -96,7 +88,6 @@ function recall(sources: readonly HistorySource[], shown: ReadonlySet<number>, r
   return [...recalled]
 }
 
-/** Bounds a conversation's history for a host where no reviewer runs, keeping standing instructions and the exchanges the request's words point at. */
 export function windowHistory<S extends HistorySource>(sources: readonly S[], request: string, previous?: HistoryReview): HistoryWindow<S> {
   const prior = validReview(sources, previous)
   const userPositions = sources.flatMap((source, index) => source.fromUser ? [index] : [])
@@ -125,7 +116,6 @@ export function windowHistory<S extends HistorySource>(sources: readonly S[], re
   }
 }
 
-/** Finds originals for a history search: a case-insensitive literal match, or, when none exists, the newest best matches by weighted shared words with those not in view first. */
 export function searchHistory<S extends HistorySource>(candidates: readonly S[], query: string, inView: (source: S) => boolean): HistorySearch<S> {
   const needle = query.toLowerCase()
   const literal = needle.trim() ? candidates.filter(({ text }) => text.toLowerCase().includes(needle)) : []
@@ -157,7 +147,6 @@ export function searchHistory<S extends HistorySource>(candidates: readonly S[],
   return { matches, byWords: matches.length > 0 }
 }
 
-/** The notice a windowed turn carries after its transcript: how many originals are not shown, why, and when to read them through `readThrough`, the host's history read. */
 export function historyWindowNotice(window: { readonly deferred: readonly unknown[]; readonly recalled: readonly unknown[] }, readThrough?: string): string {
   const recalled = window.recalled.length > 0
     ? " The conversation holds the most recent ones, preceded by up to three earlier exchanges matched to this request by its words; others on the same subject may be unread."

@@ -488,6 +488,14 @@ func TestNodeRuntimeInventoryForCompiledHost(t *testing.T) {
 			}
 		})
 	}
+	t.Run("admit an empty listed asset", func(t *testing.T) {
+		files := runtimeFiles()
+		files["assets/agent/LICENSE"] = []byte{}
+		apk, empty := artifactFor(t, files, "")
+		if err := verify(t, apk, empty); err != nil {
+			t.Fatalf("empty listed asset refused: %v", err)
+		}
+	})
 	t.Run("refuse an executable for another loader", func(t *testing.T) {
 		files := runtimeFiles()
 		files[library][121] = 'x'

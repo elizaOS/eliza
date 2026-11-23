@@ -4,7 +4,6 @@ import { gmailGrantTier, type GmailGrantTier } from "../mailbox/grants.vibe"
 import type { GoogleConnection } from "../mailbox/types.vibe"
 import { agentGmailClient } from "./cloud.vibe"
 
-/** The provider name of the owner's Gmail access state. */
 export const inboxAccessProviderName = "INBOX_ACCESS"
 
 const tierText = {
@@ -13,7 +12,6 @@ const tierText = {
   modify: "Gmail is connected with read and change access. Sending and mailbox changes are still reviewed and confirmed by the owner in Inbox.",
 } as const satisfies Record<GmailGrantTier, string>
 
-/** The owner's Gmail access state, with no mail content. */
 export effect function inboxAccess(runtime: IAgentRuntime): ProviderResult!! {
   const client = agentGmailClient(runtime)
   if (client === undefined) return { text: "Gmail is available only when this agent uses the cloud.", values: { gmailTier: "none" } }
@@ -23,7 +21,6 @@ export effect function inboxAccess(runtime: IAgentRuntime): ProviderResult!! {
   return { text: tierText[tier], values: { gmailTier: tier } }
 }
 
-/** Tells the planner whether the owner's Gmail can be read, without any mail content. */
 export const inboxAccessProvider: Provider = {
   name: inboxAccessProviderName,
   description: "Whether the owner's Gmail is connected for reading, and that sends and changes happen only in Inbox",

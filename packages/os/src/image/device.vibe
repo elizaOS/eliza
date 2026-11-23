@@ -348,7 +348,6 @@ export effect function startSingleDeviceAdb(serial: string, options: { readonly 
   return endpoint
 }
 
-/** The directory device leases live in: the caller's explicit one, else `ELIZA_DEVICE_LEASE_DIR`, else `ELIZA_STATE_DIR/device-leases`, else `~/.local/state/eliza/device-leases`. */
 export function leaseStateDirectory(explicit?: string): string {
   const found = leaseDirectories()
   switch (leaseDirectoryOf(explicit !== undefined, found.leaseVariable !== undefined, found.stateVariable !== undefined)) {
@@ -384,7 +383,6 @@ function leaseReading(found: Snapshot, now: number): LeaseReading {
   }
 }
 
-/** Whether a parsed lease still holds its device at `now`. */
 function leaseActive(lease: Lease, now: number): boolean {
   return leaseHeld(leaseReading({ kind: "parsed", lease, identity: "", mtime: 0 }, now))
 }
@@ -519,7 +517,7 @@ effect function releaseLease(held: DeviceLease) {
     try removeIfUnchanged(held.path, current)
 }
 
-export effect function writeDurableDeviceState(file: string, content: string) {
+export effect function writeDurableDeviceState(file: string, content: string, create = false) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
   const pending = `${file}.${processId()}.${uniqueToken()}.tmp`
@@ -527,7 +525,8 @@ export effect function writeDurableDeviceState(file: string, content: string) {
     const written = try files.open(pending, { flag: "wx", mode: 0o600 })
     try written.writeAll(new TextEncoder().encode(content))
     try written.sync
-    try files.rename(pending, file)
+    if (create) try files.link(pending, file)
+    else try files.rename(pending, file)
     const directory = try files.open(path.dirname(file), { flag: "r" })
     try directory.sync
   }), ignore(files.remove(pending, { force: true })))
@@ -572,7 +571,6 @@ export effect function acquireDeviceLease(deviceKey: string, options: LeaseOptio
   return try acquireRelease(claim(deviceKey, leasePath, options), (held) => releaseLease(held).pipe(Effect.provideService(FileSystem.FileSystem, files), Effect.orDie))
 }
 
-/** A device's lease as it reads now: its path, the parsed lease if any, and the first reason it does not hold the device. */
 export effect function readDeviceLease(deviceKey: string, options: { readonly stateDir?: string } = {}) {
   const path = deviceLeasePath(deviceKey, leaseStateDirectory(options.stateDir))
   const found = try snapshot(path)
@@ -656,7 +654,6 @@ export effect function requireInstrumentationSuccess(output: string, requestedCl
   return result
 }
 
-/** The one started test of a run the caller interrupted, refused unless that test was ended by a process crash with nothing passing. */
 export effect function requireInstrumentationInterruption(output: string, testClass: string, testMethod: string) {
   try instrumentationCheck(output.length <= OUTPUT_BOUND, "Instrumentation output exceeds bound")
   try instrumentationCheck(PACKAGE.test(testClass) && /^[A-Za-z][A-Za-z0-9_]*$/.test(testMethod), "One test class and method required")
@@ -787,8 +784,8 @@ export effect function rebootAndroidFixture(
   }
   let after = before
   try waitFor(effect () => {
-    after = try bootId()
-    return after !== before && (try call("shell", "getprop", "sys.boot_completed")) === "1"
+    after = bootId() catch () => before
+    return after !== before && (call("shell", "getprop", "sys.boot_completed") catch () => "") === "1"
   }, "Changed boot ID and completed boot required")
   try fixtureCheck((try avd()) === options.expectedAvdName, "The fixture AVD changed across the reboot")
   try call("shell", "am", "start-user", "-w", user)
@@ -830,7 +827,6 @@ export interface IsolatedUserOptions<A extends ScenarioCleanup, E, R> {
 
 export error IsolatedUserKept { user: number | null; reason: string }
 
-/** Runs a scenario in a new secondary user of the caller's leased emulator, restores the owner, and removes the user only when the scenario proved its packages clean. */
 export effect function withIsolatedAndroidUser<A extends ScenarioCleanup, E, R>(options: IsolatedUserOptions<A, E, R>) {
   const waitMs = options.waitMs ?? 15000
   const homeWaitMs = options.homeWaitMs ?? 60000

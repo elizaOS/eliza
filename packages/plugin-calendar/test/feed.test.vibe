@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
-import { managedBroker, managedFeed, mergeFeedEvents, parseBrokerEndpoint, parseManagedGoogleCalendarFeed, PurgeRefused,
+import { managedBroker, managedFeed, mergeFeedEvents, parseBrokerEndpoint, parseManagedGoogleCalendarFeed, type PurgeRefused,
   type AggregatePorts, type CalendarLinkRecord, type FeedComponent, type ImportedSourceScope, type ManagedCacheStore } from "../src/feed/index.vibe"
 
 module node {

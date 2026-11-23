@@ -2,6 +2,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync, type SQLInputValue, type SQLOutputValue } from "node:sqlite";
+import { Schema } from "effect";
 import { filterMemoryReadByAccessContext } from "../../src/access-control/filter.vibe";
 import {
   DatabaseAdapter,
@@ -76,7 +77,7 @@ import {
   type PairingRequest,
   type PairingRequestQuery,
 } from "../../src/types/pairing.vibe";
-import { type JsonValue, type Metadata, type UUID } from "../../src/types/primitives.vibe";
+import { type JsonValue, type Metadata, type MetadataValue, type UUID } from "../../src/types/primitives.vibe";
 import { type Task, type TaskMetadata, type TaskMetadataPatch } from "../../src/types/task.vibe";
 
 const TABLES = [
@@ -168,6 +169,23 @@ function toRow(record: Record<string, SQLOutputValue>): Row {
 
 function parse<T>(row: Row): T {
   return JSON.parse(row.body) as T;
+}
+
+const metadataValue: Schema.Codec<MetadataValue> = Schema.suspend(() =>
+  Schema.Union([
+    Schema.Undefined,
+    Schema.Null,
+    Schema.Boolean,
+    Schema.Number,
+    Schema.String,
+    Schema.mutable(Schema.Array(metadataValue)),
+    Schema.Record(Schema.String, metadataValue),
+  ]));
+const isOptionalMetadata = Schema.is(Schema.UndefinedOr(Schema.Record(Schema.String, metadataValue)));
+
+function sqliteWorldMetadata(value: World["metadata"]): Metadata | undefined {
+  if (!isOptionalMetadata(value)) throw new TypeError("sqlite adapter: invalid world metadata");
+  return value;
 }
 
 function list(values: readonly unknown[]): string {
@@ -802,20 +820,22 @@ export class SqliteAdapter extends DatabaseAdapter<SqliteStore> {
     return this.run("createWorlds", () =>
       this.atomic(() =>
         worlds.map((world) => {
-          this.insert("worlds", world.id, Date.now(), { ...world, metadata: initializeWorldMetadataRevisionOrThrow(world.metadata as Metadata | undefined) });
+          this.insert("worlds", world.id, Date.now(), { ...world, metadata: initializeWorldMetadataRevisionOrThrow(sqliteWorldMetadata(world.metadata)) });
           return world.id;
         })
       ));
   }
 
   private writeWorld(world: World, existing: Row): void {
+    const stored = parse<World>(existing);
+    const incomingMetadata = sqliteWorldMetadata(world.metadata);
     const storedRevision = requireFreshWorldMetadataRevisionOrThrow(
-      parse<World>(existing).metadata as Metadata | undefined,
-      world.metadata as Metadata | undefined,
+      sqliteWorldMetadata(stored.metadata),
+      incomingMetadata,
       world.id,
     );
-    const metadata = advanceWorldMetadataRevisionOrThrow(world.metadata as Metadata | undefined, storedRevision);
-    this.replace("worlds", world.id, { ...parse<World>(existing), ...world, metadata }, existing.revision);
+    const metadata = advanceWorldMetadataRevisionOrThrow(incomingMetadata, storedRevision);
+    this.replace("worlds", world.id, { ...stored, ...world, metadata }, existing.revision);
     world.metadata = structuredClone(metadata);
   }
 
@@ -825,7 +845,7 @@ export class SqliteAdapter extends DatabaseAdapter<SqliteStore> {
         for (const world of worlds) {
           const existing = this.row("worlds", world.id);
           if (existing) this.writeWorld(world, existing);
-          else this.insert("worlds", world.id, Date.now(), { ...world, metadata: initializeWorldMetadataRevisionOrThrow(world.metadata as Metadata | undefined) });
+          else this.insert("worlds", world.id, Date.now(), { ...world, metadata: initializeWorldMetadataRevisionOrThrow(sqliteWorldMetadata(world.metadata)) });
         }
       }));
   }
@@ -846,8 +866,9 @@ export class SqliteAdapter extends DatabaseAdapter<SqliteStore> {
         const stored = this.row("worlds", params.worldId);
         if (!stored) return { status: "not_found" };
         const world = parse<World>(stored);
-        const storedRevision = getWorldMetadataRevision(world.metadata as Metadata | undefined);
-        if (storedRevision === null || !worldMetadataValueEquals(world.metadata ?? {}, params.expectedMetadata)) return { status: "conflict" };
+        const storedMetadata = sqliteWorldMetadata(world.metadata);
+        const storedRevision = getWorldMetadataRevision(storedMetadata);
+        if (storedRevision === null || !worldMetadataValueEquals(storedMetadata ?? {}, params.expectedMetadata)) return { status: "conflict" };
         const audit = params.audit;
         const replacement = audit
           ? appendWorldMetadataRoleAuditOrThrow(params.replacementMetadata, { ...audit })

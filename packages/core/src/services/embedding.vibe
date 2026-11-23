@@ -9,7 +9,6 @@ import { ModelType } from "../types/model.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { Service } from "../types/service.vibe"
 import { type BatchItemOutcome, BatchQueue, disposeBatchQueue, startBatchQueue } from "../utils/batch-queue.vibe"
-import { rawEnv } from "../utils/environment.vibe"
 import { isExpectedLocalEmbeddingUnavailability } from "../utils/expected-local-embedding-unavailability.vibe"
 import { isModelFundingAuthorityError } from "../utils/model-errors.vibe"
 import { errorText, asError } from "../utils/errors.vibe"
@@ -405,7 +404,7 @@ effect function stopEmbedding(embedding: Embedding) {
     return
   }
   const remaining = queue.size
-  const fastShutdown = rawEnv("ELIZA_FAST_SHUTDOWN") === "1"
+  const fastShutdown = runtime.isFastStopRequested?.() === true
   if (fastShutdown) queue.clear()
   try disposeBatchQueue(queue, runtime, { flushHighPriority: !fastShutdown })
   embedding.pending.clear()

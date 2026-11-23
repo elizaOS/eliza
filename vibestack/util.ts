@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { exec } from "./run.ts";
-import { evaluatorIdentity } from "./installed.ts";
+import { evaluatorIdentity, InstallationChanged } from "./installed.ts";
 import { badSpecName, heading, isStd, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
 import ts from "typescript";
@@ -202,6 +202,7 @@ export async function tests(checking: string, dir: string, specs: Spec[], rememb
     };
     said.push(await (fingerprint === undefined ? runTests() : remember(fingerprint, runTests, ([ok]) => ok)));
   } catch (e) {
+    if (e instanceof InstallationChanged) throw e;
     said.push([false, "tests", (e as Error).message]);
   }
   return said;

@@ -1,12 +1,9 @@
 // spec/workflow/authoring.md, "A draft uses the advertised operation catalog and only earlier step outputs"
-/** A category of request the typed phone catalog can never satisfy. */
 export type WorkflowScopeCategory = "calls" | "sms" | "payments" | "contacts" | "code" | "email"
-/** The phrase filter's verdict on one request. */
 export type WorkflowScopeResult =
   | { readonly refused: false }
   | { readonly refused: true; readonly categories: readonly WorkflowScopeCategory[]; readonly message: string }
 
-/** Reviewable names for the typed operations a phone workflow can use. */
 export const WORKFLOW_OPERATION_LABELS: Readonly<Record<string, string>> = {
   supplied_text: "Read supplied text",
   selected_notes: "Read selected Notes",
@@ -124,7 +121,7 @@ const emailSend = [
 const explicitAddress = /[^\s@<>()"',;]+@[^\s@<>()"',;]+\.[a-z]{2,}/i
 const ownerOnly = /\b(?:to\s+me|to\s+myself|e-?mail\s+me|e-?mail\s+myself|send\s+me|mail\s+me|me\s+an?\s+e-?mail)\b/i
 const subject = /\b(?:remind(?:er)?\s+(?:me\s+)?(?:to|about)|(?:a|the)\s+(?:note|notification|reminder)\s+(?:to|about|saying|that\s+says)|notes?\s+(?:about|on|mentioning|containing|that\s+mention|mentions?)|notify\s+me\s+(?:to|about)|(?:titled|called|named|labell?ed))\s+[^.;:!?\n,]*?(?=[.;:!?\n,]|\s+(?:and\s+)?then\b|$)/gi
-const invisible = /[­​-‍⁠﻿]/g
+const invisible = /[\u00ad\u200b-\u200d\u2060\ufeff]/g
 const benign = /\bring\s+the\s+changes\b|\bcall\s+(?:me|him|her|them|us|it)\s+out\b(?!\s+of\b)|\bmessage\s+me\s+(?:with\s+)?(?:an?|the|my)\s+(?:\w+\s+)?notifications?\b/gi
 const lookalikes: Readonly<Record<string, string>> = {
   а: "a", в: "b", е: "e", ё: "e", к: "k", м: "m", н: "h", о: "o", р: "p", с: "c", т: "t", у: "y", х: "x", і: "i", ї: "i", ј: "j", ѕ: "s", ԁ: "d", ɡ: "g", ӏ: "l",
@@ -138,7 +135,6 @@ function plain(prompt: string): string {
     .replace(/[Ͱ-ԯɡ]/g, (letter) => lookalikes[letter] ?? letter).replace(/[‐-―]/g, "-")
 }
 
-/** The categories the typed phone catalog cannot satisfy that a request names, in a stable order. */
 export function workflowScopeCategories(prompt: string): WorkflowScopeCategory[] {
   const text = plain(prompt).replace(benign, " note ").replace(subject, " ")
   const found: WorkflowScopeCategory[] = []
@@ -155,7 +151,6 @@ function list(items: readonly string[]): string {
   return items.length <= 1 ? items.join("") : items.slice(0, -1).join(", ") + " and " + items[items.length - 1]
 }
 
-/** Refuses a request before generation and names the operations this agent and phone can use instead. */
 export function checkWorkflowScope(prompt: string, operations: readonly string[]): WorkflowScopeResult {
   const categories = workflowScopeCategories(prompt)
   if (categories.length === 0) return { refused: false }

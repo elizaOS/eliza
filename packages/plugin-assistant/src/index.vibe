@@ -19,7 +19,6 @@ export { restoreEarlier, evidenceRows, type Restoration } from "./evaluators/pag
 export { followupTick, type TickReport } from "./followups.vibe"
 export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
 
-/** The name the agent loads this plugin by. */
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
 
 type Deliverer = (task: TaskRow) => DeliveryAnswer!unknown!AssistantPorts
@@ -39,7 +38,6 @@ const deliverers: ReadonlyArray<readonly [string, Deliverer]> = [
 
 const ownerClockKinds = new Set([checkinKind, goalCheckinKind, routineKind])
 
-/** Moves every standing check-in, goal check-in and routine onto the zone the owner's clock follows now. */
 export effect function followOwnerClock() {
   const zone = try ownerClockAt(try (try Facts).now())
   const scheduler = try Scheduler
@@ -65,7 +63,6 @@ effect function scheduleStandingTasks() {
   try followOwnerClock()
 }
 
-/** Registers how the assistant's scheduled tasks reach the owner, and keeps the morning check-in scheduled. */
 export class PersonalAssistantService extends Service {
   static override serviceType = "personal-assistant"
   override capabilityDescription = "Delivers the owner's reminders, goal check-ins, routines and daily check-in at the owner's local time"
@@ -88,7 +85,6 @@ export class PersonalAssistantService extends Service {
   }
 }
 
-/** Runs the evaluators of a turn under the runner's rules, with their durable progress kept in the agent's store. */
 export class PersonalAssistantEvaluators extends Service {
   static override serviceType = "personal-assistant-evaluators"
   override capabilityDescription = "Runs registered evaluators in batches by input route, with durable incremental progress"
@@ -119,7 +115,6 @@ const ownerClockProvider: Provider = {
 
 let running: IAgentRuntime | undefined
 
-/** The personal assistant: reminders, goals, to-dos, routines, the daily check-in and the owner's clock. */
 export const personalAssistantPlugin = {
   name: personalAssistantPluginName,
   description: "Personal assistance: reminders, time zones, check-ins, goals, to-dos and routines, kept in the owner's agent.",

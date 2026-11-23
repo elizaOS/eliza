@@ -77,7 +77,7 @@ export function fed(s: Segmenter, bytes: number[]): Fed {
 }
 
 //@ pure
-export function lawEventsDoNotDependOnChunking(s: Segmenter, a: number[], b: number[]): boolean {
+export function lawEventsDoNotDependOnChunking(s: Segmenter, a: number[], b: number[]): boolean { // eslint-disable-line @typescript-eslint/no-unused-vars -- Law parameters are used by the checked LemmaScript postcondition.
   //@ ensures fed(s, a.concat(b)).segmenter === fed(fed(s, a).segmenter, b).segmenter
   //@ ensures fed(s, a.concat(b)).events === fed(s, a).events.concat(fed(fed(s, a).segmenter, b).events)
   return true
@@ -230,7 +230,7 @@ export function decoded(d: Utf8, bytes: number[]): Decoded {
 }
 
 //@ pure
-export function lawDecodingDoesNotDependOnChunking(d: Utf8, a: number[], b: number[]): boolean {
+export function lawDecodingDoesNotDependOnChunking(d: Utf8, a: number[], b: number[]): boolean { // eslint-disable-line @typescript-eslint/no-unused-vars -- Law parameters are used by the checked LemmaScript postcondition.
   //@ ensures decoded(d, a.concat(b)).decoder === decoded(decoded(d, a).decoder, b).decoder
   //@ ensures decoded(d, a.concat(b)).codePoints === decoded(d, a).codePoints.concat(decoded(decoded(d, a).decoder, b).codePoints)
   return true
@@ -241,7 +241,7 @@ export function decode(d: Utf8, chunk: number[]): Decoded {
   //@ ensures utf8Ok(d) ==> utf8Ok(\result.decoder)
   //@ ensures utf8Ok(d) ==> forall(k, 0 <= k && k < \result.codePoints.length ==> isScalar(\result.codePoints[k]))
   let current = d
-  let out: number[] = []
+  const out: number[] = []
   let i = 0
   while (i < chunk.length) {
     //@ invariant 0 <= i && i <= chunk.length

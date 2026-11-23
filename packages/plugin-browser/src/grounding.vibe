@@ -3,13 +3,10 @@ import { parseBrowserAddressInput } from "@elizaos/os/browser/address"
 import { directDestination, groundProposedDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
 import { IANA_TLDS } from "./iana-tlds.vibe"
 
-/** The assistant name a request may start with when the host names none. */
 export const DEFAULT_ASSISTANT_NAME = "Eliza"
 
-/** The longest web search query a device operation carries. */
 export const BROWSER_SEARCH_QUERY_MAX = 512
 
-/** Where a typed address asks to open: `newTab` only when the owner asked for a tab of its own. */
 export interface BrowserOpen {
   readonly href: string
   readonly newTab: boolean
@@ -89,7 +86,9 @@ const HOST_RUN = /[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}-]*(?:\.[\p{L}\p{N}\p{M}-]+)*
 const LABEL_BEFORE = /[a-z\d](?:-*|\.)$/
 const LABEL_AFTER = /^(?:-*|\.)[a-z\d]/
 const WORDS = /\S+/g
+// eslint-disable-next-line no-control-regex -- Grounding rejects C0 controls and DEL without advancing a global regex cursor.
 const CONTROL = /[\u0000-\u001f\u007f]/
+// eslint-disable-next-line no-control-regex -- Grounded excerpts normalize every C0 control and DEL.
 const CONTROLS = /[\u0000-\u001f\u007f]/g
 
 interface NamePatterns {
@@ -163,7 +162,6 @@ function plain(text: string): string {
     .replace(/[*_~[\]{}<>|^]|\p{Extended_Pictographic}|\p{Emoji_Modifier}|\ufe0f|\u20e3/gu, " ")
 }
 
-/** The strict whole-message open command and where it asks the address to open; only this form may skip the model's judgment. */
 export function authoredBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
   if (unreadable(text)) return undefined
   const command = patterns(assistantName).command.exec(text.trim())
@@ -194,12 +192,10 @@ export function authoredBrowserOpen(text: string, assistantName: string = DEFAUL
   return href === undefined ? undefined : { href, newTab }
 }
 
-/** The address of the strict whole-message open command, or undefined. */
 export function authoredBrowserDestination(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
   return authoredBrowserOpen(text, assistantName)?.href
 }
 
-/** A direct client request: the strict command, a polite question or everyday command for one address, or a bare web address. */
 export function directBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
   if (unreadable(text)) return undefined
   const strict = authoredBrowserOpen(text, assistantName)
@@ -220,14 +216,12 @@ export function directBrowserOpen(text: string, assistantName: string = DEFAULT_
   return { href: url.href, newTab: false }
 }
 
-/** The destination a client may open without a review: a direct request, never a mere mention of an address. */
 export function directBrowserDestination(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
   const open = directBrowserOpen(text, assistantName)
   const href = directDestination(!unreadable(text), open !== undefined, open?.href ?? "")
   return href === "" ? undefined : href
 }
 
-/** A whole-message open request whose dots were spoken as words; it only grounds a reviewed proposal for that exact hostname. */
 export function spokenBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
   if (unreadable(text)) return undefined
   const names = patterns(assistantName)
@@ -248,7 +242,6 @@ export function spokenBrowserOpen(text: string, assistantName: string = DEFAULT_
   return open
 }
 
-/** The hostname of a spoken whole-message open request, or undefined. */
 export function spokenBrowserDestination(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
   return spokenBrowserOpen(text, assistantName)?.href
 }
@@ -439,7 +432,6 @@ function groundingEvidence(userText: string, proposed: URL, assistantName: strin
   }
 }
 
-/** The destination to open for a model-proposed address, spelled as the user typed it in this message, or undefined. */
 export function groundBrowserDestination(userText: string, proposedUrl: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
   const readable = !unreadable(userText) && typeof proposedUrl === "string"
   const proposed = readable ? proposedAddress(proposedUrl) : undefined
@@ -448,12 +440,10 @@ export function groundBrowserDestination(userText: string, proposedUrl: string, 
   return href === "" ? undefined : href
 }
 
-/** Whether a message contains any web address at all, read as words even across lines. */
 export function containsWebAddress(text: string): boolean {
   return typeof text === "string" && typedAddresses(text.slice(0, 8192).replace(CONTROLS, " "), DEFAULT_ASSISTANT_NAME).length > 0
 }
 
-/** The query of a strict whole-message web search; only this form may search without a review. */
 export function directBrowserSearchQuery(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
   if (unreadable(text)) return undefined
   const command = patterns(assistantName).search.exec(text.trim())
@@ -464,12 +454,10 @@ export function directBrowserSearchQuery(text: string, assistantName: string = D
   return query !== "" && query.length <= BROWSER_SEARCH_QUERY_MAX ? query : undefined
 }
 
-/** Whether a grounded search query is the strict whole-message search, letter case and one pair of quotes aside. */
 export function browserSearchQueryMatches(query: string, direct: string | undefined): boolean {
   return direct !== undefined && unquoted(query.trim()).toLowerCase() === direct.toLowerCase()
 }
 
-/** The search words as the user typed them in this message, when the proposed query is whole words of it. */
 export function groundBrowserSearchQuery(userText: string, proposedQuery: string): string | undefined {
   if (unreadable(userText) || typeof proposedQuery !== "string") return undefined
   const text = userText.trim().replace(/\s+/g, " ")
@@ -490,7 +478,6 @@ export function groundBrowserSearchQuery(userText: string, proposedQuery: string
   return undefined
 }
 
-/** Whether a proposed operation is a `browser_navigate` to exactly this direct destination. */
 export function browserDestinationMatches(operation: unknown, destination: string | undefined): boolean {
   if (destination === undefined || destination === "" || typeof operation !== "object" || operation === null || Array.isArray(operation)) return false
   if (!("type" in operation) || operation.type !== "browser_navigate" || !("url" in operation) || typeof operation.url !== "string") return false

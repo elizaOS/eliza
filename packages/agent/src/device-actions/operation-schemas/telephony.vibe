@@ -3,7 +3,6 @@ import { digestOf } from "./digest.vibe"
 import type { OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import type { Evidence, FamilySchemas, OperationSchema, ReceiptContext, WireOperation } from "./family.vibe"
 
-/** The digest a SIM send receipt carries: the SHA-256 of the operation fields it was asked to send, in wire order. */
 export function bindingHash(operation: object): string | undefined {
   return digestOf(operation)
 }
@@ -27,9 +26,10 @@ const Recipient = Schema.Union([
 
 function outcome<Op extends WireOperation, Result>(
   operation: Schema.Decoder<Op>, result: Schema.Decoder<Result>, opType: OperationType,
-  evidence: (result: Result, operation: Op, context: ReceiptContext) => Evidence | undefined
+  evidence: (result: Result, operation: Op, context: ReceiptContext) => Evidence | undefined,
+  newer: (operation: Op) => boolean = () => false
 ): OperationSchema<Op, Result> {
-  return { operation, result, classify: () => ({ opType, versionTwo: false }), evidence }
+  return { operation, result, classify: (op) => ({ opType, versionTwo: newer(op) }), evidence }
 }
 
 const SubscriptionId = integer(0, 2_147_483_647)
@@ -125,7 +125,17 @@ const ContactCreate = Schema.Struct({ type: Schema.Literal("contact_create"), co
 const ContactChanges = Schema.Struct({
   displayName: Schema.optionalKey(Query), phoneNumbers: Schema.optionalKey(PhoneNumbers), emailAddresses: Schema.optionalKey(Emails)
 }).check(Schema.makeFilter((value) => Object.keys(value).length > 0))
-const ContactUpdate = Schema.Struct({ type: Schema.Literal("contact_update"), query: Query, set: ContactChanges })
+const ContactValues = Schema.Struct({
+  phoneNumbers: Schema.optionalKey(PhoneNumbers.check(Schema.isMinLength(1))), emailAddresses: Schema.optionalKey(Emails.check(Schema.isMinLength(1)))
+}).check(Schema.makeFilter((value) => Object.keys(value).length > 0))
+const valueFields = ["phoneNumbers", "emailAddresses"] as const
+const ContactUpdate = Schema.Struct({
+  type: Schema.Literal("contact_update"), query: Query,
+  set: Schema.optionalKey(ContactChanges), add: Schema.optionalKey(ContactValues), remove: Schema.optionalKey(ContactValues)
+}).check(Schema.makeFilter(({ set, add, remove }) => (set !== undefined || add !== undefined || remove !== undefined) &&
+  valueFields.every((field) => (set?.[field] === undefined || (add?.[field] === undefined && remove?.[field] === undefined)) &&
+    !(add?.[field] ?? []).some((value) => (remove?.[field] ?? []).includes(value)))
+))
 const ContactDelete = Schema.Struct({ type: Schema.Literal("contact_delete"), query: Query })
 const ContactWritten = Schema.Struct({
   kind: Schema.Literal("contact-write"),
@@ -143,7 +153,10 @@ function contactEvidence(result: typeof ContactWritten.Type, operation: typeof C
 }
 
 const MessageBody = BodyText(1_600).check(Schema.makeFilter((value: string) => value.trim() !== ""))
-const SmsCompose = Schema.Struct({ type: Schema.Literal("sms_compose"), query: Query, body: MessageBody })
+const SmsCompose = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("sms_compose"), query: Query, body: MessageBody }),
+  Schema.Struct({ type: Schema.Literal("sms_compose"), target: Recipient, body: MessageBody, draft: Schema.optionalKey(Schema.Boolean) })
+])
 const SmsComposed = Schema.Struct({
   kind: Schema.Literal("sms-compose"),
   status: Schema.Literals(["drafted", "submitted", "sent", "delivered", "unknown", "not-found", "unavailable", "cancelled", "failed"])
@@ -153,7 +166,11 @@ const SmsReplied = Schema.Struct({
   kind: Schema.Literal("sms-reply"), status: Schema.Literals(["drafted", "none-selected", "occupied", "unavailable"])
 })
 
-function composeEvidence({ status }: typeof SmsComposed.Type): Evidence {
+function composeEvidence({ status }: typeof SmsComposed.Type, operation: typeof SmsCompose.Type): Evidence | undefined {
+  const draftOnly = "draft" in operation && operation.draft === true
+  const toNumber = "target" in operation && operation.target.kind === "number"
+  if (draftOnly && (status === "submitted" || status === "sent" || status === "delivered" || status === "unknown")) return undefined
+  if (toNumber && status === "not-found") return undefined
   switch (status) {
     case "drafted": case "submitted": case "sent": case "delivered": return applied
     case "not-found": case "unavailable": case "cancelled": return noSubmission
@@ -162,11 +179,28 @@ function composeEvidence({ status }: typeof SmsComposed.Type): Evidence {
   }
 }
 
+const NoSelection = Schema.Literals(["none-selected", "unavailable"])
+const ContactShow = Schema.Struct({ type: Schema.Literal("contact_show"), query: Query })
+const ContactShown = Schema.Struct({ kind: Schema.Literal("contact-show"), status: Schema.Literals(["shown", "not-found", "unavailable"]) })
+const ContactRead = Schema.Struct({ type: Schema.Literal("contact_read_selected") })
+const SharedValue = (maximum: number) => Schema.Array(Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(maximum), Schema.makeFilter(safeText)))
+  .check(Schema.isMaxLength(32))
+const ContactTail = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("contact-read"), status: Schema.Literal("read"),
+    contact: Schema.Struct({ displayName: Schema.NullOr(Query), phoneNumbers: SharedValue(64), emailAddresses: SharedValue(254) })
+  }),
+  Schema.Struct({ kind: Schema.Literal("contact-read"), status: NoSelection })
+])
+const PhoneKeypad = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("phone_keypad") }),
+  Schema.Struct({ type: Schema.Literal("phone_keypad"), number: PhoneNumber })
+])
+const KeypadOpened = Schema.Struct({ kind: Schema.Literal("phone-keypad"), status: Schema.Literals(["opened", "unavailable"]) })
 const MessagesRead = Schema.Struct({ type: Schema.Literal("messages_read_selected") })
 const VoicemailRead = Schema.Struct({ type: Schema.Literal("voicemail_read_selected") })
 const VoicemailDelete = Schema.Struct({ type: Schema.Literal("voicemail_delete_selected") })
 const ReadMessage = Schema.Struct({ direction: Schema.Literals(["in", "out"]), date: count, body: BodyText(1_600) })
-const NoSelection = Schema.Literals(["none-selected", "unavailable"])
 const MessagesTail = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("messages-read"), status: Schema.Literal("read"), participant: Schema.NullOr(Label),
@@ -203,10 +237,8 @@ const LatestSender = Schema.Union([
   Schema.Struct({ ...senderKind, status: Schema.Literals(["empty", "sender-unavailable", "unavailable"]) })
 ])
 
-/** A latest-sender result as the device reports it: the number's last four digits, the whole address with its thread, or why there is none. */
 export type LatestSenderResult = typeof LatestSender.Type
 
-/** Decodes an untrusted latest-sender result, or `undefined` when it is not one. */
 export const readLatestSender = Schema.decodeUnknownOption(LatestSender, { onExcessProperty: "error" })
 
 function senderEvidence(result: typeof LatestSender.Type, operation: typeof SmsLatestSender.Type): Evidence | undefined {
@@ -229,9 +261,12 @@ export const telephonyOperations = {
     operation.target.kind !== "contact" && (result.contact || result.status === "not-found") ? undefined :
     result.status === "placed" || result.status === "emergency-handoff" ? applied : failed),
   contact_create: outcome(ContactCreate, ContactWritten, "ContactCreate", contactEvidence),
-  contact_update: outcome(ContactUpdate, ContactWritten, "ContactUpdate", contactEvidence),
+  contact_update: outcome(ContactUpdate, ContactWritten, "ContactUpdate", contactEvidence, (operation) => "add" in operation || "remove" in operation),
   contact_delete: outcome(ContactDelete, ContactWritten, "ContactDelete", contactEvidence),
-  sms_compose: outcome(SmsCompose, SmsComposed, "SmsCompose", composeEvidence),
+  contact_show: outcome(ContactShow, ContactShown, "ContactShow", (result) => result.status === "shown" ? applied : failed),
+  contact_read_selected: outcome(ContactRead, ContactTail, "ContactReadSelected", (result) => result.status === "read" ? applied : failed),
+  phone_keypad: outcome(PhoneKeypad, KeypadOpened, "PhoneKeypad", (result) => result.status === "opened" ? applied : failed, (operation) => "number" in operation),
+  sms_compose: outcome(SmsCompose, SmsComposed, "SmsCompose", composeEvidence, (operation) => "target" in operation),
   sms_reply_selected: outcome(SmsReply, SmsReplied, "SmsReplySelected", (result) => result.status === "drafted" ? applied : noSubmission),
   messages_read_selected: outcome(MessagesRead, MessagesTail, "MessagesReadSelected", (result) => result.status === "read" ? applied : failed),
   voicemail_read_selected: outcome(VoicemailRead, Voicemail, "VoicemailReadSelected", (result) => result.status === "read" ? applied : failed),

@@ -5,7 +5,6 @@ import type { ModuleFactory } from "../../../src/host/module.vibe";
 
 export const hostedFixtureName = "hosted-fixture";
 
-/** The device service a host module fixture reads: the socket its host names. */
 export class FixtureSocket extends Context.Service<FixtureSocket, { readonly path: string }>()("test/FixtureSocket") {}
 
 const hostedAction = (path: string): Action => ({
@@ -15,7 +14,6 @@ const hostedAction = (path: string): Action => ({
   handler: () => Promise.resolve({ success: true, text: path }),
 });
 
-/** A host module whose one action is named after the socket service its entry provides. */
 export const hostedFixtureModule: ModuleFactory<FixtureSocket> = () => Effect.gen(function* () {
   const socket = yield* FixtureSocket;
   return { name: hostedFixtureName, plugin: { name: hostedFixtureName, description: "A host module fixture over a device socket.", actions: [hostedAction(socket.path)] } };
