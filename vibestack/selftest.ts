@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { stripVTControlCharacters } from "node:util";
+import { isDeepStrictEqual, stripVTControlCharacters } from "node:util";
 import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
 import { cacheCredentials, collectGarbage, isActionEntry, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
@@ -273,7 +273,7 @@ pure def selected(which: bool): Set[Field] = {
     const checked = await tool("vibelang", ["--noEmit", "--strict", "--target", "es2023", "gen/fields.ts"], root);
     assert.ok(checked.ok, checked.out);
     const proof = model.render("");
-    assert.match(proof, /includeSecond \? \["Second"\] : \(\[\] as Field\[\]\)/);
+    assert.ok(proof.includes('includeSecond ? ([typed0_fields("Second")] as Field[]) : ([] as Field[])'));
     const domain = await import(pathToFileURL(path.join(root, "gen", "fields.ts")).href);
     assert.deepEqual([domain.required(true), domain.required(false)], [["First", "Second"], ["First"]]);
     assert.deepEqual([domain.selected(true), domain.selected(false)], [["First", "Second"], ["Second"]]);
@@ -539,6 +539,17 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.match(error?.detail ?? "", /message: "error: Invariant violated"[\s\S]*Division by zero/, runtime.text);
   });
 
+  test("a guardless event that breaks a rule and that other transitions call is named as a helper taken for an event", async () => {
+    const helper = await run(oneRule("index", "The counter stays zero", [
+      "pure val initial: int = 0",
+      "pure def bump(n: int): int = n + 1",
+      "pure def canIncrement(n: int): bool = false",
+      "pure def increment(n: int): int = bump(n)",
+      "pure def alwaysZero(n: int): bool = n == 0",
+    ].join("\n")));
+    assert.match(helper.said("always", /a reachable state breaks/)?.detail ?? "", /bump\s+-> state = 1[^]*; it has no guard\n\s+increment calls it, so it may be a helper taken for an event/, helper.text);
+  });
+
   test("a rule set that holds in simulation but is not inductive is caught by the proof, and the deleted rule awaits review", async () => {
     const { failed, said, text } = await run(copyOfProject("spec/index.md", notInductive));
     assert.deepEqual(failed, ["proof", "review"], text);
@@ -644,6 +655,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
       ["a type named like a generated one", "type Event = { n: int }\npure val initial: Event = { n: 0 }", /cannot be used as a name/],
       ["a definition named like a JavaScript global", "pure val initial: int = 0\npure def Number(n: int): int = n", /cannot be used as a name/],
       ["a parameter named like Dafny's standard library", "pure val initial: int = 0\npure def f(Std: int): int = Std", /`Std` cannot be used as a name/],
+      ["a parameter named like a word Dafny reserves and LemmaScript does not rename", "pure val initial: int = 0\npure def f(assigned: int): int = assigned", /`assigned` cannot be used as a name/],
       ["a set of two computed members", "pure val initial: int = 0\npure def pair(a: int, b: int): int = Set(a, b).size()", /could hold the same value twice/],
       ["a variant field called tag", "type P = A({ tag: int }) | B\npure val initial: int = 0\npure def tick(n: int): int = n", /cannot be called `tag`/],
       ["a match binder used as a whole value", "type N = { n: int }\ntype P = A(N) | B\npure val initial: int = 0\npure def g(r: N): int = r.n\npure def f(p: P): int = match p { | A(x) => g(x) | _ => 0 }\npure def tick(n: int): int = n", /is what a match arm carries/],
@@ -786,6 +798,24 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.ok(!failed.includes("sometimes"), text);
   });
 
+  test("an explicitly reached probe goal keeps the independent search that exposes a broken rule", async () => {
+    const root = oneRule("counter", "The counter stays under 22", `pure val initial: int = 0
+pure val choiceValues = Set(${Array.from({ length: 64 }, (_, i) => i).join(", ")})
+pure def advance(n: int, choice: int): int = if (n == -1 or (n == 0 and choice == 0)) -1 else n + 1
+pure def alwaysBelowTwentyTwo(n: int): bool = n < 22
+pure def sometimesExit(n: int): bool = n == -1`);
+    const result = await run(root);
+    const broken = result.said("always", /a reachable state breaks/);
+    assert.ok(broken && !broken.ok, result.text);
+    assert.match(broken.detail, /-> state = 22\b/);
+    assert.match(broken.detail, /never_sometimesExit .*--max-steps 40/);
+    assert.ok(!result.said("sometimes", /is reachable/), result.text);
+    assert.ok(result.said("skipped", /^types, proof,/), result.text);
+    const probe = fs.globSync("gen/traces/counter.inv.probe/**/*.itf.json", { cwd: root });
+    assert.ok(probe.some((file) => JSON.parse(read(file, root)).states.some((s: Record<string, unknown>) =>
+      s["mbt::actionTaken"] === "eval_sometimesExit" && isDeepStrictEqual(s.outcome, { tag: "Out_sometimesExit", value: true }))));
+  });
+
   test("a deep witness is found in the short sweep before the full search", async () => {
     const quint = "pure val initial: int = 0\npure def up(n: int): int = n + 1\npure def sometimesLate(n: int): bool = n == 38";
     const root = oneRule("t", "Counting", quint);
@@ -795,6 +825,51 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.equal(result.broken, true, result.again);
     assert.match(result.again, /--max-samples 32 --max-steps 40\b/);
     assert.equal(result.traces[0]?.at(-1)?.state, 38);
+
+    const rare = oneRule("rare", "Find a rare choice after counting", [
+      "pure val initial: int = 0",
+      "pure def up(n: int): int = n + 1",
+      "pure val tokenValues = 1.to(300)",
+      "pure def canMark(n: int, token: int): bool = n == 38 and token == 1",
+      "pure def mark(n: int, token: int): int = -1",
+      "pure def sometimesMarked(n: int): bool = n == -1",
+    ].join("\n"));
+    const rareModel = await gen(rare, readSpecs(rare)[0]);
+    const found = await search({ memory: { root: rare, fresh: true, used: new Set() }, model: rareModel, files: harnessFiles(readSpecs(rare)[0], readSpecs(rare), rareModel) }, "never_sometimesMarked", "step", [20, 40], 4096);
+    assert.equal(found.broken, true, found.again);
+    assert.match(found.again, /--max-samples 1024 --max-steps 40\b/);
+    assert.equal(found.traces[0]?.at(-1)?.state, -1);
+
+    const lateGuard = oneRule("gate", "Allow completion after counting", [
+      "pure val initial: int = 0",
+      "pure def up(n: int): int = n + 1",
+      "pure def canFinish(n: int): bool = n >= 38",
+      "pure def finish(n: int): int = 0",
+    ].join("\n"));
+    const guardModel = await gen(lateGuard, readSpecs(lateGuard)[0]);
+    const allowed = await search({ memory: { root: lateGuard, fresh: true, used: new Set() }, model: guardModel, files: { ...harnessFiles(readSpecs(lateGuard)[0], readSpecs(lateGuard), guardModel), "gate.guard.run.qnt": { text: guardModel.guardHarness, key: guardModel.guardHarness } }, main: "gate.guard.run.qnt" }, "never_allows_canFinish", "eval_canFinish__1", [20, 40], 180);
+    assert.match(allowed.again, /--step eval_canFinish__1 .* --max-samples 32 --max-steps 40\b/);
+    assert.equal(allowed.broken, true);
+    const trace = allowed.traces[0];
+    assert.deepEqual(trace?.at(-1)?.evaluated, { name: "canFinish", picks: {}, result: true });
+    replay(await import(path.join(lateGuard, "gen/gate.ts")), trace, guardModel);
+    assert.match(allowed.again, /gen\/gate\.guard\.run\.qnt/);
+  });
+
+  test("shallow and deep goals each supply a journey and receive their independent search", async () => {
+    const root = oneRule("route", "Take one step and then continue", `pure val initial: int = 0
+pure def advance(n: int): int = n + 1
+pure def sometimesStarted(n: int): bool = n > 0
+pure def sometimesLate(n: int): bool = n == 38`);
+    const spec = readSpecs(root)[0];
+    const model = await gen(root, spec);
+    const domain = await import(pathToFileURL(path.join(root, "gen", "route.ts")).href);
+    const { said, tested } = await simulation({ root, fresh: true, used: new Set() }, spec, [spec], model, domain, 1);
+    assert.ok(said.every((r) => r.ok), JSON.stringify(said));
+    assert.deepEqual(tested?.journeys.map(({ events }) => events.length), [1, 38]);
+    const actions = fs.readdirSync(path.join(root, "gen", "traces"));
+    assert.ok(actions.some((name) => name.startsWith("route.never_sometimesLate.")));
+    assert.ok(actions.some((name) => name.startsWith("route.never_sometimesStarted.")));
   });
 
   test("simulation and probes preserve guarded transitions and outputs when only the state enables an event", async () => {
@@ -1106,7 +1181,8 @@ export effect function filled(sku: string, qty: number) {
   return [cart.count, add(initial, sku, qty).count, total([qty])] as const
 }
 ` });
-    assert.deepEqual(await genAll(root), ["_conformance.ts", "package.json", ...names.flatMap((n) => [`${n}.qnt`, `${n}.run.qnt`, `${n}.ts`, `${n}.effect.vibe`, ...(n === "lib" ? [] : [`${n}.conformance.ts`])])].sort());
+    const probed = ["mailer", "shop", "vault"];
+    assert.deepEqual(await genAll(root), ["_conformance.ts", "package.json", ...names.flatMap((n) => [`${n}.qnt`, `${n}.run.qnt`, `${n}.ts`, `${n}.effect.vibe`, ...(n === "lib" ? [] : [`${n}.conformance.ts`]), ...(probed.includes(n) ? [`${n}.guard.run.qnt`] : [])])].sort());
     // gen/package.json names no package, so the compiler has no key to derive for a service: the adapter states its own (EK0903).
     assert.deepEqual(JSON.parse(read("gen/package.json", root)), { type: "module" });
     assert.match(read("gen/vault.effect.vibe", root), new RegExp(`^export service Machine \\{\\n  static readonly key = ${JSON.stringify(`${path.basename(root)}/spec/vault.md#Machine`).replace(/[./]/g, "\\$&")}$`, "m"));
@@ -1211,6 +1287,25 @@ export effect function probe() {
     const { failed, said, text } = await run(root);
     assert.deepEqual(failed, ["review"], text);
     assert.ok(said("proof", /^sys\.ts: all \d+ obligations proved/), text);
+  });
+
+  test("an imported constant keeps the types declared under its own nested aliases in proofs", async () => {
+    const product = 'import staging as St from "./staging"\npure val launcherName: str = St::noCall.descriptor.name\n'
+      + 'pure def lawNamesLauncher(name: str): bool = (name != "empty") implies launcherName != name';
+    const root = scratch({
+      "spec/runtime.md": ruleSpec("type Abi = Arm64 | X86_64", "Runtime", "Runtime"),
+      "spec/staging.md": ruleSpec('import runtime as R from "./runtime"\ntype NativeRequest = NoNative | NativeFor({ abi: R::Abi })\n'
+        + 'type Launcher = { native: NativeRequest, name: str }\ntype Call = { descriptor: Launcher }\n'
+        + 'pure val noCall: Call = { descriptor: { native: NativeFor({ abi: R::Arm64 }), name: "empty" } }', "Staging", "Staging"),
+      "spec/product.md": ruleSpec(product, "Product", "Product"),
+      "spec/host.md": ruleSpec("type Abi = Linux | Mac", "Host", "Host"),
+      "spec/productWithHost.md": ruleSpec('import host as R from "./host"\n' + product
+        + "\npure val hostAbi: R::Abi = R::Linux", "Product with host", "Product with host"),
+    });
+    const { failed, said, text } = await run(root);
+    assert.deepEqual(failed, ["review"], text);
+    assert.ok(said("proof", /^product\.ts: all \d+ obligations proved/), text);
+    assert.ok(said("proof", /^productWithHost\.ts: all \d+ obligations proved/), text);
   });
 
   test("local enums and records keep their Quint types in generated code and proof", async () => {
@@ -1321,10 +1416,11 @@ function eachCheckB() {
     assert.ok(said("sometimes", /\bsave in .* never happened/), text);
   });
 
-  test("tables keyed by integers and variants, getOr, nthOr, removeAt, structural == and a mapped append are compiled, simulated, replayed and proved", async () => {
-    const root = fixtures(["hall"]);
+  test("tables keyed by integers and variants, getOr, nthOr, removeAt, structural == and a mapped append are simulated, replayed, proved and typed, and a variant literal is typed for the prover wherever it stands", async () => {
+    const root = fixtures(["hall"], (f) => { f["src/hall.ts"] = "export const hall = 1;\n"; });
     const { failed, said, text } = await run(root);
     assert.deepEqual(failed, ["review"], text);
+    assert.ok(said("types", /./)?.ok, text);
     assert.ok(said("proof", /^hall\.ts: all \d+ obligations proved/), text);
     const compiled = await tool("tsc", ["--ignoreConfig", "--noEmit", "--target", "es2023", "--module", "nodenext", "--strict", "--skipLibCheck", path.join(root, "gen/hall.ts")], project);
     assert.ok(compiled.ok, compiled.out);
@@ -1654,7 +1750,7 @@ function eachCheckB() {
     assert.ok(tooLate.said("always", /within its bound \(`within_leadsToAhead = 21`\)/), tooLate.text);
   });
 
-  test("nested set samples stay bounded, an inner lambda may shadow a match binder, and forall and subseteq keep their meaning as quantifiers", async () => {
+  test("nested set samples stay bounded, an inner lambda may shadow a match binder, forall and subseteq keep their meaning as quantifiers, and a variant names its own module's type before one an import brings", async () => {
     // A set's `forall` and `subseteq` are printed negated (print.ts, SET_OPS): the laws are sampled, compared with Quint and proved.
     const quantifiers = "\npure def positive(x: int): bool = x > 0\npure def lawQuantifiers(xs: Set[int]): bool = xs.subseteq(xs) and (xs.forall(positive) or xs.exists(x => x <= 0)) and not(xs.exists(x => x > 0) and xs.forall(x => x <= 0))";
     const root = oneRule("nested", "Nested values", "type P = A({ xs: List[int] }) | B\npure def sum(p: P): int = match p { | A(x) => x.xs.foldl(0, (n, x) => n + x) | _ => 0 }\npure def lawSum(k: int): bool = sum(A({ xs: List(1, 2) })) == 3\npure def lawCount(xs: List[Set[int]]): bool = xs.length() >= 0\npure def zeros(n: int): Set[int] = Set(n * 0)\npure def lawZeros(n: int): bool = zeros(n).contains(0)" + quantifiers);
@@ -1681,6 +1777,14 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual(checked.failed, ["review"], checked.text);
     const domain = await import(path.join(scoped, "gen/use.ts"));
     assert.deepEqual([domain.echo(7), domain.echoLocal(8), domain.sum([2, 3]), domain.shadowOwn(9), domain.paramShadow(1), domain.nestedShadow(1)], [7, 8, 5, 9, 7, 8]);
+    const deep = scratch({
+      "spec/codes.md": ruleSpec("type Code = Spent | Fine\npure val code: Code = Spent"),
+      "spec/lib.md": ruleSpec('import codes.* from "./codes"\npure val value = 1'),
+      "spec/use.md": ruleSpec('import lib.* from "./lib"\ntype Failure = Limited({ at: int }) | Spent\npure val spent: Failure = Spent\npure def lawSpent(n: int): bool = spent != Limited({ at: n })'),
+    });
+    const owned = await run(deep);
+    assert.deepEqual(owned.failed, ["review"], owned.text);
+    assert.deepEqual((await import(path.join(deep, "gen/use.ts"))).spent, { tag: "Spent" });
   });
 }
 
@@ -2653,7 +2757,7 @@ function eachCheck() {
       'const keptAfter = await kept();',
       'const choose = () => steady(async () => [(await solver()).version, await proof()]);',
       'const bundled = "libexec/z3/bin/z3-4.12.1"; fs.mkdirSync("libexec/z3/bin", { recursive: true });',
-      'const install = (v) => fs.writeFileSync(bundled, ["#!/bin/sh", "echo Z3 version " + v, ""].join(String.fromCharCode(10)), { mode: 0o755 });',
+      'const install = (v) => { fs.writeFileSync(bundled + ".next", ["#!/bin/sh", "echo Z3 version " + v, ""].join(String.fromCharCode(10)), { mode: 0o755 }); fs.renameSync(bundled + ".next", bundled); };',
       'const fallback = await choose(); install("4.12.0"); const preferred = await choose(); install("4.12.2"); const replaced = await choose(); fs.unlinkSync(bundled);',
       'console.log(JSON.stringify({ within, after, kept: [rewritten, keptAfter], selected: [fallback, preferred, replaced, await choose()] }));',
     ].join("\n")], root, { ...process.env, XDG_CACHE_HOME: path.join(root, "cache"), PATH: `${audit}${path.delimiter}${process.env.PATH ?? ""}` });
@@ -2849,7 +2953,7 @@ function eachCheck() {
     const root = oneRule("packaged", "A packaged value", "pure val answer = 42");
     const staging = scratch(Object.fromEntries(PACKED.map((file) => [file, read(file)])));
     // Studio's page is built from the workspace packages it shares with every interface.
-    for (const directory of ["vibestack", "packages", "apps", "spec"])
+    for (const directory of ["vibestack", "packages", "apps", "spec"].filter((d) => fs.existsSync(path.join(project, d))))
       copySources(path.join(project, directory), path.join(staging, directory));
     copySources(path.join(project, ".agents/skills"), path.join(staging, ".agents/skills"));
     const lock = path.join(staging, "vibestack/studio/.spec-cache/lock");

@@ -5,7 +5,7 @@ import { SENDER } from "./gen/classify.ts";
 import { act, completed, violated, type Input } from "./action.ts";
 import { entry, evaluatorForCheck, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
-import { simulated, witnessAction, witnessFile } from "./gen/harness.ts";
+import { positiveGuardEvaluation, positiveGuardProbe, simulated, witnessAction, witnessFile } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
 import { TABLE, compiledAs } from "./simulator.ts";
@@ -13,7 +13,7 @@ import { allDone, digest, indent, SIMULATIONS } from "./util.ts";
 
 const SAMPLES = 10000;
 const WITNESS_SAMPLES = 20 * SAMPLES;
-const WITNESS_PREFLIGHT_SAMPLES = 32;
+const WITNESS_PREFLIGHT_SAMPLES = [32, 1024];
 const COMPARED_SAMPLES = 2000;
 const REPLAYED = 200;
 /** Traces of the first simulation kept, for a spec with `leadsTo` rules, to look for runs that break one (`lasso`). */
@@ -39,7 +39,7 @@ export interface Step {
 }
 
 /** A simulated trace; with opaque functions, from the step that settled their tables (gen/harness.ts), and empty if none did. */
-function readTrace(itf: string, model: Model, witness?: true): Step[] {
+function readTrace(itf: string, model: Model, witness: boolean): Step[] {
   const states = JSON.parse(itf).states.filter((st: any) => !model.opaques.length || st.settled);
   return states.map((st: any, i: number): Step => {
     // Values are decoded by their type, and sets put in a fixed order, so that they compare equal to TypeScript's.
@@ -48,7 +48,7 @@ function readTrace(itf: string, model: Model, witness?: true): Step[] {
     const action: string = st["mbt::actionTaken"];
     const taken: string = witness && action?.startsWith(witnessAction("")) ? st.last : action;
     const t = model.transitions.find((t) => t.name === taken);
-    const v = model.evals.find((v) => `eval_${v.name}` === taken);
+    const v = model.evals.find((v) => `eval_${v.name}` === taken || positiveGuardEvaluation(v.name) === taken);
     const l = model.laws.find((l) => l.name === taken);
     return {
       // Once any transition takes a sender, every event has one: the harness picks it for those that do not take it too (gen/harness.ts).
@@ -99,7 +99,7 @@ const SHARD_SAMPLES = 1000;
 const MAX_SHARDS = 4;
 
 /** What a spec's runs of Quint share: the check's memory, the model, and every file of Quint its harness reads. */
-export interface Harness { memory: Memory; model: Model; files: Record<string, Input>; witness?: true }
+export interface Harness { memory: Memory; model: Model; files: Record<string, Input>; main?: string }
 /** What a spec's harness reads: its modules, the harness itself, and the spec as the harness reads it where it has opaque functions. */
 export function harnessFiles(spec: Spec, specs: Spec[], model: Model, witness?: { harness: string }): Record<string, Input> {
   const sim = model.opaques.length ? simulated(spec.qnt, model.opaques) : undefined;
@@ -114,10 +114,9 @@ export function harnessFiles(spec: Spec, specs: Spec[], model: Model, witness?: 
  */
 const compilations = new WeakMap<Harness, Promise<Record<string, Input> | undefined>>();
 function compiled(harness: Harness): Promise<Record<string, Input> | undefined> {
-  const { memory, model, files, witness } = harness;
+  const { memory, model, files, main = `${model.name}.run.qnt` } = harness;
   let parts = compilations.get(harness);
-  const file = witness ? witnessFile(model.name) : `${model.name}.run.qnt`;
-  if (!parts) compilations.set(harness, parts = act(memory, "simulator", ["compile", file, "--main", `${model.name}_run`], `${SIMULATIONS}/${witness ? file : model.name}.compiled`, files)
+  if (!parts) compilations.set(harness, parts = act(memory, "simulator", ["compile", main, "--main", `${model.name}_run`], `${SIMULATIONS}/${main.replace(/\.run\.qnt$/, "")}.compiled`, files)
     .then((r) => (r.ok ? Object.fromEntries(Object.entries(r.files).map(([f, text]) => [f, { text, key: digest(text) }])) : undefined)));
   return parts;
 }
@@ -132,15 +131,15 @@ function compiled(harness: Harness): Promise<Record<string, Input> | undefined> 
  * remembered (action.ts) is not.
  */
 export async function simulate(harness: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
-  const { memory, model, files, witness } = harness;
+  const { memory, model, files, main = `${model.name}.run.qnt` } = harness;
   const dir = `${SIMULATIONS}/${model.name}.${invariant}.${step}`;
+  const witness = main === witnessFile(model.name);
   const parts = await compiled(harness);
   const needed = [TABLE, ...["init", step, invariant].map(compiledAs)];
   const direct = parts && needed.every((f) => Object.hasOwn(parts, f)) ? Object.fromEntries(needed.map((f) => [f, parts[f]])) : undefined;
   const shards = !split ? 1 : Math.max(1, Math.min(MAX_SHARDS, Math.floor(samples / SHARD_SAMPLES)));
   const runs = Array.from({ length: shards }, async (_, k) => {
-    const derivedSeed = seedFor(seed, model.harness, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
-    const main = witness ? witnessFile(model.name) : `${model.name}.run.qnt`;
+    const derivedSeed = seedFor(seed, files[main].text, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
     const args = ["--main", `${model.name}_run`, "--step", step, "--invariant", invariant,
       "--max-samples", String(Math.ceil(sampleLimit / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, "--n-threads", "1"];
     const run = ["run", main, ...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", "{seq}.itf.json"];
@@ -167,9 +166,9 @@ export async function simulate(harness: Harness, invariant: string, traces: numb
 export async function search(harness: Harness, invariant: string, step = "step", depths = DEPTHS, samples = WITNESS_SAMPLES, seed = 1): ReturnType<typeof simulate> {
   const searches = depths.map((steps) => ({ steps, budget: Math.ceil(samples * STEPS / steps) }));
   if (searches.length > 1) {
-    for (const { steps, budget } of searches) {
-      if (budget <= WITNESS_PREFLIGHT_SAMPLES) continue;
-      const run = await simulate(harness, invariant, 1, budget, step, false, steps, seed, WITNESS_PREFLIGHT_SAMPLES);
+    for (const limit of WITNESS_PREFLIGHT_SAMPLES) for (const { steps, budget } of searches) {
+      if (budget <= limit) continue;
+      const run = await simulate(harness, invariant, 1, budget, step, false, steps, seed, limit);
       if (run.broken) return run;
     }
   }
@@ -307,6 +306,18 @@ const COULD_NOT_RUN = "the simulator could not run";
 /** What simulating a spec found: the `always`, `sometimes` and `replay` results, and what the traces stage checks programs against. */
 export interface Simulation { said: Result[]; tested?: Simulated }
 
+function witnessedIn(traces: Step[][], goals: string[]): Map<string, Step[]> {
+  const pending = new Set(goals);
+  const found = new Map<string, Step[]>();
+  if (!pending.size) return found;
+  for (const trace of traces) for (const [index, { evaluated }] of trace.entries()) {
+    if (evaluated?.result !== true || !pending.has(evaluated.name)) continue;
+    const earlier = found.get(evaluated.name);
+    if (!earlier || earlier.length > index + 1) found.set(evaluated.name, trace.slice(0, index + 1));
+  }
+  return found;
+}
+
 const SPECS_AT_ONCE = 2 * os.availableParallelism();
 let specsSimulating = 0;
 const specsWaiting: (() => void)[] = [];
@@ -337,11 +348,11 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
   const files = harnessFiles(spec, specs, model);
-  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
+  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), model.guardHarness, ...(model.witness ? [model.witness.harness] : []), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), (memory) => inTurn(async () => {
     const harness: Harness = { memory, model, files };
-    const guided = model.witness && { memory, model, files: harnessFiles(spec, specs, model, model.witness), witness: true } satisfies Harness;
+    const guided = model.witness && { memory, model, files: harnessFiles(spec, specs, model, model.witness), main: witnessFile(model.name) } satisfies Harness;
     const said: Result[] = [];
     let tested: Simulated | undefined;
     /** A result concerns the rules it cites. */
@@ -361,9 +372,12 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
         if (!bad) return false;
         const lastEvent = bad.t.findLast((s) => s.event)?.event?.type;
         const guard = model.transitions.find((t) => t.name === lastEvent)?.guard;
+        const callers = lastEvent && !guard ? [...spec.qnt.matchAll(/^pure def (\w+)[^]*?(?=^pure |(?![^]))/gm)]
+          .filter(([text, name]) => name !== lastEvent && new RegExp(`\\b${lastEvent}\\(`).test(text)).map(([, name]) => name) : [];
         // One repair is always available: refuse the event when its result would break the rule. A reason is better.
         const brokenRule = lastEvent ? model.always.find((a) => !standIn(domain, bad.t)[a](bad.t[bad.t.length - 1].state)) : undefined;
         const hint = lastEvent && !bad.why.startsWith("the law") ? `\n      the last event is ${cite(lastEvent)}${guard ? `; its guard ${guard} let it through` : "; it has no guard"}`
+          + (callers.length ? `\n      ${callers.join(", ")} call${callers.length > 1 ? "" : "s"} it, so it may be a helper taken for an event because it takes the state first and returns it: give it the state as its second parameter, or return something smaller` : "")
           + (brokenRule ? `\n      if no better reason can be found: refuse ${lastEvent} when its result would break ${brokenRule}` : "") : "";
         say(false, "always", `${bad.why}: fix the model, or add the rule that forbids this trace`, `${showTrace(bad.t)}${hint}\n      ${bad.again}`);
         return true;
@@ -415,8 +429,13 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // run at once and are read in the guards' order. Only a guard that never allows its event fails the check, so
       // only that search goes deeper and gets the witness budget; one that never refuses it is only reported.
       const missing = guarded.flatMap((t) => (["allows", "refuses"] as const).filter((side) => !seen.get(t.guard!)![side]).map((side) => ({ t, side })));
+      const guardMain = `${model.name}.guard.run.qnt`;
+      let positive: Harness | undefined;
       const searched = await allDone(missing.map(({ t, side }) => model.evals.some((v) => v.name === t.guard)
-        ? search(harness, `never_${side}_${t.guard}`, "probe", side === "allows" ? DEPTHS : [STEPS], side === "allows" ? WITNESS_SAMPLES : SAMPLES, seed)
+        ? side === "allows"
+          ? search(positive ??= { ...harness, main: guardMain, files: { ...files, [guardMain]: { text: model.guardHarness, key: model.guardHarness } } },
+            `never_allows_${t.guard}`, positiveGuardProbe(t.guard!), DEPTHS, WITNESS_SAMPLES, seed)
+          : search(harness, `never_refuses_${t.guard}`, "probe", [STEPS], SAMPLES, seed)
         : Promise.resolve(undefined)));
       for (const [i, { t, side }] of missing.entries()) {
         const found = searched[i];
@@ -442,14 +461,25 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
         `${shown}\n      ${sim.again}`);
         return { said, tested };
       }
+      const retained = witnessedIn(probe.traces, witnesses.filter(({ w, run }) => !run.broken && !model.witness?.lengths.has(w)).map(({ w }) => w));
+      const reached = witnesses.map(({ w, run }) => {
+        const fallback = retained.get(w);
+        if (fallback) {
+          replay(domain, fallback, model);
+          return { w, run, goal: fallback };
+        }
+        const goal = run.broken ? run.traces.filter((t) => standIn(domain, t)[w](t.at(-1)?.state) === true).sort((a, b) => a.length - b.length)[0] : undefined;
+        if (!goal && run.broken) throw new Error(`TypeScript and Quint disagree on the violation of never_${w} in the witness search: ${run.again}`);
+        return { w, run, goal };
+      });
       const loops = runsOf.reduce((n, r) => n + r.loops, 0);
       say(true, "always", `no rule broken in ${SAMPLES + COMPARED_SAMPLES} simulated traces`
         + (model.leadsTo.length ? `, and no fair run that stops or loops in ${sim.traces.length} of them breaks a \`leadsTo\` rule (${loops} loops found)` : ""));
-      for (const { w, run } of witnesses) {
-        const reached = run.broken && run.traces.some((t) => standIn(domain, t)[w](t.at(-1)?.state));
-        say(reached, "sometimes", reached ? `${w} is reachable`
-          : `${cite(w)} was not reached in ${SEARCHED}: a guard is too strict, a transition is missing, or the goal needs values the simulator does not try`, reached ? "" : `      ${run.again}`);
-      }
+      const journeys = reached.flatMap(({ w, run, goal }) => {
+        say(!!goal, "sometimes", goal ? `${w} is reachable`
+          : `${cite(w)} was not reached in ${SEARCHED}: a guard is too strict, a transition is missing, or the goal needs values the simulator does not try`, goal ? "" : `      ${run.again}`);
+        return goal ? [{ w, trace: goal }] : [];
+      });
       for (const { t, again } of neverAllowed) {
         const causes = ["the guard is too strict", "a transition that leads to the states it needs is missing", `the event becomes possible only after more than ${DEPTHS.at(-1)} events`,
           ...(t.guardParams.length ? [`it needs values the simulator does not try (define ${t.guardParams.map((p) => `${p}Values`).join(" or ")})`] : [])];
@@ -463,8 +493,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       const missed = [...model.evals.map((v) => v.name).filter((n) => !compared.has(n)), ...model.uncompared];
       say(true, "replay", `generated TypeScript agrees with Quint on ${traces.length} traces: every state${model.laws.length ? ", every law" : ""}, and ${compared.size} definitions evaluated on them`
         + (missed.length ? `; not compared on their own, because the simulator had no arguments for them: ${missed.join(", ")}` : ""));
-      if (model.stateType) tested = conformanceFound(model, spec, traces, witnesses.flatMap(({ w, run }) =>
-        run.traces.filter((trace) => standIn(domain, trace)[w](trace.at(-1)?.state)).sort((a, b) => a.length - b.length).slice(0, 1).map((trace) => ({ w, trace }))));
+      if (model.stateType) tested = conformanceFound(model, spec, traces, journeys);
     } catch (e) {
       const mismatch = (e as Error).message.startsWith("TypeScript and Quint disagree");
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));

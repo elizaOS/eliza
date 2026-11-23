@@ -103,7 +103,8 @@ export async function generateTests(packageDir: string): Promise<Generated> {
 /** Whether values of `schema` can be generated; if not, `skip` hears why. */
 function arbitraryOf(schema: Schema.Schema<unknown>, skip: (reason: string) => void) {
   try {
-    Effect.runSync(Arbitrary.sampleEffect(Arbitrary.schema(schema), { count: 1, seed: 1 }));
+    Effect.runSync(Arbitrary.sampleEffect(Arbitrary.schema(schema), { count: 1, seed: 1 }).pipe(Effect.mapError((refused) =>
+      new Error(`its filters refused all ${refused.discards} values tried`))));
     return true;
   } catch (error) {
     skip(`no value can be generated for it: ${error instanceof Error ? error.message : String(error)}`);

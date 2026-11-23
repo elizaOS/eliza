@@ -34,11 +34,26 @@ export function typeWalks(typedefs: Json[], module: string, prefix = "") {
   const fields = (t: Json): Json[] => t.kind === "rec" && t.fields.fields.some((f: Json) => f.fieldName === "__proto__")
     ? fail("a record field cannot be called `__proto__`, which JavaScript reads as the object's prototype") : t.fields.fields;
   // Quint sometimes names a type from a module imported under a name without that name; `base` finds it.
-  const typedef = (n: string): Json => typedefs.find((d) => d.name === n) ?? typedefs.find((d) => d.base === n) ?? fail(`unknown type ${n}`);
+  const names = new Map<string, Json>();
+  const typedef = (n: string): Json => {
+    const known = names.get(n);
+    if (known !== undefined) return known;
+    const definition = typedefs.find((d) => d.name === n) ?? typedefs.find((d) => d.base === n) ?? fail(`unknown type ${n}`);
+    names.set(n, definition);
+    return definition;
+  };
   const resolve = (t: Json): Json => (t.kind === "const" ? resolve(typedef(t.name).type) : t);
+  const shapes = new WeakMap<object, string>();
   /** Structural identity, so inferred types can be matched back to their names. */
   const shape = (t0: Json): string => {
     const t = resolve(t0);
+    const known = shapes.get(t);
+    if (known !== undefined) return known;
+    const identity = structure(t);
+    shapes.set(t, identity);
+    return identity;
+  };
+  const structure = (t: Json): string => {
     if (t.kind === "rec") return `{${fields(t).map((f) => `${f.fieldName}:${shape(f.fieldType)}`).sort().join(",")}}`;
     if (t.kind === "sum") return `<${fields(t).map((f) => f.fieldName + (payload(f) ? shape(payload(f)) : "")).sort().join(",")}>`;
     if (t.kind === "list") return `[${shape(t.elem)}]`;
@@ -95,7 +110,9 @@ export function typeWalks(typedefs: Json[], module: string, prefix = "") {
   /** The type a variant belongs to. */
   const ownerOf = (variant: string): Json => {
     const [base, alias] = variant.split("::").reverse();
-    return typedefs.find((d) => d.type.kind === "sum" && d.alias === alias && fields(d.type).some((f: Json) => f.fieldName === base)) ?? fail(`unknown variant ${variant}`);
+    const owners = typedefs.filter((d) => d.type.kind === "sum" && d.alias === alias && fields(d.type).some((f: Json) => f.fieldName === base));
+    const direct = (d: Json) => d.name.split("::").length === variant.split("::").length;
+    return owners.find((d) => d.module === module) ?? owners.find(direct) ?? owners[0] ?? fail(`unknown variant ${variant}`);
   };
 
   // --- spellings -------------------------------------------------------------

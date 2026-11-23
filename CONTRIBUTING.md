@@ -95,6 +95,7 @@ example and fixtures. `selftest:tools:rest` also rebuilds the packaged CLI from 
 `apps/`, `packages/` and `spec/` invalidate its isolated CI run. The first two each run one shard of the kinds of mistake, the
 `describe` named `in shard a` or `in shard b` in `vibestack/selftest.ts`. The third runs the remaining tool tests there.
 Changes to either docs or standalone example test code keep the tool shards cached. Keep the longest tests spread over the three.
+Changes to the root README rerun the docs and packaged tool checks.
 The two suites of the tools, the command line and each kind of mistake, run side by side under one parent, each at most four tests at a time. The order project the
 edits copy and a few long checks of fixtures are shared projects: each starts with the tool runs (`action-*` entries)
 earlier selftests kept in `.cache/selftest/.spec-cache` and leaves its own there; entries unused for a week are pruned.
@@ -191,7 +192,8 @@ the same module, the check renders that module once for each name prefix and cit
 A unit offered
 what the units it imports proved is proved once when their results are
 remembered, and meanwhile, to be proved again if they fail, only while one of
-them is still being proved. A test run
+them is still being proved. The first attempt starts no further checks of failed
+assertions once a finished import removes one of its assumptions. A test run
 may run any tool, as Studio's do, so it is keyed by all of them, and with a
 typecheck, a driver's run and an exploration by VibeLang's version and bytes.
 An exploration is keyed by the code that explores and what its page reads
