@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.AgentPolicy.Effect;
@@ -144,8 +144,18 @@ public class AgentService extends Service {
     return CHANNEL.request(CallerKind.NATIVE, method, path, body);
   }
 
+  /** As {@link #request(String, String, byte[])}, carrying the device headers and client id the channel admits. */
+  public static CompletableFuture<AgentChannel.Response> request(String method, String path, byte[] body, Map<String, ?> headers) {
+    return CHANNEL.request(CallerKind.NATIVE, method, path, body, headers);
+  }
+
   public static AgentChannel.Call requestStream(String method, String path, byte[] body, AgentChannel.Listener listener) {
     return CHANNEL.requestStream(CallerKind.NATIVE, method, path, body, listener);
+  }
+
+  /** As {@link #requestStream(String, String, byte[], AgentChannel.Listener)}, carrying the device headers and client id the channel admits. */
+  public static AgentChannel.Call requestStream(String method, String path, byte[] body, Map<String, ?> headers, AgentChannel.Listener listener) {
+    return CHANNEL.requestStream(CallerKind.NATIVE, method, path, body, headers, listener);
   }
 
   public static AgentChannel.Call subscribe(Topic topic, AgentChannel.Listener listener) { return CHANNEL.subscribe(topic, listener); }
