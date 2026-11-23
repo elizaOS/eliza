@@ -1,5 +1,6 @@
-// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A request needs an active account and sufficient funding for its quote"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/shared/metering.md, "A call reaches its provider only after its hold is durably marked dispatched"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A request needs an active account and sufficient funding for its quote"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/shared/metering.md, "A call reaches its provider only after its hold is durably marked dispatched"; spec/cloud/services/inference.md, "A provider's refusal of the request passes on its listed code and parameter and nothing else"
 import { hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
+import { statusOf } from "../../gen/cloud__shared__types.effect.vibe"
 import { refused } from "../http/refusal.vibe"
 import { signed } from "../http/request-auth.vibe"
 import { json, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
@@ -9,7 +10,7 @@ import { keepStanding, markDispatched, reserve, settle, type Settlement } from "
 import { Store } from "../store/connection.vibe"
 import { chatBody, chatIngressPerMinute, hasImage, quote, type ChatRequest } from "./chat-request.vibe"
 import { billedFromUsage, callCostFor, chooseFor, type Model } from "./models.vibe"
-import { completionSettlement, meteredChatStream, providerRefusal } from "./chat-stream.vibe"
+import { completionSettlement, faultBody, meteredChatStream, ProviderFaulted, providerRefusal } from "./chat-stream.vibe"
 
 const requestIdPattern = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
 const headers = { "cache-control": "no-store" }
@@ -84,7 +85,14 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
   })
 }
 
+effect function namingFaults(reply: HttpServerResponse.HttpServerResponse!{ readonly _tag: string }!CloudContext) {
+  return reply catch effect (failure) => {
+    if (failure instanceof ProviderFaulted) return json(faultBody(failure), { status: statusOf(failure.refusal.code), headers })
+    throw failure
+  }
+}
+
 export const chatRoute: Route = {
   method: "POST", path: "/api/v1/chat/completions", auth: "ServiceAccess", capability: "inference",
-  rateClass: "CompletionsRequests", ingressPerMinute: chatIngressPerMinute, maxBodyBytes: 256 * 1024, handler: chat,
+  rateClass: "CompletionsRequests", ingressPerMinute: chatIngressPerMinute, maxBodyBytes: 256 * 1024, handler: (context) => namingFaults(chat(context)),
 }
