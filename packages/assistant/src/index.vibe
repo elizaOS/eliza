@@ -20,7 +20,7 @@ export { runEvaluators, orderedEntries, type EvaluatorRun } from "./evaluators/r
 export { restoreEarlier, evidenceRows, type Restoration } from "./evaluators/pages.vibe"
 export { followupTick, type TickReport } from "./followups.vibe"
 export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
-export { reminderDueText, reminderProposalFamily } from "./device-proposals.vibe"
+export { reminderProposalFamily } from "./device-proposals.vibe"
 
 /** The name the agent loads this plugin by. */
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
