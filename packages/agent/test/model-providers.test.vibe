@@ -175,7 +175,7 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
   const { runtime, binding } = try cloudAgent(cloud, "cerebras/qwen-3.8-27b")
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
     choices: [{ message: { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "CALCULATE", arguments: "{\"expression\":\"2+2\"}" } }] }, finish_reason: "tool_calls" }],
-    usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17, prompt_tokens_details: { cached_tokens: 4 } },
+    usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17, prompt_tokens_details: { cached_tokens: 4 }, completion_tokens_details: { reasoning_tokens: 0 } },
   })))
   const parameters = { type: "object", properties: { expression: { type: "string" } }, required: ["expression"] }
   const result = try host("tool call", () => runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
@@ -192,7 +192,7 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
   }))
   assert.deepStrictEqual<unknown>(result, {
     text: "", toolCalls: [{ id: "call-1", name: "CALCULATE", arguments: { expression: "2+2" } }], finishReason: "tool_calls",
-    usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17, cacheReadInputTokens: 4 },
+    usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17, cacheReadInputTokens: 4, reasoningTokens: 0 },
   })
   const sent = cloud.calls.at(-1)?.body as { messages: Array<{ role: string } & Record<string, unknown>>; tools: unknown; tool_choice: unknown; reasoning_effort: unknown }
   assert.deepStrictEqual(sent.messages.filter((message) => message.role !== "system"), [
@@ -207,18 +207,25 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
 
   const scripted = try cloudFake(deviceKey)
   const streaming = try cloudAgent(scripted)
-  try Effect.sync(() => scripted.script(text("Whole."), cachedText(48, "Four.")))
+  try Effect.sync(() => scripted.script(text("Whole."), cachedText(48, "Four."), cachedText(0, "No cache.")))
   try host("whole call", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hi." }))
   const chunks: string[] = []
   const streamed = try host("streamed tool offer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, {
     tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto",
     messages: [{ role: "user", content: "What is 2+2?" }], stream: true, onStreamChunk: (chunk: string) => { chunks.push(chunk) },
   }))
+  const zero = try host("streamed usage without a cache hit", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, {
+    tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto", prompt: "Hi.", stream: true,
+  }))
+  assert.deepStrictEqual<unknown>(zero, {
+    text: "No cache.", toolCalls: [], finishReason: "stop",
+    usage: { promptTokens: 1, completionTokens: 3, totalTokens: 4, cacheReadInputTokens: 0 },
+  })
   const [whole, asked] = scripted.calls.map((call) => call.body as Record<string, unknown>)
   let logged: unknown
   for (let read = 0; logged === undefined && read < 100; read++) {
     const rows = try host("model-call records", () => streaming.runtime.getLogs({ entityId: streaming.runtime.agentId }))
-    logged = rows.map((log) => (log.body as { usage?: { cacheReadInputTokens?: unknown } }).usage).find((usage) => usage?.cacheReadInputTokens !== undefined)
+    logged = rows.map((log) => (log.body as { usage?: { cacheReadInputTokens?: unknown } }).usage).find((usage) => usage?.cacheReadInputTokens === 48)
   }
   assert.deepStrictEqual<unknown>({ streamed, chunks, options: [asked?.stream_options, whole !== undefined && "stream_options" in whole], logged }, {
     streamed: { text: "Four.", toolCalls: [], finishReason: "stop", usage: { promptTokens: 49, completionTokens: 2, totalTokens: 51, cacheReadInputTokens: 48 } },

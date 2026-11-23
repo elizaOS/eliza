@@ -185,9 +185,9 @@ sends an output cap only when the caller or its admitted lease sets one;
 otherwise the backend owns the output limit. A
 streamed call asks for its token use (`stream_options.include_usage`), which
 the provider sends in a last chunk without choices, and a call that is not
-streamed sends no stream options. The token use carries the prompt tokens
-the provider read from its prompt cache, when it names any, so a streamed
-call is measured as a whole one is.
+streamed sends no stream options. The token use carries the provider's
+cache-read and reasoning counts when supplied, including an explicit zero.
+A missing count stays absent, so a streamed call is measured as a whole one is.
 
 ```quint
 type ChatAsk = { offersTools: bool, choosesTool: bool, asksSchema: bool }

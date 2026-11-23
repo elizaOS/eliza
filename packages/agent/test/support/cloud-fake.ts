@@ -177,7 +177,7 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       const completion = Math.max(1, Math.ceil(content.length / 4));
       const usage = {
         prompt_tokens: 1 + cached, completion_tokens: completion, total_tokens: 1 + cached + completion,
-        ...(cached > 0 ? { prompt_tokens_details: { cached_tokens: cached } } : {}),
+        ...(reply.cachedTokens === undefined ? {} : { prompt_tokens_details: { cached_tokens: cached } }),
       };
       if (!streams(body)) {
         return json(response, 200, {

@@ -371,8 +371,8 @@ function usageOf(usage: WireUsage | null | undefined): TokenUsage | undefined {
     promptTokens: usage.prompt_tokens,
     completionTokens: usage.completion_tokens,
     totalTokens: usage.total_tokens,
-    ...(typeof cached === "number" && cached > 0 ? { cacheReadInputTokens: cached } : {}),
-    ...(typeof reasoning === "number" && reasoning > 0 ? { reasoningTokens: reasoning } : {}),
+    ...(typeof cached === "number" && Number.isSafeInteger(cached) && cached >= 0 ? { cacheReadInputTokens: cached } : {}),
+    ...(typeof reasoning === "number" && Number.isSafeInteger(reasoning) && reasoning >= 0 ? { reasoningTokens: reasoning } : {}),
   }
 }
 
