@@ -130,9 +130,12 @@ The person approves a short-lived grant for the registered Android client
 and its verified return address while signed in. A browser that names the
 account shown for approval receives a grant only while signed in to that
 account. Only the device proving possession of the grant’s verifier can redeem it, once. The device
-acknowledges receipt before it can use the key. Signing out stops activation
+acknowledges receipt before it can use the key. The same exchange offers
+the device's mail lease (`identity/sessions`), which the acknowledgement makes
+live; only the native shell holds it. Signing out stops activation
 of an unfinished grant. An active key continues to authorize inference and
-consented speech until its deadline or its own revocation.
+consented speech until its deadline or its own revocation; the lease alone
+renews it, and signing out ends both.
 
 ```quint
 pure def mayIssueAccountBoundDeviceGrant(shownAccount: str, signedInAccount: str): bool =
@@ -167,7 +170,8 @@ pure def canConnectCloudGoogle(explicitConsent: bool, providerApproved: bool, id
 
 ### An approved connection grants the owner only the selected reads
 
-A read requires an active browser session for the account that consented.
+A read requires an active browser session or the device's live mail lease
+for the account that consented.
 The service keeps the refresh credential encrypted for that deployment,
 account and approved scopes. Disconnecting removes the local credential and any
 pending consent authorizations. Browser and native inference credentials
@@ -190,15 +194,16 @@ original until it expires.
 ```quint
 pure def currentAttachmentTransfer(issuedAt: int, now: int): bool = issuedAt >= 0 and now >= issuedAt and now - issuedAt < 300000
 
-pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
-  ownerSessionActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
+pure def canReadCloudGoogle(ownerSessionOrLeaseActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
+  ownerSessionOrLeaseActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
 ```
 
 ### Managed mail dispatch requires separate consent and explicit approval
 
 The owner may separately grant permission to send email. A browser request
 dispatches one reviewed plain-text draft to one exact address through the
-current Gmail connection. A reply is threaded only after Cloud re-reads the
+current Gmail connection, from the owner's browser session or the device's
+mail lease. A reply is threaded only after Cloud re-reads the
 selected message and matches the reviewed recipient and subject. Cloud builds
 the thread headers from that verified message. The device inference key cannot dispatch a draft.
 Cloud reserves the operation ID before calling Gmail and records provider
@@ -206,14 +211,14 @@ acceptance by message ID. An unknown outcome cannot cause the operation to be
 dispatched again.
 
 ```quint
-pure def canSendCloudGoogle(ownerSessionActive: bool, grantMatches: bool, sendConsent: bool, confirmedDraft: bool, reserved: bool): bool =
-  ownerSessionActive and grantMatches and sendConsent and confirmedDraft and not(reserved)
+pure def canSendCloudGoogle(ownerSessionOrLeaseActive: bool, grantMatches: bool, sendConsent: bool, confirmedDraft: bool, reserved: bool): bool =
+  ownerSessionOrLeaseActive and grantMatches and sendConsent and confirmedDraft and not(reserved)
 ```
 
 ### Trash and calendar changes require their own permissions
 
 Moving a message to Trash and undoing that change requires Gmail modify
-permission. Google requires Gmail modify scope for Trash. Undo names the successful Trash receipt and checks the current
+permission and the owner's browser session or the device's mail lease. Google requires Gmail modify scope for Trash. Undo names the successful Trash receipt and checks the current
 provider revision. Cloud offers no permanent deletion here.
 
 Creating, changing or removing an appointment requires Calendar event
@@ -227,8 +232,8 @@ reviewed event version, and Google must accept that version. Cloud reports
 success only after provider evidence matches the selected event.
 
 ```quint
-pure def canChangeCloudGoogle(ownerSessionActive: bool, grantMatches: bool, allowed: bool, reviewedTarget: bool, versionMatches: bool): bool =
-  ownerSessionActive and grantMatches and allowed and reviewedTarget and versionMatches
+pure def canChangeCloudGoogle(ownerSessionOrLeaseActive: bool, grantMatches: bool, allowed: bool, reviewedTarget: bool, versionMatches: bool): bool =
+  ownerSessionOrLeaseActive and grantMatches and allowed and reviewedTarget and versionMatches
 ```
 
 ### A device reminder follows the reviewed event occurrence
