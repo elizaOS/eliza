@@ -2247,6 +2247,9 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
   const refused = try failure(() => writeFact("j05-fact-d", "Balance: -10 USD", "evidence-d"))
   const afterRefusal = try fact("j05-fact-e", "Balance: -10 USD", "evidence-e")
   const facts = try host(() => runtime.getMemories({ roomId, tableName: "facts", count: 10, unique: false }))
+  const laterAt = Date.now() + 1
+  try host(() => adapter.createMemories(Array.from({ length: 150 }, (_, index) => ({ tableName: "facts", memory: { id: stringToUuid(`j05-later-fact-${index}`), agentId, entityId: reader, roomId, createdAt: laterAt + index, content: { text: `Later fact ${index}` } } }))))
+  const beyondRecent = try fact("j05-fact-f", "Balance: -10 USD", "evidence-f")
 
   // spec/core/ingressSnapshots.md, "Reuse requires exact redacted content and every projected stored segment"
   const rawSecret = "here is my token ghp_1234567890abcdefghijklmnopqrstuvwxyzAB and key sk-j05-configured-credential, thanks"
@@ -2258,6 +2261,7 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
     credit,
     refused,
     afterRefusal,
+    beyondRecent,
     facts: facts.map((row) => [row.id, row.content.text, (row.metadata as { extractionEvidenceIds?: string[] }).extractionEvidenceIds]),
     stored: secret?.content.text,
     secretReplay,
@@ -2266,6 +2270,7 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
     credit: stringToUuid("j05-fact-c"),
     refused: { name: "Error", code: undefined, message: "fact commit refused" },
     afterRefusal: stringToUuid("j05-fact-a"),
+    beyondRecent: stringToUuid("j05-fact-a"),
     facts: [
       [stringToUuid("j05-fact-c"), "Balance: +10 USD", ["evidence-c"]],
       [stringToUuid("j05-fact-a"), "Balance: -10 USD", ["evidence-a", "evidence-b", "evidence-e"]],
