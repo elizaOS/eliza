@@ -260,6 +260,32 @@ it.live('The boundary refuses a malformed body, client id or voice view context,
 
 const planning = 'spec/agent/conversation/planning.md'
 
+it.live(`Competing terminal decisions run no sibling tool and get one repair round (${planning}, "A response with competing terminal decisions runs no sibling action and can be repaired once")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try cloudAgent(cloud)
+  const { id } = try conversation(agent)
+  const ambiguous = toolCalls("This draft should be cleared.",
+    { name: "REPLY", arguments: { text: "First terminal copy." } },
+    { name: "REPLY", arguments: { text: "Second terminal copy." } },
+    { name: "CALCULATE", arguments: { expression: "23 * 19" } },
+  )
+  const original = completions(cloud)
+  try Effect.sync(() => cloud.script(ambiguous, text("One clear answer.")))
+  const repaired = try send(agent, id, { text: "Give me one clear answer." })
+  const repairCalls = completions(cloud) - original
+  const repairPrompt = lastTurnPrompt(cloud)
+  const beforeRepeat = completions(cloud)
+  try Effect.sync(() => cloud.script(ambiguous, ambiguous))
+  const refused = try send(agent, id, { text: "Give me a single response." })
+  try Effect.try(() => {
+    assert.deepStrictEqual([repaired.status, replyOf(repaired).text, replyOf(repaired).actionResults, repairCalls],
+      [200, "One clear answer.", [], 2])
+    assert.include(repairPrompt, "None of its tools ran")
+    assert.notInclude(repairPrompt, "First terminal copy.")
+    assert.deepStrictEqual([refused.status, completions(cloud) - beforeRepeat], [503, 2])
+  })
+})
+
 it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
