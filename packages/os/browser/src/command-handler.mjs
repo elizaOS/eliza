@@ -13,7 +13,36 @@ import { createTaskGuidance } from "./task-guidance.mjs";
  * `effects` is the network watch (createEffectWatch). Without one, task
  * snapshots report only what the page itself saw.
  */
-export function createCommandHandler(api, { effects } = {}) {
+const PAGE_ANSWER_MS = 10000;
+
+const answeredInTime = (browser) =>
+  Object.create(browser, {
+    scripting: {
+      value: {
+        executeScript(details) {
+          let timer;
+          return Promise.race([
+            browser.scripting.executeScript(details),
+            new Promise((_, reject) => {
+              timer = setTimeout(
+                () =>
+                  reject(
+                    new BridgeError(
+                      "UNCERTAIN_OUTCOME",
+                      "The browser tab did not answer in time; inspect the same tab without replaying the command.",
+                    ),
+                  ),
+                PAGE_ANSWER_MS,
+              );
+            }),
+          ]).finally(() => clearTimeout(timer));
+        },
+      },
+    },
+  });
+
+export function createCommandHandler(browser, { effects } = {}) {
+  const api = answeredInTime(browser);
   let protectionAdvisory = null;
   let protectionRevision = 0;
   const cancelled = new Set();

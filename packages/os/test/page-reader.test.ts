@@ -482,7 +482,7 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     expect(fields((await codeRead(secure)).codeReadback).matches).toBe(true);
   });
 
-  it("through the browser host, presses a bound frame control once and never reads a partner origin's frame", async () => {
+  it("through the browser host, presses a bound frame control once, never reads a partner origin's frame, and goes on past a tab that never answers", async () => {
     await open(`${shop}/framed-plain`);
     const target = selectorOf(find(await snapshot(), "Show details"));
     const records: Fields = {};
@@ -492,7 +492,8 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
       tabs: { query: () => Promise.resolve([{ id: 1 }]), get: () => Promise.resolve({ url: tab.url(), status: "complete" }) },
       webNavigation: { getAllFrames: async () => (await frameList()).map(({ frameId, documentId }) => ({ frameId, documentId })) },
       scripting: {
-        executeScript: async (request: { target: { frameIds?: number[]; allFrames?: boolean }; func: (...args: never[]) => unknown; args: unknown[] }) => {
+        executeScript: async (request: { target: { tabId: number; frameIds?: number[]; allFrames?: boolean }; func: (...args: never[]) => unknown; args: unknown[] }) => {
+          if (request.target.tabId === 2) return new Promise(() => {});
           const chosen = (await frameList()).filter(({ frameId }) => request.target.allFrames === true || request.target.frameIds?.includes(frameId));
           return Promise.all(chosen.map(async ({ frameId, documentId, contextId }) => ({ frameId, documentId, result: await evaluate(`(${Function.prototype.toString.call(request.func)})(...${JSON.stringify(request.args)})`, await contextId()) })));
         },
@@ -522,6 +523,11 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     const frame = fields(Schema.decodeUnknownSync(Schema.Array(Fields))(fields(again.result).frames)[0]);
     expect(Schema.decodeUnknownSync(Schema.Array(Fields))(frame.childFrames).map((child) => child.read)).toEqual([true, false]);
     expect(text(frame.text)).not.toContain("Partner words");
+    let unanswered: unknown;
+    const hung = handle({ type: "command", id: "hung-1", command: { subaction: "snapshot", id: "2" } }, { send: (value) => { unanswered = value; } }, () => true);
+    expect(await send({ type: "command", id: "raw-2", command: { subaction: "snapshot", id: "1" } })).toMatchObject({ ok: true });
+    await hung;
+    expect(unanswered).toMatchObject({ id: "hung-1", ok: false, error: { kind: "UNCERTAIN_OUTCOME" } });
   });
 });
 
