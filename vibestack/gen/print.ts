@@ -183,11 +183,18 @@ export function printer({ types, inferred, importedConstantType, ref, helper, bi
   /** Records, lists and variants compare by structure (Scope.proof); a set inside one would compare in order in the proof. */
   const comparable = (e: Json) => !holdsSet(typeOf(e.id)) || fail("== and includes on a value that holds a set are not supported: in the proof a set is a sequence, compared in order; compare sets with subseteq both ways");
   const equal = (a: string, b: string) => `${helper("equal")}(${(helpers.add("equal"), a)}, ${b})`;
-  /** Inside another expression a record literal has no declared type to check against, so it states its own. */
+  /**
+   * Inside another expression a record literal has no declared type to check against, so it states its own. Beside
+   * `==` the prover's code passes it through a typed identity instead: LemmaScript reads past `as` there and takes the
+   * first record type with the same field names, which may be another module's.
+   */
   const typed = (text: string, e: Json): string => {
     const d = nesting > 1 ? named(typeOf(e.id), "rec") : undefined;
-    return d ? `(${text} as ${typeName(d)})` : text;
+    return !d ? text : proof && expected === "strings" ? ascribe(text, typeName(d)) : `(${text} as ${typeName(d)})`;
   };
+  /** A list that is or joins a list literal: `List("a").concat(xs)`, `xs.append("a")`. */
+  const holdsLiteral = (e: Json): boolean =>
+    e.kind === "app" && (e.opcode === "List" || e.opcode === "append" || (e.opcode === "concat" && (holdsLiteral(e.args[0]) || holdsLiteral(e.args[1]))));
   /** `name: value` for each pair of a record literal's arguments. */
   const pairs = (args: Json[]) => at(within(), () => args.flatMap((_, i) => (i % 2 ? [] : [`${args[i].value}: ${ex(args[i + 1], TERNARY)}`])));
   /** `{ ...x, a: 1, b: 2 }` arrives as nested updates; this is what is updated, and the updates in order, printed `where`. */
@@ -316,7 +323,9 @@ export function printer({ types, inferred, importedConstantType, ref, helper, bi
         const inner = a[2].expr?.args?.[1];
         if (which === "every") return [`!${recv()}.some(${arrow([item], inner, true)})`, UNARY];
         // Dafny 4.11 crashes on a sequence comprehension inside a module-level constant, so there a mapped list stays a fold.
-        if (method && !(proof && constant && method === "map")) return [`${recv()}.${method}(${at(within(), () => arrow([item], inner))})`, ATOM];
+        // LemmaScript gives the literals in what is mapped the type of what the map makes, so there the list states its own.
+        const mapped = () => (proof && method === "map" && holdsLiteral(a[0]) ? ascribe(recv(), tsType(typeOf(a[0].id))) : recv());
+        if (method && !(proof && constant && method === "map")) return [`${mapped()}.${method}(${at(within(), () => arrow([item], inner))})`, ATOM];
         if (which === "includes") {
           const [v, t] = [inner.args[1], typeOf(inner.args[1].id)];
           const value = at("none", () => ex(v, TERNARY));

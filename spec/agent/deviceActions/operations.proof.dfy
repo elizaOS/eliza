@@ -141,3 +141,82 @@ lemma lawTheDraftFollowUpNeedsTheNewerRead_ensures(n: agent__deviceActions__capa
     OpsMeetsRequired(n, agent__deviceActions__capabilities_smsLatestSenderNeed(true));
   }
 }
+
+// A member of a filtered list is a member of the list the filter keeps, for every filter and list.
+lemma OpsFilterMembers<T>()
+  ensures forall p: T -> bool, xs: seq<T>, x: T {:trigger x in Std.Collections.Seq.Filter(p, xs)} ::
+    x in Std.Collections.Seq.Filter(p, xs) <==> x in xs && p(x)
+{
+  forall p: T -> bool, xs: seq<T>, x: T
+    ensures x in Std.Collections.Seq.Filter(p, xs) <==> x in xs && p(x)
+  {
+    ProofLib.FilterMember(p, xs, x);
+  }
+}
+
+// The base and workflow operations' need requires nothing, offers the first listed capability, and offers no Clock
+// handoff.
+lemma OpsAnyButClock()
+  ensures anyButClock.required == []
+  ensures agent__deviceActions__capabilities_Capability.CalendarLocalEventV1 in anyButClock.oneOf
+  ensures forall c :: c in anyButClock.oneOf ==> !c.ClockHandoffV1? && !c.ClockHandoffV2?
+{
+  OpsFilterMembers<agent__deviceActions__capabilities_Capability>();
+  assert agent__deviceActions__capabilities_Capability.CalendarLocalEventV1 in agent__deviceActions__capabilities_allCapabilities;
+}
+
+// Only the Clock handoff is in the Clock family.
+lemma OpsClockFamily(t: OperationType)
+  ensures family(t).ClockFamily? ==> t.ClockHandoff?
+{
+}
+
+// Outside the Clock family a need's first required capability is not the Clock handoff, or it requires nothing and
+// offers some alternatives, none of them the Clock handoff.
+lemma OpsFamilyNeed(f: Family, t: OperationType, versionTwo: bool)
+  requires !f.ClockFamily?
+  ensures var n := familyNeed(f, t, versionTwo);
+    (|n.required| > 0 && !n.required[0].ClockHandoffV1? && !n.required[0].ClockHandoffV2?) ||
+    (|n.required| == 0 && |n.oneOf| > 0 && forall c :: c in n.oneOf ==> !c.ClockHandoffV1? && !c.ClockHandoffV2?)
+{
+  match f {
+    case WorkflowFamily => OpsAnyButClock();
+    case BaseFamily => OpsAnyButClock();
+    case _ =>
+  }
+}
+
+// Every need names a capability: the Clock family's by its own, the rest as OpsFamilyNeed shows.
+lemma lawEveryOperationNamesANeed_ensures(t: OperationType, versionTwo: bool)
+  ensures (lawEveryOperationNamesANeed(t, versionTwo) == true)
+{
+  var n := operationNeed(t, versionTwo);
+  if family(t).ClockFamily? {
+    if versionTwo { OpsNamesFirst(n.required); } else { OpsNamesFirst(n.oneOf); }
+  } else {
+    OpsFamilyNeed(family(t), t, versionTwo);
+    if |n.required| > 0 { OpsNamesFirst(n.required); } else { OpsNamesFirst(n.oneOf); }
+  }
+}
+
+// A clock-only device has no listed capability other than the Clock handoff, and every other operation needs one.
+lemma lawAClockOnlyDeviceReceivesOnlyClockHandoffs_ensures(t: OperationType, versionTwo: bool, neg: agent__deviceActions__capabilities_Negotiation)
+  ensures (lawAClockOnlyDeviceReceivesOnlyClockHandoffs(t, versionTwo, neg) == true)
+{
+  var n := operationNeed(t, versionTwo);
+  if clockOnly(neg) && agent__deviceActions__capabilities_meets(neg, n) && !t.ClockHandoff? {
+    OpsClockFamily(t);
+    OpsFamilyNeed(family(t), t, versionTwo);
+    var c: agent__deviceActions__capabilities_Capability;
+    if |n.required| > 0 {
+      c := n.required[0];
+      assert c in n.required;
+    } else {
+      OpsNamesFirst(n.oneOf);
+      c :| c in n.oneOf && c in neg.capabilities;
+    }
+    agent__deviceActions__capabilities_lawTheVocabularyListsEveryCapability_ensures(c);
+    assert agent__deviceActions__capabilities_negotiatedHas(neg, c);
+    assert false;
+  }
+}

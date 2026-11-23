@@ -54,20 +54,22 @@ lemma lawTheVocabularyListsEveryCapability_ensures(c: Capability)
     case NotesRecordV1 => assert allCapabilities[33] == c;
     case PhotosViewSelectedV1 => assert allCapabilities[34] == c;
     case CameraLibraryIdV1 => assert allCapabilities[35] == c;
-    case SmsComposeV2 => assert allCapabilities[36] == c;
-    case ContactsWriteV2 => assert allCapabilities[37] == c;
-    case ContactsShowV1 => assert allCapabilities[38] == c;
-    case ContactsReadV1 => assert allCapabilities[39] == c;
-    case ContactsLookupV1 => assert allCapabilities[40] == c;
-    case PhoneKeypadV1 => assert allCapabilities[41] == c;
-    case BrowserSearchV1 => assert allCapabilities[42] == c;
-    case BrowserTabsV1 => assert allCapabilities[43] == c;
-    case BrowserTabsCloseAllV1 => assert allCapabilities[44] == c;
-    case BrowserFindV1 => assert allCapabilities[45] == c;
-    case BrowserHistoryV1 => assert allCapabilities[46] == c;
-    case BrowserOpenNewTabV1 => assert allCapabilities[47] == c;
-    case FilesShownTargetV1 => assert allCapabilities[48] == c;
-    case TelephonyViewsV1 => assert allCapabilities[49] == c;
+    case CameraCaptureLensV1 => assert allCapabilities[36] == c;
+    case SmsComposeV2 => assert allCapabilities[37] == c;
+    case ContactsWriteV2 => assert allCapabilities[38] == c;
+    case ContactsShowV1 => assert allCapabilities[39] == c;
+    case ContactsReadV1 => assert allCapabilities[40] == c;
+    case ContactsLookupV1 => assert allCapabilities[41] == c;
+    case PhoneKeypadV1 => assert allCapabilities[42] == c;
+    case BrowserSearchV1 => assert allCapabilities[43] == c;
+    case BrowserTabsV1 => assert allCapabilities[44] == c;
+    case BrowserTabsCloseAllV1 => assert allCapabilities[45] == c;
+    case BrowserTabsShowV1 => assert allCapabilities[46] == c;
+    case BrowserFindV1 => assert allCapabilities[47] == c;
+    case BrowserHistoryV1 => assert allCapabilities[48] == c;
+    case BrowserOpenNewTabV1 => assert allCapabilities[49] == c;
+    case FilesShownTargetV1 => assert allCapabilities[50] == c;
+    case TelephonyViewsV1 => assert allCapabilities[51] == c;
   }
 }
 
