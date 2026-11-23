@@ -1,7 +1,7 @@
 // spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import type { DeliveryEnd } from "../../gen/assistant__reminderEscalation.effect.vibe"
-import { Approvals, ApprovalsUnavailable, Calendar, DeliveryFailed, Facts, Model, ModelUnavailable, Presenter, Scheduler, SchedulerUnavailable, type ApprovalView, type AssistantTask, type CalendarEventFacts, type Presented, type TaskRow, type TaskTrigger, type TaskVerb } from "../../src/host.vibe"
+import { Approvals, ApprovalsUnavailable, Calendar, DeliveryFailed, Facts, Model, ModelUnavailable, Presenter, Scheduler, SchedulerUnavailable, type ApprovalView, type AssistantTask, type CalendarEventFacts, type Presented, type TaskEdit, type TaskRow, type TaskVerb } from "../../src/host.vibe"
 
 /** What the scripted ports saw and how they answer. */
 export interface Ports {
@@ -12,6 +12,8 @@ export interface Ports {
   readonly answers: Array<string | undefined>
   readonly prompts: string[]
   schedulerFailures: number
+  refusals: number
+  listingFails: boolean
   now: number
   approvals: ApprovalView[] | undefined
   events: CalendarEventFacts[]
@@ -21,9 +23,9 @@ const statusAfter: Readonly<Record<TaskVerb["tag"], string>> = {
   SnoozeFor: "Scheduled", Skip: "Skipped", Complete: "Completed", Dismiss: "Dismissed", Acknowledge: "Acknowledged", Reopen: "Scheduled",
 }
 
-/** Fresh ports: an in-memory store, a scheduler that keeps rows by idempotency key, a scripted model and a recording presenter. */
+/** Fresh ports: an in-memory store, a scheduler that keeps rows by idempotency key, a scripted model, a recording presenter and a calendar that returns the events overlapping a window. */
 export function ports(now = Date.UTC(2026, 10, 22, 15, 0)): Ports {
-  return { tasks: new Map(), verbs: [], presented: [], presentFailures: [], answers: [], prompts: [], schedulerFailures: 0, now, approvals: [], events: [] }
+  return { tasks: new Map(), verbs: [], presented: [], presentFailures: [], answers: [], prompts: [], schedulerFailures: 0, refusals: 0, listingFails: false, now, approvals: [], events: [] }
 }
 
 /** The layer of every port, over the given script. */
@@ -46,6 +48,10 @@ export function portsLayer(seen: Ports) {
       effect answer(taskId: string, verb: TaskVerb, key: string) {
         const row = seen.tasks.get(taskId)
         if (row === undefined) return { kind: "notFound" } as const
+        if (seen.refusals > 0) {
+          seen.refusals -= 1
+          return { kind: "refused", reason: "scripted refusal" } as const
+        }
         if (keyed.has(key)) return { kind: "applied" } as const
         keyed.add(key)
         seen.verbs.push({ taskId, verb, key })
@@ -53,16 +59,23 @@ export function portsLayer(seen: Ports) {
         seen.tasks.set(taskId, next)
         return { kind: "applied" } as const
       },
-      effect retrigger(taskId: string, trigger: TaskTrigger, key: string) {
+      effect edit(taskId: string, change: TaskEdit, key: string) {
         const row = seen.tasks.get(taskId)
         if (row === undefined) return { kind: "notFound" } as const
+        if (seen.refusals > 0) {
+          seen.refusals -= 1
+          return { kind: "refused", reason: "scripted refusal" } as const
+        }
         if (keyed.has(key)) return { kind: "applied" } as const
         keyed.add(key)
-        seen.tasks.set(taskId, { ...row, trigger, revision: row.revision + 1 })
+        seen.tasks.set(taskId, { ...row, ...change, revision: row.revision + 1 })
         return { kind: "applied" } as const
       },
       effect find(taskId: string) { return seen.tasks.get(taskId) },
-      effect list() { return [...seen.tasks.values()] },
+      effect list() {
+        if (seen.listingFails) throw new SchedulerUnavailable({ reason: "scripted outage" })
+        return [...seen.tasks.values()]
+      },
     }),
     Layer.succeed(Model, {
       effect complete(system: string, prompt: string) {
@@ -85,7 +98,7 @@ export function portsLayer(seen: Ports) {
         return [...seen.approvals]
       },
     }),
-    Layer.succeed(Calendar, { effect events() { return [...seen.events] } }),
+    Layer.succeed(Calendar, { effect events(startAt: number, endAt: number) { return seen.events.filter((event) => event.startAt < endAt && (event.endAt ?? event.startAt) >= startAt) } }),
     Layer.succeed(Facts, {
       effect schedulingZone() { return "" },
       effect runtimeZone() { return "America/New_York" },

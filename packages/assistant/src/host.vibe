@@ -1,6 +1,6 @@
 // spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/reminderPresentation.md, "Issuance requires a nonblank body and title and a chat text beginning with the body"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { ModelType, ServiceType, type IAgentRuntime, type NotificationService, type ReminderPresentation, type Service, type UUID } from "@elizaos/core"
+import { ModelType, ServiceType, type IAgentRuntime, type Memory, type NotificationService, type ReminderPresentation, type Service, type UUID } from "@elizaos/core"
 import type { ScheduledTasksApi } from "@elizaos/agent"
 import { sentAgain, type DeliveryEnd } from "../gen/assistant__reminderEscalation.effect.vibe"
 
@@ -41,6 +41,12 @@ export interface TaskRow {
   readonly revision: number
 }
 
+/** A change to a scheduled task's words or its trigger. */
+export interface TaskEdit {
+  readonly promptInstructions?: string
+  readonly trigger?: TaskTrigger
+}
+
 /** A verb the owner answers a scheduled task with. */
 export type TaskVerb =
   | { readonly tag: "SnoozeFor"; readonly minutes: number }
@@ -75,7 +81,7 @@ export interface Presented {
 export service Scheduler {
   create(task: AssistantTask): { readonly created: boolean; readonly task: TaskRow }!SchedulerUnavailable
   answer(taskId: string, verb: TaskVerb, key: string): VerbAnswer!SchedulerUnavailable
-  retrigger(taskId: string, trigger: TaskTrigger, key: string): VerbAnswer!SchedulerUnavailable
+  edit(taskId: string, change: TaskEdit, key: string): VerbAnswer!SchedulerUnavailable
   find(taskId: string): (TaskRow | undefined)!SchedulerUnavailable
   list(): (readonly TaskRow[])!SchedulerUnavailable
 }
@@ -108,10 +114,12 @@ export service Approvals {
   list(): (readonly ApprovalView[])!ApprovalsUnavailable
 }
 
-/** A calendar event and the clocks a check-in reads its change from. */
+/** A calendar event, where and until when it runs when the calendar says, and the clocks a check-in reads its change from. */
 export interface CalendarEventFacts {
   readonly title: string
   readonly startAt: number
+  readonly endAt?: number
+  readonly location?: string
   readonly synced: boolean
   readonly metadataValid: boolean
   readonly providerEditedAt: string | undefined
@@ -213,9 +221,9 @@ function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
       const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "verb", verb }, { tag: "Keyed", key }), catch: unavailable })
       return (reply.kind === "applied" ? { kind: "applied" } : reply) satisfies VerbAnswer
     },
-    effect retrigger(taskId, trigger, key) {
+    effect edit(taskId, change, key) {
       const tasks = try agentScheduler(runtime)
-      const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "edit", edit: { trigger } }, { tag: "Keyed", key }), catch: unavailable })
+      const reply = try tryPromise({ try: () => tasks.applyVerb(taskId, { kind: "edit", edit: change }, { tag: "Keyed", key }), catch: unavailable })
       return (reply.kind === "applied" ? { kind: "applied" } : reply) satisfies VerbAnswer
     },
     effect find(taskId) {
@@ -357,6 +365,17 @@ export function runtimeLayer(runtime: IAgentRuntime) {
 
 /** The ports the assistant's programs need. */
 export type AssistantPorts = KeyValueStore.KeyValueStore | Scheduler | Model | Presenter | Facts | Approvals | Calendar
+
+/** The owner's request as this package reads it from a message, with the instant it was sent when known. */
+export function requestOf(message: Memory) {
+  return {
+    messageId: message.id ?? "", text: typeof message.content.text === "string" ? message.content.text : "", roomId: message.roomId,
+    askedAt: typeof message.createdAt === "number" && Number.isSafeInteger(message.createdAt) ? message.createdAt : undefined,
+  }
+}
+
+/** The owner's request as this package reads it from a message. */
+export type OwnerRequest = ReturnType<typeof requestOf>
 
 /** Runs one program of this package against a running agent's ports. */
 export function onAgent<A, E>(runtime: IAgentRuntime, program: A!E!AssistantPorts): Promise<A> {

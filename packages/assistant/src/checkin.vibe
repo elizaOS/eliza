@@ -1,12 +1,13 @@
 // spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"; spec/assistant/checkin.md, "A recent check-in keeps an event that is today or whose provider change is recent"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"; spec/assistant/checkin.md, "A failed check-in leaves storage unchanged, and a summary is stored at most once"; spec/assistant/checkin.md, "Story: Check in on me at the times I chose"; spec/assistant/checkin.md, "A check-in comes at the time the owner chose, the morning one at eight until they choose, and the night one only once chosen"
 import { createReminderPresentation, type ActionResult, type IAgentRuntime, type UUID } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
-import { Machine, checkinMinuteValid, checkinSchedule, machine, projectChange, type CheckinSetting, type CheckinSlot, type EventClocks, type RenderResult } from "../gen/assistant__checkin.effect.vibe"
+import { Machine, checkinAfterDismissal, checkinMinuteValid, checkinSchedule, machine, projectChange, type CheckinSetting, type CheckinSlot, type EventClocks, type RenderResult } from "../gen/assistant__checkin.effect.vibe"
 import type { ChangeClock } from "../gen/calendar__managedFeed.effect.vibe"
-import { Calendar, Facts, Model, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, writeRecord, type CalendarEventFacts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { Calendar, Facts, Model, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, writeRecord, type CalendarEventFacts, type DeliveryAnswer, type TaskRow, type VerbAnswer } from "./host.vibe"
 import { appliedReceipt, attributed, failedReceipt } from "./replies.vibe"
-import { listGoals } from "./goals.vibe"
-import { liveReminders } from "./reminders.vibe"
+import { followGoalClock, listGoals } from "./goals.vibe"
+import { followReminderClock, liveReminders } from "./reminders.vibe"
+import { followRoutineClock } from "./routines.vibe"
 import { currentTodos, renderTodos } from "./todos.vibe"
 import { ownerClockAt } from "./timezone.vibe"
 
@@ -142,28 +143,40 @@ export effect function checkinSchedules() {
   return { morning: shown("morning"), night: shown("night") }
 }
 
-/** Keeps exactly one daily check-in task per slot the owner's times turn on, at that time on the owner's clock now. */
-export effect function reconcileCheckins(key: string) {
-  const times = try checkinTimes()
+/** The scheduler refused to change a check-in, so it still comes as it did. */
+export error CheckinRefused { reason: string }
+
+/** Keeps exactly one daily check-in task per slot the owner's times turn on, at that time on the owner's clock now; a check-in the owner dismissed stays off unless they just chose its time. */
+export effect function reconcileCheckins(key: string, chosen: readonly SlotName[] = []) {
+  const stored = try checkinTimes()
+  const settings: Record<SlotName, CheckinSetting> = { morning: stored.morning, night: stored.night }
   const scheduler = try Scheduler
   const zone = try ownerClockAt(try (try Facts).now())
-  const tasks: Record<string, string> = { ...times.tasks }
-  const generations: Record<string, number> = { ...times.generations }
+  const tasks: Record<string, string> = { ...stored.tasks }
+  const generations: Record<string, number> = { ...stored.generations }
   for (const name of slotNames) {
-    const schedule = checkinSchedule(slots[name], times[name])
     const taskId = tasks[name]
     const row = taskId === undefined ? undefined : try scheduler.find(taskId)
+    if (row?.status === "Dismissed") {
+      settings[name] = checkinAfterDismissal(chosen.includes(name), settings[name])
+      delete tasks[name]
+    }
     const kept = row !== undefined && row.status !== "Dismissed" ? row : undefined
+    const schedule = checkinSchedule(slots[name], settings[name])
     if (schedule.tag !== "CheckinAt") {
-      if (kept !== undefined) try scheduler.answer(kept.taskId, { tag: "Dismiss" }, `${key}:${name}:off`)
+      if (kept !== undefined) {
+        const answer = try scheduler.answer(kept.taskId, { tag: "Dismiss" }, `${key}:${name}:off`)
+        if (answer.kind === "refused") throw new CheckinRefused({ reason: answer.reason })
+      }
       delete tasks[name]
       continue
     }
     const trigger = { kind: "cron", expression: `${schedule.minute % 60} ${Math.floor(schedule.minute / 60)} * * *`, tz: zone } as const
     if (kept !== undefined) {
       const same = kept.trigger.kind === "cron" && kept.trigger.expression === trigger.expression && kept.trigger.tz === zone
-      if (!same) try scheduler.retrigger(kept.taskId, trigger, `${key}:${name}`)
-      continue
+      const answer: VerbAnswer = same ? { kind: "applied" } : try scheduler.edit(kept.taskId, { trigger }, `${key}:${name}`)
+      if (answer.kind === "applied") continue
+      if (answer.kind === "refused") throw new CheckinRefused({ reason: answer.reason })
     }
     const last = generations[name]
     const generation = last === undefined ? 0 : last + 1
@@ -174,7 +187,16 @@ export effect function reconcileCheckins(key: string) {
     tasks[name] = made.task.taskId
     generations[name] = generation
   }
-  try writeRecord(timesKey, { ...times, tasks, generations })
+  try writeRecord(timesKey, { ...settings, tasks, generations })
+  return zone
+}
+
+/** Reschedules everything the assistant keeps on the owner's clock onto the zone it follows now. */
+export effect function followOwnerClock(key: string) {
+  const zone = try reconcileCheckins(`${key}:checkins`)
+  try followGoalClock(zone, `${key}:goals`)
+  try followRoutineClock(zone, `${key}:routines`)
+  try followReminderClock(zone, `${key}:reminders`)
   return zone
 }
 
@@ -196,9 +218,13 @@ export effect function setCheckinTimes(given: { readonly morning?: unknown; read
   const at = try (try Facts).now()
   const times = try checkinTimes()
   try writeRecord(timesKey, { ...times, morning: morning ?? times.morning, night: night ?? times.night })
-  const zone = reconcileCheckins(key) catch (failed) => failed
+  const chosen = slotNames.filter((name) => (name === "morning" ? morning : night) !== undefined)
+  const zone = reconcileCheckins(key, chosen) catch (failed) => failed
   const facts = { operation: "checkin.schedule", kind: "checkin-schedule", id: "owner", key, at }
-  const receipt = zone instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown") : appliedReceipt(facts)
+  if (typeof zone !== "string" && !(zone instanceof SchedulerUnavailable)) try writeRecord(timesKey, times)
+  const receipt = typeof zone === "string" ? appliedReceipt(facts)
+    : zone instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown")
+    : failedReceipt(facts, zone instanceof CheckinRefused ? zone.reason : zone._tag, "rejected")
   const now = try checkinSchedules()
   const said = (name: SlotName) => now[name] === "off" ? `your ${name} check-in is off` : `your ${name} check-in comes at ${now[name]}`
   return attributed([{ actionName: "BRIEF", success: receipt.outcome === "applied", receipts: [receipt] }], "checkin-schedule:owner", {

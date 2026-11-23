@@ -1,6 +1,6 @@
-// spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/reminderEscalation.md, "New steps keep the quiet hours of the reminder"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"; spec/assistant/reminderEscalation.md, "Intensity shapes only the follow-ups: minimal drops them, persistent adds one, and high priority only keeps them for a high-priority reminder"
+// spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/reminderEscalation.md, "New steps keep the quiet hours of the reminder"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"; spec/assistant/reminderEscalation.md, "Intensity shapes only the follow-ups: minimal drops them, persistent adds one, and high priority only keeps them for a high-priority reminder"; spec/assistant/reminderEscalation.md, "A quiet owner is chased one notch less"
 import { createReminderPresentation, type ActionResult, type UUID } from "@elizaos/core"
-import { configureEscalation, effectiveIntensity, followupsUnder, noEscalation, stepOutcome, type EscalationPlan, type QuietHours, type ReminderChannel, type ReminderIntensity } from "../gen/assistant__reminderEscalation.effect.vibe"
+import { configureEscalation, effectiveIntensity, followupsUnder, noEscalation, ownerQuiet, quietIntensity, stepOutcome, type EscalationPlan, type QuietHours, type ReminderChannel, type ReminderIntensity } from "../gen/assistant__reminderEscalation.effect.vibe"
 import { Facts, Scheduler, presentOnce, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { appliedReceipt, attributed } from "./replies.vibe"
 import type { ReminderEscalation } from "./requests.schema.vibe"
@@ -94,29 +94,57 @@ export const isIntensityName = (name: unknown): name is IntensityName => typeof 
 const decodeIntensity = Schema.decodeUnknownOption(Schema.Struct({ intensity: Schema.Literals(["minimal", "normal", "persistent", "high_priority_only"]) }))
 const ownerIntensityKey = "reminder-intensity"
 const intensityKey = (taskId: string) => `reminder-intensity:${taskId}`
+const routineIntensityKey = (routineId: string) => `reminder-intensity:routine:${routineId}`
+const lastAnswerKey = "owner-last-answer"
+const decodeAnswered = Schema.decodeUnknownOption(Schema.Struct({ at: Schema.Number }))
 
 effect function intensityAt(key: string) {
   const kept = try readRecord(key, decodeIntensity)
   return kept === undefined ? "IntensityUnset" : intensities[kept.intensity]
 }
 
-/** Sets how hard every reminder, or the one named, follows up from its next firing. */
-export effect function changeIntensity(intensity: IntensityName, task: TaskRow | undefined, messageId: string) {
+/** Notes that the owner just answered a reminder, a routine or a goal check-in, which ends a quiet streak. */
+export effect function noteOwnerAnswer() {
+  try writeRecord(lastAnswerKey, { at: try (try Facts).now() })
+}
+
+/** How hard something follows up now: its own intensity, else the owner's, else normal, one notch less while the owner is quiet. */
+effect function followupIntensity(ownKey: string) {
+  const own = try intensityAt(ownKey)
+  const owners = try intensityAt(ownerIntensityKey)
+  const answered = try readRecord(lastAnswerKey, decodeAnswered)
+  return quietIntensity(effectiveIntensity(own, owners), ownerQuiet(answered?.at ?? 0, try (try Facts).now()))
+}
+
+/** The minutes after a routine's occurrence was shown at which it is nudged while still unanswered. */
+export effect function routineNudgeMinutes(routineId: string) {
+  return followupsUnder(noEscalation, try followupIntensity(routineIntensityKey(routineId)), false).inAppAfter
+}
+
+/** What an intensity is set for: every reminder and routine, one live reminder, or one routine. */
+export type IntensityTarget =
+  | { readonly kind: "owner" }
+  | { readonly kind: "reminder"; readonly task: TaskRow }
+  | { readonly kind: "routine"; readonly routineId: string; readonly title: string }
+
+/** Sets how hard every reminder and routine, or the one named, follows up from its next firing. */
+export effect function changeIntensity(intensity: IntensityName, target: IntensityTarget, messageId: string) {
   const at = try (try Facts).now()
   const key = `reminder:intensity:${messageId}`
-  try writeRecord(task === undefined ? ownerIntensityKey : intensityKey(task.taskId), { intensity })
-  const id = task?.taskId ?? "owner"
+  const [recordKey, id, done] = target.kind === "owner" ? [ownerIntensityKey, "owner", `Your reminders are now ${intensityWords[intensity]}.`] as const
+    : target.kind === "reminder" ? [intensityKey(target.task.taskId), target.task.taskId, `Reminder intensity for "${target.task.promptInstructions}" is now ${intensityWords[intensity]}.`] as const
+    : [routineIntensityKey(target.routineId), `routine:${target.routineId}`, `Reminder intensity for the routine "${target.title}" is now ${intensityWords[intensity]}.`] as const
+  try writeRecord(recordKey, { intensity })
   const receipt = appliedReceipt({ operation: "reminder.intensity", kind: "reminder-intensity", id, key, at })
-  const done = task === undefined ? `Your reminders are now ${intensityWords[intensity]}.` : `Reminder intensity for "${task.promptInstructions}" is now ${intensityWords[intensity]}.`
   return attributed([{ actionName: "OWNER_REMINDERS", success: true, receipts: [receipt] }], `reminder-intensity:${id}`, {
     done, notDone: "The reminder intensity was not changed.", unproven: "I couldn't confirm the reminder intensity was changed.",
-  }, { intensity, taskId: task?.taskId ?? null })
+  }, { intensity, taskId: target.kind === "reminder" ? target.task.taskId : null, routineId: target.kind === "routine" ? target.routineId : null })
 }
 
 /** Schedules the follow-ups of a reminder that just fired, each counted from this firing, as its intensity shapes them. */
 export effect function scheduleEscalation(task: TaskRow) {
   const kept = try escalationOf(task.taskId)
-  const intensity = effectiveIntensity(try intensityAt(intensityKey(task.taskId)), try intensityAt(ownerIntensityKey))
+  const intensity = try followupIntensity(intensityKey(task.taskId))
   const record: EscalationRecord = kept ?? { ...noEscalation, quietZone: "", firedAt: null }
   const plan = followupsUnder(planOf(record), intensity, task.metadata.priority === "high")
   const steps = [...plan.inAppAfter.map((minutes) => ["in_app", minutes] as const), ...plan.pushAfter.map((minutes) => ["push", minutes] as const)]
