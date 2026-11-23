@@ -899,7 +899,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     provide Clock.Clock = clock.clock {
       const registration = { ...native, connectReturn: `${web}/apps/native/google` }
       const { cloud, google } = try nativeCloud(undefined, registration)
-      const caller = try signedCaller(cloud, "google-browser")
+      const caller = try leasedCaller(cloud, "google-browser")
       const callback = "/api/v1/oauth/google/callback"
       const initialize = (body: unknown, headers = caller.headers) => cloud.call("/api/v1/eliza/google/connect/initiate", { json: body, headers })
       const appState = "s".repeat(43)
@@ -2321,6 +2321,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     switch (auth) {
       case "Public": return "Public"
       case "KeyOrSession": return "ServiceAccess"
+      case "Mail": return "MailAccess"
       case "Session": return "SignedSession"
       case "SessionFamily": return "SessionFamily"
       case "FreshSession": return "FreshSession"
