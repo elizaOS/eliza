@@ -218,9 +218,10 @@ module node {
 
   turnToolForms.set(proposeDeviceAction, (runtime, message) => {
     const turn = deviceTurnFor(runtime, message)
-    if (turn === undefined) return undefined
+    if (turn === undefined || isRefused(turn.negotiation)) return undefined
     const routed = routedRequest(runtime, turn)
     const forms = routed?.forms ?? offeredForms(runtime, turn)
+    if (forms.length === 0) return undefined
     const offering = registeredFamilies(runtime).filter((family) => family.forms.some((form) => forms.includes(form)))
     const notes = [
       ...(routed === undefined ? [] : [routed.route.lead]), ...(turn.completedActionNavigation && routed === undefined ? [viewsLead] : []), guidance,

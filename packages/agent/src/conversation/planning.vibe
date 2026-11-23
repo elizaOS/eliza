@@ -7,7 +7,7 @@ import {
 } from "@elizaos/core"
 import {
   acknowledges, callRunsFirst, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, toolActivity, turnNarrowed,
-  withdrawnByRoute, type CallFailure, type PlanStep, type StepOutcome,
+  unavailableNotice, withdrawnByRoute, type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
 import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
@@ -56,6 +56,10 @@ export interface TurnToolForm {
 
 export const turnToolForms = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => TurnToolForm | undefined>()
 
+export function offeredOnlyWhere(action: Action, home: (runtime: IAgentRuntime, message: Memory) => boolean): void {
+  turnToolForms.set(action, (runtime, message) => home(runtime, message) ? { description: action.description, parameters: {} } : undefined)
+}
+
 export const turnFirstCalls = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => ToolCall["arguments"] | undefined>()
 
 function firstCall(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ToolCall | undefined {
@@ -80,17 +84,19 @@ function forTurn(runtime: AgentRuntime, message: Memory, action: Action): Action
   }
 }
 
-export async function offeredActions(runtime: AgentRuntime, message: Memory, state: State, actionGate: PlanInput["actionGate"]): Promise<Action[]> {
+function formless(runtime: AgentRuntime, message: Memory, action: Action): boolean {
+  const form = turnToolForms.get(action)
+  return form !== undefined && form(runtime, message) === undefined
+}
+
+export function offeredActions(runtime: AgentRuntime, message: Memory, actionGate: PlanInput["actionGate"]): Action[] {
   const registered = runtime.actions.filter(({ name }) => !messageServiceActions.has(name) && toolNamePattern.test(name))
-  const allowed = new Set(offered(registered.map(({ name }) => name), registered.flatMap((action) => actionGate(action) === undefined ? [action.name] : [])))
-  const checked = await Promise.all(registered.filter(({ name }) => allowed.has(name)).map(async (action) => {
-    try {
-      return await action.validate(runtime, message, state) ? [action] : []
-    } catch {
-      return []
-    }
-  }))
-  return withoutReplaced(runtime, message, checked.flat())
+  const names = new Set(offered(
+    registered.map(({ name }) => name),
+    registered.flatMap((action) => actionGate(action) === undefined ? [action.name] : []),
+    registered.flatMap((action) => formless(runtime, message, action) ? [action.name] : []),
+  ))
+  return withoutReplaced(runtime, message, registered.filter(({ name }) => names.has(name)))
 }
 
 function routeMatches(rule: DirectActionRoutingRule, message: Memory): boolean {
@@ -215,7 +221,7 @@ function stoppedAtModelMaximum(result: ActionResult): boolean {
   return [result.error, settled].some(stoppedAtOutputLimit)
 }
 
-function byName(left: ToolDefinition, right: ToolDefinition): number {
+function byName(left: { readonly name: string }, right: { readonly name: string }): number {
   return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
 }
 
@@ -237,6 +243,7 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
 }
 
 function failureNotice(step: PlannedStep): string {
+  if (notStarted(step.result) && step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return unavailableNotice
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
 
@@ -275,7 +282,7 @@ function settleReply(steps: readonly PlannedStep[], prose: string | undefined): 
 
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
   const { runtime, message, state, roles, signal } = input
-  const tools: ToolDefinition[] = actions.length === 0 ? [] : [...buildPlannerToolsFromActions(actions.map((action) => forTurn(runtime, message, action)))].sort(byName)
+  const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions.toSorted(byName).map((action) => forTurn(runtime, message, action)))
   const conversation: ChatMessage[] = [...input.messages]
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))

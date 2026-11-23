@@ -115,11 +115,17 @@ proposed anyway is not an offered form. Otherwise a view is proposed only
 when the installation's [enabled-view profile](./capabilities.md) as it is
 now enables it, and the proposal binds that profile's revision. When the
 installation has a profile, the model is told which views it enables.
+`VIEWS` is offered on a device turn only with completed-action
+navigation, so a device turn never offers a view in two places, nor
+`VIEWS` where it could not show one.
 
 ```quint
 pure def openViewOffered(completedNavigation: bool): bool = not(completedNavigation)
 pure def openViewVerdict(profileEnables: bool): SurfaceVerdict = if (profileEnables) SurfaceGrounded else SurfaceRefused
 pure def lawCompletedNavigationOffersNoView(completedNavigation: bool): bool = completedNavigation implies not(openViewOffered(completedNavigation))
+pure def viewsOfferedOnDevice(completedNavigation: bool): bool = completedNavigation
+pure def lawADeviceTurnOffersAViewInOnePlace(completedNavigation: bool): bool =
+  not(viewsOfferedOnDevice(completedNavigation) and openViewOffered(completedNavigation))
 pure def lawADisabledViewIsNeverProposed(profileEnables: bool): bool = not(profileEnables) implies openViewVerdict(profileEnables) == SurfaceRefused
 ```
 
