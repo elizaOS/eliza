@@ -128,7 +128,12 @@ effect function disableFromFlags(tx: Tx, flags: OperatorFlags, now: number) {
   return [`disabled ${clientId}`]
 }
 
-export effect function seedClients(tx: Tx, entries: unknown, now: number) {
+type SeedClientFailure =
+  | ClientFlagsInvalid
+  | Effect.Error<ReturnType<typeof decodeRegistration>>
+  | Effect.Error<ReturnType<typeof registerClient>>
+
+export effect function seedClients(tx: Tx, entries: unknown, now: number): string[]!SeedClientFailure!Deployment {
   const parsed = try Effect.mapError(
     Schema.decodeUnknownEffect(SeedClients, { onExcessProperty: "error" })(entries),
     (error) => new ClientFlagsInvalid({ problem: `seed clients: ${error.message}` })
