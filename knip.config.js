@@ -138,6 +138,9 @@ export default {
       "project": [
         "src/**/*.{ts,vibe,vibex}",
         "test/**/*.{ts,vibe,vibex}"
+      ],
+      "ignoreDependencies": [
+        "@effect/platform-node-shared"
       ]
     },
     "packages/plugin-assistant": {
