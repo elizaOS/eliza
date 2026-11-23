@@ -1,6 +1,6 @@
-// spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"
+// spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"
 import { expiryMillis } from "../../gen/files__reviewedOperations.effect.vibe"
-import { listingComplete, listingEmpty } from "../../gen/files__requests.effect.vibe"
+import { downloadsKnown, listingComplete, listingEmpty, type DownloadFolder } from "../../gen/files__requests.effect.vibe"
 
 export type StorageEntry = {
   readonly path: string
@@ -98,11 +98,11 @@ export function within(path: string, folder: string): boolean {
   return folder === "" || path === folder || path.startsWith(`${folder}/`)
 }
 
-/** Whether a Browse category lists this entry; Downloads is the Download folder by path. */
+/** Whether a Browse category lists this entry; Downloads is the Download folder by path, folders included. */
 export function inCategory(category: FilesCategory, entry: Pick<StorageEntry, "path" | "directory" | "mimeType">): boolean {
+  if (category === "downloads") return parentOf(entry.path) === DOWNLOAD_FOLDER
   if (entry.directory) return false
   switch (category) {
-    case "downloads": return parentOf(entry.path) === DOWNLOAD_FOLDER
     case "images": return entry.mimeType.startsWith("image/")
     case "videos": return entry.mimeType.startsWith("video/")
     case "audio": return entry.mimeType.startsWith("audio/")
@@ -215,6 +215,12 @@ export function listing(entries: readonly StorageEntry[], read: { readonly metad
     complete: listingComplete(read.metadataKnown, read.partial, read.failed),
     empty: listingEmpty(read.metadataKnown, read.partial, read.failed, entries.length > 0),
   }
+}
+
+/** The Downloads listing: the Download folder's own rows, folders included, and a complete empty listing when the folder is not there. */
+export function downloadsListing(folder: Exclude<DownloadFolder, "DownloadFolderUnreadable">, entries: readonly StorageEntry[], read: { readonly metadataKnown: boolean; readonly partial: boolean }): Listing {
+  const listed = folder === "DownloadFolderListed"
+  return listing(listed ? entries : [], { metadataKnown: downloadsKnown(folder, read.metadataKnown), partial: listed && read.partial, failed: false })
 }
 
 export const FILTER_KINDS = ["image", "video", "audio", "document", "pdf", "folder"] as const

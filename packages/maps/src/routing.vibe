@@ -48,6 +48,8 @@ const nearMeRequest = new RegExp([
 ].join("|"), "iu")
 const kindNearNamedRequest = new RegExp(String.raw`^\s*${courtesy}(?:${findVerb}|(?:is|are)\s+there\s+${notAThere})(${placeKind})\s+(?:near|around|close\s+to|next\s+to)\s+((?:the\s+)?\p{Lu}[\p{L}\p{N}'’&.-]*(?:\s+[\p{L}\p{N}'’&.-]+){0,5})${end}`, "u")
 const ownPosition = /^(?:me|here|us|by|my\s+(?:location|position|current\s+location)|where\s+(?:i|we)\s+(?:am|are))$/iu
+const nearNotAPlace = /^(?:home|work|the\s+office|(?:my|our)\s+.+|(?:the\s+)?(?:top|bottom|end|beginning|start|middle|deadline|weekend|holidays?)|midnight|noon|midday|dawn|dusk|sunrise|sunset|lunch(?:time)?|dinner(?:time)?|breakfast|christmas(?:\s+eve)?|thanksgiving|easter|halloween|new\s+year(?:'s|’s)?(?:\s+(?:eve|day))?|(?:mon|tues|wednes|thurs|fri|satur|sun)day|january|february|march|april|june|july|august|september|october|november|december|line\s+\d+|page\s+\d+|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.?|p\.m\.?|o'?clock)?|\d[\d,.]*\s*(?:dollars?|bucks|euros?|pounds?)(?:\s+(?:a|per)\s+(?:night|day|week|month))?|\d[\d,.]*\s+(?:a|per)\s+(?:night|day|week|month))$/iu
+const nearNotAPlaceKind = /\b(?:photos?|pictures?|pics?|images?|videos?|clips?|selfies?|screenshots?|e-?mails?|mail|messages?|texts?|chats?|notes?|files?|documents?|docs?|songs?|music|tracks?|albums?|playlists?|podcasts?|events?|meetings?|appointments?|reminders?|alarms?|contacts?|tasks?|to-?dos?|bugs?|issues?|errors?|lines?|comments?|posts?|tweets?|results?|calls?|voicemails?|weather|forecasts?|traffic|news)$/iu
 const choiceReply = /^\s*(?:(?:yes|yeah|yep|ok(?:ay)?|sure|um+|uh+|so|hmm+|let'?s\s+(?:go\s+with|do)|i\s+(?:meant?|want|mean)|go\s+with|pick|choose|use|take)[,\s]+)*(?:(?:the|number|no\.?|#|option|item)\s*)*(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th|one|two|three|four|five|six|seven|eight|nine|ten|last|top|\d{1,2})(?:\s+(?:one|option|place|result|choice))?(?:[,\s]+(?:one|please|thanks|thank\s+you))*\s*[.!?]*\s*$/iu
 const ordinals: Readonly<Record<string, number>> = {
   first: 1, "1st": 1, one: 1, second: 2, "2nd": 2, two: 2, third: 3, "3rd": 3, three: 3, fourth: 4, "4th": 4, four: 4, fifth: 5, "5th": 5, five: 5,
@@ -138,7 +140,11 @@ export function requestShape(text: string, openChoiceAnswered: boolean): { reado
   if (goTo !== undefined && goToPlace(goTo)) return { shape: "GoToNamedPlace", destination: goTo }
   if (nearestRequest.test(text) || nearMeRequest.test(text)) return { shape: "NearbyKind" }
   const named = kindNearNamedRequest.exec(text.replace(/^(\s*)(\p{Lu})/u, (_, space: string, first: string) => space + first.toLowerCase()))
-  if (named?.[2] !== undefined && !ownPosition.test(named[2].trim())) return { shape: "KindNearNamedPlace", destination: named[2].trim() }
+  const kind = named?.[1]?.trim()
+  const anchor = named?.[2]?.trim()
+  if (kind !== undefined && anchor !== undefined && !ownPosition.test(anchor) && !nearNotAPlace.test(anchor) && !nearNotAPlaceKind.test(kind)) {
+    return { shape: "KindNearNamedPlace", destination: anchor }
+  }
   return { shape: "OtherRequest" }
 }
 
