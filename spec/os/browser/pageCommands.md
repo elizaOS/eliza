@@ -220,7 +220,11 @@ its ordinary visible text, excluding links and controls. Site banners and
 unowned headers contribute no statement fragments. Links elsewhere on the
 page and invisible labels supply no heading. Competing primary headings leave the
 read incomplete, and ambiguous section labels mark that section and its
-descendants ambiguous.
+descendants ambiguous. A row in a visible, noninteractive table with a
+single unambiguous set of column headings can identify its directly
+owning region and visible columns. The row and owner remain separate
+regions. Missing or ambiguous ownership, competing table scopes, and
+interactive or nested tables supply no ownership witness.
 
 ```quint
 pure def canSettleRead(s: SurfaceReceiver): bool = s.phase == ReceiverReading

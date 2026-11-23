@@ -248,6 +248,9 @@ describe('The WebView runs the page reader Chromium runs (spec/os/browser/pageCo
         key: Schema.NonEmptyString, fragments: Schema.Array(Schema.String), heading: Schema.optionalKey(Schema.String),
         authorLabel: Schema.optionalKey(Schema.String), ancestorLabels: Schema.optionalKey(Schema.Array(Schema.String)),
         ambiguous: Schema.optionalKey(Schema.Literal(true)),
+        tableRow: Schema.optionalKey(Schema.Struct({
+          parentKey: Schema.NonEmptyString, columns: Schema.Array(Schema.NonEmptyString),
+        })),
       })),
     });
     expect((await send({ subaction: "snapshot" })).statementRegions).toBeUndefined();
@@ -303,6 +306,42 @@ describe('The WebView runs the page reader Chromium runs (spec/os/browser/pageCo
       document.querySelector("main")?.append(conflicting);
     });
     expect((await headings(request)).statementRegions).toEqual({ complete: false, regions: [] });
+    await tab.evaluate(() => {
+      const table = '<table><thead><tr><th>Description</th><th>Qty</th><th>Amount</th></tr></thead><tbody>' +
+        '<tr><td>Service</td><td>1</td><td>$40</td></tr><tr><td></td><td>Amount due</td><td>$40</td></tr></tbody></table>';
+      document.querySelector("main")?.insertAdjacentHTML("beforeend", `
+        <article><h2>Current invoice</h2><p>Due August 12</p><div id="line-items">${table}</div></article>
+        <article><h2>Records</h2><table><thead><tr><th>Record</th><th>Status</th><th>Amount</th></tr></thead><tbody>
+          <tr><td>Other account</td><td>Due</td><td>$90</td></tr><tr><th scope="row">Record identity</th><td>Open</td><td>$90</td></tr>
+        </tbody></table></article>
+        <article><h2>Unrelated account</h2><section>${table}</section></article>
+        <article><h2>Nested billing</h2><table><tbody><tr><td>${table}</td></tr></tbody></table></article>
+        `);
+      document.querySelector("main > h1:last-of-type")?.remove();
+    });
+    const rows = async () => Schema.decodeUnknownSync(Regions)((await headings(request)).statementRegions).regions;
+    const withRows = await rows();
+    const owningSection = withRows.find(({ heading, fragments }) => heading === "Current invoice" && fragments.includes("Due August 12") && fragments.includes("Description"));
+    const witnessedRows = withRows.filter(({ tableRow }) => tableRow !== undefined);
+    expect(owningSection).toBeDefined();
+    expect(witnessedRows.map(({ fragments, tableRow }) => ({ fragments, tableRow }))).toEqual([
+      { fragments: ["Service", "1", "$40"], tableRow: { parentKey: owningSection?.key, columns: ["Description", "Qty", "Amount"] } },
+      { fragments: ["Amount due", "$40"], tableRow: { parentKey: owningSection?.key, columns: ["Description", "Qty", "Amount"] } },
+    ]);
+    expect(witnessedRows.every(({ key }) => key !== owningSection?.key)).toBe(true);
+    await tab.evaluate(() => {
+      const column = document.querySelector("#line-items th");
+      if (column instanceof HTMLElement) column.style.visibility = "hidden";
+    });
+    expect((await rows()).some(({ tableRow }) => tableRow !== undefined)).toBe(false);
+    await tab.evaluate(() => {
+      const column = document.querySelector("#line-items th");
+      if (column instanceof HTMLElement) {
+        column.style.visibility = "";
+        column.innerHTML = '<a href="/other">Description</a>';
+      }
+    });
+    expect((await rows()).some(({ tableRow }) => tableRow !== undefined)).toBe(false);
   });
 
   it("answers a snapshot through installControlChannel in its own isolated world as page-command.mjs does", async () => {
