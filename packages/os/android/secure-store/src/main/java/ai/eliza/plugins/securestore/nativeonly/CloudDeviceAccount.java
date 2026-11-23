@@ -40,7 +40,7 @@ public final class CloudDeviceAccount {
  private static final Pattern LEASE_ACCESS = Pattern.compile("eliza_lease_[A-Za-z0-9_-]{43}");
  private static final String SEGMENT = "/[A-Za-z0-9_-]{1,256}";
  private static final Map<String, Pattern> MAIL_ROUTES = Map.of(
-     "GET", Pattern.compile("/api/v1/eliza/(?:google/(?:status|accounts|calendar/feed|gmail/(?:search|read|contacts|inbox-v1/(?:drafts|draft|attachment|operations" + SEGMENT + ")))|connections/sessions" + SEGMENT + ")"),
+     "GET", Pattern.compile("/api/v1/eliza/(?:google/(?:status|accounts|calendar/(?:feed|calendars|events" + SEGMENT + ")|gmail/(?:triage|search|read|contacts|inbox-v1/(?:capabilities|thread|drafts|draft|attachment|operations" + SEGMENT + ")))|connections/sessions" + SEGMENT + ")"),
      "POST", Pattern.compile("/api/v1/eliza/(?:google/(?:disconnect|connect/initiate|calendar/events|gmail/(?:drafts|inbox-v1/operations(?:" + SEGMENT + "/dispatch)?))|connections/google/sessions)"),
      "PATCH", Pattern.compile("/api/v1/eliza/google/calendar/events" + SEGMENT),
      "DELETE", Pattern.compile("/api/v1/eliza/(?:google/(?:gmail/drafts|calendar/events)|connections/sessions)" + SEGMENT));

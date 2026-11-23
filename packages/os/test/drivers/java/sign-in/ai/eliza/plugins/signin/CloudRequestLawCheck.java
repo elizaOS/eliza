@@ -210,7 +210,6 @@ public final class CloudRequestLawCheck {
 
   private static void specCases() {
     emit("deviceRoutes", list(CloudRequestPolicy.DEVICE_ROUTES.stream().map(CloudRequestLawCheck::deviceRoute).toList()));
-    emit("mailRoutes", list(CloudRequestPolicy.MAIL_ROUTES.stream().map(m -> "{\"method\":" + method(m.method()) + ",\"path\":" + segments(m.path()) + "}").toList()));
     List<DeviceRoute> attachRoutes = new ArrayList<>(CloudRequestPolicy.DEVICE_ROUTES);
     attachRoutes.add(CloudRequestPolicy.NO_DEVICE_ROUTE);
     for (Holding h : HOLDINGS)
@@ -220,20 +219,18 @@ public final class CloudRequestLawCheck {
         boolean mail = CloudRequestPolicy.mailRoute(d);
         emit("attachFor", plan(p), args);
         emit("lawASessionRouteNeverCarriesTheKey", String.valueOf(!CloudRequestPolicy.sessionOnly(d.auth()) || sentKey(p) == 0), args);
-        emit("lawAKeyRouteWithoutAKeyIsNotSent", String.valueOf(!(d.auth() == Auth.KEY_OR_SESSION && !mail && h.key() < 1) || p.equals(new Refuse(Refusal.SIGN_IN_REQUIRED))), args);
+        emit("lawAKeyRouteWithoutAKeyIsNotSent", String.valueOf(!(d.auth() == Auth.KEY_OR_SESSION && h.key() < 1) || p.equals(new Refuse(Refusal.SIGN_IN_REQUIRED))), args);
         emit("lawAMailRouteNeverCarriesTheKey", String.valueOf(!mail || sentKey(p) == 0), args);
         emit("lawTheLeaseGoesOnlyToAMailRoute", String.valueOf(sentLease(p) < 1 || mail), args);
       }
     for (DeviceRoute d : CloudRequestPolicy.DEVICE_ROUTES) {
       emit("mailRoute", String.valueOf(CloudRequestPolicy.mailRoute(d)), deviceRoute(d));
-      emit("lawEveryMailRouteIsADeviceRoute", String.valueOf(CloudRequestPolicy.MAIL_ROUTES.stream()
-        .allMatch(m -> CloudRequestPolicy.DEVICE_ROUTES.stream().anyMatch(r -> r.method() == m.method() && r.path().equals(m.path())))), deviceRoute(d));
       emit("signInOwned", String.valueOf(CloudRequestPolicy.signInOwned(d)), deviceRoute(d));
       emit("isAccountRead", String.valueOf(CloudRequestPolicy.isAccountRead(d)), deviceRoute(d));
       for (String header : HEADERS) emit("headerAllowed", String.valueOf(CloudRequestPolicy.headerAllowed(d, header)), deviceRoute(d), q(header));
     }
     List<DeviceRoute> reportRoutes = List.of(CloudRequestPolicy.NO_DEVICE_ROUTE, new DeviceRoute(Method.GET, List.of("api", "v1", "user"), Auth.KEY_OR_SESSION, List.of()),
-      new DeviceRoute(Method.GET, List.of("api", "v1", "eliza", "google", "calendar", "feed"), Auth.KEY_OR_SESSION, List.of()),
+      new DeviceRoute(Method.GET, List.of("api", "v1", "eliza", "google", "calendar", "feed"), Auth.MAIL, List.of()),
       new DeviceRoute(Method.GET, List.of("api", "v1", "models"), Auth.KEY_OR_SESSION, List.of()));
     for (Attach a : ATTACHES)
       for (DeviceRoute d : reportRoutes)

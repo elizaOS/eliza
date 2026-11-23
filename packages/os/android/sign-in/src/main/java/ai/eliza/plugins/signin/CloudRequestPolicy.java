@@ -21,7 +21,7 @@ public final class CloudRequestPolicy {
   public static final String IDEMPOTENCY_KEY = "Idempotency-Key", IF_MATCH = "If-Match", IF_NONE_MATCH = "If-None-Match", ACCEPT = "Accept", AUTHORIZATION = "Authorization";
   public static final List<String> BASE_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate");
 
-  public enum Auth { PUBLIC, KEY_OR_SESSION, SESSION, SESSION_FAMILY, FRESH_SESSION, STEP_UP }
+  public enum Auth { PUBLIC, KEY_OR_SESSION, MAIL, SESSION, SESSION_FAMILY, FRESH_SESSION, STEP_UP }
   public enum Refusal { NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, REAUTH_REQUIRED }
   public enum Handoff { INLINE_BODY, CACHED_BODY, REPLY_TOO_LARGE }
   public enum Scheme { HTTPS, HTTP, OTHER_SCHEME }
@@ -50,10 +50,6 @@ public final class CloudRequestPolicy {
   public record LeaseRejected(int version, Reason reason) implements Report {}
   public record SessionRejected() implements Report {}
 
-  public record RouteName(Method method, List<String> path) {
-    public RouteName { path = List.copyOf(path); }
-  }
-
   public record Origin(Scheme scheme, boolean loopback, boolean hasPath, boolean hasQueryOrFragment) {}
   public record ExternalLink(boolean https, String host, boolean defaultPort, boolean userInfo) {}
 
@@ -61,7 +57,6 @@ public final class CloudRequestPolicy {
 
   public static final DeviceRoute NO_DEVICE_ROUTE = new DeviceRoute(Method.GET, List.of(), Auth.PUBLIC, List.of());
   public static final List<DeviceRoute> DEVICE_ROUTES = deviceRoutes();
-  public static final List<RouteName> MAIL_ROUTES = mailRoutes();
 
   private static final List<String> KNOWN_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate", ACCEPT, IF_NONE_MATCH, IF_MATCH, IDEMPOTENCY_KEY);
   private static final Pattern HEADER_VALUE = Pattern.compile("[\\x20-\\x7e\\t]*");
@@ -136,7 +131,7 @@ public final class CloudRequestPolicy {
     return auth == Auth.SESSION || auth == Auth.SESSION_FAMILY || auth == Auth.FRESH_SESSION || auth == Auth.STEP_UP;
   }
 
-  public static boolean mailRoute(DeviceRoute d) { return MAIL_ROUTES.contains(new RouteName(d.method(), d.path())); }
+  public static boolean mailRoute(DeviceRoute d) { return d.auth() == Auth.MAIL; }
 
   public static CallPlan attachFor(Holding h, DeviceRoute d) {
     Auth auth = d.auth();
@@ -243,30 +238,11 @@ public final class CloudRequestPolicy {
 
   private static DeviceRoute keyed(Method method, List<String> path, String header) { return new DeviceRoute(method, path, Auth.KEY_OR_SESSION, List.of(header)); }
 
-  private static List<RouteName> mailRoutes() {
-    Method get = Method.GET, post = Method.POST, patch = Method.PATCH, delete = Method.DELETE;
-    return List.of(
-      new RouteName(get, google("status")),
-      new RouteName(get, google("accounts")),
-      new RouteName(post, google("connect", "initiate")),
-      new RouteName(post, google("disconnect")),
-      new RouteName(get, google("gmail", "search")),
-      new RouteName(get, google("gmail", "read")),
-      new RouteName(get, google("gmail", "inbox-v1", "attachment")),
-      new RouteName(get, google("gmail", "inbox-v1", "drafts")),
-      new RouteName(get, google("gmail", "inbox-v1", "draft")),
-      new RouteName(post, google("gmail", "inbox-v1", "operations")),
-      new RouteName(post, google("gmail", "inbox-v1", "operations", ":requestId", "dispatch")),
-      new RouteName(get, google("gmail", "inbox-v1", "operations", ":requestId")),
-      new RouteName(get, google("calendar", "feed")),
-      new RouteName(post, google("calendar", "events")),
-      new RouteName(patch, google("calendar", "events", ":eventId")),
-      new RouteName(delete, google("calendar", "events", ":eventId")));
-  }
+  private static DeviceRoute mailed(Method method, List<String> path, String header) { return new DeviceRoute(method, path, Auth.MAIL, List.of(header)); }
 
   private static List<DeviceRoute> deviceRoutes() {
     Method get = Method.GET, post = Method.POST, patch = Method.PATCH, delete = Method.DELETE;
-    Auth pub = Auth.PUBLIC, key = Auth.KEY_OR_SESSION, session = Auth.SESSION, fresh = Auth.FRESH_SESSION, stepUp = Auth.STEP_UP;
+    Auth pub = Auth.PUBLIC, key = Auth.KEY_OR_SESSION, mail = Auth.MAIL, session = Auth.SESSION, fresh = Auth.FRESH_SESSION, stepUp = Auth.STEP_UP;
     return List.of(
       route(get, List.of("api", "public", "service"), pub),
       route(get, api("auth", "methods"), pub),
@@ -302,6 +278,9 @@ public final class CloudRequestPolicy {
       route(post, api("app-auth", "mobile", "token"), pub),
       route(post, api("app-auth", "mobile", "ack"), pub),
       route(post, api("app-auth", "mobile", "google"), pub),
+      route(post, api("app-auth", "mobile", "lease"), pub),
+      route(delete, api("app-auth", "mobile", "lease"), pub),
+      route(post, api("app-auth", "mobile", "renew"), pub),
       route(delete, api("api-keys", "current"), key),
       route(get, api("subscriptions", "plans"), pub),
       route(get, api("subscription", "entitlement-keys"), pub),
@@ -342,28 +321,28 @@ public final class CloudRequestPolicy {
       keyed(post, api("maps", "routes"), IDEMPOTENCY_KEY),
       route(post, api("maps", "tiles", "viewport"), key),
       keyed(get, api("maps", "tiles", ":z", ":x", ":y"), IDEMPOTENCY_KEY),
-      route(get, google("status"), key),
-      route(get, google("accounts"), key),
-      route(post, google("connect", "initiate"), key),
+      route(get, google("status"), mail),
+      route(get, google("accounts"), mail),
+      route(post, google("connect", "initiate"), mail),
       route(post, google("connect", "native"), key),
-      route(post, google("disconnect"), key),
-      route(get, google("gmail", "triage"), key),
-      route(get, google("gmail", "search"), key),
-      route(get, google("gmail", "read"), key),
+      route(post, google("disconnect"), mail),
+      route(get, google("gmail", "triage"), mail),
+      route(get, google("gmail", "search"), mail),
+      route(get, google("gmail", "read"), mail),
       route(get, google("gmail", "inbox-v1", "arrival"), key),
-      route(get, google("gmail", "inbox-v1", "capabilities"), key),
-      route(get, google("gmail", "inbox-v1", "thread"), key),
-      route(get, google("gmail", "inbox-v1", "attachment"), key),
-      route(get, google("gmail", "inbox-v1", "drafts"), key),
-      route(get, google("gmail", "inbox-v1", "draft"), key),
-      route(post, google("gmail", "inbox-v1", "operations"), key),
-      route(post, google("gmail", "inbox-v1", "operations", ":requestId", "dispatch"), key),
-      route(get, google("gmail", "inbox-v1", "operations", ":requestId"), key),
-      route(get, google("calendar", "calendars"), key),
-      route(get, google("calendar", "feed"), key),
-      route(get, google("calendar", "events", ":eventId"), key),
-      keyed(post, google("calendar", "events"), IDEMPOTENCY_KEY),
-      keyed(patch, google("calendar", "events", ":eventId"), IF_MATCH),
-      keyed(delete, google("calendar", "events", ":eventId"), IF_MATCH));
+      route(get, google("gmail", "inbox-v1", "capabilities"), mail),
+      route(get, google("gmail", "inbox-v1", "thread"), mail),
+      route(get, google("gmail", "inbox-v1", "attachment"), mail),
+      route(get, google("gmail", "inbox-v1", "drafts"), mail),
+      route(get, google("gmail", "inbox-v1", "draft"), mail),
+      route(post, google("gmail", "inbox-v1", "operations"), mail),
+      route(post, google("gmail", "inbox-v1", "operations", ":requestId", "dispatch"), mail),
+      route(get, google("gmail", "inbox-v1", "operations", ":requestId"), mail),
+      route(get, google("calendar", "calendars"), mail),
+      route(get, google("calendar", "feed"), mail),
+      route(get, google("calendar", "events", ":eventId"), mail),
+      mailed(post, google("calendar", "events"), IDEMPOTENCY_KEY),
+      mailed(patch, google("calendar", "events", ":eventId"), IF_MATCH),
+      mailed(delete, google("calendar", "events", ":eventId"), IF_MATCH));
   }
 }

@@ -93,7 +93,7 @@ pure def keyOf(a: Attach): int = match a { | WithKey(k) => k.version | _ => 0 }
 pure def sentKey(p: CallPlan): int = match p { | Send(s) => keyOf(s.attach) | _ => 0 }
 pure def lawASessionRouteNeverCarriesTheKey(h: Holding, d: DeviceRoute): bool = sessionOnly(d.auth) implies sentKey(attachFor(h, d)) == 0
 pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, d: DeviceRoute): bool =
-  (d.auth == KeyOrSession and not(mailRoute(d)) and h.key < 1) implies attachFor(h, d) == Refuse({ why: SignInRequired })
+  (d.auth == KeyOrSession and h.key < 1) implies attachFor(h, d) == Refuse({ why: SignInRequired })
 ```
 
 ### A mail or calendar route is sent only with the lease, never with the device key
@@ -101,40 +101,21 @@ pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, d: DeviceRoute): bool =
 The agent holds the device key and reads untrusted mail, so the cloud
 refuses that key on its mail routes (`spec/cloud/identity/requestAuth.md`,
 `MailRoute`), and the device never sends it there. The mail routes are the
-Google routes Grace calls: status, accounts, connect, disconnect, Gmail
-search, read, drafts, draft, attachment and operations, and the calendar
-feed and event writes. They carry the lease's access token, after one shared
+device routes the cloud's client lists as `Mail` (`spec/cloud/client.md`):
+Google status, accounts, connect, disconnect, Gmail triage, search, read,
+thread, capabilities, drafts, draft, attachment and operations, and the
+calendar list, feed, event reads and event writes. They carry the lease's access token, after one shared
 lease refresh when it has expired (`./credential.md`), or fail with
 `SignInRequired` on a device signed in before leases existed. The native
 one-tap connect and inbox arrival keep the device key, and no other route
 ever carries the lease.
 
 ```quint
-type RouteName = { method: HttpMethod, path: List[Segment] }
-pure def named(method: HttpMethod, path: List[Segment]): RouteName = { method: method, path: path }
-pure val mailRoutes: List[RouteName] = List(
-  named(Get, google(List("status"))),
-  named(Get, google(List("accounts"))),
-  named(Post, google(List("connect", "initiate"))),
-  named(Post, google(List("disconnect"))),
-  named(Get, google(List("gmail", "search"))),
-  named(Get, google(List("gmail", "read"))),
-  named(Get, google(List("gmail", "inbox-v1", "attachment"))),
-  named(Get, google(List("gmail", "inbox-v1", "drafts"))),
-  named(Get, google(List("gmail", "inbox-v1", "draft"))),
-  named(Post, google(List("gmail", "inbox-v1", "operations"))),
-  named(Post, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }), Literal({ text: "dispatch" })))),
-  named(Get, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" })))),
-  named(Get, google(List("calendar", "feed"))),
-  named(Post, google(List("calendar", "events"))),
-  named(Patch, google(List("calendar", "events")).concat(List(Param({ name: "eventId" })))),
-  named(Delete, google(List("calendar", "events")).concat(List(Param({ name: "eventId" })))))
-pure def mailRoute(d: DeviceRoute): bool = mailRoutes.includes(named(d.method, d.path))
+pure def mailRoute(d: DeviceRoute): bool = d.auth == Mail
 pure def leaseOf(a: Attach): int = match a { | WithLease(l) => l.version | _ => 0 }
 pure def sentLease(p: CallPlan): int = match p { | Send(s) => leaseOf(s.attach) | _ => 0 }
 pure def lawAMailRouteNeverCarriesTheKey(h: Holding, d: DeviceRoute): bool = mailRoute(d) implies sentKey(attachFor(h, d)) == 0
 pure def lawTheLeaseGoesOnlyToAMailRoute(h: Holding, d: DeviceRoute): bool = sentLease(attachFor(h, d)) >= 1 implies mailRoute(d)
-pure def lawEveryMailRouteIsADeviceRoute(d: DeviceRoute): bool = mailRoutes.every(m => deviceRoutes.some(r => named(r.method, r.path) == m))
 ```
 
 ### A request is sent only to the deployment origin, admitted by the gate, with headers its route admits
@@ -215,7 +196,7 @@ pure def reportOf(attach: Attach, d: DeviceRoute, status: int, reason: RefusalRe
 pure def isKeyReport(r: CredentialReport): bool = match r { | KeyRejected(k) => true | _ => false }
 pure val attachValues = Set(Bare, WithKey({ version: 1 }), WithSession({ version: 1 }), WithLease({ version: 1 }))
 pure val dValues = Set(noDeviceRoute, { method: Get, path: api(List("user")), auth: KeyOrSession, headers: Set() },
-  { method: Get, path: google(List("calendar", "feed")), auth: KeyOrSession, headers: Set() },
+  { method: Get, path: google(List("calendar", "feed")), auth: Mail, headers: Set() },
   { method: Post, path: google(List("connect", "native")), auth: KeyOrSession, headers: Set() },
   { method: Get, path: api(List("auth", "mfa")), auth: Session, headers: Set() })
 pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
