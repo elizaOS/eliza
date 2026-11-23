@@ -138,4 +138,25 @@ pure def alwaysCallKindsAndReason(r: VoiceRegistry): bool = r.calls.every(frame 
   (frame.kind == ArmOperation implies frame.reason == V::External and (frame.phase == NeedPrevious or frame.phase == WaitPrevious or frame.phase == CreateToken or frame.phase == PublishToken or frame.phase == AttachCallback or frame.phase == ReturnCall)))
 pure def alwaysCreatedTokenKeepsRoom(r: VoiceRegistry): bool = r.calls.every(frame => frame.created == 0 or tokenAt(r, frame.created).room == frame.room)
 pure def validRegistryFrame(r: VoiceRegistry, frame: RegistryCall): bool = alwaysCapturedTokensExist({ ...r, calls: List(frame) }) and alwaysCallStages({ ...r, calls: List(frame) }) and alwaysCallKindsAndReason({ ...r, calls: List(frame) }) and alwaysCreatedTokenKeepsRoom({ ...r, calls: List(frame) })
+pure val eval_witness_sometimesBulkAbortReturns = (
+  ("beginArm", { room: "room", config: {
+    runId: "turn", hasSlot: false, slot: 0, linked: false, alreadyAborted: false
+  } }, 0, 0),
+  "advanceRegistryCall",
+  "advanceRegistryCall",
+  "advanceRegistryCall",
+  "advanceRegistryCall",
+  "advanceRegistryCall",
+  ("beginAbortAll", V::UserCancel, 0, 0),
+  "advanceRegistryCall",
+  ("unlinkToken", 1),
+  ("snapshotToken", 1),
+  ("deliverTokenCallback", 1),
+  ("runCleanupCallback", 1),
+  ("clearTokenListeners", 1),
+  ("abortTokenSignal", 1),
+  "advanceRegistryCall",
+  "advanceRegistryCall",
+  "advanceRegistryCall"
+)
 ```

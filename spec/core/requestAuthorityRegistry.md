@@ -366,4 +366,72 @@ pure def sometimesRegistryTransfersDenial(s: RequestRegistry): bool =
   s.owners.some(owner => owner.completions.denials.some(denial => denial.projectedResult))
 pure def sometimesRegistryCopiesCompletion(s: RequestRegistry): bool =
   s.owners.some(owner => owner.completions.results.some(result => result.projected and result.hasFact and not(result.changed)))
+pure val eval_witness_sometimesRegistryCopiesCompletion = (
+  ("registerRuntime", HostBoundary, 2, { agentId: "agent2", live: true }),
+  ("registerRuntime", HostBoundary, 1, { agentId: "agent1", live: false }),
+  ("createState", 1, 1, "state1", ExternalPayload),
+  ("checkOperation", {
+    attemptContext: false, attemptId: "", denialId: "denial1", messageObject: 1,
+    operation: C::CreateOperation, registered: C::CreateOperation, repeatResolved: false, stateObject: 1
+  }, ExternalPayload),
+  ("createMessage", HostBoundary, 2, { agentId: "", runtimeAgent: true, runtimeId: 2 },
+    "message2", "room1", "actor2", "request2"),
+  ("copyState", 1, 2, ExternalPayload),
+  ("bindView", HostBoundary, 2, 2, {
+    callerIssuer: true, callerRuntime: false, currentMetadata: true, expectedProjectionHash: "projection2",
+    extractionAllowed: true, issuerId: 0, projectionHash: "projection2", runtimeId: 2,
+    servedMessage: false, sourceHash: "source2", sourceMessageId: "", sourceRoomId: ""
+  }),
+  ("checkOperation", {
+    attemptContext: false, attemptId: "attempt1", denialId: "denial2", messageObject: 2,
+    operation: C::UpdateOperation, registered: C::CreateOperation, repeatResolved: false, stateObject: 1
+  }, HostBoundary),
+  ("bindView", HostBoundary, 2, 2, {
+    callerIssuer: true, callerRuntime: true, currentMetadata: true, expectedProjectionHash: "projection2",
+    extractionAllowed: true, issuerId: 0, projectionHash: "projection1", runtimeId: 0,
+    servedMessage: false, sourceHash: "source1", sourceMessageId: "", sourceRoomId: ""
+  }),
+  ("bindView", HostBoundary, 2, 2, {
+    callerIssuer: false, callerRuntime: false, currentMetadata: true, expectedProjectionHash: "projection2",
+    extractionAllowed: true, issuerId: 1, projectionHash: "projection2", runtimeId: 2,
+    servedMessage: false, sourceHash: "source2", sourceMessageId: "", sourceRoomId: ""
+  }),
+  ("beginIssuer", HostBoundary, 2, 2),
+  ("commitRestriction", HostBoundary, 1, {
+    classification: C::MutationClass,
+    interpretation: { operations: Set(C::UpdateOperation), status: I::ExplicitInterpretation },
+    observedSourceHash: "source2", repeatCommitted: false, sourceHash: "source2"
+  }),
+  ("bindView", HostBoundary, 2, 1, {
+    callerIssuer: true, callerRuntime: true, currentMetadata: true, expectedProjectionHash: "projection2",
+    extractionAllowed: true, issuerId: 0, projectionHash: "projection2", runtimeId: 0,
+    servedMessage: true, sourceHash: "source2", sourceMessageId: "", sourceRoomId: ""
+  }),
+  ("beginAttempt", HostBoundary, { messageObject: 2, stateObject: 1, viewMessage: false }, "attempt2", {
+    family: { definitionId: "action-family", fingerprint: "family-definition", objectId: 2 },
+    registeredAction: { definitionId: "action-update", fingerprint: "action-definition", objectId: 3 }
+  }),
+  ("beginAttempt", HostBoundary, { messageObject: 2, stateObject: 1, viewMessage: false }, "attempt1", {
+    family: { definitionId: "action-family", fingerprint: "family-definition", objectId: 2 },
+    registeredAction: { definitionId: "action-create", fingerprint: "action-definition", objectId: 1 }
+  }),
+  ("checkOperation", {
+    attemptContext: true, attemptId: "attempt2", denialId: "denial1", messageObject: 0,
+    operation: C::UpdateOperation, registered: C::UpdateOperation, repeatResolved: true, stateObject: 0
+  }, HostBoundary),
+  ("bindResult", HostBoundary, "attempt2", {
+    child: { definition: { definitionId: "", fingerprint: "", objectId: 0 }, operation: C::NoOperation },
+    childUnchanged: true, fingerprint: "fingerprint2", observation: {
+      family: { definitionId: "", fingerprint: "", objectId: 0 },
+      registeredAction: { definitionId: "", fingerprint: "", objectId: 0 }
+    }, projectionHash: "projection1", registrationUnchanged: true, resultId: "result1"
+  }),
+  ("projectResult", HostBoundary, 1, "result1", "result2", {
+    fingerprint: "fingerprint2", projectionHash: "projection1", sameProjection: false,
+    sourceFingerprint: "", sourceUnchanged: true
+  }),
+  ("copyCompletion", "result1", "result2", {
+    sourceFingerprint: "", sourceUnchanged: true, targetFingerprint: "fingerprint2", targetUnchanged: false
+  }, ExternalPayload)
+)
 ```
