@@ -243,6 +243,33 @@ pure val splitAtValues = Set(0, 2, 3)
 pure val occurrenceStartValues = Set(1, 2, 3)
 ```
 
+### A chat change to a repeating event asks which occurrences unless the request or the owner's words say
+
+A chat update or delete of an event that repeats carries the scope its
+request names. With none, the owner's own words choose it when they name
+exactly one: this one only ("just this one", "only this occurrence"),
+this and following ("this and all following", "from this one on"), or
+all ("the whole series", "every occurrence", "stop it repeating"). When
+they name none, or more than one, nothing is changed and the reply asks
+whether to change just this occurrence, this and every following
+occurrence, or the whole series. An event that does not repeat is never
+asked about and changes as this event.
+
+```quint
+type ScopeChoice = ScopeAsSent | ScopeFromWords | AskWhichOccurrences
+pure def scopeChoice(recurring: bool, scopeSent: bool, scopesWorded: int): ScopeChoice =
+  if (scopeSent or not(recurring)) ScopeAsSent
+  else if (scopesWorded == 1) ScopeFromWords
+  else AskWhichOccurrences
+pure def lawAOneOffEventIsNeverAskedAbout(scopeSent: bool, scopesWorded: int): bool =
+  scopeChoice(false, scopeSent, scopesWorded) == ScopeAsSent
+pure def lawAnUnsaidScopeAsks(scopesWorded: int): bool =
+  scopesWorded != 1 implies scopeChoice(true, false, scopesWorded) == AskWhichOccurrences
+pure def lawASentScopeIsKept(recurring: bool, scopesWorded: int): bool =
+  scopeChoice(recurring, true, scopesWorded) == ScopeAsSent
+pure val scopesWordedValues = Set(0, 1, 2, 3)
+```
+
 ### A pending deletion guards the same row until transaction settlement
 
 After a confirmed review, Calendar stages a cloned row, source
