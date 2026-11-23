@@ -6,7 +6,7 @@ module node {
   import { isRefused } from "../../../gen/agent__deviceActions__capabilities.ts"
   import { completableRead, directEligible } from "../../../gen/agent__deviceActions__operations.ts"
   import { proposeDeviceAction as declared } from "../../../gen/agent__plugins__profile.ts"
-  import { turnElsewhere, turnFirstCalls, turnNotes, turnToolForms, type TurnToolForm } from "../../conversation/planning.vibe"
+  import { callContexts, turnElsewhere, turnFirstCalls, turnNotes, turnToolForms, type TurnToolForm } from "../../conversation/planning.vibe"
   import { gateRoles } from "../../plugins/basic-actions.vibe"
   import { bindingHash } from "../operation-schemas/telephony.vibe"
   import { deviceOperationTypes, readOperation, type DeviceOperation } from "../operations.schema.vibe"
@@ -275,6 +275,11 @@ module node {
     if (proposed === undefined || familyOf(runtime, proposed.operation.type) === undefined) return undefined
     const { availability, refusal } = withheldFor(runtime, turn, prepared)
     return refusal === undefined || !servedElsewhere(availability) ? undefined : { code: refusal.code, text: refusal.forModel }
+  })
+
+  callContexts.set(proposeDeviceAction, (runtime, params) => {
+    const app = familyFor(runtime, operationOf(params))?.app
+    return app === undefined ? [] : [app]
   })
 
   turnNotes.set(proposeDeviceAction, (runtime, message) => {

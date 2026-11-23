@@ -1,8 +1,9 @@
 // spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"; spec/inbox/reads.md, "Story: Read my mailbox without mixing account pages or endlessly reusing a cursor"; spec/inbox/drafts.md, "Story: Keep drafts recoverable across account switches and provider failures"; spec/inbox/readState.md, "Story: Change a message's read state once, and never repeat a change I did not ask for"; spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"; spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/failures.md, "Story: Know what happened when Gmail fails"; spec/inbox/outgoing.md, "Story: Attach files and send exactly the email I reviewed"
 import { assert, it } from "@effect/vitest"
-import type { Memory } from "@elizaos/core"
+import { activityLabel } from "@elizaos/agent"
+import { ContextRegistry, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { managedGmailClient, type ManagedGmailTransport } from "../src/client/index.vibe"
-import { emailDraftAnswer, managedInboxRead } from "../src/index.vibe"
+import { emailDraftAnswer, inboxPlugin, managedInboxRead } from "../src/index.vibe"
 import {
   AttachmentRefused, MailProtocolFailed, MailUnreachable, checkOutgoingAttachments, classifyGmailFailure, createMailBackground, disconnectGmailAccount,
   encodeInboxUnsaved, gmailActionGrant, gmailConsentCapabilities, gmailGrantChange, gmailReadCacheKey, gmailReadable, inboxOperation,
@@ -22,6 +23,7 @@ const story = {
   managed: 'spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"',
   handoff: 'spec/inbox/handoff.md, "Story: Put the agent\'s words into an email draft without sending it"',
   failures: 'spec/inbox/failures.md, "Story: Know what happened when Gmail fails"',
+  progress: 'spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results"',
 }
 
 const readOnly = ["google.basic_identity", "google.gmail.triage"]
@@ -425,7 +427,7 @@ it.effect(`Open the Inbox from an ordinary tap and ask only about the exact mess
   assert.deepEqual(try openNoticeTap(ports), { phase: "ClosedAsk", failure: "NoAskFailure" })
 })
 
-it.effect(`Read the managed inbox fresh for the current account, and hand a new email to the phone's composer (${story.managed}; ${story.handoff})`, effect () => {
+it.effect(`Read the managed inbox fresh for the current account, and hand a new email to the phone's composer, showing Inbox while it works (${story.managed}; ${story.handoff}; ${story.progress})`, effect () => {
   const cloud = fakeCloud()
   const calls = () => cloud.state.paths.length
   assert.deepEqual(try managedInboxRead(cloud.client, { query: "in:inbox" }), { kind: "refused", reason: "missing-limit" })
@@ -445,4 +447,7 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
   assert.equal(emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], body: "Noon?", cc: ["cy@example.com"] } })?.data?.handoff, "inbox")
   assert.isUndefined(emailDraftAnswer({ ...request, content: { text: "Email Bo", source: "discord" } }, { parameters: { to: ["bo@example.com"], body: "Noon?" } }))
   assert.equal(cloud.state.dispatches, 0)
+  const runtime = { contexts: try Effect.try(() => new ContextRegistry()) } as unknown as IAgentRuntime
+  try promise(() => Promise.resolve(inboxPlugin.init?.({}, runtime)))
+  assert.deepEqual(inboxPlugin.actions?.map((action) => activityLabel(runtime, action)), ["Using Inbox", "Using Inbox"])
 })

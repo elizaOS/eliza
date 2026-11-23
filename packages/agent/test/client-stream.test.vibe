@@ -5,10 +5,14 @@ import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "../src/client/stream-reader.vibe"
+import { activityLabel } from "../src/conversation/planning.vibe"
+import { proposeDeviceAction } from "../src/device-actions/proposal/action.vibe"
 
 module node {
+  import { Effect } from "effect"
   import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
   import type { AgentPlugin } from "../src/host/module.vibe"
+  import { registerDeviceProposalFamily, unoffered } from "../src/device-actions/proposal/registry.vibe"
 
   export interface Read {
     readonly outcome: ReplyOutcome
@@ -19,7 +23,11 @@ module node {
 
   export const agendaApp: AgentPlugin = {
     name: "agenda-app", description: "An app whose one action reads the owner's agenda",
-    init: async (_config, runtime) => { runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" }) },
+    init: async (_config, runtime) => {
+      runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" })
+      await Effect.runPromise(registerDeviceProposalFamily(runtime, { ...unoffered("calendar"), types: ["calendar_named"], app: "agenda" }))
+      await Effect.runPromise(registerDeviceProposalFamily(runtime, { ...unoffered("telephony"), types: ["sms_send"] }))
+    },
     actions: [{
       name: "AGENDA_READ", description: "Reads the owner's agenda.", contexts: ["general", "agenda"],
       validate: async () => true, handler: async () => ({ success: true, text: "Nothing booked." }),
@@ -209,9 +217,10 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
   const answer = try turn("Hi")
   try Effect.sync(() => cloud.script(text("Sure.")))
   const assentWithoutWork = try turn("Remember that I like tea")
+  const deviceCalls = ["calendar_named", "sms_send"].map((type) => activityLabel(agent.agent.runtime, proposeDeviceAction, { operation: { type } }))
 
   const done = (reply: string) => ({ kind: "Done", text: reply, failureKind: undefined, keyed: true })
-  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer, assentWithoutWork }, {
+  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer, assentWithoutWork, deviceCalls }, {
     instruction: {
       done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
@@ -223,5 +232,6 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
     },
     answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     assentWithoutWork: { done: done("Sure."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    deviceCalls: ["Using Agenda", "Working"],
   }))
 }, 120_000)

@@ -419,7 +419,9 @@ The operation families that register with the agent own disjoint sets of
 wire types. A registration that claims a type another family already owns,
 or that offers a form naming a type outside its own set, is refused whole,
 and the module that made it does not start; registering the same family
-again changes nothing.
+again changes nothing. A family may declare the one app its operations run
+in, by the context that app registers; a call of the device tool is then
+named by that app ([planning](../conversation/planning.md)).
 
 ```quint
 pure def registrationAdmitted(claimedByAnother: bool, formsWithinTypes: bool): bool = not(claimedByAnother) and formsWithinTypes

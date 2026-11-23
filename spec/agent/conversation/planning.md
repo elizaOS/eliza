@@ -442,16 +442,28 @@ pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: 
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
 
 When a tool call starts, its progress carries the action's name and a
-label for the owner: `Using <label>` when, among the action's declared
-contexts (core's catalog when it declares none) other than the catch-all
-`general` and `simple` and any `system` context, exactly one applies and
-the runtime's context registry gives it a label, and `Working` otherwise.
-Contexts with the same label count once; an unlabelled context counts by
-its id, so an action that may also reach an unnamed app is `Working`. The
-registry starts empty: an app is named only once it registers its own
-labelled context when it loads (Notes registers `Notes`) and its actions
-declare that context; an action that declares no context, or only contexts
-nobody labelled, is `Working`.
+label for the owner: `Using <label>` when, among the contexts the call
+reaches other than the catch-all `general` and `simple` and any `system`
+context, exactly one applies and the runtime's context registry gives it a
+label, and `Working` otherwise. A call reaches the action's declared
+contexts (core's catalog when it declares none), unless the action names
+them for each call from its arguments: a device call reaches the app its
+operation's proposal family declares, and no app when that family declares
+none, so a device call is named only by its family's app and the arguments
+never appear in the label. Contexts with the same label count once; an
+unlabelled context counts by its id, so an action that may also reach an
+unnamed app is `Working`. The registry starts empty: an app is named only
+once it registers its own labelled context when it loads and its actions,
+and its proposal family, declare that context. Maps registers `Maps`,
+Calendar `Calendar`, Browser `Browser`, Files `Files`, Inbox `Inbox`,
+Workflows `Workflows`, Notes `Notes`, and the assistant `Reminders` for its
+reminders. An action that declares no context, or only contexts nobody
+labelled, is `Working`: the views tool, which opens any app, the
+assistant's goals, to-dos, routines and briefings, the phone's call,
+message and surface operations, the reminders family's operations, which
+reach both Reminders and Clock, and a helper such as `CALCULATE`. The label
+is status text only, never part of the tools, the system prompt or the
+history.
 
 ```quint
 type ToolActivity = UsingApp | Working
@@ -460,6 +472,9 @@ pure val applicableValues = Set(0, 1, 2)
 pure val labelledValues = Set(0, 1, 2)
 pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatApplies(applicable: int, labelled: int): bool =
   toolActivity(applicable, labelled) == UsingApp implies (applicable == 1 and labelled == 1)
+pure def deviceCallApps(familyDeclaresApp: bool): int = if (familyDeclaresApp) 1 else 0
+pure def lawADeviceCallIsNamedOnlyByItsFamilysApp(familyDeclaresApp: bool, labelled: int): bool =
+  toolActivity(deviceCallApps(familyDeclaresApp), labelled) == UsingApp implies familyDeclaresApp
 ```
 
 ### A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other

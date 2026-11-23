@@ -2,7 +2,7 @@
 import { readTurnContext, type AgentPlugin } from "@elizaos/agent"
 import { nearbyPositionUsable, pointRequest, roughPosition, searchAround, whereAnswer, type PhonePosition } from "../gen/maps__phonePosition.effect.vibe"
 import { aroundTheStart, coverageAnswer, placePick, sameLandmark, sharesLocation, type ShareDecision } from "../gen/maps__routing.effect.vibe"
-import { appendInteractionBlock, requireConfirmation, type Action, type ActionResult, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
+import { appendInteractionBlock, requireConfirmation, type Action, type ActionResult, type AgentContext, type ContextDefinition, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import { appendMapsCard, type MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
 import { MapsFailure, TravelMode, travelModes, type Coordinate, type Place } from "./client/contracts.vibe"
 import type { AgentPlaceRef, DeviceNavigationFailure, MapsDeviceNavigationStatus } from "./client/device-navigation.vibe"
@@ -444,6 +444,14 @@ async function settle(work: ActionResult!Refusal): Promise<ActionResult> {
 }
 
 const ownerOnly = { minRole: "OWNER" as const }
+
+const mapsContext: ContextDefinition = {
+  id: "maps", aliases: ["map"], label: "Maps", description: "Places, routes and navigation.", descriptionCompressed: "Places, routes and navigation.",
+  sensitivity: "personal", cacheScope: "agent",
+}
+
+const mapsActionContexts: AgentContext[] = ["general", mapsContext.id]
+
 const modeParameter = { name: "travelMode", required: false, description: "drive, walk, bicycle or transit; drive when the owner named none.", schema: { type: "string" as const, enum: [...travelModes] } }
 
 function mapsActions(ports: MapsPluginPorts): Action[] {
@@ -466,6 +474,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       similes: ["FIND_PLACE", "NEARBY", "NEAREST", "NEAR_ME"],
       tags: ["domain:maps", "capability:read"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       parameters: [
         { name: "query", required: false, description: "The place name, kind of place or address; left out when the owner asked where they are.", schema: { type: "string" } },
         { name: "useCurrentLocation", required: false, description: "True when the owner asked for places near where they are, or where they are.", schema: { type: "boolean" } },
@@ -482,6 +491,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       similes: ["WHERE_AM_I", "MY_LOCATION", "CURRENT_LOCATION"],
       tags: ["domain:maps", "capability:read"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       validate: always,
       handler: handle(undefined, (service, _navigation, message) => whereAmI(service, message)),
     },
@@ -491,6 +501,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       similes: ["HOW_FAR", "TRAVEL_TIME", "DIRECTIONS_BETWEEN"],
       tags: ["domain:maps", "capability:read"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       parameters: [
         { name: "origin", required: false, description: "The starting place the owner named; left out for a route from where the owner is.", schema: { type: "string" } },
         { name: "destination", required: true, description: "The destination the owner named.", schema: { type: "string" } },
@@ -509,6 +520,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       similes: ["DIRECTIONS_FROM_HERE", "TAKE_ME_TO", "GET_ME_TO", "NAVIGATE"],
       tags: ["domain:maps", "capability:device"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       parameters: [
         { name: "destination", required: true, description: "The destination or kind of place the owner named.", schema: { type: "string" } },
         modeParameter,
@@ -523,6 +535,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       description: "Plan the active phone navigation again from the phone's current location.",
       tags: ["domain:maps", "capability:device"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       validate: always,
       handler: handle(undefined, (_service, navigation) => onConnectedPhone(navigation, (phone) => phone.reroute())),
     },
@@ -531,6 +544,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       description: "End the active phone navigation and its location watch.",
       tags: ["domain:maps", "capability:device"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       validate: always,
       handler: handle(undefined, (_service, navigation) => onConnectedPhone(navigation, (phone) => phone.stop())),
     },
@@ -539,6 +553,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       description: "Show one place on the phone's map, or describe it when the phone is not connected.",
       tags: ["domain:maps", "capability:device"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       parameters: [
         { name: "query", required: false, description: "The place the owner named.", schema: { type: "string" } },
         { name: "placeId", required: false, description: "The provider place id of a place the owner chose from a list.", schema: { type: "string" } },
@@ -551,6 +566,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       description: "Save one place with the assistant for the owner, under a label. A repeated request does not save it twice.",
       tags: ["domain:maps", "capability:write", "effect:idempotent", "effect:receipt-required"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       parameters: [
         { name: "query", required: false, description: "The place the owner named.", schema: { type: "string" } },
         { name: "placeId", required: false, description: "The provider place id of a place the owner chose from a list.", schema: { type: "string" } },
@@ -566,6 +582,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       similes: ["SHARE_PLACE", "SHARE_LOCATION"],
       tags: ["domain:maps", "capability:write"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       parameters: [
         { name: "query", required: false, description: "The place the owner named.", schema: { type: "string" } },
         { name: "placeId", required: false, description: "The provider place id of a place the owner chose from a list.", schema: { type: "string" } },
@@ -579,6 +596,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       similes: ["MAPS_REGIONS", "WHERE_MAPS_WORKS"],
       tags: ["domain:maps", "capability:read"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       validate: always,
       handler: handle(undefined, (service) => describeCoverage(service)),
     },
@@ -587,6 +605,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       description: "List the places saved with the assistant for the owner.",
       tags: ["domain:maps", "capability:read"],
       roleGate: ownerOnly,
+      contexts: mapsActionContexts,
       validate: always,
       handler: handle(undefined, (_service, _navigation, message, _params, _ask, runtime) => listSaved(ports.savedPlaces(runtime), message)),
     },
@@ -617,6 +636,9 @@ export function createMapsPlugin(ports: MapsPluginPorts): AgentPlugin {
     description: "Place search, routes with alternatives, navigation the owner starts on the phone, sharing a place once the owner agrees, and what Maps covers, through the owner's Cloud Maps account.",
     actions: mapsActions(ports),
     providers: [phonePositionProvider],
-    init: (_config, runtime) => registerMapsRouting(runtime, (destination) => ports.namesView(runtime, destination) ?? true),
+    init: async (_config, runtime) => {
+      runtime.contexts.tryRegister(mapsContext)
+      registerMapsRouting(runtime, (destination) => ports.namesView(runtime, destination) ?? true)
+    },
   }
 }

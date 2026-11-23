@@ -2,6 +2,7 @@
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type Memory } from "@elizaos/core"
 import { composeAnswer } from "../../gen/inbox__handoff.effect.vibe"
 import { canonicalUuid } from "../mailbox/digest.vibe"
+import { inboxContext } from "./read.vibe"
 
 export const inboxComposeActionName = "INBOX_COMPOSE_EMAIL"
 
@@ -67,6 +68,7 @@ export const inboxComposeAction: Action = {
     { name: "subject", required: false, schema: { type: "string" }, description: "The subject line." },
     { name: "body", required: true, schema: { type: "string" }, description: "The email text, written as the owner." },
   ],
+  contexts: ["general", inboxContext.id],
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   validate: async (_runtime, message) => message.content.source === "device",

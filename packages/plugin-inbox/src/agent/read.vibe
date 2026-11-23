@@ -1,5 +1,5 @@
 // spec/inbox/managedRead.md, "Only a bounded read is dispatched; any other request fails without a call"; spec/inbox/managedRead.md, "A read returns mail only for the current owner while permission holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"
-import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type ContextDefinition, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { enabled, initial, machineOver, type Event, type ManagedInboxRead, type ManagedReadKind } from "../../gen/inbox__managedRead.effect.vibe"
 import type { ManagedGmailClient } from "../client/index.vibe"
 import { classifyGmailFailure, type GmailFailureKind, type MailFailure } from "../mailbox/failures.vibe"
@@ -8,6 +8,11 @@ import type { GmailMessage, GoogleConnection } from "../mailbox/types.vibe"
 import { agentGmailClient } from "./cloud.vibe"
 
 export const inboxReadActionName = "INBOX_READ"
+
+export const inboxContext: ContextDefinition = {
+  id: "inbox", label: "Inbox", description: "The owner's connected Gmail.", descriptionCompressed: "The owner's Gmail.",
+  sensitivity: "personal", cacheScope: "agent",
+}
 
 export interface ManagedReadRequest {
   readonly query?: string
@@ -143,6 +148,7 @@ export const inboxReadAction: Action = {
     { name: "limit", required: true, schema: { type: "number" }, description: "How many messages to read, from 1 to 50." },
     { name: "query", required: false, schema: { type: "string" }, description: 'A Gmail search such as "in:inbox", "in:sent", "is:unread" or "from:ana@example.com". Defaults to the Inbox.' },
   ],
+  contexts: ["general", inboxContext.id],
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   validate: async (runtime) => agentGmailClient(runtime) !== undefined,
