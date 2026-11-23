@@ -54,6 +54,43 @@ public final class CredentialJson {
     return value;
   }
 
+  public static String write(Object value) {
+    StringBuilder out = new StringBuilder();
+    write(out, value);
+    return out.toString();
+  }
+
+  private static void write(StringBuilder out, Object value) {
+    switch (value) {
+      case null -> out.append("null");
+      case String text -> out.append(quote(text));
+      case Boolean flag -> out.append(flag);
+      case Long whole -> out.append(whole);
+      case Integer whole -> out.append(whole);
+      case Double real when Double.isFinite(real) -> out.append(real);
+      case Map<?, ?> map -> {
+        out.append('{');
+        boolean first = true;
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+          if (!first) out.append(',');
+          first = false;
+          out.append(quote((String) entry.getKey())).append(':');
+          write(out, entry.getValue());
+        }
+        out.append('}');
+      }
+      case List<?> list -> {
+        out.append('[');
+        for (int at = 0; at < list.size(); at++) {
+          if (at > 0) out.append(',');
+          write(out, list.get(at));
+        }
+        out.append(']');
+      }
+      default -> throw new Malformed("unwritable value");
+    }
+  }
+
   public static String quote(String value) {
     StringBuilder out = new StringBuilder(value.length() + 2).append('"');
     for (int i = 0; i < value.length(); i++) {

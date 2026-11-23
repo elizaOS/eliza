@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"; spec/os/agentService/config.md, "Only a cloud launch is handed the mail and calendar broker, by its address and bearer, never a credential"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.AgentPolicy.Effect;
@@ -84,6 +84,7 @@ public class AgentService extends Service {
   private static volatile AgentService live;
   private static volatile AgentConfig loaded;
   private static volatile AgentCredentials registered = AgentCredentials.NONE;
+  private static volatile GoogleBroker googleBroker;
 
   public record Review(String token, int retainedCount) {}
 
@@ -115,6 +116,8 @@ public class AgentService extends Service {
   private AgentPolicy.UpdateTarget pendingHold;
 
   public static void useCredentials(AgentCredentials source) { registered = Objects.requireNonNull(source); }
+
+  public static void useGoogleBroker(GoogleBroker broker) { googleBroker = Objects.requireNonNull(broker); }
 
   protected AgentCredentials credentials() { return registered; }
 
@@ -585,7 +588,7 @@ public class AgentService extends Service {
       Path agentSocket = directories.prepareSocket();
       byte[] frame = LaunchFrame.first(launchToken, epoch, framed, storageKey).encode();
       AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
-        directories.runtime().resolve("agent.log"));
+        directories.runtime().resolve("agent.log"), brokerEnvironment(config));
       synchronized (EPOCH_LOCK) {
         if (live != this) return;
         spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
@@ -604,6 +607,17 @@ public class AgentService extends Service {
     child = spawned;
     token = launchToken;
     if (!step(new AgentPolicy.Spawned()).accepted()) spawned.kill();
+  }
+
+  private static Map<String, String> brokerEnvironment(AgentConfig config) {
+    GoogleBroker broker = googleBroker;
+    if (!config.needsAccount() || broker == null) return Map.of();
+    try {
+      return broker.open().environment();
+    } catch (IOException | RuntimeException unavailable) {
+      Log.w(TAG, "The mail and calendar broker could not open, so the agent starts without managed Google reads", unavailable);
+      return Map.of();
+    }
   }
 
   private boolean owns(long launchEpoch) { return child != null && child.epoch == launchEpoch; }

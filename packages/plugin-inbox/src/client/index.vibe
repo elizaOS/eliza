@@ -138,6 +138,18 @@ effect function pageToken(token: string | undefined): void!MailProtocolFailed {
   if (token !== undefined && (token === "" || token.length > 4096)) throw invalid()
 }
 
+export effect function gmailConnectionOf(value: unknown): GoogleConnection!MailProtocolFailed {
+  return connectionOf(try decoded(ConnectionWire, value))
+}
+
+export effect function gmailSearchPageOf(value: unknown, maxResults: SearchSize, token?: string): GmailSearchPage!MailProtocolFailed {
+  const page = try decoded(SearchWire, value)
+  if (!revision.test(page.mailboxHistoryId) || page.messages.length > maxResults) throw invalid()
+  const messages: GmailMessage[] = []
+  for (const card of page.messages) messages.push(try messageOf(card))
+  return { messages, syncedAt: try present(page.syncedAt), nextPageToken: try nextToken(page.nextPageToken, token), mailboxHistoryId: page.mailboxHistoryId, supportsSpamTrash: page.supportsSpamTrash }
+}
+
 export function managedGmailClient(transport: ManagedGmailTransport) {
   effect function call(path: string, options: { readonly body?: unknown; readonly timeoutMs?: number } = {}) {
     return try transport.request(path, options)
@@ -154,7 +166,7 @@ export function managedGmailClient(transport: ManagedGmailTransport) {
     },
 
     effect gmailStatus(grantId?: string): GoogleConnection!MailFailure {
-      return connectionOf(try decoded(ConnectionWire, try call(`${google}/status?${query({ side: "owner", grantId })}`)))
+      return try gmailConnectionOf(try call(`${google}/status?${query({ side: "owner", grantId })}`))
     },
 
     effect gmailConnect(capabilities: readonly string[], redirectUrl?: string): { readonly authUrl: string }!MailFailure {
@@ -167,11 +179,7 @@ export function managedGmailClient(transport: ManagedGmailTransport) {
 
     effect gmailSearch(grantId: string, search: string, maxResults: SearchSize = 25, token?: string): GmailSearchPage!MailFailure {
       try pageToken(token)
-      const page = try decoded(SearchWire, try call(`${google}/gmail/search?${query({ side: "owner", grantId: try present(grantId), query: try present(search), maxResults: String(maxResults), pageToken: token })}`))
-      if (!revision.test(page.mailboxHistoryId) || page.messages.length > maxResults) throw invalid()
-      const messages: GmailMessage[] = []
-      for (const card of page.messages) messages.push(try messageOf(card))
-      return { messages, syncedAt: try present(page.syncedAt), nextPageToken: try nextToken(page.nextPageToken, token), mailboxHistoryId: page.mailboxHistoryId, supportsSpamTrash: page.supportsSpamTrash }
+      return try gmailSearchPageOf(try call(`${google}/gmail/search?${query({ side: "owner", grantId: try present(grantId), query: try present(search), maxResults: String(maxResults), pageToken: token })}`), maxResults, token)
     },
 
     effect gmailRead(grantId: string, messageId: string): GmailReadResult!MailFailure {

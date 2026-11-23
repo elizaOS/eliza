@@ -1,0 +1,85 @@
+// spec/inbox/managedRead.md, "The agent reads managed mail only through the device's broker, and without one the read is not offered"; spec/os/signIn/cloudRequests.md, "The broker reads only Gmail status and search, and the calendar list and feed, each through listed GET routes"; spec/os/signIn/cloudRequests.md, "The agent gets the cloud's status and body within the operation's limit, and never the credential that read it"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import { mailReaderOf } from "../../gen/inbox__managedRead.effect.vibe"
+import { gmailConnectionOf, gmailSearchPageOf, type SearchSize } from "../client/index.vibe"
+import { MailProtocolFailed, MailUnreachable, type MailFailure } from "../mailbox/failures.vibe"
+import type { GmailSearchPage, GoogleConnection } from "../mailbox/types.vibe"
+
+const brokerPath = "/__alpha-owner-gmail"
+const brokerReplyLimit = 262_144
+const brokerTimeout = "30 seconds"
+
+export interface AgentGmailReads {
+  gmailStatus(): GoogleConnection!MailFailure
+  gmailSearch(grantId: string, search: string, maxResults: SearchSize): GmailSearchPage!MailFailure
+}
+
+interface GmailBroker {
+  readonly url: string
+  readonly token: Redacted.Redacted<string>
+}
+
+function privateBroker(endpoint: string, token: string): GmailBroker | undefined {
+  const url = URL.parse(endpoint)
+  const privateAddress = url !== null && url.protocol === "http:" && url.hostname === "127.0.0.1" && url.port !== "" && url.pathname === brokerPath
+    && url.search === "" && url.hash === "" && url.username === "" && url.password === ""
+  if (url === null || mailReaderOf(endpoint !== "", privateAddress, /^[A-Za-z0-9_-]{64}$/.test(token)) !== "DeviceBroker") return undefined
+  return { url: url.href, token: Redacted.make(token) }
+}
+
+function reasonOf(body: unknown): string {
+  if (typeof body !== "object" || body === null) return ""
+  if ("error" in body && typeof body.error === "string") return body.error
+  return "reason" in body && typeof body.reason === "string" ? body.reason : ""
+}
+
+function parsed(bytes: Uint8Array): unknown {
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+  } catch {
+    return undefined
+  }
+}
+
+effect function exchange(broker: GmailBroker, body: object): unknown!(MailProtocolFailed | MailUnreachable)!HttpClient.HttpClient {
+  const text = try Effect.try({ try: () => JSON.stringify(body), catch: () => new MailProtocolFailed({ code: "invalid-response", status: 0, reason: "request" }) })
+  const request = HttpClientRequest.bodyText(HttpClientRequest.setHeader(HttpClientRequest.post(broker.url), "authorization", "Bearer " + Redacted.value(broker.token)),
+    text, "application/json")
+  const response = timeout(Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" }), brokerTimeout)
+    catch effect (cause) => { throw new MailUnreachable({ cause }) }
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for try (const chunk of Stream.mapError(response.stream, (cause) => new MailUnreachable({ cause }))) {
+    size += chunk.length
+    if (size > brokerReplyLimit) break
+    chunks.push(chunk)
+  }
+  if (size > brokerReplyLimit) throw new MailProtocolFailed({ code: "invalid-response", status: response.status, reason: "reply-too-large" })
+  const bytes = new Uint8Array(size)
+  chunks.reduce((offset, chunk) => { bytes.set(chunk, offset); return offset + chunk.length }, 0)
+  const value = parsed(bytes)
+  if (response.status === 503 && reasonOf(value) === "cloud-unreachable") throw new MailUnreachable({ cause: "the device could not reach the cloud" })
+  if (response.status < 200 || response.status >= 300) throw new MailProtocolFailed({ code: "http", status: response.status, reason: reasonOf(value) })
+  if (value === undefined) throw new MailProtocolFailed({ code: "invalid-response", status: response.status, reason: "" })
+  return value
+}
+
+export function brokerGmailReads(endpoint: string, token: string, http: Layer.Layer<HttpClient.HttpClient>): AgentGmailReads | undefined {
+  const broker = privateBroker(endpoint, token)
+  if (broker === undefined) return undefined
+  const ask = (gmail: object) => Effect.provide(exchange(broker, { gmail }), http)
+  return {
+    effect gmailStatus() {
+      return try gmailConnectionOf(try ask({ operation: "status" }))
+    },
+    effect gmailSearch(grantId, search, maxResults) {
+      return try gmailSearchPageOf(try ask({ operation: "search", grantId, query: search, maxResults }), maxResults)
+    },
+  }
+}
+
+export effect function agentGmailReads() {
+  const endpoint = try Config.withDefault(Config.String("ELIZA_MANAGED_GMAIL_READ_BROKER"), "")
+  const token = try Config.withDefault(Config.String("ELIZA_API_TOKEN"), "")
+  return brokerGmailReads(endpoint, token, FetchHttpClient.layer)
+}

@@ -260,8 +260,10 @@ credential is given, a positive credential version; the schema refuses an
 empty token or storage key, and a credential that is not 8 to 16,384
 visible ASCII characters ([model binding](../models/binding.md) bounds each
 slot). `units` is the credential's length in characters, which the shell
-counts; it says nothing else about the value. Nothing secret arrives in a file or
-the environment.
+counts; it says nothing else about the value. Nothing secret arrives in a file,
+and no credential in the environment: a cloud launch's environment names at
+most the device's mail and calendar broker and its bearer, which admits only
+that broker's bounded reads ([agent data files](../../os/agentService/config.md)).
 
 ```quint
 type SecretLaunchToken = str

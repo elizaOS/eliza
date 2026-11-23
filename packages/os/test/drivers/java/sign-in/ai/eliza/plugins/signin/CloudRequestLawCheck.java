@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
+// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "The agent reaches the broker only by a POST to its private path on the loopback host, without an origin, with its bearer and at most 8 KiB"; spec/os/signIn/cloudRequests.md, "The broker reads only Gmail status and search, and the calendar list and feed, each through listed GET routes"; spec/os/signIn/cloudRequests.md, "Each read carries the credential the plan names for its route, and never a session or nothing"; spec/os/signIn/cloudRequests.md, "The agent gets the cloud's status and body within the operation's limit, and never the credential that read it"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.os.agent.RouteGate;
@@ -285,8 +285,104 @@ public final class CloudRequestLawCheck {
     System.out.println("{\"fn\":\"originOf\",\"accepted\":{" + origins.entrySet().stream().map(e -> q(e.getKey()) + ":" + e.getValue()).collect(Collectors.joining(",")) + "}}");
   }
 
+  private static final List<GoogleBrokerPolicy.Ask> ASKS = asks();
+  private static final List<GoogleBrokerPolicy.Operation> OPERATIONS = List.of(new GoogleBrokerPolicy.Status(), new GoogleBrokerPolicy.Sources(),
+    new GoogleBrokerPolicy.Other(), search(25, 8, 36), search(30, 8, 36), search(50, 4097, 36), search(10, 0, 36), search(10, 8, 257), search(100, 8, 36),
+    feed(true, "c".repeat(40)), feed(false, "c".repeat(40)), feed(true, "c".repeat(1025)), feed(true, ""));
+  private static final List<GoogleBrokerPolicy.Forward> FORWARDS = List.of(new GoogleBrokerPolicy.ForwardFailed(), new GoogleBrokerPolicy.Forwarded(200, 2048),
+    new GoogleBrokerPolicy.Forwarded(401, 40), new GoogleBrokerPolicy.Forwarded(200, 262_145), new GoogleBrokerPolicy.Forwarded(200, 524_288),
+    new GoogleBrokerPolicy.Forwarded(200, 524_289));
+
+  private static List<GoogleBrokerPolicy.Ask> asks() {
+    List<GoogleBrokerPolicy.Ask> all = new ArrayList<>();
+    for (int bits = 0; bits < 32; bits++)
+      for (long bytes : List.of(0L, 120L, 8192L, 8193L))
+        all.add(new GoogleBrokerPolicy.Ask((bits & 1) == 0, (bits & 2) == 0, (bits & 4) == 0, (bits & 8) != 0, (bits & 16) == 0, bytes));
+    return all;
+  }
+
+  private static GoogleBrokerPolicy.Search search(int maxResults, int queryUnits, int grantUnits) {
+    return new GoogleBrokerPolicy.Search("g".repeat(grantUnits), "q".repeat(queryUnits), maxResults);
+  }
+
+  private static GoogleBrokerPolicy.Feed feed(boolean scoped, String calendarId) {
+    return new GoogleBrokerPolicy.Feed(scoped ? GoogleBrokerPolicy.scopedGrant("connection") : "connection", calendarId, "2026-11-21", "2026-11-22", "UTC");
+  }
+
+  private static String ask(GoogleBrokerPolicy.Ask a) {
+    return "{\"post\":" + a.post() + ",\"privatePath\":" + a.privatePath() + ",\"loopbackHost\":" + a.loopbackHost() + ",\"origin\":" + a.origin()
+      + ",\"bearer\":" + a.bearer() + ",\"bytes\":" + a.bytes() + "}";
+  }
+
+  private static String operation(GoogleBrokerPolicy.Operation op) {
+    return switch (op) {
+      case GoogleBrokerPolicy.Status s -> tag("StatusOperation");
+      case GoogleBrokerPolicy.Sources s -> tag("SourcesOperation");
+      case GoogleBrokerPolicy.Other o -> tag("OtherOperation");
+      case GoogleBrokerPolicy.Search s -> "{\"tag\":\"SearchOperation\",\"maxResults\":" + s.maxResults() + ",\"queryUnits\":" + s.query().length()
+        + ",\"grantUnits\":" + s.grantId().length() + "}";
+      case GoogleBrokerPolicy.Feed f -> "{\"tag\":\"FeedOperation\",\"scoped\":" + f.scoped() + ",\"fieldUnits\":" + f.fieldUnits() + "}";
+    };
+  }
+
+  private static String forward(GoogleBrokerPolicy.Forward f, Attach a) {
+    return switch (f) {
+      case GoogleBrokerPolicy.Forwarded x -> "{\"tag\":\"Forwarded\",\"attach\":" + attach(a) + ",\"status\":" + x.status() + ",\"bytes\":" + x.bytes() + "}";
+      case GoogleBrokerPolicy.ForwardFailed x -> tag("ForwardFailed");
+    };
+  }
+
+  private static String reply(GoogleBrokerPolicy.Reply r) {
+    return switch (r) {
+      case GoogleBrokerPolicy.Answer a -> "{\"tag\":\"BrokerAnswer\",\"status\":" + a.status() + ",\"bytes\":" + a.bytes() + "}";
+      case GoogleBrokerPolicy.Refused x -> "{\"tag\":\"BrokerRefusal\",\"status\":" + x.status() + ",\"reason\":" + q(camel(x.reason().name())) + "}";
+    };
+  }
+
+  private static void brokerCases() {
+    for (GoogleBrokerPolicy.Ask a : ASKS) {
+      GoogleBrokerPolicy.AskVerdict verdict = GoogleBrokerPolicy.askVerdict(a);
+      emit("brokerAskVerdict", q(camel(verdict.name())), ask(a));
+      emit("lawOnlyAPrivateAuthorizedBoundedAskIsAdmitted", String.valueOf((verdict == GoogleBrokerPolicy.AskVerdict.ASK_ADMITTED)
+        == (a.post() && a.privatePath() && a.loopbackHost() && !a.origin() && a.bearer() && a.bytes() <= GoogleBrokerPolicy.ASK_LIMIT)), ask(a));
+      emit("lawAForeignAskIsNeverTreatedAsTheAgent", String.valueOf(!(a.origin() || !a.loopbackHost()) || verdict == GoogleBrokerPolicy.AskVerdict.NOT_PRIVATE), ask(a));
+    }
+    for (GoogleBrokerPolicy.Read read : GoogleBrokerPolicy.Read.values()) {
+      String r = q(camel(read.name()));
+      emit("brokerPath", texts(read.path()), r);
+      emit("listedGet", String.valueOf(GoogleBrokerPolicy.listedGet(read)), r);
+      for (Holding h : HOLDINGS) {
+        CallPlan p = GoogleBrokerPolicy.plan(h, read);
+        emit("brokerPlan", plan(p), holding(h), r);
+        emit("lawABrokerReadIsSentWithTheDeviceCredentialOrNotAtAll", String.valueOf(!(p instanceof Send s) || !(s.attach() instanceof WithSession || s.attach() instanceof Bare)), holding(h), r);
+      }
+    }
+    for (GoogleBrokerPolicy.Operation op : OPERATIONS) {
+      List<GoogleBrokerPolicy.Read> reads = GoogleBrokerPolicy.reads(op);
+      String o = operation(op);
+      emit("brokerReads", list(reads.stream().map(read -> q(camel(read.name()))).toList()), o);
+      emit("brokerAdmits", String.valueOf(GoogleBrokerPolicy.admits(op)), o);
+      emit("brokerReplyLimit", String.valueOf(GoogleBrokerPolicy.replyLimit(op)), o);
+      emit("lawTheBrokerReadsOnlyListedGetRoutes", String.valueOf(reads.stream().allMatch(GoogleBrokerPolicy::listedGet)), o);
+      emit("lawAnyOtherOperationReadsNothing", String.valueOf(!(op instanceof GoogleBrokerPolicy.Other) || !GoogleBrokerPolicy.admits(op)), o);
+      emit("lawASearchIsBounded", String.valueOf(!(op instanceof GoogleBrokerPolicy.Search s) || !GoogleBrokerPolicy.admits(op)
+        || s.maxResults() <= 50 && s.query().length() <= GoogleBrokerPolicy.QUERY_LIMIT), o);
+      for (GoogleBrokerPolicy.Forward f : FORWARDS)
+        for (Attach a : ATTACHES) {
+          GoogleBrokerPolicy.Reply r = GoogleBrokerPolicy.replyOf(op, f);
+          emit("brokerReplyOf", reply(r), o, forward(f, a));
+          emit("lawNoReplyExceedsItsOperationsLimit", String.valueOf(!(r instanceof GoogleBrokerPolicy.Answer x) || x.bytes() <= GoogleBrokerPolicy.replyLimit(op)), o, forward(f, a));
+          emit("lawARefusedOperationGetsNoCloudAnswer", String.valueOf(GoogleBrokerPolicy.admits(op)
+            || r.equals(new GoogleBrokerPolicy.Refused(409, GoogleBrokerPolicy.Reason.OPERATION_REFUSED))), o, forward(f, a));
+          for (Attach other : ATTACHES)
+            emit("lawTheReplyIsTheSameWhicheverCredentialReadIt", "true", o, forward(f, a), attach(other));
+        }
+    }
+  }
+
   public static void main(String[] args) {
     specCases();
+    brokerCases();
     wireCases();
   }
 }

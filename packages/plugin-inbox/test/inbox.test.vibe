@@ -1,8 +1,9 @@
 // spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"; spec/inbox/reads.md, "Story: Read my mailbox without mixing account pages or endlessly reusing a cursor"; spec/inbox/drafts.md, "Story: Keep drafts recoverable across account switches and provider failures"; spec/inbox/readState.md, "Story: Change a message's read state once, and never repeat a change I did not ask for"; spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"; spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/failures.md, "Story: Know what happened when Gmail fails"; spec/inbox/outgoing.md, "Story: Attach files and send exactly the email I reviewed"
 import { assert, it } from "@effect/vitest"
 import type { Memory } from "@elizaos/core"
+import { HttpClient, HttpClientResponse } from "effect/http"
 import { managedGmailClient, type ManagedGmailTransport } from "../src/client/index.vibe"
-import { emailDraftAnswer, managedInboxRead } from "../src/index.vibe"
+import { brokerGmailReads, emailDraftAnswer, managedInboxRead } from "../src/index.vibe"
 import {
   AttachmentRefused, MailProtocolFailed, MailUnreachable, checkOutgoingAttachments, classifyGmailFailure, createMailBackground, disconnectGmailAccount,
   encodeInboxUnsaved, gmailActionGrant, gmailConsentCapabilities, gmailGrantChange, gmailReadCacheKey, gmailReadable, inboxOperation,
@@ -10,6 +11,13 @@ import {
   reviewOpaqueAttachment, saveMailbox, clearMailbox, sha256Hex, type GmailAccount, type InboxOperationStore, type MailBackgroundNative,
   type MailNoticeTap, type NoticeTapPorts, type ProviderDraftPorts, type SavedLocalDraft, type SavedMailboxStore,
 } from "../src/mailbox/index.vibe"
+
+module node {
+  export function webResponse(body: string, status: number): Response {
+    return new Response(body, { status, headers: { "content-type": "application/json" } })
+  }
+}
+import { webResponse } from node
 
 const story = {
   grants: 'spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"',
@@ -20,6 +28,7 @@ const story = {
   readState: 'spec/inbox/readState.md, "Story: Change a message\'s read state once, and never repeat a change I did not ask for"',
   notices: 'spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"',
   managed: 'spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"',
+  broker: 'spec/inbox/managedRead.md, "The agent reads managed mail only through the device\'s broker, and without one the read is not offered"',
   handoff: 'spec/inbox/handoff.md, "Story: Put the agent\'s words into an email draft without sending it"',
   failures: 'spec/inbox/failures.md, "Story: Know what happened when Gmail fails"',
 }
@@ -180,6 +189,20 @@ function memoryStore(): InboxOperationStore & { readonly rows: Map<string, unkno
       return "saved" as const
     },
   }
+}
+
+type BrokerCall = { readonly gmail: Readonly<Record<string, unknown>>; readonly url: string; readonly authorization: string | undefined }
+
+effect function gmailBrokerFake(answer: (gmail: Readonly<Record<string, unknown>>) => { readonly status: number; readonly body: string }!!) {
+  const calls: BrokerCall[] = []
+  const client = HttpClient.make(effect (request, url) => {
+    const text = request.body._tag === "Uint8Array" ? request.body.text ?? new TextDecoder().decode(request.body.body) : ""
+    const parsed = try orDie(Effect.try(() => JSON.parse(text) as { gmail: Readonly<Record<string, unknown>> }))
+    calls.push({ gmail: parsed.gmail, url: url.href, authorization: request.headers.authorization })
+    const reply = try answer(parsed.gmail)
+    return HttpClientResponse.fromWeb(request, try orDie(Effect.try(() => webResponse(reply.body, reply.status))))
+  })
+  return { calls, layer: Layer.succeed(HttpClient.HttpClient, client) }
 }
 
 const account = (connectionId: string, grantedCapabilities: readonly string[], connected = true): GmailAccount =>
@@ -425,7 +448,7 @@ it.effect(`Open the Inbox from an ordinary tap and ask only about the exact mess
   assert.deepEqual(try openNoticeTap(ports), { phase: "ClosedAsk", failure: "NoAskFailure" })
 })
 
-it.effect(`Read the managed inbox fresh for the current account, and hand a new email to the phone's composer (${story.managed}; ${story.handoff})`, effect () => {
+it.effect(`Read the managed inbox fresh for the current account, only through the device broker, and hand a new email to the phone's composer (${story.managed}; ${story.broker}; ${story.handoff})`, effect () => {
   const cloud = fakeCloud()
   const calls = () => cloud.state.paths.length
   assert.deepEqual(try managedInboxRead(cloud.client, { query: "in:inbox" }), { kind: "refused", reason: "missing-limit" })
@@ -435,6 +458,42 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
   assert.deepEqual(mail.kind === "mail" && mail.messages.map((message) => message.id), ["m1"])
   cloud.state.afterSearch = () => { cloud.state.selected = "grant-b" }
   assert.deepEqual(try managedInboxRead(cloud.client, { limit: 5 }), { kind: "refused", reason: "owner-changed" })
+
+  const token = "t".repeat(64)
+  const brokerUrl = "http://127.0.0.1:7777/__alpha-owner-gmail"
+  const broker: { refusal: { readonly status: number; readonly body: string } | undefined } = { refusal: undefined }
+  const fake = try gmailBrokerFake(effect (gmail) => {
+    if (broker.refusal !== undefined) return broker.refusal
+    const query = gmail.operation === "status" ? "status?side=owner"
+      : `gmail/search?${new URLSearchParams({ side: "owner", grantId: String(gmail.grantId), query: String(gmail.query), maxResults: String(gmail.maxResults) })}`
+    return { status: 200, body: JSON.stringify(try orDie(cloud.transport.request(`/api/v1/eliza/google/${query}`, {}))) }
+  })
+  for (const [endpoint, bearer] of [["", token], ["http://localhost:7777/__alpha-owner-gmail", token], ["https://127.0.0.1:7777/__alpha-owner-gmail", token],
+    ["http://127.0.0.1:7777/other", token], ["http://127.0.0.1/__alpha-owner-gmail", token], [brokerUrl, "short"], [brokerUrl, ""]] as const) {
+    assert.isUndefined(brokerGmailReads(endpoint, bearer, fake.layer), `${story.broker}: ${endpoint} is not offered`)
+  }
+  const reads = brokerGmailReads(brokerUrl, token, fake.layer)
+  assert.isDefined(reads)
+  if (reads === undefined) return
+  cloud.state.afterSearch = () => {}
+  cloud.state.selected = "grant-a"
+  const viaBroker = try managedInboxRead(reads, { limit: 1, query: "from:bo" })
+  assert.deepEqual(viaBroker.kind === "mail" && viaBroker.messages.map((message) => message.id), ["m1"])
+  assert.deepEqual(fake.calls.map((call) => [call.gmail, call.url, call.authorization]), [
+    [{ operation: "status" }, brokerUrl, `Bearer ${token}`],
+    [{ operation: "search", grantId: "grant-a", query: "from:bo", maxResults: 10 }, brokerUrl, `Bearer ${token}`],
+    [{ operation: "status" }, brokerUrl, `Bearer ${token}`],
+  ])
+  broker.refusal = { status: 503, body: JSON.stringify({ reason: "cloud-unreachable" }) }
+  const unreachable = try managedInboxRead(reads, { limit: 5 })
+  assert.deepEqual(unreachable, { kind: "failed", failure: classifyGmailFailure(new MailUnreachable({ cause: "broker" }), "read", true) })
+  broker.refusal = { status: 409, body: JSON.stringify({ reason: "operation-refused" }) }
+  const refused = try managedInboxRead(reads, { limit: 5 })
+  assert.deepEqual(refused, { kind: "failed", failure: classifyGmailFailure(new MailProtocolFailed({ code: "http", status: 409, reason: "operation-refused" }), "read", true) })
+  broker.refusal = { status: 200, body: JSON.stringify({ padding: "x".repeat(262_145) }) }
+  const oversize = try managedInboxRead(reads, { limit: 5 })
+  assert.deepEqual(oversize, { kind: "failed", failure: classifyGmailFailure(new MailProtocolFailed({ code: "invalid-response", status: 200, reason: "" }), "read", true) })
+  assert.isFalse(JSON.stringify(fake.calls).includes("eliza_"), "the agent never sends a cloud credential to the broker")
 
   const request = {
     id: "5f0c1d2e-3a4b-4c5d-8e9f-a0b1c2d3e4f5", entityId: "6a1b2c3d-4e5f-4a6b-8c7d-e8f9a0b1c2d3", agentId: "7b2c3d4e-5f6a-4b7c-8d9e-f0a1b2c3d4e5",

@@ -182,6 +182,28 @@ pure def lawOwnKeyLaunchIsFramedWithTheProviderKeyOrNone(d: AgentData, cred: C::
 pure val providerVersionValues = Set(0, 1, 2)
 ```
 
+### Only a cloud launch is handed the mail and calendar broker, by its address and bearer, never a credential
+
+When the consumer has registered the device's mail and calendar broker
+(`../signIn/cloudRequests.md`) and it is open, a cloud launch's process
+environment names the broker's loopback endpoint as
+`ELIZA_MANAGED_GMAIL_READ_BROKER` and `ELIZA_MANAGED_CALENDAR_READ_BROKER`
+and its bearer as `ELIZA_API_TOKEN`. An own-key or keyless launch, or a
+broker that could not open, is handed none, and the agent then offers no
+managed mail or calendar read. The bearer admits only the broker's bounded
+reads; the device key, the account session and the lease stay in the app.
+Source: develop's `native-managed-google-host.ts`, which published the same
+three variables.
+
+```quint
+type BrokerHandoff = BrokerNamed | NoBroker
+pure def brokerHandoff(d: AgentData, brokerOpen: bool): BrokerHandoff =
+  if (needsAccount(d.host.launch.backend) and brokerOpen) BrokerNamed else NoBroker
+pure val brokerOpenValues = Set(true, false)
+pure def lawOnlyAnOpenBrokerIsHandedToACloudLaunch(d: AgentData, brokerOpen: bool): bool =
+  (brokerHandoff(d, brokerOpen) == BrokerNamed) iff (needsAccount(d.host.launch.backend) and brokerOpen)
+```
+
 ### The agent admits every launch the service writes, given a launch frame with a key
 
 A ready launch, sent with an admitted frame that carries a credential its

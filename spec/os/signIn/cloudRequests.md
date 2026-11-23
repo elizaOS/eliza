@@ -8,9 +8,11 @@ deployment's API origin with the credential `./credential.md` holds. The
 page names a path and a query, never a host. Which routes exist, their auth
 classes and the headers each admits are `spec/cloud/client.md`'s
 `deviceRoutes`; this spec decides only what the device may forward and with
-which credential. Sockets, URL parsing, hashing, files and HTTP stay in the
-Java shell; sources are develop's `CloudConnectionPolicy.java` and
-`NativeAppRequestPolicy.java`, which this replaces.
+which credential. The same requests serve the on-device agent's mail and
+calendar broker, the last story here. Sockets, URL parsing, hashing, files
+and HTTP stay in the Java shell; sources are develop's
+`CloudConnectionPolicy.java` and `NativeAppRequestPolicy.java`, which this
+replaces.
 
 ## Story: Reach my account's cloud services without holding my key
 
@@ -246,4 +248,174 @@ pure val linkValues = Set({ https: true, host: "billing.stripe.com", defaultPort
   { https: true, host: "billing.stripe.com.evil.test", defaultPort: true, userInfo: false }, { https: false, host: "web.cloud.test", defaultPort: true, userInfo: false })
 pure def lawALinkOpensOnlyOnAListedHost(webHost: str, link: ExternalLink): bool =
   opensExternally(webHost, link) implies (link.host == webHost or providerHosts.contains(link.host))
+```
+
+## Story: Let my agent read my mail and calendar without holding a mail credential
+
+> As the owner, I want my on-device agent, which reads untrusted email, to
+> read my Gmail and Calendar only through a narrow broker in the device that
+> attaches my credential itself, so that the agent never holds the lease or
+> any mail credential, cannot change mail, and reads only a bounded amount.
+
+The broker is the native host's endpoint
+`http://127.0.0.1:<port>/__alpha-owner-gmail`, handed only to a cloud launch
+([agent data files](../agentService/config.md)). It sends each read through
+this spec's cloud requests, with a fixed table of its own read routes, so
+every read carries the credential the plan above names for its route; the
+agent gets only the reply. Sockets, JSON, the calendar's scoped grants and
+the reply bodies stay in the Java shell; the source is develop's
+`managed-google-agent-broker.ts` and `native-google-agent-host.ts`, whose
+reads this keeps and whose sends, mailbox changes and calendar writes it
+does not.
+
+### The agent reaches the broker only by a POST to its private path on the loopback host, without an origin, with its bearer and at most 8 KiB
+
+A request with another method or path, a host other than `127.0.0.1` with
+its port, or any `Origin` header is not private; one without the broker's
+bearer, compared in constant time, is not authorized; a body over 8 KiB is
+too large. Each is refused before the body is decoded.
+
+```quint
+type BrokerAsk = { post: bool, privatePath: bool, loopbackHost: bool, origin: bool, bearer: bool, bytes: int }
+type BrokerAskVerdict = AskAdmitted | NotPrivate | NotAuthorized | AskTooLarge
+pure val brokerAskLimit: int = 8192
+pure def brokerAskVerdict(ask: BrokerAsk): BrokerAskVerdict =
+  if (not(ask.post) or not(ask.privatePath) or not(ask.loopbackHost) or ask.origin) NotPrivate
+  else if (not(ask.bearer)) NotAuthorized
+  else if (ask.bytes > brokerAskLimit) AskTooLarge
+  else AskAdmitted
+pure val askValues: Set[BrokerAsk] = {
+  val good = { post: true, privatePath: true, loopbackHost: true, origin: false, bearer: true, bytes: 120 }
+  Set(good, { ...good, post: false }, { ...good, privatePath: false }, { ...good, loopbackHost: false }, { ...good, origin: true },
+    { ...good, bearer: false }, { ...good, bytes: 8192 }, { ...good, bytes: 8193 }, { ...good, origin: true, bearer: false })
+}
+pure def lawOnlyAPrivateAuthorizedBoundedAskIsAdmitted(ask: BrokerAsk): bool =
+  (brokerAskVerdict(ask) == AskAdmitted)
+    iff (ask.post and ask.privatePath and ask.loopbackHost and not(ask.origin) and ask.bearer and ask.bytes <= brokerAskLimit)
+pure def lawAForeignAskIsNeverTreatedAsTheAgent(ask: BrokerAsk): bool =
+  (ask.origin or not(ask.loopbackHost)) implies brokerAskVerdict(ask) == NotPrivate
+```
+
+### The broker reads only Gmail status and search, and the calendar list and feed, each through listed GET routes
+
+A request names exactly one operation: Gmail `status`; Gmail `search` of
+10, 25 or 50 messages for one grant (1 to 256 characters) and a query of 1
+to 4,096 characters; calendar `sources`; or calendar `feed` for one scoped
+grant (`alpha-google:` and 64 hexadecimal digits) and a calendar, window and
+time zone of at most 1,024 characters each. Status reads
+`GET /api/v1/eliza/google/status`, search `…/gmail/search`, sources
+`…/accounts` and each connected account's `…/calendar/calendars`, and a feed
+`…/accounts` and `…/calendar/feed`. Any other operation or field, a message
+read, a send, a mailbox change, a draft, an attachment and every calendar
+write, reads nothing.
+
+```quint
+type BrokerRead = MailStatus | MailSearch | CalendarAccounts | CalendarList | CalendarFeed
+type BrokerOperation =
+  | StatusOperation
+  | SearchOperation({ maxResults: int, queryUnits: int, grantUnits: int })
+  | SourcesOperation
+  | FeedOperation({ scoped: bool, fieldUnits: int })
+  | OtherOperation
+pure val brokerSearchSizes: Set[int] = Set(10, 25, 50)
+pure val brokerQueryLimit: int = 4096
+pure val brokerGrantLimit: int = 256
+pure val brokerFieldLimit: int = 1024
+pure def brokerPath(brokerRead: BrokerRead): List[str] = {
+  val google = List("api", "v1", "eliza", "google")
+  match brokerRead {
+    | MailStatus => google.append("status")
+    | MailSearch => google.concat(List("gmail", "search"))
+    | CalendarAccounts => google.append("accounts")
+    | CalendarList => google.concat(List("calendar", "calendars"))
+    | CalendarFeed => google.concat(List("calendar", "feed"))
+  }
+}
+pure def brokerReads(op: BrokerOperation): List[BrokerRead] = match op {
+  | StatusOperation => List(MailStatus)
+  | SearchOperation(s) =>
+    if (brokerSearchSizes.contains(s.maxResults) and s.queryUnits >= 1 and s.queryUnits <= brokerQueryLimit and s.grantUnits >= 1 and s.grantUnits <= brokerGrantLimit)
+      List(MailSearch)
+    else List()
+  | SourcesOperation => List(CalendarAccounts, CalendarList)
+  | FeedOperation(f) => if (f.scoped and f.fieldUnits >= 1 and f.fieldUnits <= brokerFieldLimit) List(CalendarAccounts, CalendarFeed) else List()
+  | OtherOperation => List()
+}
+pure def brokerAdmits(op: BrokerOperation): bool = brokerReads(op).length() > 0
+pure def listedGet(brokerRead: BrokerRead): bool = {
+  val found = routeFor(Get, brokerPath(brokerRead))
+  match found { | Listed(x) => x.route.method == Get | Unlisted => false }
+}
+pure val opValues: Set[BrokerOperation] = Set(StatusOperation, SourcesOperation, OtherOperation,
+  SearchOperation({ maxResults: 25, queryUnits: 8, grantUnits: 36 }), SearchOperation({ maxResults: 30, queryUnits: 8, grantUnits: 36 }),
+  SearchOperation({ maxResults: 50, queryUnits: 4097, grantUnits: 36 }), SearchOperation({ maxResults: 10, queryUnits: 0, grantUnits: 36 }),
+  SearchOperation({ maxResults: 10, queryUnits: 8, grantUnits: 257 }),
+  FeedOperation({ scoped: true, fieldUnits: 40 }), FeedOperation({ scoped: false, fieldUnits: 40 }), FeedOperation({ scoped: true, fieldUnits: 1025 }))
+pure val brokerReadValues: Set[BrokerRead] = Set(MailStatus, MailSearch, CalendarAccounts, CalendarList, CalendarFeed)
+pure def lawTheBrokerReadsOnlyListedGetRoutes(op: BrokerOperation): bool = brokerReads(op).every(r => listedGet(r))
+pure def lawAnyOtherOperationReadsNothing(op: BrokerOperation): bool = op == OtherOperation implies not(brokerAdmits(op))
+pure def lawASearchIsBounded(op: BrokerOperation): bool = match op {
+  | SearchOperation(s) => brokerAdmits(op) implies (s.maxResults <= 50 and s.queryUnits <= brokerQueryLimit)
+  | _ => true
+}
+```
+
+### Each read carries the credential the plan names for its route, and never a session or nothing
+
+The broker's reads are planned as a page's are, by the auth class of their
+listed route, so the agent's reads carry exactly the credential the device
+attaches for mail and calendar and the broker cannot choose another.
+
+```quint
+pure def brokerPlan(h: Holding, brokerRead: BrokerRead): CallPlan = {
+  val found = routeFor(Get, brokerPath(brokerRead))
+  match found {
+    | Listed(x) => attachFor(h, x.route.auth)
+    | Unlisted => Refuse({ why: NotListed })
+  }
+}
+pure def sendsWithTheDevice(a: Attach): bool = match a { | WithSession(x) => false | Bare => false | _ => true }
+pure def lawABrokerReadIsSentWithTheDeviceCredentialOrNotAtAll(h: Holding, brokerRead: BrokerRead): bool = {
+  val p = brokerPlan(h, brokerRead)
+  match p { | Send(s) => sendsWithTheDevice(s.attach) | _ => true }
+}
+```
+
+### The agent gets the cloud's status and body within the operation's limit, and never the credential that read it
+
+A feed reply holds at most 512 KiB and every other reply 256 KiB, the
+limits the calendar resident and the inbox accept; a larger one is refused
+whole (`502`). An operation the broker does not admit is refused (`409`)
+without a cloud call, and a read the device could not send, for want of a
+sign-in, a network or a listed route, or a calendar answer the broker could
+not read, is refused as unreachable (`503`).
+Otherwise the agent gets the cloud's status and body. The reply is the same
+whichever credential read it: no key, lease or session reaches the agent.
+
+```quint
+type BrokerForward = Forwarded({ attach: Attach, status: int, bytes: int }) | ForwardFailed
+type BrokerReason = OperationRefused | BrokerReplyTooLarge | CloudUnreachable
+type BrokerReply = BrokerAnswer({ status: int, bytes: int }) | BrokerRefusal({ status: int, reason: BrokerReason })
+pure def brokerReplyLimit(op: BrokerOperation): int = match op { | FeedOperation(f) => 524288 | _ => 262144 }
+pure def brokerReplyOf(op: BrokerOperation, forward: BrokerForward): BrokerReply =
+  if (not(brokerAdmits(op))) BrokerRefusal({ status: 409, reason: OperationRefused })
+  else match forward {
+    | Forwarded(x) => if (x.bytes > brokerReplyLimit(op)) BrokerRefusal({ status: 502, reason: BrokerReplyTooLarge }) else BrokerAnswer({ status: x.status, bytes: x.bytes })
+    | ForwardFailed => BrokerRefusal({ status: 503, reason: CloudUnreachable })
+  }
+pure def withAttach(forward: BrokerForward, attach: Attach): BrokerForward = match forward {
+  | Forwarded(x) => Forwarded({ ...x, attach: attach })
+  | ForwardFailed => ForwardFailed
+}
+pure val forwardValues: Set[BrokerForward] = Set(ForwardFailed, Forwarded({ attach: WithKey({ version: 1 }), status: 200, bytes: 2048 }),
+  Forwarded({ attach: WithKey({ version: 2 }), status: 401, bytes: 40 }), Forwarded({ attach: WithKey({ version: 1 }), status: 200, bytes: 262145 }),
+  Forwarded({ attach: Bare, status: 200, bytes: 524288 }), Forwarded({ attach: WithKey({ version: 1 }), status: 200, bytes: 524289 }))
+pure def lawNoReplyExceedsItsOperationsLimit(op: BrokerOperation, forward: BrokerForward): bool = {
+  val reply = brokerReplyOf(op, forward)
+  match reply { | BrokerAnswer(a) => a.bytes <= brokerReplyLimit(op) | BrokerRefusal(r) => true }
+}
+pure def lawARefusedOperationGetsNoCloudAnswer(op: BrokerOperation, forward: BrokerForward): bool =
+  not(brokerAdmits(op)) implies brokerReplyOf(op, forward) == BrokerRefusal({ status: 409, reason: OperationRefused })
+pure def lawTheReplyIsTheSameWhicheverCredentialReadIt(op: BrokerOperation, forward: BrokerForward, attach: Attach): bool =
+  brokerReplyOf(op, withAttach(forward, attach)) == brokerReplyOf(op, forward)
 ```

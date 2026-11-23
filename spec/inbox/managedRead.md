@@ -69,3 +69,22 @@ pure def alwaysUnfinishedReadHasNoMail(s: ManagedInboxRead): bool =
 pure def leadsToReadFinishes(s: ManagedInboxRead, later: ManagedInboxRead): bool =
   s.phase == ReadPending implies later.phase != ReadPending
 ```
+
+### The agent reads managed mail only through the device's broker, and without one the read is not offered
+
+The agent's managed mail reads go only to the device's mail and calendar
+broker ([cloud requests](../os/signIn/cloudRequests.md)), named by
+`ELIZA_MANAGED_GMAIL_READ_BROKER` on the loopback path
+`/__alpha-owner-gmail` with a bearer of 64 URL-safe characters in
+`ELIZA_API_TOKEN`; the agent never sends a mail route through its own cloud
+link or holds a mail credential. With no broker named, or an address or
+bearer that is not the device's private one, the read action and the access
+check are not offered, rather than failing at every call.
+
+```quint
+type MailReader = DeviceBroker | NotOffered
+pure def mailReaderOf(brokerNamed: bool, privateAddress: bool, bearerShaped: bool): MailReader =
+  if (brokerNamed and privateAddress and bearerShaped) DeviceBroker else NotOffered
+pure def lawMailIsReadOnlyThroughAPrivateBroker(brokerNamed: bool, privateAddress: bool, bearerShaped: bool): bool =
+  (mailReaderOf(brokerNamed, privateAddress, bearerShaped) == DeviceBroker) iff (brokerNamed and privateAddress and bearerShaped)
+```
