@@ -1,24 +1,23 @@
-// spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "The resident accepts only complete broker data for the exact selected source and window"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
-import { brokerCalendarByteLimit, managedCalendarWireAccepted, managedCatalogAccepted, type BrokerCalendarCall, type BrokerCalendarWire } from "../../gen/calendar__managedFeed.effect.vibe"
-import type { CalendarEvent, CalendarFeed, CalendarSummary } from "../model.vibe"
-import { BrokerEvent, BrokerFeedEnvelope, BrokerHealth, BrokerSource, BrokerSourcesEnvelope, BrokerWriteCapabilities, ManagedConnectionReference, ScopedGrant } from "./broker.schema.vibe"
+// spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "The resident accepts only a whole Cloud answer for the exact selected calendar"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
+import type { CloudLinkReply, CloudLinkRequest, CloudLinkService } from "@elizaos/agent"
+import { managedCalendarAnswerAccepted, managedCatalogAccepted, type ManagedCalendarAnswer, type ManagedCalendarCall } from "../../gen/calendar__managedFeed.effect.vibe"
+import { sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarFeed, type CalendarSourceKey, type CalendarSummary } from "../model.vibe"
+import { CalendarWriteNotAccepted, CalendarWriteUnconfirmed } from "../mutations/ledger.vibe"
 import { providerChangeTime } from "./cache.vibe"
+import {
+  exactFeedEvents, isManagedGoogleAccounts, isManagedGoogleCalendarRows, isManagedGoogleEventAnswer, isManagedGoogleFeed, isManagedGoogleRefusal,
+  type ManagedGoogleCalendarRow, type ManagedGoogleEvent,
+} from "./cloud-wire.schema.vibe"
 
 export const managedCalendarRequestTimeout = "30 seconds"
 
-export type BrokerOperation = "sources" | "feed" | "capabilities" | "mutation"
+export type BrokerOperation = "sources" | "feed" | "event"
 
-export type BrokerStage = "scope" | "http" | "body" | "schema"
+export type BrokerStage = "scope" | "http" | "schema"
 
 export error ManagedCalendarUnavailable { operation: BrokerOperation; stage: BrokerStage; httpStatus: number | null }
 
-export interface BrokerEndpoint {
-  readonly url: string
-  readonly token: Redacted.Redacted<string>
-}
-
-export type ManagedCalendarSource = CalendarSummary & { readonly managedGoogleConnectionId?: string }
+export type ManagedCalendarSource = CalendarSummary & { readonly googleAccountId: string }
 
 export interface FeedWindow {
   readonly timeMin: string
@@ -26,170 +25,154 @@ export interface FeedWindow {
   readonly timeZone: string
 }
 
+export interface ManagedCalendarTarget {
+  readonly grantId: string
+  readonly calendarId: string
+  readonly googleAccountId: string
+}
+
+type WriteFailure = CalendarWriteNotAccepted | CalendarWriteUnconfirmed
+
 export interface ManagedCalendarBroker {
   readonly acceptsGrant: (grantId: string) => boolean
-  sources(): readonly ManagedCalendarSource[]!ManagedCalendarUnavailable!HttpClient.HttpClient
-  feed(source: CalendarSummary, window: FeedWindow, agentId: string): CalendarFeed!ManagedCalendarUnavailable!HttpClient.HttpClient
-  writeCapabilities(grantId: string, calendarId: string): typeof BrokerWriteCapabilities.Type!ManagedCalendarUnavailable!HttpClient.HttpClient
-  mutation(input: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>>!ManagedCalendarUnavailable!HttpClient.HttpClient
+  sources(): readonly ManagedCalendarSource[]!ManagedCalendarUnavailable
+  feed(source: CalendarSummary, window: FeedWindow, agentId: string): CalendarFeed!ManagedCalendarUnavailable
+  event(source: CalendarSourceKey, externalId: string, agentId: string): (CalendarEvent | undefined)!ManagedCalendarUnavailable
+  create(target: ManagedCalendarTarget, fields: CalendarEventFields, idempotencyKey: string, agentId: string): CalendarEvent!WriteFailure
+  change(target: ManagedCalendarTarget, externalId: string, revision: string, fields: CalendarEventFields, agentId: string): CalendarEvent!WriteFailure
 }
 
-const isScopedGrant = Schema.is(ScopedGrant)
-const isSource = Schema.is(BrokerSource)
-const isEvent = Schema.is(BrokerEvent)
-const isHealth = Schema.is(BrokerHealth)
-const isFeedEnvelope = Schema.is(BrokerFeedEnvelope)
-const isSourcesEnvelope = Schema.is(BrokerSourcesEnvelope)
-const isCapabilities = Schema.is(BrokerWriteCapabilities)
-const isConnectionReference = Schema.is(ManagedConnectionReference)
+export type CloudCalendarLink = Pick<CloudLinkService, "request">
 
-export function parseBrokerEndpoint(endpoint: string, token: string): BrokerEndpoint | undefined {
-  let url: URL
-  try {
-    url = new URL(endpoint)
-  } catch {
-    return undefined
-  }
-  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || url.port === "" || url.pathname !== "/__alpha-owner-gmail"
-    || url.search !== "" || url.hash !== "" || url.username !== "" || url.password !== "" || !/^[A-Za-z0-9_-]{64}$/.test(token)) return undefined
-  return { url: url.href, token: Redacted.make(token) }
+const google = "/api/v1/eliza/google"
+const calendarRead = "google.calendar.read"
+const query = (values: Readonly<Record<string, string>>) => new URLSearchParams(values).toString()
+const eventPath = (externalId: string) => `${google}/calendar/events/${encodeURIComponent(externalId)}`
+
+export function managedEventId(grantId: string, calendarId: string, externalId: string): string {
+  return `${grantId}:${encodeURIComponent(calendarId)}:${externalId}`
 }
 
-export effect function configuredBroker(endpoint: string | undefined, token: string | undefined): (ManagedCalendarBroker | undefined)!ManagedCalendarUnavailable {
-  if (endpoint === undefined || endpoint === "") return undefined
-  const parsed = parseBrokerEndpoint(endpoint, token ?? "")
-  if (parsed === undefined) throw new ManagedCalendarUnavailable({ operation: "sources", stage: "scope", httpStatus: null })
-  return managedBroker(parsed)
+export function managedExternalId(source: CalendarSourceKey, eventId: string): string | undefined {
+  const prefix = `${source.grantId}:${encodeURIComponent(source.calendarId)}:`
+  return eventId.startsWith(prefix) && eventId.length > prefix.length ? eventId.slice(prefix.length) : undefined
 }
 
-type Reply = {
-  readonly status: number
-  readonly readable: boolean
-  readonly bytesRead: number
-  readonly value: Readonly<Record<string, unknown>> | undefined
-}
-
-function record(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-function jsonObject(bytes: Uint8Array): Readonly<Record<string, unknown>> | undefined {
-  try {
-    const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
-    return record(value) ? value : undefined
-  } catch {
-    return undefined
-  }
-}
-
-function stageOf(wire: BrokerCalendarWire, limit: number): BrokerStage {
-  if (!wire.scopeValid) return "scope"
-  if (!wire.httpSuccess) return "http"
-  if (!wire.bodyReadable || wire.bytesRead < 0 || wire.bytesRead > limit) return "body"
-  return "schema"
-}
-
-function wireOf(reply: Reply, limit: number, checks: Pick<BrokerCalendarWire, "envelopeValid" | "exactWindowAndCalendar" | "onlyFreshHealth" | "exactEvents">): BrokerCalendarWire {
+export function cloudEventOf(card: ManagedGoogleEvent, grantId: string, agentId: string, syncedAt: string): CalendarEvent {
+  const metadata = card.etag === undefined || card.etag === null ? card.metadata : { ...card.metadata, etag: card.etag }
   return {
-    scopeValid: true,
-    httpSuccess: reply.status >= 200 && reply.status < 300,
-    bodyReadable: reply.readable,
-    bytesRead: reply.readable ? reply.bytesRead : limit + 1,
-    jsonObject: reply.value !== undefined,
-    ...checks,
+    id: managedEventId(grantId, card.calendarId, card.externalId), externalId: card.externalId, agentId, provider: "google", side: "owner",
+    calendarId: card.calendarId, title: card.title, description: card.description, location: card.location, status: card.status,
+    startAt: card.startAt, endAt: card.endAt, isAllDay: card.isAllDay, timezone: card.timezone, htmlLink: card.htmlLink,
+    conferenceLink: card.conferenceLink, organizer: card.organizer, attendees: card.attendees, metadata, recurrence: null,
+    recurringEventId: card.seriesId ?? null, syncedAt, updatedAt: providerChangeTime(metadata) ?? "", grantId, connectorAccountId: grantId,
   }
 }
 
-const everyCheck = { envelopeValid: true, exactWindowAndCalendar: true, onlyFreshHealth: true, exactEvents: true }
-
-export function brokerEventOf(row: typeof BrokerEvent.Type, agentId: string, syncedAt: string): CalendarEvent {
-  const metadata = row.metadata ?? {}
+function sourceOf(grantId: string, row: ManagedGoogleCalendarRow): ManagedCalendarSource {
   return {
-    id: row.id, externalId: row.externalId, agentId, provider: "google", side: "owner", calendarId: row.calendarId,
-    title: row.title, description: row.description ?? "", location: row.location ?? "", status: row.status ?? "confirmed",
-    startAt: row.startAt, endAt: row.endAt, isAllDay: row.isAllDay ?? false, timezone: row.timezone ?? null,
-    htmlLink: row.htmlLink ?? null, conferenceLink: row.conferenceLink ?? null, organizer: row.organizer ?? null,
-    attendees: row.attendees ?? [], metadata, recurrence: row.recurrence ?? null, recurringEventId: row.recurringEventId ?? null,
-    syncedAt: row.syncedAt ?? syncedAt, updatedAt: providerChangeTime(metadata) ?? "",
-    grantId: row.grantId, connectorAccountId: row.connectorAccountId ?? row.grantId,
-    ...(row.calendarSummary === undefined ? {} : { calendarSummary: row.calendarSummary }),
-    ...(row.accountEmail === undefined ? {} : { accountEmail: row.accountEmail }),
+    provider: "google", side: "owner", grantId, connectorAccountId: grantId, calendarId: row.calendarId,
+    accountEmail: row.accountEmail === "" ? null : row.accountEmail, summary: row.label === "" ? row.calendarId : row.label, description: null,
+    primary: row.calendarId === row.accountEmail, accessRole: row.write ? row.accessRole : "reader", timeZone: null, selected: true,
+    includeInFeed: true, googleAccountId: row.accountId,
   }
 }
 
-export function managedBroker(endpoint: BrokerEndpoint): ManagedCalendarBroker {
-  effect function call(operation: BrokerOperation, kind: BrokerCalendarCall, calendar: object): Reply!ManagedCalendarUnavailable!HttpClient.HttpClient {
-    const lost = (status: number | null) => new ManagedCalendarUnavailable({ operation, stage: status === null ? "http" : "body", httpStatus: status })
-    const body = try Effect.try({ try: () => JSON.stringify({ calendar }), catch: () => new ManagedCalendarUnavailable({ operation, stage: "scope", httpStatus: null }) })
-    const request = HttpClientRequest.bodyText(HttpClientRequest.setHeader(HttpClientRequest.post(endpoint.url),
-      "authorization", "Bearer " + Redacted.value(endpoint.token)), body, "application/json")
-    const response = timeout(Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" }),
-      managedCalendarRequestTimeout) catch effect () => { throw lost(null) }
-    if (response.status < 200 || response.status >= 300) {
-      Stream.runDrain(response.stream) catch () => undefined
-      return { status: response.status, readable: false, bytesRead: 0, value: undefined }
+const day = (instant: string) => instant.slice(0, 10)
+const nextDay = (instant: string) => new Date(Date.parse(`${day(instant)}T00:00:00.000Z`) + 86_400_000).toISOString().slice(0, 10)
+
+function eventBody(fields: CalendarEventFields): Readonly<Record<string, unknown>> {
+  const timing = fields.isAllDay
+    ? { allDay: true, startAt: day(fields.startAt), endAt: day(fields.endAt) > day(fields.startAt) ? day(fields.endAt) : nextDay(fields.startAt) }
+    : { startAt: fields.startAt, endAt: fields.endAt, ...(fields.timeZone === "" ? {} : { timeZone: fields.timeZone }) }
+  return { title: fields.title, description: fields.description, location: fields.location, ...timing,
+    ...(fields.attendees === undefined ? {} : { attendees: fields.attendees.map((email) => ({ email })) }) }
+}
+
+function statusOf(reply: CloudLinkReply): number {
+  return reply.kind === "changes-off" ? 403 : reply.status
+}
+
+function answerOf(reply: CloudLinkReply, facts: Pick<ManagedCalendarAnswer, "shapeValid"> & Partial<ManagedCalendarAnswer>): ManagedCalendarAnswer {
+  return { grantListed: true, answered: reply.kind === "answered", exactCalendar: true, exactEvents: true, ...facts }
+}
+
+export function cloudCalendar(link: CloudCalendarLink): ManagedCalendarBroker {
+  let listedGrants = new Set<string>()
+  const acceptsGrant = (grantId: string) => listedGrants.has(grantId)
+  const notAccepted = (code: string, message: string, retryable: boolean) => new CalendarWriteNotAccepted({ failure: { code, message, retryable } })
+  const unconfirmed = (code: string, message: string) => new CalendarWriteUnconfirmed({ failure: { code, message, retryable: false } })
+  const unknownWrite = () => unconfirmed("CALENDAR_MANAGED_WRITE_UNKNOWN", "The managed calendar did not confirm the change, so check it before trying again.")
+
+  effect function ask(operation: BrokerOperation, request: CloudLinkRequest): CloudLinkReply!ManagedCalendarUnavailable {
+    const lost = new ManagedCalendarUnavailable({ operation, stage: "http", httpStatus: null })
+    return timeout(tryPromise({ try: (signal) => link.request({ ...request, signal }), catch: () => lost }), managedCalendarRequestTimeout) catch effect () => { throw lost }
+  }
+
+  effect function admit(operation: BrokerOperation, kind: ManagedCalendarCall, reply: CloudLinkReply, answer: ManagedCalendarAnswer): void!ManagedCalendarUnavailable {
+    if (managedCalendarAnswerAccepted(kind, answer)) return
+    throw new ManagedCalendarUnavailable({ operation, stage: !answer.grantListed ? "scope" : !answer.answered ? "http" : "schema", httpStatus: statusOf(reply) })
+  }
+
+  effect function written(target: ManagedCalendarTarget, reply: CloudLinkReply, agentId: string): CalendarEvent!WriteFailure {
+    switch (reply.kind) {
+      case "changes-off":
+        throw notAccepted("CALENDAR_MANAGED_EDITS_OFF", "Calendar edits are turned off in Settings › Google accounts. Google stays connected; nothing was changed.", false)
+      case "refused": {
+        const refusal = isManagedGoogleRefusal(reply.body) ? reply.body : undefined
+        if (refusal?.outcome !== "not_accepted") throw unknownWrite()
+        if (refusal.error === "precondition_failed") throw notAccepted("CALENDAR_TARGET_CHANGED", "The event changed in Google Calendar since it was reviewed. Nothing was changed.", false)
+        throw notAccepted("CALENDAR_MANAGED_REFUSED", "The managed Google calendar refused the change before taking it. Nothing was changed.", refusal.retryable)
+      }
+      case "answered": {
+        const event = isManagedGoogleEventAnswer(reply.body) && reply.body.event.calendarId === target.calendarId ? reply.body.event : undefined
+        if (event === undefined) throw unconfirmed("CALENDAR_MANAGED_RESULT_INVALID", "The managed calendar's answer did not name the changed event, so the change is unconfirmed.")
+        return cloudEventOf(event, target.grantId, agentId, "")
+      }
     }
-    const limit = brokerCalendarByteLimit(kind)
-    const chunks: Uint8Array[] = []
-    let size = 0
-    for try (const chunk of Stream.mapError(response.stream, () => lost(response.status))) {
-      size += chunk.length
-      if (size > limit) break
-      chunks.push(chunk)
-    }
-    if (size > limit) return { status: response.status, readable: true, bytesRead: size, value: undefined }
-    const bytes = new Uint8Array(size)
-    chunks.reduce((offset, chunk) => { bytes.set(chunk, offset); return offset + chunk.length }, 0)
-    return { status: response.status, readable: true, bytesRead: size, value: jsonObject(bytes) }
   }
 
-  effect function admitted(operation: BrokerOperation, kind: BrokerCalendarCall, reply: Reply, checks: Parameters<typeof wireOf>[2]): void!ManagedCalendarUnavailable {
-    const limit = brokerCalendarByteLimit(kind)
-    const wire = wireOf(reply, limit, checks)
-    if (!managedCalendarWireAccepted(kind, wire)) throw new ManagedCalendarUnavailable({ operation, stage: stageOf(wire, limit), httpStatus: reply.status })
+  effect function send(request: CloudLinkRequest): CloudLinkReply!CalendarWriteUnconfirmed {
+    return ask("event", request) catch effect () => { throw unknownWrite() }
   }
 
   return {
-    acceptsGrant: (grantId) => isScopedGrant(grantId),
+    acceptsGrant,
 
     effect sources() {
-      const reply = try call("sources", "CalendarSourcesCall", { operation: "sources" })
-      const rows = reply.value !== undefined && isSourcesEnvelope(reply.value) ? reply.value.calendars : undefined
-      const sources = (rows ?? []).filter(isSource)
-      const everySourceValid = rows !== undefined && sources.length === rows.length
-        && sources.every((source) => source.connectorAccountId === source.grantId)
-      try admitted("sources", "CalendarSourcesCall", reply, { ...everyCheck, envelopeValid: rows !== undefined && managedCatalogAccepted(rows.length, everySourceValid) })
-      return sources.map((source): ManagedCalendarSource => ({
-        provider: "google", side: "owner", grantId: source.grantId, connectorAccountId: source.connectorAccountId,
-        calendarId: source.calendarId, accountEmail: source.accountEmail ?? null, summary: source.summary,
-        description: source.description ?? null, primary: source.primary ?? false, accessRole: source.accessRole,
-        timeZone: source.timeZone ?? null, selected: true, includeInFeed: true,
-        ...(isConnectionReference(source.managedGoogleConnectionId) ? { managedGoogleConnectionId: source.managedGoogleConnectionId } : {}),
-      }))
+      const accounts = try ask("sources", { method: "GET", path: `${google}/accounts` })
+      const known = accounts.kind === "answered" && isManagedGoogleAccounts(accounts.body) ? accounts.body : undefined
+      try admit("sources", "CalendarSourcesCall", accounts, answerOf(accounts, { shapeValid: known !== undefined }))
+      const grants = (known ?? []).flatMap((account) => account.connected && account.connectionId !== null && account.grantedCapabilities.includes(calendarRead) ? [account.connectionId] : [])
+      const rows: ManagedCalendarSource[] = []
+      for (const grantId of grants) {
+        const reply = try ask("sources", { method: "GET", path: `${google}/calendar/calendars?${query({ grantId })}` })
+        const listed = reply.kind === "answered" && isManagedGoogleCalendarRows(reply.body) ? reply.body : undefined
+        const once = listed !== undefined && new Set(listed.map((row) => row.calendarId)).size === listed.length
+        try admit("sources", "CalendarSourcesCall", reply, answerOf(reply, { shapeValid: once }))
+        rows.push(...(listed ?? []).filter((row) => row.read).map((row) => sourceOf(grantId, row)))
+      }
+      if (!managedCatalogAccepted(rows.length, new Set(rows.map(sourceKeyId)).size === rows.length)) {
+        throw new ManagedCalendarUnavailable({ operation: "sources", stage: "schema", httpStatus: 200 })
+      }
+      listedGrants = new Set(rows.map((row) => row.grantId))
+      return rows
     },
 
     effect feed(source, window, agentId) {
-      if (!isScopedGrant(source.grantId) || source.connectorAccountId !== source.grantId) {
-        throw new ManagedCalendarUnavailable({ operation: "feed", stage: "scope", httpStatus: null })
-      }
-      const reply = try call("feed", "CalendarFeedCall", { operation: "feed", grantId: source.grantId, calendarId: source.calendarId, ...window })
-      const envelope = reply.value !== undefined && isFeedEnvelope(reply.value) ? reply.value.feed : undefined
-      const health = envelope?.sources.length === 1 ? envelope.sources[0] : undefined
-      const events = (envelope?.events ?? []).filter(isEvent)
-      try admitted("feed", "CalendarFeedCall", reply, {
-        envelopeValid: envelope !== undefined,
-        exactWindowAndCalendar: envelope !== undefined && envelope.calendarId === source.calendarId && envelope.timeMin === window.timeMin
-          && envelope.timeMax === window.timeMax && envelope.state === "complete" && envelope.source === "synced",
-        onlyFreshHealth: health !== undefined && isHealth(health) && health.status === "fresh" && health.key.grantId === source.grantId
-          && health.key.calendarId === source.calendarId,
-        exactEvents: envelope !== undefined && events.length === envelope.events.length
-          && events.every((event) => event.grantId === source.grantId && event.calendarId === source.calendarId),
-      })
-      const syncedAt = envelope?.syncedAt ?? ""
+      if (!acceptsGrant(source.grantId)) throw new ManagedCalendarUnavailable({ operation: "feed", stage: "scope", httpStatus: null })
+      const reply = try ask("feed", { method: "GET", path: `${google}/calendar/feed?${query({ grantId: source.grantId, calendarId: source.calendarId, ...window })}` })
+      const answered = reply.kind === "answered" && isManagedGoogleFeed(reply.body) ? reply.body : undefined
+      try admit("feed", "CalendarFeedCall", reply, answerOf(reply, {
+        shapeValid: answered !== undefined,
+        exactCalendar: answered?.calendarId === source.calendarId,
+        exactEvents: answered !== undefined && exactFeedEvents(answered.events, source.calendarId),
+      }))
+      const syncedAt = answered?.syncedAt ?? ""
       const key = { provider: source.provider, side: source.side, grantId: source.grantId, connectorAccountId: source.connectorAccountId, calendarId: source.calendarId }
       const feed: CalendarFeed = {
         calendarId: source.calendarId,
-        events: events.map((event) => brokerEventOf(event, agentId, syncedAt)),
+        events: (answered?.events ?? []).map((event) => cloudEventOf(event, source.grantId, agentId, syncedAt)),
         source: "synced",
         state: "complete",
         sources: [{ key, summary: source.summary, accessRole: source.accessRole, status: "fresh", syncedAt }],
@@ -200,21 +183,25 @@ export function managedBroker(endpoint: BrokerEndpoint): ManagedCalendarBroker {
       return feed
     },
 
-    effect writeCapabilities(grantId, calendarId) {
-      if (!isScopedGrant(grantId) || calendarId === "") throw new ManagedCalendarUnavailable({ operation: "capabilities", stage: "scope", httpStatus: null })
-      const reply = try call("capabilities", "CalendarOtherCall", { operation: "write-capabilities", grantId, calendarId })
-      const capabilities = reply.value !== undefined && isCapabilities(reply.value) && reply.value.grantId === grantId && reply.value.calendarId === calendarId
-        ? reply.value : undefined
-      try admitted("capabilities", "CalendarOtherCall", reply, { ...everyCheck, envelopeValid: capabilities !== undefined })
-      if (capabilities === undefined) throw new ManagedCalendarUnavailable({ operation: "capabilities", stage: "schema", httpStatus: reply.status })
-      return capabilities
+    effect event(source, externalId, agentId) {
+      if (!acceptsGrant(source.grantId)) throw new ManagedCalendarUnavailable({ operation: "event", stage: "scope", httpStatus: null })
+      const reply = try ask("event", { method: "GET", path: `${eventPath(externalId)}?${query({ grantId: source.grantId, calendarId: source.calendarId })}` })
+      if (reply.kind === "refused" && reply.status === 404) return undefined
+      const card = reply.kind === "answered" && isManagedGoogleEventAnswer(reply.body) ? reply.body.event : undefined
+      try admit("event", "CalendarOtherCall", reply, answerOf(reply, { shapeValid: card?.calendarId === source.calendarId && card.externalId === externalId }))
+      return card === undefined ? undefined : cloudEventOf(card, source.grantId, agentId, "")
     },
 
-    effect mutation(input) {
-      const reply = try call("mutation", "CalendarOtherCall", input)
-      try admitted("mutation", "CalendarOtherCall", reply, everyCheck)
-      if (reply.value === undefined) throw new ManagedCalendarUnavailable({ operation: "mutation", stage: "schema", httpStatus: reply.status })
-      return reply.value
+    effect create(target, fields, idempotencyKey, agentId) {
+      const reply = try send({ method: "POST", path: `${google}/calendar/events`, idempotencyKey,
+        body: { grantId: target.grantId, calendarId: target.calendarId, expectedAccountId: target.googleAccountId, ...eventBody(fields) } })
+      return try written(target, reply, agentId)
+    },
+
+    effect change(target, externalId, revision, fields, agentId) {
+      const reply = try send({ method: "PATCH", path: eventPath(externalId), ifMatch: revision,
+        body: { grantId: target.grantId, calendarId: target.calendarId, expectedAccountId: target.googleAccountId, ...eventBody(fields) } })
+      return try written(target, reply, agentId)
     },
   }
 }

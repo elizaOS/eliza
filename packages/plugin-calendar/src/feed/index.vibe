@@ -1,6 +1,6 @@
 // spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "Story: Show one checked copy of a mapped event after a provider read"; spec/calendar/managedFeed.md, "Story: Keep each cached copy under its own source and its provider's edit time"; spec/calendar/aggregateMerge.md, "Story: See one occurrence with its precise source evidence"
-export { configuredBroker, managedBroker, managedCalendarRequestTimeout, ManagedCalendarUnavailable, parseBrokerEndpoint,
-  type BrokerEndpoint, type BrokerOperation, type BrokerStage, type FeedWindow, type ManagedCalendarBroker, type ManagedCalendarSource } from "./broker.vibe"
+export { cloudCalendar, cloudEventOf, managedCalendarRequestTimeout, ManagedCalendarUnavailable, managedEventId, managedExternalId,
+  type BrokerOperation, type BrokerStage, type CloudCalendarLink, type FeedWindow, type ManagedCalendarBroker, type ManagedCalendarSource, type ManagedCalendarTarget } from "./broker.vibe"
 export { cacheWriteAllowed, CacheStoreFailed, providerChangeTime, writeFeedCache, type CacheWrite, type ImportedSourceScope, type ManagedCacheStore } from "./cache.vibe"
 export { intersectsWindow, managedFeed, ManagedReadCancelled, mappedPullOffers, PurgeRefused, type AggregatePorts, type AggregateRead,
   type LinkedControlView, type ManagedFeed, type ManagedFeedOptions, type PurgeReceipt, type PurgeRequest } from "./managed.vibe"

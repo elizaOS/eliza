@@ -1,6 +1,5 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
 import { sha256Hex } from "@elizaos/core"
-import { FetchHttpClient } from "effect/http"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { attendeeNotice, eventVisible, invitationVerdict, readScope, sourceRead, writeRoute, type AttendeeNotice, type SourceRead } from "../../gen/calendar__actions.effect.vibe"
 import type { ManagedCalendarBroker } from "../feed/broker.vibe"
@@ -139,7 +138,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
   const resident = try Effect.provide(residentCalendar(), rows)
   const residentAccount: CalendarAccount = { agentId: options.agentId, ownerId: "owner", accountId: `resident:${options.agentId}` }
   const managed = options.managed === undefined ? undefined
-    : try Effect.provide(Effect.provideService(managedGoogleCalendar({ broker: options.managed, owner: residentAccount, store }), Scope.Scope, try Scope.make()), FetchHttpClient.layer)
+    : try Effect.provideService(managedGoogleCalendar({ broker: options.managed, owner: residentAccount, store }), Scope.Scope, try Scope.make())
   const providers = try Ref.make(new Map<CalendarProvider, CalendarProviderPort>(managed === undefined ? [["eliza", resident]] : [["eliza", resident], ["google", managed]]))
   const active = try Ref.make<CalendarAccount | undefined>(residentAccount)
   const ledger = try calendarMutationLedger()

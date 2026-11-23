@@ -1,21 +1,16 @@
 // spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"
-import { HttpClient } from "effect/http"
 import type * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { managedChangeAllowed } from "../../gen/calendar__actions.effect.vibe"
-import { brokerEventOf, type ManagedCalendarBroker, type ManagedCalendarSource } from "../feed/broker.vibe"
-import { BrokerEvent } from "../feed/broker.schema.vibe"
+import { managedExternalId, type ManagedCalendarBroker, type ManagedCalendarSource, type ManagedCalendarTarget } from "../feed/broker.vibe"
 import { CacheStoreFailed, type ImportedSourceScope, type ManagedCacheStore } from "../feed/cache.vibe"
 import { managedFeed } from "../feed/managed.vibe"
-import type { CalendarEvent, CalendarEventFields, CalendarSourceKey } from "../model.vibe"
-import { CalendarWriteNotAccepted, CalendarWriteUnconfirmed } from "../mutations/ledger.vibe"
+import type { CalendarEvent, CalendarSourceKey } from "../model.vibe"
+import { CalendarWriteNotAccepted } from "../mutations/ledger.vibe"
 import { EventRecord } from "../mutations/records.schema.vibe"
-import { reviewedRecurrenceLines } from "../series/recurrence-rule.vibe"
 import { CalendarSourceUnavailable, eventInWindow, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
 
 const cacheKey = "calendar.managed.events"
 const decodeCache = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Record(Schema.String, EventRecord)))
-const isEvent = Schema.is(BrokerEvent)
-const refusalCode = /^CALENDAR_SYNC_[A-Z_]{1,80}$/
 
 effect function managedCache(store: KeyValueStore.KeyValueStore): ManagedCacheStore!! {
   const serialize = (try Semaphore.make(1)).withPermits(1)
@@ -59,20 +54,8 @@ export interface ManagedCalendarOptions {
   readonly store: KeyValueStore.KeyValueStore
 }
 
-const day = (instant: string) => instant.slice(0, 10)
-const nextDay = (instant: string) => new Date(Date.parse(`${day(instant)}T00:00:00.000Z`) + 86_400_000).toISOString().slice(0, 10)
-
-function semantic(fields: CalendarEventFields): Readonly<Record<string, unknown>> {
-  const timing = fields.isAllDay
-    ? { allDay: { startDate: day(fields.startAt), endDateExclusive: day(fields.endAt) > day(fields.startAt) ? day(fields.endAt) : nextDay(fields.startAt) } }
-    : { allDay: null, startsAtMs: Date.parse(fields.startAt), endsAtMs: Date.parse(fields.endAt) }
-  return { title: fields.title, description: fields.description, location: fields.location, timeZone: fields.timeZone, ...timing,
-    ...(fields.attendees === undefined ? {} : { attendees: [...fields.attendees] }) }
-}
-
-export effect function managedGoogleCalendar(options: ManagedCalendarOptions): CalendarProviderPort!!(Scope.Scope | HttpClient.HttpClient) {
+export effect function managedGoogleCalendar(options: ManagedCalendarOptions): CalendarProviderPort!!Scope.Scope {
   const { broker, owner } = options
-  const client = try HttpClient.HttpClient
   const cache = try managedCache(options.store)
   const feed = try managedFeed({ agentId: owner.agentId, broker, store: cache })
   const listedRows = try Ref.make(new Map<string, ManagedCalendarSource>())
@@ -81,11 +64,9 @@ export effect function managedGoogleCalendar(options: ManagedCalendarOptions): C
   const owned = (account: CalendarAccount, event: CalendarEvent): CalendarEvent => ({ ...event, connectorAccountId: account.accountId })
   const unavailable = (reason: string) => new CalendarSourceUnavailable({ provider: "google", reason })
   const notAccepted = (code: string, message: string, retryable: boolean) => new CalendarWriteNotAccepted({ failure: { code, message, retryable } })
-  const unconfirmed = (code: string, message: string) => new CalendarWriteUnconfirmed({ failure: { code, message, retryable: false } })
-  const http = <A, E>(call: A!E!HttpClient.HttpClient) => Effect.provideService(call, HttpClient.HttpClient, client)
 
   effect function catalog(): readonly ManagedCalendarSource[]!CalendarSourceUnavailable {
-    const rows = try mapError(http(broker.sources()), () => unavailable("The managed Google calendars could not be listed"))
+    const rows = try mapError(broker.sources(), () => unavailable("The managed Google calendars could not be listed"))
     try Ref.set(listedRows, new Map(rows.map((row) => [rowKey(row.grantId, row.calendarId), row])))
     return rows
   }
@@ -101,33 +82,17 @@ export effect function managedGoogleCalendar(options: ManagedCalendarOptions): C
     return rows.filter((event) => event.calendarId === row.calendarId && eventInWindow(event, timeMin, timeMax)).map((event) => owned(account, event))
   }
 
-  effect function written(account: CalendarAccount, source: CalendarSourceKey, reply: Readonly<Record<string, unknown>>): CalendarEvent!(CalendarWriteNotAccepted | CalendarWriteUnconfirmed) {
-    const refusal = reply.calendarFailure
-    if (typeof refusal === "object" && refusal !== null) {
-      const code = "code" in refusal && typeof refusal.code === "string" && refusalCode.test(refusal.code) ? refusal.code : undefined
-      const outcome = "outcome" in refusal ? refusal.outcome : undefined
-      if (code === undefined || (outcome !== "not_accepted" && outcome !== "precondition_failed")) throw unconfirmed("CALENDAR_MANAGED_REFUSAL_INVALID", "The managed calendar's answer could not be read, so the change is unconfirmed.")
-      throw notAccepted(code, "The managed Google calendar refused the change before taking it. Nothing was changed.", outcome === "not_accepted")
+  effect function writable(source: CalendarSourceKey): ManagedCalendarTarget!CalendarWriteNotAccepted {
+    const row = try mapError(brokerRow(source), () => notAccepted("CALENDAR_MANAGED_WRITE_UNAVAILABLE", "Calendar write access could not be verified. Nothing was changed.", true))
+    if (row === undefined || (row.accessRole !== "owner" && row.accessRole !== "writer")) {
+      throw notAccepted("CALENDAR_SOURCE_NOT_WRITABLE", "That calendar is not one this account can write.", false)
     }
-    const event = reply.event
-    if (!isEvent(event) || event.grantId !== source.grantId || event.calendarId !== source.calendarId) {
-      throw unconfirmed("CALENDAR_MANAGED_RESULT_INVALID", "The managed calendar's answer did not name the changed event, so the change is unconfirmed.")
-    }
-    return owned(account, brokerEventOf(event, account.agentId, ""))
-  }
-
-  effect function execute(account: CalendarAccount, source: CalendarSourceKey, payload: Readonly<Record<string, unknown>>, preflight: Readonly<Record<string, unknown>>) {
-    const capabilities = try mapError(http(broker.writeCapabilities(source.grantId, source.calendarId)),
-      () => notAccepted("CALENDAR_MANAGED_WRITE_UNAVAILABLE", "Calendar write access could not be verified. Nothing was changed.", true))
-    const reply = try mapError(http(broker.mutation({ operation: "write-execute", grantId: source.grantId, calendarId: source.calendarId, accountId: capabilities.accountId,
-      payload: { side: "owner", grantId: source.grantId, calendarId: source.calendarId, notifyAttendees: false, ...payload }, preflight })),
-      () => unconfirmed("CALENDAR_MANAGED_WRITE_UNKNOWN", "The managed calendar did not confirm the change, so check it before trying again."))
-    return try written(account, source, reply)
+    return { grantId: row.grantId, calendarId: row.calendarId, googleAccountId: row.googleAccountId }
   }
 
   return {
     provider: "google",
-    recurrenceLines: true,
+    recurrenceLines: false,
     notifies: false,
     effect sources(account) {
       if (!mine(account)) return []
@@ -138,29 +103,33 @@ export effect function managedGoogleCalendar(options: ManagedCalendarOptions): C
       const row = try brokerRow(source)
       if (row === undefined) throw unavailable("That managed Google calendar is no longer listed")
       const window = { timeMin: new Date(timeMin).toISOString(), timeMax: new Date(timeMax).toISOString(), timeZone: row.timeZone ?? "UTC" }
-      const fed = http(feed.read(row, window)) catch () => undefined
+      const fed = feed.read(row, window) catch () => undefined
       if (fed === undefined) return { events: try kept(account, row, timeMin, timeMax), complete: false }
       return { events: fed.events.map((event) => owned(account, event)).filter((event) => eventInWindow(event, timeMin, timeMax)), complete: fed.state === "complete" }
     },
     effect get(account, source, eventId) {
-      if (!mine(account)) return undefined
-      const reply = try mapError(http(broker.mutation({ operation: "write-target", grantId: source.grantId, calendarId: source.calendarId, eventId })),
-        () => unavailable("The managed Google event could not be read"))
-      const event = reply.event
-      if (!isEvent(event) || event.grantId !== source.grantId || event.calendarId !== source.calendarId) throw unavailable("The managed Google event did not read back from its calendar")
-      return owned(account, brokerEventOf(event, account.agentId, ""))
+      const externalId = managedExternalId(source, eventId)
+      if (!mine(account) || externalId === undefined) return undefined
+      const row = try brokerRow(source)
+      if (row === undefined) throw unavailable("That managed Google calendar is no longer listed")
+      const event = try mapError(broker.event(row, externalId, account.agentId), () => unavailable("The managed Google event could not be read"))
+      return event === undefined ? undefined : owned(account, event)
     },
     effect create(account, source, fields, recurrence, idempotencyKey) {
-      return try execute(account, source, { action: "schedule_event", ...semantic(fields), ...(recurrence === null ? {} : { recurrence: reviewedRecurrenceLines(recurrence) }) },
-        { idempotencyKey })
+      if (!managedChangeAllowed("ManagedCreate", recurrence === null)) {
+        throw notAccepted("CALENDAR_RECURRENCE_UNSUPPORTED", "That calendar's provider can't save a repeating event, so it was not created.", false)
+      }
+      const target = try writable(source)
+      return owned(account, try broker.create(target, fields, idempotencyKey, account.agentId))
     },
     effect update(account, source, eventId, scope, fields, expectedVersion) {
       if (!managedChangeAllowed("ManagedEdit", scope === "instance")) {
         throw notAccepted("CALENDAR_MANAGED_SERIES_REVIEW_REQUIRED", "The managed Google calendar edits one occurrence at a time; change the whole series in Calendar. Nothing was changed.", false)
       }
-      const providerEventId = eventId.startsWith(`${source.grantId}:`) ? eventId.slice(source.grantId.length + 1) : eventId
-      return try execute(account, source, { action: "modify_event", eventId, expectedProviderVersion: expectedVersion, patch: semantic(fields) },
-        { providerEventId, providerVersion: expectedVersion })
+      const externalId = managedExternalId(source, eventId)
+      if (externalId === undefined) throw notAccepted("CALENDAR_EVENT_NOT_FOUND", "That event is no longer in the calendar.", false)
+      const target = try writable(source)
+      return owned(account, try broker.change(target, externalId, expectedVersion, fields, account.agentId))
     },
   }
 }
