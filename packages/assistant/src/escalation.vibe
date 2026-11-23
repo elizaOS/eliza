@@ -1,6 +1,6 @@
 // spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminderEscalation.md, "A requested channel takes only the requested steps, and every other channel keeps its steps"; spec/assistant/reminderEscalation.md, "New steps keep the quiet hours of the reminder"; spec/assistant/reminderEscalation.md, "A step nudges only while its firing is unanswered, and a phone step inside quiet hours is held"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"; spec/assistant/reminderEscalation.md, "Intensity shapes only the follow-ups: minimal drops them, persistent adds one, and high priority only keeps them for a high-priority reminder"; spec/assistant/reminderEscalation.md, "A quiet owner is chased one notch less"
 import { createReminderPresentation, type ActionResult, type UUID } from "@elizaos/core"
-import { configureEscalation, effectiveIntensity, followupsUnder, noEscalation, ownerQuiet, quietIntensity, stepOutcome, type EscalationPlan, type QuietHours, type ReminderChannel, type ReminderIntensity } from "../gen/assistant__reminderEscalation.effect.vibe"
+import { configureEscalation, effectiveIntensity, followupsUnder, noEscalation, ownerQuiet, quietIntensity, escalationOutcome, type EscalationPlan, type QuietHours, type ReminderChannel, type ReminderIntensity } from "../gen/assistant__reminderEscalation.effect.vibe"
 import { Facts, Scheduler, presentOnce, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { appliedReceipt, attributed } from "./replies.vibe"
 import type { ReminderEscalation } from "./requests.schema.vibe"
@@ -174,7 +174,7 @@ export effect function deliverEscalation(task: TaskRow) {
   const clock = try ownerClockAt(now)
   const zone = record === undefined || record.quietZone === "" ? clock : record.quietZone
   const unanswered = record !== undefined && record.firedAt === firedAt && reminder?.status === "Fired"
-  const outcome = stepOutcome(channels[channel], record?.quiet ?? noQuiet, localMinutes(now, zone) % 1440, unanswered)
+  const outcome = escalationOutcome(channels[channel], record?.quiet ?? noQuiet, localMinutes(now, zone) % 1440, unanswered)
   if (outcome !== "NudgeSent") return { kind: "delivered" } satisfies DeliveryAnswer
   const body = `${task.promptInstructions.trim()} still needs your attention`
   const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Reminder"), catch: () => "unpresentable" }) catch () => undefined

@@ -136,11 +136,11 @@ learned and replaced wherever it is written.
 
 ```quint
 type SwapField = AuthoredField | ConversationField | OtherRequestField
-pure def keepsExamples(field: SwapField): bool = field != ConversationField
-pure def contactSwapped(field: SwapField, reservedExample: bool): bool = not(reservedExample and keepsExamples(field))
-pure val fieldValues = Set(AuthoredField, ConversationField, OtherRequestField)
-pure def lawAReservedExampleOutsideTheConversationStaysAsWritten(field: SwapField): bool = field != ConversationField implies not(contactSwapped(field, true))
-pure def lawARealContactIsSwappedEverywhere(field: SwapField): bool = contactSwapped(field, false)
+pure def keepsExamples(part: SwapField): bool = part != ConversationField
+pure def contactSwapped(part: SwapField, reservedExample: bool): bool = not(reservedExample and keepsExamples(part))
+pure val partValues = Set(AuthoredField, ConversationField, OtherRequestField)
+pure def lawAReservedExampleOutsideTheConversationStaysAsWritten(part: SwapField): bool = part != ConversationField implies not(contactSwapped(part, true))
+pure def lawARealContactIsSwappedEverywhere(part: SwapField): bool = contactSwapped(part, false)
 pure def lawTheConversationSwapsEveryContact(reservedExample: bool): bool = contactSwapped(ConversationField, reservedExample)
 ```
 
