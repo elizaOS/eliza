@@ -1,10 +1,12 @@
+// spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
 // spec/agent/views.md, "Story: Switch to the view the agent named"; spec/agent/views.md, "Story: Answer what the agent asks a view"; spec/agent/views.md, "Story: Stop waiting when my agent stops"
 import { assert, it } from "@effect/vitest"
 import { findViewActionHandoff, type Action, type ActionResult, type Memory, type UUID } from "@elizaos/core"
 import { navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs } from "../gen/agent__views.effect.vibe"
 import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
 import { viewHostServiceType, viewsModuleName } from "../src/views/module.vibe"
-import { ask, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { text, toolCalls } from "./support/cloud-fake.ts"
+import { ask, cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 const loaded = {
   launch: {
@@ -78,6 +80,39 @@ it.effect('Prepare, claim and confirm a switch through the routes; only a confir
   try Effect.try(() => {
     assert.deepStrictEqual(notSwitched.body, { ok: true, accepted: true })
     assert.strictEqual(shownAfterRefusal, "notes")
+  })
+}, 120_000)
+
+it.live('A completed chat reply gives its renderer the exact prepared switch it can claim (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { ...loaded.launch, callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, allowed: ["REPLY", "IGNORE", "NONE", "VIEWS"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+  })
+  const { views } = try viewHost(agent)
+  const opened = try ask(agent, { method: "POST", path: "/api/conversations", body: {} })
+  const { id } = (opened.body as { conversation: { id: string } }).conversation
+  const headers = { "x-elizaos-client-id": "c2" }
+  const body = { text: "Show my notes.", metadata: { viewDelivery: "completed-action", viewClientId: "c2" } }
+  const show = { name: "VIEWS", arguments: { action: "show", view: "Jottings" } }
+  try Effect.sync(() => cloud.script(toolCalls("", show, show), toolCalls("", show), text("Notes are ready.")))
+  const reply = try ask(agent, { method: "POST", path: `/api/conversations/${id}/messages`, headers, body })
+  const completed = (reply.body as { actionResults: readonly { action: string; data: { values?: { navigationBinding?: ViewBinding } } }[] }).actionResults
+  const binding = completed.find(({ action }) => action === "VIEWS")?.data.values?.navigationBinding
+  const taken = try claim(agent, binding)
+  const applied = try result(agent, binding, claimIdOf(taken.body), true)
+  const shown = try views.shownViewOf("c2")
+  try Effect.try(() => {
+    assert.strictEqual(reply.status, 200)
+    const toolResults = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { messages: { role: string; content?: unknown }[] } | undefined
+    const transcript = toolResults?.messages.filter(({ role }) => role === "tool").map(({ content }) => String(content))
+    assert.deepStrictEqual(transcript?.filter((content) => /DuplicateInBatch|AlreadySettled/u.test(content)).map((content) => JSON.parse(content).data.code), ["DuplicateInBatch", "AlreadySettled"])
+    assert.lengthOf(completed.filter(({ action }) => action === "VIEWS"), 1)
+    assert.strictEqual(binding?.clientId, "c2")
+    assert.strictEqual(binding?.viewId, "notes")
+    assert.strictEqual(taken.status, 200)
+    assert.deepStrictEqual(applied.body, { ok: true, accepted: true })
+    assert.strictEqual(shown, "notes")
   })
 }, 120_000)
 

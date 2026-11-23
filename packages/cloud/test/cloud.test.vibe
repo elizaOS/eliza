@@ -1647,6 +1647,64 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     ))
   }), 60_000)
 
+  it.live("Blame the caller only for a place id the provider refuses, and answer a route to the same place (spec/cloud/services/maps.md, \"A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing\"; spec/cloud/services/maps.md, \"A route whose endpoints coincide is a zero-length route, never a malformed answer\")", () => scoped(effect {
+    const maps = try sync(() => googleMapsFake())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+    const caller = try signedCaller(cloud, "refused-mapper")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "refused-maps-funding" }))
+    const post = (path: string, key: string, body: unknown) => cloud.call(`/api/v1/maps/${path}`, { json: body, headers: { ...caller.headers, "idempotency-key": key } })
+    const errorOf = (answer: { readonly body: unknown }) => (answer.body as { readonly error?: string }).error
+    const handle = "maps_3b0f6a52-6a4e-4c1b-9d55-0d1f2e3a4b5c"
+    const invalidArgument = { kind: "reply", status: 400, body: { error: { code: 400, message: `Not a valid Place ID: ${handle}`, status: "INVALID_ARGUMENT" } } } as const
+    const keyRefused = (reason: string) => ({ kind: "reply", status: 400, body: { error: { code: 400, message: "API key not valid.", status: "INVALID_ARGUMENT", details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason, domain: "googleapis.com" }] } } }) as const
+    const start = { latitude: 52.517, longitude: 13.3888 }
+
+    try sync(() => maps.script(invalidArgument))
+    const refusedHandle = try post("places/details", "details-handle", { id: handle })
+    const keyed: Array<readonly [number, string | undefined]> = []
+    for (const reason of ["API_KEY_INVALID", "API_KEY_EXPIRED", "SERVICE_DISABLED"]) {
+      try sync(() => maps.script(keyRefused(reason)))
+      const answer = try post("places/details", `details-${reason}`, { id: "ChIJgUbEo8cfqokR5lP9_Wh_DaM" })
+      keyed.push([answer.status, errorOf(answer)])
+    }
+    const unexplained: Array<readonly [number, string | undefined]> = []
+    for (const [index, body] of ["not json", {}, { error: { code: 400, status: "FAILED_PRECONDITION" } }, { error: { code: 400, status: "INVALID_ARGUMENT", details: "x" } }].entries()) {
+      try sync(() => maps.script({ kind: "reply", status: 400, body }))
+      const answer = try post("places/details", `details-unexplained-${index}`, { id: "ChIJgUbEo8cfqokR5lP9_Wh_DaM" })
+      unexplained.push([answer.status, errorOf(answer)])
+    }
+    try sync(() => maps.script(invalidArgument, invalidArgument, invalidArgument))
+    const searched = try post("places/search", "search-400", { query: "casino" })
+    const reversed = try post("reverse", "reverse-400", { coordinate: start, preferPlace: true })
+    const routed = try post("routes", "routes-400", { from: start, to: start, mode: "walk" })
+    try sync(() => maps.script({ kind: "zeroLengthRoute", points: 1 }, { kind: "zeroLengthRoute", points: 0 }))
+    const onePoint = try post("routes", "routes-same-1", { from: start, to: start, mode: "walk" })
+    const noPoint = try post("routes", "routes-same-0", { from: start, to: start, mode: "walk" })
+    const routeOf = (answer: { readonly status: number; readonly body: unknown }) => {
+      const [route] = (answer.body as { readonly routes: ReadonlyArray<{ readonly distanceMeters: number; readonly durationSeconds: number; readonly geometry: ReadonlyArray<unknown> }> }).routes
+      return [answer.status, route?.distanceMeters, route?.durationSeconds, route?.geometry]
+    }
+    const usage = try sql(cloud, "SELECT r.status, r.result IS NULL AS unkept, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key ORDER BY u.settled_at, r.hold_key LIMIT 1", [])
+
+    try check(() => assert.deepStrictEqual(
+      {
+        refusedHandle: [refusedHandle.status, errorOf(refusedHandle)],
+        keyed, unexplained,
+        othersBlameTheProvider: [searched, reversed, routed].map((answer) => [answer.status, errorOf(answer)]),
+        samePlace: [routeOf(onePoint), routeOf(noPoint)],
+        handleUsage: usage.map((row) => [row.status, row.unkept, row.outcome]),
+      },
+      {
+        refusedHandle: [400, "invalid_request"],
+        keyed: [[502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"]],
+        unexplained: [[502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"]],
+        othersBlameTheProvider: [[502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"]],
+        samePlace: [[200, 0, 0, [start, start]], [200, 0, 0, [start, start]]],
+        handleUsage: [["lost", true, "unknown"]],
+      }
+    ))
+  }), 60_000)
+
   it.live("Hold Maps to its credential and plan limits, send the viewport unmetered, and forget old answers (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")", () => scoped(effect {
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(3_600_100))
