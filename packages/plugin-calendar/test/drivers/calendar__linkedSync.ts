@@ -30,24 +30,29 @@ const tokens = new Map<number, string>();
 const references = new Map<number, string>();
 
 const storage: CalendarLinkStorage = {
-  read: async (slot) => structuredClone(slots.get(slot) ?? null),
-  async compareExchange(slot, expected, value) {
-    if (failWrites || JSON.stringify(slots.get(slot) ?? null) !== JSON.stringify(expected)) return { status: "conflict" };
+  read: (slot) => new Promise((resolve) => {
+    resolve(structuredClone(slots.get(slot) ?? null));
+  }),
+  compareExchange: (slot, expected, value) => new Promise((resolve) => {
+    if (failWrites || JSON.stringify(slots.get(slot) ?? null) !== JSON.stringify(expected)) {
+      resolve({ status: "conflict" });
+      return;
+    }
     slots.set(slot, structuredClone(value));
-    return { status: "saved" };
-  },
+    resolve({ status: "saved" });
+  }),
 };
 
 const open = () => Effect.runPromise(linkedCalendarControl({
   agentId: "agent",
   storage,
   authority: () => proof?.authority ?? true,
-  verifyDestination: async () => {
+  verifyDestination: () => {
     const verified = proof?.destinationVerified ?? true;
-    return { ownerSource: verified, writable: verified, sameSource: verified, sameSelectionVersion: verified, approvedEmail: verified };
+    return Promise.resolve({ ownerSource: verified, writable: verified, sameSource: verified, sameSelectionVersion: verified, approvedEmail: verified });
   },
-  recoverDispatch: async () => ({ linkExact: proof?.linkExact ?? false, outcome: proof?.recoverySettled ? "landed" : "unresolved" }),
-  bootstrap: async () => undefined,
+  recoverDispatch: () => Promise.resolve({ linkExact: proof?.linkExact ?? false, outcome: proof?.recoverySettled ? "landed" : "unresolved" }),
+  bootstrap: () => Promise.resolve(),
   dispatchRunning: () => proof?.dispatchActive ?? false,
 }));
 

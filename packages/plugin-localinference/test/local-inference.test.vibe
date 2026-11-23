@@ -15,7 +15,7 @@ import { localInferencePlugin, localInferenceProvider } from "../src/plugin.vibe
 import { localInferenceRoutes } from "../src/routes.vibe"
 import { bootstrapStreamedSpeech, cancelReply, publishReply, speechOutput, type BootstrapRequest, type Connection, type Playback, type PlaybackSlot } from "../src/speech-output.vibe"
 import {
-  MisroutedSpeech, SpeechAttemptFailed, SpeechRoutingMachine, SpeechUnavailable, nextSpeechRoute, serviceLimitOf, speakOnRoute, speechFailureOf, speechKeyChanged,
+  type MisroutedSpeech, SpeechAttemptFailed, SpeechRoutingMachine, SpeechUnavailable, nextSpeechRoute, serviceLimitOf, speakOnRoute, speechFailureOf, speechKeyChanged,
   speechLimitChanged, speechRouting, type SpeechFailure, type SpeechRoute,
 } from "../src/speech-route.vibe"
 import { decodeWav, encodeWav } from "../src/wav.ts"

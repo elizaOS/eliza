@@ -367,7 +367,6 @@ export function buildAgentBundle(options: BuildAgentBundle) {
   return buildFrom(options, import.meta.url)
 }
 
-/** The load list a device variant's launch names for a bundle: its core, view and, on an AOSP image, AOSP-only plugins, then the chosen optional ones. */
 export function residentLoadList(manifest: BundleManifest, variant: DeviceVariant, chosen: readonly string[] = []): string[] {
   if (manifest.profiles === undefined) return []
   return variantLoadList(groupLists(manifest.profiles), variant, [...new Set(chosen)])

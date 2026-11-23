@@ -74,7 +74,7 @@ export function audioFrameFits(frame: number[]): boolean {
 }
 
 //@ pure
-export function lawEncodedAudioFits(id: number[], pcm: number[]): boolean {
+export function lawEncodedAudioFits(id: number[], pcm: number[]): boolean { // eslint-disable-line @typescript-eslint/no-unused-vars -- Law parameters are used by the checked LemmaScript postcondition.
   //@ ensures audioFrameFits(encodeAudio(id, pcm)) === validDownlinkAudio(id.length, pcm.length)
   return true
 }
@@ -153,7 +153,7 @@ export function utf8Valid(b: number[]): boolean {
 }
 
 function ascii(s: string): number[] {
-  let out: number[] = []
+  const out: number[] = []
   let i = 0
   while (i < s.length) {
     //@ invariant 0 <= i && i <= s.length
@@ -232,7 +232,7 @@ function shortEscape(e: number): number {
 function readText(b: number[], start: number): ReadText {
   //@ requires 0 <= start && start <= b.length
   //@ ensures \result.ok ==> start < \result.at && \result.at <= b.length
-  let out: number[] = []
+  const out: number[] = []
   let i = start
   while (i < b.length) {
     //@ invariant start <= i && i <= b.length
@@ -329,7 +329,7 @@ function readObject(b: number[], start: number, depth: number): ReadFields {
   //@ ensures \result.ok ==> start < \result.at && \result.at <= b.length
   //@ decreases 2 * depth + 1
   if (start >= b.length || b[start] !== 123) return { ok: false, at: start, fields: [] }
-  let fields: JsonField[] = []
+  const fields: JsonField[] = []
   let i = skipSpace(b, start + 1)
   if (i < b.length && b[i] === 125) return { ok: true, at: i + 1, fields: fields }
   while (i < b.length) {
@@ -465,13 +465,13 @@ export function readAudio(frame: number[]): RelayWire {
 }
 
 //@ pure
-export function lawAudioRoundTrips(id: number[], pcm: number[]): boolean {
+export function lawAudioRoundTrips(id: number[], pcm: number[]): boolean { // eslint-disable-line @typescript-eslint/no-unused-vars -- Law parameters are used by the checked LemmaScript postcondition.
   //@ ensures (idBytesValid(id) && validPcm(pcm.length, maxDownlinkPcmBytes)) ==> (readAudio(encodeAudio(id, pcm)).kind === "Audio" && readAudio(encodeAudio(id, pcm)).id === id && readAudio(encodeAudio(id, pcm)).pcm === pcm)
   return true
 }
 
 //@ pure
-export function lawReadAudioIsCanonical(frame: number[]): boolean {
+export function lawReadAudioIsCanonical(frame: number[]): boolean { // eslint-disable-line @typescript-eslint/no-unused-vars -- Law parameters are used by the checked LemmaScript postcondition.
   //@ ensures readAudio(frame).kind === "Audio" ==> encodeAudio(readAudio(frame).id, readAudio(frame).pcm) === frame
   return true
 }

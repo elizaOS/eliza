@@ -9,7 +9,6 @@ import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearchResult } from "./host.vibe"
 import { CalendarService, calendarServiceType } from "./service.vibe"
 
-/** The one Calendar action's name. */
 export const calendarActionName = "CALENDAR"
 
 const day = 86_400_000
@@ -87,7 +86,6 @@ function parametersOf(options: unknown): Parameters | undefined {
 
 const receiptOperation = { schedule_event: "calendar.event.create", modify_event: "calendar.event.update", cancel_event: "calendar.event.delete" } as const
 
-/** The applied effect receipt of one ledgered calendar change: its event and the provider version the change produced. */
 export function calendarEffectReceipt(request: CalendarMutationRequest, receipt: CalendarMutationReceipt, replayed: boolean): AppliedEffectReceipt {
   const operation = receiptOperation[receipt.operation]
   return {
@@ -159,7 +157,6 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
   return { success: true, text: `Deleted ${title}.`, effectReceipts, data: { subaction, targetEvent: receipt.target, deleted: true, requestId: request.id } }
 }
 
-/** Who asked for a Calendar action, and the stable id of the request that asked. */
 export interface CalendarAsk {
   readonly by: string
   readonly id: string
@@ -253,7 +250,6 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
   }
 }
 
-/** One Calendar action run for an ask, from the planner's untrusted parameters. */
 export effect function runCalendarAction(host: CalendarHost, ask: CalendarAsk, input: unknown): ActionResult!! {
   const parameters = parametersOf({ parameters: input })
   if (parameters === undefined) return { success: false, text: `${calendarActionName} needs a subaction: ${subactions.join(", ")}.` }
@@ -265,7 +261,6 @@ function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
   return found instanceof CalendarService ? found.host : undefined
 }
 
-/** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
 export const calendarAction: Action = {
   name: calendarActionName,
   description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all, applied at once on the agent's own calendar and through the owner's approval on a connected provider calendar.",
@@ -301,7 +296,6 @@ export const calendarAction: Action = {
   },
 }
 
-/** What is on the active account's calendars over the next day, for the agent's context. */
 export const calendarProvider: Provider = {
   name: "CALENDAR_CONTEXT",
   description: "The owner's events over the next 24 hours from the active account's calendars",

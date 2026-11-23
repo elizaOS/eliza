@@ -802,7 +802,7 @@ export class SqliteAdapter extends DatabaseAdapter<SqliteStore> {
     return this.run("createWorlds", () =>
       this.atomic(() =>
         worlds.map((world) => {
-          this.insert("worlds", world.id, Date.now(), { ...world, metadata: initializeWorldMetadataRevisionOrThrow(world.metadata as Metadata | undefined) });
+          this.insert("worlds", world.id, Date.now(), { ...world, metadata: initializeWorldMetadataRevisionOrThrow(world.metadata) });
           return world.id;
         })
       ));
@@ -810,11 +810,11 @@ export class SqliteAdapter extends DatabaseAdapter<SqliteStore> {
 
   private writeWorld(world: World, existing: Row): void {
     const storedRevision = requireFreshWorldMetadataRevisionOrThrow(
-      parse<World>(existing).metadata as Metadata | undefined,
-      world.metadata as Metadata | undefined,
+      parse<World>(existing).metadata,
+      world.metadata,
       world.id,
     );
-    const metadata = advanceWorldMetadataRevisionOrThrow(world.metadata as Metadata | undefined, storedRevision);
+    const metadata = advanceWorldMetadataRevisionOrThrow(world.metadata, storedRevision);
     this.replace("worlds", world.id, { ...parse<World>(existing), ...world, metadata }, existing.revision);
     world.metadata = structuredClone(metadata);
   }
@@ -825,7 +825,7 @@ export class SqliteAdapter extends DatabaseAdapter<SqliteStore> {
         for (const world of worlds) {
           const existing = this.row("worlds", world.id);
           if (existing) this.writeWorld(world, existing);
-          else this.insert("worlds", world.id, Date.now(), { ...world, metadata: initializeWorldMetadataRevisionOrThrow(world.metadata as Metadata | undefined) });
+          else this.insert("worlds", world.id, Date.now(), { ...world, metadata: initializeWorldMetadataRevisionOrThrow(world.metadata) });
         }
       }));
   }
@@ -846,7 +846,7 @@ export class SqliteAdapter extends DatabaseAdapter<SqliteStore> {
         const stored = this.row("worlds", params.worldId);
         if (!stored) return { status: "not_found" };
         const world = parse<World>(stored);
-        const storedRevision = getWorldMetadataRevision(world.metadata as Metadata | undefined);
+        const storedRevision = getWorldMetadataRevision(world.metadata);
         if (storedRevision === null || !worldMetadataValueEquals(world.metadata ?? {}, params.expectedMetadata)) return { status: "conflict" };
         const audit = params.audit;
         const replacement = audit

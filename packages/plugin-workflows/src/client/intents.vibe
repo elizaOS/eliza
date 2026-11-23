@@ -3,37 +3,27 @@ import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { recoveryDecision, type RecoveryDecision } from "../../gen/workflow__intents.effect.vibe"
 import { workflowUuid } from "../contract/phone.vibe"
 
-/** The captured agent account a store is scoped to. */
 export interface WorkflowIntentOwner { readonly origin: string; readonly ownerId: string; readonly agentId: string }
-/** Every pending intent of a store, by key. */
 export interface WorkflowIntentArchive { readonly entries: Readonly<Record<string, string>> }
-/** The installed key namespace of pending workflow requests. */
 export const DEFAULT_WORKFLOW_INTENT_PREFIX = "eliza.workflow.pending.v1:"
 
-/** The pending request changed since it was read; nothing was written. */
 export error WorkflowIntentConflict { get message() { return "Workflow request changed. Refresh its receipt before trying again." } }
-/** The stored history is unreadable or belongs to another agent; every key stays locked. */
 export error WorkflowIntentUnreadable { reason: string }
-/** The store did not confirm a write; the outcome is unknown and every key stays locked. */
 export error WorkflowIntentUnconfirmed { cause: unknown }
 
-/** Host persistence: `edit` applies its update atomically to the stored archive. */
 export interface WorkflowIntentBackend {
   read(): WorkflowIntentArchive!WorkflowIntentUnconfirmed
   edit(update: (archive: WorkflowIntentArchive) => WorkflowIntentArchive | WorkflowIntentConflict): WorkflowIntentArchive!(WorkflowIntentUnconfirmed | WorkflowIntentConflict)
 }
 
-/** The key of one owner's pending request. */
 export function workflowIntentKey(owner: WorkflowIntentOwner, id: string, keyPrefix = DEFAULT_WORKFLOW_INTENT_PREFIX): string {
   return keyPrefix + JSON.stringify([owner.origin, owner.ownerId, owner.agentId, id])
 }
 
-/** The key namespace of one owner: every key of theirs starts with it. */
 export function workflowIntentOwnerPrefix(owner: WorkflowIntentOwner, keyPrefix = DEFAULT_WORKFLOW_INTENT_PREFIX): string {
   return keyPrefix + JSON.stringify([owner.origin, owner.ownerId, owner.agentId]).slice(0, -1) + ","
 }
 
-/** What reconciling a retained submission decides, from the definition read before its receipt. */
 export function workflowRecovery(input: {
   readonly currentOwner: boolean; readonly canReconcile: boolean; readonly receiptValid: boolean; readonly receiptRun: boolean
   readonly ownVersion: string; readonly observedBeforeReceipt: string
@@ -41,7 +31,6 @@ export function workflowRecovery(input: {
   return recoveryDecision(input.currentOwner, input.canReconcile, input.receiptValid, input.receiptRun, input.ownVersion === input.observedBeforeReceipt ? 1 : 2, 1)
 }
 
-/** Nonsecret pending requests scoped to one captured agent account. */
 export interface WorkflowIntentStore {
   readonly ownerPrefix: string
   key(id: string): string
@@ -55,7 +44,6 @@ export interface WorkflowIntentStore {
   invalidate(): void!!
 }
 
-/** Opens one owner's store over host persistence; `onChange` hears every committed change and cannot undo it. */
 export effect function workflowIntentStore(owner: WorkflowIntentOwner, backend: WorkflowIntentBackend, options: { readonly keyPrefix?: string; readonly onChange?: () => void } = {}) {
   const keyPrefix = options.keyPrefix ?? DEFAULT_WORKFLOW_INTENT_PREFIX
   const ownerPrefix = workflowIntentOwnerPrefix(owner, keyPrefix)
@@ -106,7 +94,7 @@ export effect function workflowIntentStore(owner: WorkflowIntentOwner, backend: 
     })
     try Ref.update(epoch, (value) => value + 1)
     try Ref.set(cached, entries)
-    try sync(() => { try { options.onChange?.() } catch {} })
+    try sync(() => { try { options.onChange?.() } catch { return } })
   }
 
   return {
@@ -143,7 +131,6 @@ export effect function workflowIntentStore(owner: WorkflowIntentOwner, backend: 
   } satisfies WorkflowIntentStore
 }
 
-/** A backend over Effect's KeyValueStore, one entry per key; edits are atomic within this process. */
 export effect function keyValueIntentBackend(ownerPrefix: string) {
   const store = try KeyValueStore.KeyValueStore
   const index = `${ownerPrefix}#index`

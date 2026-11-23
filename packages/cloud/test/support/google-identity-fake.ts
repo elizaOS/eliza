@@ -152,7 +152,7 @@ export interface Redirect {
   readonly body: string;
 }
 
-/** @throws {TypeError} when the request cannot be sent */
+/** @throws {TypeError} */
 export async function visit(url: string): Promise<Redirect> {
   const response = await fetch(url, { redirect: "manual" });
   return { status: response.status, location: response.headers.get("location") ?? "", body: await response.text() };

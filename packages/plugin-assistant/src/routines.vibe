@@ -6,13 +6,11 @@ import { Facts, Presenter, Scheduler, onAgent, readRecord, writeRecord, type Del
 import { OccurrenceAnswer, RoutineCreate, RoutineUpdate } from "./requests.schema.vibe"
 import { ownerClockAt } from "./timezone.vibe"
 
-/** The scheduled-task kind of a routine's occurrences. */
 export const routineKind = "personal-assistant.routine"
 
 type Window = RoutineCreate["windows"][number]
 const windowHours: Readonly<Record<Window, number>> = { morning: 9, afternoon: 15, evening: 18, night: 21 }
 
-/** The starter routines offered during onboarding, each at most once. */
 const starterRoutines: Readonly<Record<string, { readonly title: string; readonly windows: readonly Window[] }>> = {
   "brush-teeth": { title: "Brush teeth", windows: ["morning", "night"] },
   "drink-water": { title: "Drink water", windows: ["morning", "afternoon", "evening"] },
@@ -23,7 +21,6 @@ const RoutineRecord = Schema.Struct({
   routineId: Schema.String, title: Schema.String,
   windows: Schema.Array(Schema.Literals(["morning", "afternoon", "evening", "night"])), taskId: Schema.String,
 })
-/** A routine's words and its scheduled task, beside its spec state. */
 export type RoutineRecord = typeof RoutineRecord.Type
 const decodeIndex = Schema.decodeUnknownOption(Schema.Struct({ routines: Schema.Array(RoutineRecord), keys: Schema.Record(Schema.String, Schema.String) }))
 const indexKey = "routines"
@@ -36,7 +33,6 @@ effect function routineIndex() {
   return (try readRecord(indexKey, decodeIndex)) ?? { routines: [], keys: {} }
 }
 
-/** A routine as the owner's client reads it. */
 function wireRoutine(record: RoutineRecord, state: Routines) {
   return { id: record.routineId, title: record.title, windows: record.windows, status: wireStatus[state.definition], occurrence: state.occurrence, muted: state.muted }
 }
@@ -53,7 +49,6 @@ effect function routineState(routineId: string) {
   }
 }
 
-/** Creates a routine once per idempotency key, answering a repeat with the routine as it is. */
 export effect function createRoutine(input: RoutineCreate) {
   const index = try routineIndex()
   const known = index.keys[input.idempotencyKey]
@@ -82,7 +77,6 @@ effect function offerTemplate(templateKey: string) {
   }
 }
 
-/** Offers a starter routine from its template, creating it at most once. */
 effect function seedStarter(templateKey: string) {
   const template = starterRoutines[templateKey]
   if (template === undefined) return undefined
@@ -90,7 +84,6 @@ effect function seedStarter(templateKey: string) {
   return try createRoutine({ idempotencyKey: `template:${templateKey}`, title: template.title, windows: [...template.windows] })
 }
 
-/** Changes a routine's status and answers with the routine as saved. */
 export effect function updateRoutine(routineId: string, input: RoutineUpdate) {
   const record = (try routineIndex()).routines.find((routine) => routine.routineId === routineId)
   if (record === undefined) return undefined
@@ -101,7 +94,6 @@ export effect function updateRoutine(routineId: string, input: RoutineUpdate) {
   return wireRoutine(record, state)
 }
 
-/** Deletes a routine and its scheduled task, answering deleted. */
 export effect function deleteRoutine(routineId: string) {
   const index = try routineIndex()
   const record = index.routines.find((routine) => routine.routineId === routineId)
@@ -118,7 +110,6 @@ const occurrenceEvents = {
   complete: "completeOccurrence", skip: "skipOccurrence", snooze: "snoozeOccurrence", mute: "muteRoutine", unmute: "unmuteRoutine",
 } as const satisfies Record<OccurrenceAnswer["op"], Event["type"]>
 
-/** Answers a routine's current occurrence; an occurrence not shown yet cannot be answered. */
 effect function answerOccurrence(routineId: string, answer: OccurrenceAnswer) {
   const record = (try routineIndex()).routines.find((routine) => routine.routineId === routineId)
   if (record === undefined) return undefined
@@ -132,7 +123,6 @@ effect function answerOccurrence(routineId: string, answer: OccurrenceAnswer) {
   return { refused: false, routine: wireRoutine(record, state) }
 }
 
-/** Shows a routine's occurrence when its window opens, expiring the last one if nobody answered it. */
 export effect function deliverRoutine(task: TaskRow) {
   const routineId = task.metadata.routineId
   if (typeof routineId !== "string") return { kind: "undeliverable", error: "The occurrence names no routine" } satisfies DeliveryAnswer
@@ -161,7 +151,6 @@ const malformed = { status: 400, body: { error: "malformed" } }
 const notFound = { status: 404, body: { error: "not_found" } }
 const offline = { status: 503, body: { error: "assistant_unavailable" } }
 
-/** The routes the owner's client creates, changes, deletes and answers routines through. */
 export function routineRoutes(agent: () => IAgentRuntime | undefined): LocalRoute[] {
   const run = async <A>(program: (runtime: IAgentRuntime) => Promise<A>) => {
     const runtime = agent()

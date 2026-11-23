@@ -3,9 +3,7 @@ import { createReminderPresentation } from "@elizaos/core"
 import { canDeliverFollowup, canReconcileFails, canReconcileTick, deliverFollowup, fresh, reconcileFails, reconcileTick, type ApprovalState, type Followup, type Followups } from "../gen/assistant__followups.effect.vibe"
 import { Approvals, Facts, Presenter, readRecord, writeRecord, type ApprovalView, type DeliveryAnswer } from "./host.vibe"
 
-/** The scheduled-task kind of the tick that reconciles and delivers approval follow-ups. */
 export const followupTickKind = "personal-assistant.followup-tick"
-/** How often the follow-up tick runs. */
 export const followupTickCron = "*/15 * * * *"
 
 const firstAfter = 30 * 60_000
@@ -15,7 +13,6 @@ const FollowupRecord = Schema.Struct({
   followupId: Schema.Number, approvalId: Schema.String, title: Schema.String,
   seenResolved: Schema.Boolean, completed: Schema.Boolean, prompt: Schema.Boolean, sent: Schema.Boolean, nextAt: Schema.Number,
 })
-/** One follow-up on an approval the owner left open. */
 export type FollowupRecord = typeof FollowupRecord.Type
 const decodeIndex = Schema.decodeUnknownOption(Schema.Struct({ nextId: Schema.Number, followups: Schema.Array(FollowupRecord) }))
 const indexKey = "followups"
@@ -33,12 +30,10 @@ function approvalOf(view: ApprovalView | undefined): ApprovalState {
   }
 }
 
-/** The follow-ups the assistant keeps, and the id the next one takes. */
 export effect function followupIndex() {
   return (try readRecord(indexKey, decodeIndex)) ?? { nextId: 1, followups: [] }
 }
 
-/** What one tick did: which follow-ups it delivered and which it retired. */
 export interface TickReport {
   readonly delivered: readonly string[]
   readonly retired: readonly string[]
@@ -46,7 +41,6 @@ export interface TickReport {
   readonly readFailed: boolean
 }
 
-/** One tick: a single read of the owner's approval queue reconciles every follow-up, retiring resolved ones within the limit, before any is delivered. */
 export effect function followupTick() {
   const now = try (try Facts).now()
   const index = try followupIndex()
@@ -96,7 +90,6 @@ export effect function followupTick() {
   } satisfies TickReport
 }
 
-/** Runs one follow-up tick when its scheduled task fires. */
 export effect function deliverFollowupTick() {
   try followupTick()
   return { kind: "delivered" } satisfies DeliveryAnswer

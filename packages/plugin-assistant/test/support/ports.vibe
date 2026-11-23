@@ -2,7 +2,6 @@
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { Approvals, ApprovalsUnavailable, Calendar, Facts, Model, ModelUnavailable, Presenter, Scheduler, SchedulerUnavailable, type ApprovalView, type AssistantTask, type CalendarEventFacts, type Presented, type TaskRow, type TaskVerb } from "../../src/host.vibe"
 
-/** What the scripted ports saw and how they answer. */
 export interface Ports {
   readonly tasks: Map<string, TaskRow & { readonly key: string }>
   readonly verbs: Array<{ readonly taskId: string; readonly verb: TaskVerb; readonly key: string }>
@@ -19,12 +18,10 @@ const statusAfter: Readonly<Record<TaskVerb["tag"], string>> = {
   SnoozeFor: "Scheduled", Skip: "Skipped", Complete: "Completed", Dismiss: "Dismissed", Acknowledge: "Acknowledged", Reopen: "Scheduled",
 }
 
-/** Fresh ports: an in-memory store, a scheduler that keeps rows by idempotency key, a scripted model and a recording presenter. */
 export function ports(now = Date.UTC(2026, 10, 22, 15, 0)): Ports {
   return { tasks: new Map(), verbs: [], presented: [], answers: [], prompts: [], schedulerFailures: 0, now, approvals: [], events: [] }
 }
 
-/** The layer of every port, over the given script. */
 export function portsLayer(seen: Ports) {
   const keyed = new Set<string>()
   return Layer.mergeAll(
@@ -79,7 +76,6 @@ export function portsLayer(seen: Ports) {
   )
 }
 
-/** The scheduler rows of one kind, in creation order. */
 export function rowsOf(seen: Ports, kind: string): Array<TaskRow & { readonly key: string }> {
   return [...seen.tasks.values()].filter((row) => row.kind === kind)
 }

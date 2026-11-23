@@ -39,7 +39,6 @@ effect function hint(name: string, plugin: NetworkPolicyPlugin) {
   return answer
 }
 
-/** Reads the active network's cost; a bridge that is absent, refuses or answers out of shape reads as unknown. */
 export function networkPolicyClient(plugin: NetworkPolicyPlugin = networkPolicyPlugin(), name = "ElizaNetworkPolicy"): NetworkPolicyPlugin {
   return {
     getMeteredHint: () => runPromise(hint(name, plugin)),

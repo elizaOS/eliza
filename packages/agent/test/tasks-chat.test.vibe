@@ -4,7 +4,7 @@ import { validateUuid, type UUID } from "@elizaos/core"
 import { TaskView } from "../src/client/task-lifecycle.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { tasksModuleName } from "../src/tasks/module.vibe"
-import { held, text, type CloudFake } from "./support/cloud-fake.ts"
+import { held, text } from "./support/cloud-fake.ts"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, SupportFailed, type InProcess } from "./support/kernel.vibe"
 import type { LocalRequest } from "./support/socket-client.ts"
 

@@ -10,7 +10,6 @@ import {
   type CalendarMutationFailure, type CalendarMutationPayload, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest,
 } from "./ledger.vibe"
 
-/** Where the mutation port finds the active account and the provider for a source. */
 export interface CalendarProviders {
   active(): (CalendarAccount | undefined)!!
   port(provider: CalendarSourceKey["provider"]): (CalendarProviderPort | undefined)!!
@@ -25,19 +24,16 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? "null"
 }
 
-/** The digest an owner's review binds: SHA-256 of the payload's canonical JSON. */
 export function reviewDigest(payload: CalendarMutationPayload): string {
   return sha256Hex(canonical(payload))
 }
 
-/** Whether reviewed fields name a real, ordered span: canonical UTC instants, the end after the start (or equal for an all-day day). */
 export function fieldsSpanValid(fields: CalendarEventFields): boolean {
   const start = utcInstant(fields.startAt)
   const end = utcInstant(fields.endAt)
   return start !== undefined && end !== undefined && (fields.isAllDay ? end >= start : end > start)
 }
 
-/** Whether a reviewed recurrence fits its fields: a timed series in a known zone, and an end of repeats no earlier than the start. */
 export function recurrenceFits(fields: CalendarEventFields, recurrence: CalendarRecurrence): boolean {
   return (fields.isAllDay || knownTimeZone(fields.timeZone)) && (recurrence.until === undefined || Date.parse(recurrence.until) >= Date.parse(fields.startAt))
 }
@@ -55,7 +51,6 @@ function fromSource(event: CalendarEvent, source: CalendarSourceKey): boolean {
     && (event.connectorAccountId ?? source.connectorAccountId) === source.connectorAccountId
 }
 
-/** The mutation port that checks a reviewed change against the active account's calendars, makes the one provider call and reads it back. */
 export function providerMutationPort(providers: CalendarProviders): CalendarMutationPort {
   effect function bound(request: CalendarMutationRequest) {
     const account = try providers.active()

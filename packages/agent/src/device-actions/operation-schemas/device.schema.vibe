@@ -6,6 +6,7 @@ import type { Evidence, FamilySchemas, OperationSchema, WireOperation } from "./
 import { civilDay, day, isoInstant, knownZone, realDate, utf8Bytes, zonedWall } from "./personal.schema.vibe"
 import { telephonyOperations } from "./telephony.vibe"
 
+// eslint-disable-next-line no-control-regex -- Device identifiers exclude the ASCII control range and DEL.
 const noControl = (value: string) => !/[\u0000-\u001f\u007f]/.test(value)
 const filled = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum), Schema.makeFilter((value: string) => value.trim() !== "" && !value.includes("\0")))
 const blank = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum), Schema.makeFilter((value: string) => !value.includes("\0")))

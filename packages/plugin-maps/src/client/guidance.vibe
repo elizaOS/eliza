@@ -4,7 +4,6 @@ import { initial as quietVoice, machineOver as voiceOver, type Event as VoiceEve
 import type { Coordinate, RouteStep } from "./contracts.vibe"
 import { distanceToRoute, type RouteGeometry, type RouteProgress } from "./route-distance.vibe"
 
-/** The upcoming maneuver, and how many consecutive usable fixes have cleared it. */
 export interface StepHold {
   readonly index: number
   readonly cleared: number
@@ -32,7 +31,6 @@ function evidence(hold: StepHold): GuidanceProgress {
   return hold.cleared === 1 ? { step: "PendingManeuver", cleared: 1, evidence: "OneClearFix" } : pendingManeuver
 }
 
-/** The upcoming maneuver after one usable fix: a fix within 40 m passes it, otherwise two consecutive on-route fixes clear beyond it by more than 60 m and twice their accuracy; the last step is never passed. */
 export function advanceStep(
   hold: StepHold,
   route: Pick<RouteGeometry, "geometry" | "steps">,
@@ -64,7 +62,6 @@ export function advanceStep(
   return { index, cleared: current.cleared }
 }
 
-/** Progress with the upcoming maneuver fixed to `index`, so a sparse or jumping fix never skips an instruction. */
 export function atStep(progress: RouteProgress, steps: readonly RouteStep[], index: number): RouteProgress {
   const { next: _next, then: _then, ...rest } = progress
   const nextStep = steps[index]
@@ -76,15 +73,12 @@ export function atStep(progress: RouteProgress, steps: readonly RouteStep[], ind
   }
 }
 
-/** Why the device speaker stopped before it finished an instruction. */
 export error GuidanceSpeechStopped { reason: "interrupted" | "failed" | "cleanup-unconfirmed" }
 
-/** The device speaker the screen speaks turn instructions through; interrupting the effect stops the speech. */
 export interface GuidanceSpeaker {
   speak(text: string): void!GuidanceSpeechStopped
 }
 
-/** The screen's speech context: session, inference mode, provider revision, Cloud account and connection. */
 export type GuidanceAuthority = string
 
 const replies: Record<GuidanceSpeechStopped["reason"], GuidanceReply> = {
@@ -104,7 +98,6 @@ function interned(table: Map<string, number>): (value: string) => number {
   }
 }
 
-/** The one speaker of foreground turn guidance: the newest instruction key speaks once, a hidden screen owes only the exact current instruction, and a definite failure mutes and calls `onMuted`. */
 export effect function navigationVoice(speaker: GuidanceSpeaker, onMuted: () => void) {
   const kept = try Ref.make<GuidanceVoice>(quietVoice)
   const voice = try voiceOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
@@ -179,5 +172,4 @@ export effect function navigationVoice(speaker: GuidanceSpeaker, onMuted: () => 
   }
 }
 
-/** The foreground guidance speaker of one Maps screen. */
 export type NavigationVoice = Effect.Success<ReturnType<typeof navigationVoice>>

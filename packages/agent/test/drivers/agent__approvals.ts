@@ -25,11 +25,11 @@ const expiries = new Map<string, number>();
 const revisions = new Map<string, string>();
 
 const executor: CalendarApprovalExecutor = {
-  execute: async (request) => {
+  execute: (request) => new Promise((resolve) => {
     ledger.calls++;
     const outcome: LedgerOutcome = { result: ledger.result, text: `Calendar change ${request.id}: ${ledger.result}` };
-    return outcome;
-  },
+    resolve(outcome);
+  }),
 };
 
 async function store(): Promise<IDatabaseAdapter> {

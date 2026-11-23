@@ -40,9 +40,7 @@ export const driver: Driver & AsyncDisposable = {
   dispatch: (key, event: Event) => settle(key, (run) => run.machine.send(event)),
   receive: (key, raw) => settle(key, (run) => run.machine.receive(raw)),
   observe: (key) => Effect.runPromise(Effect.flatMap(opened(key), (run) => run.machine.get())),
-  async [Symbol.asyncDispose]() {
-    reset();
-  },
+  [Symbol.asyncDispose]: () => Effect.runPromise(Effect.sync(reset)),
 };
 
 export const options: Options = { keys: ["consumer", "other"] };
