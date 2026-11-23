@@ -31,6 +31,26 @@ pure def lawCredentialLinksAreDropped(facts: LinkFacts): bool = facts.hasCredent
 pure def lawOnlyWebLinksAreKept(facts: LinkFacts): bool = linkKept(facts) implies facts.webScheme and facts.absolute
 ```
 
+### A preview is text: each character reference is decoded once and padding is collapsed
+
+Gmail writes a snippet with HTML character references. A preview shows it
+as text: a numeric reference and the references `amp`, `lt`, `gt`, `quot`,
+`apos` and `nbsp` become their character, each once, so `&amp;amp;` shows
+`&amp;`; any other named reference stays as written. A numeric reference
+that is zero, past the last Unicode code point or a surrogate becomes
+U+FFFD. A run of three or more spaces and invisible padding characters
+becomes one space, and the preview is trimmed. The agent's
+[inbox read](./managedRead.md) hands the planner a message's subject and
+snippet as this text, never as Gmail escaped it.
+
+```quint
+pure val lastCodePoint: int = 1114111
+pure def referenceDecodes(code: int): bool = code >= 1 and code <= lastCodePoint and not(code >= 55296 and code <= 57343)
+pure val codeValues = Set(0, 38, 55295, 55296, 57343, 57344, 1114111, 1114112)
+pure def lawASurrogateOrOutOfRangeReferenceIsNotDecoded(code: int): bool =
+  (code < 1 or code > lastCodePoint or (code >= 55296 and code <= 57343)) implies not(referenceDecodes(code))
+```
+
 ### A page is read ahead once at a time, kept briefly, and never retried
 
 At most one speculative read of a next page runs at a time; preparing

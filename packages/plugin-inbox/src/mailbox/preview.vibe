@@ -1,0 +1,17 @@
+// spec/inbox/display.md, "A preview is text: each character reference is decoded once and padding is collapsed"
+import { referenceDecodes } from "../../gen/inbox__display.effect.vibe"
+
+const reference = /&(?:#[0-9]{1,7}|#x[0-9a-f]{1,6}|[a-z][a-z0-9]{1,31});/gi
+const named: ReadonlyMap<string, string> = new Map([["amp", "&"], ["lt", "<"], ["gt", ">"], ["quot", "\""], ["apos", "'"], ["nbsp", "\u00a0"]])
+const padding = /(?:[ \u00a0\u00ad\u200b-\u200f\u2060\u2800\ufeff]|\u034f){3,}/g
+
+function decoded(written: string): string {
+  const body = written.slice(1, -1)
+  if (!body.startsWith("#")) return named.get(body.toLowerCase()) ?? written
+  const code = /^#x/i.test(body) ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10)
+  return referenceDecodes(code) ? String.fromCodePoint(code) : "\ufffd"
+}
+
+export function decodeMailPreview(text: string): string {
+  return (text.includes("&") ? text.replace(reference, decoded) : text).replace(padding, " ").trim()
+}

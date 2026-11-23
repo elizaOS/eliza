@@ -6,7 +6,7 @@ import { inboxReadAction } from "./agent/read.vibe"
 
 export { inboxAccess, inboxAccessProvider, inboxAccessProviderName } from "./agent/access.vibe"
 export { emailDraftAnswer, inboxComposeAction, inboxComposeActionName, localComposeCapability, type ComposeTurn, type EmailDraftHandoff } from "./agent/compose.vibe"
-export { managedInboxRead, inboxReadAction, inboxReadActionName, type ManagedReadAnswer, type ManagedReadRequest } from "./agent/read.vibe"
+export { managedInboxRead, managedReadResult, inboxReadAction, inboxReadActionName, type ManagedReadAnswer, type ManagedReadRequest } from "./agent/read.vibe"
 export { agentGmailClient, cloudLinkTransport } from "./agent/cloud.vibe"
 
 export const inboxPluginName = "@elizaos/plugin-inbox"

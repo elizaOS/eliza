@@ -1,9 +1,10 @@
-// spec/inbox/managedRead.md, "Only a bounded read is dispatched; any other request fails without a call"; spec/inbox/managedRead.md, "A read returns mail only for the current owner while permission holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"
+// spec/inbox/managedRead.md, "Only a bounded read is dispatched; any other request fails without a call"; spec/inbox/display.md, "A preview is text: each character reference is decoded once and padding is collapsed"; spec/inbox/managedRead.md, "A read returns mail only for the current owner while permission holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { enabled, initial, machineOver, type Event, type ManagedInboxRead, type ManagedReadKind } from "../../gen/inbox__managedRead.effect.vibe"
 import type { ManagedGmailClient } from "../client/index.vibe"
 import { classifyGmailFailure, type GmailFailureKind, type MailFailure } from "../mailbox/failures.vibe"
 import { gmailReadable } from "../mailbox/grants.vibe"
+import { decodeMailPreview } from "../mailbox/preview.vibe"
 import type { GmailMessage, GoogleConnection } from "../mailbox/types.vibe"
 import { agentGmailClient } from "./cloud.vibe"
 
@@ -109,10 +110,10 @@ const failureText: Record<GmailFailureKind, string> = {
 }
 
 function line(message: GmailMessage): string {
-  return `${message.unread ? "[unread] " : ""}${message.from} — ${message.subject || "(no subject)"} (${message.receivedAt}) [id ${message.id}]`
+  return `${message.unread ? "[unread] " : ""}${message.from} — ${decodeMailPreview(message.subject) || "(no subject)"} (${message.receivedAt}) [id ${message.id}]`
 }
 
-function resultOf(answer: ManagedReadAnswer): ActionResult {
+export function managedReadResult(answer: ManagedReadAnswer): ActionResult {
   switch (answer.kind) {
     case "refused": return { success: false, text: refusalText[answer.reason], data: { refusal: answer.reason } }
     case "failed": return { success: false, text: failureText[answer.failure], data: { failure: answer.failure } }
@@ -121,7 +122,7 @@ function resultOf(answer: ManagedReadAnswer): ActionResult {
       text: answer.messages.length === 0 ? "No messages match." : answer.messages.map(line).join("\n"),
       data: {
         messages: answer.messages.map((message) => ({
-          id: message.id, threadId: message.threadId, from: message.from, subject: message.subject, snippet: message.snippet,
+          id: message.id, threadId: message.threadId, from: message.from, subject: decodeMailPreview(message.subject), snippet: decodeMailPreview(message.snippet),
           receivedAt: message.receivedAt, unread: message.unread,
         })),
       },
@@ -132,7 +133,7 @@ function resultOf(answer: ManagedReadAnswer): ActionResult {
 async function handle(runtime: IAgentRuntime, _message: Memory, options: unknown): Promise<ActionResult> {
   const client = agentGmailClient(runtime)
   if (client === undefined) return { success: false, text: "Gmail is available only when this agent uses the cloud.", data: { refusal: "no-cloud" } }
-  return resultOf(await runPromise(managedInboxRead(client, parameters(options))))
+  return managedReadResult(await runPromise(managedInboxRead(client, parameters(options))))
 }
 
 export const inboxReadAction: Action = {

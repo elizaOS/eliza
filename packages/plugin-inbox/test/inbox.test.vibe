@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { negotiation } from "@elizaos/agent/device-actions"
 import { managedGmailClient, type ManagedGmailTransport } from "../src/client/index.vibe"
-import { emailDraftAnswer, localComposeCapability, managedInboxRead, type ComposeTurn } from "../src/index.vibe"
+import { emailDraftAnswer, localComposeCapability, managedInboxRead, managedReadResult, type ComposeTurn } from "../src/index.vibe"
 import {
   AttachmentRefused, MailProtocolFailed, MailUnreachable, checkOutgoingAttachments, classifyGmailFailure, createMailBackground, disconnectGmailAccount,
   encodeInboxUnsaved, gmailActionGrant, gmailConsentCapabilities, gmailGrantChange, gmailReadCacheKey, gmailReadable, inboxOperation,
@@ -438,6 +438,11 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
   assert.equal(calls(), 0)
   const mail = try managedInboxRead(cloud.client, { limit: 1 })
   assert.deepEqual(mail.kind === "mail" && mail.messages.map((message) => message.id), ["m1"])
+  cloud.state.pages.set("", { messages: [{ ...card("m1", "Tom &amp; Jerry"), snippet: "It&#39;s &amp;amp; here\u200b\u200b\u200b now &bogus; &#xD800;" }], next: null, history: "41" })
+  assert.deepEqual(managedReadResult(try managedInboxRead(cloud.client, { limit: 1 })).data?.messages, [{
+    id: "m1", threadId: "t-m1", from: "Bo <bo@example.com>", subject: "Tom & Jerry", snippet: "It's &amp; here now &bogus; \ufffd",
+    receivedAt: "2026-11-20T10:00:00.000Z", unread: true,
+  }])
   cloud.state.afterSearch = () => { cloud.state.selected = "grant-b" }
   assert.deepEqual(try managedInboxRead(cloud.client, { limit: 5 }), { kind: "refused", reason: "owner-changed" })
 
