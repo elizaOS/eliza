@@ -40,14 +40,16 @@ module node {
     })
   }
 
+  /** @throws {never} */
   export function searchUrl(query: string): URL {
     const url = new URL("https://www.google.com/search")
     url.searchParams.set("q", query)
     return url
   }
 
+  /** @throws {never} */
   export function readUrl(input: string): URL | undefined {
-    return URL.canParse(input) ? new URL(input) : undefined
+    return URL.parse(input) ?? undefined
   }
 }
 import { publicSearch, readUrl, searchUrl } from node
