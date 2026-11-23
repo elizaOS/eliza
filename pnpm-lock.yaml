@@ -319,6 +319,9 @@ importers:
       '@elizaos/core':
         specifier: workspace:*
         version: link:../core
+      '@elizaos/plugin-calendar':
+        specifier: workspace:*
+        version: link:../calendar
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -390,6 +393,9 @@ importers:
 
   packages/calendar:
     dependencies:
+      '@elizaos/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@elizaos/core':
         specifier: workspace:*
         version: link:../core

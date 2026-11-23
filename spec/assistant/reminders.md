@@ -129,3 +129,79 @@ pure def lawTheSavingMessageNeverTakesItBack(savedAt: int, now: int, saveLive: b
 pure def lawAnotherReminderIsNeverTakenBack(savedAt: int, now: int, sameMessage: bool, saveLive: bool): bool =
   not(retractsRecentSave(savedAt, now, sameMessage, saveLive, true))
 ```
+
+## Story: Propose a reminder or alarm on my phone only as I asked
+
+> As an owner, I want a chat request about my phone's reminders or Clock to
+> become a phone review only for the phone reminder I mean, at the time my
+> own words give, and never to cancel one I did not ask to cancel.
+
+### A phone reminder is proposed only when the assistant keeps no reminders here or the phone's reminder is selected
+
+Where the assistant keeps the owner's reminders itself (`OWNER_REMINDERS`),
+an ordinary reminder is saved here, and a phone reminder is proposed only
+when the turn's nonsensitive screen selects a phone reminder or a phone
+reminder list. A reminder named from Home is no exception. Otherwise the
+proposal is refused before anything is offered, naming `OWNER_REMINDERS`.
+
+```quint
+pure def phoneReminderProposed(assistantKeepsReminders: bool, phoneReminderSelected: bool): bool =
+  not(assistantKeepsReminders) or phoneReminderSelected
+pure def lawTheAssistantsRemindersStayHere(assistantKeepsReminders: bool): bool =
+  assistantKeepsReminders implies not(phoneReminderProposed(assistantKeepsReminders, false))
+```
+
+### A selected or named phone reminder is the one the owner gave, and a change to it needs the owner's own ask
+
+A read, edit, completion, snooze or cancel of a selected reminder names
+exactly the reminder selected on the phone, with its source, occurrence,
+revisions and timing version. A named edit or cancel names a reminder
+whose name is in the owner's own words. An edit, completion, snooze or
+cancel, selected or named, is proposed only when the owner's words ask for
+that change (to change, move or rename it; to mark it done; to snooze it;
+to cancel, delete, remove or stop it), and never when they turn it down; a
+read asks for nothing. A decline is a reply that opens by turning the
+request down ("no, keep it", "never mind", "wait"), the whole reply "cancel
+that", or a negation of the change itself ("don't snooze it"); other
+negative words in the request ("cancel it, no need to keep it") are not a
+decline.
+
+```quint
+pure def reminderTargetGrounded(selectionKnown: bool, sameAsSelected: bool): bool = selectionKnown and sameAsSelected
+pure def reminderChangeAsked(asksForTheChange: bool, declines: bool): bool = asksForTheChange and not(declines)
+pure def lawADeclinedChangeIsNeverProposed(asksForTheChange: bool): bool = not(reminderChangeAsked(asksForTheChange, true))
+pure def lawAnUnaskedChangeIsNeverProposed(declines: bool): bool = not(reminderChangeAsked(false, declines))
+pure def lawAnUnselectedReminderIsNeverProposed(sameAsSelected: bool): bool = not(reminderTargetGrounded(false, sameAsSelected))
+```
+
+### A new phone reminder is due when the owner's words say, counted from the turn's start for a relative time
+
+A relative time the owner states ("in 20 minutes", "in an hour") is
+counted from the instant the turn started, never from an instant the model
+calculated, repeats nothing, and alerts at its due time or not at all. A
+stated day and clock time is placed on the phone's clock ([Owner time
+zone](./timezone.md)), and a repeat the reminder carries is set to that
+day, time, zone and alert lead. With neither, the model's reviewed instant
+stands, for the owner to check on the phone. The alert comes the stated
+number of minutes before the due time, and with no alert the reminder is
+pending at its due time. A reminder whose due time, or whose alert, has
+passed by the clock when it is proposed is refused. Its title uses the
+owner's own words, and a note the owner did not state is left empty.
+
+```quint
+pure def relativeDueAt(startedAt: int, afterMs: int): int = startedAt + afterMs
+pure def reminderLead(relative: bool, proposedMinutes: int): int = if (relative) 0 else proposedMinutes
+pure def alertAt(dueAt: int, alertMinutes: int, alerts: bool): int = if (alerts) dueAt - alertMinutes * 60000 else dueAt
+pure def reminderTimeAdmitted(dueAt: int, alertsAt: int, alerts: bool, checkedAt: int): bool =
+  dueAt > checkedAt and (not(alerts) or alertsAt > checkedAt)
+pure def newReminderStated(titleInOwnerWords: bool, timeAdmitted: bool): bool = titleInOwnerWords and timeAdmitted
+pure def reminderWordsKept(stated: bool, proposed: str): str = if (stated) proposed else ""
+pure def lawARelativeReminderAlertsWhenDue(startedAt: int, afterMs: int, proposedMinutes: int): bool =
+  alertAt(relativeDueAt(startedAt, afterMs), reminderLead(true, proposedMinutes), true) == relativeDueAt(startedAt, afterMs)
+pure def lawAnAdmittedAlertIsInTheFuture(dueAt: int, alertMinutes: int, checkedAt: int): bool =
+  reminderTimeAdmitted(dueAt, alertAt(dueAt, alertMinutes, true), true, checkedAt) implies alertAt(dueAt, alertMinutes, true) > checkedAt
+pure def lawAnAdmittedReminderIsInTheFuture(dueAt: int, alertsAt: int, alerts: bool, checkedAt: int): bool =
+  reminderTimeAdmitted(dueAt, alertsAt, alerts, checkedAt) implies dueAt > checkedAt
+pure def lawASilentReminderIsDueWhenItFires(dueAt: int, alertMinutes: int): bool = alertAt(dueAt, alertMinutes, false) == dueAt
+pure def lawUnstatedNotesAreNeverKept(proposed: str): bool = reminderWordsKept(false, proposed) == ""
+```

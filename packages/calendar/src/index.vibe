@@ -1,5 +1,7 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"
 import type { IAgentRuntime, Plugin } from "@elizaos/core"
+import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { calendarProposalFamily } from "./plugin/device-proposals.vibe"
 import { calendarAction, calendarActionName, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk } from "./plugin/actions.vibe"
 import type { CalendarHost } from "./plugin/host.vibe"
 import { linkedCalendarRoutes } from "./plugin/linked-routes.vibe"
@@ -32,6 +34,7 @@ export type { CalendarEventFacts } from "./plugin/service.vibe"
 export { linkedCalendarRoutes, type LinkedRouteContext } from "./plugin/linked-routes.vibe"
 export { RecurrenceRecord, ScopeMismatch, WriteScopeRecord, type CalendarRecurrence, type CalendarWriteScope } from "./series/index.vibe"
 export { ResidentNeedsReview, importPriorResident } from "./plugin/providers.vibe"
+export { calendarProposalFamily }
 
 /** The package name the agent bundle loads this plugin under. */
 export const calendarPluginName = "@elizaos/plugin-calendar"
@@ -57,8 +60,9 @@ export function calendarPlugin(): CalendarPlugin {
       const held = await host()
       return held === undefined || started === undefined ? undefined : { host: held, cache: started, agentId: started.agentId }
     })],
-    init: (_config, runtime) => {
+    init: async (_config, runtime) => {
       started = runtime
+      await runPromise(registerDeviceProposalFamily(runtime, calendarProposalFamily))
     },
   }
 }

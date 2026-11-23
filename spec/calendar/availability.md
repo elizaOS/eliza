@@ -201,6 +201,45 @@ pure val accValues = Set(emptyData, refusedData, { ...emptyData, transparentCoun
 pure val transparentCountValues = Set(-1, 0, 1, 200, 201)
 ```
 
+### An availability window is the day and time the owner asked about, in the phone's zone
+
+A chat question about free time becomes an availability check only on the
+day the owner's words give, in the zone the phone reported for the turn;
+the model's own instants are never the authority. The day is the one the
+words state; with no day stated, a single clock time ("am I free at 3pm?")
+or a part of today ("this afternoon", "tonight") is asked about the phone's
+current local day. With one clock time stated, the window starts there and
+ends at the end of a stated range, else after a stated length, else one
+hour later. With no clock time, the model's window is kept when it lies
+within that day ("tomorrow afternoon"), and otherwise the window is the
+whole day. No day the words give, several clock times, another zone or
+offset the owner named, or a time the phone's clock skips or repeats, at
+the start or at the end of a stated range, asks the owner instead. The
+window still meets the bounds above.
+
+```quint
+pure def availabilityDayKnown(dayStated: bool, clockStated: bool, todayPartStated: bool): bool =
+  dayStated or clockStated or todayPartStated
+pure def availabilityWindowed(dayKnown: bool, severalClocks: bool, otherZoneNamed: bool, wallTimeExists: bool): bool =
+  dayKnown and not(severalClocks) and not(otherZoneNamed) and wallTimeExists
+pure def askedAvailability(dayBegin: int, dayFinish: int, clockAt: int, clockStated: bool, statedFinish: int, proposed: TimeWindow): TimeWindow =
+  if (clockStated) { begin: clockAt, finish: if (statedFinish > clockAt) statedFinish else clockAt + 3600000 }
+  else if (proposed.finish > proposed.begin and proposed.begin >= dayBegin and proposed.finish <= dayFinish) proposed
+  else { begin: dayBegin, finish: dayFinish }
+pure def lawAnAskedDayStaysOnThatDay(dayBegin: int, dayFinish: int, clockAt: int, statedFinish: int, proposed: TimeWindow): bool =
+  val asked = askedAvailability(dayBegin, dayFinish, clockAt, false, statedFinish, proposed)
+  asked.begin >= dayBegin and asked.finish <= dayFinish
+pure def lawAStatedClockStartsTheWindow(dayBegin: int, dayFinish: int, clockAt: int, statedFinish: int, proposed: TimeWindow): bool =
+  val asked = askedAvailability(dayBegin, dayFinish, clockAt, true, statedFinish, proposed)
+  asked.begin == clockAt and asked.finish > clockAt
+pure def lawAStatedClockKnowsItsDay(dayStated: bool, todayPartStated: bool): bool = availabilityDayKnown(dayStated, true, todayPartStated)
+pure def lawSeveralClocksAreNeverAWindow(dayKnown: bool, otherZoneNamed: bool, wallTimeExists: bool): bool =
+  not(availabilityWindowed(dayKnown, true, otherZoneNamed, wallTimeExists))
+pure def lawAnotherZoneIsNeverAWindow(dayKnown: bool, severalClocks: bool, wallTimeExists: bool): bool =
+  not(availabilityWindowed(dayKnown, severalClocks, true, wallTimeExists))
+pure val proposedValues = Set({ begin: 0, finish: 4 }, { begin: 2, finish: 9 }, { begin: 3, finish: 3 })
+```
+
 ## Story: Read the reviewed local source with its actual calendar rules
 
 > As the owner, I want my availability computed from the calendars I chose,

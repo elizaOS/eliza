@@ -1,7 +1,9 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"
 import { Service, type EvaluatorRunResult, type IAgentRuntime, type Provider } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
+import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import { checkinKind, deliverCheckin } from "./checkin.vibe"
+import { reminderProposalFamily } from "./device-proposals.vibe"
 import { dossierRoutes } from "./dossier.vibe"
 import { deliverEscalation, escalationKind } from "./escalation.vibe"
 import { runEvaluators, type EvaluatorRun } from "./evaluators/runner.vibe"
@@ -20,6 +22,7 @@ export { runEvaluators, orderedEntries, type EvaluatorRun } from "./evaluators/r
 export { restoreEarlier, evidenceRows, type Restoration } from "./evaluators/pages.vibe"
 export { followupTick, type TickReport } from "./followups.vibe"
 export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
+export { reminderProposalFamily } from "./device-proposals.vibe"
 
 /** The name the agent loads this plugin by. */
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
@@ -101,8 +104,9 @@ let running: IAgentRuntime | undefined
 export const personalAssistantPlugin = {
   name: personalAssistantPluginName,
   description: "Personal assistance: reminders, time zones, check-ins, goals, to-dos and routines, kept in the owner's agent.",
-  init: (_config: Record<string, string>, runtime: IAgentRuntime) => {
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     running = runtime
+    await runPromise(registerDeviceProposalFamily(runtime, reminderProposalFamily))
   },
   actions: [ownerRemindersAction, ownerGoalsAction, todosAction, ownerRoutinesAction],
   providers: [ownerRemindersProvider, ownerGoalsProvider, currentTodosProvider, ownerRoutinesProvider, ownerClockProvider],
