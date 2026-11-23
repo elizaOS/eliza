@@ -10,7 +10,6 @@ import {
   type CalendarMutationFailure, type CalendarMutationPayload, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest,
 } from "./ledger.vibe"
 
-/** Where the mutation port finds the active account and the provider for a source. */
 export interface CalendarProviders {
   active(): (CalendarAccount | undefined)!!
   port(provider: CalendarSourceKey["provider"]): (CalendarProviderPort | undefined)!!
@@ -25,19 +24,16 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? "null"
 }
 
-/** The digest an owner's review binds: SHA-256 of the payload's canonical JSON. */
 export function reviewDigest(payload: CalendarMutationPayload): string {
   return sha256Hex(canonical(payload))
 }
 
-/** Whether reviewed fields name a real, ordered span: canonical UTC instants, the end after the start. */
 export function fieldsSpanValid(fields: CalendarEventFields): boolean {
   const start = utcInstant(fields.startAt)
   const end = utcInstant(fields.endAt)
   return start !== undefined && end !== undefined && end > start
 }
 
-/** Whether a reviewed recurrence fits its fields: a timed series in a known zone, and an end of repeats no earlier than the start. */
 export function recurrenceFits(fields: CalendarEventFields, recurrence: CalendarRecurrence): boolean {
   return (fields.isAllDay || knownTimeZone(fields.timeZone)) && (recurrence.until === undefined || Date.parse(recurrence.until) >= Date.parse(fields.startAt))
 }
@@ -46,12 +42,10 @@ const failure = (code: string, message: string, retryable: boolean): CalendarMut
 const refuse = (code: string, message: string, retryable = false) => new CalendarPreflightRefused({ failure: failure(code, message, retryable) })
 const unconfirmed = (code: string, message: string) => new CalendarWriteUnconfirmed({ failure: failure(code, message, false) })
 
-/** What a reviewed change asks of an event, as the invitation rule sees it. */
 export function invitationChangeOf(action: Exclude<CalendarMutationPayload["action"], "schedule_event">): InvitationChange {
   return action === "modify_event" ? "EditEvent" : action === "cancel_event" ? "DeleteEvent" : "AnswerInvitation"
 }
 
-/** Why the invitation rule refused a change: its code and sentence. */
 function invitationRefusal(change: InvitationChange, role: OwnerRole, verdict: InvitationVerdict): { readonly code: string; readonly message: string } {
   if (verdict === "RefuseScope") return { code: "CALENDAR_RECURRENCE_RESPONSE_SCOPE_UNSUPPORTED", message: "An invitation is answered for this event or the whole series, not this and following." }
   if (verdict === "RefuseUnsupported") return { code: "CALENDAR_INVITATION_RESPONSE_UNSUPPORTED", message: "That calendar's provider can't answer invitations." }
@@ -71,7 +65,6 @@ function fromSource(event: CalendarEvent, source: CalendarSourceKey): boolean {
     && (event.connectorAccountId ?? source.connectorAccountId) === source.connectorAccountId
 }
 
-/** The mutation port that checks a reviewed change against the active account's calendars, makes the one provider call and reads it back. */
 export function providerMutationPort(providers: CalendarProviders): CalendarMutationPort {
   effect function bound(request: CalendarMutationRequest) {
     const account = try providers.active()

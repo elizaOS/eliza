@@ -36,7 +36,6 @@ interface ReadDate {
   readonly year: number | undefined
 }
 
-/** Whether a message says the owner is back, says they are away, or says neither; a return is read first. */
 function travelSignal(text: string): TravelSignal {
   if (backPattern.test(text)) return "SaysBack"
   return awayPattern.test(text) ? "SaysAway" : "SaysNothing"
@@ -61,12 +60,10 @@ const dayKey = (day: CalendarDay) => day.year * 10_000 + day.month * 100 + day.d
 const dateText = (day: CalendarDay) => `${day.year}-${String(day.month).padStart(2, "0")}-${String(day.day).padStart(2, "0")}`
 const midnight = (day: CalendarDay, zone: string) => isCalendarDay(day.year, day.month, day.day) ? zonedInstant(dateText(day), "00:00", zone) : undefined
 
-/** Today on the owner's clock, as the travel rules order days. */
 function todayKey(now: number, zone: string): number {
   return Number(civilDate(now, zone).replace(/-/gu, ""))
 }
 
-/** The return a phrase after "until" names, on the owner's clock in `zone` at `now`. */
 function statedReturn(phrase: string | undefined, now: number, zone: string): StatedReturn {
   if (phrase === undefined) return noReturn
   const read = readDate(phrase)
@@ -81,7 +78,6 @@ function statedReturn(phrase: string | undefined, now: number, zone: string): St
   }
 }
 
-/** Applies what a message says about the owner's travel: a trip from now to the return it names, or the end of the trip. */
 export effect function stateTravel(text: string) {
   const signal = travelSignal(text)
   if (signal === "SaysNothing") return undefined
@@ -95,7 +91,6 @@ export effect function stateTravel(text: string) {
   return { signal, trip, travelling, until: travelling ? new Date(trip.endAt).toISOString() : undefined }
 }
 
-/** Keeps the trip the owner states in conversation, and ends it when they say they are back. */
 export const ownerTravelEvaluator: RegisteredEvaluator = {
   name: "PERSONAL_ASSISTANT_OWNER_TRAVEL",
   description: "Keeps the trip the owner states, such as \"I'm traveling until November 21st\", and ends it when they say they are back.",

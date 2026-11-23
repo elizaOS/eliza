@@ -9,9 +9,7 @@ import { OccurrenceAnswer, RoutineCreate, RoutineRequest, RoutineUpdate } from "
 import { hhmm, minuteOf } from "./time.vibe"
 import { ownerClockAt } from "./timezone.vibe"
 
-/** The scheduled-task kind of a routine's occurrences. */
 export const routineKind = "personal-assistant.routine"
-/** The scheduled-task kind of a nudge about a routine's occurrence left unanswered. */
 export const routineNudgeKind = "personal-assistant.routine-nudge"
 
 type Window = NonNullable<RoutineCreate["windows"]>[number]
@@ -22,7 +20,6 @@ const weekdayNumbers: Readonly<Record<Weekday, number>> = { sun: 0, mon: 1, tue:
 const weekdayWords: Readonly<Record<Weekday, string>> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" }
 const doneLogLimit = 50
 
-/** The cron expressions a routine comes on: its windows and exact times, every day or on its weekdays, or undefined when it names no valid time. */
 function routineCrons(when: RoutineWhen): readonly string[] | undefined {
   const exact = (when.times ?? []).map(minuteOf)
   const minutes = [...(when.windows ?? []).map((window) => windowHours[window] * 60), ...exact.filter((minute) => minute !== undefined)]
@@ -33,7 +30,6 @@ function routineCrons(when: RoutineWhen): readonly string[] | undefined {
   return [...hours].sort(([a], [b]) => a - b).map(([minute, at]) => `${minute} ${at.join(",")} * * ${days}`)
 }
 
-/** The starter routines offered during onboarding, each at most once. */
 const starterRoutines: Readonly<Record<string, { readonly title: string; readonly windows: readonly Window[] }>> = {
   "brush-teeth": { title: "Brush teeth", windows: ["morning", "night"] },
   "drink-water": { title: "Drink water", windows: ["morning", "afternoon", "evening"] },
@@ -48,7 +44,6 @@ const RoutineRecord = Schema.Struct({
   moreTaskIds: Schema.optionalKey(Schema.Array(Schema.String)),
   done: Schema.optionalKey(Schema.Array(Schema.Number)),
 })
-/** A routine's words and its scheduled task, beside its spec state. */
 export type RoutineRecord = typeof RoutineRecord.Type
 const decodeIndex = Schema.decodeUnknownOption(Schema.Struct({ routines: Schema.Array(RoutineRecord), keys: Schema.Record(Schema.String, Schema.String) }))
 const indexKey = "routines"
@@ -61,7 +56,6 @@ effect function routineIndex() {
   return (try readRecord(indexKey, decodeIndex)) ?? { routines: [], keys: {} }
 }
 
-/** A routine as the owner's client reads it, with the instants its occurrences were marked done. */
 function wireRoutine(record: RoutineRecord, state: Routines) {
   return {
     id: record.routineId, title: record.title, windows: record.windows, times: record.times ?? [], days: record.days ?? [],
@@ -69,10 +63,8 @@ function wireRoutine(record: RoutineRecord, state: Routines) {
   }
 }
 
-/** A routine as the owner's client reads it. */
 export type WireRoutine = ReturnType<typeof wireRoutine>
 
-/** When a routine comes, in words: its windows with their times and its exact times, every day or on its weekdays. */
 export function routineTimes(routine: Pick<WireRoutine, "windows" | "times" | "days">): string {
   const at = [...routine.windows.map((window) => `${window} (${hhmm(windowHours[window] * 60)})`), ...routine.times].join(", ")
   return `${at}${routine.days.length === 0 ? " every day" : ` on ${routine.days.map((day) => weekdayWords[day]).join(", ")}`}`
@@ -97,7 +89,6 @@ effect function routineState(routineId: string) {
   }
 }
 
-/** Creates a routine once per idempotency key, answering a repeat with the routine as it is; one that names no valid time creates nothing. */
 export effect function createRoutine(input: RoutineCreate) {
   const index = try routineIndex()
   const known = index.keys[input.idempotencyKey]
@@ -134,7 +125,6 @@ effect function offerTemplate(templateKey: string) {
   }
 }
 
-/** Offers a starter routine from its template, creating it at most once. */
 effect function seedStarter(templateKey: string) {
   const template = starterRoutines[templateKey]
   if (template === undefined) return undefined
@@ -142,7 +132,6 @@ effect function seedStarter(templateKey: string) {
   return try createRoutine({ idempotencyKey: `template:${templateKey}`, title: template.title, windows: [...template.windows] })
 }
 
-/** Changes a routine's status and answers with the routine as saved. */
 export effect function updateRoutine(routineId: string, input: RoutineUpdate) {
   const record = (try routineIndex()).routines.find((routine) => routine.routineId === routineId)
   if (record === undefined) return undefined
@@ -155,7 +144,6 @@ export effect function updateRoutine(routineId: string, input: RoutineUpdate) {
   return wireRoutine(record, state)
 }
 
-/** Deletes a routine and its scheduled task, answering deleted. */
 export effect function deleteRoutine(routineId: string) {
   const index = try routineIndex()
   const record = index.routines.find((routine) => routine.routineId === routineId)
@@ -172,7 +160,6 @@ const occurrenceEvents = {
   complete: "completeOccurrence", skip: "skipOccurrence", snooze: "snoozeOccurrence", mute: "muteRoutine", unmute: "unmuteRoutine",
 } as const satisfies Record<OccurrenceAnswer["op"], Event["type"]>
 
-/** Answers a routine's current occurrence; an occurrence not shown yet cannot be answered. */
 effect function answerOccurrence(routineId: string, answer: OccurrenceAnswer) {
   const record = (try routineIndex()).routines.find((routine) => routine.routineId === routineId)
   if (record === undefined) return undefined
@@ -189,7 +176,6 @@ effect function answerOccurrence(routineId: string, answer: OccurrenceAnswer) {
   return { refused: false, routine: wireRoutine(kept, state) }
 }
 
-/** Moves every routine's occurrences onto the zone the owner's clock follows now. */
 export effect function followRoutineClock(zone: string, key: string) {
   const scheduler = try Scheduler
   for (const record of (try routineIndex()).routines) {
@@ -200,7 +186,6 @@ export effect function followRoutineClock(zone: string, key: string) {
   }
 }
 
-/** Shows a routine's occurrence when its window opens, expiring the last one if nobody answered it. */
 export effect function deliverRoutine(task: TaskRow) {
   const routineId = task.metadata.routineId
   if (typeof routineId !== "string") return { kind: "undeliverable", error: "The occurrence names no routine" } satisfies DeliveryAnswer
@@ -231,7 +216,6 @@ effect function scheduleRoutineNudges(routineId: string, title: string, occurren
   }
 }
 
-/** Nudges about a routine's occurrence only while that same occurrence is still showing unanswered. */
 export effect function deliverRoutineNudge(task: TaskRow) {
   const { routineId, occurrence } = task.metadata
   if (typeof routineId !== "string" || typeof occurrence !== "number") return { kind: "undeliverable", error: "The nudge names no routine occurrence" } satisfies DeliveryAnswer
@@ -253,7 +237,6 @@ const malformed = { status: 400, body: { error: "malformed" } }
 const notFound = { status: 404, body: { error: "not_found" } }
 const offline = { status: 503, body: { error: "assistant_unavailable" } }
 
-/** The routes the owner's client creates, changes, deletes and answers routines through. */
 export function routineRoutes(agent: () => IAgentRuntime | undefined): LocalRoute[] {
   const run = async <A>(program: (runtime: IAgentRuntime) => Promise<A>) => {
     const runtime = agent()
@@ -316,20 +299,17 @@ const decodeRequest = Schema.decodeUnknownOption(RoutineRequest, strict)
 const statusOf = { pause: "paused", resume: "active", archive: "archived" } as const satisfies Record<string, RoutineUpdate["status"]>
 const answeredWords = { complete: "Marked done", skip: "Skipped", snooze: "Snoozed", mute: "Muted", unmute: "Unmuted" } as const satisfies Record<OccurrenceAnswer["op"], string>
 
-/** The routines a target names: by id, or by its whole title, ignoring case. */
 export effect function namedRoutines(target: string) {
   const name = target.trim().toLowerCase()
   return (try routineIndex()).routines.filter((record) => record.routineId === target || record.title.trim().toLowerCase() === name)
 }
 
-/** The owner's routines with their status, as the planner and the owner read them. */
 export effect function listRoutines() {
   const listed = []
   for (const record of (try routineIndex()).routines) listed.push(wireRoutine(record, try routineState(record.routineId)))
   return listed
 }
 
-/** Adds, pauses, resumes, archives, deletes, lists or answers the one routine a message names. */
 export effect function changeRoutine(input: unknown, messageId: string) {
   const decoded = decodeRequest(input)
   if (Option.isNone(decoded)) return { success: false, text: "Say which routine to add or change.", data: { outcome: "ROUTINE_REQUEST_INVALID" } } satisfies ActionResult
@@ -391,7 +371,6 @@ function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
   return typeof given === "object" && given !== null ? Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null)) : {}
 }
 
-/** Adds, changes, deletes, lists and answers the owner's routines from the conversation. */
 export const ownerRoutinesAction: Action = {
   name: routineActionName,
   description: "The owner's recurring habits and routines, such as stretching every afternoon or brushing teeth at 08:00 and 21:00: create one with its daily windows or exact times, every day or on named weekdays, pause, resume, archive or delete one, list them, or complete, skip, snooze, mute or unmute the one showing now. A change names the routine by its title or id and applies only when exactly one routine matches. A one-time reminder is OWNER_REMINDERS.",
@@ -413,7 +392,6 @@ export const ownerRoutinesAction: Action = {
   },
 }
 
-/** The owner's routines, for the planner to name the right one. */
 export const ownerRoutinesProvider: Provider = {
   name: "PERSONAL_ASSISTANT_ROUTINES",
   description: "The owner's routines, with their status, times and ids.",

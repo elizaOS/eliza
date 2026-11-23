@@ -9,7 +9,6 @@ module browser {
 }
 import { observationId } from browser
 
-/** What a Maps search shows: its query, area, results, provider and readiness. */
 export interface MapsSearchSource {
   readonly query: string
   readonly area: string
@@ -18,7 +17,6 @@ export interface MapsSearchSource {
   readonly ready: boolean
 }
 
-/** The identity envelope of a captured search observation; it carries no location data. */
 export interface MapsSelectedObject {
   readonly kind: "map-search"
   readonly id: string
@@ -41,7 +39,6 @@ effect function session() {
   return { id: observationId(), machine: try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next)) }
 }
 
-/** What the agent may observe of the Maps screen: a captured search validates only while the screen still shows that exact source, and an old locate never overrides a later one. */
 export effect function mapsObservation() {
   const serialize = (try Semaphore.make(1)).withPermits(1)
   const query = interned()
@@ -105,5 +102,4 @@ export effect function mapsObservation() {
   }
 }
 
-/** What the agent may observe of one Maps screen. */
 export type MapsObservationPort = Effect.Success<ReturnType<typeof mapsObservation>>

@@ -12,7 +12,6 @@ import { AssignmentRecord, BundleManifest, InstalledRecord } from "./records.sch
 
 export { Rejected }
 
-/** The slot names of the owner's record and the routes, by the spec's slots. */
 export const slotNames = {
   TextSmallSlot: "TEXT_SMALL",
   TextLargeSlot: "TEXT_LARGE",
@@ -21,18 +20,14 @@ export const slotNames = {
   TranscriptionSlot: "TRANSCRIPTION",
 } as const satisfies Record<ModelSlot, string>
 
-/** A slot as the owner's record names it. */
 export type SlotName = typeof slotNames[ModelSlot]
 
-/** The spec's slot a record name refers to. */
 export function slotNamed(name: string): ModelSlot | undefined {
   return allSlots.find((slot) => slotNames[slot] === name)
 }
 
-/** A download that could not fetch or store its files; the model stays absent. */
 export error DownloadFailed { model: string; reason: string }
 
-/** The assignment record is still unreadable, so nothing that writes it is allowed. */
 export error AssignmentsUnreadable { path: string }
 
 interface InstalledFile {
@@ -44,7 +39,6 @@ interface InstalledFile {
 const installNames = { NotInstalled: "absent", Downloading: "downloading", Installed: "installed", Unreadable: "unreadable" } as const satisfies Record<InstallPhase, string>
 const statusNames = { ActiveIdle: "idle", ActiveLoading: "loading", ActiveReady: "ready", ActiveFailed: "failed" } as const satisfies Record<ActiveStatus, string>
 
-/** One curated model as the owner sees it. */
 export interface ModelView {
   readonly name: string
   readonly role: "chat" | "embedding"
@@ -54,7 +48,6 @@ export interface ModelView {
   readonly slots: readonly SlotName[]
 }
 
-/** The device's models as the owner sees them: each model, the active one, whether the assignment record is readable, and the failure code that left models unreadable. */
 export interface ModelsView {
   readonly models: readonly ModelView[]
   readonly active: { readonly model: string | null; readonly status: typeof statusNames[ActiveStatus]; readonly servesText: boolean }
@@ -62,7 +55,6 @@ export interface ModelsView {
   readonly unreadable: string | null
 }
 
-/** The device's models: their state, the owner's changes to it, and the model that serves text and embeddings now. */
 export interface LocalModelsApi {
   readonly catalog: Catalog
   readonly changes: Stream.Stream<LocalModels>
@@ -123,7 +115,6 @@ effect function machineOf(start: LocalModels) {
   }
 }
 
-/** Opens the models kept under the state directory, adopting any verified staged model and giving embeddings a default model. */
 export effect function openLocalModels(stateDirectory: string, catalog: Catalog = curatedModels) {
   const fs = try FileSystem.FileSystem
   const path = try Path.Path

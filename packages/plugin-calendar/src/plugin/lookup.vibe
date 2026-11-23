@@ -42,7 +42,6 @@ function coverage(event: CalendarEvent, asked: readonly string[], whole: string)
   }
 }
 
-/** The events a query finds: those holding the most asked words, and among them those whose titles hold the most. */
 export function lookupMatches(events: readonly CalendarEvent[], query: string): CalendarEvent[] {
   const asked = askedWords(query)
   const scored = events.map((event) => ({ event, ...coverage(event, asked, folded(query)) }))
@@ -51,7 +50,6 @@ export function lookupMatches(events: readonly CalendarEvent[], query: string): 
   return scored.filter((row) => lookupKeeps(row.found, row.titleFound, bestFound, bestTitle)).map((row) => row.event)
 }
 
-/** The events of a trip to a place: every event from the start of the first one holding a word of the place to the end of the last, or none. */
 export function tripEvents(events: readonly CalendarEvent[], place: string): CalendarEvent[] {
   const asked = askedWords(place)
   const marks = events.filter((event) => coverage(event, asked, folded(place)).found > 0)

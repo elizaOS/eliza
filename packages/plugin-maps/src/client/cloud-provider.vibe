@@ -13,10 +13,8 @@ module browser {
 }
 import { localTime } from browser
 
-/** The Cloud client calls Maps makes, from the signed-in account's client. */
 export type MapsCloud = Pick<CloudClient, "mapsCapabilities" | "mapsPlacesSearch" | "mapsPlaceDetails" | "mapsRoutes" | "mapsViewport" | "mapsTile">
 
-/** The account a Maps connection belongs to: its session and credential identities and the client that speaks for them. */
 export interface CloudMapsAccount {
   readonly session: string
   readonly credential: string
@@ -26,10 +24,8 @@ export interface CloudMapsAccount {
 type Capabilities = Awaited<ReturnType<MapsCloud["mapsCapabilities"]>>
 type Offer = Extract<Capabilities, { readonly available: true }>
 
-/** Who receives a request's text and coordinates, as Cloud discloses it. */
 export type CloudMapsDisclosure = Offer["disclosure"]
 
-/** The region, sources, disclosure and tiles of the connected Cloud Maps deployment. */
 export interface CloudMapsCoverage {
   readonly providerId: string
   readonly revision: string
@@ -40,7 +36,6 @@ export interface CloudMapsCoverage {
   readonly tiles?: NonNullable<Offer["tiles"]>
 }
 
-/** The visible map area a copyright is asked for. */
 export interface MapsViewport {
   readonly zoom: number
   readonly north: number
@@ -49,7 +44,6 @@ export interface MapsViewport {
   readonly west: number
 }
 
-/** A raster basemap drawn from Cloud tiles, whose attribution badge belongs to the area in view. */
 export interface CloudMapsBasemap {
   readonly kind: "cloud-raster"
   readonly attribution: string
@@ -60,7 +54,6 @@ export interface CloudMapsBasemap {
   copyright(view: MapsViewport): string!MapsFailure
 }
 
-/** A human wait time for a retry, rounded up. */
 export function retryWait(ms: number): string {
   const seconds = Math.max(1, Math.ceil(ms / 1000))
   if (seconds < 90) return `about ${seconds} second${seconds === 1 ? "" : "s"}`
@@ -68,7 +61,6 @@ export function retryWait(ms: number): string {
   return minutes < 90 ? `about ${minutes} minutes` : `about ${Math.ceil(minutes / 60)} hours`
 }
 
-/** Names each service that receives search text and route points, or "" for none. */
 export function describeLocationRecipients(recipients: CloudMapsDisclosure["recipients"], gatewayFallback?: string): string {
   const gateway = recipients.find((recipient) => recipient.role === "gateway")?.name ?? gatewayFallback
   const targets = [
@@ -78,19 +70,16 @@ export function describeLocationRecipients(recipients: CloudMapsDisclosure["reci
   return targets.length > 0 ? `Searches, search areas and route points are sent to ${targets.join(" and ")}.` : ""
 }
 
-/** One sentence for location controls: who receives search text and coordinates. */
 export function describeMapsDisclosure(disclosure: CloudMapsDisclosure | undefined): string {
   return disclosure === undefined ? "" : `${describeLocationRecipients(disclosure.recipients, "Cloud Maps")} Cloud keeps only the request type and result, not your searches or locations.`
 }
 
-/** Whether a point is inside any Cloud coverage region. */
 export function insideCloudCoverage(coverage: Pick<CloudMapsCoverage, "regions">, point: Coordinate): boolean {
   return coverage.regions.some(({ bounds: [west, south, east, north] }) => point.longitude >= west && point.longitude <= east && point.latitude >= south && point.latitude <= north)
 }
 
 const dayMs = 86_400_000
 
-/** The Maps refusal of a Cloud failure at `now`; Cloud never sends guessed data, so no fallback is tried. */
 export function cloudMapsFailure(failure: CloudFailure, now: number): MapsFailure {
   const refused = (code: MapsFailure["code"], message: string) => new MapsFailure({ code, message })
   switch (failure.tag) {
@@ -157,7 +146,6 @@ function identities() {
   }
 }
 
-/** Cloud Maps as the phone's provider: coverage is read for the bound account, every request is fenced to the account and coverage generation it started under, a Cloud pause holds every request, and nothing falls back. */
 export effect function cloudMaps(configure: (config: ProviderConfig, provider?: MapsProvider) => void) {
   const connection = try Ref.make(neverConnected)
   const machine = try connectionOver(() => Ref.get(connection), (next) => Ref.set(connection, next))
@@ -365,10 +353,8 @@ export effect function cloudMaps(configure: (config: ProviderConfig, provider?: 
   }
 }
 
-/** One Cloud Maps connection of the phone. */
 export type CloudMaps = Effect.Success<ReturnType<typeof cloudMaps>>
 
-/** The provider copyright for the map in view: moving outside the attributed area hides it, and only the reply to the latest request for the view still in place is shown. */
 export effect function viewportAttribution(basemap: CloudMapsBasemap) {
   const kept = try Ref.make(unattributed)
   const machine = try attributionOver(() => Ref.get(kept), (next) => Ref.set(kept, next))

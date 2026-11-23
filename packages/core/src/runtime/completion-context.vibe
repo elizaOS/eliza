@@ -434,7 +434,6 @@ function requestNoteSources(event: ContextEvent): readonly [string, ...string[]]
     : [note.requestSourceEventId]
 }
 
-/** Keeps historical evidence and, with `requestNotes`, interruption and read-continuation notes only while the request they describe stays in view. */
 export function selectHistoricalNavigation(
   context: ContextObject,
   includedEventIds: ReadonlySet<string>,

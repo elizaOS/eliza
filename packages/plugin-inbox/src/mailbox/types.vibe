@@ -1,6 +1,5 @@
 // spec/inbox/reads.md, "Story: Read my mailbox without mixing account pages or endlessly reusing a cursor"; spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"
 
-/** One owner-side Google connection as Cloud reports it. */
 export interface GoogleConnection {
   readonly configured: boolean
   readonly connected: boolean
@@ -9,23 +8,18 @@ export interface GoogleConnection {
   readonly grantedCapabilities: readonly string[]
 }
 
-/** A Google connection with the label shown for its mailbox. */
 export interface GmailAccount extends GoogleConnection {
   readonly label: string
 }
 
-/** Every reviewed mailbox effect the inbox-v1 operation routes accept. */
 export type GmailInboxOperationKind =
   | "send" | "draft-create" | "draft-replace" | "draft-delete" | "archive" | "unarchive"
   | "trash" | "untrash" | "mark-read" | "mark-unread" | "star" | "unstar"
 
-/** An approved mailbox change and the Cloud capability family it needs. */
 export type GmailMailboxAction = GmailInboxOperationKind
 
-/** The receipt states Cloud reports for one reviewed operation. */
 export type GmailInboxReceiptState = "prepared" | "dispatched" | "succeeded" | "rejected" | "outcome-unknown"
 
-/** Per-account managed inbox capabilities, derived from the kinds Cloud reports for the grant. */
 export interface GmailInboxCapabilities {
   readonly version: 1
   readonly from: string
@@ -46,13 +40,11 @@ export interface GmailInboxCapabilities {
   readonly attachmentPolicy: { readonly maximumOutgoing: number; readonly maximumBytes: number; readonly maximumTotalBytes: number; readonly mimeTypes: readonly string[] }
 }
 
-/** A link found in mail: inert data, never fetched or rendered as HTML. */
 export interface GmailLink {
   readonly href: string
   readonly text: string
 }
 
-/** One provider draft in a drafts page, metadata only. */
 export interface GmailDraftSummary {
   readonly draftId: string
   readonly messageId: string
@@ -62,7 +54,6 @@ export interface GmailDraftSummary {
   readonly updatedAt: string | null
 }
 
-/** Exact provider draft content and its raw-MIME digest from one snapshot. */
 export interface GmailDraftContent {
   readonly draftId: string
   readonly messageId: string
@@ -77,7 +68,6 @@ export interface GmailDraftContent {
   readonly plainText: boolean
 }
 
-/** Canonical Cloud receipt for one reviewed operation; `succeeded` always carries a provider result. */
 export interface GmailInboxReceipt {
   readonly requestId: string
   readonly kind: GmailInboxOperationKind
@@ -87,7 +77,6 @@ export interface GmailInboxReceipt {
   readonly rejectionCode: string | null
 }
 
-/** One listed message. */
 export interface GmailMessage {
   readonly id: string
   readonly threadId: string
@@ -103,7 +92,6 @@ export interface GmailMessage {
   readonly historyId: string | null
 }
 
-/** Attachment metadata of a read message; bytes are fetched separately and reviewed. */
 export interface GmailMessageAttachment {
   readonly partId: string
   readonly name: string
@@ -112,7 +100,6 @@ export interface GmailMessageAttachment {
   readonly supported: boolean
 }
 
-/** One message body read; `historyId` binds later attachment reads and reviewed changes. */
 export interface GmailReadResult {
   readonly message: GmailMessage
   readonly bodyText: string
@@ -125,7 +112,6 @@ export interface GmailReadResult {
   readonly authenticationResults: string | null
 }
 
-/** One search page; two pages of one search with different `mailboxHistoryId` came from a changed mailbox. */
 export interface GmailSearchPage {
   readonly messages: readonly GmailMessage[]
   readonly syncedAt: string
@@ -134,7 +120,6 @@ export interface GmailSearchPage {
   readonly supportsSpamTrash: boolean
 }
 
-/** One bounded thread page, pinned to the thread revision of its first page. */
 export interface GmailThreadPage {
   readonly messages: readonly GmailReadResult[]
   readonly total: number

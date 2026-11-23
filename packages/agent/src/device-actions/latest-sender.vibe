@@ -14,7 +14,6 @@ function readOf(result: LatestSenderResult): SenderRead {
   }
 }
 
-/** The owner-facing answer to an approved latest-sender read, written from the result alone. */
 export function latestSenderReply(result: LatestSenderResult): string {
   switch (senderAnswer(readOf(result))) {
     case "SaysAddress": return "address" in result ? `Your latest incoming SMS came from ${result.address}.` : ""
@@ -25,13 +24,11 @@ export function latestSenderReply(result: LatestSenderResult): string {
   }
 }
 
-/** The fixed answer for a stored device result when it is a latest-sender result, or `undefined` for any other result. */
 export function latestSenderReplyFor(result: unknown): string | undefined {
   const decoded = readLatestSender(result)
   return Option.isSome(decoded) ? latestSenderReply(decoded.value) : undefined
 }
 
-/** What the model is told about proposing a latest-sender read on a device with this negotiation. */
 export function latestSenderGuidance(negotiation: Negotiation): string {
   switch (senderGuidance(negotiation)) {
     case "AddressThenDraft":

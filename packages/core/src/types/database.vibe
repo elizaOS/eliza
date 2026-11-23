@@ -365,14 +365,12 @@ export interface ModelLogBody extends BaseLogBody {
   usage?: ModelLogUsage
 }
 
-/** One tool schema a model call sent, by name, serialized size and content digest. */
 export interface ModelLogTool {
   name: string
   chars: number
   hash?: string
 }
 
-/** Provider-reported token counts for one model call; a count the provider did not report is absent. */
 export interface ModelLogUsage {
   promptTokens: number
   completionTokens?: number

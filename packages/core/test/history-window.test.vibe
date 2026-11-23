@@ -10,7 +10,6 @@ interface Row {
 
 const readCount = 200
 
-/** What a turn hands the window after reading the newest `readCount` rows: the rows with text as sources, at their positions among the stored rows. */
 function turnOf(rows: readonly Row[], request: string) {
   const read = rows.slice(-readCount)
   const sources = read.flatMap((row, position) => row.text ? [{ ...row, position }] : [])

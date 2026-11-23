@@ -75,7 +75,6 @@ const ownKeyPrefix = "/own-key/v1";
 
 const execute = promisify(execFile);
 
-// Each fake names its certificate uniquely: certificates trusted together under one subject make the TLS client pick the wrong one for a second live fake.
 async function selfSigned(directory: string): Promise<{ key: string; cert: string; caFile: string }> {
   const config = join(directory, "leaf.cnf");
   const keyFile = join(directory, "leaf.key");

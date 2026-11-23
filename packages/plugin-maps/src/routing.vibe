@@ -65,12 +65,9 @@ const ordinals: Readonly<Record<string, number>> = {
 }
 const maxRequestLength = 160
 
-/** The operations that ask "which one did you mean?", and the action each continues through. */
 export const choiceActions = { place: "MAPS_PLACE", route: "MAPS_ROUTE", select: "MAPS_SELECT", save: "MAPS_SAVE", share: "MAPS_SHARE", "navigation-start": "MAPS_NAVIGATION_START" } as const
-/** An operation that asks "which one did you mean?". */
 export type ChoiceOperation = keyof typeof choiceActions
 
-/** An open "which one did you mean?" question of one conversation, with the parameters that asked it. */
 export interface PlaceChoice {
   readonly operation: ChoiceOperation
   readonly field: "originPlaceId" | "destinationPlaceId" | "placeId"
@@ -89,12 +86,10 @@ function roomChoices(runtime: IAgentRuntime): Map<string, PlaceChoice> {
   return made
 }
 
-/** Opens a question in the conversation, replacing any earlier one. */
 export function openChoice(runtime: IAgentRuntime, roomId: string, choice: PlaceChoice): void {
   roomChoices(runtime).set(roomId, choice)
 }
 
-/** The position, from 1, that a short reply names among `count` options, or undefined. */
 export function choicePosition(reply: string, count: number): number | undefined {
   if (reply.length > 60) return undefined
   const word = choiceReply.exec(reply)?.[1]?.toLowerCase()
@@ -102,7 +97,6 @@ export function choicePosition(reply: string, count: number): number | undefined
   return word === "last" ? count : /^\d+$/u.test(word) ? Number(word) : ordinals[word]
 }
 
-/** The open question this owner turn answers and the place it chose; answering closes the question, and any other turn leaves it to the planner. */
 export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: number): { readonly choice: PlaceChoice; readonly place: AgentPlaceRef } | undefined {
   const open = roomChoices(runtime).get(message.roomId)
   const reply = typeof message.content.text === "string" ? message.content.text : ""
@@ -113,7 +107,6 @@ export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: num
   return place === undefined ? undefined : { choice: open, place }
 }
 
-/** Closes the conversation's open question once it is answered. */
 export function closeChoice(runtime: IAgentRuntime, roomId: string): void {
   roomChoices(runtime).delete(roomId)
 }
@@ -162,7 +155,6 @@ export function nearbyPlaceKind(query: string): string | undefined {
   return match?.[2] !== undefined && ownPosition.test(withoutTail(match[2])) ? kindOf(match[1]) : undefined
 }
 
-/** A kind of place and the named place it is to be searched near ("pharmacy near the Ferry Building"), or undefined when the words name no such place. */
 export function anchoredPlace(query: string): { readonly kind: string; readonly anchor: string } | undefined {
   const match = anchoredQuery.exec(query)
   const kind = match?.[1]?.trim()
@@ -171,7 +163,6 @@ export function anchoredPlace(query: string): { readonly kind: string; readonly 
   return { kind, anchor: anchor.replace(/^the\s+/iu, "") }
 }
 
-/** The shape of a short request and what a routing decision needs to know about its destination. */
 export function requestShape(text: string, openChoiceAnswered: boolean): { readonly shape: RequestShape; readonly destination?: string } {
   if (openChoiceAnswered) return { shape: "ChoiceReply" }
   if (text.length > maxRequestLength) return { shape: "OtherRequest" }
@@ -191,7 +182,6 @@ export function requestShape(text: string, openChoiceAnswered: boolean): { reado
   return { shape: "OtherRequest" }
 }
 
-/** Where a turn goes: the routing rules decide from the request's shape, its turn and its destination. */
 export function routeOf(text: string, message: Memory | undefined, openChoiceAnswered: boolean, namesView: (destination: string) => boolean): RoutedTo {
   const { shape, destination } = requestShape(text, openChoiceAnswered)
   return mapsRouteOf({
@@ -211,7 +201,6 @@ const routedActions: Record<Exclude<RoutedTo, "ToPlanner" | "ToChoice">, readonl
   ToPlaceSearch: ["MAPS_PLACE", "MAPS_NAVIGATION_START"],
 }
 
-/** Registers the Maps turn-routing rules of one runtime; a destination that names one of the host's views stays view navigation. */
 export function registerMapsRouting(runtime: IAgentRuntime, namesView: (destination: string) => boolean): void {
   const rule = (id: string, actionNames: readonly string[], matches: (text: string, message?: Memory) => boolean) =>
     registerDirectActionRoutingRule(runtime, { id, actionNames, replacesActionNames: ["VIEWS", "VIEWS_SHOW"], requiredActionTags: ["domain:maps"], contexts: ["maps"], matches })

@@ -11,17 +11,14 @@ import { EventRecord } from "../mutations/records.schema.vibe"
 import { residentImport, residentImportedRevision } from "../../gen/calendar__residentStore.effect.vibe"
 import { recurrenceLines, rowRecurrence, type CalendarRecurrence } from "../series/recurrence-rule.vibe"
 
-/** The owner and connector account the agent is acting for now. */
 export interface CalendarAccount {
   readonly agentId: string
   readonly ownerId: string
   readonly accountId: string
 }
 
-/** A provider could not be read for this account. */
 export error CalendarSourceUnavailable { provider: CalendarProvider; reason: string }
 
-/** One provider read of a window: the events it holds and whether the provider declared the read complete. */
 export interface CalendarWindowRead {
   readonly events: readonly CalendarEvent[]
   readonly complete: boolean
@@ -29,7 +26,6 @@ export interface CalendarWindowRead {
 
 type WriteFailure = CalendarWriteNotAccepted | CalendarWriteUnconfirmed
 
-/** How the Calendar action reaches one provider for one account: whether it writes RFC 5545 recurrence lines and can send attendees an update, its calendars, reads, creates and updates, an update or removal under the scope it names, and, when the provider can, a removal and an invitee's answer to an invitation; a port that sends updates tells a changed event's attendees exactly when `notifyAttendees` is true (Google's `sendUpdates` all, else none). */
 export interface CalendarProviderPort {
   readonly provider: CalendarProvider
   readonly recurrenceLines: boolean
@@ -43,12 +39,10 @@ export interface CalendarProviderPort {
   respond?(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarAnswerScope, response: CalendarInvitationResponse, expectedVersion: string, idempotencyKey: string, notifyAttendees: boolean): CalendarEvent!WriteFailure
 }
 
-/** The provider version of an event: its etag, else its update time. */
 export function eventVersion(event: CalendarEvent): string {
   return typeof event.metadata.etag === "string" && event.metadata.etag !== "" ? event.metadata.etag : event.updatedAt
 }
 
-/** The owner's role on an event as read: organizer, invitee or unknown; every resident event is the owner's own. */
 export function ownerRole(event: CalendarEvent, accountEmail: string | null): OwnerRole {
   if (event.provider === "eliza" || event.organizer?.self === true) return "OrganizerRole"
   const own = event.attendees.find((attendee) => attendee.self)
@@ -57,34 +51,28 @@ export function ownerRole(event: CalendarEvent, accountEmail: string | null): Ow
   return organizer !== "" && organizer === (accountEmail ?? "").trim().toLowerCase() ? "OrganizerRole" : "UnknownRole"
 }
 
-/** Whether an event has an attendee other than the owner, who could be told of a change. */
 export function hasOtherAttendees(event: CalendarEvent): boolean {
   return event.attendees.some((attendee) => !attendee.self)
 }
 
-/** Whether an event reads back with the owner's own attendee answering as asked. */
 export function answeredWith(event: CalendarEvent, response: CalendarInvitationResponse): boolean {
   return event.attendees.some((attendee) => attendee.self && attendee.responseStatus === response)
 }
 
-/** The fields of an event as it is, to compare a readback that must leave them unchanged. */
 export function fieldsOf(event: CalendarEvent): CalendarEventFields {
   return { title: event.title, description: event.description, location: event.location, startAt: event.startAt, endAt: event.endAt, isAllDay: event.isAllDay, timeZone: event.timezone ?? "UTC" }
 }
 
-/** Whether an event's half-open span meets the window, a zero-length event counting at its start. */
 export function eventInWindow(event: CalendarEvent, timeMin: number, timeMax: number): boolean {
   const start = Date.parse(event.startAt)
   const end = Date.parse(event.endAt)
   return Number.isFinite(start) && Number.isFinite(end) && (end === start ? start >= timeMin && start < timeMax : start < timeMax && end > timeMin)
 }
 
-/** The addresses of an event's guests other than the owner, lower-cased, once each and in order. */
 export function guestAddresses(event: CalendarEvent): readonly string[] {
   return [...new Set(event.attendees.flatMap((attendee) => attendee.self || attendee.email === null ? [] : [attendee.email.trim().toLowerCase()]))].sort()
 }
 
-/** Whether an event holds exactly the reviewed fields, comparing instants rather than their spelling, and its guests when the fields name them. */
 export function holdsFields(event: CalendarEvent, fields: CalendarEventFields): boolean {
   const guests = fields.attendees === undefined ? undefined : [...new Set(fields.attendees.map((address) => address.trim().toLowerCase()))].sort()
   return event.title === fields.title && event.description === fields.description && event.location === fields.location
@@ -116,7 +104,6 @@ const PriorDocument = Schema.Struct({
 })
 const decodePrior = Schema.decodeUnknownOption(Schema.fromJsonString(PriorDocument))
 
-/** The resident calendar cannot be shown: its earlier record could not be read or kept exactly, so it waits for review rather than starting empty. */
 export error ResidentNeedsReview { reason: string }
 
 function priorRow(event: CalendarEvent): CalendarRow | undefined {
@@ -128,7 +115,6 @@ function priorRow(event: CalendarEvent): CalendarRow | undefined {
     allDay: event.isAllDay, ...(event.timezone === null ? {} : { timeZone: event.timezone }) }
 }
 
-/** The series rows an earlier record of resident events becomes, with its import receipt, or undefined when any of its events cannot be kept exactly. */
 export function importPriorResident(raw: string): ResidentDocument | undefined {
   const prior = decodePrior(raw)
   if (Option.isNone(prior)) return undefined
@@ -146,7 +132,6 @@ export function importPriorResident(raw: string): ResidentDocument | undefined {
 const deletedMark = "\0deleted"
 const residentCalendarId = "primary"
 
-/** The resident calendar's one source for an account. */
 export function residentSource(account: CalendarAccount): CalendarSourceKey {
   return { provider: "eliza", side: "owner", grantId: "resident", connectorAccountId: account.accountId, calendarId: residentCalendarId }
 }
@@ -162,7 +147,6 @@ function rowFields(fields: CalendarEventFields): CalendarRowFields {
     allDay: fields.isAllDay, timeZone: fields.timeZone, ...(fields.attendees === undefined ? {} : { who: [...fields.attendees] }) }
 }
 
-/** The agent's own calendar, one document Calendar per account in the KeyValueStore: series, overrides and exclusions, with optimistic revisions and idempotent writes. */
 export effect function residentCalendar(): CalendarProviderPort!!KeyValueStore.KeyValueStore {
   const store = try KeyValueStore.KeyValueStore
   const serialize = (try Semaphore.make(1)).withPermits(1)

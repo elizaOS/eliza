@@ -16,7 +16,6 @@ module node {
 }
 import { commandId } from node
 
-/** A phone message the relay cannot accept; the host route answers it as a client error. */
 export error RelayRefused { reason: string }
 
 const Uuid = Schema.String.check(Schema.isPattern(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i))
@@ -31,13 +30,11 @@ const RelayMessage = Schema.Struct({
 const decodeMessage = Schema.decodeUnknownEffect(RelayMessage, { onExcessProperty: "error" })
 const decodeStatus = Schema.decodeUnknownEffect(MapsDeviceNavigationStatus, { onExcessProperty: "error" })
 
-/** What the relay answers the phone: protocol 1 and at most one request. */
 export interface RelayReply {
   readonly protocol: 1
   readonly request: { readonly id: string; readonly expiresAt: number; readonly operation: DeviceNavigationOperation } | null
 }
 
-/** How long the relay waits: a delivery's lease before redelivery, a command's lifetime, a live offer's last poll, an idle offer and one poll. */
 export interface RelayLimits {
   readonly leaseMs: number
   readonly commandMs: number
@@ -48,7 +45,6 @@ export interface RelayLimits {
 
 const defaultLimits: RelayLimits = { leaseMs: 2_500, commandMs: 30_000, liveMs: 2_000, idleMs: 30_000, pollMs: 1_000 }
 
-/** The agent's view of the phone's navigation, as Maps actions use it. */
 export interface MapsDeviceNavigation {
   available(): boolean!!
   select(place: AgentPlaceRef): MapsDeviceNavigationStatus!DeviceNavigationFailure
@@ -107,7 +103,6 @@ const statesFor: Record<DeviceNavigationOperation["kind"], readonly MapsDeviceNa
 const unreached = () => new DeviceNavigationFailure({ code: "MAPS_DEVICE_UNAVAILABLE", message: "The phone navigation request did not complete. Check the phone before trying again." })
 const idle: RelayReply = { protocol: 1, request: null }
 
-/** The agent host's side of the phone navigation relay: one outstanding command per device scope, redelivered to the same offer after a lapsed lease, abandoned when the offer it reached is replaced, and answered by at most one receipt. */
 export effect function mapsNavigationRelay(limits: RelayLimits = defaultLimits) {
   const scopes = new Map<string, Scope>()
   const serialize = (try Semaphore.make(1)).withPermits(1)
@@ -289,17 +284,14 @@ export effect function mapsNavigationRelay(limits: RelayLimits = defaultLimits) 
   }
 }
 
-/** The agent host's phone navigation relay. */
 export type MapsNavigationRelay = Effect.Success<ReturnType<typeof mapsNavigationRelay>>
 
-/** The path the phone's relay client calls on the agent host. */
 export const mapsNavigationPath = "/api/client-devices/maps-navigation"
 
 function scopeKey(input: Pick<RouteInput, "headers">): string {
   return input.headers.get("x-eliza-device-id") ?? "owner"
 }
 
-/** The agent host route of the relay: protocol 1 answers, and a message the relay cannot accept answers 409 with its reason. */
 export function mapsNavigationRoute(relay: MapsNavigationRelay): LocalRoute {
   return {
     method: "POST",
@@ -310,7 +302,6 @@ export function mapsNavigationRoute(relay: MapsNavigationRelay): LocalRoute {
   }
 }
 
-/** The phone navigation of the conversation a turn belongs to, while that phone holds an open offer for it. */
 export function conversationNavigation(relay: MapsNavigationRelay, conversationId: string, turnActive: () => boolean): MapsDeviceNavigation | undefined {
   const key = relay.scopeFor(conversationId)
   return key === undefined ? undefined : relay.navigation(key, conversationId, turnActive)

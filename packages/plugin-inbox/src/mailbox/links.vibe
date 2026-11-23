@@ -5,7 +5,6 @@ import type { GmailLink } from "./types.vibe"
 const controls = /[\x00-\x1f\x7f]+/g
 const closing = ".,;:!?)]}>"
 
-/** Keeps a link only as an absolute web URL without credentials, with plain text of at most 200 characters. */
 export function safeMailLink(value: unknown): GmailLink | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null
   const href = "href" in value ? value.href : undefined
@@ -42,7 +41,6 @@ function trimmed(raw: string): string {
   return raw.slice(0, end)
 }
 
-/** The plain-text https URLs of a body, at most 50 distinct, trimmed of trailing punctuation; nothing is fetched. */
 export function linkifyMailText(text: string): GmailLink[] {
   const links: GmailLink[] = []
   const seen = new Set<string>()
@@ -58,7 +56,6 @@ export function linkifyMailText(text: string): GmailLink[] {
   return links
 }
 
-/** Whether a link's text names a different site than where it goes. */
 export function linkTextMismatch(link: GmailLink): boolean {
   const url = URL.parse(link.href)
   if (url === null) return true

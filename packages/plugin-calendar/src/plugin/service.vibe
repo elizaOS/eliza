@@ -6,9 +6,7 @@ import { calendarHost, type CalendarApprovalRecord, type CalendarApprovalRow, ty
 import type { CalendarEvent } from "../model.vibe"
 import type { CalendarAccount, CalendarProviderPort } from "./providers.vibe"
 
-/** The service type the Calendar plugin registers its host under. */
 export const calendarServiceType = "calendar"
-/** The service type the owner approval queue runs approved calendar changes through. */
 export const calendarApprovalExecutorServiceType = "calendar_approval_executor"
 const ownerApprovalsServiceType = "owner_approvals"
 
@@ -29,7 +27,6 @@ function approvalsOf(runtime: IAgentRuntime): CalendarApprovals | undefined {
   }
 }
 
-/** The calendar host over the agent's durable cache, with the managed Google calendar when the host's environment names its private broker. */
 effect function startCalendarHost(runtime: IAgentRuntime) {
   const endpoint = try Config.withDefault(Config.String("ELIZA_MANAGED_CALENDAR_READ_BROKER"), "")
   const token = try Config.withDefault(Config.String("ELIZA_API_TOKEN"), "")
@@ -37,7 +34,6 @@ effect function startCalendarHost(runtime: IAgentRuntime) {
   return try calendarHost({ cache: runtime, agentId: runtime.agentId, approvals: () => approvalsOf(runtime), ...(managed === undefined ? {} : { managed }) })
 }
 
-/** What a check-in reads of one event: its title and start, whether it is a provider copy, and the clocks its change is read from. */
 export interface CalendarEventFacts {
   readonly title: string
   readonly startAt: number
@@ -62,7 +58,6 @@ function eventFacts(event: CalendarEvent): CalendarEventFacts {
   }
 }
 
-/** The Calendar plugin's runtime service: the calendar host over the agent's durable cache. */
 export class CalendarService extends Service {
   static override serviceType = calendarServiceType
   override capabilityDescription = "The owner's calendars: the resident calendar, the managed Google calendar when the host names its broker, reads and ledgered changes"
@@ -104,7 +99,6 @@ export class CalendarService extends Service {
   }
 }
 
-/** The executor the owner approval queue hands an approved calendar change to. */
 export class CalendarApprovalExecutorService extends Service {
   static override serviceType = calendarApprovalExecutorServiceType
   override capabilityDescription = "Runs an owner-approved calendar change once through the calendar mutation ledger"

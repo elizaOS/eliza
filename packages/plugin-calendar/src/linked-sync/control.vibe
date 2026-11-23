@@ -7,13 +7,11 @@ import { digestText, randomId, type CalendarSyncRefused, type LinkedCalendarStat
 import type { LinkedCalendarRecoveryOutcome } from "./reconcile.vibe"
 import type { CalendarLinkStorage } from "./linked-store.vibe"
 
-/** The provider account and calendar a resident calendar is linked to. */
 export interface LinkedCalendarDestination {
   readonly connectorAccountId: string
   readonly providerCalendarId: string
 }
 
-/** What control publishes: never the durable dispatch token. */
 export interface LinkedCalendarControl {
   readonly revision: number
   readonly paused: boolean
@@ -23,22 +21,18 @@ export interface LinkedCalendarControl {
   readonly pendingDispatchReference: string | null
 }
 
-/** A reviewed control request: the revision it saw and a stable key for retries. */
 export type LinkedCalendarControlRequest = { readonly expectedRevision: number; readonly idempotencyKey: string; readonly review?: string } & (
   | { readonly operation: "pause" | "resume" }
   | { readonly operation: "recover"; readonly dispatchReference: string }
   | { readonly operation: "select"; readonly destination: LinkedCalendarDestination | null })
 
-/** A committed control transition and its receipt. */
 export interface LinkedCalendarControlMutation {
   readonly control: LinkedCalendarControl
   readonly receipt: { readonly id: string; readonly operationKey: string; readonly committedAt: string; readonly revision: number; readonly replayed: boolean }
 }
 
-/** How sync is reported: only a current control with a clean mapping readback is synced. */
 export type LinkedCalendarSyncReport = "waiting" | "syncing" | "synced" | "unconfirmed" | "changed"
 
-/** One provider calendar the owner could link to. */
 export interface LinkedCalendarCandidate extends LinkedCalendarDestination {
   readonly side: "owner" | "agent"
   readonly accessRole: string
@@ -46,7 +40,6 @@ export interface LinkedCalendarCandidate extends LinkedCalendarDestination {
   readonly accountEmail: string | null
 }
 
-/** One linked event's mapping to a provider destination. */
 export interface LinkedCalendarMapping {
   readonly linkId: string
   readonly localEventId: string
@@ -58,7 +51,6 @@ export interface LinkedCalendarMapping {
   readonly state: LinkedCalendarState
 }
 
-/** A reviewed mapping edit: keep one event local, or move it to the selected destination. */
 export interface LinkedCalendarMappingEdit {
   readonly operation: "retain_local" | "rebind"
   readonly linkId: string
@@ -67,7 +59,6 @@ export interface LinkedCalendarMappingEdit {
   readonly destination: LinkedCalendarDestination | null
 }
 
-/** The evidence the host gives for a destination: what its provider listing says now. */
 export interface LinkedCalendarDestinationCheck {
   readonly ownerSource: boolean
   readonly writable: boolean
@@ -76,7 +67,6 @@ export interface LinkedCalendarDestinationCheck {
   readonly approvedEmail: boolean
 }
 
-/** What the control ledger needs from its host. */
 export interface LinkedCalendarControlPorts {
   readonly agentId: string
   readonly storage: CalendarLinkStorage
@@ -87,9 +77,7 @@ export interface LinkedCalendarControlPorts {
   readonly dispatchRunning?: (linkId: string) => boolean
 }
 
-/** A control or mapping request was refused and nothing changed. */
 export error LinkedControlRefused { code: string; message: string }
-/** A control call started and its result is unknown. */
 export error LinkedControlUncertain { message: string }
 
 interface StoredReceipt {
@@ -138,12 +126,10 @@ function lexical(request: LinkedCalendarControlRequest): boolean {
     && (request.operation !== "select" || request.destination === null || (plain(request.destination.connectorAccountId) && plain(request.destination.providerCalendarId)))
 }
 
-/** Whether a choice of provider calendar is one the owner can write to: their own, with owner or writer access. */
 export function eligibleDestination(candidate: LinkedCalendarCandidate): boolean {
   return candidate.side === "owner" && (candidate.accessRole === "owner" || candidate.accessRole === "writer")
 }
 
-/** Which destination a link takes: a saved one only while listed and approved, else the sole eligible primary, else the owner's choice. */
 export function chooseLinkDestination(saved: LinkedCalendarDestination | null, candidates: readonly LinkedCalendarCandidate[], approvedEmail: string | null):
   { readonly choice: DestinationChoice; readonly destination: LinkedCalendarDestination | null } {
   const eligible = candidates.filter((candidate) => eligibleDestination(candidate) && candidate.accountEmail !== null && candidate.accountEmail === approvedEmail)
@@ -155,19 +141,16 @@ export function chooseLinkDestination(saved: LinkedCalendarDestination | null, c
   return { choice, destination }
 }
 
-/** Whether the host's evidence lets a link write to this destination. */
 export function destinationWritable(check: LinkedCalendarDestinationCheck): boolean {
   const evidence: DestinationEvidence = { ...check }
   return mayWriteDestination(evidence)
 }
 
-/** The stable retry key of a control write, derived from the owner, operation, revision, account and calendar. */
 export effect function controlOperationKey(owner: string, operation: LinkedCalendarControlRequest["operation"] | "retain_local" | "rebind", revision: number,
   destination: LinkedCalendarDestination | null): string!CalendarSyncRefused {
   return `linked-calendar-control:${try digestText(JSON.stringify([owner, operation, revision, destination?.connectorAccountId ?? null, destination?.providerCalendarId ?? null]))}`
 }
 
-/** The resident's linked calendar control: revision-checked transitions with atomic receipts, dispatch claims, sync reports and mapping edits. */
 export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) {
   const slot = `calendar-linked-control:v1:${ports.agentId}`
   const active = try Ref.make(new Set<string>())
@@ -303,18 +286,14 @@ export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) 
   }
 
   return {
-    /** The control as committed now. */
     read: () => map(load(), ({ document }) => published(document)),
 
-    /** Every linked event's mapping as the control holds it now. */
     mappings: () => map(load(), ({ document }) => document.mappings.map((mapping) => structuredClone(mapping))),
 
-    /** Commits a reviewed pause, select, resume or recover at the revision it saw, or replays its own committed receipt. */
     commit: (request: LinkedCalendarControlRequest) => serialize(effect {
       return try commitOnce(request, try fingerprintOf(request), false)
     }),
 
-    /** Claims the one dispatch an unpaused control admits, for its exact destination and revision. */
     acquireDispatch: (expectedRevision: number, linkId: string, destination: LinkedCalendarDestination) => serialize(effect {
       const { before, document } = try load()
       const names = [...document.names]
@@ -329,7 +308,6 @@ export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) 
       return token
     }),
 
-    /** Settles exactly the claimed dispatch, without changing the control revision. */
     settleDispatch: (token: string) => serialize(effect {
       try ensuring(effect {
         const { before, document } = try load()
@@ -339,14 +317,12 @@ export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) 
       }, Ref.update(active, (tokens) => new Set([...tokens].filter((held) => held !== `token:${token}`))))
     }),
 
-    /** Records a link's mapping and reconciliation state, as the resident's sync observed it. */
     recordMapping: (mapping: LinkedCalendarMapping) => serialize(effect {
       const { before, document } = try load()
       const next = { ...document, mappings: [...document.mappings.filter((row) => row.linkId !== mapping.linkId), structuredClone(mapping)] }
       if (!(try save(before, next))) throw refused("LINKED_CALENDAR_MAPPING_CHANGED", "The linked event changed. Refresh sync status.")
     }),
 
-    /** Reports sync from the control the caller saw and a fresh mapping readback; a failed readback is unconfirmed. */
     report: (expectedRevision: number) => effect {
       const loaded = map(load(), ({ document }) => document) catch () => undefined
       if (loaded === undefined) return "unconfirmed" as LinkedCalendarSyncReport
@@ -360,7 +336,6 @@ export effect function linkedCalendarControl(ports: LinkedCalendarControlPorts) 
         control.pendingToken > 0, moved, true, held)]
     },
 
-    /** Keeps one linked event local, or rebinds it to the selected destination, while sync is paused and drained. */
     editMapping: (edit: LinkedCalendarMappingEdit) => serialize(effect {
       const { before, document } = try load()
       const names = [...document.names]

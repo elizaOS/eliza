@@ -5,35 +5,27 @@ import type { CalendarEvent, CalendarFeed, CalendarSummary } from "../model.vibe
 import { BrokerEvent, BrokerFeedEnvelope, BrokerHealth, BrokerSource, BrokerSourcesEnvelope, BrokerWriteCapabilities, ManagedConnectionReference, ScopedGrant } from "./broker.schema.vibe"
 import { providerChangeTime } from "./cache.vibe"
 
-/** The deadline of every broker call. */
 export const managedCalendarRequestTimeout = "30 seconds"
 
-/** Which broker call failed. */
 export type BrokerOperation = "sources" | "feed" | "capabilities" | "mutation"
 
-/** Where a broker call failed: before calling, at HTTP, reading the body, or checking its shape. */
 export type BrokerStage = "scope" | "http" | "body" | "schema"
 
-/** A broker read or call that could not be verified; its fields describe the attempt and grant no source authority. */
 export error ManagedCalendarUnavailable { operation: BrokerOperation; stage: BrokerStage; httpStatus: number | null }
 
-/** The device's private loopback broker and its bearer token. */
 export interface BrokerEndpoint {
   readonly url: string
   readonly token: Redacted.Redacted<string>
 }
 
-/** A managed source as the broker lists it, with the host's connection reference when the broker verified one. */
 export type ManagedCalendarSource = CalendarSummary & { readonly managedGoogleConnectionId?: string }
 
-/** The requested window and civil zone of a feed read. */
 export interface FeedWindow {
   readonly timeMin: string
   readonly timeMax: string
   readonly timeZone: string
 }
 
-/** The private broker's calls: the source catalog, one exact feed, write capabilities and a raw mutation. */
 export interface ManagedCalendarBroker {
   readonly acceptsGrant: (grantId: string) => boolean
   sources(): readonly ManagedCalendarSource[]!ManagedCalendarUnavailable!HttpClient.HttpClient
@@ -51,7 +43,6 @@ const isSourcesEnvelope = Schema.is(BrokerSourcesEnvelope)
 const isCapabilities = Schema.is(BrokerWriteCapabilities)
 const isConnectionReference = Schema.is(ManagedConnectionReference)
 
-/** The broker endpoint when the address is the device's private loopback path and the token is well formed, else undefined. */
 export function parseBrokerEndpoint(endpoint: string, token: string): BrokerEndpoint | undefined {
   let url: URL
   try {
@@ -64,7 +55,6 @@ export function parseBrokerEndpoint(endpoint: string, token: string): BrokerEndp
   return { url: url.href, token: Redacted.make(token) }
 }
 
-/** The broker the host's settings name, when they name one; a malformed endpoint or token fails before any call. */
 export effect function configuredBroker(endpoint: string | undefined, token: string | undefined): (ManagedCalendarBroker | undefined)!ManagedCalendarUnavailable {
   if (endpoint === undefined || endpoint === "") return undefined
   const parsed = parseBrokerEndpoint(endpoint, token ?? "")
@@ -112,7 +102,6 @@ function wireOf(reply: Reply, limit: number, checks: Pick<BrokerCalendarWire, "e
 
 const everyCheck = { envelopeValid: true, exactWindowAndCalendar: true, onlyFreshHealth: true, exactEvents: true }
 
-/** A broker event as a calendar event of this agent, with its provider edit time as its change time. */
 export function brokerEventOf(row: typeof BrokerEvent.Type, agentId: string, syncedAt: string): CalendarEvent {
   const metadata = row.metadata ?? {}
   return {
@@ -128,7 +117,6 @@ export function brokerEventOf(row: typeof BrokerEvent.Type, agentId: string, syn
   }
 }
 
-/** The client of one verified broker endpoint. */
 export function managedBroker(endpoint: BrokerEndpoint): ManagedCalendarBroker {
   effect function call(operation: BrokerOperation, kind: BrokerCalendarCall, calendar: object): Reply!ManagedCalendarUnavailable!HttpClient.HttpClient {
     const lost = (status: number | null) => new ManagedCalendarUnavailable({ operation, stage: status === null ? "http" : "body", httpStatus: status })

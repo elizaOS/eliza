@@ -69,10 +69,8 @@ module node {
 }
 import { configureResolvers } from node
 
-/** The native host's resolver list is not one to eight IP addresses. */
 error MobileDnsRefused { servers: string }
 
-/** Points the agent's name lookups at the native host's resolvers on a phone whose runtime cannot use the system resolver; elsewhere it changes nothing. */
 export effect function configureMobileDns() {
   const refused = try sync(configureResolvers)
   if (refused !== undefined) throw new MobileDnsRefused({ servers: refused })

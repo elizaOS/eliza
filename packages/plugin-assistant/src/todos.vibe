@@ -15,19 +15,16 @@ const statusWords: Readonly<Record<string, string>> = { start: "in progress", co
 const marks: Readonly<Record<TodoStatus, string>> = { TodoPending: "[ ]", TodoInProgress: "[→]", TodoCompleted: "[x]", TodoCancelled: "[-]" }
 const affirmative = /^\s*(?:yes|yeah|yep|yup|sure|ok(?:ay)?|confirm(?:ed)?|do it|go ahead|please do)\b/iu
 
-/** Whether the owner's message affirms what they were asked. */
 export function affirms(text: string): boolean {
   return affirmative.test(text)
 }
 
-/** The owner's to-do list as stored. */
 export effect function currentTodos() {
   provide stored(listKey) {
     return try (try Machine).get()
   }
 }
 
-/** The to-do list as the owner reads it: one line per item with its mark and its short reference. */
 export function renderTodos(todos: readonly Todo[], includeClosed: boolean): string {
   const shown = todos.filter((todo) => includeClosed || todo.todoStatus === "TodoPending" || todo.todoStatus === "TodoInProgress")
   return shown.length === 0 ? "" : ["# Current todos", ...shown.map((todo) => `- ${marks[todo.todoStatus]} ${todo.content} (t-${todo.todoId})`)].join("\n")
@@ -36,7 +33,6 @@ export function renderTodos(todos: readonly Todo[], includeClosed: boolean): str
 const plain = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}]+/gu, " ").replace(/\s+/gu, " ").trim()
 const isOpen = (todo: Todo) => todo.todoStatus === "TodoPending" || todo.todoStatus === "TodoInProgress"
 
-/** The item texts the owner's words name: by a t-N reference, by an exact text, or every text they match apart from case, punctuation and spacing. */
 function namedTexts(list: Todos, words: string): readonly string[] {
   const target = words.trim()
   const ref = /^t-(\d+)$/u.exec(target)
@@ -50,7 +46,6 @@ function namedTexts(list: Todos, words: string): readonly string[] {
 const decodeRequest = Schema.decodeUnknownOption(TodoRequest, { onExcessProperty: "error" })
 const decodeQuestion = Schema.decodeUnknownOption(Schema.Struct({ content: Schema.String, at: Schema.Number }))
 
-/** Changes the owner's to-do list as one message asked, once per message and item. */
 export effect function changeTodos(input: unknown, messageId: string, text: string) {
   const decoded = decodeRequest(input)
   if (Option.isNone(decoded)) return { success: false, text: "Say what to add or which to-do to change.", data: { outcome: "TODO_REQUEST_INVALID" } } satisfies ActionResult
@@ -137,7 +132,6 @@ function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
   return typeof given === "object" && given !== null ? Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null)) : {}
 }
 
-/** Adds, changes, deletes, lists and clears the owner's to-dos. */
 export const todosAction: Action = {
   name: todoActionName,
   description: "The owner's to-do list: create, start, complete, cancel, reopen, rename, delete, list or clear. A change names the item by its text, case and punctuation aside, or its t-N reference and applies only when exactly one item matches; clearing asks first.",
@@ -156,7 +150,6 @@ export const todosAction: Action = {
   },
 }
 
-/** The owner's open to-dos, for the planner to name the right one. */
 export const currentTodosProvider: Provider = {
   name: "CURRENT_TODOS",
   description: "The owner's open to-dos, with their t-N references.",

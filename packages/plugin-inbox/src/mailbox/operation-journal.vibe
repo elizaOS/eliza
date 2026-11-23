@@ -45,10 +45,8 @@ const OperationRecord = Schema.Struct({
 })
 const decodeRecord = Schema.decodeUnknownOption(OperationRecord)
 
-/** The durable journal record of one reviewed operation for one owner and grant. */
 export type InboxOperationRecord = typeof OperationRecord.Type
 
-/** The local draft a send was started from, and the owner request it answers. */
 export interface OperationSource {
   readonly draftId: string
   readonly requestId?: string
@@ -56,47 +54,37 @@ export interface OperationSource {
   readonly providerDraft?: { readonly draftId: string; readonly providerDigest: string }
 }
 
-/** The email in the composer at the moment of a tap. */
 export interface ComposerEmail {
   readonly draftId: string
   readonly proposal: Bag
 }
 
-/** How an unsent composer review relates to the email now in the composer. */
 export type ReviewBinding = "bound" | "edited" | "other" | "absent"
 
-/** Why the journal refused a step; nothing was dispatched by the refused step. */
 export type OperationRefusal =
   | "pending" | "unsaved-review" | "too-large" | "invalid-proposal" | "invalid-source-request" | "changed" | "invalid-record"
   | "review-mismatch" | "not-reviewable" | "not-allowed" | "foreign-receipt" | "no-record" | "not-attempted" | "unresolved"
   | "inactive" | "not-adoptable" | "unsent-review-moving"
 
-/** A refused journal step. */
 export error OperationRefused { reason: OperationRefusal }
 
-/** A review that is not for the email now in the composer; an edited or other review was discarded unsent. */
 export error ReviewNotBound { binding: Exclude<ReviewBinding, "bound"> }
 
-/** A failure of the journal's storage. */
 export error JournalStoreFailed { cause: unknown }
 
-/** Every way a journal step fails. */
 export type OperationFailure = OperationRefused | ReviewNotBound | JournalStoreFailed | MailFailure | OutgoingAttachmentsRefused
 
-/** Compare-and-exchange storage for the journal record, encrypted on a phone. */
 export interface InboxOperationStore {
   read(key: string): unknown!JournalStoreFailed
   compareExchange(key: string, expected: unknown, next: unknown): ("saved" | "conflict")!JournalStoreFailed
 }
 
-/** The reviewed calls of one operation; dispatch is made at most once and recovery only reads the receipt. */
 export interface InboxOperationClient {
   gmailPrepareOperation(grantId: string, requestId: string, proposal: Bag): { readonly receipt: GmailInboxReceipt; readonly review: Bag }!MailFailure
   gmailDispatchOperation(grantId: string, requestId: string, reviewDigest: string, proposal: Bag): GmailInboxReceipt!MailFailure
   gmailOperation(grantId: string, requestId: string): GmailInboxReceipt!MailFailure
 }
 
-/** What one journal is bound to. */
 export interface InboxOperationDependencies {
   readonly owner: string
   readonly grantId: string
@@ -107,7 +95,6 @@ export interface InboxOperationDependencies {
   readonly reviewAttachment: MailAttachmentReviewer
 }
 
-/** What the composer checked before a provider draft reference is adopted. */
 export interface ProviderReferenceChecks {
   readonly reference: { readonly draftId: string; readonly providerDigest: string }
   readonly exactId: boolean
@@ -117,7 +104,6 @@ export interface ProviderReferenceChecks {
   readonly localAcknowledged: boolean
 }
 
-/** One durable selected-account intent; no recovery path dispatches an effect. */
 export interface InboxOperation {
   snapshot(): (InboxOperationRecord | null)!!
   load(): (InboxOperationRecord | null)!OperationFailure
@@ -131,21 +117,18 @@ export interface InboxOperation {
   stop(): void!!
 }
 
-/** Whether an operation kind is reviewed from the composer. */
 export function composerKind(kind: unknown): boolean {
   return kind === "send" || kind === "draft-create" || kind === "draft-replace"
 }
 
 const contentFields = ["mode", "to", "cc", "bcc", "subject", "bodyText", "attachments", "forwardAttachments", "replyMessageId"] as const
 
-/** Everything the owner reviews in a composer proposal, as one comparable text. */
 export function composerContent(proposal: Bag): string {
   return JSON.stringify(contentFields.map((field) => proposal[field] ?? null))
 }
 
 const bindingNames = { BoundReview: "bound", EditedReview: "edited", OtherReview: "other", AbsentReview: "absent" } as const satisfies Record<Binding, ReviewBinding>
 
-/** How an unsent composer review relates to the email now in the composer. */
 export function reviewBinding(record: Pick<InboxOperationRecord, "proposal" | "composer">, current: ComposerEmail | null): ReviewBinding {
   return bindingNames[bindingOf(record.composer?.draftId ?? "", composerContent(record.proposal), {
     open: current !== null,
@@ -154,7 +137,6 @@ export function reviewBinding(record: Pick<InboxOperationRecord, "proposal" | "c
   })]
 }
 
-/** The storage key of the journal of one owner and grant, an installed-data identifier. */
 export effect function inboxOperationKey(owner: string, grantId: string): string!! {
   return `inbox-operation:v1:${try sha256Hex(JSON.stringify([owner, grantId]))}`
 }
@@ -197,7 +179,6 @@ function sentMessageId(receipt: GmailInboxReceipt | null): string | undefined {
   return typeof id === "string" && id !== "" ? id : undefined
 }
 
-/** Removes the saved record of one owner and grant when it is an undispatched review, whatever binding is live. */
 export effect function discardUnsent(store: InboxOperationStore, owner: string, grantId: string): boolean!(OperationRefused | JournalStoreFailed) {
   const key = try inboxOperationKey(owner, grantId)
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -209,7 +190,6 @@ export effect function discardUnsent(store: InboxOperationStore, owner: string, 
   throw refused("unsent-review-moving")
 }
 
-/** The journal's model of its one operation: every journal step is taken through it, and only where the rules allow. */
 export interface JournalModel {
   state(): MailState!!
   admits(events: readonly Event[]): boolean!!
@@ -217,7 +197,6 @@ export interface JournalModel {
   restore(state: MailState): void!!
 }
 
-/** A journal model starting with no binding and an empty journal. */
 export effect function journalModel(): JournalModel!! {
   const kept = try Ref.make(initial)
   const machine = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
@@ -241,7 +220,6 @@ export effect function journalModel(): JournalModel!! {
   }
 }
 
-/** A journal bound to one owner and grant: prepare, one confirmed dispatch, and receipt reads that never dispatch. */
 export effect function inboxOperation(deps: InboxOperationDependencies): InboxOperation!! {
   const model = try journalModel()
   const busy = try Ref.make(false)

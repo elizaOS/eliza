@@ -2,7 +2,6 @@
 import { createStartYear, displayDayShift, mustAskBeforeCreate, nextMeansNextYear, yearCueFrom, type YearCue } from "../gen/calendar__readClock.effect.vibe"
 import type { CalendarEventFields } from "./model.vibe"
 
-/** A wall-clock reading in one zone, to the second. */
 export interface ZonedDateParts {
   readonly year: number
   readonly month: number
@@ -12,7 +11,6 @@ export interface ZonedDateParts {
   readonly second: number
 }
 
-/** A civil date without a time. */
 export type LocalDate = Pick<ZonedDateParts, "year" | "month" | "day">
 
 const minuteMs = 60_000
@@ -33,18 +31,15 @@ function formatter(timeZone: string): Intl.DateTimeFormat | undefined {
   return made
 }
 
-/** Whether Intl supports the zone and its name is a nonempty, NUL-free string of at most 128 UTF-16 units. */
 export function knownTimeZone(name: unknown): name is string {
   return typeof name === "string" && name !== "" && name.length <= 128 && !name.includes("\0") && formatter(name) !== undefined
 }
 
-/** The zone the device reports, with a bare zero offset read as UTC. */
 export function deviceTimeZone(): string {
   const zone = new Intl.DateTimeFormat().resolvedOptions().timeZone
   return zone === "+00:00" || zone === "-00:00" || !knownTimeZone(zone) ? "UTC" : zone
 }
 
-/** The wall-clock parts of an instant in a zone, or undefined for an unsupported zone or an invalid instant. */
 export function getZonedDateParts(date: Date, timeZone: string): ZonedDateParts | undefined {
   const format = formatter(timeZone)
   if (format === undefined || !Number.isFinite(date.getTime())) return undefined
@@ -60,7 +55,6 @@ function wallMs(parts: ZonedDateParts): number {
   return date.getTime()
 }
 
-/** The zone's offset from UTC, in minutes, at an instant, or undefined for an unsupported zone. */
 export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number | undefined {
   const parts = getZonedDateParts(date, timeZone)
   return parts === undefined ? undefined : Math.round((wallMs(parts) - Math.floor(date.getTime() / 1000) * 1000) / minuteMs)
@@ -71,7 +65,6 @@ function sameParts(left: ZonedDateParts | undefined, right: ZonedDateParts): boo
     && left.hour === right.hour && left.minute === right.minute && left.second === right.second
 }
 
-/** The instant a wall time names in a zone: the earliest at a fold and forward through a gap, or with `reject` only an unambiguous existing time. */
 export function buildUtcDateFromLocalParts(timeZone: string, parts: ZonedDateParts, disambiguation: "compatible" | "reject" = "compatible"): Date | undefined {
   const base = wallMs(parts)
   if (!Number.isFinite(base) || formatter(timeZone) === undefined) return undefined
@@ -88,7 +81,6 @@ export function buildUtcDateFromLocalParts(timeZone: string, parts: ZonedDatePar
   return forward[0]?.at
 }
 
-/** The civil date a number of days after another. */
 export function addDaysToLocalDate(date: LocalDate, days: number): LocalDate {
   const moved = new Date(0)
   moved.setUTCFullYear(date.year, date.month - 1, date.day + days)
@@ -96,12 +88,10 @@ export function addDaysToLocalDate(date: LocalDate, days: number): LocalDate {
   return { year: moved.getUTCFullYear(), month: moved.getUTCMonth() + 1, day: moved.getUTCDate() }
 }
 
-/** The weekday of a civil date, Sunday zero. */
 export function weekdayOfLocalDate(date: LocalDate): number {
   return new Date(wallMs({ ...date, hour: 12, minute: 0, second: 0 })).getUTCDay()
 }
 
-/** The first instant of a civil date in a zone: the first midnight at a fold, the start of the actual day at a gap, the following day for a skipped date. */
 export function startOfCivilDay(date: LocalDate, timeZone: string): number | undefined {
   const target = Date.UTC(date.year, date.month - 1, date.day)
   const dayOf = (at: number) => {
@@ -115,24 +105,20 @@ export function startOfCivilDay(date: LocalDate, timeZone: string): number | und
   return Number.isFinite(dayOf(guess)) ? guess : undefined
 }
 
-/** Where a request's zone comes from; a zone the planner proposed is never one of them. */
 export interface ZoneSources {
   readonly explicit?: string
   readonly client?: string
   readonly owner: string
 }
 
-/** The zone a read is about: a supported zone the request states, else the client's, else the owner's. */
 export function requestTimeZone(sources: ZoneSources): string {
   return knownTimeZone(sources.explicit) ? sources.explicit : createTimeZone(sources)
 }
 
-/** The zone a create is placed in: the client's supported zone, else the owner's. */
 export function createTimeZone(sources: Omit<ZoneSources, "explicit">): string {
   return knownTimeZone(sources.client) ? sources.client : sources.owner
 }
 
-/** A stored UTC instant as the wall time of a zone on that date, with the offset applied. */
 export function displayWallTime(instant: string, timeZone: string): (ZonedDateParts & { readonly offsetMinutes: number }) | undefined {
   const at = new Date(instant)
   const parts = getZonedDateParts(at, timeZone)
@@ -140,12 +126,10 @@ export function displayWallTime(instant: string, timeZone: string): (ZonedDatePa
   return parts === undefined || offsetMinutes === undefined ? undefined : { ...parts, offsetMinutes }
 }
 
-/** The UTC instant a new event stores for the wall time it was asked for in a zone, so it reads back as that wall time. */
 export function createdUtcInstant(wall: ZonedDateParts, timeZone: string): string | undefined {
   return buildUtcDateFromLocalParts(timeZone, wall)?.toISOString()
 }
 
-/** The civil date an event is shown on: an all-day event's own date, a timed event's day in the viewer's zone. */
 export function displayDay(event: { readonly startAt: string; readonly isAllDay: boolean }, viewerTimeZone: string): string | undefined {
   const at = Date.parse(event.startAt)
   const offset = getTimeZoneOffsetMinutes(new Date(at), viewerTimeZone)
@@ -169,7 +153,6 @@ const datePatterns = [
 ]
 const nextDate = new RegExp(`\\bnext\\s+(?:${monthWord}\\b\\.?(?:\\s+${dayWord}\\b)?|(1[0-2]|0?[1-9])[/-](3[01]|[12]\\d|0?[1-9])\\b)`, "u")
 
-/** Whether a text names a calendar date: a month and day, an ISO or numeric date, or a Korean or Chinese month and day. */
 export function namesCalendarDate(text: string): boolean {
   const folded = text.normalize("NFKC").toLowerCase()
   return datePatterns.some((pattern) => pattern.test(folded))
@@ -179,7 +162,6 @@ function notLaterThanToday(month: number, day: number | undefined, today: LocalD
   return day === undefined ? month <= today.month : month < today.month || (month === today.month && day <= today.day)
 }
 
-/** What a create request says about its year: a trailing year, a stated year, next year, this year or nothing, and whether it names a date. */
 export function yearCueOf(text: string, today: LocalDate): { readonly cue: YearCue; readonly statedYear: number; readonly trailingYear: number; readonly namesDate: boolean } {
   const folded = text.normalize("NFKC").toLowerCase()
   const trailing = /\b(\d{4})\s*[.!?]?\s*$/.exec(folded)
@@ -197,13 +179,11 @@ export function yearCueOf(text: string, today: LocalDate): { readonly cue: YearC
   }
 }
 
-/** The year a create starts in: from its request text when that names a date or a year, else the year the extractor resolved. */
 export function createYear(text: string, today: LocalDate, extractedYear: number): number {
   const { cue, statedYear, trailingYear, namesDate } = yearCueOf(text, today)
   return createStartYear(cue, statedYear, trailingYear, today.year, namesDate, extractedYear)
 }
 
-/** A create's fields moved to the year its request text gives, the extracted wall clock and duration kept, and how its other instants move alike. */
 export function statedYearCreate(fields: CalendarEventFields, text: string, now: Date): { readonly fields: CalendarEventFields; readonly move: (instant: string) => string } {
   const zone = fields.isAllDay ? "UTC" : fields.timeZone
   const start = getZonedDateParts(new Date(fields.startAt), zone)
@@ -217,7 +197,6 @@ export function statedYearCreate(fields: CalendarEventFields, text: string, now:
   return { fields: { ...fields, startAt, endAt: new Date(Date.parse(startAt) + Date.parse(fields.endAt) - Date.parse(fields.startAt)).toISOString() }, move }
 }
 
-/** Whether a create's start is already past in its zone, so the owner must confirm it before anything is stored. */
 export function createNeedsConfirmation(startAt: string, now: Date, timeZone: string): boolean {
   const start = getZonedDateParts(new Date(startAt), timeZone)
   const today = getZonedDateParts(now, timeZone)

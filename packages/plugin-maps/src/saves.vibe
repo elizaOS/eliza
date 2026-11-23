@@ -21,13 +21,11 @@ module node {
 }
 import { isoTime, mutationId, sha256 } from node
 
-/** The owner's saved-places document as the host keeps it: its text and the revision a write must match. */
 export interface StoredSaves {
   readonly revision: number
   readonly text: string
 }
 
-/** Where the assistant keeps each owner's saved places: a read, and a write that succeeds only against the revision it read. */
 export interface AgentSavedPlaceStore {
   read(ownerEntityId: string): (StoredSaves | undefined)!MapsFailure
   write(ownerEntityId: string, expectedRevision: number | undefined, text: string): boolean!MapsFailure
@@ -35,9 +33,7 @@ export interface AgentSavedPlaceStore {
 
 const Label = Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 120)))
 
-/** One place the assistant saved for its owner. */
 export const AgentSavedPlace = Schema.Struct({ id: Schema.String, ownerEntityId: Schema.String, place: AgentPlaceRef, label: Label, createdAt: Schema.String, updatedAt: Schema.String })
-/** One place the assistant saved for its owner. */
 export type AgentSavedPlace = typeof AgentSavedPlace.Type
 
 const Change = Schema.Struct({ key: Schema.String, digest: Schema.String, mutationId: Schema.String, committedAt: Schema.String, result: AgentSavedPlace })
@@ -46,7 +42,6 @@ const Saves = Schema.Struct({ version: Schema.Literal(1), ownerEntityId: Schema.
 type Saves = typeof Saves.Type
 const decodeSaves = Schema.decodeUnknownEffect(Schema.fromJsonString(Saves))
 
-/** What a save reports: the place, whether it repeated an earlier outcome, and the current state when a later change superseded it. */
 export interface SaveOutcome {
   readonly savedPlace: AgentSavedPlace
   readonly replayed: boolean
@@ -66,7 +61,6 @@ function applied(change: Change, saves: Saves): boolean {
   return current !== undefined && JSON.stringify(current) === JSON.stringify(change.result)
 }
 
-/** The assistant's saved places over the host's store: each save is committed once against the revision it read, and a repeated key repeats its first outcome. */
 export function agentSaves(store: AgentSavedPlaceStore) {
   effect function load(ownerEntityId: string): { readonly revision: number | undefined; readonly saves: Saves }!MapsFailure {
     const stored = try store.read(ownerEntityId)
@@ -137,5 +131,4 @@ export function agentSaves(store: AgentSavedPlaceStore) {
   return { save, list }
 }
 
-/** The assistant's saved places. */
 export type AgentSaves = ReturnType<typeof agentSaves>

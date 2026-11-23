@@ -25,7 +25,6 @@ export { followupTick, type TickReport } from "./followups.vibe"
 export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
 export { reminderProposalFamily } from "./device-proposals.vibe"
 
-/** The name the agent loads this plugin by. */
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
 
 type Deliverer = (task: TaskRow) => DeliveryAnswer!unknown!AssistantPorts
@@ -56,7 +55,6 @@ effect function scheduleStandingTasks() {
   })
 }
 
-/** Registers how the assistant's scheduled tasks reach the owner, and keeps the check-ins scheduled at the owner's times. */
 export class PersonalAssistantService extends Service {
   static override serviceType = "personal-assistant"
   override capabilityDescription = "Delivers the owner's reminders, goal check-ins, routines and daily check-in at the owner's local time"
@@ -74,7 +72,6 @@ export class PersonalAssistantService extends Service {
   }
 }
 
-/** Runs the evaluators of a turn under the runner's rules, with their durable progress kept in the agent's store. */
 export class PersonalAssistantEvaluators extends Service {
   static override serviceType = "personal-assistant-evaluators"
   override capabilityDescription = "Runs registered evaluators in batches by input route, with durable incremental progress"
@@ -103,7 +100,6 @@ const ownerClockProvider: Provider = {
   },
 }
 
-/** Records the owner's zone whenever they state one the resolver knows, and moves what fires on their clock onto it. */
 const ownerTimezoneEvaluator: RegisteredEvaluator = {
   name: "PERSONAL_ASSISTANT_OWNER_TIMEZONE",
   description: "Keeps the time zone the owner states, such as \"my timezone is America/New_York\", for reminders, check-ins, routines and the calendar, and reschedules them on it.",
@@ -125,7 +121,6 @@ const ownerTimezoneEvaluator: RegisteredEvaluator = {
 
 let running: IAgentRuntime | undefined
 
-/** The personal assistant: reminders, goals, to-dos, routines, the daily check-in and the owner's clock. */
 export const personalAssistantPlugin = {
   name: personalAssistantPluginName,
   description: "Personal assistance: reminders, time zones, check-ins, goals, to-dos and routines, kept in the owner's agent.",

@@ -11,10 +11,8 @@ import { anchoredPlace, answeredChoice, closeChoice, namesOwnPosition, nearbyPla
 import { agentSaves, type AgentSavedPlaceStore } from "./saves.vibe"
 import { agentPlace, mapsService, type MapsCloudLink, type MapsOffer, type MapsService, type PlaceResults } from "./service.vibe"
 
-/** The package and plugin name the agent bundle loads. */
 export const mapsPluginName = "@elizaos/plugin-maps"
 
-/** What the host supplies the Maps actions: the owner's Cloud link and, during a phone turn, the phone's navigation. */
 export interface MapsPluginPorts {
   cloud(runtime: IAgentRuntime): MapsCloudLink | undefined
   navigation(runtime: IAgentRuntime, message: Memory): MapsDeviceNavigation | undefined
@@ -111,7 +109,6 @@ function ownWords(message: Memory): string {
   return typeof message.content.text === "string" ? message.content.text : ""
 }
 
-/** The area part of an address: without its street part (a first part with a number, or the first of three or more) or any word with a digit, at most its last three parts. */
 export function addressArea(address: string | undefined): string | undefined {
   const parts = (address ?? "").split(",").map((part) => part.trim()).filter(Boolean)
   const street = parts.length > 1 && (parts.length >= 3 || /\d/.test(parts[0] ?? ""))
@@ -587,7 +584,6 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
   ]
 }
 
-/** What the agent knows of the phone's position for this message: whether a recent one was reported, never the coordinates themselves. */
 export const phonePositionProvider: Provider = {
   name: "MAPS_PHONE_POSITION",
   description: "Whether the phone reported a recent position with this message, which a nearby Maps search uses.",
@@ -606,7 +602,6 @@ export const phonePositionProvider: Provider = {
   }),
 }
 
-/** The Maps plugin over the host's ports. */
 export function createMapsPlugin(ports: MapsPluginPorts): AgentPlugin {
   return {
     name: mapsPluginName,

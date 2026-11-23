@@ -85,7 +85,6 @@ export const VoiceUiContext = Schema.Struct({
 
 export type Observation = typeof Observation.Type
 export type VoiceUiContext = typeof VoiceUiContext.Type
-/** The phone's last known position as a turn's observation carries it. */
 export type LocationObservation = typeof Location.Type
 type SelectedObject = typeof SelectedObject.Type
 
@@ -116,7 +115,6 @@ function table(value: unknown): Readonly<Record<string, unknown>> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Readonly<Record<string, unknown>> : undefined
 }
 
-/** Whether a name is a zone the host's zone database knows. */
 export function knownZone(name: unknown): name is string {
   if (!isZoneName(name)) return false
   try {
@@ -302,7 +300,6 @@ export effect function decodeBrowserPage(input: unknown, observation: Observatio
   return decided.value
 }
 
-/** Decodes the phone's last known position as an observation's `location` field accepts it, or fails as a dropped observation. */
 export effect function decodeLocationObservation(input: unknown) {
   const position = Option.getOrUndefined(locationOf(input))
   if (position === undefined) throw new ObservationDropped({ facts: undefined })
@@ -315,7 +312,6 @@ export effect function decodeVoiceUiContext(input: unknown, clientId?: string) {
   return decided.value
 }
 
-/** Decodes a voice view context the way a turn's boundary does, or `null` when any stated field is refused. */
 export function parseVoiceUiContext(value: unknown): VoiceUiContext | null {
   const decided = decideVoiceUi(value, undefined)
   return decided.kind === "carried" ? decided.value : null

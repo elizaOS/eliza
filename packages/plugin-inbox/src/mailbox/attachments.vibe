@@ -17,14 +17,12 @@ module browser {
 }
 import { canonicalBytes } from browser
 
-/** A file the owner chose for an outgoing email, as base64 bytes. */
 export interface OutgoingMailAttachment {
   readonly name: string
   readonly mimeType: string
   readonly dataBase64: string
 }
 
-/** The metadata a content review of one attachment reports. */
 export interface ReviewedMailAttachment {
   readonly name: string
   readonly mimeType: string
@@ -33,10 +31,8 @@ export interface ReviewedMailAttachment {
   readonly text?: string
 }
 
-/** The host's content review of one outgoing attachment, refusing a file it will not admit. */
 export type MailAttachmentReviewer = (file: OutgoingMailAttachment) => ReviewedMailAttachment!AttachmentRefused
 
-/** A saved attachment of any type: checked bytes that are never opened. */
 export interface OpaqueMailAttachment {
   readonly name: string
   readonly mimeType: string
@@ -46,25 +42,20 @@ export interface OpaqueMailAttachment {
   readonly opaque: true
 }
 
-/** The account policy an outgoing list is checked against. */
 export interface OutgoingPolicy {
   readonly maximumOutgoing: number
   readonly maximumTotalBytes: number
 }
 
-/** The limits every outgoing list shares, whatever the account allows. */
 export const outgoingAttachmentLimits = { maximumFiles, maximumTotalBytes } as const
 
-/** An outgoing list that does not fit, and which limit it broke. */
 export error OutgoingAttachmentsRefused { check: Exclude<OutgoingCheck, "OutgoingFits">; maximumFiles: number; maximumBytes: number }
 
-/** The decoded size of base64 bytes. */
 export function attachmentBytes(file: { readonly dataBase64: string }): number {
   const padding = file.dataBase64.endsWith("==") ? 2 : file.dataBase64.endsWith("=") ? 1 : 0
   return encodedBytes(file.dataBase64.length, padding)
 }
 
-/** Checks an outgoing list and the originals a forward carries against the account's policy and the shared limits. */
 export effect function checkOutgoingAttachments(
   files: readonly { readonly name: string; readonly dataBase64: string }[],
   policy: OutgoingPolicy = { maximumOutgoing: maximumFiles, maximumTotalBytes },
@@ -85,7 +76,6 @@ export effect function checkOutgoingAttachments(
 const unsafeName = /[\\/\x00-\x1f\x7f]/
 const mediaType = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
 
-/** Checks a saved attachment's name and encoding and hashes its bytes, without decoding or previewing its content. */
 export effect function reviewOpaqueAttachment(file: OutgoingMailAttachment): OpaqueMailAttachment!AttachmentRefused {
   const name = typeof file.name === "string" ? file.name : ""
   const data = typeof file.dataBase64 === "string" ? file.dataBase64 : ""

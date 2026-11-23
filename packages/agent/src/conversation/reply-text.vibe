@@ -53,7 +53,6 @@ function inGrammar(words: string, assent: string | undefined): boolean {
     && sentences.every((sentence) => waitSentence.test(sentence) || progress.test(sentence))
 }
 
-/** Whether the model's whole text is a cue of the closed grammar, one only after an instruction's assent, or other text. */
 function shapeOf(reply: string): DraftShape {
   const text = reply.trim()
   if (!text) return "Blank"
@@ -65,7 +64,6 @@ function shapeOf(reply: string): DraftShape {
   return assent !== undefined && inGrammar(words, assent) ? "AssentCue" : "OtherText"
 }
 
-/** The plan's reading of the model's text, given the owner's request and the tool calls written with it: a cue, an answer, or nothing to say. */
 export function draftOf(text: string, instruction: boolean, calls: number): Draft {
   return readDraft(shapeOf(text), instruction, calls)
 }
@@ -119,13 +117,11 @@ function isJsonObject(body: string): boolean {
   }
 }
 
-/** True when the text carries at least one well-formed client-rendered card block. */
 function containsRenderedCard(text: string): boolean {
   if (!text.includes("[/")) return false
   return [...text.matchAll(cardBlock)].some((match) => match[2] !== undefined && isJsonObject(match[2]))
 }
 
-/** The model's prose when it is safe to show the owner, or `undefined` when it carries a tool-call, evaluator or control envelope. */
 function shownProse(text: string): string | undefined {
   const trimmed = text.trim()
   if (!trimmed || looksLikeActionEnvelopeJson(trimmed) || looksLikeEvaluatorEnvelopeJson(trimmed)) return undefined
@@ -133,7 +129,6 @@ function shownProse(text: string): string | undefined {
   return output.kind === "text" ? output.text.trim() || undefined : undefined
 }
 
-/** Joins the actions' own text and the model's grounded prose into the one reply the turn stores. */
 export function composeReply(toolText: string | undefined, prose: string | undefined, ownCopy: boolean): string {
   const verified = toolText?.trim() ?? ""
   const said = prose === undefined ? undefined : shownProse(prose)
@@ -157,12 +152,10 @@ export function composeReply(toolText: string | undefined, prose: string | undef
 const literalSpeech = /\b(?:verbatim|word for word|as written|read it (?:back|aloud)|spell it out|repeat (?:it|that) exactly)\b/i
 const asksForField = /\b(?:read(?: back)?|spell(?: out)?|quote|repeat|recite|give me|tell me|what(?:[’']s| is| are))\s+(?:(?:me|out|aloud|the|this|that|my|its|full|exact|whole|entire|last|four)\s+){0,7}(?:(?:event|request|operation|workflow|run|order|thread|record|confirmation|reference)\s+(?:ID|identifier|number)|receipt|identifier|ID|address|number|digits|code|subject|headers?|body|draft|e-?mail|message|text)\b/i
 
-/** True when the owner's words ask for literal wording or for a field to be read out. */
 function asksForVerbatim(request: string): boolean {
   return literalSpeech.test(request) || asksForField.test(request)
 }
 
-/** The action label a voice turn's answer carries, or `undefined` for a text turn or one that ran no action. */
 export function voiceActionLabel(voice: boolean, request: string, reply: string, ran: readonly string[]): VoiceAction | undefined {
   const label: ActionLabel = actionLabel(voice, [...ran], containsRenderedCard(reply), asksForVerbatim(request))
   return label.tag === "Labelled" ? label.label : undefined

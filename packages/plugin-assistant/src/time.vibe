@@ -87,13 +87,11 @@ module node {
 
 const clockText = /^([01]\d|2[0-3]):([0-5]\d)$/u
 
-/** The minute of the day an HH:MM time names, or undefined when it names none. */
 export function minuteOf(text: string): number | undefined {
   const clock = clockText.exec(text.trim())
   return clock === null ? undefined : Number(clock[1]) * 60 + Number(clock[2])
 }
 
-/** A minute of the day as HH:MM. */
 export const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`
 
 export { civilDate, fireTimeText, recordTimeText, localMinutes, longDate, offsetInstant, wallText, zonedInstant } from node

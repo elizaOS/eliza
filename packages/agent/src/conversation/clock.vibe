@@ -3,7 +3,6 @@ import type { ActionResult, Memory } from "@elizaos/core"
 import { clockSource, eventRangeIsUngrounded, statedTimeIsUngrounded, type LocalClock, type StatedTime } from "../../gen/agent__conversation__planning.ts"
 import { knownZone, readTurnContext } from "./turn-context.schema.vibe"
 
-/** What one turn's clock observed: the exact instant, the zone it reads in, its full reading and the line the model sees. */
 export interface TurnClock {
   readonly instant: number
   readonly zone: string
@@ -23,7 +22,6 @@ function fullReading(instant: number, zone: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: zone, dateStyle: "full", timeStyle: "long" }).format(new Date(instant))
 }
 
-/** The turn's clock: the phone's zone, else the launch zone, else the host's, rendered to the minute for the model. */
 export function turnClock(message: Memory, launchZone: string | undefined, owner: boolean, instant: number): TurnClock {
   const context = readTurnContext(message)
   const said = context.voiceUi?.uiTimeZone
@@ -66,7 +64,6 @@ function standalone(reply: string): boolean {
   return reply.replace(monthDay, " ").replace(weekday, " ").replace(clockTime, " ").replace(filler, " ").replace(/[\s,.!():]/g, "") === ""
 }
 
-/** The reply to store: the turn's own, or the clock's reading where it answers a current-time question with a time the clock did not observe. */
 export function groundedTimeReply(reply: string, request: string, clock: TurnClock): string {
   const answer = reply.trim()
   if (!answer) return reply
@@ -147,7 +144,6 @@ function changedEvent(result: ActionResult, agentId: string): ChangedEvent | und
   return { key: JSON.stringify([id, version, startAt, endAt, timezone]), start, end, words }
 }
 
-/** The reply to store: the turn's own, or the one changed calendar event's own words where the reply gives that event a clock range it did not get. */
 export function groundedEventReply(reply: string, request: string, results: readonly ActionResult[], agentId: string): string {
   const stated = oneRange(reply)
   const changed = [...new Map(results.flatMap((result) => {

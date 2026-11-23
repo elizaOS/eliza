@@ -49,22 +49,18 @@ export function readOperation(input: unknown): CheckedOperation | undefined {
   return { operation: operation.value, opType, versionTwo, need: operationNeed(opType, versionTwo) }
 }
 
-/** Decodes an untrusted value as an operation of one wire type, or `undefined` when it is not exactly one. */
 export function operationOf<T extends DeviceOperationType>(input: unknown, type: T): Extract<DeviceOperation, { type: T }> | undefined {
   const checked = readOperation(input)
   return checked?.operation.type === type ? checked.operation as Extract<DeviceOperation, { type: T }> : undefined
 }
 
-/** The typed result a device reports for one wire type, or `never` for an operation that carries none. */
 export type OperationResultOf<T extends DeviceOperationType> = (typeof families)[T] extends infer F ? F extends { readonly result: Schema.Decoder<infer R> } ? R : never : never
 
-/** Decodes an untrusted result for an operation by that operation's own result schema, or `undefined` when it has none or does not match. */
 export function readResult<T extends DeviceOperationType>(operation: Extract<DeviceOperation, { type: T }>, input: unknown): OperationResultOf<T> | undefined {
   const reader = readers.get(operation.type)
   return reader?.result === undefined ? undefined : Option.getOrUndefined(reader.result(input)) as OperationResultOf<T> | undefined
 }
 
-/** The device's capability names one checked operation needs: all of `required`, and one of `oneOf` when it lists any. */
 export function capabilityNamesOf(checked: CheckedOperation): { readonly required: readonly string[]; readonly oneOf: readonly string[] } {
   return { required: checked.need.required.map(capabilityName), oneOf: checked.need.oneOf.map(capabilityName) }
 }

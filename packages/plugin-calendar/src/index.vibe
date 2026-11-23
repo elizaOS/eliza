@@ -36,13 +36,10 @@ export { RecurrenceRecord, ScopeMismatch, WriteScopeRecord, type CalendarRecurre
 export { ResidentNeedsReview, importPriorResident } from "./plugin/providers.vibe"
 export { calendarProposalFamily }
 
-/** The package name the agent bundle loads this plugin under. */
 export const calendarPluginName = "@elizaos/plugin-calendar"
 
-/** The Calendar plugin as the agent registers it, with the local routes its owner's client calls. */
 export type CalendarPlugin = Plugin & { readonly routes: readonly CalendarRoute[] }
 
-/** A Calendar plugin: its runtime services, the Calendar action and context provider, and its owner routes. */
 export function calendarPlugin(): CalendarPlugin {
   let started: IAgentRuntime | undefined
   async function host(): Promise<CalendarHost | undefined> {
@@ -67,6 +64,5 @@ export function calendarPlugin(): CalendarPlugin {
   }
 }
 
-/** The plugin the agent bundle loads from this package. */
 export const plugin = calendarPlugin()
 export default plugin

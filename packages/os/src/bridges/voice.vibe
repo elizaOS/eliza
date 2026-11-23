@@ -64,7 +64,6 @@ export error CloudSpeechRefused {
   reason: "owner-changed" | "session-changed" | "not-connected" | "output-mute-unavailable" | "phrase-too-long" | "mute-unconfirmed" | "ended-without-audio"
 }
 
-/** A reply stopped before it finished, with the device's reason, such as `audio-focus-lost`; the session stays open. */
 export error CloudSpeechInterrupted { code: string }
 
 export error CloudSpeechCleanupUnconfirmed {

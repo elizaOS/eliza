@@ -23,7 +23,6 @@ const aliases: Readonly<Record<string, string>> = {
   et: "America/New_York", est: "America/New_York", edt: "America/New_York", eastern: "America/New_York",
 }
 
-/** The IANA zone a statement's zone names, or undefined when the resolver knows none. */
 export function resolveZone(named: string): string | undefined {
   const plain = named.trim().replace(/[.,!;]+$/u, "").replace(/\s+time$/iu, "").trim()
   if (plain === "" || plain.length > 64) return undefined
@@ -34,7 +33,6 @@ export function resolveZone(named: string): string | undefined {
 
 const statement = /\bmy\s+time\s*zone\s+is\s+(?:now\s+)?([A-Za-z0-9_/+:.-]{1,60}(?:\s+time)?)/iu
 
-/** The zone a message states as the owner's own, as the resolver maps it. */
 export function statedZone(text: string): string | undefined {
   const named = statement.exec(text)?.[1]
   return named === undefined ? undefined : resolveZone(named)
@@ -42,26 +40,22 @@ export function statedZone(text: string): string | undefined {
 
 opaque.knownZone = (named: string) => named !== "" && resolveZone(named) === named
 
-/** The name a statement gives the machine: the zone the resolver maps it to, or its own words when it maps to none. */
 export function statedName(text: string): string | undefined {
   const named = statement.exec(text)?.[1]
   return named === undefined ? undefined : resolveZone(named) ?? named.trim()
 }
 
 const Travel = Schema.Struct({ startAt: Schema.Number, endAt: Schema.Number, zone: Schema.String })
-/** A trip the owner told the assistant about; a trip told in conversation names no zone. */
 export type Travel = typeof Travel.Type
 const decodeTravel = Schema.decodeUnknownOption(Travel)
 const travelKey = "owner-travel"
 const zoneKey = "owner-timezone"
 
-/** What the assistant keeps of the owner's clock: the stated zone, and a trip when one is known. */
 export interface OwnerFacts {
   readonly zone: string
   readonly travel?: Travel
 }
 
-/** The owner's clock facts as stored. */
 export effect function ownerFacts() {
   const travel = try readRecord(travelKey, decodeTravel)
   provide stored(zoneKey) {
@@ -70,7 +64,6 @@ export effect function ownerFacts() {
   }
 }
 
-/** Applies a statement of the owner's zone: a zone the resolver knows replaces the stored one, anything else leaves it. */
 export effect function stateOwnerZone(text: string) {
   const namedZone = statedName(text)
   provide stored(zoneKey) {
@@ -82,12 +75,10 @@ export effect function stateOwnerZone(text: string) {
   }
 }
 
-/** Keeps the owner's trip as it now stands. */
 export effect function keepTrip(trip: Travel) {
   try writeRecord(travelKey, trip)
 }
 
-/** Records a trip: while a tick falls within it, the owner's clock is the trip's zone. */
 export effect function recordTravel(startAt: number, endAt: number, named: string) {
   const zone = resolveZone(named)
   if (zone === undefined || endAt <= startAt) return false
@@ -95,7 +86,6 @@ export effect function recordTravel(startAt: number, endAt: number, named: strin
   return true
 }
 
-/** The zone the owner's clock follows at the tick `at`, from the facts as they stand at that tick. */
 export effect function ownerClockAt(at: number) {
   const facts = try ownerFacts()
   const host = try Facts
@@ -109,7 +99,6 @@ export effect function ownerClockAt(at: number) {
   return ownerClockZone(clock)
 }
 
-/** The zone the owner's calendar reads. */
 export effect function ownerCalendarZone() {
   const host = try Facts
   const agentZone = resolveZone(try host.runtimeZone()) ?? resolveZone(try host.hostZone()) ?? "UTC"

@@ -65,7 +65,6 @@ effect function hiddenSections() {
 const unchecked = (title: string) => `# ${title}\nThis could not be read; say it was not checked, and tell the rest.`
 const listed = (title: string, empty: string, lines: readonly string[]) => lines.length === 0 ? `# ${title}\n${empty}` : [`# ${title}`, ...lines].join("\n")
 
-/** The facts a brief is told from: each source read on its own, an unreadable one marked unchecked. */
 effect function briefFacts(kind: BriefKind, covers: BriefPeriod, now: number, zone: string) {
   const { startAt, endAt } = daysOf(covers, now, zone)
   const todayStart = daysOf("PeriodToday", now, zone).startAt
@@ -103,7 +102,6 @@ effect function briefFacts(kind: BriefKind, covers: BriefPeriod, now: number, zo
   ]
 }
 
-/** The owner's brief, written by the model from the whole fact sheet of the kind they named or the clock gives, over the days it covers. */
 export effect function composeBrief(action: unknown, period: unknown, text: string) {
   const now = try (try Facts).now()
   const zone = try ownerClockAt(now)
@@ -123,7 +121,6 @@ export effect function composeBrief(action: unknown, period: unknown, text: stri
   return { success: true, text: written, userFacingText: written, verifiedUserFacing: true, data } satisfies ActionResult
 }
 
-/** Leaves one section out of the owner's briefs, or brings every section back. */
 export effect function recalibrateBrief(op: "recalibrate" | "reset_recalibration", section: unknown) {
   const hidden = try hiddenSections()
   if (op === "reset_recalibration") {
@@ -145,7 +142,6 @@ function parametersOf(options: unknown): Readonly<Record<string, unknown>> {
 
 const failedWith = (text: string) => (failed: { readonly _tag: string }) => Effect.succeed({ success: false, text, data: { outcome: failed._tag } } satisfies ActionResult)
 
-/** Briefs the owner on their morning, evening or week, sets which sections briefs leave out, and sets when the daily check-ins come. */
 export const briefAction: Action = {
   name: briefActionName,
   description: "Brief the owner on their morning, evening or week from their calendar, to-dos, goals, routines and reminders (compose_morning, compose_evening, compose_weekly only when the owner named that kind; leave action out for an unnamed brief), leave one section out of their briefs (recalibrate with section, for \"stop showing me my goals in my brief\") or bring every section back (reset_recalibration), or set when the daily morning and night check-ins come (schedule_checkins, each HH:MM on the owner's clock or off).",

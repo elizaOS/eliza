@@ -11,7 +11,6 @@ import { followRoutineClock } from "./routines.vibe"
 import { currentTodos, renderTodos } from "./todos.vibe"
 import { ownerClockAt } from "./timezone.vibe"
 
-/** The scheduled-task kind of the owner's daily check-in. */
 export const checkinKind = "personal-assistant.checkin"
 
 import { civilDate, hhmm, longDate, minuteOf } from "./time.vibe"
@@ -19,7 +18,6 @@ import { civilDate, hhmm, longDate, minuteOf } from "./time.vibe"
 const recentWindow = 86_400_000
 const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
-/** How a rendered summary reads for the report day: a valid answer, blank, refused, or about another day. */
 function judgeSummary(text: string | undefined, reportDate: string): RenderResult {
   if (text === undefined) return "NoModel"
   const summary = text.trim()
@@ -38,7 +36,6 @@ function judgeSummary(text: string | undefined, reportDate: string): RenderResul
 const decodeReport = Schema.decodeUnknownOption(Schema.Struct({ date: Schema.String, kind: Schema.String, summary: Schema.String, generatedAt: Schema.Number }))
 const reportKey = (date: string, kind: string) => `checkin:${date}:${kind}`
 
-/** The check-in report kept for a day, if one was stored. */
 export effect function checkinReport(date: string, kind: "morning" | "night") {
   return try readRecord(reportKey(date, kind), decodeReport)
 }
@@ -50,7 +47,6 @@ function clockOf(at: string | number | undefined, now: number): ChangeClock {
   return now - instant <= recentWindow ? "ClockRecent" : "ClockOld"
 }
 
-/** The clocks a check-in reads an event's change from: the provider's edit or creation time for a synced copy, the writer's for a local one. */
 function eventClocks(event: CalendarEventFacts, now: number, zone: string): EventClocks {
   return {
     synced: event.synced, malformed: !event.metadataValid,
@@ -59,7 +55,6 @@ function eventClocks(event: CalendarEventFacts, now: number, zone: string): Even
   }
 }
 
-/** What the check-in reports: open to-dos, goals, reminders, and the calendar events that are today or changed recently, with whether any change time was unreadable. */
 export effect function collectFacts(at: number, zone: string) {
   const todos = (try currentTodos()).todos
   const goals = try listGoals()
@@ -78,7 +73,6 @@ export effect function collectFacts(at: number, zone: string) {
   return { facts, partial }
 }
 
-/** Collects what changed, renders a summary for the owner's current day, and stores it only when the model wrote one for that day. */
 export effect function runCheckin(kind: "morning" | "night") {
   const at = try (try Facts).now()
   const zone = try ownerClockAt(at)
@@ -102,7 +96,6 @@ export effect function runCheckin(kind: "morning" | "night") {
   }
 }
 
-/** Runs the check-in when its task fires and shows the stored summary; a failed check-in shows nothing. */
 export effect function deliverCheckin(task: TaskRow) {
   const kind = task.metadata.checkin === "night" ? "night" : "morning"
   const ran = try runCheckin(kind)
@@ -133,7 +126,6 @@ effect function checkinTimes() {
   return (try readRecord(timesKey, decodeTimes)) ?? { morning: unset, night: unset, tasks: {}, generations: {} }
 }
 
-/** When each check-in comes now: an HH:MM time on the owner's clock, or off. */
 export effect function checkinSchedules() {
   const times = try checkinTimes()
   const shown = (name: SlotName) => {
@@ -143,10 +135,8 @@ export effect function checkinSchedules() {
   return { morning: shown("morning"), night: shown("night") }
 }
 
-/** The scheduler refused to change a check-in, so it still comes as it did. */
 error CheckinRefused { reason: string }
 
-/** Keeps exactly one daily check-in task per slot the owner's times turn on, at that time on the owner's clock now; a check-in the owner dismissed stays off unless they just chose its time. */
 export effect function reconcileCheckins(key: string, chosen: readonly SlotName[] = []) {
   const stored = try checkinTimes()
   const settings: Record<SlotName, CheckinSetting> = { morning: stored.morning, night: stored.night }
@@ -191,7 +181,6 @@ export effect function reconcileCheckins(key: string, chosen: readonly SlotName[
   return zone
 }
 
-/** Reschedules everything the assistant keeps on the owner's clock onto the zone it follows now. */
 export effect function followOwnerClock(key: string) {
   const zone = try reconcileCheckins(`${key}:checkins`)
   try followGoalClock(zone, `${key}:goals`)
@@ -208,7 +197,6 @@ function settingOf(given: unknown): CheckinSetting | "invalid" | undefined {
   return minute !== undefined && checkinMinuteValid(minute) ? { tag: "CheckinAt", minute } : "invalid"
 }
 
-/** Sets the morning or night check-in to an HH:MM time on the owner's clock, or off, and reschedules it at once. */
 export effect function setCheckinTimes(given: { readonly morning?: unknown; readonly night?: unknown }, key: string) {
   const morning = settingOf(given.morning)
   const night = settingOf(given.night)
@@ -237,7 +225,6 @@ export effect function setCheckinTimes(given: { readonly morning?: unknown; read
 type LocalRoute = NonNullable<AgentPlugin["routes"]>[number]
 const decodeTimesInput = Schema.decodeUnknownOption(Schema.Struct({ morning: Schema.optionalKey(Schema.String), night: Schema.optionalKey(Schema.String) }), { onExcessProperty: "error" })
 
-/** The routes the owner's client reads and sets the check-in times through; the agent authenticates the owner before either. */
 export function checkinRoutes(agent: () => IAgentRuntime | undefined): LocalRoute[] {
   const offline = { status: 503, body: { error: "assistant_unavailable" } }
   return [

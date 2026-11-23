@@ -6,14 +6,12 @@ import {
 } from "./linked.vibe"
 import type { CalendarSyncBinding } from "./linked-store.vibe"
 
-/** The exact Google account and calendar a sync request is for. */
 export interface CalendarSyncSelection {
   readonly grantId: string
   readonly calendarId: string
   readonly accountId: string
 }
 
-/** One request of the Cloud's `calendar/sync-v1` protocol. */
 export type CalendarSyncRequest =
   | { readonly kind: "capabilities"; readonly selection: Omit<CalendarSyncSelection, "accountId"> }
   | { readonly kind: "get"; readonly selection: CalendarSyncSelection; readonly reference: { readonly eventId: string } | { readonly idempotencyKey: string } }
@@ -21,24 +19,20 @@ export type CalendarSyncRequest =
   | { readonly kind: "update"; readonly selection: CalendarSyncSelection; readonly eventId: string; readonly expectedEtag: string; readonly event: LinkedCalendarSemanticEvent }
   | { readonly kind: "delete"; readonly selection: CalendarSyncSelection; readonly eventId: string; readonly expectedEtag: string }
 
-/** The host's transport to the Cloud sync protocol; a refusal rejects with `{ status, data }`. */
 export interface CalendarSyncClient {
   googleCalendarSync(input: CalendarSyncRequest, signal: AbortSignal): Promise<unknown>
 }
 
-/** How the provider port canonicalizes recurrence lines it reads back. */
 export interface GoogleCalendarSyncPortOptions {
   readonly canonicalRecurrence?: (lines: readonly string[], allDay: boolean) => string[]
 }
 
-/** The verified account and calendar a link writes to. */
 export interface GoogleCalendarSyncDestination {
   readonly providerAccountId: string
   readonly accountEmail: string
   readonly calendarLabel: string
 }
 
-/** The HTTP shape of one sync request. */
 export type CalendarSyncHttp =
   | { readonly path: string; readonly method: "GET" | "DELETE" }
   | { readonly path: string; readonly method: "POST" | "PATCH"; readonly body: Record<string, unknown> }
@@ -50,7 +44,6 @@ const text = (value: unknown, max = 2048): value is string =>
 const refuse = (message: string) => new CalendarSyncRefused({ message })
 const query = (values: Record<string, string>) => new URLSearchParams(values).toString()
 
-/** The path, method and body of a sync request, refusing a request without its exact selection and preconditions. */
 export effect function calendarSyncHttp(input: CalendarSyncRequest): CalendarSyncHttp!CalendarSyncRefused {
   const selection = { ...input.selection }
   if (!grantPattern.test(selection.grantId) || !text(selection.calendarId, 1024)
@@ -114,7 +107,6 @@ effect function eventSnapshot(value: unknown, canonical: (lines: readonly string
   }
 }
 
-/** The verified destination of a capabilities response, refusing a calendar that cannot be synced safely or named exactly. */
 export effect function readGoogleCalendarSyncCapabilities(raw: unknown, calendarId: string): GoogleCalendarSyncDestination!CalendarSyncRefused {
   const unsafe = () => refuse("This Google calendar does not support safe sync.")
   const caps = try mapError(decodeCapabilities(raw), unsafe)
@@ -138,7 +130,6 @@ effect function send(client: CalendarSyncClient, input: CalendarSyncRequest): un
   })
 }
 
-/** Reads the capabilities of an owner-selected Google calendar and verifies its destination, while the selection is still current. */
 export effect function readGoogleCalendarSyncDestination(client: CalendarSyncClient, selection: { readonly grantId: string; readonly calendarId: string },
   current: () => boolean): GoogleCalendarSyncDestination!(CalendarSyncRefused | CalendarSyncAborted) {
   const raw = send(client, { kind: "capabilities", selection: { grantId: selection.grantId, calendarId: selection.calendarId } })
@@ -147,7 +138,6 @@ export effect function readGoogleCalendarSyncDestination(client: CalendarSyncCli
   return try readGoogleCalendarSyncCapabilities(raw, selection.calendarId)
 }
 
-/** A provider port over one bound Google calendar: exact event identity, etag preconditions, response checks and readback. */
 export effect function googleCalendarSyncPort(client: CalendarSyncClient, input: CalendarSyncBinding, current: () => boolean,
   options: GoogleCalendarSyncPortOptions = {}): LinkedCalendarProviderPort!(CalendarSyncRefused | CalendarSyncAborted | ProviderRefused | ProviderUncertain) {
   const binding = { ...input }
