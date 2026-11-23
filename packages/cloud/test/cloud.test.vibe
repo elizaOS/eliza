@@ -3708,6 +3708,7 @@ module node {
   import { CloudError, createCloudClient } from "../src/client/index.vibe"
   import { mimeBoundaryPayload } from "./support/fakes/google-gmail.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
+  import { secrets, testProfile } from "./support/profile.ts"
 
   export async function readMailThroughClient(baseUrl: string, token: string, messageId: string) {
     const client = (beforeTheField: boolean) => createCloudClient({ baseUrl, credential: () => token, fetch: async (input, init) => {
@@ -4235,7 +4236,31 @@ module node {
       }), env)
       const closedLease = await deviceOperation("revoke", {}, bearerHeaders(pair.refresh))
       const afterSignOut = [await readTablet(mailPath, tabletHeaders), await readTablet(calendarPath, tabletHeaders)]
+      const stagingProfile = testProfile(api)
+      const fixtureProfile = { ...stagingProfile, environments: { ...stagingProfile.environments, staging: {
+        ...stagingProfile.environments.staging, api, web, firstPartyOrigins: [web],
+      } } }
+      await fixture.db.query(`INSERT INTO native_clients (client_id, environment, display_name, android_package, cert_fingerprints, sign_in_return, billing_return, credential_ttl_ms, native_google, enabled, created_at, updated_at)
+        VALUES ($1, 'staging', 'Attachment', $1, $2::jsonb, $3, $4, 86400000, false, true, 1, 1)`,
+        [clientId, JSON.stringify([Array(32).fill("AA").join(":")]), redirectUri, web + "/billing"])
+      const mobile = (path: string, method: "POST" | "DELETE", data: object, headers: Record<string, string> = {}) =>
+        worker.fetch(new Request(api + "/api/v1/app-auth/" + path, {
+          method, headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(data),
+        }), { ...secrets, ...env, CLOUD_PROFILE: JSON.stringify(fixtureProfile) })
+      const binding = { clientId, environment: "staging", redirectUri }
+      const state = "q".repeat(43)
+      const begin = await mobile("connect", "POST", { ...binding, state, codeChallenge: challenge, codeChallengeMethod: "S256" }, webHeaders)
+      const { code } = Schema.decodeUnknownSync(Schema.Struct({ code: Schema.String }))(await begin.json())
+      const mint = await mobile("mobile/token", "POST", { ...binding, grantType: "authorization_code", code, state, codeVerifier: verifier })
+      const official = Schema.decodeUnknownSync(Schema.Struct({ credentialId: Schema.String, secret: Schema.String, lease: Schema.Struct({ refresh: Schema.String }) }))(await mint.json())
+      const officialAcknowledged = await mobile("mobile/ack", "POST", { credentialId: official.credentialId, secret: official.secret })
+      const officialRefresh = await mobile("mobile/lease", "POST", {}, bearerHeaders(official.lease.refresh))
+      const officialPair = Schema.decodeUnknownSync(Schema.Struct({ access: Schema.String, refresh: Schema.String }))(await officialRefresh.json())
+      const officialRead = await readTablet(mailPath, bearerHeaders(officialPair.access))
+      const officialClosed = await mobile("mobile/lease", "DELETE", {}, bearerHeaders(officialPair.refresh))
+      const officialAfter = await readTablet(mailPath, bearerHeaders(officialPair.access))
       const tabletReads = {
+        canonical: [begin.status, mint.status, officialAcknowledged.status, officialRefresh.status, officialRead.status, officialClosed.status, officialAfter.status],
         enrollment: [granted.status, exchanged.status, beforeAcknowledgement.status, acknowledged.status, lease.status],
         mail: [tabletMessage.status, messageBody.accountId === owner.account.id, messageBody.bodyText],
         calendar: [tabletCalendar.status, calendarBody.accountId === owner.account.id, calendarBody.events],
@@ -4312,6 +4337,7 @@ it.live('Read complete mail text, open an attachment, watch for new mail and rea
         ],
       },
       tablet: {
+        canonical: [200, 200, 200, 200, 200, 204, 401],
         enrollment: [200, 200, 401, 204, 200],
         mail: [200, true, "hello"],
         calendar: [200, true, [{ externalId: "fixture-appointment", title: "Library visit" }]],
