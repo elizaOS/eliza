@@ -530,7 +530,9 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
     const first = try exposedRefusal(binding, failure)
     if (resend === undefined || failure.temporary429 === undefined) throw first
     const now = try Clock.currentTimeMillis
-    const decision = ownerResend(failure.temporary429, true, resend.dispatched, resend.scope.current(), false, now, resend.scope.deadline)
+    const hint = failure.temporary429
+    const advice = hint.tag === "ResendAt" && first.retryAt !== undefined ? { tag: "ResendAt" as const, at: first.retryAt } : hint
+    const decision = ownerResend(advice, true, resend.dispatched, resend.scope.current(), false, now, resend.scope.deadline)
     if (decision.tag !== "WaitToResend") throw first
     try sleep(Duration.millis(decision.delay))
     const resumed = try Clock.currentTimeMillis

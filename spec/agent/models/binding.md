@@ -181,8 +181,9 @@ deadline. Its text model calls share that authority for planning,
 extraction and review. Each concrete model call may send once more when
 the first provider wire sees a typed temporary HTTP 429 before output.
 A local account cooldown, a period allowance, quota, funding, and other
-refusals give no resend. A known provider deadline can authorize waiting
-for at most five seconds, with the retry sent at or after that deadline.
+refusals give no resend. A known provider deadline uses the account hold
+after the launch's configured cap, if present. It can authorize waiting
+for at most five seconds, with the retry sent at or after that hold.
 With no hint the wait is five seconds. The caller's deadline can end the
 wait earlier, in which case the call retains the refusal. The resend
 passes the current account admission again. A second wire ends the

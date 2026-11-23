@@ -93,3 +93,24 @@ lemma FilteredCallsUseHeldCredential(before: ModelBinding, after: ModelBinding, 
     assert 0 <= call.id < before.nextCall && 1 <= call.credentialVersion <= before.credentialVersion;
   }
 }
+
+lemma cancelCall_ensures(s: ModelBinding, id: int)
+  ensures (inv(s) ==> canCancelCall(s, id) ==> alwaysUnboundHoldsNothing(cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> alwaysCredentialFollowsBackend(cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> alwaysCallsUseAHeldCredential(cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> alwaysNoBackendNeverCalls(cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> alwaysFailingAccountHasALastFailure(cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> alwaysLastFailureIsNotInTheFuture(cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> alwaysCredentialRefusalNamesTheHeldKey(cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> stepBindingFixedOnceBound(s, cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> stepClockNeverGoesBack(s, cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> stepNoCallBeforeRetryAt(s, "cancelCall", cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> stepCancelPreservesAccount(s, "cancelCall", cancelCall(s, id)))
+  ensures (inv(s) ==> canCancelCall(s, id) ==> stepPushKeepsCallsAndOtherStates(s, "cancelCall", cancelCall(s, id)))
+{
+  if inv(s) && canCancelCall(s, id) {
+    var after := cancelCall(s, id);
+    assert after.calls == ProofLib.Filter((c: Call) => c.id != id, s.calls);
+    FilteredCallsUseHeldCredential(s, after, id);
+  }
+}
