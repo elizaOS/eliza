@@ -1,14 +1,11 @@
-// spec/agent/models/binding.md, "Story: Answer with the backend the host chose"; spec/agent/models/binding.md, "Story: Keep the account state honest"; spec/agent/models/binding.md, "Story: Give plugins the owner's cloud link"
+// spec/agent/models/binding.md, "Story: Answer with the backend the host chose"; spec/agent/models/binding.md, "Story: Keep the account state honest"; spec/agent/models/binding.md, "Story: Give plugins the owner's cloud link"; spec/agent/models/binding.md, "The link sends no mail or calendar route, since the cloud refuses the device key it holds there"
 import { assert, it } from "@effect/vitest"
 import { ModelType, type AgentRuntime, type GenerateTextParams, type UUID } from "@elizaos/core"
 import { answerJson, echoImages, insufficientCredits, rateLimited, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { call, cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
-import { googleProductPlugin, productGoogleActionName } from "./support/product-plugin/index.ts"
+import { googleProductPlugin, productGoogleActionName, type LinkAttempt } from "./support/product-plugin/index.ts"
 import { account, type LaunchOptions } from "./support/scratch.ts"
 import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
-import type { CloudLinkReply } from "../src/models/cloud-link.vibe"
-
-const google = "/api/v1/eliza/google"
 
 function completions(cloud: CloudFake): number {
   return cloud.calls.filter((made) => made.method === "POST" && made.path.endsWith("/chat/completions")).length
@@ -53,7 +50,7 @@ effect function tryGoogle(runtime: AgentRuntime) {
   try host("cloud service", () => runtime.getServiceLoadPromise("cloud"))
   const message = { entityId: runtime.agentId as UUID, roomId: runtime.agentId as UUID, content: { text: "Archive the thread and book the meeting." } }
   const result = try host("product Google action", () => Promise.resolve(action.handler(runtime, message)))
-  return (result as unknown as { data: { attempts: Record<string, CloudLinkReply> } }).data.attempts
+  return (result as unknown as { data: { attempts: Record<string, LinkAttempt> } }).data.attempts
 }
 
 it.live('Answer with the backend the host chose: cloud streams and answers whole, describes an image, retries an outage once; own-key answers and describes an image; none registers nothing (spec/agent/models/binding.md, "Story: Answer with the backend the host chose")', effect () => {
@@ -148,28 +145,27 @@ it.live('Keep the account state honest: a refused key blocks until a newer push,
   assert.strictEqual(completions(cloud), spent + 1)
 }, 300_000)
 
-it.live('Give plugins the owner\'s cloud link: a managed Gmail change needs the owner\'s consent, a read always reaches the cloud (spec/agent/models/binding.md, "Story: Give plugins the owner\'s cloud link")', effect () => {
+it.live('Give plugins the owner\'s cloud link: a managed Gmail change needs the owner\'s consent, no mail or calendar route leaves the link even with it, and a key route still reaches the cloud (spec/agent/models/binding.md, "Story: Give plugins the owner\'s cloud link"; spec/agent/models/binding.md, "The link sends no mail or calendar route, since the cloud refuses the device key it holds there")', effect () => {
   const cloud = try cloudFake(deviceKey)
-  try Effect.sync(() => {
-    cloud.route("POST", `${google}/gmail/inbox-v1/operations`, answerJson({ done: true }))
-    cloud.route("GET", `${google}/gmail/triage`, answerJson({ threads: [] }))
-    cloud.route("GET", `${google}/gmail/inbox-v1/arrival`, answerJson({ cursor: "fixture", arrived: false }))
-  })
+  const capabilities = { available: false }
+  try Effect.sync(() => cloud.route("GET", "/api/v1/maps/capabilities", answerJson(capabilities)))
   const product = { productPlugin: googleProductPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productGoogleActionName] }
   const withheld = try cloudAgent(cloud, product)
   const off = try tryGoogle(withheld.agent.runtime)
   assert.deepStrictEqual(off, {
     gmailChange: { kind: "changes-off", operation: "gmail_change" },
     calendarEdit: { kind: "changes-off", operation: "calendar_edit" },
-    read: { kind: "answered", status: 200, body: { threads: [] } },
-    privateInboxArrival: { kind: "refused", status: 403, body: null },
+    read: { kind: "link-refused", reason: "mail" },
+    status: { kind: "link-refused", reason: "mail" },
+    privateInboxArrival: { kind: "link-refused", reason: "path" },
+    keyRoute: { kind: "answered", status: 200, body: capabilities },
   })
-  assert.deepStrictEqual(cloud.calls.map((made) => [made.method, made.path]), [["GET", `${google}/gmail/triage`]])
 
   const consented = try cloudAgent(cloud, { ...product, google: { gmailChanges: true, calendarEdits: false } })
   const on = try tryGoogle(consented.agent.runtime)
-  assert.deepStrictEqual(on.gmailChange, { kind: "answered", status: 200, body: { done: true } })
-  assert.deepStrictEqual(on.calendarEdit, { kind: "changes-off", operation: "calendar_edit" })
-  const gmail = cloud.calls.find((made) => made.method === "POST" && made.path === `${google}/gmail/inbox-v1/operations`)
-  assert.deepStrictEqual([gmail?.authorization, gmail?.body], [`Bearer ${deviceKey}`, { kind: "archive", threadId: "thread-1" }])
+  assert.deepStrictEqual([on.gmailChange, on.calendarEdit], [{ kind: "link-refused", reason: "mail" }, { kind: "changes-off", operation: "calendar_edit" }])
+  assert.deepStrictEqual(cloud.calls.map((made) => [made.method, made.path, made.authorization]), [
+    ["GET", "/api/v1/maps/capabilities", `Bearer ${deviceKey}`],
+    ["GET", "/api/v1/maps/capabilities", `Bearer ${deviceKey}`],
+  ])
 }, 300_000)

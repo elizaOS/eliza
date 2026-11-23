@@ -1,7 +1,7 @@
-// spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"; spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"
+// spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"; spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"; spec/agent/models/binding.md, "The link sends no mail or calendar route, since the cloud refuses the device key it holds there"
 import { promoteSubactionsToActions, type Action, type IAgentRuntime } from "@elizaos/core";
 import type { AgentPlugin } from "../../../src/host/module.vibe";
-import type { CloudLinkReply, CloudLinkService } from "../../../src/models/cloud-link.vibe";
+import { CloudLinkRequestRefused, type CloudLinkReply, type CloudLinkService } from "../../../src/models/cloud-link.vibe";
 import { scheduledTasksServiceType, type ScheduledTasksApi, type TaskTrigger } from "../../../src/schedule/scheduled-task-routes.vibe";
 import type { DeliveryResult } from "../../../src/schedule/scheduled-tasks.vibe";
 
@@ -39,23 +39,31 @@ export const claimingProductPlugin = {
 
 export const productGoogleActionName = "PRODUCT_GOOGLE";
 
+export type LinkAttempt = CloudLinkReply | { readonly kind: "link-refused"; readonly reason: CloudLinkRequestRefused["reason"] };
+
 const google = "/api/v1/eliza/google";
+
+function attempt(sent: Promise<CloudLinkReply>): Promise<LinkAttempt> {
+  return sent.catch((refusal: unknown) => {
+    if (refusal instanceof CloudLinkRequestRefused) return { kind: "link-refused", reason: refusal.reason };
+    throw refusal;
+  });
+}
 
 const productGoogleAction: Action = {
   name: productGoogleActionName,
-  description: "Try a managed Gmail change, a calendar edit and a Gmail read through the owner's cloud link.",
+  description: "Try a managed Gmail change, a calendar edit, a Gmail read, the private inbox arrival and a key route through the owner's cloud link.",
   validate: () => Promise.resolve(true),
   handler: async (runtime) => {
     const cloud = runtime.getService<CloudLinkService>("cloud");
     if (cloud === null) return { success: false, text: "No cloud link.", data: { linked: false } };
-    const attempts: Record<string, CloudLinkReply> = {
-      gmailChange: await cloud.request({ method: "POST", path: `${google}/gmail/inbox-v1/operations`, body: { kind: "archive", threadId: "thread-1" }, idempotencyKey: "fixture-gmail-1" }),
-      calendarEdit: await cloud.request({ method: "POST", path: `${google}/calendar/events`, body: { title: "Fixture", start: "2026-11-18T10:00:00Z", end: "2026-11-18T11:00:00Z" }, idempotencyKey: "fixture-calendar-1" }),
-      read: await cloud.request({ method: "GET", path: `${google}/gmail/triage` }),
-      privateInboxArrival: await cloud.request({ method: "GET", path: `${google}/gmail/inbox-v1/arrival` }).then(
-        (response) => response,
-        () => ({ kind: "refused", status: 403, body: null }),
-      ),
+    const attempts: Record<string, LinkAttempt> = {
+      gmailChange: await attempt(cloud.request({ method: "POST", path: `${google}/gmail/inbox-v1/operations`, body: { kind: "archive", threadId: "thread-1" }, idempotencyKey: "fixture-gmail-1" })),
+      calendarEdit: await attempt(cloud.request({ method: "POST", path: `${google}/calendar/events`, body: { title: "Fixture", start: "2026-11-18T10:00:00Z", end: "2026-11-18T11:00:00Z" }, idempotencyKey: "fixture-calendar-1" })),
+      read: await attempt(cloud.request({ method: "GET", path: `${google}/gmail/triage` })),
+      status: await attempt(cloud.request({ method: "GET", path: `${google}/status?side=owner` })),
+      privateInboxArrival: await attempt(cloud.request({ method: "GET", path: `${google}/gmail/inbox-v1/arrival` })),
+      keyRoute: await attempt(cloud.request({ method: "GET", path: "/api/v1/maps/capabilities" })),
     };
     return { success: true, text: "Tried the cloud link.", data: { linked: true, attempts } };
   },

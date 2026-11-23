@@ -20,7 +20,9 @@ authorization, sessions, scheduling and receipts are [core](../core/index.md)'s.
 The device side (agent service, native bridge, keystore, native audio,
 executors and review screens) is os's, and os imports agent specs; no agent
 spec imports an os spec. Accounts, billing, metered inference, speech and
-managed Google are cloud's, which the agent reaches through its cloud link.
+managed Google are cloud's, which the agent reaches through its cloud link,
+except managed mail and calendar: the link never sends those, and the agent
+reaches them only through a broker its host provides.
 The cloud runs no agent. No spec here names a product.
 
 | Area | Specifications |

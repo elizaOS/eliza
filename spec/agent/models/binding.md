@@ -382,18 +382,19 @@ pure def lawEachSlotIsWithinTheFrameBound(slot: KeySlot, shape: KeyShape): bool 
 
 ## Story: Give plugins the owner's cloud link
 
-> As the owner, I want my mail and calendar plugins to use my cloud account
-> without ever holding my key, and to change nothing I did not allow.
+> As the owner, I want my plugins to use my cloud account without ever
+> holding my key, never to carry that key to my mail or calendar, and to
+> change nothing I did not allow.
 
 ### Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent
 
 The runtime service `cloud` hands plugins the authenticated cloud client;
 no plugin reads the credential. A managed Gmail change needs
 `launch.google.gmailChanges`, a calendar edit `launch.google.calendarEdits`
-(a refusal is `changes-off`, before any cloud call); reads need only the
-link for ordinary reads. The link refuses the private inbox arrival route
-before any cloud call. No plugin, native module or managed-Google host is a
-precondition of a cloud backend.
+(a refusal is `changes-off`, before any cloud call); a read needs no
+consent. The link refuses the private inbox arrival route before any cloud
+call. No plugin, native module or managed-Google host is a precondition of a
+cloud backend.
 
 ```quint
 type GoogleOperation = GmailChange | CalendarEdit | GoogleRead
@@ -408,4 +409,32 @@ pure def pluginCloudPathAllowed(pathname: str): bool = pathname != privateInboxA
 pure val pathnameValues = Set(privateInboxArrivalPath, "/api/v1/eliza/google/gmail/read")
 pure def lawPrivateInboxArrivalStaysOffThePluginLink(pathname: str): bool =
   pathname == privateInboxArrivalPath implies not(pluginCloudPathAllowed(pathname))
+```
+
+### The link sends no mail or calendar route, since the cloud refuses the device key it holds there
+
+The link holds only the cloud device key, and the cloud refuses that key on
+every route its client lists as `Mail` ([client](../../cloud/client.md)):
+Google status, accounts, connect, disconnect, Gmail, inbox and calendar;
+native connect stays a key route. So after the consent check the link
+refuses such a request as `mail`, before any cloud call, and sends every
+other route as before. A plugin reaches managed mail and calendar only
+through a broker its host runs in the native shell, which holds the
+device's lease there and never hands it to the agent
+([sessions](../../cloud/identity/sessions.md)); where the host provides no
+broker, the agent does not reach them at all.
+
+```quint
+pure def carriedByTheLink(found: C::RouteLookup): bool = match found { | Listed(x) => x.route.auth != C::Mail | Unlisted => true }
+pure val foundValues = Set(C::Unlisted, C::Listed({ route: C::route(C::Get, C::google(List("gmail", "search")), C::Mail) }),
+  C::Listed({ route: C::route(C::Get, C::google(List("status")), C::Mail) }),
+  C::Listed({ route: C::route(C::Post, C::google(List("connect", "native")), C::KeyOrSession) }))
+pure def lawNoMailRouteLeavesTheLink(found: C::RouteLookup): bool = match found {
+  | Listed(x) => x.route.auth == C::Mail implies not(carriedByTheLink(found))
+  | Unlisted => true
+}
+pure def lawEveryKeyRouteStaysOnTheLink(found: C::RouteLookup): bool = match found {
+  | Listed(x) => x.route.auth == C::KeyOrSession implies carriedByTheLink(found)
+  | Unlisted => carriedByTheLink(found)
+}
 ```
