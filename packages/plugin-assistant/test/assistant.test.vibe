@@ -113,7 +113,7 @@ it.effect('A save that failed and then succeeded is reported saved, and one that
   }
 })
 
-it.effect('A fired reminder reaches the owner once as the exact presentation issued for it, is sent again only when nothing left, and can be dismissed by its title (spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again")', effect () => {
+it.effect('A fired reminder reaches the owner once as the exact presentation issued for it, is sent again only when nothing left, can be dismissed by its title, and a silent one only posts in its conversation (spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminders.md, "A silent reminder comes due without a phone notification")', effect () => {
   const seen = ports()
   seen.answers.push(check({}))
   provide portsLayer(seen) {
@@ -128,6 +128,14 @@ it.effect('A fired reminder reaches the owner once as the exact presentation iss
       { delivered: { kind: "delivered" }, trusted: true, chatText: "Call the dentist", copy: null })
     const dismissed = try answerReminder({ op: "dismiss", target: "call the dentist" }, "m8")
     try equal([dismissed.success, seen.tasks.get(row.taskId)?.status], [true, "Dismissed"])
+    seen.answers.push(check({ alert: "silent" }), check({ alert: "silent" }))
+    try createReminder({ ...asked("m9"), plan: { ...plan, title: "Stretch" }, roomId: "room-1" as UUID })
+    try createReminder({ ...asked("m10"), plan: { ...plan, title: "Drink water" } })
+    const [, quiet, unannounced] = rowsOf(seen, reminderKind)
+    const shownBefore = seen.presented.length
+    const silent = [try deliverReminder(quiet), try deliverReminder(unannounced)]
+    try equal({ silent, posted: seen.presented.slice(shownBefore).map((posted) => [posted.presentation.chatText, posted.conversationOnly ?? false]) },
+      { silent: [{ kind: "delivered" }, { kind: "delivered" }], posted: [["Stretch", true]] })
   }
 })
 

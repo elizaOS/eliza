@@ -110,6 +110,21 @@ pure def sometimesSavedWithAnUnstatedAlert(s: ReminderIntent): bool =
   s.reminderPhase == ReminderSaved and s.plannedAlert == UnknownChoice and s.extractedAlert == UnknownChoice and s.savedAlert == FirstChoice
 ```
 
+### A silent reminder comes due without a phone notification
+
+A reminder saved with an alert notifies the phone when it comes due and
+posts its text in the conversation it was asked in. One saved silent
+only posts its text in that conversation, and with no conversation it
+comes due unannounced, still listed with the owner's reminders.
+
+```quint
+type DueNotice = NotifiesPhone | ConversationOnly | Unannounced
+pure def firstAlert(savedAlert: DeliveryChoice, hasConversation: bool): DueNotice =
+  if (savedAlert != SecondChoice) NotifiesPhone else if (hasConversation) ConversationOnly else Unannounced
+pure def lawASilentReminderNeverNotifiesThePhone(hasConversation: bool): bool = firstAlert(SecondChoice, hasConversation) != NotifiesPhone
+pure def lawAnAlertingReminderNotifiesThePhone(hasConversation: bool): bool = firstAlert(FirstChoice, hasConversation) == NotifiesPhone
+```
+
 ### A reminder is high priority only when the owner's message says so
 
 The plan's priority never makes a reminder high priority: only the
