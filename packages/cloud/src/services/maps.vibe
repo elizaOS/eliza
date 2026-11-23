@@ -6,7 +6,7 @@ import { refused, type Refused } from "../http/refusal.vibe"
 import { recheckServiceAccess, signed, type Signed } from "../http/request-auth.vibe"
 import { json, jsonBody, type CloudContext, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
-import { describeMaps, mapsProvider, providerKindOf, specModeOf, type MapsContext, type MapsProvider, type MapsReply, type MapsTile, type ProviderRefusal } from "../providers/maps.vibe"
+import { describeMaps, mapsProvider, providerKindOf, specModeOf, type MapsContext, type MapsProvider, type MapsReply, type MapsTile, type LostReplyRefusal, type ProviderRefusal } from "../providers/maps.vibe"
 import { requestDigest } from "../shared/dispatch-once.vibe"
 import { markDispatched, reserveIn, settle, type HoldTicket, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
 import { admitCheck, admitAll, minute, perWindow } from "../shared/rate-limit.vibe"
@@ -105,7 +105,7 @@ function statusOf(outcome: MapsOutcome): string {
   }
 }
 
-function providerRefusal(code: ProviderRefusal, now: number): Refused {
+function providerRefusal(code: ProviderRefusal | LostReplyRefusal, now: number): Refused {
   return code === "ProviderUnavailable" ? refused("ProviderUnavailable", "NoReason", now + providerPause) : refused(code)
 }
 
