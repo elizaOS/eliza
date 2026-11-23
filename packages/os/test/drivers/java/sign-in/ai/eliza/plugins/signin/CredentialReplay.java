@@ -59,6 +59,7 @@ public final class CredentialReplay {
     store = new DeviceCredentialStore(slots, AUTHORITY, () -> now);
     store.listen(out::add);
     store.onVerifyAccount(() -> out.add(new Notice.VerifyAccount()));
+    store.onRenewKey(() -> out.add(new Notice.RenewKey()));
   }
 
   private void reset() {
