@@ -128,25 +128,30 @@ pure def lawAMarkThatLeavesTheAddressKeepsTheOpen(addressAlone: bool, afterTyped
 ### An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one
 
 When the owner's whole message asks to open an address in a new tab,
-written as an address or with its dots spoken as words, the empty tab is not
-offered for that message: the address opens as an open, grounded as any
-proposed address is. An empty tab proposed for any other message, private
-or not, stays the empty tab it was asked for. An open goes to a tab of its
-own only on a phone that negotiated `browser.open-new-tab.v1`, and there
-when the model asked for one or the owner's whole message, with the address
-written as one, opened that same address in a new tab; anywhere else the
-phone opens it as it always has.
+written as an address or with its dots spoken as words, the owner's words
+decide: an empty tab proposed for that message, unless it is private, is the
+open of that address in a new tab, grounded as any proposed address is, so
+the address opens once and no blank tab does. A private tab, and an empty
+tab proposed for any other message, stays the empty tab it was asked for.
+The model is told to open a typed address with an open, never an empty tab.
+An open goes to a tab of its own only on a phone that negotiated
+`browser.open-new-tab.v1`, and there when the model asked for one, as an
+empty tab that became the open does, or the owner's whole message, with the
+address written as one, opened that same address in a new tab; anywhere
+else the phone opens it as it always has.
 
 ```quint
 type Placement = { proposedNewTab: bool, ownerAskedNewTab: bool, ownerAddressIsDestination: bool, newTabNegotiated: bool }
 pure def opensInNewTab(placement: Placement): bool =
   placement.newTabNegotiated and (placement.proposedNewTab or (placement.ownerAskedNewTab and placement.ownerAddressIsDestination))
-pure def emptyTabOffered(tabsNegotiated: bool, ownerOpensAddressInNewTab: bool): bool = tabsNegotiated and not(ownerOpensAddressInNewTab)
+pure def emptyTabOpensAddress(proposedPrivate: bool, ownerOpensAddressInNewTab: bool): bool = ownerOpensAddressInNewTab and not(proposedPrivate)
 pure val askedPlacement: Placement = { proposedNewTab: false, ownerAskedNewTab: true, ownerAddressIsDestination: true, newTabNegotiated: true }
 pure val placementValues = Set(askedPlacement, { ...askedPlacement, newTabNegotiated: false }, { ...askedPlacement, ownerAskedNewTab: false },
   { ...askedPlacement, ownerAddressIsDestination: false }, { ...askedPlacement, ownerAskedNewTab: false, proposedNewTab: true },
   { ...askedPlacement, ownerAskedNewTab: false, proposedNewTab: true, newTabNegotiated: false })
-pure def lawAnAddressAskedInANewTabIsNeverAnEmptyTab(tabsNegotiated: bool): bool = not(emptyTabOffered(tabsNegotiated, true))
+pure def lawAnAddressAskedInANewTabIsNeverAnEmptyTab(proposedPrivate: bool): bool = not(proposedPrivate) implies emptyTabOpensAddress(proposedPrivate, true)
+pure def lawAPrivateTabOrAnotherMessageKeepsItsEmptyTab(proposedPrivate: bool, ownerOpensAddressInNewTab: bool): bool =
+  (proposedPrivate or not(ownerOpensAddressInNewTab)) implies not(emptyTabOpensAddress(proposedPrivate, ownerOpensAddressInNewTab))
 pure def lawATabOfItsOwnNeedsItsCapability(placement: Placement): bool = opensInNewTab(placement) implies placement.newTabNegotiated
 pure def lawMyNewTabOpensWhereThePhoneHasOne(placement: Placement): bool =
   (placement.newTabNegotiated and placement.ownerAskedNewTab and placement.ownerAddressIsDestination) implies opensInNewTab(placement)
