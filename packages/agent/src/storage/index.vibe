@@ -456,8 +456,13 @@ module node {
     }
 
     async getLogInventory(input: Parameters<IDatabaseAdapter["getLogInventory"]>[0]): ReturnType<IDatabaseAdapter["getLogInventory"]> {
-      return (await this.getLogs({})).filter((row) => !input.excludeTypes?.includes(row.type))
-        .map(({ id, roomId, createdAt }) => ({ id, roomId, createdAt }))
+      const { rows } = await this.dispatch(() => this.db.query<{ id: Log["id"] | null; roomId: Log["roomId"] | null; createdAt: string }>(
+        `SELECT data->>'id' AS id, room_id AS "roomId", data->>'createdAt' AS "createdAt" FROM device_records
+          WHERE collection = 'logs' AND ((data->>'type') = ANY($1::text[])) IS NOT TRUE
+          ORDER BY created_at DESC, key DESC`,
+        [input.excludeTypes ?? []],
+      ))
+      return rows.map(({ id, roomId, createdAt }) => ({ id: id ?? undefined, roomId: roomId ?? undefined, createdAt: new Date(createdAt) }))
     }
 
     async deleteLogs(keys: UUID[]): Promise<void> { await this.remove("logs", keys) }
