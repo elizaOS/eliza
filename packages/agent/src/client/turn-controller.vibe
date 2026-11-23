@@ -5,7 +5,7 @@ import {
 } from "../../gen/agent__client__turns.effect.vibe"
 import type { RuntimeStream } from "./index.vibe"
 import type { TaskPresentation } from "../tasks/chat-task.vibe"
-import type { ActionResultFrame, PlanAction, ProviderWait } from "./reply-frame.schema.vibe"
+import { ActionResultFrame, PlanAction, ProviderWait } from "./reply-frame.schema.vibe" // eslint-disable-line @typescript-eslint/consistent-type-imports -- BufferedReply uses these Vibe schemas as runtime codecs.
 import { readReplyStream, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
 import { newClientMessageId, type ClientMessageId } from "./stopped-turn.vibe"
 
