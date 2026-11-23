@@ -27,6 +27,7 @@ const plan = { title: "Call the dentist", due: { kind: "in", minutes: 20 }, dest
 const asked = (messageId: string) => ({ plan, messageId, text: "remind me in 20 minutes to call the dentist", roomId: undefined })
 const outcomeOf = (result: ActionResult) => ({ success: result.success, text: result.text, outcome: result.data?.outcome })
 const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
+const heard = (id: string, text: string) => ({ id: id as UUID, entityId: "owner-1" as UUID, roomId: "room-1" as UUID, content: { text } }) satisfies Memory
 
 it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message")', effect () => {
   const seen = ports()
@@ -312,7 +313,7 @@ it.effect('Review how my goals are going: one goal from its latest answer, or ev
   const seen = ports()
   provide portsLayer(seen) {
     const nothing = try changeGoal({ op: "review" }, "w-1")
-    try changeTodos({ op: "create", content: "buy milk" }, "w-2", "add buy milk")
+    try changeTodos({ op: "create", content: "buy milk" }, heard("w-2", "add buy milk"))
     const none = try changeGoal({ op: "review" }, "w0")
     try changeGoal({ op: "create", title: "Run a 10k", cadence: "daily" }, "w1")
     try changeGoal({ op: "create", title: "Read more", cadence: "weekly" }, "w2")
@@ -346,21 +347,21 @@ it.effect('Review how my goals are going: one goal from its latest answer, or ev
   }
 })
 
-it.effect('To-dos change once per request, by their text whatever its case or punctuation, never on a guess between two items or on a near miss, are renamed as asked, and clear only after the owner confirms (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item\'s completion time is set exactly while it is completed")', effect () => {
+it.effect('To-dos change once per request, by their text whatever its case or punctuation, never on a guess between two items or on a near miss, are renamed as asked, and take a duplicate or clear only on a reply that says yes and nowhere refuses (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item\'s completion time is set exactly while it is completed"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms")', effect () => {
   const seen = ports()
   provide portsLayer(seen) {
-    try changeTodos({ op: "create", content: "buy milk" }, "t1", "add buy milk")
-    try changeTodos({ op: "create", content: "buy milk" }, "t1", "add buy milk")
-    const duplicate = try changeTodos({ op: "create", content: "buy milk" }, "t2", "add buy milk")
-    try changeTodos({ op: "create", content: "buy milk" }, "t3", "yes")
-    const ambiguous = try changeTodos({ op: "complete", target: "buy milk" }, "t4", "done with milk")
-    const byRef = try changeTodos({ op: "complete", target: "t-1" }, "t5", "done with the first")
+    try changeTodos({ op: "create", content: "buy milk" }, heard("t1", "add buy milk"))
+    try changeTodos({ op: "create", content: "buy milk" }, heard("t1", "add buy milk"))
+    const duplicate = try changeTodos({ op: "create", content: "buy milk" }, heard("t2", "add buy milk"))
+    try changeTodos({ op: "create", content: "buy milk" }, heard("t3", "yes"))
+    const ambiguous = try changeTodos({ op: "complete", target: "buy milk" }, heard("t4", "done with milk"))
+    const byRef = try changeTodos({ op: "complete", target: "t-1" }, heard("t5", "done with the first"))
     try equal([duplicate, ambiguous, byRef].map(outcomeOf).map(({ success, outcome }) => [success, outcome ?? null]), [[false, "duplicate"], [false, "ambiguous"], [false, "ambiguous"]])
-    try changeTodos({ op: "create", content: "call mom" }, "t6", "add call mom")
-    const completed = try changeTodos({ op: "complete", target: "call mom" }, "t7", "called mom")
-    const alreadyComplete = try changeTodos({ op: "complete", target: "call mom" }, "t11", "called mom")
-    try changeTodos({ op: "reopen", target: "call mom" }, "t12", "reopen call mom")
-    const replayed = try changeTodos({ op: "complete", target: "call mom" }, "t11", "called mom")
+    try changeTodos({ op: "create", content: "call mom" }, heard("t6", "add call mom"))
+    const completed = try changeTodos({ op: "complete", target: "call mom" }, heard("t7", "called mom"))
+    const alreadyComplete = try changeTodos({ op: "complete", target: "call mom" }, heard("t11", "called mom"))
+    try changeTodos({ op: "reopen", target: "call mom" }, heard("t12", "reopen call mom"))
+    const replayed = try changeTodos({ op: "complete", target: "call mom" }, heard("t11", "called mom"))
     const current = (try currentTodos()).todos.find(({ content }) => content === "call mom")
     try equal(
       {
@@ -371,26 +372,36 @@ it.effect('To-dos change once per request, by their text whatever its case or pu
       },
       { completion: "applied", unchanged: [true, "noop", "unchanged"], replay: [true, "noop", "replayed"], current: ["TodoPending", 0] },
     )
-    const news = try changeTodos({ op: "create", content: "Read the news" }, "n1", "add read the news")
-    const notNews = try changeTodos({ op: "create", content: "Read the new" }, "n2", "add read the new")
-    try changeTodos({ op: "complete", target: "Read the new" }, "n3", "read the new one")
-    try changeTodos({ op: "create", content: "Pay electricity bill" }, "n4", "add pay electricity bill")
-    const swapped = try changeTodos({ op: "delete", target: "Pay water bill" }, "n5", "delete pay water bill")
-    const looseDuplicate = try changeTodos({ op: "create", content: "read the NEWS!" }, "n6", "add read the news")
-    const looseDone = try changeTodos({ op: "complete", target: "pay electricity bill." }, "n7", "paid the electricity bill")
-    const renamed = try changeTodos({ op: "rename", target: "PAY ELECTRICITY BILL", content: "Pay the power bill" }, "n8", "call it the power bill")
-    try changeTodos({ op: "create", content: "Read the news." }, "n9", "yes")
-    const twoTexts = try changeTodos({ op: "complete", target: "read the news" }, "n10", "read the news")
+    const news = try changeTodos({ op: "create", content: "Read the news" }, heard("n1", "add read the news"))
+    const notNews = try changeTodos({ op: "create", content: "Read the new" }, heard("n2", "add read the new"))
+    try changeTodos({ op: "complete", target: "Read the new" }, heard("n3", "read the new one"))
+    try changeTodos({ op: "create", content: "Pay electricity bill" }, heard("n4", "add pay electricity bill"))
+    const swapped = try changeTodos({ op: "delete", target: "Pay water bill" }, heard("n5", "delete pay water bill"))
+    const looseDuplicate = try changeTodos({ op: "create", content: "read the NEWS!" }, heard("n6", "add read the news"))
+    const looseDone = try changeTodos({ op: "complete", target: "pay electricity bill." }, heard("n7", "paid the electricity bill"))
+    const renamed = try changeTodos({ op: "rename", target: "PAY ELECTRICITY BILL", content: "Pay the power bill" }, heard("n8", "call it the power bill"))
+    try changeTodos({ op: "create", content: "Read the news." }, heard("n9", "yes"))
+    const twoTexts = try changeTodos({ op: "complete", target: "read the news" }, heard("n10", "read the news"))
     try equal([news, notNews, swapped, looseDuplicate, looseDone, renamed, twoTexts].map(outcomeOf).map(({ success, outcome }) => [success, outcome ?? null]), [
       [true, null], [true, null], [false, "not_found"], [false, "duplicate"], [true, null], [true, null], [false, "ambiguous"],
     ])
     try equal([renamed.text, (try currentTodos()).todos.slice(-4).map(({ content, todoStatus, completedAt }) => [content, todoStatus, completedAt])], ['Renamed "Pay electricity bill" to "Pay the power bill".', [
       ["Read the news", "TodoPending", 0], ["Read the new", "TodoCompleted", seen.now], ["Pay the power bill", "TodoCompleted", seen.now], ["Read the news.", "TodoPending", 0],
     ]])
-    const preview = try changeTodos({ op: "clear" }, "t8", "clear my list")
-    try changeTodos({ op: "create", content: "water plants" }, "t9", "add water plants")
-    const cleared = try changeTodos({ op: "clear" }, "t10", "yes")
+    const preview = try changeTodos({ op: "clear" }, heard("t8", "clear my list"))
+    try changeTodos({ op: "create", content: "water plants" }, heard("t9", "add water plants"))
+    const cleared = try changeTodos({ op: "clear" }, heard("t10", "yes"))
     try equal([preview.data?.outcome, cleared.success, (try currentTodos()).todos.map(({ content }) => content)], ["preview", true, ["water plants"]])
+    const again = { op: "create", content: "water plants" }
+    const replies = [
+      try changeTodos(again, heard("c1", "add water plants")), try changeTodos(again, heard("c2", "yes, actually no")), try changeTodos(again, heard("c3", "ok?")),
+      try changeTodos(again, heard("c4", "sure, thanks")), try changeTodos(again, heard("c5", "sí")), try changeTodos(again, heard("c6", "add water plants")), try changeTodos(again, heard("c7", "はい")),
+    ]
+    try changeTodos({ op: "clear" }, heard("c8", "clear my list"))
+    const kept = try changeTodos({ op: "clear" }, heard("c9", "yes... wait, don't"))
+    try equal([replies.map(outcomeOf).map(({ outcome }) => outcome ?? "added"), outcomeOf(kept).outcome, (try currentTodos()).todos.length], [
+      ["duplicate", "duplicate", "duplicate", "duplicate", "added", "duplicate", "added"], "cancelled", 3,
+    ])
   }
 })
 
@@ -567,7 +578,7 @@ it.effect('Brief me on my morning, evening or week: the kind and days come from 
   ]
   provide portsLayer(seen) {
     try createReminder(asked("b1"))
-    try changeTodos({ op: "create", content: "buy milk" }, "b2", "add buy milk")
+    try changeTodos({ op: "create", content: "buy milk" }, heard("b2", "add buy milk"))
     try changeGoal({ op: "create", title: "Run a 10k", cadence: "daily" }, "b3")
     try changeRoutine({ op: "create", title: "Stretch", windows: ["afternoon"] }, "b4")
     const told = effect (action: unknown, period: unknown, text: string) => {
@@ -581,7 +592,7 @@ it.effect('Brief me on my morning, evening or week: the kind and days come from 
       try told("compose_weekly", undefined, "how does my week look"),
       try told("compose_weekly", undefined, "give me my evening brief, this week has been rough"),
     ]
-    try changeTodos({ op: "complete", target: "buy milk" }, "b5", "bought the milk")
+    try changeTodos({ op: "complete", target: "buy milk" }, heard("b5", "bought the milk"))
     try deliverRoutine(rowsOf(seen, routineKind)[0])
     try changeRoutine({ op: "complete", target: "stretch" }, "b6")
     try answerReminder({ op: "complete", target: "call the dentist" }, "b7")
