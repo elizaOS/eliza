@@ -14,8 +14,9 @@ const scope = {
 };
 const context = { id: "owned-approved-read", metadata: scope, events: [] };
 
-it("offers only restorable provider scope when the original dialogue is already complete", async () => {
+it("restores the provider scope a notice names, with one restore definition on both requests", async () => {
   let calls = 0;
+  let offered: string | undefined;
   const execute = vi.fn(() => {
     throw Error("Restoring context must not execute an effect");
   });
@@ -43,9 +44,13 @@ it("offers only restorable provider scope when the original dialogue is already 
         if (calls === 1) {
           expect(restore).toMatchObject({
             parameters: {
-              properties: { scope: { enum: ["providers", "full"] } },
+              properties: { scope: { enum: ["history", "providers", "full"] } },
             },
           });
+          expect(JSON.stringify(params.messages)).toContain(
+            "call RESTORE_CONTEXT alone with scope=providers",
+          );
+          offered = JSON.stringify(restore);
           return {
             text: "",
             toolCalls: [
@@ -61,7 +66,10 @@ it("offers only restorable provider scope when the original dialogue is already 
           };
         }
         expect(calls).toBe(2);
-        expect(restore).toBeUndefined();
+        expect(JSON.stringify(restore)).toBe(offered);
+        expect(JSON.stringify(params.messages)).not.toContain(
+          "call RESTORE_CONTEXT alone with scope=providers",
+        );
         expect(JSON.stringify(params)).toContain(
           "Complete provider facts retained",
         );

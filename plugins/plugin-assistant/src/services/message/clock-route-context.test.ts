@@ -218,6 +218,21 @@ describe("the Clock route in the phone capability instruction", () => {
     );
   });
 
+  it("leaves restoring the alarm snapshot to the snapshot's own notice", async () => {
+    // RESTORE_CONTEXT is on every planner request with tools, and only a
+    // deferral notice says what can be restored: the alarm provider's notice
+    // names scope=providers when its snapshot is deferred. The planner, which
+    // has the device tool, is the stage told about owned alarms.
+    const text = await instruction(
+      [...WITHOUT_CLOCK, "clock.alarms.v1"],
+      "planner",
+    );
+    expect(text).toContain(
+      "Read CurrentElizaOwnedAlarmSnapshot through READ_CONTEXT before listing alarms or choosing alarm parameters.",
+    );
+    expect(text).not.toContain("restore provider context");
+  });
+
   it("says nothing of alarms to a phone that negotiated no Clock capability", async () => {
     for (const stage of [
       "first stage",
