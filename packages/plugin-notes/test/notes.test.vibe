@@ -185,7 +185,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
 it.live('A named move through owner chat moves both copies in one revision and requires a write request (spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/agent/conversation/planning.md, "The live owner turn classifies a Notes write from its original conversation before dispatch")', effect () => {
   const model = try cloudFake(deviceKey)
   const agent = try startInProcess({
-    launch: { callerRole: "owner", backend: { kind: "cloud", origin: model.origin }, load: [notesModuleName], allowed: ["REPLY", "IGNORE", "NONE", "NOTES_MOVE"] },
+    launch: { callerRole: "owner", backend: { kind: "cloud", origin: model.origin }, load: [notesModuleName], allowed: ["REPLY", "IGNORE", "NONE", "NOTES_MOVE", "NOTES_UPDATE"] },
     frame: { credential: { version: 1, value: deviceKey } },
     bundled: new Map([[notesModuleName, { name: notesModuleName, description: "Notes hosted module" }]]),
     modules: new Map([[notesModuleName, notesModule]]),
@@ -218,8 +218,23 @@ it.live('A named move through owner chat moves both copies in one revision and r
   ))
   const refused = try call(agent, { method: "POST", path, body: { text: "Read my Packing note.", metadata } })
   const afterRead = try state()
+  const checklist = try call(agent, { method: "POST", path: "/api/notes/interact", body: {
+    capability: "create-note", params: { content: "Filming checklist", format: { kind: "list", data: { items: [{ t: "Charge camera", done: false }] } } },
+  } })
+  const beforeFragment = try state()
+  if (!("json" in beforeFragment)) return try Effect.die(new Error("The checklist snapshot did not load"))
+  const { data: { revision } } = beforeFragment.json as { data: NotesSnapshot }
+  try sync(() => model.script(
+    toolCalls("", { name: "NOTES_UPDATE", arguments: { content: "Filming checklist", expectedRevision: revision,
+      textEdit: { action: "append", field: "item", text: "once" } } }),
+    modelText('{"notesRequestEffect":{"classification":"unresolved","operations":[]}}'),
+    modelText("What would you like me to do with your filming checklist?"), modelText('{"grounded":true,"claims":[]}'),
+  ))
+  const fragment = try call(agent, { method: "POST", path, body: { text: "Once in my filming checklist.", metadata } })
+  const afterFragment = try state()
   try Effect.try(() => {
-    for (const answer of [before, accepted, replay, afterMove, refused, afterRead]) assert.propertyVal(answer, "status", 200)
+    for (const answer of [before, accepted, replay, afterMove, refused, afterRead, checklist, beforeFragment, fragment, afterFragment])
+      assert.propertyVal(answer, "status", 200)
     const bodyOf = (answer: typeof accepted) => {
       if (!("json" in answer)) throw new Error("The owner route returned no response body")
       return answer.json
@@ -237,6 +252,9 @@ it.live('A named move through owner chat moves both copies in one revision and r
     assert.strictEqual(messageId(accepted), messageId(replay))
     const refusedActions = (bodyOf(refused) as { actionResults: Array<{ data: { executionStatus?: string } }> }).actionResults
     assert.deepStrictEqual(refusedActions.map(({ data }) => data.executionStatus), ["not_started"])
+    const ambiguous = (bodyOf(fragment) as { actionResults: Array<{ data: { executionStatus?: string; code?: string } }> }).actionResults
+    assert.deepStrictEqual(ambiguous.map(({ data }) => [data.executionStatus, data.code]), [["not_started", "REQUEST_OPERATION_UNRESOLVED"]])
+    assert.deepStrictEqual(stateOf(afterFragment), stateOf(beforeFragment))
   })
 }, 120_000)
 
