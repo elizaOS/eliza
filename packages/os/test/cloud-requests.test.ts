@@ -48,17 +48,29 @@ describe("Reach my account's cloud services without holding my key", () => {
     for (const c of sent) expect(c.args[4]).not.toContain("Authorization");
   });
 
-  it("sends a mail route with the lease, after one lost rotation reply, and inference with the key, never the key on mail", () => {
+  it("asks a device with an old key to sign in once and sends mail only with the lease after a lost rotation reply", () => {
     const main = "ai.eliza.plugins.signin.DeviceKeyJourney";
     const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main, "cloud"], { encoding: "utf8", timeout: 120_000 })) as unknown;
     expect(seen).toEqual({
+      mailSignedOut: "SIGN_IN_REQUIRED",
       keyOnlySignIn: "SIGNED_IN",
-      mailWithoutLease: "SIGN_IN_REQUIRED",
+      mailWithoutLease: "MAIL_LEASE_UPGRADE_REQUIRED",
+      settledRequestCancelled: false,
+      oldKeyAfterCancel: true,
+      mailAfterCancel: "MAIL_LEASE_UPGRADE_REQUIRED",
+      inferenceBeforeUpgrade: "200",
+      upgradeWithoutLease: "SUPERSEDED",
+      upgradeToOtherOrganization: "SUPERSEDED",
+      refusalsKeptOldKey: true,
+      restartRetiredPendingUpgrade: true,
+      failedUpgradeAcknowledgements: 0,
       leasedSignIn: "SIGNED_IN",
+      upgradeStayedWithOwner: true,
       mailAfterLostRotation: "NETWORK",
       mailWithLease: "200",
       inferenceWithKey: "200",
-      bearers: "lease/key",
+      mailAfterRevokedLease: "SIGN_IN_REQUIRED",
+      bearers: "lease/key,key",
       leaseReuses: 0,
     });
   });

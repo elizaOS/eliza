@@ -1,4 +1,4 @@
-// spec/os/voice/speechOutput.md, "Story: Start a reply's audio promptly without playing over anything"
+// spec/os/voice/speechOutput.md, "Story: Start a reply's audio promptly without playing over anything"; spec/os/voice/speechOutput.md, "A listener holds focus while its microphone is open, and a transient loss pauses it until focus returns"
 package ai.eliza.voice;
 
 import android.content.Context;
@@ -80,12 +80,26 @@ public final class SpeechAudioFocus {
 
   public String startSpeech() {
     syncMode();
-    List<SpeechOutputGate.Notice> notices = gate.startSpeech(() ->
-        audio != null && audio.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
+    return refusal(gate.startSpeech(this::requestFocus));
+  }
+
+  public String openListening() {
+    syncMode();
+    return refusal(gate.openListening(this::requestFocus));
+  }
+
+  public void closeListening() {
+    apply(gate.closeListening());
+  }
+
+  private boolean requestFocus() {
+    return audio != null && audio.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+  }
+
+  private static String refusal(List<SpeechOutputGate.Notice> notices) {
     if (notices == null || notices.isEmpty()) return null;
-    return notices.contains(SpeechOutputGate.Notice.REFUSED_CALL_ACTIVE)
-        ? SpeechAudioFocusPolicy.CALL_ACTIVE
-        : SpeechAudioFocusPolicy.FOCUS_DENIED;
+    if (notices.contains(SpeechOutputGate.Notice.REFUSED_CALL_ACTIVE)) return SpeechAudioFocusPolicy.CALL_ACTIVE;
+    return notices.contains(SpeechOutputGate.Notice.REFUSED_FOCUS_PAUSED) ? SpeechAudioFocusPolicy.FOCUS_PAUSED : SpeechAudioFocusPolicy.FOCUS_DENIED;
   }
 
   public void endSpeech() {
@@ -104,6 +118,7 @@ public final class SpeechAudioFocus {
 
   public void close() {
     cancelSpeech();
+    closeListening();
     gate.stopWarmup();
     if (modeListener != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audio.removeOnModeChangedListener(modeListener);
     modeListener = null;

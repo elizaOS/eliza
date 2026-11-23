@@ -178,6 +178,8 @@ effect function readinessAnswer(plugin: ElizaSignInPlugin, environment: Environm
 export function signInClient(plugin: ElizaSignInPlugin = signInPlugin()): SignInClient {
   return {
     start: (options) => settled(started(plugin, options)),
+    upgradeMailLease: (options) => settled(receipt("upgradeMailLease", () => plugin.upgradeMailLease(options))),
+    cancelMailLeaseUpgrade: (options) => settled(map(answer("cancelMailLeaseUpgrade", Cancelled, () => plugin.cancelMailLeaseUpgrade(options)), (reply) => reply.cancelled)),
     reauthenticate: (options) => settled(reauthenticated(plugin, options)),
     resend: ({ attempt }) => settled(receipt("resend", () => plugin.resend({ attempt }))),
     verify: ({ attempt, code, factor }) =>

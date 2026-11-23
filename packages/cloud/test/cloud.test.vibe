@@ -13,7 +13,7 @@ import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { migrate, Store, StoreFailure, type Tx } from "../src/store/store.vibe"
-import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import { fakeServer, organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
 import { periodRows } from "../src/shared/metering.vibe"
@@ -30,13 +30,13 @@ import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profil
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity-fixture.ts"
-import { connectionColumns, connectionRows, scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
+import { connectionColumns, connectionRows, scopeFor, storeGrant, useGrant, type GoogleCapability, type Owner } from "../src/services/google/grant-access.vibe"
 import { issueSession } from "../src/identity/sessions.vibe"
 import { sealTokens } from "../src/providers/google.vibe"
 import { bearerGrant, googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
 import { gmailReads, mimeBoundaryPayload, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
-import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
+import { draftTexts, gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
 import { leasedCaller, signedCaller } from "./support/caller.vibe"
@@ -565,6 +565,49 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     }
   }))
 
+  it.live("Keep pre-lease renewal duties through enrollment and sign-out (spec/cloud/nativeClients/deviceKeys.md, \"Signing out ends only the presenting key\")", () => scoped(effect {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const owner = try signedIn(cloud, "legacy-devices@example.com")
+    const replacing = try device(cloud, owner.accessToken, "Replaced tablet")
+    const named = try device(cloud, owner.accessToken, "Acknowledged successor")
+    const alternative = try device(cloud, owner.accessToken, "Pending alternative")
+    const leaving = try device(cloud, owner.accessToken, "Signing out")
+    const descendant = try device(cloud, owner.accessToken, "Renewed key")
+    const upgraded = try device(cloud, owner.accessToken, "Enrolled for mail")
+
+    const legacy = effect (credentialId: string, from: string | null) => {
+      try sql(cloud, "DELETE FROM sessions s USING device_grants d WHERE s.grant_key = d.key AND d.credential_id = $1", [credentialId])
+      try sql(cloud, `
+        UPDATE device_grants SET sign_in_at = issued_at,
+          renewed_from = (SELECT key FROM device_grants WHERE credential_id = $2),
+          state = CASE WHEN $2::text IS NULL THEN state ELSE jsonb_set(state, '{origin}',
+            jsonb_build_object('tag', 'Renewed', 'fromKey', (SELECT key FROM device_grants WHERE credential_id = $2))) END
+        WHERE credential_id = $1
+      `, [credentialId, from])
+    }
+    try legacy(replacing.credential.credentialId, null)
+    try legacy(named.credential.credentialId, replacing.credential.credentialId)
+    try legacy(alternative.credential.credentialId, replacing.credential.credentialId)
+    try legacy(leaving.credential.credentialId, null)
+    try legacy(descendant.credential.credentialId, leaving.credential.credentialId)
+    try sql(cloud, "UPDATE device_grants SET phase = 'exchanged', state = jsonb_set(state, '{phase}', jsonb_build_object('tag', 'Exchanged')), sealed_copy = 'pending' WHERE credential_id = $1", [alternative.credential.credentialId])
+
+    const replacement = try cloud.call("/api/v1/api-keys/current", {
+      method: "DELETE",
+      headers: { ...bearer(replacing.credential.secret), "x-renewed-credential-id": named.credential.credentialId }
+    })
+    const signOut = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
+    const kept = try cloud.call("/api/v1/user", { headers: bearer(named.credential.secret) })
+    const ended = try cloud.call("/api/v1/user", { headers: bearer(descendant.credential.secret) })
+    const enrolled = try cloud.call("/api/v1/user", { headers: bearer(upgraded.credential.secret) })
+    const pending = (try sql(cloud, "SELECT phase, sealed_copy FROM device_grants WHERE credential_id = $1", [alternative.credential.credentialId]))[0]
+    try check(() => assert.deepStrictEqual(
+      [replacement.status, signOut.status, kept.status, ended.status, ...refusal(ended.body), enrolled.status, pending?.phase, pending?.sealed_copy],
+      [204, 204, 200, 401, "authentication_required", "credential_revoked", 200, "ended", null]
+    ))
+  }))
+
   it.live("Keep a tablet signed in: the key's sign-in offers a lease, a lost reply answers it again, rotation is two-phase, mail admits only the lease, a renewed key replaces the old one, only the lease signs the tablet out and ends its key, and a spent lease ends only its device, also when presented to sign out (spec/cloud/identity/sessions.md, \"Story: Keep a tablet signed in to mail and calendar\"; spec/cloud/nativeClients/deviceKeys.md, \"Story: Keep a tablet's key without signing in again\")", () => scoped(effect {
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(1_000_000))
@@ -684,11 +727,15 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const grantPhase = try sql(cloud, "SELECT phase FROM device_grants WHERE credential_id = $1", [sleeping.credential.credentialId])
     const woken = pairOf(try rotate(sleepingLease.refresh))
     const mailAfterExpiry = try mail(woken.access)
-    const heirMinted = try renew(woken.refresh)
+    const nextLease = pairOf(try rotate(woken.refresh))
+    const offeredAt = try Clock.currentTimeMillis
+    try sync(() => clock.set(offeredAt + nextLease.accessExpiresIn * 1000 + 1))
+    const heirMinted = try renew(nextLease.refresh)
+    const renewedLease = (try sql(cloud, "SELECT s.state->>'generation' AS generation, s.offered_refresh_digest IS NULL AS settled FROM sessions s JOIN device_grants d ON d.key = s.grant_key WHERE d.credential_id = $1", [sleeping.credential.credentialId]))[0]
     const heir = heirMinted.body as { readonly credentialId: string; readonly secret: string }
     const heirAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: heir.credentialId, secret: heir.secret } })
     const heirKey = try cloud.call("/api/v1/user", { headers: bearer(heir.secret) })
-    const moved = pairOf(try rotate(woken.refresh))
+    const moved = pairOf(try rotate(nextLease.refresh))
     const mailOnMoved = try mail(moved.access)
     const now = try Clock.currentTimeMillis
     try cloud.store.transaction((tx) => revokeAll(tx, signed.user.id, now))
@@ -698,11 +745,11 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const liveLeases = try sql(cloud, "SELECT key FROM sessions WHERE kind = 'device_lease' AND user_id = $1 AND live", [signed.user.id])
     try check(() => assert.deepStrictEqual({
       expired: [expiredKey.status, ...refusal(expiredKey.body), grantPhase[0]?.phase, mailAfterExpiry.status],
-      renewedFromExpired: [heirMinted.status, heirAck.status, heirKey.status, mailOnMoved.status],
+      renewedFromExpired: [heirMinted.status, Number(renewedLease?.generation), renewedLease?.settled, heirAck.status, heirKey.status, mailOnMoved.status],
       revoked: [renewAfterRevoke.status, ...refusal(renewAfterRevoke.body), rotateAfterRevoke.status, ...refusal(rotateAfterRevoke.body), mailAfterRevoke.status, ...refusal(mailAfterRevoke.body), liveLeases.length]
     }, {
       expired: [401, "authentication_required", "credential_expired", "expired", 200],
-      renewedFromExpired: [200, 200, 200, 200],
+      renewedFromExpired: [200, 3, true, 200, 200, 200],
       revoked: [401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 0]
     }))
     }
@@ -1056,6 +1103,9 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
       const accepted = one.status === 302 ? one : two
       const replay = one.status === 302 ? two : one
       const grantId = fragment(accepted.location).connectionId ?? ""
+      const awaiting = try cloud.call(`/api/v1/eliza/google/status?grantId=${grantId}`, { headers: caller.headers })
+      const unconfirmed = awaiting.body as { readonly connected: boolean; readonly reason: string }
+      const confirmed = try cloud.call("/api/v1/eliza/google/confirm", { json: { grantId, address: person.email }, headers: caller.headers })
       const live = try cloud.call(`/api/v1/eliza/google/status?grantId=${grantId}`, { headers: caller.headers })
       const status = live.body as { readonly connected: boolean; readonly grantedCapabilities: ReadonlyArray<string>; readonly grantedScopes: ReadonlyArray<string> }
 
@@ -1087,7 +1137,8 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
         opened: [begun.status, issued(begun).appReturn, auth.searchParams.get("scope")?.split(" "), auth.searchParams.get("code_challenge_method"), auth.searchParams.get("include_granted_scopes")],
         pending: [pending?.status, pending?.phase, pending?.organization_id, pending?.user_id, pending?.state_digest !== signed, String(pending?.verifier).startsWith("v1."), pending?.consumed_at],
         tampered: [tampered.status, tampered.location], accepted: [accepted.status, accepted.location.split("#")[0], fragment(accepted.location), grantId === pending?.key],
-        replay: [replay.status, replay.location], live: [live.status, status.connected, status.grantedCapabilities, status.grantedScopes],
+        replay: [replay.status, replay.location], awaiting: [awaiting.status, unconfirmed.connected, unconfirmed.reason], confirmed: [confirmed.status, confirmed.body],
+        live: [live.status, status.connected, status.grantedCapabilities, status.grantedScopes],
         web: [issued(noReturn).appReturn, webPage.status, webPage.location], denied: [denied.status, fragment(denied.location)],
         failed: [failed.status, fragment(failed.location), refusedReplay.status], expired: [expired.status, expired.location], withdrawn: [withdrawn.status, withdrawn.location],
         rows: rows.map((row) => [row.key, row.status, row.user_id, row.organization_id, row.subject, row.granted_scopes, row.sealed]),
@@ -1096,11 +1147,113 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
         rejected: ["401 authentication_required credential_unknown", "400 invalid_request", "400 invalid_request", "400 redirect_mismatch", "400 invalid_request"], none: [],
         opened: [200, 2, offered, "S256", "false"], pending: ["Pending", "AwaitingCallback", caller.organizationId, caller.userId, true, true, null],
         tampered: [400, ""], accepted: [302, registration.connectReturn, { state: appState, result: "connected", connectionId: grantId }, true],
-        replay: [400, ""], live: [200, true, ["google.basic_identity", "google.gmail.triage"], granted],
+        replay: [400, ""], awaiting: [200, false, "awaiting_confirmation"], confirmed: [200, { ok: true }],
+        live: [200, true, ["google.basic_identity", "google.gmail.triage"], granted],
         web: [undefined, 200, ""], denied: [302, { state: appState, result: "denied" }],
         failed: [302, { state: appState, result: "failed" }, 400], expired: [400, ""], withdrawn: [400, ""],
         rows: [[grantId, "Active", caller.userId, caller.organizationId, person.subject, granted, true]],
         closed: [6, 6], forms: Array.from({ length: 3 }, () => ["google-web-client", `https://api.staging.example.com${callback}`, true]), pkce: true
+      }))
+    }
+  }), 120_000)
+
+  it.live("Add a second Google account from the tablet, use each only after confirming its address, and disconnect one (spec/cloud/services/google/connection.md, \"Story: Add another Google account from the tablet and confirm it is mine\"; spec/cloud/services/google/connection.md, \"Story: Disconnect it\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    const start = Date.now()
+    try sync(() => clock.set(start))
+    provide Clock.Clock = clock.clock {
+      const { cloud, google } = try nativeCloud(undefined, native)
+      const tablet = try leasedCaller(cloud, "google-sessions")
+      const stranger = try leasedCaller(cloud, "google-sessions-stranger")
+      const second: GooglePerson = { subject: "google-second-1", email: "second@example.com", emailVerified: true }
+      type Started = { readonly sessionId: string; readonly pageUrl: string; readonly embeddable: boolean }
+      type Listed = ReadonlyArray<{ readonly connectionId: string; readonly connected: boolean; readonly reason: string; readonly identity: { readonly email: string } | null }>
+      const open = (body: unknown = {}, headers = tablet.headers) => cloud.call("/api/v1/eliza/connections/google/sessions", { json: body, headers })
+      const started = (answer: { readonly body: unknown }) => answer.body as Started
+      const ended = (id: string, headers = tablet.headers) => cloud.call(`/api/v1/eliza/connections/sessions/${id}`, { headers })
+      const withdraw = (id: string) => cloud.call(`/api/v1/eliza/connections/sessions/${id}`, { method: "DELETE", headers: tablet.headers })
+      const confirm = (grantId: string, address: string) => cloud.call("/api/v1/eliza/google/confirm", { json: { grantId, address }, headers: tablet.headers })
+      const listed = effect () => ((try cloud.call("/api/v1/eliza/google/accounts?side=owner", { headers: tablet.headers })).body as Listed)
+        .map((grant) => [grant.connectionId, grant.identity?.email, grant.connected, grant.reason])
+      const triage = (grantId: string) => cloud.call(`/api/v1/eliza/google/gmail/triage?grantId=${grantId}`, { headers: tablet.headers })
+      const visitLocal = (url: string) => tryPromise(() => visit(url))
+      const atCloud = (location: string) => {
+        const page = new URL(location)
+        return `${cloud.url}${page.pathname}${page.search}`
+      }
+      const signIn = effect (pageUrl: string) => {
+        const atGoogle = try visitLocal(pageUrl)
+        return try visitLocal(try sync(() => atCloud(atGoogle.location)))
+      }
+      const outcome = (answer: { readonly status: number; readonly body: unknown }) => [answer.status, answer.body]
+      const everything = ["google.basic_identity", "google.gmail.triage", "google.gmail.send", "google.gmail.manage", "google.gmail.drafts", "google.gmail.mailbox", "google.calendar.read", "google.calendar.write"]
+        .flatMap((capability) => scopeFor(capability as Parameters<typeof scopeFor>[0]))
+      try sync(() => { google.signInAs(person); google.managedScopes([...new Set(everything)]) })
+
+      const first = try open({ loginHint: person.email })
+      const page = try sync(() => new URL(started(first).pageUrl))
+      const firstPage = try signIn(started(first).pageUrl)
+      const firstEnded = try ended(started(first).sessionId)
+      const firstGrant = (firstEnded.body as { readonly grantId: string }).grantId
+      const awaiting = try listed()
+      const unusable = try triage(firstGrant)
+      const unusableCalendar = try cloud.call(`/api/v1/eliza/google/calendar/feed?grantId=${firstGrant}&timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z`, { headers: tablet.headers })
+      const keyOnly = { authorization: `Bearer ${tablet.deviceKey}` }
+      const keyConfirm = try cloud.call("/api/v1/eliza/google/confirm", { json: { grantId: firstGrant, address: person.email }, headers: keyOnly })
+      const keyAwait = try ended(started(first).sessionId, keyOnly)
+      const strangerConfirm = try cloud.call("/api/v1/eliza/google/confirm", { json: { grantId: firstGrant, address: person.email }, headers: stranger.headers })
+      const elsewhere = try confirm(firstGrant, second.email)
+      const confirmed = try confirm(firstGrant, person.email.toUpperCase())
+      const again = try confirm(firstGrant, person.email)
+
+      try sync(() => { google.signInAs(second); clock.set(start + 1000) })
+      const added = try open()
+      try signIn(started(added).pageUrl)
+      const secondEnded = try ended(started(added).sessionId)
+      const secondGrant = (secondEnded.body as { readonly grantId: string }).grantId
+      try confirm(secondGrant, second.email)
+      const both = try listed()
+      const unnamed = try cloud.call("/api/v1/eliza/google/status", { headers: tablet.headers })
+      const disconnected = try cloud.call("/api/v1/eliza/google/disconnect", { json: { grantId: secondGrant }, headers: tablet.headers })
+      const afterDisconnect = try listed()
+      try sync(() => clock.set(start + 2000))
+      const returning = try open()
+      try signIn(started(returning).pageUrl)
+      const returned = try ended(started(returning).sessionId)
+      const reconfirm = try listed()
+
+      try sync(() => { google.denyNext(); clock.set(start + 3000) })
+      const declining = try open()
+      try signIn(started(declining).pageUrl)
+      const declined = try ended(started(declining).sessionId)
+      const withdrawing = try open()
+      const withdrawn = try withdraw(started(withdrawing).sessionId)
+      const lateCallback = try signIn(started(withdrawing).pageUrl)
+      const afterWithdraw = try ended(started(withdrawing).sessionId)
+      const foreign = try ended(started(withdrawing).sessionId, stranger.headers)
+      const deviceKey = try open({}, { authorization: `Bearer ${tablet.deviceKey}` })
+      const lapsing = try open()
+      try sync(() => clock.set(start + 603_000))
+      const lapsed = try ended(started(lapsing).sessionId)
+      try check(() => assert.deepStrictEqual({
+        page: [first.status, started(first).embeddable, page.searchParams.get("login_hint"), page.searchParams.get("redirect_uri")?.endsWith("/api/v1/oauth/google/callback"), firstPage.status],
+        firstEnded: outcome(firstEnded), awaiting, unusable: [refusal(unusable), refusal(unusableCalendar)],
+        keyOnly: [refusal(keyConfirm), refusal(keyAwait)], strangerConfirm: refusal(strangerConfirm), elsewhere: refusal(elsewhere), confirmed: outcome(confirmed), again: outcome(again),
+        both, unnamed: refusal(unnamed), disconnected: disconnected.status, afterDisconnect, returned: outcome(returned), reconfirm,
+        declined: outcome(declined), withdrawn: outcome(withdrawn), lateCallback: lateCallback.status, afterWithdraw: outcome(afterWithdraw),
+        foreign: refusal(foreign), deviceKey: refusal(deviceKey), lapsed: outcome(lapsed)
+      }, {
+        page: [200, false, person.email, true, 200],
+        firstEnded: [200, { status: "allowed", address: person.email, grantId: firstGrant, granted: { mail: true, calendar: true, contacts: true } }],
+        awaiting: [[firstGrant, person.email, false, "awaiting_confirmation"]], unusable: ["409 google_reauth_required", "409 google_reauth_required"],
+        keyOnly: ["403 access_denied device_key_not_allowed", "403 access_denied device_key_not_allowed"], strangerConfirm: "404 not_found", elsewhere: "400 invalid_request",
+        confirmed: [200, { ok: true }], again: [200, { ok: true }],
+        both: [[secondGrant, second.email, true, "connected"], [firstGrant, person.email, true, "connected"]], unnamed: "400 invalid_request grant_required",
+        disconnected: 200, afterDisconnect: [[secondGrant, second.email, false, "disconnected"], [firstGrant, person.email, true, "connected"]],
+        returned: [200, { status: "allowed", address: second.email, grantId: secondGrant, granted: { mail: true, calendar: true, contacts: true } }],
+        reconfirm: [[secondGrant, second.email, false, "awaiting_confirmation"], [firstGrant, person.email, true, "connected"]],
+        declined: [200, { status: "cancelled" }], withdrawn: [200, { ok: true }], lateCallback: 400, afterWithdraw: [200, { status: "cancelled" }],
+        foreign: "404 not_found", deviceKey: "403 access_denied device_key_not_allowed", lapsed: [200, { status: "cancelled" }]
       }))
     }
   }), 120_000)
@@ -1449,7 +1602,7 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
   }), 60_000)
 })
 describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
-  it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\")", () => scoped(effect {
+  it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\"; spec/cloud/services/speech.md, \"Story: Pay once for each batch speech request\")", () => scoped(effect {
     const speech = try sync(() => speechFake())
     const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
     const caller = try signedCaller(cloud, "speaker")
@@ -1470,6 +1623,17 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     const busy = try tts({ text: "Busy" })
     const down = try tts({ text: "Busy" })
 
+    const keyed = (key: string, text: string) => cloud.call("/api/v1/voice/tts", { json: { text }, headers: { ...caller.headers, "idempotency-key": key } })
+    const synthesizedBeforeKeys = speech.synthesized.length
+    const firstKeyed = try keyed("utterance-1", "Table at seven")
+    const retriedKeyed = try keyed("utterance-1", "Table at seven")
+    const otherWords = try keyed("utterance-1", "Table at eight")
+    try sync(() => speech.script({ kind: "refuse", status: 422 }))
+    const refusedKeyed = try keyed("utterance-2", "Refused words")
+    const retriedRefusal = try keyed("utterance-2", "Refused words")
+    const malformedKey = try keyed("not a key", "Hello")
+    const synthesizedWithKeys = speech.synthesized.length - synthesizedBeforeKeys
+
     const heard = try stt({ languageCode: "en-US", provider: "speech" })
     const otherProvider = try stt({ provider: "elsewhere" })
     const otherLanguage = try stt({ languageCode: "fr" })
@@ -1487,6 +1651,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         rejected: [rejected.status, (rejected.body as { readonly error: string }).error],
         busy: [busy.status, (busy.body as { readonly error: string }).error, Number(busy.headers["retry-after"]) >= 7],
         down: [down.status, (down.body as { readonly error: string }).error, down.headers["retry-after"]],
+        keyed: [firstKeyed.status, retriedKeyed.status, retriedKeyed.body === firstKeyed.body, otherWords.status, refusedKeyed.status, retriedRefusal.status, (retriedRefusal.body as { readonly error: string }).error, malformedKey.status, (malformedKey.body as { readonly error: string }).error, synthesizedWithKeys],
         heard: [heard.status, heard.body, heard.headers["x-eliza-stt-provider"]],
         sentHeard: speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length]),
         otherProvider: [otherProvider.status, (otherProvider.body as { readonly error: string }).error],
@@ -1511,6 +1676,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         rejected: [502, "provider_invalid_response"],
         busy: [503, "provider_unavailable", true],
         down: [503, "provider_unavailable", "1"],
+        keyed: [200, 200, true, 200, 502, 409, "idempotency_conflict", 400, "invalid_request", 4],
         heard: [200, { transcript: spokenTranscript, duration_ms: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) }, "speech"],
         sentHeard: [["audio/wav", "ink-whisper", "en", recordingBytes]],
         otherProvider: [400, "invalid_request"],
@@ -1522,6 +1688,9 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
           ["speech", 288, 0, "known"],
           ["speech", 144, 144, "unknown"],
           ["speech", 144, 144, "unknown"],
+          ["speech", 504, 504, "known"],
+          ["speech", 504, 504, "known"],
+          ["speech", 468, 0, "known"],
           ["speech", 120, 360, "known"]
         ]
       }
@@ -1583,6 +1752,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     try check(() => assert.deepStrictEqual(
       {
         minted: [minted.status, minted.headers["x-eliza-speech-extend"], session.wsUrl.endsWith(`/api/v1/voice/speech/ws?sessionId=${session.sessionId}`)],
+        phases: [consent.headers["server-timing"], minted.headers["server-timing"]].map((value) => (value ?? "").split(", ").map((entry) => entry.replace(/;dur=\d+$/, ""))),
         second: [second.status, (second.body as { readonly error?: string }).error],
         opened: shown(opened),
         heard: shown(heard),
@@ -1597,6 +1767,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       },
       {
         minted: [200, "1", true],
+        phases: [["speech_identity_rate", "speech_consent_write"], ["speech_identity_rate", "speech_consent_consume"]],
         second: [410, "session_closed"],
         opened: [
           { t: "ready", version: 1, sampleRate: 16_000, channels: 1, expiresAt: session.expiresAt },
@@ -1621,6 +1792,36 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         usage: [[1, "transcribe", 6_000, "unknown"], [1, "synthesize", 122_880, "unknown"], [2, "transcribe", 6_000, "unknown"], [2, "synthesize", 122_880, "unknown"]],
         spent: [402, "allowance_exhausted"]
       }
+    ))
+  }), 60_000)
+
+  it.effect("A stop that meets a renewal closes the session with every window settled, and the renewed window it never used costs nothing (spec/cloud/services/speechRelay.md, \"Each admitted window settles once, and a retiring session closes only after all its receipts\")", () => scoped(effect {
+    try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
+    const speech = try sync(() => speechFake())
+    const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
+    try TestClock.adjust(Duration.seconds(5))
+    const caller = try signedCaller(cloud, "stopper")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 4 * (reservedFor(60 * 100) + reservedFor(4096 * 30)), requestKey: "stop-funding" }))
+    const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+    const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+    const session = minted.body as { readonly sessionId: string; readonly token: string }
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+    try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
+    try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
+    try TestClock.adjust(Duration.seconds(50))
+    try sync(() => socket.send({ t: "stop" }))
+    try promise(() => socket.until((received) => received.kind === "close"))
+    let phase: unknown = undefined
+    for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
+      try TestClock.withLive(sleep(Duration.millis(50)))
+      phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
+    }
+    const windows = try sql(cloud, "SELECT number, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
+    const renewed = try sql(cloud, `SELECT u.charged, u.outcome FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
+      WHERE w.session_id = $1 AND w.number > 1`, [session.sessionId])
+    try check(() => assert.deepStrictEqual(
+      { phase, settled: windows.every((row) => row.settled === true), renewedUnused: renewed.every((row) => Number(row.charged) === 0 && row.outcome === "released") },
+      { phase: "closed", settled: true, renewedUnused: true }
     ))
   }), 60_000)
 })
@@ -1704,6 +1905,23 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const offCapabilities = try off.call("/api/v1/maps/capabilities", { headers: offCaller.headers })
     const offGeocode = try off.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: { ...offCaller.headers, "idempotency-key": "geo-off" } })
 
+    const coldMaps = try sync(() => googleMapsFake())
+    const cold = try testCloud({ mount: (fakes) => fakes.mount("/maps/", coldMaps.handler) })
+    const coldCaller = try signedCaller(cold, "cold-mapper")
+    try cold.inside(addCredits({ organizationId: coldCaller.organizationId, amount: 1_000_000, requestKey: "cold-maps-funding" }))
+    try sync(() => coldMaps.delaySessions(500))
+    const coldTile = (key: string) => cold.call("/api/v1/maps/tiles/3/4/2", { headers: { ...coldCaller.headers, "idempotency-key": key } })
+    const abandoned = try promise(async () => {
+      const controller = new AbortController()
+      const pending = openCloud(cold.url, "/api/v1/maps/tiles/3/4/2", { headers: { ...coldCaller.headers, "idempotency-key": "cold-abandoned" }, signal: controller.signal }).then(
+        (response) => String(response.status), (failure: unknown) => failure instanceof Error && failure.name === "AbortError" ? "cancelled" : "failed"
+      )
+      await coldMaps.sessionRequested
+      controller.abort()
+      return await pending
+    })
+    const together = try.all [coldTile("cold-1"), coldTile("cold-2"), coldTile("cold-3")]
+
     try check(() => assert.deepStrictEqual(
       {
         lost: [lost.status, errorOf(lost)],
@@ -1714,10 +1932,12 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         noRoute: [noRoute.status, errorOf(noRoute)],
         tiles: [tileOne.status, tileOne.headers.get("cache-control"), tileOne.headers.get("content-type"), tileOneBytes, tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
         reverse: [nearbyFound.status, lookupsWithPlace, nearbyEmpty.status, (nearbyEmpty.body as { readonly place: unknown }).place !== null, lookupsWithoutPlace],
+        timing: [tileOne.headers.get("server-timing"), repeated.headers["server-timing"]].map((value) => (value ?? "").split(", ").map((entry) => entry.replace(/;dur=\d+$/, ""))),
         broke: [broke.status, errorOf(broke), callsAfterBroke - callsBeforeBroke],
         rollback: [rolledBack.status, callsAfterRollback - callsBeforeRollback, Number(holdsAfterRollback[0]?.n), retried.status, maps.count("geocode") - callsAfterRollback, Number(retriedUsage[0]?.n), Number(retriedUsage[0]?.charged)],
         usage: usage.map((row) => [row.operation, row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome]),
-        off: [offCapabilities.status, offCapabilities.body, offGeocode.status, errorOf(offGeocode)]
+        off: [offCapabilities.status, offCapabilities.body, offGeocode.status, errorOf(offGeocode)],
+        cold: [abandoned, together.map((answer) => answer.status), coldMaps.count("createSession")]
       },
       {
         lost: [503, "provider_unavailable"],
@@ -1728,6 +1948,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         noRoute: [422, "no_route"],
         tiles: [200, "no-store", "image/png", tilePng, 200, "no-store", 409, "idempotency_conflict", 2],
         reverse: [200, [1, 2], 200, true, [2, 3]],
+        timing: [["maps_auth", "maps_admission", "maps_provider"], ["maps_auth", "maps_admission"]],
         broke: [402, "insufficient_credits", 0],
         rollback: [503, 0, 7, 200, 1, 8, 95_200],
         usage: [
@@ -1739,7 +1960,8 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           ["reverse", "answered", false, 37_000, 32_000, "known"],
           ["reverse", "answered", false, 37_000, 37_000, "known"]
         ],
-        off: [200, { available: false }, 404, "capability_unavailable"]
+        off: [200, { available: false }, 404, "capability_unavailable"],
+        cold: ["cancelled", [200, 200, 200], 1]
       }
     ))
   }), 60_000)
@@ -1777,13 +1999,21 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
 
       try sync(() => maps.script({ kind: "oversized" }))
       const oversized = try geocode("geo-oversized")
+      try sync(() => maps.script(
+        { kind: "geocodeReply", status: 200, geocode: "UNKNOWN_ERROR" }, { kind: "geocodeReply", status: 404, geocode: "ZERO_RESULTS" },
+        { kind: "geocodeReply", status: 400, geocode: "INVALID_REQUEST" }, { kind: "geocodeReply", status: 400, geocode: "OVER_QUERY_LIMIT" }
+      ))
+      const providerError = try geocode("geo-provider-error")
+      const nothingFound = try geocode("geo-nothing-found")
+      const invalidRequest = try geocode("geo-invalid-request")
+      const quotaAt400 = try geocode("geo-quota-400")
       const keptFirst = try geocode("geo-kept")
       const keptAgain = try geocode("geo-kept")
       try sync(() => clock.set(now + 15 * 60_000))
       const keptExpired = try geocode("geo-kept")
       for (const sweep of mapsSweeps) try cloud.inside(sweep.run)
       const keptRows = try sql(cloud, "SELECT count(*)::int AS n FROM maps_requests WHERE result IS NOT NULL", [])
-      const usage = try sql(cloud, "SELECT r.status, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key JOIN holds h ON h.key = r.hold_key WHERE h.organization_id = $1 ORDER BY r.status", [keeping.organizationId])
+      const usage = try sql(cloud, "SELECT r.status, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key JOIN holds h ON h.key = r.hold_key WHERE h.organization_id = $1 ORDER BY r.status, u.charged", [keeping.organizationId])
 
       try check(() => assert.deepStrictEqual(
         {
@@ -1791,6 +2021,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           credential: [busyStatuses.length, busyStatuses.every((status) => status === 200), credentialLimited.status, errorOf(credentialLimited.body), typeof credentialLimited.headers["retry-after"], Number(busyPlan[0]?.n)],
           plan: [freeStatuses.length, freeStatuses.every((status) => status === 200), planLimited.status, errorOf(planLimited.body), typeof planLimited.headers["retry-after"], tileStill.status, Number(freePlan[0]?.n)],
           oversized: [oversized.status, errorOf(oversized.body)],
+          geocodeReplies: [providerError.status, errorOf(providerError.body), nothingFound.status, (nothingFound.body as { readonly places: ReadonlyArray<unknown> }).places, invalidRequest.status, errorOf(invalidRequest.body), quotaAt400.status, errorOf(quotaAt400.body)],
           kept: [keptFirst.status, keptAgain.status, keptAgain.body, keptExpired.status, errorOf(keptExpired.body), Number(keptRows[0]?.n)],
           usage: usage.map((row) => [row.status, Number(row.charged), row.outcome]),
           upstream: [maps.count("viewport"), maps.count("tile"), maps.count("geocode")]
@@ -1800,9 +2031,10 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           credential: [59, true, 429, "rate_limited", "string", 60],
           plan: [30, true, 429, "rate_limited", "string", 200, 30],
           oversized: [503, "provider_unavailable"],
+          geocodeReplies: [503, "provider_unavailable", 200, [], 502, "provider_invalid_response", 503, "provider_unavailable"],
           kept: [200, 200, keptFirst.body, 409, "idempotency_conflict", 0],
-          usage: [["answered", 5_000, "known"], ["refused", 5_000, "known"]],
-          upstream: [1, 1, 2]
+          usage: [["answered", 5_000, "known"], ["answered", 5_000, "known"], ["lost", 5_000, "unknown"], ["refused", 0, "known"], ["refused", 0, "known"], ["refused", 5_000, "known"]],
+          upstream: [1, 1, 6]
         }
       ))
     }
@@ -2157,8 +2389,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         [missing, missing, missing, missing, missing, missing, missing, ["send"]],
       ],
       advertised: [
-        [["triage", "capabilities"], false],
-        [["triage", "search", "read", "thread", "attachment", "capabilities"], false],
+        [["triage", "contacts", "capabilities"], false],
+        [["triage", "search", "read", "thread", "attachment", "contacts", "capabilities"], false],
         [["drafts", "draft", "capabilities"], false],
         [["capabilities"], false],
       ],
@@ -2219,7 +2451,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
         oversized: [413, "content_too_large"],
         asciiOversized: [413, "content_too_large"],
-        capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"],
+        capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "contacts", "capabilities"],
           kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 }, providerExactlyOnce: false }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
         thread: [200, "1001", 1, ["Please review the plan."]],
@@ -2320,6 +2552,90 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       }
     ))
   }), 30_000)
+  it.live("Permanently delete a message as Grace staged it, only from the tablet and never with the device key (spec/cloud/services/google/mailOperations.md, \"A permanent delete is dispatched only as staged and reviewed, never with the device key\"; spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\")", () => scoped(effect {
+    const { mailbox, switches, operation, gmail, grantId, deviceKey } = try mailOperationSetup("ops-purge", ["google.gmail.purge"])
+    const requestId = "4e5f6071-8293-4dae-8f20-3b4c5d6e7f80"
+    const staleId = "5f607182-93a4-4ebf-9031-4c5d6e7f8091"
+    const purge = (expectedHistoryId: string) => ({ kind: "purge", messageId: "msg-plan", expectedHistoryId, confirmPermanentDelete: true })
+    const capabilities = try gmail("GET", `/inbox-v1/capabilities?grantId=${grantId}`)
+    const agent = try gmail("POST", "/inbox-v1/operations", { grantId, requestId, proposal: purge("1001") }, deviceKey)
+    const unmarked = try operation("", { grantId, requestId, proposal: { kind: "purge", messageId: "msg-plan", expectedHistoryId: "1001" } })
+    const earlier = try operation("", { grantId, requestId: staleId, proposal: purge("1001") })
+    try Effect.try(() => touchMessage(mailbox, "msg-plan"))
+    const changedSince = try operation(`/${staleId}/dispatch`, { grantId, reviewDigest: (earlier.body as OperationAnswer).receipt.reviewDigest, proposal: purge("1001") })
+    const staged = try operation("", { grantId, requestId, proposal: purge("1002") })
+    const reviewDigest = (staged.body as OperationAnswer).receipt.reviewDigest
+    const agentDispatch = try gmail("POST", `/inbox-v1/operations/${requestId}/dispatch`, { grantId, reviewDigest, proposal: purge("1002") }, deviceKey)
+    const confirmed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal: purge("1002") })
+    const replayed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal: purge("1002") })
+    const offered = capabilities.body as { readonly kinds: ReadonlyArray<string>; readonly reads: ReadonlyArray<string> }
+    try check(() => assert.deepStrictEqual(
+      {
+        offered: [offered.kinds.includes("purge"), offered.reads.includes("contacts")],
+        agent: [...errorOf(agent), (agent.body as { readonly reason?: string }).reason],
+        unmarked: errorOf(unmarked),
+        changedSince: errorOf(changedSince),
+        staged: [staged.status, receiptOf(staged), (staged.body as OperationAnswer).review, "confirmation" in (staged.body as object)],
+        agentDispatch: [...errorOf(agentDispatch), (agentDispatch.body as { readonly reason?: string }).reason],
+        confirmed: [confirmed.status, receiptOf(confirmed), (confirmed.body as OperationAnswer).receipt.providerResult],
+        replayed: [replayed.status, receiptOf(replayed)],
+        mailbox: [mailbox.messages.has("msg-plan"), switches.calls.filter((call) => call.method === "DELETE" && call.path === "/messages/msg-plan").length]
+      },
+      {
+        offered: [true, true],
+        agent: [403, "access_denied", "device_key_not_allowed"],
+        unmarked: [400, "invalid_request"],
+        changedSince: [409, "stale_revision"],
+        staged: [200, ["purge", "prepared", null, false, false], { kind: "purge", messageId: "msg-plan", expectedHistoryId: "1002", from: "ops-ops-purge@example.com", permanent: true }, false],
+        agentDispatch: [403, "access_denied", "device_key_not_allowed"],
+        confirmed: [200, ["purge", "succeeded", null, true, true], { messageId: "msg-plan", purged: true }],
+        replayed: [200, ["purge", "succeeded", null, true, true]],
+        mailbox: [false, 1]
+      }
+    ))
+  }))
+
+  it.live("Write to Ada found among my contacts, keep the email as one draft under the tablet's id though a save is repeated, then discard it (spec/cloud/services/google/mailOperations.md, \"Story: Keep the email I am writing as one draft under the tablet's name for it\"; spec/cloud/services/google/mailRead.md, \"Contacts are the named addresses of recent sent and received mail, each address once, those matching the query\")", () => scoped(effect {
+    const { mailbox, gmail, grantId, deviceKey } = try mailOperationSetup("ops-drafts", ["google.gmail.triage", "google.gmail.drafts"])
+    const found = try gmail("GET", `/contacts?grantId=${grantId}&query=ADA`)
+    const everyone = try gmail("GET", `/contacts?grantId=${grantId}`)
+    const tooLong = try gmail("GET", `/contacts?grantId=${grantId}&query=${"a".repeat(201)}`)
+    const ada = (found.body as { readonly contacts: ReadonlyArray<{ readonly name: string; readonly email: string }> }).contacts[0]
+    const draftId = "tablet draft/7"
+    const draft = (bodyText: string) => ({ grantId, draftId, to: [ada?.email ?? ""], cc: [], bcc: [], subject: "Lunch", bodyText, attachments: [{ name: "menu.txt", mimeType: "text/plain", dataBase64: btoa("Soup") }] })
+    const first = try gmail("POST", "/drafts", draft("Are you free?"))
+    const repeated = try gmail("POST", "/drafts", draft("Are you free on Friday?"))
+    const held = try Effect.try(() => draftTexts(mailbox))
+    const stored = held[0] ?? ""
+    const agent = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}?grantId=${grantId}`, undefined, deviceKey)
+    const discarded = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}?grantId=${grantId}`)
+    const gone = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}?grantId=${grantId}`)
+    const noGrant = try gmail("DELETE", `/drafts/${encodeURIComponent(draftId)}`)
+    try check(() => assert.deepStrictEqual(
+      {
+        found: [found.status, (found.body as { readonly contacts: unknown }).contacts],
+        everyone: (everyone.body as { readonly contacts: ReadonlyArray<{ readonly email: string }> }).contacts.map((contact) => contact.email),
+        tooLong: errorOf(tooLong),
+        saved: [first.status, first.body, repeated.status, repeated.body],
+        held: [held.length, /Message-ID: <eliza-draft-[0-9a-f]{64}@message\.invalid>/.test(stored) && !stored.includes(sha256Hex(draftId)), stored.includes(btoa("Are you free on Friday?")), stored.includes("filename*=UTF-8''menu.txt")],
+        agent: [...errorOf(agent), (agent.body as { readonly reason?: string }).reason],
+        discarded: [discarded.status, discarded.body, mailbox.drafts.size],
+        gone: errorOf(gone),
+        noGrant: errorOf(noGrant)
+      },
+      {
+        found: [200, [{ name: "Ada", email: "ada@example.org" }]],
+        everyone: ["ada@example.org"],
+        tooLong: [400, "invalid_request"],
+        saved: [200, { draftId }, 200, { draftId }],
+        held: [1, true, true, true],
+        agent: [403, "access_denied", "device_key_not_allowed"],
+        discarded: [200, { ok: true }, 0],
+        gone: [404, "not_found"],
+        noGrant: [400, "invalid_request"]
+      }
+    ))
+  }))
 })
 
 type OperationAnswer = {
@@ -2338,7 +2654,7 @@ function errorOf(answer: { readonly status: number; readonly body: unknown }): R
   return [answer.status, (answer.body as { readonly error?: string }).error]
 }
 
-effect function mailOperationSetup(name: string) {
+effect function mailOperationSetup(name: string, capabilities: ReadonlyArray<GoogleCapability> = ["google.gmail.manage", "google.gmail.send"]) {
   const google = try Effect.try(() => googleFakeState())
   const now = try Clock.currentTimeMillis
   const mailbox = try Effect.try(() => readableMailbox([{
@@ -2352,15 +2668,18 @@ effect function mailOperationSetup(name: string) {
     fakes.mount("/google/api/", gmailReads(mailbox))
     fakes.mount("/google/api/", gmailChanges(mailbox, switches))
   } })
-  const token = (try leasedCaller(cloud, name)).bearer
+  const tablet = try leasedCaller(cloud, name)
+  const token = tablet.bearer
   const owner: Owner = { organizationId: `org-${name}`, userId: `user-${name}` }
   const grantId = `ops-${name}`
-  const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.manage"), ...scopeFor("google.gmail.send")]
+  const scopes = [...scopeFor("google.basic_identity"), ...capabilities.flatMap(scopeFor)]
   const refreshToken = try Effect.try(() => seedGrant(google, { subject: `subject-${grantId}`, email: `${grantId}@example.com`, scopes }))
   try cloud.inside(linkedGrant(cloud, owner, grantId, refreshToken, scopes, now - 1000))
   const headers = { authorization: `Bearer ${token}` }
   const operation = (path: string, json?: unknown) => cloud.call(`/api/v1/eliza/google/gmail/inbox-v1/operations${path}`, json === undefined ? { headers } : { method: "POST", headers, json })
-  return { mailbox, switches, operation, grantId }
+  const gmail = (method: "GET" | "POST" | "DELETE", path: string, json?: unknown, key = token) =>
+    cloud.call(`/api/v1/eliza/google/gmail${path}`, { method, headers: { authorization: `Bearer ${key}` }, ...(json === undefined ? {} : { json }) })
+  return { mailbox, switches, operation, gmail, grantId, deviceKey: tablet.deviceKey }
 }
 
 effect function grantRefusal<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
@@ -3794,7 +4113,7 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
 })
 
 module node {
-  import { Effect, Schema } from "effect"
+  import { ConfigProvider, Effect, Layer, Schema } from "effect"
   import { SecureRandom } from "effect/crypto"
   import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
   import { exportJWK, generateKeyPair, SignJWT } from "jose"
@@ -3806,6 +4125,11 @@ module node {
   import { mimeBoundaryPayload } from "./support/fakes/google-gmail.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
   import { registerClients, workerBindings } from "./support/worker.ts"
+  import { revokeAll as revokeAllDevices } from "../src/native-clients/device-keys.vibe"
+  import { Store, storeLayer, type Tx } from "../src/store/store.vibe"
+  import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+  import { scopeFor, storeGrant } from "../src/services/google/grant-access.vibe"
+  import { secrets } from "./support/profile.ts"
 
   export function forwardedHref(script: string, html: string, address: string): string {
     const attributes: Record<string, string> = {
@@ -4341,8 +4665,103 @@ module node {
     }
   }
 
+  export async function tabletLeaseThroughWorker(fakeUrl: string) {
+    const fixture = await openBackupDatabase()
+    try {
+      const digest = "b".repeat(64)
+      await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest])
+      const owner = await Effect.runPromise(Effect.provide(signInWithProof(fixture.db, { provider: "email", subject: "tablet@example.test", email: "tablet@example.test" }), SecureRandom.layerWebCrypto))
+      const web = "https://app.example.test"
+      const api = "https://api.example.test"
+      const grant = "tablet-grant"
+      const deployment = workerBindings({ api, web, digest, fakeUrl })
+      const organizationId = (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id ?? ""
+      const profile = await Effect.runPromise(parseProfile(JSON.parse(deployment.CLOUD_PROFILE)))
+      const platform = Layer.mergeAll(storeLayer({ kind: "pg", url: fixture.databaseUrl }),
+        deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))))
+      const inStore = <A, E>(body: (tx: Tx) => Effect.Effect<A, E, Layer.Success<typeof platform>>) =>
+        Effect.runPromise(Effect.provide(Effect.gen(function* () { const store = yield* Store; return yield* store.transaction(body) }), platform))
+      await inStore((tx) => storeGrant(tx, {
+        connectionId: grant, owner: { organizationId, userId: owner.account.id }, subject: "tablet-google-subject", email: "tablet@example.test",
+        grantedScopes: [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")],
+        tokens: { refreshToken: "tablet-refresh", accessToken: "tablet-access", expiresAt: Date.now() + 3_600_000 }, now: Date.now()
+      }))
+      const clientId = "com.example.tablet"
+      const redirectUri = web + "/android/auth/callback"
+      const tabletClient = { clientId, androidPackage: clientId, environment: "staging", displayName: "Tablet", signInReturn: redirectUri,
+        billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AB").join(":")], enabled: true }
+      await registerClients(fixture.db, [tabletClient])
+      const env = {
+        ...deployment, AI: { run: async () => { throw new Error("Unexpected inference in tablet fixture") } }, DATABASE_URL: fixture.databaseUrl,
+      } satisfies CloudBindings
+      const worker = cloudWorker()
+      const call = async (path: string, init: { method?: string; headers?: Record<string, string>; json?: unknown } = {}) => {
+        const answer = await worker.fetch(new Request(api + path, { method: init.method ?? (init.json === undefined ? "GET" : "POST"),
+          headers: { ...(init.json === undefined ? {} : { "content-type": "application/json" }), ...init.headers }, body: init.json === undefined ? undefined : JSON.stringify(init.json) }), env)
+        const text = await answer.text()
+        return { status: answer.status, body: (text === "" ? {} : JSON.parse(text)) as Record<string, unknown> }
+      }
+      const bearer = (token: string) => ({ authorization: "Bearer " + token })
+      const refusal = (answer: { status: number; body: Record<string, unknown> }) => [answer.status, answer.body.error, answer.body.reason]
+      const binding = { clientId, environment: "staging", redirectUri }
+      const tablet = async () => {
+        const state = "s".repeat(43)
+        const verifier = "v".repeat(43)
+        const connected = await call("/api/v1/app-auth/connect", { headers: bearer(owner.access),
+          json: { ...binding, state, codeChallenge: createHash("sha256").update(verifier).digest("base64url"), codeChallengeMethod: "S256" } })
+        const minted = await call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: connected.body.code, state, codeVerifier: verifier } })
+        const secret = String(minted.body.secret)
+        await call("/api/v1/app-auth/mobile/ack", { json: { credentialId: minted.body.credentialId, secret } })
+        const refresh = String((minted.body.lease as { refresh: string }).refresh)
+        const access = String((await call("/api/v1/app-auth/mobile/lease", { method: "POST", headers: bearer(refresh) })).body.access)
+        return { secret, refresh, access }
+      }
+      const read = (token: string) => call("/api/v1/eliza/google/gmail/read?" + new URLSearchParams({ messageId: "tablet-message", grantId: grant }), { headers: bearer(token) })
+      const search = (token: string) => call("/api/v1/eliza/google/gmail/search?" + new URLSearchParams({ grantId: grant, query: "hello" }), { headers: bearer(token) })
+      const rotate = (refresh: string) => call("/api/v1/app-auth/mobile/lease", { method: "POST", headers: bearer(refresh) })
+      const renew = (refresh: string) => call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(refresh) })
+
+      const first = await tablet()
+      const withLease = [(await read(first.access)).status, (await search(first.access)).status]
+      const withKey = [refusal(await read(first.secret)), refusal(await search(first.secret))]
+
+      const signedOut = await tablet()
+      const revokedByKey = (await call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(signedOut.secret) })).status
+      const afterSignOut = [refusal(await rotate(signedOut.refresh)), refusal(await renew(signedOut.refresh)), refusal(await read(signedOut.access))]
+
+      const moved = await tablet()
+      await fixture.db.query("UPDATE accounts SET device_epoch = device_epoch + 1 WHERE key = $1", [owner.account.id])
+      const afterEpoch = [refusal(await renew(moved.refresh)), refusal(await read(moved.access))]
+
+      const revoked = await tablet()
+      await inStore((tx) => revokeAllDevices(tx, owner.account.id, Date.now()))
+      const afterOperator = [refusal(await rotate(revoked.refresh)), refusal(await renew(revoked.refresh)), refusal(await read(revoked.access))]
+
+      const sessionEnded = await tablet()
+      const pendingRenewal = (await renew(sessionEnded.refresh)).status
+      const state = "t".repeat(43)
+      const verifier = "w".repeat(43)
+      const uncollected = await call("/api/v1/app-auth/connect", { headers: bearer(owner.access),
+        json: { ...binding, state, codeChallenge: createHash("sha256").update(verifier).digest("base64url"), codeChallengeMethod: "S256" } })
+      const neverAcknowledged = (await call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: uncollected.body.code, state, codeVerifier: verifier } })).status
+      await fixture.db.query("UPDATE accounts SET sessions_revoked_before = sessions_revoked_before + 1 WHERE key = $1", [owner.account.id])
+      const afterSessions = [refusal(await read(sessionEnded.access)), refusal(await rotate(sessionEnded.refresh))]
+      const count = async (sql: string) => Number((await fixture.db.query<{ n: string }>(sql)).rows[0]?.n)
+      await fixture.db.query("UPDATE device_grants SET code_expires_at = 1, state = state || jsonb_build_object('codeExpiresAt', 1, 'now', 1) WHERE phase = 'exchanged'")
+      await fixture.db.query("UPDATE sessions SET refresh_expires_at = 1 WHERE key IN (SELECT session_key FROM cloud_spent_refresh)")
+      const swept = async () => [await count("SELECT count(*) AS n FROM cloud_spent_refresh"), await count("SELECT count(*) AS n FROM device_grants WHERE phase = 'exchanged'"),
+        await count("SELECT count(*) AS n FROM sessions WHERE kind = 'device_lease' AND state->>'phase' = 'Offered'")]
+      const beforeSweep = await swept()
+      await worker.scheduled({ scheduledTime: Date.UTC(2026, 10, 22, 12, 0) }, env)
+      return { withLease, withKey, revokedByKey, afterSignOut, afterEpoch, afterOperator, afterSessions, pending: [pendingRenewal, neverAcknowledged],
+        swept: [beforeSweep[0]! > 0, ...beforeSweep.slice(1), ...await swept()] }
+    } finally {
+      await fixture.close()
+    }
+  }
+
 }
-import { decideForSignedInAccount, forwardedHref, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment } from node
+import { decideForSignedInAccount, forwardedHref, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment, tabletLeaseThroughWorker } from node
 
 it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideForSignedInAccount())
@@ -4441,3 +4860,23 @@ it.live('Read complete mail text, open the selected named attachment and watch f
     },
   ))
 }, 120_000)
+
+it.live('Keep a tablet signed in to mail through the Worker: the lease reads and searches mail, the device key never does, signing out, a moved device epoch, the operator\'s revoke and a moved session epoch each end it, and the scheduled sweep clears what was never collected (spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"; spec/cloud/identity/sessions.md, "A mail or calendar route admits a session or a device lease, and refuses the device key"; spec/cloud/nativeClients/deviceKeys.md, "Ending every key of a person moves the person\'s device epoch, which revokes every key issued before it")', () => scoped(effect {
+  const fakes = try fakeServer()
+  try sync(() => fakes.mount("/google/api/", gmailReads(readableMailbox([{ id: "tablet-message", threadId: "tablet-thread", labelIds: ["INBOX"], internalDate: Date.now() - 60_000,
+    headers: { From: "Ada <ada@example.org>", To: "tablet@example.test", Subject: "Hello" }, snippet: "hello", bodyText: "hello" }]))))
+  const got = try tryPromise(() => tabletLeaseThroughWorker(fakes.url))
+  const revoked = [401, "authentication_required", "credential_revoked"]
+  const unknown = [401, "authentication_required", "credential_unknown"]
+  try check(() => assert.deepStrictEqual(got, {
+    withLease: [200, 200],
+    withKey: [[403, "access_denied", "device_key_not_allowed"], [403, "access_denied", "device_key_not_allowed"]],
+    revokedByKey: 204,
+    afterSignOut: [revoked, revoked, unknown],
+    afterEpoch: [revoked, revoked],
+    afterOperator: [revoked, revoked, unknown],
+    afterSessions: [revoked, revoked],
+    pending: [200, 200],
+    swept: [true, 2, 1, 0, 0, 0],
+  }))
+}), 120_000)

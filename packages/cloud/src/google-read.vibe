@@ -39,8 +39,8 @@ schema CalendarList { items?: CalendarEvent[]; timeZone?: string; nextPageToken?
 const gmail = "https://gmail.googleapis.com/gmail/v1/users/me"
 const calendar = "https://www.googleapis.com/calendar/v3/calendars"
 const attachments = /^[a-zA-Z0-9_-]{1,1024}$/
-export const mailAddress = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/
-export const hasControlCharacter = (text: string) => [...text].some((character) => character.charCodeAt(0) <= 0x1f || character.charCodeAt(0) === 0x7f)
+const mailAddress = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/
+const hasControlCharacter = (text: string) => [...text].some((character) => character.charCodeAt(0) <= 0x1f || character.charCodeAt(0) === 0x7f)
 const rfcMessageId = /^<[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9.-]+>$/
 const history = /^[0-9]+$/
 const revision = /^\d{1,20}$/
@@ -75,8 +75,21 @@ function addressOf(value: string) {
   return (bracketed?.[1] ?? value).trim()
 }
 
+function addressEntries(value: string): ReadonlyArray<string> {
+  return value.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+}
+
 export function mailAddresses(value: string): ReadonlyArray<string> {
-  return value.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(addressOf).filter(Boolean)
+  return addressEntries(value).map(addressOf).filter(Boolean)
+}
+
+export function namedAddresses(value: string): ReadonlyArray<{ readonly name: string; readonly email: string }> {
+  return addressEntries(value).flatMap((entry) => {
+    const email = addressOf(entry)
+    const bracket = entry.lastIndexOf("<")
+    const name = bracket < 0 ? "" : entry.slice(0, bracket).trim().replace(/^"(.*)"$/, "$1").replace(/\\(.)/g, "$1").trim()
+    return mailAddress.test(email) && !hasControlCharacter(name) ? [{ name, email }] : []
+  })
 }
 
 function sender(value: string) {
@@ -170,10 +183,6 @@ function replyTarget(message: MailMessage) {
       messageId.length > 250 || subject.length > 120 || hasControlCharacter(subject) ||
       !attachments.test(message.threadId)) return null
   return { recipient, subject, messageId, threadId: message.threadId }
-}
-
-export effect function googleReplyTarget<E, R>(api: GoogleReadApi<E, R>, id: string) {
-  return replyTarget(try readMessage(api, id, "metadata"))
 }
 
 function textTooLarge(text: string, maxBytes: number) {

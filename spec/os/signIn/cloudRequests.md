@@ -75,7 +75,7 @@ and the session token are attached natively and never reach the page.
 ```quint
 type Holding = { key: int, sessionHeld: bool, sessionLive: bool, leaseHeld: bool, leaseLive: bool }
 type Attach = Bare | WithKey({ version: int }) | WithSession({ version: int }) | WithLease({ version: int })
-type CallRefusal = NoOrigin | NotListed | BodyTooLarge | HeaderRefused | SignInRequired | ReauthRequired
+type CallRefusal = NoOrigin | NotListed | BodyTooLarge | HeaderRefused | SignInRequired | MailLeaseUpgradeRequired | ReauthRequired
 type CallPlan = Send({ attach: Attach }) | RefreshSessionFirst | RefreshLeaseFirst | Refuse({ why: CallRefusal })
 pure def holdingOf(c: C::DeviceCredential): Holding =
   { key: C::activeVersion(c), sessionHeld: c.session != C::NoSession, sessionLive: C::sessionUsable(c), leaseHeld: c.lease != C::NoLease, leaseLive: C::leaseUsable(c) }
@@ -83,7 +83,7 @@ pure def sessionOnly(auth: AuthClass): bool = auth == Session or auth == Session
 pure def attachFor(h: Holding, d: DeviceRoute): CallPlan =
   if (d.auth == Public) Send({ attach: Bare })
   else if (sessionOnly(d.auth)) (if (h.sessionLive) Send({ attach: WithSession({ version: h.key }) }) else if (h.sessionHeld) RefreshSessionFirst else Refuse({ why: ReauthRequired }))
-  else if (mailRoute(d)) (if (h.leaseLive) Send({ attach: WithLease({ version: h.key }) }) else if (h.leaseHeld) RefreshLeaseFirst else Refuse({ why: SignInRequired }))
+  else if (mailRoute(d)) (if (h.leaseLive) Send({ attach: WithLease({ version: h.key }) }) else if (h.leaseHeld) RefreshLeaseFirst else Refuse({ why: if (h.key >= 1) MailLeaseUpgradeRequired else SignInRequired }))
   else if (h.key >= 1) Send({ attach: WithKey({ version: h.key }) })
   else Refuse({ why: SignInRequired })
 pure val hValues = Set({ key: 0, sessionHeld: false, sessionLive: false, leaseHeld: false, leaseLive: false },
@@ -106,11 +106,17 @@ the host provides one, and otherwise not at all. The mail routes are the
 device routes the cloud's client lists as `Mail` (`spec/cloud/client.md`):
 Google status, accounts, connect, disconnect, Gmail triage, search, read,
 thread, capabilities, drafts, draft, attachment and operations, and the
-calendar list, feed, event reads and event writes. They carry the lease's access token, after one shared
-lease refresh when it has expired (`./credential.md`), or fail with
-`SignInRequired` on a device signed in before leases existed. The native
-one-tap connect and inbox arrival keep the device key, and no other route
-ever carries the lease.
+calendar list, feed, event reads and event writes. They carry the lease's
+access token after one shared refresh when necessary (`./credential.md`).
+A device with an active key and no lease gets `MailLeaseUpgradeRequired`.
+The native bridge returns `mail-lease-upgrade-required` before it sends the
+request. The host can offer the user a one-time sign-in to the same account.
+The existing key stays available for its usual routes while the user decides
+or cancels. The page sends a new request after the sign-in. A device without
+a live key or lease gets `SignInRequired`. If a refresh ends the lease, the
+native shell uses the current key and lease state to choose the refusal.
+The native one-tap connect and inbox arrival keep the device key. Only mail
+routes carry the lease.
 
 ```quint
 pure def mailRoute(d: DeviceRoute): bool = d.auth == Mail
@@ -118,6 +124,9 @@ pure def leaseOf(a: Attach): int = match a { | WithLease(l) => l.version | _ => 
 pure def sentLease(p: CallPlan): int = match p { | Send(s) => leaseOf(s.attach) | _ => 0 }
 pure def lawAMailRouteNeverCarriesTheKey(h: Holding, d: DeviceRoute): bool = mailRoute(d) implies sentKey(attachFor(h, d)) == 0
 pure def lawTheLeaseGoesOnlyToAMailRoute(h: Holding, d: DeviceRoute): bool = sentLease(attachFor(h, d)) >= 1 implies mailRoute(d)
+pure def lawOnlyAMailRouteOnAnExistingKeyWithoutALeaseNeedsTheUpgrade(h: Holding, d: DeviceRoute): bool =
+  (attachFor(h, d) == Refuse({ why: MailLeaseUpgradeRequired })) iff
+    (mailRoute(d) and h.key >= 1 and not(h.leaseHeld or h.leaseLive))
 ```
 
 ### A request is sent only to the deployment origin, admitted by the gate, with headers its route admits

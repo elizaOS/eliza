@@ -119,7 +119,10 @@ pure def refresh(f: Family, presented: int, personEpoch: int): FamilyStep =
   if (isLease(f)) leaseRefresh(presented, f, personEpoch)
   else if (isReuse(f, presented)) { state: { ...f, phase: Reused, seenEpoch: personEpoch + 1 }, out: List(revokeAll(personEpoch)) }
   else { state: { ...f, seenEpoch: personEpoch, generation: f.generation + 1, issuedAt: f.now, accessExpiresAt: if (f.now + accessLifetime < f.refreshExpiresAt) f.now + accessLifetime else f.refreshExpiresAt }, out: List() }
-pure def stepRefreshRefusesTheOldPair(before: Family, via: str, after: Family, out: List[SessionEffect]): bool = (via == "refresh" and not(isLease(before))) implies not(accepts(after, before.generation, after.seenEpoch))
+pure def refusesPair(f: Family, generation: int): bool =
+  not(accepts(f, generation, f.seenEpoch)) and refreshRefusal(generation, f, f.seenEpoch) != NoReason
+pure def stepRefreshRefusesTheOldPair(before: Family, via: str, after: Family, out: List[SessionEffect]): bool =
+  (via == "refresh" and not(isLease(before))) implies refusesPair(after, before.generation)
 pure def sometimesRotated(f: Family): bool = isActive(f, f.seenEpoch) and f.generation >= 2
 ```
 
@@ -134,8 +137,12 @@ device lease's theft ends only that device (Story: Keep a tablet signed in
 to mail and calendar).
 
 ```quint
-pure def stepOnlyTheftRevokesEverySession(before: Family, via: str, after: Family, out: List[SessionEffect]): bool = via == "refresh" implies ((out.length() == 1) iff (before.phase != Reused and after.phase == Reused))
-pure def sometimesReuseRevokedEverySession(f: Family): bool = f.phase == Reused
+pure def stepOnlyTheftRevokesEverySession(before: Family, via: str, after: Family, out: List[SessionEffect]): bool =
+  (via == "refresh" and not(isLease(before))) implies (
+    if (before.phase != Reused and after.phase == Reused)
+      out == List(RevokePersonSessions({ toEpoch: after.seenEpoch })) and after.seenEpoch > before.seenEpoch
+    else out == List())
+pure def sometimesReuseRevokedEverySession(f: Family): bool = not(isLease(f)) and f.phase == Reused
 ```
 
 ## Story: Sign out here, or end my other sessions
@@ -231,12 +238,12 @@ pure def sometimesSteppedUpAtSignIn(f: Family): bool = isActive(f, f.seenEpoch) 
 
 ## Story: Keep a tablet signed in to mail and calendar
 
-> As an older owner using a tablet at home, I want it to stay signed in to my
-> mail and calendar like a phone app does, without asking me to sign in
-> again every week, while the assistant on it can never read or send my mail
-> with its own key, so that only signing out, removing the account, a
-> revoked device or a stolen secret ever signs the tablet out, and only 90
-> days switched off or offline asks me to sign in once more.
+> As a device owner, I want my device to stay signed in to mail and
+> calendar like a phone app does, without asking me to sign in again
+> every week. The assistant must never use its own key to read or send
+> my mail. The device signs out only when I sign out or remove the
+> account, the device is revoked, or a secret is stolen. Only 90 days
+> switched off or offline asks me to sign in once more.
 
 A device lease is a session family bound to one device grant. Only the
 tablet's native shell holds its secrets, in the secure-store slots that hold
@@ -308,9 +315,14 @@ pure def sometimesLeaseOutlivedThirtyDays(f: Family): bool = isActive(f, f.seenE
 
 A refresh with the current generation answers the next pair as offered. The
 current generation stays valid until a secret of the offered pair is first
-presented, as a refresh or as an access token; that first use commits the
-offered pair. A refresh with the offered refresh commits it and offers the
-pair after it. `authAt` carries over, and a lease is never stepped up.
+admitted, either as a live access token or as a refresh token. That first
+use commits the offered pair and ends both secrets of the previous pair.
+A rotation request with the offered refresh commits it and offers the pair
+after it. A key renewal with the offered refresh commits it even if that
+pair's access token expired. The shell locks the account before classifying
+a digest as current, offered or spent, and keeps that lock until the step
+and the digest changes are complete. `authAt` carries over, and a lease is
+never stepped up.
 
 ```quint
 pure def answersOf(f: Family): int = { val r = f.rotation  match r { | Offering(o) => o.answers | Settled => 0 } }
@@ -323,8 +335,13 @@ pure def leaseRefresh(presented: int, f: Family, personEpoch: int): FamilyStep =
   if (isReuse(f, presented)) { state: { ...f, phase: Reused, rotation: Settled, seenEpoch: personEpoch }, out: List(EndLeaseAndGrant({ grantKey: leaseGrant(f) })) }
   else { state: { ...kept, seenEpoch: personEpoch, refreshExpiresAt: f.now + leaseIdleLifetime, rotation: Offering({ offeredAt: f.now, answers: answers }) }, out: List() }
 }
-pure def canUseOffered(f: Family, personEpoch: int): bool = isLease(f) and f.rotation != Settled and observes(f, personEpoch) and accepts(f, offeredGeneration(f), personEpoch)
-pure def useOffered(f: Family, personEpoch: int): Family = { ...committedAt(offeredAtOf(f), f), seenEpoch: personEpoch }
+type LeaseSecret = OfferedAccess | OfferedRefresh
+pure def canUseOffered(f: Family, personEpoch: int, secret: LeaseSecret): bool =
+  isLease(f) and f.rotation != Settled and observes(f, personEpoch) and (
+    if (secret == OfferedAccess) accepts(f, offeredGeneration(f), personEpoch)
+    else refreshRefusal(offeredGeneration(f), f, personEpoch) == NoReason)
+pure def useOffered(f: Family, personEpoch: int, secret: LeaseSecret): Family = { ...committedAt(offeredAtOf(f), f), seenEpoch: personEpoch }
+pure val secretValues = Set(OfferedAccess, OfferedRefresh)
 pure val weight_refresh = 3
 pure def alwaysOnlyALiveLeaseOffersAPair(f: Family): bool = { val r = f.rotation  match r {
   | Offering(o) => isLease(f) and f.phase == Live and f.issuedAt <= o.offeredAt and o.offeredAt <= f.now and o.answers >= 1
@@ -335,6 +352,12 @@ pure def stepALeaseKeepsItsCurrentPairUntilTheOfferedOneIsUsed(before: Family, v
     (offeredGeneration(after) == after.generation + 1 and accepts(after, after.generation + 1, after.seenEpoch)
       and (after.generation == before.generation or (before.rotation != Settled and after.generation == before.generation + 1))))
   and (via == "useOffered" implies (after.generation == offeredGeneration(before) and after.rotation == Settled))
+pure def stepACommittedLeaseRefusesTheOldPair(before: Family, via: str, after: Family, out: List[SessionEffect]): bool =
+  (isLease(before) and after.generation > before.generation) implies refusesPair(after, before.generation)
+pure def lawAnExpiredOfferedAccessTokenCannotCommit(f: Family, personEpoch: int): bool =
+  f.now >= offeredAccessEnd(f) implies not(canUseOffered(f, personEpoch, OfferedAccess))
+pure def sometimesAnOfferedRefreshCanCommitAfterAccessExpires(f: Family): bool =
+  f.now >= offeredAccessEnd(f) and canUseOffered(f, f.seenEpoch, OfferedRefresh)
 pure def sometimesLeaseRotationCommitted(f: Family): bool = isActive(f, f.seenEpoch) and isLease(f) and f.generation >= 2
 ```
 
@@ -347,7 +370,9 @@ reply lost on the way to the tablet never strands it and never signs it out.
 ```quint
 pure def stepAReOfferKeepsTheGeneration(before: Family, via: str, after: Family, out: List[SessionEffect]): bool =
   (via == "refresh" and isLease(before) and before.rotation != Settled and after.phase == Live and after.generation == before.generation)
-    implies (out == List() and answersOf(after) == answersOf(before) + 1)
+    implies (out == List() and answersOf(after) == answersOf(before) + 1
+      and after.accessExpiresAt == before.accessExpiresAt and after.issuedAt == before.issuedAt
+      and refreshRefusal(after.generation, after, after.seenEpoch) == NoReason)
 pure def sometimesLeaseReOfferedAfterALostReply(f: Family): bool = isActive(f, f.seenEpoch) and isLease(f) and answersOf(f) >= 2
 ```
 
@@ -369,7 +394,10 @@ sign its owner out of every browser and phone.
 
 ```quint
 pure def stepALeaseTheftEndsOnlyItsDevice(before: Family, via: str, after: Family, out: List[SessionEffect]): bool =
-  (via == "refresh" and isLease(before)) implies (out == List() or out == List(EndLeaseAndGrant({ grantKey: leaseGrant(before) })))
+  (via == "refresh" and isLease(before)) implies (after.epoch == before.epoch and (
+    if (before.phase != Reused and after.phase == Reused)
+      out == List(EndLeaseAndGrant({ grantKey: leaseGrant(before) }))
+    else out == List()))
 pure def sometimesLeaseTheftEndedOnlyThatDevice(f: Family): bool = isLease(f) and f.phase == Reused and f.epoch == f.seenEpoch
 ```
 
@@ -469,8 +497,8 @@ pure def lawOnlyAnActiveCredentialReachesProtectedRoutes(view: CredentialView, r
 ### A mail or calendar route admits a session or a device lease, and refuses the device key
 
 The Google status, accounts, connect, disconnect, Gmail, inbox and calendar
-routes, and the Google sign-in sessions, are MailAccess. A device key there
-is refused `403 access_denied` with reason `device_key_not_allowed`: the
+routes, and the Google sign-in sessions, are MailAccess. An active account's
+device key there is refused `403 access_denied` with reason `device_key_not_allowed`: the
 on-device agent holds that key and acts on untrusted text, so it can never
 read or send mail with it. The agent reaches managed mail only through a
 broker its host runs in the native shell, which holds the lease there and
@@ -486,7 +514,9 @@ route.
 
 ```quint
 pure def lawADeviceKeyNeverPassesAMailRoute(principal: RequestPrincipal, now: Millis): bool =
-  principal.credential == DevicePrincipal implies admitPrincipal(principal, MailAccess, now) == RequestRefused({ refusal: refuseFor(AccessDenied, DeviceKeyNotAllowed) })
+  principal.credential == DevicePrincipal implies admitPrincipal(principal, MailAccess, now) ==
+    (if (principal.accountStatus == RequestAccountActive) RequestRefused({ refusal: refuseFor(AccessDenied, DeviceKeyNotAllowed) })
+     else RequestRefused({ refusal: refuseFor(AuthenticationRequired, CredentialRevoked) }))
 pure def lawALeasePassesOnlyAMailRoute(principal: RequestPrincipal, route: RouteClass, now: Millis): bool =
   (principal.credential == LeasePrincipal and admitPrincipal(principal, route, now) == CredentialAccepted) implies route == MailAccess
 pure def lawASessionPassesAMailRoute(principal: RequestPrincipal, now: Millis): bool =

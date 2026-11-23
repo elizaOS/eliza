@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, PseudonymSession, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, recordLlmCall, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretSwapSession, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, PseudonymSession, readJsonFile, recentLogs, recordLlmCall, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, SecretSwapSession, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
@@ -1000,7 +1000,7 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   ]))
 }, 60_000)
 
-// spec/core/models.md, "Story: Dispatch a complete admitted request"; spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Story: Select registered model handlers in order"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/journey.md, "Model invocation retains the admitted request through fallback and failure"; spec/core/preparedRequests.md, "Story: Bind every transport retry to the admitted request"; spec/core/preparedRequests.md, "Only the admitted body can supply its input token count"; spec/core/modelAttemptLeases.md, "Story: Issue a turn-scoped model allowance"; spec/core/pseudonymSession.md, "Story: Keep substitutions reversible across repeated model calls"; spec/core/secretSession.md, "Story: Restore known placeholders while keeping credentials out of replies"; spec/core/streamRevisions.md, "Story: Distinguish a new stream attempt from prior chunks"; spec/core/skeletonStreamState.md, "Story: Stream exact visible text without losing partial parser state"; spec/core/unicode.md, "Story: Preserve Unicode in provider requests and diagnostics"; spec/core/modelDiagnostics.md, "Story: Finish every diagnostic write before storage closes"
+// spec/core/models.md, "Story: Dispatch a complete admitted request"; spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Story: Select registered model handlers in order"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/journey.md, "Model invocation retains the admitted request through fallback and failure"; spec/core/preparedRequests.md, "Story: Bind every transport retry to the admitted request"; spec/core/preparedRequests.md, "Only the admitted body can supply its input token count"; spec/core/modelAttemptLeases.md, "Story: Issue a turn-scoped model allowance"; spec/core/pseudonymSession.md, "Story: Keep substitutions reversible across repeated model calls"; spec/core/secretSession.md, "Story: Restore known placeholders while keeping credentials out of replies"; spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"; spec/core/streamRevisions.md, "Story: Distinguish a new stream attempt from prior chunks"; spec/core/skeletonStreamState.md, "Story: Stream exact visible text without losing partial parser state"; spec/core/unicode.md, "Story: Preserve Unicode in provider requests and diagnostics"; spec/core/modelDiagnostics.md, "Story: Finish every diagnostic write before storage closes"
 it.live("Dispatch a model request through failover, swaps, streams, cancellation and a turn allowance (spec/core/models.md, \"Story: Dispatch a complete admitted request\")", () => Effect.scoped(effect {
   const EMAIL = "jane.okafor@acmecapital.com"
   const ADDRESS = "1600 Pennsylvania Avenue NW"
@@ -1464,6 +1464,15 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       const reply = String(valueOf(settled))
       return turn.piiSwapSession?.restoreText(turn.secretSwapSession?.restoreUserReplyText(reply) ?? reply)
     }
+    // spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"
+    const connectorSend: unknown[] = []
+    try Effect.try(() => runtime.registerMessageConnector({
+      source: "pii-egress",
+      sendHandler: async (_runtime, _target, content) => {
+        connectorSend.push(content.text)
+      },
+    }))
+    try host(() => Promise.resolve(runWithTrajectoryContext(turn, () => runtime.sendMessageToTarget({ source: "pii-egress" }, { text: `Meet at ${surrogate}`, agentVoiced: true }))))
     const swaps = {
       providerSawRealValues: [EMAIL, ADDRESS, KEY].some((value) => `${firstSeen} ${secondSeen} ${promptOf(imageSeen)}`.includes(value)),
       surrogateReused: surrogate !== ADDRESS && secondSeen === `Visit ${surrogate}`,
@@ -1472,6 +1481,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       secondUserReply: userReply(second),
       imageFields: [imageSeen?.size, imageSeen?.negativePrompt],
       callerSignal: [(text(alpha)[5]?.params as { signal?: unknown } | undefined)?.signal === fx.caller.signal, imageSeen?.signal === fx.caller.signal],
+      connectorSend,
     }
     // spec/core/secretSession.md, "At the action boundary pseudonyms are restored before references, and local name recognition never reads this session's references"; spec/core/secretSession.md, "A map coordinate never becomes a contact reference"
     const PHONE = "+12025550123"
@@ -1622,6 +1632,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
         secondUserReply: `Again ${EMAIL} near Visit ${ADDRESS}`,
         imageFields: ["1024x1024", `no ${EMAIL}`],
         callerSignal: [true, true],
+        connectorSend: [`Meet at ${ADDRESS}`],
       },
       privateAction: { recognizerSawReference: false, providerSaw: [true, false, false, true], aliasesWrapReferences: true, results: [true, false], recipients: [PHONE] },
       unicode: { providerSaw: true, reply: true, budgetCountsUtf8: true },
@@ -1654,6 +1665,40 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
     diagnosticTypes: [...answered].sort(),
     gatedWriteStored: true,
     unicodeStored: true,
+  }))
+}), 60_000)
+
+// spec/core/models.md, "Story: Get a whole answer from a busy provider"; spec/core/models.md, "A model call takes no output cap from settings"; spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more"
+it.live("Get a whole answer from a busy provider: no setting caps output, and each extractor pass waits out a rate limit once (spec/core/models.md, \"Story: Get a whole answer from a busy provider\")", () => scoped(effect {
+  const limited = () => Object.assign(new Error("Too many requests"), { status: 429, retryAfterMs: 200 })
+  const models = try Effect.try(() => scriptedModels("busy", 10, {
+    [ModelType.TEXT_LARGE]: [{ fail: limited() }, { reply: "unreadable" }, { fail: limited() }, { reply: "ok" }, { fail: limited() }, { fail: limited() }],
+  }))
+  const runtime = try kernel({ settings: { TEXT_LARGE_MAX_TOKENS: "16", DEFAULT_MAX_TOKENS: "16", DEFAULT_TEMPERATURE: "0.2" } })
+  try Effect.sync(() => models.register(runtime))
+  const parser = (raw: string) => raw === "ok" ? raw : null
+  const providerOptions = { eliza: { thinking: "low" } }
+  const began = Date.now()
+  const repaired = try host(() => runExtractorPipeline({ runtime, prompt: "Plan the reminder.", providerOptions, parser, buildRepairPrompt: () => "Repair it." }))
+  const waited = Date.now() - began
+  const refused = try host(() => runExtractorPipeline({ runtime, prompt: "Plan another.", parser }).then(() => "resolved", (error: unknown) => (error as { status?: unknown }).status))
+  const sent = models.seen.map(({ params }) => params as { prompt?: unknown; maxTokens?: unknown; temperature?: unknown; providerOptions?: { eliza?: { modelInputBudget?: unknown } } })
+  try Effect.try(() => assert.deepStrictEqual({
+    repaired, refused, waitedForBoth: waited >= 400,
+    sent: sent.map(({ prompt, maxTokens, temperature, providerOptions: options }) => {
+      const { modelInputBudget: _budget, ...eliza } = options?.eliza ?? {}
+      return { prompt, capped: maxTokens !== undefined, temperature, options: Object.keys(eliza).length ? { ...options, eliza } : undefined }
+    }),
+  }, {
+    repaired: { parsed: "ok", raw: "ok", repaired: true }, refused: 429, waitedForBoth: true,
+    sent: [
+      { prompt: "Plan the reminder.", capped: false, temperature: 0.2, options: providerOptions },
+      { prompt: "Plan the reminder.", capped: false, temperature: 0.2, options: providerOptions },
+      { prompt: "Repair it.", capped: false, temperature: 0.2, options: providerOptions },
+      { prompt: "Repair it.", capped: false, temperature: 0.2, options: providerOptions },
+      { prompt: "Plan another.", capped: false, temperature: 0.2, options: undefined },
+      { prompt: "Plan another.", capped: false, temperature: 0.2, options: undefined },
+    ],
   }))
 }), 60_000)
 

@@ -30,6 +30,7 @@ public final class DeviceKeyClient {
   public static final String TOKEN = "/api/v1/app-auth/mobile/token";
   public static final String ACK = "/api/v1/app-auth/mobile/ack";
   public static final String REVOKE = "/api/v1/api-keys/current";
+  static final String RENEWED_CREDENTIAL = "X-Renewed-Credential-Id";
   public static final String LEASE = "/api/v1/app-auth/mobile/lease";
   public static final String RENEW = "/api/v1/app-auth/mobile/renew";
   public static final Pattern LEASE_REFRESH = Pattern.compile("eliza_lease_refresh_[A-Za-z0-9_-]{54}");
@@ -181,7 +182,7 @@ public final class DeviceKeyClient {
   }
 
   private static boolean refusedForGood(Answer.Refused<?> refused) {
-    return refused.status() >= 400 && refused.status() < 500 && !refused.retryable() && !(refused.status() == 401 && refused.reason().credential());
+    return refused.status() == 400 || refused.status() == 403 || refused.status() == 401 && !refused.reason().credential();
   }
 
   public Answer<Acknowledgement> ack(String credentialId, String secret) {
@@ -193,7 +194,11 @@ public final class DeviceKeyClient {
   }
 
   public boolean revoke(String secret) {
-    return settles(ask("DELETE", REVOKE, secret, null, 200, body -> true));
+    return revoke(secret, "");
+  }
+
+  private boolean revoke(String secret, String successor) {
+    return settles(ask("DELETE", REVOKE, secret, successor, null, 200, body -> true));
   }
 
   public boolean revokeLease(String refresh) {
@@ -240,7 +245,7 @@ public final class DeviceKeyClient {
     for (Owed owed : store.owed()) {
       for (int ask = 0; ask < owed.tries(); ask++) {
         if (ask > 0 && !rest(ask)) return;
-        boolean settled = (owed.lease() == null || revokeLease(owed.lease())) & revoke(owed.value());
+        boolean settled = (owed.lease() == null || revokeLease(owed.lease())) & revoke(owed.value(), owed.successor());
         if (store.revokeAnswered(owed.version(), settled) == Outcome.REFUSED) break;
         if (store.owed().stream().noneMatch(o -> o.version() == owed.version())) break;
       }
@@ -257,6 +262,7 @@ public final class DeviceKeyClient {
   private Exchange acknowledge(Pending pending) {
     for (int ask = 0; ask < ASKS; ask++) {
       if (ask > 0 && !rest(ask)) return Exchange.UNANSWERED;
+      if (!store.maySendAcknowledgement(pending)) return Exchange.SUPERSEDED;
       Answer<Acknowledgement> answer = ack(pending.credentialId(), pending.value());
       if (answer instanceof Answer.Answered<Acknowledgement> answered)
         return store.acknowledged(pending.attempt(), pending.credentialId(), answered.value().expiresAt()) == Outcome.ACCEPTED ? Exchange.SIGNED_IN : Exchange.SUPERSEDED;
@@ -298,9 +304,13 @@ public final class DeviceKeyClient {
   }
 
   <T> Answer<T> ask(String method, String path, String bearer, String body, int expected, Reading<T> reading) {
+    return ask(method, path, bearer, "", body, expected, reading);
+  }
+
+  private <T> Answer<T> ask(String method, String path, String bearer, String successor, String body, int expected, Reading<T> reading) {
     Reply reply;
     try {
-      reply = send(method, path, bearer, body);
+      reply = send(method, path, bearer, successor, body);
     } catch (IOException unanswered) {
       return new Answer.Unanswered<>();
     }
@@ -323,7 +333,7 @@ public final class DeviceKeyClient {
     }
   }
 
-  private Reply send(String method, String path, String bearer, String body) throws IOException {
+  private Reply send(String method, String path, String bearer, String successor, String body) throws IOException {
     HttpURLConnection connection = (HttpURLConnection) origin.resolve(path).toURL().openConnection();
     connection.setInstanceFollowRedirects(false);
     connection.setUseCaches(false);
@@ -332,6 +342,7 @@ public final class DeviceKeyClient {
     connection.setRequestMethod(method);
     connection.setRequestProperty("Accept", "application/json");
     if (bearer != null) connection.setRequestProperty("Authorization", "Bearer " + bearer);
+    if (!successor.isEmpty()) connection.setRequestProperty(RENEWED_CREDENTIAL, successor);
     try {
       if (body != null) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);

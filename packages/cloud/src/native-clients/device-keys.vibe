@@ -1,5 +1,5 @@
 // spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
-import { ackOutcome, ackPerIp, apply, recordedExpiryReached, grantBindingMatches, nativeOutcome, revokeAll as revokeDeviceEpoch, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant, type GrantEffect } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
+import { ackOutcome, ackPerIp, apply, recordedExpiryReached, renewable, grantBindingMatches, nativeOutcome, revokeAll as revokeDeviceEpoch, signOutEndsSuccessor, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant, type GrantEffect } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 import { clientCheck, codeChallengeMethod, faultRefusal, type ClientCheck, type ClientRequest, type Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { NativeVerdict, SignInYield } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
 import type { CodeBinding } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
@@ -13,7 +13,7 @@ import { s256 } from "../shared/credential-crypto.vibe"
 import { newId, sameText, seal, secretText, tokenDigest, unseal } from "../shared/sealing.vibe"
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
 import { type Columns } from "../store/rows.vibe"
-import { currentGrant, decodeGrant, endKey, inspectKey, isFlatGrant, keyExpiresAt, phaseColumn, stepGrant, supersedeGrant } from "./grants.vibe"
+import { cancelLegacySuccessor, currentGrant, decodeGrant, endKey, inspectKey, isFlatGrant, keyExpiresAt, phaseColumn, stepGrant, supersedeGrant } from "./grants.vibe"
 import { activateLease, admitLeaseRefresh, bearerToken, endLease, endLeasesOf, holdsLiveLease, leaseRefreshExpiresIn, leaseRefreshPattern, leaseRefusedOr, moveLease, offerLease, type LeaseRefresh } from "../identity/sessions.vibe"
 import { admitClient, parseReturn, readRegistry, servedEnvironment } from "./registry.vibe"
 
@@ -180,7 +180,7 @@ export effect function openGrant(tx: Tx, opening: Opening) {
   return { key: opening.grantKey, code, codeExpiresAt: stepped.state.codeExpiresAt, out: stepped.out.out }
 }
 
-const grantColumns = "g.key, g.state, g.phase, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.sealed_lease, g.issued_at, g.key_expires_at, a.organization_id, a.status, a.device_epoch"
+const grantColumns = "g.key, g.state, g.phase, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.sealed_lease, g.issued_at, g.key_expires_at, g.renewed_from, a.organization_id, a.status, a.device_epoch"
 
 effect function grantBy(tx: Tx, column: "code_digest" | "credential_id" | "key", value: string) {
   return (try tx.query(`SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.${column} = $1 FOR UPDATE OF a, g`, [value]))[0]
@@ -353,9 +353,40 @@ effect function ack(context: RouteContext) {
   return json(acknowledged.answer)
 }
 
+effect function endLegacyRenewals(tx: Tx, root: Row, named: string, now: number) {
+  const chain = try tx.query(`
+    WITH RECURSIVE descendants(key) AS (
+      SELECT key FROM device_grants WHERE renewed_from = $1 AND sign_in_at IS NOT NULL
+        AND user_id = $2 AND client_id = $3 AND device_epoch = $4
+      UNION
+      SELECT d.key FROM device_grants d JOIN descendants p ON d.renewed_from = p.key
+        WHERE d.sign_in_at IS NOT NULL AND d.user_id = $2 AND d.client_id = $3 AND d.device_epoch = $4
+    )
+    SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id
+      WHERE g.key IN (SELECT key FROM descendants) FOR UPDATE OF g
+  `, [root.key, root.user_id, root.client_id, root.grant_epoch])
+  let keepChain = false
+  for (const successor of chain) {
+    if (successor.renewed_from !== root.key || successor.phase !== "active") continue
+    const held = try inspectKey(successor, now)
+    if (!signOutEndsSuccessor(named, toText(successor.credential_id) ?? "", held.reason === "NoReason")) keepChain = true
+  }
+  for (const successor of chain) {
+    const pending = successor.phase === "code_issued" || successor.phase === "exchanged"
+    if (keepChain && (!pending || successor.renewed_from !== root.key)) continue
+    if (pending) {
+      try cancelLegacySuccessor(tx, toText(successor.key) ?? "")
+    } else {
+      try endKey(tx, successor, now)
+    }
+  }
+}
+
 effect function selfRevoke(context: RouteContext) {
   const caller = context.caller
   if (caller.kind !== "deviceKey") throw refused("AuthenticationRequired", "CredentialUnknown")
+  const named = context.request.headers["x-renewed-credential-id"]
+  if (named !== undefined && !uuidText.test(named)) throw refused("InvalidRequest")
   const store = try Store
   try store.transaction(effect (tx: Tx) => {
     const row = try grantBy(tx, "key", caller.grantKey)
@@ -364,6 +395,7 @@ effect function selfRevoke(context: RouteContext) {
     const reason = try endKey(tx, row, now, try holdsLiveLease(tx, caller.grantKey, now))
     if (reason !== "NoReason") throw refused(reason === "DeviceKeyNotAllowed" ? "AccessDenied" : "AuthenticationRequired", reason)
     try endLease(tx, caller.grantKey, now)
+    try endLegacyRenewals(tx, row, named ?? "", now)
   })
   return HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
 }
@@ -399,6 +431,19 @@ export effect function sweepGrants(): void!!Store {
   }
 }
 
+effect function renewedAgain(tx: Tx, fromKey: string, deviceEpoch: number, now: number) {
+  const pending = (try tx.query("SELECT key FROM device_grants WHERE renewed_from = $1 AND phase = 'exchanged' AND code_expires_at > $2 ORDER BY issued_at DESC LIMIT 1", [fromKey, now]))[0]
+  if (pending === undefined) return undefined
+  const row = try grantBy(tx, "key", toText(pending.key) ?? "")
+  if (row === undefined) return undefined
+  const answered = stepGrant(tx, toText(row.key) ?? "", { type: "renewAgain", fromKey, deviceEpoch }, (grant) => ({ updated_at: grant.now })) catch effect (failure) => {
+    if (failure._tag === "Rejected") return undefined
+    throw failure
+  }
+  if (answered === undefined) return undefined
+  return credential(answered.state, row, try unseal("device-key", toText(row.sealed_copy) ?? ""), undefined)
+}
+
 export effect function renewGrant(tx: Tx, refresh: string) {
   const now = try Clock.currentTimeMillis
   const admitted = try admitLeaseRefresh(tx, refresh, now)
@@ -407,12 +452,15 @@ export effect function renewGrant(tx: Tx, refresh: string) {
   const row = try grantBy(tx, "key", lease.grantKey)
   if (row === undefined) throw refused("AuthenticationRequired", "CredentialRevoked")
   const predecessor = try current(row, now)
+  const deviceEpoch = toInt(row.device_epoch)
+  if (!renewable(predecessor, deviceEpoch)) throw refused("AuthenticationRequired", predecessor.epoch < deviceEpoch || predecessor.phase.tag === "Ended" ? "CredentialRevoked" : "CredentialUnknown")
+  const again = try renewedAgain(tx, lease.grantKey, deviceEpoch, now)
+  if (again !== undefined) return { kind: "done" as const, value: again }
   const client = try storedAdmission(tx, predecessor)
   const key = newId()
   const credentialId = newId()
   const secret = secretText("eliza_mobile_", 32, "hex")
   const sealed = try seal("device-key", secret)
-  const deviceEpoch = toInt(row.device_epoch)
   const event: Event = { type: "renew", fromKey: lease.grantKey, predecessor, leaseLive: true, credentialTtl: client.registration.credentialTtl, credentialId, deviceEpoch }
   const stepped = stepGrant(tx, key, event, (grant) => ({
     user_id: lease.userId, client_id: toText(row.client_id) ?? "", phase: phaseColumn(grant), code_expires_at: grant.codeExpiresAt,

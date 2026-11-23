@@ -1,4 +1,4 @@
-// spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"; spec/cloud/index.md, "Story: Use a cloud speech session"; spec/cloud/index.md, "Consent and an allowance are required before speech is sent"
+// spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechSession.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"; spec/cloud/index.md, "Story: Use a cloud speech session"; spec/cloud/index.md, "Consent and an allowance are required before speech is sent"
 import { apply, consentLifetime, decodeState, firstSessionDeadline, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { realtimeSpeechAdmits, realtimeSpeechResetsAt, utcDayStart } from "../../gen/cloud__billing__plans.effect.vibe"
 import { relayChannels, relaySampleRate } from "../../gen/cloud__services__speechRelay.effect.vibe"
@@ -386,27 +386,62 @@ export const speechReaper: Sweep = { name: "speech reaper", everyMs: reaperEvery
 
 schema MintRequest { consentNonce: string }
 
+type BootstrapRoute = "speech-consent" | "speech-session"
+type BootstrapPhase = "speech_identity_rate" | "speech_consent_write" | "speech_consent_consume"
+interface PhaseSpan { readonly phase: BootstrapPhase; readonly ms: number; readonly outcome: "returned" | "threw" }
+interface Bootstrap { readonly context: RouteContext; readonly route: BootstrapRoute; readonly spans: Array<PhaseSpan> }
+
+effect function notePhase(bootstrap: Bootstrap, span: PhaseSpan): void!!Deployment {
+  bootstrap.spans.push(span)
+  if ((try Deployment).environment !== "production") return
+  try annotateLogs(logInfo("cloud speech phase timing"), {
+    schema: "cloud_speech_phase_v1", requestId: bootstrap.context.requestId, route: bootstrap.route, phase: span.phase, durationMs: span.ms, outcome: span.outcome
+  })
+}
+
+effect function bootstrapOf(context: RouteContext, route: BootstrapRoute): Bootstrap!!Deployment {
+  const bootstrap: Bootstrap = { context, route, spans: [] }
+  const entered = try Clock.currentTimeMillis
+  try notePhase(bootstrap, { phase: "speech_identity_rate", ms: Math.max(0, entered - context.now), outcome: "returned" })
+  return bootstrap
+}
+
+effect function timedPhase<A, E, R>(bootstrap: Bootstrap, phase: BootstrapPhase, work: A!E!R): A!E!(R | Deployment) {
+  const started = try Clock.currentTimeMillis
+  return try onExit(work, effect (ended) => {
+    const now = try Clock.currentTimeMillis
+    try notePhase(bootstrap, { phase, ms: Math.max(0, now - started), outcome: Exit.isSuccess(ended) ? "returned" : "threw" })
+  })
+}
+
+effect function phaseTimings(bootstrap: Bootstrap): Readonly<Record<string, string>>!!Deployment {
+  if ((try Deployment).environment !== "staging") return {}
+  return { "server-timing": bootstrap.spans.map((span) => `${span.phase};dur=${span.ms}`).join(", ") }
+}
+
 effect function consent(context: RouteContext) {
+  const bootstrap = try bootstrapOf(context, "speech-consent")
   const caller = try signer(context)
   const credential = credentialOf(caller)
   const nonce = newId()
   const expiresAt = Math.min(context.now + consentLifetime, credential.expiresAt)
   const store = try Store
-  try store.transaction((tx) => tx.query(
+  try timedPhase(bootstrap, "speech_consent_write", store.transaction((tx) => tx.query(
     "INSERT INTO speech_consents (nonce, user_id, organization_id, credential_kind, credential_ref, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
     [nonce, caller.userId, caller.organizationId, credential.kind, credential.ref, expiresAt, context.now]
-  ))
-  return json({ consentNonce: nonce, expiresAt: iso(expiresAt) })
+  )))
+  return json({ consentNonce: nonce, expiresAt: iso(expiresAt) }, { headers: try phaseTimings(bootstrap) })
 }
 
 effect function mint(context: RouteContext) {
+  const bootstrap = try bootstrapOf(context, "speech-session")
   const caller = try signer(context)
   const credential = credentialOf(caller)
   const { consentNonce } = try jsonBody(context, MintRequest)
   const store = try Store
   const sessionId = newId()
   const token = secretText("eliza_speech_", 32, "base64url")
-  const minted = try store.transaction(effect (tx: Tx) => {
+  const minted = try timedPhase(bootstrap, "speech_consent_consume", store.transaction(effect (tx: Tx) => {
     try tx.query("SELECT nonce FROM speech_consents WHERE nonce = $1 FOR UPDATE", [consentNonce])
     const now = try Clock.currentTimeMillis
     const consumed = try tx.query(
@@ -428,10 +463,10 @@ effect function mint(context: RouteContext) {
       credential_expires_at: credential.expiresAt,
       created_at: now
     }))
-  })
+  }))
   return json(
     { version: 1, sessionId, token, expiresAt: iso(minted.state.expiresAt), wsUrl: try socketUrl(sessionId) },
-    { headers: { "x-eliza-speech-extend": "1" } }
+    { headers: { "x-eliza-speech-extend": "1", ...(try phaseTimings(bootstrap)) } }
   )
 }
 

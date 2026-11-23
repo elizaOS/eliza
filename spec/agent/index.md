@@ -11,8 +11,9 @@ the launch decoders (`@elizaos/agent/launch`), the route gate
 (`@elizaos/agent/cli`) and the browser-safe device-operation decoders
 (`@elizaos/agent/operations`, also served as `@elizaos/agent/device-actions`). The device-action routes (enrollment, proposal
 review and read completion) are always served and are not a module a load
-list names. Optional modules (approvals, notifications, views, reply draft,
-triggers, scheduled tasks, interactive tasks and the page command channel)
+list names. Optional modules (approvals, notifications, views, the device
+proposal action, reply draft, triggers, scheduled tasks, interactive tasks and
+the page command channel)
 load only when the launch's [plugin plan](./plugins/profile.md) names them.
 
 The package does not own the kernel: identity, model dispatch,

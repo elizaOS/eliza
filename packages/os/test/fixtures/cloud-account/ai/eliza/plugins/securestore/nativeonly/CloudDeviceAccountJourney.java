@@ -1,4 +1,4 @@
-// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device out"; spec/cloud/identity/sessions.md, "Story: Stay signed in"
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device out"; spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/os/signIn/browserReturn.md, "Story: Reconnect a signed-in device for mail and calendar"
 package ai.eliza.plugins.securestore.nativeonly;
 
 import android.content.Context;
@@ -126,7 +126,9 @@ public final class CloudDeviceAccountJourney {
     final List<String> paths = new ArrayList<>();
     int keySeconds;
     long leaseDelayMs;
-    boolean dropNextLease, expireNextAccess, deviceEpochMoved, cookieOrOrigin, refuseRenewal;
+    boolean dropNextLease, expireNextAccess, deviceEpochMoved, cookieOrOrigin, refuseRenewal, refuseNextRenew;
+    boolean offerLease = true, dropNextAcknowledgment;
+    String exchangeAccount = ACCOUNT, exchangeOrganization = ORGANIZATION;
     int reuses;
     LongSupplier clock = System::currentTimeMillis;
 
@@ -135,10 +137,11 @@ public final class CloudDeviceAccountJourney {
       paths.add(method + " " + path);
       switch (path) {
         case "/api/auth/device/exchange" -> {
-          Grant grant = signedIn(now);
-          return Reply.json(200, new JSONObject().put("token", grant.key).put("expiresIn", keySeconds)
-              .put("accountId", ACCOUNT).put("organizationId", ORGANIZATION)
-              .put("lease", new JSONObject().put("refresh", grant.family.refresh).put("refreshExpiresIn", LEASE_SECONDS)));
+          Grant grant = signedIn(now, offerLease);
+          JSONObject response = new JSONObject().put("token", grant.key).put("expiresIn", keySeconds)
+              .put("accountId", exchangeAccount).put("organizationId", exchangeOrganization);
+          if (grant.family != null) response.put("lease", new JSONObject().put("refresh", grant.family.refresh).put("refreshExpiresIn", LEASE_SECONDS));
+          return Reply.json(200, response);
         }
         case "/api/v1/app-auth/mobile/config" -> {
           return Reply.json(200, new JSONObject().put("google", new JSONObject().put("nativeSignIn", true).put("serverClientId", SERVER_CLIENT)
@@ -149,14 +152,18 @@ public final class CloudDeviceAccountJourney {
               .put("expiresAt", now + 60_000).put("serverClientId", SERVER_CLIENT));
         }
         case "/api/v1/app-auth/mobile/google" -> {
-          Grant grant = signedIn(now);
-          return Reply.json(200, new JSONObject().put("status", "signed_in").put("secret", grant.key).put("credentialId", grant.credentialId)
+          Grant grant = signedIn(now, offerLease);
+          JSONObject response = new JSONObject().put("status", "signed_in").put("secret", grant.key).put("credentialId", grant.credentialId)
               .put("user", new JSONObject().put("id", ACCOUNT)).put("organizationId", ORGANIZATION)
-              .put("expiresAt", java.time.Instant.ofEpochMilli(grant.expiresAt).toString())
-              .put("lease", new JSONObject().put("refresh", grant.family.refresh).put("refreshExpiresIn", LEASE_SECONDS)));
+              .put("expiresAt", java.time.Instant.ofEpochMilli(grant.expiresAt).toString());
+          if (grant.family != null) response.put("lease", new JSONObject().put("refresh", grant.family.refresh).put("refreshExpiresIn", LEASE_SECONDS));
+          return Reply.json(200, response);
         }
         case "/api/auth/device/ack" -> {
-          return acknowledge(grant(bearer)) ? new Reply(204, "", null, false) : Reply.refused("credential_unknown");
+          if (!acknowledge(grant(bearer))) return Reply.refused("credential_unknown");
+          boolean drop = dropNextAcknowledgment;
+          dropNextAcknowledgment = false;
+          return new Reply(204, "", null, drop);
         }
         case "/api/v1/app-auth/mobile/ack" -> {
           JSONObject proof = new JSONObject(body);
@@ -193,6 +200,10 @@ public final class CloudDeviceAccountJourney {
             return new Reply(204, "", null, false);
           }
           if (renew && refuseRenewal) return Reply.json(403, new JSONObject().put("error", "client_disabled"));
+          if (renew && refuseNextRenew) {
+            refuseNextRenew = false;
+            return Reply.json(503, new JSONObject().put("error", "service_unavailable"));
+          }
           if (renew) {
             Grant grant = new Grant(secret("eliza_mobile_", 43), now + 7L * 24 * 60 * 60 * 1000, family.grant);
             grants.add(grant);
@@ -251,20 +262,23 @@ public final class CloudDeviceAccountJourney {
       }
     }
 
-    private Grant signedIn(long now) {
+    private Grant signedIn(long now, boolean withLease) {
       Grant grant = new Grant(secret("eliza_mobile_", 43), now + keySeconds * 1000L, null);
-      Family family = new Family();
-      family.refresh = secret("eliza_lease_refresh_", 54);
-      family.refreshExpiresAt = now + LEASE_SECONDS * 1000;
-      family.grant = grant;
-      grant.family = family;
+      if (withLease) {
+        Family family = new Family();
+        family.refresh = secret("eliza_lease_refresh_", 54);
+        family.refreshExpiresAt = now + LEASE_SECONDS * 1000;
+        family.grant = grant;
+        grant.family = family;
+        families.add(family);
+      }
       grants.add(grant);
-      families.add(family);
       return grant;
     }
 
     private boolean acknowledge(Grant grant) {
-      if (grant == null || grant.ended || grant.acknowledged) return false;
+      if (grant == null || grant.ended) return false;
+      if (grant.acknowledged) return true;
       grant.acknowledged = true;
       if (grant.replaces != null) {
         grant.replaces.ended = true;
@@ -311,7 +325,7 @@ public final class CloudDeviceAccountJourney {
       if (reply.location() != null) exchange.getResponseHeaders().set("Location", reply.location());
       byte[] bytes = reply.body().getBytes(StandardCharsets.UTF_8);
       if (reply.status() == 204 || reply.status() == 302) {
-        exchange.sendResponseHeaders(reply.status(), -1);
+        if (!reply.drop()) exchange.sendResponseHeaders(reply.status(), -1);
         return;
       }
       exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -326,9 +340,78 @@ public final class CloudDeviceAccountJourney {
   }
 
   private static boolean signIn(CloudDeviceAccount account) throws Exception {
-    Uri start = account.begin();
+    return finishBrowserSignIn(account, account.begin());
+  }
+
+  private static boolean finishBrowserSignIn(CloudDeviceAccount account, Uri start) throws Exception {
     String state = start.getQueryParameter("device_state");
     return account.exchange(Uri.parse("https://app.example.test/android/auth/callback?code=" + secret("", 43) + "&state=" + state));
+  }
+
+  private static CloudDeviceAccount deviceAccount(File home) {
+    return new CloudDeviceAccount(new Context() {
+      @Override public File getNoBackupFilesDir() { return home; }
+    }, "https://app.example.test", "https://cloud.example.test", "/android/auth/callback");
+  }
+
+  private static void upgradeLegacyAccount(CloudDeviceAccount account, Cloud cloud, File home, boolean googleEnrollment) throws Exception {
+    cloud.keySeconds = 60;
+    cloud.offerLease = false;
+    boolean enrolled = googleEnrollment
+        ? account.finishNativeGoogle(account.prepareNativeGoogle("com.example.consumer", "staging"), "header.payload.signature", null)
+        : signIn(account);
+    if (!enrolled || account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.REQUIRED) {
+      throw new AssertionError("Legacy sign-in did not request a mail lease upgrade");
+    }
+    String original = account.session().token();
+    Uri canceled = account.beginLeaseUpgrade();
+    if (account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.SIGN_IN_PENDING
+        || !canceled.toString().equals(account.beginLeaseUpgrade().toString())) {
+      throw new AssertionError("Repeated presses did not keep the same browser attempt");
+    }
+    account.cancelLeaseUpgrade(canceled);
+    if (finishBrowserSignIn(account, canceled) || !original.equals(account.session().token())) {
+      throw new AssertionError("A canceled upgrade changed the current account");
+    }
+    Uri withoutLease = account.beginLeaseUpgrade();
+    account.cancelLeaseUpgrade(canceled);
+    if (account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.SIGN_IN_PENDING
+        || finishBrowserSignIn(account, withoutLease)) {
+      throw new AssertionError("A stale cancellation or an upgrade without a lease was accepted");
+    }
+    cloud.offerLease = true;
+    cloud.exchangeAccount = ORGANIZATION;
+    if (finishBrowserSignIn(account, account.beginLeaseUpgrade()) || !original.equals(account.session().token())
+        || cloud.latest().grant.acknowledged || account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.REQUIRED) {
+      throw new AssertionError("A different account completed the upgrade");
+    }
+    cloud.exchangeAccount = ACCOUNT;
+    cloud.exchangeOrganization = ACCOUNT;
+    if (finishBrowserSignIn(account, account.beginLeaseUpgrade()) || !original.equals(account.session().token())
+        || cloud.latest().grant.acknowledged) {
+      throw new AssertionError("A different organization completed the upgrade");
+    }
+    cloud.exchangeOrganization = ORGANIZATION;
+    cloud.dropNextAcknowledgment = true;
+    try {
+      finishBrowserSignIn(account, account.beginLeaseUpgrade());
+      throw new AssertionError("The acknowledgment should have been lost");
+    } catch (IOException expected) {
+      if (!original.equals(account.session().token()) || cloud.grant(original).ended
+          || account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.ACKNOWLEDGMENT_PENDING) {
+        throw new AssertionError("The old credential did not survive the lost acknowledgment");
+      }
+    }
+    account = deviceAccount(home);
+    if (!account.finishAcknowledgment() || original.equals(account.session().token())
+        || !ACCOUNT.equals(account.session().accountId()) || !ORGANIZATION.equals(account.session().organizationId())
+        || account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.NOT_REQUIRED || status(account) != 200) {
+      throw new AssertionError("The authorized owner did not finish the upgrade");
+    }
+    account.retryRevocation();
+    if (!cloud.grant(original).ended) throw new AssertionError("The replaced key did not retire");
+    account.clear();
+    account.retryRevocation();
   }
 
   private static int duties(File directory) throws Exception {
@@ -367,9 +450,7 @@ public final class CloudDeviceAccountJourney {
     });
     File home = Files.createTempDirectory("cloud-device-account").toFile();
     File slots = new File(home, "eliza-cloud-device-account");
-    CloudDeviceAccount account = new CloudDeviceAccount(new Context() {
-      @Override public File getNoBackupFilesDir() { return home; }
-    }, "https://app.example.test", "https://cloud.example.test", "/android/auth/callback");
+    CloudDeviceAccount account = deviceAccount(home);
     Map<String, Object> seen = new LinkedHashMap<>();
 
     cloud.keySeconds = 6;
@@ -427,6 +508,8 @@ public final class CloudDeviceAccountJourney {
 
     long wait = signedInAt + 3100 - System.currentTimeMillis();
     if (wait > 0) Thread.sleep(wait);
+    cloud.refuseNextRenew = true;
+    seen.put("renewRefused", new JSONArray().put(account.renewIfDue()).put(account.session().token().equals(firstKey)).put(account.awaitingAcknowledgment()));
     seen.put("renewedAfterHalfLife", account.renewIfDue());
     String secondKey = account.session().token();
     Grant first = cloud.grant(firstKey);
@@ -468,6 +551,8 @@ public final class CloudDeviceAccountJourney {
     seen.put("nativeSignedOut", new JSONArray().put(nativeLast.ended).put(nativeLast.family.ended).put(duties(slots)));
     seen.put("nativeNeverUsedWorkerRoutes", cloud.paths.subList(nativeFrom, cloud.paths.size()).stream().noneMatch((item) -> item.contains(" /api/auth/")));
     seen.put("cookieOrOrigin", cloud.cookieOrOrigin);
+    upgradeLegacyAccount(account, cloud, home, false);
+    upgradeLegacyAccount(account, cloud, home, true);
 
     AtomicLong now = new AtomicLong(System.currentTimeMillis());
     cloud.clock = now::get;

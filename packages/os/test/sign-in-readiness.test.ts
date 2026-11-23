@@ -61,6 +61,10 @@ describe("Show only the methods the cloud is ready for", () => {
     expect([steps.get("resume-without-screen-probes"), steps.get("resume-after-screen-probes")]).toEqual([0, 1]);
     expect(steps.get("browser-unverified")).toEqual(seen({ email: true, sms: true, google: false }));
     expect(steps.get("browser-verified")).toEqual(seen({ email: true, sms: true, google: true }));
+    expect(steps.get("browser-shell-only")).toEqual(seen({ email: true, sms: true, google: false }));
+    expect(steps.get("browser-full")).toEqual(seen({ email: true, sms: true, google: true }));
+    expect(steps.get("browser-change-probes")).toBe(0);
+    expect(steps.get("browser-choice")).toEqual(["browser.default", "browser.other", "null"]);
   });
 });
 

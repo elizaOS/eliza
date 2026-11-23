@@ -2,16 +2,19 @@
 
 The owner's Google grant, held by the cloud. Sources: develop
 `agent-google-connector/shared.ts`, `oauth/{oauth2.ts,token-cache.ts}`,
-`api/v1/oauth/app-oauth-return.ts`. Routes under `/api/v1/eliza/google/`
-(session or the device's mail lease, never the device key, except
-`connect/native`, which also admits the device key): `POST connect/initiate
-{side, capabilities, redirectUrl?}`, `POST connect/native {serverAuthCode}`,
-`GET status`, `GET accounts` (every connection's status), `POST disconnect
-{side, connectionId?}`; Google calls
-`GET /api/v1/oauth/google/callback`. One instance is one connection row; the
-shell seals tokens (purpose `GoogleTokens`), keeps identity, `linkedAt` and
-`lastUsedAt`, and deletes rows left `Pending`. A unique index keeps one
-connection per (organization, Google subject).
+`api/v1/oauth/app-oauth-return.ts`. Routes under `/api/v1/eliza/google/` (a
+session or a device lease, never the device key): `POST connect/initiate
+{side, capabilities, redirectUrl?}`, `GET status`, `GET accounts` (every
+connection's status), `POST disconnect {side, grantId?}` (`connectionId` is
+the same field's older name), `POST confirm {grantId, address}`; `POST connect/native
+{serverAuthCode}` takes the device key. A tablet's sign-in sessions are `POST
+/api/v1/eliza/connections/google/sessions {loginHint?}` and `GET` or `DELETE
+/api/v1/eliza/connections/sessions/{sessionId}`. Google calls `GET
+/api/v1/oauth/google/callback`. One instance is one connection row, and a
+Grace account holds as many as it connects; the shell seals tokens (purpose
+`GoogleTokens`), keeps identity, `linkedAt` and `lastUsedAt`, and deletes rows
+left `Pending`. A unique index keeps one connection per (organization, Google
+subject).
 
 ## Story: Connect my Google account with the access I chose
 
@@ -23,7 +26,9 @@ connection per (organization, Google subject).
 
 `google.basic_identity` is always asked for. Calendar read and write ask for
 `calendar.events`, triage `gmail.readonly`, drafts `gmail.compose`, mailbox
-and manage `gmail.modify`, send `gmail.send`. A granted scope outside this
+and manage `gmail.modify`, send `gmail.send`, purge `https://mail.google.com/`,
+Gmail's full access, which is the only scope that permanently deletes and so
+also holds every other Gmail capability. A granted scope outside this
 list is kept as text in `grantedScopes` and grants nothing. Older stored grants
 keep their recorded scopes and encrypted credential. The service uses an old
 active grant only after the credential opens and matches the stored expiry.
@@ -34,28 +39,30 @@ cannot be verified requires reconnection.
 import types.* from "../../shared/types"
 import oauth as O from "../../../core/oauth"
 import registry as N from "../../nativeClients/registry"
-type GoogleCapability = BasicIdentity | GmailTriage | GmailSend | GmailManage | GmailDrafts | GmailMailbox | CalendarRead | CalendarWrite
-type GoogleScope = ScopeOpenId | ScopeUserinfoEmail | ScopeUserinfoProfile | ScopeCalendarReadonly | ScopeCalendarEvents | ScopeCalendar | ScopeGmailMetadata | ScopeGmailReadonly | ScopeGmailCompose | ScopeGmailModify | ScopeGmailSend
-pure val allCapabilities: List[GoogleCapability] = List(BasicIdentity, GmailTriage, GmailSend, GmailManage, GmailDrafts, GmailMailbox, CalendarRead, CalendarWrite)
-pure val allScopes: List[GoogleScope] = List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile, ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar, ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailCompose, ScopeGmailModify, ScopeGmailSend)
+type GoogleCapability = BasicIdentity | GmailTriage | GmailSend | GmailManage | GmailDrafts | GmailMailbox | GmailPurge | CalendarRead | CalendarWrite
+type GoogleScope = ScopeOpenId | ScopeUserinfoEmail | ScopeUserinfoProfile | ScopeCalendarReadonly | ScopeCalendarEvents | ScopeCalendar | ScopeGmailMetadata | ScopeGmailReadonly | ScopeGmailCompose | ScopeGmailModify | ScopeGmailSend | ScopeGmailFull
+pure val allCapabilities: List[GoogleCapability] = List(BasicIdentity, GmailTriage, GmailSend, GmailManage, GmailDrafts, GmailMailbox, GmailPurge, CalendarRead, CalendarWrite)
+pure val allScopes: List[GoogleScope] = List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile, ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar, ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailCompose, ScopeGmailModify, ScopeGmailSend, ScopeGmailFull)
 pure def scopesFor(k: GoogleCapability): List[GoogleScope] =
   if (k == BasicIdentity) List(ScopeUserinfoEmail, ScopeUserinfoProfile) else if (k == GmailTriage) List(ScopeGmailReadonly) else if (k == GmailSend) List(ScopeGmailSend)
-  else if (k == GmailDrafts) List(ScopeGmailCompose) else if (k == GmailManage or k == GmailMailbox) List(ScopeGmailModify) else List(ScopeCalendarEvents)
+  else if (k == GmailDrafts) List(ScopeGmailCompose) else if (k == GmailManage or k == GmailMailbox) List(ScopeGmailModify) else if (k == GmailPurge) List(ScopeGmailFull) else List(ScopeCalendarEvents)
 pure def requestedScopes(asked: List[GoogleCapability]): List[GoogleScope] = allScopes.select(s => asked.append(BasicIdentity).some(k => scopesFor(k).includes(s)))
 pure def grantsCapability(scopes: List[GoogleScope], k: GoogleCapability): bool = {
   val enough = if (k == BasicIdentity) List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile) else if (k == CalendarRead) List(ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar)
-    else if (k == CalendarWrite) List(ScopeCalendarEvents, ScopeCalendar) else if (k == GmailTriage) List(ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailModify, ScopeGmailCompose)
-    else if (k == GmailDrafts) List(ScopeGmailCompose, ScopeGmailModify) else if (k == GmailSend) List(ScopeGmailSend) else List(ScopeGmailModify)
+    else if (k == CalendarWrite) List(ScopeCalendarEvents, ScopeCalendar) else if (k == GmailTriage) List(ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailModify, ScopeGmailCompose, ScopeGmailFull)
+    else if (k == GmailDrafts) List(ScopeGmailCompose, ScopeGmailModify, ScopeGmailFull) else if (k == GmailSend) List(ScopeGmailSend, ScopeGmailFull)
+    else if (k == GmailPurge) List(ScopeGmailFull) else List(ScopeGmailModify, ScopeGmailFull)
   enough.some(s => scopes.includes(s))
 }
 pure def capabilitiesOf(scopes: List[GoogleScope]): List[GoogleCapability] = allCapabilities.select(k => grantsCapability(scopes, k))
 pure def scopesOf(granted: List[GoogleScope]): List[GoogleScope] = allScopes.select(s => granted.includes(s))
-pure val askedValues = Set(List(), List(GmailTriage), List(GmailSend, CalendarWrite), List(GmailManage, GmailDrafts), List(GmailMailbox, CalendarRead))
-pure val scopesValues = Set(List(), List(ScopeGmailModify), List(ScopeCalendarReadonly, ScopeGmailCompose), List(ScopeCalendar, ScopeGmailMetadata, ScopeGmailSend), List(ScopeOpenId))
+pure val askedValues = Set(List(), List(GmailTriage), List(GmailSend, CalendarWrite), List(GmailManage, GmailDrafts), List(GmailMailbox, CalendarRead), List(GmailPurge))
+pure val scopesValues = Set(List(), List(ScopeGmailModify), List(ScopeCalendarReadonly, ScopeGmailCompose), List(ScopeCalendar, ScopeGmailMetadata, ScopeGmailSend), List(ScopeOpenId), List(ScopeGmailFull))
 pure def lawEveryAskedCapabilityIsGrantedByItsScopes(asked: List[GoogleCapability]): bool = asked.every(k => capabilitiesOf(requestedScopes(asked)).includes(k))
 pure def lawStrongerAccessImpliesWeaker(scopes: List[GoogleScope]): bool = {
   val held = capabilitiesOf(scopes)
   (held.includes(CalendarWrite) implies held.includes(CalendarRead)) and (held.includes(GmailManage) iff held.includes(GmailMailbox)) and (held.includes(GmailMailbox) implies (held.includes(GmailTriage) and held.includes(GmailDrafts)))
+  and (held.includes(GmailPurge) implies (held.includes(GmailManage) and held.includes(GmailSend)))
 }
 ```
 
@@ -94,7 +101,7 @@ verifier is always required and nothing is compensated. A row has no attempt
 fields before its attempt begins.
 
 ```quint
-type ConnectionStatus = Pending | Active | Expired | Revoked | Errored
+type ConnectionStatus = Pending | Unconfirmed | Active | Expired | Revoked | Errored
 type GrantTokens = NoTokens | SealedTokens({ expiresAt: Millis, hasRefreshToken: bool })
 type Exchange = NotExchanged | Exchanged({ subject: str, accessUntil: Millis, refreshable: bool })
 type CallbackKind = NoCallback | CodeCallback | DeniedCallback | IncompleteCallback
@@ -148,7 +155,12 @@ lifetime and whether a refresh token came. A failed exchange supplies no
 subject or access lifetime. When the organization already
 holds that subject (`subjectHeld`), the grant goes to that row by
 `receiveGrant` and this attempt row stays `Pending`; otherwise this row
-becomes the subject's connection. A row's subject, once set, never changes.
+becomes the subject's connection, `Unconfirmed`. The state binds the callback
+to the attempt, not to the browser that finishes it, so whoever completes the
+Google page, by initiate or a sign-in session, binds the account they choose
+to the caller; only the person confirming its address makes it `Active`. A
+grant with no verified address is not kept, since nothing could confirm it.
+A row's subject, once set, never changes.
 
 ```quint
 pure def canProviderResult(c: Connection, success: bool, hasAccount: bool, subject: str, lifetime: Millis): bool = O::canProviderResult(c.flow) and hasAccount and (not(success) or (subject != "" and lifetime > 0))
@@ -159,12 +171,13 @@ pure def accountResult(c: Connection, success: bool, subjectHeld: bool): Connect
   val x = c.exchange
   val flow = O::accountResult(c.flow, success)
   match x {
-    | Exchanged(e) => if (success and not(subjectHeld)) { ...c, flow: flow, status: Active, subject: e.subject, scopes: c.offered, tokens: SealedTokens({ expiresAt: e.accessUntil, hasRefreshToken: e.refreshable }), landedOnHeld: false }
+    | Exchanged(e) => if (success and not(subjectHeld)) { ...c, flow: flow, status: Unconfirmed, subject: e.subject, scopes: c.offered, tokens: SealedTokens({ expiresAt: e.accessUntil, hasRefreshToken: e.refreshable }), landedOnHeld: false }
         else { ...c, flow: flow, landedOnHeld: success }
     | NotExchanged => { ...c, flow: flow }
   }
 }
 pure val hasAccountValues = Set(true)
+pure val fromBrowserValues = Set(true, false)
 pure val subjectValues = Set("", "sub1", "sub2")
 pure val grantedValues = Set(List(ScopeUserinfoEmail, ScopeGmailReadonly), List(ScopeUserinfoEmail, ScopeGmailModify, ScopeCalendarEvents, ScopeGmailSend))
 pure val lifetimeValues = Set(0, 120000, 3600000)
@@ -200,7 +213,7 @@ pure def sometimesDeniedAtGoogle(c: Connection): bool = callbackAnswerOf(c) == R
 pure def sometimesExpiredAttemptShownOnTheCloud(c: Connection): bool = callbackAnswerOf(c) == ShowFailedPage and c.callback == CodeCallback
 ```
 
-### A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active
+### A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active unless its address must first be confirmed
 
 `connect/native` exchanges the device's one-time server auth code (Google
 refuses a used one) for Cloud's configured native server client, with no
@@ -210,15 +223,24 @@ attempt. A native sign-in continuation can provide `expectedGoogleSubject`.
 A different returned subject stores nothing. The answer names the connection
 and its reported scopes, with verified email and display name when available.
 If Google omits a refresh token, a verified refresh token from the same
-active grant can be retained only with the same reported scopes.
+active grant can be retained only with the same reported scopes. A grant for
+an `Unconfirmed` row leaves it `Unconfirmed`, and one a browser callback
+brings to a `Revoked` row makes it `Unconfirmed` (`fromBrowser`): only the
+person confirming its address makes either `Active`, and an `Unconfirmed` row
+leaves that status only by that confirmation or a disconnect. A native code
+needs no confirmation: the device's own Google sign-in produced it.
 
 ```quint
 pure def canReceiveGrant(c: Connection, subject: str, lifetime: Millis): bool =
   subject != "" and lifetime > 0 and ((c.status != Pending and subject == c.subject) or (c.status == Pending and c.flow.phase == O::FlowIdle))
-pure def receiveGrant(c: Connection, subject: str, granted: List[GoogleScope], lifetime: Millis, refreshable: bool): Connection =
-  { ...c, status: Active, subject: subject, scopes: scopesOf(granted), tokens: SealedTokens({ expiresAt: c.now + lifetime, hasRefreshToken: refreshable }), refreshing: false }
-pure def stepOnlyANewGrantRevivesAConnection(before: Connection, via: str, after: Connection): bool =
-  (before.status != Active and after.status == Active) implies (via == "accountResult" or via == "receiveGrant")
+pure def receiveGrant(c: Connection, subject: str, granted: List[GoogleScope], lifetime: Millis, refreshable: bool, fromBrowser: bool): Connection =
+  { ...c, status: if (c.status == Unconfirmed or (fromBrowser and c.status == Revoked)) Unconfirmed else Active, subject: subject, scopes: scopesOf(granted), tokens: SealedTokens({ expiresAt: c.now + lifetime, hasRefreshToken: refreshable }), refreshing: false }
+pure def stepOnlyANewGrantOrAConfirmationActivatesAConnection(before: Connection, via: str, after: Connection): bool =
+  (before.status != Active and after.status == Active) implies ((via == "receiveGrant" and before.status != Unconfirmed) or (via == "confirmAddress" and before.status == Unconfirmed))
+pure def stepAnUnconfirmedConnectionLeavesOnlyByConfirmationOrDisconnect(before: Connection, via: str, after: Connection): bool =
+  (before.status == Unconfirmed and after.status != Unconfirmed) implies ((via == "confirmAddress" and after.status == Active) or (via == "disconnect" and after.status == Revoked))
+pure def stepABrowserCallbackNeverMakesANewConnectionActive(before: Connection, via: str, after: Connection): bool =
+  (via == "accountResult" and before.status == Pending and after.status != Pending) implies after.status == Unconfirmed
 pure def sometimesLinkedNatively(c: Connection): bool = c.status == Active and c.flow.phase == O::FlowIdle
 ```
 
@@ -248,7 +270,7 @@ pure def finishRefresh(c: Connection, answer: RefreshOutcome, lifetime: Millis):
 }
 pure val weight_beginRefresh = 3
 pure val weight_finishRefresh = 3
-pure def alwaysTokensExactlyWhileGranted(c: Connection): bool = hasTokens(c) iff (c.status == Active or c.status == Expired or c.status == Errored)
+pure def alwaysTokensExactlyWhileGranted(c: Connection): bool = hasTokens(c) iff (c.status == Unconfirmed or c.status == Active or c.status == Expired or c.status == Errored)
 pure def holdsRefreshToken(c: Connection): bool = { val t = c.tokens
   match t { | SealedTokens(x) => x.hasRefreshToken | NoTokens => false } }
 pure def alwaysOneRefreshOnlyWhileActive(c: Connection): bool = c.refreshing implies (c.status == Active and holdsRefreshToken(c))
@@ -263,22 +285,23 @@ pure def sometimesRotationLost(c: Connection): bool = c.status == Errored
 > connected, why not if it is not, and exactly what it lets my assistant do,
 > so that I reconnect only when I must.
 
-### A request names a grant or uses the only active connection, never another organization's, and only the owner side
+### A request names a grant or uses the only active connection, never another person's, and only the owner side
 
 A Google route that needs one grant, including disconnect, selects this way
-over the caller's organization's rows, newest first. A named grant outside
-those rows returns `404 not_found`. With no named grant, several active rows
+over the caller's own rows (`owner`: its organization and cloud user),
+newest first; another person's row in the same organization is outside them.
+A named grant outside those rows returns `404 not_found`. With no named grant, several active rows
 return `400 invalid_request` with reason `grant_required`. If no row is
 active, selection uses the newest established grant. A `side` other than
 `owner` returns `400 invalid_request`.
 
 ```quint
 type GrantChoice = AnyGrant | NamedGrant({ grantId: str })
-type GrantView = { grantId: str, organization: str, status: ConnectionStatus }
+type GrantView = { grantId: str, owner: str, status: ConnectionStatus }
 type SelectionFault = SideNotOwner | SeveralActiveGrants | GrantUnknown
 type Selection = SelectedGrant({ grantId: str }) | NoGrantHeld | SelectionRefused({ fault: SelectionFault })
-pure def selectGrant(rows: List[GrantView], organization: str, side: Side, choice: GrantChoice): Selection = {
-  val held = rows.select(r => r.organization == organization and r.status != Pending)
+pure def selectGrant(rows: List[GrantView], owner: str, side: Side, choice: GrantChoice): Selection = {
+  val held = rows.select(r => r.owner == owner and r.status != Pending)
   val active = held.select(r => r.status == Active)
   val newest = held.foldl("", (acc, r) => if (acc == "") r.grantId else acc)
   if (side != OwnerSide) SelectionRefused({ fault: SideNotOwner })
@@ -288,16 +311,17 @@ pure def selectGrant(rows: List[GrantView], organization: str, side: Side, choic
   }
 }
 pure def selectionRefusal(fault: SelectionFault): Refusal = if (fault == SideNotOwner) refuse(InvalidRequest) else if (fault == SeveralActiveGrants) refuseFor(InvalidRequest, GrantRequired) else refuse(NotFound)
-pure val rowsValues: Set[List[GrantView]] = Set(List(), List({ grantId: "g1", organization: "o1", status: Active }), List({ grantId: "g1", organization: "o1", status: Active }, { grantId: "g2", organization: "o1", status: Active }),
-  List({ grantId: "g1", organization: "o1", status: Expired }, { grantId: "g2", organization: "o2", status: Active }), List({ grantId: "g3", organization: "o1", status: Pending }))
-pure val organizationValues = Set("o1", "o2")
+pure val rowsValues: Set[List[GrantView]] = Set(List(), List({ grantId: "g1", owner: "u1", status: Active }), List({ grantId: "g1", owner: "u1", status: Active }, { grantId: "g2", owner: "u1", status: Active }),
+  List({ grantId: "g1", owner: "u1", status: Expired }, { grantId: "g2", owner: "u2", status: Active }), List({ grantId: "g3", owner: "u1", status: Pending }),
+  List({ grantId: "g1", owner: "u1", status: Unconfirmed }, { grantId: "g2", owner: "u1", status: Active }), List({ grantId: "g2", owner: "u2", status: Unconfirmed }))
+pure val ownerValues = Set("u1", "u2")
 pure val choiceValues = Set(AnyGrant, NamedGrant({ grantId: "g1" }), NamedGrant({ grantId: "g2" }), NamedGrant({ grantId: "g3" }))
-pure def lawASelectedGrantIsTheCallersConnection(rows: List[GrantView], organization: str, side: Side, choice: GrantChoice): bool = {
-  val chosen = selectGrant(rows, organization, side, choice)
-  match chosen { | SelectedGrant(g) => rows.some(r => r.grantId == g.grantId and r.organization == organization and r.status != Pending) | _ => true }
+pure def lawASelectedGrantIsTheCallersConnection(rows: List[GrantView], owner: str, side: Side, choice: GrantChoice): bool = {
+  val chosen = selectGrant(rows, owner, side, choice)
+  match chosen { | SelectedGrant(g) => rows.some(r => r.grantId == g.grantId and r.owner == owner and r.status != Pending) | _ => true }
 }
-pure def lawNoGrantIsGuessedAmongSeveral(rows: List[GrantView], organization: str): bool =
-  rows.select(r => r.organization == organization and r.status == Active).length() > 1 implies selectGrant(rows, organization, OwnerSide, AnyGrant) == SelectionRefused({ fault: SeveralActiveGrants })
+pure def lawNoGrantIsGuessedAmongSeveral(rows: List[GrantView], owner: str): bool =
+  rows.select(r => r.owner == owner and r.status == Active).length() > 1 implies selectGrant(rows, owner, OwnerSide, AnyGrant) == SelectionRefused({ fault: SeveralActiveGrants })
 pure def lawASelectionRefusalIsFinal(fault: SelectionFault): bool = wellFormed(selectionRefusal(fault)) and not(retryableOf(selectionRefusal(fault)))
 ```
 
@@ -329,8 +353,9 @@ grantedCapabilities, grantedScopes, expiresAt, hasRefreshToken,
 connectionId, linkedAt, lastUsedAt}` for the selected connection, with
 `grantedCapabilities` = `capabilitiesOf` the scopes. Google off is
 `config_missing` and names nothing; no connection or a revoked one is
-`disconnected`; an active one whose access is lost is `token_missing`; an
-expired or errored one is `needs_reauth`. Status and account listing expose
+`disconnected`; one whose address awaits confirmation is
+`awaiting_confirmation` and names that address; an active one whose access is
+lost is `token_missing`; an expired or errored one is `needs_reauth`. Status and account listing expose
 only established connections held for the caller's cloud user and organization.
 `GET accounts` returns the same status records in a bare array, newest first,
 and an empty array if Google is off. These reads do not refresh the grant or
@@ -338,9 +363,10 @@ change when it was last used. The status route refuses a consent `purpose`
 selector because it reports the managed grant only.
 
 ```quint
-type StatusReason = ReasonConnected | ReasonDisconnected | ReasonConfigMissing | ReasonTokenMissing | ReasonNeedsReauth
+type StatusReason = ReasonConnected | ReasonDisconnected | ReasonConfigMissing | ReasonAwaitingConfirmation | ReasonTokenMissing | ReasonNeedsReauth
 pure def reasonOf(configured: bool, status: ConnectionStatus, access: AccessState): StatusReason =
   if (not(configured)) ReasonConfigMissing
+  else if (status == Unconfirmed) ReasonAwaitingConfirmation
   else if (status == Active and access != AccessLost) ReasonConnected
   else if (status == Active) ReasonTokenMissing
   else if (status == Expired or status == Errored) ReasonNeedsReauth
@@ -361,11 +387,68 @@ pure def lawConnectedExactlyWhenUseCanSucceed(status: ConnectionStatus, access: 
 The shell calls Google's revoke endpoint with the refresh token (else the
 access token) first; a Google failure is logged and does not keep the
 tokens. Disconnecting a connection already revoked answers `{ok: true}` and
-changes nothing; only a new grant for the same subject makes it active again.
+changes nothing; only a new grant for the same subject makes it active again,
+after the person confirms its address when a browser callback brought it.
+Disconnect names one grant and ends only that one; declining an address that
+awaits confirmation is a disconnect of its grant.
 
 ```quint
 pure def canDisconnect(c: Connection): bool = hasTokens(c)
 pure def disconnect(c: Connection): Connection = { ...c, status: Revoked, tokens: NoTokens, scopes: List(), refreshing: false }
 pure def alwaysARevokedConnectionGrantsNothing(c: Connection): bool = c.status == Revoked implies c.scopes == List()
 pure def sometimesRevoked(c: Connection): bool = c.status == Revoked
+```
+
+## Story: Add another Google account from the tablet and confirm it is mine
+
+> As an owner on my Grace tablet, I want to sign in to another Google account
+> on a page the tablet opens, see which address it connected, and have Grace
+> use it only after I confirm that address, so that my accounts work side by
+> side and no one else's account slips in.
+
+### A tablet's sign-in session asks for every mail and calendar capability with no app return, and ends allowed, cancelled or refused
+
+`POST connections/google/sessions` begins a connect attempt for the caller
+and answers `{sessionId, pageUrl, embeddable: false}`, where `pageUrl` is the
+Google page and `loginHint`, when given, is passed to it. The state is bound
+to the attempt, so no cookie is needed. `GET` on the session waits until it
+ends and answers `{status}`: `allowed` with the connected `address`, its
+`grantId` and what it `granted` (`mail`, `calendar`, `contacts`) once the
+grant is stored; `cancelled` when the person declined at Google, the tablet
+withdrew it by `DELETE`, or its ten minutes lapsed; `refused` when the
+connection failed. The first ending is kept. A session belongs to the caller
+who began it; another caller's is `404 not_found`.
+
+```quint
+type SessionOutcome = SessionOpen | SessionAllowed | SessionCancelled | SessionRefused
+pure val sessionCapabilities: List[GoogleCapability] = List(GmailTriage, GmailSend, GmailManage, GmailDrafts, GmailMailbox, CalendarRead, CalendarWrite)
+pure val sessionRequest: ConnectRequest = { side: OwnerSide, capabilities: sessionCapabilities, appReturn: NoAppReturn }
+pure def sessionOutcomeOf(answer: CallbackAnswer, withdrawn: bool, lapsed: bool): SessionOutcome = match answer {
+  | ReturnResult(r) => if (r.result == Connected) SessionAllowed else if (r.result == Denied) SessionCancelled else SessionRefused
+  | ShowFailedPage => if (withdrawn or lapsed) SessionCancelled else SessionRefused
+  | AwaitingResult => if (withdrawn or lapsed) SessionCancelled else SessionOpen
+}
+pure def lawASessionIsAdmittedWheneverGoogleIsConfigured(configured: bool): bool = initiateAdmitted(configured, sessionRequest) iff configured
+pure def alwaysAnAllowedSessionHoldsItsGrant(c: Connection): bool = sessionOutcomeOf(callbackAnswerOf(c), false, false) == SessionAllowed implies (c.status != Pending or c.landedOnHeld)
+pure def sometimesASessionIsAllowed(c: Connection): bool = sessionOutcomeOf(callbackAnswerOf(c), false, false) == SessionAllowed and c.status == Unconfirmed
+```
+
+### A connection a browser sign-in first made is not used until the person confirms its address, and only that address confirms it
+
+`POST confirm {grantId, address}` makes an `Unconfirmed` connection `Active`
+when `address` is the one it connected; another address is `400
+invalid_request`. Confirming an `Active` connection at its own address
+answers `{ok: true}` and changes nothing; any other connection is `409
+google_reauth_required`. Until then every use is refused as for a connection
+that is not active, and `GET accounts` lists it with `connected: false`. This
+holds for initiate as for a sign-in session: an app that initiates shows the
+address `GET accounts` reports and confirms it the same way.
+
+```quint
+pure def canConfirmAddress(c: Connection, sameAddress: bool): bool = c.status == Unconfirmed and sameAddress
+pure def confirmAddress(c: Connection, sameAddress: bool): Connection = { ...c, status: Active }
+pure val sameAddressValues = Set(true, false)
+pure val weight_confirmAddress = 3
+pure def alwaysAnUnconfirmedConnectionIsNeverUsed(c: Connection): bool = c.status == Unconfirmed implies allCapabilities.every(k => not(usable(c, k)))
+pure def lawAnUnconfirmedAddressIsNotConnected(access: AccessState): bool = reasonOf(true, Unconfirmed, access) == ReasonAwaitingConfirmation and not(useAllowed(Unconfirmed, access, true))
 ```

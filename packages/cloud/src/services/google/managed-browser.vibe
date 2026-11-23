@@ -1,5 +1,5 @@
-// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/connection.md, "The callback returns connected only with the grant stored, denied when the owner refused at Google, and failed otherwise, and an unconsumed attempt never returns to the app"
-import { appReturnFit, callbackAnswerOf, initiateAdmitted, initiateRefusal, stateLifetime, type AppReturnFit, type CallbackKind, type Connection, type ConnectRequest, type Event } from "../../../gen/cloud__services__google__connection.effect.vibe"
+// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/connection.md, "The callback returns connected only with the grant stored, denied when the owner refused at Google, and failed otherwise, and an unconsumed attempt never returns to the app"; spec/cloud/services/google/connection.md, "Story: Add another Google account from the tablet and confirm it is mine"; spec/cloud/services/google/connection.md, "A tablet's sign-in session asks for every mail and calendar capability with no app return, and ends allowed, cancelled or refused"
+import { appReturnFit, callbackAnswerOf, initiateAdmitted, initiateRefusal, sessionCapabilities, sessionOutcomeOf, stateLifetime, type AppReturnFit, type CallbackKind, type Connection, type ConnectRequest, type Event, type SessionOutcome } from "../../../gen/cloud__services__google__connection.effect.vibe"
 import { returnsAt, type ReturnUrl } from "../../../gen/cloud__nativeClients__registry.effect.vibe"
 import { Refused, refused } from "../../http/refusal.vibe"
 import { json, jsonBody, owner, type Route, type RouteContext, type Sweep } from "../../http/routes.vibe"
@@ -11,14 +11,19 @@ import { sealTokens } from "../../providers/google.vibe"
 import { s256 } from "../../shared/credential-crypto.vibe"
 import { keyedDigest, newId, sameText, seal, secretText, tokenDigest, unseal } from "../../shared/sealing.vibe"
 import { loadRow, stepRow, type Columns } from "../../store/rows.vibe"
-import { Store, toText, type Tx } from "../../store/connection.vibe"
-import { atTime, capabilityKind, connectionColumns, connectionRows, googleCapabilities, knownScopes, prepareManagedGrant, scopesRequested, sideOf, storeGrant, type ManagedLanding, type Owner } from "./grant-access.vibe"
+import { Store, toInt, toText, type Row, type Tx } from "../../store/connection.vibe"
+import { atTime, capabilityKind, connectionColumns, connectionRows, googleCapabilities, holds, knownScopes, prepareManagedGrant, recordedScopes, scopesRequested, sideOf, storeGrant, type GoogleCapability, type ManagedLanding, type Owner } from "./grant-access.vibe"
 import { redeemManagedCode, unlinked, type GoogleLinkFault } from "./managed-grants.vibe"
 
 const callbackPath = "/api/v1/oauth/google/callback"
 const noStore = { "cache-control": "no-store", "referrer-policy": "no-referrer" }
 const appStatePattern = /^[A-Za-z0-9_-]{43}$/
 const signedStatePattern = /^([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})\.([0-9a-f]{64})$/
+const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const sessionPoll = 1000
+const sessionBody = Schema.Struct({ loginHint: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(320))) })
+const sessionAsks = googleCapabilities.filter((capability) => sessionCapabilities.includes(capabilityKind(capability)))
+const endingName: Readonly<Record<Exclude<SessionOutcome, "SessionOpen">, string>> = { SessionAllowed: "allowed", SessionCancelled: "cancelled", SessionRefused: "refused" }
 const connectBody = Schema.Struct({
   side: Schema.optionalKey(Schema.String),
   capabilities: Schema.Array(Schema.Literals(googleCapabilities)),
@@ -38,6 +43,17 @@ interface Attempt {
   readonly key: string
   readonly owner: Owner
   readonly target: AppReturn
+  readonly session: boolean
+}
+
+interface Opening {
+  readonly caller: Owner
+  readonly side: string | undefined
+  readonly capabilities: ReadonlyArray<GoogleCapability>
+  readonly target: AppReturn
+  readonly sessionId?: string
+  readonly loginHint?: string | undefined
+  readonly at: number
 }
 
 type Consumed =
@@ -94,12 +110,42 @@ effect function callbackUrl() {
   return `${(try Deployment).settings.api}${callbackPath}`
 }
 
-function authorizeUrl(google: GoogleProfile, callback: string, state: string, verifier: string, scopes: ReadonlyArray<string>) {
+function authorizeUrl(google: GoogleProfile, callback: string, state: string, verifier: string, scopes: ReadonlyArray<string>, loginHint: string | undefined) {
   return `${google.accountsUrl}?${new URLSearchParams({
     client_id: google.clientId, redirect_uri: callback, response_type: "code", state,
     code_challenge: s256(verifier), code_challenge_method: "S256", scope: scopes.join(" "),
-    access_type: "offline", include_granted_scopes: "false", prompt: "consent select_account"
+    access_type: "offline", include_granted_scopes: "false", prompt: "consent select_account",
+    ...(loginHint === undefined ? {} : { login_hint: loginHint })
   })}`
+}
+
+effect function openAttempt(opening: Opening) {
+  const { caller, target, at } = opening
+  const google = try googleForConnect()
+  const store = try Store
+  const capabilities = opening.capabilities.map(capabilityKind)
+  const key = newId()
+  const nonce = secretText("", 32, "base64url")
+  const signed = `${key}.${nonce}.${try signature(key, nonce)}`
+  const verifier = secretText("", 48, "base64url")
+  const keptVerifier = try seal("provider-secret", verifier)
+  try store.transaction(effect (tx: Tx) => {
+    const request: ConnectRequest = { side: sideOf(opening.side), capabilities, appReturn: try returnFit(tx, target) }
+    if (!initiateAdmitted(google !== undefined, request)) throw new Refused({ refusal: initiateRefusal(google !== undefined, request) })
+    const opened = try step(tx, key, at, { type: "begin", supported: true, configured: true, request }, { organization_id: caller.organizationId, user_id: caller.userId })
+    try tx.query(
+      "INSERT INTO google_connect_states (state_digest, organization_id, user_id, capabilities, redirect_url, verifier, expires_at, session_id) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)",
+      [tokenDigest(signed), caller.organizationId, caller.userId, JSON.stringify(opening.capabilities), appReturnText(target), keptVerifier, opened.stateExpiresAt, opening.sessionId ?? null]
+    )
+    try step(tx, key, at, { type: "createResult", success: true })
+  })
+  if (google === undefined) throw refused("ProviderUnavailable", "GoogleNotConfigured")
+  const authUrl = authorizeUrl(google, try callbackUrl(), signed, verifier, scopesRequested(capabilities), opening.loginHint)
+  try store.transaction(effect (tx: Tx) => {
+    try step(tx, key, at, { type: "startProviderResult", success: true })
+    try step(tx, key, at, { type: "writeStart", write: "WriteAcknowledged" })
+  })
+  return authUrl
 }
 
 effect function init(context: RouteContext) {
@@ -107,32 +153,80 @@ effect function init(context: RouteContext) {
   if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
   const body = try jsonBody(context, connectBody)
   const target = parseAppReturn(body.redirectUrl)
-  const google = try googleForConnect()
-  const store = try Store
-  const capabilities = body.capabilities.map(capabilityKind)
-  const key = newId()
-  const nonce = secretText("", 32, "base64url")
-  const signed = `${key}.${nonce}.${try signature(key, nonce)}`
-  const verifier = secretText("", 48, "base64url")
-  const keptVerifier = try seal("provider-secret", verifier)
-  const at = context.now
-  try store.transaction(effect (tx: Tx) => {
-    const request: ConnectRequest = { side: sideOf(body.side), capabilities, appReturn: try returnFit(tx, target) }
-    if (!initiateAdmitted(google !== undefined, request)) throw new Refused({ refusal: initiateRefusal(google !== undefined, request) })
-    const opened = try step(tx, key, at, { type: "begin", supported: true, configured: true, request }, { organization_id: caller.organizationId, user_id: caller.userId })
-    try tx.query(
-      "INSERT INTO google_connect_states (state_digest, organization_id, user_id, capabilities, redirect_url, verifier, expires_at) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)",
-      [tokenDigest(signed), caller.organizationId, caller.userId, JSON.stringify(body.capabilities), appReturnText(target), keptVerifier, opened.stateExpiresAt]
-    )
-    try step(tx, key, at, { type: "createResult", success: true })
-  })
-  if (google === undefined) throw refused("ProviderUnavailable", "GoogleNotConfigured")
-  const authUrl = authorizeUrl(google, try callbackUrl(), signed, verifier, scopesRequested(capabilities))
-  try store.transaction(effect (tx: Tx) => {
-    try step(tx, key, at, { type: "startProviderResult", success: true })
-    try step(tx, key, at, { type: "writeStart", write: "WriteAcknowledged" })
-  })
+  const authUrl = try openAttempt({ caller, side: body.side, capabilities: body.capabilities, target, at: context.now })
   return json({ authUrl, ...(target.kind === "app" ? { appReturn: 2 } : {}) })
+}
+
+effect function openSession(context: RouteContext) {
+  const caller = owner(context.caller)
+  if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const { loginHint } = try jsonBody(context, sessionBody)
+  const sessionId = newId()
+  const hint = loginHint?.trim()
+  const pageUrl = try openAttempt({ caller, side: undefined, capabilities: sessionAsks, target: { kind: "none" }, sessionId, loginHint: hint === "" ? undefined : hint, at: context.now })
+  return json({ sessionId, pageUrl, embeddable: false })
+}
+
+effect function sessionRow(tx: Tx, caller: Owner, sessionId: string) {
+  return (try tx.query(
+    `SELECT s.outcome, s.connection_id, s.expires_at, s.consumed_at, c.email, c.granted_scopes
+     FROM google_connect_states s LEFT JOIN google_connections c ON c.key = s.connection_id
+     WHERE s.session_id = $1 AND s.organization_id = $2 AND s.user_id = $3 FOR UPDATE OF s`,
+    [sessionId, caller.organizationId, caller.userId]
+  ))[0]
+}
+
+function sessionAnswer(row: Row) {
+  const status = toText(row.outcome) ?? "refused"
+  if (status !== "allowed") return { status }
+  const scopes = Option.getOrElse(recordedScopes(row.granted_scopes), () => [])
+  const mail = holds(scopes, "google.gmail.triage")
+  return { status, address: toText(row.email) ?? "", grantId: toText(row.connection_id), granted: { mail, calendar: holds(scopes, "google.calendar.read"), contacts: mail } }
+}
+
+effect function sessionCaller(context: RouteContext) {
+  const caller = owner(context.caller)
+  if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const sessionId = context.params.sessionId ?? ""
+  if (!sessionIdPattern.test(sessionId)) throw refused("NotFound")
+  return { caller, sessionId }
+}
+
+effect function lapseSession(tx: Tx, row: Row, sessionId: string, at: number) {
+  const expiry = toInt(row.expires_at)
+  const lapsed = at >= expiry && (row.consumed_at === null || at >= expiry + stateLifetime)
+  if (!lapsed) return row
+  try tx.query("UPDATE google_connect_states SET outcome = 'cancelled', consumed_at = COALESCE(consumed_at, $2), verifier = '' WHERE session_id = $1", [sessionId, at])
+  return { ...row, outcome: "cancelled" }
+}
+
+effect function awaitSession(context: RouteContext) {
+  const { caller, sessionId } = try sessionCaller(context)
+  const store = try Store
+  while (true) {
+    const at = try Clock.currentTimeMillis
+    const row = try store.transaction(effect (tx: Tx) => {
+      const found = try sessionRow(tx, caller, sessionId)
+      return found === undefined || found.outcome !== null ? found : try lapseSession(tx, found, sessionId, at)
+    })
+    if (row === undefined) throw refused("NotFound")
+    if (row.outcome !== null) return json(sessionAnswer(row))
+    try sleep(sessionPoll)
+  }
+}
+
+effect function withdrawSession(context: RouteContext) {
+  const { caller, sessionId } = try sessionCaller(context)
+  const store = try Store
+  const withdrawn = try store.transaction((tx) => tx.query(
+    `UPDATE google_connect_states
+     SET outcome = CASE WHEN consumed_at IS NULL AND outcome IS NULL THEN 'cancelled' ELSE outcome END,
+         verifier = CASE WHEN consumed_at IS NULL THEN '' ELSE verifier END, consumed_at = COALESCE(consumed_at, $4)
+     WHERE session_id = $1 AND organization_id = $2 AND user_id = $3 RETURNING session_id`,
+    [sessionId, caller.organizationId, caller.userId, context.now]
+  ))
+  if (withdrawn.length === 0) throw refused("NotFound")
+  return json({ ok: true })
 }
 
 function googleInput(query: URLSearchParams): BrowserInput {
@@ -155,7 +249,7 @@ effect function finishFailure(tx: Tx, key: string, at: number) {
 
 effect function consume(tx: Tx, key: string, digest: string, query: URLSearchParams, at: number): Consumed!({ readonly _tag: string })!Deployment {
   const row = (try tx.query(
-    `SELECT s.organization_id, s.user_id, s.redirect_url, s.verifier, s.consumed_at
+    `SELECT s.organization_id, s.user_id, s.redirect_url, s.verifier, s.consumed_at, s.session_id
      FROM google_connect_states s JOIN google_connections c ON c.key = $2 AND c.organization_id = s.organization_id AND c.user_id = s.user_id
      WHERE s.state_digest = $1 FOR UPDATE OF s`, [digest, key]
   ))[0]
@@ -166,7 +260,7 @@ effect function consume(tx: Tx, key: string, digest: string, query: URLSearchPar
   const parsed = parseAppReturn(toText(row.redirect_url))
   const fit = try returnFit(tx, parsed)
   const target = fit === "NoAppReturn" || fit === "RegisteredConnectReturn" ? parsed : { kind: "malformed" } as const
-  const attempt: Attempt = { key, owner: identity, target }
+  const attempt: Attempt = { key, owner: identity, target, session: row.session_id !== null }
   const input = target.kind === "malformed" ? { kind: "error", callback: "IncompleteCallback" } as const : googleInput(query)
   const ciphertext = toText(row.verifier) ?? ""
   const verifier = unseal("provider-secret", ciphertext) catch () => undefined
@@ -201,8 +295,9 @@ effect function recordProviderFailure(attempt: Attempt, code: GoogleLinkFault) {
 
 effect function keepConnection(tx: Tx, attempt: Attempt, landing: ManagedLanding) {
   const { grant, subjectHeld } = try prepareManagedGrant(tx, landing, attempt.key)
+  if (grant.email === "") throw refused("GoogleReauthRequired")
   if (subjectHeld) {
-    try storeGrant(tx, grant)
+    try storeGrant(tx, grant, true)
     try step(tx, attempt.key, landing.now, { type: "accountResult", success: true, subjectHeld: true })
   } else {
     const tokens = try sealTokens(grant.tokens)
@@ -258,6 +353,24 @@ effect function resultPage(attempt: Attempt, connection: Connection, connectionI
   return HttpServerResponse.redirect(`${returnText(target.url)}#${new URLSearchParams(fields)}`, { status: 302, headers: noStore })
 }
 
+effect function finished(used: Exclude<Consumed, { readonly kind: "refused" }>) {
+  if (used.kind === "settled") return { connection: used.connection, connectionId: undefined }
+  const redeemed = try exchange(used.attempt, used.code, used.verifier)
+  if (!redeemed.connected) return { connection: try recordProviderFailure(used.attempt, redeemed.code), connectionId: undefined }
+  return try storeConnected(used.attempt, redeemed.landing)
+}
+
+effect function settleSession(digest: string, connection: Connection, connectionId: string | undefined) {
+  const ending = sessionOutcomeOf(callbackAnswerOf(connection), false, false)
+  if (ending === "SessionOpen") return
+  const outcome = ending === "SessionAllowed" && connectionId === undefined ? "refused" : endingName[ending]
+  const store = try Store
+  try store.transaction((tx) => tx.query(
+    "UPDATE google_connect_states SET outcome = $2, connection_id = $3 WHERE state_digest = $1 AND session_id IS NOT NULL AND outcome IS NULL",
+    [digest, outcome, outcome === "allowed" ? connectionId ?? null : null]
+  ))
+}
+
 effect function callback(context: RouteContext) {
   const states = context.query.getAll("state")
   if (states.length !== 1) return failedPage()
@@ -266,10 +379,8 @@ effect function callback(context: RouteContext) {
   const store = try Store
   const used = try store.transaction((tx) => consume(tx, valid.key, valid.digest, context.query, context.now))
   if (used.kind === "refused") return failedPage()
-  if (used.kind === "settled") return try resultPage(used.attempt, used.connection)
-  const redeemed = try exchange(used.attempt, used.code, used.verifier)
-  if (!redeemed.connected) return try resultPage(used.attempt, try recordProviderFailure(used.attempt, redeemed.code))
-  const { connection, connectionId } = try storeConnected(used.attempt, redeemed.landing)
+  const { connection, connectionId } = try finished(used)
+  if (used.attempt.session) try settleSession(valid.digest, connection, connectionId)
   return try resultPage(used.attempt, connection, connectionId)
 }
 
@@ -277,7 +388,7 @@ effect function sweepAttempts() {
   const store = try Store
   const at = try Clock.currentTimeMillis
   store.transaction(effect (tx: Tx) => {
-    try tx.query("DELETE FROM google_connect_states WHERE expires_at <= $1", [at])
+    try tx.query("DELETE FROM google_connect_states WHERE expires_at <= $1 AND (session_id IS NULL OR expires_at <= $1 - $2)", [at, stateLifetime])
     try tx.query("DELETE FROM google_connections WHERE status = 'Pending' AND expires_at > 0 AND expires_at <= $1", [at - stateLifetime])
   }) catch effect (failure) => {
     try annotateLogs(logWarning("Managed Google attempts could not be cleared"), { failure: failure._tag })
@@ -286,6 +397,9 @@ effect function sweepAttempts() {
 
 export const browserConnectRoutes: ReadonlyArray<Route> = [
   { method: "POST", path: "/api/v1/eliza/google/connect/initiate", auth: "MailAccess", maxBodyBytes: 16 * 1024, handler: init },
+  { method: "POST", path: "/api/v1/eliza/connections/google/sessions", auth: "MailAccess", maxBodyBytes: 4 * 1024, handler: openSession },
+  { method: "GET", path: "/api/v1/eliza/connections/sessions/:sessionId", auth: "MailAccess", handler: awaitSession },
+  { method: "DELETE", path: "/api/v1/eliza/connections/sessions/:sessionId", auth: "MailAccess", handler: withdrawSession },
   { method: "GET", path: callbackPath, auth: "Public", handler: callback }
 ]
 

@@ -1,4 +1,4 @@
-// spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/voice/session.md, "Story: Report what of an interrupted reply I heard"; spec/agent/voice/session.md, "Story: Show which phase the voice session is in"; spec/agent/voice/session.md, "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
+// spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/voice/session.md, "A capture that failed to close is kept until it confirms its release, and no capture opens over it"; spec/agent/voice/session.md, "Story: Report what of an interrupted reply I heard"; spec/agent/voice/session.md, "Story: Show which phase the voice session is in"; spec/agent/voice/session.md, "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
 module browser {
   import { Effect } from "effect"
   import {
@@ -45,6 +45,7 @@ module browser {
 
     stop(): void {
       if (this.#send({ type: "stop" })) this.#text = ""
+      else this.#send({ type: "retryRelease" })
     }
 
     onSpeechStart(): void {
@@ -105,7 +106,7 @@ module browser {
       if (this.#capture !== capture) return
       const { capture: phase } = this.state
       if (phase !== "CaptureOpening" && phase !== "CaptureClosing") return
-      this.#capture = undefined
+      if (phase === "CaptureOpening") this.#capture = undefined
       this.#text = ""
       this.#send({ type: "captureFailed" })
     }

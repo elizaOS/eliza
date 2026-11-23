@@ -12,7 +12,7 @@ import { routes as federatedRoutes } from "../../src/identity/federated.vibe";
 import { routes as factorRoutes } from "../../src/identity/second-factor.vibe";
 import { activateLease, endLease, issueSession, offerLease } from "../../src/identity/sessions.vibe";
 import { acknowledgeGrant, exchangeGrant, openGrant, renewGrant, retireGrant, routes } from "../../src/native-clients/device-keys.vibe";
-import { endGrantForLeaseTheft, observeGrant, phaseColumn, supersedeGrant } from "../../src/native-clients/grants.vibe";
+import { cancelLegacySuccessor, endGrantForLeaseTheft, observeGrant, phaseColumn, supersedeGrant } from "../../src/native-clients/grants.vibe";
 import { signInDevice } from "../../src/native-clients/mobile-google.vibe";
 import { decodeRegistration, readClient, registerClient, updateClient } from "../../src/native-clients/registry.vibe";
 import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe";
@@ -41,7 +41,7 @@ interface Device {
   readonly binding?: ClientBinding;
   readonly code?: string;
   readonly minted?: { readonly credentialId: string; readonly secret: string; readonly logicalId: string };
-  readonly renewedFrom?: { readonly grantKey: string; readonly logicalKey: string };
+  readonly renewedFrom?: { readonly grantKey: string; readonly logicalKey: string; readonly refresh: string };
 }
 
 const time = manualClock();
@@ -271,7 +271,7 @@ async function renew(key: string, event: Extract<Event, { type: "renew" }>) {
   if (!answer.accepted || answer.value.kind !== "done") return "refused" as const;
   const renewed = (await run(within((tx) => tx.query("SELECT key FROM device_grants WHERE renewed_from = $1", [predecessorKey]))))[0]?.key;
   if (typeof renewed !== "string") throw new Error("the renewal answered without a renewed grant");
-  devices.set(key, { ...held, grantKey: renewed, binding, renewedFrom: { grantKey: predecessorKey, logicalKey: event.fromKey }, minted: { credentialId: answer.value.value.credentialId, secret: answer.value.value.secret, logicalId: event.credentialId } });
+  devices.set(key, { ...held, grantKey: renewed, binding, renewedFrom: { grantKey: predecessorKey, logicalKey: event.fromKey, refresh }, minted: { credentialId: answer.value.value.credentialId, secret: answer.value.value.secret, logicalId: event.credentialId } });
   outputs.set(key, ["MintSealedKey"]);
   return "accepted" as const;
 }
@@ -285,6 +285,18 @@ async function leased(held: Device, live: boolean) {
     yield* offerLease(tx, { userId: held.person.userId, grantKey: held.grantKey, now });
     yield* activateLease(tx, held.grantKey, now);
   })));
+}
+
+async function renewAgain(key: string, event: Extract<Event, { type: "renewAgain" }>) {
+  const held = await device(key);
+  if (held.renewedFrom === undefined || held.minted === undefined || held.renewedFrom.logicalKey !== event.fromKey) return "refused" as const;
+  const refresh = held.renewedFrom.refresh;
+  await epoch(held.person, event.deviceEpoch);
+  const answer = await attempt(within((tx) => renewGrant(tx, refresh)));
+  if (!answer.accepted || answer.value.kind !== "done") return "refused" as const;
+  if (answer.value.value.credentialId !== held.minted.credentialId || answer.value.value.secret !== held.minted.secret) return "refused" as const;
+  outputs.set(key, ["AnswerFromSealedCopy"]);
+  return "accepted" as const;
 }
 
 async function endedByLease(key: string, ending: "supersede" | "endForLeaseTheft") {
@@ -324,6 +336,17 @@ async function dispatch(key: string, event: Event) {
     case "token": return token(key, event);
     case "ack": return ack(key, event);
     case "renew": return renew(key, event);
+    case "cancelLegacySuccessor": {
+      const held = await device(key);
+      const answer = await attempt(within((tx) => Effect.gen(function* () {
+        yield* tx.query("UPDATE device_grants SET sign_in_at = $2 WHERE key = $1", [held.grantKey, event.legacy ? now : null]);
+        return yield* cancelLegacySuccessor(tx, held.grantKey);
+      })));
+      if (!answer.accepted) return "refused" as const;
+      outputs.set(key, answer.value.out.out);
+      return "accepted" as const;
+    }
+    case "renewAgain": return renewAgain(key, event);
     case "supersede": case "endForLeaseTheft": return endedByLease(key, event.type);
     case "selfRevoke": {
       const held = await device(key);

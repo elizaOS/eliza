@@ -1,9 +1,9 @@
-// spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"; spec/cloud/services/google/connection.md, "Story: Disconnect it"; spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"
+// spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"; spec/cloud/services/google/connection.md, "Story: Disconnect it"; spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/connection.md, "A connection a browser sign-in first made is not used until the person confirms its address, and only that address confirms it"
 import { refuse, refuseFor, statusOf, type Refusal } from "../../../gen/cloud__shared__types.effect.vibe"
 import { json, jsonBody, owner, type Area, type RouteContext } from "../routes.vibe"
 import { refusalBody, refused } from "../refusal.vibe"
 import { signed } from "../request-auth.vibe"
-import { disconnectGrant, readGrantAccounts, readGrantStatus } from "../../services/google/grant-access.vibe"
+import { confirmGrant, disconnectGrant, readGrantAccounts, readGrantStatus } from "../../services/google/grant-access.vibe"
 import { GoogleSubject, linkAuthorizedGoogle, ServerAuthCode, type GoogleLinkFault } from "../../services/google/managed-grants.vibe"
 import { browserConnectRoutes, browserConnectSweep } from "../../services/google/managed-browser.vibe"
 import { mailReadRoutes } from "../../services/google/mail-read.vibe"
@@ -41,6 +41,16 @@ effect function disconnect(context: RouteContext) {
   return json({ ok: true })
 }
 
+const confirmBody = Schema.Struct({ grantId: grantName, address: Schema.String.check(Schema.isMinLength(3), Schema.isMaxLength(320)) })
+
+effect function confirm(context: RouteContext) {
+  const caller = owner(context.caller)
+  if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const body = try jsonBody(context, confirmBody)
+  try confirmGrant(caller, body.grantId, body.address)
+  return json({ ok: true })
+}
+
 const nativeBody = Schema.Struct({ serverAuthCode: ServerAuthCode, expectedGoogleSubject: Schema.optionalKey(GoogleSubject) })
 
 const nativeFaults = {
@@ -69,6 +79,7 @@ export const area: Area = {
     { method: "GET", path: `${googlePath}/status`, auth: "MailAccess", handler: status },
     { method: "GET", path: `${googlePath}/accounts`, auth: "MailAccess", handler: accounts },
     { method: "POST", path: `${googlePath}/disconnect`, auth: "MailAccess", handler: disconnect },
+    { method: "POST", path: `${googlePath}/confirm`, auth: "MailAccess", maxBodyBytes: 4 * 1024, handler: confirm },
     { method: "POST", path: `${googlePath}/connect/native`, auth: "ServiceAccess", maxBodyBytes: 16 * 1024, handler: connectNative },
     ...browserConnectRoutes,
     ...mailReadRoutes,

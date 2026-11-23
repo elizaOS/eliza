@@ -1,5 +1,5 @@
 // spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or end my other sessions"; spec/cloud/identity/sessions.md, "Story: Confirm it is me before a sensitive change"; spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"
-import { type NotAState, type Rejected, apply, canActivateLease, canLogout, canMoveLease, canRecordStepUp, canRefresh, canRevokeOthers, canUseOffered, decodeState, elapse, initial, offeredAccessEnd, offeredGeneration, refreshPerIp, refreshRefusal, revokeAll, sessionRefusal, type Assurance, type Event, type Family, type FamilyStep, type Moment, type SessionEffect } from "../../gen/cloud__identity__sessions.effect.vibe"
+import { type NotAState, type Rejected, apply, canActivateLease, canLogout, canMoveLease, canRecordStepUp, canRefresh, canRevokeOthers, decodeState, elapse, initial, offeredAccessEnd, offeredGeneration, refreshPerIp, refreshRefusal, revokeAll, sessionRefusal, type Assurance, type Event, type Family, type FamilyStep, type LeaseSecret, type Moment, type SessionEffect } from "../../gen/cloud__identity__sessions.effect.vibe"
 import { refused, type Refused, type RefusalReason } from "../http/refusal.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { endBoundKey, endGrantForLeaseTheft, type KeyFailure } from "../native-clients/grants.vibe"
@@ -176,17 +176,39 @@ export effect function revokeAllSessions(tx: Tx, userId: string, now: number): v
   try moveEpochs(tx, userId, [revokeAll(epoch)], now)
 }
 
+effect function lockedRefresh(tx: Tx, digest: string, kind: "browser" | "device_lease", now: number) {
+  const account = (try tx.query(`
+    SELECT a.key, a.sessions_revoked_before FROM accounts a WHERE a.key = (
+      SELECT s.user_id FROM sessions s WHERE s.kind = $2 AND (s.refresh_digest = $1 OR s.offered_refresh_digest = $1)
+      UNION ALL
+      SELECT s.user_id FROM cloud_spent_refresh r JOIN sessions s ON s.key = r.session_key WHERE r.digest = $1 AND s.kind = $2
+      LIMIT 1
+    ) FOR UPDATE OF a
+  `, [digest, kind]))[0]
+  const userId = toText(account?.key)
+  if (account === undefined || userId === undefined) return undefined
+  const found = (try tx.query(`
+    SELECT s.key, s.access_digest, CASE WHEN s.refresh_digest = $1 THEN 0 ELSE 1 END AS slot, NULL::integer AS generation
+    FROM sessions s WHERE s.kind = $2 AND s.user_id = $3 AND (s.refresh_digest = $1 OR s.offered_refresh_digest = $1)
+    UNION ALL
+    SELECT s.key, r.access_digest, 2, r.generation FROM cloud_spent_refresh r JOIN sessions s ON s.key = r.session_key
+    WHERE r.digest = $1 AND s.kind = $2 AND s.user_id = $3
+  `, [digest, kind, userId]))[0]
+  const key = toText(found?.key)
+  if (found === undefined || key === undefined) return undefined
+  const loaded = try loadRow(tx, familyRows, key)
+  if (!loaded.found) return undefined
+  const family = advanced(loaded.state, now)
+  const slot = toInt(found.slot)
+  const presented = slot === 0 ? family.generation : slot === 1 ? offeredGeneration(family) : toInt(found.generation)
+  return { key, userId, family, epoch: toInt(account.sessions_revoked_before), presented, accessDigest: toText(found.access_digest) ?? "" }
+}
+
 effect function refreshFamily(tx: Tx, token: string, now: number): Refreshed!SessionFailure {
   const presentedDigest = tokenDigest(token)
-  const found = (try tx.query(
-    "SELECT key, access_digest, NULL::integer AS generation FROM sessions WHERE refresh_digest = $1 UNION ALL SELECT session_key, access_digest, generation FROM cloud_spent_refresh WHERE digest = $1",
-    [presentedDigest]
-  ))[0]
+  const found = try lockedRefresh(tx, presentedDigest, "browser", now)
   if (found === undefined) return { kind: "refused", reason: "CredentialUnknown" }
-  const key = toText(found.key) ?? ""
-  const { family, epoch, userId } = try liveFamily(tx, key, now)
-  const current = found.generation === null
-  const presented = current ? family.generation : toInt(found.generation)
+  const { key, family, epoch, userId, presented, accessDigest } = found
   if (!canRefresh(family, presented, epoch)) {
     const reason = refreshRefusal(presented, family, epoch)
     return { kind: "refused", reason: reason === "NoReason" ? "CredentialRevoked" : reason }
@@ -197,7 +219,7 @@ effect function refreshFamily(tx: Tx, token: string, now: number): Refreshed!Ses
     try moveEpochs(tx, userId, out, now)
     return { kind: "refused", reason: "CredentialRevoked" }
   }
-  try tx.query("INSERT INTO cloud_spent_refresh (digest, access_digest, session_key, generation) VALUES ($1, $2, $3, $4)", [presentedDigest, toText(found.access_digest) ?? "", key, family.generation])
+  try tx.query("INSERT INTO cloud_spent_refresh (digest, access_digest, session_key, generation) VALUES ($1, $2, $3, $4)", [presentedDigest, accessDigest, key, family.generation])
   return {
     kind: "rotated",
     answer: { accessToken, accessExpiresAt: state.accessExpiresAt, refreshToken, refreshExpiresAt: state.refreshExpiresAt, stepUpAt: at(state.stepUpAt), mfaAt: at(state.mfaAt) }
@@ -326,17 +348,10 @@ effect function commitOffered(tx: Tx, key: string, generation: number): void!Sto
 
 export effect function presentedLease(tx: Tx, refresh: string, now: number): (PresentedLease | undefined)!(StoreFailure | RowCorrupt | Refused) {
   if (!leaseRefreshPattern.test(refresh)) return undefined
-  const digest = tokenDigest(refresh)
-  const found = (try tx.query(
-    "SELECT key, 0 AS slot, NULL::integer AS generation FROM sessions WHERE kind = 'device_lease' AND refresh_digest = $1 UNION ALL SELECT key, 1, NULL FROM sessions WHERE offered_refresh_digest = $1 UNION ALL SELECT session_key, 2, generation FROM cloud_spent_refresh WHERE digest = $1",
-    [digest]
-  ))[0]
-  if (found === undefined) return undefined
-  const { family, epoch, userId } = try liveFamily(tx, toText(found.key) ?? "", now)
-  if (family.kind.tag !== "DeviceLease") return undefined
-  const slot = toInt(found.slot)
-  const presented = slot === 0 ? family.generation : slot === 1 ? offeredGeneration(family) : toInt(found.generation)
-  return { key: toText(found.key) ?? "", userId, grantKey: family.kind.grantKey, family, epoch, presented }
+  const found = try lockedRefresh(tx, tokenDigest(refresh), "device_lease", now)
+  if (found === undefined || found.family.kind.tag !== "DeviceLease") return undefined
+  const { key, family, epoch, userId, presented } = found
+  return { key, userId, grantKey: found.family.kind.grantKey, family, epoch, presented }
 }
 
 effect function endStolenLease(tx: Tx, lease: PresentedLease, out: ReadonlyArray<SessionEffect>): void!(StoreFailure | RowCorrupt | RowConflict) {
@@ -385,13 +400,13 @@ export effect function admitLeaseRefresh(tx: Tx, refresh: string, now: number): 
   const lease = unspent.value
   const reason = refreshRefusal(lease.presented, lease.family, lease.epoch)
   if (reason !== "NoReason") return refusedLease(reason)
-  if (lease.presented !== lease.family.generation && canUseOffered(lease.family, lease.epoch)) try useOfferedAccess(tx, lease.key, lease.family.generation, lease.epoch, now)
+  if (lease.presented !== lease.family.generation) try useOfferedPair(tx, lease.key, lease.family.generation, lease.epoch, "OfferedRefresh", now)
   return { kind: "done", value: lease }
 }
 
-export effect function useOfferedAccess(tx: Tx, key: string, generation: number, epoch: number, now: number): void!(StoreFailure | RowCorrupt | RowConflict | Rejected) {
+export effect function useOfferedPair(tx: Tx, key: string, generation: number, epoch: number, secret: LeaseSecret, now: number): void!(StoreFailure | RowCorrupt | RowConflict | Rejected) {
+  try stepFamily(tx, key, { type: "useOffered", personEpoch: epoch, secret }, now)
   try commitOffered(tx, key, generation)
-  try stepFamily(tx, key, { type: "useOffered", personEpoch: epoch }, now)
 }
 
 effect function signOutLease(tx: Tx, refresh: string, now: number): LeaseAnswer<string>!(SessionFailure | KeyFailure) {

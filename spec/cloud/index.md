@@ -162,14 +162,15 @@ pure def cloudDeviceAllows(deviceEndsAt: int, nowAt: int, acknowledged: bool, in
 
 Mailbox and calendar access requires a separate consent prompt where the
 person approves each requested capability. A deployment can use its sign-in OAuth
-client for this separate exchange. The exchange requests only the selected scopes and identity needed to link the right account. The verified Google subject
-must match a Google sign-in account. For email or SMS sign-in the verified
-Google email must match the email chosen for the connection.
+client for this separate exchange. The exchange requests only the selected scopes and identity needed to link the right account. The person may connect
+any Google account, and several, whatever address they signed in with; one
+that a browser sign-in first connected is used only after the person confirms
+its address ([connection](services/google/connection.md)).
 
 ```quint
 type CloudGoogleReadScope = GoogleReadMail | GoogleReadCalendar
-pure def canConnectCloudGoogle(explicitConsent: bool, providerApproved: bool, identityMatches: bool, selected: Set[CloudGoogleReadScope]): bool =
-  explicitConsent and providerApproved and identityMatches and selected.size() > 0
+pure def canConnectCloudGoogle(explicitConsent: bool, providerApproved: bool, selected: Set[CloudGoogleReadScope]): bool =
+  explicitConsent and providerApproved and selected.size() > 0
 ```
 
 ### An approved connection grants the owner only the selected reads

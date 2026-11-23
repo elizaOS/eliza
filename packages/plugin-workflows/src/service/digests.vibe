@@ -37,7 +37,7 @@ effect function nativeSelection(value: unknown): HostedNativeSelection!WorkflowR
   }
 }
 
-function digestSources(service: Pick<WorkflowService, "host" | "store" | "owner" | "lock" | "now" | "db">) {
+function digestSources(service: WorkflowService) {
   const { host, store, owner, lock, now, db } = service
 
   effect function sourceOf(id: string): DigestSourceRecord!WorkflowRefused {
@@ -117,6 +117,7 @@ function digestSources(service: Pick<WorkflowService, "host" | "store" | "owner"
 
 export function hostedDigests(service: WorkflowService) {
   const { host, store, owner, lock, now, db } = service
+
   const { sourceOf, sources, saveSource, revokeSource } = digestSources(service)
 
   effect function digestDefinitions(): { readonly row: DefinitionRow; readonly spec: DigestSpec }[]!WorkflowRefused {
