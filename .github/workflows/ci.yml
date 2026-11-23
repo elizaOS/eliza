@@ -418,6 +418,7 @@ jobs:
         with:
           name: simulations-${{ matrix.shard }}
           path: ${{ steps.precompute.outputs.directory }}
+          compression-level: 0
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 1
