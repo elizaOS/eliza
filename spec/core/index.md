@@ -32,6 +32,56 @@ on retained failure behavior.
 | Configuration and diagnostics | [Settings](./settings.md), [key management](./settingsKeys.md), [process environment](./environment.md), [diagnostics](./diagnostics.md), [integration telemetry](./integrationTelemetry.md), [logging](./logging/index.md), [traces](./traces.md), [trajectories](./trajectories.md) |
 | Public surface | [Package exports](./packageExports.md), [consumer contracts](./consumerContracts.md), [npm release](./release.md), [protocol values](./protocols.md), [device bridge](./deviceBridge.md), [views](./views.md), [view navigation](./viewNavigation.md), [media](./media.md), [speech](./voice.md), [voice registry](./voiceRegistry.md) |
 
+## Legacy model ownership
+
+The [legacy transition inventory](./baseline/legacy-transition-map.json)
+keeps the original target paths. These are the current owners for the three
+targets that were consolidated.
+
+- **`ChannelTopicRetirement` (`topicRooms.md`).** The per-room model checks
+  `RoomOrder` with `alwaysOnlyHeadIsActive`. The service model admits only
+  current-generation calls before stop (`NoLateOriginalAdmission`).
+  `advanceRoom` updates only the selected room (`RoomIsolation`).
+  `canFinishStop`, `alwaysRetiredServiceJoined`, and
+  `alwaysStoppedCachesCleared` cover `RetirementJoinsOriginal` and
+  `RetirementClearsLocal`. The service also owns `roomAt`, `roomIds`,
+  `topicsForRoom`, and `topicsForAllRooms`. Queue counts derive from each
+  room's queue. `Rooms`, `Calls`, and `OldCalls` are finite fixture sets.
+  `leadsToServiceJoined` and `leadsToRoomCallsSettle`
+  cover `StopSettles`, `FairStopSettles`, and `FairAcceptedCallsSettle` under
+  weak fairness for room rotation and stop completion. The adapter supplies
+  room-specific snapshots, normalization, and storage and promise outcomes.
+  [Room queue rules](./channelTopics.md#retirement-rejects-new-work-and-joins-admitted-operations-before-clearing-local-state) · [Stop and progress rules](./topicService.md#stop-blocks-every-new-room-admission-and-joins-the-complete-room-snapshot) · [Cache reads](./topicService.md#room-reads-return-the-local-cache-empty-without-a-cache-entry-and-the-all-room-snapshot-follows-cache-insertion-order)
+- **`EmbeddingWriteSettlement` (`embeddingBatch.md`).** The phase and receipt
+  types and `alwaysAttemptsRespectPolicy` cover `TypeOK` with the configured
+  retry limit. The write invariants `alwaysReceiptMatchesExactSource`,
+  `alwaysReceiptClosesRetries`, and `alwaysOnlyStoredNotifies` cover
+  `ExactSourceReceipt`, `ReceiptClosesRetry`, and `OnlyStoredNotifies`.
+  `Items` is the legacy one- or two-item fixture set. `canStartFallback`
+  requires the primary batch to settle first, and `canFinishBatchWork`
+  requires each ticket to settle. `leadsToAttemptSettles` covers the
+  per-write part of `Settled`, `Fairness`, `FairItemsSettle`, and `ItemsSettle`
+  under weak fairness for the modeled write transitions. Progress for each
+  ticket across the queue, processor, and storage owners remains a refinement
+  obligation. The adapter compares the exact source and reports storage
+  outcomes. Storage repair and durable deduplication remain adapter obligations.
+  [Write receipt and progress rules](./embeddingWrite.md#a-confirmed-storage-receipt-closes-retry-ownership) · [Batch and fallback rules](./batchQueue.md#a-batched-call-settles-successful-items-before-retrying-failures) · [Pending source keys](./embeddingService.md#a-request-waits-for-the-activation-it-captured-and-queues-each-exact-source-once)
+- **`TurnCancellation` (`turnEventStack.md`).** The dispatch model inherits
+  the root abort only in the same turn (`RootSignalInherited`). Each turn
+  can also have its own signal.
+  `stepNoRetryAfterCancellation` and the invocation guard cover
+  `NoFallbackAfterAbort`. A configured dispatch can cancel before admission
+  (`CancelBeforeStart`). `leadsToCancelledDispatch` covers `CancelSettles`
+  under weak fairness. `alwaysDispatchDeadlockFree` covers `DeadlockFree`.
+  The dispatch phase type and `alwaysRegistrationAttemptedOnce` replace the
+  phase and attempt checks in `TypeOK`. Its two-attempt limit belongs to the
+  legacy fixture. The turn registry owns the native room scan, captured
+  room arrays, and nested listener frames. Async context owns continuation
+  restoration. Native callback behavior and recognition of wrapped provider
+  errors remain adapter conformance boundaries. Composition across these
+  owners remains a refinement obligation.
+  [Dispatch cancellation and progress](./models.md#cancellation-follows-turn-identity-and-blocks-fallback) · [Room signal scan](./turnControllers.md#a-room-notice-follows-the-last-native-signal-callback) · [Nested events](./turnControllers.md#each-event-visits-the-live-listeners-in-order-and-finishes-nested-events-before-resuming) · [Continuation scope](./asyncContext.md#scope-restoration-and-peer-isolation-are-exact-for-every-context-value)
+
 ## Story: Compose a kernel through explicit services
 
 > As a host author, I want an agent kernel whose dependencies and failures
