@@ -43,8 +43,21 @@ module node {
     const out = execFileSync(java, ["-cp", compileAdapter(MAIN), MAIN], { input: asks.map((ask) => JSON.stringify(ask)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
     return out.trim().split("\n").map((line) => JSON.parse(line) as Answer)
   }
+
+  export interface LifecycleStep {
+    readonly outcome: "accepted" | "refused"
+    readonly state: { readonly phase: Readonly<Record<string, string>>; readonly epoch: number; readonly attempt: number }
+    readonly out: readonly Readonly<Record<string, string | number>>[]
+  }
+
+  /** @throws {Error} */
+  export function lifecycle(events: readonly object[]): LifecycleStep[] {
+    const main = "ai.eliza.os.agent.LifecycleAdapter"
+    const out = execFileSync(java, ["-cp", compileAdapter(main), main], { input: events.map((event) => JSON.stringify({ event })).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
+    return out.trim().split("\n").map((line) => JSON.parse(line) as LifecycleStep)
+  }
 }
-import { project, type Answer, type Ask } from node
+import { lifecycle, project, type Answer, type Ask } from node
 
 type Files = Readonly<Record<AgentFile, string>>
 
@@ -207,3 +220,19 @@ it.effect('The build reads the three agent data files from their asset names and
     assert.strictEqual(missing, "The agent policy file is missing")
   }
 })
+
+it.effect('A launch that never answers ready, or exits before it does, is restarted after a growing pause, and a configuration exit still fails it (spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does is restarted after the health delay")', effect () => {
+  const spawn = [{ type: "reapStale" }, { type: "launchHook", refused: false }, { type: "spawn" }]
+  const steps = try Effect.try(() => lifecycle([
+    { type: "credentialArrived", version: 1 }, { type: "start" }, ...spawn,
+    { type: "timeout" }, { type: "observeExit", code: 137 }, ...spawn,
+    { type: "observeExit", code: 70 }, ...spawn,
+    { type: "observeExit", code: 78 },
+  ]))
+  assert.deepStrictEqual([5, 6, 10, 14].map((at) => [steps[at]?.outcome, steps[at]?.state.phase, steps[at]?.state.epoch, steps[at]?.state.attempt, steps[at]?.out]), [
+    ["accepted", { tag: "Stopping" }, 1, 0, [{ tag: "Kill", epoch: 1 }]],
+    ["accepted", { tag: "Starting", stage: "Checking" }, 2, 1, [{ tag: "Check", epoch: 2, account: "account-a", delayMs: 1000 }]],
+    ["accepted", { tag: "Starting", stage: "Checking" }, 3, 2, [{ tag: "Check", epoch: 3, account: "account-a", delayMs: 2000 }]],
+    ["accepted", { tag: "Failed", cause: "Config" }, 3, 2, []],
+  ])
+}, 120_000)
