@@ -469,19 +469,16 @@ effect function searchDocumentFragments(
   }))
 }
 
-effect function searchMemoryFragments(runtime: IAgentRuntime, query: string) {
+effect function searchMemoryFragments(runtime: IAgentRuntime, roomIds: readonly UUID[] | undefined, query: string) {
   const params: TextEmbeddingParams = { text: query }
   const embedding = try foreign(() => runtime.useModel(ModelType.TEXT_EMBEDDING, params))
-  const memories = try readStableCompletePages(
-    "memories",
-    ({ limit, offset }) =>
-      runtime.searchMemories({
-        embedding,
-        tableName: "messages",
-        count: limit,
-        offset,
-      }),
-    (memory) => memory,
+  const memories = try foreign(() =>
+    runtime.searchMemories({
+      embedding,
+      tableName: "messages",
+      count: COMPLETE_SOURCE_PAGE_SIZE,
+      ...(roomIds?.length === 1 ? { roomId: roomIds[0] } : {}),
+    })
   )
   return memories
     .filter((memory) => typeof memory.content.text === "string")
@@ -539,7 +536,7 @@ export function sourcesFromRuntime(
   }
 
   if (runtime.getModel(ModelType.TEXT_EMBEDDING)) {
-    sources.searchMemories = (query) => runDetached(searchMemoryFragments(runtime, query))
+    sources.searchMemories = (query) => runDetached(searchMemoryFragments(runtime, options.roomIds, query))
   }
 
   const roomIds = options.roomIds
