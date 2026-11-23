@@ -1,7 +1,7 @@
 // spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "My whole-message open command opens the address without waiting on the model's choice"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"
 import type { ActionParameterSchema } from "@elizaos/core"
 import { decodeBrowserPage } from "@elizaos/agent/client"
-import type { CheckedOperation, DeviceOperation, DeviceProposalFamily, DeviceTurn, Grounding, ProposalForm, ProposalText } from "@elizaos/agent/device-actions"
+import type { CheckedOperation, DeviceOperation, DeviceProposalFamily, DeviceTurn, Grounding, NegotiatedDevice, ProposalForm, ProposalText } from "@elizaos/agent/device-actions"
 import { refusalReply, type BrowserRefusal, type RefusalReply } from "../gen/browser__control.effect.vibe"
 import { emptyTabOpensAddress, openAskedFirst, openBound, opensInNewTab } from "../gen/browser__requestGrounding.effect.vibe"
 import {
@@ -50,16 +50,16 @@ const REPLIES: Readonly<Record<RefusalReply, string>> = {
 
 const tabWord = "A word of the tab's title or site exactly as the owner said it"
 
-function form(type: BrowserProposalType, fields: Record<string, ActionParameterSchema>, required: readonly string[], offered: (turn: DeviceTurn) => boolean, guidance?: string): ProposalForm {
+function form(type: BrowserProposalType, fields: Record<string, ActionParameterSchema>, required: readonly string[], offered: (device: NegotiatedDevice) => boolean, guidance?: string): ProposalForm {
   return {
     types: [type], offered, ...(guidance === undefined ? {} : { guidance }),
     schema: { type: "object", additionalProperties: false, required: ["type", ...required], properties: { type: { type: "string", enum: [type] }, ...fields } },
   }
 }
 
-const negotiated = (type: BrowserControlType) => (turn: DeviceTurn) => browserControlCapabilityAvailable(type, turn.capabilities)
-const opensInItsOwnTab = (turn: DeviceTurn) => browserNavigationAvailable(true, turn.capabilities)
-const opensAddresses = (turn: DeviceTurn) => turn.admit({ type: "browser_navigate", url: "https://example.com/" }) !== undefined
+const negotiated = (type: BrowserControlType) => (device: NegotiatedDevice) => browserControlCapabilityAvailable(type, device.capabilities)
+const opensInItsOwnTab = (device: NegotiatedDevice) => browserNavigationAvailable(true, device.capabilities)
+const opensAddresses = (device: NegotiatedDevice) => device.admit({ type: "browser_navigate", url: "https://example.com/" }) !== undefined
 function newTabOpen(turn: DeviceTurn): string | undefined {
   const open = directBrowserOpen(turn.ownerText, turn.assistantName) ?? spokenBrowserOpen(turn.ownerText, turn.assistantName)
   return open?.newTab === true ? open.href : undefined
@@ -67,9 +67,9 @@ function newTabOpen(turn: DeviceTurn): string | undefined {
 const address: ActionParameterSchema = { type: "string" }
 
 const FORMS: readonly ProposalForm[] = [
-  form("browser_navigate", { url: address }, ["url"], (turn) => !opensInItsOwnTab(turn) && opensAddresses(turn), NAVIGATE_GUIDANCE),
+  form("browser_navigate", { url: address }, ["url"], (device) => !opensInItsOwnTab(device) && opensAddresses(device), NAVIGATE_GUIDANCE),
   form("browser_navigate", { url: address, newTab: { type: "boolean", description: "true when the owner asks to open the address in a new tab" } }, ["url"],
-    (turn) => opensInItsOwnTab(turn) && opensAddresses(turn), `${NAVIGATE_GUIDANCE} ${NEW_TAB_GUIDANCE}`),
+    (device) => opensInItsOwnTab(device) && opensAddresses(device), `${NAVIGATE_GUIDANCE} ${NEW_TAB_GUIDANCE}`),
   form("browser_search", { query: { type: "string", description: "The search words exactly as the owner typed them in this message" } }, ["query"],
     negotiated("browser_search"), SEARCH_GUIDANCE),
   form("browser_tab_new", { private: { type: "boolean", description: "true only when the owner asks for a private tab" } }, [], negotiated("browser_tab_new")),
@@ -80,7 +80,7 @@ const FORMS: readonly ProposalForm[] = [
   }, [], negotiated("browser_tab_close")),
   form("browser_find", { text: { type: "string", description: "The text to find on the page" } }, ["text"], negotiated("browser_find"), FIND_GUIDANCE),
   form("browser_history", { action: { type: "string", enum: [...BROWSER_HISTORY_ACTIONS] } }, ["action"],
-    (turn) => browserHistoryHome(turn.capabilities, false) === "HistoryAsControl", HISTORY_GUIDANCE),
+    (device) => browserHistoryHome(device.capabilities, false) === "HistoryAsControl", HISTORY_GUIDANCE),
 ]
 
 function field(value: unknown, key: string): unknown {
@@ -180,7 +180,7 @@ export const browserProposalFamily: DeviceProposalFamily = {
   name: "browser",
   types: BROWSER_PROPOSAL_TYPES,
   forms: FORMS,
-  guidance: (turn) => browserControlCapabilityAvailable("browser_tab_new", turn.capabilities) ? TABS_GUIDANCE : undefined,
+  guidance: (device) => browserControlCapabilityAvailable("browser_tab_new", device.capabilities) ? TABS_GUIDANCE : undefined,
   ground,
   wholeMessageOperation,
   proposedText: (operation, { direct }) => direct ? directText(operation) : undefined,

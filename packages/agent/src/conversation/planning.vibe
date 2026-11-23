@@ -1,4 +1,4 @@
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request withdraws the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request refuses the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
@@ -6,8 +6,8 @@ import {
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import {
-  acknowledges, callRunsFirst, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, toolActivity, turnNarrowed,
-  unavailableNotice, withdrawnByRoute, type CallFailure, type PlanStep, type StepOutcome,
+  acknowledges, actionNoteSent, callAdmission, callRunsFirst, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, toolActivity,
+  turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
 import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
@@ -62,6 +62,32 @@ export function offeredOnlyWhere(action: Action, home: (runtime: IAgentRuntime, 
 
 export const turnFirstCalls = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => ToolCall["arguments"] | undefined>()
 
+export interface ServedElsewhere {
+  readonly code: string
+  readonly text: string
+}
+
+export const turnElsewhere = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory, params: Record<string, unknown>) => ServedElsewhere | undefined>()
+
+export const turnNotes = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => string | undefined>()
+
+export function actionNotes(runtime: IAgentRuntime, message: Memory, actions: readonly Action[]): string[] {
+  const names = new Set(actions.map(({ name }) => name))
+  return runtime.actions.flatMap((action) => {
+    const note = turnNotes.get(action)?.(runtime, message)
+    return note !== undefined && actionNoteSent(names.has(action.name), note.trim() !== "") ? [note] : []
+  })
+}
+
+function elsewhereOf(runtime: IAgentRuntime, message: Memory, action: Action | undefined, params: Record<string, unknown>): ServedElsewhere | undefined {
+  if (action === undefined) return undefined
+  try {
+    return turnElsewhere.get(action)?.(runtime, message, params)
+  } catch {
+    return undefined
+  }
+}
+
 function firstCall(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ToolCall | undefined {
   const asked = actions.flatMap((action) => {
     const params = turnFirstCalls.get(action)?.(runtime, message)
@@ -96,7 +122,7 @@ export function offeredActions(runtime: AgentRuntime, message: Memory, actionGat
     registered.flatMap((action) => actionGate(action) === undefined ? [action.name] : []),
     registered.flatMap((action) => formless(runtime, message, action) ? [action.name] : []),
   ))
-  return withoutReplaced(runtime, message, registered.filter(({ name }) => names.has(name)))
+  return registered.filter(({ name }) => names.has(name))
 }
 
 function routeMatches(rule: DirectActionRoutingRule, message: Memory): boolean {
@@ -107,15 +133,29 @@ function routeMatches(rule: DirectActionRoutingRule, message: Memory): boolean {
   }
 }
 
-function withoutReplaced(runtime: AgentRuntime, message: Memory, actions: Action[]): Action[] {
+function routedAway(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ReadonlyMap<string, readonly string[]> {
   const names = new Set(actions.map(({ name }) => name))
-  const routes = getDirectActionRoutingRules(runtime).map((rule) => ({
-    owns: rule.wholeRequest !== undefined,
-    matched: routeMatches(rule, message),
-    routedOffered: rule.actionNames.length > 0 && rule.actionNames.every((name) => names.has(name)),
-    replaces: new Set(rule.replacesActionNames ?? []),
-  }))
-  return actions.filter(({ name }) => !routes.some((route) => withdrawnByRoute(route.owns, route.matched, route.routedOffered, route.replaces.has(name))))
+  const refused = new Map<string, readonly string[]>()
+  for (const rule of getDirectActionRoutingRules(runtime)) {
+    const matched = routeMatches(rule, message)
+    const routedOffered = rule.actionNames.length > 0 && rule.actionNames.every((name) => names.has(name))
+    for (const name of rule.replacesActionNames ?? []) {
+      if (refusedByRoute(rule.wholeRequest !== undefined, matched, routedOffered, true)) refused.set(name, rule.actionNames)
+    }
+  }
+  return refused
+}
+
+function routeRefusal(action: string, routedTo: readonly string[]): ActionResult {
+  return {
+    success: false,
+    text: `The person's whole message is routed to ${routedTo.join(", ")}, so ${action} is refused for it and did not run. Do not call it for this request.`,
+    data: { code: "ROUTE_REFUSED", executionStatus: "not_started" },
+  }
+}
+
+function elsewhereRefusal({ code, text }: ServedElsewhere): ActionResult {
+  return { success: false, text, data: { code, executionStatus: "not_started" } }
 }
 
 function outcomeOf(receipt: EffectReceipt): StepOutcome {
@@ -286,6 +326,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const conversation: ChatMessage[] = [...input.messages]
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))
+  const refused = routedAway(runtime, message, actions)
   const instruction = requestIsInstruction(typeof message.content.text === "string" ? message.content.text : "")
   let taken = 0
   let displayed = false
@@ -293,8 +334,15 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let prose: string | undefined
   const execute = async (call: ToolCall): Promise<ActionResult> => {
     signal.throwIfAborted()
-    await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name)) })
     const params = paramsOf(call)
+    const routedTo = refused.get(call.name)
+    const elsewhere = routedTo === undefined ? elsewhereOf(runtime, message, named.get(call.name), params) : undefined
+    const refusal = routedTo !== undefined ? routeRefusal(call.name, routedTo) : elsewhere === undefined ? undefined : elsewhereRefusal(elsewhere)
+    if (refusal !== undefined && !isTurnStep(callAdmission(routedTo !== undefined, elsewhere !== undefined))) {
+      conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(refusal) })
+      return refusal
+    }
+    await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name)) })
     const captured: string[] = []
     const result = await executePlannedToolCall(runtime, {
       message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),

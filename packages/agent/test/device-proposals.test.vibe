@@ -67,9 +67,13 @@ module node {
     return { attemptId, state: (settled.json as { proposal: Proposal }).proposal.state }
   }
 
+  function completions(cloud: CloudFake): Completion[] {
+    return cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as Completion)
+  }
+
   function lastCompletion(cloud: CloudFake, offset = 1): Completion {
-    const asked = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
-    return asked[asked.length - offset]?.body as Completion
+    const asked = completions(cloud)
+    return asked[asked.length - offset] as Completion
   }
 
   export async function proposeFromChat(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
@@ -103,6 +107,7 @@ module node {
     cloud.script(text("Sure."))
     await client.host("POST", path, { text: "Remind me to call mom" })
     const hostOnlyTools = (lastCompletion(cloud).tools ?? []).map(({ function: tool }) => tool?.name)
+    const hostOnly = completions(cloud).length - 1
 
     const applied = milk === undefined ? undefined : await review(client, milk, { outcome: "applied", operationId: "reminder-1" })
     cloud.script(text("You saved a reminder about milk."))
@@ -140,6 +145,7 @@ module node {
     await say("Remind me outright to buy bread")
     const bread = (await proposals(client)).find(titled("Bread"))
     const toldFirst = (lastCompletion(cloud).messages ?? []).at(-1)
+    const deviceTools = new Set(completions(cloud).flatMap((body, index) => index === hostOnly ? [] : [JSON.stringify(body.tools)]))
 
     return {
       registration,
@@ -157,6 +163,7 @@ module node {
       askedAgain: { refused: askedAgain.text.includes("Tell me what to remind you of."), afterAskedAgain },
       held: { reply: heldTurn.text.includes("Review the reminder “Mom” on your phone."), afterHeld },
       hostOnlyOffered: hostOnlyTools.includes(proposeTool),
+      sameToolsEveryMessage: deviceTools.size,
       applied: applied?.state,
       outcomeNote: {
         afterHistory: learned(remembered.at(-1), "supersedes older pending-approval dialogue") && learned(remembered.at(-1), '\\"operation\\":\\"create_reminder\\"') &&
@@ -195,13 +202,14 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
   const { expectedPayload, ...seen } = observed
   try Effect.try(() => assert.deepStrictEqual(seen, {
     registration: { first: "registered", again: "registered", rival: "FamilyConflict", foreignForm: "FamilyConflict" },
-    offered: { types: ["create_reminder"], guided: true },
+    offered: { types: ["create_note", "create_reminder", "open_view"], guided: true },
     proposalReply: "Review the reminder “Milk” on your phone.",
     milk: { state: "pending", payload: expectedPayload },
     refusalReply: true, afterRefusal: 1,
     askedAgain: { refused: true, afterAskedAgain: 1 },
     held: { reply: true, afterHeld: 2 },
     hostOnlyOffered: false,
+    sameToolsEveryMessage: 1,
     applied: "done",
     outcomeNote: { afterHistory: true, inSystem: false },
     mom: { carriesMessage: false, uncertain: "reconciliation_required" },
