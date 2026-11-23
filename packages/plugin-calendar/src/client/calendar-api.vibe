@@ -4,7 +4,6 @@ import type { CalendarMutationReceipt } from "../mutations/ledger.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
 import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
 
-/** Which feed to read: a window, an optional calendar and the zone the request is about. */
 export interface CalendarFeedRequest {
   readonly side?: ConnectorSide
   readonly grantId?: string
@@ -14,7 +13,6 @@ export interface CalendarFeedRequest {
   readonly timeZone?: string
 }
 
-/** The next upcoming event in the active account's calendars, and the window it was read from. */
 export interface CalendarNextEventContext {
   readonly event: CalendarEvent | null
   readonly readScope: { readonly selection: "next_event"; readonly timeMin: string; readonly timeMax: string; readonly exhaustive: false }
@@ -28,7 +26,6 @@ export interface CalendarNextEventContext {
   readonly timeReference: { readonly asOf: string; readonly timeZone: string }
 }
 
-/** A new event, one-off or repeating, exactly as the owner reviewed it, with the key that makes its retry the same create. */
 export interface CalendarCreateRequest {
   readonly title: string
   readonly description?: string
@@ -42,7 +39,6 @@ export interface CalendarCreateRequest {
   readonly idempotencyKey: string
 }
 
-/** An edit of one event, or of this and following or all of its series, at the provider version the owner saw. */
 export interface CalendarUpdateRequest {
   readonly title?: string
   readonly notes?: string
@@ -57,7 +53,6 @@ export interface CalendarUpdateRequest {
   readonly idempotencyKey: string
 }
 
-/** A deletion of one event, or of this and following or all of its series, at the provider version the owner saw. */
 export interface CalendarDeleteRequest {
   readonly calendarId?: string
   readonly grantId?: string
@@ -68,17 +63,14 @@ export interface CalendarDeleteRequest {
   readonly cancellationMode: "organizer_cancel" | "decline_invitation" | "remove_private_copy"
 }
 
-/** What a change answered: the event as read back with its receipt, the deletion, or the approval it waits in. */
 export type CalendarChangeReply =
   | { readonly event: CalendarEvent; readonly receipt: CalendarMutationReceipt }
   | { readonly deleted: true; readonly event: CalendarEvent | null; readonly receipt: CalendarMutationReceipt }
   | { readonly approvalRequestId: string }
   | { readonly confirmed: true }
 
-/** The transport a client host gives the calendar API: one authenticated JSON request to the agent. */
 export type CalendarFetch = <T>(path: string, init?: RequestInit) => Promise<T>
 
-/** The owner client's calendar methods over the agent's calendar routes. */
 export interface CalendarApi {
   getLifeOpsCalendarFeed(options?: CalendarFeedRequest, request?: Pick<RequestInit, "signal">): Promise<CalendarFeed>
   getLifeOpsCalendars(options?: Pick<CalendarFeedRequest, "side" | "grantId">, request?: Pick<RequestInit, "signal">): Promise<{ readonly calendars: readonly CalendarSummary[] }>
@@ -102,7 +94,6 @@ async function required(value: string | undefined, sentence: string): Promise<st
   return value
 }
 
-/** The calendar API bound to one host's authenticated fetch. */
 export function createCalendarApi(fetch: CalendarFetch): CalendarApi {
   return {
     getLifeOpsCalendarFeed: (options = {}, request) => fetch<CalendarFeed>(`${base}/feed${query({ ...options })}`, request?.signal ? { signal: request.signal } : undefined),

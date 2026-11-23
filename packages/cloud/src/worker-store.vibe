@@ -3,7 +3,6 @@ import { Client } from "pg"
 import { safeIntegerTypes } from "./worker-platform.ts"
 import { storeOver, type Connection } from "./store/connection.vibe"
 
-/** The bindings that name the environment and its database. */
 export type WorkerDatabase = {
   CLOUD_IDENTITY_DIGEST: string
   CLOUD_ENVIRONMENT: "staging" | "production"
@@ -11,10 +10,8 @@ export type WorkerDatabase = {
   DATABASE_URL?: string
 }
 
-/** How a connection reads int8: as text, as the Worker-only routes expect, or as a safe number, as the server's handlers do. */
 export type IntegerReading = "text" | "safe"
 
-/** Opens one connection to the environment's database and refuses it unless the database carries this environment's identity. */
 export async function openCloudDatabase(env: WorkerDatabase, integers: IntegerReading = "text"): Promise<Client> {
   const connectionString = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL
   if (!connectionString || !/^[a-f0-9]{64}$/.test(env.CLOUD_IDENTITY_DIGEST)) throw new Error("cloud database is unconfigured")
@@ -33,12 +30,10 @@ export async function openCloudDatabase(env: WorkerDatabase, integers: IntegerRe
   }
 }
 
-/** Ends a connection opened by `openCloudDatabase`, never failing. */
 export async function closeCloudDatabase(db: Client): Promise<void> {
   await db.end().catch(() => undefined)
 }
 
-/** Runs one action on its own identified connection and closes it afterwards. */
 export async function withCloudDatabase<T>(env: WorkerDatabase, action: (db: Client) => Promise<T>) {
   const db = await openCloudDatabase(env)
   try {
@@ -48,7 +43,6 @@ export async function withCloudDatabase<T>(env: WorkerDatabase, action: (db: Cli
   }
 }
 
-/** The server's Store over one Worker connection, one transaction at a time. */
 export function clientStore(db: Client) {
   const connection: Connection = {
     query: async (sql, params) => (await db.query(sql, [...params])).rows,

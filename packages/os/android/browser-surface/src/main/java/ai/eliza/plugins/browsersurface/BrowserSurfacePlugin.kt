@@ -491,6 +491,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         var securityBlocked: String? = null,
         /** Density-independent pixels per CSS pixel ([BrowserSurfaceRequests.pageScale]). */
         var pageScale: Double = 1.0,
+        val hostSaves: MutableSet<Runnable> = mutableSetOf(),
     )
 
     private data class HistoryObservation(
@@ -761,6 +762,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         for ((id, surface) in surfaces.entries.filter { it.value.profileName == name }) {
             val live = isLive(surface)
             closeRequests(id, surface)
+            stopHostSaves(surface)
             surface.control?.interrupt("The website sign-ins were removed", navigation = true)
             cancelSignIn(surface)
             surface.signIn?.fields?.close()
@@ -1071,8 +1073,14 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         return true
     }
 
+    private fun stopHostSaves(surface: Surface) {
+        surface.hostSaves.toList().forEach { it.run() }
+        surface.hostSaves.clear()
+    }
+
     private fun disposeSurface(id: String, surface: Surface) {
         closeRequests(id, surface)
+        stopHostSaves(surface)
         surface.pendingExternalLink = null
         surface.pendingIdentityProvider = null
         if (!surface.disposed) {
@@ -1471,7 +1479,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     fun settle(target: String?) {
                         if (settled) return
                         settled = true
-                        catcher.post { catcher.stopLoading(); catcher.destroy() }
+                        mainHandler.post { catcher.stopLoading(); catcher.destroy() }
                         val current = surfaces[id]
                         if (target == null || current !== surface || !isLive(surface)) return
                         if (handOff(id, surface, target, true)) return
@@ -1499,7 +1507,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                         override fun shouldInterceptRequest(v: WebView, request: WebResourceRequest): WebResourceResponse? {
                             if (!request.isForMainFrame) return null
                             val target = request.url.toString()
-                            v.post { settle(target) }
+                            mainHandler.post { settle(target) }
                             return WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(),
                                 ByteArrayInputStream(ByteArray(0)))
                         }
@@ -1511,7 +1519,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                         }
                     }
                     // about:blank windows written by script never name an address; drop them.
-                    catcher.postDelayed({ settle(null) }, 3000)
+                    mainHandler.postDelayed({ settle(null) }, 3000)
                     (resultMsg.obj as WebView.WebViewTransport).webView = catcher
                     resultMsg.sendToTarget()
                     return true
@@ -2157,11 +2165,19 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 call.reject("This file exists only inside the page and cannot be saved here", "DOWNLOAD_UNSUPPORTED")
                 return@runOnUiThread
             }
+            val saver = downloads ?: BrowserDownloads(context, BrowserDownloads.Config(DOWNLOAD_PREFS, false)).also { downloads = it }
+            if (!saver.savable(held.url)) {
+                call.reject("This download address cannot be saved here", "DOWNLOAD_UNSUPPORTED")
+                return@runOnUiThread
+            }
             val cookies = if (surface.profileName == null) CookieManager.getInstance()
                 else WebViewCompat.getProfile(surface.webView).cookieManager
             val source = BrowserDownloads.Source(id, false, held.pageOrigin, { cookies.getCookie(held.url) }, held.userAgent)
-            val saver = downloads ?: BrowserDownloads(context, BrowserDownloads.Config(DOWNLOAD_PREFS, false)).also { downloads = it }
-            saver.save(source, held.url, held.download.fileName, held.download.mimeType) { saved ->
+            var stop: Runnable? = null
+            var finished = false
+            stop = saver.save(source, held.url, held.download.fileName, held.download.mimeType) { saved ->
+                finished = true
+                stop?.let { surface.hostSaves.remove(it) }
                 // A surface closed or replaced meanwhile has nobody to tell.
                 if (surfaces[id] !== surface || !isLive(surface)) return@save
                 notifyListeners("downloadFinished", surfaceEvent(id, surface).apply {
@@ -2171,6 +2187,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     put("mimeType", held.download.mimeType)
                 })
             }
+            if (!finished) stop?.let { surface.hostSaves.add(it) }
             call.resolve()
         }
     }

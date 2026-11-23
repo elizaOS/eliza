@@ -44,7 +44,6 @@ import { decisionFor, notesViewOperation } from edge
 
 export { notesViewOperation }
 
-/** A write refused because the turn bound to it did not classify a Notes change; undefined when the write may run. */
 export effect function restrictNotesWrite(runtime: IAgentRuntime, message: Memory, state: State | undefined, operation: NotesRequestOperation): (ActionResult | undefined)!! {
   const decision = decisionFor(runtime, state, message, operation)
   const classification: NotesClassification = decision.allowed ? "MutationTurn" : decision.code === "REQUEST_OPERATION_RESTRICTED" ? "ReadOnlyTurn" : "UnresolvedTurn"
@@ -94,7 +93,6 @@ function parseEffect(value: unknown): NotesFieldValue {
   return Object.freeze({ classification, ...interpretation })
 }
 
-/** The planner field that records what Notes operation the current message asks for; it restricts writes and never grants one. */
 export const notesRequestEffectField: ResponseHandlerFieldEvaluator<NotesFieldValue> = {
   name: "notesRequestEffect",
   priority: 19.5,
@@ -134,7 +132,6 @@ Include both reads and writes without duplicates for compound requests. Classifi
 
 const turnClassification = { read_only: "ReadOnlyTurn", mutation_requested: "MutationTurn", unresolved: "UnresolvedTurn" } as const satisfies Record<RequestOperationClassification, NotesClassification>
 
-/** Routes a turn that only reads one note it names to that note's exact ID through NOTES_GET. */
 export function namedNoteReadEvaluator(notes: NotesCollection): ResponseHandlerEvaluator {
   return {
     name: "notes.named-note-read",
@@ -160,7 +157,6 @@ export function namedNoteReadEvaluator(notes: NotesCollection): ResponseHandlerE
   }
 }
 
-/** Registers the direct routes for explicit Notes create and read commands. */
 export function registerNotesDirectRoutes(runtime: IAgentRuntime): void {
   registerDirectActionRoutingRule(runtime, {
     id: "notes.create",

@@ -56,10 +56,6 @@ const RUNTIME_ENTRIES_KEY = Symbol.for(
   "elizaos.first-party-registry.runtime-entries",
 )
 
-function runtimeEntries(): RegistryEntry[] {
-  return getAmbientSingleton(RUNTIME_ENTRIES_KEY, () => ({ entries: [] as RegistryEntry[] })).entries
-}
-
 effect function catalogMachine() {
   provide machine() {
     return try own(try Machine, null as LoadedRegistry | null)
@@ -68,11 +64,19 @@ effect function catalogMachine() {
 
 type CatalogOwned = Effect.Success<ReturnType<typeof catalogMachine>>
 
-function catalog(): CatalogOwned {
-  catalog.slot ??= Effect.runSync(catalogMachine())
-  return catalog.slot
+function shared(): { entries: RegistryEntry[]; catalog?: CatalogOwned } {
+  return getAmbientSingleton(RUNTIME_ENTRIES_KEY, () => ({ entries: [] as RegistryEntry[] }))
 }
-catalog.slot = undefined as CatalogOwned | undefined
+
+function runtimeEntries(): RegistryEntry[] {
+  return shared().entries
+}
+
+function catalog(): CatalogOwned {
+  const slot = shared()
+  slot.catalog ??= Effect.runSync(catalogMachine())
+  return slot.catalog
+}
 
 effect function registerRegistryEntry(entry: RegistryEntry) {
   const parsed = try Effect.try({ try: () => registryEntrySchema.safeParse(entry), catch: (cause) => new Foreign({ cause }) })

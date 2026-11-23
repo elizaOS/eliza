@@ -389,8 +389,11 @@ per period, and one of a minute or less at every tick.
 
 ```quint
 pure val sweepTick: Millis = millisPerMinute
-pure def sweepDue(scheduledAt: Millis, everyMs: Millis): bool = everyMs > 0 and scheduledAt % everyMs < sweepTick
-pure val scheduledAtValues = Set(0, 60000, 300000, 3540000, 3600000)
+pure def sweepDue(scheduledAt: Millis, everyMs: Millis): bool = {
+  val elapsed = if (everyMs > 0) scheduledAt % everyMs else 0
+  everyMs > 0 and (if (elapsed < 0) elapsed + everyMs else elapsed) < sweepTick
+}
+pure val scheduledAtValues = Set(-120001, -120000, -119999, -60000, -1, 0, 60000, 300000, 3540000, 3600000)
 pure val everyMsValues = Set(30000, 60000, 300000, 3600000)
 pure def lawAWholeMinuteSweepRunsAtItsPeriodOnly(scheduledAt: Millis, everyMs: Millis): bool =
   (everyMs >= sweepTick and everyMs % sweepTick == 0 and scheduledAt % sweepTick == 0) implies (sweepDue(scheduledAt, everyMs) iff scheduledAt % everyMs == 0)

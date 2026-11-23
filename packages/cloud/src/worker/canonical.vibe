@@ -21,13 +21,11 @@ import { dueSweeps, relayRoutes, workerRoutes } from "./routes.vibe"
 import { dialSocket, socketPair } from "./sockets.ts"
 import type { Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 
-/** The bindings a Worker reads its deployment from: the profile, its environment and its database. */
 export type ProfileBindings = WorkerDatabase & NativeRegistryEnv & {
   readonly CLOUD_PROFILE: string
   readonly ASSETS?: { fetch(request: Request): Promise<Response> }
 }
 
-/** The Worker cannot serve yet: its profile, bindings, database, secrets or catalog fail a start check. */
 error WorkerUnready { problem: string }
 
 interface Prepared {
@@ -185,14 +183,12 @@ effect function relayed(request: Request, env: ProfileBindings, answer: Deferred
   }
 }
 
-/** Opens the speech relay on a Worker socket pair: the server's relay route runs on the server half, and the work outlives the 101 answer. */
 export async function relayFromTable(request: Request, env: ProfileBindings, keepAlive: (work: Promise<unknown>) => void): Promise<Response> {
   const answer = await runPromise(Deferred.make<Response>())
   keepAlive(runPromise(relayed(request, env, answer)))
   return runPromise(Deferred.await(answer))
 }
 
-/** Runs the Worker's start checks once per isolate for a Worker-only route, answering the refusal to send while they fail. */
 export function workerReady(env: ProfileBindings): Promise<Response | undefined> {
   if (started.has(env)) return Promise.resolve(undefined)
   const checked = scoped(effect {
@@ -212,12 +208,10 @@ export function workerReady(env: ProfileBindings): Promise<Response | undefined>
   })
 }
 
-/** Answers one request from the server's route table, holding its database connection until the answer's body ends. */
 export function serveFromTable(request: Request, env: ProfileBindings & LegacyBindings, providerFetch: typeof fetch, lifetime?: WorkerLifetime): Promise<Response> {
   return HttpEffect.toWebHandler(served(request, env, providerFetch, lifetime))(request)
 }
 
-/** Runs, one at a time, every sweep of the served table due at this scheduled tick. */
 export function sweepTable(env: ProfileBindings, scheduledAt: number): Promise<void> {
   const due = dueSweeps(scheduledAt)
   const ticked = scoped(effect {

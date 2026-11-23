@@ -47,3 +47,31 @@ fresh fix, and the agent only names the destination.
 pure def asRouteFix(p: PhonePosition): N::Fix = { present: p.present, precise: false, age: p.age, accuracy: p.accuracy }
 pure def lawReportedPositionIsNeverARouteOrigin(p: PhonePosition): bool = not(N::usableFix(asRouteFix(p)))
 ```
+
+## Story: Tell me where I am from where my phone is now
+
+> As the owner, I want "where am I?" answered from where my phone says it is,
+> and when my phone only knows roughly where it is, to hear the area I am in
+> rather than one building near the middle of its guess.
+
+### Where the owner is names the place at a recent position, and only the area when it is rough
+
+The answer reads the position reported with the message, under the same
+age limits as a nearby search, and looks up what is at that point. With a
+reported accuracy worse than 1 km, it names only the area there, never a
+street, building or place card. With a closer or unreported accuracy, it
+names the place found there. Without a recent position, it says that the
+phone reported none and names nothing.
+
+```quint
+pure val roughPositionAccuracy = 1000
+type WhereAnswer = NoRecentPosition | NameThePlace | NameOnlyTheArea
+pure def positionIsRecent(p: PhonePosition): bool = p.present and p.age >= 0 - nearbyMaxAhead and p.age <= nearbyMaxAge
+pure def whereAnswer(p: PhonePosition): WhereAnswer =
+  if (not(positionIsRecent(p))) NoRecentPosition
+  else if (p.hasAccuracy and p.accuracy > roughPositionAccuracy) NameOnlyTheArea
+  else NameThePlace
+pure def lawARoughPositionNamesOnlyTheArea(p: PhonePosition): bool =
+  (positionIsRecent(p) and p.hasAccuracy and p.accuracy > roughPositionAccuracy) implies whereAnswer(p) == NameOnlyTheArea
+pure def lawAStalePositionNamesNothing(p: PhonePosition): bool = p.age > nearbyMaxAge implies whereAnswer(p) == NoRecentPosition
+```

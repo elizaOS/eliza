@@ -199,7 +199,7 @@ effect function changed(base: TaskRecord, owner: TaskOwner, expectedRevision: nu
   return next
 }
 
-export effect function createTaskHost(options: TaskHostOptions) {
+effect function taskCustody(options: TaskHostOptions) {
   const store = options.store
   const wall = options.now ?? Date.now
   const serial = Semaphore.makeUnsafe(1)
@@ -354,88 +354,6 @@ export effect function createTaskHost(options: TaskHostOptions) {
     return write
   }
 
-  effect function observeTask(taskId: string, expectedRevision: number, resume: boolean) {
-    try settled()
-    const { owner, observer, controller } = try locked(effect {
-      const owner = try serving()
-      try held(taskId)
-      const observer = actuator
-      if (observer === undefined) throw refused("TASK_HELPER_UNAVAILABLE", "No task actuator is registered")
-      if (!ownedRevision(project().task, custody.owner, expectedRevision)) throw refused("TASK_CONFLICT", "Task revision changed")
-      if (pending !== undefined) throw refused("TASK_BUSY", "A task operation is already running")
-      return { owner, observer, controller: begin() }
-    })
-    const observation = try ensuring(
-      tryPromise({ try: () => observer.observe({ owner, taskId, signal: controller.signal }), catch: helperFailure }),
-      sync(() => release(controller)),
-    )
-    const task = try stopping(effect {
-      if (controller.signal.aborted) throw refused("TASK_CONFLICT", "The task changed while it was observed")
-      try serving()
-      const base = try held(taskId)
-      try tick()
-      const next = try changed(base, owner, expectedRevision, [{ type: resume ? "resume" : "observe", observation }], custody.clock)
-      const event: Event = {
-        type: "observe", expectedRevision,
-        observation: {
-          observationId: observation.id, origin: observation.origin, resume, observationVersion: observation.version,
-          inputRevision: observation.inputRevision, observedAt: observation.observedAt,
-        },
-      }
-      try gate(event)
-      try persist(next, false)
-      try commit(event, next)
-      return next.task
-    })
-    const write: TaskWrite = { task, saved: true, cleanupConfirmed: true }
-    return write
-  }
-
-  function holdsDispatch(dispatch: Dispatch): boolean {
-    const state = project()
-    return dispatchIsCurrent(state) && state.actuator.tag === "Executing"
-      && state.actuator.revision === dispatch.revision && state.actuator.epoch === dispatch.epoch
-  }
-
-  effect function finish(controller: AbortController, dispatch: Dispatch, owner: TaskOwner, reported: Reported) {
-    return try stopping(effect {
-      release(controller)
-      const base = record
-      if (!holdsDispatch(dispatch) || base === null) {
-        try offer({ type: "finishExecution", operationResult: reported.result, evidenceRef: reported.evidenceRef })
-        return base?.task ?? null
-      }
-      const operationId = base.task.operations.at(-1)?.proposal.id ?? ""
-      const shown = shownOutcome(reported)
-      const ran = try exit(changed(base, owner, dispatch.revision, [{ type: "result", operationId, ...coreOutcome(shown) }], custody.clock))
-      const kept = Exit.isSuccess(ran) ? shown : lost
-      const next = Exit.isSuccess(ran) ? ran.value : try changed(base, owner, dispatch.revision, [{ type: "result", operationId, status: "unknown" }], custody.clock)
-      const event: Event = { type: "finishExecution", operationResult: kept.result, evidenceRef: kept.evidenceRef }
-      persist(next, false) catch effect (error) => {
-        try offer(event)
-        throw error
-      }
-      try commit(event, next)
-      return next.task
-    })
-  }
-
-  effect function readbackOf(taskId: string, expectedRevision: number) {
-    return try locked(effect {
-      const owner = try serving()
-      const base = try held(taskId)
-      const unknown = base.task.operations.find((operation) => operation.status === "unknown")
-      if (unknown === undefined) throw refused("TASK_REPLAY", "No unknown operation to reconcile")
-      const helper = actuator
-      const readback = helper?.reconcile?.bind(helper)
-      if (readback === undefined) throw refused("TASK_HELPER_UNAVAILABLE", "Readback is unavailable")
-      const state = project()
-      if (pending !== undefined || !canReconcile(state, custody.owner, expectedRevision, "Unknown", "")) throw refusal(state)
-      const fence: Dispatch = { revision: base.task.revision, epoch: base.task.epoch }
-      return { owner, proposal: unknown.proposal, readback, controller: begin(), fence }
-    })
-  }
-
   effect function start(owner: TaskOwner) {
     return try locked(effect {
       if (custody.started) throw refused("TASK_CONFLICT", "The task host has already started")
@@ -467,141 +385,6 @@ export effect function createTaskHost(options: TaskHostOptions) {
       try send({ type: "start" }, by, next)
       return record?.task ?? null
     })
-  }
-
-  effect function current() {
-    try settled()
-    try serving()
-    const holding = record
-    return holding !== null && holdsSlot(project()) ? holding.task : null
-  }
-
-  effect function find(taskId: string) {
-    const owner = try serving()
-    const holding = record
-    if (holding !== null && holding.task.id === taskId) return holding
-    const found = try guarded(store.get(taskId))
-    if (found === null || !sameTaskOwner(found.task.owner, owner)) throw refused("TASK_NOT_FOUND", "No such task")
-    return found
-  }
-
-  effect function view(taskId: string) {
-    try settled()
-    return (try find(taskId)).task
-  }
-
-  effect function events(taskId: string, after: number) {
-    try settled()
-    const found = try find(taskId)
-    const later = found.events.filter((event) => event.sequence > after)
-    const shown = later.slice(0, eventPageSize)
-    const { task } = found
-    const page: TaskEventPage = {
-      events: shown, cursor: shown.at(-1)?.sequence ?? after, hasMore: later.length > shown.length,
-      task: { id: task.id, revision: task.revision, epoch: task.epoch, status: task.status, hasUnknownOutcome: task.operations.some((operation) => operation.status === "unknown") },
-    }
-    return page
-  }
-
-  effect function create(goalRef: string) {
-    try settled()
-    const owner = try serving()
-    const goals = authorizer
-    if (goals === undefined || actuator === undefined) throw refused("TASK_HELPER_UNAVAILABLE", "No goal authorizer or actuator is registered")
-    const goal = try tryPromise({ try: () => goals.authorize(goalRef, owner), catch: helperFailure })
-    return try stopping(effect {
-      try serving()
-      try tick()
-      const helper = actuator
-      const capabilities = goal.allowedCapabilities.filter((capability) => helper?.capabilities.includes(capability) === true)
-      const state = project()
-      const holding = record !== null && holdsSlot(project()) ? record.task : null
-      const event: Event = { type: "create", origins: [...goal.allowedOrigins], capabilities, taskId: goal.id, authorizationId: goal.authorization.decisionId }
-      const reply = startReply(goal.goalRef === goalRef, runningTask(state), holding?.goalRef === goalRef, enabled(state, event, custody.owner))
-      if (reply.tag !== "NewTask") {
-        const answer: TaskStart = { reply, task: holding }
-        return answer
-      }
-      const task = try Effect.try({
-        try: () => createInteractiveTask({
-          id: goal.id, owner, goalRef: goal.goalRef, now: custody.clock, authorization: goal.authorization,
-          allowedCapabilities: capabilities, allowedOrigins: [...goal.allowedOrigins],
-        }),
-        catch: fromCore,
-      })
-      const next: TaskRecord = { task, events: [created(task)] }
-      try persist(next, true)
-      try commit(event, next)
-      const answer: TaskStart = { reply, task }
-      return answer
-    })
-  }
-
-  effect function pauseCurrent(why?: PauseReason) {
-    try serving()
-    const holding = record !== null && holdsSlot(project()) ? record.task : null
-    if (holding === null || ended(holding)) {
-      const write: TaskWrite = { task: holding, saved: false, cleanupConfirmed: try settle() }
-      return write
-    }
-    return try control(holding.id, holding.revision, "PauseTask", why ?? "pause")
-  }
-
-  effect function execute(taskId: string, expectedRevision: number, proposal: TaskActionProposal) {
-    const { owner, helper, controller, dispatch } = try stopping(effect {
-      const owner = try serving()
-      const base = try held(taskId)
-      const helper = actuator
-      if (helper === undefined) throw refused("TASK_HELPER_UNAVAILABLE", "No task actuator is registered")
-      if (!helper.capabilities.includes(proposal.capability)) throw refused("TASK_ACTION_DENIED", "The actuator cannot perform this capability")
-      if (pending !== undefined) throw refused("TASK_BUSY", "A task operation is already running")
-      try tick()
-      const next = try changed(base, owner, expectedRevision, [{ type: "prepare", proposal }, { type: "dispatch", operationId: proposal.id }], custody.clock)
-      const event: Event = { type: "execute", expectedRevision, proposal: modelOperation({ proposal, status: "prepared" }) }
-      try gate(event)
-      try persist(next, false)
-      try commit(event, next)
-      const dispatch: Dispatch = { revision: next.task.revision, epoch: next.task.epoch }
-      return { owner, helper, controller: begin(), dispatch }
-    })
-    const isCurrent = () => !controller.signal.aborted && holdsDispatch(dispatch) && helper.capabilities.includes(proposal.capability)
-    const sent = try orDie(Effect.try(() => structuredClone(proposal)))
-    const reply = try exit(tryPromise(() => helper.execute(sent, { owner, taskId, ...dispatch, signal: controller.signal, isCurrent })))
-    return try finish(controller, dispatch, owner, replied(reply))
-  }
-
-  effect function reconcile(taskId: string, expectedRevision: number) {
-    try settled()
-    const { owner, proposal, readback, controller, fence } = try readbackOf(taskId, expectedRevision)
-    const isCurrent = () => {
-      const state = project()
-      const holding = record
-      return !controller.signal.aborted && serves(state, state.owner) && holding !== null && holding.task.revision === fence.revision
-        && holding.task.epoch === fence.epoch && holding.task.authorization.state === "active"
-    }
-    const sent = try orDie(Effect.try(() => structuredClone(proposal)))
-    const reply = try ensuring(
-      exit(tryPromise(() => readback(sent, { owner, taskId, ...fence, signal: controller.signal, isCurrent }))),
-      sync(() => release(controller)),
-    )
-    const shown = shownOutcome(replied(reply))
-    const task = try stopping(effect {
-      if (!isCurrent()) throw refused("TASK_CONFLICT", "The task changed during readback")
-      const base = try held(taskId)
-      try tick()
-      const steps = (outcome: Reported): TaskTransition[] => [{ type: "recover" }, { type: "reconcile", operationId: proposal.id, ...coreOutcome(outcome) }]
-      const ran = try exit(changed(base, owner, expectedRevision, steps(shown), custody.clock))
-      const kept = Exit.isSuccess(ran) ? shown : lost
-      const next = Exit.isSuccess(ran) ? ran.value : try changed(base, owner, expectedRevision, steps(lost), custody.clock)
-      const event: Event = { type: "reconcile", expectedRevision, operationResult: kept.result, evidenceRef: kept.evidenceRef }
-      try gate(event)
-      reason = undefined
-      try persist(next, false)
-      try commit(event, next)
-      return next.task
-    })
-    const write: TaskWrite = { task, saved: true, cleanupConfirmed: try settle() }
-    return write
   }
 
   effect function acknowledgeUnknown(taskId: string, expectedRevision: number) {
@@ -639,45 +422,6 @@ export effect function createTaskHost(options: TaskHostOptions) {
     return write
   }
 
-  effect function extendOrigin(taskId: string, expectedRevision: number, origin: string, check: (origin: string) => Promise<string | null>) {
-    try settled()
-    try serving()
-    const checkRef = tryPromise(() => check(origin)) catch () => null
-    const task = try stopping(effect {
-      const owner = try serving()
-      const base = try held(taskId)
-      if (checkRef === null) throw refused("TASK_ORIGIN_REFUSED", "The host did not allow this website")
-      try tick()
-      const next = try changed(base, owner, expectedRevision, [{ type: "extend-origin", origin, checkRef }], custody.clock)
-      const event: Event = { type: "extendOrigin", expectedRevision, origin, hostChecked: true }
-      try gate(event)
-      try persist(next, false)
-      try commit(event, next)
-      return next.task
-    })
-    const helper = actuator
-    const apply = helper?.scopeChanged?.bind(helper)
-    const owner = launch
-    if (apply !== undefined && owner !== undefined) {
-      try tryPromise({
-        try: () => apply({ owner, taskId, epoch: task.epoch, allowedOrigins: [...task.allowedOrigins] }),
-        catch: () => refused("TASK_SCOPE_UNCONFIRMED", "The task scope changed, but the page policy was not confirmed"),
-      })
-    }
-    return task
-  }
-
-  effect function acknowledgeUnreadable(taskId: string) {
-    const owner = try serving()
-    return try guarded(store.acknowledgeUnreadable(owner.connector.accountId, taskId))
-  }
-
-  effect function unreadable() {
-    try serving()
-    const records: readonly UnreadableTaskRecord[] = try guarded(store.unreadable())
-    return records
-  }
-
   effect function close() {
     try locked(effect {
       pending?.abort()
@@ -688,41 +432,319 @@ export effect function createTaskHost(options: TaskHostOptions) {
   }
 
   return {
-    start,
+    project, locked, commit, offer, tick, refusal, gate, serving, held, guarded, settle, settled, stopping, persist, begin, release,
+    start, control, acknowledgeUnknown, complete, close,
     state: () => machine.get(),
-    effect helperReady() {
-      return actuator !== undefined && authorizer !== undefined
-    },
-    effect registerActuator(next: TaskActuator | undefined) {
-      actuator = next
-    },
-    effect registerAuthorizer(next: TaskGoalAuthorizer | undefined) {
-      authorizer = next
-    },
+    get record() { return record },
+    get owner() { return custody.owner },
+    get clock() { return custody.clock },
+    get launch() { return launch },
+    get actuator() { return actuator },
+    get authorizer() { return authorizer },
+    get busy() { return pending !== undefined },
+    clearCleanupReason: () => { reason = undefined },
+    effect registerActuator(next: TaskActuator | undefined) { actuator = next },
+    effect registerAuthorizer(next: TaskGoalAuthorizer | undefined) { authorizer = next },
+  }
+}
+
+type TaskCustody = Effect.Success<ReturnType<typeof taskCustody>>
+
+function taskDispatch(host: TaskCustody) {
+  effect function observeTask(taskId: string, expectedRevision: number, resume: boolean) {
+    try host.settled()
+    const { owner, observer, controller } = try host.locked(effect {
+      const owner = try host.serving()
+      try host.held(taskId)
+      const observer = host.actuator
+      if (observer === undefined) throw refused("TASK_HELPER_UNAVAILABLE", "No task actuator is registered")
+      if (!ownedRevision(host.project().task, host.owner, expectedRevision)) throw refused("TASK_CONFLICT", "Task revision changed")
+      if (host.busy) throw refused("TASK_BUSY", "A task operation is already running")
+      return { owner, observer, controller: host.begin() }
+    })
+    const observation = try ensuring(
+      tryPromise({ try: () => observer.observe({ owner, taskId, signal: controller.signal }), catch: helperFailure }),
+      sync(() => host.release(controller)),
+    )
+    const task = try host.stopping(effect {
+      if (controller.signal.aborted) throw refused("TASK_CONFLICT", "The task changed while it was observed")
+      try host.serving()
+      const base = try host.held(taskId)
+      try host.tick()
+      const next = try changed(base, owner, expectedRevision, [{ type: resume ? "resume" : "observe", observation }], host.clock)
+      const event: Event = {
+        type: "observe", expectedRevision,
+        observation: {
+          observationId: observation.id, origin: observation.origin, resume, observationVersion: observation.version,
+          inputRevision: observation.inputRevision, observedAt: observation.observedAt,
+        },
+      }
+      try host.gate(event)
+      try host.persist(next, false)
+      try host.commit(event, next)
+      return next.task
+    })
+    const write: TaskWrite = { task, saved: true, cleanupConfirmed: true }
+    return write
+  }
+
+  function holdsDispatch(dispatch: Dispatch): boolean {
+    const state = host.project()
+    return dispatchIsCurrent(state) && state.actuator.tag === "Executing"
+      && state.actuator.revision === dispatch.revision && state.actuator.epoch === dispatch.epoch
+  }
+
+  effect function finish(controller: AbortController, dispatch: Dispatch, owner: TaskOwner, reported: Reported) {
+    return try host.stopping(effect {
+      host.release(controller)
+      const base = host.record
+      if (!holdsDispatch(dispatch) || base === null) {
+        try host.offer({ type: "finishExecution", operationResult: reported.result, evidenceRef: reported.evidenceRef })
+        return base?.task ?? null
+      }
+      const operationId = base.task.operations.at(-1)?.proposal.id ?? ""
+      const shown = shownOutcome(reported)
+      const ran = try exit(changed(base, owner, dispatch.revision, [{ type: "result", operationId, ...coreOutcome(shown) }], host.clock))
+      const kept = Exit.isSuccess(ran) ? shown : lost
+      const next = Exit.isSuccess(ran) ? ran.value : try changed(base, owner, dispatch.revision, [{ type: "result", operationId, status: "unknown" }], host.clock)
+      const event: Event = { type: "finishExecution", operationResult: kept.result, evidenceRef: kept.evidenceRef }
+      host.persist(next, false) catch effect (error) => {
+        try host.offer(event)
+        throw error
+      }
+      try host.commit(event, next)
+      return next.task
+    })
+  }
+
+  effect function readbackOf(taskId: string, expectedRevision: number) {
+    return try host.locked(effect {
+      const owner = try host.serving()
+      const base = try host.held(taskId)
+      const unknown = base.task.operations.find((operation) => operation.status === "unknown")
+      if (unknown === undefined) throw refused("TASK_REPLAY", "No unknown operation to reconcile")
+      const helper = host.actuator
+      const readback = helper?.reconcile?.bind(helper)
+      if (readback === undefined) throw refused("TASK_HELPER_UNAVAILABLE", "Readback is unavailable")
+      const state = host.project()
+      if (host.busy || !canReconcile(state, host.owner, expectedRevision, "Unknown", "")) throw host.refusal(state)
+      const fence: Dispatch = { revision: base.task.revision, epoch: base.task.epoch }
+      return { owner, proposal: unknown.proposal, readback, controller: host.begin(), fence }
+    })
+  }
+
+  effect function execute(taskId: string, expectedRevision: number, proposal: TaskActionProposal) {
+    const { owner, helper, controller, dispatch } = try host.stopping(effect {
+      const owner = try host.serving()
+      const base = try host.held(taskId)
+      const helper = host.actuator
+      if (helper === undefined) throw refused("TASK_HELPER_UNAVAILABLE", "No task actuator is registered")
+      if (!helper.capabilities.includes(proposal.capability)) throw refused("TASK_ACTION_DENIED", "The actuator cannot perform this capability")
+      if (host.busy) throw refused("TASK_BUSY", "A task operation is already running")
+      try host.tick()
+      const next = try changed(base, owner, expectedRevision, [{ type: "prepare", proposal }, { type: "dispatch", operationId: proposal.id }], host.clock)
+      const event: Event = { type: "execute", expectedRevision, proposal: modelOperation({ proposal, status: "prepared" }) }
+      try host.gate(event)
+      try host.persist(next, false)
+      try host.commit(event, next)
+      const dispatch: Dispatch = { revision: next.task.revision, epoch: next.task.epoch }
+      return { owner, helper, controller: host.begin(), dispatch }
+    })
+    const isCurrent = () => !controller.signal.aborted && holdsDispatch(dispatch) && helper.capabilities.includes(proposal.capability)
+    const sent = try orDie(Effect.try(() => structuredClone(proposal)))
+    const reply = try exit(tryPromise(() => helper.execute(sent, { owner, taskId, ...dispatch, signal: controller.signal, isCurrent })))
+    return try finish(controller, dispatch, owner, replied(reply))
+  }
+
+  effect function reconcile(taskId: string, expectedRevision: number) {
+    try host.settled()
+    const { owner, proposal, readback, controller, fence } = try readbackOf(taskId, expectedRevision)
+    const isCurrent = () => {
+      const state = host.project()
+      const holding = host.record
+      return !controller.signal.aborted && serves(state, state.owner) && holding !== null && holding.task.revision === fence.revision
+        && holding.task.epoch === fence.epoch && holding.task.authorization.state === "active"
+    }
+    const sent = try orDie(Effect.try(() => structuredClone(proposal)))
+    const reply = try ensuring(
+      exit(tryPromise(() => readback(sent, { owner, taskId, ...fence, signal: controller.signal, isCurrent }))),
+      sync(() => host.release(controller)),
+    )
+    const shown = shownOutcome(replied(reply))
+    const task = try host.stopping(effect {
+      if (!isCurrent()) throw refused("TASK_CONFLICT", "The task changed during readback")
+      const base = try host.held(taskId)
+      try host.tick()
+      const steps = (outcome: Reported): TaskTransition[] => [{ type: "recover" }, { type: "reconcile", operationId: proposal.id, ...coreOutcome(outcome) }]
+      const ran = try exit(changed(base, owner, expectedRevision, steps(shown), host.clock))
+      const kept = Exit.isSuccess(ran) ? shown : lost
+      const next = Exit.isSuccess(ran) ? ran.value : try changed(base, owner, expectedRevision, steps(lost), host.clock)
+      const event: Event = { type: "reconcile", expectedRevision, operationResult: kept.result, evidenceRef: kept.evidenceRef }
+      try host.gate(event)
+      host.clearCleanupReason()
+      try host.persist(next, false)
+      try host.commit(event, next)
+      return next.task
+    })
+    const write: TaskWrite = { task, saved: true, cleanupConfirmed: try host.settle() }
+    return write
+  }
+
+  return { observeTask, execute, reconcile }
+}
+
+export effect function createTaskHost(options: TaskHostOptions) {
+  const host = try taskCustody(options)
+  const dispatch = taskDispatch(host)
+  const { store } = options
+
+  effect function current() {
+    try host.settled()
+    try host.serving()
+    const holding = host.record
+    return holding !== null && holdsSlot(host.project()) ? holding.task : null
+  }
+
+  effect function find(taskId: string) {
+    const owner = try host.serving()
+    const holding = host.record
+    if (holding !== null && holding.task.id === taskId) return holding
+    const found = try host.guarded(store.get(taskId))
+    if (found === null || !sameTaskOwner(found.task.owner, owner)) throw refused("TASK_NOT_FOUND", "No such task")
+    return found
+  }
+
+  effect function view(taskId: string) {
+    try host.settled()
+    return (try find(taskId)).task
+  }
+
+  effect function events(taskId: string, after: number) {
+    try host.settled()
+    const found = try find(taskId)
+    const later = found.events.filter((event) => event.sequence > after)
+    const shown = later.slice(0, eventPageSize)
+    const { task } = found
+    const page: TaskEventPage = {
+      events: shown, cursor: shown.at(-1)?.sequence ?? after, hasMore: later.length > shown.length,
+      task: { id: task.id, revision: task.revision, epoch: task.epoch, status: task.status, hasUnknownOutcome: task.operations.some((operation) => operation.status === "unknown") },
+    }
+    return page
+  }
+
+  effect function create(goalRef: string) {
+    try host.settled()
+    const owner = try host.serving()
+    const goals = host.authorizer
+    if (goals === undefined || host.actuator === undefined) throw refused("TASK_HELPER_UNAVAILABLE", "No goal authorizer or actuator is registered")
+    const goal = try tryPromise({ try: () => goals.authorize(goalRef, owner), catch: helperFailure })
+    return try host.stopping(effect {
+      try host.serving()
+      try host.tick()
+      const helper = host.actuator
+      const capabilities = goal.allowedCapabilities.filter((capability) => helper?.capabilities.includes(capability) === true)
+      const state = host.project()
+      const holding = host.record !== null && holdsSlot(host.project()) ? host.record.task : null
+      const event: Event = { type: "create", origins: [...goal.allowedOrigins], capabilities, taskId: goal.id, authorizationId: goal.authorization.decisionId }
+      const reply = startReply(goal.goalRef === goalRef, runningTask(state), holding?.goalRef === goalRef, enabled(state, event, host.owner))
+      if (reply.tag !== "NewTask") {
+        const answer: TaskStart = { reply, task: holding }
+        return answer
+      }
+      const task = try Effect.try({
+        try: () => createInteractiveTask({
+          id: goal.id, owner, goalRef: goal.goalRef, now: host.clock, authorization: goal.authorization,
+          allowedCapabilities: capabilities, allowedOrigins: [...goal.allowedOrigins],
+        }),
+        catch: fromCore,
+      })
+      const next: TaskRecord = { task, events: [created(task)] }
+      try host.persist(next, true)
+      try host.commit(event, next)
+      const answer: TaskStart = { reply, task }
+      return answer
+    })
+  }
+
+  effect function pauseCurrent(why?: PauseReason) {
+    try host.serving()
+    const holding = host.record !== null && holdsSlot(host.project()) ? host.record.task : null
+    if (holding === null || ended(holding)) {
+      const write: TaskWrite = { task: holding, saved: false, cleanupConfirmed: try host.settle() }
+      return write
+    }
+    return try host.control(holding.id, holding.revision, "PauseTask", why ?? "pause")
+  }
+
+  effect function extendOrigin(taskId: string, expectedRevision: number, origin: string, check: (origin: string) => Promise<string | null>) {
+    try host.settled()
+    try host.serving()
+    const checkRef = tryPromise(() => check(origin)) catch () => null
+    const task = try host.stopping(effect {
+      const owner = try host.serving()
+      const base = try host.held(taskId)
+      if (checkRef === null) throw refused("TASK_ORIGIN_REFUSED", "The host did not allow this website")
+      try host.tick()
+      const next = try changed(base, owner, expectedRevision, [{ type: "extend-origin", origin, checkRef }], host.clock)
+      const event: Event = { type: "extendOrigin", expectedRevision, origin, hostChecked: true }
+      try host.gate(event)
+      try host.persist(next, false)
+      try host.commit(event, next)
+      return next.task
+    })
+    const helper = host.actuator
+    const apply = helper?.scopeChanged?.bind(helper)
+    const owner = host.launch
+    if (apply !== undefined && owner !== undefined) {
+      try tryPromise({
+        try: () => apply({ owner, taskId, epoch: task.epoch, allowedOrigins: [...task.allowedOrigins] }),
+        catch: () => refused("TASK_SCOPE_UNCONFIRMED", "The task scope changed, but the page policy was not confirmed"),
+      })
+    }
+    return task
+  }
+
+  effect function acknowledgeUnreadable(taskId: string) {
+    const owner = try host.serving()
+    return try host.guarded(store.acknowledgeUnreadable(owner.connector.accountId, taskId))
+  }
+
+  effect function unreadable() {
+    try host.serving()
+    const records: readonly UnreadableTaskRecord[] = try host.guarded(store.unreadable())
+    return records
+  }
+
+  return {
+    start: host.start,
+    state: host.state,
+    effect helperReady() { return host.actuator !== undefined && host.authorizer !== undefined },
+    registerActuator: host.registerActuator,
+    registerAuthorizer: host.registerAuthorizer,
     effect presentationForConversation(request: PresentationRequest) {
-      const shown: Presentation = presentation(project(), request.taskId, request.expectedEpoch, request.actorId)
+      const shown: Presentation = presentation(host.project(), request.taskId, request.expectedEpoch, request.actorId)
       return shown
     },
     current,
     view,
     events,
     create,
-    pause: (taskId: string, expectedRevision: number, why?: PauseReason) => control(taskId, expectedRevision, "PauseTask", why ?? "pause"),
-    cancel: (taskId: string, expectedRevision: number) => control(taskId, expectedRevision, "CancelTask", "cancel"),
-    revoke: (taskId: string, expectedRevision: number) => control(taskId, expectedRevision, "RevokeTask", "revoke"),
+    pause: (taskId: string, expectedRevision: number, why?: PauseReason) => host.control(taskId, expectedRevision, "PauseTask", why ?? "pause"),
+    cancel: (taskId: string, expectedRevision: number) => host.control(taskId, expectedRevision, "CancelTask", "cancel"),
+    revoke: (taskId: string, expectedRevision: number) => host.control(taskId, expectedRevision, "RevokeTask", "revoke"),
     pauseCurrent,
-    resume: (taskId: string, expectedRevision: number) => observeTask(taskId, expectedRevision, true),
-    observe: (taskId: string, expectedRevision: number) => observeTask(taskId, expectedRevision, false),
-    execute,
-    reconcile,
-    acknowledgeUnknown,
-    complete,
+    resume: (taskId: string, expectedRevision: number) => dispatch.observeTask(taskId, expectedRevision, true),
+    observe: (taskId: string, expectedRevision: number) => dispatch.observeTask(taskId, expectedRevision, false),
+    execute: dispatch.execute,
+    reconcile: dispatch.reconcile,
+    acknowledgeUnknown: host.acknowledgeUnknown,
+    complete: host.complete,
     extendOrigin,
     acknowledgeUnreadable,
     unreadable,
     storageProbe: () => store.storageStatus(),
-    settle,
-    close,
+    settle: host.settle,
+    close: host.close,
   }
 }
 

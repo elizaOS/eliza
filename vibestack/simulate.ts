@@ -4,6 +4,7 @@ import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
 import { act, completed, violated, type Input } from "./action.ts";
 import { entry, evaluatorForCheck, remembered, type Memory } from "./cache.ts";
+import { InstallationChanged } from "./installed.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { positiveGuardEvaluation, positiveGuardProbe, simulated, witnessAction, witnessFile } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
@@ -495,6 +496,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
         + (missed.length ? `; not compared on their own, because the simulator had no arguments for them: ${missed.join(", ")}` : ""));
       if (model.stateType) tested = conformanceFound(model, spec, traces, journeys);
     } catch (e) {
+      if (e instanceof InstallationChanged) throw e;
       const mismatch = (e as Error).message.startsWith("TypeScript and Quint disagree");
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
     }

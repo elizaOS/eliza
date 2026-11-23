@@ -1,22 +1,17 @@
 // spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"
 import { projectAuthoredNoteContent, type AuthoredNoteContent, type AuthoredNoteEdit } from "./format.vibe"
 
-/** The colors a note may have. */
 export const STICKY_COLORS =["yellow", "green", "rose", "slate"] as const
 
-/** One of the four note colors. */
 export type StickyColor = (typeof STICKY_COLORS)[number]
 
-/** A JSON value kept losslessly inside a note's rich format. */
 export type NoteJson = null | boolean | number | string | NoteJson[] | { [key: string]: NoteJson }
 
-/** A note's authored rich format; the renderer of each kind validates its own data. */
 export interface NoteFormat {
   kind: "text" | "list" | "voice" | "link"
   data: { [key: string]: NoteJson }
 }
 
-/** One saved note of the canonical collection. */
 export interface StickyNote {
   id: string
   title: string
@@ -27,25 +22,21 @@ export interface StickyNote {
   updatedAt: string
 }
 
-/** A deleted note kept in Trash with its deletion time. */
 export interface TrashedNote {
   note: StickyNote
   deletedAt: string
 }
 
-/** The collection as a reader sees it: saved notes, Trash and the collection revision. */
 export interface NotesSnapshot {
   notes: StickyNote[]
   revision: number
   trash?: TrashedNote[]
 }
 
-/** One owner-confirmed permanent erase, bound to the revision and deletion the owner reviewed. */
 export type NotesTrashErase =
   | { scope: "all"; expectedRevision: number }
   | { scope: "entry"; expectedRevision: number; id: string; deletedAt: string }
 
-/** A committed erase whose device recording still needs the device's proof that it is gone. */
 export interface NotesTrashRecordingCleanup {
   operationId: string
   noteId: string
@@ -53,7 +44,6 @@ export interface NotesTrashRecordingCleanup {
   deletedAt: string
 }
 
-/** What a creation supplies; the service validates the combined record. */
 export interface CreateNoteInput {
   format?: NoteFormat
   title: string
@@ -63,12 +53,10 @@ export interface CreateNoteInput {
   creationId?: string
 }
 
-/** A literal substitution of one unique match, or an exact suffix appended to the body. */
 export type NoteTextEdit =
   | { action?: "replace"; field: "title" | "body"; oldText: string; newText: string }
   | { action: "append"; field: "body"; text: string }
 
-/** One edit of an existing note; omitted fields stay unchanged. */
 export interface UpdateNoteInput {
   authoredEdit?: AuthoredNoteEdit
   format?: NoteFormat
@@ -79,12 +67,10 @@ export interface UpdateNoteInput {
   textEdit?: NoteTextEdit
 }
 
-/** The note's complete text: its title, then its stored remainder. */
 export function reconstructNoteContent(note: Pick<StickyNote, "title" | "body"> & { bodySeparator?: "" | "\n" }): string {
   return note.title + (note.bodySeparator ?? "") + note.body
 }
 
-/** The note's model-visible parts: authored text, identity, times, color and kind, never internal handles. */
 export function projectNoteForModel<T extends Pick<StickyNote, "title" | "body">>(note: T): Pick<StickyNote, "title" | "body"> & {
   bodySeparator: "" | "\n"
   id?: string

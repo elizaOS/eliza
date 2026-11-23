@@ -14,7 +14,6 @@ import { freshId } from browser
 const Label = Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 300)))
 const Identity = Schema.Struct({ providerId: Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 80))), providerPlaceId: Schema.String.check(Schema.makeFilter((value: string) => boundedText(value, 512))) })
 
-/** One saved place: a label, a coordinate and, for a provider place, its provider identity. */
 export const SavedPlace = Schema.Struct({
   id: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9-]{1,80}$/)),
   label: Label,
@@ -23,7 +22,6 @@ export const SavedPlace = Schema.Struct({
   providerPlaceId: Schema.optionalKey(Identity.fields.providerPlaceId),
   savedAt: Schema.Finite.check(Schema.isGreaterThan(0)),
 }).check(Schema.makeFilter((saved: { readonly providerId?: string; readonly providerPlaceId?: string }) => (saved.providerId === undefined) === (saved.providerPlaceId === undefined)))
-/** One saved place. */
 export type SavedPlace = typeof SavedPlace.Type
 
 const Stored = Schema.Struct({
@@ -35,7 +33,6 @@ const Stored = Schema.Struct({
 })
 const decodeStored = Schema.decodeUnknownEffect(Schema.fromJsonString(Stored))
 
-/** One saved place as the agent's read-only saved-places port receives it. */
 export interface HostSavedPlace {
   readonly id: string
   readonly label: string
@@ -45,7 +42,6 @@ export interface HostSavedPlace {
   readonly savedAt: number
 }
 
-/** What a save names: a label, a coordinate and optionally the provider place it came from. */
 export interface SavedPlaceInput {
   readonly label: string
   readonly coordinate: Coordinate
@@ -62,7 +58,6 @@ function samePlace(saved: SavedPlace, input: SavedPlaceInput, at: Coordinate): b
     : saved.providerId === undefined && saved.coordinate.latitude === at.latitude && saved.coordinate.longitude === at.longitude
 }
 
-/** The saved places kept under `key` in the KeyValueStore the program provides. */
 export effect function savedPlaces(key: string) {
   const store = try KeyValueStore.KeyValueStore
 
@@ -129,5 +124,4 @@ export effect function savedPlaces(key: string) {
   return { namespace: key, read, save, rename, remove, host: { namespace: key, list } }
 }
 
-/** The saved places of one phone list. */
 export type SavedPlaces = Effect.Success<ReturnType<typeof savedPlaces>>

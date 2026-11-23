@@ -1,9 +1,9 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"
 import { sha256Hex } from "@elizaos/core"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { eventVisible, writeRoute } from "../../gen/calendar__actions.effect.vibe"
+import { eventVisible, readScope, writeRoute } from "../../gen/calendar__actions.effect.vibe"
 import { sameSourceKey, sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarProvider, type CalendarSourceKey, type CalendarSummary } from "../model.vibe"
-import { calendarMutationLedger, CalendarLedgerUnavailable, type CalendarMutationOutcome, type CalendarMutationPayload, type CalendarMutationRequest } from "../mutations/ledger.vibe"
+import { calendarMutationLedger, type CalendarLedgerUnavailable, type CalendarMutationOutcome, type CalendarMutationPayload, type CalendarMutationRequest } from "../mutations/ledger.vibe"
 import { providerMutationPort, reviewDigest } from "../mutations/provider-port.vibe"
 import { PayloadRecord } from "../mutations/records.schema.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
@@ -11,7 +11,6 @@ import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
 import { eventInWindow, eventVersion, residentCalendar, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
 import { cacheKeyValueStore, type CalendarCache } from "./runtime-store.vibe"
 
-/** The approval a provider change waits in, as the agent's owner approval queue takes it. */
 export interface CalendarApprovalRow {
   readonly id: string
   readonly subjectUserId: string
@@ -22,26 +21,22 @@ export interface CalendarApprovalRow {
   readonly expiresAt: string
 }
 
-/** The owner approval queue a provider change is filed in. */
 export interface CalendarApprovals {
   request(row: CalendarApprovalRow): Promise<{ readonly id: string; readonly state: string }>
 }
 
-/** An approval the owner resolved, as the queue hands it to the calendar executor. */
 export interface CalendarApprovalRecord {
   readonly id: string
   readonly action: string
   readonly payload: Readonly<Record<string, unknown>>
 }
 
-/** What the queue records for a calendar change it handed to the executor. */
 export interface CalendarLedgerOutcome {
   readonly result: "ChangeSucceeded" | "ChangeInvalidated" | "ChangeRetryable" | "ChangeUnconfirmed"
   readonly text: string
   readonly failure?: { readonly code: string; readonly retryable: boolean; readonly acceptance: "not_accepted" | "unknown" }
 }
 
-/** A read across the active account's listed calendars. */
 export interface CalendarSearch {
   readonly timeMin: number
   readonly timeMax: number
@@ -49,7 +44,6 @@ export interface CalendarSearch {
   readonly calendarId?: string
 }
 
-/** What a read found, and whether every listed calendar answered completely. */
 export interface CalendarSearchResult {
   readonly account: CalendarAccount
   readonly events: readonly CalendarEvent[]
@@ -59,25 +53,21 @@ export interface CalendarSearchResult {
   readonly timeMax: string
 }
 
-/** An event the action found by id, with the calendar it was read from. */
 export interface CalendarFound {
   readonly event: CalendarEvent
   readonly source: CalendarSourceKey
 }
 
-/** A change the owner asked for: what it is, and the request that asked. */
 export type CalendarChangeRequest =
-  | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly askedBy: string; readonly askId: string }
+  | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly reviewAsked: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "update"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly askedBy: string; readonly askId: string }
 
-/** What a change came to: applied now through the ledger, queued for approval, or refused before anything ran. */
 export type CalendarChangeResult =
   | { readonly kind: "ran"; readonly request: CalendarMutationRequest; readonly outcome: CalendarMutationOutcome }
   | { readonly kind: "queued"; readonly request: CalendarMutationRequest; readonly approvalId: string }
   | { readonly kind: "refused"; readonly reason: "no_account" | "foreign_account" | "not_writable" | "no_provider" | "approvals_unavailable" }
 
-/** What a calendar host needs from the agent: its durable cache, its id, and the owner approval queue when it runs. */
 export interface CalendarHostOptions {
   readonly cache: CalendarCache
   readonly agentId: string
@@ -97,7 +87,6 @@ function byStart(left: CalendarEvent, right: CalendarEvent): number {
 
 const fold = (text: string) => text.normalize("NFKC").toLowerCase().trim()
 
-/** The outcome sentence and failure the approval queue records for a ledger outcome. */
 export function ledgerOutcome(outcome: CalendarMutationOutcome): CalendarLedgerOutcome {
   switch (outcome.kind) {
     case "succeeded": return { result: "ChangeSucceeded", text: outcome.receipt.operation === "cancel_event" ? "The event was deleted." : "The calendar shows the change." }
@@ -109,7 +98,6 @@ export function ledgerOutcome(outcome: CalendarMutationOutcome): CalendarLedgerO
   }
 }
 
-/** The calendar host: the resident calendar, the providers a host registers, the active account, reads and ledgered changes. */
 export effect function calendarHost(options: CalendarHostOptions) {
   const store = try cacheKeyValueStore(options.cache)
   const rows = Layer.succeed(KeyValueStore.KeyValueStore, store)
@@ -139,6 +127,11 @@ export effect function calendarHost(options: CalendarHostOptions) {
     return { found, unavailable }
   }
 
+  function narrowedTo(found: readonly { readonly row: CalendarSummary }[], calendarId: string | undefined): string | undefined {
+    if (calendarId === undefined) return undefined
+    return readScope(true, found.some(({ row }) => row.calendarId === calendarId)) === "OneListed" ? calendarId : undefined
+  }
+
   effect function calendars(): (readonly CalendarSummary[] | undefined)!! {
     const account = try Ref.get(active)
     return account === undefined ? undefined : (try listed(account)).found.map(({ row }) => row)
@@ -151,8 +144,9 @@ export effect function calendarHost(options: CalendarHostOptions) {
     const events: CalendarEvent[] = []
     let complete = unavailable.length === 0
     const seen = new Set<string>()
+    const calendarId = narrowedTo(found, request.calendarId)
     for (const { port, row } of found) {
-      if (request.calendarId !== undefined && row.calendarId !== request.calendarId) continue
+      if (calendarId !== undefined && row.calendarId !== calendarId) continue
       const read = port.read(account, row, request.timeMin, request.timeMax) catch () => undefined
       if (read === undefined) { complete = false; unavailable.push(port.provider); continue }
       complete = complete && read.complete
@@ -173,8 +167,10 @@ export effect function calendarHost(options: CalendarHostOptions) {
   effect function find(eventId: string, calendarId?: string): (CalendarFound | undefined)!! {
     const account = try Ref.get(active)
     if (account === undefined) return undefined
-    for (const { port, row } of (try listed(account)).found) {
-      if (calendarId !== undefined && row.calendarId !== calendarId) continue
+    const { found } = try listed(account)
+    const narrowed = narrowedTo(found, calendarId)
+    for (const { port, row } of found) {
+      if (narrowed !== undefined && row.calendarId !== narrowed) continue
       const event = port.get(account, row, eventId) catch () => undefined
       if (event !== undefined && eventVisible(event.connectorAccountId ?? row.connectorAccountId, account.accountId, true)) {
         return { event, source: { provider: row.provider, side: row.side, grantId: row.grantId, connectorAccountId: row.connectorAccountId, calendarId: row.calendarId } }
@@ -200,7 +196,9 @@ export effect function calendarHost(options: CalendarHostOptions) {
     const provider = (try Ref.get(providers)).get(source.provider)
     if (provider === undefined) return { kind: "refused", reason: "no_provider" }
     const row = (try listed(account)).found.find(({ row }) => sameSourceKey(row, source))
-    const route = writeRoute(source.provider === "eliza" ? "ResidentProvider" : "AccountProvider", source.connectorAccountId === account.accountId && row !== undefined, row !== undefined && writableRow(row.row))
+    const route = writeRoute(source.provider === "eliza" ? "ResidentProvider" : "AccountProvider", source.connectorAccountId === account.accountId && row !== undefined, row !== undefined && writableRow(row.row),
+      asked.kind === "create" && asked.reviewAsked)
+
     if (route === "RefuseWrite") return { kind: "refused", reason: source.connectorAccountId === account.accountId ? "not_writable" : "foreign_account" }
     const payload: CalendarMutationPayload = asked.kind === "create"
       ? { action: "schedule_event", account: account.accountId, source, fields: asked.fields, recurrence: asked.recurrence }
@@ -244,5 +242,4 @@ export effect function calendarHost(options: CalendarHostOptions) {
   }
 }
 
-/** The calendar host a plugin service holds. */
 export type CalendarHost = Effect.Success<ReturnType<typeof calendarHost>>

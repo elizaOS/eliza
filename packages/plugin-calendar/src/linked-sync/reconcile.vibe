@@ -10,13 +10,9 @@ import {
   type LinkedCalendarProviderSnapshot, type LinkedCalendarState,
 } from "./linked.vibe"
 
-/** What one reconciliation of a link did. */
 export type LinkedCalendarReconcileOutcome = "clean" | "dirty" | "pushed" | "pulled" | "conflicted" | "quarantined" | "paused"
-/** What recovery of a held dispatch proved. */
 export type LinkedCalendarRecoveryOutcome = "landed" | "not_landed" | "unresolved"
-/** Which version the owner kept for a conflicted link. */
 export type LinkedCalendarConflictChoice = "keep_eliza" | "keep_google"
-/** The dispatch time and settle window a recovery read waits out. */
 export interface LinkedCalendarRelease {
   readonly dispatchedAt: number | null
   readonly settleMs: number
@@ -44,7 +40,6 @@ const reason = (error: unknown) => error instanceof Error ? error.message : Stri
 const providerDeletedMessage = "Google deleted the linked event; the Eliza event was removed and the retained link was paused."
 const cleared = { lastErrorCode: null, lastErrorMessage: null } as const
 
-/** Reconciles, recovers and resolves linked events against a checkpoint store, the resident calendar and a provider. */
 export class LinkedCalendarReconciler {
   readonly #store: LinkedCalendarCheckpointStore
   readonly #local: LinkedCalendarLocalPort
@@ -73,7 +68,6 @@ export class LinkedCalendarReconciler {
     return try this.#provider.get(record)
   }
 
-  /** Reconciles one link: holds, pulls, pushes, records a conflict or refreshes its checkpoint, as its current reading decides. */
   effect reconcile(record: LinkedCalendarEventRecord): LinkedCalendarReconcileOutcome!(Failure | ProviderUncertain) {
     const linkPhase = phases[record.state]
     const pendingLink = pending(record.pendingOperation)
@@ -202,7 +196,6 @@ export class LinkedCalendarReconciler {
     return try this.#checkpoint(staged, next, result, false, success)
   }
 
-  /** Settles a held dispatch from what both calendars now show, never sending a provider write. */
   effect recoverDispatch(record: LinkedCalendarEventRecord, release?: LinkedCalendarRelease): LinkedCalendarRecoveryOutcome!Failure {
     const reading = effect {
       const local = try this.#read(record.localEventId)
@@ -238,7 +231,6 @@ export class LinkedCalendarReconciler {
     return "landed"
   }
 
-  /** Applies the owner's choice to a conflicted link at the revisions read now; any other link reconciles as usual. */
   effect resolveConflict(record: LinkedCalendarEventRecord, choice: LinkedCalendarConflictChoice): LinkedCalendarReconcileOutcome!(Failure | ProviderUncertain) {
     const local = try this.#read(record.localEventId)
     const current = try this.#providerRead(record)

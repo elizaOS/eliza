@@ -29,7 +29,6 @@ export error OperatorUsageInvalid { problem: string }
 export error OperatorRefused { refusal: Refusal }
 error SeedInvalid { problem: string }
 
-/** A JSON file a command applies, read at the command line, with the SHA-256 of its bytes. */
 export interface OperatorDocument {
   readonly value: unknown
   readonly digest: string

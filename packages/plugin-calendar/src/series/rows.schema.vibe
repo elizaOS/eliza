@@ -4,7 +4,6 @@ import type { CalendarRecurrence } from "./recurrence-rule.vibe"
 
 const Instant = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(8_640_000_000_000_000))
 
-/** One stored row of the document Calendar as it is kept: a one-off event, a series, or an override under its series. */
 export const CalendarRowRecord = Schema.Struct({
   id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
   calendarId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
@@ -25,12 +24,10 @@ export const CalendarRowRecord = Schema.Struct({
   until: Schema.optionalKey(Instant),
 }).check(Schema.makeFilter((row) => row.end >= row.begin))
 
-/** The scope a reviewed change names, as it is sent and stored. */
 export const WriteScopeRecord = Schema.Literals(["instance", "this_and_following", "series"])
 
 const Utc = Schema.String.check(Schema.makeFilter((text) => /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(text) && Number.isFinite(Date.parse(text))))
 
-/** How a reviewed new series repeats, as it is sent and stored: at most 500 skipped starts, all distinct. */
 export const RecurrenceRecord = Schema.Struct({
   rule: Schema.Literals(["daily", "weekdays", "weekly"]),
   until: Schema.optionalKey(Utc),
@@ -38,9 +35,6 @@ export const RecurrenceRecord = Schema.Struct({
 })
 
 type Assignable<A, B extends A> = B
-/** The stored row shape is the document's row shape. */
 export type StoredRow = Assignable<CalendarRow, typeof CalendarRowRecord.Type>
-/** The stored scope is the document's write scope. */
 export type StoredScope = Assignable<CalendarWriteScope, typeof WriteScopeRecord.Type>
-/** The stored recurrence is the reviewed recurrence. */
 export type StoredRecurrence = Assignable<CalendarRecurrence, typeof RecurrenceRecord.Type>

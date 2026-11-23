@@ -239,6 +239,16 @@ effect function groupCandidates(
   )
 }
 
+function latestCorrection(candidates: SpeakerNameCandidate[]): SpeakerNameCandidate | undefined {
+  const corrections = candidates.filter((candidate) => hasSource(candidate, "user_correction")).map((candidate) => ({
+    candidate,
+    at: Math.max(-Infinity, ...candidate.provenance.filter((item) => item.source === "user_correction").map((item) => Date.parse(item.observedAt ?? "")).filter(Number.isFinite)),
+  }))
+  const at = Math.max(...corrections.map((correction) => correction.at))
+  const latest = corrections.filter((correction) => correction.at === at)
+  return latest.length === 1 ? latest[0].candidate : undefined
+}
+
 function hasSource(
   candidate: SpeakerNameCandidate,
   source: SpeakerNameEvidenceSource,
@@ -306,7 +316,6 @@ function detectUnresolvedConflict(
 ): boolean {
   const [first, second] = candidates
   if (!first || !second) return false
-  if (hasSource(first, "user_correction")) return false
   return (
     first.normalizedName !== second.normalizedName
     && first.confidence >= 0.7
@@ -392,7 +401,7 @@ effect function inferSpeakerName(
     candidates,
   )
   if (borrowedDeviceConflict) reasonCodes.push("borrowed_device_guardrail")
-  const correction = candidates.find((candidate) => hasSource(candidate, "user_correction"))
+  const correction = latestCorrection(candidates)
   const chosen = correction
     ?? candidates.find(
       (candidate) => borrowedDeviceConflict && !hasSource(candidate, "platform_roster"),

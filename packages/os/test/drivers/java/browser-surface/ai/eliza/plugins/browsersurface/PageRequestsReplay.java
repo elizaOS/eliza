@@ -190,6 +190,10 @@ public final class PageRequestsReplay {
         List<Request> gone = new ArrayList<>();
         for (Request r : requests) if (active(r.status) && !mayHold(r)) gone.add(r);
         for (Request r : gone) r.status = ended(r.kind);
+        for (Request r : requests) {
+            Surface x = surface(r.surface);
+            if (r.status.equals("Saving") && (x == null || x.gen != r.gen)) r.status = ended(r.kind);
+        }
         withdrawn(gone);
     }
 

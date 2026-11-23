@@ -16,11 +16,12 @@ import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
 import { cacheCredentials, collectGarbage, isActionEntry, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
+import { precomputeSimulations, prepareSimulationReceipts } from "./formal.ts";
 import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
 import { filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
 import { profile } from "./testing/profile.ts";
-import { isolatedInstalls } from "./selftests/install.ts";
+import { hostedCachedFixture, installChromium, isolatedInstalls } from "./selftests/install.ts";
 import { PACKED, toolShards } from "./selftests/tools.ts";
 import { bigNumberInteger } from "./gen/types.ts";
 import { canonical, check as conformanceCheck, ConformanceError, departure, replay as replayTrace } from "./conformance.ts";
@@ -281,6 +282,7 @@ pure def selected(which: bool): Set[Field] = {
   });
 
   test("the explore stage finds a page that breaks a property, keeps the trace, replays it first, and drops it once fixed", { skip: !["linux-x64", "linux-arm64", "darwin-arm64"].includes(`${process.platform}-${process.arch}`) }, async () => {
+    if (process.env.TURBO_HASH && hostedCachedFixture()) await installChromium(true);
     const remember: Parameters<typeof explore>[1] = (_fingerprint, run) => run();
     const page = (script: string) => `<!doctype html><html><head><title>Page</title></head><body><button>Go</button>${script}</body></html>`;
     const server = 'import http from "node:http"; import fs from "node:fs";\nconst app = http.createServer((_, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(fs.readFileSync("index.html")); });\napp.listen(0, "127.0.0.1", () => console.log(`Local: http://localhost:${app.address().port}/`));\n';
@@ -647,6 +649,87 @@ export const driver = {
     assert.ok(!fs.existsSync(path.join(same, "gen/traces")), repeated.text);
     assert.ok(!fs.existsSync(path.join(same, "gen/proof/door/verify")), repeated.text);
     assert.ok(updated.failed.includes("model"), updated.text);
+  });
+
+  test("selected simulations warm the ordinary check in another project and reject failed inputs", async () => {
+    const cache = path.join(scratch({}), "formal-cache");
+    const seedParent = scratch({});
+    const sources = {
+      "spec/base.md": ruleSpec("pure val limit = 2"),
+      "spec/limit.md": ruleSpec('import base as B from "./base"\npure val top = B::limit'),
+      "spec/counter.md": ruleSpec('import limit as L from "./limit"\npure val initial: int = 0\npure def canInc(n: int): bool = n < L::top\npure def inc(n: int): int = n + 1\npure def alwaysBounded(n: int): bool = n <= L::top\npure def sometimesFull(n: int): bool = n == L::top'),
+      "spec/other.md": ruleSpec("pure val initial: int = 0\npure def bump(n: int): int = n + 1\npure def alwaysNonnegative(n: int): bool = n >= 0"),
+    };
+    const selected = ["other", "counter", "other"];
+    const simulations = (project: string, names = selected) => withFormalCache(cache, () => precomputeSimulations(project, readSpecs(project), names));
+    const prepare = (project: string, names = selected) => withFormalCache(cache, () => prepareSimulationReceipts(project, readSpecs(project), names, seedParent));
+    const invalid = ruleSpec("pure val bad = unknownValue");
+    const first = scratch({ ...sources, "spec/untouched.md": invalid });
+    const { results: cold, seedDirectory: coldSeed } = await prepare(first);
+    assert.deepEqual([...new Set(cold.map((row) => row.where))], ["spec/other.md", "spec/counter.md"]);
+    assert.ok(cold.every((row) => row.ok) && cold.some((row) => row.stage === "sometimes"), JSON.stringify(cold));
+    assert.ok(cold.some((row) => row.stage === "replay" && row.where === "spec/counter.md"), JSON.stringify(cold));
+    assert.ok(fs.readdirSync(path.join(first, "gen/traces")).some((dir) => dir.startsWith("counter.")));
+    assert.ok(!fs.existsSync(path.join(first, "gen/counter.ts")), "partial precomputation does not publish generated modules");
+    const receipts = fs.readdirSync(cache);
+    assert.ok(receipts.length > 0 && receipts.every(isActionEntry));
+    assert.ok(coldSeed);
+    const names = fs.readdirSync(coldSeed);
+    assert.equal(names.filter(isActionEntry).length, 4);
+    assert.equal(names.filter((name) => name.startsWith("simulate-")).length, 2);
+    assert.equal(names.length, 6);
+    fs.rmSync(first, { recursive: true, force: true });
+
+    const same = scratch(sources);
+    const warm = await withFormalCache(cache, () => run(same));
+    assert.deepEqual(warm.results.filter(({ stage }) => ["always", "sometimes", "replay"].includes(stage)),
+      [...cold].sort((a, b) => a.where!.localeCompare(b.where!)));
+    assert.ok(!fs.existsSync(path.join(same, "gen/traces")), "ordinary check reused every simulation action");
+    assert.ok(receipts.every((file) => fs.existsSync(path.join(cache, file))));
+
+    const changed = scratch({ ...sources, "spec/base.md": sources["spec/base.md"].replace("= 2", "= -1") });
+    const rejected = await prepare(changed, ["counter"]);
+    assert.ok(rejected.results.some((row) => row.stage === "always" && !row.ok && row.detail.includes("initial")), JSON.stringify(rejected));
+    assert.equal(rejected.seedDirectory, undefined);
+    assert.equal(fs.readdirSync(seedParent).length, 1);
+
+    const typecheck = names.find(isActionEntry);
+    assert.ok(typecheck);
+    const legacy = typecheck.replace(/\.zst$/, ".gz");
+    assert.notEqual(legacy, typecheck);
+    fs.writeFileSync(path.join(cache, legacy), gzipSync(zstdDecompressSync(fs.readFileSync(path.join(cache, typecheck)))));
+    fs.rmSync(path.join(cache, typecheck));
+    const warmProducer = scratch(sources);
+    fs.cpSync(coldSeed, path.join(warmProducer, ".spec-cache"), { recursive: true });
+    const prepared = await prepare(warmProducer);
+    assert.deepEqual(prepared.results, cold);
+    const seed = prepared.seedDirectory;
+    assert.ok(seed && seed !== coldSeed);
+    assert.deepEqual(fs.readdirSync(seed).sort(), [...names.filter((name) => name !== typecheck), legacy].sort());
+    assert.deepEqual(fs.readFileSync(path.join(seed, legacy)), fs.readFileSync(path.join(cache, legacy)));
+
+    const compact = scratch(sources);
+    fs.cpSync(seed, path.join(compact, ".spec-cache"), { recursive: true });
+    assert.deepEqual((await run(compact)).results, warm.results);
+    assert.ok(!fs.existsSync(path.join(compact, "gen/traces")), "the ordinary check reused the compact seed");
+
+    const fallback = scratch(sources);
+    const restored = path.join(fallback, ".spec-cache");
+    fs.cpSync(seed, restored, { recursive: true });
+    const damaged = names.find((name) => name.startsWith("simulate-"));
+    assert.ok(damaged);
+    fs.writeFileSync(path.join(restored, damaged), "truncated receipt");
+    assert.deepEqual((await run(fallback)).results, warm.results);
+    assert.ok(fs.existsSync(path.join(fallback, "gen/traces")), "the ordinary check recomputed a damaged result");
+
+    const malformed = scratch({ ...sources, "spec/untouched.md": invalid,
+      "spec/other.md": sources["spec/other.md"].replace("n + 1", "n + 2") });
+    await assert.rejects(simulations(malformed, ["other", "untouched"]), /spec\/untouched.md[^]*unknownValue/);
+    const traces = path.join(malformed, "gen/traces");
+    assert.ok(fs.readdirSync(traces).some((dir) => dir.startsWith("other.inv.probe")), "the already started simulation reached the probe before rejection");
+    assert.ok(!fs.existsSync(path.join(malformed, ".spec-cache/lock")));
+    assert.ok((await simulations(malformed, ["other"])).every((row) => row.ok));
+    await assert.rejects(simulations(same, ["missing"]), /no spec has the module name "missing"/);
   });
 
   test("a guard that never refuses its event is reported without failing", async () => {
@@ -3479,35 +3562,49 @@ function eachCheck() {
 }
 
 function theCommandLine() {
-  test("a concurrent verifier install retries once without duplicating the check JSON stream", { skip: process.platform === "win32" }, async () => {
+  test("concurrent verifier installs during simulation and tests retry without duplicating the check JSON stream", { skip: process.platform === "win32" }, async () => {
     for (const changedModel of [false, true]) {
-      const root = toolchain(oneRule("value", "A value", "pure val answer = 42"), "quint", "lsc");
+      const root = toolchain(changedModel ? oneRule("value", "A value", "pure val answer = 42") : fixtures(["door"]), "quint", "lsc");
       const shim = path.join(root, "node_modules/.bin/quint");
       fs.unlinkSync(shim);
       fs.copyFileSync(path.join(nodeModules, ".bin/quint"), shim);
+      if (!changedModel) {
+        const { packageManager } = JSON.parse(read("package.json"));
+        fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ type: "module", packageManager, scripts: { test: "node install-during-tests.mjs" } }));
+        fs.writeFileSync(path.join(root, "install-during-tests.mjs"), `
+          import fs from "node:fs";
+          fs.mkdirSync(".cache", { recursive: true });
+          if (!fs.existsSync(".cache/test-runs")) fs.linkSync("node_modules/.bin/quint", ".cache/second-install-quint");
+          fs.appendFileSync(".cache/test-runs", "ran\\n");
+        `);
+      }
       const retry = await exec(process.execPath, ["--input-type=module", "--eval", `
         import assert from "node:assert/strict";
         import fs from "node:fs";
         import path from "node:path";
         import { main } from "./vibestack/pipeline.ts";
         const attempts = new Set();
+        let linked = false;
+        const link = () => {
+          fs.linkSync("node_modules/.bin/quint", "second-install-quint");
+          linked = true;
+        };
         const { mkdirSync } = fs;
         fs.mkdirSync = (dir, ...args) => {
           if (typeof dir === "string" && path.basename(dir).startsWith("run-")) attempts.add(dir);
+          if (!linked && typeof dir === "string" && dir.split(path.sep).includes("door.inv.step")) link();
           return mkdirSync(dir, ...args);
         };
         const { log } = console;
-        let linked = false;
         console.log = (line) => {
-          if (JSON.parse(line).stage === "model" && !linked) {
-            linked = true;
-            fs.linkSync("node_modules/.bin/quint", "second-install-quint");
-            if (${changedModel}) fs.renameSync("spec/value.md", "spec/renamed.md");
+          if (${changedModel} && JSON.parse(line).stage === "model" && !linked) {
+            link();
+            fs.renameSync("spec/value.md", "spec/renamed.md");
           }
           log(line);
         };
         await main(["check", "--json"]);
-        assert.equal(attempts.size, ${changedModel ? 3 : 2});
+        assert.equal(attempts.size, 3);
       `], root);
       assert.equal(retry.status, 1, retry.stdout + retry.stderr);
       const rows = retry.stdout.trimEnd().split("\n").map((line) => JSON.parse(line));
@@ -3517,6 +3614,8 @@ function theCommandLine() {
       } else {
         assert.equal(retry.stderr, "");
         assert.deepEqual(rows.slice(0, -1), rows.at(-1).results);
+        for (const stage of ["always", "tests"]) assert.deepEqual(rows.filter((r) => r.stage === stage).map((r) => r.ok), [true]);
+        assert.equal(read(".cache/test-runs", root), "ran\nran\n");
         assert.ok(rows.at(-1).results.some((r: Result) => r.stage === "proof" && r.ok), retry.stdout);
       }
       assert.equal(rows.filter((row) => row.stage === "model").length, 1);
@@ -3595,7 +3694,12 @@ function theCommandLine() {
     fs.writeFileSync(path.join(root, "packages/app/package.json"), JSON.stringify({ name: "app" }));
     fs.symlinkSync(nodeModules, path.join(root, "node_modules"), "dir");
     fs.symlinkSync(path.dirname(script), path.join(root, "vibestack"), "dir");
-    const prepare = (hosted: boolean, job = "verify", ...tasks: string[]) => exec(process.execPath, [script, "gen", "--install", ...tasks], root, { ...process.env, GITHUB_ACTIONS: String(hosted), GITHUB_JOB: job, TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
+    const install = (env: NodeJS.ProcessEnv, ...tasks: string[]) => exec(process.execPath, [script, "gen", "--install", ...tasks], root, { ...process.env, TURBO_CACHE: "local:rw", TURBO_TOKEN: "", ...env });
+    const prepare = (hosted: boolean, job = "verify", ...tasks: string[]) => install({ GITHUB_ACTIONS: String(hosted), GITHUB_JOB: job }, ...tasks);
+    const nightly = {
+      GITHUB_ACTIONS: "true", GITHUB_JOB: "vibestack-nightly-check", GITHUB_REPOSITORY: "owner/project", GITHUB_WORKSPACE: root,
+      GITHUB_WORKFLOW_REF: "owner/project/.github/workflows/fuzz.yml@refs/heads/main", npm_command: "install", npm_lifecycle_event: "prepare",
+    };
     for (const hosted of [false, true]) {
       const invalid = await prepare(hosted);
       assert.equal(invalid.status, 0, invalid.stderr);
@@ -3614,12 +3718,20 @@ function theCommandLine() {
       assert.notEqual(missing.status, 0, "a failed prerequisite fails ordinary installs");
       assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
     }
+    const missing = await install(nightly, ...prerequisites);
+    assert.notEqual(missing.status, 0, "a failed prerequisite also fails nightly installs");
+    fs.writeFileSync(path.join(root, "owner-source"), "nightly owner");
+    const deferred = await install(nightly, ...prerequisites);
+    assert.equal(deferred.status, 0, deferred.stderr);
+    assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "nightly owner");
+    assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    const nested = await install({ ...nightly, GITHUB_WORKSPACE: path.dirname(root) });
+    assert.equal(nested.status, 0, nested.stderr);
+    assert.equal((await import(path.join(root, "gen/value.ts") + "?nested")).answer, 43);
+    fs.rmSync(path.join(root, "gen/value.ts"));
     fs.writeFileSync(path.join(root, "owner-source"), "external owner");
     const packable = ["--skip-gen-on-pack", ...prerequisites];
-    const packed = await exec(process.execPath, [script, "gen", "--install", ...packable], root, {
-      ...process.env, GITHUB_ACTIONS: "true", GITHUB_JOB: "verify",
-      npm_command: "pack", npm_lifecycle_event: "prepare", TURBO_CACHE: "local:rw", TURBO_TOKEN: "",
-    });
+    const packed = await install({ GITHUB_ACTIONS: "true", GITHUB_JOB: "verify", npm_command: "pack", npm_lifecycle_event: "prepare" }, ...packable);
     assert.equal(packed.status, 0, packed.stderr);
     assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "external owner");
     assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
@@ -4385,8 +4497,10 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
     `/* ${specFile}, "Story: Say hello" */`,
     "//@ ghost",
     "/** @model spec/app/index.md */",
+    "/** @throws {never} */",
     "// a note",
     "/** What it is. */",
+    "/** What it does. @throws {Error} */",
     "//@ pure-ish",
     "useEffect(() => {}, []);",
     "window.setTimeout(() => {}, 1);",
@@ -4395,7 +4509,24 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
     "const later = React.useLayoutEffect;",
     `globalThis["queueMicrotask"](later);`,
     "// eslint-disable-next-line no-undef -- a global the page defines",
-  ]), ["5 code/comments", "6 code/comments", "7 code/comments", "8 code/effects", "9 code/effects", "10 code/effects", "11 no-console", "12 code/effects", "13 code/effects"]);
+  ]), ["6 code/comments", "7 code/comments", "8 code/comments", "9 code/comments", "10 code/effects", "11 code/effects", "12 code/effects", "13 no-console", "14 code/effects", "15 code/effects"]);
+  assert.deepEqual(await found("apps/app/src/probe.vibe", [
+    "module bridge {",
+    "  /**",
+    "   * @throws {Error | TypeError}",
+    "   */",
+    "  export function read() { throw new Error() }",
+    "  /** @throws {This is ordinary prose} */",
+    "  export function readProse() {}",
+    "  /** @throws {never",
+    "   * Ordinary prose on another line} */",
+    "  export function readMultilineProse() {}",
+    "  /** @throws {} */",
+    "  export function readEmpty() {}",
+    "  /** @throws { } */",
+    "  export function readWhitespace() {}",
+    "}",
+  ]), ["6 code/comments", "8 code/comments", "11 code/comments", "13 code/comments"]);
   const hiding = [["useEffect(() => {}, []); // eslint-disable-line"], ["/* eslint-disable */", "// a note"], ["/* eslint-disable code/comments, code/effects -- it must */", "setTimeout(() => {}, 1);"], ["/* eslint code/comments: off, no-console: off */", `console.log("seen");`], ["// eslint-disable-next-line no-console -- it must", `console.log("seen");`]];
   assert.deepEqual(await Promise.all(hiding.map((lines) => found("apps/app/src/probe.vibe", lines))), hiding.map(() => ["1 inline config"]));
   assert.deepEqual(await found("packages/ui/src/components/probe.vibe", ["/** What a component takes, which the stories generator reads. */", "export function Probe() {", "  /** inside it */", "  return 1;", "}", "// a note"]), ["3 code/comments", "6 code/comments"]);

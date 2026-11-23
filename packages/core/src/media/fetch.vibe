@@ -54,6 +54,7 @@ export type FetchLike = (
 ) => Promise<Response>
 
 export const DEFAULT_MEDIA_FETCH_TIMEOUT_MS = 10_000
+export const DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024
 
 export type FetchMediaOptions = {
   url: string
@@ -240,10 +241,10 @@ effect function throwIfHttpError(
 effect function enforceContentLengthLimit(
   res: Response,
   url: string,
-  maxBytes?: number,
+  maxBytes: number,
 ) {
   const contentLength = res.headers.get("content-length")
-  if (maxBytes === undefined || !contentLength) {
+  if (!contentLength) {
     return
   }
 
@@ -311,11 +312,10 @@ export effect function fetchRemoteMedia(options: FetchMediaOptions) {
   const fetched = effect {
     try throwIfHttpError(res, options.url, finalUrl)
     try enforceResponsePolicy(res, options.url, options)
-    try enforceContentLengthLimit(res, options.url, options.maxBytes)
+    const maxBytes = options.maxBytes ?? DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES
+    try enforceContentLengthLimit(res, options.url, maxBytes)
 
-    const buffer = options.maxBytes !== undefined
-      ? try readResponseWithLimit(res, options.maxBytes)
-      : bufferOf(try foreign(() => res.arrayBuffer()))
+    const buffer = try readResponseWithLimit(res, maxBytes)
     const metadata = try resolveMediaMetadata({
       res,
       buffer,

@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { validateUuid } from "@elizaos/core"
 import { voiceChannelType } from "../gen/agent__voice__session.effect.vibe"
-import { voiceNetworkPorts, type JsonRequest } from "../src/voice/agent-ports.vibe"
+import { voiceNetworkPorts, type JsonRequest } from "../src/voice/index.vibe"
 import type { HeardReport } from "../src/voice/heard-reports.vibe"
 import type { HeardAnswer } from "../src/voice/ports.vibe"
 import { text } from "./support/cloud-fake.ts"

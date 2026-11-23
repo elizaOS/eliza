@@ -3,14 +3,12 @@ import { cardShown, identitiesReady } from "../../gen/files__shownTargets.effect
 import { decodeFilesOperation, describeFilesOperation, filesForm, filesNeedsIdentity, filesOperationAdmitted, filesShownTarget,
   type FilesAgentOperation, type FilesAgentRunner, type FilesIdentity, type FilesPathOperation } from "../contract.vibe"
 
-/** A proposal as the owner reviews it: a card on the exact paths and identities, or a notice that it cannot be reviewed here. */
 export type FilesReviewItem =
   | { readonly proposalId: string; readonly kind: "card"; readonly operation: FilesPathOperation; readonly title: string; readonly description: string }
   | { readonly proposalId: string; readonly kind: "notice"; readonly notice: string }
 
 type Pin = { readonly digest: string; readonly operation: FilesPathOperation }
 
-/** The per-proposal reviews of one coordinator: each card is pinned to what it first showed, and a refresh never moves the pin. */
 export effect function filesReviews(runner: FilesAgentRunner, capabilities: readonly string[]) {
   const pins = try Ref.make(new Map<string, Pin>())
   const latest = try Ref.make(new Map<string, number>())

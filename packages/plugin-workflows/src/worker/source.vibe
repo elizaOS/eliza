@@ -1,10 +1,8 @@
 // spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"; spec/workflow/sourcePublication.md, "Only the reservation owner can publish or release an incomplete write"
 import { initial, machineOver } from "../../gen/workflow__sourcePublication.effect.vibe"
 
-/** How long a waiter looks for a peer's publication before leaving its reservation intact. */
 export const SOURCE_WAIT_MS = 5000
 
-/** The source could not be published or imported exactly; nothing incomplete is visible. */
 export error SourceRefused { reason: string }
 
 module node {
@@ -126,14 +124,6 @@ module node {
     }
   }
 
-  export async function waitForPeer(file: string, bytes: Uint8Array, deadline: number): Promise<boolean> {
-    while (Date.now() < deadline) {
-      if (await existing(file, bytes) === "exact") return true
-      await new Promise((done) => setTimeout(done, 50))
-    }
-    return await existing(file, bytes) === "exact"
-  }
-
   export async function readExact(file: string, maximum: number): Promise<Uint8Array | undefined> {
     try {
       const info = await stat(file)
@@ -148,22 +138,27 @@ module node {
     return join(directory, name)
   }
 }
-import { discard, existing, parentAdmitted, publish, readExact, release, reservationIntact, reserve, sourceFile, stage, stillAbsent, syncDirectory, waitForPeer } from node
+import { discard, existing, parentAdmitted, publish, readExact, release, reservationIntact, reserve, sourceFile, stage, stillAbsent, syncDirectory } from node
 
 effect function io<A>(call: () => Promise<A>): A!! {
   return try promise(call)
 }
 
-/** The custody state of one publication, changed only by the events the publication rules allow. */
+effect function waitForPeer(file: string, bytes: Uint8Array, deadline: number): boolean!! {
+  while ((try Clock.currentTimeMillis) < deadline) {
+    if ((try io(() => existing(file, bytes))) === "exact") return true
+    const remaining = deadline - (try Clock.currentTimeMillis)
+    if (remaining <= 0) break
+    try sleep(Math.min(50, remaining))
+  }
+  return (try io(() => existing(file, bytes))) === "exact"
+}
+
 export effect function sourcePublication() {
   const state = try Ref.make(initial)
   return try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
 }
 
-/**
- * Publishes reviewed source bytes under `name` in a private caller-owned directory: an equal file is reused after a
- * directory sync, an incompatible one is refused, and otherwise only the reservation owner renames a complete synced file.
- */
 export effect function publishWorkflowSource(directory: string, name: string, bytes: Uint8Array, sourceKey: string): ("published" | "existing")!SourceRefused {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name) || sourceKey === "") throw new SourceRefused({ reason: "Invalid source name" })
   const publication = try sourcePublication()
@@ -181,7 +176,7 @@ export effect function publishWorkflowSource(directory: string, name: string, by
   const held = try io(() => reserve(directory, name))
   if (held === undefined) {
     const deadline = (try Clock.currentTimeMillis) + SOURCE_WAIT_MS
-    if (!(try io(() => waitForPeer(file, bytes, deadline)))) throw new SourceRefused({ reason: "Another publisher holds this source" })
+    if (!(try waitForPeer(file, bytes, deadline))) throw new SourceRefused({ reason: "Another publisher holds this source" })
     if (!(try io(() => syncDirectory(directory)))) throw new SourceRefused({ reason: "The source directory could not be synchronized" })
     return "existing"
   }
@@ -211,7 +206,6 @@ export effect function publishWorkflowSource(directory: string, name: string, by
   }, orDie(releaseHeld))
 }
 
-/** Imports published source only when it is complete and exactly the reviewed bytes. */
 export effect function importWorkflowSource(directory: string, name: string, expected: Uint8Array): Uint8Array!SourceRefused {
   const bytes = try io(() => readExact(sourceFile(directory, name), expected.byteLength))
   if (bytes === undefined || bytes.byteLength !== expected.byteLength || !bytes.every((byte, index) => byte === expected[index])) {

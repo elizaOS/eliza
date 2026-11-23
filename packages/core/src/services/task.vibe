@@ -286,8 +286,7 @@ effect function validateTasks(runner: TaskRunner, tasks: Task[]) {
     const metadata = task.metadata
     if (metadata?.paused) {
       if (
-        task.tags?.includes("repeat")
-        && metadata.orphanedNoWorker === true
+        metadata.orphanedNoWorker === true
         && task.id
         && try foreignSync(() => runtime.getTaskWorker(task.name))
       ) {
@@ -385,11 +384,6 @@ effect function quarantineOrphanTask(
   const runtime = runner.runtime
   const context = { taskId, taskName: task.name }
   const quarantine = effect {
-    if (task.tags?.includes("repeat") !== true) {
-      try foreign(() => runtime.deleteTask(taskId))
-      try note(runner, "warn", context, "Orphaned one-shot task deleted (no worker registered)")
-      return
-    }
     if (task.metadata?.paused !== true) {
       const updatedAt = try clockNow(runner)
       try foreign(() => runtime.updateTask(taskId, {
@@ -402,7 +396,7 @@ effect function quarantineOrphanTask(
         },
       }))
     }
-    try note(runner, "warn", context, "Orphaned repeat task auto-paused (no worker registered)")
+    try note(runner, "warn", context, "Orphaned task auto-paused (no worker registered)")
   }
   quarantine catch (failure) => {
     errors.push(

@@ -10,5 +10,4 @@ module node {
 }
 import { listening } from node
 
-/** The Node HTTP server `elizaos-cloud serve` listens with; a Worker answers through its fetch handler instead. */
 export { listening }
