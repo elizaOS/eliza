@@ -326,7 +326,7 @@ is too long (`context_length_exceeded`) from a request it must change. Any
 other value is left out, and so is every other field of the provider's
 body: its message can echo the request, and a billing, quota or credential
 code speaks of the deployment's provider account, not the caller's. A
-refusal with any other status passes nothing on.
+refusal with any other status passes nothing on, and its body is not read.
 
 ```quint
 type ProviderFault = { code: str, param: str }
@@ -334,8 +334,9 @@ pure val requestFaultCodes: Set[str] = Set("parser_error", "context_length_excee
   "schema_validation_error", "wrong_api_format", "unsupported_parameter", "unsupported_value", "invalid_value", "invalid_type", "invalid_request", "tool_use_failed")
 pure val requestFaultParams: Set[str] = Set("tool_calls", "messages", "tools", "response_format")
 pure val noFault: ProviderFault = { code: "", param: "" }
+pure def readsFault(status: int): bool = status == 400
 pure def passedFault(status: int, faultCode: str, faultParam: str): ProviderFault =
-  if (status != 400) noFault
+  if (not(readsFault(status))) noFault
   else { code: if (requestFaultCodes.contains(faultCode)) faultCode else "", param: if (requestFaultParams.contains(faultParam)) faultParam else "" }
 pure val faultCodeValues = Set("", "parser_error", "insufficient_quota")
 pure val faultParamValues = Set("", "tool_calls", "prompt")
@@ -345,6 +346,7 @@ pure def lawOnlyAListedFaultIsPassed(status: int, faultCode: str, faultParam: st
     and (fault.param == "" or (status == 400 and fault.param == faultParam and requestFaultParams.contains(faultParam)))
 }
 pure def lawAParseFailureReachesTheAgent(faultParam: str): bool = passedFault(400, "parser_error", faultParam).code == "parser_error"
+pure def lawAnUnreadRefusalPassesNothing(status: int, faultCode: str, faultParam: str): bool = not(readsFault(status)) implies passedFault(status, faultCode, faultParam) == noFault
 ```
 
 ## Story: Stream a reply in the shape clients read

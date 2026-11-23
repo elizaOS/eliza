@@ -101,7 +101,7 @@ effect function hangUpAfterFirstBytes(url: string, key: string) {
 }
 
 describe("WP5 Inference: chat completions", () => {
-  it.live("Answer a chat completion once and charge it once, forwarding a planning turn as sent and answering a provider's refusal of the request as the caller's, with its listed code, and its rate limit as a rate limit, and charging nothing for a cache read on a model whose cached-input price is 0 (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/models.md, \"Each side costs its tokens at its price plus 20 percent, rounded half up to a whole micro-dollar\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A provider's refusal of the request passes on its listed code and parameter and nothing else\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
+  it.live("Answer a chat completion once and charge it once, forwarding a planning turn as sent and answering a provider's refusal of the request as the caller's, with its listed code and parameter and no other, and its rate limit as a rate limit, and charging nothing for a cache read on a model whose cached-input price is 0 (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/models.md, \"Each side costs its tokens at its price plus 20 percent, rounded half up to a whole micro-dollar\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A provider's refusal of the request passes on its listed code and parameter and nothing else\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
     const { cloud, llm, chat } = try chatCloud(true)
     const { model, messages } = request
     const unbounded = { model, messages }
@@ -114,12 +114,16 @@ describe("WP5 Inference: chat completions", () => {
     const whole = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
     const again = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
     try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "reject", status: 400 }, { kind: "reject", status: 401 },
-      { kind: "reject", status: 400, body: { code: "parser_error", param: "prompt", type: "generation_error", message: "Failed to parse tool call" } }))
+      { kind: "reject", status: 400, body: { code: "parser_error", param: "prompt", type: "generation_error", message: "Failed to parse tool call" } },
+      { kind: "reject", status: 400, body: { error: { code: "insufficient_quota", param: "tools", message: "You exceeded your current quota" } } },
+      { kind: "reject", status: 422, body: { code: "parser_error", param: "tool_calls" } }))
     const refusedByProvider = try chat(request)
     const unreadable = try chat(request)
     const rejectedByProvider = try chat(request)
     const providerAuthFailed = try chat(request)
     const unparsedByProvider = try chat(request)
+    const unlistedByProvider = try chat(request)
+    const unprocessableByProvider = try chat(request)
     const planning = {
       tools: [{ type: "function", function: { name: "SEARCH", parameters: { type: "object", properties: {} } } }],
       tool_choice: { type: "function", function: { name: "SEARCH" } },
@@ -128,7 +132,7 @@ describe("WP5 Inference: chat completions", () => {
     const legacy = try chat({ ...request, ...planning, model: "legacy-chat", max_completion_tokens: 64 })
     const wide = try chat({ ...unbounded, model: "wide-chat", stream: true })
     const answer = whole.body as { readonly model: string; readonly choices: ReadonlyArray<{ readonly message: { readonly content: string } }> }
-    const usage = try settledCount(cloud, "org-owner", 8)
+    const usage = try settledCount(cloud, "org-owner", 10)
     const holds = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = 'org-owner' ORDER BY phase", [])
     const funds = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = 'org-owner'", [])
     const brokeUsage = try usageRows(cloud, "org-broke")
@@ -143,12 +147,14 @@ describe("WP5 Inference: chat completions", () => {
         whole: [whole.status, answer.model, answer.choices[0]?.message.content, whole.headers["cache-control"], status(again)],
         upstream: llm.bodies.map((body) => [body.model, body.stream ?? false, body.max_tokens, body.max_completion_tokens]),
         idempotencyForwarded: llm.headers.some((headers) => headers["idempotency-key"] !== undefined),
-        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[6]?.[field]])),
+        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[8]?.[field]])),
         refusedByProvider: status(refusedByProvider),
         unreadable: status(unreadable),
         rejectedByProvider: [status(rejectedByProvider), fault(rejectedByProvider)],
         providerAuthFailed: [status(providerAuthFailed), fault(providerAuthFailed)],
         unparsedByProvider: [status(unparsedByProvider), fault(unparsedByProvider)],
+        unlistedByProvider: [status(unlistedByProvider), fault(unlistedByProvider)],
+        unprocessableByProvider: [status(unprocessableByProvider), fault(unprocessableByProvider)],
         usage,
         brokeUsage,
         holds: holds.map((row) => row.phase),
@@ -164,7 +170,8 @@ describe("WP5 Inference: chat completions", () => {
         whole: [200, "test-chat", replyText, "no-store", [409, "already_dispatched", undefined]],
         upstream: [[upstreamModel, false, 4096, undefined], [upstreamModel, false, 16, undefined],
           [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
-          [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
+          [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
         idempotencyForwarded: false,
         planningForwarded: planning,
         refusedByProvider: [429, "rate_limited", "7"],
@@ -172,9 +179,12 @@ describe("WP5 Inference: chat completions", () => {
         rejectedByProvider: [[400, "invalid_request", undefined], ["context_length_exceeded", "messages", undefined]],
         providerAuthFailed: [[503, "provider_unavailable", "5"], [undefined, undefined, undefined]],
         unparsedByProvider: [[400, "invalid_request", undefined], ["parser_error", undefined, undefined]],
-        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["known", 50, 0], ["known", 166, 31], ["known", 19673, 27]],
+        unlistedByProvider: [[400, "invalid_request", undefined], [undefined, "tools", undefined]],
+        unprocessableByProvider: [[400, "invalid_request", undefined], [undefined, undefined, undefined]],
+        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["known", 50, 0], ["known", 50, 0], ["known", 50, 0],
+          ["known", 166, 31], ["known", 19673, 27]],
         brokeUsage: [],
-        holds: ["settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled"],
+        holds: ["settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled"],
         balance: 1_000_000 - 31 * 2 - 27 - 50
       }
     ))

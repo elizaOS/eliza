@@ -119,6 +119,8 @@ pure val cachedTokensValues = Set(0, 1, 834, 2000000)
 pure val cachedPer1KValues = Set(0, 1, 3, 1000)
 pure def lawInputWithNoCacheReadCostsItsSide(tokens: int, per1K: Micros, cachedPer1K: Micros): bool = inputCost(tokens, 0, per1K, cachedPer1K) == sideCost(tokens, per1K)
 pure def lawAFreeCacheReadCostsNothing(tokens: int, cachedTokens: int, per1K: Micros): bool = inputCost(tokens, cachedTokens, per1K, 0) == sideCost(tokens, per1K)
+pure def lawACacheReadAtTheInputPriceCostsTheWholePrompt(tokens: int, cachedTokens: int, per1K: Micros): bool =
+  inputCost(tokens, cachedTokens, per1K, per1K) == sideCost(tokens + cachedTokens, per1K)
 pure val tokensValues = Set(0, 1, 4, 833, 834, 1000, 2000000)
 pure val per1KValues = Set(1, 3, 1000, 10000000)
 pure def lawRoundingWithinHalfMicro(tokens: int, per1K: Micros): bool = {
@@ -146,10 +148,18 @@ pure def lawInputArithmeticIsSafe(tokens: int, cachedTokens: int, per1K: Micros,
 
 ### More tokens never cost less
 
+The same holds of the input side when either part of the prompt grows: the
+tokens read from the prompt cache or the rest.
+
 ```quint
 pure val fewerValues = Set(0, 1, 833, 834, 2000000)
 pure val moreValues = Set(0, 1, 834, 1000, 2000000)
 pure def lawCostMonotoneInTokens(fewer: int, more: int, per1K: Micros): bool = (0 <= fewer and fewer <= more and isValidPrice(per1K)) implies sideCost(fewer, per1K) <= sideCost(more, per1K)
+pure val fewerCachedValues = Set(0, 1, 834)
+pure val moreCachedValues = Set(0, 834, 2000000)
+pure def lawInputCostMonotoneInTokens(fewer: int, more: int, fewerCached: int, moreCached: int, per1K: Micros, cachedPer1K: Micros): bool =
+  (0 <= fewer and fewer <= more and 0 <= fewerCached and fewerCached <= moreCached and isValidPrice(per1K) and isCachedPrice(cachedPer1K, per1K)) implies
+    inputCost(fewer, fewerCached, per1K, cachedPer1K) <= inputCost(more, moreCached, per1K, cachedPer1K)
 ```
 
 ### Each billed side is the larger of a usage total and its detail, capped at 2,000,000 tokens; a negative count makes the usage unreadable
