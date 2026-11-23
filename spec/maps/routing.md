@@ -23,6 +23,10 @@ map goes to showing or finding it; travelling to a destination, or going to
 a named place or street address, goes to navigation from here unless the
 destination names one of the agent's views; a nearby or nearest kind of
 place, and a kind of place near a named place, go to place search.
+"Get to" before a verb is a chance to do something, not a trip: "how do I
+get to talk to someone" or "can I get to see my results" is no travel
+request. See, hear and try still travel before a place ("get to see the
+Eiffel Tower") and stop it only before a possessive or a person.
 
 ```quint
 type RequestShape = DirectionsRequest | PlaceOnMap | TravelTo | GoToNamedPlace | NearbyKind | KindNearNamedPlace | ChoiceReply | OtherRequest
@@ -48,6 +52,31 @@ pure def lawAViewDestinationStaysViewNavigation(r: MapsRequest): bool =
   (r.namesView and (r.shape == TravelTo or r.shape == GoToNamedPlace)) implies mapsRouteOf(r) != ToTravel
 pure def lawCompoundRequestKeepsThePlanner(r: MapsRequest): bool = (r.compound or r.webAddress or r.appDestination) implies mapsRouteOf(r) == ToPlanner
 pure def lawOtherRequestKeepsThePlanner(r: MapsRequest): bool = r.shape == OtherRequest implies mapsRouteOf(r) == ToPlanner
+```
+
+### A place named with its locality is taken only from that locality, and otherwise Maps asks which one
+
+A typed place is looked up and taken when exactly one result fits it, or
+when the search ran near a known point; several that fit are offered as a
+numbered question, and no result is the plain not-found reply. A name
+qualified by its locality ("Union Station, Washington, DC", "Union Station
+in Washington") fits only a result whose name holds the name and whose
+address holds the locality, or whose name or address holds the whole query.
+When no result is in the named locality, Maps asks which one rather than
+taking a namesake elsewhere, even when it found only one.
+
+```quint
+type PlacePick = TakePlace | AskWhich | NoPlace
+pure def placePick(found: int, qualified: bool, matching: int, near: bool): PlacePick =
+  if (found <= 0) NoPlace
+  else if (qualified and matching <= 0) AskWhich
+  else if (matching == 1 or near) TakePlace
+  else AskWhich
+pure val foundValues = Set(0, 1, 3)
+pure val matchingValues = Set(0, 1, 2)
+pure def lawANamesakeOutsideTheLocalityIsNeverTaken(found: int, near: bool): bool = placePick(found, true, 0, near) != TakePlace
+pure def lawNothingFoundIsNeverTaken(qualified: bool, matching: int, near: bool): bool = placePick(0, qualified, matching, near) == NoPlace
+pure def lawOneFittingResultIsTaken(found: int, qualified: bool, near: bool): bool = found > 0 implies placePick(found, qualified, 1, near) == TakePlace
 ```
 
 ### A choice reply answers only the open question of the same conversation, within its options and ten minutes

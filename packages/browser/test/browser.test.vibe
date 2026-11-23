@@ -2,8 +2,10 @@
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core"
 import {
-  BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY, browserControlCapabilityAvailable,
-  browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable, parseBrowserControl, parseBrowserNavigate,
+  BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_NO_TABS_TO_CLOSE_NOTICE, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY,
+  BROWSER_TABS_CLOSE_ALL_CAPABILITY, BROWSER_TABS_UNLISTED_NOTICE, browserCloseAllApprovable, browserCloseAllNotice, browserControlCapabilityAvailable,
+  browserControlFormAvailable, browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable, describeBrowserControl, parseBrowserControl,
+  parseBrowserNavigate,
 } from "../src/contract.vibe"
 import {
   browserDestinationMatches, browserSearchQueryMatches, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination,
@@ -50,7 +52,7 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
   })
 })
 
-it.effect(`Offer a Browser control only as negotiated and review it only on the unlocked phone (spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review")`, effect () => {
+it.effect(`Offer a Browser control only as negotiated and review it only on the unlocked phone (spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review")`, effect () => {
   const tabsOnly = [BROWSER_TABS_CAPABILITY]
   try Effect.try(() => {
     assert.deepStrictEqual(parseBrowserControl({ type: "browser_search", query: "  cheap   flights " }), { ok: true, operation: { type: "browser_search", query: "cheap flights" } })
@@ -82,6 +84,22 @@ it.effect(`Offer a Browser control only as negotiated and review it only on the 
       [false, false, true, false])
     assert.isDefined(browserControlReviewNotice({ sensitive: true }))
     assert.isUndefined(browserControlReviewNotice({ sensitive: false }))
+    const closeAll = { type: "browser_tab_close", all: true } as const
+    const tabs = [{ title: "News", host: "news.example" }, { title: "Docs", host: "Docs" }, { title: "Secret", private: true }]
+    assert.deepStrictEqual(
+      [parseBrowserControl({ type: "browser_tab_close", all: true }), parseBrowserControl({ type: "browser_tab_close", all: true, target: "News" }).ok, parseBrowserControl({ type: "browser_tab_close", all: false }).ok],
+      [{ ok: true, operation: closeAll }, false, false])
+    assert.deepStrictEqual(
+      [browserControlFormAvailable(closeAll, tabsOnly), browserControlFormAvailable(closeAll, [BROWSER_TABS_CLOSE_ALL_CAPABILITY]),
+        browserControlFormAvailable(closeAll, [BROWSER_TABS_CAPABILITY, BROWSER_TABS_CLOSE_ALL_CAPABILITY]), browserControlFormAvailable({ type: "browser_tab_close" }, tabsOnly)],
+      [false, false, true, true])
+    assert.deepStrictEqual(describeBrowserControl(closeAll, tabs), {
+      title: "Close 3 tabs",
+      description: "• News (news.example)\n• Docs\n• 1 private tab\n\nCloses every tab listed here. The agent does not see your tabs.",
+    })
+    assert.deepStrictEqual(
+      [browserCloseAllNotice(tabs), browserCloseAllNotice(null), browserCloseAllNotice([]), browserCloseAllApprovable(tabs), browserCloseAllApprovable(undefined), browserCloseAllApprovable([])],
+      [undefined, BROWSER_TABS_UNLISTED_NOTICE, BROWSER_NO_TABS_TO_CLOSE_NOTICE, true, false, false])
   })
 })
 
