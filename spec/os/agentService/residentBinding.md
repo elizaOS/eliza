@@ -113,3 +113,49 @@ pure def lawARotationKeepsTheBindingAndAdvancesTheKey(sameBinding: bool, serving
   residentRollout(sameBinding, serving, desired) == RotateKey implies
     sameBinding and sameCloudAccount(serving, desired) and backendVersion(desired) > backendVersion(serving)
 ```
+
+### An inferred change applies only to the current service phase and epoch
+
+A change during a check replaces the pending launch decision when it
+would change the binding, backend or key. A child that has spawned but
+is still starting is replaced for a changed launch. Once the child is
+running, binding or backend changes retire it and the old channel before
+another launch can serve. A newer Cloud key takes the in-place path only
+for the running epoch.
+While a child is being reaped, the next launch reads the current binding
+after exit. An inference change by itself cannot start a stopped
+resident, or advance a launch during an app update hold.
+
+```quint
+type ResidentServicePhase = ResidentStopped | ResidentChecking | ResidentStarting | ResidentServing | ResidentReaping
+type ReconcileResident = LeaveService | ReplaceCheck | RetireChild | PushServingKey
+pure def reconcileResident(phase: ResidentServicePhase, held: bool, change: ResidentRollout): ReconcileResident =
+  if (held) LeaveService
+  else match phase {
+    | ResidentStopped => LeaveService
+    | ResidentChecking => if (change == KeepLaunch) LeaveService else ReplaceCheck
+    | ResidentStarting => if (change == KeepLaunch) LeaveService else RetireChild
+    | ResidentServing => match change {
+        | KeepLaunch => LeaveService
+        | RotateKey => PushServingKey
+        | RetireLaunch => RetireChild
+      }
+    | ResidentReaping => LeaveService
+  }
+pure def lawStoppedResidentIgnoresInferenceChanges(held: bool, change: ResidentRollout): bool =
+  reconcileResident(ResidentStopped, held, change) == LeaveService
+pure def lawTheUpdateHoldStopsResidentReconciliation(phase: ResidentServicePhase, change: ResidentRollout): bool =
+  reconcileResident(phase, true, change) == LeaveService
+pure def lawOnlyTheServingResidentCanRotate(phase: ResidentServicePhase, held: bool, change: ResidentRollout): bool =
+  (reconcileResident(phase, held, change) == PushServingKey) iff (phase == ResidentServing and not(held) and change == RotateKey)
+pure def lawAChangedServingBackendRetiresItsChild(held: bool): bool =
+  reconcileResident(ResidentServing, held, RetireLaunch) == (if (held) LeaveService else RetireChild)
+pure def lawReapingWaitsForTheExit(held: bool, change: ResidentRollout): bool =
+  reconcileResident(ResidentReaping, held, change) == LeaveService
+pure def currentEpochCanPush(expectedEpoch: int, servingEpoch: int, phase: ResidentServicePhase): bool =
+  expectedEpoch > 0 and expectedEpoch == servingEpoch and phase == ResidentServing
+pure def lawAStaleEpochCannotPush(expectedEpoch: int, servingEpoch: int, phase: ResidentServicePhase): bool =
+  expectedEpoch != servingEpoch implies not(currentEpochCanPush(expectedEpoch, servingEpoch, phase))
+pure val expectedEpochValues = Set(0, 1, 2)
+pure val servingEpochValues = Set(0, 1, 2)
+```
