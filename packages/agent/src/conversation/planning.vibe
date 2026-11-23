@@ -5,7 +5,7 @@
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import { tagsMayProduceEffects } from "@elizaos/core/protocol"
@@ -168,6 +168,16 @@ function routeMatches(rule: DirectActionRoutingRule, message: Memory): boolean {
   } catch {
     return false
   }
+}
+
+function selectedContexts(runtime: AgentRuntime, message: Memory, text: string): ReadonlySet<string> {
+  return new Set(getDirectActionRoutingRules(runtime).flatMap((rule) => {
+    try {
+      return rule.matches(text, message) ? rule.contexts.map(normalizeContextId) : []
+    } catch {
+      return []
+    }
+  }))
 }
 
 function routedAway(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ReadonlyMap<string, readonly string[]> {
@@ -366,19 +376,22 @@ function failureNotice(step: PlannedStep): string {
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
 
-function toolLabel(runtime: AgentRuntime, action: Action | undefined): string {
+function toolLabel(runtime: AgentRuntime, action: Action | undefined, selected: ReadonlySet<string>): string {
   const applicable = new Set<string>()
   const labels = new Set<string>()
+  const selectedLabels = new Set<string>()
   for (const context of action === undefined ? [] : resolveActionContexts(action)) {
     if (context === "general" || context === "simple") continue
     const definition = runtime.contexts.get(context)
     if (definition?.sensitivity === "system") continue
     const label = definition?.label?.trim()
     applicable.add(label || context)
-    if (label) labels.add(label)
+    if (!label) continue
+    labels.add(label)
+    if (selected.has(normalizeContextId(context))) selectedLabels.add(label)
   }
-  const [only] = labels
-  return toolActivity(applicable.size, labels.size) === "UsingApp" && only !== undefined ? `Using ${only}` : "Working"
+  const [named] = selectedLabels.size === 1 && applicable.size > 1 ? selectedLabels : labels
+  return toolActivity(applicable.size, labels.size, selectedLabels.size) === "UsingApp" && named !== undefined ? `Using ${named}` : "Working"
 }
 
 function entryKey({ outcome, identity }: PlanStep): string {
@@ -417,6 +430,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const named = new Map(actions.map((action) => [action.name, action]))
   const refused = routedAway(runtime, message, actions)
   const request = typeof message.content.text === "string" ? message.content.text : ""
+  const selected = selectedContexts(runtime, message, request)
   const instruction = requestIsInstruction(request)
   const quiet = requestedNoCue(request)
   let taken = 0
@@ -449,7 +463,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(refusal) })
       return refusal
     }
-    await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name)) })
+    await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name), selected) })
     const captured: string[] = []
     const result = await executePlannedToolCall(runtime, {
       message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),

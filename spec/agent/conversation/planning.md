@@ -576,6 +576,8 @@ pure def lawADirectCueWaitsUntilTheDelay(pending: bool, elapsedMs: int, quiet: b
   canCueDirectCall(pending, elapsedMs, quiet) implies elapsedMs >= 400
 pure def lawOnlyAPendingNonquietCallCanCue(pending: bool, elapsedMs: int, quiet: bool): bool =
   canCueDirectCall(pending, elapsedMs, quiet) implies pending and not(quiet)
+pure def lawNoModelCueFollowsADirectCall(draft: Draft, calls: int): bool =
+  not(acknowledges(draft, calls, 1))
 ```
 
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
@@ -592,13 +594,32 @@ labelled context when it loads (Notes registers `Notes`) and its actions
 declare that context; an action that declares no context, or only contexts
 nobody labelled, is `Working`.
 
+An action shared by several apps, such as `VIEWS`, is named by the app the
+turn is about when that settles it: the turn's selected contexts are those
+of every [direct route](../../core/registries.md) the message matches (a
+Maps route selects `maps`, a Notes route `notes`), taken once per turn by
+normalized id. When several of the action's contexts apply and exactly one
+labelled one is selected, the progress is `Using <that label>`; with none
+or more than one selected it stays `Working`. The selection only picks
+among the contexts the action declares, never adds one, never names a
+`system` context or an unlabelled one, and never changes the contexts the
+action runs with.
+
 ```quint
 type ToolActivity = UsingApp | Working
-pure def toolActivity(applicable: int, labelled: int): ToolActivity = if (applicable == 1 and labelled == 1) UsingApp else Working
-pure val applicableValues = Set(0, 1, 2)
+pure def toolActivity(applicable: int, labelled: int, selectedLabelled: int): ToolActivity =
+  if ((applicable == 1 and labelled == 1) or (applicable > 1 and selectedLabelled == 1)) UsingApp else Working
+pure val applicableValues = Set(0, 1, 2, 3)
 pure val labelledValues = Set(0, 1, 2)
-pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatApplies(applicable: int, labelled: int): bool =
-  toolActivity(applicable, labelled) == UsingApp implies (applicable == 1 and labelled == 1)
+pure val selectedLabelledValues = Set(0, 1, 2)
+pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatAppliesOrTheTurnSelected(applicable: int, labelled: int, selectedLabelled: int): bool =
+  toolActivity(applicable, labelled, selectedLabelled) == UsingApp implies ((applicable == 1 and labelled == 1) or selectedLabelled == 1)
+pure def lawWithoutASelectionOnlyASingleAppIsNamed(applicable: int, labelled: int): bool =
+  toolActivity(applicable, labelled, 0) == UsingApp implies (applicable == 1 and labelled == 1)
+pure def lawASingleLabelledAppIsNamedWhateverTheTurnSelected(selectedLabelled: int): bool =
+  toolActivity(1, 1, selectedLabelled) == UsingApp
+pure def lawSelectingSeveralAppsNamesNone(applicable: int, labelled: int, selectedLabelled: int): bool =
+  (applicable > 1 and selectedLabelled != 1) implies toolActivity(applicable, labelled, selectedLabelled) == Working
 ```
 
 ### A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other
