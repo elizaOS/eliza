@@ -1444,6 +1444,36 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       }
     ))
   }), 60_000)
+
+  it.effect("A stop that meets a renewal closes the session with every window settled, and the renewed window it never used costs nothing (spec/cloud/services/speechRelay.md, \"Each admitted window settles once, and a retiring session closes only after all its receipts\")", () => scoped(effect {
+    try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
+    const speech = try sync(() => speechFake())
+    const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
+    try TestClock.adjust(Duration.seconds(5))
+    const caller = try signedCaller(cloud, "stopper")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 4 * (reservedFor(60 * 100) + reservedFor(4096 * 30)), requestKey: "stop-funding" }))
+    const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+    const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+    const session = minted.body as { readonly sessionId: string; readonly token: string }
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+    try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
+    try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
+    try TestClock.adjust(Duration.seconds(50))
+    try sync(() => socket.send({ t: "stop" }))
+    try promise(() => socket.until((received) => received.kind === "close"))
+    let phase: unknown = undefined
+    for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
+      try TestClock.withLive(sleep(Duration.millis(50)))
+      phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
+    }
+    const windows = try sql(cloud, "SELECT number, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
+    const renewed = try sql(cloud, `SELECT u.charged, u.outcome FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
+      WHERE w.session_id = $1 AND w.number > 1`, [session.sessionId])
+    try check(() => assert.deepStrictEqual(
+      { phase, settled: windows.every((row) => row.settled === true), renewedUnused: renewed.every((row) => Number(row.charged) === 0 && row.outcome === "released") },
+      { phase: "closed", settled: true, renewedUnused: true }
+    ))
+  }), 60_000)
 })
 describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
   it.live("Answer a maps request once and pay for it once, keep tiles unstored and look a place up nearby first (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\"; spec/cloud/services/maps.md, \"Story: Keep maps requests within the provider's terms\")", () => scoped(effect {
