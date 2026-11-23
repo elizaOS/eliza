@@ -190,16 +190,6 @@ describe("keepRecording", () => {
 describe("capturedLibraryId", () => {
   const withId = (libraryId: unknown) =>
     ({ ...photo, libraryId }) as PhotoResult;
-  expect(
-    capturedLibraryId(withId("m:external_primary:i:9223372036854775807")),
-  ).toBe("m:external_primary:i:9223372036854775807");
-  expect(
-    capturedLibraryId(withId("m:external_primary:i:9223372036854775808")),
-  ).toBeUndefined();
-  expect(
-    capturedLibraryId(withId("m:external_primary:i:123\n")),
-  ).toBeUndefined();
-
   it("returns a volume-qualified image id", () => {
     expect(capturedLibraryId(withId("m:external_primary:i:42"))).toBe(
       "m:external_primary:i:42",
@@ -207,6 +197,9 @@ describe("capturedLibraryId", () => {
     expect(capturedLibraryId(withId("m:1a2b-3c4d:i:7"))).toBe(
       "m:1a2b-3c4d:i:7",
     );
+    expect(
+      capturedLibraryId(withId("m:external_primary:i:9223372036854775807")),
+    ).toBe("m:external_primary:i:9223372036854775807");
   });
 
   it("treats a missing, aggregate-volume or malformed id as absent", () => {
@@ -217,6 +210,8 @@ describe("capturedLibraryId", () => {
       "m:external_primary:v:42",
       "m:external_primary:i:0",
       "m:external_primary:i:042",
+      "m:external_primary:i:9223372036854775808",
+      "m:external_primary:i:123\n",
       "m::i:42",
       "m:a:b:i:42",
       `m:${"x".repeat(81)}:i:1`,
