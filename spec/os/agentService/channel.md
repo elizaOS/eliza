@@ -216,6 +216,16 @@ completion, a refusal, a buffered `result` or a lost connection ends it with
 pure def stepFramesArriveInOrder(before: AgentChannel, via: str, after: AgentChannel, out: List[ChannelOut]): bool =
   out.every(o => match o { | Delivered(d) => entryAt(d.seq, before).delivered + 1 == d.index and entryAt(d.seq, after).delivered == d.index | _ => true })
 pure def sometimesStreamDelivering(s: AgentChannel): bool = s.pending.some(e => e.mode == Stream and e.delivered >= 2)
+pure val eval_witness_sometimesStreamDelivering = (
+  ("loadRoutes", Renderer, List({ prefixes: List(List()), id: Routes::flatParam, routes: List(
+    { method: Routes::Post, delivery: Routes::Streamed, path: List(Routes::Literal({ text: "stream" })), query: List(), limit: Routes::AnySize }
+  ) })),
+  ("open", 1, "token1"),
+  ("ask", Renderer, "screen1", "call1", { method: Routes::Post, delivery: Routes::Streamed,
+    segments: List({ text: "stream", fits: List() }), query: List(), flaws: List(), body: Routes::JsonObject({ size: 5 }) }, List()),
+  ("reply", 0, Tr::Head({ code: 200 })),
+  ("reply", 0, Tr::Chunk)
+)
 pure def sometimesStreamEnded(s: AgentChannel): bool = s.recent.some(o => match o { | Settled(x) => x.mode == Stream and x.outcome == End | _ => false })
 pure def sometimesStreamError(s: AgentChannel): bool = lastOutcome(s).includes(Error)
 ```
