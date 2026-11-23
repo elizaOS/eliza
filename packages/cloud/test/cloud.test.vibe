@@ -984,7 +984,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
       const session = try cloud.store.transaction((tx) => issueSession(tx, { ...owner, assurance: "SingleFactor", accountCreated: false, now: start }))
       const caller = { ...owner, headers: { authorization: "Bearer " + session.accessToken } }
       const callback = "/api/v1/oauth/google/callback"
-      const initialize = (body: unknown, headers = caller.headers) => cloud.call("/api/v1/eliza/google/connect/initiate", { json: body, headers })
+      const initialize = (body: unknown, headers: Readonly<Record<string, string>> = caller.headers) => cloud.call("/api/v1/eliza/google/connect/initiate", { json: body, headers })
       const appState = "s".repeat(43)
       const redirectUrl = `${registration.connectReturn}?state=${appState}`
       const requested = { side: "owner", capabilities: ["google.gmail.triage", "google.calendar.read"], redirectUrl }
@@ -4247,11 +4247,11 @@ module node {
         worker.fetch(new Request(api + "/api/v1/app-auth/" + path, {
           method, headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(data),
         }), { ...secrets, ...env, CLOUD_PROFILE: JSON.stringify(fixtureProfile) })
-      const binding = { clientId, environment: "staging", redirectUri }
+      const mobileBinding = { clientId, environment: "staging", redirectUri }
       const state = "q".repeat(43)
-      const begin = await mobile("connect", "POST", { ...binding, state, codeChallenge: challenge, codeChallengeMethod: "S256" }, webHeaders)
+      const begin = await mobile("connect", "POST", { ...mobileBinding, state, codeChallenge: challenge, codeChallengeMethod: "S256" }, webHeaders)
       const { code } = Schema.decodeUnknownSync(Schema.Struct({ code: Schema.String }))(await begin.json())
-      const mint = await mobile("mobile/token", "POST", { ...binding, grantType: "authorization_code", code, state, codeVerifier: verifier })
+      const mint = await mobile("mobile/token", "POST", { ...mobileBinding, grantType: "authorization_code", code, state, codeVerifier: verifier })
       const official = Schema.decodeUnknownSync(Schema.Struct({ credentialId: Schema.String, secret: Schema.String, lease: Schema.Struct({ refresh: Schema.String }) }))(await mint.json())
       const officialAcknowledged = await mobile("mobile/ack", "POST", { credentialId: official.credentialId, secret: official.secret })
       const officialRefresh = await mobile("mobile/lease", "POST", {}, bearerHeaders(official.lease.refresh))
