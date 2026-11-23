@@ -547,6 +547,7 @@ const sharedNote = (title: string, body: string) => ({ version: 1, kind: "notes_
 const titleFound = (text: string, body: string) => ({ version: 1, kind: "notes_query", query: { kind: "title", text }, basis: "title-match", target: phoneNote, record: sharedNote(text, body) })
 const patch = (textEdit: unknown, changes: unknown[] = []) => JSON.stringify({ requiresInput: false, clarification: null, changes, textEdit })
 const question = "What should the note say instead?"
+const deletedRequestId = stringToUuid("Delete this note")
 
 it.effect('Ask about, delete or change a phone note only as the owner said it (spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn\'s own screen selects the phone\'s Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner\'s direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly")', effect () => {
   const model = phoneModel([patch(null), patch(null), patch({ action: "append", field: "item", text: "eggs" }), JSON.stringify({ requiresInput: true, clarification: question, changes: [], textEdit: null })])
@@ -577,7 +578,7 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
     return map(family.ground(checked!, turn), (found) => found.kind === "Grounded" ? found.operation : found.code)
   }
   const folders = { notesFolders: [{ id: "f1", name: "Errands" }] }
-  const deletedHere: EarlierRequest = { proposalId: "deleted", requestMessageId: stringToUuid("Delete this note"), operation: { type: "notes_delete", target: phoneNote }, result: undefined, settledAt: start }
+  const deletedHere: EarlierRequest = { proposalId: "deleted", requestMessageId: deletedRequestId, operation: { type: "notes_delete", target: phoneNote }, result: undefined, settledAt: start }
   const noFields = { title: "", body: "" }
   assert.deepEqual([
     try grounding("Delete my note called Groceries", home, { type: "notes_query", query: { kind: "title", text: "groceries" } }),
@@ -613,7 +614,7 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
     "NOTES_RESTORE_UNKNOWN",
   ])
 
-  const pending = (operation: DeviceOperation, direct: boolean) => family.proposedText(operation, { direct, timeZone: "Etc/UTC" })?.forOwner
+  const pending = (operation: DeviceOperation, direct: boolean) => family.proposedText(operation, { direct, timeZone: "Etc/UTC", ownerText: "" })?.forOwner
   const handedOff = (operation: DeviceOperation) => pending(operation, true) !== pending(operation, false)
   const waiting: DeviceOperation[] = [{ type: "notes_record", action: "start" }, { type: "notes_filter", kind: "list" }, { type: "notes_delete", target: phoneNote }]
   assert.deepEqual(waiting.map(handedOff), [true, true, false])

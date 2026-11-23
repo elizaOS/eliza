@@ -189,7 +189,7 @@ function occurrences(text: string, part: string): number {
   return count
 }
 
-effect function applyPatch(existing: StickyNote, patch: UpdateRequest, updatedAt: string): StickyNote!NotesRefused {
+export effect function applyPatch(existing: StickyNote, patch: UpdateRequest, updatedAt: string): StickyNote!NotesRefused {
   const updated: StickyNote = { ...existing, updatedAt }
   const { textEdit, authoredEdit } = editsOf(existing, patch)
   if (authoredEdit !== undefined && textEdit === undefined) {
