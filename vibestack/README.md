@@ -7,7 +7,7 @@ product must do; agents build it, from verified rules to a tested, running
 React application, and every layer they touch is checked before you sign
 off.
 
-This checkout imports tooling from [Vibestack `bacd7b0f`](https://github.com/lalalune/vibestack/commit/bacd7b0f21a7bdb54ab5d986b25a87cd2611d4fb), retaining Eliza's guard coverage, proof compiler compatibility and application task graph.
+This checkout imports tooling from [Vibestack `0969b0a`](https://github.com/lalalune/vibestack/commit/0969b0ac5e393aebc752421ce2b7a7f52f7885df), retaining Eliza's guard coverage, proof compiler compatibility and application task graph.
 
 [![Use this template](https://img.shields.io/badge/Use_this_template-2ea44f?style=for-the-badge&logo=github)](https://github.com/lalalune/vibestack/generate)
 
