@@ -189,16 +189,18 @@ effect function reconciliation(value: unknown): (WorkflowRunReconciliation | und
   return { state: r.state, message: r.message.slice(0, 2000) }
 }
 
+export function typedStepsText(value: unknown, runId: string): string | undefined {
+  if (!Array.isArray(value) || value.length !== 1) return undefined
+  const item: unknown = value[0]
+  return typeof item === "object" && item !== null && "nodeId" in item && item.nodeId === "typed-steps" && "runId" in item && item.runId === runId
+    && "text" in item && typeof item.text === "string" ? item.text : undefined
+}
+
 function workflowOutput(value: unknown, runId: string, hostedDigest: boolean): string {
   if (typeof value === "string") return value.slice(0, 4000)
   const settled = workflowOccurrenceNotRun(value, hostedDigest)
   if (settled !== undefined) return settled.text
-  if (Array.isArray(value) && value.length === 1) {
-    const item: unknown = value[0]
-    if (typeof item === "object" && item !== null && "nodeId" in item && item.nodeId === "typed-steps" && "runId" in item && item.runId === runId
-      && "text" in item && typeof item.text === "string") return item.text.slice(0, 4000)
-  }
-  return (JSON.stringify(value) ?? "").slice(0, 4000)
+  return (typedStepsText(value, runId) ?? JSON.stringify(value) ?? "").slice(0, 4000)
 }
 
 function storedPhoneSpec(value: unknown): { readonly phoneSpec?: unknown } {
@@ -291,22 +293,6 @@ export effect function parseWorkflowApprovalReceipt(value: unknown, run: Pick<Wo
   return { runId: run.id, workflowId: run.workflowId, workflowVersionId: run.versionId, finished: p.finished, cancellationRequested: p.cancellationRequested, approvals }
 }
 
-effect function parseMetadataReceipt(value: unknown, id: string, version: string, mutationId: string): WorkflowMetadataReceipt!WorkflowClientError {
-  const p = try obj(value)
-  if (p.workflowId !== id || p.previousVersionId !== version || p.mutationId !== mutationId || typeof p.name !== "string" || p.name.trim() === ""
-    || p.name.length > 200 || typeof p.description !== "string" || p.description.length > 4000 || typeof p.active !== "boolean") return try invalid("Metadata receipt mismatch")
-  return { workflowId: id, previousVersionId: version, mutationId, versionId: try str(p.versionId), name: p.name, description: p.description, active: p.active, appliedAt: try str(p.appliedAt) }
-}
-
-effect function parseLifecycleReceipt(value: unknown, id: string, version: string, mutationId: string, operation: "remove" | "restore"): (WorkflowLifecycleReceipt | null)!WorkflowClientError {
-  const p = try obj(value)
-  if (p.mutationId !== mutationId) return try invalid("Mutation identity mismatch")
-  if (p.receipt === null) return null
-  const r = try obj(p.receipt)
-  if (r.workflowId !== id || r.previousVersionId !== version || r.mutationId !== mutationId || r.operation !== operation) return try invalid("Lifecycle receipt mismatch")
-  return { workflowId: id, previousVersionId: version, mutationId, operation, versionId: try str(r.versionId), appliedAt: try str(r.appliedAt) }
-}
-
 function readScope(step: PhoneStep): string {
   return JSON.stringify(step.operation === "selected_notes" ? step.notes : step.operation === "selected_reminders" ? step.scope : step.operation === "calendar_range" ? step.range : undefined)
 }
@@ -343,6 +329,22 @@ export interface WorkflowClient {
 
 export interface WorkflowClientOptions {
   readonly normalizePhoneSpec?: (value: unknown) => PhoneWorkflowSpec!PhoneWorkflowSpecError
+}
+
+effect function metadataResult(value: unknown, id: string, version: string, mutationId: string): WorkflowMetadataReceipt!WorkflowClientError {
+  const p = try obj(value)
+  if (p.workflowId !== id || p.previousVersionId !== version || p.mutationId !== mutationId || typeof p.name !== "string" || p.name.trim() === ""
+    || p.name.length > 200 || typeof p.description !== "string" || p.description.length > 4000 || typeof p.active !== "boolean") return try invalid("Metadata receipt mismatch")
+  return { workflowId: id, previousVersionId: version, mutationId, versionId: try str(p.versionId), name: p.name, description: p.description, active: p.active, appliedAt: try str(p.appliedAt) }
+}
+
+effect function lifecycleResult(value: unknown, id: string, version: string, mutationId: string, operation: "remove" | "restore"): (WorkflowLifecycleReceipt | null)!WorkflowClientError {
+  const p = try obj(value)
+  if (p.mutationId !== mutationId) return try invalid("Mutation identity mismatch")
+  if (p.receipt === null) return null
+  const r = try obj(p.receipt)
+  if (r.workflowId !== id || r.previousVersionId !== version || r.mutationId !== mutationId || r.operation !== operation) return try invalid("Lifecycle receipt mismatch")
+  return { workflowId: id, previousVersionId: version, mutationId, operation, versionId: try str(r.versionId), appliedAt: try str(r.appliedAt) }
 }
 
 export function workflowClient(request: WorkflowRequest, options: WorkflowClientOptions = {}): WorkflowClient {
@@ -460,7 +462,7 @@ export function workflowClient(request: WorkflowRequest, options: WorkflowClient
       if (refusedWith(error, "WORKFLOW_METADATA_NOT_APPLIED", { workflowId: id, mutationId, expectedVersionId: version })) throw new WorkflowMetadataRejected()
       throw error
     }))
-    const receipt = try parseMetadataReceipt(data.receipt, id, version, mutationId)
+    const receipt = try metadataResult(data.receipt, id, version, mutationId)
     if (receipt.name !== name || receipt.description !== description) return try invalid("Metadata values mismatch")
     return receipt
   }
@@ -470,7 +472,7 @@ export function workflowClient(request: WorkflowRequest, options: WorkflowClient
     if (!uuidV4.test(mutationId)) return try invalid("Invalid metadata mutation")
     const data = try obj(try request(path("workflows", id, "metadata-mutations", mutationId), undefined))
     if (data.mutationId !== mutationId) return try invalid("Metadata identity mismatch")
-    return data.receipt === null ? null : try parseMetadataReceipt(data.receipt, id, version, mutationId)
+    return data.receipt === null ? null : try metadataResult(data.receipt, id, version, mutationId)
   }
 
   effect function removedWorkflows() {
@@ -494,14 +496,14 @@ export function workflowClient(request: WorkflowRequest, options: WorkflowClient
       if (refusedWith(error, "WORKFLOW_LIFECYCLE_NOT_APPLIED", { workflowId: id, mutationId, expectedVersionId: version })) throw new WorkflowLifecycleRejected()
       throw error
     })
-    const receipt = try parseLifecycleReceipt(result, id, version, mutationId, operation)
+    const receipt = try lifecycleResult(result, id, version, mutationId, operation)
     if (receipt === null) return try invalid("Lifecycle outcome unknown")
     return receipt
   }
 
   effect function reconcileLifecycle(id: string, version: string, mutationId: string, operation: "remove" | "restore") {
     if (!(try status()).lifecycle || !uuidV4.test(mutationId)) return try invalid("Invalid lifecycle reconciliation")
-    return try parseLifecycleReceipt(try request(path("workflows", id, "lifecycle-mutations", mutationId), undefined), id, version, mutationId, operation)
+    return try lifecycleResult(try request(path("workflows", id, "lifecycle-mutations", mutationId), undefined), id, version, mutationId, operation)
   }
 
   effect function list() {

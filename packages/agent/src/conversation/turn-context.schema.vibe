@@ -1,9 +1,9 @@
-// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "An observation is kept only when every field is valid, a sensitive screen names no record, a civil day is on the calendar stated not sensitive in its own zone, and it fits 2,048 bytes"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "Optional fields go only to the process instance the client compared for this turn"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"
+// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/conversation/turnContext.md, "An observation is kept only when every field is valid, a sensitive screen names no record, a civil day is on the calendar stated not sensitive in its own zone, and it fits 2,048 bytes"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "Optional fields go only to the process instance the client compared for this turn"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"
 import type { Content } from "@elizaos/core"
 import { parseViewInteractionClientId } from "@elizaos/core/view-interaction"
 import {
-  comparePeer, learnPeer, maxSafeInteger, observationOutcome, sendsOptionalFields, voiceUiOutcome,
-  type ObservationFacts, type PeerSupport, type Sensitivity, type StatusRead, type TextField, type VoiceUiFacts,
+  browserPageAccepted, comparePeer, learnPeer, maxSafeInteger, observationOutcome, sendsOptionalFields, voiceUiOutcome,
+  type BrowserPageFacts, type ObservationFacts, type PageBinding, type PageContent, type PeerSupport, type Sensitivity, type StatusRead, type TextField, type VoiceUiFacts,
 } from "../../gen/agent__conversation__turnContext.effect.vibe"
 
 export { comparePeer, learnPeer, sendsOptionalFields, type PeerSupport, type StatusRead }
@@ -42,6 +42,37 @@ export const Observation = Schema.Struct({
   location: Schema.optionalKey(Location),
 })
 
+const plainLine = (value: string) => value.isWellFormed() && !/[\p{Cc}\u2028\u2029]/u.test(value)
+const plainLines = (value: string) => value.isWellFormed() && !/[^\P{Cc}\t\n]|[\u2028\u2029]/u.test(value)
+const line = (max: number) => Schema.String.check(Schema.isMaxLength(max), Schema.makeFilter(plainLine))
+const lines = (max: number) => Schema.String.check(Schema.isMaxLength(max), Schema.makeFilter(plainLines))
+
+function webPageAddress(value: string): boolean {
+  const parsed = value.length <= 2048 && !value.includes("#") ? URL.parse(value) : null
+  return parsed !== null && parsed.protocol === "https:" && parsed.hostname !== "" && parsed.username === "" && parsed.password === "" && parsed.href === value
+}
+
+const PageAddress = Schema.String.check(Schema.makeFilter(webPageAddress))
+const PageLink = Schema.Struct({ text: line(120).check(Schema.makeFilter((value: string) => value.trim() !== "")), url: PageAddress })
+const pageFields = {
+  tabId: Token,
+  revision: Token,
+  url: PageAddress,
+  title: line(300),
+  capturedAt: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: maxSafeInteger })),
+}
+const ReadPage = Schema.Struct({
+  ...pageFields,
+  text: lines(6000),
+  truncated: Schema.Boolean,
+  selection: Schema.optionalKey(lines(1000)),
+  links: Schema.optionalKey(Schema.Array(PageLink).check(Schema.isMaxLength(20))),
+})
+const WithheldPage = Schema.Struct({ ...pageFields, withheld: Schema.Literals(["sensitive-page", "unreadable"]) })
+
+export const BrowserPage = Schema.Union([ReadPage, WithheldPage])
+export type BrowserPage = typeof BrowserPage.Type
+
 export const VoiceUiContext = Schema.Struct({
   uiViewPath: Schema.optionalKey(Schema.String),
   uiViewSubview: Schema.optionalKey(Schema.String),
@@ -60,9 +91,11 @@ type SelectedObject = typeof SelectedObject.Type
 export interface TurnContext {
   readonly observation?: Observation
   readonly voiceUi?: VoiceUiContext
+  readonly browserPage?: BrowserPage
 }
 
 export error ObservationDropped { facts: ObservationFacts | undefined }
+export error BrowserPageDropped { facts: BrowserPageFacts | undefined }
 export error VoiceUiContextInvalid { facts: VoiceUiFacts | undefined }
 
 type Decided<A, F> = { readonly kind: "carried"; readonly value: A } | { readonly kind: "refused"; readonly facts: F | undefined }
@@ -72,6 +105,9 @@ const strict = { onExcessProperty: "error" } as const
 const selectedObjectOf = Schema.decodeUnknownOption(SelectedObject, strict)
 const calendarDayOf = Schema.decodeUnknownOption(CalendarDay, strict)
 const locationOf = Schema.decodeUnknownOption(Location, strict)
+const browserPageOf = Schema.decodeUnknownOption(BrowserPage, strict)
+const browserPageKeys: ReadonlySet<string> = new Set(["tabId", "revision", "url", "title", "capturedAt", "withheld", "text", "truncated", "selection", "links"])
+const pageContentKeys = ["text", "truncated", "selection", "links"] as const
 const isName = Schema.is(Name)
 const isZoneName = Schema.is(ZoneName)
 
@@ -79,7 +115,7 @@ function table(value: unknown): Readonly<Record<string, unknown>> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Readonly<Record<string, unknown>> : undefined
 }
 
-function knownZone(name: unknown): name is string {
+export function knownZone(name: unknown): name is string {
   if (!isZoneName(name)) return false
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: name })
@@ -177,6 +213,42 @@ function decideObservation(input: unknown): Decided<Observation, ObservationFact
   }
 }
 
+function canonicalPage(page: BrowserPage): BrowserPage {
+  const shared = { tabId: page.tabId, revision: page.revision, url: page.url, title: page.title, capturedAt: page.capturedAt }
+  if ("withheld" in page) return { ...shared, withheld: page.withheld }
+  return {
+    ...shared, text: page.text, truncated: page.truncated,
+    ...(page.selection === undefined ? {} : { selection: page.selection }),
+    ...(page.links === undefined ? {} : { links: page.links.map(({ text, url }) => ({ text, url })) }),
+  }
+}
+
+function bindingOf(tabId: unknown, revision: unknown, observation: Observation | undefined): PageBinding {
+  if (observation === undefined) return "NoObservation"
+  if (observation.view !== "browser") return "OtherView"
+  if (observation.sensitive) return "SensitiveBrowser"
+  const selected = observation.selectedObject
+  return selected?.kind === "browser-tab" && selected.id === tabId && selected.revision === revision ? "SelectedTab" : "OtherTab"
+}
+
+function decideBrowserPage(input: unknown, observation: Observation | undefined): Decided<BrowserPage, BrowserPageFacts> {
+  const fields = table(input)
+  if (fields === undefined) return { kind: "refused", facts: undefined }
+  const decoded = Option.getOrUndefined(browserPageOf(fields))
+  const page = decoded === undefined ? undefined : canonicalPage(decoded)
+  const content: PageContent = page !== undefined ? ("withheld" in page ? "PageWithheld" : "PageRead")
+    : fields.withheld !== undefined && pageContentKeys.some((key) => fields[key] !== undefined) ? "WithheldWithContent"
+    : "MalformedPage"
+  const facts: BrowserPageFacts = {
+    unknownField: Object.keys(fields).some((key) => !browserPageKeys.has(key)),
+    fieldsValid: page !== undefined,
+    content,
+    binding: bindingOf(fields.tabId, fields.revision, observation),
+    bytes: page === undefined ? 0 : new TextEncoder().encode(JSON.stringify(page)).byteLength,
+  }
+  return page !== undefined && browserPageAccepted(facts) ? { kind: "carried", value: page } : { kind: "refused", facts }
+}
+
 function textOf(value: unknown): TextField {
   if (value === undefined) return { tag: "NoText" }
   if (typeof value !== "string") return { tag: "NotText" }
@@ -222,6 +294,12 @@ export effect function decodeObservation(input: unknown) {
   return decided.value
 }
 
+export effect function decodeBrowserPage(input: unknown, observation: Observation | undefined) {
+  const decided = decideBrowserPage(input, observation)
+  if (decided.kind === "refused") throw new BrowserPageDropped({ facts: decided.facts })
+  return decided.value
+}
+
 export effect function decodeLocationObservation(input: unknown) {
   const position = Option.getOrUndefined(locationOf(input))
   if (position === undefined) throw new ObservationDropped({ facts: undefined })
@@ -243,17 +321,21 @@ export function readTurnContext(message: { readonly content: Content | { readonl
   const metadata = table(message.content.metadata)
   const observation = metadata?.observation === undefined ? undefined : decideObservation(metadata.observation)
   const voiceUi = metadata?.voiceUi === undefined ? undefined : decideVoiceUi(metadata.voiceUi, undefined)
+  const kept = observation?.kind === "carried" ? observation.value : undefined
+  const page = metadata?.browserPage === undefined ? undefined : decideBrowserPage(metadata.browserPage, kept)
   return {
-    ...(observation?.kind === "carried" ? { observation: observation.value } : {}),
+    ...(kept === undefined ? {} : { observation: kept }),
     ...(voiceUi?.kind === "carried" ? { voiceUi: voiceUi.value } : {}),
+    ...(page?.kind === "carried" ? { browserPage: page.value } : {}),
   }
 }
 
 export function encodeTurnContext(context: TurnContext, peer: { readonly optionalFields: boolean }): TurnContext {
-  const { observation, voiceUi } = context
+  const { observation, voiceUi, browserPage } = context
   return {
     ...(observation === undefined ? {} : { observation: canonical(peer.optionalFields ? observation : withoutOptionalFields(observation)) }),
     ...(voiceUi === undefined ? {} : { voiceUi }),
+    ...(browserPage === undefined || observation === undefined || !peer.optionalFields ? {} : { browserPage: canonicalPage(browserPage) }),
   }
 }
 

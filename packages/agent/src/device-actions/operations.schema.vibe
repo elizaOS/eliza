@@ -8,10 +8,11 @@ import type { ReceiptOutcome } from "../../gen/agent__deviceActions.effect.vibe"
 import type { FamilySchemas, OperationOf, OperationSchema } from "./operation-schemas/family.vibe"
 import { personalFamilies } from "./operation-schemas/personal.schema.vibe"
 import { deviceOperations } from "./operation-schemas/device.schema.vibe"
+import { browserOperations } from "./operation-schemas/browser.vibe"
 
 export type { Classification, Evidence, FamilySchemas, OperationSchema } from "./operation-schemas/family.vibe"
 
-const families = { ...personalFamilies, ...deviceOperations } satisfies FamilySchemas
+const families = { ...personalFamilies, ...deviceOperations, ...browserOperations } satisfies FamilySchemas
 
 export type DeviceOperation = OperationOf<typeof families>
 export type DeviceOperationType = DeviceOperation["type"]
@@ -53,7 +54,7 @@ export function operationOf<T extends DeviceOperationType>(input: unknown, type:
   return checked?.operation.type === type ? checked.operation as Extract<DeviceOperation, { type: T }> : undefined
 }
 
-export type OperationResultOf<T extends DeviceOperationType> = (typeof families)[T] extends { readonly result: Schema.Decoder<infer R> } ? R : never
+export type OperationResultOf<T extends DeviceOperationType> = (typeof families)[T] extends infer F ? F extends { readonly result: Schema.Decoder<infer R> } ? R : never : never
 
 export function readResult<T extends DeviceOperationType>(operation: Extract<DeviceOperation, { type: T }>, input: unknown): OperationResultOf<T> | undefined {
   const reader = readers.get(operation.type)

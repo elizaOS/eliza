@@ -1,0 +1,62 @@
+// spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
+import { directRequests, readOperation, type CheckedOperation, type DeviceProposalFamily, type DeviceTurn, type Grounding, type NegotiatedDevice, type ProposalForm } from "@elizaos/agent/device-actions"
+import { chatKeepsSentIdentities, filesChatAnswer, filesChatBound } from "../gen/files__shownTargets.effect.vibe"
+import {
+  decodeFilesOperation, FILES_CAPABILITY, FILES_OPERATION_TYPES, FILES_SHOWN_TARGET_CAPABILITY, filesForm, filesToolSurface,
+  type FilesAgentOperation,
+} from "./contract.vibe"
+
+type Refusal = Extract<Grounding, { readonly kind: "Refused" }>
+
+const filesGuidance = "Phone Files: to find files, use files_filter; it only narrows what Files shows and returns a count, never file names or contents. files_open shows one file by path or by shown, for example shown 1 when the filter found one file. files_share, files_move, files_trash and files_folder_create are reviewed on the phone once the owner opens Files there; a move never replaces a file with the same name, and Trash is restorable for 30 days. Use only paths the owner named or Files showed."
+
+const every = filesToolSurface([FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY]).schemas
+
+const forms: readonly ProposalForm[] = every.flatMap((schema): ProposalForm[] => {
+  const type = FILES_OPERATION_TYPES.find((name) => schema.properties?.type?.enum?.includes(name) === true)
+  return type === undefined ? [] : [{ types: [type], schema, offered: (device: NegotiatedDevice) => filesToolSurface(device.capabilities).schemas.includes(schema) }]
+})
+
+function invalid(reason: string): Refusal {
+  return {
+    kind: "Refused", code: "FILES_OPERATION_INVALID",
+    forModel: `Invalid Files operation: ${reason}. Use paths on Internal storage such as "Download/lease.pdf".`,
+    forOwner: "I couldn't prepare that in Files.",
+  }
+}
+
+const notNegotiated: Refusal = {
+  kind: "Refused", code: "FILES_FORM_NOT_NEGOTIATED",
+  forModel: "This phone did not negotiate this Files form: name files by path unless shown positions are offered. No device proposal was created.",
+  forOwner: "Your phone can't do that in Files from chat right now.",
+}
+
+function sentIdentitiesDropped(operation: FilesAgentOperation): FilesAgentOperation {
+  if ((operation.type !== "files_move" && operation.type !== "files_trash") || !("reviewed" in operation) || chatKeepsSentIdentities(filesForm(operation).kind)) return operation
+  const { reviewed: _reviewed, ...unbound } = operation
+  return unbound
+}
+
+export const filesProposalFamily: DeviceProposalFamily = {
+  name: "files",
+  types: FILES_OPERATION_TYPES,
+  forms,
+  guidance: (turn) => [filesGuidance, ...filesToolSurface(turn.capabilities).guidance].join(" "),
+  effect ground(proposed: CheckedOperation, turn: DeviceTurn) {
+    const decoded = try Effect.result(decodeFilesOperation(proposed.operation))
+    if (Result.isFailure(decoded)) return invalid(decoded.failure.reason)
+    const { kind, form } = filesForm(decoded.success)
+    const answer = filesChatAnswer(kind, form, turn.capabilities.includes(FILES_CAPABILITY), turn.capabilities.includes(FILES_SHOWN_TARGET_CAPABILITY))
+    switch (answer) {
+      case "FilesNotNegotiated": return notNegotiated
+      case "FilesProposed": {
+        const operation = readOperation(sentIdentitiesDropped(decoded.success))?.operation
+        return operation === undefined
+          ? invalid("not a device operation")
+          : { kind: "Grounded", operation, grounding: filesChatBound(directRequests(turn), answer) ? "GroundedAsAsked" : "GroundedForReview" } satisfies Grounding
+      }
+    }
+  },
+  proposedText: () => undefined,
+  settledText: () => undefined,
+}

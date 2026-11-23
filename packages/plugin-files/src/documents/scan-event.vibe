@@ -1,0 +1,385 @@
+// spec/files/scan/event.md, "Story: Turn a scanned poster into a Calendar draft I review"; spec/files/scan/event.md, "A date is suggested only when every date printed agrees, and a year, weekday or relative day is inferred only from the device's clock and disclosed"; spec/files/scan/event.md, "A start time is suggested only when every time printed agrees, in the device's zone or in one explicit zone it converts from"; spec/files/scan/event.md, "A repeat is only a hint the owner turns on"; spec/files/scan/event.md, "A draft holds only reviewed fields within their bounds, timed or all day as the owner reviewed it"
+module edge {
+  import { allDaySuggested, dateSuggested, repeatHinted, timeSuggested, type ScanEventReview, type ZoneFacts } from "../../gen/files__scan__event.ts"
+
+  export type ScanEventRepeat = "none" | "daily" | "weekdays" | "weekly"
+  export type ScanEventFields = { readonly title: string; readonly date: string; readonly time: string; readonly minutes: number; readonly location: string }
+  export type ScanEventContext = { readonly now: Date; readonly timeZone?: string }
+  export type ScanEventSuggestion = {
+    readonly fields: ScanEventFields
+    readonly allDay: boolean
+    readonly recurrence: { readonly repeat: Exclude<ScanEventRepeat, "none">; readonly evidence: string } | null
+    readonly sourceZone: string | null
+    readonly disclosures: readonly string[]
+  }
+  export type ScanEventProposal = {
+    readonly title: string
+    readonly location: string
+    readonly notes: string
+    readonly repeat: ScanEventRepeat
+    readonly date: string
+    readonly dayOffset: number
+    readonly allDay: boolean
+    readonly time?: string
+    readonly minutes?: number
+  }
+  export type ReviewedScanFields = Pick<ScanEventFields, "title" | "date" | "location"> & {
+    readonly repeat?: ScanEventRepeat
+    readonly time?: string
+    readonly minutes?: number
+    readonly allDay?: boolean
+  }
+
+  type Repeat = Exclude<ScanEventRepeat, "none">
+  type Wall = { date: string; time: string }
+  type SourceZone = { label: string; offset?: number; iana?: string }
+  type DateCandidate = { value?: string; note?: string }
+
+  const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+  const weekdays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+  const repeats: readonly ScanEventRepeat[] = ["none", "daily", "weekdays", "weekly"]
+  const zoneAreas = "Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc|US|Canada"
+  const abbreviation = /\b(?:[ECMP](?:[DS])?T|AK[DS]T|HST|CET|CEST|BST|IST|JST|KST|MSK)\b/i
+  const ianaPattern = new RegExp(`\\b(?:${zoneAreas})\\/[A-Za-z_]+(?:\\/[A-Za-z_]+)?`, "g")
+  const legacyZoned = new RegExp(`\\b(?:UTC|GMT|[ECMP](?:[DS])?T|AK[DS]T|HST|CET|CEST|BST|IST|JST|KST|MSK|(?:${zoneAreas})\\/[A-Za-z_/-]+)\\b|\\btime\\s*zone\\s*:`, "i")
+  const isoZoned = /\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})\b/i
+  const trailingZone = new RegExp(`\\s*(\\(?\\s*(?:Z|(?:UTC|GMT)(?:\\s*[+-]\\s*\\d{1,2}(?::?\\d{2})?)?|[+-]\\d{2}:?\\d{2}|(?:${zoneAreas})\\/[A-Za-z_]+(?:\\/[A-Za-z_]+)?)\\s*\\)?)$`, "i")
+  const monthPattern = "(" + months.map((month) => month === "september" ? "sep(?:t(?:ember)?)?" : `${month.slice(0, 3)}(?:${month.slice(3)})?`).join("|") + ")\\.?"
+  const DATE = /^(\d{4})-(\d{2})-(\d{2})$/
+  const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/
+
+  const pad = (value: number) => String(value).padStart(2, "0")
+  const monthIndex = (name: string) => months.findIndex((month) => month.startsWith(name.toLowerCase())) + 1
+  const weekdayOf = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay()
+
+  function civilDate(year: number, month: number, day: number): string | undefined {
+    const date = new Date(Date.UTC(year, month - 1, day))
+    if (year < 1970 || year > 2100 || date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return undefined
+    return `${year}-${pad(month)}-${pad(day)}`
+  }
+
+  function addDays(date: string, days: number): string {
+    const day = new Date(`${date}T00:00:00Z`)
+    day.setUTCDate(day.getUTCDate() + days)
+    return `${day.getUTCFullYear()}-${pad(day.getUTCMonth() + 1)}-${pad(day.getUTCDate())}`
+  }
+
+  function clockTime(text: string): string | undefined {
+    const clock = /^(\d{1,2})(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)$/i.exec(text)
+    if (clock !== null) {
+      const hour = Number(clock[1])
+      if (hour < 1 || hour > 12) return undefined
+      return `${pad((hour % 12) + (/^p/i.test(clock[3] ?? "") ? 12 : 0))}:${clock[2] || "00"}`
+    }
+    return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : undefined
+  }
+
+  function timeWindow(text: string): { time: string; minutes?: number } | undefined {
+    const single = clockTime(text)
+    if (single !== undefined) return { time: single }
+    const range = text.split(/\s*(?:[-–—]|\s+to\s+)\s*/i)
+    if (range.length !== 2) return undefined
+    const start = clockTime((range[0] ?? "").trim())
+    const end = clockTime((range[1] ?? "").trim())
+    if (start === undefined || end === undefined) return undefined
+    const minute = (clock: string) => Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3))
+    const minutes = minute(end) - minute(start)
+    return minutes < 15 || minutes > 1440 ? undefined : { time: start, minutes }
+  }
+
+  function validZone(zone: string): boolean {
+    try {
+      return new Intl.DateTimeFormat("en", { timeZone: zone }).resolvedOptions().timeZone !== ""
+    } catch {
+      return false
+    }
+  }
+
+  function wallIn(instant: number, zone: string): Wall {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+      timeZone: zone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    }).formatToParts(new Date(instant)).map((part) => [part.type, part.value]))
+    return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` }
+  }
+
+  function fixedOffset(text: string): number | undefined {
+    const value = text.replace(/\s+/g, "")
+    if (/^(?:Z|UTC|GMT)$/i.test(value)) return 0
+    const match = /^(?:UTC|GMT)?([+-])(\d{1,2})(?::?([0-5]\d))?$/i.exec(value)
+    if (match === null) return undefined
+    const hours = Number(match[2])
+    const minutes = Number(match[3] || 0)
+    if (hours > 14 || (hours === 14 && minutes > 0)) return undefined
+    return (match[1] === "-" ? -1 : 1) * (hours * 60 + minutes)
+  }
+
+  function parseZone(text: string): SourceZone | undefined {
+    const trimmed = text.trim().replace(/^\(|\)$/g, "").trim()
+    const offset = fixedOffset(trimmed)
+    if (offset !== undefined) return { label: /^z$/i.test(trimmed) ? "UTC" : trimmed.replace(/\s+/g, "").toUpperCase(), offset }
+    return /^[A-Za-z]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?$/.test(trimmed) && validZone(trimmed) ? { label: trimmed, iana: trimmed } : undefined
+  }
+
+  function sourceInstant(date: string, time: string, zone: SourceZone): number | undefined {
+    const [y = 0, m = 0, d = 0] = date.split("-").map(Number)
+    const [h = 0, mi = 0] = time.split(":").map(Number)
+    const base = Date.UTC(y, m - 1, d, h, mi)
+    if (zone.offset !== undefined) return base - zone.offset * 60_000
+    const iana = zone.iana
+    if (iana === undefined) return undefined
+    const offsetAt = (instant: number) => {
+      const wall = wallIn(instant, iana)
+      const [wy = 0, wm = 0, wd = 0] = wall.date.split("-").map(Number)
+      const [wh = 0, wmi = 0] = wall.time.split(":").map(Number)
+      return Math.round((Date.UTC(wy, wm - 1, wd, wh, wmi) - Math.floor(instant / 60_000) * 60_000) / 60_000)
+    }
+    const candidates = new Set<number>()
+    for (const offset of new Set([offsetAt(base - 86_400_000), offsetAt(base + 86_400_000), offsetAt(base)])) {
+      const instant = base - offset * 60_000
+      const wall = wallIn(instant, iana)
+      if (wall.date === date && wall.time === time) candidates.add(instant)
+    }
+    return candidates.size === 1 ? [...candidates][0] : undefined
+  }
+
+  type Zones = { explicit: SourceZone[]; ambiguous: string[] }
+
+  function zoneEvidence(text: string, lines: readonly string[]): Zones {
+    const explicit: SourceZone[] = []
+    const ambiguous: string[] = []
+    const note = (raw: string) => {
+      const zone = parseZone(raw)
+      if (zone === undefined) ambiguous.push(raw)
+      else explicit.push(zone)
+    }
+    for (const line of lines) {
+      const label = /^time\s*zone\s*:\s*(.+)$/i.exec(line)
+      if (label !== null) {
+        const zone = parseZone(label[1] ?? "")
+        if (zone === undefined) ambiguous.push((label[1] ?? "").trim().slice(0, 40))
+        else explicit.push(zone)
+        continue
+      }
+      for (const match of line.matchAll(ianaPattern)) note(match[0])
+      for (const match of line.matchAll(/\b(?:UTC|GMT)(?:\s*[+-]\s*\d{1,2}(?::?\d{2})?)?(?![\w/])/gi)) note(match[0])
+      for (const match of line.matchAll(/\d{2}:\d{2}(?::\d{2})?(Z|[+-]\d{2}:?\d{2})\b/gi)) note(match[1] ?? "")
+      for (const match of line.matchAll(/(?:\d|[ap]\.?m\.?)\s+([+-]\d{2}:?\d{2})\b/gi)) note(match[1] ?? "")
+      const abbreviations = line.replace(/\b(?:UTC|GMT)\b/gi, "").match(new RegExp(abbreviation.source, "gi"))
+      if (abbreviations !== null) ambiguous.push(...abbreviations)
+    }
+    if (explicit.length === 0 && ambiguous.length === 0 && legacyZoned.test(text)) ambiguous.push("time zone")
+    return { explicit, ambiguous }
+  }
+
+  function nextOccurrence(month: number, day: number, today: string): string | undefined {
+    const year = Number(today.slice(0, 4))
+    for (let candidate = year; candidate <= year + 8; candidate++) {
+      const date = civilDate(candidate, month, day)
+      if (date !== undefined && date >= today) return date
+    }
+    return undefined
+  }
+
+  function recurrenceHint(text: string, disclosures: string[]): ScanEventSuggestion["recurrence"] {
+    const found = new Map<Repeat, string>()
+    const add = (repeat: Repeat, match: RegExpExecArray | null) => {
+      if (match !== null && !found.has(repeat)) found.set(repeat, match[0].trim())
+    }
+    add("weekdays", /\b(?:every|each)\s+weekday\b|\bweekdays\b|\bmon(?:day)?s?\s*(?:-|–|—|to|through|thru)\s*fri(?:day)?s?\b/i.exec(text))
+    if (!found.has("weekdays")) {
+      add("daily", /\b(?:every|each)\s+(?:day|morning|evening|night)\b|\bdaily\b|\bnightly\b/i.exec(text))
+      add("weekly", new RegExp(`\\b(?:every|each)\\s+(?:week|${weekdays.join("|")})\\b|\\bweekly\\b|\\b(?:${weekdays.join("|")})s\\b`, "i").exec(text))
+    }
+    const unsupported = /\b(?:every|each)\s+(?:other\s+\w+|month|year|\d+(?:st|nd|rd|th)?\s+\w+)\b|\b(?:monthly|annually|yearly|biweekly|fortnightly)\b/i.exec(text)
+    if (unsupported !== null) disclosures.push(`Repeat “${unsupported[0].trim()}” is not a repeat this draft supports. Add it in Calendar if you need it.`)
+    if (found.size > 1) disclosures.push("Conflicting repeat wording was found. No repeat is suggested.")
+    const [hint] = [...found]
+    if (hint === undefined || !repeatHinted(true, found.size, unsupported !== null)) return null
+    const [repeat, evidence] = hint
+    disclosures.push(`Repeat ${repeat === "weekdays" ? "on weekdays" : repeat} suggested from “${evidence}”. It is off until you turn it on.`)
+    return { repeat, evidence }
+  }
+
+  function analyze(text: string, context?: ScanEventContext): ScanEventSuggestion {
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+    const disclosures: string[] = []
+    const target = context === undefined ? "" : context.timeZone !== undefined && validZone(context.timeZone) ? context.timeZone : Intl.DateTimeFormat().resolvedOptions().timeZone
+    const today = context === undefined ? "" : wallIn(context.now.getTime(), target).date
+    const dates: DateCandidate[] = []
+    for (const match of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})(?=T\d|\b)/g)) {
+      const value = civilDate(Number(match[1]), Number(match[2]), Number(match[3]))
+      dates.push(value === undefined ? {} : { value })
+    }
+    const yearless = (month: number, day: number, source: string) => {
+      const value = context === undefined ? undefined : nextOccurrence(month, day, today)
+      dates.push(value === undefined ? {} : { value, note: `Year inferred: “${source.trim()}” has no year, so the next occurrence (${value}) is suggested.` })
+    }
+    const named = (year: string | undefined, month: number, day: number, source: string) => {
+      if (year === undefined) return yearless(month, day, source)
+      const value = civilDate(Number(year), month, day)
+      dates.push(value === undefined ? {} : { value })
+    }
+    for (const match of text.matchAll(new RegExp(`\\b${monthPattern}[ \\t]+(\\d{1,2})(?:st|nd|rd|th)?(?:,?[ \\t]+(\\d{4}))?\\b`, "gi"))) {
+      named(match[3], monthIndex(match[1] ?? ""), Number(match[2]), match[0])
+    }
+    for (const match of text.matchAll(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?[ \\t]+${monthPattern}(?:,?[ \\t]+(\\d{4}))?\\b`, "gi"))) {
+      named(match[3], monthIndex(match[2] ?? ""), Number(match[1]), match[0])
+    }
+    if (/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/.test(text)) {
+      dates.push({})
+      if (context !== undefined) disclosures.push("A numeric date such as 10/11 can mean different days in different regions. Enter the date yourself.")
+    }
+    if (context !== undefined) {
+      if (/\b(?:today|tonight)\b/i.test(text)) dates.push({ value: today, note: `“Today” read as ${today} from when you opened this review.` })
+      if (/\btomorrow\b/i.test(text)) {
+        const value = addDays(today, 1)
+        dates.push({ value, note: `“Tomorrow” read as ${value} from when you opened this review.` })
+      }
+    }
+    const suggested = () => dateSuggested({
+      candidates: dates.length, unclear: dates.filter(({ value }) => value === undefined).length,
+      distinctDays: new Set(dates.flatMap(({ value }) => value === undefined ? [] : [value])).size,
+    })
+    const weekdayNames = context === undefined ? [] : [...text.matchAll(new RegExp(`\\b(${weekdays.join("|")})(s)?\\b|\\b(sun|mon|tues?|wed|thu(?:rs?)?|fri|sat)\\.?(?=[ \\t]*,)`, "gi"))]
+      .map((match) => ({ day: weekdays.findIndex((day) => day.startsWith((match[1] || match[3] || "").toLowerCase().slice(0, 3))), source: match[0] }))
+    const first = weekdayNames[0]
+    if (first !== undefined) {
+      if (new Set(weekdayNames.map(({ day }) => day)).size > 1) {
+        dates.push({})
+        disclosures.push("Different weekdays are printed. Enter the date yourself.")
+      } else if (suggested()) {
+        if (weekdayOf(dates[0]?.value ?? "") !== first.day) {
+          dates.push({})
+          disclosures.push(`“${first.source}” does not match the printed date. Enter the date yourself.`)
+        }
+      } else if (dates.length === 0) {
+        let value = today
+        while (weekdayOf(value) !== first.day) value = addDays(value, 1)
+        dates.push({ value, note: `“${first.source}” read as its next occurrence, ${value}${value === today ? " (today)" : ""}.` })
+      }
+    }
+    const dateClear = suggested()
+    if (dateClear) for (const note of new Set(dates.flatMap(({ note }) => note === undefined ? [] : [note]))) disclosures.push(note)
+    const zones: Zones = context === undefined ? { explicit: [], ambiguous: [] } : zoneEvidence(text, lines)
+    const timeLines = lines
+      .map((line) => line.replace(/^(?:\d{4}-\d{2}-\d{2}[T ]+)?(?:at\s+|time:\s*|starts?:\s*)?/i, ""))
+      .map((line) => context === undefined ? line : line.replace(trailingZone, "").replace(new RegExp(`\\s*\\(?\\s*${abbreviation.source}\\s*\\)?$`, "i"), ""))
+      .filter((line) => /^\d{1,2}(?::|\s*[ap]\.?m)/i.test(line))
+    const windows = timeLines.map(timeWindow)
+    const times = windows.map((window) => window?.time)
+    const durations = windows.flatMap((window) => window?.minutes === undefined ? [] : [window.minutes])
+    const consistent = (dates.length === 0 || dateClear) && times.length > 0 && !times.includes(undefined) && new Set(times).size === 1 && new Set(durations).size <= 1
+    const printed = times[0] ?? ""
+    const explicit = [...new Map(zones.explicit.map((zone) => [zone.iana ?? `offset:${zone.offset}`, zone])).values()]
+    const zoneOne = explicit[0]
+    const zone: ZoneFacts = context === undefined
+      ? (legacyZoned.test(text) || isoZoned.test(text) ? "ZoneAmbiguous" : "NoZonePrinted")
+      : zones.ambiguous.length > 0 ? "ZoneAmbiguous" : explicit.length > 1 ? "ZonesConflict" : zoneOne !== undefined ? "OneZonePrinted" : "NoZonePrinted"
+    const instant = zone === "OneZonePrinted" && zoneOne !== undefined && dateClear ? sourceInstant(dates[0]?.value ?? "", printed, zoneOne) : undefined
+    let date = dateClear ? dates.find(({ value }) => value !== undefined)?.value ?? "" : ""
+    let time = ""
+    let sourceZone: string | null = null
+    const ambiguousNote = zones.ambiguous[0] === undefined ? "" : `Time zone “${zones.ambiguous[0]}” is ambiguous. Enter the local start time yourself.`
+    if (timeSuggested(context !== undefined, zone, consistent, dateClear, instant !== undefined)) {
+      if (instant !== undefined && zoneOne !== undefined) {
+        const local = wallIn(instant, target)
+        sourceZone = zoneOne.label
+        disclosures.push(`Converted from ${printed} ${zoneOne.label} on ${date} to ${local.time} on ${local.date} in your time zone (${target}). Check the source zone on the photo.`)
+        date = local.date
+        time = local.time
+      } else time = printed
+    } else if (context !== undefined && consistent) {
+      if (zone === "ZoneAmbiguous") disclosures.push(ambiguousNote)
+      else if (zone === "ZonesConflict") disclosures.push("More than one time zone is printed. Enter the local start time yourself.")
+      else if (zoneOne !== undefined && !dateClear) disclosures.push(`The time is in ${zoneOne.label}, but without a date it cannot be converted. Enter the local start time yourself.`)
+      else if (zoneOne !== undefined) disclosures.push(`${printed} on ${date} does not exist or occurs twice in ${zoneOne.label} because the clocks change. Enter the local start time yourself.`)
+    }
+    const timeLike = /\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?(?![a-z])|\b\d{1,2}:\d{2}\b|\b(?:noon|midnight)\b|\bat\s+\d/i.test(text)
+    if (context !== undefined && time === "" && timeLike && ambiguousNote !== "" && !disclosures.includes(ambiguousNote)) disclosures.push(ambiguousNote)
+    const allDay = allDaySuggested(context !== undefined, dateClear, timeLike || timeLines.length > 0)
+    if (allDay) disclosures.push("No time is printed, so an all-day event is suggested.")
+    const recurrence = context === undefined ? null : recurrenceHint(text, disclosures)
+    const locations = lines.flatMap((line) => { const found = /^(?:location|venue):\s*(.+)$/i.exec(line)?.[1]?.trim(); return found ? [found] : [] })
+    const location = locations[0]
+    return {
+      fields: {
+        title: (lines[0] ?? "").slice(0, 200), date, time,
+        minutes: time !== "" && durations[0] !== undefined ? durations[0] : 60,
+        location: location !== undefined && new Set(locations).size === 1 && location.length <= 500 ? location : "",
+      },
+      allDay, recurrence, sourceZone, disclosures,
+    }
+  }
+
+  /** @throws {never} */
+  export function suggestScanEvent(text: string): ScanEventFields {
+    return analyze(text).fields
+  }
+
+  /** @throws {never} */
+  export function suggestScanEventDetails(text: string, context: ScanEventContext): ScanEventSuggestion {
+    return analyze(text, context)
+  }
+
+  /** @throws {never} */
+  export function reviewFacts(fields: ReviewedScanFields, text: string, timed: boolean): ScanEventReview {
+    const date = DATE.exec(fields.date)
+    const [year = 0, month = 0, day = 0] = date === null ? [] : date.slice(1).map(Number)
+    const civil = new Date(Date.UTC(year, month - 1, day))
+    const time = timed ? TIME.exec(fields.time ?? "") : null
+    const hour = Number(time?.[1] ?? 0)
+    const minute = Number(time?.[2] ?? 0)
+    const local = new Date(year, month - 1, day, hour, minute)
+    const minutes = fields.minutes ?? 60
+    const whole = Number.isSafeInteger(minutes)
+    return {
+      notesUnits: text.length, titleBlank: fields.title.trim() === "", titleUnits: fields.title.length, locationUnits: fields.location.length,
+      repeatSupported: repeats.includes(fields.repeat ?? "none"), allDay: timed && fields.allDay === true,
+      datePattern: date !== null, yearInRange: year >= 1970 && year <= 2100,
+      dayExists: civil.getUTCFullYear() === year && civil.getUTCMonth() === month - 1 && civil.getUTCDate() === day,
+      timePattern: time !== null, wholeMinutes: whole, minutes: whole ? minutes : 0,
+      localTimeExists: local.getFullYear() === year && local.getMonth() === month - 1 && local.getDate() === day && local.getHours() === hour && local.getMinutes() === minute,
+    }
+  }
+
+  /** @throws {never} */
+  export function scanEventProposal(fields: ReviewedScanFields, text: string, now: Date, timed: boolean): ScanEventProposal {
+    const [year = 0, month = 0, day = 0] = fields.date.split("-").map(Number)
+    const dayOffset = (Date.UTC(year, month - 1, day) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 86_400_000
+    const reviewed = { title: fields.title.trim(), location: fields.location.trim(), notes: text, repeat: fields.repeat ?? "none", date: fields.date, dayOffset }
+    return timed ? { ...reviewed, allDay: false, time: fields.time ?? "", minutes: fields.minutes ?? 60 } : { ...reviewed, allDay: true }
+  }
+}
+
+import { reviewFacts, scanEventProposal, type ReviewedScanFields, type ScanEventFields, type ScanEventProposal, type ScanEventRepeat } from edge
+import { allDayEventAnswer, timedEventAnswer, type ScanEventAnswer } from "../../gen/files__scan__event.effect.vibe"
+
+export { suggestScanEvent, suggestScanEventDetails, type ScanEventContext, type ScanEventFields, type ScanEventProposal, type ScanEventRepeat, type ScanEventSuggestion } from edge
+
+export error ScanEventRefused { answer: ScanEventAnswer; reason: string }
+
+const REASONS: Readonly<Record<Exclude<ScanEventAnswer, "ScanEventAccepted">, string>> = {
+  NotesTooLong: "Event notes support up to 16,000 characters. Shorten the scanned text before creating an event draft.",
+  TitleOrLocationOutOfBounds: "Enter a title up to 200 characters and a location up to 500 characters.",
+  RepeatUnsupported: "Choose a supported repeat.",
+  TimedNeedsStart: "Calendar drafts from a scan need a start time. Enter a start time and duration, or create the all-day event in Calendar.",
+  DateMissing: "Choose the event date.",
+  DateAndTimeMissing: "Choose the event date and start time.",
+  YearOutOfRange: "Choose a year from 1970 through 2100.",
+  DayMissing: "Choose a valid date.",
+  DurationOutOfRange: "Choose a duration from 15 to 1440 minutes.",
+  LocalTimeSkipped: "That local time does not exist because the clocks change. Choose another time.",
+}
+
+effect function reviewed(answer: ScanEventAnswer, fields: ReviewedScanFields, text: string, now: Date | undefined, timed: boolean): ScanEventProposal!ScanEventRefused {
+  if (answer !== "ScanEventAccepted") throw new ScanEventRefused({ answer, reason: REASONS[answer] })
+  return scanEventProposal(fields, text, now ?? new Date(try Clock.currentTimeMillis), timed)
+}
+
+export effect function reviewScanAllDayEvent(fields: Pick<ScanEventFields, "title" | "date" | "location"> & { readonly repeat?: ScanEventRepeat }, text: string, now?: Date) {
+  return try reviewed(allDayEventAnswer(reviewFacts(fields, text, false)), fields, text, now, false)
+}
+
+export effect function reviewScanEvent(fields: ScanEventFields & { readonly allDay?: boolean; readonly repeat?: ScanEventRepeat }, text: string, now?: Date) {
+  return try reviewed(timedEventAnswer(reviewFacts(fields, text, true)), fields, text, now, true)
+}

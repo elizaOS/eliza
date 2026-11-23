@@ -1,4 +1,4 @@
-// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/os/android/files/storage.md, "A rename never replaces a different entry and reports the new path only when it happened"
+// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"; spec/os/android/files/storage.md, "A rename never replaces a different entry and reports the new path only when it happened"
 module node {
   import { createHash, randomUUID } from "node:crypto"
   import { lstat } from "node:fs/promises"
@@ -19,10 +19,10 @@ module node {
 }
 import { identityOf, linked, trashId } from node
 import { apply, canPrune, classifyRow, listed, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
-import { renameOutcome, validSelection, batchMax, type FilesOp, type FilesRowCheck, type FileOutcome } from "../../gen/os__android__files__storage.effect.vibe"
-import { baseName, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER,
+import { renameOutcome, batchMax, type FilesOp, type FilesRowCheck, type FileOutcome } from "../../gen/os__android__files__storage.effect.vibe"
+import { baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER,
   type StorageEntry, type TrashEntry } from "./model.vibe"
-import { FilesVolume, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
+import { checkSelection, FilesVolume, succeeded, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
 
 const TRASH = ".Trash-files"
 const WALK_LIMIT = 10_000
@@ -36,33 +36,6 @@ const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(TrashRecor
 
 const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
 
-function localEntries(fs: FileSystem.FileSystem, at: (path: string) => string) {
-  effect function entry(path: string): (StorageEntry | undefined)!! {
-    const info = (fs.stat(at(path)) catch () => undefined)
-    if (info === undefined) return undefined
-    const directory = info.type === "Directory"
-    return {
-      path, name: baseName(path), directory, mimeType: directory ? "" : mimeFromName(baseName(path)), size: directory ? 0 : Number(info.size),
-      modified: Option.match(info.mtime, { onNone: () => 0, onSome: (date) => date.getTime() }),
-    }
-  }
-
-  effect function children(folder: string) {
-    const names = (fs.readDirectory(at(folder)) catch () => undefined)
-    if (names === undefined) return { entries: [] as StorageEntry[], known: false }
-    const entries: StorageEntry[] = []
-    let known = true
-    for (const child of names) {
-      if (folder === "" && child === TRASH) continue
-      const found = try entry(joinPath(folder, child))
-      if (found === undefined) known = false
-      else entries.push(found)
-    }
-    return { entries, known }
-  }
-  return { entry, children }
-}
-
 export function localVolume(root: string, name = "Internal storage") {
   return Layer.effect(FilesVolume, effect {
     const fs = try FileSystem.FileSystem
@@ -73,9 +46,30 @@ export function localVolume(root: string, name = "Internal storage") {
     const trashInfo = (id: string) => paths.join(root, TRASH, "info", `${id}.json`)
     const exists = (path: string) => Effect.catch(fs.exists(path), () => Effect.succeed(false))
     const identity = (path: string) => promise(() => identityOf(at(path)))
-    const attempt = <A, E>(work: A!E) => Effect.match(work, { onSuccess: () => true, onFailure: () => false })
 
-    const { entry, children } = localEntries(fs, at)
+    effect function entry(path: string): (StorageEntry | undefined)!! {
+      const info = (fs.stat(at(path)) catch () => undefined)
+      if (info === undefined) return undefined
+      const directory = info.type === "Directory"
+      return {
+        path, name: baseName(path), directory, mimeType: directory ? "" : mimeFromName(baseName(path)), size: directory ? 0 : Number(info.size),
+        modified: Option.match(info.mtime, { onNone: () => 0, onSome: (date) => date.getTime() }),
+      }
+    }
+
+    effect function children(folder: string) {
+      const names = (fs.readDirectory(at(folder)) catch () => undefined)
+      if (names === undefined) return { entries: [] as StorageEntry[], known: false }
+      const entries: StorageEntry[] = []
+      let known = true
+      for (const child of names) {
+        if (folder === "" && child === TRASH) continue
+        const found = try entry(joinPath(folder, child))
+        if (found === undefined) known = false
+        else entries.push(found)
+      }
+      return { entries, known }
+    }
 
     effect function walk(from: string, keep: (entry: StorageEntry) => boolean) {
       const found: StorageEntry[] = []
@@ -102,13 +96,6 @@ export function localVolume(root: string, name = "Internal storage") {
       const found = folder === "" ? undefined : try entry(folder)
       if (folder !== "" && found?.directory !== true) throw refused("missing", "The folder is not there")
       return folder
-    }
-
-    effect function selection(selected: readonly string[], reviewed: readonly string[] | undefined): void!VolumeRefused {
-      if (!validSelection({ reviewed: reviewed !== undefined, paths: selected.length, distinct: new Set(selected).size === selected.length,
-        tokens: reviewed?.length ?? 0, tokensWellFormed: (reviewed ?? []).every((token) => /^[A-Za-z0-9_-]{43}$/.test(token)) })) {
-        throw refused("invalid", `Select 1–${batchMax} distinct files`)
-      }
     }
 
     effect function rowCheck(op: FilesOp, raw: string, token: string | undefined, dest: string): { row: FilesRowCheck; path: string }!! {
@@ -152,7 +139,7 @@ export function localVolume(root: string, name = "Internal storage") {
       fs.makeDirectory(paths.join(root, TRASH, "info"), { recursive: true }) catch () => undefined
       const journal = try journalOf(id, { name: origin.name, origin: origin.path, directory: origin.directory, size: origin.size, mimeType: origin.mimeType })
       try orDie(journal.send({ type: "journal", op: "Trash", row, at: try Clock.currentTimeMillis }))
-      const moved = try attempt(fs.rename(at(path), trashFile(id)))
+      const moved = try succeeded(fs.rename(at(path), trashFile(id)))
       try orDie(journal.send({ type: "moveToTrash", acknowledged: moved }))
       if (moved) return { path, status: "trashed", to: id }
       try orDie(journal.send({ type: "undoFailedJournal" }))
@@ -169,7 +156,7 @@ export function localVolume(root: string, name = "Internal storage") {
       if (source === undefined) return { path, status: "missing" }
       const target = (placed(dest, path, source.directory) catch () => undefined)
       if (target === undefined) return { path, status: "failed" }
-      const written = op === "Copy" ? try attempt(fs.copy(at(path), at(target))) : try attempt(fs.rename(at(path), at(target)))
+      const written = op === "Copy" ? try succeeded(fs.copy(at(path), at(target))) : try succeeded(fs.rename(at(path), at(target)))
       return written ? { path, status: op === "Copy" ? "copied" : "moved", to: target } : { path, status: "failed" }
     }
 
@@ -181,27 +168,25 @@ export function localVolume(root: string, name = "Internal storage") {
     effect function prune(id: string, kept: typeof TrashRecord.Type, now: number) {
       const { row: _row, ...base } = kept
       const journal = try journalOf(id, base)
-      const erased = try attempt(fs.remove(trashFile(id), { recursive: true }))
+      const erased = try succeeded(fs.remove(trashFile(id), { recursive: true }))
       const pruned = try orDie(journal.send({ type: "prune", at: now, erased }))
-      if (erased) try orDie(apply(pruned, { type: "completePrune", writeAcknowledged: try attempt(fs.remove(trashInfo(id))) }))
+      if (erased) try orDie(apply(pruned, { type: "completePrune", writeAcknowledged: try succeeded(fs.remove(trashInfo(id))) }))
     }
 
     return {
-      effect state() {
-        return { access: "granted" as const, volumes: [{ id: "local", name, primary: true, free: 0, total: 0 }] }
-      },
-      effect requestAccess() {
-        return "granted" as const
-      },
+      effect state() { return { access: "granted" as const, volumes: [{ id: "local", name, primary: true, free: 0, total: 0 }] } },
+      effect requestAccess() { return "granted" as const },
       effect list(path) {
-        const folder = try folderPath(path)
-        const { entries, known } = try children(folder)
+        const { entries, known } = try children(try folderPath(path))
         return listing(entries, { metadataKnown: known, partial: false, failed: false })
       },
       effect category(category) {
-        const downloads = category === "downloads" ? try children(DOWNLOAD_FOLDER) : undefined
-        const { found, known, partial } = downloads === undefined ? try walk("", (child) => inCategory(category, child))
-          : { found: downloads.entries.filter((child) => !child.directory), known: downloads.known, partial: false }
+        if (category === "downloads") {
+          if (!(try exists(at(DOWNLOAD_FOLDER)))) return { ...downloadsListing("DownloadFolderAbsent", [], { metadataKnown: false, partial: false }), count: 0 }
+          const { entries, known } = try children(DOWNLOAD_FOLDER)
+          return { ...downloadsListing("DownloadFolderListed", entries, { metadataKnown: known, partial: false }), count: entries.length }
+        }
+        const { found, known, partial } = try walk("", (child) => inCategory(category, child))
         return { ...listing(found, { metadataKnown: known, partial, failed: false }), count: found.length }
       },
       effect query(filter) {
@@ -210,7 +195,7 @@ export function localVolume(root: string, name = "Internal storage") {
         return listing(found, { metadataKnown: known, partial, failed: false })
       },
       effect reviewedIdentities(selected) {
-        try selection(selected, undefined)
+        try checkSelection(selected, undefined)
         const tokens: string[] = []
         for (const raw of selected) {
           const path = validPath(raw)
@@ -221,14 +206,14 @@ export function localVolume(root: string, name = "Internal storage") {
         return tokens
       },
       effect transfer({ paths: selected, dest, copy, reviewed }) {
-        try selection(selected, reviewed)
+        try checkSelection(selected, reviewed)
         const folder = try folderPath(dest)
         const outcomes: RowOutcome[] = []
         for (const [index, path] of selected.entries()) outcomes.push(try transferRow(copy ? "Copy" : "Move", path, reviewed?.[index], folder))
         return outcomes
       },
       trash: ({ paths: selected, reviewed }) => namespace(effect {
-        try selection(selected, reviewed)
+        try checkSelection(selected, reviewed)
         const outcomes: RowOutcome[] = []
         for (const [index, path] of selected.entries()) outcomes.push(try trashRow(path, reviewed?.[index]))
         return outcomes
@@ -264,7 +249,7 @@ export function localVolume(root: string, name = "Internal storage") {
           const folder = validPath(origin, true) !== undefined && origin.split("/")[0] !== TRASH ? origin : ""
           fs.makeDirectory(at(folder), { recursive: true }) catch () => undefined
           const target = (placed(folder, kept.name, kept.directory) catch () => undefined)
-          const moved = target !== undefined && (try attempt(fs.rename(trashFile(id), at(target))))
+          const moved = target !== undefined && (try succeeded(fs.rename(trashFile(id), at(target))))
           if (moved) (fs.remove(trashInfo(id)) catch () => undefined)
           outcomes.push(moved && target !== undefined ? { path: id, status: "restored", to: target } : { path: id, status: "failed" })
         }
@@ -277,12 +262,13 @@ export function localVolume(root: string, name = "Internal storage") {
         let count = 0
         for (const id of ids) {
           if (!known.has(id)) continue
-          const data = try attempt(fs.remove(trashFile(id), { recursive: true }))
-          if (data && (try attempt(fs.remove(trashInfo(id))))) count++
+          const data = try succeeded(fs.remove(trashFile(id), { recursive: true }))
+          if (data && (try succeeded(fs.remove(trashInfo(id))))) count++
         }
         return count
       }),
       effect createFolder(parent, folderName) {
+        if (parent === DOWNLOAD_FOLDER) try mapError(fs.makeDirectory(at(DOWNLOAD_FOLDER), { recursive: true }), () => refused("failed", "The folder was not created"))
         const folder = try folderPath(parent)
         const valid = validName(folderName)
         if (valid === undefined || valid.startsWith(".")) throw refused("invalid", "Invalid name")
@@ -304,7 +290,7 @@ export function localVolume(root: string, name = "Internal storage") {
           const outcome = renameOutcome(facts)
           throw refused(outcome === "Collision" ? "exists" : outcome === "RenameMissing" ? "missing" : outcome === "RenameInvalid" ? "invalid" : "failed", "The file was not renamed")
         }
-        const renamed = try attempt(fs.rename(at(source), at(target)))
+        const renamed = try succeeded(fs.rename(at(source), at(target)))
         if (renameOutcome({ ...facts, renamed }) !== "Renamed") throw refused("failed", "The file was not renamed")
         return target
       },

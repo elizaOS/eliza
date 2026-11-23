@@ -297,6 +297,7 @@ async function verifyGenerationInputs(root: string) {
   const nested = path.join(root, "spec/nested.proof.dfy/model.md");
   fs.appendFileSync(nested, "\nMore words.\n");
   const beforeNested = await generationPlan();
+  assert.equal((await generationPlan({ options: ["--root-turbo-json", legacy] }))["//#gen"].cache, false);
   fs.appendFileSync(nested, "\nMore words.\n");
   assert.notEqual((await generationPlan())["//#gen"].hash, beforeNested["//#gen"].hash);
 }

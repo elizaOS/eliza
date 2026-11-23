@@ -217,6 +217,32 @@ pure def lawLaunchWithoutBackendNeedsNoCredential(doc: LaunchDocument, f: Launch
   (documentAdmitted(doc) and frameAdmitted(f) and doc.backend == NoBackend) implies launchVerdict(doc, f) == LaunchAdmitted
 ```
 
+### A phone agent without a usable system resolver resolves external names through the native host's resolvers
+
+On Android and iOS the operating system brokers name lookups, and an agent
+runtime that is not linked against Android's own C library cannot reach
+that broker. Before it reads the launch, such a process points every lookup
+of an external name at the resolvers the native host lists in
+`ELIZA_MOBILE_DNS_SERVERS` (one to eight IP addresses, comma separated) or,
+when it lists none, at Cloudflare's and Google's public resolvers, so the
+pinned fetch's lookup, made when each request is made, finds them. An IP
+literal or `localhost` never goes to a resolver. A runtime linked against
+Android's C library keeps the system resolver, with its VPN and private DNS.
+A list that is not one to eight IP addresses is a configuration error.
+
+```quint
+type ResolverHost = NativeAndroid | OtherMobile | NotMobile
+type LookupName = ExternalName | LoopbackName | AddressLiteral
+type LookupRoute = SystemResolver | ExplicitResolvers | NoLookup
+pure val maxMobileResolvers = 8
+pure def lookupRoute(host: ResolverHost, name: LookupName): LookupRoute =
+  if (host != OtherMobile) SystemResolver else if (name == ExternalName) ExplicitResolvers else NoLookup
+pure def resolverListAdmitted(count: int, allAddresses: bool): bool = count >= 1 and count <= maxMobileResolvers and allAddresses
+pure def lawANativeAndroidRuntimeKeepsTheSystemResolver(name: LookupName): bool = lookupRoute(NativeAndroid, name) == SystemResolver
+pure def lawOnlyAnExternalNameOnAPhoneWithoutResolverUsesTheListedResolvers(host: ResolverHost, name: LookupName): bool =
+  (lookupRoute(host, name) == ExplicitResolvers) iff (host == OtherMobile and name == ExternalName)
+```
+
 ## Story: Keep the credential out of every file and reply
 
 > As the owner, I want my credential and the launch token handed to the

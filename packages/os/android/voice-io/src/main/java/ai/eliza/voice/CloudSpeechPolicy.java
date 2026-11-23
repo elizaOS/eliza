@@ -1,4 +1,4 @@
-// spec/os/voice/cloudSpeech.md, "Story: Talk to the agent through the cloud speech relay"; spec/os/voice/cloudSpeech.md, "Story: Transcribe a recording or hear a reply with one cloud request"
+// spec/os/voice/cloudSpeech.md, "Story: Talk to the agent through the cloud speech relay"; spec/os/voice/cloudSpeech.md, "A transient focus loss pauses listening and speaking until focus returns"; spec/os/voice/cloudSpeech.md, "Story: Transcribe a recording or hear a reply with one cloud request"
 package ai.eliza.voice;
 
 import java.util.ArrayList;
@@ -33,12 +33,15 @@ public final class CloudSpeechPolicy {
 
   public enum DeviceCause {
     NO_DEVICE_CAUSE("NoDeviceCause"), DEVICE_PAUSED("DevicePaused"), PLAYBACK_STUCK("PlaybackStuck"),
-    MICROPHONE_LOST("MicrophoneLost"), CALL_BEFORE_LIVE("CallBeforeLive");
+    MICROPHONE_LOST("MicrophoneLost"), CALL_BEFORE_LIVE("CallBeforeLive"), FOCUS_UNAVAILABLE("FocusUnavailable");
     public final String tag;
     DeviceCause(String tag) { this.tag = tag; }
   }
 
-  public enum OutputNotice { FIRST_AUDIO, REFUSED_CALL_ACTIVE, REFUSED_FOCUS_DENIED, STOP_PLAYBACK, ABANDON_FOCUS, DUCK_VOLUME, RESTORE_VOLUME, STOP_CAPTURE }
+  public enum OutputNotice {
+    FIRST_AUDIO, REFUSED_CALL_ACTIVE, REFUSED_FOCUS_DENIED, REFUSED_FOCUS_PAUSED, STOP_PLAYBACK, ABANDON_FOCUS, DUCK_VOLUME, RESTORE_VOLUME, STOP_CAPTURE,
+    PAUSE_LISTENING, RESUME_LISTENING, PERMANENT_LOSS
+  }
 
   public enum SttKind { CONNECTED, START_OF_TURN, TURN_RESUMED, END_OF_TURN, TRANSCRIPT_UPDATE, EAGER_END_OF_TURN }
 
@@ -141,19 +144,20 @@ public final class CloudSpeechPolicy {
   public record Batch(int requestId, Direction direction, int version, Verdict verdict) {}
 
   public record State(int credential, int bound, Phase phase, boolean audioStarted, Capture capture,
-                      int generation, int turn, Playing reply, List<Batch> batches, DeviceCause endedBy) {
+                      int generation, int turn, Playing reply, List<Batch> batches, DeviceCause endedBy, boolean focusPaused) {
     public State { batches = List.copyOf(batches); }
-    State phase(Phase p) { return new State(credential, bound, p, audioStarted, capture, generation, turn, reply, batches, endedBy); }
-    State capture(Capture c) { return new State(credential, bound, phase, audioStarted, c, generation, turn, reply, batches, endedBy); }
-    State turn(int t) { return new State(credential, bound, phase, audioStarted, capture, generation, t, reply, batches, endedBy); }
-    State reply(Playing r) { return new State(credential, bound, phase, audioStarted, capture, generation, turn, r, batches, endedBy); }
-    State batches(List<Batch> b) { return new State(credential, bound, phase, audioStarted, capture, generation, turn, reply, b, endedBy); }
-    State endedBy(DeviceCause c) { return new State(credential, bound, phase, audioStarted, capture, generation, turn, reply, batches, c); }
-    State heard() { return new State(credential, bound, phase, true, capture, generation, turn, reply, batches, endedBy); }
+    State phase(Phase p) { return new State(credential, bound, p, audioStarted, capture, generation, turn, reply, batches, endedBy, focusPaused); }
+    State capture(Capture c) { return new State(credential, bound, phase, audioStarted, c, generation, turn, reply, batches, endedBy, focusPaused); }
+    State turn(int t) { return new State(credential, bound, phase, audioStarted, capture, generation, t, reply, batches, endedBy, focusPaused); }
+    State reply(Playing r) { return new State(credential, bound, phase, audioStarted, capture, generation, turn, r, batches, endedBy, focusPaused); }
+    State batches(List<Batch> b) { return new State(credential, bound, phase, audioStarted, capture, generation, turn, reply, b, endedBy, focusPaused); }
+    State endedBy(DeviceCause c) { return new State(credential, bound, phase, audioStarted, capture, generation, turn, reply, batches, c, focusPaused); }
+    State heard() { return new State(credential, bound, phase, true, capture, generation, turn, reply, batches, endedBy, focusPaused); }
+    State paused(boolean p) { return new State(credential, bound, phase, audioStarted, capture, generation, turn, reply, batches, endedBy, p); }
   }
 
   public static final int NO_TURN = -1;
-  public static final State INITIAL = new State(0, 0, IDLE, false, Capture.MUTED, 0, NO_TURN, null, List.of(), DeviceCause.NO_DEVICE_CAUSE);
+  public static final State INITIAL = new State(0, 0, IDLE, false, Capture.MUTED, 0, NO_TURN, null, List.of(), DeviceCause.NO_DEVICE_CAUSE, false);
 
   public sealed interface Notice {
     record AskConsent() implements Notice {}
@@ -250,7 +254,7 @@ public final class CloudSpeechPolicy {
     if (s.reply() != null) out.add(new Notice.ReplySettled(s.reply().utteranceId(), false));
     if (revokeOwed(s.phase())) out.add(new Notice.RevokeSession());
     if (failure != Failure.NO_FAILURE) out.add(new Notice.SessionFailed(failure, !s.audioStarted(), wait));
-    State closed = new State(s.credential(), s.bound(), new Phase.Closed(ending), s.audioStarted(), Capture.MUTED, s.generation(), NO_TURN, null, s.batches(), s.endedBy());
+    State closed = new State(s.credential(), s.bound(), new Phase.Closed(ending), s.audioStarted(), Capture.MUTED, s.generation(), NO_TURN, null, s.batches(), s.endedBy(), false);
     return new Step(closed, out);
   }
 
@@ -326,8 +330,19 @@ public final class CloudSpeechPolicy {
       next.add(waiting ? new Batch(b.requestId(), b.direction(), b.version(), gone) : b);
       if (waiting) notices.add(new Notice.BatchSettled(b.requestId(), gone));
     }
-    State rebound = new State(version, s.bound(), s.phase(), s.audioStarted(), s.capture(), s.generation(), s.turn(), s.reply(), next, s.endedBy());
+    State rebound = new State(version, s.bound(), s.phase(), s.audioStarted(), s.capture(), s.generation(), s.turn(), s.reply(), next, s.endedBy(), s.focusPaused());
     return isOpen(s.phase()) ? failWith(Failure.ACCOUNT_INELIGIBLE, rebound, notices, NO_WAIT) : new Step(rebound, notices);
+  }
+
+  static Step outputNotice(State s, OutputNotice notice) {
+    if (notice == OutputNotice.STOP_CAPTURE) return failWith(Failure.CAPABILITY_UNAVAILABLE, s, List.of(), NO_WAIT);
+    boolean refused = notice == OutputNotice.REFUSED_FOCUS_DENIED || notice == OutputNotice.REFUSED_CALL_ACTIVE || notice == OutputNotice.REFUSED_FOCUS_PAUSED;
+    if (refused && s.reply() != null) return cancelReply(s);
+    if (notice == OutputNotice.PAUSE_LISTENING && !s.focusPaused())
+      return new Step(s.capture(Capture.MUTED).paused(true), s.capture() != Capture.MUTED ? List.of(new Notice.ReleaseLiveCapture()) : List.of());
+    if (notice == OutputNotice.RESUME_LISTENING && s.focusPaused())
+      return new Step(s.capture(Capture.RESERVING).paused(false), List.of(new Notice.ReserveLiveCapture()));
+    return quiet(s);
   }
 
   public static boolean enabled(State s, Event event) {
@@ -341,20 +356,21 @@ public final class CloudSpeechPolicy {
       case Event.Minted e -> s.phase() instanceof Phase.Minting;
       case Event.RelayLost e -> minted(s.phase());
       case Event.FrameArrived e -> minted(s.phase());
-      case Event.Unmute e -> live(s) && s.capture() == Capture.MUTED && e.recordAudio();
-      case Event.Mute e -> s.capture() != Capture.MUTED;
+      case Event.Unmute e -> live(s) && s.capture() == Capture.MUTED && e.recordAudio() && !s.focusPaused();
+      case Event.Mute e -> s.capture() != Capture.MUTED || s.focusPaused();
       case Event.CaptureAnswered e -> s.capture() == Capture.RESERVING;
-      case Event.Speak e -> live(s) && s.reply() == null && !e.utteranceId().isEmpty() && e.pace() >= MIN_PACE && e.pace() <= MAX_PACE;
+      case Event.Speak e -> live(s) && s.reply() == null && !s.focusPaused() && !e.utteranceId().isEmpty() && e.pace() >= MIN_PACE && e.pace() <= MAX_PACE;
       case Event.AudioArrived e -> live(s) && e.audioMs() > 0;
       case Event.Played e -> s.reply() != null && e.playedMs() > 0 && s.reply().playedMs() + e.playedMs() <= s.reply().receivedMs();
       case Event.CancelReply e -> s.reply() != null;
-      case Event.Output e -> live(s);
+      case Event.Output e -> live(s) && (e.notice() != OutputNotice.PAUSE_LISTENING || s.reply() == null);
       case Event.Stop e -> isOpen(s.phase());
       case Event.DeviceEnded e -> switch (e.cause()) {
         case DEVICE_PAUSED -> isOpen(s.phase());
         case PLAYBACK_STUCK -> live(s);
         case MICROPHONE_LOST -> live(s) && s.capture() != Capture.MUTED;
         case CALL_BEFORE_LIVE -> isOpen(s.phase()) && !live(s);
+        case FOCUS_UNAVAILABLE -> live(s);
         case NO_DEVICE_CAUSE -> false;
       };
       case Event.BatchRequested e -> s.credential() >= 1 && e.requestId() >= 1 && s.batches().stream().noneMatch(b -> b.requestId() == e.requestId());
@@ -371,21 +387,21 @@ public final class CloudSpeechPolicy {
         : s.phase(new Phase.AwaitingConsent(asks(s.phase()), waited(s.phase()) + e.waitMs())));
       case Event.ConsentGiven e -> quiet(s.phase(MINTING));
       case Event.QuietStep e -> quiet(s);
-      case Event.Begin e -> new Step(new State(s.credential(), s.credential(), new Phase.AwaitingConsent(1, 0), false, Capture.MUTED, 0, NO_TURN, null, s.batches(), DeviceCause.NO_DEVICE_CAUSE),
+      case Event.Begin e -> new Step(new State(s.credential(), s.credential(), new Phase.AwaitingConsent(1, 0), false, Capture.MUTED, 0, NO_TURN, null, s.batches(), DeviceCause.NO_DEVICE_CAUSE, false),
         List.of(new Notice.AskConsent()));
       case Event.ConsentDismissed e -> asks(s.phase()) == 1
         ? new Step(s.phase(new Phase.AwaitingConsent(2, waited(s.phase()))), List.of(new Notice.AskConsent()))
         : quiet(s.phase(new Phase.Closed(new Ending.NotConsented())));
       case Event.CredentialChanged e -> credentialChanged(s, e.version());
       case Event.Minted e -> e.answer() instanceof Answer.Answered
-        ? quiet(new State(s.credential(), s.bound(), CONNECTING, s.audioStarted(), s.capture(), s.generation(), s.turn(), s.reply(), s.batches(), s.endedBy()))
+        ? quiet(s.phase(CONNECTING))
         : failWith(failureOf(e.answer()), s, keyReport(e.answer(), s.credential()), waitOf(e.answer()));
       case Event.RelayLost e -> failWith(Failure.REMOTE_UNREACHABLE, s, List.of(), NO_WAIT);
       case Event.FrameArrived e -> frameArrived(s, e.frame());
       case Event.Unmute e -> new Step(s.capture(Capture.RESERVING), List.of(new Notice.ReserveLiveCapture()));
-      case Event.Mute e -> new Step(s.capture(Capture.MUTED), List.of(new Notice.ReleaseLiveCapture()));
+      case Event.Mute e -> new Step(s.capture(Capture.MUTED).paused(false), s.capture() != Capture.MUTED ? List.of(new Notice.ReleaseLiveCapture()) : List.of());
       case Event.CaptureAnswered e -> e.slot() == SlotAnswer.NO_REFUSAL
-        ? quiet(new State(s.credential(), s.bound(), s.phase(), true, Capture.LISTENING, s.generation() + 1, s.turn(), s.reply(), s.batches(), s.endedBy()))
+        ? quiet(new State(s.credential(), s.bound(), s.phase(), true, Capture.LISTENING, s.generation() + 1, s.turn(), s.reply(), s.batches(), s.endedBy(), s.focusPaused()))
         : failWith(Failure.CAPABILITY_UNAVAILABLE, s.capture(Capture.MUTED), List.of(), NO_WAIT);
       case Event.Speak e -> quiet(s.reply(new Playing(e.utteranceId(), e.pace(), 0, 0, false)));
       case Event.AudioArrived e -> {
@@ -400,9 +416,7 @@ public final class CloudSpeechPolicy {
         yield quiet(s.reply(new Playing(x.utteranceId(), x.pace(), x.receivedMs(), x.playedMs() + e.playedMs(), x.completed())));
       }
       case Event.CancelReply e -> cancelReply(s);
-      case Event.Output e -> e.notice() == OutputNotice.STOP_CAPTURE ? failWith(Failure.CAPABILITY_UNAVAILABLE, s, List.of(), NO_WAIT)
-        : (e.notice() == OutputNotice.REFUSED_FOCUS_DENIED || e.notice() == OutputNotice.REFUSED_CALL_ACTIVE) && s.reply() != null ? cancelReply(s)
-        : quiet(s);
+      case Event.Output e -> outputNotice(s, e.notice());
       case Event.Stop e -> closeWith(new Ending.Stopped(), s, List.of(), NO_WAIT);
       case Event.DeviceEnded e -> {
         Step ended = failWith(Failure.CAPABILITY_UNAVAILABLE, s, List.of(), NO_WAIT);
@@ -500,7 +514,7 @@ public final class CloudSpeechPolicy {
     return "{\"credential\":" + s.credential() + ",\"bound\":" + s.bound() + ",\"phase\":" + json(s.phase())
       + ",\"audioStarted\":" + s.audioStarted() + ",\"capture\":" + q(s.capture().tag)
       + ",\"generation\":" + s.generation() + ",\"turn\":" + turn + ",\"reply\":" + reply + ",\"batches\":" + batches.append(']')
-      + ",\"endedBy\":" + q(s.endedBy().tag) + "}";
+      + ",\"endedBy\":" + q(s.endedBy().tag) + ",\"focusPaused\":" + s.focusPaused() + "}";
   }
 
   public static String json(Notice n) {

@@ -1,4 +1,4 @@
-// spec/os/agentService/channel.md, "The launch's root token stays inside the service"; spec/os/agentService/channel.md, "A pending call settles exactly once, and nothing else leaves the pending list"; spec/agent/access/transport.md, "A request gets 10 seconds, or 600 on a message, speech or stream route"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"
+// spec/os/agentService/channel.md, "The launch's root token stays inside the service"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/os/agentService/channel.md, "A pending call settles exactly once, and nothing else leaves the pending list"; spec/agent/access/transport.md, "A request gets 10 seconds, or 600 on a message, speech or stream route"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"
 package ai.eliza.os.agent;
 
 import android.net.LocalSocket;
@@ -62,7 +62,11 @@ public final class AgentSocketClient {
   public record Event(JSONObject event) implements Frame {}
 
   public sealed interface Outgoing permits HttpCall, Subscription {}
-  public record HttpCall(String method, String path, byte[] body, boolean streamed) implements Outgoing {}
+  public record HttpCall(String method, String path, byte[] body, boolean streamed, Map<String, String> headers) implements Outgoing {
+    public HttpCall(String method, String path, byte[] body, boolean streamed) {
+      this(method, path, body, streamed, Map.of());
+    }
+  }
   public record Subscription(List<String> streams, String clientId) implements Outgoing {}
 
   public record Account(String userId, String organizationId) {}
@@ -134,7 +138,7 @@ public final class AgentSocketClient {
       throw new IOException("credential push is not writable", unwritable);
     }
     List<Frame> answer = new ArrayList<>(1);
-    HttpCall call = new HttpCall("PUT", CREDENTIAL_ROUTE, body.toString().getBytes(StandardCharsets.UTF_8), false);
+    HttpCall call = new HttpCall("PUT", CREDENTIAL_ROUTE, body.toString().getBytes(StandardCharsets.UTF_8), false, Map.of());
     exchange(socket, token, "credential-" + push.version(), call, link -> { }, frame -> { answer.add(frame); return false; });
     if (answer.isEmpty()) throw new IOException("agent closed the connection before answering the credential push");
     Frame frame = answer.get(0);
@@ -159,6 +163,7 @@ public final class AgentSocketClient {
   private static JSONObject frameOf(String token, String id, Outgoing outgoing) throws JSONException {
     JSONObject headers = new JSONObject().put("authorization", "Bearer " + token);
     if (outgoing instanceof HttpCall call) {
+      for (Map.Entry<String, String> carried : call.headers().entrySet()) headers.put(carried.getKey(), carried.getValue());
       JSONObject payload = new JSONObject().put("path", call.path()).put("method", call.method()).put("headers", headers);
       if (call.body() != null) {
         headers.put("content-type", "application/json");

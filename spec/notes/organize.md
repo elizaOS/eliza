@@ -71,7 +71,9 @@ Filtering and recording change no saved note, so they may run without a
 separate review when the owner's own current message asked for them and no
 workflow bound them. Moving a note, creating a folder and restoring a note
 change saved data, so the owner reviews each first; a move is bound to the
-reviewed note revision.
+reviewed note revision. While a filter or a recording waits to run directly,
+the owner hears what the phone will do; one kept for review, like every move,
+folder and restore, asks the owner to review it on the phone.
 
 ```quint
 pure def organizeChangesSavedNotes(kind: OrganizeKind): bool = kind == MoveNote or kind == CreateFolder or kind == RestoreNote
@@ -100,4 +102,25 @@ pure val countValues = Set(0, 100, 101)
 pure def lawOverlongFolderNameRefused(units: int, hasNul: bool): bool = units > 40 implies not(folderNameAdmitted(units, hasNul))
 pure def lawDuplicateFolderNamesBreakTheList(count: int, uniqueIds: bool, namesAdmitted: bool): bool =
   not(folderListAdmitted(count, uniqueIds, false, namesAdmitted))
+```
+
+### A proposed folder is one the device sent, or a new name the owner said
+
+A move or a filter names a folder only from the folder list the device sent
+with the turn, by its name there; with no list, or a name the list does not
+have, nothing is proposed, and taking a note out of its folder names none.
+A new folder's name is words the owner said in this message. A move is of
+the phone note open in Notes, as its [read](./read.md) targets it.
+
+```quint
+type FolderUse = ListedFolder | NoFolderNamed | NewFolderName
+pure def folderGrounded(folderUse: FolderUse, listSent: bool, inDeviceList: bool, inOwnerWords: bool): bool =
+  if (folderUse == ListedFolder) listSent and inDeviceList
+  else if (folderUse == NewFolderName) inOwnerWords
+  else true
+pure def lawAnUnlistedFolderIsNeverProposed(listSent: bool, inOwnerWords: bool): bool =
+  not(folderGrounded(ListedFolder, listSent, false, inOwnerWords)) and not(folderGrounded(ListedFolder, false, true, inOwnerWords))
+pure def lawANewFolderIsNamedByTheOwner(listSent: bool, inDeviceList: bool): bool =
+  not(folderGrounded(NewFolderName, listSent, inDeviceList, false))
+pure def lawNoFolderNeedsNoList(inDeviceList: bool, inOwnerWords: bool): bool = folderGrounded(NoFolderNamed, false, inDeviceList, inOwnerWords)
 ```

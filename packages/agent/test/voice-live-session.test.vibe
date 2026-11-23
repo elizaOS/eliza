@@ -205,6 +205,30 @@ it.effect("A session owns one microphone capture, and a half-duplex session reop
   })
 })
 
+it.effect('A failed close keeps the microphone held: Stop asks it again and Start waits for its release (spec/agent/voice/session.md, "A capture that failed to close is kept until it confirms its release, and no capture opens over it")', () => effect {
+  const h = harness()
+  try promise(() => h.open(true))
+  h.live.stop()
+  h.captures[0]?.failed(new Error("the microphone did not confirm it is off"))
+  try promise(() => h.settle())
+  const refused = [h.live.state.capture, h.live.phase]
+  h.live.start()
+  const blocked = [h.captures.length, h.counts.closes]
+  h.live.stop()
+  const retried = [h.live.state.capture, h.counts.closes]
+  h.captures[0]?.closed()
+  try promise(() => h.settle())
+  const released = [h.live.state.capture, h.live.phase]
+  h.live.start()
+  try Effect.try(() => {
+    assert.deepStrictEqual(refused, ["CaptureUnreleased", "PhaseError"])
+    assert.deepStrictEqual(blocked, [1, 1])
+    assert.deepStrictEqual(retried, ["CaptureClosing", 2])
+    assert.deepStrictEqual(released, ["CaptureClosed", "PhaseIdle"])
+    assert.deepStrictEqual([h.captures.length, h.live.state.capture], [2, "CaptureOpening"])
+  })
+})
+
 it.effect('Send my words once I finish speaking: half-duplex waits for capture close and reopens after the reply (spec/agent/voice/session.md, "A turn is sent once, and a half-duplex turn only after the capture confirmed its close")', () => effect {
   const h = harness()
   h.live.start("ConversationMode", "HalfDuplex")

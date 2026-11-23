@@ -15,11 +15,13 @@ const documentOf = (css: string, title: string, body: ReactNode, script: boolean
         <meta name="robots" content="noindex, nofollow" />
         <meta name="referrer" content="no-referrer" />
         <title>{title}</title>
-        <style>{css}</style>
+        {/* eslint-disable-next-line @eslint-react/dom-no-dangerously-set-innerhtml -- the page ships its own fixed stylesheet inline */}
+        <style dangerouslySetInnerHTML={{ __html: css }} />
       </head>
       <body>
         {body}
-        {script && <script>{forwardScript}</script>}
+        {/* eslint-disable-next-line @eslint-react/dom-no-dangerously-set-innerhtml -- the page ships its own fixed forwarding script inline */}
+        {script && <script dangerouslySetInnerHTML={{ __html: forwardScript }} />}
       </body>
     </html>,
   );
