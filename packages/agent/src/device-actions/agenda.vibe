@@ -9,7 +9,7 @@ module node {
   import { firstOfLocalDay } from "./operation-schemas/device.schema.vibe"
   import { CalendarSource, day } from "./operation-schemas/personal.schema.vibe"
   import { validate } from "./operations.schema.vibe"
-  import { agendaPayload, type AgendaOperation } from "./proposal-review.vibe"
+  import { devicePayload, type AgendaOperation } from "./proposal-review.vibe"
   import { enrollment, offerRequest, retireRequest } from "./store.vibe"
 
   const NativeTurn = Schema.Struct({ clientDevice: Schema.Struct({ context: Schema.JsonObject, calendarAgendaSource: Schema.Unknown }) })
@@ -63,7 +63,7 @@ module node {
       const enrolled = await Effect.runPromise(enrollment(runtime.adapter))
       const proposalId = stringToUuid(`agenda:${message.id}`)
       const expiresAt = Date.now() + 600_000
-      const payload = agendaPayload({ operation, calendarAgendaSource }, by, enrollmentId(enrolled), message.id)
+      const payload = devicePayload({ operation, scope: { calendarAgendaSource } }, by, enrollmentId(enrolled), message.id)
       const digest = hashStableJson({ id: proposalId, subjectUserId: by.actorId, payload, expiresAt: new Date(expiresAt).toISOString() })
       const bound = { proposalId, digest, by }
       await Effect.runPromise(offerRequest(runtime.adapter, {
