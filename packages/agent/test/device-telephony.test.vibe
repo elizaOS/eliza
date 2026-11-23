@@ -30,6 +30,7 @@ module node {
     readonly readReplyOrigin?: Record<string, unknown>
   }
 
+  const roleLeads = ["To call or text a person", "To call a person", "To text a person"]
   const propose = (operation: unknown) => ({ name: proposeTool, arguments: { operation } })
   const incomplete = propose({ type: "phone_call" })
   const direct = { voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } }
@@ -119,13 +120,27 @@ module node {
     const surnameWithCourtesy = await ask("Call Ana Maria Silva Back please", callContact("Ana Maria Silva"))
     const prefixCallback = await ask("call back Jo", callContact("Jo"))
     const dentist = await ask("ring the dentist", { type: "phone_call", target: named("dentist") })
-    const told = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
-      .flatMap(({ body }) => (body as { tools?: readonly { function?: { name?: string; description?: string } }[] }).tools ?? [])
-      .findLast(({ function: tool }) => tool?.name === proposeTool)?.function?.description ?? ""
+    const toldByRole = () => {
+      const told = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
+        .flatMap(({ body }) => (body as { tools?: readonly { function?: { name?: string; description?: string } }[] }).tools ?? [])
+        .findLast(({ function: tool }) => tool?.name === proposeTool)?.function?.description ?? ""
+      return {
+        said: told.split("also when the owner names them by a role or relation").length - 1,
+        lead: roleLeads.filter((lead) => told.includes(`${lead}, propose`)),
+        searchFirst: told.split("Never propose contact_show first").length - 1,
+      }
+    }
+    const toldOn = async (negotiated: readonly string[]) => {
+      const { conversation: other } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
+      cloud.script(reply("Okay."))
+      await client.call("POST", `/api/conversations/${other.id}/messages`, { text: "hello" }, negotiated.join(","))
+      return toldByRole()
+    }
     const byRole = {
-      said: told.split("also when the owner names them by a role or relation").length - 1,
-      callOrText: told.includes("To call or text a person, propose phone_call or sms_compose at once with a contact target"),
-      searchFirst: told.split("Never propose contact_show first").length - 1,
+      everything: toldByRole(),
+      callOnly: await toldOn(["phone.call.v1", "contacts.show.v1"]),
+      textOnly: await toldOn(["sms.compose.v1", "sms.compose.v2"]),
+      byNameOrNumberOnly: await toldOn(["phone.dial.v1", "phone.keypad.v1", "sms.compose.v1", "contacts.show.v1"]),
     }
     const unnamed = await ask("call my landlord back today", { type: "phone_call", target: { kind: "contact", query: "Shaw" } })
     const bodyNumber = await ask("text Sam saying call me at 415-555-0100", text(numbered("4155550100"), "call me at 415-555-0100"))
@@ -280,7 +295,12 @@ it.live(`A call, dial, keypad, text or contact change goes only to the recipient
     surnameWithCourtesy: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Ana Maria Silva Back" } }, modelCalls: 1 },
     prefixCallback: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "Jo" } }, modelCalls: 1 },
     dentist: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "dentist" } }, modelCalls: 1 },
-    byRole: { said: 1, callOrText: true, searchFirst: 1 },
+    byRole: {
+      everything: { said: 1, lead: ["To call or text a person"], searchFirst: 1 },
+      callOnly: { said: 1, lead: ["To call a person"], searchFirst: 1 },
+      textOnly: { said: 1, lead: ["To text a person"], searchFirst: 0 },
+      byNameOrNumberOnly: { said: 0, lead: [], searchFirst: 0 },
+    },
     unnamed: {
       reply: "I didn't set that up, because that name isn't one you wrote in your message. Nothing was called or sent. Tell me who, by their name as saved in Contacts or their number.",
       operation: undefined,
