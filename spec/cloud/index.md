@@ -171,7 +171,10 @@ A read requires an active browser session for the account that consented.
 The service keeps the refresh credential encrypted for that deployment,
 account and approved scopes. Disconnecting removes the local credential and any
 pending consent authorizations. Browser and native inference credentials
-have separate permissions. The owner can search Inbox, Sent, Drafts or Trash.
+have separate permissions: every mail and calendar route refuses the device
+key with `403 device_key_not_allowed`, even beside a browser session. A
+request that carries an `Authorization` header is authenticated by that
+header alone, never by a cookie. The owner can search Inbox, Sent, Drafts or Trash.
 Counts show the provider’s unread Inbox messages and total draft messages across
 the mailbox, including messages beyond the displayed page. A Gmail message read returns named attachment
 descriptors without attachment bytes. Fetching a supported part requires the

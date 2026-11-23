@@ -8,7 +8,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, Ht
 import {
   accessCookie, refreshCookie, accessDigest, deviceDigest, digestCredential, readCookie, newSecret,
   authQuery as query, accountTransaction, identityTx, browserAccount, signInWithProof, openSignInFamily, renewBrowserSession, logoutBrowserSession,
-  rateLimit, RateLimited, StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
+  rateLimit, RateLimited, StorageUnavailable, IdentityConflict, devicePattern, type BrowserSession, type Identity
 } from "./identity-store.vibe"
 
 import { endKey, inspectKey } from "./native-clients/grants.vibe"
@@ -108,6 +108,26 @@ function sessionCookies(session: BrowserSession) {
 
 export function sessionAccount(request: Request, db: Client): Promise<string | null> {
   return runPromise(Effect.provide(effect { return (try browserAccount(request, db))?.id ?? null }, cryptoServices))
+}
+
+export type MailAccess =
+  | { readonly kind: "owner"; readonly account: string }
+  | { readonly kind: "refused"; readonly status: 401 | 403; readonly error: "authentication_required" | "device_key_not_allowed" }
+
+const unauthenticated: MailAccess = { kind: "refused", status: 401, error: "authentication_required" }
+const deviceKeyRefused: MailAccess = { kind: "refused", status: 403, error: "device_key_not_allowed" }
+
+effect function accountForMail(request: Request, db: Client) {
+  const authorization = request.headers.get("authorization")
+  if (authorization === null) {
+    const id = (try browserAccount(request, db))?.id
+    return id ? { kind: "owner", account: id } satisfies MailAccess : unauthenticated
+  }
+  return devicePattern.test(authorization.replace(/^Bearer /, "")) ? deviceKeyRefused : unauthenticated
+}
+
+export function mailAccount(request: Request, db: Client): Promise<MailAccess> {
+  return runPromise(Effect.provide(accountForMail(request, db), cryptoServices))
 }
 
 effect function requestCredential(request: Request) {
