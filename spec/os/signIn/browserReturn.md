@@ -286,26 +286,29 @@ pure def upgradePrompt(s: StandaloneUpgrade): UpgradePrompt = match s {
   | _ => NoUpgradePrompt
 }
 pure def beginStandaloneUpgrade(s: StandaloneUpgrade, attempt: int): StandaloneUpgrade = match s {
-  | LegacyDeviceKey(k) => UpgradeBrowser({ prior: k, attempt: attempt })
+  | LegacyDeviceKey(k) => UpgradeBrowser({ prior: { owner: k.owner, version: k.version }, attempt: attempt })
   | _ => s
 }
 pure def cancelStandaloneUpgrade(s: StandaloneUpgrade, attempt: int): StandaloneUpgrade = match s {
-  | UpgradeBrowser(p) => if (p.attempt == attempt) LegacyDeviceKey(p.prior) else s
+  | UpgradeBrowser(p) => if (p.attempt == attempt) LegacyDeviceKey({ owner: p.prior.owner, version: p.prior.version }) else s
   | _ => s
 }
 pure def stageStandaloneUpgrade(s: StandaloneUpgrade, attempt: int, response: UpgradeExchange): StandaloneUpgrade = match s {
   | UpgradeBrowser(p) => if (p.attempt != attempt) s else match response {
-      | NoLeaseReply => LegacyDeviceKey(p.prior)
+      | NoLeaseReply => LegacyDeviceKey({ owner: p.prior.owner, version: p.prior.version })
       | LeaseReply(k) => if (k.owner == p.prior.owner and k.version != p.prior.version)
-          UpgradeAcknowledging({ prior: p.prior, replacement: k }) else LegacyDeviceKey(p.prior)
+          UpgradeAcknowledging({ prior: p.prior, replacement: { owner: k.owner, version: k.version } }) else LegacyDeviceKey({ owner: p.prior.owner, version: p.prior.version })
     }
   | _ => s
 }
 pure def lawCancelingAnUpgradeKeepsTheCurrentKey(prior: UpgradeKey, attempt: int): bool =
-  cancelStandaloneUpgrade(beginStandaloneUpgrade(LegacyDeviceKey(prior), attempt), attempt) == LegacyDeviceKey(prior)
+  cancelStandaloneUpgrade(beginStandaloneUpgrade(LegacyDeviceKey({ owner: prior.owner, version: prior.version }), attempt), attempt) == LegacyDeviceKey({ owner: prior.owner, version: prior.version })
 pure def lawAnUpgradeRequiresAReplacementKeyForTheSameOwner(prior: UpgradeKey, replacement: UpgradeKey, attempt: int): bool =
-  (upgradePrompt(stageStandaloneUpgrade(UpgradeBrowser({ prior: prior, attempt: attempt }), attempt, LeaseReply(replacement)))
+  (upgradePrompt(stageStandaloneUpgrade(UpgradeBrowser({ prior: prior, attempt: attempt }), attempt, LeaseReply({ owner: replacement.owner, version: replacement.version })))
     == UpgradeAcknowledgmentPending) iff (replacement.owner == prior.owner and replacement.version != prior.version)
+pure val priorValues = Set({ owner: { userId: "u1", organizationId: "o1" }, version: 1 }, { owner: { userId: "u2", organizationId: "o2" }, version: 1 })
+pure val replacementValues = Set({ owner: { userId: "u1", organizationId: "o1" }, version: 1 }, { owner: { userId: "u1", organizationId: "o1" }, version: 2 }, { owner: { userId: "u2", organizationId: "o2" }, version: 2 })
+pure val attemptValues = Set(1, 2)
 ```
 
 ### The old key retires after the replacement is acknowledged and saved
@@ -319,15 +322,15 @@ save only completes the retirement duty.
 
 ```quint
 type UpgradeAck = UpgradeAckPending | UpgradeAckRefused | UpgradeAckSaved
-pure def finishStandaloneUpgrade(s: StandaloneUpgrade, outcome: UpgradeAck): StandaloneUpgrade = match s {
-  | UpgradeAcknowledging(p) => match outcome {
+pure def finishStandaloneUpgrade(s: StandaloneUpgrade, ack: UpgradeAck): StandaloneUpgrade = match s {
+  | UpgradeAcknowledging(p) => match ack {
       | UpgradeAckPending => s
-      | UpgradeAckRefused => LegacyDeviceKey(p.prior)
+      | UpgradeAckRefused => LegacyDeviceKey({ owner: p.prior.owner, version: p.prior.version })
       | UpgradeAckSaved => UpgradedDeviceKey({ active: p.replacement, retired: p.prior })
     }
   | _ => s
 }
-pure def lawStandaloneUpgradeRetiresTheOldKeyOnlyAfterSaving(prior: UpgradeKey, replacement: UpgradeKey, outcome: UpgradeAck): bool =
-  (finishStandaloneUpgrade(UpgradeAcknowledging({ prior: prior, replacement: replacement }), outcome)
-    == UpgradedDeviceKey({ active: replacement, retired: prior })) iff (outcome == UpgradeAckSaved)
+pure def lawStandaloneUpgradeRetiresTheOldKeyOnlyAfterSaving(prior: UpgradeKey, replacement: UpgradeKey, ack: UpgradeAck): bool =
+  (finishStandaloneUpgrade(UpgradeAcknowledging({ prior: prior, replacement: replacement }), ack)
+    == UpgradedDeviceKey({ active: replacement, retired: prior })) iff (ack == UpgradeAckSaved)
 ```
