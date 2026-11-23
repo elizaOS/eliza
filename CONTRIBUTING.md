@@ -434,7 +434,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 | When | Runs |
 |---|---|
 | Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
-| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
+| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
