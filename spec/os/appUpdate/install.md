@@ -79,7 +79,8 @@ pure def sometimesPlanVerified(j: Journal): bool = j.phase == Verified
 
 The journal asks for the hold on the artifact it is about to install and
 hands the platform a session only after the agent service acknowledged that
-exact hold. While the installer may still act, the hold stays granted.
+exact hold. While the installer may still act, the hold stays granted. An
+attempt that ends before the handoff gives the hold back and keeps its plan.
 
 ```quint
 pure def awaitsReadback(j: Journal): bool =
@@ -90,12 +91,16 @@ pure def requestHold(j: Journal): JournalStep =
   { state: { ...j, hold: HoldRequested, revision: j.revision + 1 }, out: List(Hold({ target: holdTarget(j) })) }
 pure def canAcknowledgeHold(j: Journal, target: ArtifactId): bool = j.hold == HoldRequested and target == holdTarget(j)
 pure def acknowledgeHold(j: Journal, target: ArtifactId): Journal = { ...j, hold: HoldGranted, revision: j.revision + 1 }
+pure def canReleaseUnhandedHold(j: Journal): bool = (j.phase == Verified or j.phase == RecoveryReady) and j.hold != Unheld
+pure def releaseUnhandedHold(j: Journal): JournalStep =
+  conclude(true, if (j.phase == RecoveryReady) j.plan.candidate else j.plan.baseline, j, { ...j, revision: j.revision + 1 })
 pure def canCommitCandidate(j: Journal, sessionId: int): bool = j.phase == Verified and j.hold == HoldGranted and sessionId > 0
 pure def commitCandidate(j: Journal, sessionId: int): Journal = { ...j, phase: Committing, session: sessionId, revision: j.revision + 1 }
 pure val targetValues = Set(2, 3, 4)
 pure val sessionIdValues = Set(1, 2)
 pure val weight_requestHold = 4
 pure val weight_acknowledgeHold = 4
+pure val weight_releaseUnhandedHold = 1
 pure def alwaysAwaitingIsHeld(j: Journal): bool = awaitsReadback(j) implies (j.hold == HoldGranted and j.session > 0)
 pure def alwaysHoldOnlyForAnOpenAttempt(j: Journal): bool =
   j.hold != Unheld implies (awaitsReadback(j) or j.phase == Verified or j.phase == RecoveryReady)
@@ -174,7 +179,8 @@ pure def sometimesBlocked(j: Journal): bool = j.phase == Support and j.support =
 Every hold the journal asks for is announced once, and every hold it gives
 back is announced once, naming what is installed. A release happens only
 when the journal leaves the attempt: the expected artifact installed, the
-session gone and settled, or the plan dropped before any handoff.
+session gone and settled, the plan dropped, or the attempt ended before any
+handoff.
 
 ```quint
 pure def isRelease(e: UpdateHold): bool = match e { | Release(r) => true | _ => false }

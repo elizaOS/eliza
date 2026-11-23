@@ -7,25 +7,18 @@ import {
 export { SpeechRoutingMachine }
 export type { NetworkKey, ServiceLimit, SpeechFailure, SpeechRoute, SpeechRouting }
 
-/** The device's speech route, kept in memory for the life of the process. */
 export const speechRouting = () => machine()
 
-/** Why one attempt on a route produced no speech. */
 export error SpeechAttemptFailed { failure: SpeechFailure; cause: unknown }
 
-/** Audio arrived from a route its turn does not speak on, and must not play. */
 export error MisroutedSpeech { route: SpeechRoute }
 
-/** A turn is already speaking; the next waits for it to end. */
 export error SpeechBusy
 
-/** No route spoke this turn: where it ended, why, and the network failure it fell back from. */
 export error SpeechUnavailable { route: SpeechRoute; failure: SpeechFailure; fellBackFrom: SpeechFailure | undefined }
 
-/** One attempt to speak a turn on a route; it calls `heard` before its first audio plays, and a refusal ends the attempt without playing. */
 export type SpeechAttempt<A, R> = (route: SpeechRoute, heard: () => void!MisroutedSpeech) => A!(SpeechAttemptFailed | MisroutedSpeech)!R
 
-/** A Cloud plan or rate limit as the account reports it. */
 export interface ObservedLimit {
   readonly kind?: string
   readonly resetsAt?: number | null
@@ -36,7 +29,6 @@ export interface ObservedLimit {
 const untimedRateLimitMs = 60000
 const connectFailures = new Set(["voice-stt-connect", "voice-tts-connect", "voice-stt-upload", "connect", "connection-lost", "startup-timeout", "unavailable"])
 
-/** The limit a stored Cloud refusal puts on hosted speech: until its reset or stated wait, or until a request clears it. */
 export function serviceLimitOf(limit: ObservedLimit | undefined, nowMs: number): ServiceLimit {
   if (limit === undefined) return { tag: "NoServiceLimit" }
   if (typeof limit.resetsAt === "number" && limit.resetsAt > nowMs) return { tag: "LimitedUntil", untilMs: limit.resetsAt }
@@ -46,7 +38,6 @@ export function serviceLimitOf(limit: ObservedLimit | undefined, nowMs: number):
   return limit.resetsAt == null ? { tag: "LimitedUntilCleared" } : { tag: "NoServiceLimit" }
 }
 
-/** The route failure a speech request's error stands for by its code alone, or undefined when the person cancelled it. */
 export function speechFailureOf(error: unknown): SpeechFailure | undefined {
   if (typeof error !== "object" || error === null) return { tag: "RequestRefused" }
   const row = error as { readonly name?: unknown; readonly code?: unknown; readonly data?: unknown }
@@ -70,31 +61,26 @@ export function speechFailureOf(error: unknown): SpeechFailure | undefined {
   return { tag: "RequestRefused" }
 }
 
-/** Records the account or key network speech now runs under. */
 export effect function speechKeyChanged(key: NetworkKey) {
   const routing = try SpeechRoutingMachine
   try Effect.ignore(routing.send({ type: "keyChanged", key }))
 }
 
-/** Records the hosted plan or rate limit now in force. */
 export effect function speechLimitChanged(limit: ServiceLimit) {
   const routing = try SpeechRoutingMachine
   try Effect.ignore(routing.send({ type: "limitChanged", limit }))
 }
 
-/** Lifts a network hold because this device turned out to be unable to speak. */
 export effect function deviceSpeechUnavailable() {
   const routing = try SpeechRoutingMachine
   try Effect.ignore(routing.send({ type: "holdLifted" }))
 }
 
-/** The route the next turn would be admitted on now. */
 export effect function nextSpeechRoute() {
   const state = try (try SpeechRoutingMachine).get()
   return routeFor(state.key, state.limit, state.hold, Math.max(state.clock, try Clock.currentTimeMillis))
 }
 
-/** Speaks one turn on its admitted route, on this device when a network route fails before audio, and settles the turn once. */
 export effect function speakOnRoute<A, R>(attempt: SpeechAttempt<A, R>) {
   const routing = try SpeechRoutingMachine
   const began = (routing.send({ type: "beginTurn", nowMs: try Clock.currentTimeMillis }) catch effect () => { throw new SpeechBusy() })

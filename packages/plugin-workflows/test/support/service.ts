@@ -10,7 +10,6 @@ export interface OpenedService {
   close(): Promise<void>;
 }
 
-/** A workflow service over a fresh in-memory PGlite store, with no worker, phone, model or cloud, for drivers that step its machines. */
 export async function openDriverService(owner = "owner"): Promise<OpenedService> {
   const db = new PGlite();
   const wakeups = new Map<string, number>();
@@ -31,7 +30,6 @@ export async function openDriverService(owner = "owner"): Promise<OpenedService>
   return { service, close: () => db.close() };
 }
 
-/** Runs a step and reports whether the shell accepted it; a refusal by the rules is "refused", anything else fails the walk. */
 export async function outcome<A>(step: Effect.Effect<A, { readonly _tag: string }>): Promise<"accepted" | "refused"> {
   const result = await Effect.runPromise(Effect.result(step));
   if (result._tag === "Success") return "accepted";

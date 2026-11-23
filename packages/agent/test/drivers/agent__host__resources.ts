@@ -1,4 +1,5 @@
 // spec/agent/host/resources.md, "Story: Release everything I acquired, once"
+import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/agent__host__resources.conformance.ts";
 import type { Event, Resources } from "../../gen/agent__host__resources.ts";
 import { resources, type HeldResources, type ResourceName } from "../../src/host/resources.vibe";
@@ -33,7 +34,7 @@ function releaseFor(held: Entity): () => Promise<void> {
 }
 
 async function quiet(held: Entity): Promise<void> {
-  while (held.turn === undefined && !held.settled) await new Promise<void>((done) => setImmediate(done));
+  while (held.turn === undefined && !held.settled) await Effect.runPromise(Effect.yieldNow);
 }
 
 function startClose(held: Entity): void {

@@ -1161,12 +1161,16 @@ export effect function recordLlmCall<T>(
 
   const tokenFields = normalizeTokenFieldsFromResult(result, details)
 
-  try logActiveTrajectoryLlmCall(runtime, {
+  const logCall = logActiveTrajectoryLlmCall(runtime, {
     ...details,
     ...tokenFields,
     response: responseText,
     latencyMs: Math.max(0, Math.round(elapsed)),
   })
+  asLegacy(Error, logCall, ElizaError) catch (recordingError) => {
+    runtime?.reportError?.("TrajectoryProviderCall", thrownValue(recordingError))
+    return false
+  }
 
   return result
 }

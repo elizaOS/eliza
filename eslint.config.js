@@ -61,11 +61,19 @@ const within = (node) => Boolean(node) && (/Function/.test(node.type) || within(
 const documented = (context, comment) => context.options[0]?.jsdoc && comment.type === "Block" && comment.value.startsWith("*") && !within(context.sourceCode.getNodeByRangeIndex(comment.range[0]))
 const left = { type: "object", additionalProperties: { type: "integer", minimum: 1 } }
 const excess = (context, found) => found.length > (context.options[0]?.left?.[relative(context.cwd, context.filename).split(sep).join("/")] ?? 0) && found.forEach((problem) => context.report(problem))
+const toolDirective = (context, comment) => {
+  if (comment.type !== "Block") return false
+  if (/^\*\s*@public\s*$/.test(comment.value)) return true
+  if (comment.value.trim() !== "@vite-ignore") return false
+  let node = context.sourceCode.getNodeByRangeIndex(comment.range[0])
+  while (node && node.type !== "ImportExpression") node = node.parent
+  return Boolean(node)
+}
 const comments = {
   meta: { type: "problem", schema: [{ type: "object", properties: { jsdoc: { type: "boolean" }, left }, additionalProperties: false }] },
   create: (context) => ({
     Program: () => excess(context, context.sourceCode.getAllComments()
-      .filter((comment) => !directives[comment.type].some((directive) => directive.test(comment.value)) && !documented(context, comment))
+      .filter((comment) => !directives[comment.type].some((directive) => directive.test(comment.value)) && !documented(context, comment) && !toolDirective(context, comment))
       .map((comment) => ({ loc: comment.loc, message: `No code comments: only spec citations and tool directives (${writing}).` }))),
   }),
 }
@@ -200,8 +208,8 @@ export default defineConfig(
       "@typescript-eslint/no-base-to-string": "off",
     },
   },
-  // VibeLang's parser gives .vibe files typescript-eslint's tree without a program, so the rules that need types stay off: `vibelang --noEmit` checks them.
-  { files: ["**/*.{vibe,vibex}"], extends: [tseslint.configs.disableTypeChecked], languageOptions: { parser: vibelang, parserOptions: { projectService: false } }, rules: { "no-undef": "off" } },
+  // VibeLang's parser gives .vibe files a TypeScript tree without a program; `vibelang --noEmit` checks bindings, separate type and value namespaces, and types.
+  { files: ["**/*.{vibe,vibex}"], extends: [tseslint.configs.disableTypeChecked], languageOptions: { parser: vibelang, parserOptions: { projectService: false } }, rules: { "no-undef": "off", "no-redeclare": "off" } },
   {
     files: ["packages/os/src/browser/**/*.vibe"],
     settings: {
@@ -213,7 +221,7 @@ export default defineConfig(
   },
   { files: ["packages/core/**/*.{ts,tsx,vibe,vibex}"], rules: { "no-redeclare": "off", "@typescript-eslint/no-unused-vars": ["error", coreUnused] } },
   { files: ["packages/core/**/*.{vibe,vibex}"], rules: { "no-empty": ["error", { allowEmptyCatch: true }] } },
-  { files: ["packages/agent/**/*.{vibe,vibex}"], rules: { "no-redeclare": "off", "no-empty": ["error", { allowEmptyCatch: true }] } },
+  { files: ["packages/agent/**/*.{vibe,vibex}"], rules: { "no-empty": ["error", { allowEmptyCatch: true }] } },
   { files: ["packages/agent/src/access/routes.vibe", "packages/agent/src/client/index.vibe", "packages/agent/src/host/launch.schema.vibe"], rules: { "no-control-regex": "off" } },
   { files: ["packages/agent/src/voice/echo-filter.ts"], rules: { "@typescript-eslint/no-unused-vars": ["error", { ...unused, varsIgnorePattern: "^(?:_|echoOverlapPercent$|isEcho$|turnAccepted$)" }] } },
   {

@@ -1,12 +1,13 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, PseudonymSession, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, recordLlmCall, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretSwapSession, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
 import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from "./support/models.ts"
 import { scriptedOAuthProvider } from "./support/oauth.ts"
 import { type Handler, loopback, loopbackTls, pinnedLookup } from "./support/servers.ts"
+import { DatabaseAdapter } from "../src/database.vibe"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 
 module traceBoundary {
@@ -159,10 +160,16 @@ it.live("Host a runtime from construction to close and restart (spec/core/runtim
 
   // spec/core/runtime.md, "Initialization releases waiters on success and failure"
   const waiterStates: string[] = []
-  for concurrent (const caller of ["host", "waiter", "waiter"]) {
+  const agentReads = { phase: 0, counts: [0, 0] }
+  const readAgents = a.getAgentsByIds.bind(a)
+  try Effect.try(() => { a.getAgentsByIds = (ids) => { agentReads.counts[agentReads.phase] += 1; return readAgents(ids) } })
+  for concurrent (const caller of ["host", "host", "waiter", "waiter"]) {
     try host(() => caller === "host" ? runtime.initialize({ skipMigrations: true }) : runtime.initPromise.then(() => { waiterStates.push(runtime.getLifecycleState()) }))
   }
+  agentReads.phase = 1
   try host(() => runtime.initialize({ skipMigrations: true }))
+  try Effect.try(() => Reflect.deleteProperty(a, "getAgentsByIds"))
+  try Effect.try(() => assert.strictEqual(agentReads.counts[0], agentReads.counts[1]))
   const stored = {
     agents: (try host(() => a.getAgentsByIds([agentId]))).map((agent) => agent.name),
     entities: (try host(() => a.getEntitiesByIds([agentId]))).map((entity) => entity.names),
@@ -402,6 +409,7 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   const gate = () => Effect.try(() => Promise.withResolvers<void>())
   const providerStarted = try gate()
   const providerRelease = try gate()
+  const hangingProvider = try gate()
   const afterReturn = try gate()
   const waitEntered = try gate()
   const waitRelease = try gate()
@@ -424,6 +432,10 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   const groupWorld = stringToUuid("j02-group-world")
   const other = stringToUuid("j02-other")
   const at = new Date().toISOString()
+
+  // spec/core/grammar.md, "Portable escaping preserves literal members and range structure"
+  const slugGrammar = try Effect.try(() => buildPlannerActionGrammarStrict([{ name: "TAG_FILE", parameters: [{ name: "slug", description: "File slug", required: true, schema: { type: "string", pattern: "^[\\w-]+$" } }] }])?.grammar ?? "")
+  try Effect.try(() => assert.ok(slugGrammar.includes("[A-Za-z0-9_\\x2d]"), slugGrammar))
 
   const recordNote: Action = {
     name: "RECORD_NOTE",
@@ -551,6 +563,13 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
           throw new Error("notes store unavailable")
         },
       },
+      {
+        name: "HANGING_CONTEXT",
+        get: async () => {
+          await hangingProvider.promise
+          return { text: "too late" }
+        },
+      },
     ],
     services: [EchoService, AgentEventService],
     events: {
@@ -650,6 +669,13 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   const shared = try host(() => Promise.all([firstCompose, secondCompose]))
   const brokenMessage = say("j02-broken", dm, "what do I have?")
   const brokenCompose = try host(() => runtime.composeState(brokenMessage, ["BROKEN_CONTEXT"], true).then(() => "resolved", (error: unknown) => error instanceof ElizaError ? error.code : String(error)))
+  // spec/core/providers/waiter.md, "Story: Release a caller with its own outcome"
+  const unbudgeted = runtime.character.settings
+  runtime.character.settings = { ...unbudgeted, providersTotalTimeoutMs: 100 }
+  const hungCompose = try host(() => runtime.composeState(say("j02-hung", dm, "anything new?"), ["HANGING_CONTEXT"], true).then(() => "resolved", (error: unknown) => error instanceof ElizaError ? error.code : String(error)))
+  runtime.character.settings = unbudgeted
+  hangingProvider.resolve()
+  try Effect.try(() => assert.strictEqual(hungCompose, "PROVIDER_COMPOSITION_ABORTED"))
   const thirdCompose = try host(() => runtime.composeState(say("j02-m1b", dm, "another message"), ["NOTES_CONTEXT"], true))
   const composed = [shared.map((state) => state.text), refreshed, whileHeld, counts.notes, brokenCompose, reported("PROVIDER_COMPOSITION_FAILED"), runtime.stateCache.has(brokenMessage.id ?? ""), thirdCompose.text]
 
@@ -1092,6 +1118,17 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
     try host(() => runtime.unloadPlugin(recognizerModel.plugin.name))
     try Effect.try(() => assert.deepStrictEqual([recognizedReply, recognition, recognizerModel.seen.length], ["recognizer reply", { reads: 1, calls: 1, receiver: true }, 1]))
 
+    // spec/core/models.md, "Story: Dispatch a complete admitted request"
+    const localModel = try Effect.try(() => scriptedModels("ollama", 50, { [ModelType.TEXT_SMALL]: [{ reply: "local prose" }] }))
+    const remoteModel = try Effect.try(() => scriptedModels("j03-remote", 0, { [ModelType.TEXT_SMALL]: [{ reply: "remote prose" }, { reply: "{\"ok\":true}" }] }))
+    try host(() => runtime.registerPlugin(localModel.plugin))
+    try host(() => runtime.registerPlugin(remoteModel.plugin))
+    const pinnedRemote = try host(() => callModelWithValidation(runtime, { modelType: ModelType.TEXT_SMALL, provider: "j03-remote", params: { prompt: "pinned remote" }, schema: { type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } } }))
+    for (let attempt = 0; attempt < pinnedRemote.attempts; attempt++) answered.push(`useModel:${ModelType.TEXT_SMALL}`)
+    try host(() => runtime.unloadPlugin(remoteModel.plugin.name))
+    try host(() => runtime.unloadPlugin(localModel.plugin.name))
+    try Effect.try(() => assert.deepStrictEqual([pinnedRemote.parsed, pinnedRemote.attempts, localModel.seen.length], [{ ok: true }, 2, 0]))
+
     // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"
     class TrajectoryPort extends Service {
       static serviceType = "trajectories"
@@ -1157,6 +1194,11 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       trajectoryFailures.push([member === "startTrajectory" ? capture === undefined && diagnostic("StandaloneTrajectory.start") === before + 1 : capture instanceof TypeError])
       try Effect.try(() => Object.assign(trajectory, defaults))
     }
+    trajectory.logLlmCall = throwOnRead({ failure: new TypeError("j03 logger fault") })
+    const providerCallBefore = diagnostic("TrajectoryProviderCall")
+    const recordedReply = try host(async () => runWithTrajectoryContext({ trajectoryId: "j03-parent", trajectoryStepId: "j03-parent-step" }, async () => recordLlmCall(runtime, { model: "j03-model", systemPrompt: "", userPrompt: "", purpose: "test" }, () => "generated")))
+    trajectoryFailures.push([recordedReply, diagnostic("TrajectoryProviderCall") === providerCallBefore + 1])
+    try Effect.try(() => Object.assign(trajectory, defaults))
     for (const next of [undefined, null]) {
       const context: TrajectoryContext = {}
       const observed = try changingMethod(context, "activateTaskCapture", next)
@@ -1171,6 +1213,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       ["kept", { reads: 2, totalReads: 4, cachedCalls: 0 }, true],
       ["kept", { reads: 2, totalReads: 4, cachedCalls: 0 }, true],
       [true], [true], [true],
+      ["generated", true],
       [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
       [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
     ]))
@@ -1430,6 +1473,52 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       imageFields: [imageSeen?.size, imageSeen?.negativePrompt],
       callerSignal: [(text(alpha)[5]?.params as { signal?: unknown } | undefined)?.signal === fx.caller.signal, imageSeen?.signal === fx.caller.signal],
     }
+    // spec/core/secretSession.md, "At the action boundary pseudonyms are restored before references, and local name recognition never reads this session's references"; spec/core/secretSession.md, "A map coordinate never becomes a contact reference"
+    const PHONE = "+12025550123"
+    const CARD = `[MAPSCARD]\n${JSON.stringify({ kind: "place", place: { latitude: 37.7749295, longitude: -122.4194093 } })}\n[/MAPSCARD]`
+    const secret = new SecretSwapSession()
+    const contact = try Effect.try(() => secret.substituteText(PHONE))
+    const unwritten = contact.replace(/_[0-9]+__$/, "_999999__")
+    const recognizerInputs: string[] = []
+    const names = [`${contact} Alice Example`, contact, unwritten, "Alice Example"]
+    const pii = new PseudonymSession({ salt: "j03-private", recognizer: { name: "j03-gazetteer", recognize: (input: string) => {
+      recognizerInputs.push(input)
+      const value = names.find((name) => input.includes(name))
+      return Promise.resolve(value === undefined ? [] : [{ kind: "person", value, start: input.indexOf(value), end: input.indexOf(value) + value.length }])
+    } } })
+    const privateTurn: TrajectoryContext = { messageId: "turn-6", secretSwapSession: secret, piiSwapSession: pii }
+    const privateModel = try Effect.try(() => scriptedModels("j03-private", 0, { [ModelType.TEXT_LARGE]: [{ reply: "noted" }] }))
+    try host(() => runtime.registerPlugin(privateModel.plugin))
+    try host(() => Promise.resolve(runWithTrajectoryContext(privateTurn, () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: `Text ${PHONE} Alice Example ${CARD}` }, "j03-private"))))
+    answered.push(`useModel:${ModelType.TEXT_LARGE}`)
+    const privatePrompt = promptOf(privateModel.seen[0]?.params)
+    const recognizerSawReference = recognizerInputs.some((input) => input.includes("__ELIZA_"))
+    const recipients: unknown[] = []
+    try Effect.try(() => runtime.registerAction({
+      name: "J03_TEXT_CONTACT",
+      description: "Texts a phone number",
+      parameters: [{ name: "recipient", description: "The phone number", required: true, schema: { type: "string" } }],
+      validate: async () => true,
+      handler: async (_runtime, _message, _state, options) => {
+        recipients.push((options?.parameters as { recipient?: unknown } | undefined)?.recipient)
+        return { success: true, text: "sent" }
+      },
+    }))
+    try host(() => pii.learn(contact))
+    try host(() => pii.learn(unwritten))
+    const contactMessage = createMessageMemory({ id: stringToUuid("j03-private-message"), entityId: runtime.agentId, agentId: runtime.agentId, roomId: stringToUuid("j03-private-room"), content: { text: "text my contact" } })
+    const textTo = (recipient: string) => host(() => outcome(Promise.resolve(runWithTrajectoryContext(privateTurn, () =>
+      executePlannedToolCall(runtime, { message: contactMessage, activeContexts: ["general"] }, { name: "J03_TEXT_CONTACT", params: { recipient } })))))
+    const sentToContact = try textTo(pii.substituteText(contact))
+    const sentToUnwritten = try textTo(pii.substituteText(unwritten))
+    const privateAction = {
+      recognizerSawReference,
+      providerSaw: [privatePrompt.includes(contact), privatePrompt.includes(PHONE), privatePrompt.includes("Alice Example"), privatePrompt.includes(CARD)],
+      aliasesWrapReferences: pii.substituteText(contact) !== contact,
+      results: [sentToContact, sentToUnwritten].map((settled) => "value" in settled && (settled.value as { success?: unknown }).success === true),
+      recipients,
+    }
+
     runtime.setSetting("ELIZA_SECRET_SWAP_ENABLED", "false")
     runtime.setSetting("ELIZA_PII_SWAP_ENABLED", "false")
 
@@ -1518,7 +1607,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       fx.logGate.resolve()
     })
 
-    try Effect.try(() => assert.deepStrictEqual({ registrations, orderKept, failover, exhausted, terminal, pin, swaps, unicode, cancellation, streams, allowance }, {
+    try Effect.try(() => assert.deepStrictEqual({ registrations, orderKept, failover, exhausted, terminal, pin, swaps, privateAction, unicode, cancellation, streams, allowance }, {
       registrations: [["alpha", 30, true], ["alpha", 20, true], ["beta", 10, true]],
       orderKept: true,
       failover: { result: "answer from alpha 20", sameBytes: true, budgetIsFullMeasure: true },
@@ -1534,6 +1623,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
         imageFields: ["1024x1024", `no ${EMAIL}`],
         callerSignal: [true, true],
       },
+      privateAction: { recognizerSawReference: false, providerSaw: [true, false, false, true], aliasesWrapReferences: true, results: [true, false], recipients: [PHONE] },
       unicode: { providerSaw: true, reply: true, budgetCountsUtf8: true },
       cancellation: { sameTurn: true, socketClosed: [true], otherTurn: "answer in another turn", preAborted: true, handlerCalls: 10, fallbackCalls: [0, 0] },
       streams: { visible: [fx.decoded, fx.decoded], results: [RAW, RAW], revisionsPerAttempt: [1, 1], retriedSkipsFailedAttempt: 2, retriedBy: 2 },
@@ -2246,6 +2336,9 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
   const refused = try failure(() => writeFact("j05-fact-d", "Balance: -10 USD", "evidence-d"))
   const afterRefusal = try fact("j05-fact-e", "Balance: -10 USD", "evidence-e")
   const facts = try host(() => runtime.getMemories({ roomId, tableName: "facts", count: 10, unique: false }))
+  const laterAt = Date.now() + 1
+  try host(() => adapter.createMemories(Array.from({ length: 150 }, (_, index) => ({ tableName: "facts", memory: { id: stringToUuid(`j05-later-fact-${index}`), agentId, entityId: reader, roomId, createdAt: laterAt + index, content: { text: `Later fact ${index}` } } }))))
+  const beyondRecent = try fact("j05-fact-f", "Balance: -10 USD", "evidence-f")
 
   // spec/core/ingressSnapshots.md, "Reuse requires exact redacted content and every projected stored segment"
   const rawSecret = "here is my token ghp_1234567890abcdefghijklmnopqrstuvwxyzAB and key sk-j05-configured-credential, thanks"
@@ -2257,6 +2350,7 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
     credit,
     refused,
     afterRefusal,
+    beyondRecent,
     facts: facts.map((row) => [row.id, row.content.text, (row.metadata as { extractionEvidenceIds?: string[] }).extractionEvidenceIds]),
     stored: secret?.content.text,
     secretReplay,
@@ -2265,6 +2359,7 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
     credit: stringToUuid("j05-fact-c"),
     refused: { name: "Error", code: undefined, message: "fact commit refused" },
     afterRefusal: stringToUuid("j05-fact-a"),
+    beyondRecent: stringToUuid("j05-fact-a"),
     facts: [
       [stringToUuid("j05-fact-c"), "Balance: +10 USD", ["evidence-c"]],
       [stringToUuid("j05-fact-a"), "Balance: -10 USD", ["evidence-a", "evidence-b", "evidence-e"]],
@@ -2785,6 +2880,27 @@ it.live("Story: Execute due work within its owning agent, across scheduler stora
       ["TASK_TICK_FAILED", "ephemeral", "TASK_PREFLIGHT_FAILED", true, { reads: 2, totalReads: 2, cachedCalls: 0 }, 0],
     ]]))
 
+    // spec/core/taskServiceOwners.md, "An orphaned task is quarantined only after the startup grace and leaves quarantine when its worker returns or a heal succeeds"
+    let orphanNow = 0
+    const orphanService = try Effect.try(() => new TaskService(runtimeA, { now: () => orphanNow, setTimeout: () => undefined, clearTimeout: () => {} }))
+    const orphanId = try host(() => runtimeA.createTask({ name: "J07_ORPHAN_ONCE", description: "one-shot whose worker is late", tags: ["manual"], metadata: {} }))
+    const orphanRow = () => host(async () => {
+      const stored = (await runtimeA.getTasksByIds([orphanId]))[0]
+      if (!stored) throw new Error("An orphaned one-shot task must keep its row")
+      return stored
+    })
+    const orphanStates: unknown[] = []
+    for (const step of ["grace", "quarantine", "heal"]) {
+      if (step === "quarantine") orphanNow = 60_000
+      if (step === "heal") try worker(runtimeA, "J07_ORPHAN_ONCE", async () => undefined)
+      const row = try orphanRow()
+      try host(() => orphanService.runTick([row]))
+      const after = try orphanRow()
+      orphanStates.push([after.metadata?.paused ?? false, after.metadata?.orphanedNoWorker ?? false])
+    }
+    try host(() => runtimeA.deleteTask(orphanId))
+    try Effect.try(() => assert.deepStrictEqual(orphanStates, [[false, false], [true, true], [false, false]]))
+
     const owned: string[] = []
     for (const runtime of [runtimeA, runtimeB]) {
       try worker(runtime, "J07_OWNED", async (rt, _options, task) => {
@@ -3261,6 +3377,13 @@ it.live("Pair a sender and approve an action across a restart (spec/core/pairing
       deployRow: try host(() => runtime.getTask(deployId)),
       sameWorker: runtime.getTaskWorker("DEPLOY") === worker,
     }
+
+    const distant = [30 * 24 * 3_600_000, Number.POSITIVE_INFINITY]
+    const waiting = try Effect.forEach(distant, (timeoutMs) => host(() => approvals.requestApprovalAsync(ask("ARCHIVE", { timeoutMs, timeoutDefault: "approve" }))))
+    try sleep("200 millis")
+    const distantRows = try Effect.forEach(waiting, (id) => host(async () => (await runtime.getTask(id))?.id === id))
+    try Effect.forEach(waiting, (id) => host(() => approvals.cancelApproval(id)))
+    try Effect.try(() => assert.deepStrictEqual(distantRows, [true, true]))
 
     const started = Date.now()
     const expiring = try host(() => approvals.requestApprovalAsync(ask("ARCHIVE", { timeoutMs: 150, timeoutDefault: "approve" })))
@@ -3784,6 +3907,21 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
     spelled: manager.getProvider(" GOOGLE ")?.provider,
     elsewhere: getConnectorAccountManager(other).getProvider("google") ?? null,
   }
+  // spec/core/connectorHandoff.md, "Backend replacement preserves facade identity and memoizes each current adapter"
+  const device = try Effect.try(() => new AgentRuntime({ character: createCharacter({ name: "Device" }) }))
+  try Effect.try(() => device.registerDatabaseAdapter(Object.create(DatabaseAdapter.prototype)))
+  const onDevice = getConnectorAccountManager(device)
+  const deviceBot = try host(() => onDevice.upsertAccount("slack", { label: "Device" }, "device-bot"))
+  const deviceAccounts = try host(() => onDevice.listAccounts("slack"))
+  const dropbox = try Effect.try(() => scriptedOAuthProvider({ name: "dropbox" }))
+  try Effect.try(() => onDevice.registerProvider(dropbox.provider))
+  const deviceStart = try host(() => onDevice.startOAuth("dropbox", { accountId: "device-user" }))
+  const deviceDone = try host(() => onDevice.completeOAuth("dropbox", dropbox.consent(deviceStart.authUrl ?? "", "device-user")))
+  const deviceStored = try host(() => onDevice.getOAuthFlow("dropbox", deviceStart.id))
+  const unsupported = {
+    accounts: deviceAccounts.map((account) => [account.id, account.id === deviceBot.id]),
+    flow: [(deviceStart.codeVerifier ?? "").length, deviceDone.flow.status, deviceDone.account?.id, deviceStored?.status, deviceStored?.codeVerifier ?? null],
+  }
   const facade = manager.getStorage()
   // spec/core/accountValues.md, "Normalization preserves explicit values and applies only documented defaults"
   const team = try host(() => manager.upsertAccount("slack", { label: "", role: "SERVICE", purpose: ["messaging", " "] }, " team-bot "))
@@ -3792,6 +3930,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const workVerifier = work.codeVerifier ?? ""
   const started = {
     managers,
+    unsupported,
     team: [team.id, team.provider, team.label, team.role, team.purpose, team.accessGate, team.status],
     storedBeforeProvider: [...storedBeforeProvider],
     flow: [work.provider, work.status, work.accountId, work.redirectUri, work.authUrl?.startsWith("https://accounts.google.test/o/oauth2/auth?"), work.authUrl?.includes(`state=${work.state}`), workVerifier.length],
@@ -3951,6 +4090,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
         spelled: "google",
         elsewhere: null,
       },
+      unsupported: { accounts: [["device-bot", true]], flow: [43, "completed", "device-user", "completed", null] },
       team: ["team-bot", "slack", "", "AGENT", ["messaging"], "open", "connected"],
       storedBeforeProvider: [{ id: work.id, status: "pending", authUrl: null }],
       flow: ["google", "pending", "user-1", "https://agent.test/oauth/callback", true, true, 43],
@@ -4040,6 +4180,9 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
       response.writeHead(200)
       response.write(new Uint8Array(3000))
       response.write(new Uint8Array(3000))
+    } else if (path === "/oversized") {
+      response.writeHead(200, { "content-length": String(60 * 1024 * 1024) })
+      response.write(new Uint8Array(1000))
     } else if (path === "/sized") {
       response.writeHead(200, { "content-length": "6000" })
       response.end(new Uint8Array(6000))
@@ -4128,6 +4271,7 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
     try media("/encoded", { rejectContentEncoding: true }),
     try media("/big", { maxBytes: 4000 }),
     try media("/sized", { maxBytes: 4000 }),
+    try media("/oversized"),
     try timed(fetchMedia("/stall", { timeoutMs: 300 })),
     try Effect.andThen(
       Effect.forkScoped(Effect.delay(Effect.sync(() => hold.abort()), "200 millis")),
@@ -4181,6 +4325,7 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
       failure(at("/encoded"), "encoded response bodies are not accepted", "invalid_response"),
       { rejected: { MediaFetchError: "max_bytes", message: "Failed to fetch media from response: payload exceeds maxBytes 4000", cause: undefined } },
       failure(at("/sized"), "content length 6000 exceeds maxBytes 4000", "max_bytes"),
+      failure(at("/oversized"), "content length 62914560 exceeds maxBytes 52428800", "max_bytes"),
       { value: { rejected: { Error: "ECONNRESET", message: "aborted" } }, withinDeadline: true },
       { value: { rejected: { Error: "ECONNRESET", message: "aborted" } }, withinDeadline: true },
       { value: failure(at("/photo"), "TimeoutError: The operation was aborted due to timeout", "fetch_failed", "TimeoutError"), withinDeadline: true },
@@ -4231,6 +4376,7 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
 it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.md, \"Story: Publish complete durable JSON with an honest receipt\"; spec/core/atomicWriters.md, \"Story: Publish whole snapshots despite interleaved processes\"; spec/core/temporaryNames.md, \"Story: Give concurrent publications distinct temporary paths\"; spec/core/logging/files.md, \"Story: Open optional log files lazily and close their descriptors\"; spec/core/logging/index.md, \"Story: Retain recent diagnostics and notify current listeners\"; spec/core/security.md, \"Story: Admit content and outbound data\")", () => effect {
   const time = /\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g
   const core = `${coreDir}/src/index.vibe`
+  const loggerEntry = `${coreDir}/src/logger.vibe`
   const writerScript = `${coreDir}/test/support/atomic-json-writer.ts`
   const listing = `
     import fs from "node:fs"
@@ -4252,11 +4398,12 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
     return try Effect.try(() => JSON.parse(out.stdout) as string[])
   }
   const remove = (target: string) => host(() => removeScratch(target))
-  const loggingChild = (dir: string, env: Record<string, string | undefined>) => effect {
+  const loggingChild = (entry: string, dir: string, env: Record<string, string | undefined>) => effect {
     const script = `
       import fs from "node:fs"
       const [dir] = process.argv.slice(1)
-      const { logger, logPrompt, logChatIn, logChatOut, recentLogs } = await import(${JSON.stringify(core)})
+      const { logger, logPrompt, logChatIn, logChatOut, recentLogs } = await import(${JSON.stringify(entry)})
+      void process.stderr
       const afterImport = fs.readdirSync(dir).sort()
       const before = fs.readdirSync("/dev/fd").length
       logger.info({ apiKey: "sk-j12-0123456789abcdefghij" }, "j12 output")
@@ -4280,7 +4427,8 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
     import fs from "node:fs"
     import fsp from "node:fs/promises"
     const [state, dir] = process.argv.slice(1)
-    const { writeJsonAtomic, writeJsonAtomicSync } = await import(${JSON.stringify(core)})
+    const { writeJsonAtomicPromise: writeJsonAtomic, writeJsonAtomicSyncOrThrow: writeJsonAtomicSync } =
+      await import(${JSON.stringify(`${coreDir}/src/utils/atomic-json.vibe`)})
     const big = "x".repeat(8 * 1024 * 1024)
     const beforeRename = Promise.withResolvers()
     const releaseRename = Promise.withResolvers()
@@ -4400,12 +4548,12 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
   try host(() => writeJsonAtomic(`${unwritable}/plain`, {}))
   const silentDir = try scratch("eliza-core-j12-silent")
   const children = try forEach([
-    [logs, { LOG_FILE: `${logs}/output.log`, LOG_LEVEL: "info" }],
-    [promptBlocked, { LOG_FILE: `${promptBlocked}/output.log`, LOG_LEVEL: "info" }],
-    [chatBlocked, { LOG_FILE: `${chatBlocked}/output.log`, LOG_LEVEL: "info" }],
-    [unwritable, { LOG_FILE: `${unwritable}/plain/logs/output.log`, LOG_LEVEL: "info" }],
-    [silentDir, { LOG_FILE: `${silentDir}/output.log`, LOG_LEVEL: "silent" }],
-  ] as const, ([childDir, env]) => loggingChild(childDir, env), { concurrency: "unbounded" })
+    [core, logs, { LOG_FILE: `${logs}/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, promptBlocked, { LOG_FILE: `${promptBlocked}/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, chatBlocked, { LOG_FILE: `${chatBlocked}/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, unwritable, { LOG_FILE: `${unwritable}/plain/logs/output.log`, LOG_LEVEL: "info" }],
+    [loggerEntry, silentDir, { LOG_FILE: `${silentDir}/output.log`, LOG_LEVEL: "silent" }],
+  ] as const, ([entry, childDir, env]) => loggingChild(entry, childDir, env), { concurrency: "unbounded" })
   const [opened, promptChild, chatChild, failed, silent] = children
   const files = Object.fromEntries(Object.entries(try inspect(logs)).map(([name, entry]) => [name, entry === "directory" ? entry : { mode: entry.mode, text: entry.text.replace(time, "<time>") }]))
   const order = [
@@ -4476,6 +4624,7 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
     }
     try {
       const { logger, logPrompt, recentLogs } = await import(entry)
+      void process.stderr
       const exits = process.listenerCount("exit")
       logger.info("j12 close failure")
       logger.info("j12 after close failure")
@@ -4508,7 +4657,7 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
       }
     }
     `,
-    args: [closeFaultDir, core],
+    args: [closeFaultDir, loggerEntry],
     vibe: true,
     env: { LOG_FILE: `${closeFaultDir}/output.log`, LOG_LEVEL: "info", LOG_JSON_FORMAT: undefined, LOG_TIMESTAMPS: undefined, NO_COLOR: "1", FORCE_COLOR: "0" },
   }))
@@ -4714,7 +4863,14 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
   try write("packages/core/src/catalog/curated/connectors/charlie.json", { id: "charlie", name: "Charlie", kind: "connector", subtype: "email", render: { group: "connector" }, channels: ["telegram"] })
   try write("packages/core/src/catalog/curated/notes.txt", { id: "ignored" })
 
-  const catalogRun = try host(() => runNode({ script: generateInChild, args: [JSON.stringify(authoredFeatures)], cwd: sourceDir, vibe: true, timeoutMs: 120_000 }))
+  const catalogProject = `${sourceDir}/tsconfig.catalog-test.json`
+  try host(() => writeJsonAtomic(catalogProject, {
+    extends: "./tsconfig.build.json", include: [], files: ["src/catalog/generate.vibe", "src/utils/atomic-json.vibe"],
+  }))
+  const catalogRun = try host(() => runNode({
+    script: generateInChild, args: [JSON.stringify(authoredFeatures)], cwd: sourceDir,
+    env: { VIBELANG_PROJECT: catalogProject }, vibe: true, timeoutMs: 120_000,
+  }))
   const report = try Effect.try({ try: () => JSON.parse(catalogRun.status === 0 ? catalogRun.stdout : "") as unknown, catch: () => catalogRun })
   const snapshots = try Schema.decodeUnknownEffect(Schema.Struct({ base: Schema.Unknown, features: Schema.Unknown, duplicate: Schema.Unknown, broken: Schema.Unknown, retiredApp: Schema.Unknown, conflict: Schema.Unknown }))(report)
   const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
@@ -5005,6 +5161,7 @@ const installed = [B.getAnthropicAccountPoolBridge() === anthropic, B.getCodingA
 A.setAnthropicAccountPoolBridge(null);
 A.setTrajectoryContextManager(manager);
 const bundled = attempt(() => A.loadRegistry().byId.get("agent-orchestrator") ?? null);
+B.loadRegistry();
 const registered = attempt(() => { A.registerRegistryEntry({ ...bundled, description: "registered at runtime" }); return "registered"; });
 const cached = A.loadRegistry();
 let rejectedApp = false;

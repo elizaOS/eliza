@@ -5,7 +5,6 @@ import { addDaysToLocalDate, buildUtcDateFromLocalParts, getZonedDateParts, know
 import type { CalendarRepeat, CalendarRow } from "../series/document.vibe"
 import type { ReadAnswer } from "./device-reader.vibe"
 
-/** The rows of a read range, stored and generated, with whether a series or the whole range was cut at its cap. */
 export interface DocumentRange {
   readonly rows: readonly CalendarRow[]
   readonly truncated: boolean
@@ -16,27 +15,22 @@ const searchMargin = 3
 const rangeCap = 2000
 const rules: Record<CalendarRepeat, RepeatRule> = { none: "Once", daily: "Daily", weekdays: "Weekdays", weekly: "Weekly" }
 
-/** The ID of the occurrence of a series that begins at `begin`. */
 export function occurrenceId(seriesId: string, begin: number): string {
   return `${seriesId}:occ:${begin}`
 }
 
-/** Whether a stored row is a series that generates occurrences, rather than a one-off event or an override under a series. */
 export function repeatingRow(row: CalendarRow): boolean {
   return row.seriesId === undefined && row.repeat !== undefined && row.repeat !== "none"
 }
 
-/** The zone a series resolves its wall times in: UTC for all-day, else its saved zone, else UTC. */
 export function seriesZone(row: CalendarRow): string {
   return row.allDay === true || !knownTimeZone(row.timeZone) ? "UTC" : row.timeZone
 }
 
-/** The occurrence a series generates at `begin`, keyed by the series and that start. */
 export function generatedOccurrence(series: CalendarRow, begin: number): CalendarRow {
   return { ...series, id: occurrenceId(series.id, begin), begin, end: begin + series.end - series.begin, seriesId: series.id, occurrenceBegin: begin }
 }
 
-/** The occurrences a series generates over a window, before exclusions and overrides, or undefined when the search is out of bounds. */
 export function seriesOccurrences(series: CalendarRow, win: TimeWindow, overrides: readonly CalendarRow[], maximum: number) {
   const rule = rules[series.repeat ?? "none"]
   const zone = seriesZone(series)
@@ -67,14 +61,12 @@ export function seriesOccurrences(series: CalendarRow, win: TimeWindow, override
   return { rows: found.slice(0, maximum), truncated: found.length > maximum }
 }
 
-/** Whether a series generates an occurrence that begins exactly at `begin`, excluded or not. */
 export function seriesOccursAt(series: CalendarRow, begin: number): boolean {
   if (!repeatingRow(series)) return false
   const found = seriesOccurrences({ ...series, excluded: [] }, { begin, finish: begin + Math.max(1, series.end - series.begin) }, [], 1)
   return found?.rows.some((row) => row.begin === begin) === true
 }
 
-/** The rows of a document Calendar over a window: stored rows first, generated occurrences unless an override or exclusion replaces them, sorted and capped, or undefined when a series cannot be searched. */
 export function expandDocumentCalendar(rows: readonly CalendarRow[], window: { readonly start: string; readonly end: string }, maximum = rangeCap): DocumentRange | undefined {
   const win = { begin: Date.parse(window.start), finish: Date.parse(window.end) }
   if (!(win.finish > win.begin)) return undefined
@@ -94,7 +86,6 @@ export function expandDocumentCalendar(rows: readonly CalendarRow[], window: { r
   return { rows: found.slice(0, rangeCap), truncated: rangeCapped(truncated, found.length) }
 }
 
-/** A document Calendar's occupancy-only rows for an availability read, refusing a truncated range even when a filter would fit. */
 export function documentAvailability(rows: readonly CalendarRow[], window: { readonly start: string; readonly end: string }): ReadAnswer {
   const range = expandDocumentCalendar(rows, window)
   if (range === undefined) return { status: "unavailable" }

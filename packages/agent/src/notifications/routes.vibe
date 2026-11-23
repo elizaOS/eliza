@@ -1,7 +1,7 @@
 // spec/agent/notifications.md, "A list query is refused unless each parameter is given once and well formed"; spec/agent/notifications.md, "A native page takes no filter and names its epoch to continue"; spec/agent/notifications.md, "An owner list holds only visible notices that match its filter, newest first"; spec/agent/notifications.md, "An inbox that is not durably available answers 503, never an empty list"; spec/agent/notifications.md, "Marking a notice read answers ok only when this call durably marked an unread notice"
 import { NotificationNativeError, NotificationService, logger, type AgentNotification, type AgentRuntime, type NativeNotificationQuery } from "@elizaos/core"
 import { emptyNotice, type WriteOutcome } from "../../gen/core__notifications.effect.vibe"
-import { listAnswer, listRequest, markReadAnswer, unreadNotice, type DecimalText, type EpochText, type InboxStatus, type ListAnswer, type ListParams, type ListRequest, type MarkReadAnswer, type NoticeIdText, type Row } from "../../gen/agent__notifications.effect.vibe"
+import { listAnswer, listRequest, markReadAnswer, unreadNotice, type DecimalText, type EpochText, type InboxStatus, type ListAnswer, type ListParams, type MarkReadAnswer, type NoticeIdText, type Row } from "../../gen/agent__notifications.effect.vibe"
 import type { LocalRoute } from "../access/routes.vibe"
 
 const listKeys = ["category", "unreadOnly", "limit", "nativeTransport", "nativeEpoch", "afterSequence", "throughSequence"] as const

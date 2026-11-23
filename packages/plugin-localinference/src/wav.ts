@@ -1,5 +1,4 @@
 // spec/localInference/speechRoute.md, "Story: Hear a reply on the admitted speech route"
-/** Mono PCM samples in [-1, 1] at a sample rate. */
 export interface Pcm {
   readonly sampleRate: number
   readonly samples: Float32Array
@@ -8,7 +7,7 @@ export interface Pcm {
 const ascii = (bytes: Uint8Array, at: number, text: string): boolean =>
   [...text].every((letter, index) => bytes[at + index] === letter.charCodeAt(0))
 
-/** Reads mono 16-bit PCM from a RIFF/WAVE file, or undefined for any other bytes. @throws {never} */
+/** @throws {never} */
 export function decodeWav(bytes: Uint8Array): Pcm | undefined {
   if (bytes.byteLength < 44 || !ascii(bytes, 0, "RIFF") || !ascii(bytes, 8, "WAVE")) return undefined
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -31,7 +30,7 @@ export function decodeWav(bytes: Uint8Array): Pcm | undefined {
   return undefined
 }
 
-/** Writes mono PCM as a 16-bit RIFF/WAVE file. @throws {never} */
+/** @throws {never} */
 export function encodeWav(pcm: Pcm): Uint8Array {
   const bytes = new Uint8Array(44 + pcm.samples.length * 2)
   const view = new DataView(bytes.buffer)

@@ -11,7 +11,6 @@ import { ownerClockAt } from "./timezone.vibe"
 
 import { offsetInstant, wallText, zonedInstant } from "./time.vibe"
 
-/** The scheduled-task kind of a saved one-shot reminder. */
 export const reminderKind = "personal-assistant.reminder"
 
 const destinationChoice = { chat: "FirstChoice", device: "SecondChoice" } as const satisfies Record<string, DeliveryChoice>
@@ -32,7 +31,6 @@ const checkSystem = [
   'Reply with one JSON object and nothing else: {"requested": boolean, "clock": "utc" | "owner_local", "destination": "chat" | "device" | null, "alert": "alert" | "silent" | null}.',
 ].join("\n")
 
-/** The owner's message read again for what it asks, or undefined when the check could not run. */
 export effect function checkOriginalMessage(text: string) {
   if (text.trim() === "") return undefined
   const model = try Model
@@ -52,7 +50,6 @@ function durationWords(minutes: number): string {
   return parts.join(" ")
 }
 
-/** Where a request to save a reminder came from: the owner's own message. */
 export interface ReminderRequest {
   readonly plan: unknown
   readonly messageId: string
@@ -60,7 +57,6 @@ export interface ReminderRequest {
   readonly roomId: UUID | undefined
 }
 
-/** What became of a request to save a reminder. */
 export type ReminderOutcome =
   | { readonly kind: "malformed" }
   | { readonly kind: "notRequested"; readonly intent: ReminderIntent }
@@ -72,7 +68,6 @@ export type ReminderOutcome =
 
 const saveAction = "OWNER_REMINDERS"
 
-/** Saves the reminder the plan proposes, only after the owner's own message is checked again, at most once per plan of a message. */
 export effect function createReminder(request: ReminderRequest) {
   const planned = decodePlan(request.plan)
   if (Option.isNone(planned)) return { kind: "malformed" } satisfies ReminderOutcome
@@ -131,7 +126,6 @@ export effect function createReminder(request: ReminderRequest) {
   }
 }
 
-/** The action result that tells the owner what became of the reminder request, claiming only what the attempts prove. */
 export function reminderReply(outcome: ReminderOutcome): ActionResult {
   switch (outcome.kind) {
     case "malformed": return { success: false, text: "The reminder plan was incomplete, so no reminder was saved.", data: { outcome: "REMINDER_PLAN_INVALID" } }
@@ -153,7 +147,6 @@ function metadataText(task: TaskRow, name: string): string {
   return typeof value === "string" ? value : ""
 }
 
-/** Presents a fired reminder to the owner as the exact presentation issued for it, and says how the delivery went. */
 export effect function deliverReminder(task: TaskRow) {
   const body = metadataText(task, "body").trim() || metadataText(task, "title").trim() || task.promptInstructions.trim()
   const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Reminder"), catch: () => new DeliveryFailed({ reason: "The reminder has no text to present" }) })
@@ -168,7 +161,6 @@ export effect function deliverReminder(task: TaskRow) {
 
 const live = new Set(["Scheduled", "Fired", "Acknowledged"])
 
-/** The owner's saved reminders that have not settled. */
 export effect function liveReminders() {
   const scheduler = try Scheduler
   return (try scheduler.list()).filter((task) => task.kind === reminderKind && live.has(task.status))
@@ -186,7 +178,6 @@ function verbOf(answer: ReminderAnswer): TaskVerb {
 const said = { complete: "Marked done", dismiss: "Dismissed", acknowledge: "Acknowledged", snooze: "Snoozed" } as const
 const decodeAnswer = Schema.decodeUnknownOption(ReminderAnswer, { onExcessProperty: "error" })
 
-/** Completes, dismisses, snoozes or acknowledges the one live reminder the owner named, once per message. */
 export effect function answerReminder(input: unknown, messageId: string) {
   const decoded = decodeAnswer(input)
   if (Option.isNone(decoded)) return { success: false, text: "Say which reminder and what to do with it.", data: { outcome: "REMINDER_ANSWER_INVALID" } } satisfies ActionResult
@@ -225,12 +216,10 @@ function parameters(options: unknown): Readonly<Record<string, unknown>> {
   return typeof found === "object" && found !== null ? found as Record<string, unknown> : {}
 }
 
-/** The owner's request as this package reads it from a message. */
 export function requestOf(message: Memory) {
   return { messageId: message.id ?? "", text: typeof message.content.text === "string" ? message.content.text : "", roomId: message.roomId }
 }
 
-/** Saves, completes, dismisses, snoozes or acknowledges the owner's own reminders. */
 export const ownerRemindersAction: Action = {
   name: saveAction,
   description: "Save a one-shot reminder the owner asked for in this message, or complete, dismiss, snooze or acknowledge one of their saved reminders. A reminder is saved only after the owner's own message is checked again.",
@@ -253,7 +242,6 @@ export const ownerRemindersAction: Action = {
   },
 }
 
-/** The owner's live reminders, for the planner to name the right one. */
 export const ownerRemindersProvider: Provider = {
   name: "PERSONAL_ASSISTANT_REMINDERS",
   description: "The owner's saved reminders that have not settled, with their due times.",

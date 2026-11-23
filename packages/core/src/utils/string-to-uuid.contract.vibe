@@ -7,7 +7,7 @@ import { UUID_PATTERN, validateUuid } from "./uuid.vibe";
 const hex = Arbitrary.schema(Schema.Literals(["0", "7", "9", "a", "b", "f", "A", "C", "F"]));
 const hexRun = (length: number) => Arbitrary.array(hex, { minLength: length, maxLength: length }).pipe(Arbitrary.map((digits) => digits.join("")));
 const uuidShaped = Arbitrary.all([hexRun(8), hexRun(4), hexRun(4), hexRun(4), hexRun(12)]).pipe(Arbitrary.map((groups) => groups.join("-")));
-const typed = Arbitrary.schema(Schema.String).pipe(Arbitrary.map((text) => text.toWellFormed()));
+const typed = Arbitrary.schema(Schema.String);
 const name = Arbitrary.all([typed, uuidShaped, Arbitrary.schema(Schema.Boolean)]).pipe(Arbitrary.map(([text, uuid, isUuid]) => (isUuid ? uuid : text)));
 
 const uuidOf = (target: string) => {

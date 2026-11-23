@@ -168,6 +168,10 @@ public class UpdateJournal {
   public Snapshot acknowledgeHold(String planId,Identity target) throws IOException {
     return transact(s->{requirePlan(s,planId);require(s.hold==Hold.HOLD_REQUESTED&&holdTarget(s).matches(target),"Hold acknowledged for another artifact");s.hold=Hold.HOLD_GRANTED;});
   }
+  public Snapshot releaseUnhandedHold(String planId) throws IOException {
+    return transact(s->{requirePlan(s,planId);if(s.hold==Hold.UNHELD){s.ignore();return;}
+      require(s.phase==Phase.VERIFIED||s.phase==Phase.RECOVERY_READY,"The install was handed off");conclude(s,s.phase==Phase.RECOVERY_READY?s.plan.candidate:s.plan.baseline);});
+  }
   private static Identity holdTarget(State s){return s.phase==Phase.RECOVERY_READY?s.plan.recovery:s.plan.candidate;}
   private static void conclude(State s,Identity installed){if(s.hold!=Hold.UNHELD)s.out.add(new Announcement(false,installed));s.hold=Hold.UNHELD;}
   private static void requireHeld(State s,int sessionId) throws IOException {require(s.hold==Hold.HOLD_GRANTED,"The agent is not held for this install");require(sessionId>0,"Invalid install session");}

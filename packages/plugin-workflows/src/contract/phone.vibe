@@ -3,32 +3,19 @@ import { acceptsDraft, admitsSaveReceipt, type DeviceOperation, type StepKind, t
 import { relativeRangeProtocol } from "../../gen/workflow__runScope.effect.vibe"
 import { missedWindowMs } from "../../gen/core__occurrenceWindow.effect.vibe"
 
-/** The typed specification version every phone and agent accepts. */
 export const PHONE_WORKFLOW_SPEC_VERSION = 1
-/** The most steps one reviewed specification may hold. */
 export const PHONE_WORKFLOW_MAX_STEPS = 32
-/** The most UTF-8 bytes of one reviewed specification, input and canonical alike. */
 export const PHONE_WORKFLOW_MAX_SPEC_BYTES = 65_536
-/** The workflow device protocol a relative Calendar range needs. */
 export const PHONE_WORKFLOW_CALENDAR_ANCHOR_PROTOCOL = relativeRangeProtocol
-/** The highest workflow device protocol a phone may register. */
 export const PHONE_WORKFLOW_DEVICE_PROTOCOL = relativeRangeProtocol
-/** The reviewed reminder window: open by the end of the owner's day, or completed during it. */
 export const SELECTED_REMINDERS_WINDOW = "open_and_completed_today"
-/** A scheduled occurrence admitted later than this is recorded as missed and never runs. */
 export const PHONE_SCHEDULE_ADMISSION_WINDOW_MS = missedWindowMs
-/** Operations that read or change phone data through the reviewed device bridge. */
 export const PHONE_WORKFLOW_DEVICE_OPERATIONS: readonly string[] = ["selected_notes", "selected_reminders", "calendar_range", "save_note", "app_notification", "read_aloud"]
 
-/** The enrolled phone a device workflow is bound to. */
 export interface PhoneDeviceTarget { readonly installationId: string; readonly enrollmentId: string }
-/** An absolute reviewed Calendar range. */
 export interface PhoneCalendarRange { readonly calendarIds: readonly string[]; readonly start: string; readonly end: string; readonly timeZone: string; readonly maximumEvents: number }
-/** A Calendar range that follows the day of each run, `days` days in all. */
 export interface PhoneRelativeCalendarRange { readonly calendarIds: readonly string[]; readonly days: number; readonly timeZone: string; readonly maximumEvents: number }
-/** The reviewed reminder read scope; the day is the run's own local day. */
 export interface PhoneSelectedRemindersScope { readonly window: typeof SELECTED_REMINDERS_WINDOW; readonly timeZone: string; readonly maximumItems: number }
-/** One typed step of a reviewed phone workflow. */
 export type PhoneStep =
   | { readonly id: string; readonly kind: "Read"; readonly operation: "supplied_text"; readonly text: string }
   | { readonly id: string; readonly kind: "Read"; readonly operation: "selected_notes"; readonly notes: readonly { readonly id: string; readonly revision: string }[] }
@@ -40,11 +27,8 @@ export type PhoneStep =
   | { readonly id: string; readonly kind: "Write"; readonly operation: "save_note"; readonly source: string; readonly title: string }
   | { readonly id: string; readonly kind: "Notify"; readonly operation: "app_notification"; readonly source: string; readonly title: string }
   | { readonly id: string; readonly kind: "Speak"; readonly operation: "read_aloud"; readonly source: string }
-/** Runs at one local wall time on the selected weekdays (0 is Sunday) while the agent runs. */
 export interface PhoneTimeTrigger { readonly kind: "time"; readonly localTime: string; readonly timeZone: string; readonly days: readonly number[] }
-/** When a reviewed workflow runs. */
 export type PhoneWorkflowTrigger = { readonly kind: "manual" } | PhoneTimeTrigger
-/** A typed phone workflow: reviewed data, never execution authority. */
 export interface PhoneWorkflowSpec {
   readonly version: 1
   readonly name: string
@@ -53,11 +37,8 @@ export interface PhoneWorkflowSpec {
   readonly steps: readonly PhoneStep[]
   readonly device?: PhoneDeviceTarget
 }
-/** One trigger kind the agent offers. */
 export interface PhoneWorkflowTriggerCapability { readonly kind: string; readonly available: boolean; readonly label?: string; readonly reason?: string }
-/** One operation the agent offers. */
 export interface PhoneWorkflowOperationCapability { readonly id: string; readonly available: boolean; readonly label?: string; readonly reason?: string; readonly requiredDeviceProtocol?: number }
-/** The typed catalog an agent advertises for authoring. */
 export interface PhoneWorkflowCatalog {
   readonly generationProtocol?: 1
   readonly catalogRevision: string
@@ -67,7 +48,6 @@ export interface PhoneWorkflowCatalog {
   readonly triggers: readonly PhoneWorkflowTriggerCapability[]
   readonly palette: readonly { readonly kind: string; readonly operations: readonly PhoneWorkflowOperationCapability[] }[]
 }
-/** The agent's receipt for one exact reviewed save. */
 export interface PhoneWorkflowSaveReceipt {
   readonly mutationId: string
   readonly workflowId: string
@@ -78,7 +58,6 @@ export interface PhoneWorkflowSaveReceipt {
   readonly compilerRevision: string
   readonly appliedAt: string
 }
-/** What a client expects the receipt of its save to name. */
 export interface PhoneWorkflowSaveExpectation {
   readonly mutationId: string
   readonly specDigest: string
@@ -86,7 +65,6 @@ export interface PhoneWorkflowSaveExpectation {
   readonly workflowId?: string
   readonly versionId?: string
 }
-/** The scheduled-occurrence record a scheduled run carries. */
 export interface PhoneScheduledOccurrence {
   readonly scheduledAt: string
   readonly trigger: PhoneTimeTrigger
@@ -95,7 +73,6 @@ export interface PhoneScheduledOccurrence {
   readonly skippedLocalTime?: string
 }
 
-/** A specification, catalog or receipt failed the shared contract; the message is owner-presentable. */
 export error PhoneWorkflowSpecError { message: string }
 
 type Bag = Record<string, unknown>
@@ -106,12 +83,10 @@ const operationOf: Readonly<Record<string, DeviceOperation>> = {
 }
 const kindOf: Readonly<Record<string, StepKind>> = { Read: "ReadStep", If: "IfStep", Write: "WriteStep", Notify: "NotifyStep", Speak: "SpeakStep" }
 
-/** UTF-8 size of a JSON value, as the agent and phone both measure it. */
 export function phoneWorkflowBytes(value: unknown): number {
   return encoder.encode(JSON.stringify(value) ?? "").byteLength
 }
 
-/** True when the runtime's time zone data knows this IANA zone. */
 export function isPhoneWorkflowTimeZone(value: unknown): value is string {
   if (typeof value !== "string" || value === "" || value.length > 100) return false
   try {
@@ -147,7 +122,6 @@ effect function text(value: unknown, maximum: number, empty = false): string!Pho
   return value
 }
 
-/** A stable device, note or calendar identity the workflow device bridge accepts. */
 export effect function phoneWorkflowIdentifier(value: unknown): string!PhoneWorkflowSpecError {
   const id = try text(value, 128)
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) return try fail("Invalid device or source identity")
@@ -171,7 +145,6 @@ function bounded(value: unknown, maximum: number): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= maximum
 }
 
-/** The exact reviewed Calendar range, absolute or relative to the run. */
 export effect function validatePhoneCalendarRange(value: unknown): (PhoneCalendarRange | PhoneRelativeCalendarRange)!PhoneWorkflowSpecError {
   const r = try record(value)
   const relative = "days" in r
@@ -193,7 +166,6 @@ export effect function validatePhoneCalendarRange(value: unknown): (PhoneCalenda
     : { calendarIds, start, end, timeZone, maximumEvents: r.maximumEvents }
 }
 
-/** The exact reviewed reminder scope; any other window, zone or bound is refused. */
 export effect function validatePhoneSelectedRemindersScope(value: unknown): PhoneSelectedRemindersScope!PhoneWorkflowSpecError {
   const scope = try record(value, "Choose which reminders this step reads")
   try keys(scope, ["window", "timeZone", "maximumItems"])
@@ -203,7 +175,6 @@ export effect function validatePhoneSelectedRemindersScope(value: unknown): Phon
   return { window: SELECTED_REMINDERS_WINDOW, timeZone: scope.timeZone, maximumItems: scope.maximumItems }
 }
 
-/** The exact trigger shapes; cron text, events, places and messages are unavailable. */
 export effect function validatePhoneWorkflowTrigger(value: unknown): PhoneWorkflowTrigger!PhoneWorkflowSpecError {
   const trigger = try record(value, "Choose when this workflow runs")
   if (trigger.kind === "manual") {
@@ -283,17 +254,14 @@ effect function validateStep(value: unknown, seen: ReadonlySet<string>): PhoneSt
   return try fail("This workflow operation is unavailable")
 }
 
-/** The step source a step consumes, or "" for a read. */
 export function phoneStepSource(step: PhoneStep): string {
   return "source" in step ? step.source : ""
 }
 
-/** True when the step reads or changes phone data through the device bridge. */
 export function phoneStepUsesDevice(step: PhoneStep): boolean {
   return PHONE_WORKFLOW_DEVICE_OPERATIONS.includes(step.operation)
 }
 
-/** The authoring model's view of one validated step. */
 export function phoneStepShape(step: PhoneStep, catalogAvailable: boolean): StepShape {
   return {
     id: step.id, source: phoneStepSource(step), kind: kindOf[step.kind] ?? "ReadStep", operation: operationOf[step.operation] ?? "SuppliedText",
@@ -301,10 +269,6 @@ export function phoneStepShape(step: PhoneStep, catalogAvailable: boolean): Step
   }
 }
 
-/**
- * The single normalizer for typed phone workflows; the agent validates every save, validation and generation through it
- * and phones use it before review, so both bind the same canonical bytes and digest.
- */
 export effect function validatePhoneWorkflowSpec(input: unknown): PhoneWorkflowSpec!PhoneWorkflowSpecError {
   if (phoneWorkflowBytes(input) > PHONE_WORKFLOW_MAX_SPEC_BYTES) try fail("Workflow draft exceeds 64 KiB")
   const p = try record(input)
@@ -334,12 +298,10 @@ export effect function validatePhoneWorkflowSpec(input: unknown): PhoneWorkflowS
   return spec
 }
 
-/** True when any step reads or changes phone data through the device bridge. */
 export function phoneWorkflowUsesDevice(spec: PhoneWorkflowSpec): boolean {
   return spec.steps.some(phoneStepUsesDevice)
 }
 
-/** The minimum workflow device protocol an enrolled phone needs for one typed step. */
 export function phoneStepRequiredProtocol(step: PhoneStep): number {
   return step.operation === "calendar_range" && "days" in step.range ? relativeRangeProtocol
     : step.operation === "selected_reminders" ? 3
@@ -347,12 +309,10 @@ export function phoneStepRequiredProtocol(step: PhoneStep): number {
     : 1
 }
 
-/** The minimum workflow device protocol for every step of a specification. */
 export function phoneWorkflowRequiredProtocol(spec: Pick<PhoneWorkflowSpec, "steps">): number {
   return Math.max(1, ...spec.steps.map(phoneStepRequiredProtocol))
 }
 
-/** Whether the authoring rules accept this validated draft on a device that speaks `deviceProtocol`. */
 export function phoneDraftAccepted(spec: PhoneWorkflowSpec, input: unknown, catalog: PhoneWorkflowCatalog, deviceProtocol: number): boolean {
   const offered = (step: PhoneStep) => catalog.palette.some((row) => row.kind === step.kind && row.operations.some((op) => op.id === step.operation && op.available))
   return acceptsDraft({
@@ -362,7 +322,6 @@ export function phoneDraftAccepted(spec: PhoneWorkflowSpec, input: unknown, cata
   }, spec.steps.map((step) => phoneStepShape(step, offered(step))))
 }
 
-/** The five-field cron of a reviewed local-time trigger, evaluated in its own zone. */
 export function phoneTimeTriggerCron(trigger: PhoneTimeTrigger): string {
   const [hour, minute] = trigger.localTime.split(":").map(Number)
   return `${minute} ${hour} * * ${trigger.days.length === 7 ? "*" : trigger.days.join(",")}`
@@ -370,7 +329,6 @@ export function phoneTimeTriggerCron(trigger: PhoneTimeTrigger): string {
 
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
-/** A plain owner-facing summary such as "Weekdays at 07:30 (Europe/Paris)". */
 export function describePhoneWorkflowTrigger(trigger: PhoneWorkflowTrigger): string {
   if (trigger.kind === "manual") return "Only when you choose Run now"
   const days = trigger.days.join(",")
@@ -397,26 +355,22 @@ function zoneParts(ms: number, timeZone: string): WallParts | undefined {
   }
 }
 
-/** UTC offset in minutes of `timeZone` at instant `ms`, or 0 for a zone the runtime does not know. */
 export function zoneOffsetMinutes(ms: number, timeZone: string): number {
   const p = zoneParts(ms, timeZone)
   if (p === undefined) return 0
   return Math.round((Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000) / 60_000)
 }
 
-/** The owner's local calendar day (`YYYY-MM-DD`) in `timeZone` at instant `ms`. */
 export function phoneWorkflowLocalDay(ms: number, timeZone: string): string {
   const p = zoneParts(ms, timeZone) ?? { year: 1970, month: 1, day: 1, hour: 0, minute: 0, second: 0 }
   return `${String(p.year).padStart(4, "0")}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`
 }
 
-/** The local wall minute of an instant in a zone, `YYYY-MM-DDTHH:MM`. */
 export function phoneWorkflowLocalWall(ms: number, timeZone: string): string {
   const p = zoneParts(ms, timeZone) ?? { year: 1970, month: 1, day: 1, hour: 0, minute: 0, second: 0 }
   return `${phoneWorkflowLocalDay(ms, timeZone)}T${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`
 }
 
-/** True for a real `YYYY-MM-DD` calendar date. */
 export function isPhoneWorkflowLocalDay(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`))
     && new Date(Date.parse(`${value}T00:00:00Z`)).toISOString().slice(0, 10) === value
@@ -434,7 +388,6 @@ function localDayStart(day: string, timeZone: string): number {
   return high
 }
 
-/** The first instant of a civil day in `timeZone`, for a zone and day already validated. */
 export function phoneWorkflowCivilMidnight(day: string, timeZone: string): number {
   return localDayStart(day, timeZone)
 }
@@ -443,16 +396,11 @@ function nextDay(day: string, offset: number): string {
   return new Date(Date.parse(`${day}T00:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10)
 }
 
-/** The owner's local day `[start, end)` in epoch milliseconds, including 23- and 25-hour days. */
 export effect function phoneWorkflowLocalDayBounds(day: string, timeZone: string): { readonly start: number; readonly end: number }!PhoneWorkflowSpecError {
   if (!isPhoneWorkflowLocalDay(day) || !isPhoneWorkflowTimeZone(timeZone)) return try fail("Choose a valid local day and time zone")
   return { start: localDayStart(day, timeZone), end: localDayStart(nextDay(day, 1), timeZone) }
 }
 
-/**
- * The absolute range a Calendar step reads for a run anchored at `anchor`: an absolute range is unchanged, a relative
- * one starts at local midnight of the anchor's day and ends at local midnight `days` days later.
- */
 export effect function resolvePhoneCalendarRange(range: PhoneCalendarRange | PhoneRelativeCalendarRange, anchor: number): PhoneCalendarRange!PhoneWorkflowSpecError {
   if (!("days" in range)) return range
   if (!relativeDays(range.days)) return try fail("Choose distinct calendars and a range of at most 7 days")
@@ -466,7 +414,6 @@ const dayMs = 86_400_000
 const minuteMs = 60_000
 const wallClock = (localMs: number) => new Date(localMs).toISOString().slice(11, 16)
 
-/** The next day within a year whose clock change skips the reviewed local time, as review copy, or "". */
 export function phoneTriggerClockChangeNote(trigger: PhoneTimeTrigger, now: number): string {
   if (!isPhoneWorkflowTimeZone(trigger.timeZone)) return ""
   const [hour, minute] = trigger.localTime.split(":").map(Number)
@@ -504,7 +451,6 @@ effect function optionalText(value: unknown, maximum: number): (string | undefin
   return value === undefined || value === null || value === "" ? undefined : try text(value, maximum)
 }
 
-/** Reads the agent's typed catalog; an unknown or oversized shape disables authoring. */
 export effect function parsePhoneWorkflowCatalog(value: unknown): PhoneWorkflowCatalog!PhoneWorkflowSpecError {
   const unsupported = "Unsupported workflow capabilities"
   const p = try record(value, unsupported)
@@ -539,7 +485,6 @@ export effect function parsePhoneWorkflowCatalog(value: unknown): PhoneWorkflowC
   }
 }
 
-/** Refuses a reviewed specification whose trigger or a step the selected agent no longer offers. */
 export effect function assertPhoneWorkflowCapabilities(spec: PhoneWorkflowSpec, catalog: PhoneWorkflowCatalog): void!PhoneWorkflowSpecError {
   const triggerOffered = catalog.triggers.some((trigger) => trigger.kind === spec.trigger.kind && trigger.available)
   const stepsOffered = spec.steps.every((step) => catalog.palette.some((row) => row.kind === step.kind
@@ -547,7 +492,6 @@ export effect function assertPhoneWorkflowCapabilities(spec: PhoneWorkflowSpec, 
   if (!triggerOffered || !stepsOffered) try fail("Agent capabilities changed. Review the available steps again.")
 }
 
-/** Accepts only the receipt for this exact save identity, digest, compiler and version. */
 export effect function parsePhoneWorkflowSaveReceipt(value: unknown, expected: PhoneWorkflowSaveExpectation): PhoneWorkflowSaveReceipt!PhoneWorkflowSpecError {
   const mismatch = "Saved workflow receipt identity mismatch"
   const p = try record(value, mismatch)
@@ -570,7 +514,6 @@ export effect function parsePhoneWorkflowSaveReceipt(value: unknown, expected: P
   }
 }
 
-/** Reads a run's scheduled-occurrence record; absent for manual runs. */
 export effect function parsePhoneScheduledOccurrence(value: unknown): (PhoneScheduledOccurrence | undefined)!PhoneWorkflowSpecError {
   if (value === undefined || value === null) return undefined
   const p = try record(value, "Invalid scheduled occurrence")
@@ -593,12 +536,10 @@ module browser {
 }
 import { freshId, sha256Json } from browser
 
-/** SHA-256 hex of the JSON bytes; the agent digests a typed specification and every scope the same way. */
 export effect function workflowSha(value: unknown): string!! {
   return try promise(() => sha256Json(value))
 }
 
-/** A fresh version 4 UUID for a mutation, submission or client identity. */
 export effect function workflowUuid(): string!! {
   return try sync(() => freshId())
 }

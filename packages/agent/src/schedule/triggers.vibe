@@ -134,6 +134,23 @@ function roomRefusal(resolved: ResolvedRoom): TriggerWrite {
   }
 }
 
+effect function armTrigger(host: TriggerHost, id: string, state: Trigger | undefined) {
+  const wanted = state !== undefined && state.life === "Saved" && state.enabled && state.schedule !== "OnRuntimeEvent" && !runningScheduledOnce(state)
+  const held = (try promise(() => host.getTasks({ tags: [triggerTag] })))
+    .flatMap((task) => task.id !== undefined && task.metadata?.triggerId === id ? [{ id: task.id, dueAt: task.dueAt }] : [])
+  const [kept, ...surplus] = held
+  const dropped = wanted ? surplus : held
+  if (dropped.length > 0) try promise(() => host.deleteTasks(dropped.map((task) => task.id)))
+  if (!wanted) return
+  if (kept === undefined) {
+    try promise(() => host.createTasks([{
+      name: triggerTask, description: "Fire the next occurrence of a prompt trigger", tags: ["queue", triggerTag], dueAt: state.nextAt, metadata: { triggerId: id },
+    }]))
+  } else if (Number(kept.dueAt) !== state.nextAt) {
+    try promise(() => host.updateTasks([{ id: kept.id, task: { dueAt: state.nextAt } }]))
+  }
+}
+
 export function promptTriggers(deps: TriggerDeps): PromptTriggers {
   const { host, delivery, facts } = deps
   const lock = Semaphore.makeUnsafe(1)
@@ -156,23 +173,6 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     return { before, after }
   }
 
-  effect function arm(id: string, state: Trigger | undefined) {
-    const wanted = state !== undefined && state.life === "Saved" && state.enabled && state.schedule !== "OnRuntimeEvent" && !runningScheduledOnce(state)
-    const held = (try promise(() => host.getTasks({ tags: [triggerTag] })))
-      .flatMap((task) => task.id !== undefined && task.metadata?.triggerId === id ? [{ id: task.id, dueAt: task.dueAt }] : [])
-    const [kept, ...surplus] = held
-    const dropped = wanted ? surplus : held
-    if (dropped.length > 0) try promise(() => host.deleteTasks(dropped.map((task) => task.id)))
-    if (!wanted) return
-    if (kept === undefined) {
-      try promise(() => host.createTasks([{
-        name: triggerTask, description: "Fire the next occurrence of a prompt trigger", tags: ["queue", triggerTag], dueAt: state.nextAt, metadata: { triggerId: id },
-      }]))
-    } else if (Number(kept.dueAt) !== state.nextAt) {
-      try promise(() => host.updateTasks([{ id: kept.id, task: { dueAt: state.nextAt } }]))
-    }
-  }
-
   effect function finish(id: string, delivered: Delivery, startedAt: number, controller: AbortController): TriggerRun!! {
     return try serial(effect {
       const facts = finishFacts(delivered)
@@ -181,7 +181,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       const moved = try transition(id, { type: "finishRun", ...facts }, undefined,
         (before, after) => before.life === "Saved" ? storedRun(lastRecord(after), startedAt, finishedAt, error) : undefined)
       if (running.get(id)?.controller === controller) running.delete(id)
-      try arm(id, moved.after ?? moved.before)
+      try armTrigger(host, id, moved.after ?? moved.before)
       const record = lastRecord(finished({ ...moved.before, life: "Saved" }, facts.roomExists, facts.turn))
       return { startedAt, finishedAt, record, error }
     })
@@ -202,14 +202,14 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       if (ongoing !== undefined) return { kind: "busy", run: ongoing } satisfies Begun
       const row = try orDie(getTrigger(host.adapter, id))
       if (row === undefined) {
-        try arm(id, undefined)
+        try armTrigger(host, id, undefined)
         return { kind: "gone" } satisfies Begun
       }
       const startedAt = try Clock.currentTimeMillis
       const moved = try transition(id, event, undefined,
         (_, after) => after.activity.tag === "Idle" ? storedRun(lastRecord(after), startedAt, startedAt, runError({ kind: "Missed" })) : undefined)
       if (moved.before.activity.tag === "Running") return { kind: "busy", run: undefined } satisfies Begun
-      try arm(id, moved.after ?? moved.before)
+      try armTrigger(host, id, moved.after ?? moved.before)
       const after = moved.after
       if (after === undefined) return { kind: "refused" } satisfies Begun
       const activity = after.activity
@@ -286,7 +286,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       }, details)
       const after = moved.after
       if (after !== undefined) {
-        try arm(id, after)
+        try armTrigger(host, id, after)
         return { kind: "saved", trigger: savedOf(id, after, details) } satisfies TriggerWrite
       }
       if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerWrite
@@ -305,7 +305,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       const moved = try transition(id, { type: "setEnabled", on, at, activeOthers, expected })
       const after = moved.after
       if (after !== undefined) {
-        try arm(id, after)
+        try armTrigger(host, id, after)
         return { kind: "saved", trigger: savedOf(id, after, row.details) } satisfies TriggerWrite
       }
       if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerWrite
@@ -319,7 +319,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       const moved = try transition(id, { type: "remove", expected })
       if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerRemoval
       if (moved.after === undefined) return { kind: "refused", reason: "StaleRevision" } satisfies TriggerRemoval
-      try arm(id, moved.after)
+      try armTrigger(host, id, moved.after)
       return { kind: "removed" } satisfies TriggerRemoval
     })
   }
@@ -372,7 +372,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
 
   effect function reconcile() {
     const rows = try saved()
-    for (const row of rows) try arm(row.id, row.state)
+    for (const row of rows) try armTrigger(host, row.id, row.state)
     const known = new Set(rows.map((row) => row.id))
     const orphans = (try promise(() => host.getTasks({ tags: [triggerTag] })))
       .flatMap((task) => task.id !== undefined && !known.has(String(task.metadata?.triggerId)) ? [task.id] : [])

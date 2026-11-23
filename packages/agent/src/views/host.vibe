@@ -1,7 +1,7 @@
 // spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "Preparing again supersedes the client's unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A claim names its request's exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"; spec/agent/views.md, "Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown"; spec/agent/views.md, "The agent asks only a declared view, for a capability the view grants the agent, on a live feed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again"; spec/agent/views.md, "Closing ends every pending request with the outcome Stopped, and nothing changes after"
 import { logger } from "@elizaos/core"
 import {
-  Machine, interactionWaitMs, machine, navigationWaitMs, shownViewOf, waiterAt,
+  Machine, busy, interactionWaitMs, machine, navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs, openNavigationOf, shownViewOf, waiterAt,
   type Binding, type CapabilityGrant, type DeclaredView, type Event, type Reply, type ViewHost as ViewHostState, type WaitOutcome,
 } from "../../gen/agent__views.effect.vibe"
 
@@ -160,7 +160,14 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
     return { binding: bindingOf(state, requestId), wait: Deferred.await(done) }
   }
 
-  effect function navigation(event: Event, requestId: string) {
+  effect function idle(clientId: string) {
+    const state = try views.get()
+    const claimed = busy(state, clientId) ? waiting.get(openNavigationOf(state, clientId)) : undefined
+    if (claimed !== undefined) try raceFirst(as(sleep(Duration.millis(navigationBusyWaitMs)), false), as(Deferred.await(claimed.done), true))
+  }
+
+  effect function navigation(event: Event, requestId: string, clientId: string) {
+    try idle(clientId)
     const state = try send(event)
     return state === undefined ? undefined : try wait(state, requestId, navigationWaitMs)
   }
@@ -175,12 +182,18 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
   const host: ViewHost.Shape = {
     boot: effect (declared: DeclaredView[]) => (try send({ type: "bootViews", views: declared })) !== undefined,
     prepare: (requestId: string, clientId: string, viewId: string) =>
-      navigation({ type: "prepareNavigation", requestId, clientId, viewId }, requestId),
+      navigation({ type: "prepareNavigation", requestId, clientId, viewId }, requestId, clientId),
     show: (requestId: string, clientId: string, target: string) =>
-      navigation({ type: "showView", requestId, clientId, target }, requestId),
+      navigation({ type: "showView", requestId, clientId, target }, requestId, clientId),
     claim: effect (binding: Binding) => {
       const claimId = newId()
-      return (try send({ type: "claimRequest", binding, claimId })) === undefined ? undefined : claimId
+      const state = try send({ type: "claimRequest", binding, claimId })
+      if (state === undefined) return undefined
+      const entry = waiting.get(binding.requestId)
+      if (entry !== undefined && waiterAt(state, binding.requestId).kind === "Navigation") {
+        fork.detached expire(binding.requestId, entry.done, navigationClaimLeaseMs)
+      }
+      return claimId
     },
     answer: effect (binding: Binding, claimId: string, reply: Reply, answer: ViewAnswer) => {
       const entry = waiting.get(binding.requestId)

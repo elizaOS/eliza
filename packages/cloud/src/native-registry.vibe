@@ -104,7 +104,6 @@ export function mobileRegistration(env: NativeRegistryEnv, clientId: string | nu
   return registration ? { kind: "registered", registration } as const : invalidClient
 }
 
-/** The registrations the Worker-only routes read from their binding: absent when unbound, null when unreadable. */
 export function legacyRegistrations(env: NativeRegistryEnv): ReadonlyArray<Registration> | null | undefined {
   if (env.NATIVE_CLIENT_REGISTRY === undefined) return undefined
   return registry(env)?.entries ?? null
@@ -114,7 +113,6 @@ function returnLine(url: ReturnUrl): string {
   return url.origin + url.path
 }
 
-/** One registration as a fixed-order text, equal exactly when the registrations are. */
 export function registrationText(r: Registration): string {
   return [
     r.clientId, r.environment, r.displayName, r.androidPackage, r.certFingerprints.join(","),
