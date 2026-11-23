@@ -816,6 +816,22 @@ pure def sometimesExit(n: int): bool = n == -1`);
       s["mbt::actionTaken"] === "eval_sometimesExit" && isDeepStrictEqual(s.outcome, { tag: "Out_sometimesExit", value: true }))));
   });
 
+  test("a deeper reachable goal does not preempt a shallow safety counterexample", async () => {
+    const root = oneRule("rare", "Find a rare choice after counting", `pure val initial: int = 0
+pure val pValues = 0.to(127)
+pure val qValues = 0.to(127)
+pure def up(n: int, p: int, q: int): int = if (n == 0 and p == 109 and q == 71) -2 else if (n == 38 and p < 16 and q < 6) -1 else n + 1
+pure def alwaysSafe(n: int): bool = n >= -1
+pure def sometimesMarked(n: int): bool = n == -1`);
+    const result = await run(root);
+    const broken = result.said("always", /a reachable state breaks/);
+    assert.ok(broken && !broken.ok, result.text);
+    assert.match(broken.detail, /-> state = -2\b/);
+    assert.match(broken.detail, /never_sometimesMarked .*--max-samples 200000 --max-steps 20\b/);
+    assert.ok(!result.said("sometimes", /is reachable/), result.text);
+    assert.ok(result.said("skipped", /^types, proof,/), result.text);
+  });
+
   test("a deep witness is found in the short sweep before the full search", async () => {
     const quint = "pure val initial: int = 0\npure def up(n: int): int = n + 1\npure def sometimesLate(n: int): bool = n == 38";
     const root = oneRule("t", "Counting", quint);
@@ -837,7 +853,7 @@ pure def sometimesExit(n: int): bool = n == -1`);
     const rareModel = await gen(rare, readSpecs(rare)[0]);
     const found = await search({ memory: { root: rare, fresh: true, used: new Set() }, model: rareModel, files: harnessFiles(readSpecs(rare)[0], readSpecs(rare), rareModel) }, "never_sometimesMarked", "step", [20, 40], 4096);
     assert.equal(found.broken, true, found.again);
-    assert.match(found.again, /--max-samples 1024 --max-steps 40\b/);
+    assert.match(found.again, /--max-samples 2048 --max-steps 40\b/);
     assert.equal(found.traces[0]?.at(-1)?.state, -1);
 
     const lateGuard = oneRule("gate", "Allow completion after counting", [
