@@ -17,7 +17,7 @@ import { browserProposalFamily } from "../src/proposal.vibe"
 import type { BrowserViewAsked, BrowserViewAsker, BrowserViewWait } from "../src/native-browser.vibe"
 import { observedTabCurrent, parseNativeHistoryCommand } from "../src/native-command.vibe"
 
-it.effect('Open only a destination the owner wrote in this message, spelled as written, or an exact link of its page (spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review")', effect () => {
+it.effect('Open only a destination the owner wrote in this message, spelled as written, or an exact link of its page (spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "A closing mark that would change a typed path leaves the open for my review")', effect () => {
   const grounded = [
     groundBrowserDestination("open example.com/docs please", "https://example.com/docs"),
     groundBrowserDestination("don't open example.com", "https://example.com/"),
@@ -39,6 +39,9 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
     spokenBrowserDestination("open example dot com"),
     directBrowserDestination("open example dot com"),
   ]
+  const marked = ["open nytimes.com/section/world.", "Hey Eliza, open nytimes.com/section/world.", "nytimes.com/section/world.", "https://example.com/path!"]
+    .map((text) => [directBrowserDestination(text), groundBrowserDestination(text, text.startsWith("https") ? "https://example.com/path" : "https://nytimes.com/section/world")])
+  const unmarked = ["nytimes.com/section/world", "https://example.com/a?", "Open Reddit.com!", "open example.com/a, please"].map((text) => directBrowserDestination(text))
   const searched = [
     directBrowserSearchQuery("search the web for cheap flights please"),
     groundBrowserSearchQuery("find me cheap   flights", "Cheap flights"),
@@ -54,6 +57,11 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
       [groundBrowserDestination("Do not open https://two.example/post?id=2.", "https://two.example/post?id=2", "Eliza", links), groundBrowserDestination("Open the second story.", "https://one.example/story")],
       [undefined, undefined])
     assert.deepStrictEqual(direct, ["https://example.com/", "https://example.com/", undefined, "https://example.com/", undefined])
+    assert.deepStrictEqual(marked, [
+      [undefined, "https://nytimes.com/section/world"], [undefined, "https://nytimes.com/section/world"],
+      [undefined, "https://nytimes.com/section/world"], [undefined, "https://example.com/path"],
+    ])
+    assert.deepStrictEqual(unmarked, ["https://nytimes.com/section/world", "https://example.com/a", "https://reddit.com/", "https://example.com/a"])
     assert.deepStrictEqual(searched, ["cheap flights", "cheap flights", undefined])
     assert.isTrue(browserSearchQueryMatches("\"Cheap Flights\"", searched[0]))
     assert.isTrue(browserDestinationMatches({ type: "browser_navigate", url: "example.com" }, direct[0]))
@@ -305,6 +313,10 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     assert.deepStrictEqual(offeredForms(ownerTurn("open wikipedia.org in a new tab", everyBrowserCapability)), [
       "browser_navigate url newTab", "browser_search query", "browser_tab_switch target", "browser_tab_close target all", "browser_find text", "browser_history action",
     ])
+    assert.deepStrictEqual(
+      ["can you open wikipedia.org in a new tab?", "open a new tab", "open wikipedia.org in a private tab", "open example.com in the browser"]
+        .map((request) => offeredForms(ownerTurn(request, everyBrowserCapability)).includes("browser_tab_new private")),
+      [false, true, true, true])
     assert.deepStrictEqual(offeredForms(ownerTurn("", tabsOnly)), ["browser_navigate url", "browser_tab_new private", "browser_tab_switch target", "browser_tab_close target all"])
     assert.deepStrictEqual(offeredForms(ownerTurn("", [])), [])
     assert.deepStrictEqual([Result.isSuccess(again), Result.isFailure(rival) ? rival.failure._tag : "registered"], [true, "FamilyConflict"])

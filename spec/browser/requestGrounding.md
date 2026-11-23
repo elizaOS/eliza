@@ -99,6 +99,24 @@ pure def lawAPageLinkIsAlwaysReviewed(wholeMessageOpen: bool): bool = not(openBo
 pure def lawOnlyMyWholeMessageOpenIsBound(pageLink: bool, wholeMessageOpen: bool): bool = openBound(pageLink, wholeMessageOpen) implies wholeMessageOpen
 ```
 
+### A closing mark that would change a typed path leaves the open for my review
+
+A period, comma, exclamation or question mark that ends the message after
+a bare host is the sentence's, and the whole message still opens that
+host. After a typed path, query or fragment the mark may be the address's
+own: where the address differs with and without it, as in "open
+nytimes.com/section/world.", the message is not a direct request to open
+it. The address it grounds is offered unbound to the message, so the owner
+reviews it before it loads. A mark that leaves the address the same, such
+as an empty query, keeps the whole-message open.
+
+```quint
+pure def closingMarkIsProse(afterTypedPath: bool, markChangesAddress: bool): bool = not(afterTypedPath and markChangesAddress)
+pure def lawAMarkAfterABareHostIsProse(markChangesAddress: bool): bool = closingMarkIsProse(false, markChangesAddress)
+pure def lawAMarkThatChangesATypedPathOpensNothingDirectly(readable: bool, directHref: str): bool =
+  directDestination(readable, closingMarkIsProse(true, true), directHref) == ""
+```
+
 ### An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one
 
 When the owner's whole message asks to open an address in a new tab,
