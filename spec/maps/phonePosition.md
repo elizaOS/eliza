@@ -38,6 +38,27 @@ pure def lawAbsentPositionNeverSearches(p: PhonePosition): bool = not(p.present)
 pure def lawStalePositionNeverSearches(p: PhonePosition): bool = p.age > nearbyMaxAge implies not(nearbyPositionUsable(p))
 ```
 
+### A kind of place near a named place is searched around that place, never around the phone
+
+"Pharmacy near the Ferry Building" names where to search: the named place
+is looked up first, and the kind of place is searched around it, nearest
+first, whether or not the phone reported a position and even when the
+request also asked for places near the owner. A named place that is not
+found, or not one place, is said or asked about before anything is
+searched. Without a recent position, a request for places near the owner
+asks the phone for its location and says that a place to search near can
+be named instead, such as "pharmacy near the Ferry Building".
+
+```quint
+type SearchAround = AroundNamedPlace | AroundPhone | AskForPosition | AroundNothing
+pure def searchAround(namedPlace: bool, nearMe: bool, p: PhonePosition): SearchAround =
+  if (namedPlace) AroundNamedPlace
+  else if (nearMe) (if (nearbyPositionUsable(p)) AroundPhone else AskForPosition)
+  else AroundNothing
+pure def lawANamedPlaceNeverAsksThePhone(nearMe: bool, p: PhonePosition): bool = searchAround(true, nearMe, p) == AroundNamedPlace
+pure def lawNearMeWithoutAPositionAsks(p: PhonePosition): bool = not(nearbyPositionUsable(p)) implies searchAround(false, true, p) == AskForPosition
+```
+
 ### A reported position never becomes a route origin
 
 The reported position carries no precision, so it is never the precise fix

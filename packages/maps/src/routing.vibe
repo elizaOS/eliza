@@ -1,4 +1,4 @@
-// spec/maps/routing.md, "A plain Maps request of the owner's own chat turn goes to the Maps action for its shape"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"
+// spec/maps/routing.md, "A plain Maps request of the owner's own chat turn goes to the Maps action for its shape"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"
 import { containsResourceAddress, registerDirectActionRoutingRule, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { choiceBinds, mapsRouteOf, type RequestShape, type RoutedTo } from "../gen/maps__routing.effect.vibe"
 import type { AgentPlaceRef } from "./client/device-navigation.vibe"
@@ -48,6 +48,7 @@ const nearMeRequest = new RegExp([
 ].join("|"), "iu")
 const kindNearNamedRequest = new RegExp(String.raw`^\s*${courtesy}(?:${findVerb}|(?:is|are)\s+there\s+${notAThere})(${placeKind})\s+(?:near|around|close\s+to|next\s+to)\s+((?:the\s+)?\p{Lu}[\p{L}\p{N}'’&.-]*(?:\s+[\p{L}\p{N}'’&.-]+){0,5})${end}`, "u")
 const ownPosition = /^(?:me|here|us|by|my\s+(?:location|position|current\s+location)|where\s+(?:i|we)\s+(?:am|are))$/iu
+const anchoredQuery = new RegExp(String.raw`^\s*${courtesy}(?:${findVerb})?(?:(?:is|are)\s+there\s+${notAThere})?(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?(\S.{0,79}?)\s+(?:near|around|close\s+to|next\s+to)\s+(\S.{0,119}?)${end}`, "iu")
 const nearNotAPlace = /^(?:home|work|the\s+office|(?:my|our)\s+.+|(?:the\s+)?(?:top|bottom|end|beginning|start|middle|deadline|weekend|holidays?)|midnight|noon|midday|dawn|dusk|sunrise|sunset|lunch(?:time)?|dinner(?:time)?|breakfast|christmas(?:\s+eve)?|thanksgiving|easter|halloween|new\s+year(?:'s|’s)?(?:\s+(?:eve|day))?|(?:mon|tues|wednes|thurs|fri|satur|sun)day|january|february|march|april|june|july|august|september|october|november|december|line\s+\d+|page\s+\d+|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.?|p\.m\.?|o'?clock)?|\d[\d,.]*\s*(?:dollars?|bucks|euros?|pounds?)(?:\s+(?:a|per)\s+(?:night|day|week|month))?|\d[\d,.]*\s+(?:a|per)\s+(?:night|day|week|month))$/iu
 const nearNotAPlaceKind = /\b(?:photos?|pictures?|pics?|images?|videos?|clips?|selfies?|screenshots?|e-?mails?|mail|messages?|texts?|chats?|notes?|files?|documents?|docs?|songs?|music|tracks?|albums?|playlists?|podcasts?|events?|meetings?|appointments?|reminders?|alarms?|contacts?|tasks?|to-?dos?|bugs?|issues?|errors?|lines?|comments?|posts?|tweets?|results?|calls?|voicemails?|weather|forecasts?|traffic|news)$/iu
 const choiceReply = /^\s*(?:(?:yes|yeah|yep|ok(?:ay)?|sure|um+|uh+|so|hmm+|let'?s\s+(?:go\s+with|do)|i\s+(?:meant?|want|mean)|go\s+with|pick|choose|use|take)[,\s]+)*(?:(?:the|number|no\.?|#|option|item)\s*)*(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th|one|two|three|four|five|six|seven|eight|nine|ten|last|top|\d{1,2})(?:\s+(?:one|option|place|result|choice))?(?:[,\s]+(?:one|please|thanks|thank\s+you))*\s*[.!?]*\s*$/iu
@@ -126,6 +127,15 @@ function goToPlace(destination: string): boolean {
     || (properName.test(name) && (name !== destination || /\s/u.test(name)))
     || (code !== undefined && (code === name || (placeNameCue.test(name) && !spokenNotAPlace.test(name.toLowerCase()))))
     || streetAddress.test(name) || streetName.test(name) || spokenPlaceName(name))
+}
+
+/** A kind of place and the named place it is to be searched near ("pharmacy near the Ferry Building"), or undefined when the words name no such place. */
+export function anchoredPlace(query: string): { readonly kind: string; readonly anchor: string } | undefined {
+  const match = anchoredQuery.exec(query)
+  const kind = match?.[1]?.trim()
+  const anchor = match?.[2]?.trim()
+  if (kind === undefined || anchor === undefined || ownPosition.test(anchor) || nearNotAPlace.test(anchor) || nearNotAPlaceKind.test(kind)) return undefined
+  return { kind, anchor: anchor.replace(/^the\s+/iu, "") }
 }
 
 /** The shape of a short request and what a routing decision needs to know about its destination. */

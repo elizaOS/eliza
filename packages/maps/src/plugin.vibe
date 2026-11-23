@@ -1,14 +1,14 @@
-// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Where I am is the place at my phone's recent position, and only its area when that position is rough"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"
+// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Where I am is the place at my phone's recent position, and only its area when that position is rough"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"
 import type { AgentPlugin } from "@elizaos/agent"
-import { positionRecent, roughPosition, whereAnswer, type PhonePosition } from "../gen/maps__phonePosition.effect.vibe"
-import { placePick, sameLandmark } from "../gen/maps__routing.effect.vibe"
+import { positionRecent, roughPosition, searchAround, whereAnswer, type PhonePosition } from "../gen/maps__phonePosition.effect.vibe"
+import { aroundTheStart, placePick, sameLandmark } from "../gen/maps__routing.effect.vibe"
 import type { Action, ActionResult, IAgentRuntime, Memory, Provider } from "@elizaos/core"
 import { appendMapsCard, type MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
 import { MapsFailure, TravelMode, travelModes, type Coordinate, type Place } from "./client/contracts.vibe"
 import type { AgentPlaceRef, DeviceNavigationFailure, MapsDeviceNavigationStatus } from "./client/device-navigation.vibe"
 import { messageLocation, nearbyPoint } from "./client/location.vibe"
 import type { MapsDeviceNavigation } from "./relay.vibe"
-import { answeredChoice, closeChoice, openChoice, registerMapsRouting, type ChoiceOperation, type PlaceChoice } from "./routing.vibe"
+import { anchoredPlace, answeredChoice, closeChoice, openChoice, registerMapsRouting, type ChoiceOperation, type PlaceChoice } from "./routing.vibe"
 import { agentSaves, type AgentSavedPlaceStore } from "./saves.vibe"
 import { agentPlace, mapsService, type MapsCloudLink, type MapsService, type PlaceResults } from "./service.vibe"
 
@@ -102,6 +102,15 @@ effect function linked<A>(ports: MapsPluginPorts, runtime: IAgentRuntime, work: 
   return try work(mapsService(link))
 }
 
+effect function reportedPosition(message: Memory) {
+  const reported = messageLocation(message.content.metadata)
+  const now = try Clock.currentTimeMillis
+  const position: PhonePosition = reported === undefined
+    ? { present: false, age: 0, hasAccuracy: false, accuracy: 0 }
+    : { present: true, age: now - reported.capturedAt, hasAccuracy: reported.accuracyMeters !== undefined, accuracy: Math.round(reported.accuracyMeters ?? 0) }
+  return { reported, position, now }
+}
+
 effect function nearHere(message: Memory): (Coordinate | undefined)!! {
   return nearbyPoint(messageLocation(message.content.metadata), try Clock.currentTimeMillis)
 }
@@ -126,11 +135,7 @@ function answered(said: string, note: string, data: Data, card?: MapsCard): Acti
 const noPosition = "Your phone didn't report a recent position with this message, so I can't tell where you are."
 
 effect function whereAmI(service: MapsService, message: Memory): ActionResult!Refusal {
-  const reported = messageLocation(message.content.metadata)
-  const now = try Clock.currentTimeMillis
-  const position: PhonePosition = reported === undefined
-    ? { present: false, age: 0, hasAccuracy: false, accuracy: 0 }
-    : { present: true, age: now - reported.capturedAt, hasAccuracy: reported.accuracyMeters !== undefined, accuracy: Math.round(reported.accuracyMeters ?? 0) }
+  const { reported, position, now } = try reportedPosition(message)
   if (reported === undefined || !positionRecent(position)) return reply(false, noPosition, { state: "no-position" })
   const { place, attribution } = try service.reverse({ latitude: reported.latitude, longitude: reported.longitude })
   const area = addressArea(place?.address)
@@ -151,19 +156,25 @@ effect function findPlaces(service: MapsService, message: Memory, params: Params
   const query = text(params.query)
   if (query === undefined && params.useCurrentLocation === true) return try whereAmI(service, message)
   if (query === undefined) return reply(false, "What place or address should I look up?", { missing: "query" })
+  const anchored = anchoredPlace(query)
   const kind = nearbyPlaceKind(query)
-  const aroundMe = params.useCurrentLocation === true || kind !== undefined
-  const searched = kind ?? query
-  const near = aroundMe ? try nearHere(message) : undefined
-  if (aroundMe && near === undefined) {
-    return locate(`I need your precise location to search near you for “${searched}”. You can also name a place to search near, such as “${searched} near the Ferry Building”.`, { query: searched }, "place-near")
+  const searched = anchored?.kind ?? kind ?? query
+  const { reported, position, now } = try reportedPosition(message)
+  const around = searchAround(anchored !== undefined, params.useCurrentLocation === true || kind !== undefined, position)
+  if (around === "AskForPosition") {
+    return locate(`I need your precise location to search near you for “${searched}”. If the phone can't get a location fix, name a place or area to search near instead, such as “${searched} near the Ferry Building”.`, { query: searched }, "place-near")
   }
+  const anchor = anchored === undefined ? undefined : try resolvePlace(service, anchored.anchor, undefined, "place to search near", () => undefined, "placeId")
+  if (anchor?.kind === "reply") return anchor.result
+  const named = anchor?.place
+  const near = named?.coordinate ?? (around === "AroundPhone" ? nearbyPoint(reported, now) : undefined)
+  const where = named === undefined ? near === undefined ? "" : " near you" : ` near ${named.name}`
   const limit = typeof params.limit === "number" ? params.limit : undefined
   const found = try service.search(searched, near, limit)
-  if (found.places.length === 0) return reply(true, `I couldn't find “${searched}”${near === undefined ? "" : " near you"}.`, { query: searched, count: 0 })
+  if (found.places.length === 0) return reply(true, `I couldn't find “${searched}”${where}.`, { query: searched, count: 0 })
   const ordered = near === undefined ? found.places : [...found.places].sort((a, b) => metersBetween(near, a.coordinate) - metersBetween(near, b.coordinate))
   const lines = ordered.slice(0, 5).map((item, index) => `${index + 1}. ${item.name}${item.address === undefined ? "" : `, ${item.address}`}${near === undefined ? "" : ` (${distanceText(metersBetween(near, item.coordinate))} away)`}`)
-  return reply(true, [`Here is what I found for “${searched}”:`, ...lines, found.attribution].join("\n"), { query: searched, count: ordered.length, places: ordered.slice(0, 10).map(agentPlace) },
+  return reply(true, [`Here is what I found for “${searched}”${named === undefined ? "" : where}:`, ...lines, found.attribution].join("\n"), { query: searched, count: ordered.length, places: ordered.slice(0, 10).map(agentPlace) },
     { kind: "places", query: searched, places: ordered.slice(0, 10).map(cardPlace), nextCursor: null, attribution: found.attribution })
 }
 
@@ -192,15 +203,16 @@ function inNamedLocality(query: string, places: readonly Place[]): readonly Plac
   })
 }
 
-effect function resolvePlace(service: MapsService, query: string | undefined, placeId: string | undefined, role: "starting place" | "destination" | "place", ask: Ask, field: PlaceChoice["field"], near?: Coordinate): Resolved!Refusal {
+effect function resolvePlace(service: MapsService, query: string | undefined, placeId: string | undefined, role: "starting place" | "destination" | "place" | "place to search near", ask: Ask, field: PlaceChoice["field"], near?: Coordinate, start?: Coordinate): Resolved!Refusal {
   if (placeId !== undefined) {
     const known = try service.detail(placeId)
     if (known !== null) return { kind: "place", place: known, attribution: known.attribution }
   }
   if (query === undefined) return { kind: "reply", result: reply(false, `Which ${role} should I use?`, { missing: role }) }
-  const found: PlaceResults = try service.search(query, near, 5)
+  const found: PlaceResults = try service.search(query, near ?? start, 5)
   const local = inNamedLocality(query, found.places)
-  const inLocality = local ?? found.places
+  const aroundStart = start === undefined ? [] : found.places.filter((item) => aroundTheStart(Math.round(metersBetween(start, item.coordinate))))
+  const inLocality = local ?? (aroundStart.length > 0 ? aroundStart : found.places)
   const exact = inLocality.filter((item) => item.name.toLowerCase() === query.toLowerCase())
   const [top, ...namesakes] = exact
   const landmark = top !== undefined && namesakes.every((other) => sameLandmark(isArea(top), isArea(other), Math.round(metersBetween(top.coordinate, other.coordinate))))
@@ -231,7 +243,7 @@ effect function planRoute(service: MapsService, params: Params, ask: Ask): Actio
   if (!offer.modes.includes(travelMode)) return reply(false, `Cloud Maps does not plan ${travelMode} routes.`, { code: "unsupported" })
   const origin = try resolvePlace(service, originQuery, text(params.originPlaceId), "starting place", ask, "originPlaceId")
   if (origin.kind === "reply") return origin.result
-  const destination = try resolvePlace(service, destinationQuery, text(params.destinationPlaceId), "destination", ask, "destinationPlaceId")
+  const destination = try resolvePlace(service, destinationQuery, text(params.destinationPlaceId), "destination", ask, "destinationPlaceId", undefined, origin.place.coordinate)
   if (destination.kind === "reply") return destination.result
   const planned = try service.routes(origin.place.coordinate, destination.place.coordinate, travelMode, offer.alternatives)
   const choice = typeof params.routeIndex === "number" && Number.isInteger(params.routeIndex) ? params.routeIndex : 1
@@ -283,7 +295,8 @@ effect function startNavigation(service: MapsService, navigation: MapsDeviceNavi
   const kind = query === undefined ? undefined : nearbyPlaceKind(query)
   const near = params.useCurrentLocation === true || kind !== undefined ? try nearHere(message) : undefined
   if ((params.useCurrentLocation === true || kind !== undefined) && near === undefined) {
-    return locate(`I need your phone's precise location to find the nearest “${kind ?? query ?? "place"}”.`, { query: kind ?? query ?? "", travelMode }, "route-origin")
+    const wanted = kind ?? query ?? "place"
+    return locate(`I need your precise location to start the route to ${wanted}. If the phone can't get a location fix, tell me where you're starting from, or name a place to search near, such as “${wanted} near the Ferry Building”.`, { query: kind ?? query ?? "", travelMode }, "route-origin")
   }
   const destination = try resolvePlace(service, kind ?? query, text(params.placeId), "destination", ask, "placeId", near)
   if (destination.kind === "reply") return destination.result

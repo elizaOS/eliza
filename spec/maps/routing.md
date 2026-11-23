@@ -67,7 +67,11 @@ qualified by its locality ("Union Station, Washington, DC", "Union Station
 in Washington") fits only a result whose name holds the name and whose
 address holds the locality, or whose name or address holds the whole query.
 When no result is in the named locality, Maps asks which one rather than
-taking a namesake elsewhere, even when it found only one.
+taking a namesake elsewhere, even when it found only one. A route's
+destination is searched around its starting place: when it names no
+locality, the results within 100 km of the start are the ones that fit,
+if any are, so "Union Square" from the Ferry Building is the one in San
+Francisco. That alone never takes a result: two that fit still ask.
 
 ```quint
 type PlacePick = TakePlace | AskWhich | NoPlace
@@ -81,6 +85,9 @@ pure val matchingValues = Set(0, 1, 2)
 pure def lawANamesakeOutsideTheLocalityIsNeverTaken(found: int, near: bool): bool = placePick(found, true, 0, near) != TakePlace
 pure def lawNothingFoundIsNeverTaken(qualified: bool, matching: int, near: bool): bool = placePick(0, qualified, matching, near) == NoPlace
 pure def lawOneFittingResultIsTaken(found: int, qualified: bool, near: bool): bool = found > 0 implies placePick(found, qualified, 1, near) == TakePlace
+pure val startAreaMeters = 100000
+pure def aroundTheStart(meters: int): bool = meters >= 0 and meters <= startAreaMeters
+pure def lawAFarNamesakeIsNotAroundTheStart(meters: int): bool = meters > startAreaMeters implies not(aroundTheStart(meters))
 ```
 
 ### A choice reply answers only the open question of the same conversation, within its options and ten minutes
