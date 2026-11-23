@@ -52,6 +52,17 @@ module node {
     await new Promise<never>(() => undefined)
   }
 
+  export async function readErrorBeforeEof(): Promise<{ readonly outcome: ReplyOutcome; readonly reads: number }> {
+    let reads = 0
+    async function* source(): AsyncGenerator<Uint8Array> {
+      reads += 1
+      yield new TextEncoder().encode('data: {"type":"error","code":"UNAVAILABLE","message":"The reply is unavailable"}\n\n')
+      reads += 1
+    }
+    const outcome = await readReplyStream(source())
+    return { outcome, reads }
+  }
+
   export async function leftRead(): Promise<boolean> {
     const leave = new AbortController()
     const reason = new Error("Stop")
@@ -60,7 +71,7 @@ module node {
     return reading.then(() => false, (answered: unknown) => answered === reason)
   }
 }
-import { agendaApp, leftRead, readSplit } from node
+import { agendaApp, leftRead, readErrorBeforeEof, readSplit } from node
 
 schema Created { conversation: { id: string } }
 const created = Schema.decodeUnknownOption(Created)
@@ -161,6 +172,14 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
     try Effect.try(() => assert.deepStrictEqual({ later: [later.outcome.kind, later.seen], extraField: extraField.outcome }, {
       later: ["Done", ["tool:CALCULATE:undefined", "acknowledgment:Sure."]],
       extraField: { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame does not match the reply protocol" },
+    }))
+  })
+
+  it.live('An error frame ends the read before EOF (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written")', effect () => {
+    const result = try host("terminal error before EOF", () => readErrorBeforeEof())
+    try Effect.try(() => assert.deepStrictEqual(result, {
+      outcome: { kind: "Failed", code: "UNAVAILABLE", message: "The reply is unavailable" },
+      reads: 1,
     }))
   })
 
