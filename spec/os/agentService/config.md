@@ -182,19 +182,28 @@ pure def lawOwnKeyLaunchIsFramedWithTheProviderKeyOrNone(d: AgentData, cred: C::
 pure val providerVersionValues = Set(0, 1, 2)
 ```
 
-### The agent admits every launch the service writes, given a launch frame with a key
+### A ready launch is admitted unless its backend needs a fitting credential and the frame lacks one
 
-A ready launch, sent with an admitted frame that carries a credential, passes
-the agent's own launch verdict, so the agent never exits 78 or 77 on a start
-the service judged ready.
+For a launch the service judged ready and an admitted frame, the agent
+returns its credential error when the backend needs a credential and the
+frame lacks one that fits. This includes a missing credential and a provider
+key longer than the own-key slot. Otherwise the agent admits the launch.
+An admitted frame never makes the agent refuse a ready launch as a
+configuration error.
 
 ```quint
-pure def readyDocumentAdmitted(v: StartVerdict, f: Launch::LaunchFrame): bool = match v {
-  | LaunchReady(r) => Launch::launchVerdict(r.launch.document, f) == Launch::LaunchAdmitted
+pure def readyLaunchMatchesCredential(doc: Launch::LaunchDocument, f: Launch::LaunchFrame): bool = {
+  val b = doc.backend
+  val expected = if (Launch::needsCredential(b) and not(Launch::credentialFits(b, f.credential)))
+    Launch::LaunchRefused({ cause: Launch::Credential }) else Launch::LaunchAdmitted
+  Launch::launchVerdict(doc, f) == expected
+}
+pure def readyVerdictMatchesCredential(v: StartVerdict, f: Launch::LaunchFrame): bool = match v {
+  | LaunchReady(r) => readyLaunchMatchesCredential(r.launch.document, f)
   | _ => true
 }
-pure def lawAgentAdmitsEveryReadyLaunch(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool =
-  (Launch::frameAdmitted(f) and Launch::hasCredential(f.credential)) implies readyDocumentAdmitted(startVerdict(d, cred, worker), f)
+pure def lawReadyLaunchFollowsFrameCredential(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, f: Launch::LaunchFrame): bool =
+  Launch::frameAdmitted(f) implies readyVerdictMatchesCredential(startVerdict(d, cred, worker), f)
 pure val workerValues = Set(RP::NoLaunchWorker, RP::NamedWorker({ runtimeDir: "files/worker", executable: "worker", sha256: "w1" }))
 pure val credValues = {
   val active = { ...C::initial, lastVersion: 1, custody: C::Active({ version: 1, credentialId: "c1", account: { userId: "user1", organizationId: "org1" }, keyExpiresAt: 1000 }) }
