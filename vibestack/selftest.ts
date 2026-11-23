@@ -3844,6 +3844,18 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
 
   test("a check that is interrupted, or that exits, ends each tool it started and what the tool started, in its process group or out of it, as it ends a tool that writes too much", { skip: process.platform === "win32" }, async () => {
     const root = scratch({
+      "short-watchdog.ts": read("vibestack/run.ts")
+        .replace(/^const TOOL_TIMEOUT = .*;$/m, "const TOOL_TIMEOUT = 500;")
+        .replace(/^const WATCH = .*;$/m, "const WATCH = 100;"),
+      "inherited-output.mjs": `import { spawn } from "node:child_process";
+const helper = spawn(process.execPath, ["-e", "setTimeout(() => {}, 4000)"], { stdio: ["ignore", process.stdout, "ignore"] });
+helper.once("spawn", () => process.exit(0));
+`,
+      "watchdog-check.mjs": `import assert from "node:assert/strict";
+import { exec } from "./short-watchdog.ts";
+const result = await exec(process.execPath, ["inherited-output.mjs"], import.meta.dirname);
+assert.ok(result.stopped, "the watchdog stopped the helper that kept stdout open");
+`,
       "tool.mjs": 'import { spawn } from "node:child_process";\nimport fs from "node:fs";\nconst started = [false, true].map((detached) => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached }).pid);\nfs.writeFileSync(process.argv[2], `${process.pid} ${started.join(" ")} `);\nsetInterval(() => {}, 1000);\nconst flood = () => { while (process.stdout.write("x".repeat(1 << 20))); process.stdout.once("drain", flood); };\nif (process.argv[3]) flood();\n',
       "check.mjs": `import { exec } from ${JSON.stringify(path.join(project, "vibestack/run.ts"))};\nvoid exec(process.execPath, ["tool.mjs", process.argv[2]], import.meta.dirname);\nprocess.stdin.once("data", () => process.exit(3));\n`,
     });
@@ -3852,6 +3864,8 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
     assert.match(flooded.stopped ?? "", /^node wrote more than \d+ MB of output and was stopped$/);
     const flooding = read("flood", root).trim().split(" ").map(Number);
     await until(() => !flooding.some(running), () => `a tool stopped for its output left ${flooding.filter(running).join(" and ")} running`);
+    const inherited = await exec(process.execPath, ["watchdog-check.mjs"], root);
+    assert.equal(inherited.status, 0, inherited.stdout + inherited.stderr);
     for (const how of ["SIGTERM", "SIGINT", "SIGHUP", "exit"] as const) {
       const checking = spawn(process.execPath, ["check.mjs", how], { cwd: root, stdio: ["pipe", "ignore", "inherit"] });
       const ended = new Promise((resolve) => checking.once("close", (code, signal) => resolve(signal ?? code)));

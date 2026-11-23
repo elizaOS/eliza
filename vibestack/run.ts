@@ -261,7 +261,7 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
         const idle = ran > TOOL_TIMEOUT && lastComplete !== undefined && now - lastComplete.since >= WATCH;
         if (!over && !idle && now - observedAt <= TOOL_TIMEOUT) return;
         const confirmed = WINDOWS ? sample : (await toolCpuSeconds([child], signal))[0];
-        if (!watched.has(child) || child.exitCode !== null || child.signalCode !== null) return;
+        if (!watched.has(child)) return;
         observe(confirmed, Date.now());
         if (over && confirmed && confirmed.seconds * 1000 > TOOL_TIMEOUT) stop(`used more than ${minutes} minutes of processor time`);
         else if (idle && confirmed?.complete && confirmed.seconds === sample?.seconds) stop(`ran for more than ${minutes} minutes, the last minute without the processor,`);
