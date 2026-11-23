@@ -409,15 +409,22 @@ effect function observeMessages(
   onSendUpdated: ((operationId: OperationId) => void) | undefined,
   onMmsSendUpdated: ((operationId: OperationId) => void) | undefined,
 ) {
+  let watching = true
   const forward = (handler: (operationId: OperationId) => void) => (data: unknown) => {
+    if (!watching) return
     const id = operationIdOf(typeof data === "object" && data !== null ? (data as Record<string, unknown>).operationId : undefined)
     if (id !== null) handler(id)
   }
-  const wanted: (readonly ["messagesChanged" | "smsSendUpdated" | "mmsSendUpdated", (data: unknown) => void])[] = [["messagesChanged", () => onChange()]]
+  const wanted: (readonly ["messagesChanged" | "smsSendUpdated" | "mmsSendUpdated", (data: unknown) => void])[] = [["messagesChanged", () => {
+    if (watching) onChange()
+  }]]
   if (onSendUpdated !== undefined) wanted.push(["smsSendUpdated", forward(onSendUpdated)])
   if (onMmsSendUpdated !== undefined) wanted.push(["mmsSendUpdated", forward(onMmsSendUpdated)])
   const added: { remove(): Promise<void> }[] = []
-  const removeAll = () => Promise.all(added.map((handle) => handle.remove()))
+  const removeAll = () => {
+    watching = false
+    return Promise.allSettled(added.map(async (handle) => handle.remove()))
+  }
   for (const [event, listener] of wanted) {
     const handle = nativeCall(PLUGIN, "addListener", () => plugin.addListener(event, listener)) catch effect (failure) => {
       try promise(removeAll)
@@ -430,8 +437,10 @@ effect function observeMessages(
     throw failure
   }
   return async () => {
-    await removeAll()
+    const removed = await removeAll()
     await settled(nativeCall(PLUGIN, "observeMessages", () => plugin.observeMessages({ enabled: false })))
+    const failed = removed.find((answer) => answer.status === "rejected")
+    if (failed !== undefined) throw failed.reason
   }
 }
 

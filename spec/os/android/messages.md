@@ -408,9 +408,11 @@ changed: a change in the message providers calls the change handler with
 nothing, and an SMS or MMS send update gives its own kind's handler only the
 send's operation ID. A send update whose ID is not well formed, or of a kind
 the screen did not ask to follow, reaches no handler. The watch adds its
-listeners before it turns observation on; when adding one or turning
-observation on fails, every listener already added is removed, and stopping
-removes them all and then turns observation off.
+listeners before it turns observation on. If setup fails, the watch stops
+forwarding notices, attempts to remove every listener it added, and returns
+the setup refusal. Stopping also stops forwarding immediately, attempts to
+remove every listener, and then turns observation off even if a listener
+cannot be removed.
 
 ```quint
 type ChangeNotice = MessagesChanged | SmsSendUpdated({ wellFormedId: bool }) | MmsSendUpdated({ wellFormedId: bool })

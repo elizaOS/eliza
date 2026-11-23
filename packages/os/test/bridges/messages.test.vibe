@@ -311,7 +311,7 @@ module android {
   }
 
   /** @throws {never} */
-  export function watching(plugin: MessagesNativePlugin, refused: { event?: string; observe?: boolean } = {}): Watch {
+  export function watching(plugin: MessagesNativePlugin, refused: { event?: string; observe?: boolean; remove?: string } = {}): Watch {
     const listeners: Watch["listeners"] = []
     const removed: string[] = []
     const observing: boolean[] = []
@@ -326,7 +326,10 @@ module android {
       addListener: async (event, listener) => {
         if (event === refused.event) throw rejection("This notice cannot be followed now", "unavailable")
         listeners.push([event, listener])
-        return { remove: async () => { removed.push(event) } }
+        return { remove: async () => {
+          removed.push(event)
+          if (event === refused.remove) throw rejection("This listener could not be removed", "remove-failed")
+        } }
       },
     }
     return { plugin: watched, listeners, removed, observing }
@@ -661,8 +664,13 @@ it.live("Keep my conversation list whole and current: a row too large to show ke
   try promise(() => follow(changeOnly, false))
   const observeRefused = watching(androidTelephony(phone), { observe: true })
   const observeFailure = try refusal(() => follow(observeRefused, true))
-  const listenerRefused = watching(androidTelephony(phone), { event: "mmsSendUpdated" })
+  const listenerRefused = watching(androidTelephony(phone), { event: "mmsSendUpdated", remove: "messagesChanged" })
   const listenerFailure = try refusal(() => follow(listenerRefused, true))
+  const removeRefused = watching(androidTelephony(phone), { remove: "messagesChanged" })
+  const stopAfterRefusedRemoval = try promise(() => follow(removeRefused, true))
+  const removeFailure = try refusal(stopAfterRefusedRemoval)
+  for (const watch of [listenerRefused, removeRefused])
+    for (const [, listener] of watch.listeners) listener({ operationId: "op-after-stop" })
 
   const left = (watch: ReturnType<typeof watching>) => ({ removed: watch.removed, observing: watch.observing })
   try Effect.try(() => assert.deepStrictEqual(
@@ -670,6 +678,7 @@ it.live("Keep my conversation list whole and current: a row too large to show ke
       threadPage, messagePage, onlyClipped, snippetRides, unnamedReason, bodyRides, otherKind, sameCursor, emptyWithCursor,
       watched, heard, stopped: left(all), changeOnly: changeOnly.listeners.map(([event]) => event),
       observeRefused: [observeFailure, left(observeRefused)], listenerRefused: [listenerFailure, left(listenerRefused)],
+      removeRefused: [removeFailure, left(removeRefused)],
     },
     {
       threadPage: { rows: [whole, clipped], next: "100:thread:3" },
@@ -687,6 +696,7 @@ it.live("Keep my conversation list whole and current: a row too large to show ke
       changeOnly: ["messagesChanged"],
       observeRefused: ["rejected permission-required", { removed: ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"], observing: [] }],
       listenerRefused: ["rejected unavailable", { removed: ["messagesChanged", "smsSendUpdated"], observing: [] }],
+      removeRefused: ["rejected remove-failed", { removed: ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"], observing: [true, false] }],
     },
   ))
 })
