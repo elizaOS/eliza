@@ -6,7 +6,7 @@ Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang
 
 ## Pull requests
 
-`vibestack` is the primary branch and the base for every pull request.
+The default branch is the primary branch and the base for every pull request.
 
 - Verify through the application's normal entry points that the top-level
   stories, rules, and Quint models are fully implemented and integrated.
@@ -182,7 +182,7 @@ errors in subscribers, since Node reports a thrown subscriber error as an uncaug
 
 ## Releasing
 
-Set `version` in the root `package.json`, merge to `vibestack`, and push the tag `vibestack-v<version>` from it.
+Set `version` in the root `package.json`, merge to the default branch, and push the tag `vibestack-v<version>` from it.
 `.github/workflows/release.yml` builds, packs with `pnpm pack`, materializes the shard prerequisites and runs `pnpm selftest --only --concurrency=1` using the same keys as CI, and attaches the tarball to a GitHub release of that tag.
 A project installs it as [the Vibestack guide, "Using it from another package"](vibestack/README.md#using-it-from-another-package) says.
 ## Architecture
@@ -431,8 +431,8 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
-| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `vibestack`. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
+| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
@@ -442,8 +442,9 @@ The run summary lists Turbo task times, cache status and exit codes.
 
 Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
-tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job and
-the commit: what a job of the same name last saved, or else another job's that holds the same.
+tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job, the
+lockfile and the commit. A job restores what a job of its name last saved under the same lockfile, or else under
+another: each entry is named by the tools and inputs that produced it, so a job reads only the entries that still apply.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
 The default branch's `verify` job publishes the pnpm store after the frozen
@@ -452,13 +453,14 @@ public packages only because fork pull requests can read it.
 Verification and release install both Chromium executables. In CI and nightly
 runs, shard A needs full Chromium for Bombadil. The other self-test shards
 run without a browser.
-CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache.
+CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache, only those a job
+of the same name saved.
 Branch pushes save results that later pushes and pull requests can restore. A pull request's
 own saves are scoped to that pull request. Newer commits replace an older run of the same pull
-request. Every branch push runs application verification and the Android Node lock check.
-Each tool self-test shard can finish and save its cache. The last job to enter
-its queue replaces any pending job for the same shard. Re-run a specific
-commit when you need the tool self-test results for that revision.
+request. Pushes to one branch run one at a time. A run that has started
+finishes and saves its caches, and the newest pushed commit replaces any run
+still waiting. Re-run a specific commit when you need the results for that
+revision; a re-run starts at once.
 The task entry point disables Turbo telemetry. Local `selftest:tools` tasks wait for the
 root and Studio tests. In CI, the verify job runs those integration tests once.
 Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
