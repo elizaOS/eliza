@@ -5,6 +5,7 @@ import {
   type Event, type RevisionCheck, type RunRecord, type Trigger, type TriggerType,
 } from "../../gen/agent__schedule__triggers.effect.vibe"
 import type { ConversationOwner } from "../conversation/turns.vibe"
+import type { ConversationNews } from "../host/module.vibe"
 import {
   countEnabledTriggers, getTrigger, listTriggerRuns, listTriggers, triggerKeeping,
   type StoredTrigger, type TriggerDetails, type TriggerRun as StoredRun,
@@ -417,10 +418,10 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
   }
 }
 
-export function openPromptTriggers(runtime: AgentRuntime, owner: ConversationOwner): PromptTriggers {
+export function openPromptTriggers(runtime: AgentRuntime, owner: ConversationOwner, news: ConversationNews): PromptTriggers {
   return promptTriggers({
     host: runtime,
-    delivery: triggerDelivery(runtime, owner),
+    delivery: triggerDelivery(runtime, owner, news),
     listen: (target) => startTriggerEvents(runtime, target),
     facts: scheduleFacts,
   })
