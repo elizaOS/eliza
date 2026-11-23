@@ -186,7 +186,7 @@ function statusText(status: MapsDeviceNavigationStatus): string {
     case "awaiting-confirmation": return status.route === undefined
       ? `The route to ${place} is on your phone. Press Start on the phone to begin guidance.`
       : `The route to ${place} is on your phone: ${durationText(status.route.durationSeconds)}, ${distanceText(status.route.distanceMeters)}${status.route.traffic === "live" ? "" : ", without live traffic"}. Press Start on the phone to begin guidance.`
-    case "awaiting-location": return `${place} is on the map. Use your current location in Maps on the phone to plan the route.`
+    case "awaiting-location": return `The phone's location isn't available, so the route to ${place} isn't planned yet. Where are you starting from? You can also enter a starting point in Maps on the phone.`
     case "navigating": return `Your phone is guiding you to ${place}.`
     case "selected": return `${place} is shown on your phone's map.`
     case "stopped": return status.placeName === undefined ? "Navigation is stopped on your phone." : `Navigation to ${place} is stopped on your phone.`
