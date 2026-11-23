@@ -81,7 +81,7 @@ module node {
     return "PlainSetting"
   }
 
-  export const workflowWorkerServiceType = "workflow-worker"
+  const workflowWorkerServiceType = "workflow-worker"
 
   export function workflowWorkerService(installed: () => WorkflowWorkerHost | undefined): ServiceClass {
     return class WorkflowWorker extends Service {
@@ -138,4 +138,4 @@ module node {
   }
 }
 
-export { measureWorker, workerHost, workflowWorkerService, workflowWorkerServiceType, type PinnedWorker, type WorkflowWorkerLaunch, type WorkerMeasure, type WorkerSecrets, type WorkerSpawnOptions, type WorkflowWorkerHost } from node
+export { measureWorker, workerHost, workflowWorkerService, type PinnedWorker, type WorkflowWorkerLaunch, type WorkerMeasure, type WorkerSecrets, type WorkerSpawnOptions, type WorkflowWorkerHost } from node

@@ -27,7 +27,7 @@ export type ProfileBindings = WorkerDatabase & NativeRegistryEnv & {
 }
 
 /** The Worker cannot serve yet: its profile, bindings, database, secrets or catalog fail a start check. */
-export error WorkerUnready { problem: string }
+error WorkerUnready { problem: string }
 
 interface Prepared {
   readonly profile: CloudProfile

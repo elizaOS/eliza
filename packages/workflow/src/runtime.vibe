@@ -112,12 +112,12 @@ function managedGoogle(runtime: IAgentRuntime): ManagedGoogleReads | undefined {
 }
 
 /** The device bridge a host registers as a runtime service. */
-export interface WorkflowDeviceService {
+interface WorkflowDeviceService {
   enrollment(): Promise<WorkflowDeviceEnrollment | undefined>
   perform(binding: WorkflowDeviceBinding, target: PhoneDeviceTarget, operation: WorkflowDeviceOperation): Promise<unknown>
 }
 /** The native digest bridge a host registers as a runtime service. */
-export interface WorkflowNativeDigestService {
+interface WorkflowNativeDigestService {
   grant(selection: HostedNativeSelection, expiresAt: number): Promise<{ readonly timeZone: string }>
   read(selection: HostedNativeSelection, at: number): Promise<string>
 }

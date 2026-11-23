@@ -87,7 +87,7 @@ const unavailable = (reason: "disabled" | "provider_error") => WorkerResponse.js
 const scopeHeader = "X-Clef-Rate-Limit-Scope"
 export type Scope = "organization-day" | "subscription-minute"
 
-export error DecisionLimited { scope: Scope }
+error DecisionLimited { scope: Scope }
 
 function workerTx(db: Client): Tx {
   return {

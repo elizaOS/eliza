@@ -89,7 +89,7 @@ function notStarted(result: ActionResult): boolean {
 }
 
 /** The plan entries one settled result contributes: one per effect receipt, or one keyed by the action and its parameters. */
-export function planStepsOf(action: string, params: Record<string, unknown>, result: ActionResult): PlanStep[] {
+function planStepsOf(action: string, params: Record<string, unknown>, result: ActionResult): PlanStep[] {
   const receipts = result.effectReceipts ?? []
   if (receipts.length > 0) {
     return receipts.map((receipt) => ({
@@ -159,7 +159,7 @@ function entryKey({ actionName, outcome, operation }: PlanStep): string {
 }
 
 /** Composes the reply from the steps' own text, the model's prose and every failure the turn still holds open. */
-export function settleReply(steps: readonly PlannedStep[], prose: string | undefined): string {
+function settleReply(steps: readonly PlannedStep[], prose: string | undefined): string {
   const plan = steps.flatMap(({ outcomes }) => outcomes)
   const open = openOutcomes(plan)
   const failed = failedOpen(plan)

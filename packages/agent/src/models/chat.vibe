@@ -22,7 +22,7 @@ interface Sink {
 }
 
 /** One decoded chat completion: its text, tool calls, finish reason, token use and replayable reasoning. */
-export interface Reply {
+interface Reply {
   readonly text: string
   readonly toolCalls: ToolCall[]
   readonly finishReason: string | undefined

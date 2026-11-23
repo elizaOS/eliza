@@ -26,15 +26,15 @@ export const PHONE_CATALOG_REVISION = "phone-workflow-catalog-6"
 /** The engine revision every typed save receipt binds. */
 export const PHONE_COMPILER_REVISION = "typed-workflow-engine-1"
 /** How long a pending device approval stays reviewable. */
-export const APPROVAL_LIFETIME_MS = 24 * 3_600_000
+const APPROVAL_LIFETIME_MS = 24 * 3_600_000
 /** The run output text of an occurrence that came due after its window. */
-export const TYPED_MISSED_TEXT = "The scheduled time passed while the agent was not running. This occurrence did not run and will not run later."
+const TYPED_MISSED_TEXT = "The scheduled time passed while the agent was not running. This occurrence did not run and will not run later."
 /** The run output text of an occurrence skipped behind an unfinished run. */
-export const TYPED_OVERLAP_TEXT = "An earlier run of this workflow was still active. This occurrence did not run."
+const TYPED_OVERLAP_TEXT = "An earlier run of this workflow was still active. This occurrence did not run."
 /** The metadata key marking an untyped definition whose generated code was checked. */
-export const GENERATED_METADATA_KEY = "elizaGeneratedWorkflowV1"
+const GENERATED_METADATA_KEY = "elizaGeneratedWorkflowV1"
 /** The run output text of a scheduled run the agent stopped before starting. */
-export const TYPED_STOPPED_TEXT = "The agent stopped before this scheduled run started. Nothing ran, and it will not run later."
+const TYPED_STOPPED_TEXT = "The agent stopped before this scheduled run started. Nothing ran, and it will not run later."
 
 /** A request the workflow routes refuse, with the bounded identity a client may match. */
 export error WorkflowRefused {

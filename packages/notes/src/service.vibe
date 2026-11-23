@@ -53,22 +53,20 @@ module edge {
 }
 import { isoOf, newUuid, priorNotesFile, readPriorNotes, run, sourceHash } from edge
 
-export { run as runNotes }
-
 /** The service type the Notes service registers under. */
-export const notesServiceType = "notes"
+const notesServiceType = "notes"
 
 /** The service type a host registers to prove that a device recording was erased. */
-export const notesRecordingCleanupVerifierServiceType = "notes-recording-cleanup-verifier"
+const notesRecordingCleanupVerifierServiceType = "notes-recording-cleanup-verifier"
 
 /** The setting whose value 3 turns on three-day Trash. */
-export const notesTrashRetentionSetting = "ELIZA_NOTES_TRASH_RETENTION_DAYS"
+const notesTrashRetentionSetting = "ELIZA_NOTES_TRASH_RETENTION_DAYS"
 
 /** The event stream a committed Notes change is published on. */
 export const notesStateUpdatedEvent = "notes:state-updated"
 
 /** Resolves true only once the host has confirmed this exact recording is gone. */
-export interface NotesRecordingCleanupVerifier {
+interface NotesRecordingCleanupVerifier {
   verifyRecordingCleanup(receipt: NotesTrashRecordingCleanup, signal?: AbortSignal): Promise<boolean>
 }
 

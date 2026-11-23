@@ -13,7 +13,7 @@ type Window = RoutineCreate["windows"][number]
 const windowHours: Readonly<Record<Window, number>> = { morning: 9, afternoon: 15, evening: 18, night: 21 }
 
 /** The starter routines offered during onboarding, each at most once. */
-export const starterRoutines: Readonly<Record<string, { readonly title: string; readonly windows: readonly Window[] }>> = {
+const starterRoutines: Readonly<Record<string, { readonly title: string; readonly windows: readonly Window[] }>> = {
   "brush-teeth": { title: "Brush teeth", windows: ["morning", "night"] },
   "drink-water": { title: "Drink water", windows: ["morning", "afternoon", "evening"] },
   stretch: { title: "Stretch", windows: ["afternoon"] },
@@ -37,7 +37,7 @@ effect function routineIndex() {
 }
 
 /** A routine as the owner's client reads it. */
-export function wireRoutine(record: RoutineRecord, state: Routines) {
+function wireRoutine(record: RoutineRecord, state: Routines) {
   return { id: record.routineId, title: record.title, windows: record.windows, status: wireStatus[state.definition], occurrence: state.occurrence, muted: state.muted }
 }
 
@@ -83,7 +83,7 @@ effect function offerTemplate(templateKey: string) {
 }
 
 /** Offers a starter routine from its template, creating it at most once. */
-export effect function seedStarter(templateKey: string) {
+effect function seedStarter(templateKey: string) {
   const template = starterRoutines[templateKey]
   if (template === undefined) return undefined
   if (!(try offerTemplate(templateKey))) return undefined
@@ -119,7 +119,7 @@ const occurrenceEvents = {
 } as const satisfies Record<OccurrenceAnswer["op"], Event["type"]>
 
 /** Answers a routine's current occurrence; an occurrence not shown yet cannot be answered. */
-export effect function answerOccurrence(routineId: string, answer: OccurrenceAnswer) {
+effect function answerOccurrence(routineId: string, answer: OccurrenceAnswer) {
   const record = (try routineIndex()).routines.find((routine) => routine.routineId === routineId)
   if (record === undefined) return undefined
   const event = { type: occurrenceEvents[answer.op] } as Event

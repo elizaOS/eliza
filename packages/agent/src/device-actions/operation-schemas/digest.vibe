@@ -27,7 +27,7 @@ function utf8(text: string): number[] {
 const rotate = (value: number, bits: number) => (value >>> bits) | (value << (32 - bits))
 
 /** The lowercase hex SHA-256 of a string's UTF-8 bytes, computed without platform crypto so the renderer and the agent agree. */
-export function sha256Hex(text: string): string {
+function sha256Hex(text: string): string {
   const bytes = utf8(text)
   const bitLength = bytes.length * 8
   bytes.push(0x80)

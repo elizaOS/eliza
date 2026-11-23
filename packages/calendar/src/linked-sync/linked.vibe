@@ -87,7 +87,7 @@ export function linkedCalendarSemanticText(event: LinkedCalendarSemanticEvent): 
 }
 
 /** The pre-normalization text older checkpoints hashed, still read until their next clean save. */
-export function legacySemanticText(event: LinkedCalendarSemanticEvent): string {
+function legacySemanticText(event: LinkedCalendarSemanticEvent): string {
   return semanticText(event, false)
 }
 

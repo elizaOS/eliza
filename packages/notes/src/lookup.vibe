@@ -28,7 +28,7 @@ export interface Indexed {
 export type NoteSelector = "title" | "query"
 
 /** Lookup text folded for comparison: NFC, trimmed, lowercase, single spaces. */
-export function normalizedLookup(value: string): string {
+function normalizedLookup(value: string): string {
   return value.normalize("NFC").trim().toLowerCase().normalize("NFC").replace(/\s+/gu, " ")
 }
 
@@ -42,7 +42,7 @@ function searchable(note: StickyNote): string {
 }
 
 /** Notes a query names: an exact title first, then whole-phrase, then contained text, then a title inside the query. */
-export function queryMatches(notes: readonly StickyNote[], value: string): Indexed[] {
+function queryMatches(notes: readonly StickyNote[], value: string): Indexed[] {
   const target = normalizedLookup(value)
   if (target === "") return []
   const indexed = notes.map((note, index) => ({ index, note }))

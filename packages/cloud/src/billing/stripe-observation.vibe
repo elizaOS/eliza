@@ -20,7 +20,7 @@ export function stripeClient(secret: string, apiUrl?: string) {
   return new Stripe(secret, { httpClient: client, maxNetworkRetries: 1, timeout: 6000 })
 }
 
-export function resourceId(value: string | { id: string } | null | undefined) {
+function resourceId(value: string | { id: string } | null | undefined) {
   return typeof value === "string" ? value : value?.id
 }
 
@@ -111,7 +111,7 @@ async function observeCatalog(stripe: Stripe, catalog: readonly [StripeCatalog, 
   return { observation, chargeIds, ongoing: Boolean(current) }
 }
 
-export async function catalogMatches(stripe: Stripe, env: StripeCatalog, forSale: boolean) {
+async function catalogMatches(stripe: Stripe, env: StripeCatalog, forSale: boolean) {
   if (env.STRIPE_PLAN !== "plus_monthly" && env.STRIPE_PLAN !== "pro_monthly") return false
   const plan = env.STRIPE_PLAN === "plus_monthly" ? "PlusMonthly" : "ProMonthly"
   const price = await stripe.prices.retrieve(env.STRIPE_PRICE_ID, { expand: ["product"] })

@@ -10,6 +10,7 @@ export error ModelUnavailable { reason: string }
 /** The owner could not be told. */
 export error DeliveryFailed { reason: string }
 /** A stored record is not the shape this package writes. */
+/** @public */
 export error RecordUnreadable { key: string }
 
 /** When a scheduled task comes due. */
@@ -134,7 +135,7 @@ export const scheduledTasksServiceType = "scheduled-tasks"
 const storePrefix = "eliza:personal-assistant:v1:"
 
 /** The agent database's cache as a key-value store, under this package's prefix; it cannot list or clear keys. */
-export function runtimeStore(runtime: IAgentRuntime): KeyValueStore.KeyValueStore {
+function runtimeStore(runtime: IAgentRuntime): KeyValueStore.KeyValueStore {
   const refused = (method: string, key?: string) => (cause: unknown) => new KeyValueStore.KeyValueStoreError({ message: `The agent store refused ${method}`, method, key, cause })
   const unlisted = (method: string) => Effect.fail(new KeyValueStore.KeyValueStoreError({ message: "The agent store keeps no key listing", method }))
   return KeyValueStore.makeStringOnly({
@@ -191,7 +192,7 @@ effect function agentScheduler(runtime: IAgentRuntime) {
 const unavailable = (cause: unknown) => new SchedulerUnavailable({ reason: cause instanceof Error ? cause.message : String(cause) })
 
 /** The Scheduler over the agent's scheduled-tasks service. */
-export function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
+function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
   return {
     effect create(task) {
       const tasks = try agentScheduler(runtime)
@@ -215,7 +216,7 @@ export function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
 }
 
 /** The Model over the runtime's small text model. */
-export function runtimeModel(runtime: IAgentRuntime): Model.Shape {
+function runtimeModel(runtime: IAgentRuntime): Model.Shape {
   return {
     effect complete(system, prompt, maxTokens) {
       const text = try tryPromise({
@@ -229,7 +230,7 @@ export function runtimeModel(runtime: IAgentRuntime): Model.Shape {
 }
 
 /** The Presenter over the agent's notifications and the conversation the reminder was asked in. */
-export function runtimePresenter(runtime: IAgentRuntime): Presenter.Shape {
+function runtimePresenter(runtime: IAgentRuntime): Presenter.Shape {
   const failed = (cause: unknown) => new DeliveryFailed({ reason: cause instanceof Error ? cause.message : String(cause) })
   return {
     effect present({ taskId, kind, roomId, presentation }) {
@@ -263,7 +264,7 @@ module node {
 import { hostZoneName } from node
 
 /** The Facts of the running host and agent. */
-export function runtimeFacts(runtime: IAgentRuntime): Facts.Shape {
+function runtimeFacts(runtime: IAgentRuntime): Facts.Shape {
   const setting = (name: string) => {
     const zone = runtime.getSetting(name)
     return typeof zone === "string" ? zone.trim() : ""
@@ -277,7 +278,7 @@ export function runtimeFacts(runtime: IAgentRuntime): Facts.Shape {
 }
 
 /** The service type the agent registers the owner's approval queue under. */
-export const ownerApprovalsServiceType = "owner_approvals"
+const ownerApprovalsServiceType = "owner_approvals"
 
 interface OwnerApprovals extends Service {
   list(query: { readonly phases: { readonly tag: "AllPhases" }; readonly limit: number }): Promise<readonly ApprovalView[]>
@@ -286,7 +287,7 @@ interface OwnerApprovals extends Service {
 const isOwnerApprovals = (service: Service | null): service is OwnerApprovals => service !== null && typeof Reflect.get(service, "list") === "function"
 
 /** The Approvals over the agent's owner approval queue. */
-export function runtimeApprovals(runtime: IAgentRuntime): Approvals.Shape {
+function runtimeApprovals(runtime: IAgentRuntime): Approvals.Shape {
   return {
     effect list() {
       const queue = runtime.getService<Service>(ownerApprovalsServiceType)
@@ -297,7 +298,7 @@ export function runtimeApprovals(runtime: IAgentRuntime): Approvals.Shape {
 }
 
 /** The service type a calendar plugin registers its owner-scoped event reads under. */
-export const calendarServiceType = "calendar"
+const calendarServiceType = "calendar"
 
 interface CalendarReads extends Service {
   eventsBetween(window: { readonly startAt: number; readonly endAt: number }): Promise<readonly CalendarEventFacts[]>
@@ -306,7 +307,7 @@ interface CalendarReads extends Service {
 const isCalendarReads = (service: Service | null): service is CalendarReads => service !== null && typeof Reflect.get(service, "eventsBetween") === "function"
 
 /** The Calendar over a calendar plugin's event reads; without one the owner has no events to report. */
-export function runtimeCalendar(runtime: IAgentRuntime): Calendar.Shape {
+function runtimeCalendar(runtime: IAgentRuntime): Calendar.Shape {
   return {
     effect events(startAt, endAt) {
       const reads = runtime.getService<Service>(calendarServiceType)

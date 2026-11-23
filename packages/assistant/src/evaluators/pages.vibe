@@ -2,7 +2,7 @@
 import type { Memory } from "@elizaos/core"
 import { previousPage, restorationDecision, type EvidencePage, type EvidencePageStatus, type EvidenceRow } from "../../gen/assistant__evaluatorEvidencePages.effect.vibe"
 
-export type { EvidencePage, EvidencePageStatus, EvidenceRow }
+export type { EvidencePageStatus }
 
 const transportFields = new Set(["recovery", "recoveryToken", "transport", "clientMessageId"])
 

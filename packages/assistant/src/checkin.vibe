@@ -17,7 +17,7 @@ const recentWindow = 86_400_000
 const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
 /** How a rendered summary reads for the report day: a valid answer, blank, refused, or about another day. */
-export function judgeSummary(text: string | undefined, reportDate: string): RenderResult {
+function judgeSummary(text: string | undefined, reportDate: string): RenderResult {
   if (text === undefined) return "NoModel"
   const summary = text.trim()
   if (summary === "") return "BlankSummary"
@@ -48,7 +48,7 @@ function clockOf(at: string | number | undefined, now: number): ChangeClock {
 }
 
 /** The clocks a check-in reads an event's change from: the provider's edit or creation time for a synced copy, the writer's for a local one. */
-export function eventClocks(event: CalendarEventFacts, now: number, zone: string): EventClocks {
+function eventClocks(event: CalendarEventFacts, now: number, zone: string): EventClocks {
   return {
     synced: event.synced, malformed: !event.metadataValid,
     editedClock: clockOf(event.providerEditedAt, now), createdClock: clockOf(event.providerCreatedAt, now),
