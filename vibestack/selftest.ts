@@ -3,6 +3,7 @@
 // small specs in vibestack/fixtures/, breaks one thing, and asserts which stage of `check` fails.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import { request as httpRequest } from "node:http";
 import { stripTypeScriptTypes } from "node:module";
@@ -15,7 +16,7 @@ import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
 import { cacheCredentials, collectGarbage, isActionEntry, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
-import { exec, run as tool } from "./run.ts";
+import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
 import { filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
 import { profile } from "./testing/profile.ts";
@@ -3817,6 +3818,27 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
       const unanswered = { ...model, harness: text };
       await assert.rejects(simulate({ ...harness, model: unanswered, files: harnessFiles(spec, [spec], unanswered) }, "inv", 30, 300, "probe"), said);
       assert.ok(fs.existsSync(path.join(root, "gen/traces/t.inv.probe/t.run.qnt")), "`quint run` says why the evaluator gave no answer");
+    }
+  });
+
+  test("a verifier retains the CPU used by a helper it has already waited for", { skip: process.platform !== "linux" && process.platform !== "darwin" }, async () => {
+    const root = scratch({
+      "helper.mjs": 'const start = process.cpuUsage();\nfor (;;) { const cpu = process.cpuUsage(start); if (cpu.user + cpu.system >= 300_000) break; }\n',
+      "verifier.mjs": 'import { spawnSync } from "node:child_process";\nprocess.on("message", () => { const child = spawnSync(process.execPath, ["helper.mjs"]); process.send(child.status); });\nprocess.send("ready");\n',
+    });
+    const verifier = spawn(process.execPath, ["verifier.mjs"], { cwd: root, stdio: ["ignore", "ignore", "inherit", "ipc"] });
+    const closed = once(verifier, "close");
+    try {
+      await once(verifier, "message");
+      const [before] = toolCpuSeconds([verifier]);
+      const reaped = once(verifier, "message");
+      verifier.send("work");
+      assert.equal((await reaped)[0], 0);
+      const [after] = toolCpuSeconds([verifier]);
+      assert.ok(before?.complete && after?.complete && after.seconds - before.seconds >= 0.28, `CPU seconds before ${before?.seconds}, after ${after?.seconds}`);
+    } finally {
+      verifier.kill();
+      await closed;
     }
   });
 
