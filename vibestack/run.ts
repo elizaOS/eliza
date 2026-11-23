@@ -166,7 +166,7 @@ export async function toolCpuSeconds(children: ChildProcess[], signal?: AbortSig
     }
     if (!known.size) return undefined;
     if (leader !== undefined && known.size === pids.length) return { seconds, complete: true };
-    return { seconds: leader === undefined ? 0 : lowerBound, complete: false, known };
+    return { seconds: lowerBound, complete: false, known };
   });
 }
 

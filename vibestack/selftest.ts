@@ -3824,6 +3824,16 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
   test("a verifier retains the CPU used by a helper it has already waited for", { skip: process.platform !== "linux" && process.platform !== "darwin" }, async () => {
     const root = scratch({
       "helper.mjs": 'const start = process.cpuUsage();\nfor (;;) { const cpu = process.cpuUsage(start); if (cpu.user + cpu.system >= 300_000) break; }\n',
+      "inherited.mjs": `import fs from "node:fs";
+import { setTimeout as wait } from "node:timers/promises";
+while (!fs.existsSync("work")) await wait(20);
+await import("./helper.mjs");
+fs.writeFileSync("writer-work", "complete");
+setInterval(() => {}, 60_000);`,
+      "handoff.mjs": `import fs from "node:fs";
+import { spawn } from "node:child_process";
+const writer = spawn(process.execPath, ["inherited.mjs"], { stdio: ["ignore", process.stdout, process.stderr] });
+writer.once("spawn", () => { fs.writeFileSync("writer.pid", String(writer.pid)); process.exit(0); });`,
       "verifier.mjs": 'import { spawnSync } from "node:child_process";\nprocess.on("message", () => { const child = spawnSync(process.execPath, ["helper.mjs"]); process.send(child.status); });\nprocess.send("ready");\n',
     });
     const verifier = spawn(process.execPath, ["verifier.mjs"], { cwd: root, stdio: ["ignore", "ignore", "inherit", "ipc"] });
@@ -3839,6 +3849,21 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
     } finally {
       verifier.kill();
       await closed;
+    }
+    const leader = spawn(process.execPath, ["handoff.mjs"], { cwd: root, detached: true, stdio: ["ignore", "pipe", "inherit"] });
+    const outputClosed = once(leader, "close");
+    await once(leader, "exit");
+    const writer = Number(read("writer.pid", root));
+    try {
+      const [before] = await toolCpuSeconds([leader]);
+      fs.writeFileSync(path.join(root, "work"), "");
+      await until(() => fs.existsSync(path.join(root, "writer-work")));
+      const [after] = await toolCpuSeconds([leader]);
+      assert.ok(before && !before.complete && after && !after.complete);
+      assert.ok(after.seconds - before.seconds >= 0.28, "the surviving writer continued to use CPU");
+    } finally {
+      process.kill(writer, "SIGKILL");
+      await outputClosed;
     }
   });
 
