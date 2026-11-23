@@ -4036,12 +4036,12 @@ module node {
         { clientId: otherClient, androidPackage: otherClient, environment: "staging", displayName: "Other", signInReturn: otherRedirect,
           billingReturn: web + "/other/billing", certFingerprints: [Array(32).fill("BB").join(":")], enabled: true },
       ]) }
-      assert.deepStrictEqual([
+      const leaseOffers = [
         await offersMailLease(env),
         await offersMailLease(withoutLeaseKey),
         await offersMailLease({ ...env, DEVICE_LEASE_SEAL_KEY: "invalid" }),
         await offersMailLease(anotherRegistration, otherClient, otherRedirect),
-      ], [[200, true], [200, false], [200, false], [200, false]])
+      ]
       const get = (path: string, cookie?: string) => worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + path, {
         headers: cookie ? { origin: web, cookie: "__Host-eliza-session=" + cookie } : { origin: web },
       }), env)
@@ -4343,7 +4343,7 @@ module node {
       revokeListing = "grant"
       const disconnected = await get(folder, signedBackIn.access)
       return {
-        arrivalResult, triage, search, mailboxes, deniedFolders, tabletReads, signedOut: signedOut.status, disconnected: disconnected.status,
+        arrivalResult, triage, search, mailboxes, deniedFolders, tabletReads, leaseOffers, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
         organization, grant, manifest, mailText, html, mime: [mime, mimeAttachment.status, mimeFile.dataBase64, mimeMalformed.status],
         readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
@@ -4374,6 +4374,7 @@ it.live('Read complete mail text, open an attachment, watch for new mail and rea
     {
       arrivals: got.arrivalResult,
       tablet: got.tabletReads,
+      leaseOffers: got.leaseOffers,
       text: got.mailText,
       html: got.html,
       mime: got.mime,
@@ -4387,6 +4388,7 @@ it.live('Read complete mail text, open an attachment, watch for new mail and rea
       device: [got.refused, got.beforeDeviceRead, got.deviceStatus, got.deviceReceipt, got.changed, got.revoked],
     },
     {
+      leaseOffers: [[200, true], [200, false], [200, false], [200, false]],
       arrivals: {
         baseline: [200, "no-store", false, true, 200, false],
         polling: [true, false, true, true],
