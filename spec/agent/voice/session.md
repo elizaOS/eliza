@@ -269,6 +269,74 @@ pure def lawAOneWordAnswerIsKept(heard: HeardTurn): bool = (heard.words == 1 and
 pure def sometimesAnUtteranceWaitsForItsGap(s: VoiceSession): bool = s.utterance == GapWaiting and s.hasText
 ```
 
+### Without a scorer, how an utterance ends says how likely it is finished
+
+`scoreEndOfTurnHeuristic` reads only the end of the transcript, first
+match first: nothing said is 50 %; a trailing ellipsis 20 %; a final `!`
+or `?` 95 %; a closing question tag ("right?", "okay?", "yeah") 85 %. A
+final full stop is often the recogniser's, so it is set aside and the last
+word decides: an amount left open (a digit and a comma, a currency sign,
+or a number followed by "point") is 20 %; a full stop after a word that
+can end a sentence is 95 %; a dangling conjunction ("and", "because") is
+15 %; a dangling filler, article, preposition or auxiliary ("um", "the",
+"to", "could") is 20 %; otherwise fewer than three words are 70 % and
+anything longer 50 %. Only a finished sentence or a question tag scores
+85 % or more, and only an unfinished ending scores 20 % or less.
+
+```quint
+type UtteranceEnding = NothingSaid | TrailsOff | AsksOrExclaims | QuestionTag | OpenAmount | FullStop
+  | DanglingConjunction | DanglingWord | ShortPhrase | PlainPhrase
+pure def endOfTurnPercent(ending: UtteranceEnding): int = match ending {
+  | NothingSaid => 50 | TrailsOff => 20 | AsksOrExclaims => 95 | QuestionTag => 85 | OpenAmount => 20 | FullStop => 95
+  | DanglingConjunction => 15 | DanglingWord => 20 | ShortPhrase => 70 | PlainPhrase => 50 }
+pure def lawOnlyAFinishedSentenceOrAQuestionTagScoresComplete(ending: UtteranceEnding): bool =
+  (endOfTurnPercent(ending) >= 85) iff (ending == AsksOrExclaims or ending == QuestionTag or ending == FullStop)
+pure def lawOnlyAnUnfinishedEndingScoresTwentyOrLess(ending: UtteranceEnding): bool =
+  (endOfTurnPercent(ending) <= 20) iff (ending == TrailsOff or ending == OpenAmount or ending == DanglingConjunction or ending == DanglingWord)
+```
+
+### The turn signal lets the agent speak only for an accepted, addressed turn that is not its own voice, and keeps the floor with the person while the utterance is likely unfinished
+
+`buildVoiceTurnSignal` answers `{endOfTurnProbability, nextSpeaker,
+agentShouldSpeak, source}` for a transcript. Without a wake word the agent
+should speak only for a turn the gate above accepts, and not for a
+bystander: a speaker attributed with at least 70 % confidence who is
+neither the owner nor an enrolled speaker. A wake word is an explicit
+address: it overrides the gate and the bystander for anything but a sound
+annotation. A voice measured as the agent's own (at least the given
+threshold, 70 % by default) while the echo window is open is never
+answered. The next speaker is the agent only when it should speak and the
+heuristic above is at least 40 %. The source names what decided:
+`client-ambient+self-voice`, then `+wakeword`, then `+diarization` when a
+speaker was attributed, else `client-ambient`.
+
+```quint
+type SignalSource = AmbientSource | DiarizedSource | WakeWordSource | SelfVoiceSource
+type TurnSignalInput = { heard: HeardTurn, soundOnly: bool, wakeWord: bool, attributed: bool, bystander: bool, ownVoice: bool, finishedPercent: int }
+type TurnSignal = { agentShouldSpeak: bool, agentNext: bool, source: SignalSource }
+pure val turnSignalFloorPercent = 40
+pure def turnSignal(given: TurnSignalInput): TurnSignal = {
+  val selfVoice = given.ownVoice and echoWindowOpen(given.heard)
+  val addressed = if (given.wakeWord) not(given.soundOnly) else (turnAccepted(given.heard) and not(given.bystander))
+  val speaks = addressed and not(selfVoice)
+  { agentShouldSpeak: speaks, agentNext: speaks and given.finishedPercent >= turnSignalFloorPercent,
+    source: if (selfVoice) SelfVoiceSource else if (given.wakeWord) WakeWordSource else if (given.attributed) DiarizedSource else AmbientSource }
+}
+pure val ambient: TurnSignalInput = { heard: spoken, soundOnly: false, wakeWord: false, attributed: false, bystander: false, ownVoice: false, finishedPercent: 95 }
+pure val givenValues = Set(ambient, { ...ambient, finishedPercent: 20 }, { ...ambient, heard: { ...spoken, onlyFiller: true } },
+  { ...ambient, attributed: true, bystander: true }, { ...ambient, attributed: true, bystander: true, wakeWord: true },
+  { ...ambient, wakeWord: true, soundOnly: true, heard: { ...spoken, words: 0 } }, { ...ambient, ownVoice: true },
+  { ...ambient, ownVoice: true, heard: { ...spoken, agentSpeaking: true } }, { ...ambient, ownVoice: true, wakeWord: true, heard: { ...spoken, agentSpeaking: true } })
+pure def lawWithoutAWakeWordOnlyAnAcceptedTurnFromNoBystanderIsAnswered(given: TurnSignalInput): bool =
+  (not(given.wakeWord) and turnSignal(given).agentShouldSpeak) implies (turnAccepted(given.heard) and not(given.bystander))
+pure def lawTheAgentsOwnVoiceIsNeverAnswered(given: TurnSignalInput): bool =
+  (given.ownVoice and echoWindowOpen(given.heard)) implies (not(turnSignal(given).agentShouldSpeak) and turnSignal(given).source == SelfVoiceSource)
+pure def lawAWakeWordIsAnsweredUnlessItIsOnlyASoundOrTheAgentsOwnVoice(given: TurnSignalInput): bool =
+  (given.wakeWord and not(given.soundOnly) and not(given.ownVoice)) implies turnSignal(given).agentShouldSpeak
+pure def lawTheFloorStaysWithThePersonWhileTheUtteranceIsLikelyUnfinished(given: TurnSignalInput): bool =
+  turnSignal(given).agentNext iff (turnSignal(given).agentShouldSpeak and given.finishedPercent >= 40)
+```
+
 ### Dictation never submits by itself
 
 Each accepted transcript becomes draft text the person reviews and sends;
