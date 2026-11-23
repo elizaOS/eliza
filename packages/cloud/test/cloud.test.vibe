@@ -568,7 +568,7 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const rotate = (refresh: string) => cloud.call("/api/v1/app-auth/mobile/lease", { method: "POST", headers: bearer(refresh) })
     const pairOf = (answer: { readonly body: unknown }) => answer.body as { readonly access: string; readonly accessExpiresIn: number; readonly refresh: string; readonly refreshExpiresIn: number }
     const mail = (token: string) => cloud.call("/api/v1/eliza/google/status", { headers: bearer(token) })
-    const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: "Grace tablet" } })
+    const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: "Kitchen tablet" } })
     const tokenBody = { ...binding, grantType: "authorization_code", code: (connected.body as { readonly code: string }).code, state, codeVerifier: verifier }
     const first = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
     const lostReply = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })

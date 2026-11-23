@@ -231,7 +231,7 @@ pure def sometimesSteppedUpAtSignIn(f: Family): bool = isActive(f, f.seenEpoch) 
 
 ## Story: Keep a tablet signed in to mail and calendar
 
-> As an older person using a Grace tablet, I want it to stay signed in to my
+> As an older owner using a tablet at home, I want it to stay signed in to my
 > mail and calendar like a phone app does, without asking me to sign in
 > again every week, while the assistant on it can never read or send my mail
 > with its own key, so that only signing out, removing the account, a
