@@ -1,5 +1,5 @@
 // spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/routines.md, "A starter routine is created at most once for each template"; spec/assistant/routines.md, "An occurrence is answered only after it was shown"; spec/assistant/routines.md, "An unanswered occurrence expires when its window ends"; spec/assistant/routines.md, "A muted routine shows nothing until it is unmuted"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/routines.md, "A creation with an idempotency key creates at most one definition"; spec/assistant/routines.md, "A change answers with the definition as saved, and a deletion answers deleted"
-import { createReminderPresentation, type IAgentRuntime } from "@elizaos/core"
+import { createReminderPresentation, stringToUuid, type IAgentRuntime } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
 import { Machine, Rejected, stored, type DefinitionStatus, type Event, type Routines } from "../gen/assistant__routines.effect.vibe"
 import { Facts, Presenter, Scheduler, onAgent, readRecord, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
@@ -57,7 +57,7 @@ effect function routineState(routineId: string) {
 export effect function createRoutine(input: RoutineCreate) {
   const index = try routineIndex()
   const known = index.keys[input.idempotencyKey]
-  const routineId = known ?? `routine-${encodeURIComponent(input.idempotencyKey)}`
+  const routineId = known ?? `routine-${stringToUuid(input.idempotencyKey)}`
   if (known === undefined) {
     const scheduler = try Scheduler
     const zone = try ownerClockAt(try (try Facts).now())

@@ -1,5 +1,5 @@
 // spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"
-import { createReminderPresentation, type Action, type ActionResult, type IAgentRuntime, type Memory, type Provider, type UUID } from "@elizaos/core"
+import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type IAgentRuntime, type Memory, type Provider, type UUID } from "@elizaos/core"
 import { Machine, machine, recoveredChoice, type DeliveryChoice, type ReminderClock, type ReminderIntent } from "../gen/assistant__reminders.effect.vibe"
 import {
   DeliveryFailed, Facts, Model, Presenter, Scheduler, SchedulerUnavailable, onAgent,
@@ -72,7 +72,7 @@ export type ReminderOutcome =
 
 const saveAction = "OWNER_REMINDERS"
 
-/** Saves the reminder the plan proposes, only after the owner's own message is checked again, at most once per message. */
+/** Saves the reminder the plan proposes, only after the owner's own message is checked again, at most once per plan of a message. */
 export effect function createReminder(request: ReminderRequest) {
   const planned = decodePlan(request.plan)
   if (Option.isNone(planned)) return { kind: "malformed" } satisfies ReminderOutcome
@@ -102,7 +102,7 @@ export effect function createReminder(request: ReminderRequest) {
     if (at === undefined) return { kind: "badTime", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
     if (at <= now) return { kind: "past", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
     const destination = destinationOf(recoveredChoice(checked.plannedDestination, checked.extractedDestination))
-    const key = `reminder:${request.messageId}`
+    const key = `reminder:${request.messageId}:${stringToUuid(JSON.stringify([plan.title, plan.due]))}`
     const facts = { operation: "reminder.create", kind: "reminder", id: key, key }
     const scheduler = try Scheduler
     const task = {
