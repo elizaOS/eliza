@@ -652,13 +652,13 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     stableReference: [asked.includes("ada.lovelace@gmail.com"), asked.includes("__ELIZA_"), replayed === asked],
     cut: cut.text, cutCalls,
     parsed: parsed.text, parseCalls,
-    mixed: limitedResend.failureKind, mixedCalls,
+    mixed: [limitedResend.failureKind, limitedResend.planAction], mixedCalls,
   }, {
     first: "First answer.", sameSystem: true, screenNoteLast: true, hostLabels: 1, screenNoteOutOfSystem: true, uncapped: true,
     waited: "After the wait.", waitedCalls: 2, noticeUnread: true, stableReference: [false, true, true],
     cut: cutOffReply, cutCalls: 1,
     parsed: "Read on the second try.", parseCalls: 2,
-    mixed: "rate_limited", mixedCalls: 2,
+    mixed: ["limit_reached", undefined], mixedCalls: 2,
   }))
 }, 120_000)
 
