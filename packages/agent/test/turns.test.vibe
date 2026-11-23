@@ -489,7 +489,7 @@ it.live(`A long conversation sends the same history turn after turn, and the exc
 
 const browserTurn = 'spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"'
 
-it.live(`The open Browser page reaches the model once, fenced as web content from its host, is stored with its message, an unbound page is neither stored nor shown, and a reported location comes with the note never to guess a street from it (${browserTurn}; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes")`, effect () => {
+it.live(`The open Browser page reaches the model once, fenced as web content from its host, is stored with its message, an unbound page is neither stored nor shown, a page the phone could not read is shown as unreadable with the note not to reload it while a sign-in page keeps its own wording, and a reported location comes with the note never to guess a street from it (${browserTurn}; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try cloudAgent(cloud)
   const { id } = try conversation(agent)
@@ -515,6 +515,15 @@ it.live(`The open Browser page reaches the model once, fenced as web content fro
   const hidden = turnOf()
   const storedStale = try host("stale message", () => agent.agent.runtime.getMemoryById(stale.userMessageId as UUID))
 
+  try Effect.sync(() => cloud.script(text("I can't read that page here.")))
+  const unreadablePage = { tabId: "tab-1", revision: "3", url: "https://bank.example/statement", title: "Statement", capturedAt: 1_795_000_000_000, withheld: "unreadable" }
+  try send(agent, id, { text: "Summarize this page in two sentences", metadata: { observation, browserPage: unreadablePage } })
+  const unread = turnOf()
+
+  try Effect.sync(() => cloud.script(text("I can't see that page's text.")))
+  try send(agent, id, { text: "Summarize this page", metadata: { observation, browserPage: { ...unreadablePage, url: "https://bank.example/login", title: "Sign in", withheld: "sensitive-page" } } })
+  const signIn = turnOf()
+
   try Effect.sync(() => cloud.script(text("Somewhere around New York.")))
   const location = { latitude: 40.7128, longitude: -74.006, accuracyMeters: 25_000, capturedAt: Date.now() }
   try send(agent, id, { text: "Where am I?", metadata: { observation: { view: "home", revision: 6, sensitive: false, location } } })
@@ -532,10 +541,17 @@ it.live(`The open Browser page reaches the model once, fenced as web content fro
     storedBound: (storedBound?.content.metadata as { browserPage?: unknown } | undefined)?.browserPage,
     hidden: hidden.includes("Researchers found") || hidden.includes("browserPage is the web page"),
     storedStale: "browserPage" in ((storedStale?.content.metadata ?? {}) as object),
+    unreadable: [
+      unread.includes("address: https://bank.example/statement") && unread.includes("text: withheld. The phone cannot read this page's text: only its title and address are known, and reloading or reopening it will not change that."),
+      unread.includes("Tell the owner you cannot read the page here") && unread.includes("Do not reload, refresh, reopen or navigate unless the owner asked for that, and do not offer to."),
+      unread.includes("sign-in, account or one-time-code"), shown.includes("Do not reload, refresh, reopen"),
+      signIn.includes("address: https://bank.example/login") && signIn.includes("text: withheld. The phone shares no text from a page that may hold sign-in, account or one-time-code details."),
+      signIn.includes("Do not reload, refresh, reopen") || signIn.includes("cannot read this page's text"),
+    ],
     location: [located.includes('"accuracyMeters":25000'), located.includes("Never guess a street, neighbourhood or city from its coordinates"), located.includes("An accuracyMeters over 1000 is a rough estimate: name only the area"), shown.includes("last known position")],
   }, {
     page: 1, source: true, address: true, link: true, cut: true, closes: 1, opens: 1, inJson: false,
-    storedBound: page, hidden: false, storedStale: false, location: [true, true, true, false],
+    storedBound: page, hidden: false, storedStale: false, unreadable: [true, true, false, false, true, false], location: [true, true, true, false],
   }))
 }, 120_000)
 
