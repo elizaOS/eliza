@@ -1,6 +1,7 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, EffectReceipt, Memory, UUID } from "@elizaos/core"
+import { ChannelType, OWNER_EXCLUSIVE_DISCLOSURE_GATE } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
@@ -139,6 +140,52 @@ effect function send(agent: InProcess, id: string, body: object, headers?: Reado
 }
 
 const replyOf = (answer: { readonly body: unknown }) => answer.body as Reply
+
+it.live('Check the stored private audience for the current owner turn (spec/agent/conversation/ownerAudience.md, "Story: Use my private records in my own conversation")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const action = "READ_PRIVATE_FIXTURE"
+  const invoked: UUID[] = []
+  const plugin: AgentPlugin = {
+    name: "owner-audience-fixture",
+    description: "Read a private synthetic record.",
+    actions: [{
+      name: action, description: "Read the private fixture.",
+      contextGate: { contexts: ["general"] },
+      disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+      roleGate: { minRole: "OWNER" },
+      validate: async () => true,
+      handler: async (_runtime, message) => {
+        invoked.push(message.roomId)
+        return { success: true, text: "The fixture code is violet." }
+      },
+    }],
+  }
+  const agent = try startInProcess({
+    launch: { callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, load: [plugin.name], allowed: ["REPLY", "IGNORE", "NONE", action] },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map([[plugin.name, plugin]]),
+  })
+  const privateRoom = try conversation(agent)
+  const sharedRoom = try conversation(agent)
+  const runtime = agent.agent.runtime
+  try host("mark the second conversation as shared", async () => {
+    const room = await runtime.getRoom(sharedRoom.roomId)
+    if (!room) throw new Error("The shared fixture has no room")
+    await runtime.updateRooms([{ ...room, type: ChannelType.GROUP }])
+  })
+  try Effect.sync(() => cloud.script(toolCalls("", { name: action, arguments: {} }), text("The fixture code is violet.")))
+  const admitted = try send(agent, privateRoom.id, { text: "Read the private fixture." })
+  try Effect.sync(() => cloud.script(toolCalls("", { name: action, arguments: {} }), text("I can’t read that record in this conversation.")))
+  const refused = try send(agent, sharedRoom.id, { text: "Read the private fixture.", channelType: "DM",
+    metadata: { observation: { view: "home", revision: 1, sensitive: false }, audience: "owner_private" } })
+  try Effect.try(() => {
+    assert.deepStrictEqual(invoked, [privateRoom.roomId])
+    assert.strictEqual(admitted.status, 200)
+    assert.include(replyOf(admitted).text, "violet")
+    assert.strictEqual(refused.status, 200)
+    assert.notInclude(JSON.stringify(refused.body), "violet")
+  })
+}, 120_000)
 
 it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix and live wait, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again")', effect () => {
   const cloud = try cloudFake(deviceKey)

@@ -2,8 +2,10 @@
 import {
   type Action, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
-  executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
+  attestDeliveryAudienceFromCanonicalRoom, beginTrustedDeliveryAudienceTurn, executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
+// spec/agent/conversation/ownerAudience.md, "The agent checks the stored room when an owner turn offers a disclosure-gated tool"; spec/agent/conversation/ownerAudience.md, "The audience lease ends with the turn"
+import { privateAudienceCheckNeeded } from "../../gen/agent__conversation__ownerAudience.ts"
 import { hostNoteLabels } from "../../gen/agent__conversation__planning.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { groundedEventReply, groundedTimeReply, turnClock } from "./clock.vibe"
@@ -179,6 +181,7 @@ async function respond(
       const responseMessages: Memory[] = []
       let planningLive = true
       let written = ""
+      let releaseAudience: (() => void) | undefined
       const onStreamChunk = options?.onStreamChunk
       try {
         signal.throwIfAborted()
@@ -193,6 +196,12 @@ async function respond(
           entries.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
         const history = historyOf(window.shown)
         const actions = offeredActions(runtime, message, actionGate)
+        const owner = roles.includes("OWNER")
+        if (privateAudienceCheckNeeded(owner, actions.some(({ disclosureGate }) => disclosureGate !== undefined))) {
+          const audience = await attestDeliveryAudienceFromCanonicalRoom(runtime, message).catch(() => undefined)
+          signal.throwIfAborted()
+          if (audience !== undefined) releaseAudience = beginTrustedDeliveryAudienceTurn(runtime, message, { signal })
+        }
         const notes = [contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext]
         const notice = window.windowed ? historyWindowNotice(window, window.deferred.length > 0 ? "RESTORE_CONTEXT" : undefined) : undefined
         const messages: ChatMessage[] = [...history, said(message, asked, [...notes, notice])]
@@ -209,7 +218,6 @@ async function respond(
         const state = await runtime.composeState(message, [], true, true)
         const notesHistoryIds = new Set(recent.flatMap(({ id, entityId }) =>
           id !== undefined && (entityId === message.entityId || entityId === runtime.agentId) ? [id] : []))
-        const owner = roles.includes("OWNER")
         const current = () => planningLive && !signal.aborted && runtime.roomHandlerQueue.ownsLease(message.roomId, lease)
         const actionContext = ownerNotesAdmission({
           runtime, message, state, signal, owner,
@@ -276,6 +284,7 @@ async function respond(
         return { didRespond: false, responseContent: retryAt === undefined ? content : { ...content, retryAt }, responseMessages, outcome }
       } finally {
         planningLive = false
+        releaseAudience?.()
         runtime.endRun()
       }
     }))), { signal: options?.abortSignal, lease: options?.roomHandlerLease })
