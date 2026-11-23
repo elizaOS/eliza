@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check"; spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did"
+// spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check"; spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
 import { assert, it } from "@effect/vitest"
 import { negotiation } from "../src/device-actions/capabilities.vibe"
 import { deviceOperations } from "../src/device-actions/operation-schemas/device.schema.vibe"
@@ -46,6 +46,10 @@ const samples: Record<string, unknown> = {
   VoicemailReadSelected: { type: "voicemail_read_selected" },
   VoicemailDeleteSelected: { type: "voicemail_delete_selected" },
   SmsLatestSender: { type: "sms_latest_sender" },
+  SmsDraft: { type: "sms_compose", target: { kind: "number", number: "+15550100" }, body: "Running late", draft: true },
+  PhoneKeypad: { type: "phone_keypad", number: "+15550100" },
+  ContactShow: { type: "contact_show", query: "Sam" },
+  ContactReadSelected: { type: "contact_read_selected" },
   ReadSelectedNotes: { type: "read_selected_notes", notes: [{ id: "note-1", revision: noteRevision }] },
   ReadCalendarRange: range,
   ReadSelectedReminders: { type: "read_selected_reminders", window: "open_and_completed_today", day: "2026-11-21", timeZone: "UTC", maximumItems: 20 },
@@ -143,7 +147,46 @@ it("Propose only operations the device can check: each operation needs its own c
   assert.isUndefined(validate(whole, negotiation(true, "sms.latest-sender.v1"), "NoBinding"))
   assert.strictEqual(validate(whole, negotiation(true, "sms.latest-sender.v2"), "NoBinding")?.versionTwo, true)
   assert.strictEqual(readOperation({ type: "sms_latest_sender", includeAddress: false }), undefined)
-  assert.isFalse(mayRunDirectly(checked(whole), "NoBinding", true))
+  assert.isTrue(mayRunDirectly(checked(whole), "NoBinding", true))
+})
+
+it("Propose only operations the device can check: a targeted text, a draft in the sender's thread, a contact change by value and a dial to a contact need their newer capability, and a draft never reports a send", () => {
+  const draft = samples.SmsDraft
+  const threaded = { type: "sms_compose", target: { kind: "number", number: "+15550100" }, body: "On my way", draft: true, replyThreadId: "thread:42" }
+  const targeted = { type: "sms_compose", target: { kind: "contact", query: "Sam" }, body: "On my way" }
+  const byValue = { type: "contact_update", query: "Sam", add: { phoneNumbers: ["+15550100"] }, remove: { emailAddresses: ["sam@example.com"] } }
+  const toContact = { type: "phone_dial", target: { kind: "contact", query: "Sam" } }
+  const compose = "sms.compose.v1,sms.compose.v2"
+  assert.isUndefined(validate(targeted, negotiation(true, "sms.compose.v1"), "NoBinding"))
+  assert.strictEqual(validate(targeted, negotiation(true, compose), "NoBinding")?.opType, "SmsCompose")
+  assert.isUndefined(validate(threaded, negotiation(true, compose), "NoBinding"))
+  assert.strictEqual(validate(threaded, negotiation(true, `${compose},sms.latest-sender.v2`), "NoBinding")?.opType, "SmsDraft")
+  assert.isUndefined(validate(byValue, negotiation(true, "contacts.write.v1"), "NoBinding"))
+  assert.isDefined(validate(byValue, negotiation(true, "contacts.write.v1,contacts.write.v2"), "NoBinding"))
+  assert.isUndefined(validate(toContact, negotiation(true, "phone.dial.v1"), "NoBinding"))
+  assert.isDefined(validate(toContact, negotiation(true, "phone.dial.v1,contacts.lookup.v1"), "NoBinding"))
+  for (const input of [
+    { type: "sms_compose", target: { kind: "number", number: "+15550100" }, body: "On my way", replyThreadId: "thread:42" },
+    { type: "sms_compose", target: { kind: "contact", query: "Sam" }, body: "On my way", draft: true, replyThreadId: "thread:42" },
+    { type: "sms_compose", query: "Sam", body: "On my way", draft: true },
+    { type: "contact_update", query: "Sam", set: { phoneNumbers: ["+15550100"] }, add: { phoneNumbers: ["+15550101"] } },
+    { type: "contact_update", query: "Sam", add: { phoneNumbers: ["+15550100"] }, remove: { phoneNumbers: ["+15550100"] } },
+    { type: "contact_update", query: "Sam", add: { phoneNumbers: [] } },
+    { type: "contact_update", query: "Sam" },
+    { type: "phone_keypad", number: "415-555-0100" },
+  ]) assert.isUndefined(readOperation(input), JSON.stringify(input))
+  assert.isTrue(mayRunDirectly(checked(draft), "NoBinding", true))
+  assert.isTrue(mayRunDirectly(checked(samples.PhoneKeypad), "NoBinding", true))
+  assert.isFalse(mayRunDirectly(checked(targeted), "NoBinding", true))
+  assert.strictEqual(outcome(draft, { outcome: "applied", operationId: "claim-1", result: { kind: "sms-compose", status: "drafted" } }), "ReportedApplied")
+  assert.strictEqual(outcome(draft, { outcome: "applied", operationId: "claim-1", result: { kind: "sms-compose", status: "sent" } }), "refused")
+  assert.strictEqual(outcome(draft, { outcome: "failed", operationId: "claim-1", result: { kind: "sms-compose", status: "not-found" } }), "refused")
+  assert.strictEqual(outcome(draft, { outcome: "failed", operationId: "claim-1", result: { kind: "sms-compose", status: "cancelled" } }), "ReportedNothingRan")
+  assert.strictEqual(outcome(samples.PhoneKeypad, { outcome: "applied", operationId: "n1", result: { kind: "phone-keypad", status: "opened" } }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.ContactShow, { outcome: "failed", operationId: "n1", result: { kind: "contact-show", status: "not-found" } }), "ReportedUnknown")
+  const shared = { kind: "contact-read", status: "read", contact: { displayName: null, phoneNumbers: ["(415) 555-0100"], emailAddresses: [] } }
+  assert.strictEqual(outcome(samples.ContactReadSelected, { outcome: "applied", operationId: "n1", result: shared }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.ContactReadSelected, { outcome: "applied", operationId: "n1", result: { kind: "contact-read", status: "none-selected" } }), "refused")
 })
 
 it("Propose only operations the device can check: an album or share names the open photo only under photos.view-selected.v1, and a capture's library ID needs its capability", () => {

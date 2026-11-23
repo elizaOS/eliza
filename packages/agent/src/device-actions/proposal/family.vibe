@@ -55,6 +55,7 @@ export interface ReadContinuation {
 export interface PendingRequest {
   readonly direct: boolean
   readonly timeZone: string | undefined
+  readonly ownerText: string
 }
 
 export interface ProposalText {

@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner is told to dial it themselves"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"
+// spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"
 import { phoneDialNumber } from "./dial-number.vibe"
 import { namesSomeone } from "./names.vibe"
 import { completeSpokenPhoneNumber } from "./spoken-number.vibe"
@@ -40,6 +40,7 @@ const sendItTo = /(?:^|[,;]|\b(?:and|then|but)\b)\s*(?:then\s+)?(?:send|address|
 const quoted = /“[^”]*”|"(?:\\.|[^"\\])*"/gu
 const clauseEnd = /\s+(?:(?:and\s+)?(?:say(?:ing)?|ask(?:ing)?|tell(?:ing)?|remind(?:ing)?|let(?:ting)?|about|with|that|to (?:say|ask|tell|remind|let|see|check))\b)|\s*[:“"]|[.!?]$/iu
 const namedSender = /\bfrom\s+(?!(?:what|which|who|whom|where)\b|(?:this|my|the)\s+phone\b|(?:today|tonight|yesterday|earlier)\b|(?:this|last)\s+(?:morning|afternoon|evening|night|hour|week)\b)[\p{L}\p{N}+(]/iu
+const reviewAsked = /\b(?:show|open|present) (?:me )?(?:an? |the )?(?:review|approval)|\b(?:ask|check with) me (?:first|before|to approve)|\b(?:require|wait for|after) (?:my |me to )?(?:approval|confirmation|approve)|\b(?:review|approve) (?:the |this )?(?:lookup|read|action|request)\b/i
 const otherService = /\b(?:on|in|via|through|using|over|from)\s+(?:(?:my|the)\s+)?(?:slack|discord|whats\s?app|telegram|signal|i-?message|messenger|facebook|instagram|wechat|google\s+chat|teams|bluesky|nostr|twitter|x|linkedin|gmail|outlook|e-?mail|mail)\b/iu
 
 export function emergencyServicesRequest(text: string): boolean {
@@ -49,6 +50,10 @@ export function emergencyServicesRequest(text: string): boolean {
 
 export function namesEmergencyService(query: string): boolean {
   return emergencyQuery.test(query.trim())
+}
+
+export function asksForReview(text: string): boolean {
+  return reviewAsked.test(text.trim())
 }
 
 function isSmsSenderLookup(text: string): boolean {
@@ -147,10 +152,13 @@ export function authoredTelephonyTarget(text: string): AuthoredTelephonyTarget |
   return query === "" ? { request } : { request, target: { kind: "contact", query } }
 }
 
-export function authoredKeypadNumber(text: string): string | undefined {
+export function authoredKeypadRequest(text: string): { readonly number?: string } | undefined {
   const request = text.trim()
   if (request.length > 200) return undefined
   const found = keypadRequest.exec(request)
   const written = found?.[2] ?? found?.[3]
-  return written === undefined ? undefined : phoneDialNumber(written)
+  if (found === null || (found[1] === undefined && written === undefined)) return undefined
+  if (written === undefined) return {}
+  const number = phoneDialNumber(written)
+  return number === undefined ? undefined : { number }
 }

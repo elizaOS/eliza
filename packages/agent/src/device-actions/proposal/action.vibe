@@ -91,7 +91,7 @@ module node {
     }
   }
 
-  async function reported(family: DeviceProposalFamily | undefined, record: DeviceRequestRecord, replayed: boolean, timeZone: string | undefined): Promise<ActionResult> {
+  async function reported(family: DeviceProposalFamily | undefined, record: DeviceRequestRecord, replayed: boolean, { timeZone, ownerText }: Pick<DeviceTurn, "timeZone" | "ownerText">): Promise<ActionResult> {
     const state = await Effect.runPromise(record.machine.get())
     const checked = readOperation(record.terms.operation)
     if (checked === undefined) return refused(notOffered)
@@ -146,7 +146,7 @@ module node {
         }
         const direct = record.terms.reviewed !== true && record.terms.binding === "NoBinding"
         const handoff = direct && directEligible(checked.opType)
-        const told = family?.proposedText(operation, { direct, timeZone })
+        const told = family?.proposedText(operation, { direct, timeZone, ownerText })
         return {
           success: true, effectReceipts,
           text: told?.forModel ?? (handoff
@@ -181,7 +181,7 @@ module node {
     const open = kept === undefined ? await Effect.runPromise(sameOperationOpen(turn, sought, grounding === undefined ? undefined : carriesMessage(turn, grounding))) : undefined
     const found = kept ?? open
     const answer = proposalAnswer(reply, kept !== undefined, keptState !== undefined && requestSettled(keptState.phase), open !== undefined)
-    if ((answer === "ReturnedOpen" || answer === "ReturnedSettled") && found !== undefined) return reported(family, found, true, turn.timeZone)
+    if ((answer === "ReturnedOpen" || answer === "ReturnedSettled") && found !== undefined) return reported(family, found, true, turn)
     if (answer !== "OfferedNew" || admitted === undefined) return refused(grounded.kind === "Refused" ? grounded : unavailable)
     const offer = await Effect.runPromise(offerProposal(turn, admitted, {
       readBack: turn.completesReads && completableRead(admitted.opType, "NoBinding"), grounding,
@@ -189,8 +189,8 @@ module node {
     switch (offer.kind) {
       case "ended": return refused(unbound)
       case "refused": return refused(unavailable)
-      case "kept": return reported(family, offer.record, true, turn.timeZone)
-      case "offered": return reported(family, offer.record, false, turn.timeZone)
+      case "kept": return reported(family, offer.record, true, turn)
+      case "offered": return reported(family, offer.record, false, turn)
     }
   }
 
