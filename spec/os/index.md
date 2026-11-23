@@ -153,27 +153,38 @@ list, which is reviewed as any rule is.
 
 ```quint
 pure val consumerPaths = List(
+  "android/browser-surface/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserIdentity.java",
   "android/build-consumer.mjs", "android/toolchain.ts", "android/host-templates",
-  "android/local-inference/consumer.gradle", "android/local-inference/engine.lock.json",
-  "android/local-inference/scripts/build-native.ts", "android/local-inference/scripts/stage-elizavoice-lib.ts",
-  "android/local-inference/voice-model-versions.json", "android/sign-in/build.gradle",
+  "android/local-inference/consumer.gradle", "android/local-inference/engine.lock.json", "android/local-inference/inputs.json",
+  "android/local-inference/scripts/build-helpers/arm64-simd.ts", "android/local-inference/scripts/build-helpers/elizavoice-build-flags.ts",
+  "android/local-inference/scripts/build-helpers/verify-fused-symbols.ts", "android/local-inference/scripts/build-native.ts",
+  "android/local-inference/scripts/build-phonon2-gguf.ts", "android/local-inference/scripts/engine.ts",
+  "android/local-inference/scripts/stage-elizavoice-lib.ts", "android/local-inference/src/main/elizavoice-jni/CMakeLists.txt",
+  "android/local-inference/src/main/elizavoice-jni/elizavoice-jni.cpp", "android/local-inference/src/main/java/ai/eliza/voice/VoiceNative.java",
+  "android/local-inference/voice-model-versions.json", "android/media/src/main/java/ai/eliza/plugins/media", "android/sense",
+  "android/sign-in/build.gradle",
   "aosp/aosp.lock.json", "aosp/devices/pixel10a", "aosp/launcher-provisioning.mjs",
   "aosp/patches/soong-app-native/manifest.json", "aosp/runtime/node.lock.json", "aosp/sense/config.xml",
   "aosp/sense/systemui/chip", "aosp/soong-app-native.mjs", "aosp/sources/pixel10a-stallion.json",
-  "aosp/sources/secure-camera.json", "aosp/stage-launcher-overlay.ts", "aosp/system-updater", "src/cli.vibe")
+  "aosp/sources/secure-camera.json", "aosp/stage-launcher-overlay.ts", "aosp/system-updater",
+  "src/build/android-host.vibe", "src/build/runtime-payload.vibe", "src/cli.vibe")
 pure val consumerPathNames = List(
   "android/build-consumer.mjs#buildAndroidConsumer",
+  "android/local-inference/scripts/build-helpers/verify-fused-symbols.ts#assertAndroidVoiceLibrary",
+  "android/local-inference/scripts/build-helpers/verify-fused-symbols.ts#minElfLoadAlignment",
   "android/toolchain.ts#resolveAndroidSdkRoot", "android/toolchain.ts#resolveJavaHome", "android/toolchain.ts#javaMajorVersion",
   "aosp/launcher-provisioning.mjs#manifestComponents", "aosp/launcher-provisioning.mjs#provisioningComponents",
   "aosp/launcher-provisioning.mjs#renderProvisioningOverlay", "aosp/soong-app-native.mjs#soongAppNativePatch",
-  "aosp/stage-launcher-overlay.ts#REVIEWED_PRIVILEGED_PERMISSIONS", "aosp/stage-launcher-overlay.ts#renderOverlay",
-  "aosp/stage-launcher-overlay.ts#main")
+  "aosp/stage-launcher-overlay.ts#REVIEWED_PRIVILEGED_PERMISSIONS", "aosp/stage-launcher-overlay.ts#launcherInstallDirectory",
+  "aosp/stage-launcher-overlay.ts#main", "aosp/stage-launcher-overlay.ts#renderOverlay",
+  "aosp/stage-launcher-overlay.ts#validateDescriptor")
 pure val consumerBuildNames = List("buildAndroid", "exportCommittedSources", "generateAndroidHost", "stageRuntimePayload", "verifyCommittedWorkspace")
 pure val consumerImageNames = List(
   "NATIVE_INSTALLS", "NATIVE_TARGETS", "aaptManifestTree", "acquireDeviceLease", "admitImageApk", "apkReleaseBlockers",
-  "apkUpdateAdmission", "assertStockVendorApi", "cloudVoiceAdmission", "compareDomains", "javaMajorVersion", "loadProfile",
-  "manifestFacts", "otaMain", "parseXmlTree", "prepareListenerSystemui", "provisioningComponents", "readApkBuildFlags",
-  "readNativeLibraries", "readbackInventory", "releaseDescriptorProblems", "releaseRecordProblems", "requireClockProduct",
+  "apkUpdateAdmission", "assertStockVendorApi", "cloudVoiceAdmission", "compareDomains", "javaMajorVersion",
+  "listAndroidArtifactEntries", "loadProfile", "manifestFacts", "otaMain", "parseXmlTree", "prepareListenerSystemui",
+  "provisioningComponents", "readAndroidArtifactEntryBuffers", "readApkBuildFlags", "readApkSignerDigest", "readNativeLibraries",
+  "readbackInventory", "releaseDescriptorProblems", "releaseRecordProblems", "requireClockProduct",
   "requireInstrumentationSuccess", "resolveAndroidSdkRoot", "resolveJavaHome", "runIsolatedAndroidTest", "signRelease",
   "stageLauncher", "verifyDeviceSource", "verifyImage", "verifyListenerSystemui", "verifySecureCameraSource", "verifySource",
   "writeImageCapability", "writeSecureCameraOverlay")
