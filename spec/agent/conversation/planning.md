@@ -13,10 +13,10 @@ is stored, the evaluators plugins registered run on the finished turn.
 
 The shell (`conversation/planning.vibe`) hands this library the facts it
 reads: which actions are registered and allowed, each step's outcome and
-operation key, the shape of the model's text, and the shape of the tool
-text. The operation key of a step with effect receipts is its action, the
-receipt's operation and its resource; without receipts it is the action
-and its canonical parameters. A refusal before dispatch (a malformed or
+identity, the shape of the model's text, and the shape of the tool text.
+An effect receipt identifies an operation by the action, operation and
+resource. A step without a receipt has an attempt key from its action
+and canonical parameters. A refusal before dispatch (a malformed or
 unexpected argument, `executionStatus: "not_started"`) is `Rejected`.
 
 ## Story: Ask the agent to do something and hear what happened
@@ -34,7 +34,8 @@ call returns no tool call ends planning with that text.
 
 ```quint
 type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect
-type PlanStep = { actionName: str, outcome: StepOutcome, operation: str }
+type StepIdentity = RequestAttempt({ key: str }) | ReceiptOperation({ key: str })
+type PlanStep = { outcome: StepOutcome, identity: StepIdentity }
 pure val maxPlanSteps = 8
 pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
 pure def offered(registered: Set[str], allowed: Set[str]): Set[str] = registered.intersect(allowed).exclude(messageServiceActions)
@@ -51,35 +52,49 @@ pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool =
 
 ### A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it
 
-A later `Applied` step with the same operation key closes an earlier
-failure or proposal of it. A pre-dispatch refusal had no effect, so any
-later `Applied` or `NoEffect` step of the same action closes it. A later
-failure of an operation replaces its earlier open outcome. What stays open
-is what the reply must report: each open failure as that action's failure,
-each open proposal as awaiting the owner, whatever the model's prose
-claims.
+A later `Applied` receipt for the same operation and resource closes an
+earlier failure or proposal of that operation. Open outcomes for the same
+operation or receiptless request replace earlier ones of the same identity.
+Pre-dispatch refusals are recorded separately from dispatched failures. A
+later call to the same action can be for another request. The reply reports
+an unlinked refusal as a call that did not start, even if the action later
+runs. It reports an open failure as that action's failure and an open proposal
+as awaiting the owner, whatever the model's prose claims.
 
 ```quint
+pure def isReceiptOperation(identity: StepIdentity): bool = match identity { | ReceiptOperation(_) => true | _ => false }
 pure def supersedes(later: PlanStep, earlier: PlanStep): bool =
-  (later.outcome == Applied and later.operation == earlier.operation) or
-  (earlier.outcome == Rejected and later.actionName == earlier.actionName and (later.outcome == Applied or later.outcome == NoEffect))
+  later.outcome == Applied and earlier.outcome != Rejected and later.identity == earlier.identity and isReceiptOperation(later.identity)
 pure def opens(o: StepOutcome): bool = o == Failed or o == Rejected or o == Proposed
 pure def settleStep(held: List[PlanStep], entry: PlanStep): List[PlanStep] =
-  if (opens(entry.outcome)) held.select(p => p.operation != entry.operation).append(entry)
+  if (opens(entry.outcome))
+    held.select(p => p.identity != entry.identity or (p.outcome == Rejected) != (entry.outcome == Rejected)).append(entry)
   else held.select(p => not(supersedes(entry, p)))
 pure def openOutcomes(steps: List[PlanStep]): List[PlanStep] = steps.foldl(List(), (held, entry) => settleStep(held, entry))
 pure def failedOpen(steps: List[PlanStep]): List[PlanStep] = openOutcomes(steps).select(p => p.outcome == Failed or p.outcome == Rejected)
-pure val earlierValues = Set({ actionName: "SEND", outcome: Failed, operation: "send:a" }, { actionName: "SEND", outcome: Rejected, operation: "send:x" }, { actionName: "SEND", outcome: Proposed, operation: "send:a" })
-pure val laterValues = Set({ actionName: "SEND", outcome: Applied, operation: "send:a" }, { actionName: "SEND", outcome: Applied, operation: "send:b" }, { actionName: "NOTE", outcome: Applied, operation: "note:a" }, { actionName: "SEND", outcome: NoEffect, operation: "send:y" })
-pure val stepsValues = Set(List(), List({ actionName: "NOTE", outcome: Failed, operation: "note:a" }))
+pure val earlierValues = Set(
+  { outcome: Failed, identity: ReceiptOperation({ key: "send:a" }) },
+  { outcome: Rejected, identity: RequestAttempt({ key: "send:a" }) },
+  { outcome: Proposed, identity: ReceiptOperation({ key: "send:a" }) },
+)
+pure val laterValues = Set(
+  { outcome: Applied, identity: ReceiptOperation({ key: "send:a" }) },
+  { outcome: Applied, identity: ReceiptOperation({ key: "send:b" }) },
+  { outcome: NoEffect, identity: RequestAttempt({ key: "send:a" }) },
+  { outcome: NoEffect, identity: ReceiptOperation({ key: "send:a" }) },
+  { outcome: Failed, identity: RequestAttempt({ key: "send:a" }) },
+  { outcome: Rejected, identity: RequestAttempt({ key: "send:a" }) },
+)
+pure val stepsValues = Set(List(), List({ outcome: Failed, identity: ReceiptOperation({ key: "note:a" }) }))
 pure def lawTheLatestFailureIsReported(steps: List[PlanStep], earlier: PlanStep): bool =
   earlier.outcome == Failed implies failedOpen(steps.append(earlier)).includes(earlier)
 pure def lawASuccessOfTheSameOperationSupersedes(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
-  (later.outcome == Applied and later.operation == earlier.operation) implies not(openOutcomes(steps.append(earlier).append(later)).includes(earlier))
+  (later.outcome == Applied and earlier.outcome != Rejected and later.identity == earlier.identity and isReceiptOperation(later.identity)) implies
+    not(openOutcomes(steps.append(earlier).append(later)).includes(earlier))
 pure def lawASuccessOfAnotherOperationKeepsTheFailure(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
-  (earlier.outcome == Failed and later.operation != earlier.operation) implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
-pure def lawARefusalBeforeDispatchIsClosedByTheSameActionSucceeding(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
-  (earlier.outcome == Rejected and later.actionName == earlier.actionName and later.outcome == Applied) implies not(failedOpen(steps.append(earlier).append(later)).includes(earlier))
+  (earlier.outcome == Failed and later.identity != earlier.identity) implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
+pure def lawARefusalBeforeDispatchStaysReported(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
+  earlier.outcome == Rejected implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
 ```
 
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole
