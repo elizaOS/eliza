@@ -46,8 +46,19 @@ module node {
     const out = execFileSync(java, ["-cp", compileAdapter(MAIN), MAIN], { input: asks.map((ask) => JSON.stringify(ask)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
     return out.trim().split("\n").map((line) => JSON.parse(line) as Answer)
   }
+
+  /** @throws {Error} */
+  export function projectLifecycle(events: readonly Readonly<Record<string, unknown>>[]) {
+    const main = "ai.eliza.os.agent.LifecycleAdapter"
+    const out = execFileSync(java, ["-cp", compileAdapter(main), main], { input: events.map((event) => JSON.stringify({ event })).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
+    return out.trim().split("\n").map((line) => JSON.parse(line) as {
+      readonly outcome: string
+      readonly state: { readonly phase: { readonly tag: string; readonly stage?: string }; readonly epoch: number; readonly credentialHeld: boolean }
+      readonly out: readonly { readonly tag: string; readonly version?: number }[]
+    })
+  }
 }
-import { project, type Answer, type Ask } from node
+import { project, projectLifecycle, type Answer, type Ask } from node
 
 type Files = Readonly<Record<AgentFile, string>>
 
@@ -229,6 +240,28 @@ it.effect('Project an opted-in resident with its stored owner separately from in
   for (const [index] of refused.entries()) assert.strictEqual(results[admitted.length + index]?.kind, "refused")
   assert.isString(try buildVerdict(nonpersistent))
   assert.isString(try buildVerdict(guest))
+}, 120_000)
+
+it.effect('Keep native resident rollout on the current launch epoch (spec/os/agentService/residentBinding.md, "An inferred change applies only to the current service phase and epoch")', effect () => {
+  const change = (epoch: number, rollout: string, cloudVersion: number) => ({ type: "residentChanged", epoch, rollout, cloudVersion })
+  const launch = (epoch: number, cloudVersion: number) => [{ type: "reapStale" }, { type: "residentLaunchHook", cloudVersion },
+    { type: "spawn" }, { type: "observeReady", epoch }]
+  const frames = try Effect.try(() => projectLifecycle([
+    { type: "start" }, ...launch(1, 0),
+    change(0, "RETIRE_LAUNCH", 0), change(1, "RETIRE_LAUNCH", 0), { type: "observeExit", code: 0 },
+    ...launch(2, 1), change(2, "ROTATE_KEY", 2), change(2, "ROTATE_KEY", 1),
+    { type: "stop" }, change(2, "RETIRE_LAUNCH", 0), { type: "observeExit", code: 0 }, change(2, "RETIRE_LAUNCH", 0),
+  ]))
+  try Effect.try(() => {
+    assert.deepStrictEqual([frames[4].state.phase.tag, frames[4].state.credentialHeld], ["Running", false])
+    assert.strictEqual(frames[5].outcome, "refused")
+    assert.deepStrictEqual(frames[6].out, [{ tag: "Kill", epoch: 1 }])
+    assert.deepStrictEqual([frames[7].state.phase, frames[7].state.epoch], [{ tag: "Starting", stage: "Checking" }, 2])
+    assert.deepStrictEqual(frames[12].out, [{ tag: "PushCredential", epoch: 2, version: 2 }])
+    assert.strictEqual(frames[13].outcome, "refused")
+    assert.strictEqual(frames[15].outcome, "refused")
+    assert.deepStrictEqual([frames[16].state.phase.tag, frames[17].outcome], ["Stopped", "refused"])
+  })
 }, 120_000)
 
 it.effect('The build reads the three agent data files from their asset names and refuses a missing one (spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Each data file is at most 256 KiB, and the host and policy files are schema 1")', effect () => {

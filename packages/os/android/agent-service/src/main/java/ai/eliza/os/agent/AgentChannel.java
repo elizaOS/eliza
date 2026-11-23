@@ -204,10 +204,14 @@ public final class AgentChannel {
   }
 
   public PushResult pushCredential(CredentialPush push) throws IOException {
+    return pushCredential(0, push);
+  }
+
+  public PushResult pushCredential(long expectedEpoch, CredentialPush push) throws IOException {
     Path target;
     String token;
     synchronized (policy) {
-      if (!policy.serving()) throw new NotServing();
+      if (!policy.serving() || (expectedEpoch != 0 && policy.servingEpoch() != expectedEpoch)) throw new NotServing();
       target = socket;
       token = policy.rootToken();
     }

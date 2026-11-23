@@ -212,6 +212,14 @@ public final class LifecycleAdapter {
       case "stop" -> new AgentPolicy.Stop();
       case "reapStale" -> new AgentPolicy.ReapStale();
       case "launchHook" -> new AgentPolicy.LaunchHook(flag(event.get("refused")), "the launch hook refused");
+      case "residentLaunchHook" -> {
+        if (!direct) throw new IllegalArgumentException("not an event of the legacy lifecycle model");
+        yield new AgentPolicy.LaunchHook(false, null, new AgentPolicy.ResidentLaunch(whole(event.get("cloudVersion"))));
+      }
+      case "residentChanged" -> {
+        if (!direct) throw new IllegalArgumentException("not an event of the legacy lifecycle model");
+        yield new AgentPolicy.ResidentChanged(whole(event.get("epoch")), AgentPolicy.ResidentRollout.valueOf(text(event.get("rollout"))), whole(event.get("cloudVersion")));
+      }
       case "refuse" -> new AgentPolicy.Refuse(named(AgentPolicy.Cause.values(), event.get("cause")), "a start check refused");
       case "spawn" -> spawnEvent(event, direct);
       case "spawnFailed" -> new AgentPolicy.SpawnFailed("the agent could not be spawned");

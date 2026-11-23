@@ -1,10 +1,11 @@
-// spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does fails as Agent"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does fails as Agent"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"; spec/os/agentService/residentBinding.md, "An inferred change applies only to the current service phase and epoch"
 package ai.eliza.os.agent;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 public final class AgentPolicy {
   public static final long READY_TIMEOUT_MS = 60_000L;
@@ -13,12 +14,16 @@ public final class AgentPolicy {
   public enum Cause { PAYLOAD, STORAGE, CONFIG, CREDENTIAL, AGENT, RUNTIME }
   public enum AfterExit { STOP, START, RESTART, FAIL }
   public enum ExitClass { CLEAN, RELEASE_FAILED, CONFIG, CREDENTIAL, STORAGE, AGENT, CRASH }
+  public enum ResidentRollout { KEEP_LAUNCH, ROTATE_KEY, RETIRE_LAUNCH }
 
   public record UpdateTarget(long code, String digest) {
     boolean valid() { return code > 0 && digest != null && digest.matches("[a-f0-9]{64}"); }
   }
   public record RecoveryToken(long epoch, String nonce) {}
   public record Recovery(RecoveryToken token, boolean archiving) {}
+  public record ResidentLaunch(long cloudVersion) {
+    public ResidentLaunch { if (cloudVersion < 0) throw new IllegalArgumentException("A resident Cloud version is nonnegative"); }
+  }
 
   public record State(Phase phase, Cause failure, String error, long epoch, int attempt, boolean reaped, boolean hookRan,
     boolean credentialHeld, long credentialVersion, long delivered, String account, AfterExit afterExit, Cause afterExitCause,
@@ -30,12 +35,14 @@ public final class AgentPolicy {
 
   public sealed interface Event permits Start, Stop, ReapStale, StaleChildReaped, LaunchHook, Refuse, Spawned, SpawnFailed, ObserveReady, ReadyTimeout,
     ObserveExit, FailUnclassified, RestartUnhealthy, StableReset, CredentialArrived, CredentialReplaced, SignedOut, CredentialExpired,
-    AccountChanged, ReviewRecovery, ArchiveRecovery, ArchiveFinished, HoldForUpdate, ReleaseUpdate {}
+    AccountChanged, ReviewRecovery, ArchiveRecovery, ArchiveFinished, HoldForUpdate, ReleaseUpdate, ResidentChanged {}
   public record Start() implements Event {}
   public record Stop() implements Event {}
   public record ReapStale() implements Event {}
   public record StaleChildReaped(long epoch) implements Event {}
-  public record LaunchHook(boolean refused, String reason) implements Event {}
+  public record LaunchHook(boolean refused, String reason, ResidentLaunch resident) implements Event {
+    public LaunchHook(boolean refused, String reason) { this(refused, reason, null); }
+  }
   public record Refuse(Cause cause, String reason) implements Event {}
   public record Spawned() implements Event {}
   public record SpawnFailed(String reason) implements Event {}
@@ -50,6 +57,9 @@ public final class AgentPolicy {
   public record SignedOut() implements Event {}
   public record CredentialExpired() implements Event {}
   public record AccountChanged(String account) implements Event {}
+  public record ResidentChanged(long expectedEpoch, ResidentRollout rollout, long cloudVersion) implements Event {
+    public ResidentChanged { Objects.requireNonNull(rollout); }
+  }
   public record ReviewRecovery(boolean focused, String nonce) implements Event {}
   public record ArchiveRecovery(RecoveryToken token) implements Event {}
   public record ArchiveFinished(RecoveryToken token, boolean archiveSucceeded) implements Event {}
@@ -73,6 +83,7 @@ public final class AgentPolicy {
   private long epoch, credentialVersion, delivered, staleEpoch;
   private int attempt;
   private boolean reaped, hookRan, credentialHeld;
+  private ResidentLaunch resident;
   private AfterExit afterExit = AfterExit.STOP;
   private UpdateTarget hold;
   private Recovery recovery;
@@ -132,7 +143,7 @@ public final class AgentPolicy {
     if (event instanceof Stop) return stop();
     if (event instanceof ReapStale) return reapStale();
     if (event instanceof StaleChildReaped reapedChild) return staleChildReaped(reapedChild.epoch());
-    if (event instanceof LaunchHook hook) return launchHook(hook.refused(), hook.reason());
+    if (event instanceof LaunchHook hook) return launchHook(hook);
     if (event instanceof Refuse refuse) return refuse(refuse.cause(), refuse.reason());
     if (event instanceof Spawned) return spawned();
     if (event instanceof SpawnFailed failed) return phase == Phase.CHECKING && staleEpoch == 0 && fail(Cause.AGENT, failed.reason());
@@ -146,6 +157,7 @@ public final class AgentPolicy {
     if (event instanceof CredentialReplaced replaced) return credentialReplaced(replaced.version());
     if (event instanceof SignedOut || event instanceof CredentialExpired) return credentialLost();
     if (event instanceof AccountChanged changed) return accountChanged(changed.account());
+    if (event instanceof ResidentChanged changed) return residentChanged(changed);
     if (event instanceof ReviewRecovery review) return reviewRecovery(review.focused(), review.nonce());
     if (event instanceof ArchiveRecovery archive) return archiveRecovery(archive.token());
     if (event instanceof ArchiveFinished finished) return archiveFinished(finished.token(), finished.archiveSucceeded());
@@ -161,6 +173,7 @@ public final class AgentPolicy {
     attempt = nextAttempt;
     reaped = false;
     hookRan = false;
+    resident = null;
     failure = null;
     error = null;
     recovery = null;
@@ -240,11 +253,12 @@ public final class AgentPolicy {
     return true;
   }
 
-  private boolean launchHook(boolean refused, String reason) {
+  private boolean launchHook(LaunchHook hook) {
     if (phase != Phase.CHECKING || !reaped || hookRan) return false;
-    if (!credentialHeld) return fail(Cause.CREDENTIAL, "no device credential is held");
+    if (hook.resident() == null && !credentialHeld) return fail(Cause.CREDENTIAL, "no device credential is held");
     hookRan = true;
-    return !refused || fail(Cause.CONFIG, reason);
+    resident = hook.resident();
+    return !hook.refused() || fail(Cause.CONFIG, hook.reason());
   }
 
   private boolean refuse(Cause cause, String reason) {
@@ -255,7 +269,7 @@ public final class AgentPolicy {
   }
 
   private boolean spawned() {
-    if (phase != Phase.CHECKING || !reaped || !hookRan || !credentialHeld || hold != null) return false;
+    if (phase != Phase.CHECKING || !reaped || !hookRan || (resident == null && !credentialHeld) || hold != null) return false;
     phase = Phase.SPAWNED;
     delivered = Math.max(delivered, credentialVersion);
     return true;
@@ -264,7 +278,25 @@ public final class AgentPolicy {
   private boolean observeReady(long readyEpoch) {
     if (phase != Phase.SPAWNED || readyEpoch != epoch) return false;
     phase = Phase.RUNNING;
-    push();
+    if (resident == null) push();
+    return true;
+  }
+
+  private boolean residentChanged(ResidentChanged change) {
+    if (hold != null || change.expectedEpoch() != epoch || change.rollout() == ResidentRollout.KEEP_LAUNCH) return false;
+    return switch (phase) {
+      case STOPPED, STOPPING, FAILED -> false;
+      case CHECKING -> begin(0, 0);
+      case SPAWNED -> resident != null && kill(AfterExit.START, null, null);
+      case RUNNING -> resident != null && (change.rollout() == ResidentRollout.RETIRE_LAUNCH
+        ? kill(AfterExit.START, null, null) : rotateResidentCloud(change.cloudVersion()));
+    };
+  }
+
+  private boolean rotateResidentCloud(long version) {
+    if (resident.cloudVersion() == 0 || version <= resident.cloudVersion()) return false;
+    resident = new ResidentLaunch(version);
+    effects.add(new PushCredential(epoch, version));
     return true;
   }
 
