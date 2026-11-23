@@ -7,6 +7,7 @@ import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
 import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from "./support/models.ts"
 import { scriptedOAuthProvider } from "./support/oauth.ts"
 import { type Handler, loopback, loopbackTls, pinnedLookup } from "./support/servers.ts"
+import { DatabaseAdapter } from "../src/database.vibe"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 
 module traceBoundary {
@@ -2293,6 +2294,9 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
   const refused = try failure(() => writeFact("j05-fact-d", "Balance: -10 USD", "evidence-d"))
   const afterRefusal = try fact("j05-fact-e", "Balance: -10 USD", "evidence-e")
   const facts = try host(() => runtime.getMemories({ roomId, tableName: "facts", count: 10, unique: false }))
+  const laterAt = Date.now() + 1
+  try host(() => adapter.createMemories(Array.from({ length: 150 }, (_, index) => ({ tableName: "facts", memory: { id: stringToUuid(`j05-later-fact-${index}`), agentId, entityId: reader, roomId, createdAt: laterAt + index, content: { text: `Later fact ${index}` } } }))))
+  const beyondRecent = try fact("j05-fact-f", "Balance: -10 USD", "evidence-f")
 
   // spec/core/ingressSnapshots.md, "Reuse requires exact redacted content and every projected stored segment"
   const rawSecret = "here is my token ghp_1234567890abcdefghijklmnopqrstuvwxyzAB and key sk-j05-configured-credential, thanks"
@@ -2304,6 +2308,7 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
     credit,
     refused,
     afterRefusal,
+    beyondRecent,
     facts: facts.map((row) => [row.id, row.content.text, (row.metadata as { extractionEvidenceIds?: string[] }).extractionEvidenceIds]),
     stored: secret?.content.text,
     secretReplay,
@@ -2312,6 +2317,7 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
     credit: stringToUuid("j05-fact-c"),
     refused: { name: "Error", code: undefined, message: "fact commit refused" },
     afterRefusal: stringToUuid("j05-fact-a"),
+    beyondRecent: stringToUuid("j05-fact-a"),
     facts: [
       [stringToUuid("j05-fact-c"), "Balance: +10 USD", ["evidence-c"]],
       [stringToUuid("j05-fact-a"), "Balance: -10 USD", ["evidence-a", "evidence-b", "evidence-e"]],
@@ -3831,6 +3837,21 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
     spelled: manager.getProvider(" GOOGLE ")?.provider,
     elsewhere: getConnectorAccountManager(other).getProvider("google") ?? null,
   }
+  // spec/core/connectorHandoff.md, "Backend replacement preserves facade identity and memoizes each current adapter"
+  const device = try Effect.try(() => new AgentRuntime({ character: createCharacter({ name: "Device" }) }))
+  try Effect.try(() => device.registerDatabaseAdapter(Object.create(DatabaseAdapter.prototype)))
+  const onDevice = getConnectorAccountManager(device)
+  const deviceBot = try host(() => onDevice.upsertAccount("slack", { label: "Device" }, "device-bot"))
+  const deviceAccounts = try host(() => onDevice.listAccounts("slack"))
+  const dropbox = try Effect.try(() => scriptedOAuthProvider({ name: "dropbox" }))
+  try Effect.try(() => onDevice.registerProvider(dropbox.provider))
+  const deviceStart = try host(() => onDevice.startOAuth("dropbox", { accountId: "device-user" }))
+  const deviceDone = try host(() => onDevice.completeOAuth("dropbox", dropbox.consent(deviceStart.authUrl ?? "", "device-user")))
+  const deviceStored = try host(() => onDevice.getOAuthFlow("dropbox", deviceStart.id))
+  const unsupported = {
+    accounts: deviceAccounts.map((account) => [account.id, account.id === deviceBot.id]),
+    flow: [(deviceStart.codeVerifier ?? "").length, deviceDone.flow.status, deviceDone.account?.id, deviceStored?.status, deviceStored?.codeVerifier ?? null],
+  }
   const facade = manager.getStorage()
   // spec/core/accountValues.md, "Normalization preserves explicit values and applies only documented defaults"
   const team = try host(() => manager.upsertAccount("slack", { label: "", role: "SERVICE", purpose: ["messaging", " "] }, " team-bot "))
@@ -3839,6 +3860,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const workVerifier = work.codeVerifier ?? ""
   const started = {
     managers,
+    unsupported,
     team: [team.id, team.provider, team.label, team.role, team.purpose, team.accessGate, team.status],
     storedBeforeProvider: [...storedBeforeProvider],
     flow: [work.provider, work.status, work.accountId, work.redirectUri, work.authUrl?.startsWith("https://accounts.google.test/o/oauth2/auth?"), work.authUrl?.includes(`state=${work.state}`), workVerifier.length],
@@ -3998,6 +4020,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
         spelled: "google",
         elsewhere: null,
       },
+      unsupported: { accounts: [["device-bot", true]], flow: [43, "completed", "device-user", "completed", null] },
       team: ["team-bot", "slack", "", "AGENT", ["messaging"], "open", "connected"],
       storedBeforeProvider: [{ id: work.id, status: "pending", authUrl: null }],
       flow: ["google", "pending", "user-1", "https://agent.test/oauth/callback", true, true, 43],
@@ -4087,6 +4110,9 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
       response.writeHead(200)
       response.write(new Uint8Array(3000))
       response.write(new Uint8Array(3000))
+    } else if (path === "/oversized") {
+      response.writeHead(200, { "content-length": String(60 * 1024 * 1024) })
+      response.write(new Uint8Array(1000))
     } else if (path === "/sized") {
       response.writeHead(200, { "content-length": "6000" })
       response.end(new Uint8Array(6000))
@@ -4175,6 +4201,7 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
     try media("/encoded", { rejectContentEncoding: true }),
     try media("/big", { maxBytes: 4000 }),
     try media("/sized", { maxBytes: 4000 }),
+    try media("/oversized"),
     try timed(fetchMedia("/stall", { timeoutMs: 300 })),
     try Effect.andThen(
       Effect.forkScoped(Effect.delay(Effect.sync(() => hold.abort()), "200 millis")),
@@ -4228,6 +4255,7 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
       failure(at("/encoded"), "encoded response bodies are not accepted", "invalid_response"),
       { rejected: { MediaFetchError: "max_bytes", message: "Failed to fetch media from response: payload exceeds maxBytes 4000", cause: undefined } },
       failure(at("/sized"), "content length 6000 exceeds maxBytes 4000", "max_bytes"),
+      failure(at("/oversized"), "content length 62914560 exceeds maxBytes 52428800", "max_bytes"),
       { value: { rejected: { Error: "ECONNRESET", message: "aborted" } }, withinDeadline: true },
       { value: { rejected: { Error: "ECONNRESET", message: "aborted" } }, withinDeadline: true },
       { value: failure(at("/photo"), "TimeoutError: The operation was aborted due to timeout", "fetch_failed", "TimeoutError"), withinDeadline: true },
@@ -5063,6 +5091,7 @@ const installed = [B.getAnthropicAccountPoolBridge() === anthropic, B.getCodingA
 A.setAnthropicAccountPoolBridge(null);
 A.setTrajectoryContextManager(manager);
 const bundled = attempt(() => A.loadRegistry().byId.get("agent-orchestrator") ?? null);
+B.loadRegistry();
 const registered = attempt(() => { A.registerRegistryEntry({ ...bundled, description: "registered at runtime" }); return "registered"; });
 const cached = A.loadRegistry();
 let rejectedApp = false;
