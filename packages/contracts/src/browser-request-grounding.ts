@@ -534,6 +534,28 @@ export function groundBrowserSearchQuery(
   }
 }
 
+/**
+ * A link of the page the owner had open in Browser when they sent this message
+ * (`clientDevice.browserPage`, bound to that message's observation), named by
+ * the model as one to open: "open the second story". Returns the page's own
+ * link when the proposed address is exactly one of `links`, else undefined.
+ * Such an open is never a direct request: the owner reviews it, since the page
+ * and not the owner wrote the address.
+ */
+export function groundBrowserPageLink(
+  links: readonly string[],
+  proposed: string,
+): string | undefined {
+  if (typeof proposed !== "string" || links.length === 0) return undefined;
+  const parsed = parseBrowserAddressInput(proposed, {
+    defaultProtocol: "https:",
+  });
+  if (parsed.kind !== "url") return undefined;
+  const url = new URL(parsed.href);
+  url.hash = "";
+  return links.find((link) => link === url.href);
+}
+
 export function browserDestinationMatches(
   operation: unknown,
   destination: string | undefined,

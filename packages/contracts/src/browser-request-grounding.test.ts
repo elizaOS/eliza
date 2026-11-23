@@ -10,6 +10,7 @@ import {
   directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
+  groundBrowserPageLink,
   groundBrowserSearchQuery,
   spokenBrowserDestination,
   spokenBrowserOpen,
@@ -1406,5 +1407,32 @@ describe("web search query", () => {
     ["search for cats\nthen dogs", "cats", undefined],
   ])("uses only words the user typed: %s -> %s", (text, proposed, expected) => {
     expect(groundBrowserSearchQuery(text, proposed)).toBe(expected);
+  });
+});
+
+describe("a link of the Browser page the request carried", () => {
+  const links = ["https://one.example/story", "https://two.example/post?id=2"];
+  it("grounds exactly one of the page's links, without a fragment", () => {
+    expect(groundBrowserPageLink(links, "https://two.example/post?id=2")).toBe(
+      "https://two.example/post?id=2",
+    );
+    expect(groundBrowserPageLink(links, "https://one.example/story#top")).toBe(
+      "https://one.example/story",
+    );
+  });
+  it.each([
+    "https://two.example/post?id=3",
+    "https://two.example/post",
+    "https://one.example/story/",
+    "http://one.example:8080/story",
+    "javascript:alert(1)",
+    "",
+  ])("refuses %s", (proposed) => {
+    expect(groundBrowserPageLink(links, proposed)).toBeUndefined();
+  });
+  it("grounds nothing without page links", () => {
+    expect(
+      groundBrowserPageLink([], "https://one.example/story"),
+    ).toBeUndefined();
   });
 });

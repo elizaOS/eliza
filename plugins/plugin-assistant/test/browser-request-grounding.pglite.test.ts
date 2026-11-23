@@ -115,6 +115,7 @@ async function fixture() {
     destination = "https://example.com/dashboard",
     custody = "current",
     operation: unknown = { type: "browser_navigate", url: destination },
+    extraMetadata: Record<string, unknown> = {},
   ) {
     let current = true;
     return withOwnerDeviceActionTurn(
@@ -144,7 +145,10 @@ async function fixture() {
               clientMessageId: nonce,
               fingerprint: "e".repeat(64),
             },
-            metadata: direct ? { agentActionMode: "direct-request-v1" } : {},
+            metadata: {
+              ...(direct ? { agentActionMode: "direct-request-v1" } : {}),
+              ...extraMetadata,
+            },
           },
         };
         await pg.query("INSERT INTO original_memories VALUES($1,$2)", [
@@ -890,6 +894,109 @@ it("turns an empty tab proposed for a spoken hostname into a reviewed open in a 
     await f.pg.close();
   }
 });
+// The page the owner had open when they sent the message, bound to its observation.
+function browserPageMetadata(
+  links: { text: string; url: string }[],
+  { revision = "4", view = "browser" } = {},
+) {
+  return {
+    clientDevice: {
+      context: {
+        view,
+        revision: 1,
+        sensitive: false,
+        selectedObject: {
+          kind: "browser-tab",
+          id: "session:tab",
+          revision: "4",
+        },
+      },
+      browserPage: {
+        tabId: "session:tab",
+        revision,
+        url: "https://news.example/",
+        title: "Front page",
+        capturedAt: 1,
+        text: "1. The first story\n2. The second story",
+        truncated: false,
+        links,
+      },
+    },
+  };
+}
+const PAGE_LINKS = [
+  { text: "The first story", url: "https://one.example/story" },
+  { text: "The second story", url: "https://two.example/post?id=2" },
+];
+
+it("opens a link of the Browser page the request carried, for review", async () => {
+  const f = await fixture();
+  try {
+    const result = await f.run(
+      "Open the second story.",
+      true,
+      true,
+      "https://two.example/post?id=2",
+      "current",
+      undefined,
+      browserPageMetadata(PAGE_LINKS),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+      data: { awaitingUserInput: true, approvalRequired: true },
+    });
+    const rows = (
+      await f.pg.query<{ payload: Record<string, unknown> }>(
+        "SELECT payload FROM approval_requests",
+      )
+    ).rows;
+    expect(rows.map((row) => row.payload.operation)).toEqual([
+      { type: "browser_navigate", url: "https://two.example/post?id=2" },
+    ]);
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it.each([
+  [
+    "an address that is not one of the page's links",
+    "https://evil.example/",
+    {},
+  ],
+  [
+    "a page bound to another revision",
+    "https://two.example/post?id=2",
+    { revision: "5" },
+  ],
+  [
+    "a page sent from another view",
+    "https://two.example/post?id=2",
+    { view: "home" },
+  ],
+])("refuses %s", async (_name, url, binding) => {
+  const f = await fixture();
+  try {
+    const result = await f.run(
+      "Open the second story.",
+      true,
+      true,
+      url,
+      "current",
+      undefined,
+      browserPageMetadata(PAGE_LINKS, binding),
+    );
+    expect(result).toMatchObject({
+      success: false,
+      data: { code: "DEVICE_BROWSER_NOT_REQUESTED" },
+    });
+    expect(f.enqueue).not.toHaveBeenCalled();
+  } finally {
+    await f.pg.close();
+  }
+});
+
 it("does not treat a matching hostname as authority for a different path", async () => {
   const f = await fixture();
   try {

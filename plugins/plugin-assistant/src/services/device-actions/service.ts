@@ -3,6 +3,7 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   CALENDAR_AVAILABILITY_CAPABILITY,
   CALENDAR_NAMED_READ_CAPABILITY,
+  readClientBrowserPage,
   canonicalNotesListContextAllowed,
   NAMED_TARGET_CAPABILITY,
   NOTES_LIST_FILTER_CAPABILITY,
@@ -77,6 +78,7 @@ import {
   directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
+  groundBrowserPageLink,
   groundBrowserSearchQuery,
   spokenBrowserOpen,
 } from "./browser-request-grounding.ts";
@@ -969,7 +971,14 @@ async function freshRequestedMessageId(
   credential: DeviceCredential,
   options: { allowReviewed?: boolean; readText?: boolean } = {},
 ): Promise<
-  { messageId: string; requestText: string; assertCurrent(): void } | undefined
+  | {
+      messageId: string;
+      requestText: string;
+      /** Links of the Browser page this message carried, bound to its observation. */
+      pageLinks: readonly string[];
+      assertCurrent(): void;
+    }
+  | undefined
 > {
   const current = getDeviceActionTurn();
   const original = current?.replyContext?.message;
@@ -1074,6 +1083,10 @@ async function freshRequestedMessageId(
     requestText: options.readText
       ? extractUserText(unwrapUserMessageText(stored))
       : "",
+    pageLinks:
+      readClientBrowserPage(stored.content.metadata)?.links?.map(
+        (link) => link.url,
+      ) ?? [],
     assertCurrent,
   };
 }
@@ -2858,14 +2871,17 @@ export class DeviceActionService {
     }
     if (validated.type === "browser_navigate") {
       // The durable original request owns the destination: the user's typed
-      // address, never the model's spelling of it.
+      // address, never the model's spelling of it, or else a link of the page
+      // that request carried, exactly as the page gave it. A page link is
+      // never a direct request, so the owner reviews it.
       const destination =
         requestOrigin &&
-        groundBrowserDestination(
+        (groundBrowserDestination(
           requestOrigin.requestText,
           validated.url,
           this.runtime.character.name,
-        );
+        ) ??
+          groundBrowserPageLink(requestOrigin.pageLinks, validated.url));
       if (!destination) throw new DeviceBrowserNotRequestedError();
       // "Open x.com in a new tab" (or "can you open x.com in a new tab?") is
       // the owner's own placement, like the address: the page opens in a tab
