@@ -334,4 +334,16 @@ async function verifyGenerationInputs(root: string) {
     fs.rmSync(path.dirname(nested), { recursive: true });
     if (area !== "spec/kit") fs.rmdirSync(path.join(root, area));
   }
+
+  const manifest = JSON.parse(read("package.json", root));
+  for (const scripts of [{ ...manifest.scripts, pregen: "node -e 0" }, { ...manifest.scripts, gen: "node custom-generator.mjs" }]) {
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ ...manifest, scripts }));
+    const attached = await generationPlan({ options: selected });
+    fs.mkdirSync(standalone);
+    const independent = await generationPlan({ options: selected });
+    changed(attached, independent, "a legacy generation task with a project-defined command or hook");
+    assert.ok(independent["//#lint:css"].env.includes("AUDIT_CONFIG"));
+    assert.ok(independent["//#gen"].cache && independent["@repo/kit#build"].cache);
+    fs.rmdirSync(standalone);
+  }
 }

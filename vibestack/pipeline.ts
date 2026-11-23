@@ -1033,8 +1033,7 @@ async function legacyGenerationConfig(root: string, args: string[], env: NodeJS.
   const inputs = configProperty(gen, "inputs");
   if (!inputs || !ts.isArrayLiteralExpression(inputs)) return;
   const scopes = inputs.elements.flatMap((element) => ts.isStringLiteral(element) ? legacyProofInput.exec(element.text)?.slice(1) ?? [] : []);
-  const scripts = scopes.length ? packageScripts(root) : {};
-  if (scripts.gen !== "node vibestack/spec.ts gen" || scripts.pregen || scripts.postgen || !await sameTurboWorkspace(root, options)) return;
+  if (!scopes.length || !await sameTurboWorkspace(root, options)) return;
   const layout = JSON.stringify({ version: 1, hidden: legacySpecInputs(root, scopes), layout: generationLayout(root) });
   const input = `.cache/gen-legacy-${digest(layout)}.json`;
   const position = inputs.getStart(source) + 1;
