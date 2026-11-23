@@ -197,7 +197,7 @@ runs:
           } >> "$GITHUB_OUTPUT"
         fi
         if [[ $PUBLISH_GEN_SEED == true ]]; then export TURBO_RUN_SUMMARY=true; fi
-        pnpm install --frozen-lockfile
+        /usr/bin/time -f "%e %U %S %M" -o "$RUNNER_TEMP/pnpm-install.time" pnpm install --frozen-lockfile
     - id: publish-gen-seed
       if: inputs.verification == 'true' && steps.gen-seed.outputs.prefix != ''
       continue-on-error: true
