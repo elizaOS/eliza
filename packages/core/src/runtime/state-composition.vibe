@@ -436,6 +436,12 @@ effect function executeProvider(
   } catch (failure) => providerFailureRecord(composer.runtime, provider, turn, execution, providerCoalesced, failure.cause)
 }
 
+function withProviderBudget(signal: AbortSignal | undefined, budgetMs: number | undefined): AbortSignal | undefined {
+  if (typeof budgetMs !== "number" || !Number.isSafeInteger(budgetMs) || budgetMs <= 0) return signal
+  const budget = AbortSignal.timeout(budgetMs)
+  return signal ? AbortSignal.any([signal, budget]) : budget
+}
+
 function cachedProviders(state: State): Record<string, CachedProviderResult> | undefined {
   return state.data.providers as Record<string, CachedProviderResult> | undefined
 }
@@ -704,7 +710,7 @@ effect function composeState(
     selectedProviderNames,
     providerSelectionKey,
     refreshSet,
-    providerSignal,
+    providerSignal: withProviderBudget(providerSignal, runtime.character.settings?.providersTotalTimeoutMs),
     deferredReferenceProviders: options.deferredReferenceProviders,
   }
   const providerData = try forEach(

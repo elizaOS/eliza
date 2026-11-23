@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, callModelWithValidation, buildPlannerActionGrammarStrict, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, recordLlmCall, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, recordLlmCall, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
@@ -408,6 +408,7 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   const gate = () => Effect.try(() => Promise.withResolvers<void>())
   const providerStarted = try gate()
   const providerRelease = try gate()
+  const hangingProvider = try gate()
   const afterReturn = try gate()
   const waitEntered = try gate()
   const waitRelease = try gate()
@@ -561,6 +562,13 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
           throw new Error("notes store unavailable")
         },
       },
+      {
+        name: "HANGING_CONTEXT",
+        get: async () => {
+          await hangingProvider.promise
+          return { text: "too late" }
+        },
+      },
     ],
     services: [EchoService, AgentEventService],
     events: {
@@ -660,6 +668,13 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   const shared = try host(() => Promise.all([firstCompose, secondCompose]))
   const brokenMessage = say("j02-broken", dm, "what do I have?")
   const brokenCompose = try host(() => runtime.composeState(brokenMessage, ["BROKEN_CONTEXT"], true).then(() => "resolved", (error: unknown) => error instanceof ElizaError ? error.code : String(error)))
+  // spec/core/providers/waiter.md, "Story: Release a caller with its own outcome"
+  const unbudgeted = runtime.character.settings
+  runtime.character.settings = { ...unbudgeted, providersTotalTimeoutMs: 100 }
+  const hungCompose = try host(() => runtime.composeState(say("j02-hung", dm, "anything new?"), ["HANGING_CONTEXT"], true).then(() => "resolved", (error: unknown) => error instanceof ElizaError ? error.code : String(error)))
+  runtime.character.settings = unbudgeted
+  hangingProvider.resolve()
+  try Effect.try(() => assert.strictEqual(hungCompose, "PROVIDER_COMPOSITION_ABORTED"))
   const thirdCompose = try host(() => runtime.composeState(say("j02-m1b", dm, "another message"), ["NOTES_CONTEXT"], true))
   const composed = [shared.map((state) => state.text), refreshed, whileHeld, counts.notes, brokenCompose, reported("PROVIDER_COMPOSITION_FAILED"), runtime.stateCache.has(brokenMessage.id ?? ""), thirdCompose.text]
 
@@ -1107,11 +1122,11 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
     const remoteModel = try Effect.try(() => scriptedModels("j03-remote", 0, { [ModelType.TEXT_SMALL]: [{ reply: "remote prose" }, { reply: "{\"ok\":true}" }] }))
     try host(() => runtime.registerPlugin(localModel.plugin))
     try host(() => runtime.registerPlugin(remoteModel.plugin))
-    const pinned = try host(() => callModelWithValidation(runtime, { modelType: ModelType.TEXT_SMALL, provider: "j03-remote", params: { prompt: "pinned remote" }, schema: { type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } } }))
-    for (let attempt = 0; attempt < pinned.attempts; attempt++) answered.push(`useModel:${ModelType.TEXT_SMALL}`)
+    const pinnedRemote = try host(() => callModelWithValidation(runtime, { modelType: ModelType.TEXT_SMALL, provider: "j03-remote", params: { prompt: "pinned remote" }, schema: { type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } } }))
+    for (let attempt = 0; attempt < pinnedRemote.attempts; attempt++) answered.push(`useModel:${ModelType.TEXT_SMALL}`)
     try host(() => runtime.unloadPlugin(remoteModel.plugin.name))
     try host(() => runtime.unloadPlugin(localModel.plugin.name))
-    try Effect.try(() => assert.deepStrictEqual([pinned.parsed, pinned.attempts, localModel.seen.length], [{ ok: true }, 2, 0]))
+    try Effect.try(() => assert.deepStrictEqual([pinnedRemote.parsed, pinnedRemote.attempts, localModel.seen.length], [{ ok: true }, 2, 0]))
 
     // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"
     class TrajectoryPort extends Service {
@@ -1180,7 +1195,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
     }
     trajectory.logLlmCall = () => { throw new TypeError("j03 logger fault") }
     const providerCallBefore = diagnostic("TrajectoryProviderCall")
-    const recordedReply = try host(() => runWithTrajectoryContext({ trajectoryId: "j03-parent", trajectoryStepId: "j03-parent-step" }, () => recordLlmCall(runtime, { model: "j03-model", systemPrompt: "", userPrompt: "", purpose: "test" }, () => "generated")))
+    const recordedReply = try host(() => runWithTrajectoryContext({ trajectoryId: "j03-parent", trajectoryStepId: "j03-parent-step" }, async () => recordLlmCall(runtime, { model: "j03-model", systemPrompt: "", userPrompt: "", purpose: "test" }, () => "generated")))
     trajectoryFailures.push([recordedReply, diagnostic("TrajectoryProviderCall") === providerCallBefore + 1])
     try Effect.try(() => Object.assign(trajectory, defaults))
     for (const next of [undefined, null]) {
