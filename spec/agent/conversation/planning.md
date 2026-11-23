@@ -55,8 +55,9 @@ pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool =
 
 ### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
 
-The system prompt is the character's alone: its system text, bio, style
-and message examples. The offered tools are sent in the order of their
+The system prompt is the character's: its system text, bio, style and
+message examples, then one fixed rule for the cue written with tool calls
+(below), the same text in every call. The offered tools are sent in the order of their
 names, each in the form the turn gives it (below), so they change only
 when what the turn offers does. The history follows, then the person's
 latest message, and only after it what this turn adds: the screen
@@ -243,23 +244,38 @@ pure def lawALaterProposalOfTheSameActionClosesARefusal(steps: List[PlanStep], e
 
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole
 
+The system prompt's cue rule asks the model to write, with its first tool
+calls, only a brief cue that it heard the request: `Let me check.` or
+`Let me check your calendar.` for a question or a lookup, a request asked
+as a question (`Can you text Sam?`) included; `Sure.`, `Sure, one sec.` or
+`Yeah, one sec.` for a plain command (`Text Sam I'm late`, `Set an alarm
+for seven`); `On it.` or `One sec.` for any other action. It never names
+the people, items, times or outcome, never says the work is done or under
+way, never repeats the request, and is left empty, with the work still
+done, when the person asked for silence; later tool calls come with no
+text.
+
 The shell reads the model's text as a `Cue` only when the whole of it is
 one to three sentences of the closed acknowledgment grammar (`On it`,
 `One sec`, `Just a moment`, a lead such as `Let me` with a look-up verb and
 an owner container such as `your calendar`, or a lead with an intent such
 as `open Maps`), at most 120 characters, with no digits, clock times,
-counts, names other than one after `check with`, or question mark. A wait
-cue followed by more text that is not progress (`One second is 1,000
-milliseconds.`, `Just a second, your dentist is Thursday.`) is an `Answer`.
-A cue that comes with a tool call is shown and spoken before the tools
-run, and the stream restarts with the reply. A cue with no tool call is
-not an answer: the model is asked once more to answer with what the turn
-holds, and if steps run out the turn's failure fallback is the reply.
+counts, names other than one after `check with`, or question mark. The
+grammar has no past-tense verb, negation or completion word, so a cue never
+claims that an effect happened or that the owner's tracked work is empty.
+A wait cue followed by more text that is not progress (`One second is
+1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
+`Answer`. A cue that comes with a tool call is the turn's acknowledgment
+(below); whatever text streamed with tool calls is restarted to empty
+before they run, so a cue is never part of the reply's text. A cue with no
+tool call is not an answer: the model is asked once more to answer with
+what the turn holds, and if steps run out the turn's failure fallback is
+the reply.
 
 ```quint
 type Draft = Cue | Answer | Silent
 type PlanMove = RunTools | Deliver | AskAgain | GiveUp
-pure def acknowledges(draft: Draft, calls: int): bool = draft == Cue and calls > 0
+pure def acknowledges(draft: Draft, calls: int, acknowledged: bool): bool = draft == Cue and calls > 0 and not(acknowledged)
 pure def nextMove(draft: Draft, calls: int, stepsLeft: int): PlanMove =
   if (calls > 0) RunTools
   else if (draft == Answer) Deliver
@@ -268,7 +284,53 @@ pure def nextMove(draft: Draft, calls: int, stepsLeft: int): PlanMove =
 pure val stepsLeftValues = Set(0, 1, 3)
 pure def lawAnAnswerIsDeliveredWhole(stepsLeft: int): bool = nextMove(Answer, 0, stepsLeft) == Deliver
 pure def lawACueIsNeverTheReply(calls: int, stepsLeft: int): bool = nextMove(Cue, calls, stepsLeft) != Deliver
-pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int): bool = acknowledges(draft, calls) implies (calls > 0 and draft == Cue)
+pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, acknowledged: bool): bool = acknowledges(draft, calls, acknowledged) implies (calls > 0 and draft == Cue)
+```
+
+### A turn acknowledges once, with its first cue that comes with tool calls, and bare assent is a cue only after an instruction
+
+`Sure` or `Yeah`, alone or followed by a comma, dash, colon, semicolon or
+sentence break and one or two sentences of the grammar (`Sure, one sec.`,
+`Yeah. Let me check your calendar.`), says yes, so it is a cue only when
+the owner's message is an instruction: after fillers (`hey`, `ok`, `so`,
+`please`, …), a name and comma, or a greeting and a wake name, it opens
+with a command verb (`text`, `set`, `call`, `remind`, …), it has no
+question mark, and no sentence or comma clause opens with a question word
+or an auxiliary (`am`, `is`, `can`, `what`, …). `Can you text Sam`, `Am I
+free Friday` and `Any meetings today` are not instructions, so a bare
+`Sure.` after them is an answer. `Sure!` before a lead form (`Sure! Let me
+check your calendar.`) is a cue after any message. The acknowledgment is
+delivered once per turn, as the [reply stream](./replyStream.md)'s
+`acknowledgment` frame; a cue at a later step is dropped with the rest of
+that step's text.
+
+```quint
+type DraftShape = Blank | GrammarCue | AssentCue | OtherText
+pure def readDraft(shape: DraftShape, instruction: bool): Draft = match shape {
+  | Blank => Silent | GrammarCue => Cue | AssentCue => if (instruction) Cue else Answer | OtherText => Answer
+}
+pure def lawBareAssentIsACueOnlyAfterAnInstruction(instruction: bool): bool = (readDraft(AssentCue, instruction) == Cue) iff instruction
+pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool): bool = readDraft(GrammarCue, instruction) == Cue
+pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int): bool = not(acknowledges(draft, calls, true))
+```
+
+### A tool's progress names its app only when one labelled app applies, and never its arguments or results
+
+When a tool call starts, its progress carries the action's name and a
+label for the owner: `Using <label>` when, among the action's declared
+contexts (core's catalog when it declares none) other than the catch-all
+`general` and `simple` and any `system` context, exactly one applies and
+the runtime's context registry gives it a label, and `Working` otherwise.
+Contexts with the same label count once; an unlabelled context counts by
+its id, so an action that may also reach an unnamed app is `Working`.
+
+```quint
+type ToolActivity = UsingApp | Working
+pure def toolActivity(applicable: int, labelled: int): ToolActivity = if (applicable == 1 and labelled == 1) UsingApp else Working
+pure val applicableValues = Set(0, 1, 2)
+pure val labelledValues = Set(0, 1, 2)
+pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatApplies(applicable: int, labelled: int): bool =
+  toolActivity(applicable, labelled) == UsingApp implies (applicable == 1 and labelled == 1)
 ```
 
 ### A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other

@@ -9,8 +9,9 @@ framing and its heartbeats. The frames are:
 | Frame | Carries |
 |---|---|
 | `token` | `text` (an append), `fullText` (the whole text so far: a replace), or both (an append with a snapshot); `provisional: true` while some of the text may still be taken back |
+| `acknowledgment` | `{text}`: the turn's brief cue that it heard the request ([planning](./planning.md)), at most once, never part of the text; shown and spoken |
 | `status` | `{activity}`: what the turn is doing, display only |
-| `tool` | `{name}`: a tool the turn runs, display only |
+| `tool` | `{name, label}`: a tool the turn runs and its label for the owner, `Using <app>` or `Working` ([planning](./planning.md)), display only |
 | `reply_ready` | `{fullText, actionResults}`: the settled reply before it is stored |
 | `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, planAction?, retryAfterMs?}`, the fix and live wait of [turns](./turns.md) |
 | `error` | `{code, message}`: the turn left no reply |
@@ -20,6 +21,15 @@ Stop, the stored reply and its kind) is the [turns](./turns.md) machine's;
 this one decides which frames the request writes, in which order, and
 when the stream ends. Text is UTF-16 units, as in core's
 [stream units](../../core/streamUnits.md).
+
+A reader decodes frames strictly: a frame type or field it does not know
+fails the stream as `REPLY_STREAM_PROTOCOL`. The `acknowledgment` frame
+and the tool frame's `label` are such additions, so a reader built before
+them fails a turn that runs a tool, and this route and the reader that
+decodes it (`client/stream-reader.vibe`) ship in one release. A voice
+client that speaks the reply from this stream speaks the acknowledgment
+when it arrives; the agent's own voice session posts the buffered send,
+which carries no acknowledgment.
 
 ## Story: See a reply as it is written
 
@@ -41,18 +51,19 @@ import turns as T from "./turns"
 import binding as B from "../models/binding"
 import streamUnits.* from "../../core/streamUnits"
 type Role = Undecided | Streams | Waits | Refused
-type Progress = NoProgress | Activity({ activity: str }) | ToolUse({ name: str })
+type Progress = NoProgress | Activity({ activity: str }) | ToolUse({ name: str, label: str })
+type Acknowledgment = Unacknowledged | AckWaiting({ cue: List[int] }) | AckSent
 type Readiness = NotReady | ReadyPending({ text: List[int], results: int }) | ReadySent({ results: int })
 type Ending = Done({ reply: int, fullText: List[int], results: int, failure: str }) | Errored({ code: str })
 type Frame = Token({ text: List[int], provisional: bool }) | TokenSnapshot({ text: List[int], fullText: List[int], provisional: bool })
-  | Replace({ fullText: List[int], provisional: bool }) | Progressed({ progress: Progress }) | ReadyFrame({ fullText: List[int], results: int }) | Final({ end: Ending })
+  | Replace({ fullText: List[int], provisional: bool }) | AckFrame({ cue: List[int] }) | Progressed({ progress: Progress }) | ReadyFrame({ fullText: List[int], results: int }) | Final({ end: Ending })
 type Phase = Open | Finishing({ end: Ending }) | Ended({ sent: Ending }) | Dropped
 type Effect = Write({ frame: Frame }) | AbortTurn
 type ReplyStream = { role: Role, phase: Phase, text: List[int], held: bool, shown: List[int], shownHeld: bool,
-  sinceSnapshot: int, lastSnapshot: int, inFlight: bool, progress: Progress, ready: Readiness }
+  sinceSnapshot: int, lastSnapshot: int, inFlight: bool, ack: Acknowledgment, progress: Progress, ready: Readiness }
 type StreamStep = { state: ReplyStream, out: List[Effect] }
 pure val initial: ReplyStream = { role: Undecided, phase: Open, text: List(), held: false, shown: List(), shownHeld: false,
-  sinceSnapshot: 0, lastSnapshot: 0, inFlight: false, progress: NoProgress, ready: NotReady }
+  sinceSnapshot: 0, lastSnapshot: 0, inFlight: false, ack: Unacknowledged, progress: NoProgress, ready: NotReady }
 pure def roleFor(verdict: T::Admission): Role = match verdict {
   | Owner(_) => Streams | Unkeyed(_) => Streams | Duplicate => Waits | Settled(_) => Waits | _ => Refused }
 pure def canAdmit(s: ReplyStream): bool = s.role == Undecided
@@ -64,7 +75,7 @@ pure def admit(s: ReplyStream, verdict: T::Admission): StreamStep = {
 pure val verdictValues = Set(T::Owner({ turn: 1 }), T::Unkeyed({ turn: 1 }), T::Duplicate, T::Settled({ reply: 3 }), T::Conflict, T::Busy, T::InferenceUnavailable)
 pure def isOpen(p: Phase): bool = match p { | Open => true | _ => false }
 pure def alwaysOnlyAStreamingTurnCarriesText(s: ReplyStream): bool =
-  s.role != Streams implies (s.text == List() and not(s.held) and s.progress == NoProgress and s.ready == NotReady and
+  s.role != Streams implies (s.text == List() and not(s.held) and s.ack == Unacknowledged and s.progress == NoProgress and s.ready == NotReady and
     (isOpen(s.phase) implies (s.shown == List() and not(s.shownHeld) and not(s.inFlight))) and
     ((s.role == Undecided or s.role == Refused) implies (isOpen(s.phase) and s.sinceSnapshot == 0 and s.lastSnapshot == 0)))
 pure def sometimesRefusedOpensNothing(s: ReplyStream): bool = s.role == Refused
@@ -72,16 +83,19 @@ pure def sometimesRefusedOpensNothing(s: ReplyStream): bool = s.role == Refused
 
 ### A frame is written only when the one before it has left, and nothing waits while the transport is free
 
-The turn's text, its progress and its early reply collect while a frame is
-in flight; when it leaves, the next frame carries all text written since,
-then the early reply, then the newest progress, which replaces an older
-one nobody saw. Text is never dropped.
+The turn's acknowledgment, text, progress and early reply collect while a
+frame is in flight; when it leaves, the next frame carries the
+acknowledgment, then all text written since, then the early reply, then
+the newest progress, which replaces an older one nobody saw. Text is never
+dropped.
 
 ```quint
 pure def textPending(s: ReplyStream): bool = s.text != s.shown or s.held != s.shownHeld
 pure def readyPending(r: Readiness): bool = match r { | ReadyPending(_) => true | _ => false }
 pure def readyFrame(r: Readiness): Frame = match r { | ReadyPending(x) => ReadyFrame({ fullText: x.text, results: x.results }) | _ => Progressed({ progress: NoProgress }) }
 pure def readySent(r: Readiness): Readiness = match r { | ReadyPending(x) => ReadySent({ results: x.results }) | _ => r }
+pure def ackWaiting(a: Acknowledgment): bool = match a { | AckWaiting(_) => true | _ => false }
+pure def ackFrame(a: Acknowledgment): Frame = match a { | AckWaiting(x) => AckFrame({ cue: x.cue }) | _ => Progressed({ progress: NoProgress }) }
 pure def threshold(previous: int): int = if (previous > 2048) previous else 2048
 pure def appendable(s: ReplyStream): bool = unitPrefix(s.text, s.shown) and not(s.shownHeld and not(s.held))
 pure def cadenceDue(s: ReplyStream): bool = s.sinceSnapshot + s.text.length() - s.shown.length() >= threshold(s.lastSnapshot)
@@ -107,6 +121,7 @@ pure def writeNext(left: bool, s: ReplyStream): StreamStep = {
   else if (isFinishing(t.phase)) { state: { ...t, phase: Ended({ sent: end }), inFlight: true, shown: endShown, shownHeld: false, sinceSnapshot: 0, lastSnapshot: endShown.length() },
     out: List(Write({ frame: Final({ end: end }) })) }
   else if (not(isOpen(t.phase))) { state: t, out: List() }
+  else if (ackWaiting(t.ack)) { state: { ...t, inFlight: true, ack: AckSent }, out: List(Write({ frame: ackFrame(t.ack) })) }
   else if (textPending(t)) { state: { ...t, inFlight: true, shown: t.text, shownHeld: t.held,
       sinceSnapshot: if (full) 0 else t.sinceSnapshot + t.text.length() - t.shown.length(), lastSnapshot: if (full) t.text.length() else t.lastSnapshot },
     out: List(Write({ frame: textFrame(t) })) }
@@ -119,7 +134,7 @@ pure def canFrameFlushed(s: ReplyStream): bool = s.inFlight
 pure def frameFlushed(s: ReplyStream): StreamStep = writeNext(true, s)
 pure def alwaysCaughtUpWhenFree(s: ReplyStream): bool =
   (s.role == Streams and isOpen(s.phase) and not(s.inFlight)) implies
-    (s.shown == s.text and s.shownHeld == s.held and s.progress == NoProgress and not(readyPending(s.ready)))
+    (s.shown == s.text and s.shownHeld == s.held and not(ackWaiting(s.ack)) and s.progress == NoProgress and not(readyPending(s.ready)))
 pure def stepOneFrameInFlight(before: ReplyStream, via: str, after: ReplyStream, out: List[Effect]): bool =
   written(out).length() <= 1 and
   (written(out).length() > 0 implies (after.inFlight and (not(before.inFlight) or via == "frameFlushed")))
@@ -200,9 +215,30 @@ pure def sometimesTextAfterACadenceSnapshot(s: ReplyStream): bool = s.lastSnapsh
 ```quint
 pure def canShowProgress(s: ReplyStream, progress: Progress): bool = s.role == Streams and isOpen(s.phase) and progress != NoProgress
 pure def showProgress(s: ReplyStream, progress: Progress): StreamStep = writeNext(false, { ...s, progress: progress })
-pure val progressValues = Set(NoProgress, Activity({ activity: "thinking" }), Activity({ activity: "running_action" }), ToolUse({ name: "CALCULATE" }))
+pure val progressValues = Set(NoProgress, Activity({ activity: "thinking" }), Activity({ activity: "running_action" }), ToolUse({ name: "CALCULATE", label: "Working" }))
 pure def stepProgressNeverTouchesTheText(before: ReplyStream, via: str, after: ReplyStream): bool =
   via == "showProgress" implies (after.text == before.text and after.held == before.held)
+```
+
+### The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it
+
+The turn hands the stream its acknowledgment once ([planning](./planning.md));
+it never changes the text, and a tool or status that follows it fills the
+progress slot, never the acknowledgment's, so the client sees both. An
+acknowledgment still waiting when the terminal comes is not written.
+
+```quint
+pure def canAcknowledge(s: ReplyStream, units: List[int]): bool = s.role == Streams and isOpen(s.phase) and s.ack == Unacknowledged and units.length() > 0
+pure def acknowledge(s: ReplyStream, units: List[int]): StreamStep = writeNext(false, { ...s, ack: AckWaiting({ cue: units }) })
+pure def isAckFrame(f: Frame): bool = match f { | AckFrame(_) => true | _ => false }
+pure def stepAcknowledgedAtMostOnce(before: ReplyStream, after: ReplyStream, out: List[Effect]): bool =
+  (before.ack == AckSent implies (after.ack == AckSent and not(written(out).some(f => isAckFrame(f))))) and
+  (written(out).some(f => isAckFrame(f)) implies (before.ack != AckSent and after.ack == AckSent))
+pure def stepAWaitingAcknowledgmentLeavesOnlyAsItsFrame(before: ReplyStream, after: ReplyStream, out: List[Effect]): bool =
+  (ackWaiting(before.ack) and not(ackWaiting(after.ack))) implies written(out).some(f => isAckFrame(f))
+pure def stepAcknowledgingNeverTouchesTheText(before: ReplyStream, via: str, after: ReplyStream): bool =
+  via == "acknowledge" implies (after.text == before.text and after.held == before.held and after.progress == before.progress)
+pure def sometimesAcknowledgedThenTool(s: ReplyStream): bool = s.ack == AckSent and s.inFlight and s.progress != NoProgress
 ```
 
 ### The early reply is written at most once, and a stream that announced it ends with an answered done carrying the same action results

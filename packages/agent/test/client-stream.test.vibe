@@ -1,16 +1,29 @@
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"
 import { assert, describe, it } from "@effect/vitest"
-import { insufficientCredits, partial, text, type CloudFake } from "./support/cloud-fake.ts"
+import { insufficientCredits, partial, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "../src/client/stream-reader.vibe"
 
 module node {
   import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
+  import type { AgentPlugin } from "../src/host/module.vibe"
 
   export interface Read {
     readonly outcome: ReplyOutcome
     readonly previews: ReadonlyArray<{ readonly text: string; readonly provisional: boolean }>
     readonly statuses: readonly string[]
+    readonly seen: readonly string[]
+  }
+
+  export const agendaApp: AgentPlugin = {
+    name: "agenda-app", description: "An app whose one action reads the owner's agenda",
+    init: async (_config, runtime) => { runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" }) },
+    actions: [{
+      name: "AGENDA_READ", description: "Reads the owner's agenda.", contexts: ["general", "agenda"],
+      validate: async () => true, handler: async () => ({ success: true, text: "Nothing booked." }),
+    }],
   }
 
   async function* pieces(bytes: Uint8Array, size: number, broken: boolean): AsyncGenerator<Uint8Array> {
@@ -21,12 +34,15 @@ module node {
   export async function readSplit(chunks: readonly string[], size: number, broken = false): Promise<Read> {
     const previews: Array<{ text: string; provisional: boolean }> = []
     const statuses: string[] = []
+    const seen: string[] = []
     const bytes = new TextEncoder().encode(chunks.join(""))
     const outcome = await readReplyStream(pieces(bytes, Math.max(1, size === 0 ? bytes.length : size), broken), {
-      onPreview: (shown, provisional) => { previews.push({ text: shown, provisional }) },
+      onPreview: (shown, provisional) => { previews.push({ text: shown, provisional }); seen.push(`text:${shown}`) },
+      onAcknowledgment: (cue) => { seen.push(`acknowledgment:${cue}`) },
       onStatus: (activity) => { statuses.push(activity) },
+      onTool: (name, label) => { seen.push(`tool:${name}:${label}`) },
     })
-    return { outcome, previews, statuses }
+    return { outcome, previews, statuses, seen }
   }
 
   async function* endless(first: Uint8Array): AsyncGenerator<Uint8Array> {
@@ -42,7 +58,7 @@ module node {
     return reading.then(() => false, (answered: unknown) => answered === reason)
   }
 }
-import { leftRead, readSplit } from node
+import { agendaApp, leftRead, readSplit } from node
 
 schema Created { conversation: { id: string } }
 const created = Schema.decodeUnknownOption(Created)
@@ -127,7 +143,7 @@ for (const transport of ["socket", "http"] as const) {
 describe('Frames the agent never writes (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")', () => {
   it.live('A malformed frame fails the read, an error frame is Failed with its code, and only a whole text clears the provisional mark (spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark")', effect () => {
     const malformed = try read(frames(`{"type":"token","text":"hi"}`, `{"type":"token","text":"more","fullText":42}`), 3)
-    const failed = try read(frames(`{"type":"tool","name":"CALCULATE"}`, `{"type":"error","code":"ASSISTANT_RESPONSE_UNAVAILABLE","message":"The turn left no reply"}`), 4)
+    const failed = try read(frames(`{"type":"tool","name":"CALCULATE","label":"Working"}`, `{"type":"error","code":"ASSISTANT_RESPONSE_UNAVAILABLE","message":"The turn left no reply"}`), 4)
     const marked = try read(frames(`{"type":"token","fullText":"Checking é","provisional":true}`, `{"type":"token","text":" now 🙂","provisional":true}`, `{"type":"token","text":" soon"}`, `{"type":"token","fullText":"Done."}`), 9)
     try Effect.try(() => assert.deepStrictEqual({ malformed: malformed.outcome, failed: failed.outcome, marked: marked.previews }, {
       malformed: { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame does not match the reply protocol" },
@@ -141,3 +157,55 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
     try Effect.try(() => assert.isTrue(rejectedWithReason))
   })
 })
+
+const planning = "spec/agent/conversation/planning.md"
+
+it.live(`Hear that the agent heard me once before it works, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges once, with its first cue that comes with tool calls, and bare assent is a cue only after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, load: [basicActionsModuleName, agendaApp.name],
+      allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE", "AGENDA_READ"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[agendaApp.name, agendaApp]]),
+  })
+  const id = try conversation(agent)
+  const agenda = { name: "AGENDA_READ", arguments: {} }
+  const turn = (request: string) => effect {
+    const chunks = try streamed(agent, id, { text: request })
+    const whole = try read(chunks, 0)
+    const split = try read(chunks, 9)
+    const acknowledged = whole.seen.findIndex((entry) => entry.startsWith("acknowledgment:"))
+    return {
+      done: summary(whole.outcome),
+      acknowledgments: whole.seen.filter((entry) => entry.startsWith("acknowledgment:")),
+      tools: whole.seen.filter((entry) => entry.startsWith("tool:")),
+      acknowledgedBeforeTools: acknowledged < 0 || whole.seen.findIndex((entry) => entry.startsWith("tool:")) > acknowledged,
+      cueLeftTheText: acknowledged < 0 || whole.seen.slice(acknowledged).every((entry) => entry !== `text:${whole.seen[acknowledged]?.slice("acknowledgment:".length)}`),
+      sameWhenSplit: split.seen.filter((entry) => !entry.startsWith("text:")).join() === whole.seen.filter((entry) => !entry.startsWith("text:")).join(),
+    }
+  }
+
+  try Effect.sync(() => cloud.script(toolCalls("Sure.", agenda), toolCalls("One sec.", { name: "CALCULATE", arguments: { expression: "2 + 2" } }), text("Sent.")))
+  const instruction = try turn("Text Sam that I'm late")
+  try Effect.sync(() => cloud.script(toolCalls("Sure.", agenda), text("You're free Friday.")))
+  const question = try turn("Am I free Friday")
+  try Effect.sync(() => cloud.script(toolCalls("Sure.", agenda), toolCalls("Let me check.", agenda), text("Sam is in your contacts.")))
+  const politeAsk = try turn("Can you text Sam")
+  try Effect.sync(() => cloud.script(text("Hello.")))
+  const answer = try turn("Hi")
+
+  const done = (reply: string) => ({ kind: "Done", text: reply, failureKind: undefined, keyed: true })
+  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer }, {
+    instruction: {
+      done: done("Sent."), acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+    },
+    question: { done: done("You're free Friday."), acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    politeAsk: {
+      done: done("Sam is in your contacts."), acknowledgments: ["acknowledgment:Let me check."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:AGENDA_READ:Using Agenda"],
+      acknowledgedBeforeTools: false, cueLeftTheText: true, sameWhenSplit: true,
+    },
+    answer: { done: done("Hello."), acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+  }))
+}, 120_000)

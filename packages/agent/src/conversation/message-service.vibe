@@ -11,6 +11,7 @@ import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "./turn-context.schema.vibe"
 import { offeredActions, planTurn } from "./planning.vibe"
+import { cueRule } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
@@ -192,7 +193,7 @@ async function respond(
           examples.flatMap(({ name, content }) => content.text ? [`${name}: ${content.text}`] : []).join("\n"))
           .filter(Boolean)
         const system = [character.system, ...(character.bio ?? []), ...(character.style?.all ?? []),
-          ...(character.style?.chat ?? []), ...examples].filter(Boolean).join("\n\n")
+          ...(character.style?.chat ?? []), ...examples, cueRule].filter(Boolean).join("\n\n")
         const state = await runtime.composeState(message, [], true, true)
         const actions = await offeredActions(runtime, message, state, actionGate)
         const planned = await planTurn({
