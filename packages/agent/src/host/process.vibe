@@ -332,7 +332,7 @@ module node {
           ...authRoutes(agentId),
           ...conversationRoutes(runtime, conversationOwner, launch.character.name, events.conversationUpdated, agenda),
           ...enrollment.routes,
-          ...(agenda === undefined ? [] : proposalReviewRoutes(adapter, enrollment.deviceSender)),
+          ...(launch.callerRole === "owner" ? proposalReviewRoutes(adapter, enrollment.deviceSender) : []),
           ...readCompletionRoutes({ runtime, owner: conversationOwner, sender: enrollment.deviceSender }),
           ...composed.routes,
         ],
