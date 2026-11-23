@@ -602,6 +602,14 @@ public final class CloudDeviceAccount {
   return current != null && binding.equals(bindingOf(current));
  }
 
+ public void maintainLease() throws Exception {
+  JSONObject current = stored();
+  JSONObject lease = current == null ? null : current.optJSONObject("lease");
+  if (lease != null && newestExpiry(lease) - System.currentTimeMillis() <= 7L * 24 * 60 * 60_000) leaseAccess();
+  renewIfDue();
+  retryRevocation();
+ }
+
  public boolean renewIfDue() throws Exception {
   synchronized (LEASE) {
    synchronized (LOCK) {
