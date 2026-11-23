@@ -5,7 +5,7 @@ export {
   type Referral, type SpeechAudio, type SpeechConsent, type SpeechSession, type SpeechUpload, type TimedSpan,
   type Transcription, type UndoRequest, type UndoReview
 } from "./client.vibe"
-export { CloudError, isCredentialInvalid, networkError, readCloudError, type CloudFailure, type CloudResponse } from "./errors.vibe"
+export { CloudError, isCredentialInvalid, networkError, readCloudError, refusalStatusOf, type CloudFailure, type CloudResponse } from "./errors.vibe"
 export type {
   CalendarEvent, CalendarFeed, CalendarRow, ConnectStart, GoogleStatus, MailCapabilities, MailCard, MailMessage, MailOperation,
   MailReceipt, MailReview, MailSearch, MailTriage

@@ -1,7 +1,7 @@
 // spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
 import type { CloudError as CloudFailure } from "../../gen/cloud__client.ts"
 import { cloudErrorOf, defaultCodeOf, namesTheCredential } from "../../gen/cloud__client.effect.vibe"
-import { millisPerSecond, type Millis, type RefusalCode, type RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
+import { millisPerSecond, statusOf, type Millis, type RefusalCode, type RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
 
 export type { CloudFailure }
 
@@ -75,6 +75,11 @@ function retryAfterOf(header: string | null, now: Millis): Millis {
   if (/^\d+$/.test(value)) return now + Number(value) * millisPerSecond
   const at = Date.parse(value)
   return Number.isFinite(at) && at > 0 ? at : 0
+}
+
+export function refusalStatusOf(text: string): number {
+  const read = refusalOf(text)
+  return read === undefined ? -1 : statusOf(read.code)
 }
 
 export function networkError(cause: unknown): CloudError {

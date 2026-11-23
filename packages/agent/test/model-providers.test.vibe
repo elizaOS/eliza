@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
-import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, refusalFrame, text, unavailable, type CloudFake, type CloudReply } from "./support/cloud-fake.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
@@ -305,4 +305,36 @@ it.effect('A rate limit on an own key at Cerebras holds the account four seconds
   try Effect.sync(() => cloud.script(text("not on cerebras either")))
   try host("own key qwen off cerebras", () => ownKey.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: planner }))
   assert.deepStrictEqual(cloud.calls.slice(-2).map((call) => [(call.body as Record<string, unknown>).reasoning_effort, (call.body as Record<string, unknown>).prompt_cache_key]), [[undefined, undefined], [undefined, undefined]])
+})
+
+effect function refusalRead(cloud: CloudFake, replies: () => readonly CloudReply[], streamed: boolean) {
+  const made = try cloudAgent(cloud)
+  const before = completions(cloud)
+  try Effect.sync(() => cloud.script(...replies()))
+  const failure = try refusalOf(made.runtime, { prompt: "Call a tool.", ...(streamed ? { stream: true, onStreamChunk: () => undefined } : {}) })
+  const view = try made.binding.read()
+  return { code: failure?.code, status: failure?.status, waited: failure?.retryAfterMs, sent: completions(cloud) - before, state: view.accountState, retryAt: view.lastCloudFailure?.retryAt }
+}
+
+it.effect('A refusal inside a streamed answer is read as the HTTP refusal it names, and a cloud refusal\'s carried provider fields as a provider\'s own: an unparsed tool call is sent once, an overload is retried, a rate limit keeps its wait, a cloud refusal takes its code\'s status, and a frame naming no status is a provider issue (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const framed = (frames: readonly unknown[]) => refusalRead(cloud, () => frames.map(refusalFrame), true)
+  const unparsedCall = { code: "parser_error", param: "tool_calls", providerMessage: "Failed to parse the tool call." }
+  const unparsed = try framed([{ error: { provider_code: "parser_error", param: "tool_calls", message: "Bad Request", type: "invalid_request_error", code: 400, provider_message: "Failed to parse the tool call." } }])
+  const cloudUnparsed = try framed([{ error: "invalid_request", errorDescription: "Invalid request.", retryable: false, ...unparsedCall }])
+  const carriedUnparsed = try refusalRead(cloud, () => [refusal(400, "invalid_request", { carried: unparsedCall })], false)
+  const carriedOverload = try refusalRead(cloud, () => [refusal(400, "invalid_request", { carried: { providerMessage: "The server is overloaded, please try again." } }), text("after the overload")], false)
+  const limited = try framed([{ error: { message: "Rate limit exceeded. Please try again later.", type: "rate_limit_error", code: 429, retryAfterMs: 1_500 } }])
+  const cloudLimited = try framed([{ error: "rate_limited", errorDescription: "Rate limited.", retryable: true, retryAt: Date.now() + 60_000 }])
+  const broken = try framed([1, 2, 3, 4].map(() => ({ error: { message: "Something broke." } })))
+  const wait = (read: { waited?: unknown }) => typeof read.waited === "number" ? read.waited : -1
+  const parseFailed = { code: "PROVIDER_TOOL_CALL_PARSE_FAILED", status: 400, waited: undefined, sent: 1, state: "provider_issue", retryAt: undefined }
+  assert.deepStrictEqual([unparsed, cloudUnparsed, carriedUnparsed, carriedOverload, { ...limited, waited: wait(limited) > 0 && wait(limited) <= 2_000, retryAt: typeof limited.retryAt },
+    { ...cloudLimited, waited: wait(cloudLimited) > 0 && wait(cloudLimited) <= 60_000, retryAt: typeof cloudLimited.retryAt }, broken], [
+    parseFailed, parseFailed, parseFailed,
+    { code: undefined, status: undefined, waited: undefined, sent: 2, state: "usable", retryAt: undefined },
+    { code: "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", status: 429, waited: true, sent: 1, state: "limit_reached", retryAt: "number" },
+    { code: "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", status: 429, waited: true, sent: 1, state: "limit_reached", retryAt: "number" },
+    { code: undefined, status: 503, waited: undefined, sent: 4, state: "provider_issue", retryAt: undefined },
+  ])
 })
