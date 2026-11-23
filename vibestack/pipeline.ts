@@ -13,7 +13,7 @@ import type { Model } from "./gen.ts";
 import { conformance, type Machine } from "./conform.ts";
 import { explore } from "./explore.ts";
 import { ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type Proof } from "./prove.ts";
-import { bin, run } from "./run.ts";
+import { bin, run, startAttached } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
 import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
@@ -804,7 +804,7 @@ async function generateFiles(root: string, output = root, ownerName?: string) {
     for await (const { spec, error } of generating({ root, fresh: false, used: new Set() }, specs, output, staged)) {
       if (!error) continue;
       if (error instanceof InstallationChanged) throw error;
-      if (!ownerName) return { error };
+      if (!ownerName) return { error: error.message.startsWith(spec.file) ? error : new Error(`${spec.file}: ${error.message}`) };
       errors.push(`${spec.file}:\n${error.message}`);
     }
     if (errors.length) return { error: new Error(errors.join("\n")) };
@@ -922,7 +922,8 @@ export async function main(argv = process.argv.slice(2)) {
       const built = import.meta.filename.endsWith(".js");
       const entry = path.join(import.meta.dirname, "studio/src", built ? "main.js" : "main.vibe");
       const loader = built ? [] : ["--import", pathToFileURL(createRequire(path.join(import.meta.dirname, "studio/package.json")).resolve("vibelang/register")).href];
-      const child = spawn(process.execPath, [...loader, entry, ...args], { cwd: root, stdio: "inherit" });
+      const child = startAttached(process.execPath, [...loader, entry, ...args], root);
+      child.once("error", (error) => { console.error(`studio could not be started: ${error.message}`); process.exitCode = 1; });
       child.on("exit", (code, signal) => { process.exitCode = code ?? (signal ? 1 : 0); });
     } else if (command === "stories" || command === "tokens") {
       // Each is a command line of its own, reading its arguments after its name (stories/cli.ts, design/cli.ts).
