@@ -471,8 +471,11 @@ pure def lawOnlyAnActiveCredentialReachesProtectedRoutes(view: CredentialView, r
 The Google status, accounts, connect, disconnect, Gmail, inbox and calendar
 routes, and the Google sign-in sessions, are MailAccess. A device key there
 is refused `403 access_denied` with reason `device_key_not_allowed`: the
-on-device agent holds that key and reads untrusted mail, so it can never read
-or send mail with it. A device lease passes only a MailAccess route; on any
+on-device agent holds that key and acts on untrusted text, so it can never
+read or send mail with it. The agent reaches managed mail only through a
+broker its host runs in the native shell, which holds the lease there and
+never hands it to the agent; where the host provides no broker, the agent
+does not reach managed mail at all. A device lease passes only a MailAccess route; on any
 other route it is refused `403 access_denied`, so inference, speech,
 billing, app sign-in, keys and password backup keep their device-key
 admission. A lease view is live when its family accepts the presented

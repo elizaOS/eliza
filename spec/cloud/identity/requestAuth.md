@@ -223,8 +223,10 @@ pure val presentedValues: Set[Presented] = Set(NoCredential,
 ### A mail or calendar route admits a session or a device lease, and never the device key
 
 A live device key on a Mail route is refused `403 access_denied` with reason
-`device_key_not_allowed`: the on-device agent holds the key and reads
-untrusted mail, so it never reaches mail with it. A device lease is accepted
+`device_key_not_allowed`: the on-device agent holds the key and acts on
+untrusted text, so it never reaches mail with it. It reads managed mail only
+through a broker its host runs in the native shell with the lease
+(`sessions`), where the host provides one, and otherwise not at all. A device lease is accepted
 only when its family is live, the presented generation is the current or the
 offered one and its access token has not expired (`S::sessionRefusal`), the
 family's epoch is the person's session epoch, the account is active, and its

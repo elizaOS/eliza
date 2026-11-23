@@ -104,7 +104,9 @@ route marked `Public` carries its proof in the body (code, verifier,
 challenge or refresh token, or a device lease's refresh as its bearer).
 `Mail` is Google mail and calendar: it admits a session or the tablet's
 device lease and refuses the device key, so the native shell sends it with
-the lease's access token. `SessionFamily` is logout: the handler checks
+the lease's access token. An agent holds only the device key, so its link
+never sends a `Mail` route: the agent reaches managed mail only through a
+broker its host runs in the native shell, where the host provides one. `SessionFamily` is logout: the handler checks
 the presented access or refresh digest for the family it will end. The
 speech socket carries the session token in its `hello`. Routes the cloud
 calls itself, provider callbacks, the payment

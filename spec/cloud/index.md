@@ -175,7 +175,9 @@ pure def canConnectCloudGoogle(explicitConsent: bool, providerApproved: bool, id
 ### An approved connection grants the owner only the selected reads
 
 A read requires an active browser session or the device's live mail lease
-for the account that consented.
+for the account that consented. The on-device agent holds neither: it reads
+managed mail only through a broker its host runs in the native shell with
+the lease, where the host provides one, and otherwise not at all.
 The service keeps the refresh credential encrypted for that deployment,
 account and approved scopes. Disconnecting removes the local credential and any
 pending consent authorizations. Browser and native inference credentials
