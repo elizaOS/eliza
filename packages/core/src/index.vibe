@@ -253,6 +253,8 @@ export {
   isModelProviderFallbackError,
   isModelProviderRetryBudgetExhaustedError,
   isRateLimitError,
+  markModelProviderResendSpent,
+  modelProviderResendIsSpent,
   MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
   stripReasoningBlocks,
   type StructuredFailureCause,

@@ -134,6 +134,7 @@ it.live('A caller abort ends the call without an account failure (spec/agent/mod
   assert.strictEqual(completions(cloud), 1)
   const view = try binding.read()
   assert.deepStrictEqual([view.accountState, view.lastCloudFailure], ["usable", undefined])
+  assert.deepStrictEqual((try binding.state()).calls, [])
 })
 
 it.effect('The own-key backend answers text and image description, classifies its refusals into the same states, probes its key and holds only a key its slot accepts (spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts")', effect () => {

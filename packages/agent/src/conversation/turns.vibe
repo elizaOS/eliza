@@ -144,7 +144,7 @@ module node {
       readonly task?: JsonObject
       readonly clientId?: string
     }
-    readonly deadline?: AbortSignal
+    readonly deadline?: { readonly signal: AbortSignal; readonly at: number }
     readonly key?: KeyedTurn
     readonly device?: (message: Memory & { readonly id: UUID }, signal: AbortSignal) => Promise<DeviceTurnSession | undefined>
     readonly taskPresentation?: ChatTaskTurn
@@ -259,13 +259,15 @@ module node {
       let session: DeviceTurnSession | undefined
       const interrupted = async (result: MessageProcessingResult): Promise<MessageProcessingResult> => {
         if (result.responseMessages.length > 0) return result
-        const content = { text: result.responseContent?.text ?? "", failureKind: options.deadline?.aborted ? "timeout" : "aborted" }
+        const content = { text: result.responseContent?.text ?? "", failureKind: options.deadline?.signal.aborted ? "timeout" : "aborted" }
         return { ...result, responseContent: content, responseMessages: await storeReply(content) }
       }
       try {
         session = await options.device?.({ ...input, id: userMessageId }, signal)
         const processing: AgentTurnProcessingOptions = {
-          roomHandlerLease: lease, abortSignal: signal, ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
+          roomHandlerLease: lease, abortSignal: signal,
+          ...(options.deadline === undefined ? {} : { deadlineAt: options.deadline.at }),
+          ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
           ...(session?.context === undefined ? {} : { deviceContext: session.context }),
           ...(options.display === undefined ? {} : {
             onReplyRestart: options.display.restart, onPlanningAcknowledgment: options.display.acknowledge,
@@ -388,8 +390,8 @@ module node {
         if (taskPresentation?.kind === "Refused") return failure(taskPresentation.status, taskPresentation.error)
         admit(admission)
         const attached = stream === undefined ? undefined : await stream.attached
-        const deadline = AbortSignal.timeout(turnDeadlineMs)
-        const turnSignal = AbortSignal.any(attached === undefined ? [interrupt, deadline] : [interrupt, attached.signal, deadline])
+        const deadline = { at: Date.now() + turnDeadlineMs, signal: AbortSignal.timeout(turnDeadlineMs) }
+        const turnSignal = AbortSignal.any(attached === undefined ? [interrupt, deadline.signal] : [interrupt, attached.signal, deadline.signal])
         const conversationId = conversation(room)?.id
         const deviceTurn: TurnOptions["device"] = device === undefined || conversationId === undefined
           ? undefined : (message, active) => device.begin({ headers, conversationId, message, requestId: id ?? message.id, signal: active })

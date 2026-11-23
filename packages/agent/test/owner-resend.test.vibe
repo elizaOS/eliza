@@ -1,0 +1,102 @@
+// spec/agent/models/binding.md, "One temporarily rate-limited owner model call can resend before its deadline"
+import { assert, it } from "@effect/vitest"
+import { call, cloudFake, deviceKey, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
+import { allowanceExhausted, rateLimited, refusal, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
+
+function answerOf(answer: LocalAnswer | Refusal) {
+  return "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
+}
+
+function wires(cloud: CloudFake) {
+  return cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
+}
+
+effect function owner(cloud: CloudFake) {
+  const agent = try startInProcess({
+    launch: { callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin } },
+    frame: { credential: { version: 1, value: deviceKey } },
+  })
+  const opened = answerOf(try call(agent, { method: "POST", path: "/api/conversations", body: {} }))
+  const { conversation } = opened.body as { conversation: { id: string; roomId: string } }
+  return { agent, ...conversation }
+}
+
+effect function send(agent: InProcess, id: string, request: string) {
+  const reply = answerOf(try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`, body: { text: request } }))
+  return reply.body as { text?: string; failureKind?: string; retryAfterMs?: number }
+}
+
+it.live('Resend a short structural rate limit before showing an owner stream and consume only one resend (spec/agent/models/binding.md, "One temporarily rate-limited owner model call can resend before its deadline")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { agent, id } = try owner(cloud)
+  try Effect.sync(() => cloud.script(rateLimited(Date.now() + 600), text("One complete response.")))
+  const streamed = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body: { text: "Say hello." } })
+  const first = wires(cloud)
+  try Effect.sync(() => cloud.script(rateLimited(Date.now() + 600), unavailable(1)))
+  const refused = try send(agent, id, "Try with another request.")
+  const afterResend = wires(cloud).length
+  try Effect.sync(() => cloud.script(unavailable(1), rateLimited(Date.now() + 60_000)))
+  const afterAnOutage = try send(agent, id, "Try with a third request.")
+  try check(() => {
+    assert.strictEqual("status" in streamed ? streamed.status : 0, 200)
+    assert.include("text" in streamed ? streamed.text : "", "One complete response.")
+    assert.strictEqual(first.length, 2)
+    assert.deepStrictEqual(first[0]?.body, first[1]?.body)
+    assert.strictEqual(refused.failureKind, "provider_issue")
+    assert.strictEqual(afterResend, 4)
+    assert.strictEqual(afterAnOutage.failureKind, "limit_reached")
+    assert.isAbove(afterAnOutage.retryAfterMs ?? 0, 5_000)
+    assert.strictEqual(wires(cloud).length, 6)
+  })
+}, 120_000)
+
+it.live('Keep the second cloud refusal for the live reply and omit its wait from replay (spec/agent/models/binding.md, "One temporarily rate-limited owner model call can resend before its deadline")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { agent, id } = try owner(cloud)
+  try Effect.sync(() => cloud.script(rateLimited(Date.now() + 600), rateLimited(Date.now() + 60_000)))
+  const post = (key: string) => call(agent, { method: "POST", path: `/api/conversations/${id}/messages`,
+    body: { text: "Use a durable reply.", clientMessageId: key },
+  })
+  const first = answerOf(try post("rate-replay")).body as { messageId?: string; failureKind?: string; retryAfterMs?: number }
+  const replay = answerOf(try post("rate-replay")).body as typeof first
+  try check(() => {
+    assert.strictEqual(first.failureKind, "limit_reached")
+    assert.isAbove(first.retryAfterMs ?? 0, 5_000)
+    assert.strictEqual(replay.messageId, first.messageId)
+    assert.strictEqual(replay.failureKind, "limit_reached")
+    assert.isUndefined(replay.retryAfterMs)
+    assert.strictEqual(wires(cloud).length, 2)
+  })
+}, 120_000)
+
+it.live('End a waiting owner resend on cancellation and leave quota refusals on their original wire (spec/agent/models/binding.md, "One temporarily rate-limited owner model call can resend before its deadline")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { agent, id, roomId } = try owner(cloud)
+  try Effect.sync(() => cloud.script(refusal(429, "insufficient_quota"), allowanceExhausted(Date.now() + 60_000), rateLimited(0)))
+  const quota = try send(agent, id, "Try quota.")
+  const allowance = try send(agent, id, "Try allowance.")
+  const entering = try Effect.sync(() => cloud.nextCompletion())
+  const parked = fork send(agent, id, "Wait for the rate limit.")
+  try promise(() => entering)
+  let cooling = false
+  for (let ticks = 0; ticks < 30 && !cooling; ticks += 1) {
+    const status = answerOf(try call(agent, { method: "GET", path: "/api/status" }))
+    cooling = (status.body as { lastCloudFailure?: { kind?: string } }).lastCloudFailure?.kind === "limit_reached"
+    if (!cooling) try sleep("50 millis")
+  }
+  const stopped = answerOf(try call(agent, { method: "POST", path: `/api/turns/${roomId}/abort`, body: {} }))
+  const interrupted = try join parked
+  try check(() => {
+    assert.isTrue(cooling)
+    assert.strictEqual(quota.failureKind, "insufficient_credits")
+    assert.strictEqual(allowance.failureKind, "insufficient_credits")
+    assert.strictEqual((stopped.body as { outcome?: string }).outcome, "stopped")
+    assert.strictEqual(interrupted.failureKind, "aborted")
+    assert.strictEqual(wires(cloud).length, 3)
+  })
+}, 120_000)
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}

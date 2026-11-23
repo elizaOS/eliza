@@ -2,7 +2,7 @@
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentContext, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  activeCommittedEffectReceipts, effectReceiptIdentity, mergeEffectReceipts, runWithSuppressedModelStream, sameEffectEvidence,
+  activeCommittedEffectReceipts, effectReceiptIdentity, mergeEffectReceipts, modelProviderResendIsSpent, runWithSuppressedModelStream, sameEffectEvidence,
   buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
@@ -11,6 +11,7 @@ import {
   turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type RestoreIntent, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
+import { ownerResendScope } from "../models/owner-resend.vibe"
 import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
 import { needsReplyReview, reviewRecoveredProse } from "./reply-grounding.vibe"
 
@@ -279,6 +280,7 @@ export async function sentAtMostTwice<T>(send: () => Promise<T>, signal: AbortSi
   try {
     return await send()
   } catch (error: unknown) {
+    if (modelProviderResendIsSpent(error) || (ownerResendScope() !== undefined && error instanceof ModelRefusal && error.status === 429)) throw error
     const wait = resendWait(callFailureOf(error), false)
     if (wait < 0 || signal.aborted) throw error
     await sleepWithAbort(wait, signal)
