@@ -29,7 +29,7 @@ import { inferenceRequest, limitedBody, type InferenceEnv } from "./inference.vi
 export type CloudBindings = ClefEnv & IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase & { readonly CLOUD_PROFILE?: string }
 const mobileRoutes = [...deviceKeyRoutes, ...leaseRoutes]
 const connectPath = "/api/v1/app-auth/connect"
-const leasedGoogleReads: ReadonlySet<string> = new Set([
+const managedGoogleReadPaths: ReadonlySet<string> = new Set([
   "/api/v1/eliza/google/status",
   "/api/v1/eliza/google/gmail/triage",
   "/api/v1/eliza/google/gmail/search",
@@ -70,11 +70,11 @@ function mobileRequest(request: Request, env: CloudBindings, db: Client, provide
   })(request)
 }
 
-function leasedGoogleRequest(request: Request, env: CloudBindings, db: Client, providerFetch: typeof fetch): Promise<Response> {
+function managedGoogleRead(request: Request, env: CloudBindings, db: Client, providerFetch: typeof fetch): Promise<Response> {
   const authorization = request.headers.get("authorization") ?? undefined
   const read = effect {
     const caller = try authenticate(authorization, "MailAccess")
-    if (caller.kind !== "lease") throw refused("AuthenticationRequired", "CredentialUnknown")
+    if (caller.kind === "anonymous") throw refused("AuthenticationRequired", "CredentialUnknown")
     const answer = try promise(() => googleRequest(request, env, db, caller.userId, providerFetch))
     if (answer.ok) try recheckAccess(authorization, caller, "MailAccess")
     return answer
@@ -128,8 +128,8 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
       current: async () => await inferenceAccount(request, db, env) === owner,
     })
   }
-  if (request.method === "GET" && leasedGoogleReads.has(path) && request.headers.has("authorization")) {
-    return leasedGoogleRequest(request, env, db, providerFetch)
+  if (request.method === "GET" && managedGoogleReadPaths.has(path) && request.headers.has("authorization")) {
+    return managedGoogleRead(request, env, db, providerFetch)
   }
   const decisions = path === CLEF_DECISIONS_PATH
   const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"
