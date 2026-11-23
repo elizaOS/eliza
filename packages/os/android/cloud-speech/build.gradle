@@ -1,0 +1,20 @@
+apply plugin: 'com.android.library'
+
+def bridgeSource = layout.buildDirectory.dir('generated/source/cloudSpeech')
+def stageBridge = tasks.register('stageCloudSpeechBridge', Sync) {
+ from(file('../local-inference/speech-bridge/src/main/java')) { include 'ai/eliza/voice/SpeechStreamBridgePlugin.java', 'ai/eliza/voice/CloudSpeechWire.java' }
+ into(bridgeSource)
+}
+android {
+ namespace 'ai.eliza.voice.cloud'
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig { minSdk 29; targetSdk rootProject.ext.targetSdkVersion }
+ sourceSets.main.java.srcDirs = [bridgeSource]
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+preBuild.dependsOn(stageBridge)
+dependencies {
+ api project(':eliza-voice-io')
+ compileOnly project(':capacitor-android')
+ implementation 'com.squareup.okhttp3:okhttp:5.3.2'
+}

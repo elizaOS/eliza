@@ -159,18 +159,22 @@ secure store. `voice-io` needs `sign-in`. `local-inference`, the native
 speech, embedding and engine bindings over the consumer's pinned
 `libelizainference` build and the speech bridges a consumer subclasses,
 serves the agent service's inference host and runs on `voice-io`, so it
-needs `agent-service` and `voice-io`.
+needs `agent-service` and `voice-io`. `cloud-speech` is the Cloud speech
+bridge alone, for a consumer that speaks only through the cloud: no
+inference session, native library or model asset, so it needs only
+`voice-io`.
 
 ```quint
 pure val osModuleNames = List("agent-service", "runtime-files", "sign-in", "secure-store", "system", "camera", "browser-surface", "calendar", "contacts", "reminders",
-  "action-journal", "notifications", "messages", "phone", "passwords", "media", "filesystem", "location", "wifi", "network-policy", "voice-io", "local-inference", "app-update")
+  "action-journal", "notifications", "messages", "phone", "passwords", "media", "filesystem", "location", "wifi", "network-policy", "voice-io", "local-inference", "cloud-speech", "app-update")
 type OsModuleEntry = { osModule: str, sources: List[List[str]] }
 pure def builtAsProject(entry: OsModuleEntry): bool = not(entry.sources.some(s => s.nthOr(1, "") == "main"))
 pure def moduleNeeds(osModule: str): List[str] =
   if (osModule == "agent-service" or osModule == "app-update") List("runtime-files")
   else if (osModule == "sign-in") List("agent-service", "secure-store")
   else if (osModule == "voice-io") List("sign-in")
-  else if (osModule == "local-inference") List("agent-service", "voice-io") else List()
+  else if (osModule == "local-inference") List("agent-service", "voice-io")
+  else if (osModule == "cloud-speech") List("voice-io") else List()
 pure def osModulesAdmitted(entries: List[OsModuleEntry]): bool = {
   val selected = entries.listMap(e => e.osModule)
   distinctNames(selected) and selected.every(m => moduleNeeds(m).every(n => selected.includes(n))) and
