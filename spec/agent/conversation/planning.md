@@ -82,25 +82,26 @@ copy of what it proposed, planning ends there with no further model call:
 the reply is the proposals' own copy (below), so a further call's text
 would never be shown. A proposal that gave the owner no copy of its own,
 such as a confirmation question told only to the model, lets planning go
-on so the model can ask it. A call refused before dispatch, a refusal, a
+on so the model can ask it. A call that is no step of the turn, refused
+before dispatch or answered only with coaching for the model, a refusal, a
 failure, an applied change or any other outcome in that reply lets
 planning go on as before, so the model can correct it or finish the
 request. A request the model spreads over two replies therefore stops at
 the first reply that only proposed with its own copy.
 
 ```quint
-pure def awaitsOnlyTheOwner(refusedBeforeDispatch: int, uncopiedCalls: int, replyOutcomes: List[StepOutcome]): bool =
-  refusedBeforeDispatch == 0 and uncopiedCalls == 0 and replyOutcomes.length() > 0 and replyOutcomes.every(o => o == Proposed)
-pure val refusedBeforeDispatchValues = Set(0, 1)
+pure def awaitsOnlyTheOwner(callsWithoutStep: int, uncopiedCalls: int, replyOutcomes: List[StepOutcome]): bool =
+  callsWithoutStep == 0 and uncopiedCalls == 0 and replyOutcomes.length() > 0 and replyOutcomes.every(o => o == Proposed)
+pure val callsWithoutStepValues = Set(0, 1)
 pure val uncopiedCallsValues = Set(0, 1)
 pure val replyOutcomesValues = Set(List(), List(Proposed), List(Proposed, Proposed), List(Proposed, Rejected), List(Applied), List(Failed, Proposed), List(NoEffect))
 pure def lawAReplyOfOnlyOpenProposalsEndsPlanning(taken: int, calls: int, replyOutcomes: List[StepOutcome]): bool =
   awaitsOnlyTheOwner(0, 0, replyOutcomes) implies not(keepsPlanning(taken, calls, awaitsOnlyTheOwner(0, 0, replyOutcomes)))
-pure def lawAProposalWithoutItsOwnCopyLetsPlanningGoOn(refusedBeforeDispatch: int, uncopiedCalls: int, replyOutcomes: List[StepOutcome]): bool =
-  uncopiedCalls > 0 implies not(awaitsOnlyTheOwner(refusedBeforeDispatch, uncopiedCalls, replyOutcomes))
-pure def lawAnyOtherOutcomeLetsPlanningGoOn(refusedBeforeDispatch: int, uncopiedCalls: int, replyOutcomes: List[StepOutcome]): bool =
-  (refusedBeforeDispatch > 0 or replyOutcomes.some(o => o != Proposed)) implies not(awaitsOnlyTheOwner(refusedBeforeDispatch, uncopiedCalls, replyOutcomes))
-pure def lawAReplyWithoutCallsEndsNothingByItself(refusedBeforeDispatch: int, uncopiedCalls: int): bool = not(awaitsOnlyTheOwner(refusedBeforeDispatch, uncopiedCalls, List()))
+pure def lawAProposalWithoutItsOwnCopyLetsPlanningGoOn(callsWithoutStep: int, uncopiedCalls: int, replyOutcomes: List[StepOutcome]): bool =
+  uncopiedCalls > 0 implies not(awaitsOnlyTheOwner(callsWithoutStep, uncopiedCalls, replyOutcomes))
+pure def lawAnyOtherOutcomeLetsPlanningGoOn(callsWithoutStep: int, uncopiedCalls: int, replyOutcomes: List[StepOutcome]): bool =
+  (callsWithoutStep > 0 or replyOutcomes.some(o => o != Proposed)) implies not(awaitsOnlyTheOwner(callsWithoutStep, uncopiedCalls, replyOutcomes))
+pure def lawAReplyWithoutCallsEndsNothingByItself(callsWithoutStep: int, uncopiedCalls: int): bool = not(awaitsOnlyTheOwner(callsWithoutStep, uncopiedCalls, List()))
 ```
 
 ### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
