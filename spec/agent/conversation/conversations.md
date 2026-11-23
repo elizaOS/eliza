@@ -88,6 +88,10 @@ pure def sometimesPendingForkUnlisted(s: Conversations): bool = s.conversations.
 
 History is ordered by `at`, then message id. A read without a cursor
 answers the newest 200, and `hasMore` exactly when older messages exist.
+A message shows its whole stored text: a text too long to keep inline is
+read back whole from its stored segments, and a segment that is missing,
+belongs to another room or message, or does not match the text's digest
+fails the read rather than showing part of it.
 
 ```quint
 type Row = { id: int, at: int }
@@ -201,7 +205,8 @@ pure def lawConsecutivePagesJoin(xs: List[int], split: int, more: int): bool = (
 ### A fork starts only at my own message whose stored text is what I saw
 
 `POST /api/conversations/:id/fork {messageId, requestId, expectedText}`
-names a message I sent in that conversation (else 404) whose stored text
+names a message I sent in that conversation (else 404) whose whole stored
+text, read back from its segments when it is too long to keep inline,
 equals `expectedText` (else 409). The fork keeps the SHA-256 of
 `expectedText`, never the text: the same `requestId` with the same message
 and digest answers the same fork; with another message or digest it is 409.
@@ -282,6 +287,8 @@ message of another conversation, or none, is 404; a stored text other than
 `expectedText` is 409; a message already redacted answers `unchanged`.
 Otherwise the message and every message and model-call log row of that
 conversation with exactly its text show `[Private information removed]`.
+The whole stored text is compared, and a long text's stored segments are
+removed with it.
 
 ```quint
 type RedactAnswer = RedactUnknown | RedactTextChanged | RedactUnchanged | RedactNow

@@ -6,7 +6,7 @@ module node {
   import { fork, forkAnswer, type Conversations, type Fork, type Message } from "../../gen/agent__conversation__conversations.ts"
   import type { LocalRoute } from "../access/routes.vibe"
   import { conversationView, type ConversationRecord, type ConversationStore } from "./conversations.vibe"
-  import { bodyOf } from "./history.vibe"
+  import { bodyOf, storedText } from "./history.vibe"
 
   export type StoredMessage = Memory & { readonly id: UUID }
 
@@ -60,13 +60,13 @@ module node {
     const stored = (await adapter.getMemories({ roomId: record.roomId, tableName: "messages" }))
       .flatMap((memory) => memory.id === undefined ? [] : [memory as StoredMessage])
       .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    return stored.map((memory, index) => ({
+    return Promise.all(stored.map(async (memory, index) => ({
       memory,
       message: {
         id: index + 1, conversationId: sourceId, at: memory.createdAt ?? 0,
-        author: memory.entityId === ownerId ? "User" : "Agent", body: bodyOf(memory), origin: { tag: "Original" },
+        author: memory.entityId === ownerId ? "User" : "Agent", body: bodyOf(await storedText(adapter, memory)), origin: { tag: "Original" },
       },
-    }))
+    })))
   }
 
   export function conversationModel(record: ConversationRecord, placed: readonly Placed[], forks: readonly Fork[] = []): Conversations {

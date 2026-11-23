@@ -6,7 +6,7 @@ import type { Author, Conversation, Conversations, Event, Fork, LogRow, Message,
 import type { LocalRoute } from "../../src/access/routes.vibe";
 import { conversationRecordRoutes, conversationStore, recordOf, type ConversationOwner, type ConversationRecord, type ConversationStore } from "../../src/conversation/conversations.vibe";
 import { forkRecords, forkService, forkTitle } from "../../src/conversation/fork.vibe";
-import { bodyOf } from "../../src/conversation/history.vibe";
+import { bodyOf, storedText } from "../../src/conversation/history.vibe";
 import { redactRoutes } from "../../src/conversation/redact.vibe";
 import { openDeviceStorage } from "../../src/storage/index.vibe";
 import { scratchDirectory, type Scratch } from "../support/scratch.ts";
@@ -169,14 +169,14 @@ async function observe(): Promise<Conversations> {
   const conversations = held.map((record): Conversation => ({
     id: record.seq, title: titleOf(record.title), createdAt: modelTime(w, record.createdAt), updatedAt: modelTime(w, record.updatedAt), publication: record.publication,
   }));
-  const messages = (await Promise.all(held.map(async (record) => (await storedMessages(w, record)).map((memory): Message => {
+  const messages = (await Promise.all(held.map(async (record) => Promise.all((await storedMessages(w, record)).map(async (memory): Promise<Message> => {
     const from = sourceOf(memory);
     return {
       id: w.messageIds.get(memory.id) ?? 0, conversationId: record.seq, at: modelTime(w, memory.createdAt ?? 0),
-      author: memory.entityId === w.runtime.agentId ? "Agent" : "User", body: bodyOf(memory),
+      author: memory.entityId === w.runtime.agentId ? "Agent" : "User", body: bodyOf(await storedText(w.runtime.adapter, memory)),
       origin: from === undefined ? { tag: "Original" } : { tag: "Copied", fromId: w.messageIds.get(String(from)) ?? 0 },
     };
-  })))).flat().sort((a, b) => a.id - b.id);
+  }))))).flat().sort((a, b) => a.id - b.id);
   const logs = (await Promise.all(held.map(async (record) => (await w.runtime.adapter.getLogs({ roomId: record.roomId })).map((row) => {
     const prompt = String((row.body as { prompt?: unknown }).prompt ?? "");
     return { at: row.createdAt.getTime(), row: { conversationId: record.seq, body: prompt === notice ? { tag: "Redacted" } : { tag: "Said", text: prompt } } satisfies LogRow };
