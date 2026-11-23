@@ -1171,6 +1171,14 @@ const browserControlSchemas: ActionParameterSchema[] = [
   {
     type: "object",
     additionalProperties: false,
+    required: ["type"],
+    properties: {
+      type: { type: "string", enum: ["browser_tabs_show"] },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
     required: ["type", "text"],
     properties: {
       type: { type: "string", enum: ["browser_find"] },
@@ -1422,6 +1430,10 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   {
     types: ["browser_tab_new", "browser_tab_switch", "browser_tab_close"],
     text: "Browser tabs: browser_tab_new opens an empty tab and never loads an address. To open a typed address in a new tab, use one browser_navigate with newTab true (DEVICE_BROWSER_OPEN), never browser_tab_new. browser_tab_switch shows an open tab and browser_tab_close closes one, or every open tab with all true when the owner asks to close all of them; never narrow a request for several or all tabs to the one showing. The phone finds the tab and the owner picks when more than one matches. Closing a tab is always reviewed by the owner. You never receive the list of tabs, a title or an address; never say which tabs are open.",
+  },
+  {
+    types: ["browser_tabs_show"],
+    text: "browser_tabs_show shows the owner the phone's own tab list when they ask to see or list their tabs; you never receive it or a count.",
   },
   {
     types: ["browser_find"],

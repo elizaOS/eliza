@@ -248,6 +248,11 @@ content.
   site. The phone finds the tab, and the owner picks when more than one
   matches. Without `target`, close acts on the tab that is showing. The owner
   always reviews a close.
+- `browser.tabs.close-all.v1`: `browser_tab_close {all: true}` closes every open
+  tab from one reviewed card on which the phone lists them.
+- `browser.tabs.show.v1`: `browser_tabs_show {}` brings the phone's own list of
+  open tabs to the front. It runs without a review when the owner asked for it
+  in the current message, and the agent receives no tab, title or count.
 - `browser.find.v1`: `browser_find {text}` shows the matches on the open page.
 - `browser.history.v1`: `browser_history {action}` with `back`, `forward`,
   `reload` or `stop`.

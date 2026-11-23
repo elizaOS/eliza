@@ -72,6 +72,7 @@ describe("phone Browser control discovery", () => {
       ["new private browser tab", "DEVICE_BROWSER_TAB_NEW"],
       ["search the web for cheap flights", "DEVICE_BROWSER_SEARCH"],
       ["find the word domain on this page", "DEVICE_BROWSER_PAGE_SEARCH"],
+      ["show my open tabs", "DEVICE_BROWSER_TAB_OVERVIEW"],
     ] as const)
       expect(discover(query, ["browser"]), query).toContain(name);
   });
@@ -136,6 +137,7 @@ describe("phone Browser control discovery", () => {
       "DEVICE_BROWSER_SEARCH",
       "DEVICE_BROWSER_TAB_CLOSE",
       "DEVICE_BROWSER_TAB_NEW",
+      "DEVICE_BROWSER_TAB_OVERVIEW",
       "DEVICE_BROWSER_TAB_SWITCH",
     ]);
     for (const tool of controls) {

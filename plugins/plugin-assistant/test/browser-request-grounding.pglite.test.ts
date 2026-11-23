@@ -1330,6 +1330,14 @@ it.each([
     false,
     "close all the browser tabs",
   ],
+  // v629 (Pixel): "show my open tabs" had no action and the reply said the
+  // agent could not list tabs. The phone's own list comes to the front.
+  [
+    { type: "browser_tabs_show" },
+    "browser.tabs.show.v1",
+    true,
+    "show my open tabs",
+  ],
 ] as const)(
   "queues the negotiated Browser control %o",
   async (operation, capability, handoff, request) => {
@@ -1389,6 +1397,13 @@ it.each([
     "browser.search.v1",
     "Searching the web for “cats”.",
     "search for cats",
+  ],
+  [
+    "DEVICE_BROWSER_TAB_OVERVIEW",
+    { type: "browser_tabs_show" },
+    "browser.tabs.show.v1",
+    "Doing that in Browser.",
+    "show my open tabs",
   ],
   [
     "DEVICE_BROWSER_PAGE_SEARCH",
