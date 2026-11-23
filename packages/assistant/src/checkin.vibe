@@ -87,7 +87,7 @@ export effect function runCheckin(kind: "morning" | "night") {
     const model = try Model
     const said = model.complete(
       `Write the owner's ${kind} check-in for ${longDate(date)} (${date}) in their zone ${zone}. Use only the facts given. Name no other day. Three to six short lines.`,
-      facts, 400,
+      facts,
     ) catch () => undefined
     const result = judgeSummary(said, date)
     const rendered = try orDie(checkin.send({ type: "renderCheckin", result }))

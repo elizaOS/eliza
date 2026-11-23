@@ -11,7 +11,8 @@ import { runEvaluators } from "../src/evaluators/runner.vibe"
 import { followupIndex, followupTick } from "../src/followups.vibe"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
 import { heardReply, replyKind } from "../src/replies.vibe"
-import { answerReminder, createReminder, deliverReminder, escalateReminder, reminderKind, reminderReply, retractRecentSave } from "../src/reminders.vibe"
+import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, reminderKind, reminderReply, retractRecentSave } from "../src/reminders.vibe"
+import { onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
 import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKind, updateRoutine } from "../src/routines.vibe"
 import { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
@@ -55,6 +56,13 @@ it.effect('A plan alone never saves a reminder: a message that did not ask, or a
     try equal([declined, unverified, late].map(outcomeOf).map(({ outcome }) => outcome), ["OWNER_REMINDER_INTENT_MISMATCH", "OWNER_REMINDER_INTENT_UNVERIFIED", "REMINDER_TIME_PASSED"])
     try equal(rowsOf(seen, reminderKind).length, 0)
   }
+})
+
+it.effect('The owner\'s message is checked again with no output limit on the model (spec/assistant/reminders.md, "The original message is checked before a reminder is written")', effect () => {
+  const asked: object[] = []
+  const runtime = { agentId: "agent-1", useModel: async (_model: unknown, params: object) => { asked.push(params); return check({}) } } as unknown as IAgentRuntime
+  const checked = try tryPromise(() => onAgent(runtime, checkOriginalMessage("remind me in 20 minutes to call the dentist")))
+  try equal([checked?.requested, asked.map((params) => Object.keys(params).sort())], [true, [["prompt", "system"]]])
 })
 
 it.effect('A save that failed and then succeeded is reported saved, and one that never proved itself is not (spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record")', effect () => {

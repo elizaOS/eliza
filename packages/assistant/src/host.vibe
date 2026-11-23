@@ -80,7 +80,7 @@ export service Scheduler {
 
 /** The configured text model. */
 export service Model {
-  complete(system: string, prompt: string, maxTokens: number): string!ModelUnavailable
+  complete(system: string, prompt: string): string!ModelUnavailable
 }
 
 /** Where a fired reminder reaches the owner: a notice and the conversation it was asked in. */
@@ -225,9 +225,9 @@ function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
 /** The Model over the runtime's small text model. */
 function runtimeModel(runtime: IAgentRuntime): Model.Shape {
   return {
-    effect complete(system, prompt, maxTokens) {
+    effect complete(system, prompt) {
       const text = try tryPromise({
-        try: () => runtime.useModel(ModelType.TEXT_SMALL, { system, prompt, maxTokens }),
+        try: () => runtime.useModel(ModelType.TEXT_SMALL, { system, prompt }),
         catch: (cause) => new ModelUnavailable({ reason: cause instanceof Error ? cause.message : String(cause) }),
       })
       if (typeof text !== "string") throw new ModelUnavailable({ reason: "The model returned no text" })

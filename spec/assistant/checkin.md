@@ -20,6 +20,7 @@ this model; so are scheduling, delivery and cancellation at the scheduler.
 Rendering may find no model, have the model refuse, return blank text, or
 return text that declares a report day other than the current one. Only a
 valid answer goes on to storage, and storage may still refuse the write.
+The model is asked with no output limit, so a summary is never cut short.
 
 ```quint
 type CheckinPhase = CheckinIdle | Collected | Rendered | SummaryStored | CheckinFailed
