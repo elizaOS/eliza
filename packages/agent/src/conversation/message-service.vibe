@@ -21,7 +21,6 @@ export interface AgentTurnProcessingOptions extends MessageProcessingOptions {
 }
 
 const historyReadCount = 200
-const replyMaxTokens = 1024
 
 export const accountFailureOf = (read: () => BindingView): AccountFailureSince => (since) => {
   const view = read()
@@ -157,7 +156,7 @@ async function respond(
         const state = await runtime.composeState(message, [], true, true)
         const actions = await offeredActions(runtime, message, state, actionGate)
         const planned = await planTurn({
-          runtime, message, state, roles, actionGate, system, messages, signal, maxTokens: replyMaxTokens,
+          runtime, message, state, roles, actionGate, system, messages, signal,
           onStepResult: (result) => Effect.runPromise(Effect.try({
             try: () => terminal.recordActionResult(result),
             catch: toElizaError,

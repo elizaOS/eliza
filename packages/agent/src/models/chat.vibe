@@ -13,7 +13,6 @@ export interface Endpoint {
   readonly url: string
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
   readonly maxTokensField: "max_tokens" | "max_completion_tokens"
-  readonly defaultMaxTokens?: number
 }
 
 interface Sink {
@@ -428,7 +427,7 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
 function requestOf(endpoint: Endpoint, params: GenerateTextParams): object | undefined {
   const messages = conversation(params)
   if (messages === undefined) return undefined
-  const max = params.omitMaxTokens ? undefined : params.maxTokens ?? endpoint.defaultMaxTokens
+  const max = params.omitMaxTokens ? undefined : params.maxTokens
   const tools = toolsOf(params.tools)
   const toolChoice = toolChoiceOf(params.toolChoice)
   const format = responseFormatOf(params)

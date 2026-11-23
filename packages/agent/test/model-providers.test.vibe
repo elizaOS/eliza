@@ -54,7 +54,7 @@ it.effect('A cloud text call keeps its image parts, streams, and an image descri
     assert.ok(body !== null && typeof body === "object" && "model" in body)
     return [call.path, body.model, call.authorization, "max_tokens" in body ? body.max_tokens : undefined]
   }), [
-    ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`, 1024],
+    ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`, undefined],
     ["/api/v1/chat/completions", "vision", `Bearer ${deviceKey}`, undefined],
   ])
   assert.strictEqual((try binding.read()).accountState, "usable")
