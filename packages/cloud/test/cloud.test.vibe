@@ -1898,6 +1898,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const htmlOverLimit = `<p>${htmlTextAtLimit}y</p>`
     try sync(() => {
       const message = { labelIds: ["TRASH"], historyId: String(mailbox.history), internalDate: now, snippet: "Preview only" }
+      mailbox.messages.set("msg-ascii-oversized", { ...message, id: "msg-ascii-oversized", threadId: "msg-ascii-oversized", bodyText: "x".repeat(8 * 1024 * 1024 + 1) })
       mailbox.messages.set("html-at-limit", { ...message, id: "html-at-limit", threadId: "html-at-limit", bodyHtml: htmlAtLimit })
       mailbox.messages.set("html-alternative", { ...message, id: "html-alternative", threadId: "html-alternative", bodyText: "Plain alternative", bodyHtml: htmlOverLimit })
       mailbox.messages.set("html-over-limit", { ...message, id: "html-over-limit", threadId: "html-over-limit", bodyHtml: htmlOverLimit })
@@ -1906,6 +1907,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       mailbox.messages.set("mime-html-only", { ...message, id: "mime-html-only", threadId: "mime-html-only", mimePayload: mimeBoundaryPayload(201, "html") })
       mailbox.messages.set("mime-malformed", { ...message, id: "mime-malformed", threadId: "mime-malformed", mimePayload: mimeBoundaryPayload(201, "malformed") })
     })
+    const asciiOversized = try gmail("/read?messageId=msg-ascii-oversized")
     const htmlReads = try promise(() => Promise.all(["html-at-limit", "html-alternative", "html-over-limit"].map((messageId) => client.gmailRead({ messageId }))))
     const html = htmlReads.map((message, index) => [
       message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
@@ -2018,6 +2020,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         html,
         mime: [mime, mimeAttachment.status, (mimeAttachment.body as { readonly dataBase64?: string }).dataBase64, mimeMalformed.status],
         oversized: errorOf(oversized),
+        asciiOversized: errorOf(asciiOversized),
         capabilities: [capabilities.status, capabilities.body],
         attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
         thread: [thread.status, threadBody.historyId, threadBody.total, threadBody.messages.map((message) => message.bodyText)],
@@ -2045,6 +2048,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
           ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
         oversized: [413, "content_too_large"],
+        asciiOversized: [413, "content_too_large"],
         capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"],
           kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 }, providerExactlyOnce: false }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
