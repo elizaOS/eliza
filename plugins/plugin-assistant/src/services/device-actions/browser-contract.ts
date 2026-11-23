@@ -28,6 +28,9 @@ export const BROWSER_HISTORY_CAPABILITY = "browser.history.v1";
 export const BROWSER_OPEN_NEW_TAB_CAPABILITY = "browser.open-new-tab.v1";
 /** Every open tab closed by one reviewed browser_tab_close {all: true}. Needs browser.tabs.v1 too. */
 export const BROWSER_TABS_CLOSE_ALL_CAPABILITY = "browser.tabs.close-all.v1";
+/** The phone's own list of open tabs brought to the front (browser_tabs_show). The list
+ * stays on the phone: the agent learns only whether it is showing. */
+export const BROWSER_TABS_SHOW_CAPABILITY = "browser.tabs.show.v1";
 
 export const BROWSER_TAB_TARGET_MAX = 128;
 export const BROWSER_FIND_TEXT_MAX = 256;
@@ -44,6 +47,7 @@ export type BrowserControlOperation =
   | { type: "browser_tab_new"; private?: boolean }
   | { type: "browser_tab_switch"; target: string }
   | { type: "browser_tab_close"; target?: string; all?: true }
+  | { type: "browser_tabs_show" }
   | { type: "browser_find"; text: string }
   | { type: "browser_history"; action: BrowserHistoryAction };
 export type BrowserControlType = BrowserControlOperation["type"];
@@ -53,6 +57,7 @@ const CAPABILITY: Record<BrowserControlType, string> = {
   browser_tab_new: BROWSER_TABS_CAPABILITY,
   browser_tab_switch: BROWSER_TABS_CAPABILITY,
   browser_tab_close: BROWSER_TABS_CAPABILITY,
+  browser_tabs_show: BROWSER_TABS_SHOW_CAPABILITY,
   browser_find: BROWSER_FIND_CAPABILITY,
   browser_history: BROWSER_HISTORY_CAPABILITY,
 };
@@ -64,9 +69,37 @@ export const BROWSER_CONTROL_DIRECT_TYPES: readonly BrowserControlType[] = [
   "browser_search",
   "browser_tab_new",
   "browser_tab_switch",
+  "browser_tabs_show",
   "browser_find",
   "browser_history",
 ];
+
+/**
+ * A whole message that asks only to see the open Browser tabs: "show my open
+ * tabs", "list my tabs", "what tabs do I have open?". An optional leading
+ * assistant name and please are allowed; anything more is left to the model.
+ */
+export function asksToSeeBrowserTabs(
+  text: string,
+  assistantName?: string,
+): boolean {
+  let request = text.trim().toLowerCase();
+  const name = assistantName?.trim().toLowerCase();
+  if (name && request.startsWith(name))
+    request = request.slice(name.length).replace(/^[\s,]+/, "");
+  request = request
+    .replace(/^(?:please\s+|can you\s+|could you\s+)+/, "")
+    .replace(/[\s.!?]+$/, "")
+    .replace(/\s+please$/, "");
+  return (
+    /^(?:show|list|see)(?:\s+me)?(?:\s+(?:all|all of))?(?:\s+(?:my|the))?(?:\s+open)?(?:\s+browser)?\s+tabs(?:\s+(?:i\s+have\s+)?open)?(?:\s+in\s+(?:the\s+)?browser)?$/.test(
+      request,
+    ) ||
+    /^(?:what|which)(?:\s+browser)?\s+tabs\s+(?:do\s+i\s+have|are|have\s+i\s+got)(?:\s+open)?(?:\s+in\s+(?:the\s+)?browser)?$/.test(
+      request,
+    )
+  );
+}
 
 export function isBrowserControlType(
   type: unknown,
@@ -142,6 +175,9 @@ export function validateBrowserControl(
       if (op.private !== undefined && typeof op.private !== "boolean")
         throw Error("Invalid private tab flag");
       return { type: value.type, ...(op.private ? { private: true } : {}) };
+    case "browser_tabs_show":
+      allowed([]);
+      return { type: value.type };
     case "browser_tab_switch":
       allowed(["target"]);
       return {
@@ -214,6 +250,12 @@ export function describeBrowserControl(
         description: op.private
           ? "Opens an empty private tab in Browser."
           : "Opens an empty tab in Browser.",
+      };
+    case "browser_tabs_show":
+      return {
+        title: "Show open tabs",
+        description:
+          "Shows the list of your open tabs in Browser. The agent does not see your tabs.",
       };
     case "browser_tab_switch":
       return {

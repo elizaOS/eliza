@@ -404,6 +404,7 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "browser_tab_new":
     case "browser_tab_switch":
     case "browser_tab_close":
+    case "browser_tabs_show":
     case "browser_find":
     case "browser_history":
     case "notes_filter":
