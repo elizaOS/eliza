@@ -9,8 +9,6 @@ export const FILES_CAPABILITY = "files.browser.v1"
 export const FILES_SHOWN_TARGET_CAPABILITY = "files.shown-target.v1"
 /** Every Files operation type. */
 export const FILES_OPERATION_TYPES = ["files_filter", "files_open", "files_share", "files_move", "files_trash", "files_folder_create"] as const
-/** Read-only or view-only operations: they change nothing, so they need no separate review. */
-export const FILES_DIRECT_TYPES: readonly FilesOperationType[] = ["files_filter", "files_open"]
 /** The most files one operation names. */
 export const FILES_PATHS_MAX = 50
 
@@ -125,12 +123,6 @@ export function describeFilesOperation(op: FilesAgentOperation): { readonly titl
     }
     case "files_folder_create": return { title: "New folder", description: place(op.parent === "" ? op.name : `${op.parent}/${op.name}`) }
   }
-}
-
-/** Changes are reviewed only where the owner sees Files on the unlocked phone; filter and open may start from any unlocked screen. */
-export function filesContextAllowed(op: { readonly type: string }, context: { readonly view: string; readonly sensitive?: boolean }): boolean {
-  if (context.sensitive === true) return false
-  return FILES_DIRECT_TYPES.some((type) => type === op.type) || context.view === "files"
 }
 
 const filesPath = { type: "string", description: 'Path on Internal storage, for example "Download/lease.pdf"' } as const
