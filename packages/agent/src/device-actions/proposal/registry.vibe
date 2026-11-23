@@ -63,9 +63,13 @@ export function routedRequest(runtime: IAgentRuntime, turn: DeviceTurn): { reado
 export function messageNote(runtime: IAgentRuntime, turn: DeviceTurn): string | undefined {
   const routed = routedRequest(runtime, turn)
   if (routed !== undefined) return routed.route.lead
+  const heldBack = new Map<string, readonly string[]>()
+  for (const form of offeredForms(runtime, turn)) {
+    if (form.now !== undefined && !availableNow(form, turn)) heldBack.set(form.now.unavailable, [...new Set([...(heldBack.get(form.now.unavailable) ?? []), ...form.types])])
+  }
   const notes = [
     ...registeredFamilies(runtime).flatMap((family) => family.now?.(turn) ?? []),
-    ...offeredForms(runtime, turn).flatMap((form) => availableNow(form, turn) || form.now === undefined ? [] : [`${form.types.join(", ")} is not available on this message: ${form.now.unavailable}.`]),
+    ...[...heldBack].map(([reason, types]) => `${types.join(", ")} ${types.length === 1 ? "is" : "are"} not available on this message: ${reason}.`),
   ]
   return notes.length === 0 ? undefined : [...new Set(notes)].join(" ")
 }

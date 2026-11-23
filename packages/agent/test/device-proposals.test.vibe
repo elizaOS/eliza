@@ -7,7 +7,7 @@ import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vib
 module node {
   import { Effect, Result } from "effect"
   import type { AgentRuntime } from "@elizaos/core"
-  import { registerDeviceProposalFamily, type DeviceProposalFamily, type Grounding } from "../src/device-actions/operations.vibe"
+  import { registerDeviceProposalFamily, type DeviceProposalFamily, type Grounding, type MessageAvailability, type ProposalForm } from "../src/device-actions/operations.vibe"
   import { text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
   import { deviceClient, type DeviceClient } from "./support/device.ts"
 
@@ -20,9 +20,19 @@ module node {
     properties: { type: { type: "string", enum: ["create_reminder"] }, title: { type: "string" }, dueAt: { type: "string" } },
   }
 
+  const remindersView = "it works only while the phone's Reminders view is open"
+  const inRemindersView: MessageAvailability = { unavailable: remindersView, available: (turn) => turn.observation?.view === "reminders" }
+  const viewForm = (type: "reminder_create" | "reminder_named", action?: string): ProposalForm => ({
+    types: [type], offered: (device) => device.capabilities.includes(negotiated), now: inRemindersView,
+    schema: { type: "object", required: ["type"], properties: { type: { type: "string", enum: [type] }, ...(action === undefined ? {} : { action: { type: "string", enum: [action] } }) } },
+  })
+
   const remindersFamily: DeviceProposalFamily = {
-    name: "reminders", types: ["create_reminder"],
-    forms: [{ types: ["create_reminder"], schema: reminderForm, guidance: "create_reminder saves a reminder the owner dictated.", offered: (turn) => turn.capabilities.includes(negotiated) }],
+    name: "reminders", types: ["create_reminder", "reminder_create", "reminder_named"],
+    forms: [
+      { types: ["create_reminder"], schema: reminderForm, guidance: "create_reminder saves a reminder the owner dictated.", offered: (turn) => turn.capabilities.includes(negotiated) },
+      viewForm("reminder_create"), viewForm("reminder_named", "update"), viewForm("reminder_named", "cancel"),
+    ],
     guidance: () => "Reminders are saved on the owner's phone.",
     ground: (proposed, turn) => Effect.succeed<Grounding>(/\bremind\b/i.test(turn.ownerText)
       ? { kind: "Grounded", operation: proposed.operation, ...(/\bmaybe\b/i.test(turn.ownerText) ? { grounding: "GroundedForReview" as const } : {}) }
@@ -94,6 +104,7 @@ module node {
       { name: proposeTool, arguments: { operation: JSON.stringify({ type: "create_reminder", title: "Milk", dueAt }) } }, reminder("Milk")), text("Done."))
     const asked = await say("Remind me to buy milk", direct)
     const offeredTool = lastCompletion(cloud, 2).tools?.find(({ function: tool }) => tool?.name === proposeTool)?.function
+    const askedNote = JSON.stringify((lastCompletion(cloud, 2).messages ?? []).filter(({ role }) => role === "user").at(-1)?.content ?? "")
     const [milk] = await proposals(client)
 
     cloud.script(toolCalls("", reminder("Eggs")), text("Okay."))
@@ -153,6 +164,10 @@ module node {
         types: (offeredTool?.parameters?.properties?.operation?.anyOf ?? []).flatMap((form) => form.properties?.type?.enum ?? []).toSorted(),
         guided: offeredTool?.description?.includes("create_reminder saves a reminder") === true,
       },
+      notHere: {
+        grouped: askedNote.includes(`reminder_create, reminder_named are not available on this message: ${remindersView}.`),
+        reasonsSaid: askedNote.split(remindersView).length - 1,
+      },
       proposalReply: asked.text,
       milk: milk === undefined ? undefined : { state: milk.state, payload: milk.payload },
       expectedPayload: {
@@ -202,7 +217,8 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
   const { expectedPayload, ...seen } = observed
   try Effect.try(() => assert.deepStrictEqual(seen, {
     registration: { first: "registered", again: "registered", rival: "FamilyConflict", foreignForm: "FamilyConflict" },
-    offered: { types: ["create_note", "create_reminder", "open_view"], guided: true },
+    offered: { types: ["create_note", "create_reminder", "open_view", "reminder_create", "reminder_named", "reminder_named"], guided: true },
+    notHere: { grouped: true, reasonsSaid: 1 },
     proposalReply: "Review the reminder “Milk” on your phone.",
     milk: { state: "pending", payload: expectedPayload },
     refusalReply: true, afterRefusal: 1,
