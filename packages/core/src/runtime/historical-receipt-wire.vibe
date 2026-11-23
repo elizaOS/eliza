@@ -2,9 +2,8 @@
 import { thrown } from "../edge.vibe"
 import { type EffectReceipt, normalizeEffectReceipt } from "../types/effects.vibe"
 import { isObjectRecord } from "../utils/type-guards.vibe"
-import { collectCompletionContextSources } from "./completion-context.vibe"
-import { hashStableJson } from "./context-hash.vibe"
-import type { ContextObject, ContextObjectPromptSegment } from "./context-object.vibe"
+import type { ContextObjectPromptSegment } from "./context-object.vibe"
+import { stableJson } from "./stable-json.vibe"
 
 export const HISTORICAL_PROPOSAL_TERMINAL_ID_PREFIX = "historical-proposal-terminal:"
 
@@ -53,8 +52,8 @@ effect function effectReceipt(value: unknown) {
   if (!isObjectRecord(value)) return undefined
   const receipt = normalizeEffectReceipt(value) catch () => undefined
   if (receipt === undefined) return undefined
-  const hashes = all([hashStableJson(receipt), hashStableJson(value)]) catch () => undefined
-  return hashes !== undefined && hashes[0] === hashes[1] ? receipt : undefined
+  const same = Effect.try(() => stableJson(receipt) === stableJson(value)) catch () => false
+  return same ? receipt : undefined
 }
 
 function navigationReceipt(value: unknown): Record<string, unknown> | undefined {
@@ -251,11 +250,6 @@ function relabelRequestNote(
   if (!isObjectRecord(note) || typeof note.requestSourceEventId !== "string") return undefined
   const label = sourceIds.get(note.requestSourceEventId)
   return label ? { ...segment, content: JSON.stringify({ ...note, requestSourceEventId: `history:${label}` }) } : undefined
-}
-
-export function historicalRequestSourceIds(context: ContextObject): Map<string, string> {
-  if (!Array.isArray(context?.events)) return new Map()
-  return new Map(collectCompletionContextSources(context).map(({ id, event }) => [event.id, id]))
 }
 
 export type HistoricalReceiptWireOptions = {
