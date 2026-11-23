@@ -3,7 +3,7 @@ import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch, type Worke
 import type { Client } from "pg"
 import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { sweepUsage } from "./worker-metering.vibe"
-import { cloudCredential, identityRequest, nativeGooglePath, inferenceAccount, managedMailAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
+import { cloudCredential, identityRequest, nativeGooglePath, inferenceAccount, managedMailAccount, sessionAccount, sweepDeviceOffers, type IdentityEnv } from "./identity.vibe"
 import { nativeAssetLinks } from "./native-registry.vibe"
 import { ownsPasswordBackupPath } from "./password-backup.vibe"
 export { nativeAssetLinks }
@@ -93,6 +93,7 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
       return withCloudDatabase(env, async (db) => {
         await sweepUsage(db)
         await sweepSubscriptions(env, db)
+        await sweepDeviceOffers(db)
       })
     },
     async fetch(request: Request, env: E, lifetime?: WorkerLifetime): Promise<Response> {

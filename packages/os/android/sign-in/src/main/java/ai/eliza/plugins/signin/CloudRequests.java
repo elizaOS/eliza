@@ -63,7 +63,8 @@ public final class CloudRequests {
     CredentialReader.Credential key = store.current();
     int version = key == null ? 0 : key.version();
     CloudRequestPolicy.Origin origin = CloudRequestPolicy.originOf(apiOrigin);
-    boolean leaseHeld = !(store.state().lease() instanceof CredentialPolicy.Lease.NoLease);
+    int leaseVersion = CredentialPolicy.leaseVersionOf(store.state().lease());
+    boolean leaseHeld = leaseVersion > 0;
     Planned planned = policy.plan(new Holding(version, false, false, leaseHeld, false), origin, method, target, headers, body);
     String session = null;
     DeviceLease.Held lease = null;
@@ -72,8 +73,9 @@ public final class CloudRequests {
       planned = policy.plan(new Holding(version, session != null, session != null, leaseHeld, false), origin, method, target, headers, body);
     } else if (planned.plan() instanceof RefreshLeaseFirst) {
       lease = custody.lease().accessToken();
-      boolean stillHeld = !(store.state().lease() instanceof CredentialPolicy.Lease.NoLease);
-      planned = policy.plan(new Holding(version, false, false, stillHeld, lease != null), origin, method, target, headers, body);
+      boolean stillHeld = CredentialPolicy.leaseVersionOf(store.state().lease()) == leaseVersion;
+      if (!stillHeld || (lease != null && lease.version() != leaseVersion)) return new Failed(Failure.SIGN_IN_REQUIRED);
+      planned = policy.plan(new Holding(leaseVersion, false, false, true, lease != null), origin, method, target, headers, body);
     }
     Attach attach;
     switch (planned.plan()) {
@@ -106,6 +108,10 @@ public final class CloudRequests {
       }
       int status = connection.getResponseCode();
       Answered answered = answer(connection, status);
+      if (attach instanceof WithLease l && CredentialPolicy.leaseVersionOf(store.state().lease()) != l.version()) {
+        if (answered.grant() != null) grants.release(answered.grant().id());
+        return new Failed(Failure.SIGN_IN_REQUIRED);
+      }
       if (status == UNAUTHORIZED) {
         String text = answered.body() == null ? null : new String(answered.body(), StandardCharsets.UTF_8);
         switch (CloudRequestPolicy.reportOf(attach, planned.route(), status, CloudRequestPolicy.reasonOf(text))) {

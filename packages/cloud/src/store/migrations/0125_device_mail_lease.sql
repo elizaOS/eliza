@@ -8,4 +8,9 @@ ALTER TABLE sessions
 CREATE INDEX sessions_grant ON sessions (grant_key) WHERE grant_key IS NOT NULL;
 UPDATE sessions SET state = state || '{"kind": {"tag": "BrowserFamily"}, "rotation": {"tag": "Settled"}}'::jsonb WHERE NOT state ? 'kind';
 
-ALTER TABLE device_grants ADD COLUMN sealed_lease text;
+ALTER TABLE device_grants
+  ADD COLUMN sealed_lease text,
+  ADD COLUMN renewed_from text;
+CREATE INDEX device_grants_pending_renewal
+  ON device_grants (renewed_from, code_expires_at)
+  WHERE phase = 'exchanged' AND renewed_from IS NOT NULL;

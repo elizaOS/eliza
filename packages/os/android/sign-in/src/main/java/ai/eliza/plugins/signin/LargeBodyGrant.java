@@ -90,7 +90,7 @@ public final class LargeBodyGrant {
     for (String id : Map.copyOf(held).keySet()) release(id);
   }
 
-  private void release(String id) {
+  synchronized void release(String id) {
     Held gone = held.remove(id);
     if (gone != null && held.values().stream().noneMatch(other -> other.file().equals(gone.file()))) gone.file().delete();
   }

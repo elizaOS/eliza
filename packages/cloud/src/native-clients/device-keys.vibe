@@ -409,6 +409,8 @@ export effect function renewGrant(tx: Tx, refresh: string) {
   const row = try grantBy(tx, "key", lease.grantKey)
   if (row === undefined) throw refused("AuthenticationRequired", "CredentialRevoked")
   const predecessor = try current(row, now)
+  const deviceEpoch = toInt(row.device_epoch)
+  if (predecessor.epoch !== deviceEpoch || predecessor.phase.tag === "Ended") throw refused("AuthenticationRequired", "CredentialRevoked")
   const client = try storedAdmission(tx, predecessor)
   const pending = (try tx.query(`
     SELECT key, state, sealed_copy FROM device_grants
@@ -424,14 +426,13 @@ export effect function renewGrant(tx: Tx, refresh: string) {
   const credentialId = newId()
   const secret = secretText("eliza_mobile_", 32, "hex")
   const sealed = try seal("device-key", secret)
-  const deviceEpoch = toInt(row.device_epoch)
   const event: Event = { type: "renew", fromKey: lease.grantKey, predecessor, leaseLive: true, credentialTtl: client.registration.credentialTtl, credentialId, deviceEpoch }
   const stepped = stepGrant(tx, key, event, (grant) => ({
     user_id: lease.userId, client_id: toText(row.client_id) ?? "", phase: phaseColumn(grant), code_expires_at: grant.codeExpiresAt,
     device_epoch: grant.epoch, issued_at: grant.now, updated_at: grant.now, credential_id: credentialId,
     secret_digest: tokenDigest(secret), sealed_copy: sealed, renewed_from: lease.grantKey
   })) catch effect (failure) => {
-    if (failure._tag === "Rejected") throw refused("AuthenticationRequired", predecessor.epoch < deviceEpoch || predecessor.phase.tag === "Ended" ? "CredentialRevoked" : "CredentialUnknown")
+    if (failure._tag === "Rejected") throw refused("AuthenticationRequired", "CredentialUnknown")
     throw failure
   }
   return { kind: "done" as const, value: credential(stepped.state, row, secret, undefined) }

@@ -190,8 +190,36 @@ public final class CloudDeviceAccount {
       .put("challengeId", attempt.challengeId()).put("idToken", idToken);
   if (serverAuthCode != null && serverAuthCode.matches("[A-Za-z0-9/_.~-]{10,2048}")) request.put("serverAuthCode", serverAuthCode);
   JSONObject response = new JSONObject(post(SIGN_IN, request, null, 200).body());
-  String code = response.getString("code");
-  return opaque(code) && attempt.state().equals(response.getString("state")) && exchangeCode(code, snapshot);
+  if (response.has("code")) {
+   String code = response.getString("code");
+   return opaque(code) && attempt.state().equals(response.getString("state")) && exchangeCode(code, snapshot);
+  }
+  if (!"signed_in".equals(response.optString("status"))) return false;
+  return keepCanonicalKey(response, snapshot);
+ }
+
+ private boolean keepCanonicalKey(JSONObject response, String snapshot) throws Exception {
+  JSONObject pending = new JSONObject(snapshot);
+  String secret = response.getString("secret"), id = identifier(response, "credentialId");
+  long now = System.currentTimeMillis();
+  long expiresAt = java.time.Instant.parse(response.getString("expiresAt")).toEpochMilli();
+  if (!opaque(secret) || expiresAt <= now || expiresAt > now + MAX_DEVICE_KEY_MS)
+   throw new IOException("Invalid device key response");
+  JSONObject key = new JSONObject().put("token", secret).put("credentialId", id)
+      .put("accountId", identifier(response.getJSONObject("user"), "id")).put("organizationId", identifier(response, "organizationId"))
+      .put("issuedAt", now).put("expiresAt", expiresAt);
+  JSONObject offered = response.optJSONObject("lease");
+  if (offered != null) key.put("lease", new JSONObject().put("refresh", leaseRefresh(offered, "refresh"))
+      .put("refreshExpiresAt", now + leaseSeconds(offered, "refreshExpiresIn", MAX_LEASE_SECONDS) * 1000));
+  synchronized (LOCK) {
+   if (!snapshot.equals(slots.read(PENDING)) || !pendingActive(pending)) {
+    oweRevocation(duty(key));
+    return false;
+   }
+   slots.write(ACK, key.toString());
+   slots.remove(PENDING);
+  }
+  return finishAcknowledgment();
  }
 
  public void cancelNativeGoogle(NativeGoogleAttempt attempt) throws Exception {
@@ -476,12 +504,12 @@ public final class CloudDeviceAccount {
    if (access != null && access.mintedBy().equals(presented) && access.expiresAt() - ACCESS_MARGIN_MS > System.currentTimeMillis())
     return access.token();
    if (newestExpiry(lease) <= System.currentTimeMillis()) {
-    clear();
+    dropLease(credential, false);
     return null;
    }
    Exchange reply = post(canonical(credential) ? LEASE_PATH : "/api/auth/device/lease", null, presented, 200, 401);
    if (reply.status() == 401) {
-    clear();
+    dropLease(credential, revoked(reply));
     return null;
    }
    JSONObject pair = new JSONObject(reply.body());
@@ -547,6 +575,9 @@ public final class CloudDeviceAccount {
   Map<String, String> headers = new LinkedHashMap<>();
   if (idempotencyKey != null) headers.put("Idempotency-Key", idempotencyKey);
   if (ifMatch != null) headers.put("If-Match", ifMatch);
+  JSONObject initial = stored();
+  if (initial == null || initial.optJSONObject("lease") == null) throw new IllegalStateException("No mail lease is held");
+  String ownerBinding = bindingOf(initial);
   Exchange answer = null;
   for (int attempt = 0; attempt < 2; attempt++) {
    String token = leaseAccess();
@@ -554,14 +585,21 @@ public final class CloudDeviceAccount {
     if (answer != null) break;
     throw new IllegalStateException("No mail lease is held");
    }
+   if (!sameLeaseOwner(ownerBinding)) throw new IOException("Device account changed during a mail request");
    answer = transfer(method, target.toString(), bytes, token, headers, MAIL_RESPONSE_BYTES);
    if (answer.status() != 401) {
+    if (!sameLeaseOwner(ownerBinding)) throw new IOException("Device account changed during a mail request");
     accessWorked(token);
     break;
    }
    accessRefused(token);
   }
-  return new MailResponse(answer.status(), answer.body());
+  return new MailResponse(answer.status(), sameLeaseOwner(ownerBinding) ? answer.body() : "");
+ }
+
+ private boolean sameLeaseOwner(String binding) throws Exception {
+  JSONObject current = stored();
+  return current != null && binding.equals(bindingOf(current));
  }
 
  public boolean renewIfDue() throws Exception {
@@ -580,13 +618,13 @@ public final class CloudDeviceAccount {
    long issuedAt = credential.optLong("issuedAt", expiresAt - MAX_CREDENTIAL_SECONDS * 1000);
    if (now < issuedAt + (expiresAt - issuedAt) / 2) return false;
    if (newestExpiry(lease) <= now) {
-    dropLease(credential);
+    dropLease(credential, false);
     return false;
    }
    boolean canonical = canonical(credential);
    Exchange reply = post(canonical ? RENEW : "/api/auth/device/renew", null, newest(lease), 200, 401);
    if (reply.status() == 401) {
-    dropLease(credential);
+    dropLease(credential, revoked(reply));
     return false;
    }
    JSONObject renewed = new JSONObject(reply.body());
@@ -614,12 +652,22 @@ public final class CloudDeviceAccount {
   }
  }
 
- private void dropLease(JSONObject observed) throws Exception {
+ private static boolean revoked(Exchange answer) {
+  try { return "credential_revoked".equals(new JSONObject(answer.body()).optString("reason")); }
+  catch (JSONException invalid) { return false; }
+ }
+
+ private void dropLease(JSONObject observed, boolean retireDevice) throws Exception {
   synchronized (LOCK) {
    JSONObject current = stored();
    if (current == null || !current.getString("token").equals(observed.getString("token"))) return;
-   current.remove("lease");
-   slots.write(CREDENTIAL, current.toString());
+   if (retireDevice) {
+    oweRevocation(duty(current));
+    slots.remove(CREDENTIAL);
+   } else {
+    current.remove("lease");
+    slots.write(CREDENTIAL, current.toString());
+   }
    access = null;
   }
  }

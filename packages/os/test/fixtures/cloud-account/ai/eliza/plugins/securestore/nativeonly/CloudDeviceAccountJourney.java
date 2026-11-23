@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.Key;
 import java.security.KeyStoreSpi;
+import java.security.MessageDigest;
 import java.security.Provider;
 import java.security.SecureRandom;
 import java.security.Security;
@@ -138,9 +139,9 @@ public final class CloudDeviceAccountJourney {
           return Reply.json(200, new JSONObject().put("google", new JSONObject().put("nativeSignIn", true).put("serverClientId", SERVER_CLIENT)
               .put("scopes", new JSONArray().put("openid"))));
         }
-        case "/api/v1/auth/google/native/challenge" -> {
+        case "/api/v1/app-auth/mobile/google/challenge" -> {
           return Reply.json(200, new JSONObject().put("challengeId", java.util.UUID.randomUUID().toString()).put("nonce", secret("", 43))
-              .put("expiresAt", now + 60_000).put("serverClientId", SERVER_CLIENT));
+              .put("expiresIn", 60));
         }
         case "/api/v1/app-auth/mobile/google" -> {
           Grant grant = signedIn(now);
@@ -156,7 +157,9 @@ public final class CloudDeviceAccountJourney {
           JSONObject proof = new JSONObject(body);
           Grant grant = grant(proof.getString("secret"));
           boolean named = grant != null && grant.credentialId.equals(proof.getString("credentialId"));
-          return named && acknowledge(grant) ? Reply.json(200, new JSONObject().put("status", "acknowledged")) : Reply.refused("credential_unknown");
+          return named && acknowledge(grant) ? Reply.json(200, new JSONObject().put("status", "acknowledged")
+              .put("credentialId", grant.credentialId).put("expiresAt", java.time.Instant.ofEpochMilli(grant.expiresAt).toString()))
+              : Reply.refused("credential_unknown");
         }
         case "/api/v1/api-keys/current" -> {
           Grant grant = grant(bearer);
@@ -181,7 +184,11 @@ public final class CloudDeviceAccountJourney {
           if (renew) {
             Grant grant = new Grant(secret("eliza_mobile_", 43), now + 7L * 24 * 60 * 60 * 1000, family.grant);
             grants.add(grant);
-            return Reply.json(200, new JSONObject().put(canonical ? "secret" : "token", grant.key).put("credentialId", grant.credentialId).put("expiresIn", 7L * 24 * 60 * 60));
+            JSONObject answer = new JSONObject().put(canonical ? "secret" : "token", grant.key)
+                .put("credentialId", grant.credentialId).put("expiresIn", 7L * 24 * 60 * 60);
+            if (canonical) answer.put("user", new JSONObject().put("id", ACCOUNT)).put("organizationId", ORGANIZATION);
+            else answer.put("accountId", ACCOUNT);
+            return Reply.json(200, answer);
           }
           family.offeredRefresh = secret("eliza_lease_refresh_", 54);
           family.offeredAccess = secret("eliza_lease_", 43);
@@ -405,6 +412,9 @@ public final class CloudDeviceAccountJourney {
     if (wait > 0) Thread.sleep(wait);
     seen.put("renewedAfterHalfLife", account.renewIfDue());
     String secondKey = account.session().token();
+    String firstFingerprint = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+        MessageDigest.getInstance("SHA-256").digest(firstKey.getBytes(StandardCharsets.UTF_8)));
+    seen.put("renewedAccountBinding", firstFingerprint.equals(account.accountBinding(secondKey)) && account.accountBinding(firstKey) == null);
     Grant first = cloud.grant(firstKey);
     seen.put("renewal", new JSONArray().put(!secondKey.equals(firstKey)).put(first.ended).put(first.family.grant.key.equals(secondKey)).put(duties(slots)));
     account.retryRevocation();

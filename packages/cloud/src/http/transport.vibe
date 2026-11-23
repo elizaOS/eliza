@@ -7,7 +7,7 @@ import { admit, minute } from "../shared/rate-limit.vibe"
 import { newId } from "../shared/sealing.vibe"
 import { Store } from "../store/connection.vibe"
 import { refusalResponse, refused, Refused } from "./refusal.vibe"
-import { authenticate, type Caller } from "./request-auth.vibe"
+import { authenticate, recheckAccess, type Caller } from "./request-auth.vibe"
 import { defaultMaxBodyBytes, matchRoute, type CloudContext, type Route } from "./routes.vibe"
 
 module node {
@@ -84,6 +84,12 @@ effect function dispatch(routes: ReadonlyArray<Route>, fallback: Route | undefin
     if (isRefused(failure)) throw failure
     try annotateLogs(logError("a route failed"), { requestId, path: route.path, failure: failure._tag })
     throw refused("ServiceUnavailable", "NoReason", now + 5000)
+  }
+  if (route.auth === "MailAccess" && request.method === "GET" && response.status < 400 && caller.kind !== "anonymous") {
+    recheckAccess(request.headers.authorization, caller, "MailAccess") catch effect (failure) => {
+      if (isRefused(failure)) throw failure
+      throw refused("ServiceUnavailable", "NoReason", now + 5000)
+    }
   }
   return response
 }

@@ -769,6 +769,28 @@ effect function renewDevice(request: Request, env: IdentityEnv, db: Client) {
   return json(200, try leaseRefusedOr(renewed))
 }
 
+export function sweepDeviceOffers(db: Client): Promise<void> {
+  return runPromise(effect {
+    const now = try Clock.currentTimeMillis
+    const { rows } = try query<{ key: string; user_id: string }>(db, `
+      SELECT key, user_id FROM device_grants
+      WHERE phase = 'exchanged' AND state ? 'flatDeviceGrant' AND code_expires_at <= $1
+      ORDER BY code_expires_at LIMIT 100
+    `, [now])
+    for (const row of rows) {
+      try transact(db, effect (tx: Tx) => {
+        try tx.query("SELECT key FROM accounts WHERE key = $1 FOR UPDATE", [row.user_id])
+        const ended = try tx.query(`
+          UPDATE device_grants SET phase = 'ended', code_digest = NULL, sealed_copy = NULL, sealed_lease = NULL,
+            state = state || '{"endedBy":"NeverAcknowledged"}'::jsonb, revision = revision + 1, updated_at = $2
+          WHERE key = $1 AND phase = 'exchanged' AND code_expires_at <= $2 RETURNING key
+        `, [row.key, now])
+        if (ended.length === 1) try endLease(tx, row.key, now)
+      })
+    }
+  })
+}
+
 effect function handleIdentity(request: Request, env: IdentityEnv, db: Client, keys?: JWTVerifyGetKey) {
   const url = try Effect.try({ try: () => new URL(request.url), catch: () => new InvalidRequest() })
   if (request.method === "GET") {
