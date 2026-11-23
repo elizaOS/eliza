@@ -56,7 +56,7 @@ async function resolveJsonJava(): Promise<string> {
 }
 
 let jsonJava: Promise<string> | undefined;
-const jsonJavaArtifact = () => jsonJava ??= resolveJsonJava().finally(() => { jsonJava = undefined; });
+export const jsonJavaArtifact = () => jsonJava ??= resolveJsonJava().finally(() => { jsonJava = undefined; });
 
 type Request =
   | { readonly kind: "reset" }

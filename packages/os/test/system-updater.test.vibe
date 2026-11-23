@@ -1,0 +1,87 @@
+// spec/os/update/updater.md, "Story: Install a verified update once"
+import { assert, it } from "@effect/vitest"
+import { downloadAttempt, type PartialFile } from "../gen/os__update__updater.effect.vibe"
+
+module node {
+  import { execFileSync } from "node:child_process"
+  import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+  import { tmpdir } from "node:os"
+  import path from "node:path"
+  import { jsonJavaArtifact } from "./drivers/jvm-adapter.ts"
+
+  export interface Observation {
+    readonly case: string
+    readonly operation: string
+    readonly partialBytes: number
+    readonly partialSha256: string | null
+    readonly zipBytes: number
+    readonly zipSha256: string | null
+    readonly requests: number
+    readonly rangeRequests: number
+    readonly success: boolean | null
+  }
+
+  export interface DownloadTrace {
+    readonly expectedBytes: number
+    readonly expectedSha256: string
+    readonly prefixSha256: string
+    readonly observations: readonly Observation[]
+  }
+
+  const PACKAGE = path.resolve(import.meta.dirname, "..")
+  const SOURCES = [
+    "test/fixtures/system-updater/android/os/Build.java",
+    "test/fixtures/system-updater/android/os/SystemClock.java",
+    "aosp/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
+    "test/fixtures/system-updater/ai/eliza/systemupdater/DownloadReplay.java",
+  ]
+  const tool = (name: string) => process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name
+
+  export async function replayDownloads(): Promise<DownloadTrace> {
+    const jar = await jsonJavaArtifact()
+    const work = mkdtempSync(path.join(tmpdir(), "system-update-download-"))
+    try {
+      const classes = path.join(work, "classes")
+      execFileSync(tool("javac"), ["--release", "21", "-encoding", "UTF-8", "-nowarn", "-d", classes, "-classpath", jar,
+        ...SOURCES.map((source) => path.join(PACKAGE, source))], { stdio: ["ignore", "ignore", "pipe"] })
+      const keyStore = path.join(work, "tls.p12")
+      execFileSync(tool("keytool"), ["-genkeypair", "-alias", "fixture", "-keyalg", "RSA", "-storetype", "PKCS12", "-keystore", keyStore,
+        "-storepass", "fixture-pass", "-keypass", "fixture-pass", "-dname", "CN=localhost", "-ext", "SAN=dns:localhost,ip:127.0.0.1",
+        "-validity", "2", "-noprompt"], { stdio: ["ignore", "ignore", "pipe"] })
+      const trace = path.join(work, "trace.json")
+      execFileSync(tool("java"), ["-cp", [classes, jar].join(path.delimiter), "ai.eliza.systemupdater.DownloadReplay",
+        path.join(work, "downloads"), keyStore, trace], { stdio: ["ignore", "ignore", "pipe"], timeout: 120_000 })
+      return JSON.parse(readFileSync(trace, "utf8")) as DownloadTrace
+    } finally {
+      rmSync(work, { recursive: true, force: true })
+    }
+  }
+}
+import { replayDownloads, type DownloadTrace, type Observation } from node
+
+function partialFile(trace: DownloadTrace, row: Observation): PartialFile {
+  if (row.partialBytes === 0) return "NoBytes"
+  if (row.partialBytes > trace.expectedBytes) return "Oversized"
+  if (row.partialBytes === trace.expectedBytes) return row.partialSha256 === trace.expectedSha256 ? "GoodComplete" : "WrongComplete"
+  return row.partialSha256 === trace.prefixSha256 ? "GoodPrefix" : "WrongPrefix"
+}
+
+function receipt(trace: DownloadTrace, row: Observation): string {
+  if (row.success === true && row.zipBytes === trace.expectedBytes && row.zipSha256 === trace.expectedSha256) return "SuccessReceipt"
+  if (row.success === false && row.zipBytes === 0) return "FailureReceipt"
+  return `published ${row.zipBytes} bytes with success ${String(row.success)}`
+}
+
+it.effect('The production downloader resets a wrong or oversized file, resumes a good prefix with one ranged request and publishes only the candidate\'s bytes (spec/os/update/updater.md, "A download publishes only bytes that hash to the candidate, and resets a wrong file")', effect () => {
+  const trace = try tryPromise(() => replayDownloads())
+  const attempts = trace.observations.flatMap((row, index) => {
+    const before = trace.observations[index - 1]
+    if (row.success === null || before === undefined) return []
+    const observed = { kept: partialFile(trace, row), receipt: receipt(trace, row), ranged: row.rangeRequests > before.rangeRequests }
+    return [{ attempt: `${row.case} ${row.operation}`, observed, spec: downloadAttempt(partialFile(trace, before), false, "RangeHonoured") }]
+  })
+  try Effect.try(() => assert.deepStrictEqual(
+    { cases: [...new Set(attempts.map(({ attempt }) => attempt.split(" ")[0]))], attempts: attempts.map(({ attempt, observed }) => ({ attempt, ...observed })) },
+    { cases: ["corrupt-full", "oversized", "bad-prefix", "valid-prefix", "verified-full"], attempts: attempts.map(({ attempt, spec }) => ({ attempt, ...spec })) },
+  ))
+}, 180_000)
