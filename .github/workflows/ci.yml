@@ -1,439 +1,84 @@
-name: ci
-
-# Every run is the tasks of `pnpm verify`, the tools' own self-test included,
-# split over jobs that run side by side: the self-test of the tools in three,
-# the root check's simulations in four shards, and everything else in one,
-# which starts once the shards have simulated and checks with what they found.
-# Turborepo and spec skip what the change does not reach, from the cache of the
-# last run. The fixed normal profile is the
-# same locally and in CI. The self-test also installs and checks each
-# standalone example.
+name: Qualify Eliza Core Journey reachability guides
 on:
-  pull_request:
-    branches: [vibestack, develop, main]
   push:
-    branches: [vibestack, develop, main]
-
-concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_attempt == '1' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-env:
-  TURBO_TELEMETRY_DISABLED: "1"
-
+    branches: [codex/qualify-core-journey-witness-1123]
 permissions:
   contents: read
-
 jobs:
-  android-node-lock:
-    name: Verify published Android Node lock
+  vibestack-precompute-simulations:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 115
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            .github/actions/verify-android-node-lock/action.yml
-            packages/os/aosp/runtime/node.lock.json
-            packages/os/android/android-runtime-inventory.mjs
-      - uses: ./.github/actions/verify-android-node-lock
-
-  verify:
-    name: ${{ matrix.name }}
-    needs: vibestack-precompute-simulations
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: verify
-            tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
-    env: &cache-env
-      TURBO_CACHE: local:rw
-    steps: &verification-steps
-      - uses: actions/checkout@v7
-      - id: setup
-        uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup
         with:
-          job: ${{ matrix.name }}
-      - id: tool-selftest-cache
-        if: startsWith(matrix.name, 'selftest-') && (env.TURBO_CACHE == 'local:rw' || github.event_name == 'push')
-        continue-on-error: true
-        shell: bash
-        env:
-          TASK: ${{ matrix.tasks }}
-          JOB: ${{ matrix.name }}
+          job: simulate-2
+          cache-verification: 'false'
+      - name: Measure normal cold Core Journey and its three explicit examples
         run: |
-          hash=$(node vibestack/spec.ts tasks "$TASK" --only --dry=json --cache=local:w | jq -er --arg task "$TASK" '
-            .tasks | select(length == 1) | .[0]
-            | select(.taskId == $task and .resolvedTaskDefinition.cache == true and .resolvedTaskDefinition.outputs == [])
-            | .hash
-          ')
-          [[ $hash =~ ^[0-9a-f]{16}$ ]] || exit 0
-          archive=".turbo/cache/$hash.tar.zst"
-          meta=".turbo/cache/$hash-meta.json"
-          if [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] &&
-            jq -e --arg hash "$hash" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null; then
-            [[ $GITHUB_EVENT_NAME == push ]] || exit 0
-            echo 'lookup=true' >> "$GITHUB_OUTPUT"
-          fi
-          printf 'hash=%s\nkey=turbo-tool-selftest-v1-%s-%s-%s-%s\n' "$hash" "$RUNNER_OS" "$RUNNER_ARCH" "$JOB" "$hash" >> "$GITHUB_OUTPUT"
-      - id: restore-tool-selftest
-        if: steps.tool-selftest-cache.outputs.key != ''
-        continue-on-error: true
-        uses: actions/cache/restore@v6
-        with:
-          key: ${{ steps.tool-selftest-cache.outputs.key }}
-          path: |
-            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}.tar.zst
-            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}-meta.json
-          lookup-only: ${{ steps.tool-selftest-cache.outputs.lookup == 'true' }}
-      - if: steps.restore-tool-selftest.outputs.cache-hit == 'true' && steps.tool-selftest-cache.outputs.lookup != 'true'
-        continue-on-error: true
-        shell: bash
-        env:
-          HASH: ${{ steps.tool-selftest-cache.outputs.hash }}
-        run: |
-          archive=".turbo/tool-selftest-cache/$HASH.tar.zst"
-          meta=".turbo/tool-selftest-cache/$HASH-meta.json"
-          [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] || exit 0
-          jq -e --arg hash "$HASH" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null || exit 0
-          mkdir -p .turbo/cache
-          rm -f ".turbo/cache/$HASH-manifest.json"
-          mv "$archive" "$meta" .turbo/cache/
-      - id: simulations
-        if: matrix.name == 'verify'
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          pattern: simulations-*
-          path: ${{ runner.temp }}/simulation-receipts
-      - id: import-simulations
-        if: steps.simulations.outcome == 'success'
-        continue-on-error: true
-        env:
-          SIMULATION_RECEIPTS: ${{ runner.temp }}/simulation-receipts
-        run: &import-simulation-receipts |
-          node --input-type=module <<'JS'
-          import fs from "node:fs";
-          import path from "node:path";
-          const source = process.env.SIMULATION_RECEIPTS;
-          const cache = ".spec-cache";
-          const candidates = fs.globSync(["*", "simulations-*/*"], { cwd: source })
-            .filter((file) => /^(?:simulations-\d+\/)?(?:action|simulate)-[a-f0-9]{24}\.json\.(?:zst|gz)$/.test(file) && fs.lstatSync(path.join(source, file)).isFile());
-          fs.mkdirSync(cache, { recursive: true });
-          let imported = 0;
-          for (const [key, files] of Map.groupBy(candidates, (file) => path.basename(file, path.extname(file)))) {
-            if (["zst", "gz"].some((codec) => fs.lstatSync(path.join(cache, `${key}.${codec}`), { throwIfNoEntry: false }))) continue;
-            const name = path.basename(files[0]);
-            const bytes = fs.readFileSync(path.join(source, files[0]));
-            if (files.slice(1).some((file) => path.basename(file) !== name || !bytes.equals(fs.readFileSync(path.join(source, file))))) {
-              console.log(`::warning::Shards disagree on ${key}; the ordinary check will recompute it.`);
-              continue;
-            }
-            fs.writeFileSync(path.join(cache, name), bytes, { flag: "wx" });
-            imported++;
+          mkdir -p "$RUNNER_TEMP/core-journey-record"
+          base64 -d > "$RUNNER_TEMP/guided-model" <<'GUIDED'
+          IyBBIHR1cm4gZnJvbSBpbml0aWFsaXphdGlvbiB0aHJvdWdoIHJldGlyZW1lbnQKClRoaXMgY29tcG9zaXRpb24gZXhlcmNpc2VzIHRoZSBwdWJsaWMgcnVudGltZSB3b3JrZmxvdyBhY3Jvc3MgdGhlIGV4aXN0aW5nCnN0YXRlIG93bmVycy4gSXQgdXNlcyB0aGUgcnVudGltZSwgY29udGV4dCwgbW9kZWwtZGlzcGF0Y2ggYW5kIHJlY2VpcHQKbWFjaGluZXMgZGlyZWN0bHkuIEhvc3QgYXV0aGVudGljYXRpb24sIHJlcXVlc3Qgc2VyaWFsaXphdGlvbiwgcHJvdmlkZXIKcmVzcG9uc2VzIGFuZCBkdXJhYmxlIGFkYXB0ZXIgYWNrbm93bGVkZ2VtZW50cyBlbnRlciB0aHJvdWdoIHRoZWlyIHR5cGVkCmJvdW5kYXJpZXMuIEEgc3VjY2Vzc2Z1bCBtb2RlbCBhbnN3ZXIgYWxvbmUgcHJvdmlkZXMgbm8gZWZmZWN0IHJlY2VpcHQuCgojIyBTdG9yeTogQ29tcGxldGUgb3IgY2FuY2VsIGEgdHVybiBhbmQgcmV0aXJlIGl0cyBydW50aW1lCgo+IEFzIGEgaG9zdCBhdXRob3IsIEkgd2FudCBvbmUgdHVybiB0byBydW4gZnJvbSBpbml0aWFsaXphdGlvbiB0aHJvdWdoCj4gcmV0aXJlbWVudCBhY3Jvc3MgdGhlIGtlcm5lbCdzIG1hY2hpbmVzIHdpdGhvdXQgYSBzZWNvbmQgc3RhdGUgc3RvcmUuCgpJIGluaXRpYWxpemUgdGhlIGtlcm5lbCwgbG9hZCBjb21wbGV0ZSBhdXRob3JpemVkIGNvbnRleHQsCmRpc3BhdGNoIHRocm91Z2ggcmVnaXN0ZXJlZCBtb2RlbHMsIHNldHRsZSBhbiBhY3Rpb24gcmVjZWlwdCwgYWNrbm93bGVkZ2UKaXRzIHJlcGx5LCBhbmQgZHJhaW4gdGhlIHR1cm4gYmVmb3JlIGNsb3NpbmcgdGhlIGtlcm5lbC4KCiMjIyBBIHR1cm4gY29tcG9zZXMgdGhlIGV4aXN0aW5nIG1hY2hpbmVzIHdpdGhvdXQgYSBzZWNvbmQgc3RhdGUgc3RvcmUKClRoZSBjb21wb3NpdGlvbiBidWlsZHMgdGhlIG1vZGVsIHJlcXVlc3QgZW52ZWxvcGUgZGlyZWN0bHkgZnJvbSB0aGUgY29tcGxldGUgdmlzaWJsZSBjb250ZXh0IGFuZCBtYW5kYXRvcnkgZXZpZGVuY2UuIFRvb2wgZGVmaW5pdGlvbnMgYW5kIHNjaGVtYXMgZW50ZXIgYXMgY29tcGxldGUgZGVjbGFyZWQgdmFsdWVzLiBUaGUgcHJvdmlkZXIgYWRhcHRlciBiaW5kcyBgdG9rZW5gIHRvIHRoZSBzZXJpYWxpemF0aW9uIG9mIHRoYXQgZW52ZWxvcGUgYW5kIG11c3QgdmVyaWZ5IHRoYXQgY29ycmVzcG9uZGVuY2UgYmVmb3JlIGltcGxlbWVudGF0aW9uIGFjY2VwdGFuY2UuIFRoZSBtb2RlbCBwcmVzZXJ2ZXMgdGhlIHN0cnVjdHVyYWwgZXZpZGVuY2UgYW5kIGJ5dGUgc3RyaW5nIHRocm91Z2hvdXQgZGlzcGF0Y2guCgpFYWNoIGVtYmVkZGVkIG1hY2hpbmUgbXVzdCByZXRhaW4gaXRzIGNvbXBsZXRlIHNhZmV0eQppbnZhcmlhbnQgYmVmb3JlIHRoZSBjb21wb3NpdGlvbiBjYW4gcmVseSBvbiB0aGF0IG1hY2hpbmUncyB0cmFuc2l0aW9uIGxlbW1hcy4KCmBgYHF1aW50CmltcG9ydCBydW50aW1lIGFzIFIgZnJvbSAiLi9ydW50aW1lIgppbXBvcnQgY29udGV4dCBhcyBDIGZyb20gIi4vY29udGV4dCIKaW1wb3J0IG1vZGVscyBhcyBNIGZyb20gIi4vbW9kZWxzIgppbXBvcnQgcmVjZWlwdHMgYXMgRCBmcm9tICIuL3JlY2VpcHRzIgoKdHlwZSBBY3Rpb25GYWlsdXJlID0gTm9BY3Rpb25GYWlsdXJlIHwgSW52YWxpZEFjdGlvblJlY2VpcHQgfCBBY3Rpb25IYW5kbGVyRmFpbHVyZSB8IEFjdGlvbkFkbWlzc2lvbkRlbmllZAp0eXBlIEpvdXJuZXlQaGFzZSA9IEJvb3RpbmcgfCBBd2FpdGluZ1R1cm4gfCBQcmVwYXJpbmcgfCBJbmZlcnJpbmcgfCBBY3RpbmcgfCBSZXBseWluZyB8IENvbXBsZXRlZCB8IFJldGlyZWQKdHlwZSBKb3VybmV5ID0geyBwaGFzZTogSm91cm5leVBoYXNlLCBrZXJuZWw6IFI6OlJ1bnRpbWUsIHByb21wdDogQzo6Q29udGV4dCwgbW9kZWw6IE06OkRpc3BhdGNoLCByZXBseTogRDo6RGVsaXZlcnksIGFjdGlvbkZhaWx1cmU6IEFjdGlvbkZhaWx1cmUgfQpwdXJlIHZhbCBpbml0aWFsOiBKb3VybmV5ID0geyBwaGFzZTogQm9vdGluZywga2VybmVsOiBSOjppbml0aWFsLCBwcm9tcHQ6IEM6OmluaXRpYWwsIG1vZGVsOiBNOjppbml0aWFsLCByZXBseTogRDo6aW5pdGlhbCwgYWN0aW9uRmFpbHVyZTogTm9BY3Rpb25GYWlsdXJlIH0KcHVyZSBkZWYgY2FuQmVnaW5Jbml0aWFsaXphdGlvbihqOiBKb3VybmV5KTogYm9vbCA9IFI6OmNhbkJlZ2luSW5pdGlhbGl6YXRpb24oai5rZXJuZWwpCnB1cmUgZGVmIGJlZ2luSW5pdGlhbGl6YXRpb24oajogSm91cm5leSk6IEpvdXJuZXkgPSB7IC4uLmosIGtlcm5lbDogUjo6YmVnaW5Jbml0aWFsaXphdGlvbihqLmtlcm5lbCkgfQpwdXJlIGRlZiBjYW5Db21wbGV0ZUluaXRpYWxpemF0aW9uKGo6IEpvdXJuZXksIG9rOiBib29sKTogYm9vbCA9IFI6OmNhbkNvbXBsZXRlSW5pdGlhbGl6YXRpb24oai5rZXJuZWwsIG9rKQpwdXJlIGRlZiBjb21wbGV0ZUluaXRpYWxpemF0aW9uKGo6IEpvdXJuZXksIG9rOiBib29sKTogSm91cm5leSA9IHsgLi4uaiwga2VybmVsOiBSOjpjb21wbGV0ZUluaXRpYWxpemF0aW9uKGoua2VybmVsLCBvayksIHBoYXNlOiBpZiAob2spIEF3YWl0aW5nVHVybiBlbHNlIFJldGlyZWQgfQpwdXJlIGRlZiBjYW5CZWdpblR1cm4oajogSm91cm5leSwgb3JpZ2luYWxzOiBMaXN0W0M6OlNvdXJjZV0sIG1hbmRhdG9yeTogTGlzdFtzdHJdKTogYm9vbCA9IGoucGhhc2UgPT0gQXdhaXRpbmdUdXJuIGFuZCBSOjpjYW5BZG1pdFR1cm4oai5rZXJuZWwpCnB1cmUgZGVmIGJlZ2luVHVybihqOiBKb3VybmV5LCBvcmlnaW5hbHM6IExpc3RbQzo6U291cmNlXSwgbWFuZGF0b3J5OiBMaXN0W3N0cl0pOiBKb3VybmV5ID0geyAuLi5qLCBwaGFzZTogUHJlcGFyaW5nLCBrZXJuZWw6IFI6OmFkbWl0VHVybihqLmtlcm5lbCksIHByb21wdDogQzo6bG9hZChDOjppbml0aWFsLCBvcmlnaW5hbHMsIG1hbmRhdG9yeSksIG1vZGVsOiBNOjppbml0aWFsLCByZXBseTogRDo6aW5pdGlhbCwgYWN0aW9uRmFpbHVyZTogTm9BY3Rpb25GYWlsdXJlIH0KcHVyZSB2YWwgb3JpZ2luYWxzVmFsdWVzID0gQzo6b3JpZ2luYWxzVmFsdWVzCnB1cmUgdmFsIG1hbmRhdG9yeVZhbHVlcyA9IEM6Om1hbmRhdG9yeVZhbHVlcwpwdXJlIGRlZiBjYW5SZXN0b3JlQ29udGV4dChqOiBKb3VybmV5KTogYm9vbCA9IGoucGhhc2UgPT0gUHJlcGFyaW5nIGFuZCBqLm1vZGVsLnBoYXNlID09IE06OlVuY29uZmlndXJlZApwdXJlIGRlZiByZXN0b3JlQ29udGV4dChqOiBKb3VybmV5KTogSm91cm5leSA9IHsgLi4uaiwgcHJvbXB0OiBDOjpyZXN0b3JlKGoucHJvbXB0KSB9CmBgYAoKIyMjIE1vZGVsIGludm9jYXRpb24gcmV0YWlucyB0aGUgYWRtaXR0ZWQgcmVxdWVzdCB0aHJvdWdoIGZhbGxiYWNrIGFuZCBmYWlsdXJlCgpPbmx5IGFuIGluaXRpYWxpemVkLCBhZG1pdHRlZCB0dXJuIGNvbmZpZ3VyZXMgbW9kZWwgZGlzcGF0Y2guIEEgYnVkZ2V0IG9yCmNhcGFiaWxpdHkgcmVqZWN0aW9uIGNvbXBsZXRlcyB0aGUgdHVybiB3aXRob3V0IHJ1bm5pbmcgYW4gYWN0aW9uLiBNb2RlbApmYWlsb3ZlciB1c2VzIHRoZSBvcmRlcmVkIHJlZ2lzdHJhdGlvbnMgYW5kIGZhaWx1cmUgcG9saWN5IG9mIGl0cyBvd25lci4KCmBgYHF1aW50CnB1cmUgZGVmIHJlcXVlc3RFdmlkZW5jZShwcm9tcHQ6IEM6OkNvbnRleHQsIHRvb2xzOiBMaXN0W3N0cl0sIHNjaGVtYXM6IExpc3Rbc3RyXSk6IE06OlJlcXVlc3RFdmlkZW5jZSA9IHtzb3VyY2VJZHM6IHByb21wdC52aXNpYmxlLmxpc3RNYXAoc291cmNlID0+IHNvdXJjZS5pZCksIHNvdXJjZVRleHRzOiBwcm9tcHQudmlzaWJsZS5saXN0TWFwKHNvdXJjZSA9PiBzb3VyY2UudGV4dCksIHNvdXJjZUF1dGhvcnM6IHByb21wdC52aXNpYmxlLmxpc3RNYXAoc291cmNlID0+IHNvdXJjZS5hdXRob3IpLCBtYW5kYXRvcnk6IHByb21wdC5yZW5kZXJlZE1hbmRhdG9yeSwgdG9vbHM6IHRvb2xzLCBzY2hlbWFzOiBzY2hlbWFzfQpwdXJlIHZhbCB0b29sc1ZhbHVlcyA9IFNldChMaXN0KCksIExpc3QoIlJFQUQiKSkKcHVyZSB2YWwgc2NoZW1hc1ZhbHVlcyA9IFNldChMaXN0KCksIExpc3QoIlJFQUQgc2NoZW1hIikpCnB1cmUgZGVmIGNhbkNvbmZpZ3VyZU1vZGVsKGo6IEpvdXJuZXksIHRva2VuOiBzdHIsIHJlZ2lzdHJhdGlvbnM6IExpc3RbTTo6UmVnaXN0cmF0aW9uXSwgYXZhaWxhYmxlOiBib29sLCBidWRnZXQ6IGJvb2wsIHBpbm5lZDogYm9vbCwgc3BlZWNoOiBib29sLCB0b29sczogTGlzdFtzdHJdLCBzY2hlbWFzOiBMaXN0W3N0cl0pOiBib29sID0KICBqLnBoYXNlID09IFByZXBhcmluZyBhbmQgai5rZXJuZWwuYWRtaXNzaW9uT3BlbiBhbmQgTTo6Y2FuQ29uZmlndXJlKGoubW9kZWwsIHRva2VuLCByZWdpc3RyYXRpb25zLCBhdmFpbGFibGUsIGJ1ZGdldCwgcGlubmVkLCBzcGVlY2gsIHRydWUsIGZhbHNlLCByZXF1ZXN0RXZpZGVuY2Uoai5wcm9tcHQsIHRvb2xzLCBzY2hlbWFzKSkKcHVyZSBkZWYgY29uZmlndXJlTW9kZWwoajogSm91cm5leSwgdG9rZW46IHN0ciwgcmVnaXN0cmF0aW9uczogTGlzdFtNOjpSZWdpc3RyYXRpb25dLCBhdmFpbGFibGU6IGJvb2wsIGJ1ZGdldDogYm9vbCwgcGlubmVkOiBib29sLCBzcGVlY2g6IGJvb2wsIHRvb2xzOiBMaXN0W3N0cl0sIHNjaGVtYXM6IExpc3Rbc3RyXSk6IEpvdXJuZXkgPQogIHsgLi4uaiwgbW9kZWw6IE06OmNvbmZpZ3VyZShqLm1vZGVsLCB0b2tlbiwgcmVnaXN0cmF0aW9ucywgYXZhaWxhYmxlLCBidWRnZXQsIHBpbm5lZCwgc3BlZWNoLCB0cnVlLCBmYWxzZSwgcmVxdWVzdEV2aWRlbmNlKGoucHJvbXB0LCB0b29scywgc2NoZW1hcykpIH0KcHVyZSB2YWwgdG9rZW5WYWx1ZXMgPSBNOjp0b2tlblZhbHVlcwpwdXJlIHZhbCByZWdpc3RyYXRpb25zVmFsdWVzID0gTTo6cmVnaXN0cmF0aW9uc1ZhbHVlcwpwdXJlIGRlZiBjYW5BZG1pdE1vZGVsKGo6IEpvdXJuZXkpOiBib29sID0gai5waGFzZSA9PSBQcmVwYXJpbmcgYW5kIE06OmNhbkFkbWl0UmVxdWVzdChqLm1vZGVsKQpwdXJlIGRlZiBhZG1pdE1vZGVsKGo6IEpvdXJuZXkpOiBKb3VybmV5ID0geyAuLi5qLCBwaGFzZTogSW5mZXJyaW5nLCBtb2RlbDogTTo6YWRtaXRSZXF1ZXN0KGoubW9kZWwpIH0KcHVyZSBkZWYgY2FuUmVqZWN0TW9kZWwoajogSm91cm5leSk6IGJvb2wgPSBqLnBoYXNlID09IFByZXBhcmluZyBhbmQgTTo6Y2FuUmVqZWN0UmVxdWVzdChqLm1vZGVsKQpwdXJlIGRlZiByZWplY3RNb2RlbChqOiBKb3VybmV5KTogSm91cm5leSA9IHsgLi4uaiwgcGhhc2U6IENvbXBsZXRlZCwgbW9kZWw6IE06OnJlamVjdFJlcXVlc3Qoai5tb2RlbCkgfQpwdXJlIGRlZiBjYW5JbnZva2VNb2RlbChqOiBKb3VybmV5KTogYm9vbCA9IGoucGhhc2UgPT0gSW5mZXJyaW5nIGFuZCBNOjpjYW5JbnZva2VNb2RlbChqLm1vZGVsKQpwdXJlIGRlZiBpbnZva2VNb2RlbChqOiBKb3VybmV5KTogSm91cm5leSA9IHsgLi4uaiwgbW9kZWw6IE06Omludm9rZU1vZGVsKGoubW9kZWwpIH0KcHVyZSBkZWYgY2FuT2JzZXJ2ZU1vZGVsKGo6IEpvdXJuZXksIHJlc3VsdEtpbmQ6IE06Ok91dGNvbWUpOiBib29sID0gai5waGFzZSA9PSBJbmZlcnJpbmcgYW5kIE06OmNhbk9ic2VydmVPdXRjb21lKGoubW9kZWwsIHJlc3VsdEtpbmQpCnB1cmUgZGVmIG9ic2VydmVNb2RlbChqOiBKb3VybmV5LCByZXN1bHRLaW5kOiBNOjpPdXRjb21lKTogSm91cm5leSA9IHsKICB2YWwgbmV4dE1vZGVsID0gTTo6b2JzZXJ2ZU91dGNvbWUoai5tb2RlbCwgcmVzdWx0S2luZCkKICB7IC4uLmosIG1vZGVsOiBuZXh0TW9kZWwsIHBoYXNlOiBpZiAobmV4dE1vZGVsLnBoYXNlID09IE06OkFuc3dlcmVkKSBBY3RpbmcgZWxzZSBpZiAobmV4dE1vZGVsLnBoYXNlID09IE06OkRpc3BhdGNoRmFpbGVkIG9yIG5leHRNb2RlbC5waGFzZSA9PSBNOjpDYW5jZWxsZWQpIENvbXBsZXRlZCBlbHNlIEluZmVycmluZyB9Cn0KcHVyZSBkZWYgY2FuQ2FuY2VsVHVybihqOiBKb3VybmV5KTogYm9vbCA9IGoucGhhc2UgPT0gUHJlcGFyaW5nIG9yIGoucGhhc2UgPT0gSW5mZXJyaW5nCnB1cmUgZGVmIGNhbmNlbFR1cm4oajogSm91cm5leSk6IEpvdXJuZXkgPSB7CiAgdmFsIGFib3J0ZWRNb2RlbCA9IE06OmFib3J0Um9vdChqLm1vZGVsKQogIHsgLi4uaiwgcGhhc2U6IENvbXBsZXRlZCwgbW9kZWw6IGlmIChNOjpjYW5DYW5jZWxEaXNwYXRjaChhYm9ydGVkTW9kZWwpKSBNOjpjYW5jZWxEaXNwYXRjaChhYm9ydGVkTW9kZWwpIGVsc2UgYWJvcnRlZE1vZGVsIH0KfQpgYGAKCiMjIyBBY3Rpb24gZXZpZGVuY2UgYW5kIHRyYW5zcG9ydCBhY2tub3dsZWRnZW1lbnQgcmVtYWluIGRpc3RpbmN0CgpSZWNlaXB0IGV2aWRlbmNlIGVudGVycyBhZnRlciB0aGUgYWN0aW9uIGhhcyBzZXR0bGVkLiBUaGUgZXhpc3RpbmcgcmVjZWlwdApndWFyZCBjaGVja3MgdGhlIG91dGNvbWUncyBldmlkZW5jZS4gQSBob29rIG1heSBpbnZhbGlkYXRlIHRoZSBleGFjdCByZXBseQpiaW5kaW5nIGJlZm9yZSBkaXNwYXRjaC4gVHJhbnNwb3J0IGZhaWx1cmUgcmV0YWlucyB0aGUgY29tbWl0dGVkIHJlY2VpcHQKYW5kIHdpdGhob2xkcyBhIGRlbGl2ZXJlZCBjb25maXJtYXRpb24uCgpgYGBxdWludApwdXJlIHZhbCB3ZWlnaHRfYmVnaW5Jbml0aWFsaXphdGlvbiA9IDQKcHVyZSB2YWwgd2VpZ2h0X2NvbXBsZXRlSW5pdGlhbGl6YXRpb24gPSA0CnB1cmUgdmFsIHdlaWdodF9iZWdpblR1cm4gPSA4CnB1cmUgdmFsIHdlaWdodF9jb25maWd1cmVNb2RlbCA9IDEyCnB1cmUgdmFsIHdlaWdodF9hZG1pdE1vZGVsID0gMTIKcHVyZSB2YWwgd2VpZ2h0X2ludm9rZU1vZGVsID0gMTIKcHVyZSB2YWwgd2VpZ2h0X29ic2VydmVNb2RlbCA9IDE2CnB1cmUgdmFsIHdlaWdodF9yZWplY3RBY3Rpb24gPSAxMgpwdXJlIHZhbCB3ZWlnaHRfcmVjb3JkQWN0aW9uID0gMTYKcHVyZSB2YWwgd2VpZ2h0X2JpbmRSZXBseSA9IDEyCnB1cmUgdmFsIHdlaWdodF9zZW5kUmVwbHkgPSAxMgpwdXJlIHZhbCB3ZWlnaHRfYWNrbm93bGVkZ2VSZXBseSA9IDEyCnB1cmUgdmFsIHdlaWdodF9maW5pc2hUdXJuID0gMTAKcHVyZSB2YWwgd2VpZ2h0X3JlcXVlc3RTdG9wID0gNQpwdXJlIHZhbCB3ZWlnaHRfZmluaXNoU3RvcCA9IDEwCnB1cmUgdmFsIHdlaWdodF9jb25maXJtUmV0aXJlbWVudCA9IDEwCnB1cmUgZGVmIGNhblJlamVjdEFjdGlvbihqOiBKb3VybmV5LCBmYWlsdXJlOiBBY3Rpb25GYWlsdXJlKTogYm9vbCA9IGoucGhhc2UgPT0gQWN0aW5nIGFuZCBmYWlsdXJlICE9IE5vQWN0aW9uRmFpbHVyZQpwdXJlIGRlZiByZWplY3RBY3Rpb24oajogSm91cm5leSwgZmFpbHVyZTogQWN0aW9uRmFpbHVyZSk6IEpvdXJuZXkgPSB7IC4uLmosIHBoYXNlOiBDb21wbGV0ZWQsIGFjdGlvbkZhaWx1cmU6IGZhaWx1cmUgfQpwdXJlIGRlZiBjYW5SZWNvcmRBY3Rpb24oajogSm91cm5leSwgcmVjZWlwdE91dGNvbWU6IEQ6OlJlY2VpcHRPdXRjb21lLCBkdXJhYmxlOiBib29sLCBwcm92aWRlckFjY2VwdGVkOiBib29sLCBoYXNLZXk6IGJvb2wsIHJlcGxheWVkOiBib29sKTogYm9vbCA9CiAgai5waGFzZSA9PSBBY3RpbmcgYW5kIEQ6OmNhblJlY29yZE91dGNvbWUoai5yZXBseSwgcmVjZWlwdE91dGNvbWUsIGR1cmFibGUsIHByb3ZpZGVyQWNjZXB0ZWQsIGhhc0tleSwgcmVwbGF5ZWQpCnB1cmUgZGVmIHJlY29yZEFjdGlvbihqOiBKb3VybmV5LCByZWNlaXB0T3V0Y29tZTogRDo6UmVjZWlwdE91dGNvbWUsIGR1cmFibGU6IGJvb2wsIHByb3ZpZGVyQWNjZXB0ZWQ6IGJvb2wsIGhhc0tleTogYm9vbCwgcmVwbGF5ZWQ6IGJvb2wpOiBKb3VybmV5ID0KICB7IC4uLmosIHBoYXNlOiBSZXBseWluZywgcmVwbHk6IEQ6OnJlY29yZE91dGNvbWUoai5yZXBseSwgcmVjZWlwdE91dGNvbWUsIGR1cmFibGUsIHByb3ZpZGVyQWNjZXB0ZWQsIGhhc0tleSwgcmVwbGF5ZWQpIH0KcHVyZSBkZWYgY2FuQmluZFJlcGx5KGo6IEpvdXJuZXkpOiBib29sID0gai5waGFzZSA9PSBSZXBseWluZyBhbmQgRDo6Y2FuQmluZChqLnJlcGx5KQpwdXJlIGRlZiBiaW5kUmVwbHkoajogSm91cm5leSk6IEpvdXJuZXkgPSB7IC4uLmosIHJlcGx5OiBEOjpiaW5kKGoucmVwbHkpIH0KcHVyZSBkZWYgY2FuVHJhbnNmb3JtUmVwbHkoajogSm91cm5leSk6IGJvb2wgPSBqLnBoYXNlID09IFJlcGx5aW5nIGFuZCBEOjpjYW5UcmFuc2Zvcm0oai5yZXBseSkKcHVyZSBkZWYgdHJhbnNmb3JtUmVwbHkoajogSm91cm5leSk6IEpvdXJuZXkgPSB7IC4uLmosIHJlcGx5OiBEOjp0cmFuc2Zvcm0oai5yZXBseSkgfQpwdXJlIGRlZiBjYW5TZW5kUmVwbHkoajogSm91cm5leSk6IGJvb2wgPSBqLnBoYXNlID09IFJlcGx5aW5nIGFuZCBEOjpjYW5EZWxpdmVyKGoucmVwbHkpCnB1cmUgZGVmIHNlbmRSZXBseShqOiBKb3VybmV5KTogSm91cm5leSA9IHsgLi4uaiwgcmVwbHk6IEQ6OmRlbGl2ZXIoai5yZXBseSkgfQpwdXJlIGRlZiBjYW5BY2tub3dsZWRnZVJlcGx5KGo6IEpvdXJuZXksIGFjY2VwdGVkOiBib29sKTogYm9vbCA9IGoucGhhc2UgPT0gUmVwbHlpbmcgYW5kIEQ6OmNhblNldHRsZURlbGl2ZXJ5KGoucmVwbHksIGFjY2VwdGVkKQpwdXJlIGRlZiBhY2tub3dsZWRnZVJlcGx5KGo6IEpvdXJuZXksIGFjY2VwdGVkOiBib29sKTogSm91cm5leSA9IHsgLi4uaiwgcGhhc2U6IENvbXBsZXRlZCwgcmVwbHk6IEQ6OnNldHRsZURlbGl2ZXJ5KGoucmVwbHksIGFjY2VwdGVkKSB9CnB1cmUgZGVmIGNhbkZpbmlzaFR1cm4oajogSm91cm5leSk6IGJvb2wgPSBqLnBoYXNlID09IENvbXBsZXRlZCBhbmQgbm90KGoucmVwbHkuaW5GbGlnaHQpIGFuZCBSOjpjYW5GaW5pc2hUdXJuKGoua2VybmVsLCB0cnVlKQpwdXJlIGRlZiBmaW5pc2hUdXJuKGo6IEpvdXJuZXkpOiBKb3VybmV5ID0geyAuLi5qLCBwaGFzZTogQXdhaXRpbmdUdXJuLCBrZXJuZWw6IFI6OmZpbmlzaFR1cm4oai5rZXJuZWwsIHRydWUpIH0KYGBgCgojIyMgUmV0aXJlbWVudCB3YWl0cyBmb3IgdGhlIGFkbWl0dGVkIHR1cm4gYW5kIGl0cyBwZW5kaW5nIHJlcGx5CgpTdG9wcGluZyBjbG9zZXMgZnV0dXJlIGFkbWlzc2lvbi4gQW4gYWxyZWFkeSBhZG1pdHRlZCBhY3Rpb24gcmV0YWlucyBpdHMKb3JpZ2luYWwgc2V0dGxlbWVudCBwYXRoLCBhbmQgaXRzIHBlbmRpbmcgdHJhbnNwb3J0IGNhbm5vdCBkaXNhcHBlYXIgZnJvbQp0aGUgZHJhaW4gYWNjb3VudGluZy4gVGhlIGhvc3QgY2FuIGNhbmNlbCBhIHByZS1hY3Rpb24gdHVybiBhbmQgdGhlbiBkcmFpbi4KCkFuIGFjdGl2ZSB0dXJuIGZvbGxvd3Mgc3VjY2Vzc2Z1bCBpbml0aWFsaXphdGlvbi4KUHJlcGFyYXRpb24gYW5kIGluZmVyZW5jZSBjYXJyeSBubyBwcmlvciBhY3Rpb24gb3V0Y29tZSBvciByZWNlaXB0IGludG8gdGhlCmFjdGlvbiBwaGFzZS4KQW4gaW4tZmxpZ2h0IHJlcGx5IHJlbWFpbnMgaW4gdGhlIHJlcGx5aW5nIHBoYXNlIG9mIGl0cyBhZG1pdHRlZCB0dXJuIHVudGlsCmFja25vd2xlZGdlbWVudC4gVGhlc2UgZmFjdHMgZXhjbHVkZSBhbiBpbml0aWFsaXphdGlvbiBjb21wbGV0aW9uIHRoYXQKZHJvcHMgYSBsaXZlIHR1cm4gYW5kIGEgcmV0aXJlbWVudCB0aGF0IHN0cmFuZHMgYW4gaW4tZmxpZ2h0IHJlcGx5LgoKYGBgcXVpbnQKcHVyZSBkZWYgY2FuUmVxdWVzdFN0b3AoajogSm91cm5leSk6IGJvb2wgPSBSOjpjYW5SZXF1ZXN0U3RvcChqLmtlcm5lbCwgZmFsc2UpCnB1cmUgZGVmIHJlcXVlc3RTdG9wKGo6IEpvdXJuZXkpOiBKb3VybmV5ID0geyAuLi5qLCBrZXJuZWw6IFI6OnJlcXVlc3RTdG9wKGoua2VybmVsLCBmYWxzZSkgfQpwdXJlIGRlZiBjYW5GaW5pc2hTdG9wKGo6IEpvdXJuZXkpOiBib29sID0gUjo6Y2FuRmluaXNoU3RvcChqLmtlcm5lbCkKcHVyZSBkZWYgZmluaXNoU3RvcChqOiBKb3VybmV5KTogSm91cm5leSA9IHsgLi4uaiwgcGhhc2U6IFJldGlyZWQsIGtlcm5lbDogUjo6ZmluaXNoU3RvcChqLmtlcm5lbCkgfQpwdXJlIGRlZiBjYW5Db25maXJtUmV0aXJlbWVudChqOiBKb3VybmV5KTogYm9vbCA9IFI6OmNhbkNvbmZpcm1RdWllc2NlbmNlKGoua2VybmVsKQpwdXJlIGRlZiBjb25maXJtUmV0aXJlbWVudChqOiBKb3VybmV5KTogSm91cm5leSA9IHsgLi4uaiwga2VybmVsOiBSOjpjb25maXJtUXVpZXNjZW5jZShqLmtlcm5lbCkgfQpwdXJlIGRlZiBjYW5DbG9zZUFkYXB0ZXIoajogSm91cm5leSk6IGJvb2wgPSBSOjpjYW5DbG9zZUFkYXB0ZXIoai5rZXJuZWwpCnB1cmUgZGVmIGNsb3NlQWRhcHRlcihqOiBKb3VybmV5KTogSm91cm5leSA9IHsgLi4uaiwga2VybmVsOiBSOjpjbG9zZUFkYXB0ZXIoai5rZXJuZWwpIH0KcHVyZSBkZWYgYWx3YXlzVHVybkFjY291bnRpbmcoajogSm91cm5leSk6IGJvb2wgPSBqLmtlcm5lbC5hY3RpdmVUdXJucyA9PSAoaWYgKGoucGhhc2UgPT0gUHJlcGFyaW5nIG9yIGoucGhhc2UgPT0gSW5mZXJyaW5nIG9yIGoucGhhc2UgPT0gQWN0aW5nIG9yIGoucGhhc2UgPT0gUmVwbHlpbmcgb3Igai5waGFzZSA9PSBDb21wbGV0ZWQpIDEgZWxzZSAwKQpwdXJlIGRlZiBhbHdheXNBY3RpdmVUdXJuQWZ0ZXJJbml0aWFsaXphdGlvbihqOiBKb3VybmV5KTogYm9vbCA9IGoua2VybmVsLmFjdGl2ZVR1cm5zID4gMCBpbXBsaWVzIGoua2VybmVsLmluaXRQaGFzZSA9PSBSOjpSZWFkeQpwdXJlIGRlZiBhbHdheXNCZWZvcmVTZXR0bGVtZW50SGFzTm9BY3Rpb25PdXRjb21lKGo6IEpvdXJuZXkpOiBib29sID0gKGoucGhhc2UgPT0gUHJlcGFyaW5nIG9yIGoucGhhc2UgPT0gSW5mZXJyaW5nIG9yIGoucGhhc2UgPT0gQWN0aW5nKSBpbXBsaWVzIGouYWN0aW9uRmFpbHVyZSA9PSBOb0FjdGlvbkZhaWx1cmUgYW5kIG5vdChqLnJlcGx5LmhhbmRsZXJTZXR0bGVkKSBhbmQgbm90KGoucmVwbHkuY29uZmlybXNBcHBsaWVkKQpwdXJlIGRlZiBhbHdheXNSZXBseUluRmxpZ2h0QmVsb25nc1RvVHVybihqOiBKb3VybmV5KTogYm9vbCA9IGoucmVwbHkuaW5GbGlnaHQgaW1wbGllcyBqLnBoYXNlID09IFJlcGx5aW5nCnB1cmUgZGVmIGFsd2F5c1J1bnRpbWVSdWxlcyhqOiBKb3VybmV5KTogYm9vbCA9IFI6OmFsd2F5c0luaXRpYWxpemF0aW9uSG9uZXN0KGoua2VybmVsKSBhbmQgUjo6YWx3YXlzV29ya0NvdW50cyhqLmtlcm5lbCkgYW5kIFI6OmFsd2F5c1N0b3BQcmVwYXJlc09uY2Uoai5rZXJuZWwpIGFuZCBSOjphbHdheXNTdHJpY3RTdWNjZXNzSGFzTm9QZW5kaW5nV29yayhqLmtlcm5lbCkgYW5kIFI6OmFsd2F5c0Nsb3NlUmVzcGVjdHNXb3JrKGoua2VybmVsKSBhbmQgUjo6YWx3YXlzUnVudGltZURlYWRsb2NrRnJlZShqLmtlcm5lbCkKcHVyZSBkZWYgYWx3YXlzUHJlc2VydmVkQ29udGV4dChqOiBKb3VybmV5KTogYm9vbCA9IEM6OmFsd2F5c01hbmRhdG9yeUV2aWRlbmNlSXNDb21wbGV0ZShqLnByb21wdCkgYW5kIEM6OmFsd2F5c1Zpc2libGVTb3VyY2VzQXJlRXhhY3RPcmlnaW5hbHMoai5wcm9tcHQpIGFuZCBDOjphbHdheXNGdWxsTW9kZUNvbnRhaW5zQWxsU291cmNlcyhqLnByb21wdCkgYW5kIEM6OmFsd2F5c1NvdXJjZUlkZW50aXR5SXNWYWxpZChqLnByb21wdCkgYW5kIEM6OmFsd2F5c1NlbGVjdGVkSGlzdG9yeUtlZXBzT3JkZXIoai5wcm9tcHQpIGFuZCBDOjphbHdheXNSZXN0b3JhdGlvbklzRXhhY3Qoai5wcm9tcHQpCnB1cmUgZGVmIGFsd2F5c1JlcXVlc3RDb250ZXh0TWF0Y2hlcyhqOiBKb3VybmV5KTogYm9vbCA9IGoubW9kZWwucGhhc2UgIT0gTTo6VW5jb25maWd1cmVkIGltcGxpZXMgai5tb2RlbC5ldmlkZW5jZS5zb3VyY2VJZHMgPT0gai5wcm9tcHQudmlzaWJsZS5saXN0TWFwKHNvdXJjZSA9PiBzb3VyY2UuaWQpIGFuZCBqLm1vZGVsLmV2aWRlbmNlLnNvdXJjZVRleHRzID09IGoucHJvbXB0LnZpc2libGUubGlzdE1hcChzb3VyY2UgPT4gc291cmNlLnRleHQpIGFuZCBqLm1vZGVsLmV2aWRlbmNlLnNvdXJjZUF1dGhvcnMgPT0gai5wcm9tcHQudmlzaWJsZS5saXN0TWFwKHNvdXJjZSA9PiBzb3VyY2UuYXV0aG9yKSBhbmQgai5tb2RlbC5ldmlkZW5jZS5tYW5kYXRvcnkgPT0gai5wcm9tcHQucmVuZGVyZWRNYW5kYXRvcnkKcHVyZSBkZWYgYWx3YXlzQWN0aW9uRmFpbHVyZUhhc05vUmVjZWlwdChqOiBKb3VybmV5KTogYm9vbCA9IGouYWN0aW9uRmFpbHVyZSAhPSBOb0FjdGlvbkZhaWx1cmUgaW1wbGllcyBub3Qoai5yZXBseS5oYW5kbGVyU2V0dGxlZCkgYW5kIG5vdChqLnJlcGx5LmNvbmZpcm1zQXBwbGllZCkKcHVyZSBkZWYgYWx3YXlzSG9uZXN0UmVxdWVzdChqOiBKb3VybmV5KTogYm9vbCA9IE06OmFsd2F5c0FkbWl0dGVkUmVxdWVzdENvbXBsZXRlKGoubW9kZWwpIGFuZCBNOjphbHdheXNFeGhhdXN0ZWRQcm92aWRlcnNTa2lwcGVkKGoubW9kZWwpIGFuZCBNOjphbHdheXNSZWdpc3RyYXRpb25BdHRlbXB0ZWRPbmNlKGoubW9kZWwpIGFuZCBNOjphbHdheXNUZXJtaW5hbE91dGNvbWVFbmRzQ2hhaW4oai5tb2RlbCkgYW5kIE06OmFsd2F5c0Fuc3dlck5hbWVzUHJvdmlkZXIoai5tb2RlbCkgYW5kIE06OmFsd2F5c0Rpc3BhdGNoRGVhZGxvY2tGcmVlKGoubW9kZWwpIGFuZCBNOjphbHdheXNBY3RpdmVEaXNwYXRjaEhhc1JlZ2lzdHJhdGlvbihqLm1vZGVsKSBhbmQgTTo6YWx3YXlzQ29uZmlndXJlZEhhc05vQXR0ZW1wdHMoai5tb2RlbCkgYW5kIE06OmFsd2F5c1JlbWFpbmluZ1JlZ2lzdHJhdGlvbnNGcmVzaChqLm1vZGVsKQpwdXJlIGRlZiBhbHdheXNIb25lc3RDb25maXJtYXRpb24oajogSm91cm5leSk6IGJvb2wgPSBEOjphbHdheXNDb25maXJtYXRpb25IYXNQcm9vZihqLnJlcGx5KSBhbmQgRDo6YWx3YXlzT25lRGVsaXZlcnkoai5yZXBseSkgYW5kIEQ6OmFsd2F5c0NhbGxiYWNrQWNjb3VudGluZyhqLnJlcGx5KSBhbmQgRDo6YWx3YXlzQXR0ZW1wdEhhc1NldHRsZWRCb3VuZEhhbmRsZXIoai5yZXBseSkKcHVyZSBkZWYgYWx3YXlzRHJhaW5lZFJldGlyZW1lbnQoajogSm91cm5leSk6IGJvb2wgPSBqLmtlcm5lbC5zdHJpY3RTdWNjZXNzIGltcGxpZXMgai5rZXJuZWwuYWN0aXZlVHVybnMgPT0gMCBhbmQgbm90KGoucmVwbHkuaW5GbGlnaHQpCnB1cmUgZGVmIHNvbWV0aW1lc0NvbmZpcm1lZEFuZFJldGlyZWQoajogSm91cm5leSk6IGJvb2wgPSBqLmtlcm5lbC5zdHJpY3RTdWNjZXNzIGFuZCBqLnJlcGx5LmNvbmZpcm1zQXBwbGllZApwdXJlIGRlZiBzb21ldGltZXNSZWplY3RlZEFjdGlvblJldGlyZWQoajogSm91cm5leSk6IGJvb2wgPSBqLmtlcm5lbC5zdHJpY3RTdWNjZXNzIGFuZCBqLmFjdGlvbkZhaWx1cmUgIT0gTm9BY3Rpb25GYWlsdXJlIGFuZCBub3Qoai5yZXBseS5jb25maXJtc0FwcGxpZWQpCnB1cmUgdmFsIGV2YWxfd2l0bmVzc19zb21ldGltZXNSZWplY3RlZEFjdGlvblJldGlyZWQgPSAoCiAgImJlZ2luSW5pdGlhbGl6YXRpb24iLAogICgiY29tcGxldGVJbml0aWFsaXphdGlvbiIsIHRydWUpLAogICgiYmVnaW5UdXJuIiwgTGlzdCgpLCBMaXN0KCkpLAogICgiY29uZmlndXJlTW9kZWwiLCAiY29tcGxldGUgc2VyaWFsaXplZCByZXF1ZXN0IGEiLAogICAgTGlzdCh7IGlkOiAxLCBwcm92aWRlcjogMSB9LCB7IGlkOiAyLCBwcm92aWRlcjogMSB9LCB7IGlkOiAzLCBwcm92aWRlcjogMiB9KSwKICAgIHRydWUsIHRydWUsIGZhbHNlLCBmYWxzZSwgTGlzdCgiUkVBRCIpLCBMaXN0KCkpLAogICJhZG1pdE1vZGVsIiwKICAiaW52b2tlTW9kZWwiLAogICJyZXF1ZXN0U3RvcCIsCiAgKCJvYnNlcnZlTW9kZWwiLCBNOjpSZXRyeUVudmVsb3BlKSwKICAiaW52b2tlTW9kZWwiLAogICgib2JzZXJ2ZU1vZGVsIiwgTTo6QW5zd2VyKSwKICAoInJlamVjdEFjdGlvbiIsIEFjdGlvbkFkbWlzc2lvbkRlbmllZCksCiAgImZpbmlzaFR1cm4iLAogICJmaW5pc2hTdG9wIiwKICAiY29uZmlybVJldGlyZW1lbnQiCikKcHVyZSBkZWYgc29tZXRpbWVzQ2FuY2VsbGVkQW5kUmV0aXJlZChqOiBKb3VybmV5KTogYm9vbCA9IGoua2VybmVsLnN0cmljdFN1Y2Nlc3MgYW5kIGoubW9kZWwucm9vdEFib3J0ZWQgYW5kIG5vdChqLnJlcGx5LmNvbmZpcm1zQXBwbGllZCkKcHVyZSBkZWYgc29tZXRpbWVzRmFpbGVkVHJhbnNwb3J0S2VlcHNDb21taXQoajogSm91cm5leSk6IGJvb2wgPSBqLnBoYXNlID09IENvbXBsZXRlZCBhbmQgai5yZXBseS50cmFuc3BvcnRGYWlsZWQgYW5kIEQ6OmNvbW1pdHRlZFJlY2VpcHQoai5yZXBseS5yZWNlaXB0KQpwdXJlIHZhbCBldmFsX3dpdG5lc3Nfc29tZXRpbWVzRmFpbGVkVHJhbnNwb3J0S2VlcHNDb21taXQgPSAoCiAgImJlZ2luSW5pdGlhbGl6YXRpb24iLAogICgiY29tcGxldGVJbml0aWFsaXphdGlvbiIsIHRydWUpLAogICgiYmVnaW5UdXJuIiwgTGlzdCgpLCBMaXN0KCkpLAogICgiY29uZmlndXJlTW9kZWwiLCAiY29tcGxldGUgc2VyaWFsaXplZCByZXF1ZXN0IGEiLCBMaXN0KHsgaWQ6IDEsIHByb3ZpZGVyOiAxIH0pLAogICAgdHJ1ZSwgdHJ1ZSwgdHJ1ZSwgdHJ1ZSwgTGlzdCgiUkVBRCIpLCBMaXN0KCJSRUFEIHNjaGVtYSIpKSwKICAiYWRtaXRNb2RlbCIsCiAgImludm9rZU1vZGVsIiwKICAoIm9ic2VydmVNb2RlbCIsIE06OkFuc3dlciksCiAgKCJyZWNvcmRBY3Rpb24iLCBEOjpBcHBsaWVkLCB0cnVlLCB0cnVlLCB0cnVlLCBmYWxzZSksCiAgImJpbmRSZXBseSIsCiAgInNlbmRSZXBseSIsCiAgKCJhY2tub3dsZWRnZVJlcGx5IiwgZmFsc2UpCikKcHVyZSB2YWwgZXZhbF93aXRuZXNzX3NvbWV0aW1lc0NvbmZpcm1lZEFuZFJldGlyZWQgPSAoCiAgImJlZ2luSW5pdGlhbGl6YXRpb24iLAogICgiY29tcGxldGVJbml0aWFsaXphdGlvbiIsIHRydWUpLAogICgiYmVnaW5UdXJuIiwgTGlzdCh7IGF1dGhvcjogInVzZXIiLCBpZDogImgxIiwgdGV4dDogIm9yaWdpbmFsIHJlcXVlc3QiIH0sCiAgICB7IGF1dGhvcjogImFnZW50IiwgaWQ6ICJoMiIsIHRleHQ6ICJvcmlnaW5hbCByZXNwb25zZSIgfSksIExpc3QoKSksCiAgKCJjb25maWd1cmVNb2RlbCIsICJjb21wbGV0ZSBzZXJpYWxpemVkIHJlcXVlc3QgYSIsIExpc3QoeyBpZDogMSwgcHJvdmlkZXI6IDEgfSksCiAgICB0cnVlLCB0cnVlLCB0cnVlLCBmYWxzZSwgTGlzdCgiUkVBRCIpLCBMaXN0KCkpLAogICJhZG1pdE1vZGVsIiwKICAiaW52b2tlTW9kZWwiLAogICJyZXF1ZXN0U3RvcCIsCiAgKCJvYnNlcnZlTW9kZWwiLCBNOjpBbnN3ZXIpLAogICgicmVjb3JkQWN0aW9uIiwgRDo6QXBwbGllZCwgZmFsc2UsIHRydWUsIGZhbHNlLCBmYWxzZSksCiAgImJpbmRSZXBseSIsCiAgInNlbmRSZXBseSIsCiAgKCJhY2tub3dsZWRnZVJlcGx5IiwgdHJ1ZSksCiAgImZpbmlzaFR1cm4iLAogICJmaW5pc2hTdG9wIiwKICAiY29uZmlybVJldGlyZW1lbnQiCikKYGBgCg==
+          GUIDED
+          cat > .qualify-core-journey.mjs <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import {createHash} from 'node:crypto';
+          import {zstdDecompressSync,gunzipSync} from 'node:zlib';
+          import {prepareSimulationReceipts,readSpecs,withFormalCache} from './vibestack/formal.ts';
+          const [tag,area] = process.argv.slice(2);
+          const tmp=process.env.RUNNER_TEMP;
+          const root=path.join(tmp,'model-'+tag);
+          const cache=path.join(tmp,'actions-'+tag);
+          const evidence=path.join(tmp,'core-journey-record');
+          fs.mkdirSync(evidence,{recursive:true});
+          fs.mkdirSync(cache);
+          assert.equal(fs.readdirSync(cache).length,0);
+          fs.cpSync('spec',path.join(root,'spec'),{recursive:true});
+          if(tag.includes('guide'))fs.copyFileSync(path.join(tmp,'guided-model'),path.join(root,'spec/core/journey.md'));
+          const specs=readSpecs(root);
+          const target=specs.find(s=>s.file===area);
+          const sha=data=>createHash('sha256').update(data).digest('hex');
+          const closure=new Map();
+          const include=s=>{if(closure.has(s.name))return;closure.set(s.name,sha(s.tangled));for(const k of s.imports)include(specs.find(r=>r.name===k));};
+          include(target);
+          const timer=performance.now();
+          const preparation=await withFormalCache(cache,()=>prepareSimulationReceipts(root,specs,[target.name],tmp));
+          const seconds=(performance.now()-timer)/1000;
+          assert.ok(preparation.seedDirectory);
+          assert.ok(preparation.results.every(r=>r.ok));
+          if(area==='spec/core/journey.md')assert.equal(preparation.results.length,7);
+          const files=fs.readdirSync(cache).sort();
+          const receipt=files.find(f=>f.startsWith('simulate-'));
+          assert.ok(receipt);
+          const bytes=fs.readFileSync(path.join(cache,receipt));
+          const r=JSON.parse(receipt.endsWith('.zst')?zstdDecompressSync(bytes):gunzipSync(bytes));
+          const tested=r.result.tested;
+          const summarize=t=>({count:t?.length,sha:sha(JSON.stringify(t??null))});
+          const actions={};
+          for(const f of r.used) {
+            if(!fs.existsSync(path.join(cache,f)))continue;
+            const b=fs.readFileSync(path.join(cache,f));
+            const v=JSON.parse(f.endsWith('.zst')?zstdDecompressSync(b):gunzipSync(b));
+            const names=Object.keys(v.files??{});
+            actions[f]={files:names, out:(v.out??'').slice(0,250),stderr:(v.stderr??'').slice(0,50)};
           }
-          console.log(`Imported ${imported} simulation and typecheck receipts.`);
-          JS
-      - if: steps.simulations.outcome == 'failure' || steps.import-simulations.outcome == 'failure'
-        run: echo "::warning::The shard receipts were not fully imported; the ordinary check will compute missing results."
-      - id: verify-tasks
-        run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
-      - id: publish-tool-selftest
-        if: >-
-          github.event_name == 'push' && steps.tool-selftest-cache.outputs.key != '' &&
-          steps.restore-tool-selftest.outputs.cache-hit != 'true'
-        continue-on-error: true
-        shell: bash
-        env:
-          TASK: ${{ matrix.tasks }}
-          HASH: ${{ steps.tool-selftest-cache.outputs.hash }}
-        run: |
-          jq -e -s --arg task "$TASK" --arg hash "$HASH" '
-            map(select(.version == "1" and .execution.exitCode == 0 and (.tasks | length == 1)))
-            | map(.tasks[0] | select(.taskId == $task and .hash == $hash and .execution.exitCode == 0))
-            | length == 1
-          ' .turbo/runs/*.json >/dev/null || exit 0
-          archive=".turbo/cache/$HASH.tar.zst"
-          meta=".turbo/cache/$HASH-meta.json"
-          [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] || exit 0
-          jq -e --arg hash "$HASH" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null || exit 0
-          mkdir -p .turbo/tool-selftest-cache
-          cp "$archive" "$meta" .turbo/tool-selftest-cache/
-          echo 'ready=true' >> "$GITHUB_OUTPUT"
-      - if: steps.publish-tool-selftest.outputs.ready == 'true'
-        continue-on-error: true
-        uses: actions/cache/save@v6
-        with:
-          key: ${{ steps.tool-selftest-cache.outputs.key }}
-          path: |
-            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}.tar.zst
-            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}-meta.json
-      - name: Report Turbo task timings
-        id: task-timings
-        if: ${{ !cancelled() }}
-        env:
-          RESTORED_FIXTURE_EVALUATOR: ${{ steps.setup.outputs.spec-evaluator-restored == 'true' && steps.verify-tasks.outcome == 'success' }}
-          TASK: ${{ matrix.tasks }}
-        run: |
-          for report in .turbo/runs/*.json; do
-            [[ -f "$report" ]] || continue
-            jq -r '
-              select(.version == "1" and (.tasks | type == "array"))
-              | .execution as $run
-              | select([$run.startTime, $run.endTime, $run.cached, $run.attempted] | all(type == "number"))
-              | "### Turbo task timings", "",
-                "Wall time \(($run.endTime - $run.startTime) / 1000) s. Cache hits \($run.cached) of \($run.attempted) attempted tasks.",
-                "",
-                "| Task | Wall time (s) | Cache | Exit code |",
-                "| --- | ---: | --- | ---: |",
-                ([.tasks[]
-                  | select([.execution.startTime, .execution.endTime] | all(type == "number"))
-                  | {id: .taskId, elapsed: ((.execution.endTime - .execution.startTime) / 1000), cache: .cache.status, exit: .execution.exitCode}]
-                  | sort_by(-.elapsed) | .[]
-                  | "| \(.id) | \(.elapsed) | \(.cache // "-") | \(.exit // "-") |"),
-                ""
-            ' "$report" >> "$GITHUB_STEP_SUMMARY" || echo "::warning::Could not read the Turbo run summary"
+          const result={tag,area,pid:process.pid,seconds,closure:Object.fromEntries(closure),rows:preparation.results,actions,used:r.used,testing:tested?{events:summarize(tested.events),journeys:summarize(tested.journeys),traces:summarize(tested.traces)}:undefined,nativeFiles:files.length,seed:fs.readdirSync(preparation.seedDirectory).length};
+          fs.writeFileSync(path.join(evidence,tag+'.json'),JSON.stringify(result,null,2));
+          console.log(tag,JSON.stringify({seconds,results:result.rows.length,nativeFiles:result.nativeFiles,usedCount:r.used.length,testing:result.testing}));
+          NODE
+          node .qualify-core-journey.mjs warmup spec/core/queryDrain.md
+          for arm in stock-1 guide-1 guide-2 stock-2
+          do
+            /usr/bin/time -p -o "$RUNNER_TEMP/core-journey-record/$arm.time" node .qualify-core-journey.mjs "$arm" spec/core/journey.md
           done
-          [[ $RESTORED_FIXTURE_EVALUATOR == true ]] || exit 0
-          shopt -s nullglob
-          reports=(.turbo/runs/*.json)
-          (( ${#reports[@]} )) || exit 0
-          jq -es --arg task "$TASK" '
-            map(select(.version == "1" and any(.tasks[]?; .taskId == $task)))
-            | length == 1 and
-              (.[0] | .execution.exitCode == 0 and .execution.attempted == 1 and .execution.cached == 1 and
-                (.tasks | length == 1 and (.[0] | .taskId == $task and .cache.status == "HIT" and
-                  .execution.exitCode == 0 and .resolvedTaskDefinition.outputs == [])))
-          ' "${reports[@]}" >/dev/null || exit 0
-          echo 'skip-spec-cache=true' >> "$GITHUB_OUTPUT"
-          echo 'Skipping the spec cache upload after a full fixture replay.'
-      - id: superseded-spec-cache
-        if: >-
-          cancelled() && matrix.name == 'verify' && steps.verify-tasks.conclusion == 'cancelled' &&
-          steps.setup.outputs.spec-cache-key != '' &&
-          github.event_name == 'push' && github.run_attempt == '1' &&
-          github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        shell: bash
-        run: |
-          current=$(GIT_TERMINAL_PROMPT=0 timeout 4s git ls-remote --refs --exit-code origin "$GITHUB_REF") || exit 0
-          [[ $current != *$'\n'* ]] || exit 0
-          IFS=$'\t' read -r tip ref <<< "$current"
-          [[ $tip =~ ^[0-9a-f]{40}$ && $ref == "$GITHUB_REF" && $tip != "$GITHUB_SHA" ]] || exit 0
-          echo 'skip=true' >> "$GITHUB_OUTPUT"
-          echo "Skipping the spec cache upload for superseded commit $GITHUB_SHA."
-      - id: closed-pr-cache
-        if: >-
-          always() && github.event_name == 'pull_request' && github.run_attempt == '1' &&
-          (steps.setup.outputs.spec-cache-key != '' || steps.setup.outputs.turbo-cache-key != '')
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          [[ -n $GH_TOKEN && $GITHUB_REF =~ ^refs/pull/([1-9][0-9]*)/merge$ ]] || exit 0
-          number=${BASH_REMATCH[1]}
-          pull=$(curl --fail --silent --max-time 4 -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$number") || exit 0
-          jq -e --argjson number "$number" '
-            .number == $number and .state == "closed" and (.closed_at | type == "string")
-          ' <<< "$pull" >/dev/null 2>&1 || exit 0
-          echo 'skip=true' >> "$GITHUB_OUTPUT"
-          echo "Skipping verification cache uploads for closed PR #$number."
-      - if: >-
-          always() && steps.setup.outputs.spec-cache-key != '' &&
-          steps.superseded-spec-cache.outputs.skip != 'true' && steps.task-timings.outputs.skip-spec-cache != 'true' &&
-          steps.closed-pr-cache.outputs.skip != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ steps.setup.outputs.spec-cache-path }}
-          key: ${{ steps.setup.outputs.spec-cache-key }}
-      - id: prune-turbo-cache
-        if: always() && steps.setup.outputs.turbo-cache-key != '' && steps.closed-pr-cache.outputs.skip != 'true'
-        shell: bash
-        env:
-          FIXTURE_INVENTORY: ${{ steps.setup.outputs.fixture-turbo-inventory }}
-          FULL_REPLAY: ${{ steps.task-timings.outputs.skip-spec-cache == 'true' }}
-        run: |
-          [[ -d .turbo/cache ]] || exit 0
-          if [[ $FULL_REPLAY == true && -s $FIXTURE_INVENTORY ]] &&
-            find .turbo/cache -regextype posix-extended \
-              \( -type f -regex '\.turbo/cache/[0-9a-f]{16}-manifest\.json' \) -prune -o \
-              \( -type d -printf '%p %y:%m\0' -o -printf '%p %y:%m:%D:%i:%s:%C@\0' \) |
-              LC_ALL=C sort -z | cmp -s "$FIXTURE_INVENTORY" - &&
-            expired=$(find .turbo/cache -type f -mtime +7 -print -quit) && [[ -z $expired ]]; then
-            echo 'Reusing the unchanged pull request Turbo archive after a full fixture replay.'
-            exit 0
-          fi
-          shopt -s nullglob
-          summaries=(.turbo/runs/*.json)
-          if (( ${#summaries[@]} )); then
-            set +o pipefail
-            jq -r '
-              .tasks[] | select(.cache.status == "HIT")
-              | .hash | select(type == "string" and test("^[a-f0-9]{16}$"))
-              | ".turbo/cache/\(.)" as $entry
-              | $entry + (".tar.zst", "-meta.json", "-manifest.json")
-            ' "${summaries[@]}" | xargs -r touch -c --
-          fi
-          find .turbo/cache -type f -mtime +7 -delete
-          for archive in .turbo/cache/*.tar.zst; do
-            metadata="${archive%.tar.zst}-meta.json"
-            [[ -f "$archive" && -s "$archive" && -f "$metadata" && -s "$metadata" ]] || continue
-            echo "populated=true" >> "$GITHUB_OUTPUT"
-            break
-          done
-      - if: always() && steps.prune-turbo-cache.outputs.populated == 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: .turbo/cache
-          key: ${{ steps.setup.outputs.turbo-cache-key }}
       - if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: proof-${{ matrix.name }}
-          path: |
-            gen/proof/
-            vibestack/studio/gen/proof/
-          if-no-files-found: ignore
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: failures-${{ matrix.name }}
-          path: |
-            test/counterexamples/
-            test/__traces__/
-            apps/*/test/counterexamples/
-            apps/*/test/__traces__/
-            packages/*/test/counterexamples/
-            packages/*/test/__traces__/
-            apps/*/.cache/vitest/attachments/
-            packages/*/.cache/vitest/attachments/
-            vibestack/studio/test/counterexamples/
-            vibestack/studio/test/__traces__/
-            vibestack/examples/*/test/counterexamples/
-            vibestack/examples/*/test/__traces__/
-          if-no-files-found: ignore
-          include-hidden-files: true
-
-  vibestack-precompute-simulations:
-    name: simulate-${{ matrix.shard }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with:
-          job: simulate-${{ matrix.shard }}
-      - id: simulation-cache
-        env:
-          LOCK_HASH: ${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}
-          SHARD_LAYOUT: ${{ strategy.job-total }}-${{ matrix.shard }}
-        run: echo "prefix=simulation-shard-v1-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH-$SHARD_LAYOUT-" >> "$GITHUB_OUTPUT"
-      - id: restore-simulation-cache
-        continue-on-error: true
-        uses: actions/cache/restore@v6
-        with:
-          path: ${{ runner.temp }}/cached-simulation-receipts
-          key: ${{ steps.simulation-cache.outputs.prefix }}restore
-          restore-keys: ${{ steps.simulation-cache.outputs.prefix }}
-      - name: Import receipts from a previous run
-        if: steps.restore-simulation-cache.outputs.cache-matched-key != ''
-        continue-on-error: true
-        env:
-          SIMULATION_RECEIPTS: ${{ runner.temp }}/cached-simulation-receipts
-        run: *import-simulation-receipts
-      - name: Simulate the specs whose files hash to this shard
-        id: precompute
-        env:
-          SHARD: ${{ matrix.shard }}
-          SHARDS: ${{ strategy.job-total }}
-          CACHE_PREFIX: ${{ steps.simulation-cache.outputs.prefix }}
-          RESTORED_KEY: ${{ steps.restore-simulation-cache.outputs.cache-matched-key }}
-        run: |
-          node --input-type=module <<'JS'
-          import { createHash } from "node:crypto";
-          import fs from "node:fs";
-          import path from "node:path";
-          import { prepareSimulationReceipts, readSpecs } from "./vibestack/formal.ts";
-          const aggregate = (name) => /^simulate-[a-f0-9]{24}\.json\.(?:zst|gz)$/.test(name);
-          const simulations = () => fs.globSync("simulate-*.json.*", { cwd: ".spec-cache" })
-            .filter((name) => aggregate(name) && fs.lstatSync(path.join(".spec-cache", name)).isFile());
-          const digest = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
-          const restored = new Map();
-          for (const name of simulations()) {
-            try { restored.set(name, digest(path.join(".spec-cache", name))); } catch { }
-          }
-          const specs = readSpecs(process.cwd());
-          const inShard = ({ file }) => parseInt(createHash("sha256").update(file).digest("hex").slice(0, 8), 16) % Number(process.env.SHARDS) === Number(process.env.SHARD) - 1;
-          const names = specs.filter(inShard).map(({ name }) => name);
-          const { results, seedDirectory, partialDirectory } = await prepareSimulationReceipts(process.cwd(), specs, names, process.env.RUNNER_TEMP);
-          const checkpoint = seedDirectory ?? partialDirectory;
-          let transfer = checkpoint ?? fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, "simulation-delta-"));
-          if (!checkpoint) {
-            for (const name of simulations()) if (!restored.has(name)) {
-              fs.copyFileSync(path.join(".spec-cache", name), path.join(transfer, name));
-            }
-          } else {
-            const contents = fs.readdirSync(checkpoint).sort().map((name) => [name, digest(path.join(checkpoint, name))]);
-            if (contents.some(([name, hash]) => aggregate(name) && restored.get(name) !== hash)) {
-              const fingerprint = createHash("sha256").update(JSON.stringify(contents)).digest("hex");
-              const prefix = `${process.env.CACHE_PREFIX}${fingerprint}-`;
-              if (!process.env.RESTORED_KEY.startsWith(prefix)) {
-                const key = `${prefix}${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`;
-                const directory = path.join(process.env.RUNNER_TEMP, "cached-simulation-receipts");
-                try {
-                  fs.rmSync(directory, { recursive: true, force: true });
-                  fs.renameSync(checkpoint, directory);
-                  transfer = directory;
-                  fs.appendFileSync(process.env.GITHUB_OUTPUT, `cache-key=${key}\n`);
-                } catch (error) {
-                  console.log(`::warning::Could not stage the simulation cache: ${error.message}`);
-                }
-              }
-            }
-          }
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `directory=${transfer}\n`);
-          const failed = results.filter(({ ok }) => !ok);
-          for (const { stage, summary, detail, where } of failed) console.log(`✗ ${stage} ${where ?? ""}: ${summary}\n${detail}`);
-          const kind = seedDirectory ? "complete seed" : partialDirectory ? "partial seed" : "new aggregate";
-          console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${fs.readdirSync(transfer).length} ${kind} entries, ${failed.length} failed`);
-          process.exitCode = failed.length ? 1 : 0;
-          JS
-      - if: ${{ !cancelled() && steps.precompute.outputs.cache-key != '' }}
-        continue-on-error: true
-        uses: actions/cache/save@v6
-        with:
-          key: ${{ steps.precompute.outputs.cache-key }}
-          path: ${{ runner.temp }}/cached-simulation-receipts
-      - if: always() && steps.precompute.outputs.directory != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: simulations-${{ matrix.shard }}
-          path: ${{ steps.precompute.outputs.directory }}
-          compression-level: 0
-          if-no-files-found: ignore
-          include-hidden-files: true
-          retention-days: 1
-
-  vibestack-fixture-selftests:
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: selftest-a
-            tasks: //#selftest:tools:a
-          - name: selftest-b
-            tasks: //#selftest:tools:b
-          - name: selftest-rest
-            tasks: //#selftest:tools:rest
-    env: *cache-env
-    steps: *verification-steps
+          name: core-journey-measurements
+          path: ${{ runner.temp }}/core-journey-record
+          if-no-files-found: error
+          retention-days: 7
