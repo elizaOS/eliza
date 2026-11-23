@@ -1,13 +1,13 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
-import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import { answerJson, held, insufficientCredits, rateLimited, refusal, refusalFrame, text, toolCalls, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
-import { call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { call, cloudFake, deviceKey, host, scratch, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import type { Scratch } from "./support/scratch.ts"
 import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
 
@@ -409,7 +409,7 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   }))
 }, 120_000)
 
-it.live(`Each call keeps the system prompt and puts the turn's notes after the history, a contact keeps its reference from turn to turn, a host notice is not read back, a rate limit, one that names no wait after five seconds, or an unparsed tool call is sent once more, a refusal after an outage was retried is not, and a cut-off ends the turn (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; ${planning}, "The model reads what was said in the conversation, in a window taken once for the whole turn"; ${planning}, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; ${planning}, "A call that stopped at the model's own output limit ends planning"; spec/core/models.md, "A failed dispatch tells its caller how many provider attempts it made")`, effect () => {
+it.live(`Each call keeps the system prompt and puts the turn's notes after the history, a contact keeps its reference from turn to turn, a host notice is not read back, a rate limit, one that names no wait after five seconds, or an unparsed tool call in a body or a stream frame is sent once more, a refusal after an outage was retried is not, and a cut-off ends the turn (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; ${planning}, "The model reads what was said in the conversation, in a window taken once for the whole turn"; ${planning}, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; ${planning}, "A call that stopped at the model's own output limit ends planning"; spec/core/models.md, "A failed dispatch tells its caller how many provider attempts it made")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const actions = { load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }
   const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin }, ...actions }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
@@ -426,6 +426,11 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   const waitedCalls = completions(cloud) - beforeWait
   const bodies = sent()
   const [opening, latest] = [bodies[0], bodies.at(-1)]
+
+  try Effect.sync(() => cloud.script(refusalFrame({ error: { provider_code: "parser_error", param: "tool_calls", message: "Bad Request", type: "invalid_request_error", code: 400 } }), text("Read from the stream on the second try.")))
+  const beforeFrame = completions(cloud)
+  const framed = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body: { text: "Work it out again." } })
+  const frameCalls = completions(cloud) - beforeFrame
 
   try Effect.sync(() => agent.agent.runtime.setSetting("ELIZA_SECRET_SWAP_ENABLED", true))
   try Effect.sync(() => cloud.script(text("I'll write to them."), text("You're welcome.")))
@@ -473,6 +478,7 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     stableReference: [asked.includes("ada.lovelace@gmail.com"), asked.includes("__ELIZA_"), replayed === asked],
     cut: cut.text, cutCalls,
     parsed: parsed.text, parseCalls,
+    framed: [framed.text.includes("Read from the stream on the second try."), frameCalls],
     hintless: [hintless.text, resentAt - refusedAt >= 5_000],
     stacked: [stacked.failureKind, stackedCalls],
   }, {
@@ -480,6 +486,7 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     waited: "After the wait.", waitedCalls: 2, noticeUnread: true, stableReference: [false, true, true],
     cut: cutOffReply, cutCalls: 1,
     parsed: "Read on the second try.", parseCalls: 2,
+    framed: [true, 2],
     hintless: ["Answered after five seconds.", true],
     stacked: ["limit_reached", 2],
   }))

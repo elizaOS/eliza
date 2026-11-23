@@ -10,15 +10,22 @@ import { join } from "node:path";
 import tls from "node:tls";
 import { promisify } from "node:util";
 
+export interface ProviderCarried {
+  readonly code?: string;
+  readonly param?: string;
+  readonly providerMessage?: string;
+}
+
 export type CloudReply =
   | { readonly kind: "text"; readonly chunks: readonly string[]; readonly cachedTokens?: number; readonly keepOpenAfterDone?: boolean }
-  | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: number | string; readonly resetsAt?: number; readonly retryAfterSeconds?: number }
+  | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: number | string; readonly resetsAt?: number; readonly retryAfterSeconds?: number; readonly carried?: ProviderCarried }
   | { readonly kind: "images" }
   | { readonly kind: "drop" }
   | { readonly kind: "hang" }
   | { readonly kind: "partial"; readonly chunks: readonly string[] }
   | { readonly kind: "held"; readonly gate: Promise<void>; readonly reply: CloudReply }
-  | { readonly kind: "tools"; readonly content: string; readonly calls: readonly { readonly name: string; readonly arguments: unknown }[] };
+  | { readonly kind: "tools"; readonly content: string; readonly calls: readonly { readonly name: string; readonly arguments: unknown }[] }
+  | { readonly kind: "frame"; readonly frame: unknown };
 
 export interface CloudCall {
   readonly method: string;
@@ -52,10 +59,11 @@ export const text = (...chunks: string[]): CloudReply => ({ kind: "text", chunks
 export const cachedText = (cachedTokens: number, ...chunks: string[]): CloudReply => ({ kind: "text", chunks, cachedTokens });
 export const textWithoutEof = (...chunks: string[]): CloudReply => ({ kind: "text", chunks, keepOpenAfterDone: true });
 
-export const refusal = (status: number, error: string, more: { retryable?: boolean; reason?: string; retryAt?: number | string; resetsAt?: number; retryAfterSeconds?: number } = {}): CloudReply =>
+export const refusal = (status: number, error: string, more: { retryable?: boolean; reason?: string; retryAt?: number | string; resetsAt?: number; retryAfterSeconds?: number; carried?: ProviderCarried } = {}): CloudReply =>
   ({
     kind: "refusal", status, error, retryable: more.retryable ?? false,
     ...(more.reason === undefined ? {} : { reason: more.reason }),
+    ...(more.carried === undefined ? {} : { carried: more.carried }),
     ...(more.retryAt === undefined ? {} : { retryAt: more.retryAt }),
     ...(more.resetsAt === undefined ? {} : { resetsAt: more.resetsAt }),
     ...(more.retryAfterSeconds === undefined ? {} : { retryAfterSeconds: more.retryAfterSeconds }),
@@ -70,6 +78,7 @@ export const partial = (...chunks: string[]): CloudReply => ({ kind: "partial", 
 export const echoImages = (): CloudReply => ({ kind: "images" });
 export const toolCalls = (content: string, ...calls: { name: string; arguments: unknown }[]): CloudReply => ({ kind: "tools", content, calls });
 export const held = (gate: Promise<void>, reply: CloudReply): CloudReply => ({ kind: "held", gate, reply });
+export const refusalFrame = (frame: unknown): CloudReply => ({ kind: "frame", frame });
 export const answerJson = (body: unknown, status = 200): RouteReply => ({ kind: "json", status, body });
 export const answerStatus = (status: number): RouteReply => ({ kind: "status", status });
 
@@ -171,6 +180,7 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
         ...(reply.reason === undefined ? {} : { reason: reply.reason }),
         ...(reply.retryAt === undefined ? {} : { retryAt: reply.retryAt }),
         ...(reply.resetsAt === undefined ? {} : { resetsAt: reply.resetsAt }),
+        ...reply.carried,
       });
     case "text": {
       const model = modelOf(body);
@@ -193,6 +203,10 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       }
       return endStream(response, body, model, "stop", usage, reply.keepOpenAfterDone);
     }
+    case "frame":
+      response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store" });
+      response.write(`data: ${JSON.stringify(reply.frame)}\n\n`);
+      return void response.end("data: [DONE]\n\n");
     case "tools": {
       const model = modelOf(body);
       const calls = reply.calls.map(({ name, arguments: args }, index) => ({ id: `call-${index}`, type: "function", function: { name, arguments: JSON.stringify(args) } }));

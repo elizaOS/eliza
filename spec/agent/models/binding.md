@@ -135,6 +135,18 @@ named is still ahead; the turn that made the call waits for that, at most
 five seconds and five seconds when the refusal carries none, and sends it
 once more ([planning](../conversation/planning.md)).
 
+A refusal can also come inside a streamed answer, as a `data:` frame that
+holds `error` in place of choices. It is read as the HTTP refusal it names,
+with its body: the status is the frame's numeric `code`, else the status of
+the cloud refusal code the frame carries as its `error`; a frame naming
+neither is a provider issue, as a malformed frame is. The provider's own
+code and message come from `provider_code` and `provider_message` when the
+frame carries them, and its wait from `retryAfterMs` or `retryAfterSeconds`
+as a `Retry-After` header in whole seconds would give it. A cloud refusal,
+in a body or a frame, carries a provider's code, parameter and message
+beside its own `error` as `code`, `param` and `providerMessage`, and they
+are read as the same fields of a provider's own body.
+
 ```quint
 import models as M from "../../core/models"
 import client as C from "../../cloud/client"
@@ -144,6 +156,14 @@ pure val heldValues = Set(-1, 0, 3, 4000)
 pure def lawAHintlessRefusalWithNothingAheadCarriesNoWait(reported: int, t: int): bool = reported <= t implies refusalWait(reported, 0, t) < 0
 pure def lawAWaitEndsAtTheReportedTime(reported: int, held: int, t: int): bool = refusalWait(reported, held, t) > 0 implies t + refusalWait(reported, held, t) == reported
 pure def lawANamedRefusalAlwaysCarriesAWait(reported: int, held: int, t: int): bool = held > 0 implies refusalWait(reported, held, t) >= 0
+pure val unreadableFrameStatus = 502
+pure def namesAStatus(status: int): bool = status >= 400 and status <= 599
+pure def frameStatus(frameCode: int, codeStatus: int): int = if (namesAStatus(frameCode)) frameCode else if (namesAStatus(codeStatus)) codeStatus else unreadableFrameStatus
+pure val frameCodeValues = Set(-1, 0, 400, 429)
+pure val codeStatusValues = Set(-1, 429, 503)
+pure def lawAFrameKeepsTheStatusItNames(frameCode: int, codeStatus: int): bool = namesAStatus(frameCode) implies frameStatus(frameCode, codeStatus) == frameCode
+pure def lawACloudRefusalFrameTakesItsCodesStatus(frameCode: int, codeStatus: int): bool = (not(namesAStatus(frameCode)) and namesAStatus(codeStatus)) implies frameStatus(frameCode, codeStatus) == codeStatus
+pure def lawAFrameNamingNoStatusIsUnreadable(frameCode: int): bool = not(namesAStatus(frameCode)) implies frameStatus(frameCode, -1) == unreadableFrameStatus
 pure def outcomeOf(e: C::CloudError): M::Outcome = match e {
   | CloudNetwork => M::RefusedConnection
   | CloudUnavailable(_) => M::RetryEnvelope
@@ -162,10 +182,10 @@ pure def lawRateLimitExhaustsTheProvider(e: C::CloudError): bool = rateLimited(e
 
 ### A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry
 
-A refusal body that says the provider could not parse a tool call out of
-the model's own generation (`code` `parser_error`, or `type`
-`generation_error` with `param` `tool_calls`, flat or inside an `error`
-envelope) is a bad request of its own: the request was sound and the sample
+A refusal body or stream frame that says the provider could not parse a
+tool call out of the model's own generation (`code` or `provider_code`
+`parser_error`, or `type` `generation_error` with `param` `tool_calls`, flat
+or inside an `error` envelope) is a bad request of its own: the request was sound and the sample
 failed, so the transport never re-sends it and the turn decides whether it
 gets one more try ([planning](../conversation/planning.md)). A streamed
 answer whose provider sends no bytes for 60 seconds, first its headers and
