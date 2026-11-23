@@ -11,7 +11,9 @@ device does with a claimed request and its execution journal are
 [device execution](./execution.md); the reviewed wire shapes are
 [device operations](./operations.md). Native executors belong to the
 [Android device](../../os/index.md). The capability vocabulary and header negotiation are
-[capabilities](./capabilities.md).
+[capabilities](./capabilities.md). The agent's own proposal families are
+[telephony](./telephony.md) and the [device surfaces](./surfaces.md); the
+other families belong to the packages that own their records.
 
 The routes are `POST /api/client-devices/{register,revoke}`,
 `GET /api/client-devices/context`, `GET /api/client-devices/proposals` and
