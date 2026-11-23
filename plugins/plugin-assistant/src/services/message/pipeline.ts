@@ -119,6 +119,10 @@ import { isProgressiveContextChannel } from "./channel-protocol.ts";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import { listAvailableContextsForTurn } from "./context-catalog.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
+import {
+  DETERMINISTIC_TOOL_ACKNOWLEDGMENT_DELAY_MS,
+  scheduleDelayedAcknowledgment,
+} from "./delayed-acknowledgment.ts";
 import { filterIntermediateCallbackContent } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {
@@ -1081,18 +1085,25 @@ export async function runV5MessageRuntimeStage1(
     }
     // Progress does not satisfy final delivery, persist an answer, or refresh history.
     getStreamingContext()?.abortSignal?.throwIfAborted();
+    // A deterministic tool call usually settles before an acknowledgement
+    // would read as anything but noise; it holds the eligible text and shows
+    // it only if the call is still running after a short delay.
+    let deterministicToolAcknowledgment: string | undefined;
     if (
       args.onPlanningAcknowledgment &&
       !contextReadAcknowledgmentSent &&
       !addressedToOtherParticipant &&
       messageHandler.processMessage === "RESPOND" &&
       prePatchStageOneReplyEffectStatus === "pending" &&
-      !messageHandler.plan.deterministicToolCall &&
       earlyReplyText.trim().length > 0
     ) {
-      await args.onPlanningAcknowledgment(
-        restorePiiInUserReplyText(earlyReplyText),
-      );
+      if (messageHandler.plan.deterministicToolCall)
+        deterministicToolAcknowledgment =
+          restorePiiInUserReplyText(earlyReplyText);
+      else
+        await args.onPlanningAcknowledgment(
+          restorePiiInUserReplyText(earlyReplyText),
+        );
     }
     // The addressing gate above already terminal-routes addressed-to-other
     // turns to ignored, so a gated turn cannot normally reach this planning
@@ -2047,11 +2058,34 @@ export async function runV5MessageRuntimeStage1(
           ...(selected.params ? { params: selected.params } : {}),
         };
         const startedAt = Date.now();
+        const onPlanningAcknowledgment = args.onPlanningAcknowledgment;
+        const acknowledgment = deterministicToolAcknowledgment;
+        // Nothing the turn delivers (a callback's text, the final reply, the
+        // terminal) may follow this acknowledgement: every such path settles
+        // it first, cancelling a pending one or awaiting one in flight.
+        const delayedAcknowledgment =
+          acknowledgment && onPlanningAcknowledgment
+            ? scheduleDelayedAcknowledgment({
+                delayMs: DETERMINISTIC_TOOL_ACKNOWLEDGMENT_DELAY_MS,
+                send: () => onPlanningAcknowledgment(acknowledgment),
+                abortSignal: getStreamingContext()?.abortSignal,
+                onError: (error) => {
+                  // error-policy:J7 Transient progress cannot change the
+                  // deterministic action that is already running.
+                  args.runtime.reportError(
+                    "MessageService.deterministicToolAcknowledgment",
+                    error,
+                    { roomId: args.message.roomId, tool: toolCall.name },
+                  );
+                },
+              })
+            : undefined;
         let callbackDelivered = false;
         const deterministicCallback: HandlerCallback | undefined =
           recordingCallback
             ? async (...callbackArgs) => {
                 callbackDelivered = true;
+                await delayedAcknowledgment?.settle();
                 return recordingCallback(...callbackArgs);
               }
             : undefined;
@@ -2103,6 +2137,10 @@ export async function runV5MessageRuntimeStage1(
               text: error instanceof Error ? error.message : String(error),
             },
           );
+        } finally {
+          // The settled call never acknowledges; one already sending lands
+          // before anything this turn delivers next.
+          await delayedAcknowledgment?.settle();
         }
         const endedAt = Date.now();
         if (recorder && trajectoryId) {
