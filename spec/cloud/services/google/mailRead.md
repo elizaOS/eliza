@@ -2,8 +2,10 @@
 
 The owner's mail, read through the grant of [the connection](./connection.md)
 (develop `agent-google-connector/{gmail.ts,inbox-provider.ts}`). Routes, by
-device key or session, `side` only `owner`, grant chosen by `connection`'s
-selection rule: `GET /api/v1/eliza/google/gmail/{triage,search,read}` and
+session or the device's mail lease and never by the device key
+([request authentication](../../identity/requestAuth.md)), `side` only
+`owner`, grant chosen by `connection`'s selection rule:
+`GET /api/v1/eliza/google/gmail/{triage,search,read}` and
 `GET …/gmail/inbox-v1/{capabilities,thread,attachment,drafts,draft}`. This
 library decides what a read may answer; the shell calls Google and renders
 the wire. [The reviewed operations](./mailOperations.md) reuse its revision

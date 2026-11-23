@@ -4,8 +4,8 @@ The owner's Google Calendar, read and written by the cloud with the grant of
 `spec/cloud/services/google/connection.md`. Sources: develop
 `agent-google-connector/{calendar,calendar-sync-provider}.ts` and the routes
 `api/v1/eliza/google/calendar/**`. Routes under `/api/v1/eliza/google/calendar/`
-(device key or session): `GET calendars`, `GET feed`, `GET events/:eventId`,
-`POST events`, `PATCH events/:eventId`, `DELETE events/:eventId`. Every call
+(session or the device's mail lease, never the device key): `GET calendars`,
+`GET feed`, `GET events/:eventId`, `POST events`, `PATCH events/:eventId`, `DELETE events/:eventId`. Every call
 may name `grantId` and selects the connection by the rules of `connection`
 (`side` other than `owner`, several active grants, another organization's
 grant); every call needs a usable connection (`G::usable`). `sync-v1` is gone.

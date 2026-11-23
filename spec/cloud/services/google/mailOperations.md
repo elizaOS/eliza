@@ -3,9 +3,10 @@
 Every change the cloud makes to the owner's mailbox, reviewed first and sent
 to Google at most once on a receipt of [the dispatch ledger](../../shared/dispatchOnce.md)
 (develop `agent-google-connector/inbox-{receipts,provider,operation-routes}.ts`).
-Routes under `/api/v1/eliza/google/gmail/inbox-v1/` (device key or session,
-grant chosen by [the connection](./connection.md)): `POST operations
-{grantId, requestId, proposal}`, `POST operations/:requestId/dispatch
+Routes under `/api/v1/eliza/google/gmail/inbox-v1/` (session or the device's
+mail lease, never the device key; grant chosen by
+[the connection](./connection.md)): `POST operations {grantId, requestId,
+proposal}`, `POST operations/:requestId/dispatch
 {grantId, reviewDigest, proposal}`, `GET operations/:requestId?grantId`; ids
 are UUIDs. There is no other Gmail write route.
 

@@ -2,10 +2,12 @@
 
 The owner's Google grant, held by the cloud. Sources: develop
 `agent-google-connector/shared.ts`, `oauth/{oauth2.ts,token-cache.ts}`,
-`api/v1/oauth/app-oauth-return.ts`. Routes under `/api/v1/eliza/google/` (device
-key or session): `POST connect/initiate {side, capabilities, redirectUrl?}`,
-`POST connect/native {serverAuthCode}`, `GET status`, `GET accounts` (every
-connection's status), `POST disconnect {side, connectionId?}`; Google calls
+`api/v1/oauth/app-oauth-return.ts`. Routes under `/api/v1/eliza/google/`
+(session or the device's mail lease, never the device key, except
+`connect/native`, which also admits the device key): `POST connect/initiate
+{side, capabilities, redirectUrl?}`, `POST connect/native {serverAuthCode}`,
+`GET status`, `GET accounts` (every connection's status), `POST disconnect
+{side, connectionId?}`; Google calls
 `GET /api/v1/oauth/google/callback`. One instance is one connection row; the
 shell seals tokens (purpose `GoogleTokens`), keeps identity, `linkedAt` and
 `lastUsedAt`, and deletes rows left `Pending`. A unique index keeps one
