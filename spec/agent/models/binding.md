@@ -176,7 +176,12 @@ A call that offers tools, names the tool to use or asks for a schema gets one
 result: the text, every tool call with its arguments, the finish reason and
 the token use. Any other call gets the text alone. Tool results follow the
 call that asked for them; a result no call asked for is sent as the person's
-text. An answer with neither text nor a tool call is a provider issue.
+text. An answer with neither text nor a tool call is a provider issue. A
+streamed call asks for its token use (`stream_options.include_usage`), which
+the provider sends in a last chunk without choices, and a call that is not
+streamed sends no stream options. The token use carries the prompt tokens
+the provider read from its prompt cache, when it names any, so a streamed
+call is measured as a whole one is.
 
 ```quint
 type ChatAsk = { offersTools: bool, choosesTool: bool, asksSchema: bool }
@@ -196,6 +201,8 @@ pure def lawOnlyAToolOrSchemaCallGetsTheResult(ask: ChatAsk, answer: ChatAnswer)
   chatReturn(ask, answer) != AnswerProviderIssue implies (chatReturn(ask, answer) == AnswerResult iff wantsResult(ask))
 pure def lawToolCallsAreNeverDroppedForText(ask: ChatAsk, answer: ChatAnswer): bool =
   (answer.toolCalls > 0 and not(wantsResult(ask))) implies chatReturn(ask, answer) == AnswerText
+pure def usageAsked(streamed: bool): bool = streamed
+pure def lawOnlyAStreamAsksForItsTokenUse(streamed: bool): bool = usageAsked(streamed) iff streamed
 ```
 
 ### A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it

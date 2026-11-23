@@ -1,16 +1,16 @@
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request withdraws the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request withdraws the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, sha256Hex, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import {
-  acknowledges, callRunsFirst, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, turnNarrowed,
-  withdrawnByRoute, type CallFailure, type PlanStep, type StepOutcome,
+  acknowledges, callRunsFirst, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, toolActivity, turnNarrowed,
+  unavailableNotice, withdrawnByRoute, type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { composeReply, draftOf } from "./reply-text.vibe"
+import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -56,6 +56,10 @@ export interface TurnToolForm {
 
 export const turnToolForms = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => TurnToolForm | undefined>()
 
+export function offeredOnlyWhere(action: Action, home: (runtime: IAgentRuntime, message: Memory) => boolean): void {
+  turnToolForms.set(action, (runtime, message) => home(runtime, message) ? { description: action.description, parameters: {} } : undefined)
+}
+
 export const turnFirstCalls = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => ToolCall["arguments"] | undefined>()
 
 function firstCall(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ToolCall | undefined {
@@ -80,17 +84,19 @@ function forTurn(runtime: AgentRuntime, message: Memory, action: Action): Action
   }
 }
 
-export async function offeredActions(runtime: AgentRuntime, message: Memory, state: State, actionGate: PlanInput["actionGate"]): Promise<Action[]> {
+function formless(runtime: AgentRuntime, message: Memory, action: Action): boolean {
+  const form = turnToolForms.get(action)
+  return form !== undefined && form(runtime, message) === undefined
+}
+
+export function offeredActions(runtime: AgentRuntime, message: Memory, actionGate: PlanInput["actionGate"]): Action[] {
   const registered = runtime.actions.filter(({ name }) => !messageServiceActions.has(name) && toolNamePattern.test(name))
-  const allowed = new Set(offered(registered.map(({ name }) => name), registered.flatMap((action) => actionGate(action) === undefined ? [action.name] : [])))
-  const checked = await Promise.all(registered.filter(({ name }) => allowed.has(name)).map(async (action) => {
-    try {
-      return await action.validate(runtime, message, state) ? [action] : []
-    } catch {
-      return []
-    }
-  }))
-  return withoutReplaced(runtime, message, checked.flat())
+  const names = new Set(offered(
+    registered.map(({ name }) => name),
+    registered.flatMap((action) => actionGate(action) === undefined ? [action.name] : []),
+    registered.flatMap((action) => formless(runtime, message, action) ? [action.name] : []),
+  ))
+  return withoutReplaced(runtime, message, registered.filter(({ name }) => names.has(name)))
 }
 
 function routeMatches(rule: DirectActionRoutingRule, message: Memory): boolean {
@@ -215,7 +221,7 @@ function stoppedAtModelMaximum(result: ActionResult): boolean {
   return [result.error, settled].some(stoppedAtOutputLimit)
 }
 
-function byName(left: ToolDefinition, right: ToolDefinition): number {
+function byName(left: { readonly name: string }, right: { readonly name: string }): number {
   return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
 }
 
@@ -237,7 +243,23 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
 }
 
 function failureNotice(step: PlannedStep): string {
+  if (notStarted(step.result) && step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return unavailableNotice
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
+}
+
+function toolLabel(runtime: AgentRuntime, action: Action | undefined): string {
+  const applicable = new Set<string>()
+  const labels = new Set<string>()
+  for (const context of action === undefined ? [] : resolveActionContexts(action)) {
+    if (context === "general" || context === "simple") continue
+    const definition = runtime.contexts.get(context)
+    if (definition?.sensitivity === "system") continue
+    const label = definition?.label?.trim()
+    applicable.add(label || context)
+    if (label) labels.add(label)
+  }
+  const [only] = labels
+  return toolActivity(applicable.size, labels.size) === "UsingApp" && only !== undefined ? `Using ${only}` : "Working"
 }
 
 function entryKey({ actionName, outcome, operation }: PlanStep): string {
@@ -260,16 +282,18 @@ function settleReply(steps: readonly PlannedStep[], prose: string | undefined): 
 
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
   const { runtime, message, state, roles, signal } = input
-  const tools: ToolDefinition[] = actions.length === 0 ? [] : [...buildPlannerToolsFromActions(actions.map((action) => forTurn(runtime, message, action)))].sort(byName)
+  const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions.toSorted(byName).map((action) => forTurn(runtime, message, action)))
   const conversation: ChatMessage[] = [...input.messages]
   const steps: PlannedStep[] = []
+  const named = new Map(actions.map((action) => [action.name, action]))
+  const instruction = requestIsInstruction(typeof message.content.text === "string" ? message.content.text : "")
   let taken = 0
   let displayed = false
   let streamed = ""
   let prose: string | undefined
   const execute = async (call: ToolCall): Promise<ActionResult> => {
     signal.throwIfAborted()
-    await input.onActivityStatus?.({ actionName: call.name, label: call.name })
+    await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name)) })
     const params = paramsOf(call)
     const captured: string[] = []
     const result = await executePlannedToolCall(runtime, {
@@ -325,11 +349,11 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     displayed = streamed.length > 0
     const reply = answered.toolCalls.find(({ name }) => name === "REPLY")
     const work = answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name))
-    const draft = draftOf(answered.text)
+    const draft = draftOf(answered.text, instruction, work.length)
     let cutOff = false
     if (work.length > 0) {
-      if (acknowledges(draft, work.length)) await input.onPlanningAcknowledgment?.(answered.text.trim())
-      else if (displayed) {
+      if (acknowledges(draft, work.length, steps.length)) await input.onPlanningAcknowledgment?.(answered.text.trim())
+      if (displayed) {
         input.onReplyRestart?.("")
         displayed = false
       }

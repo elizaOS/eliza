@@ -96,11 +96,35 @@ function recall(sources: readonly HistorySource[], shown: ReadonlySet<number>, r
   return [...recalled]
 }
 
-/** Bounds a conversation's history for a host where no reviewer runs, keeping standing instructions and the exchanges the request's words point at. */
-export function windowHistory<S extends HistorySource>(sources: readonly S[], request: string, previous?: HistoryReview): HistoryWindow<S> {
-  const prior = validReview(sources, previous)
-  const userPositions = sources.flatMap((source, index) => source.fromUser ? [index] : [])
-  const boundary = windowBoundary(sources.length, userPositions, prior.reviewedCount, HISTORY_WINDOW_MAX_SOURCES, HISTORY_WINDOW_KEEP_SOURCES)
+/** What a turn read of a conversation beyond its sources: how many older stored messages it did not read, how many it read and where each source lies among them (a notice or an empty reply is read but is no source), and a boundary a reviewer or an earlier window recorded over the sources. */
+export interface HistoryRead {
+  readonly earlier?: number
+  readonly readCount?: number
+  readonly positions?: readonly number[]
+  readonly previous?: HistoryReview
+}
+
+function readPositions(sources: readonly HistorySource[], read: HistoryRead): { readonly positions: readonly number[]; readonly count: number } {
+  const { readCount, positions } = read
+  const valid = positions !== undefined && readCount !== undefined && Number.isSafeInteger(readCount) && positions.length === sources.length
+    && positions.every((position, index) => Number.isSafeInteger(position) && position >= (index === 0 ? 0 : positions[index - 1] + 1) && position < readCount)
+  return valid ? { positions, count: readCount } : { positions: sources.map((_, index) => index), count: sources.length }
+}
+
+/** Bounds a conversation's history for a host where no reviewer runs, keeping standing instructions in the history and recalling, apart from it, the exchanges the request's words point at. Positions count every stored message, so the boundary steps with the conversation, not with what a turn reads. */
+export function windowHistory<S extends HistorySource>(sources: readonly S[], request: string, read: HistoryRead = {}): HistoryWindow<S> {
+  const prior = validReview(sources, read.previous)
+  const earlier = read.earlier !== undefined && Number.isSafeInteger(read.earlier) && read.earlier > 0 ? read.earlier : 0
+  const within = readPositions(sources, read)
+  const position = (index: number) => earlier + within.positions[index]
+  const sourceAt = (stored: number) => {
+    const index = within.positions.findIndex((_, at) => position(at) >= stored)
+    return index < 0 ? sources.length : index
+  }
+  const reviewed = prior.reviewedCount === 0 ? earlier : position(prior.reviewedCount - 1) + 1
+  const userPositions = sources.flatMap((source, index) => source.fromUser ? [position(index)] : [])
+  const count = earlier + within.count
+  const boundary = sourceAt(windowBoundary(count, userPositions, reviewed, HISTORY_WINDOW_MAX_SOURCES, HISTORY_WINDOW_KEEP_SOURCES))
   const windowed = boundary > prior.reviewedCount
   const retained = new Set(prior.retainedIds)
   if (windowed) {
@@ -110,14 +134,15 @@ export function windowHistory<S extends HistorySource>(sources: readonly S[], re
       .slice(-HISTORY_WINDOW_STANDING_SOURCES)
     for (const source of standing) retained.add(source.id)
   }
-  const from = shownFrom(sources.length, boundary, exchangeStart(sources), HISTORY_WINDOW_MAX_SOURCES, HISTORY_CONTINUITY_SOURCES)
+  const storedAt = (index: number) => index < sources.length ? position(index) : count
+  const from = sourceAt(shownFrom(count, storedAt(boundary), storedAt(exchangeStart(sources)), HISTORY_WINDOW_MAX_SOURCES, HISTORY_CONTINUITY_SOURCES))
   const visible = new Set<number>()
   sources.forEach((source, index) => {
     if (index >= from || retained.has(source.id)) visible.add(index)
   })
   const recalled = new Set(windowed ? recall(sources, visible, request) : [])
   return {
-    shown: sources.filter((_, index) => visible.has(index) || recalled.has(index)),
+    shown: sources.filter((_, index) => visible.has(index)),
     deferred: sources.filter((_, index) => !visible.has(index) && !recalled.has(index)),
     recalled: sources.filter((_, index) => recalled.has(index)),
     review: { reviewedCount: boundary, retainedIds: sources.slice(0, boundary).filter(({ id }) => retained.has(id)).map(({ id }) => id) },
@@ -157,13 +182,17 @@ export function searchHistory<S extends HistorySource>(candidates: readonly S[],
   return { matches, byWords: matches.length > 0 }
 }
 
-/** The notice a windowed turn carries after its transcript: how many originals are not shown, why, and when to read them through `readThrough`, the host's history read. */
-export function historyWindowNotice(window: { readonly deferred: readonly unknown[]; readonly recalled: readonly unknown[] }, readThrough?: string): string {
+/** The notice a windowed turn carries after its transcript: how many originals are not shown, why, and when to read them through `readThrough`, the host's history read, followed by the exchanges recalled for this request. */
+export function historyWindowNotice(window: { readonly deferred: readonly unknown[]; readonly recalled: readonly HistorySource[] }, readThrough?: string): string {
   const recalled = window.recalled.length > 0
-    ? " The conversation holds the most recent ones, preceded by up to three earlier exchanges matched to this request by its words; others on the same subject may be unread."
-    : " The conversation holds only the most recent ones."
+    ? " Up to three earlier exchanges matched to this request by its words are recalled at the end of this note; they are part of this conversation, and others on the same subject may be unread."
+    : ""
+  const held = window.recalled.length > 0 ? "the messages shown and the recalled exchanges" : "the messages shown"
   const read = readThrough === undefined
-    ? " When the messages shown do not hold what the request needs (an earlier item, \"as before\", \"like last time\", an unresolved \"it\" or \"that\", something said, given or done earlier), say that the earlier part of this conversation is not in view rather than guessing or denying it was said."
-    : ` Answer from the messages shown when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), read first through ${readThrough}: search the subject's main words, or read a known reference. Do not reply that you do not know, do not have or will check something before such a read. When the read finds nothing, say what you looked for and that this conversation does not hold it.`
-  return `${window.deferred.length} earlier messages and the recorded outcomes of their requests are not shown.${recalled} They were deferred by position, not reviewed, and that alone is no reason to read them.${read}`
+    ? ` Answer from ${held} when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), say that the earlier part of this conversation is not in view rather than guessing or denying it was said.`
+    : ` Answer from ${held} when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), read first through ${readThrough}: search the subject's main words, or read a known reference. Do not reply that you do not know, do not have or will check something before such a read. When the read finds nothing, say what you looked for and that this conversation does not hold it.`
+  const exchanges = window.recalled.length > 0
+    ? `\n\nRecalled earlier exchanges, oldest first, said in this conversation before the messages shown and not in this turn:\n${window.recalled.map(({ fromUser, text }) => `${fromUser ? "user" : "assistant"}: ${JSON.stringify(text)}`).join("\n")}`
+    : ""
+  return `${window.deferred.length} earlier messages and the recorded outcomes of their requests are not shown. The conversation holds only the most recent ones.${recalled} They were deferred by position, not reviewed, and that alone is no reason to read them.${read}${exchanges}`
 }

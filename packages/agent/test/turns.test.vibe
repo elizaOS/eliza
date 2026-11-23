@@ -2,10 +2,11 @@
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
-import { cutOffReply } from "../gen/agent__conversation__planning.ts"
+import { cutOffReply, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+import { viewsModuleName } from "../src/views/module.vibe"
 import { call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { Scratch } from "./support/scratch.ts"
 import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
@@ -80,6 +81,21 @@ module node {
     return typeof turn === "string" ? turn : JSON.stringify(turn ?? "")
   }
 
+  export async function seedHistory(runtime: AgentRuntime, userMessageId: UUID, exchanges: readonly (readonly [string, string])[]): Promise<void> {
+    const asked = await runtime.getMemoryById(userMessageId)
+    if (asked === null) throw new Error("The opening message was not stored")
+    const since = Date.now() - 3_600_000
+    for (const [index, [said, answered]] of exchanges.entries()) {
+      for (const [offset, entityId, text] of [[0, asked.entityId, said], [1, runtime.agentId, answered]] as const) {
+        await runtime.createMessageMemory({
+          id: randomUUID() as UUID, roomId: asked.roomId, entityId, agentId: runtime.agentId, createdAt: since + index * 10 + offset,
+          ...(asked.worldId === undefined ? {} : { worldId: asked.worldId }),
+          content: { text, source: "device" },
+        })
+      }
+    }
+  }
+
   export async function storeNotice(runtime: AgentRuntime, roomId: UUID): Promise<string> {
     const room = await runtime.getRoom(roomId)
     const text = systemNoticeText("runtime-error")
@@ -91,7 +107,7 @@ module node {
     return text
   }
 }
-import { completions, cutTurn, lastTurnPrompt, localDay, overlapping, roomMessages, storeNotice } from node
+import { completions, cutTurn, lastTurnPrompt, localDay, overlapping, roomMessages, seedHistory, storeNotice } from node
 
 const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 
@@ -213,17 +229,29 @@ it.live('The boundary refuses a malformed body, client id or voice view context,
 
 const planning = 'spec/agent/conversation/planning.md'
 
-it.live(`An allowed action runs as a tool, its result grounds the reply, a failure the turn proved is reported, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording")`, effect () => {
+it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, and a cue is never the reply (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
-    launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] },
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [basicActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE", "VIEWS"],
+    },
     frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
   })
   const { id } = try conversation(agent)
+  const completionsSent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { tools?: { function?: { name?: string } }[]; messages: { role: string; content?: unknown }[] })
 
   try Effect.sync(() => cloud.script(toolCalls("Let me check.", { name: "CALCULATE", arguments: { expression: "3847 * 292" } }), text("That is 1,123,324.")))
   const solved = replyOf(try send(agent, id, { text: "What is 3847 times 292?" }))
-  const [asked, grounded] = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).slice(-2).map(({ body }) => body as { tools?: { function?: { name?: string } }[]; messages: { role: string; content?: unknown }[] })
+  const [asked, grounded] = completionsSent().slice(-2)
+
+  try Effect.sync(() => cloud.script(text("Home is open.")))
+  try send(agent, id, { text: "Show me home.", metadata: { viewDelivery: "completed-action", viewClientId: "renderer-1" } })
+  const rendered = completionsSent().at(-1)
+
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "home" } }), text("I can't switch screens from this chat.")))
+  const unrendered = replyOf(try send(agent, id, { text: "Show me home here." }))
+  const declined = completionsSent().at(-1)?.messages.find(({ role }) => role === "tool")?.content
 
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!")))
   const failed = replyOf(try send(agent, id, { text: "Add two plus two." }))
@@ -236,6 +264,8 @@ it.live(`An allowed action runs as a tool, its result grounds the reply, a failu
 
   try Effect.try(() => assert.deepStrictEqual({
     offered: asked?.tools?.map((tool) => tool.function?.name),
+    sameTools: JSON.stringify(asked?.tools) === JSON.stringify(rendered?.tools),
+    declined: [typeof declined === "string" && declined.includes('"executionStatus":"not_started"') && declined.includes("did not run: answer without it or use another offered action"), unrendered.text],
     toolResult: grounded?.messages.some(({ role, content }) => role === "tool" && typeof content === "string" && content.includes("1123324")),
     solved: solved.text,
     actions: solved.actionResults.map((entry) => (entry as { action: string }).action),
@@ -243,7 +273,9 @@ it.live(`An allowed action runs as a tool, its result grounds the reply, a failu
     duration: duration.text,
     labels: { text: solved.action, voice: spoken.action },
   }, {
-    offered: ["CALCULATE"],
+    offered: ["CALCULATE", "VIEWS"],
+    sameTools: true,
+    declined: [true, `I can't switch screens from this chat.\n\n${unavailableNotice}`],
     toolResult: true,
     solved: "That is 1,123,324.",
     actions: ["CALCULATE"],
@@ -351,6 +383,47 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     parsed: "Read on the second try.", parseCalls: 2,
   }))
 }, 120_000)
+
+it.live(`A long conversation sends the same history turn after turn, and the exchanges a request's words recall follow its latest message (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try cloudAgent(cloud)
+  const { id } = try conversation(agent)
+  try Effect.sync(() => cloud.script(text("Hello.")))
+  const opened = replyOf(try send(agent, id, { text: "Hi" }))
+  const locker = "My riverside gym locker number is 4417."
+  const boiler = "Ortega repairs the basement boiler on Fridays."
+  const exchanges = Array.from({ length: 104 }, (_, index): readonly [string, string] =>
+    index === 30 ? [locker, "Riverside gym locker 4417, noted."]
+      : index === 60 ? [boiler, "Ortega fixes the basement boiler, noted."]
+        : [`Errand ${index} is done.`, `Good, errand ${index} is off the list.`])
+  try host("long history", () => seedHistory(agent.agent.runtime, opened.userMessageId as UUID, exchanges))
+  try Effect.sync(() => cloud.script(text("It is 4417."), text("Ortega does.")))
+  const lockerAsk = "Which locker number at the riverside gym?"
+  const boilerAsk = "Who repairs the basement boiler?"
+  try send(agent, id, { text: lockerAsk })
+  try send(agent, id, { text: boilerAsk })
+  const textOf = (content: unknown) => typeof content === "string" ? content : JSON.stringify(content)
+  const turnFor = (asked: string) => cloud.calls.map(({ body }) => (body as { messages?: { role: string; content?: unknown }[] } | undefined)?.messages ?? [])
+    .find((messages) => textOf(messages.at(-1)?.content).startsWith(asked)) ?? []
+  const first = turnFor(lockerAsk)
+  const second = turnFor(boilerAsk)
+  const before = (messages: readonly { content?: unknown }[]) => messages.slice(0, -1).map(({ content }) => textOf(content)).join("\n")
+  try Effect.try(() => assert.deepStrictEqual({
+    windowed: first.length < 60,
+    samePrefix: JSON.stringify(second.slice(0, first.length - 1)) === JSON.stringify(first.slice(0, -1)),
+    askedThenReplied: second.slice(first.length - 1, first.length + 1).map(({ role, content }) => [role, textOf(content)]),
+    recalledLast: [textOf(first.at(-1)?.content).includes(JSON.stringify(locker)), textOf(second.at(-1)?.content).includes(JSON.stringify(boiler))],
+    recalledLabelled: [first, second].map((messages) => textOf(messages.at(-1)?.content).includes("Recalled earlier exchanges, oldest first")),
+    neverInHistory: [before(first).includes(locker), before(second).includes(locker), before(second).includes(boiler)],
+  }, {
+    windowed: true,
+    samePrefix: true,
+    askedThenReplied: [["user", lockerAsk], ["assistant", "It is 4417."]],
+    recalledLast: [true, true],
+    recalledLabelled: [true, true],
+    neverInHistory: [false, false, false],
+  }))
+}, 240_000)
 
 const browserTurn = 'spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"'
 

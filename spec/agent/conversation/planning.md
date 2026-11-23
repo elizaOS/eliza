@@ -21,7 +21,8 @@ operation key, the shape of the model's text, and the shape of the tool
 text. The operation key of a step with effect receipts is its action, the
 receipt's operation and its resource; without receipts it is the action
 and its canonical parameters. A refusal before dispatch (a malformed or
-unexpected argument, `executionStatus: "not_started"`) is `Rejected`.
+unexpected argument, or an action whose own check declines the message,
+`executionStatus: "not_started"`) is `Rejected`.
 
 ## Story: Ask the agent to do something and hear what happened
 
@@ -36,18 +37,34 @@ as tools; a `REPLY` call the model makes anyway ends planning with its
 text, and an owner turn always ends with one reply. A step whose model
 call returns no tool call ends planning with that text.
 
+Every other registered action the launch allows is offered whatever the
+message says or carries, unless it has no tool form for the turn (below).
+An action's own check of the message (its `validate`) never decides what
+is offered: it runs when the model calls the action, and a call it
+declines, or that fails to check, is refused before the action runs. The
+model reads in that call's result that the action did not run, so it may
+answer without it or call another offered action, and the refusal stays
+reported as any other refusal before dispatch. The owner hears a call the
+action's own check declined as `unavailableNotice`, which names no action,
+never as the action's internal name.
+
 ```quint
 type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect
 type PlanStep = { actionName: str, outcome: StepOutcome, operation: str }
 pure val maxPlanSteps = 8
 pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
-pure def offered(registered: Set[str], allowed: Set[str]): Set[str] = registered.intersect(allowed).exclude(messageServiceActions)
+pure val unavailableNotice = "I can't do that from here, so it wasn't done."
+pure def offered(registered: Set[str], allowed: Set[str], formless: Set[str]): Set[str] =
+  registered.intersect(allowed).exclude(messageServiceActions).exclude(formless)
 pure def keepsPlanning(taken: int, calls: int, terminal: bool): bool = calls > 0 and not(terminal) and taken < maxPlanSteps
 pure val registeredValues = Set(Set("REPLY", "CALCULATE"), Set("REPLY", "CALCULATE", "PRODUCT_ACTION"), Set())
 pure val allowedValues = Set(Set("REPLY"), Set("REPLY", "CALCULATE"), Set())
+pure val formlessValues = Set(Set(), Set("CALCULATE"))
 pure val takenValues = Set(0, 1, 7, 8, 9)
-pure def lawOnlyAllowedRegisteredActionsAreOffered(registered: Set[str], allowed: Set[str]): bool =
-  offered(registered, allowed).subseteq(allowed) and offered(registered, allowed).subseteq(registered) and not(offered(registered, allowed).contains("REPLY"))
+pure def lawOnlyAllowedRegisteredActionsAreOffered(registered: Set[str], allowed: Set[str], formless: Set[str]): bool =
+  offered(registered, allowed, formless).subseteq(allowed) and offered(registered, allowed, formless).subseteq(registered) and not(offered(registered, allowed, formless).contains("REPLY"))
+pure def lawEveryAllowedRegisteredActionWithAFormIsOffered(registered: Set[str], allowed: Set[str], formless: Set[str]): bool =
+  registered.intersect(allowed).exclude(messageServiceActions).exclude(formless).subseteq(offered(registered, allowed, formless))
 pure def lawPlanningStopsAtTheBound(taken: int, calls: int, terminal: bool): bool =
   taken >= maxPlanSteps implies not(keepsPlanning(taken, calls, terminal))
 pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool = not(keepsPlanning(taken, 0, terminal))
@@ -55,15 +72,25 @@ pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool =
 
 ### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
 
-The system prompt is the character's alone: its system text, bio, style
-and message examples. The offered tools are sent in the order of their
+The system prompt is the character's: its system text, bio, style and
+message examples, then one fixed rule for the cue written with tool calls
+(below), the same text in every call. The offered tools are sent in the order of their
 names, each in the form the turn gives it (below), so they change only
-when what the turn offers does. The history follows, then the person's
+when what the turn offers does: no action's own check of a message
+changes them, and an action family's description is stated on the first
+of its offered actions by name. Only an action that narrows its tool to
+the turn, and a route that withdraws what it replaces, change them from
+one message to the next: on the phone the device tool's forms follow the
+screen, the routes and how views are delivered, so a phone conversation's
+tools still change when those do. The history follows, then the person's
 latest message, and only after it what this turn adds: the screen
 context, the device outcomes of this conversation's earlier requests, the
-task the turn runs for and the note that older history is not shown,
-each labelled as a note from the agent host. A provider reuses a
-request's prompt cache up to its first changed byte, and the cached prefix
+task the turn runs for, the note that older history is not shown and the
+earlier exchanges recalled for this request, each labelled as a note from
+the agent host. A recalled exchange is never placed among the history, so
+the history a turn sends is the one the turn before it sent, followed by
+that turn's request and reply, until the window over it steps. A provider
+reuses a request's prompt cache up to its first changed byte, and the cached prefix
 is the tools, then the system prompt, then the messages, so a part that
 changes with the turn placed before the history costs every message after
 it. Each planning call also names its conversation's prompt cache key,
@@ -74,12 +101,12 @@ each conversation and stage rather than one for every phone that sends
 the same prompt ([binding](../models/binding.md) decides where it is sent).
 
 ```quint
-type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice
+type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice | RecalledExchanges
 pure def promptPosition(p: PromptPart): int = match p {
-  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | DeviceNote => 5 | TaskNote => 6 | WindowNotice => 7
+  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | DeviceNote => 5 | TaskNote => 6 | WindowNotice => 7 | RecalledExchanges => 8
 }
-pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == DeviceNote or p == TaskNote or p == WindowNotice
-pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, DeviceNote, TaskNote, WindowNotice)
+pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == DeviceNote or p == TaskNote or p == WindowNotice or p == RecalledExchanges
+pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, DeviceNote, TaskNote, WindowNotice, RecalledExchanges)
 pure def lawNothingPerTurnPrecedesTheHistory(p: PromptPart): bool = changesPerTurn(p) implies promptPosition(p) > promptPosition(PriorHistory)
 pure def lawTheConstantPartsLead(p: PromptPart): bool = not(changesPerTurn(p)) implies promptPosition(p) <= promptPosition(PriorHistory)
 ```
@@ -91,11 +118,27 @@ registered, a narrower schema: the device proposal tool offers only the
 operation forms this turn's device negotiated. A narrowed schema for a
 parameter the action never registered is dropped, and the action's handler
 still checks its arguments against everything its registered form allows.
+An action that narrows its tool may have no form for a turn, as the device
+proposal tool has none off an owner turn of the enrolled device, under a
+refused negotiation, or when no operation form is offered; it is then not
+offered that turn, since a tool with nothing it could be called with is
+never sent. An action whose job has another home on some turns has no form
+there, so each job is offered in one place: the native `BROWSER` command
+has none unless it is the home of a history move
+([browser control](../../browser/control.md)), and `VIEWS` none on a device
+turn whose views are not delivered as completed actions, where the device
+tool offers `open_view` instead
+([device surfaces](../deviceActions/surfaces.md)). These follow what the
+device negotiated, the browser the agent can command and how views are
+delivered, which change the device tool's own form anyway, never the words
+of a message.
 
 ```quint
 pure def turnNarrowed(params: Set[str], narrowed: Set[str]): Set[str] = params.intersect(narrowed)
 pure val paramsValues = Set(Set(), Set("operation"), Set("operation", "reason"))
 pure val narrowedValues = Set(Set(), Set("operation"), Set("operation", "extra"), Set("extra"))
+pure def lawAnActionWithNoFormForTheTurnIsNotOffered(registered: Set[str], allowed: Set[str], formless: Set[str]): bool =
+  offered(registered, allowed, formless).forall(name => not(formless.contains(name)))
 pure def lawANarrowedSchemaForAnUnregisteredParameterIsDropped(params: Set[str], narrowed: Set[str]): bool =
   narrowed.forall(p => not(params.contains(p)) implies not(turnNarrowed(params, narrowed).contains(p)))
 pure def lawARegisteredParameterTheTurnNamesIsNarrowed(params: Set[str], narrowed: Set[str]): bool =
@@ -243,23 +286,39 @@ pure def lawALaterProposalOfTheSameActionClosesARefusal(steps: List[PlanStep], e
 
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole
 
+The system prompt's cue rule asks the model to write, with its first tool
+calls, only a brief cue that it heard the request: `Let me check.` or
+`Let me check your calendar.` for a question or a lookup, a request asked
+as a question (`Can you text Sam?`) included; `Sure.`, `Sure, one sec.` or
+`Yeah, one sec.` for a plain command (`Text Sam I'm late`, `Set an alarm
+for seven`); `On it.` or `One sec.` for any other action. It never names
+the people, items, times or outcome, never says the work is done or under
+way, never repeats the request, and is left empty, with the work still
+done, when the person asked for silence; later tool calls come with no
+text.
+
 The shell reads the model's text as a `Cue` only when the whole of it is
 one to three sentences of the closed acknowledgment grammar (`On it`,
 `One sec`, `Just a moment`, a lead such as `Let me` with a look-up verb and
 an owner container such as `your calendar`, or a lead with an intent such
 as `open Maps`), at most 120 characters, with no digits, clock times,
-counts, names other than one after `check with`, or question mark. A wait
-cue followed by more text that is not progress (`One second is 1,000
-milliseconds.`, `Just a second, your dentist is Thursday.`) is an `Answer`.
-A cue that comes with a tool call is shown and spoken before the tools
-run, and the stream restarts with the reply. A cue with no tool call is
-not an answer: the model is asked once more to answer with what the turn
-holds, and if steps run out the turn's failure fallback is the reply.
+counts, names other than one after `check with`, or question mark. The
+grammar has no past-tense verb, negation or completion word, so a cue never
+claims that an effect happened or that the owner's tracked work is empty.
+A wait cue followed by more text that is not progress (`One second is
+1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
+`Answer`. A cue that comes with the turn's first tool calls is the turn's
+acknowledgment (below); whatever text streamed with tool calls is
+restarted to empty before they run, so a cue is never part of the reply's
+text. A cue with no
+tool call is not an answer: the model is asked once more to answer with
+what the turn holds, and if steps run out the turn's failure fallback is
+the reply.
 
 ```quint
 type Draft = Cue | Answer | Silent
 type PlanMove = RunTools | Deliver | AskAgain | GiveUp
-pure def acknowledges(draft: Draft, calls: int): bool = draft == Cue and calls > 0
+pure def acknowledges(draft: Draft, calls: int, earlierCalls: int): bool = draft == Cue and calls > 0 and earlierCalls == 0
 pure def nextMove(draft: Draft, calls: int, stepsLeft: int): PlanMove =
   if (calls > 0) RunTools
   else if (draft == Answer) Deliver
@@ -268,7 +327,66 @@ pure def nextMove(draft: Draft, calls: int, stepsLeft: int): PlanMove =
 pure val stepsLeftValues = Set(0, 1, 3)
 pure def lawAnAnswerIsDeliveredWhole(stepsLeft: int): bool = nextMove(Answer, 0, stepsLeft) == Deliver
 pure def lawACueIsNeverTheReply(calls: int, stepsLeft: int): bool = nextMove(Cue, calls, stepsLeft) != Deliver
-pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int): bool = acknowledges(draft, calls) implies (calls > 0 and draft == Cue)
+pure val earlierCallsValues = Set(0, 1, 2)
+pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, earlierCalls: int): bool =
+  acknowledges(draft, calls, earlierCalls) implies (calls > 0 and draft == Cue and earlierCalls == 0)
+```
+
+### A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction
+
+`Sure` or `Yeah`, alone or followed by a comma, dash, colon, semicolon or
+sentence break and one or two sentences of the grammar (`Sure, one sec.`,
+`Yeah. Let me check your calendar.`), says yes, so it is a cue only when it
+comes with tool calls and the owner's message is an instruction: after
+fillers (`hey`, `ok`, `so`, `please`, …), a name and comma, or a greeting
+and a wake name, it opens with a command verb (`text`, `set`, `call`, `remind`, …), it has no
+question mark, and no sentence or comma clause opens with a question word
+or an auxiliary (`am`, `is`, `can`, `what`, …). `Can you text Sam`, `Am I
+free Friday` and `Any meetings today` are not instructions, so a bare
+`Sure.` after them is an answer. With no tool call, assent is the answer
+after any message: `Sure.` to `Call me Bob` or `Remember that I like tea`
+is delivered, never asked again. `Sure!` before a lead form (`Sure! Let me
+check your calendar.`) is a cue after any message. The acknowledgment is
+delivered at most once per turn, as the [reply stream](./replyStream.md)'s
+`acknowledgment` frame, and only while no tool of the turn has run, a call
+the whole message asked for outright included; a cue at a later step is
+dropped with the rest of that step's text.
+
+```quint
+type DraftShape = Blank | GrammarCue | AssentCue | OtherText
+pure def readDraft(shape: DraftShape, instruction: bool, calls: int): Draft = match shape {
+  | Blank => Silent | GrammarCue => Cue | AssentCue => if (instruction and calls > 0) Cue else Answer | OtherText => Answer
+}
+pure def lawBareAssentIsACueOnlyWithWorkAfterAnInstruction(instruction: bool, calls: int): bool =
+  (readDraft(AssentCue, instruction, calls) == Cue) iff (instruction and calls > 0)
+pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int): bool =
+  nextMove(readDraft(AssentCue, instruction, 0), 0, stepsLeft) == Deliver
+pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool, calls: int): bool = readDraft(GrammarCue, instruction, calls) == Cue
+pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: int, laterDraft: Draft, laterCalls: int): bool =
+  acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
+```
+
+### A tool's progress names its app only when one labelled app applies, and never its arguments or results
+
+When a tool call starts, its progress carries the action's name and a
+label for the owner: `Using <label>` when, among the action's declared
+contexts (core's catalog when it declares none) other than the catch-all
+`general` and `simple` and any `system` context, exactly one applies and
+the runtime's context registry gives it a label, and `Working` otherwise.
+Contexts with the same label count once; an unlabelled context counts by
+its id, so an action that may also reach an unnamed app is `Working`. The
+registry starts empty: an app is named only once it registers its own
+labelled context when it loads (Notes registers `Notes`) and its actions
+declare that context; an action that declares no context, or only contexts
+nobody labelled, is `Working`.
+
+```quint
+type ToolActivity = UsingApp | Working
+pure def toolActivity(applicable: int, labelled: int): ToolActivity = if (applicable == 1 and labelled == 1) UsingApp else Working
+pure val applicableValues = Set(0, 1, 2)
+pure val labelledValues = Set(0, 1, 2)
+pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatApplies(applicable: int, labelled: int): bool =
+  toolActivity(applicable, labelled) == UsingApp implies (applicable == 1 and labelled == 1)
 ```
 
 ### A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other

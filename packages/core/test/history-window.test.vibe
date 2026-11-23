@@ -1,0 +1,61 @@
+// spec/core/context.md, "Story: Keep a long conversation within reach on a host with no reviewer"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"
+import { assert, it } from "@effect/vitest"
+import { windowHistory } from "../src/index.vibe"
+
+interface Row {
+  readonly id: string
+  readonly fromUser: boolean
+  readonly text: string
+}
+
+const readCount = 200
+
+/** What a turn hands the window after reading the newest `readCount` rows: the rows with text as sources, at their positions among the stored rows. */
+function turnOf(rows: readonly Row[], request: string) {
+  const read = rows.slice(-readCount)
+  const sources = read.flatMap((row, position) => row.text ? [{ ...row, position }] : [])
+  const earlier = rows.length - read.length
+  return windowHistory(sources, request, { earlier, readCount: read.length, positions: sources.map(({ position }) => position) })
+}
+
+it('The shown history starts at the same message between steps, even as messages that carry no text leave the read (spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message")', () => {
+  const rows: Row[] = []
+  const push = (fromUser: boolean, text: string) => rows.push({ id: `m${rows.length}`, fromUser, text })
+  for (let index = 0; index < 70; index++) {
+    push(true, `Errand ${index} is done.`)
+    push(false, `Good, errand ${index} is off the list.`)
+  }
+  const starts: { readonly step: number; readonly start: string }[] = []
+  for (let turn = 0; turn < 150; turn++) {
+    push(true, `Errand ${70 + turn} is done.`)
+    push(false, turn % 3 === 0 ? "" : `Good, errand ${70 + turn} is off the list.`)
+    const shown = turnOf(rows, `Errand ${turn} again?`).shown
+    starts.push({ step: Math.floor((rows.length - 20) / 20), start: shown[0]?.id ?? "" })
+  }
+  const moves = starts.flatMap((turn, index) => index > 0 && turn.start !== starts[index - 1].start ? [turn] : [])
+  const unstepped = moves.filter((turn) => turn.step === starts[starts.indexOf(turn) - 1].step)
+  const backwards = moves.filter((turn) => Number(turn.start.slice(1)) < Number(starts[starts.indexOf(turn) - 1].start.slice(1)))
+  assert.deepStrictEqual({ unstepped, backwards }, { unstepped: [], backwards: [] })
+  assert.isAtLeast(moves.length, 10)
+})
+
+it('A recalled exchange stays out of the shown history, and what a request says leaves the history unchanged (spec/core/context.md, "Story: Keep a long conversation within reach on a host with no reviewer")', () => {
+  const rows: Row[] = []
+  const push = (fromUser: boolean, text: string) => rows.push({ id: `m${rows.length}`, fromUser, text })
+  for (let index = 0; index < 105; index++) {
+    if (index === 30) {
+      push(true, "My riverside gym locker number is 4417.")
+      push(false, "Riverside gym locker 4417, noted.")
+    } else {
+      push(true, `Errand ${index} is done.`)
+      push(false, index % 4 === 0 ? "" : `Good, errand ${index} is off the list.`)
+    }
+  }
+  const recalled = turnOf(rows, "Which locker number at the riverside gym?")
+  const plain = turnOf(rows, "Anything else for today?")
+  assert.deepStrictEqual({
+    recalled: recalled.recalled.map(({ id }) => id),
+    inHistory: recalled.shown.some(({ id }) => id === "m60" || id === "m61"),
+    sameHistory: recalled.shown.map(({ id }) => id).join() === plain.shown.map(({ id }) => id).join(),
+  }, { recalled: ["m60", "m61"], inHistory: false, sameHistory: true })
+})
