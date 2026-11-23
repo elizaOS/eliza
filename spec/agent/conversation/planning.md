@@ -344,17 +344,17 @@ corrected arguments still go through the usual admission checks.
 ```quint
 type ToolSettlement = ToolOpen | ToolSucceeded | ToolNonretryable
 type ToolDispatch = FreshCall | DuplicateInBatch | AlreadySettled | RetryRefused
-pure def toolDispatch(seen: bool, previous: ToolSettlement): ToolDispatch =
-  if (seen) DuplicateInBatch else match previous {
+pure def toolDispatch(seen: bool, previousSettlement: ToolSettlement): ToolDispatch =
+  if (seen) DuplicateInBatch else match previousSettlement {
     | ToolSucceeded => AlreadySettled
     | ToolNonretryable => RetryRefused
     | ToolOpen => FreshCall
   }
-pure val previousValues = Set(ToolOpen, ToolSucceeded, ToolNonretryable)
-pure def lawNoSecondCallInOneResponse(previous: ToolSettlement): bool =
-  toolDispatch(true, previous) == DuplicateInBatch
-pure def lawOnlyOpenCallsRunAcrossResponses(previous: ToolSettlement): bool =
-  (toolDispatch(false, previous) == FreshCall) == (previous == ToolOpen)
+pure val previousSettlementValues = Set(ToolOpen, ToolSucceeded, ToolNonretryable)
+pure def lawNoSecondCallInOneResponse(previousSettlement: ToolSettlement): bool =
+  toolDispatch(true, previousSettlement) == DuplicateInBatch
+pure def lawOnlyOpenCallsRunAcrossResponses(previousSettlement: ToolSettlement): bool =
+  (toolDispatch(false, previousSettlement) == FreshCall) == (previousSettlement == ToolOpen)
 ```
 
 ### A call that stopped at the model's own output limit ends planning
