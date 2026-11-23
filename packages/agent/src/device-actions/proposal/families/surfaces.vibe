@@ -2,7 +2,7 @@
 import type { ActionParameterSchema } from "@elizaos/core"
 import { meets, negotiatedHas, revisionOf } from "../../../../gen/agent__deviceActions__capabilities.effect.vibe"
 import { operationNeed, type OperationType } from "../../../../gen/agent__deviceActions__operations.effect.vibe"
-import { captureVerdict, mapsVerdict, noteAvailable, noteVerdict, openViewAvailable, openViewVerdict, photoCommandRouted, surfaceBound, viewsShowsOnDevice, type SurfaceVerdict } from "../../../../gen/agent__deviceActions__surfaces.effect.vibe"
+import { captureLensVerdict, mapsVerdict, noteAvailable, noteVerdict, openViewAvailable, openViewVerdict, photoCommandRouted, requestedCamera, surfaceBound, viewsShowsOnDevice, type CameraChoice, type SurfaceVerdict } from "../../../../gen/agent__deviceActions__surfaces.effect.vibe"
 import type { Observation } from "../../../conversation/turn-context.schema.vibe"
 import { openViewAllowed, supportedViews, viewProfileWire } from "../../capabilities.vibe"
 import { CalendarSource, type MapsReadSelected } from "../../operation-schemas/personal.schema.vibe"
@@ -13,6 +13,7 @@ import { directRequests, type DeviceProposalFamily, type DeviceTurn, type Ground
 import { cameraWords } from "../surfaces/camera-request.ts"
 
 type Refusal = Extract<Grounding, { readonly kind: "Refused" }>
+type CameraCapture = Extract<DeviceOperation, { readonly type: "camera_capture_photo" }>
 
 const text = (description: string): ActionParameterSchema => ({ type: "string", description })
 const libraryIds = (maximum: number): ActionParameterSchema => ({
@@ -31,7 +32,7 @@ const libraryGuidance = "photo_library_search {kind image|video|all, from, to: e
 const mapsGuidance = "maps_read_selected requires the exact current observation selectedObject kind, id and revision of the place or route selected in Maps; never infer coordinates from the opaque identifier."
 const noteGuidance = "create_note creates a text note in the phone's own Notes. It can be proposed only on a message whose Notes screen selects the phone's own Notes; on any other message a request to make or save a note uses the canonical NOTES service."
 const canonicalNoteGuidance = "This phone offers no note of its own to chat: a request to make or save a note uses the canonical NOTES service."
-const photoCommandLead = "The owner's whole message asks for a photo now: use camera_capture_photo for it. No other device operation is accepted on this message, and VIEWS, which would open Camera without taking a photo, is refused on it."
+const photoCommandLead = "The owner's whole message asks for a photo now: use camera_capture_photo only as requested. If a named lens is unavailable on this turn or phone, explain the limitation without substituting the showing lens. No other device operation is accepted on this message, and VIEWS, which would open Camera without taking a photo, is refused on it."
 const viewsLead = "Open app views with VIEWS (mode show) on this message."
 const viewsUnavailable = "VIEWS cannot show a view on this message."
 const recordSourceGuidance = "Phone-native Notes and Calendar data uses these device reviews. A lookup, named record or new event the phone resolves itself works from Home or the Notes or Calendar view; an operation on an exact record or source needs it selected on the phone. Other Notes and Calendar requests, and any turn with a canonical Notes or Calendar selection, use the canonical NOTES or CALENDAR service; a phone capability never redirects a canonical record."
@@ -65,11 +66,65 @@ const openViewNow: MessageAvailability = {
   available: (turn) => openViewAvailable(turn.completedActionNavigation),
 }
 
-const captureForm: ProposalForm = { types: ["camera_capture_photo"], schema: branch("camera_capture_photo", [], {}), guidance: cameraGuidance, offered: needed("CameraCapturePhoto") }
+const captureForm: ProposalForm = {
+  types: ["camera_capture_photo"],
+  schema: branch("camera_capture_photo", [], {}), guidance: cameraGuidance, offered: needed("CameraCapturePhoto"),
+  now: {
+    unavailable: "the showing lens cannot substitute for the requested lens",
+    servedBy: "explain the lens limitation or ask the owner to choose one lens if the request conflicts",
+    available: (turn) => cameraVerdict(turn, "ShowingCamera") !== "SurfaceRefused",
+  },
+}
+
+type RoutedCapture = { readonly form: ProposalForm; readonly operation?: CameraCapture }
+
+function offersLens(device: NegotiatedDevice): boolean {
+  return captureForm.offered(device) && negotiatedHas(device.negotiation, "CameraCaptureLensV1")
+}
+
+function namedCapture(choice: "FrontCamera" | "BackCamera"): RoutedCapture {
+  const lens = choice === "FrontCamera" ? "front" : "back"
+  return {
+    form: {
+      types: ["camera_capture_photo"],
+      schema: branch("camera_capture_photo", ["lens"], { lens: { type: "string", enum: [lens] } }),
+      guidance: "Name lens front for a selfie or a request for the front camera, and lens back for the back, rear or main camera. Carry only the lens the owner's whole message requested. A photo of the owner without a named camera uses the camera already showing.",
+      offered: offersLens,
+      now: {
+        unavailable: "the named camera form requires the owner's request to name that lens",
+        available: (turn) => cameraVerdict(turn, choice) !== "SurfaceRefused",
+      },
+    },
+    operation: { type: "camera_capture_photo", lens },
+  }
+}
+
+const namedCaptures = { FrontCamera: namedCapture("FrontCamera"), BackCamera: namedCapture("BackCamera") }
 
 function ownerChat(turn: DeviceTurn): boolean {
   const channel = turn.message.content.channelType
   return channel === undefined || channel === "DM" || channel === "VOICE_DM"
+}
+
+function canNameCamera(turn: DeviceTurn): boolean {
+  return ownerChat(turn) && offersLens(turn)
+}
+
+function cameraVerdict(turn: DeviceTurn, lens: CameraChoice): SurfaceVerdict {
+  return captureLensVerdict(cameraWords(turn.ownerText, turn.assistantName), canNameCamera(turn), lens)
+}
+
+function routedCapture(turn: DeviceTurn): RoutedCapture | undefined {
+  const words = cameraWords(turn.ownerText, turn.assistantName)
+  if (!photoCommandRouted(ownerChat(turn), captureForm.offered(turn), words)) return undefined
+  const requested = requestedCamera(words)
+  switch (requested) {
+    case "ShowingCamera": return { form: captureForm, operation: { type: "camera_capture_photo" } }
+    case "FrontCamera":
+    case "BackCamera":
+      return canNameCamera(turn) ? namedCaptures[requested] : { form: captureForm }
+    case "ConflictingCameras": return undefined
+  }
 }
 
 const photoCommand: WholeRequestRoute = {
@@ -78,7 +133,10 @@ const photoCommand: WholeRequestRoute = {
   tags: ["domain:camera", "capability:capture", "effect:receipt-required", "target:selected-device"],
   contexts: ["media", "general"],
   lead: photoCommandLead,
-  claims: (turn) => photoCommandRouted(ownerChat(turn), captureForm.offered(turn), cameraWords(turn.ownerText, turn.assistantName)) ? [captureForm] : [],
+  claims: (turn) => {
+    const capture = routedCapture(turn)
+    return capture === undefined ? [] : [capture.form]
+  },
 }
 
 function normalWords(text: string): string {
@@ -92,6 +150,8 @@ function noteSaidByOwner(ownerText: string, note: { readonly title: string; read
 
 const forms: readonly ProposalForm[] = [
   captureForm,
+  namedCaptures.FrontCamera.form,
+  namedCaptures.BackCamera.form,
   {
     types: ["photo_library_search"], guidance: libraryGuidance, offered: needed("PhotoLibrarySearch"),
     schema: branch("photo_library_search", [], {
@@ -164,6 +224,15 @@ function decided(turn: DeviceTurn, verdict: SurfaceVerdict, operation: DeviceOpe
   return verdict === "SurfaceRefused" ? refusal : grounded(turn, verdict, operation)
 }
 
+function cameraGrounding(turn: DeviceTurn, operation: CameraCapture): Grounding {
+  const choice = operation.lens === "front" ? "FrontCamera" : operation.lens === "back" ? "BackCamera" : "ShowingCamera"
+  return decided(turn, cameraVerdict(turn, choice), operation, {
+    kind: "Refused", code: "DEVICE_CAMERA_LENS_UNAVAILABLE",
+    forOwner: "I can't use that camera lens for this request.",
+    forModel: "The requested camera lens is unavailable, conflicting or different from the proposed lens. No photo proposal was created.",
+  })
+}
+
 function mapsGrounding(operation: MapsReadSelected, turn: DeviceTurn): Grounding {
   const observation = turn.observation
   const selected = observation?.selectedObject
@@ -202,11 +271,11 @@ export const surfacesFamily: DeviceProposalFamily = {
     return notes.length === 0 ? undefined : notes.join(" ")
   },
   now: (turn) => viewsShowsOnDevice(turn.completedActionNavigation) ? viewsLead : viewsUnavailable,
-  wholeMessageOperation: (turn) => photoCommand.claims(turn).length > 0 ? { type: "camera_capture_photo" } : undefined,
+  wholeMessageOperation: (turn) => routedCapture(turn)?.operation,
   effect ground(proposed: CheckedOperation, turn: DeviceTurn) {
     const operation = proposed.operation
     switch (operation.type) {
-      case "camera_capture_photo": return grounded(turn, captureVerdict(cameraWords(turn.ownerText, turn.assistantName)), operation)
+      case "camera_capture_photo": return cameraGrounding(turn, operation)
       case "open_view": return try openViewGrounding(operation.view, operation, turn)
       case "maps_read_selected": return mapsGrounding(operation, turn)
       case "create_note": return grounded(turn, noteVerdict(noteSaidByOwner(turn.ownerText, operation)), operation)
