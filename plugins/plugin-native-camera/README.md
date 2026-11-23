@@ -161,3 +161,10 @@ fixture checks write/publication/cleanup failures. Injected failures also run
 through the real camera and WebView promise using the test activity's resolver;
 these are not real MediaStore outages. Legacy storage behavior still needs
 device qualification.
+
+On Android 10+ a gallery photo's result also has `libraryId`, `m:<volume>:i:<id>`: the
+saved row's own MediaStore volume (for example `external_primary`, never the aggregate
+`external`) and row id, the key the media library plugin reads. It is left out below
+Android 10 or when the provider reports no usable volume; the photo is still saved.
+`capturedLibraryId` reads it and treats a malformed id as absent. iOS and web do not
+return it.

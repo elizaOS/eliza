@@ -105,6 +105,13 @@ export interface PhotoResult {
   width: number;
   height: number;
   path?: string;
+  /**
+   * Library id of the photo saved to the gallery, `m:<volume>:i:<id>`: the saved row's own
+   * storage volume and MediaStore row, the key format the media library plugin reads. Android
+   * 10+ only, and only when the provider reported the row's volume; read it with
+   * `capturedLibraryId`.
+   */
+  libraryId?: string;
   exif?: Record<string, string | number>;
 }
 
