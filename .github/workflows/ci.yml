@@ -8,12 +8,12 @@ name: ci
 # standalone example.
 on:
   pull_request:
-    branches: [vibestack]
+    branches: [vibestack, develop, main]
   push:
-    branches: [vibestack]
+    branches: [vibestack, develop, main]
 
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('sha-{0}', github.sha) }}
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_attempt == '1' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -108,9 +108,6 @@ jobs:
   verify:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
-    concurrency: &verification-concurrency
-      group: ci-verify-${{ matrix.name }}-${{ github.event_name == 'push' && github.run_attempt == '1' && startsWith(matrix.name, 'selftest-') && github.ref || github.run_id }}
-      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -226,6 +223,5 @@ jobs:
             tasks: //#selftest:tools:b
           - name: selftest-rest
             tasks: //#selftest:tools:rest
-    concurrency: *verification-concurrency
     env: *cache-env
     steps: *verification-steps
