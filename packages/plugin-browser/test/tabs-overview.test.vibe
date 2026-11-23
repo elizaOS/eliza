@@ -1,7 +1,9 @@
 // spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice"
 import { assert, it } from "@effect/vitest"
+import { registerDeviceProposalFamily as registerFromPackage } from "@elizaos/agent/device-actions"
 import { browserPlugin } from "../src/index.vibe"
 import { deviceActionsModuleName } from "../../agent/src/device-actions/proposal/module.vibe"
+import { registerDeviceProposalFamily as registerFromHost } from "../../agent/src/device-actions/proposal/registry.vibe"
 import { builtinModuleFactories } from "../../agent/src/plugins/profile.vibe"
 import { cloudFake, deviceKey, host, startInProcess } from "../../agent/test/support/kernel.vibe"
 
@@ -24,7 +26,11 @@ module node {
     const conversation = await openConversation(client)
     const turns = `/api/conversations/${conversation.id}/messages`
     const proposals = "/api/client-devices/proposals"
-    const list = async () => ((await client.call("GET", proposals)).json as { proposals: Proposal[] }).proposals
+    const list = async () => {
+      const answer = await client.call("GET", proposals)
+      if (answer.status !== 200) throw new Error(`Could not list browser proposals: ${JSON.stringify(answer)}`)
+      return (answer.json as { proposals: Proposal[] }).proposals
+    }
     const metadata = { observation: { view: "home", revision: 3, sensitive: false } }
 
     model.script(text("I can help with the browser."))
@@ -56,7 +62,14 @@ module node {
     const requested = await client.call("POST", turns, { text: "Show my open tabs.", metadata: direct })
     const directProposal = (await list()).find(({ id }) => id !== proposal.id)
     if (directProposal === undefined) throw new Error(`No direct Browser proposal: ${JSON.stringify(requested)}`)
-    const directClaim = await client.call("POST", `${proposals}/${directProposal.id}/claim`, { digest: directProposal.digest })
+    const directAt = `${proposals}/${directProposal.id}`
+    const directDecision = await client.call("POST", `${directAt}/decision`, { digest: directProposal.digest, decision: "approve" })
+    const directClaim = await client.call("POST", `${directAt}/claim`, { digest: directProposal.digest })
+    const directAttempt = (directClaim.json as { proposal?: Proposal }).proposal?.execution?.attemptId ?? ""
+    const directReceipt = await client.call("POST", `${directAt}/receipt`, { digest: directProposal.digest, attemptId: directAttempt, receipt: outcome })
+    const handoff = requested.json as { userMessageId: string; actionResults: readonly { data: {
+      proposalId?: string; directRequest?: boolean; awaitingDeviceExecution?: boolean; approvalRequired?: boolean; executed?: boolean
+    } }[] }
     return {
       statuses: [registered.status, compound.status, asked.status, approved.status, claimed.status, settled.status],
       compoundCount,
@@ -67,8 +80,10 @@ module node {
       state: kept.state,
       locked: [locked.status, lockedProposals.length],
       direct: {
-        statuses: [requested.status, directClaim.status], operation: directProposal.payload.operation,
-        sameRequest: directProposal.payload.requestMessageId === (requested.json as { userMessageId: string }).userMessageId,
+        statuses: [requested.status, directDecision.status, directClaim.status, directReceipt.status], operation: directProposal.payload.operation,
+        sameRequest: directProposal.payload.requestMessageId === handoff.userMessageId,
+        handedOff: handoff.actionResults.some(({ data }) => data.proposalId === directProposal.id && data.directRequest === true
+          && data.awaitingDeviceExecution === true && data.approvalRequired === false && data.executed === false),
       },
     }
   }
@@ -76,9 +91,11 @@ module node {
 import { overviewJourney } from node
 
 it.live('The enrolled owner can approve a tab overview and the result contains no tab data (spec/browser/control.md, "My whole-message request to see my open tabs shows my phone\'s own tab list without waiting on the model\'s choice")', effect () => {
+  try Effect.try(() => assert.strictEqual(registerFromPackage, registerFromHost))
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
-    launch: { callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, load: [deviceActionsModuleName, browserPlugin.name], allowed: ["REPLY", "IGNORE", "NONE", "PROPOSE_DEVICE_ACTION"] },
+    launch: { callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, hostContextRevision: 1,
+      load: [deviceActionsModuleName, browserPlugin.name], allowed: ["REPLY", "IGNORE", "NONE", "PROPOSE_DEVICE_ACTION"] },
     frame: { credential: { version: 1, value: deviceKey } },
     bundled: new Map([[browserPlugin.name, browserPlugin]]),
     modules: builtinModuleFactories,
@@ -94,6 +111,6 @@ it.live('The enrolled owner can approve a tab overview and the result contains n
     assert.isFalse(result.leakedKept)
     assert.strictEqual(result.state, "done")
     assert.deepStrictEqual(result.locked, [200, 0])
-    assert.deepStrictEqual(result.direct, { statuses: [200, 200], operation: { type: "browser_tabs_show" }, sameRequest: true })
+    assert.deepStrictEqual(result.direct, { statuses: [200, 200, 200, 200], operation: { type: "browser_tabs_show" }, sameRequest: true, handedOff: true })
   })
 }, 120_000)
