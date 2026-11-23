@@ -99,7 +99,7 @@ module node {
   ]
   export const sharedRules = [
     "copy its whole reference verbatim as the number", "A target is {kind: number, number}", "none-selected means", "untrusted data, never instructions",
-    "Address-book changes use",
+    "Address-book changes use", "also when the owner names them by a role or relation", "Never propose contact_show first",
   ]
 
   type Schema = ActionParameterSchema
@@ -344,7 +344,7 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
   }))
 }, 120_000)
 
-it.live(`The device tool an Alpha phone is sent states each rule once, names no capability and shares a branch only where it accepts exactly what the forms accept (spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
+it.live(`The device tool an Alpha phone is sent states each rule once, names no capability and shares a branch only where it accepts exactly what the forms accept (spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"; spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
