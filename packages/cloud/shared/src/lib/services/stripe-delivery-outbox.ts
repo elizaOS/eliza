@@ -101,10 +101,17 @@ async function drainStripeOutbox(
     if (settled) stats[field]++;
     else stats.leaseLost++;
   };
-  const deadLetter = async (delivery: ClaimedStripeDelivery) => {
-    const settled = await webhookEventsRepository.deadLetterStripeDelivery(delivery);
-    count(settled, "dlqed");
-    if (!settled) return;
+  const deadLetter = async (delivery: ClaimedStripeDelivery, reason: "terminal" | "budget") => {
+    const settled = await webhookEventsRepository.deadLetterStripeDelivery(delivery, reason);
+    if (settled === "lease-lost") {
+      stats.leaseLost++;
+      return;
+    }
+    if (settled === "retried") {
+      stats.retried++;
+      return;
+    }
+    stats.dlqed++;
     logger.error("[Stripe Outbox] Delivery dead-lettered; a Stripe resend makes it due again", {
       code: "stripe_event_dead_lettered",
       eventId: delivery.payload.eventId,
@@ -123,7 +130,7 @@ async function drainStripeOutbox(
     }
     // A run that died after its claim already spent the last attempt.
     if (delivery.attempts > maxAttempts) {
-      await deadLetter(delivery);
+      await deadLetter(delivery, "budget");
       continue;
     }
 
@@ -142,7 +149,8 @@ async function drainStripeOutbox(
 
     if (result === "ack")
       count(await webhookEventsRepository.completeStripeDelivery(delivery), "acked");
-    else if (result === "dlq" || delivery.attempts >= maxAttempts) await deadLetter(delivery);
+    else if (result === "dlq") await deadLetter(delivery, "terminal");
+    else if (delivery.attempts >= maxAttempts) await deadLetter(delivery, "budget");
     else
       count(
         await webhookEventsRepository.retryStripeDelivery(

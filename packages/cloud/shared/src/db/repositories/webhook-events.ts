@@ -283,12 +283,11 @@ export class WebhookEventsRepository {
     });
   }
 
-  /** Settles a claimed delivery; false when its lease was lost to another drain. */
   private async settleStripeDelivery(
     delivery: ClaimedStripeDelivery,
     values: PgUpdateSetSource<typeof webhookEvents>,
-  ): Promise<boolean> {
-    const settled = await dbWrite
+  ) {
+    const [settled] = await dbWrite
       .update(webhookEvents)
       .set({ ...values, delivery_lease_token: null, delivery_lease_expires_at: null })
       .where(
@@ -298,28 +297,35 @@ export class WebhookEventsRepository {
           pendingStripeDelivery,
         ),
       )
-      .returning({ id: webhookEvents.id });
-    return settled.length > 0;
+      .returning({ deadLetteredAt: webhookEvents.delivery_dead_lettered_at });
+    return settled;
   }
 
   /** Drops the stored event once it is delivered: the row keeps only its marker and hash for retention. */
-  completeStripeDelivery(delivery: ClaimedStripeDelivery): Promise<boolean> {
-    return this.settleStripeDelivery(delivery, {
+  async completeStripeDelivery(delivery: ClaimedStripeDelivery): Promise<boolean> {
+    return Boolean(await this.settleStripeDelivery(delivery, {
       delivery_completed_at: sql`clock_timestamp()`,
       delivery_payload: null,
-    });
+    }));
   }
 
-  retryStripeDelivery(delivery: ClaimedStripeDelivery, delayMs: number): Promise<boolean> {
-    return this.settleStripeDelivery(delivery, {
-      delivery_next_attempt_at: sql`clock_timestamp() + make_interval(secs => ${delayMs / 1000})`,
-    });
+  async retryStripeDelivery(delivery: ClaimedStripeDelivery, delayMs: number): Promise<boolean> {
+    return Boolean(await this.settleStripeDelivery(delivery, {
+      delivery_next_attempt_at: sql`clock_timestamp() + make_interval(secs => CASE WHEN ${webhookEvents.delivery_attempts} = 0 THEN 0 ELSE ${delayMs / 1000} END)`,
+    }));
   }
 
-  deadLetterStripeDelivery(delivery: ClaimedStripeDelivery): Promise<boolean> {
-    return this.settleStripeDelivery(delivery, {
-      delivery_dead_lettered_at: sql`clock_timestamp()`,
+  async deadLetterStripeDelivery(
+    delivery: ClaimedStripeDelivery,
+    reason: "terminal" | "budget",
+  ): Promise<"dead-lettered" | "retried" | "lease-lost"> {
+    const settled = await this.settleStripeDelivery(delivery, {
+      delivery_dead_lettered_at: reason === "terminal"
+        ? sql`clock_timestamp()`
+        : sql`CASE WHEN ${webhookEvents.delivery_attempts} = 0 THEN NULL ELSE clock_timestamp() END`,
     });
+    if (!settled) return "lease-lost";
+    return settled.deadLetteredAt === null ? "retried" : "dead-lettered";
   }
 
   /** Releases claimed deliveries a drain did not reach, so the next drain need not wait for the lease. */
@@ -328,7 +334,7 @@ export class WebhookEventsRepository {
       await dbWrite
         .update(webhookEvents)
         .set({
-          delivery_attempts: sql`${webhookEvents.delivery_attempts} - 1`,
+          delivery_attempts: sql`greatest(0, ${webhookEvents.delivery_attempts} - 1)`,
           delivery_lease_token: null,
           delivery_lease_expires_at: null,
         })
