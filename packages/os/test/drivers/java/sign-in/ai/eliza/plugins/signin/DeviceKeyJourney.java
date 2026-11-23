@@ -296,13 +296,18 @@ public final class DeviceKeyJourney {
     DeviceLease.Held again = lease.accessToken();
     seen.add(take("rotatedAfterLostReply", rotated != null && again != null && !rotated.token().equals(again.token())));
     seen.add(take("rotationsAsked", cloud.rotations.get()));
-    String leased = store.current().credentialId();
+    var predecessor = store.current();
+    String leased = predecessor.credentialId();
+    String binding = store.accountBinding(predecessor.value());
     clock.addAndGet(15 * DAY_MS);
     DeviceLease.Held renewing = lease.accessToken();
     seen.add(take("renewedBeforeHalfLife", renewing != null && !store.current().credentialId().equals(leased) ? held() : "not renewed"));
     seen.add(take("owedAfterRenewal", store.owed().size() == 1 && store.owed().get(0).lease() == null));
     client.settleDuties();
     seen.add(take("replacedKeyEnded", !cloud.live.containsValue(leased) && store.owed().isEmpty()));
+    var restored = new DeviceCredentialStore(slots, DeviceCredentialStore.authorityDigest(cloud.origin().toString()), clock::get);
+    seen.add(take("bindingAfterRestart", binding != null && binding.equals(restored.accountBinding(store.current().value()))
+        && restored.accountBinding(predecessor.value()) == null));
     clock.addAndGet(16 * 60_000L);
     seen.add(take("leaseKeptByRenewal", lease.accessToken() != null));
     int beforeLostAck = store.current().version();

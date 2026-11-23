@@ -36,7 +36,7 @@ describe("Keep me signed in without a second copy of my key", () => {
   it("rotates the lease silently after a lost reply and renews the key through it once half its life is gone", () => {
     const seen = journey();
     expect([seen.leasedSignIn, seen.lostRotation, seen.rotatedAfterLostReply, seen.rotationsAsked, seen.leaseReuses]).toEqual(["SIGNED_IN", "null", true, 3, 0]);
-    expect([seen.renewedBeforeHalfLife, seen.owedAfterRenewal, seen.replacedKeyEnded, seen.leaseKeptByRenewal]).toEqual(["7/cred-13/user-1", true, true, true]);
+    expect([seen.renewedBeforeHalfLife, seen.owedAfterRenewal, seen.replacedKeyEnded, seen.leaseKeptByRenewal, seen.bindingAfterRestart]).toEqual(["7/cred-13/user-1", true, true, true, true]);
     expect(seen.leaseNotices).toEqual([announce(6), announce(7), announce(8), announce(9), { tag: "SignedOutNotice" }]);
   });
 
