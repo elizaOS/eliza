@@ -2623,7 +2623,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     ))
   }))
 
-  it.live("Verify an entitlement the service signed and refuse it for another audience (spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\")", () => scoped(effect {
+  it.live("Verify an entitlement the service signed and refuse it for another audience or account (spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\"; spec/cloud/billing/entitlements.md, \"A device accepts an entitlement only when a published key signed it for its own account and audience, issued at most an hour before it expires and not in the future\")", () => scoped(effect {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis
     const token = try entitledDevice(cloud, "verified", now)
@@ -2631,12 +2631,15 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     const published = try cloud.call("/api/v1/subscription/entitlement-keys")
     const answer = try cloud.call("/api/v1/subscription/entitlement", bearer)
     const signed = (answer.body as { readonly entitlement: string }).entitlement
-    const expected = { keys: parseEntitlementKeys(published.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription", now }
+    const expected = { keys: parseEntitlementKeys(published.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription", userId: "user-verified", organizationId: "org-verified", now }
     const checked = try promise(() => checkEntitlement(signed, expected))
-    const otherAudience = try promise(() => verifyOnDevice(signed, { ...expected, audience: "another-service" }).then(() => "verified", (error: unknown) => error instanceof EntitlementInvalid ? error.check : `threw ${String(error)}`))
+    const refusal = (changed: Partial<typeof expected>) => promise(() => verifyOnDevice(signed, { ...expected, ...changed }).then(() => "verified", (error: unknown) => error instanceof EntitlementInvalid ? error.check : `threw ${String(error)}`))
+    const otherAudience = try refusal({ audience: "another-service" })
+    const otherUser = try refusal({ userId: "user-other" })
+    const otherOrganization = try refusal({ organizationId: "org-other" })
     try check(() => assert.deepStrictEqual(
-      { user: checked.userId, organization: checked.organizationId, plan: checked.plan, lifetime: checked.expiresAt - checked.issuedAt, otherAudience },
-      { user: "user-verified", organization: "org-verified", plan: { id: "free", name: "Free", status: "none" }, lifetime: 1_800_000, otherAudience: "WrongAudience" }
+      { user: checked.userId, organization: checked.organizationId, plan: checked.plan, lifetime: checked.expiresAt - checked.issuedAt, otherAudience, otherUser, otherOrganization },
+      { user: "user-verified", organization: "org-verified", plan: { id: "free", name: "Free", status: "none" }, lifetime: 1_800_000, otherAudience: "WrongAudience", otherUser: "WrongSubject", otherOrganization: "WrongOrganization" }
     ))
   }))
 
