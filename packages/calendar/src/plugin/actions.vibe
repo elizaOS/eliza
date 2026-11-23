@@ -35,6 +35,7 @@ const Parameters = Schema.Struct({
   isAllDay: Schema.optionalKey(Schema.Boolean),
   timeZone: Schema.optionalKey(Words(128)),
   confirmedPastStart: Schema.optionalKey(Schema.Boolean),
+  reviewBeforeSaving: Schema.optionalKey(Schema.Boolean),
   recurrenceScope: Schema.optionalKey(WriteScopeRecord),
   repeat: Schema.optionalKey(RecurrenceRecord.fields.rule),
   repeatUntil: Schema.optionalKey(Instant),
@@ -232,7 +233,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
       }
       const source = try host.writeTarget(parameters.calendarId)
       if (source === undefined) return failed(subaction, "There's no calendar this account can write to.")
-      const result = host.change({ kind: "create", source, fields: fields.value, recurrence: recurrence.value, askedBy, askId }) catch () => undefined
+      const result = host.change({ kind: "create", source, fields: fields.value, recurrence: recurrence.value, reviewFirst: parameters.reviewBeforeSaving === true, askedBy, askId }) catch () => undefined
       return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
     case "update_event":
@@ -268,7 +269,7 @@ function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
 /** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all, applied at once on the agent's own calendar and through the owner's approval on a connected provider calendar.",
+  description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all, applied at once on the agent's own calendar and through the owner's approval on a connected provider calendar, or on any calendar when the owner asked to review a new event before it is saved.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [
@@ -286,6 +287,7 @@ export const calendarAction: Action = {
     { name: "isAllDay", required: false, description: "Whether the event lasts whole days.", schema: { type: "boolean" } },
     { name: "timeZone", required: false, description: "The IANA zone the owner named for this request.", schema: { type: "string" } },
     { name: "confirmedPastStart", required: false, description: "The owner confirmed creating an event whose start has passed.", schema: { type: "boolean" } },
+    { name: "reviewBeforeSaving", required: false, description: "For a new event: true when the owner asked to preview, review or confirm it before it is saved, or to prepare it without saving yet; it then waits for the owner's approval instead of a chat summary. Keep it when the owner adds missing details to that event. False or omitted for an ordinary create.", schema: { type: "boolean" } },
     { name: "repeat", required: false, description: "For a new repeating event: daily, weekdays or weekly.", schema: { type: "string", enum: ["daily", "weekdays", "weekly"] } },
     { name: "repeatUntil", required: false, description: "For a new repeating event: the last start it may have, ISO 8601 with an offset.", schema: { type: "string" } },
     { name: "skipStarts", required: false, description: "For a new repeating event: starts it skips, ISO 8601 with an offset.", schema: { type: "array", items: { type: "string" } } },

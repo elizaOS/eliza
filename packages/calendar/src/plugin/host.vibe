@@ -67,7 +67,7 @@ export interface CalendarFound {
 
 /** A change the owner asked for: what it is, and the request that asked. */
 export type CalendarChangeRequest =
-  | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly askedBy: string; readonly askId: string }
+  | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly reviewFirst?: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "update"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly askedBy: string; readonly askId: string }
 
@@ -200,7 +200,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
     const provider = (try Ref.get(providers)).get(source.provider)
     if (provider === undefined) return { kind: "refused", reason: "no_provider" }
     const row = (try listed(account)).found.find(({ row }) => sameSourceKey(row, source))
-    const route = writeRoute(source.provider === "eliza" ? "ResidentProvider" : "AccountProvider", source.connectorAccountId === account.accountId && row !== undefined, row !== undefined && writableRow(row.row))
+    const route = writeRoute(source.provider === "eliza" ? "ResidentProvider" : "AccountProvider", source.connectorAccountId === account.accountId && row !== undefined, row !== undefined && writableRow(row.row), asked.kind === "create" && asked.reviewFirst === true)
     if (route === "RefuseWrite") return { kind: "refused", reason: source.connectorAccountId === account.accountId ? "not_writable" : "foreign_account" }
     const payload: CalendarMutationPayload = asked.kind === "create"
       ? { action: "schedule_event", account: account.accountId, source, fields: asked.fields, recurrence: asked.recurrence }
