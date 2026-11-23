@@ -92,22 +92,32 @@ effect function settled(adapter: IDatabaseAdapter, proposalId: string, pollMs: n
   }
 }
 
-effect function offered(adapter: IDatabaseAdapter, timing: WorkflowOfferTiming, step: WorkflowStep, target: WorkflowStepTarget, operation: unknown): unknown!(WorkflowStepRefused | DeviceStoreUnavailable) {
-  const device = try enrolledDevice(adapter)
-  if (device === undefined) throw refused("DEVICE_NOT_ENROLLED")
-  if (device.target.installationId !== target.installationId || device.target.enrollmentId !== target.enrollmentId) throw refused("DEVICE_TARGET_CHANGED")
+function stepTerms(step: WorkflowStep, device: EnrolledDevice, operation: unknown, expiresAt: number) {
   const binding = workflowAuthority({
     kind: "WorkflowBinding", workflowId: step.workflowId, versionId: step.versionId, runId: step.runId, stepId: step.stepId, specDigest: step.specDigest,
   })
   const checked = validate(operation, negotiation(true, device.declared.join(",")), "WorkflowBinding")
   const needs = checked === undefined ? undefined : capabilityNamesOf(checked)
   const capability = needs?.required[0] ?? needs?.oneOf.find((name) => device.declared.includes(name))
-  if (binding === undefined || checked === undefined || capability === undefined) throw refused("DEVICE_STEP_UNSUPPORTED")
+  if (binding === undefined || checked === undefined || capability === undefined) return undefined
   const { kind: _kind, ...workflow } = binding
   const payload = devicePayload({ operation: checked.operation, scope: { workflow } }, device.by, device.target.enrollmentId, "")
   const proposalId = stringToUuid(`workflow-device:${hashStableJson(payload)}`)
-  const expiresAt = (try Clock.currentTimeMillis) + timing.deadlineMs
   const digest = hashStableJson({ id: proposalId, subjectUserId: device.by.actorId, payload, expiresAt: new Date(expiresAt).toISOString() })
+  return { binding, checked, capability, proposalId, digest }
+}
+
+effect function offered(adapter: IDatabaseAdapter, timing: WorkflowOfferTiming, step: WorkflowStep, target: WorkflowStepTarget, operation: unknown): unknown!(WorkflowStepRefused | DeviceStoreUnavailable) {
+  const device = try enrolledDevice(adapter)
+  if (device === undefined) throw refused("DEVICE_NOT_ENROLLED")
+  if (device.target.installationId !== target.installationId || device.target.enrollmentId !== target.enrollmentId) throw refused("DEVICE_TARGET_CHANGED")
+  const expiresAt = (try Clock.currentTimeMillis) + timing.deadlineMs
+  const terms = try Effect.try({
+    try: () => stepTerms(step, device, operation, expiresAt),
+    catch: (cause) => new DeviceStoreUnavailable({ step: "prepare workflow offer", cause }),
+  })
+  if (terms === undefined) throw refused("DEVICE_STEP_UNSUPPORTED")
+  const { binding, checked, capability, proposalId, digest } = terms
   const offer = offerRequest(adapter, {
     type: "offer", proposalId, digest, capability, expiresAt, readBack: false,
     origin: { requestId: step.runId, conversationId: "", inReplyTo: "" },
