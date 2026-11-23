@@ -127,6 +127,7 @@ pure val dtValues = Set(500, 1000, 1800001, 1801001)
 pure val nextInstantValues = Set(2000, 1802000, 3700000, 5500000)
 pure val processStartedAtValues = Set(0, 1001, 1801001)
 pure def canTick(t: Trigger, dt: int): bool = dt > 0
+pure val eval_refuse_canTick = { dt: 0 }
 pure def tick(t: Trigger, dt: int): Trigger = { ...t, now: t.now + dt }
 pure def missedWhileStopped(t: Trigger, processStartedAt: int): bool = WS::missedOccurrence(t.nextAt, t.now) and t.nextAt < processStartedAt
 pure def canFire(t: Trigger, nextInstant: int, processStartedAt: int): bool = t.life == Saved and t.enabled and t.schedule != OnRuntimeEvent and t.activity == Idle and t.nextAt <= t.now and processStartedAt <= t.now and (t.schedule == OnceAt or nextInstant > t.now)
