@@ -1,0 +1,76 @@
+// spec/agent/storage/legacyAdoption.md, "Story: Keep the conversations and turns from my installed agent"; spec/agent/storage/legacyAdoption.md, "An installed send key never dispatches a new turn"
+import { assert, it } from "@effect/vitest"
+import { planLegacyHistory, reservedLegacySend } from "../src/storage/legacy-history.vibe"
+
+module node {
+  import { PGlite } from "@electric-sql/pglite"
+  import { conversationClientUserMemoryId, stringToUuid } from "@elizaos/core"
+  import type { LegacyConversation, LegacyMessage } from "../src/storage/legacy-history.vibe"
+
+  export const owner = {
+    agentId: stringToUuid("installed-agent"), ownerId: stringToUuid("installed-owner"), worldId: stringToUuid("installed-world"),
+  }
+  export const roomId = stringToUuid("installed-room")
+  export const conversationId = stringToUuid("installed-catalogue")
+  export const foreignRoomId = stringToUuid("other-room")
+  export const replyId = stringToUuid("installed-reply")
+  export const key = "alpha-old-chat-key"
+  export const fingerprint = "1".repeat(64)
+  const scope = `${owner.agentId}:${roomId}:${owner.ownerId}`
+  export const inputId = conversationClientUserMemoryId(scope, key)
+
+  export async function catalogue() {
+    const db = await PGlite.create()
+    try {
+      await db.exec(`CREATE TABLE rooms (id uuid PRIMARY KEY, agent_id uuid, world_id uuid, name text, metadata jsonb, created_at timestamp);
+        CREATE TABLE memories (id uuid PRIMARY KEY, agent_id uuid, entity_id uuid, room_id uuid, type text, content jsonb, created_at timestamp)`)
+      await db.query("INSERT INTO rooms VALUES ($1,$2,$3,$4,$5,timestamp '1970-01-01 00:00:01')", [roomId, owner.agentId, owner.worldId, "Original title",
+        JSON.stringify({ ownership: { ownerId: owner.ownerId }, webConversation: { conversationId } })])
+      await db.query("INSERT INTO memories VALUES ($1,$2,$3,$4,'messages',$5,timestamp '1970-01-01 00:00:02'), ($6,$2,$2,$4,'messages',$7,timestamp '1970-01-01 00:00:03')",
+        [inputId, owner.agentId, owner.ownerId, roomId,
+          JSON.stringify({ text: "What did we decide?", chatIdempotency: { version: 1, scope, clientMessageId: key, fingerprint, replyRecoveryJson: "fixture only" } }),
+          replyId, JSON.stringify({ text: "We decided to keep the original records.", inReplyTo: inputId })])
+      return await db.transaction(async (tx) => {
+        await tx.exec("SET TRANSACTION READ ONLY")
+        const conversations = await tx.query<LegacyConversation>(`SELECT metadata #>> '{webConversation,conversationId}' AS id,
+          id AS "roomId", agent_id AS "agentId", world_id AS "worldId", metadata #>> '{ownership,ownerId}' AS "ownerId", name AS title,
+          (extract(epoch FROM created_at) * 1000)::integer AS "createdAt", 3000 AS "updatedAt" FROM rooms`)
+        const messages = await tx.query<LegacyMessage>(`SELECT id, agent_id AS "agentId", entity_id AS "entityId", room_id AS "roomId",
+          content, (extract(epoch FROM created_at) * 1000)::integer AS "createdAt" FROM memories WHERE type = 'messages' ORDER BY created_at`)
+        return { conversations: conversations.rows, messages: messages.rows }
+      })
+    } finally {
+      await db.close()
+    }
+  }
+}
+import { catalogue, conversationId, fingerprint, foreignRoomId, inputId, key, owner, replyId, roomId } from node
+
+it.live('Prepare installed conversation and message identities without releasing old dispatch authority (spec/agent/storage/legacyAdoption.md, "Story: Keep the conversations and turns from my installed agent")', effect () => {
+  const { conversations, messages } = try Effect.tryPromise(() => catalogue())
+  const history = try planLegacyHistory(owner, conversations, messages)
+  assert.deepEqual(history.rooms.map(({ id, worldId, name, metadata }) => ({ id, worldId, name, metadata })), [{ id: roomId,
+    worldId: owner.worldId, name: "Original title", metadata: { ownership: { ownerId: owner.ownerId }, deviceConversation: {
+      id: conversationId, createdAt: 1000, updatedAt: 3000, seq: 1, publication: "Published" } } }])
+  assert.deepEqual(history.messages.map(({ id, entityId, roomId, createdAt, content }) => ({ id, entityId, roomId, createdAt, content })), [
+    { id: inputId, entityId: owner.ownerId, roomId, createdAt: 2000, content: { text: "What did we decide?" } },
+    { id: replyId, entityId: owner.agentId, roomId, createdAt: 3000, content: { text: "We decided to keep the original records.", inReplyTo: inputId } },
+  ])
+  const [reservation] = history.reservations
+  assert.deepEqual(reservation, { ...owner, roomId, clientMessageId: key, inputId, linkedReplyId: replyId, fingerprint, protocol: "installed-chat-v1" })
+  assert.equal(reservedLegacySend(reservation, fingerprint), "NeedsReconciliation")
+  assert.equal(reservedLegacySend(reservation, "2".repeat(64)), "PriorSendConflict")
+
+  const unfinished = try planLegacyHistory(owner, conversations, [messages[0]])
+  assert.equal(unfinished.reservations[0]?.linkedReplyId, undefined)
+  assert.equal(reservedLegacySend(unfinished.reservations[0], fingerprint), "NeedsReconciliation")
+
+  const wrongOwner = try Effect.flip(planLegacyHistory({ ...owner, ownerId: foreignRoomId }, conversations, messages))
+  assert.equal(wrongOwner.reason, "binding")
+  const duplicate = try Effect.flip(planLegacyHistory(owner, [...conversations, ...conversations], messages))
+  assert.equal(duplicate.reason, "duplicate")
+  const missingInput = try Effect.flip(planLegacyHistory(owner, conversations, [messages[1]]))
+  assert.equal(missingInput.reason, "reference")
+  const wrongMarker = try Effect.flip(planLegacyHistory(owner, conversations, [{ ...messages[0], id: foreignRoomId }]))
+  assert.equal(wrongMarker.reason, "marker")
+}, 120_000)

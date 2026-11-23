@@ -8,8 +8,9 @@ inside the `--state` directory. Every failure here fails boot as
 methods stay in `storage/*.vibe`; this spec holds the decisions. Sources:
 `plugins/plugin-sql/src/pglite/manager.ts` (lock, corruption, close),
 `pglite/migrated-snapshot.ts` (snapshot), `packages/agent/src/runtime/logs-retention-service.ts`
-and `memory-retention.ts` (retention). A store of an older Eliza is never
-read or migrated: the v4 store uses a new directory name. There is no export.
+and `memory-retention.ts` (retention). Normal start opens only the v4
+directory. An older installation can enter the separate
+[installed resident adoption](./legacyAdoption.md) process.
 
 ## Story: Keep one agent identity for my data across restarts
 

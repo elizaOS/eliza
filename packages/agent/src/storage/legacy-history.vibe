@@ -1,0 +1,110 @@
+// spec/agent/storage/legacyAdoption.md, "A historical conversation keeps its owner and existing identifiers"; spec/agent/storage/legacyAdoption.md, "An installed send key never dispatches a new turn"
+import { ChannelType, conversationClientUserMemoryId, readDurableConversationChatMarker, validateUuid, type Content, type Memory, type Room, type UUID } from "@elizaos/core"
+import { historyAnswer, installedReplay } from "../../gen/agent__storage__legacyAdoption.effect.vibe"
+
+/** Authenticated by the native handover before the private snapshot is decoded. */
+export type LegacyHistoryOwner = { readonly agentId: UUID; readonly ownerId: UUID; readonly worldId: UUID }
+
+export type LegacyConversation = LegacyHistoryOwner & {
+  readonly id: UUID
+  readonly roomId: UUID
+  readonly title: string
+  readonly createdAt: number
+  readonly updatedAt: number
+}
+
+export type LegacyMessage = {
+  readonly id: UUID
+  readonly roomId: UUID
+  readonly agentId: UUID
+  readonly entityId: UUID
+  readonly createdAt: number
+  readonly content: Content
+}
+
+export type LegacySendReservation = LegacyHistoryOwner & {
+  readonly roomId: UUID
+  readonly clientMessageId: string
+  readonly inputId: UUID
+  readonly fingerprint: string
+  readonly protocol: "installed-chat-v1"
+  readonly linkedReplyId?: UUID
+}
+
+export type PreparedLegacyHistory = {
+  readonly rooms: readonly Room[]
+  readonly messages: readonly Memory[]
+  readonly reservations: readonly LegacySendReservation[]
+}
+
+export error LegacyHistoryRefused { reason: "binding" | "duplicate" | "reference" | "marker" }
+
+const timestamp = (value: number) => Number.isSafeInteger(value) && value >= 0
+const canonical = (value: UUID) => validateUuid(value) === value
+
+function markerScope(owner: LegacyHistoryOwner, roomId: UUID): string {
+  return `${owner.agentId}:${roomId}:${owner.ownerId}`
+}
+
+/** Projects an offline conversation catalogue and its joined rooms and message rows. */
+export effect function planLegacyHistory(owner: LegacyHistoryOwner, conversations: readonly LegacyConversation[], messages: readonly LegacyMessage[]): PreparedLegacyHistory!LegacyHistoryRefused {
+  if (!canonical(owner.agentId) || !canonical(owner.ownerId) || !canonical(owner.worldId) || owner.agentId === owner.ownerId)
+    throw new LegacyHistoryRefused({ reason: "binding" })
+  const rooms = new Map(conversations.map((entry) => [entry.roomId, entry]))
+  const byId = new Map(messages.map((entry) => [entry.id, entry]))
+  const uniqueIdentity = rooms.size === conversations.length && byId.size === messages.length
+    && new Set(conversations.map(({ id }) => id)).size === conversations.length
+  const sameAgent = conversations.every((entry) => entry.agentId === owner.agentId) && messages.every((entry) => entry.agentId === owner.agentId)
+  const sameOwner = conversations.every((entry) => entry.ownerId === owner.ownerId)
+    && messages.every((entry) => entry.entityId === owner.ownerId || entry.entityId === owner.agentId)
+  const sameWorld = conversations.every((entry) => entry.worldId === owner.worldId)
+  const closedReferences = conversations.every((entry) => canonical(entry.id) && canonical(entry.roomId) && timestamp(entry.createdAt)
+    && timestamp(entry.updatedAt) && entry.createdAt <= entry.updatedAt)
+    && messages.every((entry) => canonical(entry.id) && timestamp(entry.createdAt) && rooms.has(entry.roomId)
+      && (entry.content.inReplyTo === undefined || (entry.content.inReplyTo !== entry.id && byId.get(entry.content.inReplyTo)?.roomId === entry.roomId)))
+  if (historyAnswer({ sameAgent, sameOwner, sameWorld, uniqueIdentity, closedReferences }) === "HistoryRefused")
+    throw new LegacyHistoryRefused({ reason: !uniqueIdentity ? "duplicate" : !closedReferences ? "reference" : "binding" })
+
+  const replies = new Map<UUID, UUID[]>()
+  for (const entry of messages) {
+    const parent = entry.content.inReplyTo
+    if (parent === undefined || entry.entityId !== owner.agentId) continue
+    const found = replies.get(parent)
+    if (found === undefined) replies.set(parent, [entry.id])
+    else found.push(entry.id)
+  }
+  const reservations: LegacySendReservation[] = []
+  const history: Memory[] = []
+  for (const entry of messages) {
+    const { chatIdempotency, ...content } = entry.content
+    if (chatIdempotency !== undefined) {
+      const marker = readDurableConversationChatMarker(chatIdempotency)
+      const scope = markerScope(owner, entry.roomId)
+      if (entry.entityId !== owner.ownerId || marker === null || marker.scope !== scope)
+        throw new LegacyHistoryRefused({ reason: "marker" })
+      const inputId = try Effect.try({ try: () => conversationClientUserMemoryId(scope, marker.clientMessageId),
+        catch: () => new LegacyHistoryRefused({ reason: "marker" }) })
+      if (inputId !== entry.id)
+        throw new LegacyHistoryRefused({ reason: "marker" })
+      const candidates = replies.get(entry.id)
+      reservations.push({ ...owner, roomId: entry.roomId, clientMessageId: marker.clientMessageId, inputId: entry.id,
+        fingerprint: marker.fingerprint, protocol: "installed-chat-v1",
+        ...(candidates?.length === 1 ? { linkedReplyId: candidates[0] } : {}) })
+    }
+    history.push({ ...entry, worldId: owner.worldId, content })
+  }
+  const ordered = [...conversations].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+  return {
+    rooms: ordered.map((entry, index) => ({ id: entry.roomId, agentId: owner.agentId, worldId: owner.worldId, name: entry.title,
+      source: "device", channelId: entry.roomId, type: ChannelType.DM,
+      metadata: { ownership: { ownerId: owner.ownerId }, deviceConversation: { id: entry.id,
+        createdAt: entry.createdAt, updatedAt: entry.updatedAt, seq: index + 1, publication: "Published" } } })),
+    messages: history,
+    reservations,
+  }
+}
+
+/** A linked reply establishes history. Terminal effect evidence is admitted by its own codec. */
+export function reservedLegacySend(reservation: LegacySendReservation, installedFingerprint: string) {
+  return installedReplay("InstalledUnsettled", reservation.fingerprint === installedFingerprint)
+}
