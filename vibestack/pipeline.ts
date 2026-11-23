@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { evaluatorIdentity } from "./installed.ts";
+import { evaluatorIdentity, InstallationChanged } from "./installed.ts";
 // The spec pipeline and command line, which spec.ts runs. Parsing, review, generation, simulation and proof each have one implementation.
 import { spawn } from "node:child_process";
 import { channel } from "node:diagnostics_channel";
@@ -16,7 +16,7 @@ import { abandonedProof, ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, typ
 import { bin, run, startAttached } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, evaluatorForCheck, isActionEntry, toolchainFingerprint, type Memory } from "./cache.ts";
+import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, collectGarbage, evaluatorForCheck, isActionEntry, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, owner, specOwnerPaths, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
@@ -967,8 +967,12 @@ export async function main(argv = process.argv.slice(2)) {
         const code = await runTasks(root, prerequisites);
         if (code !== 0) { process.exitCode = code ?? 1; return; }
       }
-      const packingTools = skipGenOnPack && process.env.npm_command === "pack" && process.env.npm_lifecycle_event === "prepare";
-      if (fixture || packingTools) return;
+      const preparing = process.env.npm_lifecycle_event === "prepare";
+      const packingTools = preparing && skipGenOnPack && process.env.npm_command === "pack";
+      const nightlyCheck = preparing && hosted && process.env.npm_command === "install"
+        && process.env.GITHUB_JOB === "vibestack-nightly-check" && process.env.GITHUB_WORKSPACE === root
+        && process.env.GITHUB_WORKFLOW_REF?.startsWith(`${process.env.GITHUB_REPOSITORY}/.github/workflows/fuzz.yml@`);
+      if (fixture || packingTools || nightlyCheck) return;
       [command, ...args] = hosted ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
     }
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {

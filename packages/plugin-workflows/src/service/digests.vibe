@@ -291,7 +291,7 @@ export function hostedDigests(service: WorkflowService) {
     const native = host.nativeDigests
     if (native === undefined || host.worker === undefined) throw new WorkflowRefused({ status: 503, message: "Native digest sources are unavailable on this agent" })
     const definitionKey = try workflowSha(["native-dossier-definition", owner, sourceId, sourceRevision, HOSTED_TEMPLATE_VERSION, PHONE_COMPILER_REVISION])
-    const prepared = try lock(effect {
+    const bound = effect {
       const source = try sourceOf(sourceId)
       if (source.revision !== sourceRevision || source.live?.provider !== "native") throw new WorkflowRefused({ status: 409, message: "Dossier source binding changed" })
       const existing = try db(store.receipt(definitionKey))
@@ -299,11 +299,18 @@ export function hostedDigests(service: WorkflowService) {
       const prior = defined === undefined ? undefined : A.readSubmission(try service.project(defined.row), owner, mutationId)
       if (defined !== undefined && prior?.reply === "ExistingRun") return { replayed: try service.runOf(`${defined.row.id}-r${prior.replyRun}`) }
       if (digestSourceState(source, try now) !== "current") throw new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" })
-      const grant = try mapError(native.grant(source.live, Date.parse(source.expiresAt)), () => new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" }))
-      const spec: DigestSpec = defined?.row.hostedDigest
+      return { source, live: source.live, defined }
+    }
+    const reviewed = try lock(bound)
+    if (reviewed.replayed !== undefined) return { execution: service.runView(reviewed.replayed) }
+    const grant = try mapError(native.grant(reviewed.live, Date.parse(reviewed.source.expiresAt)), () => new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" }))
+    const prepared = try lock(effect {
+      const current = try bound
+      if (current.replayed !== undefined) return { replayed: current.replayed }
+      const spec: DigestSpec = current.defined?.row.hostedDigest
         ?? { version: 1, template: "morning", sourceId, sourceRevision, timeZone: grant.timeZone, localTime: "08:00", enabled: false, manualOnly: true }
-      const receipt = try digestMutation(definitionKey, spec, source)
-      return { workflowId: String(receipt.workflowId), spec, source }
+      const receipt = try digestMutation(definitionKey, spec, current.source)
+      return { workflowId: String(receipt.workflowId), spec, source: current.source }
     })
     if (prepared.replayed !== undefined) return { execution: service.runView(prepared.replayed) }
     const definition = try service.definitionOf(prepared.workflowId)
