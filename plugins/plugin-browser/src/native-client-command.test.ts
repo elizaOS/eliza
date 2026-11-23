@@ -399,6 +399,7 @@ describe("a reload on a page the phone withheld", () => {
     "Reload this page. Actually, don't reload it.",
     "Reload this page. Actually, don't.",
     "Reload this page. Never mind.",
+    "Reload this page. Actually, don't. Tell me the time.",
   ])("honors the owner's retraction before dispatching: %s", async (text) => {
     const { result, execute } = await run(turn(text, unreadable), {
       action: "reload",
