@@ -1,4 +1,4 @@
-// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice"
 import { regexMatches } from "@elizaos/agent/device-actions"
 import { parseBrowserAddressInput } from "@elizaos/os/browser/address"
 import { groundedSearch } from "../gen/browser__control.effect.vibe"
@@ -452,6 +452,24 @@ export function directBrowserSearchQuery(text: string, assistantName: string = D
   for (let rest = ""; rest !== query; query = query.replace(SEARCH_SUFFIX, "")) rest = query
   query = unquoted(query.replace(/\s+/g, " "))
   return query !== "" && query.length <= BROWSER_SEARCH_QUERY_MAX ? query : undefined
+}
+
+const TAB_LIST_GREETING = /^(?:hey|ok|okay|hi)(?:[\s,]+|[.!]\s+)/
+const TAB_LIST_POLITE_LEAD = /^(?:(?:please|can you|could you|let me)[\s,]+)+/
+const TAB_LIST_ASKS = [
+  /^(?:show|list|see)(?:\s+me)?(?:\s+(?:all|all of))?(?:\s+(?:my|the))?(?:\s+open)?(?:\s+browser)?\s+(?:tabs|tab list)(?:\s+(?:i\s+have\s+)?open)?(?:\s+in\s+(?:the\s+)?browser)?$/,
+  /^(?:what|which)\s+are\s+my\s+open(?:\s+browser)?\s+tabs$/,
+  /^(?:what|which)(?:\s+browser)?\s+tabs\s+(?:do\s+i\s+have|are|have\s+i\s+got)(?:\s+open)?(?:\s+in\s+(?:the\s+)?browser)?$/,
+]
+
+export function directBrowserTabList(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): boolean {
+  if (unreadable(text)) return false
+  let request = text.trim().toLowerCase().replace(/[\s.!?]+$/, "").replace(TAB_LIST_GREETING, "")
+  const name = assistantName.trim().toLowerCase() || DEFAULT_ASSISTANT_NAME.toLowerCase()
+  if (request.startsWith(name) && !/[\p{L}\p{N}]/u.test(request.charAt(name.length)))
+    request = request.slice(name.length).replace(/^[\s,:]+/, "")
+  request = request.replace(TAB_LIST_POLITE_LEAD, "").replace(/[\s,]+please$/, "").replace(/[\s.!?]+$/, "")
+  return TAB_LIST_ASKS.some((ask) => ask.test(request))
 }
 
 export function browserSearchQueryMatches(query: string, direct: string | undefined): boolean {
