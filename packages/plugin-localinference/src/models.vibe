@@ -341,11 +341,14 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
       try change(id === undefined ? { type: "clearAssignment", slot } : { type: "assignModel", slot, modelId: id })
     },
     activate: (id) => lock.withPermits(1)(effect {
-      try changed({ type: "activateModel", modelId: id })
-      const load = onExit(engine.load(installedOf(id)), effect (exit) => {
-        models.send({ type: "finishLoading", loaded: Exit.isSuccess(exit) }) catch effect () => { try engine.unload() }
-      })
-      loading = fork.detached Effect.ignore(load)
+      uninterruptible {
+        try changed({ type: "activateModel", modelId: id })
+        const load = onExit(engine.load(installedOf(id)), effect (exit) => {
+          if (Exit.hasInterrupts(exit)) return
+          models.send({ type: "finishLoading", loaded: Exit.isSuccess(exit) }) catch effect () => { try engine.unload() }
+        })
+        loading = fork.detached Effect.interruptible(Effect.ignore(load))
+      }
     }),
     deactivate: () => lock.withPermits(1)(effect {
       try stopLoading()
