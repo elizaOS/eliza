@@ -48,6 +48,21 @@ describe("Reach my account's cloud services without holding my key", () => {
     for (const c of sent) expect(c.args[4]).not.toContain("Authorization");
   });
 
+  it("sends a mail route with the lease, after one lost rotation reply, and inference with the key, never the key on mail", () => {
+    const main = "ai.eliza.plugins.signin.DeviceKeyJourney";
+    const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main, "cloud"], { encoding: "utf8", timeout: 120_000 })) as unknown;
+    expect(seen).toEqual({
+      keyOnlySignIn: "SIGNED_IN",
+      mailWithoutLease: "SIGN_IN_REQUIRED",
+      leasedSignIn: "SIGNED_IN",
+      mailAfterLostRotation: "NETWORK",
+      mailWithLease: "200",
+      inferenceWithKey: "200",
+      bearers: "lease/key",
+      leaseReuses: 0,
+    });
+  });
+
   it("sends only to an https origin, or http on loopback, with no path, user, query or fragment", () => {
     expect(origins.accepted).toEqual({
       "https://api.cloud.test": true,
