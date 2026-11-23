@@ -5021,6 +5021,7 @@ const installed = [B.getAnthropicAccountPoolBridge() === anthropic, B.getCodingA
 A.setAnthropicAccountPoolBridge(null);
 A.setTrajectoryContextManager(manager);
 const bundled = attempt(() => A.loadRegistry().byId.get("agent-orchestrator") ?? null);
+B.loadRegistry();
 const registered = attempt(() => { A.registerRegistryEntry({ ...bundled, description: "registered at runtime" }); return "registered"; });
 const cached = A.loadRegistry();
 let rejectedApp = false;
