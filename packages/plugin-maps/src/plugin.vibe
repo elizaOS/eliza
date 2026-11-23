@@ -247,8 +247,7 @@ effect function listSaved(saves: AgentSavedPlaceStore | undefined, message: Memo
     { count: listed.length, savedPlaces: listed })
 }
 
-/** The area part of an address: without its street part, without any word that has a digit, and at most its last three parts. */
-export function addressArea(address: string | undefined): string | undefined {
+function addressArea(address: string | undefined): string | undefined {
   const parts = (address ?? "").split(",").map((part) => part.trim()).filter((part) => part !== "")
   const street = parts.length > 1 && (parts.length >= 3 || /\d/u.test(parts[0] ?? ""))
   const area = (street ? parts.slice(1) : parts).map((part) => part.split(/\s+/u).filter((word) => !/\d/u.test(word)).join(" ")).filter((part) => part !== "").slice(-3)
