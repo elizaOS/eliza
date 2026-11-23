@@ -303,6 +303,7 @@ pure def loseExecutor(c: Command): Command = { ...c, receipt: D::loseExecutor(c.
 pure def canResolve(c: Command, lookup: D::LookupResult): bool = c.phase == Running and D::canResolve(c.receipt, lookup)
 pure def resolve(c: Command, lookup: D::LookupResult): Command = { ...c, receipt: D::resolve(c.receipt, lookup) }
 pure def canElapse(c: Command, elapsed: Millis): bool = D::canElapse(c.receipt, elapsed)
+pure val eval_refuse_canElapse = { elapsed: -1 }
 pure def elapse(c: Command, elapsed: Millis): Command = {
   val work = c.schedule
   { ...c, receipt: D::elapse(c.receipt, elapsed), schedule: match work {
