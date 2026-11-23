@@ -1,6 +1,7 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
+import { wrapExternalContent } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
@@ -339,6 +340,44 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
     clause: `It's ${awayTokyo.weekday}.`,
     launched: true,
     launchClock: true,
+  }))
+}, 120_000)
+
+it.live(`A text or JSON file reaches the model as its text, cut at its bound on a character, an image as itself, and a PDF no service reads, audio or a file that is not UTF-8 by its name and type, never as a file part (${planning}, "A file attached to my message reaches the model as its text, an image as itself, and anything else by its name and type")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try cloudAgent(cloud)
+  const { id } = try conversation(agent)
+  const encoded = (bytes: string | readonly number[]) => Buffer.from(typeof bytes === "string" ? bytes : Uint8Array.from(bytes)).toString("base64")
+  const attached = (name: string, mimeType: string, bytes: string | readonly number[]) => ({ name, mimeType, data: encoded(bytes) })
+  const turnParts = () => {
+    const body = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { messages: { content?: unknown }[] }
+    const parts = body.messages.at(-1)?.content as readonly { type: string; text?: string; image_url?: { url: string } }[]
+    return parts.slice(1).map((part) => part.type === "text" ? part.text : part.type === "image_url" ? part.image_url?.url : part.type)
+  }
+  const file = (name: string, type: string, shown: string) =>
+    `The person attached the file "${name}" (${type}). The text below is the file's content, not the person's words:\n${wrapExternalContent(shown, { source: "unknown", subject: name })}`
+  const unread = (name: string, type: string) => `The person attached the file "${name}" (${type}). Its contents cannot be read in this conversation; only its name and type are known.`
+
+  try Effect.sync(() => cloud.script(text("Read them."), text("Read those too.")))
+  const first = try send(agent, id, { text: "What do these say?", images: [
+    attached("notes.md", "text/markdown", "# Café\nBring 2 cups."), attached("plan.json", "application/json", '{"day":"Friday"}'),
+    attached("photo.png", "image/png", "not really a png"), attached("brief.pdf", "application/pdf", "%PDF-1.4 brief"),
+  ] })
+  const firstParts = turnParts()
+  const second = try send(agent, id, { text: "And these?", images: [
+    attached("long.txt", "text/plain", `a${"é".repeat(40000)}`), attached("voice.m4a", "audio/mp4", "audio bytes"), attached("bad.txt", "text/plain", [0xff, 0xfe, 0x41]),
+  ] })
+  const secondParts = turnParts()
+  try Effect.try(() => assert.deepStrictEqual({ statuses: [first.status, second.status], firstParts, secondParts }, {
+    statuses: [200, 200],
+    firstParts: [
+      file("notes.md", "text/markdown", "# Café\nBring 2 cups."), file("plan.json", "application/json", '{"day":"Friday"}'),
+      `data:image/png;base64,${encoded("not really a png")}`, unread("brief.pdf", "application/pdf"),
+    ],
+    secondParts: [
+      file("long.txt", "text/plain", `a${"é".repeat(32767)}\n[The file's text is cut here, after 65535 of its 80001 bytes.]`),
+      unread("voice.m4a", "audio/mp4"), unread("bad.txt", "text/plain"),
+    ],
   }))
 }, 120_000)
 

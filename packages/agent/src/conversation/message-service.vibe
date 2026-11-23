@@ -1,10 +1,10 @@
-// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/planning.md, "A file attached to my message reaches the model as its text, an image as itself, and anything else by its name and type"
 import {
   type Action, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
-  executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
+  executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, ServiceType, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
-import { hostNoteLabels } from "../../gen/agent__conversation__planning.ts"
+import { attachedRead, attachedShownBytes, hostNoteLabels, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { groundedEventReply, groundedTimeReply, turnClock } from "./clock.vibe"
 import { textForTurn } from "./heard.vibe"
@@ -88,20 +88,80 @@ async function spoken(runtime: AgentRuntime, memory: Memory): Promise<string> {
   return memory.entityId === runtime.agentId ? textForTurn(memory, read.text) : read.text
 }
 
-function partOf(media: Media): ContentPart {
-  const type = media.mimeType ?? media.contentType ?? "application/octet-stream"
-  return type.startsWith("image/")
-    ? { type: "image", image: media.url, mediaType: type }
-    : { type: "file", data: media.url, mediaType: type, ...(media.filename === undefined ? {} : { filename: media.filename }) }
+interface PdfReader {
+  readonly convertPdfToText: (input: Uint8Array) => Promise<string>
+}
+
+function isPdfReader(service: unknown): service is PdfReader {
+  return typeof service === "object" && service !== null && "convertPdfToText" in service && typeof service.convertPdfToText === "function"
+}
+
+function kindOf(type: string): AttachedKind {
+  if (type.startsWith("image/")) return "AttachedImage"
+  if (type.startsWith("text/") || type === "application/json") return "AttachedText"
+  return type === "application/pdf" ? "AttachedPdf" : "AttachedMedia"
+}
+
+function bytesOf(url: string): Uint8Array | undefined {
+  const comma = url.indexOf(",")
+  return url.startsWith("data:") && url.slice(0, comma).endsWith(";base64") ? Buffer.from(url.slice(comma + 1), "base64") : undefined
+}
+
+function utf8(bytes: Uint8Array): string | undefined {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+  } catch {
+    return undefined
+  }
+}
+
+async function attachedText(runtime: AgentRuntime, kind: AttachedKind, bytes: Uint8Array | undefined): Promise<string | undefined> {
+  if (bytes === undefined) return undefined
+  if (kind === "AttachedText") return utf8(bytes)
+  const reader = kind === "AttachedPdf" ? runtime.getService(ServiceType.PDF) : null
+  return isPdfReader(reader) ? reader.convertPdfToText(bytes).catch(() => undefined) : undefined
+}
+
+function continuesCharacter(byte: number | undefined): boolean {
+  return byte !== undefined && byte >= 0x80 && byte < 0xc0
+}
+
+function shownText(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  const kept = attachedShownBytes(bytes.length)
+  if (kept === bytes.length) return text
+  let end = kept
+  while (end > 0 && continuesCharacter(bytes[end])) end -= 1
+  return `${new TextDecoder().decode(bytes.subarray(0, end))}\n[The file's text is cut here, after ${end} of its ${bytes.length} bytes.]`
+}
+
+async function attachedPart(runtime: AgentRuntime, media: Media): Promise<ContentPart> {
+  const type = (media.mimeType ?? media.contentType ?? "application/octet-stream").toLowerCase()
+  const label = media.filename ?? media.title ?? "attachment"
+  const name = `"${label}" (${type})`
+  const kind = kindOf(type)
+  const text = kind === "AttachedImage" ? undefined : await attachedText(runtime, kind, bytesOf(media.url))
+  const read = attachedRead(kind, text !== undefined)
+  switch (read) {
+    case "AttachedAsImage": return { type: "image", image: media.url, mediaType: type }
+    case "AttachedAsText": return {
+      type: "text",
+      text: `The person attached the file ${name}. The text below is the file's content, not the person's words:\n${wrapExternalContent(shownText(text ?? ""), { source: "unknown", subject: label })}`,
+    }
+    case "AttachedAsName": return { type: "text", text: `The person attached the file ${name}. Its contents cannot be read in this conversation; only its name and type are known.` }
+    default: {
+      const _exhaustive: never = read
+      return _exhaustive
+    }
+  }
 }
 
 const hostLabel = "Note from the agent host, not the person:"
 
-function said(message: Memory, text: string, notes: readonly (string | undefined)[]): ChatMessage {
-  const attachments = message.content.attachments ?? []
+function said(attached: readonly ContentPart[], text: string, notes: readonly (string | undefined)[]): ChatMessage {
   const sent = notes.filter((note): note is string => note !== undefined && note.trim() !== "")
   const told = hostNoteLabels(sent.length) === 0 ? text : `${text}\n\n${[hostLabel, ...sent].join("\n")}`
-  return { role: "user", content: attachments.length === 0 ? told : [{ type: "text", text: told }, ...attachments.map(partOf)] }
+  return { role: "user", content: attached.length === 0 ? told : [{ type: "text", text: told }, ...attached] }
 }
 
 const locationNote = "location is the phone's last known position as it sent this message (capturedAt in epoch ms). Never guess a street, neighbourhood or city from its coordinates: asked where the person is, use the Maps place lookup for where they are, or else give the coordinates. An accuracyMeters over 1000 is a rough estimate: name only the area, never a street or building."
@@ -191,7 +251,8 @@ async function respond(
         const window = windowHistory(sources, asked, { earlier, readCount: recent.length, positions: sources.map(({ position }) => position) })
         const history: ChatMessage[] = window.shown.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
         const actions = offeredActions(runtime, message, actionGate)
-        const messages: ChatMessage[] = [...history, said(message, asked, [
+        const attached = await Promise.all((message.content.attachments ?? []).map((media) => attachedPart(runtime, media)))
+        const messages: ChatMessage[] = [...history, said(attached, asked, [
           contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext,
           window.windowed ? historyWindowNotice(window) : undefined,
         ])]
