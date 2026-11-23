@@ -161,10 +161,12 @@ pure def stepFramesRebuildTheText(before: ReplyStream, after: ReplyStream, out: 
 
 ### A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark
 
-Draft and action-callback text is provisional; model text is not. A voice
-client never speaks provisional text, so an append can only keep or add
-the mark: a client that ORs the mark over appends and one that reads it
-per frame agree.
+Resident chat sends model text, action callbacks and corrected previews as
+provisional until the turn settles. A tool call or reply check can still
+change the preview. A voice client never speaks provisional text, so an
+append can only keep or add the mark: a client that ORs the mark over
+appends and one that reads it per frame agree. The terminal reply carries
+the settled text and clears the mark.
 
 ```quint
 pure def canAppendText(s: ReplyStream, units: List[int]): bool = s.role == Streams and isOpen(s.phase) and units.length() > 0

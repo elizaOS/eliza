@@ -193,7 +193,7 @@ for (const rolledBack of [false, true]) {
 
 for (const transport of ["socket", "http"] as const) {
   describe(`Read a streamed reply from the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
-    it.live('The reader rebuilds the preview from split frames and ends with the done text exactly (spec/agent/conversation/replyStream.md, "The frames written rebuild exactly the text the client holds")', effect () => {
+    it.live('The reader rebuilds provisional previews from split frames and ends with the done text exactly (spec/agent/conversation/replyStream.md, "The frames written rebuild exactly the text the client holds"; spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark")', effect () => {
       const cloud = try cloudFake(deviceKey)
       const agent = try cloudAgent(cloud, transport === "http")
       const id = try conversation(agent)
@@ -204,9 +204,10 @@ for (const transport of ["socket", "http"] as const) {
       try Effect.try(() => assert.deepStrictEqual({
         whole: summary(whole.outcome), split: summary(split.outcome), samePreviews: split.previews.length === whole.previews.length,
         lastPreview: split.previews.at(-1), firstStatus: split.statuses[0],
+        allPreviewsProvisional: split.previews.every(({ provisional }) => provisional),
       }, {
         whole: { kind: "Done", text: long, failureKind: undefined, keyed: true }, split: { kind: "Done", text: long, failureKind: undefined, keyed: true }, samePreviews: true,
-        lastPreview: { text: long, provisional: false }, firstStatus: "thinking",
+        lastPreview: { text: long, provisional: true }, firstStatus: "thinking", allPreviewsProvisional: true,
       }))
     }, 120_000)
 
@@ -220,7 +221,7 @@ for (const transport of ["socket", "http"] as const) {
       const broken = try read(chunks, 5, true)
       try Effect.try(() => assert.deepStrictEqual(
         { cut: cut.outcome, broken: broken.outcome, preview: cut.previews.at(-1) },
-        { cut: { kind: "Dropped" }, broken: { kind: "Dropped" }, preview: { text: "Let me think", provisional: false } }))
+        { cut: { kind: "Dropped" }, broken: { kind: "Dropped" }, preview: { text: "Let me think", provisional: true } }))
     }, 120_000)
 
     it.live('An account refusal is Done with its failure kind, and a frame after the terminal one is a protocol failure (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written")', effect () => {

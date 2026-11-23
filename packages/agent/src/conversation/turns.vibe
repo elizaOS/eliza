@@ -429,9 +429,9 @@ module node {
             id: randomUUID(), url: `data:${mimeType.toLowerCase()};base64,${data}`, title: name, filename: name, mimeType: mimeType.toLowerCase(),
           })) },
           deadline, ...(key === undefined ? {} : { key }), ...(attached === undefined ? {} : {
-            onStreamChunk: attached.writer.append,
+            onStreamChunk: (chunk: string) => attached.writer.append(chunk, true),
             display: {
-              restart: (fullText: string) => attached.writer.restart(fullText), acknowledge: (cue: string) => attached.writer.acknowledge(cue),
+              restart: (fullText: string) => attached.writer.restart(fullText, true), acknowledge: (cue: string) => attached.writer.acknowledge(cue),
               tool: (name: string, label: string) => attached.writer.tool(name, label),
             },
           }),
