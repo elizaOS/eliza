@@ -18,39 +18,11 @@ const examplesSource = "vibestack/selftests/examples.ts";
 const toolMetadata = "vibestack/selftests/tools.ts";
 const EXAMPLES = "vibestack/examples";
 
-function proofLibraryDeclarationsAreDocumented() {
-  const skill = read(".agents/skills/prove/SKILL.md");
-  const declared = [...fs.readFileSync(LIB_FILE, "utf8").matchAll(/^\s*(?:ghost )?(?:lemma|function|predicate) (\w+)/gm)].map((m) => m[1]);
-  assert.ok(declared.length > 30, "vibestack/proof/lib.dfy declares its lemmas one to a line");
-  assert.deepEqual(declared.filter((name) => !skill.includes(`\`${name}\``)), []);
-}
-
-async function checkStandaloneExampleCacheInputs(root: string, turbo: string, append: (file: string, text?: string) => () => void) {
-  let previousExampleKeys = await exampleCheckKeys(root, turbo);
-  const examplesChangedBy = async (edit: () => void) => {
-    const before = previousExampleKeys;
-    edit();
-    previousExampleKeys = await exampleCheckKeys(root, turbo);
-    return [...previousExampleKeys].filter(([name, key]) => before.get(name) !== key).map(([name]) => name).sort();
-  };
-  const order = path.join(EXAMPLES, "order");
-  const exampleChanges = [
-    await examplesChangedBy(append(toolSource, "\n")),
-    await examplesChangedBy(append(docsSource, "\n")),
-    await examplesChangedBy(append(path.join(order, "src/app.vibe"), "\n")),
-    await examplesChangedBy(append(path.join(order, "pnpm-lock.yaml"), "\n")),
-    await examplesChangedBy(append("vibestack/run.ts", "\n")),
-    await examplesChangedBy(append(examplesSource, "\n")),
-  ];
-  const exampleNames = fs.readdirSync(path.join(root, EXAMPLES)).sort();
-  assert.deepEqual(exampleChanges, [[], [], ["order"], ["order"], exampleNames, exampleNames]);
-}
+const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".agents/skills").filter((file) => file.endsWith(".md"))];
+const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
+const within = (dir: string) => fs.existsSync(path.join(project, dir)) ? fs.readdirSync(path.join(project, dir), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `${dir}/${e.name}`) : [];
 
 describe("the documents name what exists", () => {
-  test("the prove skill lists everything the proof library declares", proofLibraryDeclarationsAreDocumented);
-  const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".agents/skills").filter((file) => file.endsWith(".md"))];
-  const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
-  const within = (dir: string) => fs.existsSync(path.join(project, dir)) ? fs.readdirSync(path.join(project, dir), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `${dir}/${e.name}`) : [];
 
   test("every repository path, pnpm script and link in the documents and skills leads somewhere", () => {
     const workspace = ["packages", "apps"].flatMap(within).filter((dir) => fs.existsSync(path.join(project, dir, "package.json")));
@@ -74,6 +46,13 @@ describe("the documents name what exists", () => {
       return [...links, ...paths, ...commands].map((what) => `${doc}: ${what}`);
     });
     assert.deepEqual([...new Set(lost)], []);
+  });
+
+  test("the prove skill lists everything the proof library declares", () => {
+    const skill = read(".agents/skills/prove/SKILL.md");
+    const declared = [...fs.readFileSync(LIB_FILE, "utf8").matchAll(/^\s*(?:ghost )?(?:lemma|function|predicate) (\w+)/gm)].map((m) => m[1]);
+    assert.ok(declared.length > 30, "vibestack/proof/lib.dfy declares its lemmas one to a line");
+    assert.deepEqual(declared.filter((name) => !skill.includes(`\`${name}\``)), []);
   });
 
   test("each example pins Effect, VibeLang, Vite and Vitest where the tools do", () => {
@@ -162,11 +141,9 @@ describe("the documents name what exists", () => {
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "spec-docs-selftest-")));
     context.after(() => fs.rmSync(root, { recursive: true, force: true }));
     const fixtures = {
-      "spec/app/index.md": "# App\n",
-      "apps/app/package.json": JSON.stringify({ name: "@repo/app", scripts }),
+      "spec/app/index.md": "# App\n", "spec/kit/index.md": "# Kit\n",
+      "apps/app/package.json": JSON.stringify({ name: "@repo/app", scripts }), "packages/kit/package.json": JSON.stringify({ name: "@repo/kit", scripts }),
       "apps/app/tsconfig.json": JSON.stringify({ extends: "../../tsconfig.base.json" }),
-      "spec/kit/index.md": "# Kit\n",
-      "packages/kit/package.json": JSON.stringify({ name: "@repo/kit", scripts }),
     };
     for (const [file, content] of Object.entries(fixtures)) {
       fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
@@ -216,7 +193,24 @@ describe("the documents name what exists", () => {
     const selftests = (ids: string[]) => ids.filter((id) => /^\/\/#(?:selftest:|build$|test$)/.test(id));
     assert.deepEqual(selftests(await changedBy(append(docsSource, "\n"))), ["//#selftest:docs"]);
     assert.deepEqual(selftests(await changedBy(append(examplesSource, "\n"))), ["//#selftest:docs", "//#selftest:examples"]);
-    await checkStandaloneExampleCacheInputs(root, turbo, append);
+    let previousExampleKeys = await exampleCheckKeys(root, turbo);
+    const examplesChangedBy = async (edit: () => void) => {
+      const before = previousExampleKeys;
+      edit();
+      previousExampleKeys = await exampleCheckKeys(root, turbo);
+      return [...previousExampleKeys].filter(([name, key]) => before.get(name) !== key).map(([name]) => name).sort();
+    };
+    const order = path.join(EXAMPLES, "order");
+    const exampleChanges = [
+      await examplesChangedBy(append(toolSource, "\n")),
+      await examplesChangedBy(append(docsSource, "\n")),
+      await examplesChangedBy(append(path.join(order, "src/app.vibe"), "\n")),
+      await examplesChangedBy(append(path.join(order, "pnpm-lock.yaml"), "\n")),
+      await examplesChangedBy(append("vibestack/run.ts", "\n")),
+      await examplesChangedBy(append(examplesSource, "\n")),
+    ];
+    const exampleNames = fs.readdirSync(path.join(root, EXAMPLES)).sort();
+    assert.deepEqual(exampleChanges, [[], [], ["order"], ["order"], exampleNames, exampleNames]);
     previousPlan = await plan();
     const readme = await changedBy(append("README.md"));
     assert.deepEqual({
@@ -248,47 +242,43 @@ describe("the documents name what exists", () => {
       independentOwner: true, leftovers: [],
     }, "the owners' tasks, @repo/kit's among them, wait for the root's gen, and install's //#build does not, so `gen --if-valid` after it keeps a half-edited spec from failing install");
 
-    fs.symlinkSync(path.join(project, "node_modules"), path.join(root, "node_modules"), "dir");
-    const generationPlan = async (hosted: boolean, ...options: string[]) => {
-      const dry = await exec(process.execPath, [path.join(root, "vibestack/spec.ts"), "tasks", "//#gen", "//#lint:css", "--dry=json", "--cache=local:w", ...options], root, {
-        ...process.env, TURBO_TOKEN: "", GITHUB_ACTIONS: String(hosted), GITHUB_JOB: "verify", GITHUB_WORKSPACE: root,
-        GITHUB_REPOSITORY: "elizaOS/eliza", GITHUB_WORKFLOW_REF: "elizaOS/eliza/.github/workflows/ci.yml@refs/heads/vibestack",
-      });
+    const generationPlan = async ({ options = [], env = {} }: { options?: string[]; env?: NodeJS.ProcessEnv } = {}) => {
+      const dry = await exec(process.execPath, [path.join(project, "vibestack/spec.ts"), "tasks", "//#gen", "//#lint:css", "--dry=json", ...options], root, { ...process.env, TURBO_TOKEN: "", TURBO_CACHE: "local:rw", ...env });
       assert.equal(dry.status, 0, dry.stderr);
-      const tasks: { taskId: string; hash: string; resolvedTaskDefinition: { env: string[] } }[] = JSON.parse(dry.stdout).tasks;
+      const tasks: { taskId: string; hash: string; resolvedTaskDefinition: { cache: boolean; env: string[] } }[] = JSON.parse(dry.stdout).tasks;
       return Object.fromEntries(tasks.map(({ taskId, hash, resolvedTaskDefinition }) => [taskId, { hash, ...resolvedTaskDefinition }]));
     };
-    const proof = path.join(root, "spec/audit.proof.dfy");
-    fs.writeFileSync(proof, "lemma One() {}\n");
-    const local = await generationPlan(false);
-    const hosted = await generationPlan(true);
-    fs.appendFileSync(proof, "lemma Two() {}\n");
-    assert.notEqual((await generationPlan(false))["//#gen"].hash, local["//#gen"].hash);
-    assert.equal((await generationPlan(true))["//#gen"].hash, hosted["//#gen"].hash);
+    fs.mkdirSync(path.join(root, "apps/app/spec"));
+    fs.writeFileSync(path.join(root, "apps/app/spec/index.md"), "# Standalone app\n");
+    const proofs = ["spec/audit.proof.dfy", "apps/app/spec/index.proof.dfy", "packages/kit/spec/index.proof.dfy"];
+    for (const file of proofs) fs.writeFileSync(path.join(root, file), "lemma One() {}\n");
+    const beforeProofs = await generationPlan();
+    for (const file of proofs) append(file, "lemma Two() {}\n")();
+    const afterProofs = await generationPlan();
+    assert.equal(afterProofs["//#gen"].hash, beforeProofs["//#gen"].hash);
+    assert.equal(afterProofs["//#gen"].cache, true);
     append("spec/app/index.md")();
-    assert.notEqual((await generationPlan(true))["//#gen"].hash, hosted["//#gen"].hash);
+    assert.notEqual((await generationPlan())["//#gen"].hash, afterProofs["//#gen"].hash);
 
     const alternate = "other turbo.jsonc";
     const config = JSON.parse(read("turbo.json", root));
+    config.tasks["//#gen"].cache = true;
     config.tasks["//#lint:css"].env = ["AUDIT_CONFIG"];
     fs.writeFileSync(path.join(root, alternate), JSON.stringify(config).replace(/^{/, "{\n// Explicit workspace config\n"));
-    const explicit = await generationPlan(true, "--root-turbo-json", alternate);
-    fs.unlinkSync(proof);
-    fs.symlinkSync("../missing-proof.dfy", proof);
-    const invalid = await generationPlan(true, `--root-turbo-json=${alternate}`);
+    const explicit = await generationPlan({ options: ["--root-turbo-json", alternate] });
+    fs.unlinkSync(path.join(root, proofs[0]));
+    fs.symlinkSync("../missing-proof.dfy", path.join(root, proofs[0]));
+    const invalid = await generationPlan({ options: [`--root-turbo-json=${alternate}`] });
     assert.ok(invalid["//#lint:css"].env.includes("AUDIT_CONFIG"));
-    assert.notEqual(invalid["//#gen"].hash, explicit["//#gen"].hash);
-    assert.equal((await generationPlan(true, "--cwd", root))["//#gen"].hash, (await generationPlan(true, "--cwd=packages/kit"))["//#gen"].hash);
-    fs.unlinkSync(proof);
-    fs.writeFileSync(proof, "lemma One() {}\nlemma Two() {}\n");
-    assert.deepEqual(await generationPlan(true, "--root-turbo-json", alternate), explicit);
-    const passThrough = await generationPlan(true, "--", "--root-turbo-json", alternate);
+    assert.deepEqual(invalid, { ...explicit, "//#gen": { ...explicit["//#gen"], cache: false } });
+    const environment = await generationPlan({ env: { TURBO_ROOT_TURBO_JSON: alternate } });
+    assert.deepEqual({ selected: environment["//#lint:css"].env.includes("AUDIT_CONFIG"), cached: environment["//#gen"].cache }, { selected: true, cached: false });
+    assert.equal((await generationPlan({ options: ["--cwd", root] }))["//#gen"].cache, false);
+    assert.equal((await generationPlan({ options: ["--cwd=packages/kit"] }))["//#gen"].cache, false);
+    fs.unlinkSync(path.join(root, proofs[0]));
+    fs.writeFileSync(path.join(root, proofs[0]), "lemma Two() {}\n");
+    assert.deepEqual(await generationPlan({ options: ["--root-turbo-json", alternate] }), explicit);
+    const passThrough = await generationPlan({ options: ["--", "--root-turbo-json", alternate] });
     assert.ok(!passThrough["//#lint:css"].env.includes("AUDIT_CONFIG"));
-    fs.mkdirSync(path.join(root, "spec/nested.proof.dfy"));
-    const nested = "spec/nested.proof.dfy/model.md";
-    append(nested)();
-    const beforeNested = await generationPlan(true);
-    append(nested)();
-    assert.notEqual((await generationPlan(true))["//#gen"].hash, beforeNested["//#gen"].hash);
   });
 });
