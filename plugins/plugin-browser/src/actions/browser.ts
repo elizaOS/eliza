@@ -958,7 +958,7 @@ export const browserAction: Action = {
     // A page the phone withheld stays withheld after a reload: refuse one the
     // owner did not ask for before anything is dispatched.
     const withheldPage = nativePage
-      ? withheldPageReloadRefusal(message, command)
+      ? withheldPageReloadRefusal(message, command, runtime.character?.name)
       : undefined;
     if (withheldPage)
       return {

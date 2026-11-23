@@ -1493,6 +1493,7 @@ describe("reloading a page the phone withheld", () => {
     "could you please refresh the page?",
     "try reloading",
     "hit refresh",
+    "Don't go back, just refresh it",
   ])("the owner asks: %s", (text) => {
     expect(asksToReloadBrowserPage(text)).toBe(true);
   });
@@ -1502,6 +1503,8 @@ describe("reloading a page the phone withheld", () => {
     "don't reload the page",
     "do not reopen or refresh this page",
     "please do not close this tab and reload it",
+    "Reload this page. Actually, don't reload it.",
+    "Reload this page. Actually, do not close the tab or reload it.",
     "do not refresh it, just tell me what it says",
     "summarize it without reloading",
     "no need to reload, just read it",

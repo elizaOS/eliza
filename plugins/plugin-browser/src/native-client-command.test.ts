@@ -352,7 +352,10 @@ describe("a reload on a page the phone withheld", () => {
     const result = await nativeBrowserAction(
       nativeBrowserCommands(undefined),
     ).handler?.(
-      { getService: () => ({ execute }) } as unknown as IAgentRuntime,
+      {
+        character: { name: "Alpha" },
+        getService: () => ({ execute }),
+      } as unknown as IAgentRuntime,
       message as never,
       undefined,
       { parameters } as never,
@@ -392,6 +395,18 @@ describe("a reload on a page the phone withheld", () => {
     ).toContain("the phone cannot read this page's text");
   });
 
+  it("honors the owner's retraction before dispatching a withheld page reload", async () => {
+    const { result, execute } = await run(
+      turn("Reload this page. Actually, don't reload it.", unreadable),
+      { action: "reload" },
+    );
+    expect(result).toMatchObject({
+      success: false,
+      data: { code: "BROWSER_PAGE_WITHHELD", executed: false },
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it("refuses reopening the same page the owner did not ask for", async () => {
     for (const url of [
       "https://news.example.com/story?id=42",
@@ -414,13 +429,46 @@ describe("a reload on a page the phone withheld", () => {
         url: "https://other.example/",
       }),
     ).toBeUndefined();
-    // The owner typed the address: theirs to open.
-    expect(
-      withheldPageReloadRefusal(
-        turn("open https://news.example.com/story?id=42", unreadable),
-        { subaction: "navigate", url: "https://news.example.com/story?id=42" },
+    for (const text of [
+      `Please summarize ${page.url} in two sentences.`,
+      "reload this page",
+      `open ${page.url}#details`,
+      `Alpha, can you open ${page.url}?`,
+    ]) {
+      const { result, execute } = await run(turn(text, unreadable), {
+        action: "navigate",
+        url: page.url,
+      });
+      expect(result).toMatchObject({
+        success: false,
+        data: { code: "BROWSER_PAGE_WITHHELD", executed: false },
+      });
+      expect(execute).not.toHaveBeenCalled();
+    }
+    for (const text of [
+      `open ${page.url}`,
+      `Alpha, can you open ${page.url}`,
+    ]) {
+      const { result, execute } = await run(turn(text, unreadable), {
+        action: "navigate",
+        url: page.url,
+      });
+      expect(result).toMatchObject({ success: true });
+      expect(execute).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("opens the matching withheld page when the owner dictates its address", async () => {
+    const dictatedPage = { ...unreadable, url: "https://alphacompute.ai/" };
+    const { result, execute } = await run(
+      turn(
+        "Can you open alphacompute. AI in the browser, please?",
+        dictatedPage,
       ),
-    ).toBeUndefined();
+      { action: "navigate", url: dictatedPage.url },
+    );
+    expect(result).toMatchObject({ success: true });
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 
   it("still reloads when the owner asks for it", async () => {

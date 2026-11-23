@@ -363,7 +363,11 @@ function nativeBrowserHandler(
     }
     // A page the phone withheld stays withheld after a reload: refuse one the
     // owner did not ask for before anything is dispatched.
-    const withheld = withheldPageReloadRefusal(message, command);
+    const withheld = withheldPageReloadRefusal(
+      message,
+      command,
+      runtime.character?.name,
+    );
     if (withheld)
       return {
         success: false,

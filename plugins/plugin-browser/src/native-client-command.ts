@@ -1,5 +1,6 @@
 import {
-  groundBrowserDestination,
+  browserDestinationMatches,
+  directBrowserDestination,
   withheldBrowserPageReloadRefusal,
 } from "@elizaos/contracts/browser-request-grounding";
 import {
@@ -126,12 +127,13 @@ function samePage(url: string, page: string): boolean {
  * Why a native reload, or an open of the very page that is showing, must not
  * run: the Browser page this turn carried was withheld (the phone could not
  * read it, or shares no text from it) and the owner's own message did not ask
- * for a reload or type that address. Reloading never makes the page readable
+ * for a reload or explicitly ask to open that address. Reloading never makes the page readable
  * and can resubmit a form. Undefined when the command may run.
  */
 export function withheldPageReloadRefusal(
   message: { content: unknown },
   command: { subaction: string; url?: string },
+  assistantName?: string,
 ): string | undefined {
   const content = message.content;
   if (!content || typeof content !== "object" || Array.isArray(content))
@@ -146,10 +148,12 @@ export function withheldPageReloadRefusal(
     samePage(command.url, page.url);
   if (command.subaction !== "reload" && !reopen) return undefined;
   const ownerText = extractUserText(unwrapUserMessageText(message as Memory));
-  if (
-    reopen &&
-    groundBrowserDestination(ownerText, command.url as string) !== undefined
-  )
-    return undefined;
+  if (reopen)
+    return browserDestinationMatches(
+      { type: "browser_navigate", url: command.url },
+      directBrowserDestination(ownerText, assistantName),
+    )
+      ? undefined
+      : withheldBrowserPageReloadRefusal(page, "");
   return withheldBrowserPageReloadRefusal(page, ownerText);
 }
