@@ -46,3 +46,21 @@ pure def lawRemovingShortensByOne(xs: List[int], i: int): bool =
 pure def double(n: int): int = n * 2
 pure def lawMappingAnAppendedList(xs: List[int], x: int): bool = xs.append(x).listMap(double).length() == xs.length() + 1
 ```
+
+### A variant literal means the same wherever it stands
+
+```quint
+type Ticket = Issued({ row: int }) | Voided
+type Desk = { seats: int -> Kind, names: str -> int }
+pure val kinds: List[Kind] = List(Adult, Child)
+pure val adults: List[Kind] = kinds.select(k => k == Adult)
+pure val desk: Desk = { seats: Map(1 -> Adult), names: Map("front" -> 1) }
+pure def ticketOf(row: int): Ticket = if (row > 0) Issued({ row: row }) else Voided
+pure def named(d: Desk, name: str): int = if (d.names.keys().contains(name)) d.names.get(name) else 0
+pure def lastKind(xs: List[Kind]): Kind = xs.foldl(Adult, (acc, x) => x)
+pure def seatAt(h: Hall, i: int): Kind = h.booked.nthOr(i, { row: 0, kind: Child }).kind
+pure def lawTicketsCompare(row: int): bool = (ticketOf(row) == Voided) == (row <= 0) and (row > 0 implies ticketOf(row) == Issued({ row: row }))
+pure def lawTablesHoldVariants(k: Kind, n: int): bool =
+  desk.seats.put(2, Child).getOr(2, Adult) == Child and named({ ...desk, names: desk.names.put("back", n) }, "back") == n and kinds.includes(Child) and kinds.includes(k)
+pure def lawDefaultsAreVariants(i: int): bool = lastKind(List()) == Adult and seatAt(initial, i) == Child
+```

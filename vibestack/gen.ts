@@ -28,6 +28,8 @@ export interface Model extends Roles {
    * keys. Its bundle supplies its imports and omits the runtime guards the proof takes as given (Scope.proof in gen/print.ts).
    */
   render: (prefix: string, docs?: boolean) => string;
+  /** The type of a constant beside another proof unit, in the scope that declared it. */
+  proofTypeOfConstant: (name: string) => string | undefined;
   /** Events the spec declares fair (`fair_<event>`), each "weak" or "strong". */
   fair: Map<string, Fairness>;
   /** `leadsTo` rules that must also be met within a number of events (`within_<rule>`). */
@@ -47,18 +49,20 @@ export interface Model extends Roles {
   exports: { types: string[]; values: string[]; variants: string[]; visible: Json[]; samples: { name: string; elem: Json }[] };
   ts: string;
   harness: string;
+  guardHarness: string;
   witness?: { harness: string; lengths: Map<string, number> };
 }
 
 /** Where a definition came from in the spec, for doc comments and ordering. */
 export interface Origin { rule: string; line: number }
 
-/** Names a spec may not bind: the generated code, the harness, Dafny's standard library (Std) or the proof library (ProofLib) use them, or TypeScript reserves them. */
+/** Names a spec may not bind: the generated code, the harness, Dafny's standard library (Std) or the proof library (ProofLib) use them, TypeScript reserves them, or Dafny does and LemmaScript passes them on unchanged. */
 const TAKEN = new Set([...EMITTED, ...HARNESS, ...`
   Std ProofLib Number Math Object Array JSON Record Set Map String Boolean Symbol Error RangeError undefined NaN Infinity globalThis
   break case catch class const continue debugger default delete do else enum export extends false finally for function
   if import in instanceof new null return super switch this throw true try typeof var void while with yield let static await
   eval arguments implements interface package private protected public
+  assigned least greatest older hide
 `.split(/\s+/).filter(Boolean)]);
 const RULE_OR_GUARD = new RegExp(`^(${[...ROLES, "can"].join("|")})[A-Z]`);
 const GENERATED = new RegExp(`^(${[...HELPERS, "eval", "Out", "set", "opaque", "table", "else"].join("|")})_|^x\\d+$|__\\d+$`);
@@ -188,6 +192,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
   };
   const bySpecOrder = (x: Json, y: Json) => (origin(x.name)?.line ?? 0) - (origin(y.name)?.line ?? 0);
   const vals = code.filter((d) => d.qualifier === "pureval");
+  const constantIds = new Map<string, number>(vals.map((value) => [value.name, value.id]));
   const funs = code.filter((d) => d.qualifier === "puredef").sort(bySpecOrder);
   for (const d of funs) if (d.expr.kind !== "lambda") fail(`${d.name}: a \`pure def\` takes parameters; for a constant write \`pure val ${d.name} = …\``);
   // A rule must be a definition: as a `pure val` it would be generated as a constant and never checked.
@@ -236,6 +241,15 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
     ...typeOnly.map((m) => `import { ${[...new Set(typedefs.filter((d) => d.module === m).map((d) => d.base as string))].map((b) => `type ${b} as ${m}_${b}`).join(", ")} } from "./${m}.ts";`),
   ];
   const bundleHeader = links.length || typeOnly.length ? [""] : header;
+  const proofTypes = typeWalks(typedefs, name, `${name}_`);
+  const proofTypeOfConstant = (constant: string) => {
+    const id = constantIds.get(constant);
+    return id === undefined ? undefined : proofTypes.tsType(typeOf(id));
+  };
+  const importedConstantType = (reference: string) => {
+    const module = cameFrom.get(reference);
+    return module === undefined ? undefined : deps.get(module)!.proofTypeOfConstant(reference.split("::").pop()!);
+  };
   /** The module's TypeScript with its own top-level names under a prefix. */
   const render = (prefix: string, docs = true, proof = true): string => {
     const local = (n: string) => prefix + n;
@@ -243,7 +257,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
     // A definition from another module is spelled <module>_<name>, however it was imported.
     const ref = (n: string) => (localNames.has(n) ? local(n) : cameFrom.has(n) ? `${cameFrom.get(n)}_${n.split("::").pop()}` : n);
     const scoped = typeWalks(typedefs, name, prefix);
-    const print = printer({ types: scoped, inferred, ref, helper, bind, variants, definitions: new Set([...localNames, ...cameFrom.keys()]), simulatorOnly, proof });
+    const print = printer({ types: scoped, inferred, importedConstantType, ref, helper, bind, variants, definitions: new Set([...localNames, ...cameFrom.keys()]), simulatorOnly, proof });
     return typescript({ header: proof ? bundleHeader : header, typedefs: [...localTypedefs].sort(bySpecOrder), vals, funs, sig, typeOf, doc: docs ? doc : () => "", local, source }, roles, scoped, print, helper);
   };
   const ts = render("", true, false);
@@ -255,8 +269,8 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
     lengths: new Map([...witnesses].map(([goal, steps]) => [goal, steps.length])),
   } : undefined;
   return {
-    name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text, witness,
-    ts, render, decode: types.decode, canon: types.canon,
+    name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text, guardHarness: run.guardHarness, witness,
+    ts, render, proofTypeOfConstant, decode: types.decode, canon: types.canon,
     shape: roles.stateType ? types.comparison(roles.stateType) : undefined,
     outputShape: roles.output ? types.comparison(roles.output.out) : undefined,
     exports: { types: localTypedefs.map((d) => d.name as string), values: [...localNames], variants: localVariants, visible: typedefs, samples: ownSamples },

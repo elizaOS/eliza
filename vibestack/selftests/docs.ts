@@ -21,7 +21,7 @@ const EXAMPLES = "vibestack/examples";
 describe("the documents name what exists", () => {
   const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".agents/skills").filter((file) => file.endsWith(".md"))];
   const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
-  const within = (dir: string) => fs.readdirSync(path.join(project, dir), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `${dir}/${e.name}`);
+  const within = (dir: string) => fs.existsSync(path.join(project, dir)) ? fs.readdirSync(path.join(project, dir), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `${dir}/${e.name}`) : [];
 
   test("every repository path, pnpm script and link in the documents and skills leads somewhere", () => {
     // What pnpm itself provides, and what a document proposes rather than names.
@@ -92,13 +92,18 @@ describe("the documents name what exists", () => {
       [["selftest:tools:a", "selftest:tools:b", "selftest:tools:rest"], selftests.map((task) => `//#${task}`), selftests.map((task) => `//#${task}`)], "pnpm selftest and pnpm verify run every selftest task");
     const each = "the tools each check catches its own kind of mistake";
     const inShards = Object.fromEntries(Object.entries(toolShards).map(([id, shard]) => [`${each} ${shard}`, `selftest:tools:${id}`]));
-    const titles = (file: string) => [...read(file).matchAll(/^(?:if \(import\.meta\.main\) )?(?:describe|test)\("([^"]+)"/gm)].map(([, title]) => title);
-    const toolTitles = [...titles(toolSource), ...Object.keys(inShards), "a new test", "the tools a new suite",
+    const toolText = read(toolSource);
+    const registered = toolText.split(/^function /m)
+      .filter((block) => /^eachCheck[AB]?\(\)/.test(block))
+      .flatMap((block) => [...block.matchAll(/^  test\("([^"]+)"/gm)].map(([, title]) => title));
+    assert.deepEqual(registered.filter((title, index) => registered.indexOf(title) !== index), [], "each check fixture is registered once");
+    const titles = (source: string) => [...source.matchAll(/^(?:if \(import\.meta\.main\) )?(?:describe|test)\("([^"]+)"/gm)].map(([, title]) => title);
+    const toolTitles = [...titles(toolText), ...Object.keys(inShards), "a new test", "the tools a new suite",
       "the tools the command line and what a failed proof leaves to start from a new test", `${each} a new test`];
     const docsTitle = "the documents name what exists";
     const examplesTitle = "the standalone examples";
-    assert.deepEqual(titles(docsSource), [docsTitle]);
-    assert.deepEqual(titles(examplesSource), [examplesTitle]);
+    assert.deepEqual(titles(read(docsSource)), [docsTitle]);
+    assert.deepEqual(titles(read(examplesSource)), [examplesTitle]);
     assert.ok(toolTitles.every((title) => title !== docsTitle && title !== examplesTitle));
     const selectors = selftests.map((task) => {
       const parsed = scripts[task].match(/^node --test --test-(name|skip)-pattern="([^"]+)" (\S+)$/);

@@ -36,6 +36,8 @@ export interface Scope {
   types: Types;
   /** The type the checker inferred for an expression or parameter, if it recorded one. */
   inferred: (id: number) => Json | undefined;
+  /** The declaring module's type for an imported constant, as it appears in a proof bundle. */
+  importedConstantType: (name: string) => string | undefined;
   /** A reference to a definition, as TypeScript spells it. */
   ref: (name: string) => string;
   /** The name of a helper function the module carries for itself (HELPERS in typescript.ts). */
@@ -51,10 +53,21 @@ export interface Scope {
    * as given: that integer arithmetic is exact (a number past 2^53 is rounded, where Quint's and Dafny's integers are
    * not, so such a result throws a RangeError), that a divisor is not zero and a list or map holds what is read from
    * it (a RangeError too), and that `==` on records, lists and variants compares their structure (which JavaScript's
-   * `===` does not, but Dafny's `==` does). Otherwise the two are the same text.
+   * `===` does not, but Dafny's `==` does). And the prover's code states the type of a value where LemmaScript cannot
+   * infer it (`Expected`). Otherwise the two are the same text.
    */
   proof: boolean;
 }
+
+/**
+ * What LemmaScript knows of the type expected where an expression stands. It reads a literal's type from where the
+ * literal stands, never from `as T`, which it drops: `typed` where the type is known (a definition's result, an
+ * argument, a field of a record whose type is known), `strings` beside `==`, where a string literal takes the type of
+ * the other side but a record or variant literal takes none, and `none` anywhere else (an element tested for, a value
+ * put in a map, a fold's start, what a field is read from). There a variant literal reads as a string or a tuple, so
+ * the prover's code passes it through a typed identity (`typed<i>_<module>`) that states its type.
+ */
+type Expected = "typed" | "strings" | "none";
 
 /**
  * `every`, `some`, `includes` and `listMap` are not Quint: the tangler expands them into Quint's built-in `foldl`
@@ -94,7 +107,7 @@ const negative = (e: Json): Json | undefined => (e.kind === "app" && e.opcode ==
 /** Puts a binding back as it was before an inner scope shadowed it. */
 const restore = <V>(m: Map<string, V>, k: string, v: V | undefined) => (v === undefined ? m.delete(k) : m.set(k, v));
 
-export function printer({ types, inferred, ref, helper, bind, variants, definitions, simulatorOnly, proof }: Scope) {
+export function printer({ types, inferred, importedConstantType, ref, helper, bind, variants, definitions, simulatorOnly, proof }: Scope) {
   const { resolve, tagged, isScalar, setElem, keyOf, storedKey, holdsSet, named, ownerOf, typeName, tsType } = types;
   const typeOf = typeOfIn(inferred);
   const forSimulator = (n: string): never => fail(`\`${n}\` is for the simulator only (a sample set or a weight_, fair_ or within_ setting) and cannot be used in a definition`);
@@ -107,6 +120,25 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
   let locals = new Map<string, string>();
   let localId = 0;
   let nesting = 0;
+  let expected: Expected = "typed";
+  /** Whether a module-level value is printed: LemmaScript then knows no other module-level value's type either. */
+  let constant = false;
+  const at = <T>(where: Expected, render: () => T): T => {
+    const outer = expected;
+    expected = where;
+    try { return render(); } finally { expected = outer; }
+  };
+  /** Elements and fields are typed where what holds them is. */
+  const within = () => (expected === "typed" ? "typed" : "none");
+  /** The TypeScript types whose values the prover's code passes through a typed identity, one function each (Expected). */
+  const typings: string[] = [];
+  const ascribe = (text: string, type: string) => {
+    const i = typings.indexOf(type);
+    return `${helper(`typed${i < 0 ? typings.push(type) - 1 : i}`)}(${text})`;
+  };
+  /** A variant literal, its type stated where LemmaScript would not know it. */
+  const variant = (text: string, owner: Json): [string, number] =>
+    [proof && (expected === "none" || (expected === "strings" && tagged(owner.type))) ? ascribe(text, typeName(owner)) : text, ATOM];
   const reference = (name: string) => locals.get(name) ?? ref(name);
   const scoped = <T>(names: string[], render: () => T): T => {
     const outer = locals;
@@ -135,13 +167,17 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
     const t = resolve(typeOf(m.id));
     const entry = { map: tsType(t), key: tsType(keyOf(t)), of: tsType(t.res), stored: storedKey(t, "k") };
     const i = lookups.findIndex((l) => l.map === entry.map);
-    return [`${helper(`lookup${i < 0 ? lookups.push(entry) - 1 : i}`)}(${ex(m, TERNARY)}, ${ex(k, TERNARY)}, ${ex(d, TERNARY)})`, ATOM];
+    return [`${helper(`lookup${i < 0 ? lookups.push(entry) - 1 : i}`)}(${at("typed", () => [m, k, d].map((x) => ex(x, TERNARY)).join(", "))})`, ATOM];
   };
   /** An integer result of arithmetic, which Node's code checks is exact (Scope.proof). */
   const exact = (text: string, prec: number): [string, number] => (proof ? [text, prec] : [`${helper("exact")}(${(helpers.add("exact"), text)})`, ATOM]);
-  /** A read that is undefined outside the list or map, where Node's code throws a RangeError (Scope.proof). */
-  const partial = (which: "nth" | "get", from: string, at: string): [string, number] =>
-    [proof ? `${from}[${at}]` : `${helper(which)}(${(helpers.add(which), from)}, ${at})`, ATOM];
+  /**
+   * A read that is undefined outside the list or map, where Node's code throws a RangeError (Scope.proof). The prover's
+   * code says that a map holds the key (`!`): LemmaScript otherwise reads the value as optional, unless the key is a
+   * name the same expression tested, and a string key never is (it is stored as "$" + k).
+   */
+  const partial = (which: "nth" | "get", from: string, index: string): [string, number] =>
+    [proof ? `${from}[${index}]${which === "get" ? "!" : ""}` : `${helper(which)}(${(helpers.add(which), from)}, ${index})`, ATOM];
   /** Records, lists and variants compare by structure (Scope.proof); a set inside one would compare in order in the proof. */
   const comparable = (e: Json) => !holdsSet(typeOf(e.id)) || fail("== and includes on a value that holds a set are not supported: in the proof a set is a sequence, compared in order; compare sets with subseteq both ways");
   const equal = (a: string, b: string) => `${helper("equal")}(${(helpers.add("equal"), a)}, ${b})`;
@@ -151,11 +187,11 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
     return d ? `(${text} as ${typeName(d)})` : text;
   };
   /** `name: value` for each pair of a record literal's arguments. */
-  const pairs = (args: Json[]) => args.flatMap((_, i) => (i % 2 ? [] : [`${args[i].value}: ${ex(args[i + 1], TERNARY)}`]));
+  const pairs = (args: Json[]) => at(within(), () => args.flatMap((_, i) => (i % 2 ? [] : [`${args[i].value}: ${ex(args[i + 1], TERNARY)}`])));
   /** `{ ...x, a: 1, b: 2 }` arrives as nested updates; this is what is updated, and the updates in order. */
   const unroll = (e: Json): { base: Json; updates: string[] } => {
     const updates: string[] = [];
-    for (; e.kind === "app" && e.opcode === "with"; e = e.args[0]) updates.unshift(`${e.args[1].value}: ${ex(e.args[2], TERNARY)}`);
+    for (; e.kind === "app" && e.opcode === "with"; e = e.args[0]) updates.unshift(`${e.args[1].value}: ${at("typed", () => ex(e.args[2], TERNARY))}`);
     return { base: e, updates };
   };
   /**
@@ -163,7 +199,7 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
    * array literal: LemmaScript knows what `concat` returns, but not what a literal is, if a list method is called on it.
    */
   const parts = (e: Json): (string | string[])[] =>
-    e.kind === "app" && e.opcode === "append" ? [...parts(e.args[0]), [ex(e.args[1], TERNARY)]]
+    e.kind === "app" && e.opcode === "append" ? [...parts(e.args[0]), [at(within(), () => ex(e.args[1], TERNARY))]]
     : e.kind === "app" && e.opcode === "concat" ? [...parts(e.args[0]), ...parts(e.args[1])]
     : [ex(e, ATOM)];
   const joined = (e: Json): string => {
@@ -192,9 +228,14 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       case "name": {
         if (!locals.has(e.name) && simulatorOnly.has(e.name)) return forSimulator(e.name);
         if (renamed.has(e.name)) return fail(`\`${e.name}\` is what a match arm carries; use its fields (${e.name}.field), or rebuild the variant, rather than the value as a whole`);
-        if (!variants.has(e.name)) return [reference(e.name), ATOM];
+        // Inside a module-level value, the prover knows another one's type only where it is expected (Expected).
+        if (!variants.has(e.name)) {
+          const name = reference(e.name);
+          return [proof && constant && expected !== "typed" && !locals.has(e.name)
+            ? ascribe(name, importedConstantType(e.name) ?? tsType(typeOf(e.id))) : name, ATOM];
+        }
         const owner = ownerOf(e.name);
-        return [tagged(owner.type) ? `({ tag: ${tag(e.name)} } as ${typeName(owner)})` : tag(e.name), ATOM];
+        return variant(tagged(owner.type) ? `({ tag: ${tag(e.name)} } as ${typeName(owner)})` : tag(e.name), owner);
       }
       case "let": return fail(`\`val ${e.opdef.name}\` must be at the top of a definition, not inside an expression`);
       case "lambda": return [arrow(e.params, e.expr), ARROW];
@@ -208,12 +249,18 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
     if (negative(e)) return print(negative(e));
     if (BINARY[op]) {
       const [symbol, prec] = BINARY[op];
-      const structural = (op === "eq" || op === "neq") && !isScalar(typeOf(a[0].id)) && comparable(a[0]);
-      if (structural && !proof) return op === "eq" ? [equal(ex(a[0], TERNARY), ex(a[1], TERNARY)), ATOM] : [`!${equal(ex(a[0], TERNARY), ex(a[1], TERNARY))}`, UNARY];
-      const text = `${ex(a[0], prec)} ${symbol} ${ex(a[1], prec + 1)}`;
+      const compares = op === "eq" || op === "neq";
+      // A variant that carries nothing is the value that has its tag: the prover compares the tag with the constructor.
+      const bare = (x: Json) => x.kind === "name" && variants.has(x.name) && !locals.has(x.name) && tagged(ownerOf(x.name).type);
+      const lone = compares ? a.findIndex(bare) : -1;
+      if (lone >= 0) return [`${ex(a[1 - lone], ATOM)}.tag ${symbol} ${tag(a[lone].name)}`, EQ];
+      const side = (x: Json, min: number) => (compares ? at("strings", () => ex(x, min)) : ex(x, min));
+      const structural = compares && !isScalar(typeOf(a[0].id)) && comparable(a[0]);
+      if (structural && !proof) return op === "eq" ? [equal(side(a[0], TERNARY), side(a[1], TERNARY)), ATOM] : [`!${equal(side(a[0], TERNARY), side(a[1], TERNARY))}`, UNARY];
+      const text = `${side(a[0], prec)} ${symbol} ${side(a[1], prec + 1)}`;
       return prec === ADD || prec === MULTIPLY ? exact(text, prec) : [text, prec];
     }
-    const recv = () => ex(a[0], ATOM);
+    const recv = () => at("none", () => ex(a[0], ATOM));
     const builtin = op.match(BUILTIN)?.[1];
     // Outside the list, nthOr gives the default and removeAt the list as it is, as their Quint does (BUILTINS).
     const inRange = () => `0 <= ${ex(a[1], COMPARE + 1)} && ${ex(a[1], COMPARE + 1)} < ${recv()}.length`;
@@ -227,9 +274,14 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       case "idiv": helpers.add("quotient"); return [`${helper("quotient")}(${ex(a[0], TERNARY)}, ${ex(a[1], TERNARY)})`, ATOM];
       case "imod": helpers.add("quotient").add("remainder"); return [`${helper("remainder")}(${ex(a[0], TERNARY)}, ${ex(a[1], TERNARY)})`, ATOM];
       // A map is an object. Looking a key up is only safe where the same definition has tested for it.
-      case "Map": return [a.reduce((m, pair) => put(m, typeOf(e.id), mapKey(e, pair.args[0]), ex(pair.args[1], TERNARY)), `({} as ${tsType(typeOf(e.id))})`), ATOM];
-      case "put": case "set": return [put(recv(), typeOf(a[0].id), mapKey(a[0], a[1]), ex(a[2], TERNARY)), ATOM];
-      case "get": return partial("get", recv(), mapKey(a[0], a[1]));
+      // An empty object has no type for the prover, wherever it stands; a new Map has the one it is given.
+      case "Map": {
+        const [t, map] = [resolve(typeOf(e.id)), tsType(typeOf(e.id))];
+        const empty = proof ? `(new Map<${tsType(keyOf(t))}, ${tsType(t.res)}>() as unknown as ${map})` : `({} as ${map})`;
+        return [at("none", () => a.reduce((m, pair) => put(m, typeOf(e.id), mapKey(e, pair.args[0]), ex(pair.args[1], TERNARY)), empty)), ATOM];
+      }
+      case "put": case "set": return [put(recv(), typeOf(a[0].id), ...at("none", () => [mapKey(a[0], a[1]), ex(a[2], TERNARY)] as const)), ATOM];
+      case "get": return partial("get", recv(), at("none", () => mapKey(a[0], a[1])));
       case "keys": return fail("a map cannot be listed or iterated, only asked about one key: write `m.keys().contains(k)`, and keep a list of keys beside the map if you need to go through them");
       case "not": return [`!${ex(a[0], ATOM)}`, UNARY];
       case "and": return [flat(e, "and").map((x) => ex(x, AND + 1)).join(" && "), AND];
@@ -245,7 +297,7 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       }
       // Empty lists and lists inside another expression carry their inferred type.
       case "List": {
-        const items = `[${a.map((x) => ex(x, TERNARY)).join(", ")}]`;
+        const items = `[${at(within(), () => a.map((x) => ex(x, TERNARY))).join(", ")}]`;
         return [a.length && nesting <= 1 ? items : `(${items} as ${tsType(typeOf(e.id))})`, ATOM];
       }
       case "append": case "concat": return [joined(e), ATOM];
@@ -261,12 +313,14 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
         const method = LIST_HELPERS[which]?.method;
         const inner = a[2].expr?.args?.[1];
         if (which === "every") return [`!${recv()}.some(${arrow([item], inner, true)})`, UNARY];
-        if (method) return [`${recv()}.${method}(${arrow([item], inner)})`, ATOM];
+        // Dafny 4.11 crashes on a sequence comprehension inside a module-level constant, so there a mapped list stays a fold.
+        if (method && !(proof && constant && method === "map")) return [`${recv()}.${method}(${at(within(), () => arrow([item], inner))})`, ATOM];
         if (which === "includes") {
           const [v, t] = [inner.args[1], typeOf(inner.args[1].id)];
-          return [isScalar(t) || (comparable(v) && proof) ? `${recv()}.includes(${ex(v, TERNARY)})` : `${recv()}.some((x0: ${tsType(t)}) => ${equal("x0", ex(v, TERNARY))})`, ATOM];
+          const value = at("none", () => ex(v, TERNARY));
+          return [isScalar(t) || (comparable(v) && proof) ? `${recv()}.includes(${value})` : `${recv()}.some((x0: ${tsType(t)}) => ${equal("x0", value)})`, ATOM];
         }
-        return [`${recv()}.reduce(${ex(a[2])}, ${ex(a[1], TERNARY)})`, ATOM];
+        return [`${recv()}.reduce(${at("typed", () => ex(a[2]))}, ${at("none", () => ex(a[1], TERNARY))})`, ATOM];
       }
     }
     if (variants.has(op)) {
@@ -277,7 +331,7 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       if (base.kind === "name" && matchedAs.get(base.name) === op.split("::").pop())
         return [updates.length ? `({ ...${renamed.get(base.name)}, ${updates.join(", ")} } as ${typeName(owner)})` : renamed.get(base.name)!, ATOM];
       if (a[0].kind !== "app" || a[0].opcode !== "Rec") fail(`${op}(…): give the record field by field, or update the value matched in the ${op} arm`);
-      return [`({ ${[`tag: ${tag(op)}`, ...pairs(a[0].args)].join(", ")} } as ${typeName(owner)})`, ATOM];
+      return variant(`({ ${[`tag: ${tag(op)}`, ...at("typed", () => pairs(a[0].args))].join(", ")} } as ${typeName(owner)})`, owner);
     }
     if (op === "matchVariant") {
       // match o { | Draft(d) => … | _ => … } becomes a chain of tests on the tag, with d standing for o itself.
@@ -299,7 +353,7 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       return [arms.reduceRight((rest, arm) => `${arm.test} ? ${arm.result} : ${rest}`, last.result), arms.length ? TERNARY : OR];
     }
     const [x, y] = members(op, a);
-    if ((op === "contains" || op === "in") && x.opcode === "keys") return [`(${mapKey(x.args[0], y)}) in ${ex(x.args[0], COMPARE + 1)}`, COMPARE];
+    if ((op === "contains" || op === "in") && x.opcode === "keys") return [at("none", () => `(${mapKey(x.args[0], y)}) in ${ex(x.args[0], COMPARE + 1)}`), COMPARE];
     if (SET_OPS[op]) {
       // A set is an array that never holds the same value twice. Only simple values can be in one.
       const t = resolve(typeOf(x.id));
@@ -307,19 +361,19 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       const el = tsType(setElem(t));
       // What `map` makes is a set too, so it is held to the same rule as what it maps.
       const not = () => (y.kind === "lambda" ? arrow(y.params, y.expr, true) : `(set_x: ${el}) => !${ex(y, ATOM)}(set_x)`);
-      const text = SET_OPS[op]({ a: ex(x, ATOM), b: y && ex(y, y.kind === "lambda" ? ARROW : ATOM), el, out: op === "map" ? tsType(setElem(resolve(typeOf(e.id)))) : el, not });
+      const text = at("none", () => SET_OPS[op]({ a: ex(x, ATOM), b: y && ex(y, y.kind === "lambda" ? ARROW : ATOM), el, out: op === "map" ? tsType(setElem(resolve(typeOf(e.id)))) : el, not }));
       return [text, text.startsWith("!") ? UNARY : ATOM];
     }
     if (op === "Set") {
       const el = setElem(resolve(typeOf(e.id)));
-      const distinct = [...new Set(a.map((x) => ex(x, TERNARY)))];
+      const distinct = [...new Set(at(within(), () => a.map((x) => ex(x, TERNARY))))];
       const literal = (x: Json) => ["int", "str", "bool"].includes(x.kind) || !!negative(x) || (x.kind === "name" && variants.has(x.name));
       if (a.length > 1 && !a.every(literal)) fail("Set(…) with several members that are not literals could hold the same value twice; write Set(a).union(Set(b))");
       // Keep variant sets typed where TypeScript would otherwise infer string[]. LemmaScript reads the original literals.
       const items = `[${distinct.join(", ")}]`;
-      return [distinct.length && (proof || resolve(el).kind !== "sum") ? items : `(${items} as ${tsType(el)}[])`, ATOM];
+      return [distinct.length && nesting <= 1 && (proof || resolve(el).kind !== "sum") ? items : `(${items} as ${tsType(el)}[])`, ATOM];
     }
-    return [`${reference(op)}(${a.map((x) => ex(x, TERNARY)).join(", ")})`, ATOM];
+    return [`${reference(op)}(${at("typed", () => a.map((x) => ex(x, TERNARY))).join(", ")})`, ATOM];
   };
 
   /** A definition body: leading `val`s become `const`s, the rest is returned. */
@@ -338,6 +392,9 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
     return [...lines, `return ${ex(e)};`];
   });
 
-  return { ex, body, helpers, lookups, proof };
+  /** A module-level value's expression. */
+  const constantEx = (e: Json): string => { constant = true; try { return ex(e); } finally { constant = false; } };
+
+  return { ex, constant: constantEx, body, helpers, lookups, typings, proof };
 }
 export type Printer = ReturnType<typeof printer>;
