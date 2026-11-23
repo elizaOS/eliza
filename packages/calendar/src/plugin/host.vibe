@@ -1,4 +1,4 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "A resident delete runs at once only for the event the owner pointed at"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"
 import { sha256Hex } from "@elizaos/core"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { attendeeNotice, eventVisible, invitationVerdict, writeRoute, type AttendeeNotice } from "../../gen/calendar__actions.effect.vibe"
@@ -81,7 +81,7 @@ export interface CalendarFound {
 export type CalendarChangeRequest =
   | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly reviewFirst?: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "update"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
-  | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly reviewFirst?: boolean; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
+  | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "respond"; readonly target: CalendarFound; readonly scope: CalendarAnswerScope; readonly response: CalendarInvitationResponse; readonly notifyAttendees?: boolean; readonly askedBy: string; readonly askId: string }
 
 /** What a change came to: applied now through the ledger, queued for approval, or refused before anything ran; a change of an existing event says whom it tells. */
@@ -95,6 +95,13 @@ export type CalendarRefusal =
   | "no_account" | "foreign_account" | "not_writable" | "no_provider" | "approvals_unavailable"
   | "organizer_unknown" | "not_invitee" | "invitee_edit" | "answers_unsupported" | "answer_scope"
 
+/** A delete the Calendar action asked the owner to confirm in chat: the event, the request that asked, and when. */
+export interface CalendarDeleteQuestion {
+  readonly eventId: string
+  readonly askedIn: string
+  readonly askedAt: number
+}
+
 /** What a calendar host needs from the agent: its durable cache, its id, and the owner approval queue when it runs. */
 export interface CalendarHostOptions {
   readonly cache: CalendarCache
@@ -104,6 +111,13 @@ export interface CalendarHostOptions {
 
 const approvalLifetimeMs = 24 * 60 * 60 * 1000
 const decodePayload = Schema.decodeUnknownOption(PayloadRecord, { onExcessProperty: "error" })
+const decodeQuestion = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ eventId: Schema.String, askedIn: Schema.String, askedAt: Schema.Number })))
+const questionKey = (conversation: string) => `calendar.delete-question.${encodeURIComponent(conversation)}`
+const noticeReason: Readonly<Record<AttendeeNotice, string>> = {
+  NotifyAttendees: ", telling its attendees",
+  NotifyNobody: "",
+  CannotNotify: ", without telling its attendees: this calendar can't email them",
+}
 
 function writableRow(row: CalendarSummary): boolean {
   return row.accessRole === "owner" || row.accessRole === "writer"
@@ -201,6 +215,24 @@ export effect function calendarHost(options: CalendarHostOptions) {
     return undefined
   }
 
+  effect function notifies(source: CalendarSourceKey): boolean!! {
+    return (try Ref.get(providers)).get(source.provider)?.notifies === true
+  }
+
+  effect function deleteQuestion(conversation: string): (CalendarDeleteQuestion | undefined)!! {
+    const raw = store.get(questionKey(conversation)) catch () => undefined
+    const read = decodeQuestion(raw ?? "")
+    return Option.isSome(read) ? read.value : undefined
+  }
+
+  effect function askToDelete(conversation: string, question: CalendarDeleteQuestion): void!! {
+    store.set(questionKey(conversation), JSON.stringify(question)) catch () => undefined
+  }
+
+  effect function settleDeleteQuestion(conversation: string): void!! {
+    store.remove(questionKey(conversation)) catch () => undefined
+  }
+
   effect function writeTarget(calendarId?: string): (CalendarSourceKey | undefined)!! {
     const account = try Ref.get(active)
     if (account === undefined) return undefined
@@ -219,9 +251,9 @@ export effect function calendarHost(options: CalendarHostOptions) {
     if (provider === undefined) return { kind: "refused", reason: "no_provider" }
     const row = (try listed(account)).found.find(({ row }) => sameSourceKey(row, source))
     const route = writeRoute(source.provider === "eliza" ? "ResidentProvider" : "AccountProvider", source.connectorAccountId === account.accountId && row !== undefined, row !== undefined && writableRow(row.row),
-      (asked.kind === "create" || asked.kind === "delete") && asked.reviewFirst === true)
+      asked.kind === "create" && asked.reviewFirst === true)
     if (route === "RefuseWrite") return { kind: "refused", reason: source.connectorAccountId === account.accountId ? "not_writable" : "foreign_account" }
-    const notice = asked.kind === "create" ? "NotifyNobody" : attendeeNotice(asked.notifyAttendees === true, hasOtherAttendees(asked.target.event), source.provider === "eliza")
+    const notice = asked.kind === "create" ? "NotifyNobody" : attendeeNotice(asked.notifyAttendees === true, hasOtherAttendees(asked.target.event), provider.notifies)
     const notify = notice === "NotifyAttendees" ? { notifyAttendees: true as const } : {}
     let payload: CalendarMutationPayload
     if (asked.kind === "create") {
@@ -248,7 +280,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
     const now = try Clock.currentTimeMillis
     const filed = tryPromise(() => approvals.request({
       id: request.id, subjectUserId: asked.askedBy, requestedBy: options.agentId, action: approvalAction(payload),
-      payload: { change: payload, digest }, reason: `Calendar ${payload.action.replace("_", " ")} reviewed in chat${notice === "NotifyAttendees" ? ", telling its attendees" : ""}`,
+      payload: { change: payload, digest }, reason: `Calendar ${payload.action.replace("_", " ")} reviewed in chat${noticeReason[notice]}`,
       expiresAt: new Date(now + approvalLifetimeMs).toISOString(),
     })) catch () => undefined
     return filed === undefined ? { kind: "refused", reason: "approvals_unavailable" } : { kind: "queued", request, approvalId: filed.id, notice }
@@ -268,7 +300,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
   }
 
   return {
-    register, bindAccount, calendars, search, find, writeTarget, change, executeApproval,
+    register, bindAccount, calendars, search, find, writeTarget, notifies, change, executeApproval, deleteQuestion, askToDelete, settleDeleteQuestion,
     active: () => Ref.get(active),
     ledger: {
       inspect: (id: string) => Effect.provide(ledger.inspect(id), rows),

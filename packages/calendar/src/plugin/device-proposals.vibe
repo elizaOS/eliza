@@ -12,7 +12,7 @@ import { CALENDAR_AVAILABILITY_CAPABILITY } from "../availability/projection.vib
 import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, namedCalendarReadTarget } from "../client/named-read.vibe"
 import { addDaysToLocalDate, getZonedDateParts, knownTimeZone, startOfCivilDay, type LocalDate } from "../clock.vibe"
 import {
-  declinesInWords, denseDeleteTarget, eventNamedInWords, localInstant, namesAZone, parseExplicitLocalDate, parseStatedClockTimes, statedLengths, statedShift, wordsInWords,
+  asksToDeleteInWords, declinesInWords, deleteWords, eventNamedInWords, localInstant, namesAZone, parseExplicitLocalDate, parseStatedClockTimes, statedLengths, statedShift, wordsInWords,
   type StatedClockTime, type StatedClockTimes, type StatedShift,
 } from "../request-time.vibe"
 import { calendarActionName } from "./actions.vibe"
@@ -32,7 +32,6 @@ const identifier = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
 const revision = /^[a-f0-9]{64}$/
 const phoneCalendarWords = /\b(?:phone|device|android|system|os)(?:['’]s)?\s+(?:own\s+)?calendar\b|\bcalendar\s+(?:app\s+)?on\s+(?:this|my|the)\s+(?:phone|device)\b/i
 const unsupportedCreate = /\b(?:every|each|daily|weekly|monthly|yearly|weekdays|repeat(?:s|ing)?|recurr\w*|invite\w*|guests?|attendees?|all[- ]day)\b/i
-const deleteWords = /\b(?:delete|remove|cancel|clear|drop|erase|get\s+rid\s+of)\b|\btake\b[\s\S]*\boff\b/i
 const todayPart = /\b(?:this\s+(?:morning|afternoon|evening)|tonight|later\s+today)\b/i
 const leadingChange = /^[\s"“'‘]*(?:(?:please|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need|would\s+like|['’]d\s+like)\s+to\s+)?(?:move|reschedule|change|push|shift|bump|postpone|delay|rename|retitle|set|update|edit|call)\b/iu
 const moveWords = /\b(?:move|reschedule|push|shift|bump|postpone|delay)\b|\b(?:change|set|update|edit)\b(?!\s+(?:the\s+|its\s+)?(?:title|name)\b)/iu
@@ -339,7 +338,7 @@ function groundCalendar(operation: DeviceOperation, turn: DeviceTurn): Grounding
   const key = keyOf(operation)
   const screen = screenOf(turn)
   if (key === undefined || screen === undefined || !admitted(turn, key)) return notHere
-  const asksDelete = deleteAsked(deleteWords.test(turn.ownerText) || denseDeleteTarget(turn.ownerText) !== undefined, declinesInWords(turn.ownerText, deleteWords))
+  const asksDelete = deleteAsked(asksToDeleteInWords(turn.ownerText), declinesInWords(turn.ownerText, deleteWords))
   switch (operation.type) {
     case "calendar_read_next": return { kind: "Grounded", operation }
     case "calendar_create_local": {

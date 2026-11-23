@@ -29,10 +29,11 @@ export interface CalendarWindowRead {
 
 type WriteFailure = CalendarWriteNotAccepted | CalendarWriteUnconfirmed
 
-/** How the Calendar action reaches one provider for one account: whether it writes RFC 5545 recurrence lines, its calendars, reads and the three writes, an update or removal under the scope it names, and, when the provider can, an invitee's answer to an invitation; a change of an existing event tells its attendees exactly when `notifyAttendees` is true (Google's `sendUpdates` all, else none). */
+/** How the Calendar action reaches one provider for one account: whether it writes RFC 5545 recurrence lines and can send attendees an update, its calendars, reads and the three writes, an update or removal under the scope it names, and, when the provider can, an invitee's answer to an invitation; a port that sends updates tells a changed event's attendees exactly when `notifyAttendees` is true (Google's `sendUpdates` all, else none). */
 export interface CalendarProviderPort {
   readonly provider: CalendarProvider
   readonly recurrenceLines: boolean
+  readonly notifies: boolean
   sources(account: CalendarAccount): readonly CalendarSummary[]!CalendarSourceUnavailable
   read(account: CalendarAccount, source: CalendarSourceKey, timeMin: number, timeMax: number): CalendarWindowRead!CalendarSourceUnavailable
   get(account: CalendarAccount, source: CalendarSourceKey, eventId: string): (CalendarEvent | undefined)!CalendarSourceUnavailable
@@ -245,6 +246,7 @@ export effect function residentCalendar(): CalendarProviderPort!!KeyValueStore.K
   return {
     provider: "eliza",
     recurrenceLines: true,
+    notifies: false,
     effect sources(account) {
       return [{ ...residentSource(account), accountEmail: null, summary: "Calendar", description: null, primary: true, accessRole: "owner", timeZone: null, selected: true, includeInFeed: true }]
     },

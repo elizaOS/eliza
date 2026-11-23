@@ -1,10 +1,11 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"
+import { clientNoticeRefused } from "../../gen/calendar__actions.effect.vibe"
 import type { CalendarEvent } from "../model.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import { eventVersion } from "./providers.vibe"
-import type { CalendarChangeResult, CalendarHost, CalendarRefusal } from "./host.vibe"
+import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarRefusal } from "./host.vibe"
 
 /** What the agent's route table hands a calendar route. */
 export interface CalendarRouteInput {
@@ -108,6 +109,11 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
     })
   }
 
+  async function unannounced(calendar: CalendarHost, found: CalendarFound, asked: boolean): Promise<CalendarRouteReply | undefined> {
+    return clientNoticeRefused(asked, await runPromise(calendar.notifies(found.source)))
+      ? refused(400, "CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED", "This calendar cannot email attendees, so nothing was changed.") : undefined
+  }
+
   async function target(calendar: CalendarHost, input: CalendarRouteInput, calendarId: string | undefined, expected: string) {
     const eventId = input.parameters.get("eventId") ?? ""
     const found = await runPromise(calendar.find(eventId, calendarId))
@@ -161,6 +167,8 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         const request = body.value
         const found = await target(calendar, input, request.calendarId, request.expectedProviderVersion)
         if (!("event" in found)) return found
+        const silent = await unannounced(calendar, found, request.notifyAttendees === true)
+        if (silent !== undefined) return silent
         const event = found.event
         const fields = decodeFields({
           title: request.title ?? event.title, description: request.notes ?? event.description, location: request.location ?? event.location,
@@ -180,6 +188,8 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         const request = body.value
         const found = await target(calendar, input, request.calendarId, request.expectedProviderVersion)
         if (!("event" in found)) return found
+        const silent = await unannounced(calendar, found, request.notifyAttendees === true)
+        if (silent !== undefined) return silent
         return changed(await runPromise(Effect.option(calendar.change({ kind: "respond", target: found, scope: request.recurrenceScope ?? "instance", response: request.responseStatus,
           notifyAttendees: request.notifyAttendees === true, askedBy: "owner", askId: request.idempotencyKey }))))
       }) },
@@ -194,6 +204,8 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         if (Option.isNone(scope)) return refused(400, "CALENDAR_SCOPE_INVALID", "The recurrence scope is instance, this_and_following or series.")
         const found = await target(calendar, input, input.query.get("calendarId"), expected)
         if (!("event" in found)) return found
+        const silent = await unannounced(calendar, found, input.query.get("notifyAttendees") === "true")
+        if (silent !== undefined) return silent
         return changed(await runPromise(Effect.option(calendar.change({ kind: "delete", target: found, scope: scope.value, notifyAttendees: input.query.get("notifyAttendees") === "true", askedBy: "owner", askId: key }))))
       }) },
   ]
