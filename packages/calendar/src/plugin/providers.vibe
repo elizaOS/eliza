@@ -1,8 +1,9 @@
-// spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"; spec/calendar/residentStore.md, "The earlier events are imported once, exactly, and never over the series rows"
+// spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"; spec/calendar/residentStore.md, "The earlier events are imported once, exactly, and never over the series rows"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"
 import { sha256Hex } from "@elizaos/core"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import type { CalendarEvent, CalendarEventFields, CalendarProvider, CalendarSourceKey, CalendarSummary } from "../model.vibe"
-import { CalendarWriteNotAccepted, CalendarWriteUnconfirmed } from "../mutations/ledger.vibe"
+import { CalendarWriteNotAccepted, CalendarWriteUnconfirmed, type CalendarAnswerScope, type CalendarInvitationResponse } from "../mutations/ledger.vibe"
+import type { OwnerRole } from "../../gen/calendar__actions.effect.vibe"
 import { expandDocumentCalendar } from "../availability/recurrence.vibe"
 import { findRow, InvalidSeriesTime, removeScoped, saveScopedEdit, ScopeMismatch, SeriesChanged, type CalendarRow, type CalendarRowFields, type CalendarWriteScope } from "../series/document.vibe"
 import { CalendarRowRecord } from "../series/rows.schema.vibe"
@@ -28,7 +29,7 @@ export interface CalendarWindowRead {
 
 type WriteFailure = CalendarWriteNotAccepted | CalendarWriteUnconfirmed
 
-/** How the Calendar action reaches one provider for one account: whether it writes RFC 5545 recurrence lines, its calendars, reads and the three writes, an update or removal under the scope it names. */
+/** How the Calendar action reaches one provider for one account: whether it writes RFC 5545 recurrence lines, its calendars, reads and the three writes, an update or removal under the scope it names, and, when the provider can, an invitee's answer to an invitation. */
 export interface CalendarProviderPort {
   readonly provider: CalendarProvider
   readonly recurrenceLines: boolean
@@ -38,11 +39,31 @@ export interface CalendarProviderPort {
   create(account: CalendarAccount, source: CalendarSourceKey, fields: CalendarEventFields, recurrence: CalendarRecurrence | null, idempotencyKey: string): CalendarEvent!WriteFailure
   update(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarWriteScope, fields: CalendarEventFields, expectedVersion: string, idempotencyKey: string): CalendarEvent!WriteFailure
   remove(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarWriteScope, expectedVersion: string, idempotencyKey: string): void!WriteFailure
+  respond?(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarAnswerScope, response: CalendarInvitationResponse, expectedVersion: string, idempotencyKey: string): CalendarEvent!WriteFailure
 }
 
 /** The provider version of an event: its etag, else its update time. */
 export function eventVersion(event: CalendarEvent): string {
   return typeof event.metadata.etag === "string" && event.metadata.etag !== "" ? event.metadata.etag : event.updatedAt
+}
+
+/** The owner's role on an event as read: organizer, invitee or unknown; every resident event is the owner's own. */
+export function ownerRole(event: CalendarEvent, accountEmail: string | null): OwnerRole {
+  if (event.provider === "eliza" || event.organizer?.self === true) return "OrganizerRole"
+  const own = event.attendees.find((attendee) => attendee.self)
+  if (own !== undefined) return own.organizer ? "OrganizerRole" : "InviteeRole"
+  const organizer = typeof event.organizer?.email === "string" ? event.organizer.email.trim().toLowerCase() : ""
+  return organizer !== "" && organizer === (accountEmail ?? "").trim().toLowerCase() ? "OrganizerRole" : "UnknownRole"
+}
+
+/** Whether an event reads back with the owner's own attendee answering as asked. */
+export function answeredWith(event: CalendarEvent, response: CalendarInvitationResponse): boolean {
+  return event.attendees.some((attendee) => attendee.self && attendee.responseStatus === response)
+}
+
+/** The fields of an event as it is, to compare a readback that must leave them unchanged. */
+export function fieldsOf(event: CalendarEvent): CalendarEventFields {
+  return { title: event.title, description: event.description, location: event.location, startAt: event.startAt, endAt: event.endAt, isAllDay: event.isAllDay, timeZone: event.timezone ?? "UTC" }
 }
 
 /** Whether an event's half-open span meets the window, a zero-length event counting at its start. */

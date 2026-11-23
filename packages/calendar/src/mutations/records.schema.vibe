@@ -1,4 +1,4 @@
-// spec/calendar/mutationLedger.md, "A replay needs a durable receipt, and a recorded receipt never changes"; spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"
+// spec/calendar/mutationLedger.md, "A replay needs a durable receipt, and a recorded receipt never changes"; spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"
 import type { CalendarEvent, CalendarEventFields, CalendarSourceKey } from "../model.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 
@@ -75,11 +75,13 @@ export const PayloadRecord = Schema.Union([
   Schema.Struct({ action: Schema.Literal("schedule_event"), account: Schema.String, source: SourceKeyRecord, fields: FieldsRecord, recurrence: Schema.NullOr(RecurrenceRecord) }),
   Schema.Struct({ action: Schema.Literal("modify_event"), account: Schema.String, target: Target, scope: WriteScopeRecord, fields: FieldsRecord }),
   Schema.Struct({ action: Schema.Literal("cancel_event"), account: Schema.String, target: Target, scope: WriteScopeRecord }),
+  Schema.Struct({ action: Schema.Literal("respond_invitation"), account: Schema.String, target: Target, scope: Schema.Literals(["instance", "series"]),
+    response: Schema.Literals(["accepted", "tentative", "declined"]) }),
 ])
 
 /** The provider's receipt for one applied change. */
 export const ReceiptRecord = Schema.Struct({
-  operation: Schema.Literals(["schedule_event", "modify_event", "cancel_event"]),
+  operation: Schema.Literals(["schedule_event", "modify_event", "cancel_event", "respond_invitation"]),
   source: SourceKeyRecord,
   eventId: Schema.String.check(Schema.isMinLength(1)),
   providerVersion: Schema.String.check(Schema.isMinLength(1)),

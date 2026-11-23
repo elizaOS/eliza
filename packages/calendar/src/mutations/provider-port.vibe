@@ -1,10 +1,10 @@
-// spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
+// spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"
 import { sha256Hex } from "@elizaos/core"
-import { createOutcome, repeatingCreateAllowed, receiptVersion, reviewStillBinds } from "../../gen/calendar__actions.effect.vibe"
+import { createOutcome, invitationVerdict, repeatingCreateAllowed, receiptVersion, reviewStillBinds, type InvitationChange, type InvitationVerdict, type OwnerRole } from "../../gen/calendar__actions.effect.vibe"
 import { knownTimeZone } from "../clock.vibe"
 import { holdsRecurrence, type CalendarRecurrence } from "../series/recurrence-rule.vibe"
 import { sameSourceKey, utcInstant, type CalendarEvent, type CalendarEventFields, type CalendarSourceKey } from "../model.vibe"
-import { eventVersion, holdsFields, type CalendarAccount, type CalendarProviderPort } from "../plugin/providers.vibe"
+import { answeredWith, eventVersion, fieldsOf, holdsFields, ownerRole, type CalendarAccount, type CalendarProviderPort } from "../plugin/providers.vibe"
 import {
   CalendarPreflightRefused, CalendarWriteNotAccepted, CalendarWriteUnconfirmed,
   type CalendarMutationFailure, type CalendarMutationPayload, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest,
@@ -46,6 +46,22 @@ const failure = (code: string, message: string, retryable: boolean): CalendarMut
 const refuse = (code: string, message: string, retryable = false) => new CalendarPreflightRefused({ failure: failure(code, message, retryable) })
 const unconfirmed = (code: string, message: string) => new CalendarWriteUnconfirmed({ failure: failure(code, message, false) })
 
+/** What a reviewed change asks of an event, as the invitation rule sees it. */
+export function invitationChangeOf(action: Exclude<CalendarMutationPayload["action"], "schedule_event">): InvitationChange {
+  return action === "modify_event" ? "EditEvent" : action === "cancel_event" ? "DeleteEvent" : "AnswerInvitation"
+}
+
+/** Why the invitation rule refused a change: its code and sentence. */
+export function invitationRefusal(change: InvitationChange, role: OwnerRole, verdict: InvitationVerdict): { readonly code: string; readonly message: string } {
+  if (verdict === "RefuseScope") return { code: "CALENDAR_RECURRENCE_RESPONSE_SCOPE_UNSUPPORTED", message: "An invitation is answered for this event or the whole series, not this and following." }
+  if (verdict === "RefuseUnsupported") return { code: "CALENDAR_INVITATION_RESPONSE_UNSUPPORTED", message: "That calendar's provider can't answer invitations." }
+  if (verdict === "RunAsDecline") return { code: "CALENDAR_CANCELLATION_AUTHORITY_MISMATCH", message: "You are invited to this event, so it can be declined but not removed." }
+  if (role === "UnknownRole") return { code: "CALENDAR_ORGANIZER_IDENTITY_UNKNOWN", message: "The calendar doesn't say whether you organize this event or were invited." }
+  return change === "AnswerInvitation"
+    ? { code: "CALENDAR_INVITATION_RESPONSE_AUTHORITY_MISMATCH", message: "Only an invitee can answer this invitation." }
+    : { code: "CALENDAR_INVITATION_MODIFY_FORBIDDEN", message: "Only the organizer can change this event." }
+}
+
 function sourceOf(payload: CalendarMutationPayload): CalendarSourceKey {
   return payload.action === "schedule_event" ? payload.source : payload.target.source
 }
@@ -75,13 +91,17 @@ export function providerMutationPort(providers: CalendarProviders): CalendarMuta
   return {
     effect preflight(request) {
       const { account, source, port } = try bound(request)
+      if (request.payload.action === "respond_invitation" && port.respond === undefined) {
+        const refusal = invitationRefusal("AnswerInvitation", "InviteeRole", "RefuseUnsupported")
+        throw refuse(refusal.code, refusal.message)
+      }
       const listed = port.sources(account) catch effect () => { throw refuse("CALENDAR_SOURCE_UNAVAILABLE", "The calendar could not be listed.", true) }
       const writable = listed.find((row) => sameSourceKey(row, source))
       if (writable === undefined || (writable.accessRole !== "owner" && writable.accessRole !== "writer")) {
         throw refuse("CALENDAR_SOURCE_NOT_WRITABLE", "That calendar is not one this account can write.")
       }
       const payload = request.payload
-      if (payload.action !== "cancel_event" && !fieldsSpanValid(payload.fields)) throw refuse("CALENDAR_FIELDS_INVALID", "The reviewed start and end are not an ordered span.")
+      if ((payload.action === "schedule_event" || payload.action === "modify_event") && !fieldsSpanValid(payload.fields)) throw refuse("CALENDAR_FIELDS_INVALID", "The reviewed start and end are not an ordered span.")
       if (payload.action === "schedule_event") {
         const carrier = port.provider === "eliza" ? "ResidentRows" : port.recurrenceLines ? "ProviderRuleLines" : "ProviderWithoutRules"
         if (!repeatingCreateAllowed(payload.recurrence !== null, carrier)) {
@@ -95,6 +115,13 @@ export function providerMutationPort(providers: CalendarProviders): CalendarMuta
       const target = port.get(account, source, payload.target.eventId) catch effect () => { throw refuse("CALENDAR_SOURCE_UNAVAILABLE", "The event could not be read.", true) }
       if (target === undefined) throw refuse("CALENDAR_EVENT_NOT_FOUND", "That event is no longer in the calendar.")
       if (eventVersion(target) !== payload.target.expectedVersion) throw refuse("CALENDAR_TARGET_CHANGED", "The event changed since it was reviewed.")
+      const change = invitationChangeOf(payload.action)
+      const role = ownerRole(target, writable.accountEmail)
+      const verdict = invitationVerdict(change, role, port.respond !== undefined, payload.scope === "this_and_following")
+      if (verdict !== "RunAsAsked") {
+        const refusal = invitationRefusal(change, role, verdict)
+        throw refuse(refusal.code, refusal.message)
+      }
       return { target }
     },
     effect execute(request, preflight) {
@@ -110,6 +137,16 @@ export function providerMutationPort(providers: CalendarProviders): CalendarMuta
       }
       const target = preflight.target
       if (target === null) throw unconfirmed("CALENDAR_TARGET_UNREAD", "The change has no target read before it.")
+      if (payload.action === "respond_invitation") {
+        if (port.respond === undefined) throw new CalendarWriteNotAccepted({ failure: failure("CALENDAR_INVITATION_RESPONSE_UNSUPPORTED", "That calendar's provider can't answer invitations.", false) })
+        const answered = try port.respond(account, source, payload.target.eventId, payload.scope, payload.response, payload.target.expectedVersion, request.id)
+        const read = try readBack(port, account, source, answered.id)
+        const version = read === undefined ? "" : eventVersion(read)
+        if (read === undefined || !fromSource(read, source) || !answeredWith(read, payload.response) || !holdsFields(read, fieldsOf(target)) || version === "") {
+          throw unconfirmed("CALENDAR_RESPONSE_UNCONFIRMED", "The event did not read back with your answer.")
+        }
+        return { operation: payload.action, source, eventId: payload.target.eventId, providerVersion: version, event: read, target, acceptedAt: read.updatedAt } satisfies CalendarMutationReceipt
+      }
       if (payload.action === "modify_event") {
         const changed = try port.update(account, source, payload.target.eventId, payload.scope, payload.fields, payload.target.expectedVersion, request.id)
         const read = try readBack(port, account, source, changed.id)

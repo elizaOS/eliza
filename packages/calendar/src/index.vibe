@@ -10,19 +10,19 @@ export type * from "./model.vibe"
 export { sameSourceKey, sourceKeyId, utcInstant } from "./model.vibe"
 export {
   CalendarLedgerUnavailable, CalendarPreflightRefused, CalendarWriteNotAccepted, CalendarWriteUnconfirmed, calendarMutationLedger, receiptMatches,
-  type CalendarMutationFailure, type CalendarMutationInspection, type CalendarMutationLedger, type CalendarMutationOperation, type CalendarMutationOutcome,
+  type CalendarAnswerScope, type CalendarInvitationResponse, type CalendarMutationFailure, type CalendarMutationInspection, type CalendarMutationLedger, type CalendarMutationOperation, type CalendarMutationOutcome,
   type CalendarMutationPayload, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest, type CalendarMutationTarget,
   type CalendarPreflight, type CalendarReconciliation,
 } from "./mutations/ledger.vibe"
 export { fieldsSpanValid, providerMutationPort, recurrenceFits, reviewDigest, type CalendarProviders } from "./mutations/provider-port.vibe"
 export {
-  CalendarSourceUnavailable, eventInWindow, eventVersion, holdsFields, residentCalendar, residentSource,
+  CalendarSourceUnavailable, answeredWith, eventInWindow, eventVersion, holdsFields, ownerRole, residentCalendar, residentSource,
   type CalendarAccount, type CalendarProviderPort, type CalendarWindowRead,
 } from "./plugin/providers.vibe"
 export {
-  calendarHost, ledgerOutcome,
-  type CalendarApprovalRecord, type CalendarApprovalRow, type CalendarApprovals, type CalendarChangeRequest, type CalendarChangeResult,
-  type CalendarFound, type CalendarHost, type CalendarHostOptions, type CalendarLedgerOutcome, type CalendarSearch, type CalendarSearchResult,
+  approvalAction, calendarHost, ledgerOutcome,
+  type CalendarApprovalAction, type CalendarApprovalRecord, type CalendarApprovalRow, type CalendarApprovals, type CalendarChangeRequest, type CalendarChangeResult,
+  type CalendarFound, type CalendarHost, type CalendarHostOptions, type CalendarLedgerOutcome, type CalendarRefusal, type CalendarSearch, type CalendarSearchResult,
 } from "./plugin/host.vibe"
 export { cacheKeyValueStore, cacheStoreLayer, type CalendarCache } from "./plugin/runtime-store.vibe"
 export { calendarRoutes, type CalendarRoute, type CalendarRouteInput, type CalendarRouteReply } from "./plugin/routes.vibe"

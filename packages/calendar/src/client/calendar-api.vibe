@@ -1,6 +1,6 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"
 import type { CalendarEvent, CalendarFeed, CalendarSourceHealth, CalendarSummary, ConnectorSide } from "../model.vibe"
-import type { CalendarMutationReceipt } from "../mutations/ledger.vibe"
+import type { CalendarAnswerScope, CalendarInvitationResponse, CalendarMutationReceipt } from "../mutations/ledger.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
 import type { CalendarRecurrence } from "../series/recurrence-rule.vibe"
 
@@ -68,6 +68,15 @@ export interface CalendarDeleteRequest {
   readonly cancellationMode: "organizer_cancel" | "decline_invitation" | "remove_private_copy"
 }
 
+/** An invitee's answer to an invitation, for this event or the whole series, at the provider version the owner saw. */
+export interface CalendarRespondRequest {
+  readonly responseStatus: CalendarInvitationResponse
+  readonly recurrenceScope?: CalendarAnswerScope
+  readonly calendarId?: string
+  readonly expectedProviderVersion: string
+  readonly idempotencyKey: string
+}
+
 /** What a change answered: the event as read back with its receipt, the deletion, or the approval it waits in. */
 export type CalendarChangeReply =
   | { readonly event: CalendarEvent; readonly receipt: CalendarMutationReceipt }
@@ -86,6 +95,7 @@ export interface CalendarApi {
   createLifeOpsCalendarEvent(data: CalendarCreateRequest): Promise<CalendarChangeReply>
   updateLifeOpsCalendarEvent(eventId: string, patch: CalendarUpdateRequest): Promise<CalendarChangeReply>
   deleteLifeOpsCalendarEvent(eventId: string, options: CalendarDeleteRequest): Promise<CalendarChangeReply>
+  respondToLifeOpsCalendarEvent(eventId: string, answer: CalendarRespondRequest): Promise<CalendarChangeReply>
 }
 
 const base = "/api/lifeops/calendar"
@@ -121,6 +131,11 @@ export function createCalendarApi(fetch: CalendarFetch): CalendarApi {
       await required(options.expectedProviderVersion, "Calendar event deletion requires expectedProviderVersion.")
       await required(options.idempotencyKey, "Calendar event deletion requires a stable idempotencyKey.")
       return fetch<CalendarChangeReply>(`${base}/events/${encodeURIComponent(eventId)}${query({ ...options })}`, { method: "DELETE" })
+    },
+    respondToLifeOpsCalendarEvent: async (eventId, answer) => {
+      await required(answer.expectedProviderVersion, "An invitation answer requires expectedProviderVersion.")
+      await required(answer.idempotencyKey, "An invitation answer requires a stable idempotencyKey.")
+      return fetch<CalendarChangeReply>(`${base}/events/${encodeURIComponent(eventId)}/response`, { method: "POST", body: JSON.stringify(answer) })
     },
   }
 }
