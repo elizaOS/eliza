@@ -6,11 +6,11 @@ import {
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import {
-  acknowledges, actionNoteSent, admitsPlannerWork, callAdmission, callRunsFirst, contextRestoreOf, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, offersContextRestore, openOutcomes, plansOn, resendWait, toolActivity,
+  acknowledges, actionNoteSent, admitsPlannerWork, callAdmission, callRunsFirst, canCueDirectCall, contextRestoreOf, cutOffReply, directCueDelayMs, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, offersContextRestore, openOutcomes, plansOn, resendWait, toolActivity,
   turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
+import { composeReply, draftOf, requestIsInstruction, requestedNoCue } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -108,6 +108,24 @@ function firstCall(runtime: AgentRuntime, message: Memory, actions: readonly Act
     return params === undefined ? [] : [{ id: `first-${action.name}`, name: action.name, arguments: params }]
   })
   return callRunsFirst(asked.length) ? asked[0] : undefined
+}
+
+// spec/agent/conversation/planning.md, "A directly routed call acknowledges once if it is still running after 400 milliseconds"
+async function withDirectCue(input: PlanInput, request: string, run: () => Promise<ActionResult>): Promise<ActionResult> {
+  const publish = input.onPlanningAcknowledgment
+  const quiet = requestedNoCue(request)
+  if (publish === undefined || quiet || input.signal.aborted) return run()
+  const settled = new AbortController()
+  const pending = AbortSignal.any([input.signal, settled.signal])
+  const cue = sleepWithAbort(directCueDelayMs, pending).then(() => {
+    if (canCueDirectCall(!pending.aborted, directCueDelayMs, quiet)) return publish("One sec.")
+  }).catch(() => undefined)
+  try {
+    return await run()
+  } finally {
+    settled.abort()
+    await cue
+  }
 }
 
 function forTurn(runtime: AgentRuntime, message: Memory, action: Action): Action {
@@ -357,7 +375,8 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))
   const refused = routedAway(runtime, message, actions)
-  const instruction = requestIsInstruction(typeof message.content.text === "string" ? message.content.text : "")
+  const request = typeof message.content.text === "string" ? message.content.text : ""
+  const instruction = requestIsInstruction(request)
   let taken = 0
   let displayed = false
   let streamed = ""
@@ -391,7 +410,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const first = firstCall(runtime, message, actions)
   if (first !== undefined) {
     conversation.push({ role: "assistant", content: null, toolCalls: [first] })
-    await execute(first)
+    await withDirectCue(input, request, () => execute(first))
   }
   plan: while (true) {
     signal.throwIfAborted()

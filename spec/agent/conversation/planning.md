@@ -455,9 +455,10 @@ after any message: `Sure.` to `Call me Bob` or `Remember that I like tea`
 is delivered, never asked again. `Sure!` before a lead form (`Sure! Let me
 check your calendar.`) is a cue after any message. The acknowledgment is
 delivered at most once per turn, as the [reply stream](./replyStream.md)'s
-`acknowledgment` frame, and only while no tool of the turn has run, a call
-the whole message asked for outright included; a cue at a later step is
-dropped with the rest of that step's text.
+`acknowledgment` frame. A model cue is delivered only while no tool of the
+turn has run. A call the whole message asked for outright has its own cue
+rule below. A model cue at a later step is dropped with the rest of that
+step's text.
 
 ```quint
 type DraftShape = Blank | GrammarCue | AssentCue | OtherText
@@ -471,6 +472,26 @@ pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int):
 pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool, calls: int): bool = readDraft(GrammarCue, instruction, calls) == Cue
 pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: int, laterDraft: Draft, laterCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
+```
+
+### A directly routed call acknowledges once if it is still running after 400 milliseconds
+
+A call the whole message asked for outright begins without waiting for
+the model. On a streaming turn it says `One sec.` at most once if it is
+still running after 400 milliseconds. It stays quiet when the call has
+already settled or the turn has already been cancelled at that point, or
+if the person asked for silence. If the cue has started going out, the
+reply waits for it to settle. The cue is never reply text.
+
+```quint
+pure val directCueDelayMs = 400
+pure def canCueDirectCall(pending: bool, elapsedMs: int, quiet: bool): bool =
+  pending and not(quiet) and elapsedMs >= directCueDelayMs
+pure val elapsedMsValues = Set(0, 399, 400, 401)
+pure def lawADirectCueWaitsUntilTheDelay(pending: bool, elapsedMs: int, quiet: bool): bool =
+  canCueDirectCall(pending, elapsedMs, quiet) implies elapsedMs >= 400
+pure def lawOnlyAPendingNonquietCallCanCue(pending: bool, elapsedMs: int, quiet: bool): bool =
+  canCueDirectCall(pending, elapsedMs, quiet) implies pending and not(quiet)
 ```
 
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
