@@ -1,6 +1,6 @@
-// spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; spec/agent/conversation/planning.md, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading"
-import type { Memory } from "@elizaos/core"
-import { clockSource, statedTimeIsUngrounded, type LocalClock, type StatedTime } from "../../gen/agent__conversation__planning.ts"
+// spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; spec/agent/conversation/planning.md, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading"; spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is replaced by the change's own words"
+import type { ActionResult, Memory } from "@elizaos/core"
+import { clockSource, eventRangeIsUngrounded, statedTimeIsUngrounded, type LocalClock, type StatedTime } from "../../gen/agent__conversation__planning.ts"
 import { knownZone, readTurnContext } from "./turn-context.schema.vibe"
 
 /** What one turn's clock observed: the exact instant, the zone it reads in, its full reading and the line the model sees. */
@@ -71,4 +71,90 @@ export function groundedTimeReply(reply: string, request: string, clock: TurnClo
   const answer = reply.trim()
   if (!answer) return reply
   return statedTimeIsUngrounded(timeQuestion.test(request.trim()), standalone(answer), statedTimes(answer), localClockOf(clock)) ? `It's ${clock.reading}.` : reply
+}
+
+const clockRange = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\s*(?:-|–|—|to|until|till)\s*(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])|\b([01]?\d|2[0-3]):([0-5]\d)\s*(?:-|–|—|to|until|till)\s*([01]?\d|2[0-3]):([0-5]\d)\b/gi
+const clockMention = /\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])|\b(?:[01]?\d|2[0-3]):[0-5]\d\b/i
+const changeOperations: ReadonlySet<string> = new Set(["calendar.event.create", "calendar.event.update"])
+
+interface StatedRange {
+  readonly start: number
+  readonly end: number
+}
+
+function minuteOf(hour: string | undefined, minute: string | undefined, half: string | undefined): number | undefined {
+  const h = Number(hour), m = Number(minute ?? "0")
+  if (!Number.isInteger(h) || !Number.isInteger(m) || m > 59) return undefined
+  if (half === undefined) return h <= 23 ? h * 60 + m : undefined
+  return h >= 1 && h <= 12 ? ((h % 12) + (/^p/i.test(half) ? 12 : 0)) * 60 + m : undefined
+}
+
+function oneRange(reply: string): StatedRange | undefined {
+  const found = [...reply.matchAll(clockRange)]
+  const [only] = found
+  if (only === undefined || found.length !== 1 || clockMention.test(reply.replace(only[0], " "))) return undefined
+  const start = only[1] !== undefined ? minuteOf(only[1], only[2], only[3] ?? only[6]) : minuteOf(only[7], only[8], undefined)
+  const end = only[1] !== undefined ? minuteOf(only[4], only[5], only[6]) : minuteOf(only[9], only[10], undefined)
+  return start === undefined || end === undefined ? undefined : { start, end }
+}
+
+function namesAZone(reply: string): boolean {
+  return reply.split(/[\s,;()]+/).some((token) => {
+    const zone = token.replace(/[.!?"'“”‘’]+$/g, "")
+    if (zone === "" || /^(?:am|pm)$/i.test(zone)) return false
+    if (/^(?:UTC|GMT)[+-]/i.test(zone)) return true
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: zone })
+      return true
+    } catch {
+      return false
+    }
+  })
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+}
+
+function eventMinutes(instant: string, zone: string): number | undefined {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(instant))
+    return Number(parts.find((part) => part.type === "hour")?.value) * 60 + Number(parts.find((part) => part.type === "minute")?.value)
+  } catch {
+    return undefined
+  }
+}
+
+interface ChangedEvent {
+  readonly key: string
+  readonly start: number
+  readonly end: number
+  readonly words: string
+}
+
+function changedEvent(result: ActionResult, agentId: string): ChangedEvent | undefined {
+  const event = record(record(result.data)?.event)
+  const metadata = record(event?.metadata)
+  if (result.success !== true || event === undefined || metadata === undefined || typeof event.id !== "string" || event.agentId !== agentId || event.isAllDay !== false) return undefined
+  const { id, startAt, endAt, timezone, title } = event
+  if (typeof startAt !== "string" || typeof endAt !== "string" || typeof timezone !== "string" || (typeof title === "string" && clockMention.test(title))) return undefined
+  const version = typeof metadata.etag === "string" ? metadata.etag : event.updatedAt
+  const applied = (result.effectReceipts ?? []).some((receipt) => receipt.outcome === "applied" && changeOperations.has(receipt.operation)
+    && receipt.resource.kind === "calendar.event" && receipt.resource.id === id && receipt.resource.version === version)
+  const start = eventMinutes(startAt, timezone), end = eventMinutes(endAt, timezone)
+  const words = (result.userFacingText ?? result.text ?? "").trim()
+  if (typeof version !== "string" || !applied || start === undefined || end === undefined || !(Date.parse(endAt) > Date.parse(startAt)) || words === "") return undefined
+  return { key: JSON.stringify([id, version, startAt, endAt, timezone]), start, end, words }
+}
+
+/** The reply to store: the turn's own, or the one changed calendar event's own words where the reply gives that event a clock range it did not get. */
+export function groundedEventReply(reply: string, request: string, results: readonly ActionResult[], agentId: string): string {
+  const stated = oneRange(reply)
+  const changed = [...new Map(results.flatMap((result) => {
+    const event = changedEvent(result, agentId)
+    return event === undefined ? [] : [[event.key, event] as const]
+  })).values()]
+  const [event] = changed
+  const matches = event !== undefined && stated !== undefined && stated.start === event.start && stated.end === event.end
+  return event !== undefined && eventRangeIsUngrounded(timeQuestion.test(request.trim()), stated !== undefined, namesAZone(reply), changed.length, matches) ? event.words : reply
 }
