@@ -70,9 +70,19 @@ export effect function changeTodos(input: unknown, messageId: string, text: stri
       return attributed([{ actionName: todoActionName, success: false, receipts: [receipt] }], target, { done: "", notDone: "That request was already used for a different change, so nothing was changed.", unproven: "" })
     }
     if (replay) {
-      return attributed([{ actionName: todoActionName, success: true, receipts: [appliedReceipt(facts, true)] }], target, { done: "Reused the change this request already made.", notDone: "", unproven: "" }, { todos: after.todos })
+      return {
+        success: true, effectReceipts: [unchangedReceipt(facts, "already_recorded")],
+        text: "That request was already recorded. Nothing changed.", data: { outcome: "replayed", todos: after.todos },
+      } satisfies ActionResult
     }
     switch (after.lastOutcome) {
+      case "NoOutcome": {
+        const status = request.op === "reopen" ? "open" : statusWords[request.op]
+        return {
+          success: true, effectReceipts: [unchangedReceipt(facts, "already_at_status")],
+          text: `"${content}" was already ${status}.`, data: { outcome: "unchanged", todos: after.todos },
+        } satisfies ActionResult
+      }
       case "Duplicate": {
         try writeRecord(questionKey, { content, at })
         return { success: false, effectReceipts: [unchangedReceipt(facts, "duplicate")], text: `"${content}" is already on your list. Add another copy anyway? Reply yes to confirm or no to cancel.`, data: { outcome: "duplicate", awaitingUserInput: true } } satisfies ActionResult
