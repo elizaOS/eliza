@@ -20,6 +20,9 @@ outputs:
   spec-evaluator-restored:
     description: Whether the fixture job reused its pinned evaluator from a spec cache for the same lockfile.
     value: ${{ steps.install-quint-evaluator.outputs.spec-evaluator-restored }}
+  fixture-turbo-inventory:
+    description: Inventory of the bulk cache restored from this fixture job’s pull request.
+    value: ${{ steps.fixture-turbo-inventory.outputs.path }}
   turbo-cache-key:
     description: The key for Turborepo's local cache on pull requests and local-only branch pushes, unique to this run attempt.
     value: ${{ steps.turbo-cache.outputs.key }}
@@ -81,6 +84,7 @@ runs:
         pr_prefix=
         if [[ $JOB == selftest-* && $GITHUB_EVENT_NAME == pull_request && $GITHUB_REF =~ ^refs/pull/([1-9][0-9]*)/merge$ ]]; then
           pr_prefix="${named}pr-${BASH_REMATCH[1]}-${lock}-"
+          echo "fixture-pr=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
         fi
         key="${pr_prefix:-$prefix}${{ github.sha }}-${{ github.run_attempt }}"
         [[ $key == spec-*-"$JOB"-*-${{ github.sha }}-${{ github.run_attempt }} ]] || { echo "::error::Malformed spec cache key '$key'"; exit 1; }
@@ -112,13 +116,32 @@ runs:
       shell: bash
       env:
         JOB: ${{ inputs.job }}
-      run: echo "key=turbo-${{ runner.os }}-${{ runner.arch }}-${JOB}-${{ github.sha }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
-    - if: steps.turbo-cache.outputs.key != ''
+        FIXTURE_PR: ${{ steps.spec-cache.outputs.fixture-pr }}
+      run: |
+        prefix="turbo-$RUNNER_OS-$RUNNER_ARCH-$JOB-"
+        scope=${FIXTURE_PR:+"${prefix}pr-${FIXTURE_PR}-"}
+        echo "fixture-prefix=$scope" >> "$GITHUB_OUTPUT"
+        echo "key=${scope:-$prefix}$GITHUB_SHA-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+    - id: restore-turbo-cache
+      if: steps.turbo-cache.outputs.key != ''
       uses: actions/cache/restore@v6
       with:
         path: .turbo/cache
         key: ${{ steps.turbo-cache.outputs.key }}
-        restore-keys: turbo-${{ runner.os }}-${{ runner.arch }}-${{ inputs.job }}-
+        restore-keys: |
+          ${{ steps.turbo-cache.outputs.fixture-prefix }}
+          turbo-${{ runner.os }}-${{ runner.arch }}-${{ inputs.job }}-
+    - id: fixture-turbo-inventory
+      if: steps.turbo-cache.outputs.fixture-prefix != '' && startsWith(steps.restore-turbo-cache.outputs.cache-matched-key, steps.turbo-cache.outputs.fixture-prefix)
+      shell: bash
+      run: |
+        inventory=$(mktemp)
+        if find .turbo/cache -regextype posix-extended \
+          \( -type f -regex '\.turbo/cache/[0-9a-f]{16}-manifest\.json' \) -prune -o \
+          \( -type d -printf '%p %y:%m\0' -o -printf '%p %y:%m:%D:%i:%s:%C@\0' \) |
+          LC_ALL=C sort -z > "$inventory"; then
+          echo "path=$inventory" >> "$GITHUB_OUTPUT"
+        fi
     - id: gen-seed
       if: >-
         inputs.job == 'verify' && inputs.cache-verification == 'true' &&
@@ -301,11 +324,14 @@ runs:
     - name: Install Chromium
       if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest' && !startsWith(inputs.job, 'simulate-')
       run: |
-        node --input-type=module - "${{ inputs.job == 'selftest-a' }}" "${{ inputs.cache-verification == 'true' }}" <<'JS'
-        import { hostedCachedFixture, installChromium } from "./vibestack/selftests/install.ts";
-        const [fullOnly, cacheVerification] = process.argv.slice(2);
-        if (fullOnly !== "true" || cacheVerification !== "true" || !hostedCachedFixture()) {
-          await installChromium(fullOnly === "true");
+        node --input-type=module - "${{ inputs.job == 'selftest-a' }}" "${{ inputs.job == 'verify' }}" "${{ inputs.cache-verification == 'true' }}" <<'JS'
+        import { installChromium, prepareChromiumShell } from "./vibestack/chromium.ts";
+        import { hostedCachedFixture } from "./vibestack/selftests/install.ts";
+        const [fullOnly, verify, cacheVerification] = process.argv.slice(2);
+        if (fullOnly === "true") {
+          if (cacheVerification !== "true" || !hostedCachedFixture()) await installChromium("full");
+        } else if (verify !== "true" || cacheVerification !== "true" || !await prepareChromiumShell()) {
+          await installChromium("both");
         }
         JS
       shell: bash
