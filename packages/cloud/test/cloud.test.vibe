@@ -980,10 +980,11 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     provide Clock.Clock = clock.clock {
       const registration = { ...native, connectReturn: `${web}/apps/native/google` }
       const { cloud, google } = try nativeCloud(undefined, registration)
-      const caller = try signedCaller(cloud, "google-browser")
-      const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now: start }))
+      const owner = try signedCaller(cloud, "google-browser")
+      const session = try cloud.store.transaction((tx) => issueSession(tx, { ...owner, assurance: "SingleFactor", accountCreated: false, now: start }))
+      const caller = { ...owner, headers: { authorization: "Bearer " + session.accessToken } }
       const callback = "/api/v1/oauth/google/callback"
-      const initialize = (body: unknown, headers = bearer(session.accessToken)) => cloud.call("/api/v1/eliza/google/connect/initiate", { json: body, headers })
+      const initialize = (body: unknown, headers = caller.headers) => cloud.call("/api/v1/eliza/google/connect/initiate", { json: body, headers })
       const appState = "s".repeat(43)
       const redirectUrl = `${registration.connectReturn}?state=${appState}`
       const requested = { side: "owner", capabilities: ["google.gmail.triage", "google.calendar.read"], redirectUrl }

@@ -385,6 +385,8 @@ effect function endLegacyRenewals(tx: Tx, root: Row, named: string, now: number)
 effect function selfRevoke(context: RouteContext) {
   const caller = context.caller
   if (caller.kind !== "deviceKey") throw refused("AuthenticationRequired", "CredentialUnknown")
+  const named = context.request.headers["x-renewed-credential-id"]
+  if (named !== undefined && !uuidText.test(named)) throw refused("InvalidRequest")
   const store = try Store
   try store.transaction(effect (tx: Tx) => {
     const row = try grantBy(tx, "key", caller.grantKey)
