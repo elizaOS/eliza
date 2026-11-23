@@ -77,7 +77,7 @@ const march = { timeMin: "2030-03-01T00:00:00Z", timeMax: "2030-03-10T00:00:00Z"
 it.effect(`Change my calendar only as I asked and know it happened (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all")`, effect () => {
   const filed: CalendarApprovalRow[] = []
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
-  const ask = { by: "owner-entity", id: "message-1" }
+  const ask = { by: "owner-entity", id: "message-1", text: "" }
   const dentist = { subaction: "create_event", title: "Dentist", location: "Main St", startAt: "2030-03-04T09:00:00-08:00", endAt: "2030-03-04T10:00:00-08:00", timeZone: "America/Los_Angeles" }
 
   const created = try runCalendarAction(host, ask, dentist)
@@ -103,6 +103,17 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   assert.strictEqual(at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length"), 0)
   const past = try runCalendarAction(host, { ...ask, id: "message-4" }, { ...dentist, startAt: "1969-12-31T09:00:00Z", endAt: "1969-12-31T10:00:00Z" })
   assert.deepStrictEqual([past.success, at(past.data, "needsConfirmation")], [false, "past_start"])
+  try TestClock.setTime(Date.parse("2026-06-01T12:00:00Z"))
+  const lunch = { ...dentist, title: "Lunch", startAt: "2031-03-04T12:00:00-08:00", endAt: "2031-03-04T13:30:00-08:00" }
+  const said = effect (id: string, text: string) => {
+    const result = try runCalendarAction(host, { ...ask, id, text }, lunch)
+    const span = at(result.data, "fields") ?? at(result.data, "event")
+    return [result.success, at(result.data, "needsConfirmation") ?? null, at(span, "startAt"), at(span, "endAt")]
+  }
+  assert.deepStrictEqual(try said("lunch-1", "Add lunch on March 4"), [false, "past_start", "2026-03-04T20:00:00.000Z", "2026-03-04T21:30:00.000Z"])
+  assert.deepStrictEqual(try said("lunch-2", "Add lunch next Friday on March 4"), [false, "past_start", "2026-03-04T20:00:00.000Z", "2026-03-04T21:30:00.000Z"])
+  assert.deepStrictEqual(try said("lunch-3", "Add lunch next March 4"), [true, null, "2027-03-04T20:00:00.000Z", "2027-03-04T21:30:00.000Z"])
+  assert.deepStrictEqual(try said("lunch-4", "Add lunch tomorrow at noon"), [true, null, "2031-03-04T20:00:00.000Z", "2031-03-04T21:30:00.000Z"])
   const checkups = effect () => at((try runCalendarAction(host, ask, { subaction: "search_events", query: "Checkup", ...march })).data, "events", "length")
   const preview = try runCalendarAction(host, { ...ask, id: "message-review" }, { ...dentist, title: "Checkup", reviewBeforeSaving: true })
   assert.deepStrictEqual([preview.success, at(preview.data, "approvalRequestId"), at(preview.data, "change", "source", "provider"), try checkups()], [true, filed[0]?.id, "eliza", 0])
@@ -145,7 +156,7 @@ it.effect(`Ask the agent about my calendar and get my active account's events (s
   const google = googleCalendar()
   try host.register(google.port)
   try host.bindAccount(owner)
-  const ask = { by: "owner-entity", id: "message-1" }
+  const ask = { by: "owner-entity", id: "message-1", text: "" }
   const lunch = try runCalendarAction(host, ask, { subaction: "create_event", title: "Private lunch", startAt: "2030-03-04T12:00:00Z", endAt: "2030-03-04T13:00:00Z" })
   assert.deepStrictEqual([lunch.success, at(lunch.effectReceipts?.[0], "operation"), filed.length], [true, "calendar.event.create", 0])
   try runCalendarAction(host, { ...ask, id: "message-2" }, { subaction: "create_event", calendarId: "work", title: "Board review", startAt: "2030-03-05T12:00:00Z", endAt: "2030-03-05T13:00:00Z" })
@@ -195,7 +206,7 @@ it.effect(`Change my calendar only as I asked and know it happened, from the own
 it.effect(`Create a repeating event through the reviewed create (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it")`, effect () => {
   const filed: CalendarApprovalRow[] = []
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
-  const ask = { by: "owner-entity", id: "message-1" }
+  const ask = { by: "owner-entity", id: "message-1", text: "" }
   const weekly = { subaction: "create_event", title: "Piano", startAt: "2030-03-04T17:00:00Z", endAt: "2030-03-04T18:00:00Z", timeZone: "UTC",
     repeat: "weekly", repeatUntil: "2030-03-25T17:00:00Z", skipStarts: ["2030-03-11T17:00:00Z"] }
   const made = try runCalendarAction(host, ask, weekly)
@@ -241,7 +252,7 @@ it.effect(`Keep the calendar events I saved before this version (spec/calendar/r
     [["resident-1", "Dentist", "Bring forms", "2030-03-04T17:00:00.000Z", "America/Los_Angeles", "r3"]])
   const receipt = at(JSON.parse(String(rows.get(rowsKey))), "imported")
   assert.deepStrictEqual([at(receipt, "format"), at(receipt, "revision"), at(receipt, "events")], ["resident-events-1", 3, 1])
-  const moved = try runCalendarAction(first, { by: "owner-entity", id: "message-1" }, { subaction: "update_event", eventId: "resident-1", title: "Dentist moved" })
+  const moved = try runCalendarAction(first, { by: "owner-entity", id: "message-1", text: "" }, { subaction: "update_event", eventId: "resident-1", title: "Dentist moved" })
   assert.deepStrictEqual([moved.success, at(moved.data, "targetEvent", "metadata", "etag")], [true, "r3"])
 
   const rerun = try calendarHost({ cache: memoryCache(rows, refused), agentId: "agent", approvals: () => undefined })
@@ -252,6 +263,6 @@ it.effect(`Keep the calendar events I saved before this version (spec/calendar/r
   const review = try calendarHost({ cache: memoryCache(broken), agentId: "agent", approvals: () => undefined })
   const held = try review.search(window)
   assert.deepStrictEqual([held?.complete, held?.events.length, held?.unavailable], [false, 0, ["eliza"]])
-  const blocked = try runCalendarAction(review, { by: "owner-entity", id: "message-2" }, { subaction: "create_event", title: "New", startAt: "2030-03-05T17:00:00Z", endAt: "2030-03-05T18:00:00Z" })
+  const blocked = try runCalendarAction(review, { by: "owner-entity", id: "message-2", text: "" }, { subaction: "create_event", title: "New", startAt: "2030-03-05T17:00:00Z", endAt: "2030-03-05T18:00:00Z" })
   assert.deepStrictEqual([blocked.success, broken.has(rowsKey)], [false, false])
 })

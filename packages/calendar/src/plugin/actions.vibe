@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
 import { sha256Hex, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
-import { mustAskBeforeCreate } from "../../gen/calendar__readClock.effect.vibe"
+import { createNeedsConfirmation, statedYearCreate } from "../clock.vibe"
 import type { CalendarEvent, CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
@@ -160,14 +160,16 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
   return { success: true, text: `Deleted ${title}.`, effectReceipts, data: { subaction, targetEvent: receipt.target, deleted: true, requestId: request.id } }
 }
 
-/** Who asked for a Calendar action, and the stable id of the request that asked. */
+/** Who asked for a Calendar action, the stable id of the request that asked, and the owner's own words. */
 export interface CalendarAsk {
   readonly by: string
   readonly id: string
+  readonly text: string
 }
 
 function askOf(message: Memory): CalendarAsk {
-  return { by: String(message.entityId), id: String(message.id ?? `${message.roomId}:${message.createdAt ?? 0}`) }
+  return { by: String(message.entityId), id: String(message.id ?? `${message.roomId}:${message.createdAt ?? 0}`),
+    text: typeof message.content.text === "string" ? message.content.text : "" }
 }
 
 effect function target(host: CalendarHost, parameters: Parameters, now: number) {
@@ -222,18 +224,17 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
         isAllDay: parameters.isAllDay ?? false, timeZone: zone,
       })
       if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return failed(subaction, "A new event needs a title and a start before its end.")
+      const { fields: asked, move } = statedYearCreate(fields.value, ask.text, new Date(now))
       const recurrence = parameters.repeat === undefined ? Option.some(null) : decodeRecurrence({ rule: parameters.repeat,
-        ...(parameters.repeatUntil === undefined ? {} : { until: canonical(parameters.repeatUntil) }),
-        ...(parameters.skipStarts === undefined ? {} : { excluded: parameters.skipStarts.map(canonical) }) })
+        ...(parameters.repeatUntil === undefined ? {} : { until: move(canonical(parameters.repeatUntil)) }),
+        ...(parameters.skipStarts === undefined ? {} : { excluded: parameters.skipStarts.map((start) => move(canonical(start))) }) })
       if (Option.isNone(recurrence)) return failed(subaction, "A repeating event needs one rule (daily, weekdays or weekly) and distinct skipped starts.")
-      const start = new Date(Date.parse(fields.value.startAt))
-      const current = new Date(now)
-      if (parameters.confirmedPastStart !== true && mustAskBeforeCreate(start.getUTCFullYear(), current.getUTCFullYear(), start.getTime() < now)) {
-        return failed(subaction, "That start time has already passed. Should I still create it?", { needsConfirmation: "past_start", fields: fields.value })
+      if (parameters.confirmedPastStart !== true && createNeedsConfirmation(asked.startAt, new Date(now), asked.isAllDay ? "UTC" : asked.timeZone)) {
+        return failed(subaction, "That start time has already passed. Should I still create it?", { needsConfirmation: "past_start", fields: asked })
       }
       const source = try host.writeTarget(parameters.calendarId)
       if (source === undefined) return failed(subaction, "There's no calendar this account can write to.")
-      const result = host.change({ kind: "create", source, fields: fields.value, recurrence: recurrence.value, reviewFirst: parameters.reviewBeforeSaving === true, askedBy, askId }) catch () => undefined
+      const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: parameters.reviewBeforeSaving === true, askedBy, askId }) catch () => undefined
       return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
     case "update_event":
