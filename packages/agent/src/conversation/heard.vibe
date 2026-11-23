@@ -1,8 +1,9 @@
 // spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply", "The heard part and the unheard remainder together are the whole reply"
 module node {
   import { Schema } from "effect"
-  import type { AgentRuntime, Memory, UUID } from "@elizaos/core"
+  import { messageTextSourceDescriptor, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
   import { heardVerdict, initial, reportedUnits, type HeardReport, type Reply } from "../../gen/agent__conversation__turns.ts"
+  import { storedText } from "./history.vibe"
 
   const reportBody = Schema.decodeUnknownOption(Schema.Union([
     Schema.Struct({ heardText: Schema.String }),
@@ -18,18 +19,14 @@ module node {
     return undefined
   }
 
-  export function heardView(memory: Memory) {
-    const text = memory.content.text ?? ""
+  export function heardView(memory: Memory, text: string) {
     const boundary = boundaryOf(memory, text.length) ?? text.length
     return { heard: text.slice(0, boundary), unheard: text.slice(boundary) }
   }
 
-  export function textForTurn(memory: Memory): string | undefined {
-    const text = memory.content.text
-    const boundary = text === undefined ? undefined : boundaryOf(memory, text.length)
-    return boundary === undefined || text === undefined
-      ? text
-      : `${text.slice(0, boundary)}\n[Unheard remainder: ${text.slice(boundary)}]`
+  export function textForTurn(memory: Memory, text: string): string {
+    const boundary = boundaryOf(memory, text.length)
+    return boundary === undefined ? text : `${text.slice(0, boundary)}\n[Unheard remainder: ${text.slice(boundary)}]`
   }
 
   export async function recordHeard(runtime: AgentRuntime, roomId: UUID, id: string | undefined, body: unknown) {
@@ -45,10 +42,12 @@ module node {
       if (reply?.roomId !== roomId || reply.entityId !== runtime.agentId) {
         return error(404, "unknown_message")
       }
-      const { text, inReplyTo, actions, systemNotice } = reply.content
-      if (typeof text !== "string" || systemNotice !== undefined || (!inReplyTo && !actions?.includes("REPLY"))) {
+      const { text: inline, inReplyTo, actions, systemNotice } = reply.content
+      const stored = typeof inline === "string" || messageTextSourceDescriptor(reply.content) !== null
+      if (!stored || systemNotice !== undefined || (!inReplyTo && !actions?.includes("REPLY"))) {
         return error(404, "unknown_message")
       }
+      const text = await storedText(tx, reply)
       const boundary = boundaryOf(reply, text.length)
       const held: Reply = {
         id: 1, room: 1, userMessage: 0, units: units(text), kind: { tag: "Answered" },

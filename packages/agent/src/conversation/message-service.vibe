@@ -7,6 +7,7 @@ import {
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { groundedTimeReply, turnClock } from "./clock.vibe"
 import { textForTurn } from "./heard.vibe"
+import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "./turn-context.schema.vibe"
 import { offeredActions, planTurn } from "./planning.vibe"
@@ -76,10 +77,10 @@ export function ownerMessageService(
   }
 }
 
-function spoken(runtime: AgentRuntime, memory: Memory): string {
-  if (memory.entityId !== runtime.agentId) return memory.content.text ?? ""
-  if (readSystemNotice(memory.content.systemNotice) !== undefined) return ""
-  return textForTurn(memory) ?? ""
+async function spoken(runtime: AgentRuntime, memory: Memory): Promise<string> {
+  if (memory.entityId === runtime.agentId && readSystemNotice(memory.content.systemNotice) !== undefined) return ""
+  const text = await storedText(runtime.adapter, memory).catch(() => "")
+  return memory.entityId === runtime.agentId ? textForTurn(memory, text) : text
 }
 
 function partOf(media: Media): ContentPart {
@@ -171,11 +172,10 @@ async function respond(
       try {
         signal.throwIfAborted()
         const recent = await runtime.getMemories({ tableName: "messages", roomId: message.roomId, count: historyReadCount, orderBy: "createdAt", orderDirection: "desc" })
-        const sources = recent.slice().reverse().flatMap((previous) => {
-          const content = spoken(runtime, previous)
-          if (!content || previous.id === message.id) return []
-          return [{ id: previous.id ?? "", fromUser: previous.entityId !== runtime.agentId, text: content }]
-        })
+        const sources = (await Promise.all(recent.slice().reverse().map(async (previous) => {
+          const content = previous.id === message.id ? "" : await spoken(runtime, previous)
+          return content ? [{ id: previous.id ?? "", fromUser: previous.entityId !== runtime.agentId, text: content }] : []
+        }))).flat()
         const window = windowHistory(sources, asked)
         const history: ChatMessage[] = window.shown.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
         const notes = [contextNote(message), hostNote(clock.line), hostNote(options?.deviceContext), hostNote(options?.taskContext), window.windowed ? hostNote(historyWindowNotice(window)) : undefined]
