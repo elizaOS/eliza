@@ -301,7 +301,12 @@ acknowledged as a sign-in's is; the acknowledgement moves the lease to it
 and the replaced key leaves with a revoke duty. A renewed key whose
 acknowledgement went unanswered is asked about again at the next start, lease
 refresh or `RenewKey`, before any new renewal, so a lost reply never strands
-the device. A renewal the cloud refuses ends as a refused sign-in does.
+the device. A renewal the cloud refuses ends as a refused sign-in does; one
+refused without a credential reason, or whose reply was lost, keeps the
+active key and the lease, and the next lease refresh or daily job asks
+again. The cloud answers a renewal asked again before the acknowledgement
+with the same key (`nativeClients/deviceKeys`), so asking again never leaves
+a second key behind.
 Starting a renewal changes nothing else: the active key, the duties and the
 account session stay as they were until the successor is acknowledged.
 

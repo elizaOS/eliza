@@ -1,4 +1,4 @@
-// spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/deviceKeys.md, "A renewed key's acknowledgement ends the key it replaces and moves its lease to it"
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/deviceKeys.md, "Renewing again before the acknowledgement answers the same successor, so a lost or doubled renewal never mints a second key"
 import { assert, describe, it } from "@effect/vitest"
 import { seedClients } from "../../src/operator/clients.vibe"
 import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
@@ -100,7 +100,7 @@ describe("Device key renewal through the lease (spec/cloud/nativeClients/deviceK
     }
   }))
 
-  it.live("Renewing again before the acknowledgement mints another successor, and only the one acknowledged replaces the key (spec/cloud/nativeClients/deviceKeys.md, \"A renewed key's acknowledgement ends the key it replaces and moves its lease to it\")", () => scoped(effect {
+  it.live("Renewing again before the acknowledgement answers the same successor, two renewals at once answer one key, and its second acknowledgement is a repeat (spec/cloud/nativeClients/deviceKeys.md, \"Renewing again before the acknowledgement answers the same successor, so a lost or doubled renewal never mints a second key\")", () => scoped(effect {
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(start))
     provide Clock.Clock = clock.clock {
@@ -109,15 +109,21 @@ describe("Device key renewal through the lease (spec/cloud/nativeClients/deviceK
     const signed = try signedIn(cloud, "twice@example.com")
     const tablet = try signedInTablet(cloud, signed.accessToken)
     const first = (try renew(cloud, tablet.refresh)).body as Key
-    const second = (try renew(cloud, tablet.refresh)).body as Key
-    const beforeAck = [try usable(cloud, tablet.key.secret), try usable(cloud, first.secret), try usable(cloud, second.secret)]
-    const secondAck = try acknowledge(cloud, second)
-    const firstAck = try acknowledge(cloud, first)
-    const after = [try usable(cloud, tablet.key.secret), try usable(cloud, first.secret), try usable(cloud, second.secret)]
-    try check(() => assert.deepStrictEqual({ beforeAck, acks: [secondAck, firstAck], after }, {
-      beforeAck: [200, 401, 401],
-      acks: [200, 401],
-      after: [401, 401, 200]
+    const lost = (try renew(cloud, tablet.refresh)).body as Key
+    const together = try Effect.all([renew(cloud, tablet.refresh), renew(cloud, tablet.refresh)], { concurrency: "unbounded" })
+    const beforeAck = [try usable(cloud, tablet.key.secret), try usable(cloud, first.secret)]
+    const acks = try Effect.all([acknowledge(cloud, first), acknowledge(cloud, lost)], { concurrency: "unbounded" })
+    const afterAck = [try usable(cloud, tablet.key.secret), try usable(cloud, first.secret)]
+    const next = (try renew(cloud, tablet.refresh)).body as Key
+    try sync(() => clock.set(start + 10 * 60_000))
+    const late = (try renew(cloud, tablet.refresh)).body as Key
+    const successors = try cloud.store.transaction((tx) => tx.query("SELECT count(*)::int AS n FROM device_grants WHERE renewed_from IS NOT NULL"))
+    try check(() => assert.deepStrictEqual({
+      same: [lost, ...together.map((answer) => answer.body)].map((answer) => [(answer as Key).credentialId === first.credentialId, (answer as Key).secret === first.secret]),
+      beforeAck, acks, afterAck, afterDeadline: [next.credentialId !== first.credentialId, late.credentialId !== next.credentialId], successors: successors[0]?.n
+    }, {
+      same: [[true, true], [true, true], [true, true]],
+      beforeAck: [200, 401], acks: [200, 200], afterAck: [401, 200], afterDeadline: [true, true], successors: 3
     }))
     }
   }))

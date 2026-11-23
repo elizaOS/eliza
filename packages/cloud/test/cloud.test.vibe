@@ -13,7 +13,7 @@ import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { migrate, Store, StoreFailure, type Tx } from "../src/store/store.vibe"
-import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import { fakeServer, organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
 import { periodRows } from "../src/shared/metering.vibe"
@@ -3709,7 +3709,7 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
 })
 
 module node {
-  import { Effect, Schema } from "effect"
+  import { ConfigProvider, Effect, Layer, Schema } from "effect"
   import { SecureRandom } from "effect/crypto"
   import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
   import { exportJWK, generateKeyPair, SignJWT } from "jose"
@@ -3721,6 +3721,11 @@ module node {
   import { mimeBoundaryPayload } from "./support/fakes/google-gmail.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
   import { registerClients, workerBindings } from "./support/worker.ts"
+  import { revokeAll as revokeAllDevices } from "../src/native-clients/device-keys.vibe"
+  import { Store, storeLayer, type Tx } from "../src/store/store.vibe"
+  import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+  import { scopeFor, storeGrant } from "../src/services/google/grant-access.vibe"
+  import { secrets } from "./support/profile.ts"
 
   export function forwardedHref(script: string, html: string, address: string): string {
     const attributes: Record<string, string> = {
@@ -4256,8 +4261,103 @@ module node {
     }
   }
 
+  export async function tabletLeaseThroughWorker(fakeUrl: string) {
+    const fixture = await openBackupDatabase()
+    try {
+      const digest = "b".repeat(64)
+      await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest])
+      const owner = await Effect.runPromise(Effect.provide(signInWithProof(fixture.db, { provider: "email", subject: "tablet@example.test", email: "tablet@example.test" }), SecureRandom.layerWebCrypto))
+      const web = "https://app.example.test"
+      const api = "https://api.example.test"
+      const grant = "tablet-grant"
+      const deployment = workerBindings({ api, web, digest, fakeUrl })
+      const organizationId = (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id ?? ""
+      const profile = await Effect.runPromise(parseProfile(JSON.parse(deployment.CLOUD_PROFILE)))
+      const platform = Layer.mergeAll(storeLayer({ kind: "pg", url: fixture.databaseUrl }),
+        deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))))
+      const inStore = <A, E>(body: (tx: Tx) => Effect.Effect<A, E, Layer.Success<typeof platform>>) =>
+        Effect.runPromise(Effect.provide(Effect.gen(function* () { const store = yield* Store; return yield* store.transaction(body) }), platform))
+      await inStore((tx) => storeGrant(tx, {
+        connectionId: grant, owner: { organizationId, userId: owner.account.id }, subject: "tablet-google-subject", email: "tablet@example.test",
+        grantedScopes: [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")],
+        tokens: { refreshToken: "tablet-refresh", accessToken: "tablet-access", expiresAt: Date.now() + 3_600_000 }, now: Date.now()
+      }))
+      const clientId = "com.example.tablet"
+      const redirectUri = web + "/android/auth/callback"
+      const tabletClient = { clientId, androidPackage: clientId, environment: "staging", displayName: "Tablet", signInReturn: redirectUri,
+        billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AB").join(":")], enabled: true }
+      await registerClients(fixture.db, [tabletClient])
+      const env = {
+        ...deployment, AI: { run: async () => { throw new Error("Unexpected inference in tablet fixture") } }, DATABASE_URL: fixture.databaseUrl,
+      } satisfies CloudBindings
+      const worker = cloudWorker()
+      const call = async (path: string, init: { method?: string; headers?: Record<string, string>; json?: unknown } = {}) => {
+        const answer = await worker.fetch(new Request(api + path, { method: init.method ?? (init.json === undefined ? "GET" : "POST"),
+          headers: { ...(init.json === undefined ? {} : { "content-type": "application/json" }), ...init.headers }, body: init.json === undefined ? undefined : JSON.stringify(init.json) }), env)
+        const text = await answer.text()
+        return { status: answer.status, body: (text === "" ? {} : JSON.parse(text)) as Record<string, unknown> }
+      }
+      const bearer = (token: string) => ({ authorization: "Bearer " + token })
+      const refusal = (answer: { status: number; body: Record<string, unknown> }) => [answer.status, answer.body.error, answer.body.reason]
+      const binding = { clientId, environment: "staging", redirectUri }
+      const tablet = async () => {
+        const state = "s".repeat(43)
+        const verifier = "v".repeat(43)
+        const connected = await call("/api/v1/app-auth/connect", { headers: bearer(owner.access),
+          json: { ...binding, state, codeChallenge: createHash("sha256").update(verifier).digest("base64url"), codeChallengeMethod: "S256" } })
+        const minted = await call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: connected.body.code, state, codeVerifier: verifier } })
+        const secret = String(minted.body.secret)
+        await call("/api/v1/app-auth/mobile/ack", { json: { credentialId: minted.body.credentialId, secret } })
+        const refresh = String((minted.body.lease as { refresh: string }).refresh)
+        const access = String((await call("/api/v1/app-auth/mobile/lease", { method: "POST", headers: bearer(refresh) })).body.access)
+        return { secret, refresh, access }
+      }
+      const read = (token: string) => call("/api/v1/eliza/google/gmail/read?" + new URLSearchParams({ messageId: "tablet-message", grantId: grant }), { headers: bearer(token) })
+      const search = (token: string) => call("/api/v1/eliza/google/gmail/search?" + new URLSearchParams({ grantId: grant, query: "hello" }), { headers: bearer(token) })
+      const rotate = (refresh: string) => call("/api/v1/app-auth/mobile/lease", { method: "POST", headers: bearer(refresh) })
+      const renew = (refresh: string) => call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(refresh) })
+
+      const first = await tablet()
+      const withLease = [(await read(first.access)).status, (await search(first.access)).status]
+      const withKey = [refusal(await read(first.secret)), refusal(await search(first.secret))]
+
+      const signedOut = await tablet()
+      const revokedByKey = (await call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(signedOut.secret) })).status
+      const afterSignOut = [refusal(await rotate(signedOut.refresh)), refusal(await renew(signedOut.refresh)), refusal(await read(signedOut.access))]
+
+      const moved = await tablet()
+      await fixture.db.query("UPDATE accounts SET device_epoch = device_epoch + 1 WHERE key = $1", [owner.account.id])
+      const afterEpoch = [refusal(await renew(moved.refresh)), refusal(await read(moved.access))]
+
+      const revoked = await tablet()
+      await inStore((tx) => revokeAllDevices(tx, owner.account.id, Date.now()))
+      const afterOperator = [refusal(await rotate(revoked.refresh)), refusal(await renew(revoked.refresh)), refusal(await read(revoked.access))]
+
+      const sessionEnded = await tablet()
+      const pendingRenewal = (await renew(sessionEnded.refresh)).status
+      const state = "t".repeat(43)
+      const verifier = "w".repeat(43)
+      const uncollected = await call("/api/v1/app-auth/connect", { headers: bearer(owner.access),
+        json: { ...binding, state, codeChallenge: createHash("sha256").update(verifier).digest("base64url"), codeChallengeMethod: "S256" } })
+      const neverAcknowledged = (await call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: uncollected.body.code, state, codeVerifier: verifier } })).status
+      await fixture.db.query("UPDATE accounts SET sessions_revoked_before = sessions_revoked_before + 1 WHERE key = $1", [owner.account.id])
+      const afterSessions = [refusal(await read(sessionEnded.access)), refusal(await rotate(sessionEnded.refresh))]
+      const count = async (sql: string) => Number((await fixture.db.query<{ n: string }>(sql)).rows[0]?.n)
+      await fixture.db.query("UPDATE device_grants SET code_expires_at = 1, state = state || jsonb_build_object('codeExpiresAt', 1, 'now', 1) WHERE phase = 'exchanged'")
+      await fixture.db.query("UPDATE sessions SET refresh_expires_at = 1 WHERE key IN (SELECT session_key FROM cloud_spent_refresh)")
+      const swept = async () => [await count("SELECT count(*) AS n FROM cloud_spent_refresh"), await count("SELECT count(*) AS n FROM device_grants WHERE phase = 'exchanged'"),
+        await count("SELECT count(*) AS n FROM sessions WHERE kind = 'device_lease' AND state->>'phase' = 'Offered'")]
+      const beforeSweep = await swept()
+      await worker.scheduled({ scheduledTime: Date.UTC(2026, 10, 22, 12, 0) }, env)
+      return { withLease, withKey, revokedByKey, afterSignOut, afterEpoch, afterOperator, afterSessions, pending: [pendingRenewal, neverAcknowledged],
+        swept: [beforeSweep[0]! > 0, ...beforeSweep.slice(1), ...await swept()] }
+    } finally {
+      await fixture.close()
+    }
+  }
+
 }
-import { decideForSignedInAccount, forwardedHref, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment } from node
+import { decideForSignedInAccount, forwardedHref, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment, tabletLeaseThroughWorker } from node
 
 it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideForSignedInAccount())
@@ -4356,3 +4456,23 @@ it.live('Read complete mail text, open the selected named attachment and watch f
     },
   ))
 }, 120_000)
+
+it.live('Keep a tablet signed in to mail through the Worker: the lease reads and searches mail, the device key never does, signing out, a moved device epoch, the operator\'s revoke and a moved session epoch each end it, and the scheduled sweep clears what was never collected (spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"; spec/cloud/identity/sessions.md, "A mail or calendar route admits a session or a device lease, and refuses the device key"; spec/cloud/nativeClients/deviceKeys.md, "Ending every key of a person moves the person\'s device epoch, which revokes every key issued before it")', () => scoped(effect {
+  const fakes = try fakeServer()
+  try sync(() => fakes.mount("/google/api/", gmailReads(readableMailbox([{ id: "tablet-message", threadId: "tablet-thread", labelIds: ["INBOX"], internalDate: Date.now() - 60_000,
+    headers: { From: "Ada <ada@example.org>", To: "tablet@example.test", Subject: "Hello" }, snippet: "hello", bodyText: "hello" }]))))
+  const got = try tryPromise(() => tabletLeaseThroughWorker(fakes.url))
+  const revoked = [401, "authentication_required", "credential_revoked"]
+  const unknown = [401, "authentication_required", "credential_unknown"]
+  try check(() => assert.deepStrictEqual(got, {
+    withLease: [200, 200],
+    withKey: [[403, "access_denied", "device_key_not_allowed"], [403, "access_denied", "device_key_not_allowed"]],
+    revokedByKey: 204,
+    afterSignOut: [revoked, revoked, unknown],
+    afterEpoch: [revoked, revoked],
+    afterOperator: [revoked, revoked, unknown],
+    afterSessions: [revoked, revoked],
+    pending: [200, 200],
+    swept: [true, 2, 1, 0, 0, 0],
+  }))
+}), 120_000)

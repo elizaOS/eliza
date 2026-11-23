@@ -503,9 +503,7 @@ never renew itself.
 ### Only a live lease renews a key, and only while the key it replaces is live or merely expired and of the person's current device epoch
 
 A key signed out, ended or replaced, or issued before the person's current
-device epoch, is never renewed; the device signs in again. Renewing again
-before the acknowledgement mints another successor, and only the one
-acknowledged replaces the old key.
+device epoch, is never renewed; the device signs in again.
 
 ```quint
 pure def renewable(predecessor: Grant, deviceEpoch: int): bool =
@@ -522,6 +520,27 @@ pure def lawOnlyALiveOrExpiredKeyOfTheCurrentEpochIsRenewed(predecessor: Grant, 
   renewable(predecessor, deviceEpoch) implies (keyRefusal(predecessor, predecessor.now, deviceEpoch) == NoReason or keyRefusal(predecessor, predecessor.now, deviceEpoch) == CredentialExpired)
 pure def sometimesRenewedKeyLive(g: Grant): bool = isLive(g) and isRenewal(g)
 pure def sometimesRenewalAwaitingAcknowledgement(g: Grant): bool = g.phase == Exchanged and isRenewal(g)
+```
+
+### Renewing again before the acknowledgement answers the same successor, so a lost or doubled renewal never mints a second key
+
+While a key's renewed successor waits for its acknowledgement and its code
+deadline has not passed, a renewal by the same lease, while the person's
+device epoch is still the one it was issued under, answers that successor
+again from its sealed copy, with the same credential and secret, and mints
+nothing. The shell reads the key being replaced under its row lock before it
+looks for the successor, so two renewals at once answer one key, and the
+second acknowledgement of that key answers as a repeat, never
+`credential_revoked`. Only after the deadline does a renewal mint a new
+successor.
+
+```quint
+pure def isRenewalOf(g: Grant, fromKey: str): bool = g.origin == Renewed({ fromKey: fromKey })
+pure def canRenewAgain(g: Grant, fromKey: str, deviceEpoch: int): bool = g.phase == Exchanged and isRenewalOf(g, fromKey) and g.now < g.codeExpiresAt and g.epoch == deviceEpoch
+pure def renewAgain(g: Grant, fromKey: str, deviceEpoch: int): GrantStep = { state: g, out: List(AnswerFromSealedCopy) }
+pure val weight_renewAgain = 2
+pure def stepARepeatedRenewalMintsNothing(before: Grant, via: str, after: Grant, out: List[GrantEffect]): bool =
+  via == "renewAgain" implies (after == before and out == List(AnswerFromSealedCopy))
 ```
 
 ### A renewed key's acknowledgement ends the key it replaces and moves its lease to it

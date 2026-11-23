@@ -121,7 +121,7 @@ public final class CloudDeviceAccountJourney {
     final List<String> paths = new ArrayList<>();
     int keySeconds;
     long leaseDelayMs;
-    boolean dropNextLease, expireNextAccess, deviceEpochMoved, cookieOrOrigin;
+    boolean dropNextLease, expireNextAccess, deviceEpochMoved, cookieOrOrigin, refuseNextRenew;
     int reuses;
 
     synchronized Reply answer(String method, String path, String query, String bearer, String body, Map<String, String> headers) throws Exception {
@@ -178,6 +178,10 @@ public final class CloudDeviceAccountJourney {
             return Reply.refused("credential_revoked");
           }
           if (bearer.equals(family.offeredRefresh)) commit(family);
+          if (renew && refuseNextRenew) {
+            refuseNextRenew = false;
+            return Reply.json(503, new JSONObject().put("error", "service_unavailable"));
+          }
           if (renew) {
             Grant grant = new Grant(secret("eliza_mobile_", 43), now + 7L * 24 * 60 * 60 * 1000, family.grant);
             grants.add(grant);
@@ -403,6 +407,8 @@ public final class CloudDeviceAccountJourney {
 
     long wait = signedInAt + 3100 - System.currentTimeMillis();
     if (wait > 0) Thread.sleep(wait);
+    cloud.refuseNextRenew = true;
+    seen.put("renewRefused", new JSONArray().put(account.renewIfDue()).put(account.session().token().equals(firstKey)).put(account.awaitingAcknowledgment()));
     seen.put("renewedAfterHalfLife", account.renewIfDue());
     String secondKey = account.session().token();
     Grant first = cloud.grant(firstKey);
