@@ -9,6 +9,7 @@ import { defineConfig, type Plugin } from "vite";
 import { themeCss, tokensCss } from "../design/generate.ts";
 import { parseTokens } from "../design/tokens.ts";
 import raw from "@repo/design-system/tokens.json" with { type: "json" };
+import { recordPageFiles } from "./pack-page.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const tokens = parseTokens(raw);
@@ -22,10 +23,23 @@ const theme = (): Plugin => ({
   load: (id) => (id === THEME ? `${themeCss(tokens).replace('@import "./tokens.css";', '@import "@repo/ui/styles.css";')}\n${tokensCss(tokens)}\n` : undefined),
 });
 
+const pageFiles = (): Plugin => ({
+  name: "studio-page-files",
+  apply: "build",
+  writeBundle: {
+    order: "post",
+    handler({ dir }, bundle) {
+      if (!dir) return;
+      const { build, publicDir } = this.environment.config;
+      recordPageFiles(dir, Object.keys(bundle), build.copyPublicDir ? publicDir : "");
+    },
+  },
+});
+
 export default defineConfig({
   root: path.join(here, "src/page"),
   base: "./",
-  plugins: [theme(), vibelang(), react(), tailwindcss()],
+  plugins: [theme(), vibelang(), react(), tailwindcss(), pageFiles()],
   build: { outDir: path.join(here, "dist/page"), emptyOutDir: true },
   logLevel: "warn",
 });
