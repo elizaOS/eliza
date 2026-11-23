@@ -172,6 +172,20 @@ function durationSeconds(value: unknown): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
+/**
+ * A non-200 Google answer. Google's 400 (INVALID_ARGUMENT) refuses the request
+ * itself, such as a place id it never issued; that is the caller's request, not
+ * a malformed provider answer. Any other status stays an invalid response.
+ */
+function refusedOrInvalid(status: number): MapsServiceError {
+  return status === 400
+    ? new MapsServiceError(
+        "invalid_request",
+        "The maps provider refused this request as invalid.",
+      )
+    : invalidResponse(status);
+}
+
 function latLng(value: unknown): MapsCoordinate | undefined {
   if (!value || typeof value !== "object") return undefined;
   const point = value as Record<string, unknown>;
@@ -466,7 +480,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       reportPrice,
       this.creditPrice("search", request),
     );
-    if (response.status !== 200) throw invalidResponse(response.status);
+    if (response.status !== 200) throw refusedOrInvalid(response.status);
     const json = await responseJson(response);
     if (!json || typeof json !== "object") throw invalidResponse();
     const places = (json as { places?: unknown }).places;
@@ -525,7 +539,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
         reportPrice,
         { amountUsd: 0.032, sku: "99F9-A108-83A6", priceVersion: "google-global-2026-11-13" },
       );
-      if (response.status !== 200) throw invalidResponse(response.status);
+      if (response.status !== 200) throw refusedOrInvalid(response.status);
 
       const body = await responseJson(response);
       if (!body || typeof body !== "object" || Array.isArray(body)) throw invalidResponse();
@@ -564,9 +578,10 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       this.creditPrice("details", request),
       [200, 400, 404],
     );
-    // A place id Google no longer knows (or never issued) has no details.
+    // A place id Google no longer knows has no details; one it refuses as
+    // malformed (400 INVALID_ARGUMENT) is the request's fault.
     if (response.status === 404) return null;
-    if (response.status !== 200) throw invalidResponse(response.status);
+    if (response.status !== 200) throw refusedOrInvalid(response.status);
     const candidate = this.placeCandidate(await responseJson(response), true);
     // Like search, details serves covered places only.
     this.requireCovered(candidate.coordinate);
@@ -632,7 +647,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       reportPrice,
       this.creditPrice("routes", request),
     );
-    if (response.status !== 200) throw invalidResponse(response.status);
+    if (response.status !== 200) throw refusedOrInvalid(response.status);
     const json = await responseJson(response);
     if (!json || typeof json !== "object") throw invalidResponse();
     const routes = (json as { routes?: unknown }).routes;
@@ -642,7 +657,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const fetchedAt = this.now();
     return Promise.all(
       routes.slice(0, alternatives ? 3 : 1).map(async (entry, index) => {
-        const { staticSeconds, ...candidate } = this.routeCandidate(entry, request.to);
+        const { staticSeconds, ...candidate } = this.routeCandidate(entry, request.from, request.to);
         return {
           providerId: this.providerId,
           id: await routeId(
@@ -941,18 +956,28 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
 
   private routeCandidate(
     value: unknown,
+    origin: MapsCoordinate,
     destination: MapsCoordinate,
   ): Pick<MapsRoute, "geometry" | "distanceMeters" | "durationSeconds" | "steps"> & {
     staticSeconds?: number;
   } {
     if (!value || typeof value !== "object") throw invalidResponse();
     const route = value as Record<string, unknown>;
-    const distanceMeters = finiteNumber(route.distanceMeters);
+    // Routes answers in proto3 JSON, which omits a zero distance: a route
+    // whose endpoints coincide has no distanceMeters and at most one point.
+    const distanceMeters =
+      route.distanceMeters === undefined ? 0 : finiteNumber(route.distanceMeters);
     const seconds = durationSeconds(route.duration);
     const encoded = (route.polyline as { encodedPolyline?: unknown } | undefined)?.encodedPolyline;
     if (distanceMeters === undefined || seconds === undefined || typeof encoded !== "string")
       throw invalidResponse();
-    const geometry = decodePolyline(encoded, 1e5);
+    const decoded = decodePolyline(encoded, 1e5);
+    const geometry =
+      decoded.length >= 2 || distanceMeters > 0
+        ? decoded
+        : decoded.length === 1
+          ? [decoded[0], decoded[0]]
+          : [origin, destination];
     if (geometry.length < 2) throw invalidResponse();
     const legs = route.legs;
     if (!Array.isArray(legs)) throw invalidResponse();

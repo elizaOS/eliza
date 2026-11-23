@@ -27,6 +27,7 @@ import {
   routeCard,
   toCardPlace,
 } from "./card.js";
+import { isMapsSelectionHandle } from "./client/selection-handle.js";
 import { describeMapsCoverage, offeredTravelModes } from "./coverage.js";
 import { MapsError } from "./errors.js";
 import type {
@@ -88,6 +89,16 @@ function text(value: unknown): string | undefined {
 
 function opaqueText(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * The provider place id the planner passed. The phone's selection handle
+ * (clientDevice `selectedObject.id`, `maps_<uuid>`) is shaped like an id but
+ * names an on-screen selection; sent to Cloud it is refused, so it is no id.
+ */
+function providerPlaceId(params: Params): string | undefined {
+  const id = opaqueText(params.placeId);
+  return id && !isMapsSelectionHandle(id) ? id : undefined;
 }
 
 function flag(value: unknown): boolean {
@@ -349,8 +360,24 @@ async function resolvedPlace(
       (await service.getSavedPlace(ownerEntityId, savedPlaceId))?.place ?? null
     );
   }
-  const placeId = opaqueText(params.placeId);
-  if (placeId) return service.getPlace(placeId, text(params.provider));
+  const placeId = providerPlaceId(params);
+  if (placeId) {
+    try {
+      return await service.getPlace(placeId, text(params.provider));
+    } catch (error) {
+      // An id the provider refuses or no longer knows is not the end of the
+      // request when the owner also named the place: look it up by name.
+      if (
+        error instanceof MapsError &&
+        (error.code === "MAPS_INVALID_INPUT" ||
+          error.code === "MAPS_NOT_FOUND") &&
+        text(params.placeQuery)
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
   return directPlace(params);
 }
 
@@ -820,7 +847,7 @@ function wantsNearbyDestination(params: Params): boolean {
     (flag(params.useCurrentLocation) || nearbyPlaceKind(query) !== undefined) &&
     query !== undefined &&
     opaqueText(params.savedPlaceId) === undefined &&
-    opaqueText(params.placeId) === undefined &&
+    providerPlaceId(params) === undefined &&
     params.latitude === undefined &&
     params.longitude === undefined
   );
@@ -909,6 +936,10 @@ function userErrorText(error: MapsError, adapterCount: number): string {
     case "MAPS_PROVIDER_NETWORK":
     case "MAPS_PROVIDER_FAILURE":
       return "Maps couldn't be reached. Try again.";
+    case "MAPS_MALFORMED_RESPONSE":
+    case "MAPS_RESPONSE_TOO_LARGE":
+      // The answer could not be trusted; its wording names internals.
+      return "Maps got an answer it couldn't use. Try again in a moment.";
     default:
       return error.message;
   }
@@ -1043,7 +1074,7 @@ async function execute(
   try {
     switch (action) {
       case "place": {
-        const placeId = opaqueText(params.placeId);
+        const placeId = providerPlaceId(params);
         if (placeId) {
           const { place, provider } = await service.getPlaceResult(
             placeId,
@@ -1615,7 +1646,20 @@ async function execute(
           );
         }
         const status = await service.requireDeviceNavigation().select(place);
-        return result(action, deviceResult("MAPS", action, status), callback);
+        const selected = deviceResult("MAPS", action, status);
+        // The phone's selectedObject id is an opaque handle; the provider id
+        // here is what a later "directions to it" passes as placeId.
+        if (selected.success && place.provider !== "coordinates") {
+          selected.data = {
+            ...selected.data,
+            place: {
+              provider: place.provider,
+              placeId: place.providerPlaceId,
+              name: place.name,
+            },
+          };
+        }
+        return result(action, selected, callback);
       }
       case "save": {
         const place = await requestedPlace(service, action, params, message);
@@ -1962,7 +2006,8 @@ export const mapsAction: Action = {
     },
     {
       name: "placeId",
-      description: "Provider place identifier.",
+      description:
+        "Provider place id from an earlier Maps result (its placeId). Never the clientDevice selectedObject id.",
       required: false,
       schema: { type: "string" },
       subactions: ["place", "select", "save", "share", "navigate"],
@@ -2266,9 +2311,34 @@ async function executeNavigation(
     );
   } catch (error) {
     // error-policy:J1 Typed provider and device failures reach the planner.
-    if (error instanceof MapsError) return reply(actionError(error, service));
+    if (error instanceof MapsError) {
+      return reply(
+        navigationError(action, params, actionError(error, service)),
+      );
+    }
     throw error;
   }
+}
+
+/**
+ * A start whose destination lookup came back unusable says which place and
+ * that no route was planned, never the provider's or transport's wording.
+ */
+function navigationError(
+  action: NavigationSubaction,
+  params: Params,
+  failure: ActionResult,
+): ActionResult {
+  const code = (failure.data as { error?: unknown } | undefined)?.error;
+  if (
+    action !== "start" ||
+    (code !== "MAPS_MALFORMED_RESPONSE" && code !== "MAPS_RESPONSE_TOO_LARGE")
+  ) {
+    return failure;
+  }
+  const place = text(params.placeQuery) ?? text(params.name) ?? "that place";
+  const userFacingText = `Maps couldn't look up ${place} right now, so the route isn't planned. Try again in a moment.`;
+  return { ...failure, text: userFacingText, userFacingText };
 }
 
 export const mapsNavigationAction: Action = {
@@ -2288,7 +2358,8 @@ export const mapsNavigationAction: Action = {
     },
     {
       name: "placeId",
-      description: "Destination provider place identifier.",
+      description:
+        "Destination provider place id from an earlier Maps result (its placeId). Never the clientDevice selectedObject id; name the place in placeQuery instead.",
       required: false,
       schema: { type: "string" },
       subactions: ["start"],

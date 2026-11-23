@@ -968,3 +968,182 @@ describe("phone navigation actions", () => {
     ]);
   });
 });
+
+/**
+ * Device case (alpha.v625): after "show me Coit Tower on the map" the phone
+ * publishes its opaque selection handle (`maps_<uuid>`) as clientDevice
+ * context, and the planner passed it as MAPS_NAVIGATION_START's placeId. The
+ * agent sent it to Cloud place details, Google refused it, and the owner was
+ * told "Eliza Cloud Maps request failed: The provider failed."
+ */
+describe("directions to a place the phone selected", () => {
+  const SELECTION_HANDLE = "maps_3b0f6a52-6a4e-4c1b-9d55-0d1f2e3a4b5c";
+  const COIT_ID = "ChIJLwgrLvaAhYARxBf3jzA3tTk";
+  const COIT = {
+    providerId: "eliza-cloud-osm",
+    id: COIT_ID,
+    name: "Coit Tower",
+    coordinate: { latitude: 37.8024, longitude: -122.4058 },
+    address: "1 Telegraph Hill Blvd, San Francisco, CA 94133, USA",
+    attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+    fetchedAt: 1_760_000_000_000,
+  };
+  const RAW_PROVIDER_TEXT = /request failed|provider failed|provider rejected/i;
+
+  /** A phone with no usable fix: it opens the route sheet and asks for a start. */
+  function phoneWithoutFix() {
+    const starts: string[] = [];
+    const phone: MapsDeviceNavigation = {
+      select: async (place) => ({ state: "selected", placeName: place.name }),
+      start: async ({ destination, travelMode }) => {
+        starts.push(destination.name);
+        return {
+          state: "awaiting-location",
+          placeName: destination.name,
+          travelMode,
+        };
+      },
+      reroute: async () => ({ state: "stopped" }),
+      stop: async () => ({ state: "stopped" }),
+    };
+    return { phone, starts };
+  }
+
+  function setup(details: () => Response) {
+    const stub = cloud((request) =>
+      request.path === "/api/v1/maps/places/details"
+        ? details()
+        : Response.json({
+            providerId: "eliza-cloud-osm",
+            attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+            places: [COIT],
+          }),
+    );
+    const service = new MapsService(undefined, unusedStore);
+    service.registerAdapter(stub.adapter);
+    const { phone, starts } = phoneWithoutFix();
+    service.registerDeviceNavigation(phone);
+    return { ...stub, service, starts };
+  }
+
+  const providerInvalid = () =>
+    Response.json(
+      {
+        error: "The maps provider returned an invalid response.",
+        code: "provider_invalid_response",
+      },
+      { status: 502 },
+    );
+
+  async function navigate(
+    service: MapsService,
+    parameters: Record<string, unknown>,
+  ) {
+    const replies: string[] = [];
+    const result = await mapsNavigationAction.handler(
+      runtimeWith(service),
+      message({ text: "directions to Coit Tower" }),
+      undefined,
+      { parameters: { action: "start", ...parameters } },
+      async (content) => {
+        replies.push(String(content.text));
+        return [];
+      },
+    );
+    return { result, replies };
+  }
+
+  it("never sends the phone's selection handle to Cloud; it finds the place by name and asks where to start", async () => {
+    const { service, requests, starts } = setup(providerInvalid);
+    const { result, replies } = await navigate(service, {
+      placeId: SELECTION_HANDLE,
+      placeQuery: "Coit Tower",
+    });
+    expect(requests.map(({ path }) => path)).toEqual([
+      "/api/v1/maps/places/search",
+    ]);
+    expect(starts).toEqual(["Coit Tower"]);
+    expect(result?.userFacingText).toMatch(
+      /^The phone's location isn't available, so the route to Coit Tower isn't planned yet\. Where are you starting from\?/,
+    );
+    expect(replies).toEqual([result?.userFacingText]);
+  });
+
+  it("asks where to go when the selection handle is the only destination given", async () => {
+    const { service, requests, starts } = setup(providerInvalid);
+    const { result } = await navigate(service, { placeId: SELECTION_HANDLE });
+    expect(requests).toEqual([]);
+    expect(starts).toEqual([]);
+    expect(result?.userFacingText).toMatch(/^Where should navigation go\?/);
+  });
+
+  it("looks a place id Cloud refuses up by name instead", async () => {
+    const { service, requests, starts } = setup(() =>
+      Response.json(
+        {
+          error: "The maps provider refused this request as invalid.",
+          code: "invalid_request",
+        },
+        { status: 400 },
+      ),
+    );
+    const { result } = await navigate(service, {
+      placeId: "ChIJ_not_a_place_Google_knows",
+      placeQuery: "Coit Tower",
+    });
+    expect(requests.map(({ path }) => path)).toEqual([
+      "/api/v1/maps/places/details",
+      "/api/v1/maps/places/search",
+    ]);
+    expect(starts).toEqual(["Coit Tower"]);
+    expect(result?.userFacingText).toMatch(/Where are you starting from\?/);
+  });
+
+  it("fails closed on a truly malformed Cloud answer with an owner-meaningful reply", async () => {
+    const { service, starts } = setup(providerInvalid);
+    const { result, replies } = await navigate(service, {
+      placeId: COIT_ID,
+      placeQuery: "Coit Tower",
+    });
+    expect(starts).toEqual([]);
+    expect(result).toMatchObject({
+      success: false,
+      data: { error: "MAPS_MALFORMED_RESPONSE", retryable: false },
+    });
+    expect(result?.userFacingText).toBe(
+      "Maps couldn't look up Coit Tower right now, so the route isn't planned. Try again in a moment.",
+    );
+    expect(replies).toEqual([result?.userFacingText]);
+    expect(String(result?.text)).not.toMatch(RAW_PROVIDER_TEXT);
+  });
+
+  it("never words a Cloud failure with the transport's message", async () => {
+    for (const [status, code] of [
+      [502, "provider_invalid_response"],
+      [400, "something_new"],
+      [418, undefined],
+    ] as const) {
+      const { adapter } = cloud(() =>
+        Response.json(code ? { error: "x", code } : {}, { status }),
+      );
+      const error = await adapter.getPlace(COIT_ID).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(MapsError);
+      expect((error as MapsError).message).not.toMatch(RAW_PROVIDER_TEXT);
+    }
+  });
+
+  it("gives the planner the selected place's Cloud id, never only the phone handle", async () => {
+    const { service } = setup(providerInvalid);
+    const selected = await mapsAction.handler(
+      runtimeWith(service),
+      message({ text: "show me Coit Tower on the map" }),
+      undefined,
+      { parameters: { action: "select", placeQuery: "Coit Tower" } },
+    );
+    expect(selected).toMatchObject({
+      success: true,
+      userFacingText: "Selected Coit Tower on the map.",
+      data: { place: { name: "Coit Tower", placeId: COIT_ID } },
+    });
+  });
+});
