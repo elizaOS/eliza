@@ -51,10 +51,10 @@ jobs:
           assert.ok(preparation.seedDirectory);
           assert.ok(preparation.results.every(r=>r.ok));
           if(area==='spec/core/journey.md')assert.equal(preparation.results.length,7);
-          const files=fs.readdirSync(cache).sort();
+          const files=fs.readdirSync(preparation.seedDirectory).sort();
           const receipt=files.find(f=>f.startsWith('simulate-'));
           assert.ok(receipt);
-          const bytes=fs.readFileSync(path.join(cache,receipt));
+          const bytes=fs.readFileSync(path.join(preparation.seedDirectory,receipt));
           const r=JSON.parse(receipt.endsWith('.zst')?zstdDecompressSync(bytes):gunzipSync(bytes));
           const tested=r.result.tested;
           const summarize=t=>({count:t?.length,sha:sha(JSON.stringify(t??null))});
@@ -66,7 +66,7 @@ jobs:
             const names=Object.keys(v.files??{});
             actions[f]={files:names, out:(v.out??'').slice(0,250),stderr:(v.stderr??'').slice(0,50)};
           }
-          const result={tag,area,pid:process.pid,seconds,closure:Object.fromEntries(closure),rows:preparation.results,actions,used:r.used,testing:tested?{events:summarize(tested.events),journeys:summarize(tested.journeys),traces:summarize(tested.traces)}:undefined,nativeFiles:files.length,seed:fs.readdirSync(preparation.seedDirectory).length};
+          const result={tag,area,pid:process.pid,seconds,closure:Object.fromEntries(closure),rows:preparation.results,actions,used:r.used,testing:tested?{events:summarize(tested.events),journeys:summarize(tested.journeys),traces:summarize(tested.traces)}:undefined,nativeFiles:fs.readdirSync(cache).length,seed:fs.readdirSync(preparation.seedDirectory).length};
           fs.writeFileSync(path.join(evidence,tag+'.json'),JSON.stringify(result,null,2));
           console.log(tag,JSON.stringify({seconds,results:result.rows.length,nativeFiles:result.nativeFiles,usedCount:r.used.length,testing:result.testing}));
           NODE
