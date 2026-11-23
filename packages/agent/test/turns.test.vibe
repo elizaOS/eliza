@@ -139,7 +139,7 @@ it.live('A reply quotes only the selected message in its own conversation and re
   try Effect.sync(() => cloud.script(text("Kept."), text("Foreign."), text("Quoted."), text("No reference.")))
   const ownReply = replyOf(try send(agent, own.id, { text: selected }))
   const foreignReply = replyOf(try send(agent, foreign.id, { text: privateText }))
-  const ask = { text: "What did I mean there?", metadata: { replyToMessageId: ownReply.userMessageId }, clientMessageId: "quote-1" }
+  const ask = { text: "What did I mean there?", metadata: { replyToMessageId: ownReply.userMessageId.toUpperCase() }, clientMessageId: "quote-1" }
   const found = try send(agent, own.id, ask)
   const acceptedPrompt = lastTurnPrompt(cloud)
   const beforeReplay = completions(cloud)
