@@ -46,13 +46,14 @@ type StopReport = StopReportsHeard | StopReportsNone
 type VoiceProfile = { shortGapMs: int, longGapMs: int, bargeInHoldMs: int, stopReport: StopReport }
 type VoiceSession = { life: SessionLife, mode: InputMode, duplex: Duplex, capture: CaptureState, utterance: Utterance,
   epoch: int, hasText: bool, turn: TurnStage, cause: SubmitCause, sent: int, bargeIn: bool, reply: int,
-  segments: int, played: int, lastEnd: TurnEnd, receipts: List[HeardReceipt], drafts: int, profile: VoiceProfile }
+  segments: int, played: int, lastEnd: TurnEnd, receipts: List[HeardReceipt], drafts: int, profile: VoiceProfile,
+  rejoined: int, supersedes: int }
 pure val initial: VoiceSession = { life: Idle, mode: ConversationMode, duplex: HalfDuplex, capture: CaptureClosed,
   utterance: NoUtterance, epoch: 0, hasText: false, turn: NoTurn, cause: NoSubmit, sent: 0, bargeIn: false, reply: 0,
-  segments: 0, played: 0, lastEnd: NoEnd, receipts: List(), drafts: 0, profile: defaultVoiceProfile }
+  segments: 0, played: 0, lastEnd: NoEnd, receipts: List(), drafts: 0, profile: defaultVoiceProfile, rejoined: 0, supersedes: 0 }
 pure def isRunning(life: SessionLife): bool = life == Starting or life == Live
 pure def halted(life: SessionLife, s: VoiceSession): VoiceSession =
-  { ...cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s), life: life, utterance: NoUtterance, hasText: false, epoch: s.epoch + 1 }
+  { ...cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s), life: life, utterance: NoUtterance, hasText: false, epoch: s.epoch + 1, rejoined: 0 }
 pure def canStart(s: VoiceSession, profile: VoiceProfile): bool = not(isRunning(s.life)) and s.capture == CaptureClosed and profileAdmitted(profile)
 pure def start(s: VoiceSession, mode: InputMode, duplex: Duplex, profile: VoiceProfile): VoiceSession =
   { ...s, life: Starting, mode: mode, duplex: duplex, capture: CaptureOpening, cause: NoSubmit, profile: profile }
@@ -204,14 +205,15 @@ pure def sometimesSubmittedByTheLongGap(s: VoiceSession): bool = s.cause == Long
 ### A turn is sent once, and a half-duplex turn only after the capture confirmed its close
 
 The turn goes out as a `VOICE_DM` message with the screen's
-`metadata.voiceUi`, so it holds the whole recording; it is never resent,
-not even when a barge-in or Stop aborts it. A close that fails ends the
-session and sends nothing.
+`metadata.voiceUi`, so it holds the whole recording; the request is never
+resent, not even when a barge-in or Stop aborts it. What a barge-in takes
+back before its reply started goes out again only inside the next turn
+(below). A close that fails ends the session and sends nothing.
 
 ```quint
 pure val voiceChannelType = "VOICE_DM"
 pure def canSendTurn(s: VoiceSession): bool = s.turn == ReadyToSend
-pure def sendTurn(s: VoiceSession): VoiceSession = { ...s, turn: AwaitingReply, sent: s.sent + 1 }
+pure def sendTurn(s: VoiceSession): VoiceSession = { ...s, turn: AwaitingReply, sent: s.sent + 1, supersedes: s.rejoined, rejoined: 0 }
 pure def stepATurnIsSentOnce(before: VoiceSession, via: str, after: VoiceSession): bool =
   after.sent >= before.sent and
   (after.sent != before.sent implies (via == "sendTurn" and before.turn == ReadyToSend and after.sent == before.sent + 1))
@@ -250,7 +252,7 @@ pure def canFinalTranscript(s: VoiceSession): bool = s.utterance == AwaitingFina
 pure def finalTranscript(s: VoiceSession, heard: HeardTurn): VoiceSession = {
   val accepted = turnAccepted({ ...heard, agentSpeaking: s.turn == Playing })
   if (s.mode == DictationMode) { ...s, utterance: NoUtterance, drafts: s.drafts + (if (accepted) 1 else 0) }
-  else if (s.bargeIn and accepted) { ...cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s), utterance: GapWaiting, hasText: true }
+  else if (s.bargeIn and accepted) bargedIn(GapWaiting, s)
   else if (s.bargeIn) { ...s, bargeIn: false, utterance: NoUtterance }
   else if (accepted or s.hasText) { ...s, utterance: GapWaiting, hasText: true }
   else { ...s, utterance: NoUtterance }
@@ -284,19 +286,58 @@ In full duplex, speech while a reply is pending or playing is a candidate:
 the reply keeps playing. An accepted final transcript or a hold of the
 profile's length (700 ms by default)
 confirms it: the reply stops, a pending turn is aborted through the turn
-abort route, and the speech becomes the next utterance. A rejected
+abort route, and the speech becomes the next utterance, which carries the
+text of a turn aborted before its reply started (below). A rejected
 transcript drops the candidate. Partial transcripts confirm nothing.
 
 ```quint
 pure val bargeInHoldMs = 700
 pure def canBargeInHeld(s: VoiceSession, heldMs: int): bool =
   s.bargeIn and (s.utterance == Hearing or s.utterance == AwaitingFinal) and heldMs >= s.profile.bargeInHoldMs
-pure def bargeInHeld(s: VoiceSession, heldMs: int): VoiceSession = cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s)
+pure def bargeInHeld(s: VoiceSession, heldMs: int): VoiceSession = bargedIn(s.utterance, s)
 pure val heldMsValues = Set(0, 399, 400, 699, 700)
 pure def alwaysACandidateInterruptsASentTurn(s: VoiceSession): bool =
   s.bargeIn implies (s.duplex == FullDuplex and (s.turn == AwaitingReply or s.turn == Playing))
 pure def sometimesABargeInCutsTheReply(s: VoiceSession): bool = s.lastEnd == ReplyCut and s.utterance != NoUtterance
 pure def sometimesABargeInAbortsAPendingTurn(s: VoiceSession): bool = s.lastEnd == TurnAborted and isRunning(s.life)
+```
+
+### A turn taken back before its reply started is carried into the utterance in progress, and the next turn names the one it replaces
+
+With the microphone open a turn goes out at the first pause. When a
+barge-in is confirmed while that turn still awaits its reply, the person
+was not finished: the aborted turn's text is carried into the utterance in
+progress, so the next turn sends the carried text joined with what was
+said since, and names the aborted turn's `clientMessageId` in
+`supersedes`, so the host replaces the aborted message with the joined
+one. The carried text is sent even when the resumed speech turns out to be
+filler. Nothing of the aborted request is spoken. A reply that has started
+playing is cut and reported instead, and its speech becomes a turn of its
+own; a Stop or a failed capture carries nothing.
+
+```quint
+pure def bargedIn(utterance: Utterance, s: VoiceSession): VoiceSession = {
+  val pending = s.turn == AwaitingReply
+  val cut = cutTurn(if (s.turn == Playing) ReplyCut else TurnAborted, s)
+  { ...cut, utterance: utterance, hasText: pending or utterance == GapWaiting, rejoined: if (pending) s.sent else cut.rejoined }
+}
+pure def alwaysACarriedTurnIsTheLastSentAndWaitsToGoOutAgain(s: VoiceSession): bool =
+  s.sent >= 0 and s.rejoined >= 0 and s.supersedes >= 0 and
+  ((s.turn == AwaitingReply or s.turn == Playing) implies s.sent >= 1) and
+  (s.supersedes > 0 implies s.supersedes < s.sent) and
+  (s.rejoined > 0 implies (s.rejoined == s.sent and s.duplex == FullDuplex and isRunning(s.life) and (s.hasText or s.turn == ReadyToSend)))
+pure def stepATurnTakenBackBeforeItsReplyIsCarried(before: VoiceSession, via: str, after: VoiceSession): bool =
+  (before.turn == AwaitingReply and after.turn == NoTurn and (via == "finalTranscript" or via == "bargeInHeld"))
+    implies (after.hasText and after.rejoined == before.sent and after.rejoined >= 1)
+pure def stepOnlyTheNextTurnNamesTheOneItReplaces(before: VoiceSession, via: str, after: VoiceSession): bool =
+  (via == "sendTurn" implies (after.supersedes == before.rejoined and after.rejoined == 0)) and
+  (via != "sendTurn" implies after.supersedes == before.supersedes) and
+  ((via == "stop" or via == "captureFailed") implies after.rejoined == 0)
+pure def sometimesATakenBackTurnGoesOutAgain(s: VoiceSession): bool = s.supersedes >= 1 and s.turn == AwaitingReply
+pure val eval_witness_sometimesATakenBackTurnGoesOutAgain = (
+  ("start", ConversationMode, FullDuplex, defaultVoiceProfile), "captureOpened", "speechStarted", "speechEnded", ("finalTranscript", spoken),
+  ("longGapElapsed", 1), "sendTurn", "speechStarted", ("bargeInHeld", 700), "speechEnded", ("finalTranscript", spoken),
+  ("longGapElapsed", 2), "sendTurn")
 ```
 
 ## Story: Report what of an interrupted reply I heard
