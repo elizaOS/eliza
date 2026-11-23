@@ -74,17 +74,20 @@ describe("the documents name what exists", () => {
     const missed = (hashed: Set<string>, read: (file: string) => boolean) => tracked.filter((file) => read(file) && !hashed.has(file));
     const workspace = (file: string) => /^(apps|packages|spec)\//.test(file);
     const [shardA, shardB, packed] = tools;
+    const toolInput = (file: string) => ![docsSource, examplesSource].includes(file)
+      && (PACKED.includes(file) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|\.agents\/skills\/)/.test(file));
     assert.deepEqual({
       docs: missed(docs, () => true),
       examples: missed(examples, (file) => ![toolSource, docsSource, toolMetadata].includes(file) && /^vibestack\/(examples\/|(?!studio\/|fixtures\/|(testing|stories|design)\/test\/))/.test(file)),
-      tools: tools.flatMap((hashed) => missed(hashed, (file) => ![docsSource, examplesSource].includes(file) && (PACKED.includes(file) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|\.agents\/skills\/)/.test(file)))),
+      tools: tools.flatMap((hashed) => missed(hashed, (file) => toolInput(file) && (hashed === packed || file !== "README.md"))),
       packed: missed(packed, workspace),
+      readmeInFixtures: [shardA, shardB].some((hashed) => hashed.has("README.md")),
       workspaceInFixtures: [shardA, shardB].flatMap((hashed) => [...hashed].filter(workspace)),
       examplesInTools: tools.flatMap((hashed) => [...hashed]).filter((file) => /^vibestack\/examples\/(?!order\/)/.test(file)),
       selftestInGlobal: global.filter((file) => /^vibestack\/(selftest\.ts$|selftests\/|remote-cache\.ts$)|\/test\//.test(file)),
       independentSourcesInTools: tools.flatMap((hashed) => [docsSource, examplesSource].filter((file) => hashed.has(file))),
       independentSourcesInExamples: [toolSource, docsSource, toolMetadata].filter((file) => examples.has(file)),
-    }, { docs: [], examples: [], tools: [], packed: [], workspaceInFixtures: [], examplesInTools: [], selftestInGlobal: [], independentSourcesInTools: [], independentSourcesInExamples: [] });
+    }, { docs: [], examples: [], tools: [], packed: [], readmeInFixtures: false, workspaceInFixtures: [], examplesInTools: [], selftestInGlobal: [], independentSourcesInTools: [], independentSourcesInExamples: [] });
     assert.deepEqual([shards, listed("selftest").sort(), listed("verify").filter((task) => task.includes("selftest")).sort()],
       [["selftest:tools:a", "selftest:tools:b", "selftest:tools:rest"], selftests.map((task) => `//#${task}`), selftests.map((task) => `//#${task}`)], "pnpm selftest and pnpm verify run every selftest task");
     const each = "the tools each check catches its own kind of mistake";
@@ -192,13 +195,14 @@ describe("the documents name what exists", () => {
     const exampleNames = fs.readdirSync(path.join(root, EXAMPLES)).sort();
     assert.deepEqual(exampleChanges, [[], [], ["order"], ["order"], exampleNames, exampleNames]);
     previousPlan = await plan();
+    const readme = await changedBy(append("README.md"));
     assert.deepEqual({
       notWaiting: real.filter((id) => !reach(id).has("//#gen")).sort(),
       analyzeWaitsFor: tasks.get("//#analyze")!.dependencies.toSorted(),
       lintWaitsFor: vibeDeclared.filter((id) => tasks.get("//#lint:js")!.dependencies.includes(id)),
       devWaitsFor: tasks.get("vibestack-studio#dev")!.dependencies.toSorted(),
       prose: [studio(prose), prose.includes("@repo/app#test"), prose.includes("//#analyze")],
-      docs: (await changedBy(append("README.md"))).includes("//#analyze"),
+      readme: [selftests(readme), readme.includes("//#analyze")],
       selftest: [studio(selftest), selftest.includes("//#build"), ["a", "b", "rest"].every((shard) => selftest.includes(`//#selftest:tools:${shard}`))],
       fixture: { studio: studio(fixture), build: fixture.includes("//#build"), selftest: fixture.includes("//#selftest:tools:a") },
       frameworkTest: { build: frameworkTest.includes("//#build"), test: frameworkTest.includes("//#test") },
@@ -215,7 +219,7 @@ describe("the documents name what exists", () => {
     }, {
       notWaiting: ["//#build", "//#lint:css", "//#selftest:docs", "//#selftest:examples", "@repo/design-system#build", "@repo/ui#typecheck", "vibestack-studio#build", "vibestack-studio#dev", "vibestack-studio#test", "vibestack-studio#typecheck"],
       analyzeWaitsFor: ["//#gen", "@repo/design-system#build", "@repo/ui#gen", "vibestack-studio#gen"],
-      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true, true], docs: false, selftest: [[], false, true],
+      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true, true], readme: [["//#selftest:docs", "//#selftest:tools:rest"], false], selftest: [[], false, true],
       fixture: { studio: ["vibestack-studio#test"], build: false, selftest: true },
       frameworkTest: { build: false, test: true },
       independentOwner: true, leftovers: [],
