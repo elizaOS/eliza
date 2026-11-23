@@ -207,7 +207,6 @@ export interface StagingAnswer<Status, Reference> {
   deletion: unknown;
 }
 
-/** What the newest incoming SMS says of its sender: a four-digit suffix, or the whole address and thread when asked for. */
 export type SmsLatestSender =
   | { status: "found"; numberEnding: string }
   | { status: "found"; address: PhoneNumber; threadId?: ThreadId }
@@ -628,11 +627,7 @@ export function parseMessages(value: unknown, threadId: ThreadId, limit: number)
   return out;
 }
 
-/**
- * The latest-sender reply of the request it answers: a suffix only without `includeAddress`, and with it the whole
- * dialable address and, when Android has one, its thread.
- * @throws {never}
- */
+/** @throws {never} */
 export function parseLatestSender(value: unknown, includeAddress: boolean): SmsLatestSender | undefined {
   const data = fields(value);
   if (!data) return undefined;
@@ -659,7 +654,7 @@ export function parseMessageDeleteReference(value: unknown): MessageDeleteRefere
   return { id: data.id as MessageId, kind: data.kind, threadId, date: data.date };
 }
 
-/** The staging reply of a delete: its status, the record it names and, only when queued, the journal row to decode. @throws {never} */
+/** @throws {never} */
 function stagingFields(value: unknown, key: string): Fields | undefined {
   const queued = fields(value)?.status === "queued";
   return fields(value, queued ? ["status", key, "deletion"] : ["status", key]);

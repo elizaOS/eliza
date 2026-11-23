@@ -170,23 +170,23 @@ function finish(spec: Spec, text: string) {
  * Which characters of Quint are code, as opposed to part of a string or a comment, which are comments, which are in a
  * string, its quotes included, and what is still open at the end. A string ends at its next quote: Quint's have no escapes.
  */
-function scan(text: string): { code: boolean[]; comment: boolean[]; quoted: boolean[]; strings: Set<number>; mode: "" | '"' | "//" | "/*" } {
-  const code: boolean[] = [];
-  const comment: boolean[] = [];
-  const quoted: boolean[] = [];
+function scan(text: string): { code: Uint8Array; comment: Uint8Array; quoted: Uint8Array; strings: Set<number>; mode: "" | '"' | "//" | "/*" } {
+  const code = new Uint8Array(text.length);
+  const comment = new Uint8Array(text.length);
+  const quoted = new Uint8Array(text.length);
   const strings = new Set<number>();
   let mode: "" | '"' | "//" | "/*" = "";
   for (let i = 0; i < text.length; i++) {
-    const two = text.slice(i, i + 2);
-    if (mode === "" && text[i] === '"') { strings.add(i); quoted[i] = true; mode = '"'; }
-    else if (mode === "" && two === "//") { comment[i] = comment[i + 1] = true; i++; mode = "//"; }
-    else if (mode === "" && two === "/*") { comment[i] = comment[i + 1] = true; i++; mode = "/*"; }
-    else if (mode === "") code[i] = true;
-    else if (mode === '"') { quoted[i] = true; if (text[i] === '"') mode = ""; }
-    else if (mode === "//" && text[i] === "\n") mode = "";
-    else if (mode === "//") comment[i] = true;
-    else if (mode === "/*" && two === "*/") { comment[i] = comment[i + 1] = true; i++; mode = ""; }
-    else if (mode === "/*") comment[i] = true;
+    const ch = text[i];
+    if (mode === "" && ch === '"') { strings.add(i); quoted[i] = 1; mode = '"'; }
+    else if (mode === "" && (ch === "/" && text[i + 1] === "/")) { comment[i] = comment[i + 1] = 1; i++; mode = "//"; }
+    else if (mode === "" && (ch === "/" && text[i + 1] === "*")) { comment[i] = comment[i + 1] = 1; i++; mode = "/*"; }
+    else if (mode === "") code[i] = 1;
+    else if (mode === '"') { quoted[i] = 1; if (ch === '"') mode = ""; }
+    else if (mode === "//" && ch === "\n") mode = "";
+    else if (mode === "//") comment[i] = 1;
+    else if (mode === "/*" && (ch === "*" && text[i + 1] === "/")) { comment[i] = comment[i + 1] = 1; i++; mode = ""; }
+    else if (mode === "/*") comment[i] = 1;
   }
   return { code, comment, quoted, strings, mode: mode === "//" ? "" : mode };
 }

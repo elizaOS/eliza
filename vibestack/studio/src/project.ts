@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { trusted } from "vibelang-runtime";
 import { acceptable, type Result } from "../../pipeline.ts";
 import { isStd, parseSpec, readSpecs, specFiles, specName } from "../../parse.ts";
-import { citationLookup, ledgerFile, pending, pendingContracts, pendingKey, pendingSpecs, type Lock, type Pending } from "../../review.ts";
+import { citationLookup, ledgerFile, pending, pendingContracts, pendingKey, pendingSpecs, type Lock, type Pending, type ReviewSpec } from "../../review.ts";
 import { appScript as scriptOfApp, filesUnder, packageScripts, projectRoot, servedAt, short } from "../../util.ts";
 import type { Session, Verdict } from "../gen/index.ts";
 import type { Outline } from "../gen/outline.ts";
@@ -133,21 +133,40 @@ const reviewItem = (p: Pending, file?: string): ReviewItem => ({
   prose: p.rule?.prose ?? p.story?.prose ?? (file ? p.lines?.join("\n") : undefined), quint: p.rule?.code ?? (file ? undefined : p.lines?.join("\n")),
 });
 
+export interface ProjectTree {
+  readonly root: string;
+  parsed?: { texts: Record<string, string>; fileCount: number; specs: ReviewSpec[] };
+}
+
 /**
  * The specs as the page shows them, and everything `accept` would record (../../pipeline.ts, the `review` stage), or the
  * `problem` that keeps the specs from being read as one tree. A trusted call.
  */
-export const readTree = trusted(function readTree(root: string): { specs: SpecView[]; review: ReviewItem[]; problem?: string } {
+export const readTree = trusted(function readTree(tree: ProjectTree): Pick<Snapshot, "specs" | "review" | "problem"> {
+  const { root } = tree;
   const texts = specTexts(root);
-  const specs = Object.entries(texts).sort(([a], [b]) => specOrder(a, b))
+  const entries = Object.entries(texts);
+  const specs = entries.sort(([a], [b]) => specOrder(a, b))
     .map(([file, text]) => ({ file, module: specName(file), hash: short(text), text, outline: outlineOf(file, text) }));
   try {
-    const read = specs.length ? readSpecs(root, texts).filter((s) => !isStd(s.file)) : [];
+    const previous = tree.parsed;
+    let read: ReviewSpec[];
+    if (previous && entries.length === previous.fileCount && entries.every(([file, text]) => previous.texts[file] === text)) {
+      read = previous.specs;
+    } else {
+      delete tree.parsed;
+      const resolved = entries.length ? readSpecs(root, texts) : [];
+      read = resolved.filter((spec) => !isStd(spec.file))
+        .map(({ file, name, preamble, rules, stories, uses }) => ({ file, name, preamble, rules, stories, uses }));
+      if (read.length === resolved.length) tree.parsed = { texts, fileCount: entries.length, specs: read };
+    }
     const locks = new Map<string, Lock>();
     const citedAt = citationLookup(root);
     return { specs, review: [...read.flatMap((s) => pending(root, s, read, locks, citedAt).map((p) => reviewItem(p, s.file))), ...[...pendingSpecs(root, read), ...pendingContracts(root)].map((p) => reviewItem(p))] };
   } catch (e) { return { specs, review: [], problem: (e as Error).message }; }
 }, [Error]);
+
+let pageBuild: Promise<unknown> | undefined;
 
 /**
  * The page, built: from a source checkout, Vite builds it again when anything it is built from is newer than the
@@ -155,6 +174,7 @@ export const readTree = trusted(function readTree(root: string): { specs: SpecVi
  */
 export async function buildPage(): Promise<void> {
   if (EXT !== ".ts") return;
+  while (pageBuild) await pageBuild;
   const studio = path.join(import.meta.dirname, "..");
   const built = fs.statSync(path.join(PUBLIC, "index.html"), { throwIfNoEntry: false })?.mtimeMs ?? 0;
   const newest = (dir: string): number => fs.readdirSync(dir, { withFileTypes: true }).reduce((n, e) => e.name === "node_modules" ? n
@@ -162,8 +182,12 @@ export async function buildPage(): Promise<void> {
   const inputs = [path.join(studio, "src"), path.join(studio, "gen"), path.join(studio, "vite.config.ts"), path.join(TOOLS, "design"),
     path.dirname(fileURLToPath(import.meta.resolve("@repo/ui"))), fileURLToPath(import.meta.resolve("@repo/design-system/tokens.json"))];
   if (inputs.every((f) => (fs.statSync(f).isDirectory() ? newest(f) : fs.statSync(f).mtimeMs) < built)) return;
-  const { build } = await import("vite");
-  await build({ configFile: path.join(studio, "vite.config.ts") });
+  pageBuild = import("vite").then(({ build }) => build({ configFile: path.join(studio, "vite.config.ts") }));
+  try {
+    await pageBuild;
+  } finally {
+    pageBuild = undefined;
+  }
 }
 
 /**

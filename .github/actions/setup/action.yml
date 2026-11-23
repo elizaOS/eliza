@@ -78,12 +78,18 @@ runs:
         named="spec-${{ runner.os }}-${{ runner.arch }}-${JOB}-"
         prefix="${named}${lock}-"
         legacy="spec-${{ runner.os }}-${{ runner.arch }}-${lock}-${JOB}-"
-        key="${prefix}${{ github.sha }}-${{ github.run_attempt }}"
+        pr_prefix=
+        if [[ $JOB == selftest-* && $GITHUB_EVENT_NAME == pull_request && $GITHUB_REF =~ ^refs/pull/([1-9][0-9]*)/merge$ ]]; then
+          pr_prefix="${named}pr-${BASH_REMATCH[1]}-${lock}-"
+        fi
+        key="${pr_prefix:-$prefix}${{ github.sha }}-${{ github.run_attempt }}"
         [[ $key == spec-*-"$JOB"-*-${{ github.sha }}-${{ github.run_attempt }} ]] || { echo "::error::Malformed spec cache key '$key'"; exit 1; }
         {
           echo "restore<<EOF"
+          if [[ -n $pr_prefix ]]; then printf '%s\n' "$pr_prefix"; fi
           printf '%s\n' "$prefix" "$legacy" "$named"
           echo "EOF"
+          echo "pr-lock-prefix=$pr_prefix"
           echo "lock-prefix=$prefix"
           echo "legacy-lock-prefix=$legacy"
           echo "key=$key"
@@ -180,11 +186,13 @@ runs:
         PUBLISH_GEN_SEED: ${{ inputs.verification == 'true' && steps.gen-seed.outputs.prefix != '' }}
         REMEMBER_RESTORED_EVALUATORS: >-
           ${{ startsWith(inputs.job, 'selftest-') &&
-              github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
               steps.restore-spec-cache.outcome == 'success' && steps.restore-spec-cache.outputs.cache-matched-key != '' &&
-              steps.spec-cache.outputs.lock-prefix != '' && steps.spec-cache.outputs.legacy-lock-prefix != '' &&
-              (startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.lock-prefix) ||
-               startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.legacy-lock-prefix)) }}
+              ((github.event_name == 'pull_request' && steps.spec-cache.outputs.pr-lock-prefix != '' &&
+                startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.pr-lock-prefix)) ||
+               (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+                steps.spec-cache.outputs.lock-prefix != '' && steps.spec-cache.outputs.legacy-lock-prefix != '' &&
+                (startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.lock-prefix) ||
+                 startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.legacy-lock-prefix)))) }}
       run: |
         if [[ $REMEMBER_RESTORED_EVALUATORS == true ]]; then
           {
@@ -292,25 +300,12 @@ runs:
         key: ${{ steps.quint-cache.outputs.cache-primary-key }}
     - name: Install Chromium
       if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest' && !startsWith(inputs.job, 'simulate-')
-      env:
-        FULL_CHROMIUM_ONLY: ${{ inputs.job == 'selftest-a' }}
       run: |
-        args=(chromium)
-        [[ "$FULL_CHROMIUM_ONLY" != true ]] || args+=(--no-shell)
-        pnpm exec playwright install "${args[@]}"
-        probe() {
-          node --input-type=module <<'JS'
-        import { chromium } from "playwright";
-        async function check(options) {
-          const browser = await chromium.launch({ timeout: 10_000, ...options });
-          await browser.close();
+        node --input-type=module - "${{ inputs.job == 'selftest-a' }}" "${{ inputs.cache-verification == 'true' }}" <<'JS'
+        import { hostedCachedFixture, installChromium } from "./vibestack/selftests/install.ts";
+        const [fullOnly, cacheVerification] = process.argv.slice(2);
+        if (fullOnly !== "true" || cacheVerification !== "true" || !hostedCachedFixture()) {
+          await installChromium(fullOnly === "true");
         }
-        await check({ executablePath: chromium.executablePath() });
-        if (process.env.FULL_CHROMIUM_ONLY !== "true") await check({});
         JS
-        }
-        if ! probe; then
-          pnpm exec playwright install-deps chromium
-          probe
-        fi
       shell: bash
