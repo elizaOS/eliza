@@ -282,3 +282,149 @@ export default defineConfig(
   { files: ["packages/ui/src/components/**"], ignores: ["**/*.meta.tsx"], rules: { "code/comments": ["error", { jsdoc: true, left: commented }] } },
   { files: Object.keys(consoleCounts), rules: { "no-console": "off", "code/console": ["error", { left: consoleCounts }] } },
 )
+
+if (import.meta.main) {
+  const { spawn, spawnSync } = await import("node:child_process")
+  const { availableParallelism, constants } = await import("node:os")
+  const { default: process } = await import("node:process")
+  const { setTimeout, clearTimeout } = await import("node:timers")
+  const vibeFiles = "**/*.{vibe,vibex}"
+  const packageGroups = [
+    [
+      "packages/agent",
+      "packages/plugin-assistant",
+      "packages/plugin-browser",
+      "packages/cloud",
+      "packages/core",
+      "packages/plugin-localinference",
+      "packages/os",
+    ],
+    [
+      "packages/plugin-calendar",
+      "packages/plugin-files",
+      "packages/plugin-inbox",
+      "packages/plugin-maps",
+      "packages/plugin-notes",
+      "packages/ui",
+      "packages/plugin-workflows",
+      "vibestack/studio",
+    ],
+  ]
+  const ignoreVibe = ["--ignore-pattern", vibeFiles]
+  const ignorePackages = packageGroups.flat().flatMap((directory) => ["--ignore-pattern", `${directory}/`])
+  const extra = process.argv.slice(2)
+  const passes = extra.length
+    ? [[".", "--max-warnings", "0", ...extra]]
+    : [
+      [vibeFiles, "--no-error-on-unmatched-pattern", "--max-warnings", "0"],
+      ...packageGroups.map((group) => [...group, ...ignoreVibe, "--no-error-on-unmatched-pattern", "--max-warnings", "0"]),
+      [".", ...ignoreVibe, ...ignorePackages, "--max-warnings", "0"],
+    ]
+
+  const signalStatus = (signal) => 128 + constants.signals[signal]
+
+  function serial() {
+    let status = 0
+    for (const args of passes) {
+      const result = spawnSync("eslint", args, { stdio: "inherit" })
+      if (result.error) throw result.error
+      if (result.signal) return signalStatus(result.signal)
+      status = Math.max(status, result.status ?? 2)
+    }
+    return status
+  }
+
+  function signalGroup(child, signal) {
+    if (child.pid === undefined) return
+    try {
+      process.kill(-child.pid, signal)
+    } catch (error) {
+      if (error.code === "ESRCH") return
+      if (error.code !== "EPERM") throw error
+      child.kill(signal)
+    }
+  }
+
+  async function overlap([vibe, ...typed]) {
+    const active = new Set()
+    const held = []
+    let stoppingGroups
+    let force
+    let interrupted
+    const signals = ["SIGINT", "SIGTERM", "SIGHUP"]
+    const stop = (signal) => {
+      if (stoppingGroups) return
+      stoppingGroups = [...active]
+      for (const child of stoppingGroups) signalGroup(child, signal)
+      force = setTimeout(() => {
+        for (const child of stoppingGroups) signalGroup(child, "SIGKILL")
+      }, 750)
+    }
+    const interrupt = (signal) => {
+      interrupted ??= signal
+      stop(interrupted)
+    }
+    const ttyEnv = process.env.FORCE_COLOR === undefined && process.stdout.hasColors?.()
+      ? { ...process.env, FORCE_COLOR: "1" }
+      : process.env
+    const run = (args, capture) => new Promise((resolve) => {
+      try {
+        const child = spawn("eslint", args, { detached: true,
+          stdio: capture ? ["inherit", "pipe", "pipe"] : "inherit",
+          env: capture ? ttyEnv : process.env })
+        active.add(child)
+        let error
+        child.once("error", (cause) => { error = cause })
+        child.once("exit", (_, signal) => {
+          if (signal && !stoppingGroups) signalGroup(child, "SIGKILL")
+        })
+        child.once("close", (status, signal) => {
+          active.delete(child)
+          resolve({ status, signal, error })
+        })
+        if (capture) for (const stream of ["stdout", "stderr"]) {
+          child[stream].on("data", (chunk) => held.push([stream, chunk]))
+        }
+      } catch (error) {
+        resolve({ error })
+      }
+    })
+    const typedPasses = async () => {
+      let status = 0
+      for (const args of typed) {
+        if (stoppingGroups) break
+        const result = await run(args, true)
+        if (result.error || result.signal) return result
+        status = Math.max(status, result.status ?? 2)
+      }
+      return { status }
+    }
+    for (const signal of signals) process.on(signal, interrupt)
+    try {
+      const first = run(vibe, false)
+      const rest = typedPasses()
+      const firstResult = await first
+      if (firstResult.error || firstResult.signal) stop("SIGTERM")
+      const typedResult = await rest
+      if (interrupted) return signalStatus(interrupted)
+      if (!firstResult.error && !firstResult.signal) {
+        for (const [stream, chunk] of held) process[stream].write(chunk)
+      }
+      for (const result of [firstResult, typedResult]) {
+        if (result.error) throw result.error
+        if (result.signal) return signalStatus(result.signal)
+      }
+      return Math.max(firstResult.status ?? 2, typedResult.status ?? 2)
+    } finally {
+      if (stoppingGroups) for (const child of stoppingGroups) signalGroup(child, "SIGKILL")
+      clearTimeout(force)
+      for (const signal of signals) process.off(signal, interrupt)
+    }
+  }
+
+  const standalone = extra.length === 0 && process.env.npm_lifecycle_event === "lint:js"
+    && !["CI", "GITHUB_ACTIONS", "TURBO_HASH"].some((name) => name in process.env)
+    && process.platform !== "win32" && availableParallelism() > 1 && process.availableMemory() >= 8 * 1024 ** 3
+
+  process.exitCode = standalone ? await overlap(passes) : serial()
+}

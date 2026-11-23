@@ -213,7 +213,11 @@ and the overrides at or after the split, and the exclusions are
 remapped to its new wall time as a moved series remaps them. For a
 deletion, the occurrences and overrides at or after the split go and no
 new series is made. All edits the parent from the selected occurrence's
-reviewed time; deleting all removes the parent and its overrides.
+reviewed time; deleting all removes the parent and its overrides. When
+all is edited from a stored override, that override also takes the
+reviewed fields, its time included, and it stays the selected event.
+When all is edited from a generated occurrence that the edited parent
+no longer generates, the edit is refused before anything is stored.
 
 ```quint
 type WriteScope = InstanceScope | FollowingScope | WholeSeriesScope

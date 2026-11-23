@@ -14,7 +14,7 @@ import { callCloud, type CallInit } from "./support/http.ts"
 import { testProfile } from "./support/profile.ts"
 
 const minuteMs = 60_000
-const model: Model = { id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true, inputPer1K: 1000, outputPer1K: 2000 }
+const model: Model = { id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true, defaultMaxTokens: { tag: "OutputDefaultOf", tokens: 500 }, inputPer1K: 1000, outputPer1K: 2000 }
 
 effect function check(run: () => void) {
   try Effect.try(run)
