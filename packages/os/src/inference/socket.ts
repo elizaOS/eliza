@@ -2,19 +2,14 @@
 import { Buffer } from "node:buffer";
 import { connect } from "node:net";
 
-/** A request the host could not be reached for: it is not listening, or the connection broke before an answer. */
 export class HostUnreachable extends Error {}
 
-/** The socket path of an abstract socket name, or the path itself when it names a file. @throws {never} */
+/** @throws {never} */
 export function socketPath(name: string): string {
   return name.startsWith("/") ? name : `\0${name}`;
 }
 
-/**
- * Sends one request frame and resolves with the host's one answer frame, parsed; aborting closes the
- * connection, which the host takes as a cancel.
- * @throws {HostUnreachable}
- */
+/** @throws {HostUnreachable} */
 export function exchange(socket: string, request: object, signal?: AbortSignal): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -58,14 +53,14 @@ export function exchange(socket: string, request: object, signal?: AbortSignal):
   });
 }
 
-/** Little-endian float PCM as base64, the host's audio encoding. @throws {never} */
+/** @throws {never} */
 export function floatsToBase64(samples: Float32Array): string {
   const bytes = Buffer.alloc(samples.length * 4);
   samples.forEach((sample, index) => bytes.writeFloatLE(sample, index * 4));
   return bytes.toString("base64");
 }
 
-/** The samples of little-endian float PCM in base64, or undefined for anything else. @throws {never} */
+/** @throws {never} */
 export function floatsFromBase64(text: string): Float32Array | undefined {
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text)) return undefined;
   const bytes = Buffer.from(text, "base64");
