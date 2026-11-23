@@ -137,8 +137,8 @@ the request sent, in order, with its serialized length and the first twelve
 hex digits of its SHA-256, and is empty when the request sent none. `maxTokens`
 is the cap the request sent, absent when it sent none. `usage` exists only
 when the provider reported a prompt count; a completion, cache-read or
-reasoning count the provider did not report is absent, never zero, so no
-report stays distinguishable from a cache miss.
+reasoning count the provider did not report is absent, never zero, and a
+reported zero is kept, so no report stays distinguishable from a cache miss.
 
 ```quint
 type ProviderCount = CountReported({ tokens: int }) | CountMissing
@@ -149,6 +149,7 @@ pure val sentValues = Set(-1, 0, 3)
 pure val cValues = Set(CountReported({ tokens: 0 }), CountReported({ tokens: 12 }), CountMissing)
 pure val promptValues = Set(CountReported({ tokens: 0 }), CountReported({ tokens: 12 }), CountMissing)
 pure def lawAMissingCountIsNeverZero(c: ProviderCount): bool = c == CountMissing implies loggedTokens(c) != 0
+pure def lawAReportedZeroIsKept(c: ProviderCount): bool = c == CountReported({ tokens: 0 }) implies loggedTokens(c) == 0
 pure def lawUsageNeedsAReportedPromptCount(prompt: ProviderCount): bool = usageLogged(prompt) implies prompt != CountMissing
 pure def lawEveryToolSentIsLogged(sent: int): bool = sent >= 0 implies toolsLogged(sent) == sent
 ```

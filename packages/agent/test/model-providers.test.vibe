@@ -170,7 +170,7 @@ it.effect('The own-key backend answers text and image description, classifies it
   assert.strictEqual(lineBreak._tag, "LaunchFrameRejected")
 })
 
-it.effect('A tool call and its token use reach the caller as one result, a streamed call asks for its token use and records the cached prompt tokens of its last chunk, each tool result follows the call that asked for it, and a thinking hint sets the reasoning effort only on a model that documents it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
+it.effect('A tool call and its token use reach the caller as one result, a usage report missing a count leaves the answer whole, a streamed call asks for its token use and records the cached prompt tokens of its last chunk, a cache miss included, each tool result follows the call that asked for it, and a thinking hint sets the reasoning effort only on a model that documents it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "The token use keeps every count the provider named, zero included, and a report missing a prompt or completion count leaves the answer whole without one"; spec/core/models.md, "A model-call log row records the request parts its prompt omits and only the token counts the provider reported")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud, "cerebras/qwen-3.8-27b")
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
@@ -204,27 +204,43 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
   ])
   assert.deepStrictEqual([sent.tools, sent.tool_choice, sent.reasoning_effort], [[{ type: "function", function: { name: "CALCULATE", description: "Arithmetic.", parameters } }], "auto", "none"])
   assert.strictEqual((try binding.read()).accountState, "usable")
+  const reported = (usage: object) => effect {
+    try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({ choices: [{ message: { role: "assistant", content: "Four." }, finish_reason: "stop" }], usage })))
+    return try host("partly counted answer", () => runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
+      tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto", messages: [{ role: "user", content: "What is 2+2?" }],
+    }))
+  }
+  assert.deepStrictEqual<unknown>([try reported({ prompt_tokens: 12, completion_tokens: 5 }), try reported({ prompt_tokens: 12, total_tokens: 12 })], [
+    { text: "Four.", toolCalls: [], finishReason: "stop", usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17 } },
+    { text: "Four.", toolCalls: [], finishReason: "stop" },
+  ])
 
   const scripted = try cloudFake(deviceKey)
   const streaming = try cloudAgent(scripted)
-  try Effect.sync(() => scripted.script(text("Whole."), cachedText(48, "Four.")))
+  try Effect.sync(() => scripted.script(text("Whole."), cachedText(48, "Four."), cachedText(0, "Five.")))
   try host("whole call", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hi." }))
   const chunks: string[] = []
-  const streamed = try host("streamed tool offer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, {
+  const offer = () => host("streamed tool offer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, {
     tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto",
     messages: [{ role: "user", content: "What is 2+2?" }], stream: true, onStreamChunk: (chunk: string) => { chunks.push(chunk) },
   }))
+  const streamed = try offer()
+  const missed = try offer()
   const [whole, asked] = scripted.calls.map((call) => call.body as Record<string, unknown>)
-  let logged: unknown
-  for (let read = 0; logged === undefined && read < 100; read++) {
+  let logged: unknown[] = []
+  for (let read = 0; logged.length < 2 && read < 100; read++) {
     const rows = try host("model-call records", () => streaming.runtime.getLogs({ entityId: streaming.runtime.agentId }))
-    logged = rows.map((log) => (log.body as { usage?: { cacheReadInputTokens?: unknown } }).usage).find((usage) => usage?.cacheReadInputTokens !== undefined)
+    logged = rows.flatMap((log) => (log.body as { usage?: { promptTokens: number } }).usage ?? []).sort((a, b) => a.promptTokens - b.promptTokens)
   }
-  assert.deepStrictEqual<unknown>({ streamed, chunks, options: [asked?.stream_options, whole !== undefined && "stream_options" in whole], logged }, {
+  assert.deepStrictEqual<unknown>({ streamed, missed, chunks, options: [asked?.stream_options, whole !== undefined && "stream_options" in whole], logged }, {
     streamed: { text: "Four.", toolCalls: [], finishReason: "stop", usage: { promptTokens: 49, completionTokens: 2, totalTokens: 51, cacheReadInputTokens: 48 } },
-    chunks: ["Four."],
+    missed: { text: "Five.", toolCalls: [], finishReason: "stop", usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3, cacheReadInputTokens: 0 } },
+    chunks: ["Four.", "Five."],
     options: [{ include_usage: true }, false],
-    logged: { promptTokens: 49, completionTokens: 2, cacheReadInputTokens: 48 },
+    logged: [
+      { promptTokens: 1, completionTokens: 2, cacheReadInputTokens: 0 },
+      { promptTokens: 49, completionTokens: 2, cacheReadInputTokens: 48 },
+    ],
   })
 })
 

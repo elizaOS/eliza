@@ -1,11 +1,12 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit on an own key at Cerebras holds the account at most four seconds, and every other route keeps the provider's retry time"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit on an own key at Cerebras holds the account at most four seconds, and every other route keeps the provider's retry time"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/models/binding.md, "The token use keeps every count the provider named, zero included, and a report missing a prompt or completion count leaves the answer whole without one"
 import { readCloudError, refusalStatusOf, type CloudFailure } from "@elizaos/cloud/client"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, effortFor, failureOf, frameStatus, namedRetryAt, outcomeOf, refusalWait, shellOutcome, streamIdleSeconds, usageAsked,
+  cacheKeySent, capSent, chatReturn, detailReturned, effortFor, failureOf, frameStatus, namedRetryAt, outcomeOf, refusalWait, shellOutcome, streamIdleSeconds, tokenUseReturned, usageAsked,
   type AccountFailure, type CapAsk, type ChatAsk, type ChatReturn, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
+import type { ProviderCount } from "../../gen/core__models.ts"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 
 export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
@@ -48,9 +49,9 @@ export error ShellRefused { refusal: ShellRefusal }
 error StreamConsumerFailed { cause: unknown }
 
 const Usage = Schema.Struct({
-  prompt_tokens: Schema.Number,
-  completion_tokens: Schema.Number,
-  total_tokens: Schema.Number,
+  prompt_tokens: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  completion_tokens: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  total_tokens: Schema.optionalKey(Schema.NullOr(Schema.Number)),
   prompt_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({ cached_tokens: Schema.optionalKey(Schema.NullOr(Schema.Number)) }))),
   completion_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({ reasoning_tokens: Schema.optionalKey(Schema.NullOr(Schema.Number)) }))),
 })
@@ -404,16 +405,23 @@ function frameRefusal(payload: string): RefusalText | undefined {
   return named < 0 ? undefined : { status: frameStatus(-1, named), raw: payload, header: () => null }
 }
 
+function countOf(tokens: number | null | undefined): ProviderCount {
+  return typeof tokens === "number" ? { tag: "CountReported", tokens } : { tag: "CountMissing" }
+}
+
 function usageOf(usage: WireUsage | null | undefined): TokenUsage | undefined {
-  if (usage === undefined || usage === null) return undefined
-  const cached = usage.prompt_tokens_details?.cached_tokens
-  const reasoning = usage.completion_tokens_details?.reasoning_tokens
+  const promptTokens = usage?.prompt_tokens
+  const completionTokens = usage?.completion_tokens
+  const report = { prompt: countOf(promptTokens), completion: countOf(completionTokens) }
+  if (typeof promptTokens !== "number" || typeof completionTokens !== "number" || !tokenUseReturned(report)) return undefined
+  const cached = detailReturned(report, countOf(usage?.prompt_tokens_details?.cached_tokens))
+  const reasoning = detailReturned(report, countOf(usage?.completion_tokens_details?.reasoning_tokens))
   return {
-    promptTokens: usage.prompt_tokens,
-    completionTokens: usage.completion_tokens,
-    totalTokens: usage.total_tokens,
-    ...(typeof cached === "number" && cached > 0 ? { cacheReadInputTokens: cached } : {}),
-    ...(typeof reasoning === "number" && reasoning > 0 ? { reasoningTokens: reasoning } : {}),
+    promptTokens,
+    completionTokens,
+    totalTokens: usage?.total_tokens ?? promptTokens + completionTokens,
+    ...(cached < 0 ? {} : { cacheReadInputTokens: cached }),
+    ...(reasoning < 0 ? {} : { reasoningTokens: reasoning }),
   }
 }
 

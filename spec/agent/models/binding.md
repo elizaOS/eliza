@@ -209,8 +209,8 @@ otherwise the backend owns the output limit. A
 streamed call asks for its token use (`stream_options.include_usage`), which
 the provider sends in a last chunk without choices, and a call that is not
 streamed sends no stream options. The token use carries the prompt tokens
-the provider read from its prompt cache, when it names any, so a streamed
-call is measured as a whole one is.
+the provider read from its prompt cache whenever it names that count, zero
+included, so a streamed call is measured as a whole one is.
 
 ```quint
 type ChatAsk = { offersTools: bool, choosesTool: bool, asksSchema: bool }
@@ -528,4 +528,38 @@ pure def pluginCloudPathAllowed(pathname: str): bool = pathname != privateInboxA
 pure val pathnameValues = Set(privateInboxArrivalPath, "/api/v1/eliza/google/gmail/read")
 pure def lawPrivateInboxArrivalStaysOffThePluginLink(pathname: str): bool =
   pathname == privateInboxArrivalPath implies not(pluginCloudPathAllowed(pathname))
+```
+
+## Story: See what each stage of my agent spends on the model
+
+> As the owner's operator, I want every model call my phone's agent makes
+> to say which stage made it and every token count the provider named, so
+> that I can measure on the phone how many tokens each stage sends and how
+> much of them the provider's prompt cache served.
+
+### The token use keeps every count the provider named, zero included, and a report missing a prompt or completion count leaves the answer whole without one
+
+The token use of a whole or streamed answer is the provider's `usage`: the
+prompt and completion counts, the total, which is their sum when the
+provider names none, the prompt tokens it read from its prompt cache
+(`prompt_tokens_details.cached_tokens`) and the reasoning tokens
+(`completion_tokens_details.reasoning_tokens`). A cached or reasoning count
+the provider names is kept, zero included, so a cache miss stays
+distinguishable from no report; one it leaves out or sends as null is
+absent. A usage object without a prompt or a completion count gives the
+answer no token use, and the answer reaches its caller as it would without
+one, never as a provider issue.
+
+```quint
+type UsageReport = { prompt: M::ProviderCount, completion: M::ProviderCount }
+pure def tokenUseReturned(report: UsageReport): bool = M::loggedTokens(report.prompt) >= 0 and M::loggedTokens(report.completion) >= 0
+pure def detailReturned(report: UsageReport, detail: M::ProviderCount): int = if (tokenUseReturned(report)) M::loggedTokens(detail) else -1
+pure val reportValues = Set(
+  { prompt: M::CountReported({ tokens: 12 }), completion: M::CountReported({ tokens: 2 }) },
+  { prompt: M::CountReported({ tokens: 12 }), completion: M::CountMissing },
+  { prompt: M::CountMissing, completion: M::CountReported({ tokens: 2 }) })
+pure def lawANamedZeroIsKept(report: UsageReport): bool = tokenUseReturned(report) implies detailReturned(report, M::CountReported({ tokens: 0 })) == 0
+pure def lawAnUnnamedDetailIsNeverZero(report: UsageReport): bool = detailReturned(report, M::CountMissing) != 0
+pure def lawAReportMissingACountGivesNoTokenUse(report: UsageReport): bool =
+  (report.prompt == M::CountMissing or report.completion == M::CountMissing) implies not(tokenUseReturned(report))
 ```
