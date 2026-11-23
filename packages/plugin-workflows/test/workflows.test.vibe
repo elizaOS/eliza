@@ -596,7 +596,15 @@ export default async function (ctx: WorkflowContext) {
 }
 `
 
-it.live('Turn on generated code only after review and resume it without repeating an effect (spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Story: Resume generated code after a wait without repeating what it already did"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes")', effect () => {
+it.live('Turn on generated code only after review and resume it without repeating an effect (spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Story: Resume generated code after a wait without repeating what it already did"; spec/workflow/generated.md, "A draft the check refuses is repaired once before it is refused"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes")', effect () => {
+  const asked: string[] = []
+  const leaky = `import { readFileSync } from "node:fs"\n${generatedSource}`
+  const repairing = try harness({ draft: (prompt) => { asked.push(prompt); return JSON.stringify({ name: "Summary", description: "", source: asked.length === 1 ? leaky : generatedSource }) } })
+  const repaired = (try repairing.request("/api/workflow/workflows/generate", { prompt: "Summarize my week" })) as { readonly ok: boolean; readonly source: string }
+  const unrepairable = try harness({ draft: (prompt) => { asked.push(prompt); return JSON.stringify({ name: "Leaky", description: "", source: leaky }) } })
+  const refusedTwice = (try unrepairable.request("/api/workflow/workflows/generate", { prompt: "Read a file" })) as { readonly ok: boolean }
+  try check(() => assert.deepStrictEqual(
+    [repaired.ok, repaired.source === generatedSource, refusedTwice.ok, asked.map((prompt) => prompt.includes("rejectedDraft"))], [true, true, false, [false, true, false, true]]))
   let drafts = 0
   const rig = try harness({ draft: () => { drafts += 1; return "Your summary" } })
   const refusedImport = try Effect.flip(rig.request("/api/workflow/workflows", { name: "Leaky", source: `import { readFileSync } from "node:fs"\n${generatedSource}`, mutationId: "33333333-3333-4333-8333-333333333333" }))
