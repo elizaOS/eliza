@@ -1434,7 +1434,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
     const PHONE = "+12025550123"
     const CARD = `[MAPSCARD]\n${JSON.stringify({ kind: "place", place: { latitude: 37.7749295, longitude: -122.4194093 } })}\n[/MAPSCARD]`
     const secret = new SecretSwapSession()
-    const contact = secret.substituteText(PHONE)
+    const contact = try Effect.try(() => secret.substituteText(PHONE))
     const unwritten = contact.replace(/_[0-9]+__$/, "_999999__")
     const recognizerInputs: string[] = []
     const names = [`${contact} Alice Example`, contact, unwritten, "Alice Example"]

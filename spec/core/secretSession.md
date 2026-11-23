@@ -138,10 +138,9 @@ type PrivacyLayer = PseudonymLayer | ReferenceLayer
 type PromptPiece = { ownReference: bool, text: str, width: int }
 pure val wrappingValues = Set(List(), List(ReferenceLayer), List(PseudonymLayer), List(PseudonymLayer, ReferenceLayer), List(ReferenceLayer, PseudonymLayer))
 pure val pieceValues = Set({ ownReference: true, text: "reference", width: 9 }, { ownReference: false, text: "Alice", width: 5 }, { ownReference: false, text: "", width: 0 })
-pure val actionRestoreOrder = List(PseudonymLayer, ReferenceLayer)
 pure def peelLayer(wrapping: List[PrivacyLayer], layer: PrivacyLayer): List[PrivacyLayer] =
   if (wrapping.length() > 0 and wrapping.nthOr(0, layer) == layer) wrapping.removeAt(0) else wrapping
-pure def restoreForAction(wrapping: List[PrivacyLayer]): List[PrivacyLayer] = actionRestoreOrder.foldl(wrapping, (rest, layer) => peelLayer(rest, layer))
+pure def restoreForAction(wrapping: List[PrivacyLayer]): List[PrivacyLayer] = peelLayer(peelLayer(wrapping, PseudonymLayer), ReferenceLayer)
 pure def ingressWrapping(wrapping: List[PrivacyLayer]): bool =
   wrapping == List() or wrapping == List(ReferenceLayer) or wrapping == List(PseudonymLayer) or wrapping == List(PseudonymLayer, ReferenceLayer)
 pure def maskForRecognition(piece: PromptPiece): PromptPiece = if (piece.ownReference) { ownReference: false, text: "", width: piece.width } else piece
