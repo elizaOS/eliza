@@ -70,7 +70,29 @@ effect function jsonPost(runtime: IAgentRuntime, path: string, body: object, sel
   })
 }
 
-const usageSchema = Schema.Struct({ prompt_tokens: Schema.Int, completion_tokens: Schema.Int, total_tokens: Schema.Int })
+const usageSchema = Schema.Struct({
+  prompt_tokens: Schema.Int, completion_tokens: Schema.Int, total_tokens: Schema.Int,
+  prompt_tokens_details: Schema.optionalKey(Schema.Unknown),
+  completion_tokens_details: Schema.optionalKey(Schema.Unknown),
+})
+type OpenAiUsage = typeof usageSchema.Type
+
+function reportedTokens(details: unknown, key: string): number | undefined {
+  if (typeof details !== "object" || details === null || !Object.hasOwn(details, key)) return undefined
+  const value = (details as Record<string, unknown>)[key]
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+}
+
+// spec/openai/index.md, "Reported cache and reasoning token counts survive completion decoding"
+function usageOf(usage: OpenAiUsage): TokenUsage {
+  const cached = reportedTokens(usage.prompt_tokens_details, "cached_tokens")
+  const reasoning = reportedTokens(usage.completion_tokens_details, "reasoning_tokens")
+  return {
+    promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens,
+    ...(cached === undefined ? {} : { cacheReadInputTokens: cached }),
+    ...(reasoning === undefined ? {} : { reasoningTokens: reasoning }),
+  }
+}
 const streamFrameSchema = Schema.Struct({
   choices: Schema.Array(Schema.Struct({
     delta: Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) }),
@@ -135,7 +157,7 @@ effect function streamAnswer(response: Response, model: Machine.Shape, attempt: 
       }
       const next = try streamFrame(event.data)
       const reported = next.usage
-      if (reported != null) usage = { promptTokens: reported.prompt_tokens, completionTokens: reported.completion_tokens, totalTokens: reported.total_tokens }
+      if (reported != null) usage = usageOf(reported)
       for (const choice of next.choices) {
         if (choice.finish_reason != null) reason = choice.finish_reason
         const delta = choice.delta.content
@@ -214,7 +236,7 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
         return try Effect.sync(() => ({
           textStream: (async function* () { if (text !== "") yield text })(),
           text: Promise.resolve(text),
-          usage: Promise.resolve(reported && { promptTokens: reported.prompt_tokens, completionTokens: reported.completion_tokens, totalTokens: reported.total_tokens }),
+          usage: Promise.resolve(reported && usageOf(reported)),
           finishReason: Promise.resolve(choice.finish_reason),
           toolCalls: choice.message.tool_calls,
         } satisfies TextStreamResult))
