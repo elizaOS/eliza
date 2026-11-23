@@ -1518,6 +1518,9 @@ lemma ServiceDeclarationAppended(s: ServiceInstances, after: ServiceInstances, c
       var matching := ProofLib.Filter((c: ServiceClassEntry) => c.id == classId, s.classes);
       ProofLib.FilterMember((c: ServiceClassEntry) => c.id == classId, s.classes, prior);
       var i :| 0 <= i < |s.classes| && s.classes[i] == prior;
+      assert after.classes[i] == entry;
+    } else {
+      assert after.classes[|s.classes|] == entry;
     }
   }
   ServiceClassFind(after, classId);
@@ -1531,7 +1534,10 @@ lemma ServiceDeclarationAppended(s: ServiceInstances, after: ServiceInstances, c
       ServiceClassProjection(s, d.classId);
       ProofLib.FilterMember((c: ServiceClassEntry) => c.id == d.classId, s.classes, existing);
       var i :| 0 <= i < |s.classes| && s.classes[i] == existing;
+      assert after.classes[i] == existing;
       ServiceClassFind(after, d.classId);
+    } else {
+      assert serviceClass(after, classId) == entry;
     }
   }
   forall c | c in after.classes
