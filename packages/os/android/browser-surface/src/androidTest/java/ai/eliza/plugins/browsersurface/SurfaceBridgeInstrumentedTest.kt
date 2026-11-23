@@ -1,8 +1,8 @@
 /**
  * Drives the plugin through a real Capacitor bridge, as the host page would, and loads
  * pages from a local server: the state each `navigationChanged` carries, the check that
- * lets a surface id be created again, where the below-host input router goes, and what a
- * paused page does with its dialogs and with taps.
+ * lets a surface id be created again, where the below-host input router goes, what a
+ * paused page does with its dialogs and with taps, and how a tapped new window is requested.
  */
 package ai.eliza.plugins.browsersurface
 
@@ -31,6 +31,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -74,7 +75,7 @@ class SurfaceBridgeInstrumentedTest {
                 val socket = try { server.accept() } catch (_: Exception) { break }
                 socket.use {
                     val path = it.getInputStream().bufferedReader().readLine()?.split(" ")?.getOrNull(1) ?: "/"
-                    val body = "<!doctype html><title>Page ${path.trim('/')}</title><p>$path</p>".toByteArray()
+                    val body = (if (path == "/opener") OPENER else "<!doctype html><title>Page ${path.trim('/')}</title><p>$path</p>").toByteArray()
                     it.getOutputStream().write(
                         ("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${body.size}\r\n" +
                             "Connection: close\r\n\r\n").toByteArray() + body,
@@ -136,9 +137,24 @@ class SurfaceBridgeInstrumentedTest {
         }
     }
 
-    private fun create(layer: String, intercept: Boolean = false, answers: Boolean = false) = call("createSurface") {
+    private fun newWindow(listener: String, waitMs: Long = 20_000): String? {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(waitMs)
+        val others = mutableListOf<Pair<String, JSONObject>>()
+        try {
+            while (System.nanoTime() < deadline) {
+                val next = replies.results.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                if (next.first != listener) others += next
+                else if (next.second.optBoolean("newWindow")) return next.second.getString("url")
+            }
+            return null
+        } finally {
+            replies.results.addAll(others)
+        }
+    }
+
+    private fun create(layer: String, intercept: Boolean = false, answers: Boolean = false, path: String = "/page") = call("createSurface") {
         put("id", SURFACE)
-        put("url", "$origin/page")
+        put("url", "$origin$path")
         put("process", "shared")
         put("storage", "shared")
         put("layer", layer)
@@ -147,6 +163,41 @@ class SurfaceBridgeInstrumentedTest {
     }
 
     private fun onMain(block: () -> Unit) = instrumentation.runOnMainSync(block)
+
+    private fun place() {
+        val outerClip = JSObject().put("x", 0).put("y", 0).put("width", 200).put("height", 200)
+            .put("cornerRadii", JSObject().put("topLeft", 0).put("topRight", 0).put("bottomRight", 0).put("bottomLeft", 0))
+        call("setBounds") {
+            put("id", SURFACE)
+            put("x", 0)
+            put("y", 0)
+            put("width", 200)
+            put("height", 200)
+            put("outerClip", outerClip)
+        }
+    }
+
+    private fun site(): WebView {
+        lateinit var site: WebView
+        onMain { site = (children(hostAndBranch().first).single { it is OccludingSurfaceLayout } as ViewGroup).getChildAt(0) as WebView }
+        return site
+    }
+
+    private fun tap(site: WebView, fraction: Float) {
+        var x = 0f
+        var y = 0f
+        onMain {
+            val at = IntArray(2).also(site::getLocationOnScreen)
+            x = at[0] + site.width / 2f
+            y = at[1] + site.height * fraction
+        }
+        val now = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val event = MotionEvent.obtain(now, SystemClock.uptimeMillis(), action, x, y, 0)
+            instrumentation.sendPointerSync(event)
+            event.recycle()
+        }
+    }
 
     /** The FrameLayout the plugin adds surfaces to, and the bridge WebView's branch in it. */
     private fun hostAndBranch(): Pair<ViewGroup, View> {
@@ -292,16 +343,7 @@ class SurfaceBridgeInstrumentedTest {
         val loaded = listen("navigationChanged")
         val dialogs = listen("dialogRequested")
         create("below-host", answers = true)
-        val outerClip = JSObject().put("x", 0).put("y", 0).put("width", 200).put("height", 200)
-            .put("cornerRadii", JSObject().put("topLeft", 0).put("topRight", 0).put("bottomRight", 0).put("bottomLeft", 0))
-        call("setBounds") {
-            put("id", SURFACE)
-            put("x", 0)
-            put("y", 0)
-            put("width", 200)
-            put("height", 200)
-            put("outerClip", outerClip)
-        }
+        place()
         call("setOcclusionRects") {
             put("id", SURFACE)
             put("rects", JSArray())
@@ -343,7 +385,27 @@ class SurfaceBridgeInstrumentedTest {
         assertTrue("a resumed page takes presses again", pressThroughRouter(router, x, y))
     }
 
+    @Test
+    fun aTappedNewWindowIsRequestedOnceWhetherItsFirstLoadIsOverriddenOrIntercepted() {
+        val requested = listen("navigationRequested")
+        val loaded = listen("navigationChanged")
+        create("above-host", intercept = true, path = "/opener")
+        place()
+        call("presentSurface") { put("id", SURFACE) }
+        navigationChanged(loaded, "/opener")
+        val site = site()
+        instrumentation.waitForIdleSync()
+        for ((fraction, popup) in listOf(0.25f to "/link-popup", 0.75f to "/script-popup")) {
+            tap(site, fraction)
+            assertEquals("$origin$popup", newWindow(requested))
+            assertNull("the window is requested once", newWindow(requested, 4_000))
+        }
+    }
+
     private companion object {
         const val SURFACE = "bridge-surface"
+        const val OPENER = "<!doctype html><meta name=viewport content=\"width=device-width\"><title>Page opener</title>" +
+            "<a href=\"/link-popup\" target=\"_blank\" style=\"position:fixed;left:0;top:0;width:100%;height:50%\">link</a>" +
+            "<button onclick=\"window.open('/script-popup')\" style=\"position:fixed;left:0;top:50%;width:100%;height:50%\">script</button>"
     }
 }
