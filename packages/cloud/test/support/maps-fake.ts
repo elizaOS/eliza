@@ -15,10 +15,13 @@ export type GoogleScript =
 export interface GoogleMapsFake {
   readonly handler: FakeHandler;
   readonly calls: ReadonlyArray<{ readonly operation: GoogleOperation; readonly request: FakeRequest }>;
+  readonly sessionRequested: Promise<void>;
   /** @throws {never} */
   count(operation: GoogleOperation): number;
   /** @throws {never} */
   script(...next: ReadonlyArray<GoogleScript>): void;
+  /** @throws {never} */
+  delaySessions(delayMs: number): void;
 }
 
 export const googleKey = "maps-key";
@@ -159,18 +162,29 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
 export function googleMapsFake(): GoogleMapsFake {
   const calls: Array<{ operation: GoogleOperation; request: FakeRequest }> = [];
   const queue: GoogleScript[] = [];
+  let sessionDelayMs = 0;
+  let sessionAsked: () => void = () => undefined;
+  const sessionRequested = new Promise<void>((resolve) => {
+    sessionAsked = resolve;
+  });
   return {
     handler: async (request) => {
       const operation = operationOf(request);
       if (operation === undefined) return undefined;
       calls.push({ operation, request });
+      if (operation === "createSession") sessionAsked();
       if (keyOf(request) !== googleKey) return { status: 403, body: { error: { code: 403, status: "PERMISSION_DENIED" } } };
-      return scripted(operation === "createSession" ? { kind: "answer" } : queue.shift() ?? { kind: "answer" }, operation, request);
+      const session: GoogleScript = sessionDelayMs > 0 ? { kind: "slow", delayMs: sessionDelayMs } : { kind: "answer" };
+      return scripted(operation === "createSession" ? session : queue.shift() ?? { kind: "answer" }, operation, request);
     },
     calls,
+    sessionRequested,
     count: (operation) => calls.filter((call) => call.operation === operation).length,
     script: (...next) => {
       queue.push(...next);
+    },
+    delaySessions: (delayMs) => {
+      sessionDelayMs = delayMs;
     },
   };
 }

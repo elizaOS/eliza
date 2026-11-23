@@ -16,7 +16,9 @@ The shell handles a request in this order: `requestAuth`, the deployment's
 capability gate, `entryOf`, the plan's standard request limit (for every
 operation but tiles) with `limitOf` in one store transaction, the body,
 `providerQuote`, the hold (`M::admission`, then `courseOf`), `mayDispatch`,
-`M::markDispatched`, the provider, and one `settlementOf`. Wire shapes and string formats are the
+`M::markDispatched`, the provider, and one `settlementOf`. For a tile, the
+provider's tile session is started as soon as the tile address is read,
+beside the hold rather than after it. Wire shapes and string formats are the
 Effect Schemas of `src/services/maps.schema.ts`. Every maps answer is sent
 `Cache-Control: no-store`. A metered answer also reports in `Server-Timing`
 how long the request spent in each phase, by name and duration only:
@@ -167,17 +169,22 @@ price is the sum over the billed calls. An answered request, and one refused
 `502 provider_invalid_response` or (every call rejected or too large)
 `503 provider_unavailable`, has a known outcome and is charged the observed
 price, 0 when nothing was billed. A request with an unclear call is a lost
-reply: it answers `503 provider_unavailable` and is charged its quote. A
-refusal decided before dispatch releases the hold. An observed price above
-the quote is an adapter fault: it is charged at the quote and logged as an
-error.
+reply and is charged its quote. It answers `502 provider_invalid_response`
+when the provider answered with a 4xx status the table does not name, such
+as a 400, and `503 provider_unavailable` after a redirect, a timeout or a
+network failure. A refusal decided before dispatch releases the hold. An
+observed price above the quote is an adapter fault: it is charged at the
+quote and logged as an error.
 
-A geocoding call is also billed by the status its reply names. A reply
-naming a quota, a denial or a provider error (`OVER_QUERY_LIMIT`,
-`OVER_DAILY_LIMIT`, `REQUEST_DENIED`, `UNKNOWN_ERROR`) is rejected and not
-billed, even when it came with status 200. A `ZERO_RESULTS` reply is billed
-and answers no places, whether it came with status 200 or 404; any other
-reply with status 404 is `502 provider_invalid_response`.
+A geocoding call is billed by the status its reply names; its replies with
+status 200, 400 and 404 are all read. A reply naming a quota, a denial or a
+provider error (`OVER_QUERY_LIMIT`, `OVER_DAILY_LIMIT`, `REQUEST_DENIED`,
+`UNKNOWN_ERROR`) is rejected and not billed, whatever its status. Only `OK`
+with status 200 and `ZERO_RESULTS` with status 200 or 404 are billed, and
+`ZERO_RESULTS` answers no places. Any other reply, `INVALID_REQUEST` or an
+`OK` with status 400 or 404 included, and a reply that cannot be read, is
+not billed as a call: its bill is unclear, so the request is a lost reply
+charged its quote, and it answers `502 provider_invalid_response`.
 
 ```quint
 type CallBilling = CallBilled | CallNotBilled | CallUnclear
@@ -187,15 +194,24 @@ pure def billingOf(status: int): CallBilling =
   if (status == 200 or status == 404) CallBilled
   else if (status == 401 or status == 403 or status == 429 or status >= 500) CallNotBilled
   else CallUnclear
+pure def unclearAnswerIsInvalid(status: int): bool = status >= 400 and status <= 499 and billingOf(status) == CallUnclear
 pure val unbilledGeocodeStatuses = Set("OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT", "REQUEST_DENIED", "UNKNOWN_ERROR")
 pure def geocodeBillingOf(status: int, geocodeStatus: str): CallBilling =
-  if (billingOf(status) == CallBilled and unbilledGeocodeStatuses.contains(geocodeStatus)) CallNotBilled else billingOf(status)
+  if (billingOf(status) == CallNotBilled or ((status == 200 or status == 400 or status == 404) and unbilledGeocodeStatuses.contains(geocodeStatus))) CallNotBilled
+  else if ((status == 200 and geocodeStatus == "OK") or ((status == 200 or status == 404) and geocodeStatus == "ZERO_RESULTS")) CallBilled
+  else CallUnclear
 pure def geocodeFoundNothing(status: int, geocodeStatus: str): bool = geocodeBillingOf(status, geocodeStatus) == CallBilled and geocodeStatus == "ZERO_RESULTS"
 pure def lawAGeocodeReplyNeverBillsACallItsStatusDidNot(status: int, geocodeStatus: str): bool =
   (geocodeBillingOf(status, geocodeStatus) == CallBilled implies billingOf(status) == CallBilled)
   and (geocodeFoundNothing(status, geocodeStatus) implies (status == 200 or status == 404))
-pure val statusValues = Set(200, 400, 404, 429, 500)
-pure val geocodeStatusValues = Set("OK", "ZERO_RESULTS", "UNKNOWN_ERROR", "OVER_QUERY_LIMIT", "INVALID_REQUEST")
+pure def lawAnInvalidGeocodeRequestIsNeverBilled(status: int): bool =
+  geocodeBillingOf(status, "INVALID_REQUEST") != CallBilled and (billingOf(status) != CallNotBilled implies geocodeBillingOf(status, "INVALID_REQUEST") == CallUnclear)
+pure def lawANamedProviderErrorIsNeverBilled(status: int, geocodeStatus: str): bool =
+  unbilledGeocodeStatuses.contains(geocodeStatus) implies geocodeBillingOf(status, geocodeStatus) != CallBilled
+pure def lawAnUnclearAnswerIsInvalidOnlyForAStatusTheTableDoesNotName(status: int): bool =
+  unclearAnswerIsInvalid(status) implies (billingOf(status) == CallUnclear and status != 401 and status != 403 and status != 404 and status != 429)
+pure val statusValues = Set(200, 302, 400, 401, 404, 429, 500)
+pure val geocodeStatusValues = Set("OK", "ZERO_RESULTS", "UNKNOWN_ERROR", "OVER_QUERY_LIMIT", "INVALID_REQUEST", "")
 pure def isProviderRefusal(code: RefusalCode): bool = Set(NoRoute, UnsupportedMode, UnsupportedRegion, ProviderInvalidResponse, ProviderUnavailable).contains(code)
 pure def observedWithin(quote: Micros, observed: Micros): Micros = if (observed < 0) 0 else M::minOf(observed, quote)
 pure def settlementOf(dispatched: bool, reply: MapsOutcome, quote: Micros, observed: Micros): MapsSettlement =
@@ -307,4 +323,29 @@ pure val earlierValues = replyValues
 pure def lawTileIsNeverStored(reply: MapsOutcome): bool = not(tileStored(reply))
 pure def lawNoTileWithoutAnAdmittedHold(replayed: bool, sameRequest: bool, earlier: MapsOutcome, reply: MapsOutcome): bool =
   answerSent(Tile, replayed, sameRequest, earlier, reply) implies (not(replayed) and reply == MapsAnswered)
+```
+
+### Every tile a process serves shares one provider tile session, started beside the hold and renewed only near its expiry or when it is refused
+
+A process holds one tile session per provider address. A tile finds it
+held, waits for the one being started, or starts it, so however many tiles
+of a cold process arrive together, the provider is asked for one session.
+The session is created apart from the tile that started it: a caller's
+cancellation stops only that caller's wait, never the creation the other
+tiles share, and the request that started it is not finished, so its
+process is kept, until the creation ends. A failed creation is forgotten,
+and the next tile starts another; a session within `tileSessionRenewMargin`
+of its expiry is replaced. A tile the provider refuses `401` or `403` drops
+the session only if it is still the one the tile was refused under, then
+shares or starts the next and is sent once more. A session that cannot be
+created refuses the tile `503 provider_unavailable`, or
+`502 provider_invalid_response` for an unreadable answer, as a known outcome
+charged nothing, since no tile was asked of the provider.
+
+```quint
+pure val tileSessionRenewMargin: Millis = 60 * millisPerMinute
+pure def tileSessionFresh(expiresAt: Millis, now: Millis): bool = expiresAt - tileSessionRenewMargin > now
+pure val expiresAtValues = Set(0, 3600000, 3600001, 7200000)
+pure def lawAFreshTileSessionOutlivesItsMargin(expiresAt: Millis, now: Millis): bool =
+  tileSessionFresh(expiresAt, now) implies expiresAt > now + tileSessionRenewMargin
 ```

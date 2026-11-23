@@ -1531,6 +1531,23 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const offCapabilities = try off.call("/api/v1/maps/capabilities", { headers: offCaller.headers })
     const offGeocode = try off.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: { ...offCaller.headers, "idempotency-key": "geo-off" } })
 
+    const coldMaps = try sync(() => googleMapsFake())
+    const cold = try testCloud({ mount: (fakes) => fakes.mount("/maps/", coldMaps.handler) })
+    const coldCaller = try signedCaller(cold, "cold-mapper")
+    try cold.inside(addCredits({ organizationId: coldCaller.organizationId, amount: 1_000_000, requestKey: "cold-maps-funding" }))
+    try sync(() => coldMaps.delaySessions(500))
+    const coldTile = (key: string) => cold.call("/api/v1/maps/tiles/3/4/2", { headers: { ...coldCaller.headers, "idempotency-key": key } })
+    const abandoned = try promise(async () => {
+      const controller = new AbortController()
+      const pending = openCloud(cold.url, "/api/v1/maps/tiles/3/4/2", { headers: { ...coldCaller.headers, "idempotency-key": "cold-abandoned" }, signal: controller.signal }).then(
+        (response) => String(response.status), (failure: unknown) => failure instanceof Error && failure.name === "AbortError" ? "cancelled" : "failed"
+      )
+      await coldMaps.sessionRequested
+      controller.abort()
+      return await pending
+    })
+    const together = try.all [coldTile("cold-1"), coldTile("cold-2"), coldTile("cold-3")]
+
     try check(() => assert.deepStrictEqual(
       {
         lost: [lost.status, errorOf(lost)],
@@ -1545,7 +1562,8 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         broke: [broke.status, errorOf(broke), callsAfterBroke - callsBeforeBroke],
         rollback: [rolledBack.status, callsAfterRollback - callsBeforeRollback, Number(holdsAfterRollback[0]?.n), retried.status, maps.count("geocode") - callsAfterRollback, Number(retriedUsage[0]?.n), Number(retriedUsage[0]?.charged)],
         usage: usage.map((row) => [row.operation, row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome]),
-        off: [offCapabilities.status, offCapabilities.body, offGeocode.status, errorOf(offGeocode)]
+        off: [offCapabilities.status, offCapabilities.body, offGeocode.status, errorOf(offGeocode)],
+        cold: [abandoned, together.map((answer) => answer.status), coldMaps.count("createSession")]
       },
       {
         lost: [503, "provider_unavailable"],
@@ -1568,7 +1586,8 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           ["reverse", "answered", false, 37_000, 32_000, "known"],
           ["reverse", "answered", false, 37_000, 37_000, "known"]
         ],
-        off: [200, { available: false }, 404, "capability_unavailable"]
+        off: [200, { available: false }, 404, "capability_unavailable"],
+        cold: ["cancelled", [200, 200, 200], 1]
       }
     ))
   }), 60_000)
@@ -1606,9 +1625,14 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
 
       try sync(() => maps.script({ kind: "oversized" }))
       const oversized = try geocode("geo-oversized")
-      try sync(() => maps.script({ kind: "geocodeReply", status: 200, geocode: "UNKNOWN_ERROR" }, { kind: "geocodeReply", status: 404, geocode: "ZERO_RESULTS" }))
+      try sync(() => maps.script(
+        { kind: "geocodeReply", status: 200, geocode: "UNKNOWN_ERROR" }, { kind: "geocodeReply", status: 404, geocode: "ZERO_RESULTS" },
+        { kind: "geocodeReply", status: 400, geocode: "INVALID_REQUEST" }, { kind: "geocodeReply", status: 400, geocode: "OVER_QUERY_LIMIT" }
+      ))
       const providerError = try geocode("geo-provider-error")
       const nothingFound = try geocode("geo-nothing-found")
+      const invalidRequest = try geocode("geo-invalid-request")
+      const quotaAt400 = try geocode("geo-quota-400")
       const keptFirst = try geocode("geo-kept")
       const keptAgain = try geocode("geo-kept")
       try sync(() => clock.set(now + 15 * 60_000))
@@ -1623,7 +1647,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           credential: [busyStatuses.length, busyStatuses.every((status) => status === 200), credentialLimited.status, errorOf(credentialLimited.body), typeof credentialLimited.headers["retry-after"], Number(busyPlan[0]?.n)],
           plan: [freeStatuses.length, freeStatuses.every((status) => status === 200), planLimited.status, errorOf(planLimited.body), typeof planLimited.headers["retry-after"], tileStill.status, Number(freePlan[0]?.n)],
           oversized: [oversized.status, errorOf(oversized.body)],
-          geocodeReplies: [providerError.status, errorOf(providerError.body), nothingFound.status, (nothingFound.body as { readonly places: ReadonlyArray<unknown> }).places],
+          geocodeReplies: [providerError.status, errorOf(providerError.body), nothingFound.status, (nothingFound.body as { readonly places: ReadonlyArray<unknown> }).places, invalidRequest.status, errorOf(invalidRequest.body), quotaAt400.status, errorOf(quotaAt400.body)],
           kept: [keptFirst.status, keptAgain.status, keptAgain.body, keptExpired.status, errorOf(keptExpired.body), Number(keptRows[0]?.n)],
           usage: usage.map((row) => [row.status, Number(row.charged), row.outcome]),
           upstream: [maps.count("viewport"), maps.count("tile"), maps.count("geocode")]
@@ -1633,10 +1657,10 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           credential: [59, true, 429, "rate_limited", "string", 60],
           plan: [30, true, 429, "rate_limited", "string", 200, 30],
           oversized: [503, "provider_unavailable"],
-          geocodeReplies: [503, "provider_unavailable", 200, []],
+          geocodeReplies: [503, "provider_unavailable", 200, [], 502, "provider_invalid_response", 503, "provider_unavailable"],
           kept: [200, 200, keptFirst.body, 409, "idempotency_conflict", 0],
-          usage: [["answered", 5_000, "known"], ["answered", 5_000, "known"], ["refused", 0, "known"], ["refused", 5_000, "known"]],
-          upstream: [1, 1, 4]
+          usage: [["answered", 5_000, "known"], ["answered", 5_000, "known"], ["lost", 5_000, "unknown"], ["refused", 0, "known"], ["refused", 0, "known"], ["refused", 5_000, "known"]],
+          upstream: [1, 1, 6]
         }
       ))
     }

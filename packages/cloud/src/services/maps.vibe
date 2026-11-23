@@ -128,7 +128,7 @@ effect function answerOf(reply: MapsReply<Answer>, now: number): Answer!Refused 
   switch (reply.kind) {
     case "answered": return reply.value
     case "refused": throw providerRefusal(reply.code, now)
-    case "unknown": throw refused("ProviderUnavailable", "NoReason", now + providerPause)
+    case "unknown": throw providerRefusal(reply.code, now)
     default: {
       const _exhaustive: never = reply
       return _exhaustive
@@ -294,8 +294,10 @@ effect function tile(context: RouteContext) {
   if (address === undefined) throw refused("InvalidRequest")
   const fetch = entered.provider.tile
   if (fetch === undefined) throw refused("CapabilityUnavailable")
+  const prepare = entered.provider.prepareTiles
+  const prepared = prepare === undefined ? Effect.void : try prepare()
   const run = Effect.map(fetch(address), (got): MapsReply<Answer> => got.kind === "answered" ? { kind: "answered", value: { kind: "tile", tile: got.value }, observedMicros: got.observedMicros } : got)
-  return respondWith(try metered(context, entered, { op: "Tile", request: address, preferPlace: false, mode: "Drive", run }))
+  return respondWith(try ensuring(metered(context, entered, { op: "Tile", request: address, preferPlace: false, mode: "Drive", run }), prepared))
 }
 
 effect function viewport(context: RouteContext) {
