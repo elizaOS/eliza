@@ -96,7 +96,7 @@ function unreadableCode(failure: PlatformError.PlatformError): string | undefine
 }
 
 effect function read<A>(work: A!PlatformError.PlatformError) {
-  return (map(work, (value): Read<A> => ({ kind: "read", value })) catch (failure): Read<A> => {
+  return (map(work, (value): Read<A> => ({ kind: "read", value })) catch (failure: PlatformError.PlatformError): Read<A> => {
     const code = unreadableCode(failure)
     return code === undefined ? { kind: "absent" } : { kind: "unreadable", code }
   })
