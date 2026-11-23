@@ -9,5 +9,13 @@ export function streamedAnswer(frames: ReadonlyArray<string>): Response {
 export function seen(): { readonly urls: Array<string>; readonly headers: Array<Record<string, string>>; readonly fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> } {
   const urls: Array<string> = [];
   const headers: Array<Record<string, string>> = [];
-  return { urls, headers, fetch: /** @throws {never} */ async (input, init) => { urls.push(String(input)); headers.push(Object.fromEntries(new Headers(init?.headers).entries())); return Response.json({ object: "list", data: [] }); } };
+  return {
+    urls,
+    headers,
+    fetch: /** @throws {never} */ (input, init) => new Promise((resolve) => {
+      urls.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      headers.push(Object.fromEntries(new Headers(init?.headers).entries()));
+      resolve(Response.json({ object: "list", data: [] }));
+    }),
+  };
 }

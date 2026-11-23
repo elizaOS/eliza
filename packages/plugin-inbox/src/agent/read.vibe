@@ -7,10 +7,8 @@ import { gmailReadable } from "../mailbox/grants.vibe"
 import type { GmailMessage, GoogleConnection } from "../mailbox/types.vibe"
 import { agentGmailClient } from "./cloud.vibe"
 
-/** The action name of the owner's managed inbox read. */
 export const inboxReadActionName = "INBOX_READ"
 
-/** The owner's request for a managed inbox read, as the planner gave it. */
 export interface ManagedReadRequest {
   readonly query?: string
   readonly limit?: number
@@ -18,7 +16,6 @@ export interface ManagedReadRequest {
   readonly missedOnly?: boolean
 }
 
-/** What a managed inbox read answered. */
 export type ManagedReadAnswer =
   | { readonly kind: "mail"; readonly messages: readonly GmailMessage[] }
   | { readonly kind: "refused"; readonly reason: "missing-limit" | "account-override" | "missed-only" | "not-connected" | "owner-changed" }
@@ -35,13 +32,11 @@ const refusalOf = { MissingLimitRead: "missing-limit", AccountOverrideRead: "acc
 
 const readable = (status: GoogleConnection) => gmailReadable({ ...status, label: "" })
 
-/** One managed read's lifecycle over its model: each step is taken only where the rules allow it. */
 export interface ManagedReadSession {
   step(event: Event): (ManagedInboxRead | undefined)!!
   state(): ManagedInboxRead!!
 }
 
-/** A managed read session starting idle, for the owner current when it begins. */
 export effect function managedReadSession(): ManagedReadSession!! {
   const kept = try Ref.make(initial)
   const read = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
@@ -54,7 +49,6 @@ export effect function managedReadSession(): ManagedReadSession!! {
   }
 }
 
-/** Reads the owner's managed inbox fresh: one bounded call for the connection current when it began, returning mail only if that connection is still current and readable. */
 export effect function managedInboxRead(client: ManagedGmailClient, request: ManagedReadRequest): ManagedReadAnswer!! {
   const read = try managedReadSession()
   const failed = (error: MailFailure): ManagedReadAnswer => ({ kind: "failed", failure: classifyGmailFailure(error, "read", true) })
@@ -141,7 +135,6 @@ async function handle(runtime: IAgentRuntime, _message: Memory, options: unknown
   return resultOf(await runPromise(managedInboxRead(client, parameters(options))))
 }
 
-/** The owner's managed inbox read: a fresh, bounded search of the connected Gmail account. */
 export const inboxReadAction: Action = {
   name: inboxReadActionName,
   description: "Read or search the owner's connected Gmail mailbox: a fresh, bounded list of messages (sender, subject, time, unread) for the connected account only. Never sends or changes mail.",

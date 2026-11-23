@@ -22,7 +22,6 @@ function degenerate(arc: number): boolean {
   return arc < 1e-12 || Math.PI - arc < 1e-12
 }
 
-/** Distance in meters to the nearest point on the route's bounded great-circle segments. */
 export function distanceToRoute(point: Coordinate, geometry: readonly Coordinate[]): number {
   let nearest = Infinity
   geometry.forEach((start, index) => {
@@ -41,14 +40,12 @@ export function distanceToRoute(point: Coordinate, geometry: readonly Coordinate
   return nearest * earthRadius
 }
 
-/** The parts of a route that locate a point on it. */
 export interface RouteGeometry {
   readonly geometry: readonly Coordinate[]
   readonly steps: readonly RouteStep[]
   readonly durationSeconds: number
 }
 
-/** Where a point lies on a route: off-route distance, distance along it, what remains and the next two maneuvers. */
 export interface RouteProgress {
   readonly offRouteMeters: number
   readonly alongMeters: number
@@ -107,7 +104,6 @@ function project(point: Coordinate, line: readonly Coordinate[], lengths: readon
   return best
 }
 
-/** Locate a point on a route; each step's maneuver is placed where its coordinate meets the line, never behind the previous one. */
 export function routeProgress(point: Coordinate, route: RouteGeometry): RouteProgress {
   const line = route.geometry
   const lengths = line.slice(1).map((end, index) => angle(line[index] ?? end, end) * earthRadius)

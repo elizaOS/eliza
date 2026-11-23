@@ -10,10 +10,8 @@ import { answeredChoice, closeChoice, openChoice, registerMapsRouting, type Choi
 import { agentSaves, type AgentSavedPlaceStore } from "./saves.vibe"
 import { agentPlace, mapsService, type MapsCloudLink, type MapsService, type PlaceResults } from "./service.vibe"
 
-/** The package and plugin name the agent bundle loads. */
 export const mapsPluginName = "@elizaos/plugin-maps"
 
-/** What the host supplies the Maps actions: the owner's Cloud link and, during a phone turn, the phone's navigation. */
 export interface MapsPluginPorts {
   cloud(runtime: IAgentRuntime): MapsCloudLink | undefined
   navigation(runtime: IAgentRuntime, message: Memory): MapsDeviceNavigation | undefined
@@ -41,7 +39,6 @@ function travelModeOf(value: unknown): TravelMode | undefined {
 
 const notAPlaceKind = /^(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|hundreds?|thousands?|tens?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|values?|match(?:es)?|percent|degrees?|units?|digits?|words?|versions?|results?)\b/i
 
-/** The kind of place a nearby request asks for ("the nearest pharmacy", "coffee near me"), or undefined when it names no such kind. */
 export function nearbyPlaceKind(query: string): string | undefined {
   const trimmed = query.trim().replace(/[.!?]+$/, "")
   const leading = /^(?:the\s+)?(?:nearest|closest)\s+(.{2,80})$/i.exec(trimmed)?.[1]
@@ -372,7 +369,6 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
   ]
 }
 
-/** What the agent knows of the phone's position for this message: whether a recent one was reported, never the coordinates themselves. */
 export const phonePositionProvider: Provider = {
   name: "MAPS_PHONE_POSITION",
   description: "Whether the phone reported a recent position with this message, which a nearby Maps search uses.",
@@ -392,7 +388,6 @@ export const phonePositionProvider: Provider = {
   }),
 }
 
-/** The Maps plugin over the host's ports. */
 export function createMapsPlugin(ports: MapsPluginPorts): AgentPlugin {
   return {
     name: mapsPluginName,

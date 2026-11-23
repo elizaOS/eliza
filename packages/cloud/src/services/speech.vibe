@@ -1,10 +1,12 @@
 // spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"
+import { billedSeconds, providerRetryMs, withMarkup } from "../../gen/cloud__services__speech.effect.vibe"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"
 import { refused, Refused } from "../http/refusal.vibe"
-import { jsonBody, owner, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
+import { signed } from "../http/request-auth.vibe"
+import { jsonBody, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
 import { synthesize, synthesizeTimed, prepareTranscription, ProviderInvalidResponse, type SpeechFailure, type Synthesis, type TimedFrame, type Transcription } from "../providers/speech.vibe"
-import { markDispatched, reserve, settle, type Settlement } from "../shared/metering.vibe"
+import { keepStanding, markDispatched, reserve, settle, type Settlement } from "../shared/metering.vibe"
 import { SynthesisBody } from "./speech-batch.schema.ts"
 
 type SpeechSettings = NonNullable<EnvironmentProfile["speech"]>
@@ -14,7 +16,6 @@ const timedBytesLimit = 8 * 1024 * 1024
 const timedFrameLimit = 2048
 const audioTypes: ReadonlyArray<string> = ["audio/mp3", "audio/mpeg", "audio/mp4", "audio/m4a", "audio/x-m4a", "audio/wav", "audio/x-wav", "audio/webm", "audio/ogg"]
 
-const providerPause = 5_000
 const uploadFields: ReadonlyArray<string> = ["audio", "languageCode", "provider"]
 const kilobitsPerSecond: Readonly<Record<string, number>> = { "audio/wav": 1411, "audio/x-wav": 1411, "audio/webm": 96, "audio/ogg": 96 }
 const encoder = new TextEncoder()
@@ -27,11 +28,11 @@ interface Upload {
 }
 
 function ttsQuote(text: string, settings: SpeechSettings): number {
-  return Math.ceil(text.length * settings.tts.microsPerCharacter * 6 / 5)
+  return withMarkup(text.length * settings.tts.microsPerCharacter)
 }
 
 function sttCharge(durationMs: number, settings: SpeechSettings): number {
-  return Math.ceil(Math.max(durationMs, 0) * settings.stt.microsPerSecond / 1000)
+  return withMarkup(billedSeconds(durationMs) * settings.stt.microsPerSecond)
 }
 
 function readUint32(bytes: Uint8Array, at: number): number {
@@ -78,10 +79,10 @@ function failedSettlement(failure: SpeechFailure): Settlement {
 function providerRefusal(failure: SpeechFailure, now: number): Refused {
   switch (failure._tag) {
     case "ProviderRefused":
-      return failure.status === 429 || failure.status >= 500 ? refused("ProviderUnavailable", "NoReason", now + (failure.retryAfter ?? providerPause)) : refused("ProviderInvalidResponse")
+      return failure.status === 429 || failure.status >= 500 ? refused("ProviderUnavailable", "NoReason", now + (failure.retryAfter ?? providerRetryMs)) : refused("ProviderInvalidResponse")
     case "ProviderUnreachable":
     case "ProviderTimedOut":
-      return refused("ProviderUnavailable", "NoReason", now + providerPause)
+      return refused("ProviderUnavailable", "NoReason", now + providerRetryMs)
     case "ProviderInvalidResponse":
       return refused("ProviderInvalidResponse")
     default: {
@@ -92,11 +93,12 @@ function providerRefusal(failure: SpeechFailure, now: number): Refused {
 }
 
 effect function heldCall<A, R>(context: RouteContext, quote: number, call: A!SpeechFailure!R, charge: (answer: A) => number) {
-  const who = owner(context.caller)
-  if (who === undefined) throw refused("AuthenticationRequired")
-  const key: HoldKey = { service: "MeteredSpeech", caller: who.userId, requestId: context.requestId, part: { tag: "WholeRequest" } }
-  const ticket = try reserve(who, key, quote)
+  const caller = signed(context.caller)
+  if (caller === undefined) throw refused("AuthenticationRequired")
+  const key: HoldKey = { service: "MeteredSpeech", caller: caller.userId, requestId: context.requestId, part: { tag: "WholeRequest" } }
+  const ticket = try reserve(caller, key, quote)
   if (ticket.replayed) throw refused("IdempotencyConflict")
+  try keepStanding(context.request.headers.authorization, caller, "MeteredSpeech", ticket)
   try markDispatched(ticket.key)
   const answer = call catch effect (failure) => {
     try settle(ticket.key, failedSettlement(failure))

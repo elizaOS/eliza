@@ -1,4 +1,5 @@
 // spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"
+import { Effect } from "effect";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWTVerifyGetKey } from "jose";
 import type { FakeAnswer, FakeHandler, FakeRequest } from "../fakes.ts";
 
@@ -212,7 +213,7 @@ export function mountGoogleToken(state: GoogleFakeState): FakeHandler {
     if (request.path === "/token" && form(request).get("grant_type") === "authorization_code") return switched(state, request, () => redeemCode(state, request));
     if (request.path === "/token" && form(request).get("grant_type") === "refresh_token") {
       state.tokenCalls += 1;
-      if (state.tokenDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, state.tokenDelayMs));
+      if (state.tokenDelayMs > 0) await Effect.runPromise(Effect.sleep(state.tokenDelayMs));
       return switched(state, request, () => refreshGrant(state, request));
     }
     if (request.path === "/revoke") return switched(state, request, () => revoke(state, request));

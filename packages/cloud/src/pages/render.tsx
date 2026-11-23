@@ -15,11 +15,11 @@ const documentOf = (css: string, title: string, body: ReactNode, script: boolean
         <meta name="robots" content="noindex, nofollow" />
         <meta name="referrer" content="no-referrer" />
         <title>{title}</title>
-        <style dangerouslySetInnerHTML={{ __html: css }} />
+        <style>{css}</style>
       </head>
       <body>
         {body}
-        {script && <script dangerouslySetInnerHTML={{ __html: forwardScript }} />}
+        {script && <script>{forwardScript}</script>}
       </body>
     </html>,
   );

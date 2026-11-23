@@ -88,6 +88,7 @@ module node {
   const views = {
     HomeView: true, NotesView: true, RemindersView: true, BrowserView: true, CalendarView: true, FilesView: true,
     PhotosView: true, CameraView: true, MapsView: true, InboxView: true, SettingsView: true, WorkflowsView: true,
+    PhoneView: true, MessagesView: true, ContactsView: true,
   } satisfies Record<DeviceView, true>
   const View = Schema.Literals(Object.keys(views) as DeviceView[])
   const Capabilities = Schema.Array(Schema.Literals(allCapabilities))

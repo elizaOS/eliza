@@ -3,28 +3,23 @@ import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/core/protocol"
 import { catalog, initial, modelOf, type ModelRole } from "../gen/localInference__models.effect.vibe"
 import type { VectorSpace } from "../gen/localInference__textAndEmbeddings.effect.vibe"
 
-/** A curated model, named by its key in the spec's catalog. */
 export type CatalogId = "model1" | "model2"
 
-/** One published file of a model and the digest its bytes must match. */
 export interface PublishedFile {
   readonly path: string
   readonly url: string
   readonly sha256: string
 }
 
-/** Where a model's files and its evaluation record are published. */
 export type ModelSource =
   | { readonly kind: "bundle"; readonly manifestUrl: string; readonly fileBase: string }
   | { readonly kind: "pinned"; readonly files: readonly PublishedFile[] }
 
-/** The vector space an embedding model writes, as the spec compares it and as core labels its vectors. */
 export interface EmbeddingSpace {
   readonly space: VectorSpace
   readonly spaceId: string
 }
 
-/** A curated model: its public name, its role, where it is published, and for an embedding model the space it writes. */
 export interface CatalogModel {
   readonly id: CatalogId
   readonly name: string
@@ -37,10 +32,8 @@ const eliza1Bundle = "https://huggingface.co/elizaos/eliza-1/resolve/main/bundle
 const bgeRevision = "d32f8c040ea3b516330eeb75b72bcc2d3a780ab7"
 const bgeFile = "bge-small-en-v1.5-f16.gguf"
 
-/** A catalog of models by the spec's catalog keys. */
 export type Catalog = Readonly<Record<CatalogId, CatalogModel>>
 
-/** The curated catalog by the spec's catalog keys; each role is the one the spec gives the key. */
 export const curatedModels: Catalog = {
   model1: {
     id: "model1",
@@ -64,12 +57,10 @@ export const curatedModels: Catalog = {
   },
 }
 
-/** Whether a value names a curated model by its catalog key. */
 export function isCatalogId(value: string): value is CatalogId {
   return catalog.includes(value) && Object.hasOwn(curatedModels, value)
 }
 
-/** The model of a catalog a public name refers to. */
 export function modelNamed(name: string, models: Catalog = curatedModels): CatalogModel | undefined {
   return Object.values(models).find((model) => model.name === name)
 }

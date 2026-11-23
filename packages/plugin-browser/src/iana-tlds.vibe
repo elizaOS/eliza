@@ -1,5 +1,4 @@
 // spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"
-/** The lowercased IANA top-level domains of root zone list version 2026103000. */
 export const IANA_TLDS: ReadonlySet<string> = new Set(
   [
     "aaa aarp abb abbott abbvie abc able abogado abudhabi ac academy",

@@ -316,7 +316,7 @@ function routed(routes: readonly LocalRoute[]) {
     async fetch<T>(path: string, init: { method: "GET" | "POST"; body?: string; signal?: AbortSignal }): Promise<T> {
       const route = routes.find((candidate) => candidate.path === path && candidate.method === init.method)
       if (route === undefined) throw new Error(`no route ${init.method} ${path}`)
-      let body: unknown = undefined
+      let body: unknown
       try {
         body = init.body === undefined ? undefined : JSON.parse(init.body)
       } catch {

@@ -3,13 +3,11 @@ import { mayDispatchChunk, settleChunk, type ChunkOutcome } from "../../gen/file
 import { parentOf } from "./model.vibe"
 import { FilesVolume, VolumeRefused, type RowOutcome } from "./volume.vibe"
 
-/** A batch change of the owner's files, applied in chunks the device answers one at a time. */
 export type BatchChange =
   | { readonly kind: "trash"; readonly paths: readonly string[]; readonly reviewed?: readonly string[] }
   | { readonly kind: "move"; readonly paths: readonly string[]; readonly dest: string; readonly reviewed?: readonly string[] }
   | { readonly kind: "copy"; readonly paths: readonly string[]; readonly dest: string }
 
-/** How one chunk settled: its rows, and for a confirmed chunk the way to undo it. */
 export type ChunkReport = {
   readonly outcome: ChunkOutcome
   readonly rows: readonly RowOutcome[]
@@ -19,7 +17,6 @@ export type ChunkReport = {
 export type BatchUndo = { readonly kind: "restore"; readonly ids: readonly string[] } | { readonly kind: "moveBack"; readonly moves: readonly { readonly from: string; readonly to: string }[] }
 export type BatchReport = { readonly chunks: readonly ChunkReport[]; readonly stopped: "finished" | "retired" | "unknown" | "refused" }
 
-/** Rows a single device call carries. */
 export const CHUNK_ROWS = 50
 
 function chunked(change: BatchChange): BatchChange[] {
@@ -42,7 +39,6 @@ function undoOf(change: BatchChange, rows: readonly RowOutcome[]): BatchUndo | u
   return moves.length === 0 ? undefined : { kind: "moveBack", moves }
 }
 
-/** Runs a batch until it finishes, its view retires it, a chunk is refused, or a chunk's outcome is unknown; nothing unknown is retried. */
 export effect function runBatch(change: BatchChange, retired: () => boolean) {
   const volume = try FilesVolume
   const chunks: ChunkReport[] = []
@@ -65,7 +61,6 @@ export effect function runBatch(change: BatchChange, retired: () => boolean) {
   return { chunks, stopped: "finished" } satisfies BatchReport
 }
 
-/** Undoes every confirmed chunk of a batch, newest first, and answers the rows each undo touched. */
 export effect function undoBatch(report: BatchReport) {
   const volume = try FilesVolume
   const undone: RowOutcome[] = []

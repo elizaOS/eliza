@@ -1,7 +1,5 @@
 // spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/workflow/sourcePublication.md, "Only the reservation owner can publish or release an incomplete write"
-/** One settled step a worker reports. */
 export const WorkerResult = Schema.Struct({ id: Schema.String, status: Schema.Literals(["completed", "skipped"]), text: Schema.String })
-/** One line a parent sends its worker, before the spec inside it is normalized. */
 export const ParentLine = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("start"), runId: Schema.String, spec: Schema.Unknown, specDigest: Schema.String, anchorAt: Schema.String,

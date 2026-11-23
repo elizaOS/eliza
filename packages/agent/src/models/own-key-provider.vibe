@@ -2,14 +2,12 @@
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
 import { Refused, generateText, listModels, registerTwice, type Binding } from "./chat.vibe"
 
-/** The own-key endpoint and the two model ids the launch named for it. */
 export interface OwnKeyModels {
   readonly baseUrl: string
   readonly small: string
   readonly large: string
 }
 
-/** Registers the own-key text handlers for the launch's OpenAI-compatible endpoint. */
 export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, own: OwnKeyModels): void {
   const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large }, maxTokensField: "max_completion_tokens" } as const
   registerTwice(runtime, "@elizaos/agent/own-key", {
@@ -18,7 +16,6 @@ export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, o
   }, { streamable: true })
 }
 
-/** Confirms the own key lists both launch models. */
 export effect function probeOwnKey(own: OwnKeyModels, key: Redacted.Redacted<string>) {
   const listed = try listModels(own.baseUrl, key)
   if (!listed.includes(own.small) || !listed.includes(own.large)) throw new Refused({ cloud: { tag: "CloudProviderIssue" } })

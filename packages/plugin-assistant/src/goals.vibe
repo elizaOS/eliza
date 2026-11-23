@@ -7,7 +7,6 @@ import { requestOf } from "./reminders.vibe"
 import { GoalRequest } from "./requests.schema.vibe"
 import { ownerClockAt } from "./timezone.vibe"
 
-/** The scheduled-task kind of a goal's check-in. */
 export const goalCheckinKind = "personal-assistant.goal-checkin"
 
 const cadences = { none: "NoCadence", daily: "DailyCadence", weekly: "WeeklyCadence" } as const satisfies Record<string, Cadence>
@@ -27,13 +26,11 @@ const GoalRecord = Schema.Struct({
   lastFired: Schema.Number,
   log: Schema.Array(LogEntry),
 })
-/** A goal's words and the check-in tasks it keeps, beside its spec state. */
 export type GoalRecord = typeof GoalRecord.Type
 const decodeIndex = Schema.decodeUnknownOption(Schema.Struct({ goals: Schema.Array(GoalRecord) }))
 const indexKey = "goals"
 const stateKey = (goalId: string) => `goal:${goalId}`
 
-/** Every goal the owner made, with its state. */
 export effect function listGoals() {
   const goals = (try readRecord(indexKey, decodeIndex))?.goals ?? []
   const found: Array<{ readonly record: GoalRecord; readonly goal: Goal }> = []
@@ -122,7 +119,6 @@ effect function named(target: string, key: string) {
 
 const decodeRequest = Schema.decodeUnknownOption(GoalRequest, { onExcessProperty: "error" })
 
-/** Creates, changes, deletes or checks in on one of the owner's goals, reconciling its check-ins on every change. */
 export effect function changeGoal(input: unknown, messageId: string) {
   const decoded = decodeRequest(input)
   if (Option.isNone(decoded)) return { success: false, text: "Say which goal and what to change.", data: { outcome: "GOAL_REQUEST_INVALID" } } satisfies ActionResult
@@ -167,7 +163,6 @@ export effect function changeGoal(input: unknown, messageId: string) {
   }
 }
 
-/** Shows a goal's check-in to the owner when its slot fires, once until it is answered, counting it fired only once it was shown. */
 export effect function deliverGoalCheckin(task: TaskRow) {
   const goalId = task.metadata.goalId
   const slot = task.metadata.slot
@@ -182,11 +177,12 @@ export effect function deliverGoalCheckin(task: TaskRow) {
   const room = task.metadata.roomId
   const shown = (try Presenter).present({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation }) catch (failed) => failed
   if (shown instanceof DeliveryFailed) return { kind: "retry", afterMs: 60_000, reason: shown.reason } satisfies DeliveryAnswer
-  stepGoal({ ...record, lastFired: slot }, { type: "fireCheckin", slot }, `goal:fire:${task.taskId}:${task.revision}`) catch () => undefined
+  stepGoal({ ...record, lastFired: slot }, { type: "fireCheckin", slot }, `goal:fire:${task.taskId}:${task.revision}`) catch effect (failure) => {
+    try annotateLogs(logWarning("a shown goal check-in was not counted fired, so its answer will be refused"), { goalId, slot, failure: failure._tag })
+  }
   return { kind: "delivered" } satisfies DeliveryAnswer
 }
 
-/** Creates, updates, deletes and checks in on the owner's goals. */
 export const ownerGoalsAction: Action = {
   name: goalsAction,
   description: "Create, update, pause, archive, delete or check in on the owner's goals. A daily goal checks in morning and evening, a weekly goal once a week; a dismissed check-in never comes back.",
@@ -212,7 +208,6 @@ export const ownerGoalsAction: Action = {
   },
 }
 
-/** The owner's goals and their review states. */
 export const ownerGoalsProvider: Provider = {
   name: "PERSONAL_ASSISTANT_GOALS",
   description: "The owner's goals, their status, cadence and latest review state.",

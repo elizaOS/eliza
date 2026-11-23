@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createSurfaceTaskHandler, type SurfaceControlReply, type SurfacePage, type SurfaceTaskHandler } from "@elizaos/os/browser/runtime/surface-task-handler.mjs";
 import { COMMIT_GRANT_MAX_MS } from "@elizaos/os/browser/runtime/task-bindings.mjs";
+import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/os__browser__pageCommands.conformance.ts";
 import type { BindingOffer, CommandScope, Event, PageRequest, ReceiverPhase, Reply, RequestedAction, SurfaceReceiver } from "../../gen/os__browser__pageCommands.ts";
 
@@ -74,7 +75,7 @@ const snapshotId = (ref: string) => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 };
 const idle = async () => {
-  for (let turn = 0; turn < 8; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+  for (let turn = 0; turn < 8; turn += 1) await Effect.runPromise(Effect.yieldNow);
 };
 
 function gate<T>(): Gate<T> {

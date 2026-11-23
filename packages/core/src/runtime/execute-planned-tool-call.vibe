@@ -1,4 +1,4 @@
-// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"; spec/core/secretSession.md, "At the action boundary pseudonyms are restored before references, and local name recognition never reads this session's references"
 import { errorText } from "../utils/errors.vibe"
 import { randomUuid } from "../utils/uuid.vibe"
 import {
@@ -938,6 +938,10 @@ effect function invokePlannedAction(
   }
   try foreignSync(() => run.options.abortSignal?.throwIfAborted())
 
+  const piiSwapSession = getTrajectoryContext()?.piiSwapSession
+  if (piiSwapSession && handlerOptions.parameters !== undefined) {
+    handlerOptions.parameters = try restorePseudonymsInValue(piiSwapSession, handlerOptions.parameters)
+  }
   const secretSwapSession = getTrajectoryContext()?.secretSwapSession
   if (secretSwapSession && handlerOptions.parameters !== undefined) {
     handlerOptions.parameters = try restoreSecretsInValue(
@@ -945,10 +949,6 @@ effect function invokePlannedAction(
       handlerOptions.parameters,
       { failOnUnresolved: true },
     )
-  }
-  const piiSwapSession = getTrajectoryContext()?.piiSwapSession
-  if (piiSwapSession && handlerOptions.parameters !== undefined) {
-    handlerOptions.parameters = try restorePseudonymsInValue(piiSwapSession, handlerOptions.parameters)
   }
   observeOwnerToolExecution(runtime, () => ({
     phase: "started",
