@@ -190,7 +190,20 @@ it.effect('To-dos change once per request, never on a guess between two items or
     const byRef = try changeTodos({ op: "complete", target: "t-1" }, "t5", "done with the first")
     try equal([duplicate, ambiguous, byRef].map(outcomeOf).map(({ success, outcome }) => [success, outcome ?? null]), [[false, "duplicate"], [false, "ambiguous"], [false, "ambiguous"]])
     try changeTodos({ op: "create", content: "call mom" }, "t6", "add call mom")
-    try changeTodos({ op: "complete", target: "call mom" }, "t7", "called mom")
+    const completed = try changeTodos({ op: "complete", target: "call mom" }, "t7", "called mom")
+    const alreadyComplete = try changeTodos({ op: "complete", target: "call mom" }, "t11", "called mom")
+    try changeTodos({ op: "reopen", target: "call mom" }, "t12", "reopen call mom")
+    const replayed = try changeTodos({ op: "complete", target: "call mom" }, "t11", "called mom")
+    const current = (try currentTodos()).todos.find(({ content }) => content === "call mom")
+    try equal(
+      {
+        completion: completed.effectReceipts?.[0]?.outcome,
+        unchanged: [alreadyComplete.success, alreadyComplete.effectReceipts?.[0]?.outcome, alreadyComplete.data?.outcome],
+        replay: [replayed.success, replayed.effectReceipts?.[0]?.outcome, replayed.data?.outcome],
+        current: [current?.todoStatus, current?.completedAt],
+      },
+      { completion: "applied", unchanged: [true, "noop", "unchanged"], replay: [true, "noop", "replayed"], current: ["TodoPending", false] },
+    )
     const news = try changeTodos({ op: "create", content: "Read the news" }, "n1", "add read the news")
     const notNews = try changeTodos({ op: "create", content: "Read the new" }, "n2", "add read the new")
     try changeTodos({ op: "complete", target: "Read the new" }, "n3", "read the new one")

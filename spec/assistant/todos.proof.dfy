@@ -71,7 +71,7 @@ lemma createTodo_ensures(s: Todos, key: string, content: string, affirmed: bool)
   ensures (inv(s) ==> canCreateTodo(s, key, content, affirmed) ==> alwaysTodoIdsAreUnique(createTodo(s, key, content, affirmed)))
   ensures (inv(s) ==> canCreateTodo(s, key, content, affirmed) ==> alwaysNextIdIsPositive(createTodo(s, key, content, affirmed)))
   ensures (inv(s) ==> canCreateTodo(s, key, content, affirmed) ==> alwaysCompletionTimeMatchesStatus(createTodo(s, key, content, affirmed)))
-  ensures (inv(s) ==> canCreateTodo(s, key, content, affirmed) ==> stepMissChangesNoItem(s, createTodo(s, key, content, affirmed)))
+  ensures (inv(s) ==> canCreateTodo(s, key, content, affirmed) ==> stepNoChangeKeepsItems(s, createTodo(s, key, content, affirmed)))
   ensures (inv(s) ==> canCreateTodo(s, key, content, affirmed) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "createTodo", createTodo(s, key, content, affirmed)))
   ensures (inv(s) ==> canCreateTodo(s, key, content, affirmed) ==> stepClearKeepsUnpreviewedItems(s, "createTodo", createTodo(s, key, content, affirmed)))
 {
@@ -90,13 +90,14 @@ lemma setTodoStatus_ensures(s: Todos, key: string, content: string, status: Todo
   ensures (inv(s) ==> canSetTodoStatus(s, key, content, status) ==> alwaysTodoIdsAreUnique(setTodoStatus(s, key, content, status)))
   ensures (inv(s) ==> canSetTodoStatus(s, key, content, status) ==> alwaysNextIdIsPositive(setTodoStatus(s, key, content, status)))
   ensures (inv(s) ==> canSetTodoStatus(s, key, content, status) ==> alwaysCompletionTimeMatchesStatus(setTodoStatus(s, key, content, status)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status) ==> stepMissChangesNoItem(s, setTodoStatus(s, key, content, status)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status) ==> stepNoChangeKeepsItems(s, setTodoStatus(s, key, content, status)))
   ensures (inv(s) ==> canSetTodoStatus(s, key, content, status) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "setTodoStatus", setTodoStatus(s, key, content, status)))
   ensures (inv(s) ==> canSetTodoStatus(s, key, content, status) ==> stepClearKeepsUnpreviewedItems(s, "setTodoStatus", setTodoStatus(s, key, content, status)))
 {
   if inv(s) && canSetTodoStatus(s, key, content, status) && !replayed(s, key) {
     var mid := s.(todos := (var s_map := s.todos; seq(|s_map|, i_map requires 0 <= i_map < |s_map| => var t := s_map[i_map]; (if (t.content == content) then t.(todoStatus := status, completedAt := status.TodoCompleted?) else t))));
     FreshKey(s, key, statusRequest(content, status), TodoOutcome.Missed);
+    FreshKey(s, key, statusRequest(content, status), TodoOutcome.AlreadySet);
     IdsBridge(s);
     IdsBridge(mid);
     assert forall i :: 0 <= i < |s.todos| ==> mid.todos[i].todoId == s.todos[i].todoId;
@@ -109,7 +110,7 @@ lemma deleteTodo_ensures(s: Todos, key: string, content: string)
   ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> alwaysTodoIdsAreUnique(deleteTodo(s, key, content)))
   ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> alwaysNextIdIsPositive(deleteTodo(s, key, content)))
   ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> alwaysCompletionTimeMatchesStatus(deleteTodo(s, key, content)))
-  ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> stepMissChangesNoItem(s, deleteTodo(s, key, content)))
+  ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> stepNoChangeKeepsItems(s, deleteTodo(s, key, content)))
   ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "deleteTodo", deleteTodo(s, key, content)))
   ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> stepClearKeepsUnpreviewedItems(s, "deleteTodo", deleteTodo(s, key, content)))
 {
@@ -127,7 +128,7 @@ lemma previewClear_ensures(s: Todos, key: string)
   ensures (inv(s) ==> canPreviewClear(s, key) ==> alwaysTodoIdsAreUnique(previewClear(s, key)))
   ensures (inv(s) ==> canPreviewClear(s, key) ==> alwaysNextIdIsPositive(previewClear(s, key)))
   ensures (inv(s) ==> canPreviewClear(s, key) ==> alwaysCompletionTimeMatchesStatus(previewClear(s, key)))
-  ensures (inv(s) ==> canPreviewClear(s, key) ==> stepMissChangesNoItem(s, previewClear(s, key)))
+  ensures (inv(s) ==> canPreviewClear(s, key) ==> stepNoChangeKeepsItems(s, previewClear(s, key)))
   ensures (inv(s) ==> canPreviewClear(s, key) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "previewClear", previewClear(s, key)))
   ensures (inv(s) ==> canPreviewClear(s, key) ==> stepClearKeepsUnpreviewedItems(s, "previewClear", previewClear(s, key)))
 {
@@ -141,7 +142,7 @@ lemma confirmClear_ensures(s: Todos, key: string, affirmed: bool)
   ensures (inv(s) ==> canConfirmClear(s, key, affirmed) ==> alwaysTodoIdsAreUnique(confirmClear(s, key, affirmed)))
   ensures (inv(s) ==> canConfirmClear(s, key, affirmed) ==> alwaysNextIdIsPositive(confirmClear(s, key, affirmed)))
   ensures (inv(s) ==> canConfirmClear(s, key, affirmed) ==> alwaysCompletionTimeMatchesStatus(confirmClear(s, key, affirmed)))
-  ensures (inv(s) ==> canConfirmClear(s, key, affirmed) ==> stepMissChangesNoItem(s, confirmClear(s, key, affirmed)))
+  ensures (inv(s) ==> canConfirmClear(s, key, affirmed) ==> stepNoChangeKeepsItems(s, confirmClear(s, key, affirmed)))
   ensures (inv(s) ==> canConfirmClear(s, key, affirmed) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "confirmClear", confirmClear(s, key, affirmed)))
   ensures (inv(s) ==> canConfirmClear(s, key, affirmed) ==> stepClearKeepsUnpreviewedItems(s, "confirmClear", confirmClear(s, key, affirmed)))
 {
