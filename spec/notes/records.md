@@ -65,7 +65,9 @@ pure def lawBlankNoteRefused(titleUnits: int, bodyUnits: int, uniqueId: bool): b
 ### The agent reads and changes Notes only for the owner, on the owner's own words in the bound request
 
 Only the owner reaches the Notes actions, the saved-notes context and the
-owner routes. A name fence, a named read and a re-resolved ID read the words
+owner routes. The actions are offered on every owner turn, in the general
+context as well as the Notes one, so a request about a note needs no
+earlier Notes turn. A name fence, a named read and a re-resolved ID read the words
 the owner typed in the request the host bound to this turn, never the text a
 route wrapped around it; with no bound request, they read the message's own
 text with its envelopes removed. A delete by name happens only when those
@@ -82,6 +84,9 @@ share the title ask the owner which one and nothing is changed.
 type OwnerWords = BoundRequestWords | MessageWords
 pure def ownerWordsSource(requestBound: bool): OwnerWords = if (requestBound) BoundRequestWords else MessageWords
 pure def notesAccessAllowed(isOwner: bool): bool = isOwner
+type NotesTurnContext = GeneralContext | NotesContext | AnotherContext
+pure def notesOffered(isOwner: bool, context: NotesTurnContext): bool = notesAccessAllowed(isOwner) and context != AnotherContext
+pure def lawNotesNeedNoEarlierNotesTurn(isOwner: bool): bool = notesOffered(isOwner, GeneralContext) == notesOffered(isOwner, NotesContext)
 pure def deleteByNameAllowed(isOwner: bool, wordsNameTitle: bool): bool = notesAccessAllowed(isOwner) and wordsNameTitle
 pure def lawBoundRequestWins(requestBound: bool): bool = requestBound implies ownerWordsSource(requestBound) == BoundRequestWords
 pure def lawOnlyTheOwnerReachesNotes(wordsNameTitle: bool): bool = not(deleteByNameAllowed(false, wordsNameTitle))
@@ -179,6 +184,25 @@ pure def lawAMoveIsAnUpdate(replayed: bool): bool =
 pure def lawAChoiceBetweenNotesIsNeverCoaching(refusal: NotesRefusal): bool =
   refusalKind(refusal) == RefusalWaitsOnOwner iff (refusal == AmbiguousNote or refusal == NameMismatch)
 pure def lawAFilteredReadNeverSaysTheCollectionIsEmpty(found: int): bool = not(emptyCollectionObserved(true, found))
+```
+
+### A read tells a note's times in the owner's zone when the turn knows it
+
+A read gives each note's created and updated times as instants. When the
+turn carries the owner's zone, the one the phone observed or else the one
+its interface reported, and the host knows that zone, each note read also
+carries the two times as that zone's local date and time, so "my latest
+note" is named on the owner's day, not on UTC's. With no known zone the
+instants stand alone and no local date is guessed.
+
+```quint
+type DisplayZone = ObservedZone | InterfaceZone | NoOwnerZone
+pure def displayZoneSource(observedKnown: bool, interfaceKnown: bool): DisplayZone =
+  if (observedKnown) ObservedZone else if (interfaceKnown) InterfaceZone else NoOwnerZone
+pure def localTimesShown(source: DisplayZone): bool = source != NoOwnerZone
+pure def lawTheObservedZoneWins(interfaceKnown: bool): bool = displayZoneSource(true, interfaceKnown) == ObservedZone
+pure def lawNoLocalDateIsGuessed(observedKnown: bool, interfaceKnown: bool): bool =
+  localTimesShown(displayZoneSource(observedKnown, interfaceKnown)) iff (observedKnown or interfaceKnown)
 ```
 
 ### A calendar draft made from a note is admitted only while that exact note is unchanged

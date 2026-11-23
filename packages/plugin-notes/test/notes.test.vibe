@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { negotiation, validate, type DeviceOperation, type DeviceTurn, type EarlierRequest } from "@elizaos/agent/device-actions"
 import type { LocalRoute } from "@elizaos/agent/routes"
-import { bindIncomingMessagePersistence, stringToUuid, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { bindIncomingMessagePersistence, satisfiesContextGate, stringToUuid, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { noteChangeResult, notesPlugin, notesRefusalResult, notesRoutes } from "../src/agent.vibe"
 import { notesDeviceFamily } from "../src/device-proposals.vibe"
 import { namedNoteReadEvaluator, notesRequestEffectField } from "../src/request-effect.vibe"
@@ -97,7 +97,7 @@ function action(plugin: ReturnType<typeof notesPlugin>, name: string) {
 
 const voice = (id: string, audioId: string) => ({ kind: "voice", data: { recordingId: audioId, audio: { audioId }, lines: [{ s: "speaker-1", t: `Said in ${id}` }] } })
 
-it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner\'s own words in the bound request")', effect () => {
+it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner\'s own words in the bound request")', effect () => {
   const f = fixture()
   const notes = notesOver(f)
   const first = try notes.create({ content: "Groceries\n- milk", creationId: "step-1" })
@@ -175,6 +175,12 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
 
   const listed = try action(plugin, "NOTES_LIST")(message("latest note"), { latestBy: "createdAt" })
   const none = try action(notesPlugin(notesOver(fixture())), "NOTES_LIST")(message("list my notes"), {})
+  assert.isTrue((plugin.actions ?? []).every((candidate) => satisfiesContextGate(["general"], { contexts: candidate.contexts }, ["OWNER"])))
+  const farEast = { voiceUi: { uiTimeZone: "Pacific/Kiritimati" } }
+  const zoned = [try action(plugin, "NOTES_GET")(message("when did I write note-1", farEast), { noteId: "note-1" }), try action(plugin, "NOTES_GET")(message("when did I write note-1"), { noteId: "note-1" }),
+    try action(plugin, "NOTES_GET")(message("when did I write note-1", { voiceUi: { uiTimeZone: "Nowhere/Land" } }), { noteId: "note-1" })]
+  const shownTimes = zoned.map((read) => read.data?.noteTimestampDisplay as { readonly timeZone: string; readonly createdAt: string } | undefined)
+  assert.deepEqual(shownTimes.map((times) => [times?.timeZone, times?.createdAt.startsWith("Nov 21, 2026")]), [["Pacific/Kiritimati", true], [undefined, undefined], [undefined, undefined]])
   assert.deepEqual([listed.success, listed.data?.op, listed.effectReceipts, listed.emptyTrackedState, { ...none.emptyTrackedState, observedAt: "" }],
     [true, "list", undefined, undefined, { resource: "notes", scope: "entire_current_inventory", count: 0, revision: 0, observedAt: "" }])
   const routing = (plugin.providers ?? []).find((provider) => provider.name === "NAMED_NOTE_ROUTING")
