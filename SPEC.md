@@ -135,6 +135,8 @@ guards, checking state and step rules until the path reaches the goal or
 breaks a rule. A broken rule fails the check. The usual search runs if the
 example stops short of the goal. The safety and probe samples stay the same, and a
 trace that reaches the goal or breaks a rule goes through the usual replay.
+An ordinary simulation can reuse its results when only an unused guide changes.
+The check preserves the input files for replay when one of these ordinary runs fails.
 
 A transition parameter named `by` identifies its sender. All such parameters
 use the same type. It is supplied separately as `enabled(current, event, by)`

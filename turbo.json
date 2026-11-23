@@ -15,6 +15,7 @@
     "!vibestack/**/{node_modules,.cache}/**",
     "!vibestack/selftest.ts",
     "!vibestack/remote-cache.ts",
+    "!vibestack/proof/lib.dfy",
     "!vibestack/{testing,stories,design}/test/**",
     ".cache/toolchain.json"
   ],
@@ -106,10 +107,7 @@
         "apps/*/spec/**",
         "packages/*/package.json",
         "packages/*/spec/**",
-        "package.json",
-        "!spec/**/*.proof.dfy",
-        "!apps/*/spec/**/*.proof.dfy",
-        "!packages/*/spec/**/*.proof.dfy"
+        "package.json"
       ],
       "outputs": [
         "gen/**",
@@ -473,6 +471,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/vibestack/fixtures/**",
+        "$TURBO_ROOT$/vibestack/proof/lib.dfy",
         "!$TURBO_ROOT$/vibestack/fixtures/**/.DS_Store"
       ],
       "outputs": [

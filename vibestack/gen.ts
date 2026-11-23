@@ -50,7 +50,7 @@ export interface Model extends Roles {
   ts: string;
   harness: string;
   guardHarness: string;
-  witness?: { harness: string; lengths: Map<string, number> };
+  witness?: { harness: string; lengths: Map<string, number>; names: string[] };
 }
 
 /** Where a definition came from in the spec, for doc comments and ordering. */
@@ -267,6 +267,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
   const witness = witnesses.size ? {
     harness: harness(name, source, [...imports, ...typeOnly], funs, sig, samples, roles, types, { weights, fair }, witnesses).text,
     lengths: new Map([...witnesses].map(([goal, steps]) => [goal, steps.length])),
+    names: [...witnesses.keys()].map((goal) => `${WITNESS_PREFIX}${goal}`),
   } : undefined;
   return {
     name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text, guardHarness: run.guardHarness, witness,
