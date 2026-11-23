@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `f5d18d3`](https://github.com/lalalune/vibestack/commit/f5d18d3ef363c6213b5d2f98477adb33e61c97e4).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `500cb8d`](https://github.com/lalalune/vibestack/commit/500cb8d59a0699aeab8aa016fe9bd1a43152a589).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -290,6 +290,24 @@ by trusted runs. It holds
 the completed Quint, LemmaScript, and Dafny actions, keyed by the installed
 tools and their inputs. The project directory holds its lock, generated files,
 and stage results. An acceptance or nightly check always reads fresh inputs.
+
+To precompute normal-profile simulations for a subset of a disposable project,
+use `precomputeSimulations(projectDirectory, readSpecs(projectDirectory), moduleNames)`
+from the same entry point inside `withFormalCache`. It compiles the selected
+modules and their transitive imports, runs the selected simulations and replay,
+and returns their verdicts in the requested module order. Treat a failed verdict
+or rejection as a failed precomputation. Run the full check with the shared
+actions to verify the whole project.
+
+For a transfer between trusted runners, call `prepareSimulationReceipts` with
+the same three arguments and an existing private scratch directory as the
+fourth. It returns `results` and, when all requested simulations passed and
+their receipts are complete, `seedDirectory`. Transfer only the files in that
+returned directory. They hold the model typechecks and simulation results the
+ordinary check can reuse. Copy them into the receiving project's `.spec-cache`
+before the full normal check. Match the checkout and toolchain, and keep the
+seed within the same trust boundary as other spec cache entries. The check
+computes its own keys and recomputes a missing or unreadable result.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
