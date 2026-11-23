@@ -1,5 +1,6 @@
 // spec/agent/tasks/index.md, "Every task request comes from the launch account of a started host"; spec/agent/tasks/store.md, "Storage opens only with a private path, the exclusive lock, a 32-byte key and the launch account"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
 import { Service, logger, stringToUuid, type IAgentRuntime, type TaskOwner } from "@elizaos/core"
+import { launchOwnerAccount } from "../host/launch.vibe"
 import { ModuleRefused, type AgentModule, type ModuleContext, type ModuleFactory } from "../host/module.vibe"
 import { createTaskHost, modelOwner, type TaskHostHandle, type TaskHostOptions } from "./host.vibe"
 import { bindTaskPresentation, type TaskPresentationPorts } from "./chat-task.vibe"
@@ -15,12 +16,15 @@ export type { TaskPresentation, TaskPresentationPorts } from "./chat-task.vibe"
 export type TaskModulePorts = Pick<TaskHostOptions, "actuator" | "authorizer"> & { readonly presentation?: TaskPresentationPorts }
 
 function taskOwner(context: ModuleContext): TaskOwner | undefined {
-  const { account, callerRole } = context.launch
-  if (account === undefined || callerRole !== "owner") return undefined
+  const { callerRole, residentOwner } = context.launch
+  const account = launchOwnerAccount(context.launch)
+  if (callerRole !== "owner" || (account === undefined && residentOwner === undefined)) return undefined
+  const scope = account === undefined ? ["task-installation", context.runtime.agentId]
+    : ["task-account", account.organizationId, account.userId]
   return {
     agentId: context.runtime.agentId,
     actorId: context.ownerEntityId,
-    connector: { source: "device", accountId: stringToUuid(JSON.stringify(["task-account", account.organizationId, account.userId])) },
+    connector: { source: "device", accountId: stringToUuid(JSON.stringify(scope)) },
   }
 }
 

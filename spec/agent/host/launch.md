@@ -15,7 +15,7 @@ holds the full field list: `character` (`name`, `system`; optional `bio`,
 memory), `callerRole`, `views`, `timeZone`, `privacy {secretSwap, piiSwap}`,
 `google {gmailChanges, calendarEdits}` (default false),
 `workflowWorker {runtimeDir, executable, sha256}`, `retention`,
-`hostContextRevision` and `environment`. It carries no `agentId`: the store
+`hostContextRevision`, `environment` and optional `residentOwner`. It carries no `agentId`: the store
 creates and keeps that identity in the `--state` directory. Facts that need
 string parsing (a URL's form, an environment key's class, a trimmed length,
 an IANA zone, a digest's shape) are decided by the schema; those a rule
@@ -65,6 +65,37 @@ pure def characterAdmitted(c: Character): bool = c.nameUnits >= 1 and c.nameUnit
 pure def documentAdmitted(doc: LaunchDocument): bool =
   doc.schema == 1 and characterAdmitted(doc.character) and policyAdmitted(doc.policy) and backendAdmitted(doc.backend, doc.account)
     and embeddingsAdmitted(doc.embeddings) and retentionAdmitted(doc.retention) and environmentAdmitted(doc.environment)
+```
+
+### A resident uses its stored owner when inference changes
+
+A durable owner launch may specify an installation resident or name an
+existing account-owned store it is continuing to use. The installation
+resident derives its local actor from the agent identity stored in the
+private state directory. The existing account-owned store keeps the
+same account tuple and derived actor, even without a Cloud credential.
+The native host verifies the link before enabling Cloud. When a Cloud
+account is present it must agree with the resident's declared link.
+Resident mode requires a durable store and its sealed 32-byte key in
+the private frame. A resident without inference carries no inference
+credential. Without a resident binding the launch keeps the
+existing account behavior.
+
+```quint
+type ResidentMode = LegacyLaunchOwner | InstallationOwner | RetainedOwner({ stored: OwnerAccount })
+pure def residentStorageAccount(mode: ResidentMode, inferenceAccount: OwnerAccount): OwnerAccount =
+  match mode {
+    | LegacyLaunchOwner => inferenceAccount
+    | InstallationOwner => NoAccount
+    | RetainedOwner(r) => r.stored
+  }
+pure val sampleRetained: OwnerAccount = SignedIn({ userId: "local-user", organizationId: "local-org" })
+pure val modeValues = Set(LegacyLaunchOwner, InstallationOwner, RetainedOwner({ stored: sampleRetained }))
+pure val inferenceAccountValues = Set(NoAccount, SignedIn({ userId: "service-user", organizationId: "service-org" }))
+pure def lawInstallationStorageIgnoresInference(inferenceAccount: OwnerAccount): bool =
+  residentStorageAccount(InstallationOwner, inferenceAccount) == NoAccount
+pure def lawRetainedStorageKeepsItsAccount(mode: ResidentMode, inferenceAccount: OwnerAccount): bool =
+  match mode { | RetainedOwner(r) => residentStorageAccount(mode, inferenceAccount) == r.stored | _ => true }
 ```
 
 ### The launch names every action the agent may run, so an action it does not name is refused for every caller
