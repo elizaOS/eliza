@@ -212,7 +212,15 @@ regions, or navigation. Body and main are scopes for finding regions. A
 covering blocker, a sensitive or unrecognized input, or an observation
 that exceeds its size limits supplies no region fragments. The read stays
 local to the requesting host and reports the same document and revision
-witnesses as the ordinary observation.
+witnesses as the ordinary observation. Visible primary and section headings
+and visible labels referenced by the section accompany their own scope.
+A nested section also carries enclosing labels so a neutral child cannot
+hide its historical parent's identity. An owned section header contributes
+its ordinary visible text, excluding links and controls. Site banners and
+unowned headers contribute no statement fragments. Links elsewhere on the
+page and invisible labels supply no heading. Competing primary headings leave the
+read incomplete, and ambiguous section labels mark that section and its
+descendants ambiguous.
 
 ```quint
 pure def canSettleRead(s: SurfaceReceiver): bool = s.phase == ReceiverReading
