@@ -81,6 +81,7 @@ describe("Reach my account's cloud services without holding my key", () => {
       sameOwnerRenewedAtNewVersion: true,
       readAfterRenewal: "200",
       vaultBindingAfterRenewalRestart: true,
+      refreshFromPreviousEnrollment: true,
     });
   });
 

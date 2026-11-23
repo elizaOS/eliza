@@ -42,7 +42,7 @@ describe("Keep me signed in without a second copy of my key", () => {
 
   it("asks a renewal's lost acknowledgement again instead of stranding or signing out, and ends a lease refresh a renewal overtook", () => {
     const seen = journey();
-    expect([seen.lostRenewalAckAskedAgain, seen.rotationAfterRenewalAck]).toEqual(["8/cred-14/user-1", "true/NOT_KEPT/true"]);
+    expect([seen.lostRenewalAckAskedAgain, seen.rotationAfterRenewalAck]).toEqual(["8/cred-14/user-1", "true/REFUSED/true"]);
   });
 });
 

@@ -70,6 +70,8 @@ public final class DeviceCredentialStore implements CredentialReader {
   public enum Kept { KEPT, NOT_KEPT, REFUSED }
 
   public enum SessionRead { USABLE, START_REFRESH, AWAIT_REFRESH, NONE }
+  public record LeaseRead(SessionRead stage, int version) {}
+  public record Renewal(int attempt, int version, Account account) {}
 
   private final Object lock = new Object();
   private final Slots slots;
@@ -215,12 +217,12 @@ public final class DeviceCredentialStore implements CredentialReader {
     return Outcome.ACCEPTED;
   }
 
-  public int beginRenewal() {
+  public Renewal beginRenewal() {
     synchronized (lock) {
       advance();
-      if (!CredentialPolicy.canBeginRenewal(state)) return 0;
+      if (!CredentialPolicy.canBeginRenewal(state)) return null;
       commit(new Step(CredentialPolicy.beginRenewal(state), List.of()));
-      return state.generation();
+      return new Renewal(state.generation(), CredentialPolicy.leaseVersionOf(state.lease()), CredentialPolicy.accountOf(state));
     }
   }
 
@@ -236,38 +238,42 @@ public final class DeviceCredentialStore implements CredentialReader {
     }
   }
 
-  public boolean leaseUsable() {
-    synchronized (lock) { advance(); return CredentialPolicy.leaseUsable(state); }
-  }
-
-  public SessionRead readLease() {
+  public int usableLeaseVersion() {
     synchronized (lock) {
       advance();
-      if (CredentialPolicy.leaseUsable(state)) return SessionRead.USABLE;
-      if (!CredentialPolicy.canReadLease(state)) return SessionRead.NONE;
+      return CredentialPolicy.leaseUsable(state) ? CredentialPolicy.leaseVersionOf(state.lease()) : 0;
+    }
+  }
+
+  public LeaseRead readLease() {
+    synchronized (lock) {
+      advance();
+      int version = CredentialPolicy.leaseVersionOf(state.lease());
+      if (CredentialPolicy.leaseUsable(state)) return new LeaseRead(SessionRead.USABLE, version);
+      if (!CredentialPolicy.canReadLease(state)) return new LeaseRead(SessionRead.NONE, 0);
       boolean start = commit(CredentialPolicy.readLease(state)).stream().anyMatch(n -> n instanceof Notice.RefreshLease);
-      return start ? SessionRead.START_REFRESH : SessionRead.AWAIT_REFRESH;
+      return new LeaseRead(start ? SessionRead.START_REFRESH : SessionRead.AWAIT_REFRESH, version);
     }
   }
 
   public Kept leaseRotated(int version, String refresh, long accessExpiresAt, long refreshExpiresAt) {
     synchronized (lock) {
       advance();
-      if (!CredentialPolicy.canLeaseRefreshAnswered(state)) return Kept.REFUSED;
-      boolean fits = CredentialPolicy.leaseVersionOf(state.lease()) == version && accessExpiresAt > state.now() && refreshExpiresAt > state.now();
+      if (!CredentialPolicy.canLeaseRefreshAnswered(state, version)) return Kept.REFUSED;
+      boolean fits = accessExpiresAt > state.now() && refreshExpiresAt > state.now();
       Stored stored = fits ? writeLease(version, refresh) : Stored.REFUSED;
       LeaseAnswer rotation = new LeaseAnswer.Rotated(accessExpiresAt, refreshExpiresAt, stored);
       boolean taken = CredentialPolicy.rotationTaken(state, rotation);
-      commit(new Step(CredentialPolicy.leaseRefreshAnswered(state, rotation), List.of()));
+      commit(new Step(CredentialPolicy.leaseRefreshAnswered(state, version, rotation), List.of()));
       return taken ? Kept.KEPT : Kept.NOT_KEPT;
     }
   }
 
-  public Outcome leaseUnanswered() {
+  public Outcome leaseUnanswered(int version) {
     synchronized (lock) {
       advance();
-      if (!CredentialPolicy.canLeaseRefreshAnswered(state)) return Outcome.REFUSED;
-      commit(new Step(CredentialPolicy.leaseRefreshAnswered(state, new LeaseAnswer.Unanswered()), List.of()));
+      if (!CredentialPolicy.canLeaseRefreshAnswered(state, version)) return Outcome.REFUSED;
+      commit(new Step(CredentialPolicy.leaseRefreshAnswered(state, version, new LeaseAnswer.Unanswered()), List.of()));
     }
     return Outcome.ACCEPTED;
   }

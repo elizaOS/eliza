@@ -70,6 +70,7 @@ public final class DeviceKeyJourney {
     final AtomicInteger ackAsks = new AtomicInteger();
     final AtomicInteger rotations = new AtomicInteger(), reused = new AtomicInteger(), secrets = new AtomicInteger();
     final AtomicReference<Runnable> beforeMailReply = new AtomicReference<>();
+    final AtomicReference<Runnable> beforeLeaseReply = new AtomicReference<>();
     final List<Family> families = new CopyOnWriteArrayList<>();
     final Map<String, Renewal> renewals = new ConcurrentHashMap<>();
     final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>();
@@ -211,6 +212,8 @@ public final class DeviceKeyJourney {
           rotations.incrementAndGet();
           String pair = offer(f, now);
           if (dropNextRotation) { dropNextRotation = false; x.close(); return; }
+          Runnable before = beforeLeaseReply.getAndSet(null);
+          if (before != null) before.run();
           answer(x, 200, pair);
         }
         case "DELETE " + DeviceKeyClient.LEASE -> {
@@ -327,7 +330,7 @@ public final class DeviceKeyJourney {
     client.settleDuties();
     clock.addAndGet(16 * 60_000L);
     int beforeRace = store.current().version();
-    boolean racing = store.readLease() == DeviceCredentialStore.SessionRead.START_REFRESH && client.renew() == DeviceKeyClient.Exchange.SIGNED_IN;
+    boolean racing = store.readLease().stage() == DeviceCredentialStore.SessionRead.START_REFRESH && client.renew() == DeviceKeyClient.Exchange.SIGNED_IN;
     DeviceCredentialStore.Kept late = store.leaseRotated(beforeRace, "eliza_lease_refresh_" + "s".repeat(54), clock.get() + 900_000, clock.get() + 90 * DAY_MS);
     seen.add(take("rotationAfterRenewalAck", racing + "/" + late + "/" + (lease.accessToken() != null)));
     client.settleDuties();
@@ -447,6 +450,20 @@ public final class DeviceKeyJourney {
       var restored = new DeviceCredentialStore(slots, DeviceCredentialStore.authorityDigest(origin), clock::get);
       seen.add(take("vaultBindingAfterRenewalRestart", legacyBinding.equals(restored.accountBinding(store.current().value()))
           && restored.accountBinding(beforeRenewal.value()) == null));
+      clock.addAndGet(16 * 60_000L);
+      cloud.beforeLeaseReply.set(() -> {
+        store.signOut();
+        if (!"SIGNED_IN".equals(signIn()) || store.readLease().stage() != DeviceCredentialStore.SessionRead.START_REFRESH) {
+          throw new IllegalStateException("Could not start the new enrollment's refresh");
+        }
+      });
+      boolean refusedOldAccess = lease.accessToken() == null;
+      var afterRefresh = requireMailAuthority(custody);
+      boolean newRefreshKept = CredentialPolicy.canLeaseRefreshAnswered(store.state(), afterRefresh.version());
+      store.leaseUnanswered(afterRefresh.version());
+      seen.add(take("refreshFromPreviousEnrollment", refusedOldAccess && newRefreshKept &&
+          afterRefresh.version() > renewed.version() &&
+          "200".equals(outcome(managed.readMail(origin, custody, afterRefresh, feed, Map.of())))));
       cloud.server.stop(0);
       return "{" + String.join(",", seen) + "}";
     } finally {

@@ -133,20 +133,21 @@ public final class CredentialReplay {
           slots.next = KeyWrite.WRITE;
         }
       }
-      case "beginRenewal" -> store.beginRenewal() != 0;
+      case "beginRenewal" -> store.beginRenewal() != null;
       case "readLease" -> {
-        SessionRead read = store.readLease();
+        SessionRead read = store.readLease().stage();
         if (read == SessionRead.START_REFRESH) out.add(new Notice.RefreshLease());
         yield read == SessionRead.START_REFRESH || read == SessionRead.AWAIT_REFRESH;
       }
       case "leaseRefreshAnswered" -> {
         Map<String, Object> rotation = CredentialJson.object(e.get("rotation"), "rotation");
+        int version = CredentialJson.small(e, "version");
         yield switch (CredentialJson.text(rotation, "tag")) {
-          case "LeaseUnanswered" -> store.leaseUnanswered() == Outcome.ACCEPTED;
+          case "LeaseUnanswered" -> store.leaseUnanswered(version) == Outcome.ACCEPTED;
           case "LeaseRotated" -> {
             slots.next = keyWrite(CredentialJson.text(rotation, "stored"));
             try {
-              yield store.leaseRotated(CredentialPolicy.leaseVersionOf(store.state().lease()), secret("eliza_lease_refresh_", 54, now + 1),
+              yield store.leaseRotated(version, secret("eliza_lease_refresh_", 54, now + 1),
                 CredentialJson.whole(rotation, "accessExpiresAt"), CredentialJson.whole(rotation, "refreshExpiresAt")) != Kept.REFUSED;
             } finally {
               slots.next = KeyWrite.WRITE;

@@ -230,7 +230,7 @@ public final class CredentialPolicy {
 
   static Lease offeredLease(LeaseOffer offer, Lease kept, int version, long renewAt) {
     if (offer instanceof LeaseOffer.Offered o) return new Lease.Held(version, o.refreshExpiresAt(), 0, false, 0, renewAt);
-    if (offer instanceof LeaseOffer.Renewal && kept instanceof Lease.Held x) return new Lease.Held(version, x.refreshExpiresAt(), x.accessExpiresAt(), x.refreshing(), x.waiters(), renewAt);
+    if (offer instanceof LeaseOffer.Renewal && kept instanceof Lease.Held x) return new Lease.Held(version, x.refreshExpiresAt(), 0, false, 0, renewAt);
     return NO_LEASE;
   }
 
@@ -358,14 +358,16 @@ public final class CredentialPolicy {
     return new Step(s.with(new Lease.Held(x.version(), x.refreshExpiresAt(), x.accessExpiresAt(), true, 0, x.renewAt())), List.of(new Notice.RefreshLease()));
   }
 
-  public static boolean canLeaseRefreshAnswered(State s) { return s.lease() instanceof Lease.Held x && x.refreshing(); }
+  public static boolean canLeaseRefreshAnswered(State s, int version) {
+    return s.lease() instanceof Lease.Held x && x.version() == version && x.refreshing();
+  }
 
   public static boolean rotationTaken(State s, LeaseAnswer rotation) {
     return rotation instanceof LeaseAnswer.Rotated r && r.stored() == Stored.WRITTEN && r.accessExpiresAt() > s.now() && r.refreshExpiresAt() > s.now();
   }
 
-  public static State leaseRefreshAnswered(State s, LeaseAnswer rotation) {
-    if (!(s.lease() instanceof Lease.Held x)) return s;
+  public static State leaseRefreshAnswered(State s, int version, LeaseAnswer rotation) {
+    if (!canLeaseRefreshAnswered(s, version) || !(s.lease() instanceof Lease.Held x)) return s;
     if (rotationTaken(s, rotation) && rotation instanceof LeaseAnswer.Rotated r)
       return s.with(new Lease.Held(x.version(), r.refreshExpiresAt(), Math.min(r.accessExpiresAt(), s.now() + LEASE_ACCESS_LIFETIME_MS), false, 0, x.renewAt()));
     return s.with(new Lease.Held(x.version(), x.refreshExpiresAt(), x.accessExpiresAt(), false, 0, x.renewAt()));

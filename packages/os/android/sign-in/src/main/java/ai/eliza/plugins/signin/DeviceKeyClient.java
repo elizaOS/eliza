@@ -143,10 +143,11 @@ public final class DeviceKeyClient {
     return clock.getAsLong() + seconds * 1000L;
   }
 
-  public <T> Answer<T> presentLease(String method, String path, String body, Reading<T> reading) {
+  private <T> Answer<T> presentLease(String method, String path, String body, Reading<T> reading, int expectedVersion) {
     synchronized (presenting) {
       HeldLease held = store.lease();
-      if (held == null) return new Answer.Refused<>(401, "authentication_required", Reason.CREDENTIAL_UNKNOWN);
+      if (held == null || held.version() != expectedVersion)
+        return new Answer.Refused<>(401, "authentication_required", Reason.CREDENTIAL_UNKNOWN);
       Answer<T> answer = ask(method, path, held.refresh(), body, 200, reading);
       if (answer instanceof Answer.Refused<T> refused && refused.status() == 401)
         store.leaseRejected(held.version(), CloudRequestPolicy.credentialReasonOf(refused.reason()), LeaseUse.REFRESH_USE);
@@ -154,21 +155,23 @@ public final class DeviceKeyClient {
     }
   }
 
-  public Answer<Rotated> rotateLease() {
+  public Answer<Rotated> rotateLease(int expectedVersion) {
     return presentLease("POST", LEASE, "{}", answer -> new Rotated(secret(answer, "access", LEASE_ACCESS), after(answer, "accessExpiresIn"),
-      secret(answer, "refresh", LEASE_REFRESH), after(answer, "refreshExpiresIn")));
+      secret(answer, "refresh", LEASE_REFRESH), after(answer, "refreshExpiresIn")), expectedVersion);
   }
 
   public Exchange renew() {
     Pending unacknowledged = store.pendingRenewal();
     if (unacknowledged != null) return acknowledge(unacknowledged);
-    int attempt = store.beginRenewal();
-    if (attempt == 0) return Exchange.SUPERSEDED;
-    Account account = store.account();
+    var renewal = store.beginRenewal();
+    if (renewal == null) return Exchange.SUPERSEDED;
+    int attempt = renewal.attempt();
     Answer<Renewed> answer = presentLease("POST", RENEW, "{}",
-      body -> new Renewed(CredentialJson.text(body, "credentialId"), CredentialJson.text(body, "secret"), after(body, "expiresIn")));
+      body -> new Renewed(CredentialJson.text(body, "credentialId"), CredentialJson.text(body, "secret"), after(body, "expiresIn")),
+      renewal.version());
     if (!(answer instanceof Answer.Answered<Renewed> renewed)) return end(attempt);
-    Kept kept = store.tokenAnswered(attempt, new Token(renewed.value().credentialId(), renewed.value().secret(), account, renewed.value().expiresAt()));
+    Kept kept = store.tokenAnswered(attempt,
+      new Token(renewed.value().credentialId(), renewed.value().secret(), renewal.account(), renewed.value().expiresAt()));
     if (kept != Kept.KEPT) return end(attempt);
     Pending pending = store.pending();
     return pending == null || pending.attempt() != attempt ? Exchange.SUPERSEDED : acknowledge(pending);

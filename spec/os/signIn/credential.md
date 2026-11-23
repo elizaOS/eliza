@@ -107,8 +107,8 @@ The acknowledgement (`{status: "acknowledged", credentialId, expiresAt}`)
 of the newest sign-in, for the credential its token answer named, installs
 that key as the active one with the expiry the answer gives. The lease
 offered with it becomes the device's lease, due to renew the key when half
-of that life is gone; a renewal keeps the lease it had, now bound to the new
-key.
+of that life is gone. A renewal keeps the refresh secret and expiry bound to
+the new key, and ends the old key's access token and in-flight readers.
 A key it replaces leaves with a revoke duty, together with its lease unless
 a renewal kept it, and the account session of the old key is discarded. The
 new key is announced once with its account; the agent service pushes it to
@@ -123,7 +123,7 @@ pure def canAcknowledged(s: DeviceCredential, attempt: int, credentialId: str, k
 pure def leaseVersionOf(l: DeviceLease): int = match l { | Lease(x) => x.version | NoLease => 0 }
 pure def offeredLease(offer: LeaseOffer, kept: DeviceLease, version: int, renewAt: Millis): DeviceLease = match offer {
   | Offered(o) => Lease({ version: version, refreshExpiresAt: o.refreshExpiresAt, accessExpiresAt: 0, refresh: NotRefreshing, renewAt: renewAt })
-  | Renewal => match kept { | Lease(x) => Lease({ ...x, version: version, renewAt: renewAt }) | NoLease => NoLease }
+  | Renewal => match kept { | Lease(x) => Lease({ ...x, version: version, accessExpiresAt: 0, refresh: NotRefreshing, renewAt: renewAt }) | NoLease => NoLease }
   | NoOffer => NoLease
 }
 pure def acknowledged(s: DeviceCredential, attempt: int, credentialId: str, keyExpiresAt: Millis): CredentialStep = {
@@ -222,10 +222,10 @@ keeps the old secret valid until the new one is first presented, so a lost
 or unwritten answer leaves the device on the old secret, and a later refresh
 is answered with the same new pair; presenting an older secret after the new
 one is theft, which ends this device's key and lease. No answer keeps the
-lease for the next reader. Every refresh ends with an answer: one that lands
-after a renewal moved the lease to a new key is not written, and a refresh
-the shell cannot finish counts as unanswered, so no reader waits on a
-refresh that is gone.
+lease for the next reader. A refresh answer can only change the key version
+that started it. Renewal ends the previous refresh so the next reader can
+start again. A refresh that the shell cannot finish counts as unanswered
+for its own version.
 
 ```quint
 type LeaseAnswer = LeaseRotated({ accessExpiresAt: Millis, refreshExpiresAt: Millis, stored: S::ExchangeOutcome }) | LeaseUnanswered
@@ -239,10 +239,11 @@ pure def readLease(s: DeviceCredential): CredentialStep = {
     | Lease(x) => { state: { ...s, lease: Lease({ ...x, refresh: Refreshing({ waiters: joined }) }) }, out: if (joined == 0) List(RefreshLease) else List() }
     | NoLease => { state: s, out: List() }
   } }
-pure def canLeaseRefreshAnswered(s: DeviceCredential): bool = isLeaseRefreshing(s)
-pure def leaseRefreshAnswered(s: DeviceCredential, rotation: LeaseAnswer): DeviceCredential = {
+pure def canLeaseRefreshAnswered(s: DeviceCredential, version: int): bool =
+  isLeaseRefreshing(s) and leaseVersionOf(s.lease) == version
+pure def leaseRefreshAnswered(s: DeviceCredential, version: int, rotation: LeaseAnswer): DeviceCredential = {
   val held = s.lease
-  match held {
+  if (not(canLeaseRefreshAnswered(s, version))) s else match held {
     | Lease(x) => match rotation {
         | LeaseRotated(r) => if (r.stored == S::Written and r.accessExpiresAt > s.now and r.refreshExpiresAt > s.now)
             { ...s, lease: Lease({ ...x, refreshExpiresAt: r.refreshExpiresAt, refresh: NotRefreshing,
@@ -252,6 +253,8 @@ pure def leaseRefreshAnswered(s: DeviceCredential, rotation: LeaseAnswer): Devic
       }
     | NoLease => s
   } }
+pure def lawAnOldLeaseRefreshLeavesTheCurrentLeaseAlone(s: DeviceCredential, version: int, rotation: LeaseAnswer): bool =
+  (leaseVersionOf(s.lease) != version) implies leaseRefreshAnswered(s, version, rotation) == s
 pure val rotationValues = Set(LeaseRotated({ accessExpiresAt: 9000000000, refreshExpiresAt: 7776000000, stored: S::Written }),
   LeaseRotated({ accessExpiresAt: 9000000000, refreshExpiresAt: 7776000000, stored: S::Unconfirmed }), LeaseUnanswered)
 pure val weight_readLease = 3
@@ -421,16 +424,15 @@ existing revoke duties. The previous key continues to serve its routes.
 type MailLeaseUpgrade = { version: int, account: Account }
 pure def mailLeaseUpgradeAdmits(s: DeviceCredential, expected: MailLeaseUpgrade): bool =
   expected.version >= 1 and activeVersion(s) == expected.version and accountOf(s) == expected.account and s.lease == NoLease
+pure def freshMailLeaseOffer(offer: LeaseOffer, now: Millis): bool = match offer {
+  | Offered(o) => o.refreshExpiresAt > now
+  | _ => false
+}
 pure def mailLeaseUpgradeMayAcknowledge(s: DeviceCredential, expected: MailLeaseUpgrade): bool = {
   val pending = s.attempt
   mailLeaseUpgradeAdmits(s, expected) and (match pending {
-    | Acknowledging(p) => {
-      val offer = p.lease
-      p.version > expected.version and p.account == expected.account and p.lapsesAt > s.now and (match offer {
-        | Offered(o) => o.refreshExpiresAt > s.now
-        | _ => false
-      })
-    }
+    | Acknowledging(p) =>
+      p.version > expected.version and p.account == expected.account and p.lapsesAt > s.now and freshMailLeaseOffer(p.lease, s.now)
     | _ => false
   })
 }
