@@ -4112,7 +4112,16 @@ module node {
       const signedBackIn = await signIn("attachment-owner@example.test")
       revokeListing = "grant"
       const disconnected = await get(folder, signedBackIn.access)
+      const schedule = async () => {
+        const answer = await worker.fetch(new Request(api + "/api/v1/calendar-reminders/device", { headers: otherDevice }), env)
+        return [answer.status, await answer.json()]
+      }
+      const unconnectedSchedule = await schedule()
+      await fixture.db.query(`INSERT INTO google_connections (key, state, revision, organization_id, user_id, subject, email, status, tokens, linked_at)
+        SELECT 'other-google', '{}'::jsonb, 1, organization_id, key, 'other-google-subject', 'attachment-other@example.test', 'Active', 'sealed', 1 FROM accounts WHERE key = $1`, [other.account.id])
+      const reconnectedSchedule = await schedule()
       return {
+        reminders: [unconnectedSchedule, reconnectedSchedule],
         arrivalResult, triage, search, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
         organization, grant, manifest, mailText, html, mime: [mime, mimeAttachment.status, mimeFile.dataBase64, mimeMalformed.status],
@@ -4154,6 +4163,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       triage: got.triage,
       mailboxes: [got.mailboxes, got.deniedFolders, got.signedOut, got.disconnected],
       device: [got.refused, got.beforeDeviceRead, got.deviceStatus, got.deviceReceipt, got.changed, got.revoked],
+      reminders: got.reminders,
     },
     {
       arrivals: {
@@ -4220,6 +4230,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       },
       mailboxes: [[[200, true, "inbox", "", ["fixture-message", "automated-message"], null, "page-two"], [200, true, "trash", "subject:plan & dates", ["trashed-message"], { inboxUnread: 52, drafts: 7 }, "page-two"]], [409, 400], 401, 409],
       device: [[401, 409, 409], 1, 200, got.file, 409, 401],
+      reminders: [[200, { reminders: [], nextPage: null }], [409, { error: "google_connection_unavailable" }]],
     },
   ))
 }, 120_000)
