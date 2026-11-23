@@ -239,3 +239,41 @@ test("sealed site-permission records keep order, the bound and the stored format
     fs.rmSync(output, { recursive: true, force: true });
   }
 });
+
+test("sealed bookmark records keep optional titles and read the earlier format", {
+  skip: jsonJar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+}, () => {
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), "browser-bookmarks-"));
+  try {
+    execFileSync(
+      bin("javac"),
+      [
+        "-J-Xmx128m",
+        "-cp",
+        jsonJar,
+        "-d",
+        output,
+        ...[
+          "BrowserWebOrigin",
+          "BrowserSessionPolicy",
+          "BrowserBookmarkRecord",
+        ].map((name) => path.join(source, `${name}.java`)),
+        path.join(plugin, "test/native-host/BrowserBookmarkRecordTest.java"),
+      ],
+      { timeout: 60000 },
+    );
+    const result = execFileSync(
+      bin("java"),
+      [
+        "-Xmx128m",
+        "-cp",
+        `${output}${path.delimiter}${jsonJar}`,
+        "BrowserBookmarkRecordTest",
+      ],
+      { timeout: 60000, encoding: "utf8" },
+    );
+    assert.match(result, /^\d+ assertions passed/);
+  } finally {
+    fs.rmSync(output, { recursive: true, force: true });
+  }
+});

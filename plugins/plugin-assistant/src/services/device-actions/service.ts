@@ -3,6 +3,7 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   CALENDAR_AVAILABILITY_CAPABILITY,
   CALENDAR_NAMED_READ_CAPABILITY,
+  type ClientBrowserPageWithheldReason,
   canonicalNotesListContextAllowed,
   NAMED_TARGET_CAPABILITY,
   NOTES_LIST_FILTER_CAPABILITY,
@@ -75,12 +76,14 @@ import {
   browserDestinationMatches,
   browserSearchQueryMatches,
   DeviceBrowserNotRequestedError,
+  DeviceBrowserPageWithheldError,
   directBrowserDestination,
   directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,
   spokenBrowserOpen,
+  withheldBrowserPageReloadRefusal,
 } from "./browser-request-grounding.ts";
 import type { CalendarFields } from "./calendar-contract.ts";
 import {
@@ -976,6 +979,8 @@ async function freshRequestedMessageId(
       requestText: string;
       /** Links of the Browser page this message carried, bound to its observation. */
       pageLinks: readonly string[];
+      /** Why the phone withheld that page's text, when it did. */
+      pageWithheld?: ClientBrowserPageWithheldReason;
       assertCurrent(): void;
     }
   | undefined
@@ -1078,17 +1083,29 @@ async function freshRequestedMessageId(
     getStreamingContext()?.abortSignal?.aborted
   )
     return;
+  const page = readClientBrowserPage(stored.content.metadata);
   return {
     messageId: originalId,
     requestText: options.readText
       ? extractUserText(unwrapUserMessageText(stored))
       : "",
-    pageLinks:
-      readClientBrowserPage(stored.content.metadata)?.links?.map(
-        (link) => link.url,
-      ) ?? [],
+    pageLinks: page?.links?.map((link) => link.url) ?? [],
+    ...(page?.withheld ? { pageWithheld: page.withheld } : {}),
     assertCurrent,
   };
+}
+
+/** Why the phone withheld the Browser page the current turn's stored message
+ * carried, if it did. A read only: it binds nothing to that message. */
+async function storedBrowserPageWithheld(
+  runtime: IAgentRuntime,
+): Promise<ClientBrowserPageWithheldReason | undefined> {
+  const turn = getDeviceActionTurn();
+  const id =
+    turn?.runtime === runtime ? turn.replyContext?.message.id : undefined;
+  if (!id) return;
+  const stored = await runtime.getMemoryById(id);
+  return readClientBrowserPage(stored?.content.metadata)?.withheld;
 }
 
 export function hasDeviceGmailComposer(): boolean {
@@ -2673,6 +2690,8 @@ export class DeviceActionService {
         : undefined;
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
     const cameraCapture = validated.type === "camera_capture_photo";
+    const browserReload =
+      validated.type === "browser_history" && validated.action === "reload";
     const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
       allowReviewed:
         browserRequest ||
@@ -2684,11 +2703,28 @@ export class DeviceActionService {
       readText:
         smsDraftOrRead ||
         browserRequest ||
+        browserReload ||
         cameraCapture ||
         telephonyTarget ||
         validated.type === "browser_tab_switch" ||
         validated.type === "browser_find",
     });
+    // A reload is checked against the page this message carried and the
+    // owner's words, reviewed or direct. A reviewed reload is bound to its
+    // message only when that page was withheld; on a readable page it stays
+    // unbound, as before.
+    let reloadOrigin = browserReload ? requestOrigin : undefined;
+    let reloadPageWithheld = reloadOrigin?.pageWithheld;
+    if (browserReload && !reloadOrigin) {
+      reloadPageWithheld = await storedBrowserPageWithheld(this.runtime);
+      if (reloadPageWithheld) {
+        reloadOrigin = await freshRequestedMessageId(this.runtime, c, {
+          allowReviewed: true,
+          readText: true,
+        });
+        if (reloadOrigin) reloadPageWithheld = reloadOrigin.pageWithheld;
+      }
+    }
     let deliveredSenderDraft: typeof validated | undefined;
     // A draft the service built from the owner's own addressing clause names
     // the recipient the owner wrote, so it is not grounded a second time. The
@@ -2913,6 +2949,18 @@ export class DeviceActionService {
       if (!query) throw new DeviceBrowserNotRequestedError("search");
       validated = { ...validated, query };
     }
+    // A page the phone withheld stays withheld after a reload, and a reload can
+    // resubmit a form: one the owner's own message did not ask for never runs.
+    // A withheld page whose message cannot be bound has no owner words that
+    // ask for a reload: refused.
+    const withheldReload =
+      browserReload &&
+      withheldBrowserPageReloadRefusal(
+        { withheld: reloadPageWithheld },
+        reloadOrigin?.requestText ?? "",
+      );
+    if (withheldReload)
+      throw new DeviceBrowserPageWithheldError(withheldReload);
     // A photo runs without its Take photo card only when the owner's own
     // message asks for one now ("take a picture", "can you take a selfie?").
     // A capture the model proposed for any other message ("summarize the page

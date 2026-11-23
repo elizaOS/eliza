@@ -646,6 +646,11 @@ Android helpers for the same hosts (they need AndroidX WebKit with
   and site-permission decisions, sealed by the host's `BrowserSealedText` (for example a
   Keystore AES-GCM frame). The host passes its own preferences file and key, so installed data
   keeps its names. Private tabs never reach them.
+  A bookmark may carry an optional title (`setBookmark({ …, title })`, at most 300 characters,
+  control characters become spaces), sealed in the same record as its address and returned as
+  `entries: [{ url, title? }]` beside `urls`. Omitting `title` keeps the saved one; a blank title
+  removes it. Records written before titles read back with none; a record with no titles keeps
+  the earlier format (`BrowserBookmarkRecord`).
 - `BrowserReadingWorld` is the isolated world for page reading. The host calls `prepare(url)`
   (or `prepareHistory`) before each load and `pageStarted(url)` from its client; only the
   prepared main-frame document, announcing a one-time nonce from the committed HTTPS origin,
