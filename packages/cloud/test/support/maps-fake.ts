@@ -1,4 +1,4 @@
-// spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A search ranked by distance reads the provider's largest page and answers its nearest places first"
+// spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A route whose endpoints coincide is a zero-length route, never a malformed answer"; spec/cloud/services/maps.md, "A search ranked by distance reads the provider's largest page and answers its nearest places first"
 import type { FakeAnswer, FakeHandler, FakeRequest } from "./fakes.ts";
 
 export type GoogleOperation = "searchText" | "searchNearby" | "details" | "geocode" | "computeRoutes" | "createSession" | "tile" | "viewport";
@@ -11,7 +11,9 @@ export type GoogleScript =
   | { readonly kind: "notJson" }
   | { readonly kind: "outage" }
   | { readonly kind: "oversized" }
-  | { readonly kind: "geocodeReply"; readonly status: number; readonly geocode: string };
+  | { readonly kind: "geocodeReply"; readonly status: number; readonly geocode: string }
+  | { readonly kind: "reply"; readonly status: number; readonly body: unknown }
+  | { readonly kind: "zeroLengthRoute"; readonly points: 0 | 1 };
 
 export interface GoogleMapsFake {
   readonly handler: FakeHandler;
@@ -160,6 +162,10 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
       return { status: 200, body: "x".repeat(2 * 1024 * 1024 + 1) };
     case "geocodeReply":
       return operation === "geocode" ? { status: script.status, body: { status: script.geocode, results: [] } } : answerOf(operation, request);
+    case "reply":
+      return { status: script.status, body: script.body };
+    case "zeroLengthRoute":
+      return { status: 200, body: { routes: [{ duration: "0s", polyline: { encodedPolyline: encodePolyline(routePoints.slice(0, script.points)) }, legs: [{}] }] } };
   }
 }
 

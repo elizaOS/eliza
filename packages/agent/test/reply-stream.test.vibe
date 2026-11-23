@@ -4,7 +4,32 @@ import { held, insufficientCredits, partial, text, type CloudFake } from "./supp
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import type { StreamCut, StreamedAnswer } from "./support/socket-client.ts"
 
-type Frame = { readonly type: string; readonly text?: string; readonly fullText?: string; readonly failureKind?: string; readonly provisional?: boolean }
+type Frame = {
+  readonly type: string
+  readonly text?: string
+  readonly fullText?: string
+  readonly failureKind?: string
+  readonly provisional?: boolean
+  readonly actionResults?: readonly unknown[]
+}
+
+module node {
+  import type { AgentRuntime } from "@elizaos/core"
+  import { setTimeout } from "node:timers/promises"
+
+  /** @throws {never} */
+  export function delayReplyWrite(runtime: AgentRuntime, reject: boolean): void {
+    const save = runtime.createMessageMemory.bind(runtime)
+    runtime.createMessageMemory = async (memory, unique) => {
+      if (memory.entityId === runtime.agentId && memory.content.actions?.includes("REPLY")) {
+        await setTimeout(300)
+        if (reject) throw new Error("Reply storage refused the write")
+      }
+      return save(memory, unique)
+    }
+  }
+}
+import { delayReplyWrite } from node
 
 schema Created { conversation: { id: string } }
 const created = Schema.decodeUnknownOption(Created)
@@ -45,6 +70,7 @@ for (const transport of ["socket", "http"] as const) {
       const cloud = try cloudFake(deviceKey)
       const agent = try cloudAgent(cloud, transport === "http")
       const id = try conversation(agent)
+      try Effect.sync(() => delayReplyWrite(agent.agent.runtime, false))
       const offered = { text: "Write at length.", channelType: "VOICE_DM", metadata: { voiceUi: { surface: "voice" } }, clientMessageId: "cadence" }
       const release = Promise.withResolvers<void>()
       try Effect.sync(() => cloud.script(held(release.promise, text(piece("a"), piece("b"), piece("c")))))
@@ -77,17 +103,19 @@ for (const transport of ["socket", "http"] as const) {
         status: answer.status, error: answer.error, first: frames[0], ends: frames.filter((frame) => frame.type === "done" || frame.type === "error").length,
         terminal: terminal?.type === "done" ? "done" : JSON.stringify([terminal, cloud.calls.map((made) => made.path)]), fullText: terminal?.fullText, rebuilt: rebuilt(frames),
         snapshots: kinds(frames).includes("snapshot"), provisional: frames.some((frame) => frame.provisional === true),
-        refused: [refused.status, refused.json],
+        ready: frames.filter(({ type }) => type === "reply_ready"), refused: [refused.status, refused.json],
       }, {
         status: 200, error: undefined, first: { type: "status", activity: "thinking" }, ends: 1,
         terminal: "done", fullText: piece("a") + piece("b") + piece("c"), rebuilt: piece("a") + piece("b") + piece("c"),
-        snapshots: true, provisional: false,
+        snapshots: true, provisional: true,
+        ready: [{ type: "reply_ready", fullText: piece("a") + piece("b") + piece("c"), actionResults: [] }],
         refused: [400, { error: "stream_protocol_unsupported" }],
       }))
       if (!("status" in buffered) || terminal === undefined) return try die(new Error("The buffered reply did not complete"))
       try Effect.try(() => {
         assert.deepStrictEqual([conflict.status, conflict.json, framesOf(conflict)], [409, { error: "CHAT_IDEMPOTENCY_CONFLICT" }, []])
         assert.deepStrictEqual([framesOf(duplicate), framesOf(replay)], [[terminal], [terminal]])
+        assert.strictEqual(kinds(frames).at(-2), "reply_ready")
         assert.strictEqual(buffered.status, 200)
         const { type: _frame, ...reply } = terminal
         assert.deepStrictEqual(buffered.json, { ...reply, text: terminal.fullText })
@@ -113,9 +141,27 @@ for (const transport of ["socket", "http"] as const) {
         recovered: [recovered.status, saved.text, saved.failureKind],
         calls: cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length,
       }, {
-        status: 200, frames: [{ type: "status", activity: "thinking" }, { type: "token", text: "Let me think" }], error: "closed before complete",
+        status: 200, frames: [{ type: "status", activity: "thinking" }, { type: "token", text: "Let me think", provisional: true }], error: "closed before complete",
         recovered: [200, "Let me think", "aborted"], calls: 1,
       }))
+    }, 120_000)
+
+    it.live('A refused reply write ends without announcing the preview (spec/agent/conversation/replyStream.md, "The early reply is written at most once, and a stream that announced it ends with an answered done carrying the same action results")', effect () => {
+      const cloud = try cloudFake(deviceKey)
+      const agent = try cloudAgent(cloud, transport === "http")
+      const id = try conversation(agent)
+      try Effect.sync(() => {
+        delayReplyWrite(agent.agent.runtime, true)
+        cloud.script(text("This reply never committed."))
+      })
+      const answer = try send(agent, id, { text: "Answer me.", clientMessageId: "refused-write" })
+      const frames = framesOf(answer)
+      try Effect.try(() => {
+        assert.strictEqual(answer.status, 200)
+        assert.strictEqual(rebuilt(frames), "This reply never committed.")
+        assert.isTrue(frames.filter(({ type }) => type === "token").every(({ provisional }) => provisional === true))
+        assert.deepStrictEqual(frames.filter(({ type }) => type !== "status" && type !== "token").map(({ type }) => type), ["error"])
+      })
     }, 120_000)
 
     it.live('An account refusal still ends with done and its failure kind (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written")', effect () => {

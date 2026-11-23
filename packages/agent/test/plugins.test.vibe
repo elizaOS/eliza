@@ -165,11 +165,11 @@ it.effect('Plugins register as storage, the cloud link, the privacy service in t
   const { input } = try launched(state, {
     launch: {
       load: [listedPlugin.name], productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName],
-      privacy: { secretSwap: true, piiSwap: false }, environment: { ELIZA_SECRET_SWAP_STABLE_REFERENCES: "true" },
+      privacy: { secretSwap: true, piiSwap: false },
     },
     bundled: [listedPlugin, productPlugin],
   })
   const running = try acquireRelease(startAgent(input), (agent) => orDie(host("retire agent", () => agent.stop())))
-  const swaps = ["ELIZA_SECRET_SWAP_ENABLED", "ELIZA_PII_SWAP_ENABLED", "ELIZA_SECRET_SWAP_STABLE_REFERENCES"].map((key) => running.runtime.getSetting(key))
-  try Effect.try(() => assert.deepStrictEqual({ ready: running.status.ready, registered, swaps }, { ready: true, registered: order, swaps: [true, false, true] }))
+  const swaps = ["ELIZA_SECRET_SWAP_ENABLED", "ELIZA_PII_SWAP_ENABLED"].map((key) => running.runtime.getSetting(key))
+  try Effect.try(() => assert.deepStrictEqual({ ready: running.status.ready, registered, swaps }, { ready: true, registered: order, swaps: [true, false] }))
 }, 120_000)

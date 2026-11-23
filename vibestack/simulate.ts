@@ -336,11 +336,12 @@ function witnessedIn(traces: Step[][], goals: string[]): Map<string, Step[]> {
 const SPECS_AT_ONCE = 2 * os.availableParallelism();
 let specsSimulating = 0;
 const specsWaiting: (() => void)[] = [];
-async function inTurn<T>(go: () => Promise<T>): Promise<T> {
-  if (specsSimulating < SPECS_AT_ONCE) specsSimulating++;
+async function inTurn<T>(go: (waited: boolean) => Promise<T>): Promise<T> {
+  const waited = specsSimulating >= SPECS_AT_ONCE;
+  if (!waited) specsSimulating++;
   else await new Promise<void>((start) => specsWaiting.push(start));
   try {
-    return await go();
+    return await go(waited);
   } finally {
     const next = specsWaiting.shift();
     if (next) next();
@@ -374,7 +375,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
   const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), model.guardHarness, ...(model.witness ? [model.witness.harness] : []),
     ...(model.refusal ? [model.refusal.harness, String(REFUSAL_GUIDE_STEPS)] : []), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
-  return remembered<Simulation>(memory, entry(memory.root, "simulate", key), (memory) => inTurn(async () => {
+  return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async (memory) => {
     const mainInput = await project();
     const harness: Harness = mainInput ? { memory, model, files: { ...files, [modelFile]: mainInput }, reproduceIn } : { memory, model, files };
     const guided = model.witness && { memory, model, files: harnessFiles(spec, specs, model, model.witness), main: witnessFile(model.name) } satisfies Harness;
@@ -544,7 +545,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
     }
     return { said, tested };
-  }), ({ said }) => reusable && !said.some((r) => r.summary === COULD_NOT_RUN)).then(async ({ said, tested }) => {
+  }, ({ said }) => reusable && !said.some((r) => r.summary === COULD_NOT_RUN), inTurn).then(async ({ said, tested }) => {
     let replayReady = true;
     if (said.some((row) => row.detail.includes(replayCommand))) {
       const mainInput = await project();

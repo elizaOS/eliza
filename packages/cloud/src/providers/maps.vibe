@@ -1,6 +1,6 @@
-// spec/cloud/services/maps.md, "A deployment answers capabilities always, and any other operation only when its provider serves it"; spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A tile is never stored, and none is sent without a freshly admitted hold"; spec/cloud/services/maps.md, "Every tile a process serves shares one provider tile session, started beside the hold and renewed only near its expiry or when it is refused"
+// spec/cloud/services/maps.md, "A deployment answers capabilities always, and any other operation only when its provider serves it"; spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A tile is never stored, and none is sent without a freshly admitted hold"; spec/cloud/services/maps.md, "Every tile a process serves shares one provider tile session, started beside the hold and renewed only near its expiry or when it is refused"; spec/cloud/services/maps.md, "A route whose endpoints coincide is a zero-length route, never a malformed answer"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { billingOf, detailsPrice, geocodeBillingOf, geocodeFoundNothing, geocodePrice, nearbyPrice, offerOf, placeLookup, quoteOf, searchPrice, supportsMode, tilePrice, tileSessionFresh, unclearAnswerIsInvalid, upstreamBodyCap, upstreamTimeout, type MapsProvider as ProviderKind, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
+import { billingOf, detailsPrice, geocodeBillingOf, geocodeFoundNothing, geocodePrice, nearbyPrice, offerOf, placeIdRefused, placeLookup, quoteOf, routeLine, searchPrice, supportsMode, tilePrice, tileSessionFresh, unclearAnswerIsInvalid, upstreamBodyCap, upstreamTimeout, type MapsProvider as ProviderKind, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
 import type { Micros } from "../../gen/cloud__shared__types.ts"
 import type { MapsSettings as MapsSettingsSchema } from "../profile/profile.schema.ts"
 import { Deployment } from "../profile/profile.vibe"
@@ -10,10 +10,11 @@ import { osmAttribution, osmMapsProvider } from "./maps-osm.vibe"
 export type MapsSettings = typeof MapsSettingsSchema.Type
 type GoogleSettings = Extract<MapsSettings, { readonly provider: "google" }>
 export type ProviderRefusal = "NoRoute" | "UnsupportedMode" | "UnsupportedRegion" | "ProviderInvalidResponse" | "ProviderUnavailable"
+export type LostReplyRefusal = "InvalidRequest" | "ProviderInvalidResponse" | "ProviderUnavailable"
 export type MapsReply<A> =
   | { readonly kind: "answered"; readonly value: A; readonly observedMicros: Micros }
   | { readonly kind: "refused"; readonly code: ProviderRefusal; readonly observedMicros: Micros }
-  | { readonly kind: "unknown"; readonly cause: string; readonly code: ProviderRefusal }
+  | { readonly kind: "unknown"; readonly cause: string; readonly code: LostReplyRefusal }
 export interface MapsTile { readonly bytes: Uint8Array; readonly contentType: "image/png" | "image/jpeg" | "image/webp"; readonly attribution: string }
 export type MapsContext = HttpClient.HttpClient | Deployment
 
@@ -78,7 +79,7 @@ export function describeMaps(settings: MapsSettings | undefined, operator: strin
 
 error Refused { code: ProviderRefusal }
 error Rejected { status: number }
-error Lost { cause: string; code: ProviderRefusal }
+error Lost { cause: string; code: LostReplyRefusal }
 type Stop = Refused | Rejected | Lost
 type Meter = { observed: Micros }
 type Got = { readonly status: number; readonly bytes: Uint8Array; readonly contentType: string | undefined }
@@ -183,6 +184,29 @@ function covered(point: Coordinate): boolean {
 function seconds(value: string | undefined): number | undefined {
   const match = value === undefined ? null : /^(\d+(?:\.\d+)?)s$/.exec(value)
   return match === null ? undefined : Number(match[1])
+}
+
+function refusesTheArgument(bytes: Uint8Array): boolean {
+  let body: unknown
+  try {
+    body = JSON.parse(new TextDecoder().decode(bytes))
+  } catch {
+    return false
+  }
+  const error = typeof body === "object" && body !== null && "error" in body ? body.error : undefined
+  if (typeof error !== "object" || error === null || !("status" in error) || error.status !== "INVALID_ARGUMENT") return false
+  const details = "details" in error ? error.details : undefined
+  return details === undefined || (Array.isArray(details) && details.every((detail: unknown) =>
+    typeof detail === "object" && detail !== null && !("reason" in detail) && !String("@type" in detail ? detail["@type"] : "").endsWith("ErrorInfo")))
+}
+
+function lineOf(decoded: ReadonlyArray<Coordinate>, distanceMeters: number, from: Coordinate, to: Coordinate): Coordinate[] | undefined {
+  switch (routeLine(decoded.length, distanceMeters)) {
+    case "ProvidersLine": return [...decoded]
+    case "ItsPointTwice": return [decoded[0], decoded[0]]
+    case "StartToEnd": return [from, to]
+    case "NoUsableLine": return undefined
+  }
 }
 
 function decodePolyline(encoded: string): Coordinate[] | undefined {
@@ -420,8 +444,9 @@ function googleMapsProvider(settings: GoogleSettings): MapsProvider {
     details: (request) => metered(effect (meter) => {
       if (!placeId.test(request.id)) return single(undefined)
       const key = try apiKey()
-      const got = try send(meter, HttpClientRequest.get(url("places", `/v1/places/${encodeURIComponent(request.id)}`)).pipe(HttpClientRequest.setHeaders({ "x-goog-api-key": key, "x-goog-fieldmask": detailFields })), detailsPrice)
+      const got = try send(meter, HttpClientRequest.get(url("places", `/v1/places/${encodeURIComponent(request.id)}`)).pipe(HttpClientRequest.setHeaders({ "x-goog-api-key": key, "x-goog-fieldmask": detailFields })), detailsPrice, [400])
       if (got.status === 404) return single(undefined)
+      if (got.status === 400) throw new Lost({ cause: "status 400", code: placeIdRefused("PlaceDetails", got.status, refusesTheArgument(got.bytes)) ? "InvalidRequest" : "ProviderInvalidResponse" })
       const [place] = try places([try decoded(got, GooglePlace)])
       if (place === undefined) throw new Refused({ code: "UnsupportedRegion" })
       return single(place)
@@ -445,13 +470,15 @@ function googleMapsProvider(settings: GoogleSettings): MapsProvider {
       const reply = try decoded(try send(meter, try google(url("routes", "/directions/v2:computeRoutes"), fields, body), quoteOf("Routes", false, mode, live)), RoutesReply)
       const found: MapsRoute[] = []
       for (const [index, route] of (reply.routes ?? []).slice(0, alternatives ? 3 : 1).entries()) {
-        const geometry = decodePolyline(route.polyline.encodedPolyline) ?? []
+        const distanceMeters = route.distanceMeters ?? 0
+        const decoded = decodePolyline(route.polyline.encodedPolyline)
+        const geometry = decoded === undefined ? undefined : lineOf(decoded, distanceMeters, request.from, request.to)
         const durationSeconds = seconds(route.duration)
         const staticSeconds = seconds(route.staticDuration)
-        if (geometry.length < 2 || durationSeconds === undefined) throw new Refused({ code: "ProviderInvalidResponse" })
+        if (geometry === undefined || durationSeconds === undefined) throw new Refused({ code: "ProviderInvalidResponse" })
         const steps = stepsOf(route, geometry[geometry.length - 1])
         const candidate = {
-          providerId: "google", from: request.from, to: request.to, mode: request.mode, geometry: simplified(geometry, steps), distanceMeters: route.distanceMeters ?? 0,
+          providerId: "google", from: request.from, to: request.to, mode: request.mode, geometry: simplified(geometry, steps), distanceMeters,
           durationSeconds, steps, attribution: googleAttribution, traffic: live ? "live" : "none", ...(live && staticSeconds !== undefined ? { staticDurationSeconds: staticSeconds } : {}),
         } as const
         const built = { id: routeId(JSON.stringify({ index, departAt, ...candidate })), ...candidate, fetchedAt: now }

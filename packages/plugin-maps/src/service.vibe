@@ -1,8 +1,8 @@
-// spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/cloud/services/maps.md, "Every operation except capabilities and viewport needs an idempotency key and runs over one hold of the calling credential"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/maps/phonePosition.md, "A search around a point asks Cloud for the closest places whenever Cloud ranks by distance"
+// spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/cloud/services/maps.md, "Every operation except capabilities and viewport needs an idempotency key and runs over one hold of the calling credential"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner's words, naming the place a start could not look up"; spec/maps/phonePosition.md, "A search around a point asks Cloud for the closest places whenever Cloud ranks by distance"
 import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent"
 import { readCloudError } from "@elizaos/cloud/client"
 import { asksForClosest } from "../gen/maps__phonePosition.effect.vibe"
-import { cloudMapsFailure } from "./client/cloud-provider.vibe"
+import { cloudMapsFailure, unusableMapsAnswer } from "./client/cloud-provider.vibe"
 import { boundedText, type Coordinate, MapsFailure, place, route, TravelMode, type Place, type Route } from "./client/contracts.vibe"
 import type { AgentPlaceRef } from "./client/device-navigation.vibe"
 import { isMapsSelectionHandle } from "./routing.vibe"
@@ -82,6 +82,7 @@ export function agentPlace(found: Place): AgentPlaceRef {
 }
 
 const unreachable = () => new MapsFailure({ code: "offline", message: "Cloud Maps is unreachable. Check the connection." })
+const unusable = () => new MapsFailure({ code: "invalid-response", message: unusableMapsAnswer })
 
 export function mapsService(link: MapsCloudLink) {
   effect function call<A>(request: Omit<CloudLinkRequest, "signal" | "idempotencyKey">, schema: Schema.Codec<A>, metered: boolean): A!MapsFailure {
@@ -99,7 +100,7 @@ export function mapsService(link: MapsCloudLink) {
       })
       throw cloudMapsFailure(refused.failure, now)
     }
-    return try mapError(Schema.decodeUnknownEffect(schema)(reply.body), () => new MapsFailure({ code: "invalid-response", message: "Cloud Maps sent an invalid response." }))
+    return try mapError(Schema.decodeUnknownEffect(schema)(reply.body), unusable)
   }
 
   effect function offer(): (MapsOffer | undefined)!MapsFailure {
@@ -132,28 +133,28 @@ export function mapsService(link: MapsCloudLink) {
       },
     }, Places, true)
     const places: Place[] = []
-    for (const item of answer.places) places.push(try place(item, answer.providerId))
+    for (const item of answer.places) places.push(try mapError(place(item, answer.providerId), unusable))
     return { providerId: answer.providerId, attribution: answer.attribution, places }
   }
 
   effect function detail(id: string): (Place | null)!MapsFailure {
     if (isMapsSelectionHandle(id) || !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/.test(id)) return null
     const answer = try call({ method: "POST", path: "/api/v1/maps/places/details", body: { id } }, Detail, true)
-    return answer.place === null ? null : try place(answer.place, answer.providerId)
+    return answer.place === null ? null : try mapError(place(answer.place, answer.providerId), unusable)
   }
 
   effect function reverse(at: Coordinate): { readonly attribution: string; readonly place: Place | null }!MapsFailure {
     const answer = try call({ method: "POST", path: "/api/v1/maps/reverse", body: { coordinate: at } }, Detail, true)
-    return { attribution: answer.attribution, place: answer.place === null ? null : try place(answer.place, answer.providerId) }
+    return { attribution: answer.attribution, place: answer.place === null ? null : try mapError(place(answer.place, answer.providerId), unusable) }
   }
 
   effect function routes(from: Coordinate, to: Coordinate, mode: TravelMode, alternatives: boolean): RouteResults!MapsFailure {
     const answer = try call({ method: "POST", path: "/api/v1/maps/routes", body: { from, to, mode, ...(alternatives ? { alternatives: true } : {}) } }, Routes, true)
-    if (!alternatives && answer.routes.length > 1) throw new MapsFailure({ code: "invalid-response", message: "The Maps route response is invalid." })
+    if (!alternatives && answer.routes.length > 1) throw unusable()
     const planned: Route[] = []
     for (const item of answer.routes) {
-      const checked = try route(item, answer.providerId)
-      if (checked.mode !== mode) throw new MapsFailure({ code: "invalid-response", message: "The Maps route response is invalid." })
+      const checked = try mapError(route(item, answer.providerId), unusable)
+      if (checked.mode !== mode) throw unusable()
       planned.push(checked)
     }
     return { providerId: answer.providerId, attribution: answer.attribution, routes: planned }
