@@ -1,4 +1,4 @@
-// spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "A selection reads its file only while the file still has the revision it selected"; spec/files/library.md, "A change commits only at the revision it expected, never takes a name in use, and never puts a folder inside itself"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"
+// spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "A selection reads its file only while the file still has the revision it selected"; spec/files/library.md, "A change commits only at the revision it expected, never takes a name in use, and never puts a folder inside itself"; spec/files/library.md, "An unreadable Trash journal refuses the request and keeps the stored rows"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"
 module browser {
   export async function identityToken(id: string, revision: string): Promise<string> {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([id, revision])))
@@ -23,6 +23,11 @@ module browser {
     return new Blob([bytes], { type })
   }
 
+  export function decodeUtf8(bytes: Uint8Array<ArrayBuffer>): string | undefined {
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes) }
+    catch { return undefined }
+  }
+
   export async function shareFile(name: string, archive: Blob): Promise<"opened" | "cancelled" | "unsupported"> {
     const file = new File([archive], name, { type: "application/zip" })
     if (navigator.share === undefined || navigator.canShare?.({ files: [file] }) !== true) return "unsupported"
@@ -30,13 +35,13 @@ module browser {
       (error: unknown) => error instanceof DOMException && error.name === "AbortError" ? "cancelled" as const : "unsupported" as const)
   }
 }
-import { base64, fileBlob, identityToken, shareFile, storageEstimate } from browser
-import { apply, canPrune, classifyRow, listed, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
-import { chatLimit, mailLimit, selectionReadable, textLimit } from "../../gen/files__library.effect.vibe"
+import { base64, decodeUtf8, fileBlob, identityToken, shareFile, storageEstimate } from browser
+import { apply, canPrune, classifyRow, listed, initial as fresh } from "../../gen/files__reviewedOperations.effect.vibe"
+import { chatLimit, mailLimit, selectionReadable, textLimit, trashJournalVerdict } from "../../gen/files__library.effect.vibe"
 import { batchMax, type FileOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
 import { fileArchive } from "../documents/archive.vibe"
 import { downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry } from "./model.vibe"
-import { allocateLibraryId, deletePlan, insertPlan, LibraryStore, LIBRARY_ROOT, childrenOf, placePlan, subtreeOf, type LibraryRow } from "./library.vibe"
+import { allocateLibraryId, deletePlan, insertPlan, LibraryStore, LIBRARY_ROOT, childrenOf, newId, placePlan, subtreeOf, type LibraryPlan, type LibraryRefusal, type LibraryRow } from "./library.vibe"
 import { checkSelection, FilesVolume, succeeded, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
 
 const TRASH = ".Trash-files"
@@ -47,7 +52,7 @@ const ANSWERS: Readonly<Record<FileOutcome, RowStatus>> = {
 }
 schema JournalRow { phase: "Visible" | "Journaled" | "InTrash" | "MoveFailed" | "Expiring" | "Gone"; journal: boolean; resident: boolean; deletedAt: number }
 schema TrashRecord { name: string; origin: string; directory: boolean; size: number; mimeType: string; row: JournalRow }
-const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(TrashRecord))
+const readRecord = Schema.decodeUnknownOption(Schema.fromJsonString(TrashRecord))
 
 const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
 const allocateId = mapError(allocateLibraryId, (failure) => refused("unavailable", failure.message))
@@ -146,9 +151,71 @@ effect function archiveOf(all: readonly LibraryRow[], selected: readonly string[
   return try mapError(fileArchive(files), (failure) => refused("invalid", failure.message))
 }
 
-function trashDataOf(all: readonly LibraryRow[]) {
-  const trashId = folderIdAt(all, TRASH)
-  return trashId === undefined ? [] : childrenOf(all, trashId).filter((row) => !row.name.endsWith(".json"))
+type JournalEntry = { readonly metadata: LibraryRow; readonly record: typeof TrashRecord.Type; readonly data?: LibraryRow }
+type TrashJournal =
+  | { readonly kind: "JournalAbsent" }
+  | { readonly kind: "JournalUnreadable" }
+  | { readonly kind: "JournalReadable"; readonly folder: LibraryRow; readonly records: ReadonlyMap<string, JournalEntry> }
+type ReadableTrash = Exclude<TrashJournal, { readonly kind: "JournalUnreadable" }>
+
+function readTrashJournal(all: readonly LibraryRow[]): TrashJournal {
+  const matching = childrenOf(all, LIBRARY_ROOT).filter(({ name }) => name === TRASH)
+  if (matching.length === 0) return { kind: "JournalAbsent" }
+  const [folder] = matching
+  if (matching.length !== 1 || !folder?.directory) return { kind: "JournalUnreadable" }
+  const rows = childrenOf(all, folder.id)
+  const children = new Map(rows.map((row) => [row.name, row]))
+  if (children.size !== rows.length) return { kind: "JournalUnreadable" }
+  const records = new Map<string, JournalEntry>()
+  for (const [name, metadata] of children) {
+    if (!name.endsWith(".json")) continue
+    const id = name.slice(0, -".json".length)
+    const text = metadata.directory || metadata.bytes === undefined ? undefined : decodeUtf8(metadata.bytes)
+    const record = text === undefined ? undefined : Option.getOrUndefined(readRecord(text))
+    if (record === undefined || id === "") return { kind: "JournalUnreadable" }
+    const data = children.get(id)
+    records.set(id, { metadata, record, ...(data === undefined ? {} : { data }) })
+  }
+  const orphaned = [...children.keys()].some((name) => !name.endsWith(".json") && !records.has(name))
+  return trashJournalVerdict("JournalReadable", orphaned) === "TrashAvailable"
+    ? { kind: "JournalReadable", folder, records } : { kind: "JournalUnreadable" }
+}
+
+function removeTrashPlan(all: readonly LibraryRow[], rows: readonly LibraryRow[]) {
+  if (rows.length === 0) return { put: [], remove: [] }
+  return deletePlan(rows.map(({ id, revision }) => ({ id, expectedRevision: revision })), true, true)(all)
+}
+
+function folderPlan(all: readonly LibraryRow[], path: string, at: number): { readonly id: string; readonly put: readonly LibraryRow[] } | undefined {
+  let id = LIBRARY_ROOT
+  const put: LibraryRow[] = []
+  for (const name of path === "" ? [] : path.split("/")) {
+    const found = childrenOf(all, id).find((row) => row.name === name)
+    if (found !== undefined) {
+      if (!found.directory) return undefined
+      id = found.id
+    } else {
+      const folder = newId()
+      const plan = insertPlan({ id: folder, parentId: id, name, mimeType: "", directory: true, size: 0 }, at)([...all, ...put])
+      if (typeof plan === "string") return undefined
+      put.push(...plan.put)
+      id = folder
+    }
+  }
+  return { id, put }
+}
+
+function stageRows(working: Map<string, LibraryRow>, plan: LibraryPlan, put: Map<string, LibraryRow>, remove: Set<string>) {
+  for (const id of plan.remove) {
+    working.delete(id)
+    put.delete(id)
+    remove.add(id)
+  }
+  for (const row of plan.put) {
+    working.set(row.id, row)
+    put.set(row.id, row)
+    remove.delete(row.id)
+  }
 }
 
 export function libraryVolume(archiveName = "Files.zip") {
@@ -157,10 +224,26 @@ export function libraryVolume(archiveName = "Files.zip") {
     const namespace = (try Semaphore.make(1)).withPermits(1)
     const rows = () => mapError(library.rows(), (failure) => refused("unavailable", failure.message))
     const now = Clock.currentTimeMillis
+
     effect function commit(plan: Parameters<LibraryStore.Shape["commit"]>[0]): void!VolumeRefused {
       try mapError(library.commit(plan), (failure) => failure._tag === "LibraryRefused"
-        ? refused(failure.answer === "LibraryNameTaken" ? "exists" : failure.answer === "LibraryStale" || failure.answer === "LibraryBatchRefused" ? "changed" : "invalid", failure.message)
+        ? refused(failure.answer === "LibraryTrashUnreadable" ? "failed" : failure.answer === "LibraryNameTaken" ? "exists"
+          : failure.answer === "LibraryStale" || failure.answer === "LibraryBatchRefused" ? "changed" : "invalid", failure.message)
         : refused("unavailable", failure.message))
+    }
+
+    effect function commitTrash<A>(select: (all: readonly LibraryRow[], snapshot: ReadableTrash) => { readonly value: A; readonly plan: LibraryPlan } | LibraryRefusal): A!VolumeRefused {
+      const result: { pending?: { readonly value: A } } = {}
+      try commit((all) => {
+        const snapshot = readTrashJournal(all)
+        if (snapshot.kind === "JournalUnreadable") return "LibraryTrashUnreadable"
+        const planned = select(all, snapshot)
+        if (typeof planned === "string") return planned
+        result.pending = planned
+        return planned.plan
+      })
+      if (result.pending === undefined) throw refused("unavailable", "Trash did not commit.")
+      return result.pending.value
     }
 
     effect function folder(path: string, create = false): string!VolumeRefused {
@@ -190,52 +273,6 @@ export function libraryVolume(archiveName = "Files.zip") {
       if (row.directory) for (const child of childrenOf(try rows(), row.id)) try copyInto(child, id, child.name)
     }
 
-    effect function recordRow(id: string) {
-      const all = try rows()
-      const trashId = folderIdAt(all, TRASH)
-      const found = trashId === undefined ? undefined : childrenOf(all, trashId).find((row) => row.name === `${id}.json`)
-      const kept = found?.bytes === undefined ? undefined : (decodeRecord(new TextDecoder().decode(found.bytes)) catch () => undefined)
-      return { found, kept }
-    }
-
-    effect function journalOf(id: string, trashId: string, base: Omit<typeof TrashRecord.Type, "row">) {
-      return try machineOver(effect () => (recordRow(id) catch () => ({ kept: undefined })).kept?.row ?? fresh, (row: TrashRow) => effect {
-        if (row.phase === "Visible" || row.phase === "Gone") return
-        const bytes = new TextEncoder().encode(JSON.stringify({ ...base, row }))
-        const { found } = try orDie(recordRow(id))
-        const recordId = found?.id ?? (try orDie(allocateId))
-        const at = try now
-        try orDie(commit((all) => {
-          const current = all.find((candidate) => candidate.id === found?.id)
-          const next = { id: current?.id ?? recordId, parentId: trashId, name: `${id}.json`, mimeType: "application/json", directory: false,
-            size: bytes.byteLength, bytes, revision: current?.revision ?? "journal", createdAt: current?.createdAt ?? at, modifiedAt: at }
-          return { put: [next], remove: [] }
-        }))
-      })
-    }
-
-    effect function eraseRecord(id: string): boolean!! {
-      const record = (recordRow(id) catch () => undefined)
-      if (record === undefined) return false
-      const { found } = record
-      return found === undefined || (try succeeded(commit(deletePlan([{ id: found.id, expectedRevision: found.revision }], true))))
-    }
-
-    effect function trashRow(raw: string, reviewed: string | undefined): RowOutcome!VolumeRefused {
-      const { path, row, facts, admission } = try checkRow(try rows(), "Trash", raw, reviewed, "")
-      if (admission !== "Admitted" || row === undefined) return { path: raw, status: ANSWERS[admission] }
-      const trashId = try folder(TRASH, true)
-      const id = try allocateId
-      const journal = try journalOf(id, trashId, { name: row.name, origin: path, directory: row.directory, size: row.directory ? 0 : row.size, mimeType: row.directory ? "" : row.mimeType })
-      try orDie(journal.send({ type: "journal", op: "Trash", row: facts, at: try now }))
-      const moved = try succeeded(commit(placePlan({ id: row.id, expectedRevision: row.revision, destinationId: trashId, name: id }, try now)))
-      try orDie(journal.send({ type: "moveToTrash", acknowledged: moved }))
-      if (moved) return { path, status: "trashed", to: id }
-      try orDie(journal.send({ type: "undoFailedJournal" }))
-      try eraseRecord(id)
-      return { path, status: "failed" }
-    }
-
     effect function transferRow(op: FilesOp, raw: string, reviewed: string | undefined, dest: string, destId: string): RowOutcome!VolumeRefused {
       const { path, row, admission } = try checkRow(try rows(), op, raw, reviewed, dest)
       if (admission === "Unchanged") return { path, status: "unchanged", to: path }
@@ -245,10 +282,6 @@ export function libraryVolume(archiveName = "Files.zip") {
       const written = op === "Copy" ? try succeeded(copyInto(row, destId, name))
         : try succeeded(commit(placePlan({ id: row.id, expectedRevision: row.revision, destinationId: destId, name }, try now)))
       return written ? { path, status: op === "Copy" ? "copied" : "moved", to: joinPath(dest, name) } : { path, status: "failed" }
-    }
-
-    effect function erase(row: LibraryRow): boolean!! {
-      return try succeeded(commit(deletePlan([{ id: row.id, expectedRevision: row.revision }], true, true)))
     }
 
     return {
@@ -309,68 +342,118 @@ export function libraryVolume(archiveName = "Files.zip") {
       },
       trash: ({ paths: selected, reviewed }) => namespace(effect {
         try checkSelection(selected, reviewed)
-        const outcomes: RowOutcome[] = []
-        for (const [index, path] of selected.entries()) outcomes.push(try trashRow(path, reviewed?.[index]))
-        return outcomes
+        const at = try now
+        const prepared: ({ readonly outcome: RowOutcome } | { readonly path: string; readonly row: LibraryRow; readonly bytes: Uint8Array<ArrayBuffer> })[] = []
+        const observed = try rows()
+        for (const [index, raw] of selected.entries()) {
+          const { path, row, facts, admission } = try checkRow(observed, "Trash", raw, reviewed?.[index], "")
+          if (admission !== "Admitted" || row === undefined) prepared.push({ outcome: { path: raw, status: ANSWERS[admission] } })
+          else {
+            const journal = try orDie(apply(fresh, { type: "journal", op: "Trash", row: facts, at }))
+            const saved = try orDie(apply(journal, { type: "moveToTrash", acknowledged: true }))
+            const record = { name: row.name, origin: path, directory: row.directory, size: row.directory ? 0 : row.size, mimeType: row.directory ? "" : row.mimeType, row: saved }
+            prepared.push({ path, row, bytes: new TextEncoder().encode(JSON.stringify(record)) })
+          }
+        }
+        return try commitTrash((all, snapshot) => {
+          const outcomes: RowOutcome[] = []
+          const working = new Map(all.map((row) => [row.id, row]))
+          const put = new Map<string, LibraryRow>()
+          const remove = new Set<string>()
+          for (const candidate of prepared) {
+            if ("outcome" in candidate) {
+              outcomes.push(candidate.outcome)
+              continue
+            }
+            const { path, row, bytes } = candidate
+            const current = rowAt([...working.values()], path)
+            if (current?.id !== row.id || current.revision !== row.revision) {
+              outcomes.push({ path, status: "failed" })
+              continue
+            }
+            const trash = snapshot.kind === "JournalReadable" ? { id: snapshot.folder.id, put: [] }
+              : folderPlan([...working.values()], TRASH, at)
+            if (trash === undefined) return "LibraryTrashUnreadable"
+            const state = [...working.values(), ...trash.put]
+            const id = newId()
+            const moved = placePlan({ id: row.id, expectedRevision: row.revision, destinationId: trash.id, name: id }, at)(state)
+            const journal = insertPlan({ id: newId(), parentId: trash.id, name: `${id}.json`, mimeType: "application/json", directory: false,
+              size: bytes.byteLength, bytes }, at)(state)
+            if (typeof moved === "string" || typeof journal === "string") {
+              outcomes.push({ path, status: "failed" })
+              continue
+            }
+            stageRows(working, { put: [...trash.put, ...moved.put, ...journal.put], remove: [] }, put, remove)
+            outcomes.push({ path, status: "trashed", to: id })
+          }
+          return { value: outcomes, plan: { put: [...put.values()], remove: [...remove] } }
+        })
       }),
       trashList: () => namespace(effect {
         const at = try now
-        const items: TrashEntry[] = []
-        const all = try rows()
-        const trashId = folderIdAt(all, TRASH)
-        if (trashId === undefined) return items
-        const children = new Map(childrenOf(all, trashId).map((row) => [row.name, row]))
-        for (const [name] of children) {
-          if (!name.endsWith(".json")) continue
-          const id = name.slice(0, -".json".length)
-          const { kept } = try recordRow(id)
-          if (kept === undefined) continue
-          const data = children.get(id)
-          if (data === undefined) {
-            if (kept.row.phase === "Expiring") try orDie(apply(kept.row, { type: "completePrune", writeAcknowledged: try eraseRecord(id) }))
-            continue
+        return try commitTrash((all, snapshot) => {
+          const items: TrashEntry[] = []
+          const expired: LibraryRow[] = []
+          if (snapshot.kind === "JournalReadable") for (const [id, { metadata, record, data }] of snapshot.records) {
+            if (data === undefined) {
+              if (record.row.phase === "Expiring") expired.push(metadata)
+            } else if (canPrune(record.row, at)) expired.push(metadata, data)
+            else if (listed(record.row, at)) items.push({ id, name: record.name, origin: record.origin, directory: record.directory, mimeType: record.mimeType, size: record.size, deletedAt: record.row.deletedAt })
           }
-          if (canPrune(kept.row, at)) {
-            const { row: _row, ...base } = kept
-            const journal = try journalOf(id, data.parentId, base)
-            const erased = try erase(data)
-            const pruned = try orDie(journal.send({ type: "prune", at, erased }))
-            if (erased) try orDie(apply(pruned, { type: "completePrune", writeAcknowledged: try eraseRecord(id) }))
-            continue
-          }
-          if (listed(kept.row, at)) items.push({ id, name: kept.name, origin: kept.origin, directory: kept.directory, mimeType: kept.mimeType, size: kept.size, deletedAt: kept.row.deletedAt })
-        }
-        return items.sort((a, b) => b.deletedAt - a.deletedAt)
+          const plan = removeTrashPlan(all, expired)
+          return typeof plan === "string" ? plan : { value: items.sort((a, b) => b.deletedAt - a.deletedAt), plan }
+        })
       }),
       restore: (ids) => namespace(effect {
-        const outcomes: RowOutcome[] = []
-        for (const id of ids) {
-          const data = (trashDataOf(try rows())).find((row) => row.name === id)
-          const { kept } = try recordRow(id)
-          if (data === undefined || kept === undefined) {
-            outcomes.push({ path: id, status: "missing" })
-            continue
+        const at = try now
+        return try commitTrash((all, snapshot) => {
+          const outcomes: RowOutcome[] = []
+          const working = new Map(all.map((row) => [row.id, row]))
+          const put = new Map<string, LibraryRow>()
+          const remove = new Set<string>()
+          for (const id of ids) {
+            const entry = snapshot.kind === "JournalReadable" ? snapshot.records.get(id) : undefined
+            if (entry?.data === undefined || remove.has(entry.metadata.id)) {
+              outcomes.push({ path: id, status: "missing" })
+              continue
+            }
+            const { data, record, metadata } = entry
+            const state = [...working.values()]
+            const wanted = visiblePath(parentOf(record.origin), true) ?? ""
+            const destination = folderPlan(state, wanted, at)
+            const destinationId = destination?.id ?? LIBRARY_ROOT
+            const into = destination === undefined ? "" : wanted
+            const name = validName(record.name) === undefined ? undefined
+              : freeName(record.name, childrenOf(state, destinationId).map((row) => row.name), record.directory)
+            const moved = name === undefined ? "LibraryNameTaken"
+              : placePlan({ id: data.id, expectedRevision: data.revision, destinationId, name }, at)([...state, ...(destination?.put ?? [])])
+            if (typeof moved === "string" || name === undefined) {
+              outcomes.push({ path: id, status: "failed" })
+              continue
+            }
+            const erased = removeTrashPlan(state, [metadata])
+            if (typeof erased === "string") return erased
+            stageRows(working, { put: [...(destination?.put ?? []), ...moved.put], remove: erased.remove }, put, remove)
+            outcomes.push({ path: id, status: "restored", to: joinPath(into, name) })
           }
-          const origin = parentOf(kept.origin)
-          const wanted = visiblePath(origin, true) ?? ""
-          const placed = (folder(wanted, true) catch () => undefined)
-          const into = placed === undefined ? "" : wanted
-          const name = validName(kept.name) === undefined ? undefined : (freeIn(placed ?? LIBRARY_ROOT, kept.name, kept.directory) catch () => undefined)
-          const moved = name !== undefined && (try succeeded(commit(placePlan({ id: data.id, expectedRevision: data.revision, destinationId: placed ?? LIBRARY_ROOT, name }, try now))))
-          if (moved) try eraseRecord(id)
-          outcomes.push(moved && name !== undefined ? { path: id, status: "restored", to: joinPath(into, name) } : { path: id, status: "failed" })
-        }
-        return outcomes
+          return { value: outcomes, plan: { put: [...put.values()], remove: [...remove] } }
+        })
       }),
       emptyTrash: (ids, confirmed) => namespace(effect {
         if (!confirmed) throw refused("confirmation-required", "Confirm before deleting permanently.")
         if (ids.length < 1 || ids.length > batchMax || new Set(ids).size !== ids.length) throw refused("invalid", "Invalid name or path.")
-        let count = 0
-        for (const data of trashDataOf(try rows())) {
-          if (!ids.includes(data.name)) continue
-          if ((try erase(data)) && (try eraseRecord(data.name))) count++
-        }
-        return count
+        return try commitTrash((all, snapshot) => {
+          const selected: LibraryRow[] = []
+          let count = 0
+          if (snapshot.kind === "JournalReadable") for (const id of ids) {
+            const record = snapshot.records.get(id)
+            if (record?.data === undefined) continue
+            selected.push(record.data, record.metadata)
+            count++
+          }
+          const plan = removeTrashPlan(all, selected)
+          return typeof plan === "string" ? plan : { value: count, plan }
+        })
       }),
       effect createFolder(parent, folderName) {
         const at = visiblePath(parent, true)

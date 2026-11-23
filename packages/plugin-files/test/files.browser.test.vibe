@@ -18,7 +18,7 @@ module browser {
 }
 import { assert, it } from "@effect/vitest"
 import { FilesVolume } from "../src/storage/volume.vibe"
-import { deletePlan, indexedLibrary, LibraryStore } from "../src/storage/library.vibe"
+import { deletePlan, indexedLibrary, LibraryStore, type LibraryRow } from "../src/storage/library.vibe"
 import { importLibraryFile, libraryVolume, librarySelections } from "../src/storage/library-volume.vibe"
 import { importLibraryFolder, saveWorkflowAttachment, workflowFiles } from "../src/storage/library-workflow.vibe"
 import { recognizeLocalText, type OcrProgress } from "../src/documents/local-ocr.vibe"
@@ -82,6 +82,61 @@ it.effect('Keep my browser files and change each only as I last saw it (spec/fil
     assert.equal(try map(Effect.flip(store.commit(deletePlan([{ id: notes?.id ?? "", expectedRevision: notes?.revision ?? "" }, { id: lease?.id ?? "", expectedRevision: "stale" }], true))), (failure) => failure._tag), "LibraryRefused")
     assert.equal((try store.rows()).length, rows.length)
   }, libraryVolume()).pipe(Effect.provide(tab))
+})
+
+it.effect('Keep every browser file and journal entry when Trash is unreadable (spec/files/library.md, "An unreadable Trash journal refuses the request and keeps the stored rows")', effect () => {
+  const tab = indexedLibrary(`files-trash-corrupt-${Date.now()}`)
+  const competing: { row?: LibraryRow } = {}
+  const bridged = Layer.effect(LibraryStore, effect {
+    const store = try LibraryStore
+    return {
+      rows: () => store.rows(),
+      effect commit(plan) {
+        const first = competing.row
+        if (first !== undefined) {
+          delete competing.row
+          try store.commit(() => ({ put: [first], remove: [] }))
+        }
+        try store.commit(plan)
+      },
+    } satisfies LibraryStore.Shape
+  }).pipe(Layer.provide(tab))
+  try Effect.provide(effect {
+    const volume = try FilesVolume
+    const store = try LibraryStore
+    assert.deepEqual(try volume.trashList(), [])
+    try volume.createFolder("", "Download")
+    for (const name of ["broken.txt", "old.txt", "kept.txt"]) {
+      try importLibraryFile("Download", { name, mimeType: "text/plain", bytes: bytes(name) })
+    }
+    const [broken, old] = try volume.trash({ paths: ["Download/broken.txt", "Download/old.txt"] })
+    const brokenId = broken?.to ?? ""
+    const oldId = old?.to ?? ""
+    const original = try store.rows()
+    const sidecar = original.find(({ name }) => name === `${brokenId}.json`)
+    if (sidecar === undefined || oldId === "") return try Effect.die(new Error("The fixture could not first write both Trash entries"))
+    const corrupt = bytes("{")
+    const corruptRow = { ...sidecar, bytes: corrupt, size: corrupt.byteLength }
+    const before = original.map((row) => row.id === sidecar.id ? corruptRow : row)
+    competing.row = corruptRow
+    const changedDuringRequest = try Effect.flip(volume.trash({ paths: ["Download/kept.txt"] }))
+    assert.deepEqual([changedDuringRequest.status, changedDuringRequest.message], ["failed", "The trash could not be read."])
+    assert.deepEqual(try store.rows(), before)
+    try TestClock.adjust("31 days")
+    const failures = [
+      try Effect.flip(volume.trashList()),
+      try Effect.flip(volume.trash({ paths: ["Download/kept.txt"] })),
+      try Effect.flip(volume.restore([brokenId, oldId])),
+      try Effect.flip(volume.emptyTrash([oldId, brokenId], true)),
+    ]
+    assert.deepEqual(failures.map(({ status, message }) => [status, message]), failures.map(() => ["failed", "The trash could not be read."]))
+    assert.deepEqual(try store.rows(), before)
+    assert.deepEqual((try volume.list("Download")).entries.map(({ name }) => name), ["kept.txt"])
+
+    try store.commit(() => ({ put: [sidecar], remove: [] }))
+    assert.deepEqual(try volume.trashList(), [])
+    assert.equal((try store.rows()).some(({ name }) => [brokenId, oldId, `${brokenId}.json`, `${oldId}.json`].includes(name)), false)
+  }, libraryVolume()).pipe(Effect.provide(bridged))
 })
 
 it.effect('Let a workflow save and read my browser files without repeating or half-reading anything (spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything")', effect () => {

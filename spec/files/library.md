@@ -60,6 +60,40 @@ pure def lawDeletingNeedsConfirmationAndAnEmptyFolder(b: LibraryBatch): bool =
   (batchCommits(b) and b.deleting) implies b.confirmed and not(b.folderHoldsRows)
 ```
 
+### An unreadable Trash journal refuses the request and keeps the stored rows
+
+An absent Trash directory or a readable directory with no records and
+no payload is empty. A persisted journal must decode as a record in the
+current format. An existing unreadable record or a trashed item with no
+journal makes the snapshot unreadable. Valid journal entries may exist
+before their items are moved or after expired bytes were removed.
+
+Listing, sending an item to Trash, restoring, permanently deleting and
+automatic pruning all require a readable snapshot. For a write, the
+same storage transaction that changes the rows checks the journal. If
+the snapshot fails, Files tells the owner the Trash could not be read
+and leaves its rows and the selected files as they were.
+
+The browser commits a move into Trash with its journal row in the same
+transaction. Restore, permanent deletion and pruning update the file
+and its journal together. A transaction can admit the valid paths of a
+request and report the ordinary per-path failures from the same snapshot.
+The browser also reads valid intermediate journal states kept by older
+versions.
+
+```quint
+type TrashJournalRead = JournalAbsent | JournalReadable | JournalUnreadable
+type TrashJournalVerdict = TrashAvailable | TrashUnavailable
+pure def trashJournalVerdict(journal: TrashJournalRead, orphanedPayload: bool): TrashJournalVerdict =
+  if (journal == JournalUnreadable or orphanedPayload) TrashUnavailable else TrashAvailable
+pure def lawUnreadableTrashNeverAdmitsARequest(orphanedPayload: bool): bool =
+  trashJournalVerdict(JournalUnreadable, orphanedPayload) == TrashUnavailable
+pure def lawMissingTrashIsEmptyOnlyWithoutPayload(orphanedPayload: bool): bool =
+  (trashJournalVerdict(JournalAbsent, orphanedPayload) == TrashAvailable) iff not(orphanedPayload)
+pure def lawOrphanedTrashNeverAdmitsARequest(journal: TrashJournalRead): bool =
+  trashJournalVerdict(journal, true) == TrashUnavailable
+```
+
 ### A selection reads its file only while the file still has the revision it selected
 
 Selecting a file binds the selection to the row and its revision. Reading

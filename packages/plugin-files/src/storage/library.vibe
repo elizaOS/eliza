@@ -58,19 +58,25 @@ module browser {
       const tx = db.transaction("entries", "readwrite")
       const store = tx.objectStore("entries")
       let refusal: string | undefined
+      let planningFailure: unknown
       tx.oncomplete = () => resolve(refusal)
-      tx.onabort = () => refusal === undefined ? reject(tx.error ?? new Error("File storage failed.")) : resolve(refusal)
+      tx.onabort = () => refusal === undefined ? reject(planningFailure ?? tx.error ?? new Error("File storage failed.")) : resolve(refusal)
       tx.onerror = () => undefined
       const request = store.getAll()
       request.onsuccess = () => {
-        const answer = plan((request.result as Stored[]).map(row))
-        if (typeof answer === "string") {
-          refusal = answer
+        try {
+          const answer = plan((request.result as Stored[]).map(row))
+          if (typeof answer === "string") {
+            refusal = answer
+            tx.abort()
+            return
+          }
+          for (const id of answer.remove) store.delete(id)
+          for (const next of answer.put) store.put(stored(next))
+        } catch (cause) {
+          planningFailure = cause
           tx.abort()
-          return
         }
-        for (const id of answer.remove) store.delete(id)
-        for (const next of answer.put) store.put(stored(next))
       }
     })
   }
@@ -93,7 +99,7 @@ export const LIBRARY_ROOT = "root"
 export error LibraryFailed { message: string }
 export const allocateLibraryId = Effect.try({ try: newId, catch: () => new LibraryFailed({ message: "A file identity could not be generated." }) })
 export const allocateLibraryRevision = Effect.try({ try: newRevision, catch: () => new LibraryFailed({ message: "A file revision could not be generated." }) })
-export type LibraryRefusal = LibraryAnswer | "LibraryBatchRefused" | "FolderImportRefused" | AttachmentAnswer
+export type LibraryRefusal = LibraryAnswer | "LibraryBatchRefused" | "LibraryTrashUnreadable" | "FolderImportRefused" | AttachmentAnswer
 
 export error LibraryRefused { answer: LibraryRefusal; message: string }
 
@@ -101,6 +107,7 @@ const MESSAGES: Readonly<Record<LibraryRefusal, string>> = {
   LibraryApplied: "", LibraryStale: "This file changed. Refresh and try again.", LibraryNameTaken: "Choose a different name.",
   LibraryOutside: "Choose a folder outside this folder.", LibraryNoFolder: "Choose a destination folder.",
   LibraryBatchRefused: "A selected file changed. Refresh and select again.", FolderImportRefused: "A folder with this name already exists.",
+  LibraryTrashUnreadable: "The trash could not be read.",
   SavedNew: "", ReturnedReceipt: "This step already saved its file.", ReceiptMismatch: "Saved file receipt does not match this step.",
   ReceiptsBlocked: "A file named Receipts already exists. Rename it before saving receipts.",
 }
