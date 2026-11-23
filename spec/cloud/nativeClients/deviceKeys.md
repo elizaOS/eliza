@@ -168,7 +168,8 @@ pure def tokenOutcome(g: Grant, client: N::ClientCheck, binding: G::CodeBinding,
 pure def canToken(g: Grant, client: N::ClientCheck, binding: G::CodeBinding, credentialId: str, deviceEpoch: int): bool =
   tokenOutcome(g, client, binding, deviceEpoch) == Granted and credentialId != ""
 pure def token(g: Grant, client: N::ClientCheck, binding: G::CodeBinding, credentialId: str, deviceEpoch: int): GrantStep =
-  if (g.phase == CodeIssued) { state: { ...g, phase: Exchanged, credentialId: credentialId }, out: List(MintSealedKey, OfferLease) }
+  if (g.phase == CodeIssued) { state: { ...g, phase: Exchanged, credentialId: credentialId },
+    out: if (isRenewal(g)) List(MintSealedKey) else List(MintSealedKey, OfferLease) }
   else { state: g, out: List(AnswerFromSealedCopy) }
 pure def tokenAnswer(g: Grant): TokenAnswer = { credentialId: g.credentialId, expiresAt: g.now + g.credentialTtl, acknowledgeBy: g.codeExpiresAt }
 pure val clientValues = Set(N::ClientAdmitted, N::ClientRefused({ fault: N::WrongRedirect }))
