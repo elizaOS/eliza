@@ -39,7 +39,7 @@ import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/googl
 import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
-import { signedCaller } from "./support/caller.vibe"
+import { leasedCaller, signedCaller } from "./support/caller.vibe"
 import { callCloud, callDeclaring, openCloud } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { recordingBytes, recordingForm } from "./support/recording.ts"
@@ -546,6 +546,119 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
       [200, 401, "authentication_required", "credential_expired", "expired", null, expiry]))
     }
   }))
+
+  it.live("Keep a tablet signed in: the key's sign-in offers a lease, a lost reply answers it again, rotation is two-phase, mail admits only the lease, a renewed key replaces the old one, and a spent lease ends only its device (spec/cloud/identity/sessions.md, \"Story: Keep a tablet signed in to mail and calendar\"; spec/cloud/nativeClients/deviceKeys.md, \"Story: Keep a tablet's key without signing in again\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(1_000_000))
+    provide Clock.Clock = clock.clock {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const signed = try signedIn(cloud, "tablet@example.com")
+    const lease = (minted: { readonly body: unknown }) => (minted.body as { readonly lease: { readonly refresh: string; readonly refreshExpiresIn: number } }).lease
+    const rotate = (refresh: string) => cloud.call("/api/v1/app-auth/mobile/lease", { method: "POST", headers: bearer(refresh) })
+    const pairOf = (answer: { readonly body: unknown }) => answer.body as { readonly access: string; readonly accessExpiresIn: number; readonly refresh: string; readonly refreshExpiresIn: number }
+    const mail = (token: string) => cloud.call("/api/v1/eliza/google/status", { headers: bearer(token) })
+    const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: "Grace tablet" } })
+    const tokenBody = { ...binding, grantType: "authorization_code", code: (connected.body as { readonly code: string }).code, state, codeVerifier: verifier }
+    const first = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const lostReply = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const offered = lease(first)
+    const beforeAck = try rotate(offered.refresh)
+    const credential = first.body as { readonly credentialId: string; readonly secret: string }
+    const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    const lostRotation = pairOf(try rotate(offered.refresh))
+    const reOffered = pairOf(try rotate(offered.refresh))
+    const replacedOffer = try mail(lostRotation.access)
+    const leaseOnMail = try mail(reOffered.access)
+    const keyOnMail = try mail(credential.secret)
+    const leaseOnInference = try cloud.call("/api/v1/user", { headers: bearer(reOffered.access) })
+    const keyOnInference = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const leaseOnSessionRoute = try cloud.call("/api/v1/auth/mfa/totp/enroll", { headers: bearer(reOffered.access), json: {} })
+    const committed = pairOf(try rotate(reOffered.refresh))
+    const spent = try rotate(offered.refresh)
+    const keyAfterTheft = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const leaseAfterTheft = try rotate(committed.refresh)
+    const browserAfterTheft = try cloud.call("/api/v1/user", { headers: bearer(signed.accessToken) })
+    const epochs = try sql(cloud, "SELECT sessions_revoked_before FROM accounts WHERE key = $1", [signed.user.id])
+    try check(() => assert.deepStrictEqual({
+      token: [first.status, /^eliza_lease_refresh_[A-Za-z0-9_-]{54}$/.test(offered.refresh), offered.refreshExpiresIn, lostReply.body],
+      beforeAck: [beforeAck.status, ...refusal(beforeAck.body)], acked: acked.status,
+      rotation: [lostRotation.accessExpiresIn, /^eliza_lease_[A-Za-z0-9_-]{43}$/.test(reOffered.access), reOffered.access !== lostRotation.access, reOffered.refreshExpiresIn],
+      replacedOffer: [replacedOffer.status, ...refusal(replacedOffer.body)], leaseOnMail: leaseOnMail.status, keyOnMail: [keyOnMail.status, ...refusal(keyOnMail.body)],
+      leaseOnInference: [leaseOnInference.status, ...refusal(leaseOnInference.body)], keyOnInference: keyOnInference.status, leaseOnSessionRoute: leaseOnSessionRoute.status,
+      theft: [spent.status, ...refusal(spent.body), keyAfterTheft.status, ...refusal(keyAfterTheft.body), leaseAfterTheft.status, browserAfterTheft.status, Number(epochs[0]?.sessions_revoked_before)]
+    }, {
+      token: [200, true, 7_776_000, first.body], beforeAck: [401, "authentication_required", "credential_unknown"], acked: 200,
+      rotation: [900, true, true, 7_776_000],
+      replacedOffer: [401, "authentication_required", "credential_unknown"], leaseOnMail: 200, keyOnMail: [403, "access_denied", "device_key_not_allowed"],
+      leaseOnInference: [403, "access_denied", undefined], keyOnInference: 200, leaseOnSessionRoute: 403,
+      theft: [401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 401, 200, 0]
+    }))
+    try sync(() => clock.set(1_100_000))
+    const tablet = try device(cloud, signed.accessToken, "Second tablet")
+    const tabletLease = lease(tablet.minted)
+    const renewed = try cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(tabletLease.refresh) })
+    const successor = renewed.body as { readonly credentialId: string; readonly secret: string }
+    const oldBeforeAck = try cloud.call("/api/v1/user", { headers: bearer(tablet.credential.secret) })
+    const keyRenewing = try cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(tablet.credential.secret) })
+    const successorAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: successor.credentialId, secret: successor.secret } })
+    const oldAfterAck = try cloud.call("/api/v1/user", { headers: bearer(tablet.credential.secret) })
+    const newAfterAck = try cloud.call("/api/v1/user", { headers: bearer(successor.secret) })
+    const movedLease = pairOf(try rotate(tabletLease.refresh))
+    const signOut = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(successor.secret) })
+    const leaseAfterSignOut = try rotate(tabletLease.refresh)
+    const renewAfterSignOut = try cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(tabletLease.refresh) })
+    try sync(() => clock.set(1_200_000))
+    const idle = try device(cloud, signed.accessToken, "Idle tablet")
+    try sync(() => clock.set(1_200_000 + 7_776_000_000))
+    const lapsed = try rotate(lease(idle.minted).refresh)
+    try check(() => assert.deepStrictEqual({
+      renewed: [renewed.status, /^eliza_mobile_[0-9a-f]{64}$/.test(successor.secret), successor.credentialId !== tablet.credential.credentialId, oldBeforeAck.status, keyRenewing.status],
+      replaced: [successorAck.status, oldAfterAck.status, ...refusal(oldAfterAck.body), newAfterAck.status, movedLease.accessExpiresIn],
+      signedOut: [signOut.status, leaseAfterSignOut.status, ...refusal(leaseAfterSignOut.body), renewAfterSignOut.status, ...refusal(renewAfterSignOut.body)],
+      lapsed: [lapsed.status, ...refusal(lapsed.body)]
+    }, {
+      renewed: [200, true, true, 200, 401],
+      replaced: [200, 401, "authentication_required", "credential_revoked", 200, 900],
+      signedOut: [204, 401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked"],
+      lapsed: [401, "authentication_required", "credential_unknown"]
+    }))
+    const awake = try signedIn(cloud, "tablet@example.com")
+    const sleeping = try device(cloud, awake.accessToken, "Sleeping tablet")
+    const sleepingLease = lease(sleeping.minted)
+    const keyLife = (sleeping.minted.body as { readonly expiresIn: number }).expiresIn
+    try sync(() => clock.set(1_200_000 + 7_776_000_000 + keyLife * 1000 + 1))
+    provide Store = cloud.store {
+      try sweepGrants()
+    }
+    const renew = (refresh: string) => cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(refresh) })
+    const expiredKey = try cloud.call("/api/v1/user", { headers: bearer(sleeping.credential.secret) })
+    const grantPhase = try sql(cloud, "SELECT phase FROM device_grants WHERE credential_id = $1", [sleeping.credential.credentialId])
+    const woken = pairOf(try rotate(sleepingLease.refresh))
+    const mailAfterExpiry = try mail(woken.access)
+    const heirMinted = try renew(woken.refresh)
+    const heir = heirMinted.body as { readonly credentialId: string; readonly secret: string }
+    const heirAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: heir.credentialId, secret: heir.secret } })
+    const heirKey = try cloud.call("/api/v1/user", { headers: bearer(heir.secret) })
+    const moved = pairOf(try rotate(woken.refresh))
+    const mailOnMoved = try mail(moved.access)
+    const now = try Clock.currentTimeMillis
+    try cloud.store.transaction((tx) => revokeAll(tx, signed.user.id, now))
+    const renewAfterRevoke = try renew(moved.refresh)
+    const rotateAfterRevoke = try rotate(moved.refresh)
+    const mailAfterRevoke = try mail(moved.access)
+    const liveLeases = try sql(cloud, "SELECT key FROM sessions WHERE kind = 'device_lease' AND user_id = $1 AND live", [signed.user.id])
+    try check(() => assert.deepStrictEqual({
+      expired: [expiredKey.status, ...refusal(expiredKey.body), grantPhase[0]?.phase, mailAfterExpiry.status],
+      renewedFromExpired: [heirMinted.status, heirAck.status, heirKey.status, mailOnMoved.status],
+      revoked: [renewAfterRevoke.status, ...refusal(renewAfterRevoke.body), rotateAfterRevoke.status, ...refusal(rotateAfterRevoke.body), mailAfterRevoke.status, ...refusal(mailAfterRevoke.body), liveLeases.length]
+    }, {
+      expired: [401, "authentication_required", "credential_expired", "expired", 200],
+      renewedFromExpired: [200, 200, 200, 200],
+      revoked: [401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 401, "authentication_required", "credential_revoked", 0]
+    }))
+    }
+  }))
 })
 describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/registry.md)", () => {
   const fingerprint = "E3:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"
@@ -820,7 +933,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     provide Clock.Clock = clock.clock {
       const registration = { ...native, connectReturn: `${web}/apps/native/google` }
       const { cloud, google } = try nativeCloud(undefined, registration)
-      const caller = try signedCaller(cloud, "google-browser")
+      const caller = try leasedCaller(cloud, "google-browser")
       const callback = "/api/v1/oauth/google/callback"
       const initialize = (body: unknown, headers = caller.headers) => cloud.call("/api/v1/eliza/google/connect/initiate", { json: body, headers })
       const appState = "s".repeat(43)
@@ -1692,7 +1805,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       fakes.mount("/google/", mountGoogleToken(google))
       fakes.mount("/google/api/", gmailReads(mailbox))
     } })
-    const token = try entitledDevice(cloud, "mail", now)
+    const tablet = try leasedCaller(cloud, "mail")
+    const token = tablet.bearer
     const owner: Owner = { organizationId: "org-mail", userId: "user-mail" }
     const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage"), ...scopeFor("google.gmail.drafts")]
     const refreshToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-mail", email: "conn-mail@example.com", scopes }))
@@ -1719,6 +1833,9 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const drafts = try gmail("/inbox-v1/drafts")
     const draft = try gmail("/inbox-v1/draft?draftId=draft-1")
     const anonymous = try cloud.call("/api/v1/eliza/google/gmail/triage")
+    const keyOnly = (path: string) => cloud.call(`/api/v1/eliza/google${path}`, { headers: { authorization: `Bearer ${tablet.deviceKey}` } })
+    const deviceKey = [try keyOnly("/gmail/search?query=plan"), try keyOnly("/gmail/read?messageId=msg-direct"), try keyOnly("/gmail/inbox-v1/drafts"), try keyOnly("/status"), try keyOnly("/calendar/feed")]
+      .map((answer) => [answer.status, (answer.body as { readonly reason?: string }).reason])
     const pdf = new TextEncoder().encode("%PDF-plan")
     type Card = { readonly id: string; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
     const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId])
@@ -1742,7 +1859,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         stale: [errorOf(staleAttachment), errorOf(staleThread)],
         drafts: [drafts.status, draftList.drafts, draftList.nextPageToken],
         draft: [draft.status, draftBody.providerDigest, draftBody.content.to, draftBody.content.subject, draftBody.content.bodyText, draftBody.content.plainText],
-        anonymous: errorOf(anonymous)
+        anonymous: errorOf(anonymous),
+        deviceKey
       },
       {
         triage: [200, "1003", [
@@ -1762,7 +1880,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         stale: [[409, "stale_revision"], [409, "stale_revision"]],
         drafts: [200, [{ draftId: "draft-1", messageId: "msg-draft-1", subject: "Re: Quarterly plan", to: ["ada@example.org"], snippet: "", updatedAt: null }], null],
         draft: [200, sha256Hex(draftRaw), ["ada@example.org"], "Re: Quarterly plan", "Looks good.", true],
-        anonymous: [401, "authentication_required"]
+        anonymous: [401, "authentication_required"],
+        deviceKey: Array.from({ length: 5 }, () => [403, "device_key_not_allowed"])
       }
     ))
   }))
@@ -1882,7 +2001,7 @@ effect function mailOperationSetup(name: string) {
     fakes.mount("/google/api/", gmailReads(mailbox))
     fakes.mount("/google/api/", gmailChanges(mailbox, switches))
   } })
-  const token = try entitledDevice(cloud, name, now)
+  const token = (try leasedCaller(cloud, name)).bearer
   const owner: Owner = { organizationId: `org-${name}`, userId: `user-${name}` }
   const grantId = `ops-${name}`
   const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.manage"), ...scopeFor("google.gmail.send")]
@@ -1929,7 +2048,7 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     provide Clock.Clock = clock.clock {
     const google = try sync(() => googleFakeState())
     const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
-    const caller = try signedCaller(cloud, "google-status")
+    const caller = try leasedCaller(cloud, "google-status")
     const other = try signedCaller(cloud, "google-status-other")
     const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now: start }))
     const sibling = { organizationId: caller.organizationId, userId: other.userId }
@@ -2018,7 +2137,7 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
       }
       return answer
     }) })
-    const caller = try signedCaller(cloud, "disconnect-owner")
+    const caller = try leasedCaller(cloud, "disconnect-owner")
     const other = try signedCaller(cloud, "disconnect-other")
     const now = try Clock.currentTimeMillis
     const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now }))
@@ -2236,6 +2355,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     switch (auth) {
       case "Public": return "Public"
       case "KeyOrSession": return "ServiceAccess"
+      case "Mail": return "MailAccess"
       case "Session": return "SignedSession"
       case "SessionFamily": return "SessionFamily"
       case "FreshSession": return "FreshSession"

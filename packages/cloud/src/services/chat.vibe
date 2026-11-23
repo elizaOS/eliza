@@ -2,7 +2,7 @@
 import { hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
 import { laneFor } from "../billing/policy.vibe"
 import { refused } from "../http/refusal.vibe"
-import { recheckServiceAccess, signed } from "../http/request-auth.vibe"
+import { recheckAccess, signed } from "../http/request-auth.vibe"
 import { json, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { complete, stream, type LlmFailure } from "../providers/llm.vibe"
@@ -55,7 +55,7 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
   let dispatched = false
   const work = effect {
     const standing = effect {
-      try recheckServiceAccess(context.request.headers.authorization, caller)
+      try recheckAccess(context.request.headers.authorization, caller, "ServiceAccess")
       const now = try Clock.currentTimeMillis
       const lane = try store.transaction((tx) => laneFor(tx, caller.organizationId, "MeteredInference", now))
       if (lane !== ticket.lane) throw refused("BillingStateConflict")

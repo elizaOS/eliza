@@ -7,8 +7,10 @@ minutes; the device exchanges it with its PKCE verifier (`POST
 /api/v1/app-auth/mobile/token`) for a key `eliza_mobile_` + 64 hex, and
 acknowledges the key once it has stored it (`POST
 /api/v1/app-auth/mobile/ack`). Only an acknowledged key is ever accepted, and
-it is never renewed: a new sign-in gives a new key. `DELETE
-/api/v1/api-keys/current` ends the presenting key. The device's own Google
+it is renewed only by its device lease (`identity/sessions`): `POST
+/api/v1/app-auth/mobile/renew` with `Authorization: Bearer <lease refresh>`
+mints its successor, and any other new key needs a new sign-in. `DELETE
+/api/v1/api-keys/current` ends the presenting key and its lease. The device's own Google
 account does connect and exchange in one call (`POST
 /api/v1/app-auth/mobile/google`). The device half is
 `spec/os/signIn/credential.md`.
@@ -16,7 +18,9 @@ account does connect and exchange in one call (`POST
 One machine instance is one grant row. The shell draws the code, the key and
 the credential id at random, stores only digests and a sealed copy of the
 key (`Sealed` with purpose `DeviceKeyCopy`), and hands the key out only in
-the token and native sign-in answers; the key never enters the model. A code
+the token, native sign-in and renewal answers; the key never enters the
+model. The sealed copy also carries the refresh of the lease offered with
+the key, so a lost token reply answers the same lease again. A code
 digest with no row answers `401 authentication_required` reason
 `credential_unknown` before this machine. The person's device epoch lives on
 the account and enters each check as the observation `deviceEpoch`, read
@@ -47,14 +51,14 @@ import registry as N from "./registry"
 import sessions as Iss from "../identity/sessions"
 import federatedSignIn as G from "../identity/federatedSignIn"
 import deployment as D from "../deployment"
-type EndCause = NeverExchanged | NeverAcknowledged | SelfRevoked
+type EndCause = NeverExchanged | NeverAcknowledged | SelfRevoked | Superseded | LeaseReused
 type GrantPhase = Unissued | CodeIssued | Exchanged | Active({ ackedAt: Millis, keyExpiresAt: Millis }) | LegacyActive({ keyExpiresAt: Millis }) | Expired | Ended({ endedBy: EndCause })
 type GoogleLink = NoServerCode | WithServerCode
-type GrantOrigin = NotConnected | Connected | NativeGoogle({ serverCode: GoogleLink }) | LegacyGrant
+type GrantOrigin = NotConnected | Connected | NativeGoogle({ serverCode: GoogleLink }) | LegacyGrant | Renewed({ fromKey: str })
 type ClientBinding = { clientId: str, environment: D::Environment, signInReturn: N::ReturnUrl }
 type GrantClient = UnrecordedClient | BoundClient(ClientBinding)
 type Grant = { phase: GrantPhase, origin: GrantOrigin, client: GrantClient, codeExpiresAt: Millis, credentialTtl: Millis, credentialId: str, epoch: int, now: Millis }
-type GrantEffect = MintSealedKey | AnswerFromSealedCopy | EraseSealedCopy | LinkGoogle
+type GrantEffect = MintSealedKey | AnswerFromSealedCopy | EraseSealedCopy | LinkGoogle | OfferLease | ActivateLease | EndLease | SupersedePredecessor
 type GrantStep = { state: Grant, out: List[GrantEffect] }
 type CodeRequest = { client: N::ClientCheck, method: G::PkceMethod, hasState: bool }
 pure val codeLifetime: Millis = 5 * millisPerMinute
@@ -97,7 +101,8 @@ challengeId, methods, expiresAt}` and nothing is issued; after the factor the
 app connects with the new session. Otherwise the answer is `{status:
 "signed_in"}` with the token answer, `secret`, `tokenType: "Bearer"`,
 `scopes`, `acknowledgementRequired: true`, the `code` to acknowledge with,
-`accountCreated`, `identity` and `google`. A server auth code links the
+`accountCreated`, `identity`, `google` and `lease: {refresh,
+refreshExpiresIn}`. A server auth code links the
 Google connection (`services/google/connection`) in the same request; its
 outcome fills only `google`, so a failed link never fails the sign-in.
 
@@ -119,7 +124,7 @@ pure def canSignInNatively(g: Grant, codeRequest: CodeRequest, clientBinding: Cl
   g.phase == Unissued and nativeOutcome(codeRequest, nativeGoogle, verdict, yielded) == NativeSignedIn and bindingValid(clientBinding) and ttlFits(credentialTtl) and credentialId != ""
 pure def signInNatively(g: Grant, codeRequest: CodeRequest, clientBinding: ClientBinding, nativeGoogle: N::NativeGoogleCheck, verdict: G::NativeVerdict, yielded: G::SignInYield, serverCode: GoogleLink, credentialTtl: Millis, credentialId: str, deviceEpoch: int): GrantStep =
   { state: { ...g, phase: Exchanged, origin: NativeGoogle({ serverCode: serverCode }), client: recordedClient(clientBinding), codeExpiresAt: g.now + codeLifetime, credentialTtl: credentialTtl, credentialId: credentialId, epoch: deviceEpoch },
-    out: if (serverCode == WithServerCode) List(MintSealedKey, LinkGoogle) else List(MintSealedKey) }
+    out: if (serverCode == WithServerCode) List(MintSealedKey, OfferLease, LinkGoogle) else List(MintSealedKey, OfferLease) }
 pure val nativeGoogleValues = Set(N::NativeGoogleOpen, N::GoogleNotOffered)
 pure val verdictValues = Set(G::NativeAccepted, G::NativeProofWrong)
 pure val yieldedValues = Set(G::DeviceKeyYield, G::SecondFactorYield)
@@ -134,9 +139,10 @@ pure def sometimesNativeKeyWithGoogle(g: Grant): bool = isLive(g) and g.origin =
 
 ### A code is exchanged only with its own client, return, state and verifier before its deadline, and mints one key
 
-The first exchange mints the key, keeps a sealed copy and answers
-`{credentialId, secret, tokenType, expiresAt, expiresIn, scopes,
-acknowledgementRequired: true, acknowledgeBy}`; `expiresAt` there is the
+The first exchange mints the key, offers its device lease, keeps a sealed
+copy of both and answers `{credentialId, secret, tokenType, expiresAt,
+expiresIn, scopes, acknowledgementRequired: true, acknowledgeBy, lease:
+{refresh, refreshExpiresIn}}`; `expiresAt` there is the
 earliest the key can end, since its lifetime runs from the acknowledgement.
 Exchanging again before the acknowledgement answers the same credential from
 the sealed copy, so a lost reply is asked again with the same code and
@@ -162,7 +168,7 @@ pure def tokenOutcome(g: Grant, client: N::ClientCheck, binding: G::CodeBinding,
 pure def canToken(g: Grant, client: N::ClientCheck, binding: G::CodeBinding, credentialId: str, deviceEpoch: int): bool =
   tokenOutcome(g, client, binding, deviceEpoch) == Granted and credentialId != ""
 pure def token(g: Grant, client: N::ClientCheck, binding: G::CodeBinding, credentialId: str, deviceEpoch: int): GrantStep =
-  if (g.phase == CodeIssued) { state: { ...g, phase: Exchanged, credentialId: credentialId }, out: List(MintSealedKey) }
+  if (g.phase == CodeIssued) { state: { ...g, phase: Exchanged, credentialId: credentialId }, out: List(MintSealedKey, OfferLease) }
   else { state: g, out: List(AnswerFromSealedCopy) }
 pure def tokenAnswer(g: Grant): TokenAnswer = { credentialId: g.credentialId, expiresAt: g.now + g.credentialTtl, acknowledgeBy: g.codeExpiresAt }
 pure val clientValues = Set(N::ClientAdmitted, N::ClientRefused({ fault: N::WrongRedirect }))
@@ -190,8 +196,9 @@ pure def sometimesAwaitingAcknowledgement(g: Grant): bool = g.phase == Exchanged
 ### A key becomes usable only when acknowledged before its code's deadline, and then lives the client's key lifetime
 
 The acknowledgement proves the code, verifier, credential id and key
-(`proofMatches`), names the client of its grant, and answers `{status:
-"acknowledged", credentialId, expiresAt, scopes}`; a repeated one with the
+(`proofMatches`), names the client of its grant, makes the lease offered
+with the key live, and answers `{status: "acknowledged", credentialId,
+expiresAt, scopes}`; a repeated one with the
 right proof while the key is live answers the same and changes nothing. A
 wrong proof is `401 credential_proof_invalid`. A key not acknowledged in time
 is never usable.
@@ -210,15 +217,17 @@ pure def ackOutcome(g: Grant, client: N::ClientCheck, proofMatches: bool, device
     | Active(a) => if (revokedSince(g, deviceEpoch)) refusedFor(CredentialRevoked) else if (g.now >= a.keyExpiresAt) refusedFor(CredentialExpired)
         else if (proofMatches) Granted else GrantRefused({ refusal: refuse(CredentialProofInvalid) })
     | CodeIssued => if (g.now >= g.codeExpiresAt) refusedFor(CredentialExpired) else GrantRefused({ refusal: refuse(CredentialProofInvalid) })
-    | Ended(e) => refusedFor(if (e.endedBy == SelfRevoked) CredentialRevoked else CredentialExpired)
+    | Ended(e) => refusedFor(if (endedByRevocation(e.endedBy)) CredentialRevoked else CredentialExpired)
     | Expired => refusedFor(CredentialExpired)
     | Unissued => refusedFor(CredentialUnknown)
   }
 }
+pure def endedByRevocation(cause: EndCause): bool = Set(SelfRevoked, Superseded, LeaseReused).contains(cause)
 pure def canAck(g: Grant, client: N::ClientCheck, proofMatches: bool, deviceEpoch: int): bool = ackOutcome(g, client, proofMatches, deviceEpoch) == Granted
 pure def ack(g: Grant, client: N::ClientCheck, proofMatches: bool, deviceEpoch: int): GrantStep =
-  if (g.phase == Exchanged) { state: { ...g, phase: Active({ ackedAt: g.now, keyExpiresAt: g.now + g.credentialTtl }) }, out: List(EraseSealedCopy) }
+  if (g.phase == Exchanged) { state: { ...g, phase: Active({ ackedAt: g.now, keyExpiresAt: g.now + g.credentialTtl }) }, out: List(EraseSealedCopy, if (isRenewal(g)) SupersedePredecessor else ActivateLease) }
   else { state: g, out: List() }
+pure def isRenewal(g: Grant): bool = { val o = g.origin  match o { | Renewed(r) => true | _ => false } }
 pure def ackAnswer(g: Grant): AckAnswer = { val p = g.phase  { credentialId: g.credentialId, expiresAt: match p { | Active(a) => a.keyExpiresAt | LegacyActive(a) => a.keyExpiresAt | _ => 0 } } }
 pure def isActivePhase(g: Grant): bool = { val p = g.phase  match p { | Active(a) => true | LegacyActive(a) => true | _ => false } }
 pure def isLive(g: Grant): bool = { val p = g.phase  match p { | Active(a) => g.now < a.keyExpiresAt | LegacyActive(a) => g.now < a.keyExpiresAt | _ => false } }
@@ -385,7 +394,7 @@ pure def keyRefusal(g: Grant, now: Millis, deviceEpoch: int): RefusalReason = {
     | Active(a) => lifetimeRefusal({ epoch: g.epoch, keyExpiresAt: a.keyExpiresAt }, now, deviceEpoch)
     | LegacyActive(a) => lifetimeRefusal({ epoch: g.epoch, keyExpiresAt: a.keyExpiresAt }, now, deviceEpoch)
     | Expired => if (revokedSince(g, deviceEpoch)) CredentialRevoked else CredentialExpired
-    | Ended(e) => if (e.endedBy == SelfRevoked) CredentialRevoked else CredentialUnknown
+    | Ended(e) => if (endedByRevocation(e.endedBy)) CredentialRevoked else CredentialUnknown
     | _ => CredentialUnknown
   }
 }
@@ -415,19 +424,22 @@ pure def lawNoLaterEpochRevivesAKey(g: Grant, now: Millis, deviceEpoch: int, lat
 
 `DELETE /api/v1/api-keys/current`, admitted by the key itself, answers `204`;
 a repeat answers `401 credential_revoked`, which the device takes as done.
+It ends the key's device lease in the same transaction.
 
 ```quint
 pure def canSelfRevoke(g: Grant, deviceEpoch: int): bool = keyRefusal(g, g.now, deviceEpoch) == NoReason
-pure def selfRevoke(g: Grant, deviceEpoch: int): Grant = { ...g, phase: Ended({ endedBy: SelfRevoked }) }
+pure def selfRevoke(g: Grant, deviceEpoch: int): GrantStep = { state: { ...g, phase: Ended({ endedBy: SelfRevoked }) }, out: List(EndLease) }
 pure def sometimesSignedOut(g: Grant): bool = g.phase == Ended({ endedBy: SelfRevoked })
 ```
 
 ### Ending every key of a person moves the person's device epoch, which revokes every key issued before it
 
 The operator's `account revoke-devices` and account deletion emit
-`revokeAll` and apply it to the account in their own transaction; sessions
-are revoked separately (`identity/sessions`). A grant still waiting for its
-exchange or acknowledgement is refused as well.
+`revokeAll` and apply it to the account in their own transaction, which
+also ends every device lease of the person, so a revoked tablet can neither
+rotate its lease nor renew its key; browser sessions are revoked separately
+(`identity/sessions`). A grant still waiting for its exchange or
+acknowledgement is refused as well.
 
 ```quint
 type DeviceKeysRevoked = { toDeviceEpoch: int }
@@ -448,21 +460,102 @@ pure def lawRevokeAllEndsEveryEarlierKey(g: Grant, now: Millis, deviceEpoch: int
 ### Cleanup ends a lapsed code or an unacknowledged grant, and closes an expired key, never a live one
 
 A grant past its code deadline without an acknowledgement ends, its sealed
-copy erased; an acknowledged key past its lifetime closes as expired. The
-shell may then delete the row. Only signing out ends a live key, and a closed
-grant never reopens.
+copy erased and the lease offered with it ended; an acknowledged key past its
+lifetime closes as expired and keeps its lease, which renews it. The shell
+may then delete the row of a grant no lease names. Only signing out, the
+acknowledgement of its renewed successor or the theft of its lease ends a
+live key, and a closed grant never reopens except that a renewal or a lease
+theft ends an expired one.
 
 ```quint
 pure def canLapse(g: Grant): bool = isCodePending(g) and g.now >= g.codeExpiresAt
 pure def lapse(g: Grant): GrantStep =
-  if (g.phase == Exchanged) { state: { ...g, phase: Ended({ endedBy: NeverAcknowledged }) }, out: List(EraseSealedCopy) }
+  if (g.phase == Exchanged) { state: { ...g, phase: Ended({ endedBy: NeverAcknowledged }) }, out: List(EraseSealedCopy, EndLease) }
   else { state: { ...g, phase: Ended({ endedBy: NeverExchanged }) }, out: List() }
 pure def canExpire(g: Grant): bool = { val p = g.phase  match p { | Active(a) => g.now >= a.keyExpiresAt | LegacyActive(a) => g.now >= a.keyExpiresAt | _ => false } }
 pure def expire(g: Grant): Grant = { ...g, phase: Expired }
 pure def isClosed(g: Grant): bool = { val p = g.phase  match p { | Expired => true | Ended(e) => true | _ => false } }
 pure def stepOnlySigningOutEndsALiveKey(before: Grant, via: str, after: Grant): bool =
-  ((isLive(before) and not(isActivePhase(after))) implies via == "selfRevoke") and (isClosed(before) implies after.phase == before.phase)
+  ((isLive(before) and not(isActivePhase(after))) implies Set("selfRevoke", "supersede", "endForLeaseTheft").contains(via))
+  and (isClosed(before) implies (after.phase == before.phase or (before.phase == Expired and Set("supersede", "endForLeaseTheft").contains(via))))
 pure def sometimesNeverAcknowledged(g: Grant): bool = g.phase == Ended({ endedBy: NeverAcknowledged })
 pure def sometimesCodeLapsed(g: Grant): bool = g.phase == Ended({ endedBy: NeverExchanged })
 pure def sometimesKeyExpired(g: Grant): bool = g.phase == Expired
+```
+
+## Story: Keep a tablet's key without signing in again
+
+> As a person whose tablet stays signed in, I want its device key replaced
+> before it runs out, authorized by the tablet's lease and never by the key
+> itself, so that the tablet never asks me to sign in every week, and a
+> stolen key still stops working at its own end.
+
+`POST /api/v1/app-auth/mobile/renew`, with `Authorization: Bearer <lease
+refresh>`, mints a new grant for the same client and device epoch with the
+registration's key lifetime, already exchanged, and answers `{credentialId,
+secret, expiresIn}`. The device stores it and acknowledges it through the
+same `/mobile/ack`. The native shell renews when less than half the key's
+life is left, at a lease refresh or a daily job, so a tablet signs in again
+only after 90 days without a refresh or a revocation. The device key can
+never renew itself.
+
+### Only a live lease renews a key, and only while the key it replaces is live or merely expired and of the person's current device epoch
+
+A key signed out, ended or replaced, or issued before the person's current
+device epoch, is never renewed; the device signs in again. Renewing again
+before the acknowledgement mints another successor, and only the one
+acknowledged replaces the old key.
+
+```quint
+pure def renewable(predecessor: Grant, deviceEpoch: int): bool =
+  predecessor.epoch == deviceEpoch and (isActivePhase(predecessor) or predecessor.phase == Expired) and hasRecordedClient(predecessor)
+pure def canRenew(g: Grant, fromKey: str, predecessor: Grant, leaseLive: bool, credentialTtl: Millis, credentialId: str, deviceEpoch: int): bool =
+  g.phase == Unissued and leaseLive and fromKey != "" and credentialId != "" and ttlFits(credentialTtl) and renewable(predecessor, deviceEpoch)
+pure def renew(g: Grant, fromKey: str, predecessor: Grant, leaseLive: bool, credentialTtl: Millis, credentialId: str, deviceEpoch: int): GrantStep =
+  { state: { ...g, phase: Exchanged, origin: Renewed({ fromKey: fromKey }), client: predecessor.client, codeExpiresAt: g.now + codeLifetime,
+      credentialTtl: credentialTtl, credentialId: credentialId, epoch: deviceEpoch }, out: List(MintSealedKey) }
+pure val fromKeyValues = Set("g1")
+pure val predecessorValues = gValues
+pure val weight_renew = 3
+pure def lawOnlyALiveOrExpiredKeyOfTheCurrentEpochIsRenewed(predecessor: Grant, deviceEpoch: int): bool =
+  renewable(predecessor, deviceEpoch) implies (keyRefusal(predecessor, predecessor.now, deviceEpoch) == NoReason or keyRefusal(predecessor, predecessor.now, deviceEpoch) == CredentialExpired)
+pure def sometimesRenewedKeyLive(g: Grant): bool = isLive(g) and isRenewal(g)
+pure def sometimesRenewalAwaitingAcknowledgement(g: Grant): bool = g.phase == Exchanged and isRenewal(g)
+```
+
+### A renewed key's acknowledgement ends the key it replaces and moves its lease to it
+
+The acknowledgement of a renewed key emits `SupersedePredecessor`: in the
+same transaction the shell ends the old key as `Superseded` and moves the
+lease to the new grant. The replaced key then answers `credential_revoked`.
+
+```quint
+pure def canSupersede(g: Grant): bool = isActivePhase(g) or g.phase == Expired
+pure def supersede(g: Grant): Grant = { ...g, phase: Ended({ endedBy: Superseded }) }
+pure def sometimesSuperseded(g: Grant): bool = g.phase == Ended({ endedBy: Superseded })
+```
+
+### A lease theft ends the key it is bound to
+
+When a spent lease refresh is presented again (`identity/sessions`), the
+shell ends the lease's grant as `LeaseReused` in the same transaction, so a
+thief who copied the key from the same store loses it too.
+
+```quint
+pure def canEndForLeaseTheft(g: Grant): bool = isActivePhase(g) or g.phase == Expired
+pure def endForLeaseTheft(g: Grant): Grant = { ...g, phase: Ended({ endedBy: LeaseReused }) }
+pure def sometimesEndedByLeaseTheft(g: Grant): bool = g.phase == Ended({ endedBy: LeaseReused })
+```
+
+### A lease is offered with a new sign-in's key, made live by its acknowledgement, and ended with a key that is signed out or never collected
+
+A renewal offers no lease: the existing one moves. A key that only expires
+keeps its lease.
+
+```quint
+pure def stepALeaseFollowsItsKey(before: Grant, via: str, after: Grant, out: List[GrantEffect]): bool =
+  (out.includes(OfferLease) iff (out.includes(MintSealedKey) and not(isRenewal(after))))
+  and (out.includes(ActivateLease) iff (via == "ack" and before.phase == Exchanged and not(isRenewal(before))))
+  and (out.includes(SupersedePredecessor) iff (via == "ack" and before.phase == Exchanged and isRenewal(before)))
+  and (out.includes(EndLease) iff (via == "selfRevoke" or (via == "lapse" and before.phase == Exchanged)))
 ```
