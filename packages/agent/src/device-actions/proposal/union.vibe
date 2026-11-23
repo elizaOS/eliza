@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"
+// spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only where that branch accepts exactly what its forms accept"
 import { stableStringify, type ActionParameterSchema } from "@elizaos/core"
 import { branchShare } from "../../../gen/agent__deviceActions.effect.vibe"
 
