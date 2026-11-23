@@ -1,7 +1,7 @@
 // spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"
 import { negotiatedHas, type Negotiation } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 import { shownPhotoTarget } from "../../gen/agent__deviceActions__operations.effect.vibe"
-import { photosVerdict, type PhotoNaming } from "../../gen/agent__deviceActions__surfaces.effect.vibe"
+import { photosVerdict, type PhotoNaming, type SurfaceVerdict } from "../../gen/agent__deviceActions__surfaces.effect.vibe"
 import type { Observation } from "../conversation/turn-context.schema.vibe"
 import { readOperation, readResult, type CheckedOperation, type DeviceOperation } from "./operations.schema.vibe"
 import type { DeviceTurn, EarlierRequest, Grounding } from "./proposal/family.vibe"
@@ -87,25 +87,37 @@ function returned(items: readonly NamedItem[], known: readonly NamedItem[]): boo
   return items.every(({ id, revision }) => known.some((seen) => seen.id === id && (revision === undefined || seen.revision === revision)))
 }
 
-const openItemUnshown: Grounding = {
+type Refusal = Extract<Grounding, { readonly kind: "Refused" }>
+
+const openItemUnshown: Refusal = {
   kind: "Refused", code: "PHOTOS_OPEN_ITEM_NOT_SHOWN",
   forModel: "No photo is open in the Photos viewer on the owner's unlocked screen this turn, so the open item cannot be named. No device proposal was created. Ask the owner to open it in Photos.",
   forOwner: "Open the photo in Photos first, then ask me again.",
 }
 
-const idsUnreturned: Grounding = {
+const idsUnreturned: Refusal = {
   kind: "Refused", code: "PHOTOS_ID_NOT_RETURNED",
   forModel: "A library id or revision in this operation is not one the phone returned in this conversation or shows open now. Never guess library ids. No device proposal was created.",
   forOwner: "I couldn't tell which photos you meant. Open them in Photos or ask me to find them first.",
 }
 
-export effect function groundPhotos(proposed: CheckedOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable {
+function openLibraryId(observation: Observation | undefined): readonly NamedItem[] {
+  const id = observation?.view === photosView && observation.sensitive === false ? libraryIdOf(observation) : undefined
+  return id === undefined ? [] : [{ id }]
+}
+
+export interface PhotosDecision {
+  readonly verdict: SurfaceVerdict
+  readonly refusal: Refusal
+}
+
+export effect function photosDecision(proposed: CheckedOperation, turn: DeviceTurn): PhotosDecision!DeviceStoreUnavailable {
   const names = photoNames(proposed.operation)
   const shown = shownPhoto(turn.observation, turn.negotiation)
   const reads = names.naming === "LibraryIdsNamed" ? (try turn.earlier(returningReads, scanned)) : []
-  const known = [...reads.flatMap(returnedRevisions), ...(shown === undefined ? [] : shown.ids.map((id) => ({ id })))]
-  switch (photosVerdict(names.naming, shown !== undefined && "selected" in shown, returned(names.items, known))) {
-    case "SurfaceGrounded": return { kind: "Grounded", operation: proposed.operation }
-    case "SurfaceRefused": return names.naming === "OpenItemNamed" ? openItemUnshown : idsUnreturned
+  const known = [...reads.flatMap(returnedRevisions), ...openLibraryId(turn.observation)]
+  return {
+    verdict: photosVerdict(names.naming, shown !== undefined && "selected" in shown, returned(names.items, known)),
+    refusal: names.naming === "OpenItemNamed" ? openItemUnshown : idsUnreturned,
   }
 }

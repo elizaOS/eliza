@@ -7,18 +7,27 @@ import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vib
 module node {
   import type { AgentRuntime } from "@elizaos/core"
   import { text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
-  import { deviceClient } from "./support/device.ts"
+  import { deviceClient, type DeviceClient } from "./support/device.ts"
 
   export const proposeTool = "PROPOSE_DEVICE_ACTION"
+  export const reviewText = "Review this request on your phone before it can run."
   const negotiated = ["camera.capture-photo.v1", "maps.selected-read.v1", "photos.library.v1", "photos.view.v1", "photos.view-selected.v1"]
   const place = { kind: "map-place", id: "maps_0f8fad5b-d9cb-469f-a165-70867728950e", revision: "7" }
   const openPhoto = { kind: "photo", id: "lib:i:12:345" }
+  const found = { id: "lib:i:7:1", revision: "rev-a1-1", kind: "image", takenAt: 0, width: 10, height: 10 }
+  const direct = { voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } }
+  const onPhotos = { observation: { view: "photos", revision: 2, sensitive: false, selectedObject: openPhoto } }
+  const onNotes = { observation: { view: "notes", revision: 5, sensitive: false, selectedObject: { kind: "note-source", id: "phone-notes", revision: "a".repeat(64) } } }
 
   interface Turn {
     readonly text: string
   }
   interface Proposal {
-    readonly payload: { readonly operation: { readonly type: string } & Record<string, unknown> }
+    readonly id: string
+    readonly digest: string
+    readonly state: string
+    readonly payload: { readonly operation: { readonly type: string } & Record<string, unknown>; readonly requestMessageId?: string }
+    readonly execution?: { readonly attemptId: string }
   }
   interface Completion {
     readonly tools?: readonly { readonly function?: { readonly name?: string; readonly description?: string; readonly parameters?: { readonly properties?: { readonly operation?: { readonly anyOf?: readonly { readonly properties?: { readonly type?: { readonly enum?: readonly string[] } } }[] } } } } }[]
@@ -36,6 +45,15 @@ module node {
     }
   }
 
+  async function settle(client: DeviceClient, proposal: Proposal | undefined, receipt: unknown): Promise<string | undefined> {
+    if (proposal === undefined) return undefined
+    await client.call("POST", `/api/client-devices/proposals/${proposal.id}/decision`, { digest: proposal.digest, decision: "approve" })
+    const claimed = (await client.call("POST", `/api/client-devices/proposals/${proposal.id}/claim`, { digest: proposal.digest })).json as { proposal: Proposal }
+    const attemptId = claimed.proposal.execution?.attemptId ?? ""
+    const settled = await client.call("POST", `/api/client-devices/proposals/${proposal.id}/receipt`, { digest: proposal.digest, attemptId, receipt })
+    return (settled.json as { proposal: Proposal }).proposal.state
+  }
+
   export async function proposeSurfaces(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, negotiated.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
@@ -45,16 +63,15 @@ module node {
     const say = async (words: string, metadata?: object) => ((await client.call("POST", path, { text: words, ...(metadata === undefined ? {} : { metadata }) })).json as Turn).text
 
     cloud.script(toolCalls("", capture), text("Okay."))
-    const photo = await say("Take a picture")
-    const firstOffer = offered(cloud, 2)
-
-    cloud.script(toolCalls("", capture), text("Okay."))
     const unasked = await say("Summarize the page I have open")
-    const afterUnasked = (await proposals()).length
-
+    const firstOffer = offered(cloud, 2)
+    cloud.script(toolCalls("", capture), text("Okay."))
+    const photo = await say("Take a picture", direct)
     cloud.script(toolCalls("", capture, capture), text("Okay."))
-    const selfie = await say("Hey Eliza, could you please take a selfie?")
-    const afterSelfie = (await proposals()).length
+    const selfie = await say("Hey Eliza, could you please take a selfie?", direct)
+    cloud.script(toolCalls("", capture), text("Okay."))
+    const whiteboard = await say("Take a photo of the whiteboard", direct)
+    const captures = (await proposals()).filter(({ payload }) => payload.operation.type === "camera_capture_photo").length
 
     const onMaps = { observation: { view: "maps", revision: 4, sensitive: false, selectedObject: place } }
     cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: { ...place, revision: "6" } })), text("Okay."))
@@ -65,36 +82,66 @@ module node {
     const hiddenMaps = await say("How far is this place?", { observation: { ...onMaps.observation, sensitive: true, selectedObject: undefined } })
 
     cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), text("Okay."))
-    await say("Share this photo", { observation: { view: "photos", revision: 2, sensitive: false, selectedObject: openPhoto } })
+    await say("Share this photo", onPhotos)
     cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), text("Okay."))
     const notShown = await say("Share this photo", { observation: { view: "home", revision: 3, sensitive: false } })
     cloud.script(toolCalls("", propose({ type: "photos_share", ids: ["lib:i:99:1"] })), text("Okay."))
     const guessed = await say("Share my latest photo")
+    cloud.script(toolCalls("", propose({ type: "photos_open", id: openPhoto.id })), text("Okay."))
+    await say("Open this one full screen", onPhotos)
+
+    cloud.script(toolCalls("", propose({ type: "photo_library_search", kind: "image", limit: 1 })), text("Okay."))
+    await say("Find my latest photo")
+    const search = (await proposals()).find(({ payload }) => payload.operation.type === "photo_library_search")
+    const searched = await settle(client, search, {
+      outcome: "applied", operationId: "search-1", result: { kind: "photo_library_search", scope: "full", items: [found], more: false },
+    })
+    cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: "rev-a1-2" }] })), text("Okay."))
+    const staleRevision = await say("Favorite it")
+    cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: found.revision }] })), text("Okay."))
+    await say("Favorite it")
 
     cloud.script(text("Opening Files."))
-    await say("Show my files", { voiceUi: { viewDelivery: "completed-action" } })
+    await say("Show my files", direct)
     const navigating = offered(cloud, 1)
     cloud.script(toolCalls("", propose({ type: "open_view", view: "files" })), text("Okay."))
     await say("Open Files")
 
     cloud.script(toolCalls("", propose({ type: "create_note", title: "Milk", body: "Buy milk" })), text("Okay."))
-    await say("Make a note to buy milk")
+    const fromHome = await say("Make a note to buy milk")
+    const homeOffer = offered(cloud, 2)
+    cloud.script(toolCalls("", propose({ type: "create_note", title: "Milk", body: "Buy milk" })), text("Okay."))
+    await say("Make a note to buy milk", onNotes)
+    const notesOffer = offered(cloud, 2)
+
+    await client.call("POST", "/api/client-devices/view-profile", { version: 1, expectedRevision: null, views: ["home", "photos"] })
+    cloud.script(toolCalls("", propose({ type: "open_view", view: "files" })), text("Okay."))
+    const disabled = await say("Open Files")
+    const profiled = offered(cloud, 2)
 
     return {
-      photo,
+      unasked: unasked.includes(reviewText), photo: photo.includes("Opening Camera to take the photo."),
+      selfie: selfie.includes("Opening Camera to take the photo."), whiteboard: whiteboard.includes(reviewText), captures,
       firstOffer: { types: firstOffer.types, camera: firstOffer.description.includes("camera_capture_photo takes one still image"), photos: firstOffer.description.includes("photos.view-selected.v1") },
-      unasked: unasked.includes("like “take a picture”"), afterUnasked, selfie, afterSelfie,
       staleMaps: staleMaps.includes("Select the place or route in Maps"), hiddenMaps: hiddenMaps.includes("Select the place or route in Maps"),
       notShown: notShown.includes("Open the photo in Photos first"), guessed: guessed.includes("couldn't tell which photos you meant"),
-      navigating: { openView: navigating.types.includes("open_view"), views: navigating.description.includes("Open app views with VIEWS") },
-      proposed: (await proposals()).map(({ payload }) => payload.operation).toSorted((a, b) => a.type.localeCompare(b.type)),
+      searched, staleRevision: staleRevision.includes("couldn't tell which photos you meant"),
+      navigating: { openView: navigating.types.includes("open_view"), views: navigating.description.startsWith("Open app views with VIEWS (mode show)") },
+      notes: {
+        fromHome: fromHome.includes("I couldn't prepare that on your phone."), homeOffer: homeOffer.types.includes("create_note"),
+        notesOffer: notesOffer.types.includes("create_note"), canonical: notesOffer.description.includes("use the canonical NOTES or CALENDAR service"),
+      },
+      profile: { refused: disabled.includes("That view isn't turned on for your phone."), told: profiled.description.includes('allows open_view only for ["home","photos"]') },
+      proposed: (await proposals())
+        .map(({ payload, state }) => ({ operation: payload.operation, bound: payload.requestMessageId !== undefined, state }))
+        .toSorted((a, b) => a.operation.type.localeCompare(b.operation.type) || Number(a.bound) - Number(b.bound)),
     }
   }
 }
 
 import { proposeSurfaces, proposeTool } from node
 
-it.live(`Take a photo, open a view, read a Maps place and share the open photo only as the owner's words and screen name them (spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A photo is proposed only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view is offered only without completed-action navigation, and proposed only when the installation's profile enables it"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request")`, effect () => {
+it.live(`Take a photo, open a view, read a Maps place, find and share photos and write a phone note only as the owner's words and screen name them (spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view is offered only without completed-action navigation, and proposed only when the installation's profile enables it"; spec/agent/deviceActions/surfaces.md, "A new note is offered only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal its family grounds for review is offered without the owner's message, so the phone shows its card")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -106,22 +153,30 @@ it.live(`Take a photo, open a view, read a Maps place and share the open photo o
   const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
   const observed = try host("propose device surfaces", () => proposeSurfaces(agent.agent.runtime, socket, agent.frame.token, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    photo: "Opening Camera to take the photo.",
+    unasked: true, photo: true, selfie: true, whiteboard: true, captures: 2,
     firstOffer: {
       types: [
-        "camera_capture_photo", "create_note", "maps_read_selected", "open_view", "photo_library_inspect", "photo_library_review", "photo_library_search",
+        "camera_capture_photo", "maps_read_selected", "open_view", "photo_library_inspect", "photo_library_review", "photo_library_search",
         "photo_library_select", "photos_album_create", "photos_filter", "photos_open", "photos_share",
       ],
       camera: true, photos: true,
     },
-    unasked: true, afterUnasked: 1, selfie: "Opening Camera to take the photo.", afterSelfie: 1,
     staleMaps: true, hiddenMaps: true,
     notShown: true, guessed: true,
+    searched: "done", staleRevision: true,
     navigating: { openView: false, views: true },
+    notes: { fromHome: true, homeOffer: false, notesOffer: true, canonical: true },
+    profile: { refused: true, told: true },
     proposed: [
-      { type: "camera_capture_photo" }, { type: "create_note", title: "Milk", body: "Buy milk" },
-      { type: "maps_read_selected", target: { kind: "map-place", id: "maps_0f8fad5b-d9cb-469f-a165-70867728950e", revision: "7" } },
-      { type: "open_view", view: "files" }, { type: "photos_share", selected: true },
+      { operation: { type: "camera_capture_photo" }, bound: false, state: "pending" },
+      { operation: { type: "camera_capture_photo" }, bound: true, state: "pending" },
+      { operation: { type: "create_note", title: "Milk", body: "Buy milk" }, bound: false, state: "pending" },
+      { operation: { type: "maps_read_selected", target: { kind: "map-place", id: "maps_0f8fad5b-d9cb-469f-a165-70867728950e", revision: "7" } }, bound: false, state: "pending" },
+      { operation: { type: "open_view", view: "files" }, bound: false, state: "pending" },
+      { operation: { type: "photo_library_review", action: "favorite", items: [{ id: "lib:i:7:1", revision: "rev-a1-1" }] }, bound: false, state: "pending" },
+      { operation: { type: "photo_library_search", kind: "image", limit: 1 }, bound: false, state: "done" },
+      { operation: { type: "photos_open", id: "lib:i:12:345" }, bound: false, state: "pending" },
+      { operation: { type: "photos_share", selected: true }, bound: false, state: "pending" },
     ],
   }))
 }, 120_000)

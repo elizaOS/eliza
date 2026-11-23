@@ -19,6 +19,7 @@ module node {
   export const proposeDeviceActionName = declared.name
 
   const guidance = "Proposes one operation on the phone enrolled for this owner turn. The owner reviews and approves the exact content on the unlocked phone, except a reversible local step the owner's own message asked for. This tool does not perform the operation: never report a proposal as done. Never retry or repeat an operation after an unknown, uncertain or partial outcome. Never invent IDs, revisions, paths, numbers or addresses. When the request is ambiguous about which record, time or target, ask one short clarifying question instead of proposing."
+  const viewsLead = "Open app views with VIEWS (mode show); ordinary navigation does not need a phone approval. Use this tool only for the remaining reviewed device actions."
   const operationText = "The exact typed phone operation to show the owner for review: one of the forms offered this turn."
   const unchecked = 50
 
@@ -177,7 +178,10 @@ module node {
     if (turn === undefined) return undefined
     const forms = offeredForms(runtime, turn)
     const offering = registeredFamilies(runtime).filter((family) => family.forms.some((form) => forms.includes(form)))
-    const notes = [guidance, ...forms.flatMap((form) => form.guidance ?? []), ...offering.flatMap((family) => family.guidance(turn) ?? [])]
+    const notes = [
+      ...(turn.completedActionNavigation ? [viewsLead] : []), guidance,
+      ...forms.flatMap((form) => form.guidance ?? []), ...offering.flatMap((family) => family.guidance(turn) ?? []),
+    ]
     return {
       description: [...new Set(notes)].join(" "),
       parameters: { operation: { description: operationText, anyOf: forms.map(({ schema }) => schema) } },
