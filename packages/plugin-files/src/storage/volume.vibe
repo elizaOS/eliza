@@ -1,6 +1,6 @@
 // spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"; spec/os/android/files/storage.md, "A row answers copied, moved or trashed only for an admitted row whose own write was acknowledged"
 import { filesClient, type ElizaFilesPlugin, type FileOutcomeRow, type FilesResult } from "@elizaos/os/bridges/files"
-import { nativeAcknowledged, receiptOutcome, type FilesOp, type WriteResult } from "../../gen/os__android__files__storage.effect.vibe"
+import { batchMax, nativeAcknowledged, receiptOutcome, validSelection, type FilesOp, type WriteResult } from "../../gen/os__android__files__storage.effect.vibe"
 import { downloadsCreatesParent } from "../../gen/files__requests.effect.vibe"
 import { downloadsListing, filterMatches, filterTime, listing, DOWNLOAD_FOLDER, type CategoryFolder, type FilesCategory, type FilesFilter, type Listing, type StorageVolume, type TrashEntry } from "./model.vibe"
 
@@ -11,6 +11,17 @@ export type CategoryListing = Listing & { readonly count?: number; readonly fold
 export type StorageAccess = { readonly access: "granted" | "denied" | "unsupported"; readonly legacy?: boolean; readonly volumes: readonly StorageVolume[] }
 
 export error VolumeRefused { status: VolumeRefusal; message: string }
+
+export effect function checkSelection(selected: readonly string[], reviewed: readonly string[] | undefined): void!VolumeRefused {
+  if (!validSelection({ reviewed: reviewed !== undefined, paths: selected.length, distinct: new Set(selected).size === selected.length,
+    tokens: reviewed?.length ?? 0, tokensWellFormed: (reviewed ?? []).every((token) => /^[A-Za-z0-9_-]{43}$/.test(token)) })) {
+    throw new VolumeRefused({ status: "invalid", message: `Select 1–${batchMax} distinct files` })
+  }
+}
+
+export function succeeded<A, E>(work: A!E): boolean!! {
+  return Effect.match(work, { onSuccess: () => true, onFailure: () => false })
+}
 
 export service FilesVolume {
   state(): StorageAccess!VolumeRefused

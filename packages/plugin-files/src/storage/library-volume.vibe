@@ -33,11 +33,11 @@ module browser {
 import { base64, fileBlob, identityToken, shareFile, storageEstimate } from browser
 import { apply, canPrune, classifyRow, listed, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
 import { chatLimit, mailLimit, selectionReadable, textLimit } from "../../gen/files__library.effect.vibe"
-import { batchMax, validSelection, type FileOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
+import { batchMax, type FileOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
 import { fileArchive } from "../documents/archive.vibe"
 import { downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry } from "./model.vibe"
 import { allocateLibraryId, deletePlan, insertPlan, LibraryStore, LIBRARY_ROOT, childrenOf, placePlan, subtreeOf, type LibraryRow } from "./library.vibe"
-import { FilesVolume, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
+import { checkSelection, FilesVolume, succeeded, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
 
 const TRASH = ".Trash-files"
 const WALK_LIMIT = 5_000
@@ -97,7 +97,6 @@ export function libraryVolume(archiveName = "Files.zip") {
         ? refused(failure.answer === "LibraryNameTaken" ? "exists" : failure.answer === "LibraryStale" || failure.answer === "LibraryBatchRefused" ? "changed" : "invalid", failure.message)
         : refused("unavailable", failure.message))
     }
-    const attempt = <A, E>(work: A!E) => Effect.match(work, { onSuccess: () => true, onFailure: () => false })
 
     effect function folder(path: string, create = false): string!VolumeRefused {
       const valid = validPath(path, true)
@@ -136,13 +135,6 @@ export function libraryVolume(archiveName = "Files.zip") {
     }
 
     const token = (row: LibraryRow) => promise(() => identityToken(row.id, row.revision))
-
-    effect function selection(selected: readonly string[], reviewed: readonly string[] | undefined): void!VolumeRefused {
-      if (!validSelection({ reviewed: reviewed !== undefined, paths: selected.length, distinct: new Set(selected).size === selected.length,
-        tokens: reviewed?.length ?? 0, tokensWellFormed: (reviewed ?? []).every((value) => /^[A-Za-z0-9_-]{43}$/.test(value)) })) {
-        throw refused("invalid", `Select 1–${batchMax} distinct files`)
-      }
-    }
 
     effect function check(op: FilesOp, raw: string, reviewed: string | undefined, dest: string) {
       const path = visiblePath(raw) ?? ""
@@ -198,7 +190,7 @@ export function libraryVolume(archiveName = "Files.zip") {
       const record = (recordRow(id) catch () => undefined)
       if (record === undefined) return false
       const { found } = record
-      return found === undefined || (try attempt(commit(deletePlan([{ id: found.id, expectedRevision: found.revision }], true))))
+      return found === undefined || (try succeeded(commit(deletePlan([{ id: found.id, expectedRevision: found.revision }], true))))
     }
 
     effect function trashRow(raw: string, reviewed: string | undefined): RowOutcome!VolumeRefused {
@@ -208,7 +200,7 @@ export function libraryVolume(archiveName = "Files.zip") {
       const id = try allocateId
       const journal = try journalOf(id, trashId, { name: row.name, origin: path, directory: row.directory, size: row.directory ? 0 : row.size, mimeType: row.directory ? "" : row.mimeType })
       try orDie(journal.send({ type: "journal", op: "Trash", row: facts, at: try now }))
-      const moved = try attempt(commit(placePlan({ id: row.id, expectedRevision: row.revision, destinationId: trashId, name: id }, try now)))
+      const moved = try succeeded(commit(placePlan({ id: row.id, expectedRevision: row.revision, destinationId: trashId, name: id }, try now)))
       try orDie(journal.send({ type: "moveToTrash", acknowledged: moved }))
       if (moved) return { path, status: "trashed", to: id }
       try orDie(journal.send({ type: "undoFailedJournal" }))
@@ -222,8 +214,8 @@ export function libraryVolume(archiveName = "Files.zip") {
       if (admission !== "Admitted" || row === undefined) return { path: raw, status: ANSWERS[admission] }
       const name = (freeIn(destId, row.name, row.directory) catch () => undefined)
       if (name === undefined) return { path, status: "failed" }
-      const written = op === "Copy" ? try attempt(copyInto(row, destId, name))
-        : try attempt(commit(placePlan({ id: row.id, expectedRevision: row.revision, destinationId: destId, name }, try now)))
+      const written = op === "Copy" ? try succeeded(copyInto(row, destId, name))
+        : try succeeded(commit(placePlan({ id: row.id, expectedRevision: row.revision, destinationId: destId, name }, try now)))
       return written ? { path, status: op === "Copy" ? "copied" : "moved", to: joinPath(dest, name) } : { path, status: "failed" }
     }
 
@@ -234,7 +226,7 @@ export function libraryVolume(archiveName = "Files.zip") {
     }
 
     effect function erase(row: LibraryRow): boolean!! {
-      return try attempt(commit(deletePlan([{ id: row.id, expectedRevision: row.revision }], true, true)))
+      return try succeeded(commit(deletePlan([{ id: row.id, expectedRevision: row.revision }], true, true)))
     }
 
     effect function archiveOf(selected: readonly string[]) {
@@ -300,7 +292,7 @@ export function libraryVolume(archiveName = "Files.zip") {
         return listing(found, { metadataKnown: true, partial, failed: false })
       },
       effect reviewedIdentities(selected) {
-        try selection(selected, undefined)
+        try checkSelection(selected, undefined)
         const all = try rows()
         const tokens: string[] = []
         for (const raw of selected) {
@@ -312,7 +304,7 @@ export function libraryVolume(archiveName = "Files.zip") {
         return tokens
       },
       effect transfer({ paths: selected, dest, copy, reviewed }) {
-        try selection(selected, reviewed)
+        try checkSelection(selected, reviewed)
         const target = visiblePath(dest, true)
         if (target === undefined) throw refused("invalid", "Invalid folder")
         const destId = try folder(target)
@@ -321,7 +313,7 @@ export function libraryVolume(archiveName = "Files.zip") {
         return outcomes
       },
       trash: ({ paths: selected, reviewed }) => namespace(effect {
-        try selection(selected, reviewed)
+        try checkSelection(selected, reviewed)
         const outcomes: RowOutcome[] = []
         for (const [index, path] of selected.entries()) outcomes.push(try trashRow(path, reviewed?.[index]))
         return outcomes
@@ -369,7 +361,7 @@ export function libraryVolume(archiveName = "Files.zip") {
           const placed = (folder(wanted, true) catch () => undefined)
           const into = placed === undefined ? "" : wanted
           const name = validName(kept.name) === undefined ? undefined : (freeIn(placed ?? LIBRARY_ROOT, kept.name, kept.directory) catch () => undefined)
-          const moved = name !== undefined && (try attempt(commit(placePlan({ id: data.id, expectedRevision: data.revision, destinationId: placed ?? LIBRARY_ROOT, name }, try now))))
+          const moved = name !== undefined && (try succeeded(commit(placePlan({ id: data.id, expectedRevision: data.revision, destinationId: placed ?? LIBRARY_ROOT, name }, try now))))
           if (moved) try eraseRecord(id)
           outcomes.push(moved && name !== undefined ? { path: id, status: "restored", to: joinPath(into, name) } : { path: id, status: "failed" })
         }

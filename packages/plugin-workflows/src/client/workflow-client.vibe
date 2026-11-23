@@ -331,6 +331,22 @@ export interface WorkflowClientOptions {
   readonly normalizePhoneSpec?: (value: unknown) => PhoneWorkflowSpec!PhoneWorkflowSpecError
 }
 
+effect function metadataResult(value: unknown, id: string, version: string, mutationId: string): WorkflowMetadataReceipt!WorkflowClientError {
+  const p = try obj(value)
+  if (p.workflowId !== id || p.previousVersionId !== version || p.mutationId !== mutationId || typeof p.name !== "string" || p.name.trim() === ""
+    || p.name.length > 200 || typeof p.description !== "string" || p.description.length > 4000 || typeof p.active !== "boolean") return try invalid("Metadata receipt mismatch")
+  return { workflowId: id, previousVersionId: version, mutationId, versionId: try str(p.versionId), name: p.name, description: p.description, active: p.active, appliedAt: try str(p.appliedAt) }
+}
+
+effect function lifecycleResult(value: unknown, id: string, version: string, mutationId: string, operation: "remove" | "restore"): (WorkflowLifecycleReceipt | null)!WorkflowClientError {
+  const p = try obj(value)
+  if (p.mutationId !== mutationId) return try invalid("Mutation identity mismatch")
+  if (p.receipt === null) return null
+  const r = try obj(p.receipt)
+  if (r.workflowId !== id || r.previousVersionId !== version || r.mutationId !== mutationId || r.operation !== operation) return try invalid("Lifecycle receipt mismatch")
+  return { workflowId: id, previousVersionId: version, mutationId, operation, versionId: try str(r.versionId), appliedAt: try str(r.appliedAt) }
+}
+
 export function workflowClient(request: WorkflowRequest, options: WorkflowClientOptions = {}): WorkflowClient {
   const normalize = options.normalizePhoneSpec ?? validatePhoneWorkflowSpec
   const path = (...segments: readonly string[]) => "/api/workflow/" + segments.map(encodeURIComponent).join("/")
@@ -436,13 +452,6 @@ export function workflowClient(request: WorkflowRequest, options: WorkflowClient
     return result
   }
 
-  effect function metadataResult(value: unknown, id: string, version: string, mutationId: string): WorkflowMetadataReceipt!WorkflowClientError {
-    const p = try obj(value)
-    if (p.workflowId !== id || p.previousVersionId !== version || p.mutationId !== mutationId || typeof p.name !== "string" || p.name.trim() === ""
-      || p.name.length > 200 || typeof p.description !== "string" || p.description.length > 4000 || typeof p.active !== "boolean") return try invalid("Metadata receipt mismatch")
-    return { workflowId: id, previousVersionId: version, mutationId, versionId: try str(p.versionId), name: p.name, description: p.description, active: p.active, appliedAt: try str(p.appliedAt) }
-  }
-
   effect function changeMetadata(id: string, version: string, nameInput: string, description: string, beforeSubmit: (mutationId: string) => void!WorkflowClientError) {
     if (!(try status()).metadata) return try invalid("Metadata editing unavailable")
     const name = nameInput.trim()
@@ -477,15 +486,6 @@ export function workflowClient(request: WorkflowRequest, options: WorkflowClient
       workflows.push(workflow)
     }
     return workflows
-  }
-
-  effect function lifecycleResult(value: unknown, id: string, version: string, mutationId: string, operation: "remove" | "restore"): (WorkflowLifecycleReceipt | null)!WorkflowClientError {
-    const p = try obj(value)
-    if (p.mutationId !== mutationId) return try invalid("Mutation identity mismatch")
-    if (p.receipt === null) return null
-    const r = try obj(p.receipt)
-    if (r.workflowId !== id || r.previousVersionId !== version || r.mutationId !== mutationId || r.operation !== operation) return try invalid("Lifecycle receipt mismatch")
-    return { workflowId: id, previousVersionId: version, mutationId, operation, versionId: try str(r.versionId), appliedAt: try str(r.appliedAt) }
   }
 
   effect function lifecycle(id: string, version: string, operation: "remove" | "restore", beforeSubmit: (mutationId: string) => void!WorkflowClientError) {
