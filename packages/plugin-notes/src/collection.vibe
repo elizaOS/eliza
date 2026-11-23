@@ -1,6 +1,6 @@
-// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
+// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
 import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
-import { creationReturnsExisting, deleteByNameAllowed, idDeleteByTitle, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, revisionAdmits } from "../gen/notes__records.effect.vibe"
+import { copyFate, creationReturnsExisting, deleteByNameAllowed, idDeleteByTitle, idEditByTitle, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, revisionAdmits } from "../gen/notes__records.effect.vibe"
 import { authoredNoteText, editAuthoredNoteFormat, type AuthoredNoteEdit } from "./format.vibe"
 import { lookupMatches, noteContentKey, titleAppearsAsNamedPhrase, type NoteSelector } from "./lookup.vibe"
 import { noteLimits, recordingIdPattern, type CreateRequest, type ImportReceipt, type UpdateRequest } from "./records.schema.vibe"
@@ -233,27 +233,44 @@ function emptyPatch(patch: UpdateRequest): boolean {
   return Object.values(patch).every((value) => value === undefined)
 }
 
-export effect function updateIn(document: NotesDocument, target: NoteTarget, patch: UpdateRequest, expectedRevision: number | undefined, at: Instant): Change<StickyNote>!NotesRefused {
-  if (emptyPatch(patch)) throw refused("NOTES_VALIDATION_FAILED", "Supply one edit: textEdit, authoredEdit, content, title, body, format or color.")
-  try requireRevision(document, needsRevision(patch), expectedRevision)
-  const index = try resolveIndex(document.notes, target)
-  const existing = document.notes[index]
-  if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
-  const updated = try applyPatch(existing, patch, at.iso)
-  return { next: { ...document, notes: document.notes.map((note, position) => position === index ? updated : note) }, value: updated, mutation: "note:updated" }
+function namedByTitle(notes: readonly StickyNote[], target: NoteTarget, ownerWords: string | undefined, byTitle: (idInOwnerWords: boolean, wordsNameItsTitle: boolean) => boolean): NoteTarget {
+  if (!("id" in target) || ownerWords === undefined) return target
+  const note = notes.find((candidate) => candidate.id === target.id)
+  return note !== undefined && byTitle(ownerWords.includes(note.id), titleAppearsAsNamedPhrase(ownerWords, note.title)) ? { selector: "title", value: note.title } : target
 }
 
-export effect function deleteIn(document: NotesDocument, target: NoteTarget, at: Instant, ownerWords: string | undefined): Change<StickyNote>!NotesRefused {
-  const named = "id" in target && ownerWords !== undefined ? document.notes.find((note) => note.id === target.id && titleAppearsAsNamedPhrase(ownerWords, note.title)) : undefined
-  const resolved: NoteTarget = named !== undefined && ownerWords !== undefined && idDeleteByTitle(ownerWords.includes(named.id), true) ? { selector: "title", value: named.title } : target
+export effect function updateIn(document: NotesDocument, target: NoteTarget, patch: UpdateRequest, expectedRevision: number | undefined, at: Instant, ownerWords: string | undefined): Change<StickyNote>!NotesRefused {
+  if (emptyPatch(patch)) throw refused("NOTES_VALIDATION_FAILED", "Supply one edit: textEdit, authoredEdit, content, title, body, format or color.")
+  try requireRevision(document, needsRevision(patch), expectedRevision)
+  const resolved = namedByTitle(document.notes, target, ownerWords, idEditByTitle)
   const index = try resolveIndex(document.notes, resolved)
   const existing = document.notes[index]
   if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
-  if (!("id" in resolved) && ownerWords !== undefined && !deleteByNameAllowed(true, titleAppearsAsNamedPhrase(ownerWords, existing.title))) {
+  const updated = try applyPatch(existing, patch, at.iso)
+  const byName = !("id" in resolved)
+  const before = noteContentKey(existing)
+  const after = noteContentKey(updated)
+  const notes = document.notes.flatMap((note, position) => position === index ? [updated]
+    : copyFate("EditsNote", byName, noteContentKey(note) === before, noteContentKey(note) === after) === "CopyDropped" ? [] : [note])
+  return { next: { ...document, notes }, value: updated, mutation: "note:updated" }
+}
+
+export effect function deleteIn(document: NotesDocument, target: NoteTarget, at: Instant, ownerWords: string | undefined): Change<StickyNote>!NotesRefused {
+  const resolved = namedByTitle(document.notes, target, ownerWords, idDeleteByTitle)
+  const index = try resolveIndex(document.notes, resolved)
+  const existing = document.notes[index]
+  if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
+  const byName = !("id" in resolved)
+  if (byName && ownerWords !== undefined && !deleteByNameAllowed(true, titleAppearsAsNamedPhrase(ownerWords, existing.title))) {
     throw refused("NOTES_DELETE_NAME_MISMATCH", `The closest note is "${existing.title}" — that isn't what you named, so nothing was deleted. Delete it?`, [existing.id])
   }
+  const key = noteContentKey(existing)
+  const leaves = (note: StickyNote, position: number) => position === index || copyFate("DeletesNote", byName, noteContentKey(note) === key, false) === "CopyTrashed"
   return {
-    next: { ...document, notes: document.notes.filter((_, position) => position !== index), trash: [...document.trash, { note: structuredClone(existing), deletedAt: at.iso }] },
+    next: {
+      ...document, notes: document.notes.filter((note, position) => !leaves(note, position)),
+      trash: [...document.trash, ...document.notes.filter(leaves).map((note) => ({ note: structuredClone(note), deletedAt: at.iso }))],
+    },
     value: existing,
     mutation: "note:deleted",
   }

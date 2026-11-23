@@ -206,14 +206,14 @@ function writeActions(notes: NotesCollection): Action[] {
         { name: "color", description: "A replacement color.", required: false, schema: { type: "string", enum: ["yellow", "green", "rose", "slate"] } },
         revisionParameter,
       ],
-      run: effect (params) => {
+      run: effect (params, message) => {
         const target = targetOf(params, "noteId", "content")
         if (typeof target === "string") return missingTarget(target)
         const patch = Object.fromEntries(Object.entries({
           textEdit: params.textEdit, authoredEdit: params.authoredEdit, content: params.replacementContent,
           title: params.title, body: params.body, color: params.color,
         }).filter(([, value]) => value !== undefined))
-        const updated = try notes.update(target, patch, params.expectedRevision)
+        const updated = try notes.update(target, patch, params.expectedRevision, try ownerRequestText(message))
         return noteResult("Updated", updated.value, updated.snapshot.revision)
       },
     }),

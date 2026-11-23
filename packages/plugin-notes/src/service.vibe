@@ -93,7 +93,7 @@ export interface NotesCollection {
   snapshot(): NotesSnapshot!NotesFailure
   list(query: NotesQuery): { notes: StickyNote[]; revision: number }!NotesFailure
   create(input: unknown): Committed<{ note: StickyNote; replayed: boolean }>!NotesFailure
-  update(target: NoteTarget, patch: unknown, expectedRevision?: unknown): Committed<StickyNote>!NotesFailure
+  update(target: NoteTarget, patch: unknown, expectedRevision?: unknown, ownerWords?: string): Committed<StickyNote>!NotesFailure
   delete(target: NoteTarget, ownerWords?: string): Committed<StickyNote>!NotesFailure
   restore(input: unknown): Committed<StickyNote>!NotesFailure
   clear(expectedRevision: unknown): Committed<number>!NotesFailure
@@ -202,11 +202,11 @@ export function notesCollection(host: NotesHost): NotesCollection {
       const id = host.newNoteId()
       return try published(try store.transact((document) => createIn(document, request, id, now)))
     },
-    update: (target, patch, expectedRevision) => effect {
+    update: (target, patch, expectedRevision, ownerWords) => effect {
       const request = try mapError(updateRequest(patch), () => invalid("edit"))
       const revision = try optionalRevision(expectedRevision)
       const now = try at()
-      return try published(try store.transact((document) => updateIn(document, target, request, revision, now)))
+      return try published(try store.transact((document) => updateIn(document, target, request, revision, now, ownerWords)))
     },
     delete: (target, ownerWords) => effect {
       const now = try at()

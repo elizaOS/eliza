@@ -74,6 +74,9 @@ nothing is deleted. A delete by an ID those words do not carry, of a note
 whose title they name, is a delete by that title: notes that share the
 title ask the owner which one, and nothing is deleted. A delete by an ID
 the owner's words carry, or of a note they do not name, deletes that note.
+An edit by an ID is read the same way: an ID those words do not carry, for
+a note whose title they name, is an edit by that title, so two notes that
+share the title ask the owner which one and nothing is changed.
 
 ```quint
 type OwnerWords = BoundRequestWords | MessageWords
@@ -86,6 +89,9 @@ pure def lawUnnamedNoteIsNotDeleted(isOwner: bool): bool = not(deleteByNameAllow
 pure def idDeleteByTitle(idInOwnerWords: bool, wordsNameItsTitle: bool): bool = not(idInOwnerWords) and wordsNameItsTitle
 pure def lawATypedIdDeletesThatNote(wordsNameItsTitle: bool): bool = not(idDeleteByTitle(true, wordsNameItsTitle))
 pure def lawAPlannerIdForANamedTitleIsReresolved(idInOwnerWords: bool): bool = idDeleteByTitle(false, true) and not(idDeleteByTitle(idInOwnerWords, false))
+pure def idEditByTitle(idInOwnerWords: bool, wordsNameItsTitle: bool): bool = not(idInOwnerWords) and wordsNameItsTitle
+pure def lawATypedIdEditsThatNote(wordsNameItsTitle: bool): bool = not(idEditByTitle(true, wordsNameItsTitle))
+pure def lawAPlannerIdForANamedTitleIsReresolvedForAnEdit(idInOwnerWords: bool): bool = idEditByTitle(false, true) and not(idEditByTitle(idInOwnerWords, false))
 ```
 
 ### A move by name takes the identical copies of the note along
@@ -102,6 +108,32 @@ pure def lawResolvedNoteMoves(byName: bool, identicalCopy: bool): bool = moveTak
 pure def lawMoveByIdLeavesOtherNotes(identicalCopy: bool): bool = not(moveTakesCopy(false, false, identicalCopy))
 pure def lawMoveByNameLeavesNoCopyBehind(resolvedNote: bool): bool = moveTakesCopy(true, resolvedNote, true)
 pure def lawDifferentNoteStays(byName: bool): bool = not(moveTakesCopy(byName, false, false))
+```
+
+### A delete or an edit by name leaves no identical copy behind
+
+A delete that names the note by its words moves every identical copy to
+Recently deleted with it, so none survives the deletion the owner just
+confirmed. An edit that names the note changes that note and drops its
+identical copies, and any plain note the edit made it identical to, so one
+note holds the result. A delete or an edit by ID changes only that note,
+and a note that differs is never touched.
+
+```quint
+type NoteChange = DeletesNote | EditsNote
+type CopyFate = CopyStays | CopyTrashed | CopyDropped
+pure def copyFate(change: NoteChange, byName: bool, identicalBefore: bool, identicalAfter: bool): CopyFate =
+  if (not(byName)) CopyStays
+  else if (change == DeletesNote) (if (identicalBefore) CopyTrashed else CopyStays)
+  else if (identicalBefore or identicalAfter) CopyDropped
+  else CopyStays
+pure def lawAChangeByIdLeavesEveryOtherNote(change: NoteChange, identicalBefore: bool, identicalAfter: bool): bool =
+  copyFate(change, false, identicalBefore, identicalAfter) == CopyStays
+pure def lawADeleteByNameTrashesEveryCopy(identicalAfter: bool): bool = copyFate(DeletesNote, true, true, identicalAfter) == CopyTrashed
+pure def lawADeleteNeverDropsANote(byName: bool, identicalBefore: bool, identicalAfter: bool): bool =
+  copyFate(DeletesNote, byName, identicalBefore, identicalAfter) != CopyDropped
+pure def lawAnEditByNameKeepsOneNote(identicalAfter: bool): bool = copyFate(EditsNote, true, true, identicalAfter) == CopyDropped
+pure def lawANoteThatDiffersIsNeverTouched(change: NoteChange, byName: bool): bool = copyFate(change, byName, false, false) == CopyStays
 ```
 
 ### A calendar draft made from a note is admitted only while that exact note is unchanged

@@ -97,7 +97,7 @@ function action(plugin: ReturnType<typeof notesPlugin>, name: string) {
 
 const voice = (id: string, audioId: string) => ({ kind: "voice", data: { recordingId: audioId, audio: { audioId }, lines: [{ s: "speaker-1", t: `Said in ${id}` }] } })
 
-it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner\'s own words in the bound request")', effect () => {
+it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner\'s own words in the bound request")', effect () => {
   const f = fixture()
   const notes = notesOver(f)
   const first = try notes.create({ content: "Groceries\n- milk", creationId: "step-1" })
@@ -136,6 +136,18 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   try notes.create({ content: "Errands\npost office" })
   assert.equal(try code(notes.delete({ id: errands }, "delete my errands note")), "NOTES_AMBIGUOUS_NOTE")
   assert.equal((try notes.delete({ id: errands }, `delete the errands note ${errands}`)).value.id, errands)
+  const milk = [try notes.create({ content: "Milk\nbuy two", forceNew: true }), try notes.create({ content: "Milk\nbuy two", forceNew: true })].map((made) => made.value.note.id)
+  assert.isTrue(milk.includes((try notes.delete({ selector: "query", value: "milk" }, "delete the milk note")).value.id))
+  const afterMilk = try notes.snapshot()
+  assert.deepEqual([afterMilk.notes.filter((note) => milk.includes(note.id)).length, afterMilk.trash?.filter((entry) => milk.includes(entry.note.id)).length], [0, 2])
+  const chores = [try notes.create({ content: "Chores\nsweep", forceNew: true }), try notes.create({ content: "Chores\nsweep", forceNew: true })].map((made) => made.value.note.id)
+  const mopped = try notes.update({ selector: "title", value: "chores" }, { textEdit: { field: "body", oldText: "sweep", newText: "mop" } })
+  assert.isTrue(chores.includes(mopped.value.id))
+  assert.deepEqual(mopped.snapshot.notes.filter((note) => note.title === "Chores").map((note) => [note.id, note.body]), [[mopped.value.id, "\nmop"]])
+  const lists = [try notes.create({ content: "Lists\none" }), try notes.create({ content: "Lists\ntwo" })].map((made) => made.value.note.id)
+  const renumber = { textEdit: { field: "body", oldText: "one", newText: "1" } }
+  assert.equal(try code(notes.update({ id: lists[0] ?? "" }, renumber, undefined, "change one to 1 in my lists note")), "NOTES_AMBIGUOUS_NOTE")
+  assert.equal((try notes.update({ id: lists[0] ?? "" }, renumber, undefined, `change one to 1 in the lists note ${lists[0] ?? ""}`)).value.body, "\n1")
 
   const folders = readNoteFolders({ notesFolders: [{ id: "folder-home", name: "Home  stuff" }, { id: "folder-work", name: "Work" }] })
   const home = findNoteFolder(folders ?? [], "home stuff")
@@ -172,7 +184,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.equal(try code(notes.assertSourceReference(reference)), "CALENDAR_NOTE_SOURCE_CONFLICT")
   assert.deepEqual(try namedRead("read my groceries note"), { requiresTool: true, clearReply: true, deterministicToolCall: { name: "NOTES_GET", params: { noteId: draft.value.note.id } } })
   assert.deepEqual(try namedRead("read my shopping note"), { requiresTool: true, clearReply: true, deterministicToolCall: { name: "NOTES_GET", params: { noteId: "note-1" } } })
-  assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:moved", "note:created", "note:created", "note:moved", "note:updated"])
+  assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:created", "note:created", "note:updated", "note:created", "note:created", "note:updated", "note:moved", "note:created", "note:created", "note:moved", "note:updated"])
 
   const camp = try notes.create({ content: "Camp", format: { kind: "list", data: { items: [{ t: "tent", done: false }] } } })
   const oversized = { field: "checklist", index: 0, expectedText: "tent", text: "x".repeat(262_145) } as const
