@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, runExtractorPipeline, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
@@ -1575,6 +1575,37 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
     diagnosticTypes: [...answered].sort(),
     gatedWriteStored: true,
     unicodeStored: true,
+  }))
+}), 60_000)
+
+// spec/core/models.md, "Story: Get a whole answer from a busy provider"; spec/core/models.md, "A model call takes no output cap from settings"; spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more"
+it.live("Get a whole answer from a busy provider: no setting caps output, and each extractor pass waits out a rate limit once (spec/core/models.md, \"Story: Get a whole answer from a busy provider\")", () => scoped(effect {
+  const limited = () => Object.assign(new Error("Too many requests"), { status: 429, retryAfterMs: 200 })
+  const models = scriptedModels("busy", 10, {
+    [ModelType.TEXT_LARGE]: [{ fail: limited() }, { reply: "unreadable" }, { fail: limited() }, { reply: "ok" }, { fail: limited() }, { fail: limited() }],
+  })
+  const runtime = try kernel({ settings: { TEXT_LARGE_MAX_TOKENS: "16", DEFAULT_MAX_TOKENS: "16", DEFAULT_TEMPERATURE: "0.2" } })
+  try Effect.sync(() => models.register(runtime))
+  const parser = (raw: string) => raw === "ok" ? raw : null
+  const providerOptions = { eliza: { thinking: "low" } }
+  const began = Date.now()
+  const repaired = try host(() => runExtractorPipeline({ runtime, prompt: "Plan the reminder.", providerOptions, parser, buildRepairPrompt: () => "Repair it." }))
+  const waited = Date.now() - began
+  const refused = try host(() => runExtractorPipeline({ runtime, prompt: "Plan another.", parser }).then(() => "resolved", (error: unknown) => (error as { status?: unknown }).status))
+  const sent = models.seen.map(({ params }) => params as { prompt?: unknown; maxTokens?: unknown; temperature?: unknown; providerOptions?: unknown })
+  try Effect.try(() => assert.deepStrictEqual({
+    repaired, refused, waitedForBoth: waited >= 400,
+    sent: sent.map(({ prompt, maxTokens, temperature, providerOptions: options }) => ({ prompt, capped: maxTokens !== undefined, temperature, options })),
+  }, {
+    repaired: { parsed: "ok", raw: "ok", repaired: true }, refused: 429, waitedForBoth: true,
+    sent: [
+      { prompt: "Plan the reminder.", capped: false, temperature: 0.2, options: providerOptions },
+      { prompt: "Plan the reminder.", capped: false, temperature: 0.2, options: providerOptions },
+      { prompt: "Repair it.", capped: false, temperature: 0.2, options: providerOptions },
+      { prompt: "Repair it.", capped: false, temperature: 0.2, options: providerOptions },
+      { prompt: "Plan another.", capped: false, temperature: 0.2, options: undefined },
+      { prompt: "Plan another.", capped: false, temperature: 0.2, options: undefined },
+    ],
   }))
 }), 60_000)
 
