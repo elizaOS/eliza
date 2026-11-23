@@ -5,7 +5,8 @@ start is a launch with a new epoch: the service checks the payload, reaps a
 child an earlier launch left behind, runs the consumer's launch hook,
 spawns the agent with the launch frame of `spec/agent/host/launch.md`, and
 serves once the agent answers ready for that epoch. It restarts a crashed or
-unhealthy agent within the budget of [health](./health.md), follows the
+unhealthy agent after the delay of [health](./health.md), however often it
+crashes, follows the
 device key of [credential](../signIn/credential.md), keeps a failed store's
 records until the owner moves them aside, and holds the agent for an app
 update. Spawning, the socket, the pid and epoch journal, the notification
@@ -23,7 +24,7 @@ the current launch did.
 No start is taken while an update holds the agent or its records need
 recovery after a storage failure. The shell runs the
 check (`BeginCheck`) after the delay it names; an explicit start (also on
-boot or package replacement) renews the restart budget.
+boot or package replacement) resets the restart delay.
 Before it publishes a check, the shell saves and syncs that launch's
 epoch. A failed save reports `Runtime` and publishes no check.
 
@@ -32,7 +33,7 @@ import health as H from "./health"
 import launch as L from "../../agent/host/launch"
 import credential as C from "../signIn/credential"
 type StartStep = Checking | Spawned
-type FailureCause = Payload | Storage | Config | Credential | Agent | Crashed | Runtime
+type FailureCause = Payload | Storage | Config | Credential | Agent | Runtime
 type AfterExit = ToStopped | ToStart | ToRestart | ToCredentialFailure
 type ServicePhase = Stopped | Starting({ step: StartStep }) | Running | Stopping({ onExit: AfterExit }) | Failed({ cause: FailureCause })
 type Child = NoChild | Owned({ ownedEpoch: int }) | Stale({ staleEpoch: int })
@@ -177,13 +178,13 @@ pure def stop(s: AgentService): ServiceStep =
 pure def canObserveExit(s: AgentService, code: int): bool = childOwned(s.child)
 pure def afterExit(onExit: AfterExit, s: AgentService): ServiceStep =
   if (onExit == ToStopped) emit(List(), enter(Stopped, s)) else if (onExit == ToStart) launch(0, 0, s)
-  else if (onExit == ToRestart) restartOrFail(s.attempt, s) else emit(List(), enter(Failed({ cause: Credential }), s))
+  else if (onExit == ToRestart) restartAfterCrash(s.attempt, s) else emit(List(), enter(Failed({ cause: Credential }), s))
 pure def observeExit(s: AgentService, code: int): ServiceStep = {
   val gone = { ...s, child: NoChild }
   val p = s.phase
   match p {
     | Starting(_) => emit(List(), enter(Failed({ cause: startupCause(code) }), gone))
-    | Running => restartOrFail(s.attempt, gone)
+    | Running => restartAfterCrash(s.attempt, gone)
     | Stopping(x) => afterExit(x.onExit, gone)
     | _ => emit(List(), s)
   }
@@ -233,7 +234,7 @@ words, with a stop action when the consumer asks for one.
 ```quint
 type AgentStatus = { bridgeState: str, failure: str, epoch: int, notice: bool }
 pure def causeName(c: FailureCause): str = match c {
-  | Payload => "payload" | Storage => "storage" | Config => "config" | Credential => "credential" | Agent => "agent" | Crashed => "crashed" | Runtime => "runtime" }
+  | Payload => "payload" | Storage => "storage" | Config => "config" | Credential => "credential" | Agent => "agent" | Runtime => "runtime" }
 pure def statusOf(s: AgentService): AgentStatus = {
   val p = s.phase
   match p {
@@ -248,26 +249,24 @@ pure def alwaysStatusTellsTheTruth(s: AgentService): bool = ((statusOf(s).failur
   and (statusOf(s).bridgeState == "running" implies (s.readyEpoch == s.epoch and childOwned(s.child)))
 ```
 
-## Story: Restart a crashed or unhealthy agent within a budget
+## Story: Restart a crashed or unhealthy agent until it stays up
 
 > As a device owner, I want an agent that crashes or stops answering
-> restarted after a growing pause, and given up on after five restarts in
-> a row, so that it comes back by itself without draining my battery.
+> restarted after a growing pause, however often it crashes, so that it
+> comes back by itself without draining my battery.
 
-### Any exit after readiness is a crash, restarted after the health delay while fewer than five restarts were made
+### Any exit after readiness is a crash, and every crash is restarted after the health delay
 
 The agent never exits on its own once ready, so any code is a crash. The
-sixth crash in a row is `Failed(Crashed)`, which an explicit start clears.
+delay grows with the crashes since the last explicit start or stable run
+and stops growing at 60 s; no number of crashes leaves the agent failed.
 
 ```quint
-pure def restartOrFail(attempt: int, s: AgentService): ServiceStep =
-  if (attempt < H::restartBudget) launch(attempt + 1, H::restartDelay(attempt), s)
-  else emit(List(), enter(Failed({ cause: Crashed }), s))
-pure def alwaysCrashedOnlyAfterTheBudget(s: AgentService): bool = s.attempt >= 0 and s.attempt <= H::restartBudget
-  and (s.phase == Failed({ cause: Crashed }) implies (s.attempt == H::restartBudget and s.readyEpoch == s.epoch))
+pure def restartAfterCrash(attempt: int, s: AgentService): ServiceStep = launch(attempt + 1, H::restartDelay(attempt), s)
+pure def alwaysCrashCountIsNotNegative(s: AgentService): bool = s.attempt >= 0
 pure def sometimesRestartedAfterCrash(s: AgentService): bool = s.phase == Running and s.attempt >= 1
-pure def sometimesCrashed(s: AgentService): bool = s.phase == Failed({ cause: Crashed })
-pure val eval_witness_sometimesCrashed = (
+pure def sometimesRestartedAfterSixCrashesInARow(s: AgentService): bool = s.phase == Starting({ step: Checking }) and s.attempt == 6
+pure val eval_witness_sometimesRestartedAfterSixCrashesInARow = (
   ("credentialArrived", 1, { userId: "u1", organizationId: "o1" }),
   "start",
   ("spawn", true), ("observeReady", readyReply(1)), ("observeExit", 1),
@@ -282,8 +281,8 @@ pure val eval_witness_sometimesCrashed = (
 ### An unhealthy verdict kills the child and counts as a crash
 
 Each health observation of the running launch is folded into the watch;
-after a `Restart` verdict the child's exit is a crash under the same
-budget.
+after a `Restart` verdict the child's exit is a crash, restarted after the
+same delay.
 
 ```quint
 pure def canObserveHealth(s: AgentService, observed: H::Observation): bool = s.phase == Running and H::verdict(s.watch, observed, s.epoch) == H::KeepRunning
@@ -302,14 +301,14 @@ pure val weight_observeHealth = 4
 pure def sometimesKilledAsUnhealthy(s: AgentService): bool = s.phase == Stopping({ onExit: ToRestart })
 ```
 
-### Five minutes of running renew the restart budget
+### Five minutes of running reset the restart delay
 
 The shell sends `stableRun` after `H::stableRunMs` in `Running`.
 
 ```quint
 pure def canStableRun(s: AgentService): bool = s.phase == Running and s.attempt > 0
 pure def stableRun(s: AgentService): AgentService = { ...s, attempt: 0 }
-pure def stepBudgetRenewedOnlyByStartOrStableRun(before: AgentService, via: str, after: AgentService): bool =
+pure def stepRestartDelayResetOnlyByStartOrStableRun(before: AgentService, via: str, after: AgentService): bool =
   (after.attempt < before.attempt) implies (after.attempt == 0 and (via == "stableRun" or after.epoch == before.epoch + 1))
 ```
 
@@ -323,7 +322,7 @@ pure def stepBudgetRenewedOnlyByStartOrStableRun(before: AgentService, via: str,
 
 The credential's `SignedOutNotice` and `ExpiredNotice` withdraw the key;
 a live child is killed first, and a stopped service stays stopped. The
-next `Announce` starts the agent without using the budget, unless an
+next `Announce` starts the agent with no restart delay, unless an
 update holds it. A pending check keeps its epoch when its first key
 arrives. If the key selects the account, the shell lets a queued stop or
 hold run, then reads the current key before opening that account's storage.
@@ -366,8 +365,8 @@ pure val weight_credentialArrived = 18
 ### Another account's key restarts the agent on that account's directory
 
 The agent refuses a store opened under another account, so a live child
-is killed and a new launch follows its exit; this costs no restart
-budget.
+is killed and a new launch follows its exit; this is not counted as a
+crash.
 
 ```quint
 pure def canAccountChanged(s: AgentService, version: int, account: C::Account): bool =

@@ -269,7 +269,12 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
       const target = path.join(directory, file.path)
       const info = try (fs.stat(target) catch () => undefined)
       if (info === undefined) return
-      if ((try (digestOf(target) catch () => "")) !== file.sha256) {
+      const digest = try (digestOf(target) catch () => undefined)
+      if (digest === undefined) {
+        try logWarning("A staged model file cannot be read and stays absent", { model: model.name, file: file.path })
+        return
+      }
+      if (digest !== file.sha256) {
         try logWarning("A staged model does not match its published digest and stays absent", { model: model.name, file: file.path })
         return
       }
