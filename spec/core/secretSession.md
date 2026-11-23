@@ -117,3 +117,55 @@ pure def lawAStableNonceIsTheSameInEverySession(derived: str, one: str, other: s
 pure def lawOnlyAWrittenReferenceRestores(written: Set[str], reference: str): bool =
   referenceRestorable(written, reference) implies written.contains(reference)
 ```
+
+### At the action boundary pseudonyms are restored before references, and local name recognition never reads this session's references
+
+A prompt is protected in two layers: credentials and contacts become this
+session's references first, then the names in it become pseudonyms. A local
+name recognizer can take a reference for part of a name, so a pseudonym may
+wrap a reference. Restoring an action's arguments peels the layers in the
+reverse order: pseudonyms first, leaving what it does not know, then
+references, strictly. An SMS or call target therefore reaches its validator
+as the real number, and a reference of this session that it never wrote
+still refuses the action. Before local name recognition reads the prompt,
+each of this session's references is replaced by spaces of the same width,
+so the recognizer never learns a reference as a name and the offsets of the
+names around it stay where they were; the provider still receives the
+references.
+
+```quint
+type PrivacyLayer = PseudonymLayer | ReferenceLayer
+type PromptPiece = { ownReference: bool, text: str, width: int }
+pure val wrappingValues = Set(List(), List(ReferenceLayer), List(PseudonymLayer), List(PseudonymLayer, ReferenceLayer), List(ReferenceLayer, PseudonymLayer))
+pure val pieceValues = Set({ ownReference: true, text: "reference", width: 9 }, { ownReference: false, text: "Alice", width: 5 }, { ownReference: false, text: "", width: 0 })
+pure val actionRestoreOrder = List(PseudonymLayer, ReferenceLayer)
+pure def peelLayer(wrapping: List[PrivacyLayer], layer: PrivacyLayer): List[PrivacyLayer] =
+  if (wrapping.length() > 0 and wrapping.nthOr(0, layer) == layer) wrapping.removeAt(0) else wrapping
+pure def restoreForAction(wrapping: List[PrivacyLayer]): List[PrivacyLayer] = actionRestoreOrder.foldl(wrapping, (rest, layer) => peelLayer(rest, layer))
+pure def ingressWrapping(wrapping: List[PrivacyLayer]): bool =
+  wrapping == List() or wrapping == List(ReferenceLayer) or wrapping == List(PseudonymLayer) or wrapping == List(PseudonymLayer, ReferenceLayer)
+pure def maskForRecognition(piece: PromptPiece): PromptPiece = if (piece.ownReference) { ownReference: false, text: "", width: piece.width } else piece
+pure def lawActionArgumentsReachTheirRealValue(wrapping: List[PrivacyLayer]): bool = ingressWrapping(wrapping) implies restoreForAction(wrapping) == List()
+pure def lawRecognitionNeverReadsAnOwnReference(piece: PromptPiece): bool =
+  maskForRecognition(piece).width == piece.width and (piece.ownReference implies maskForRecognition(piece).text == "") and (not(piece.ownReference) implies maskForRecognition(piece) == piece)
+```
+
+### A map coordinate never becomes a contact reference
+
+A phone-shaped digit run is a map coordinate, and stays as it is, when it
+lies inside a Maps card (the `[MAPSCARD]` marker and the one complete JSON
+line after it), follows a latitude or longitude key, or is a single decimal
+with at least four fractional digits that follows a minus sign, sits beside
+the other half of a coordinate pair, or has a geographic word within the 160
+characters before it. A card marker with no complete JSON line after it
+exempts nothing, so a number the owner writes after a truncated card is
+still a phone number. Every other phone-shaped run is a phone number, which
+the session swaps for a contact reference.
+
+```quint
+type PhoneShapedContext = InMapsCard | AfterCoordinateKey | SignedDecimal | PairedDecimal | GeoWordDecimal | AfterOpenCardMarker | PlainText
+pure def mapCoordinate(phoneContext: PhoneShapedContext): bool = phoneContext != PlainText and phoneContext != AfterOpenCardMarker
+pure def detectedPhone(phoneContext: PhoneShapedContext): bool = not(mapCoordinate(phoneContext))
+pure def lawACoordinateNeverBecomesAContact(phoneContext: PhoneShapedContext): bool = mapCoordinate(phoneContext) implies not(detectedPhone(phoneContext))
+pure def lawAnOpenCardMarkerHidesNoPhone(phoneContext: PhoneShapedContext): bool = (phoneContext == AfterOpenCardMarker or phoneContext == PlainText) implies detectedPhone(phoneContext)
+```
