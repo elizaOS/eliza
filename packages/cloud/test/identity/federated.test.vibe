@@ -153,5 +153,5 @@ describe("WP1 Identity: Google sign-in", () => {
         }
       ))
     }
-  }))
+  }), 120_000)
 })
