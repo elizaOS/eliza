@@ -32,6 +32,7 @@ async function ownerModelAcknowledgment(
     acknowledgment = "Let me check.",
     toolCategories = [] as string[],
     toolName = "LOOKUP",
+    stage1Contexts = ["general"] as string[],
     guestInRoom = false,
     contextRead = false,
     contextReference = "CHOICE",
@@ -182,10 +183,15 @@ async function ownerModelAcknowledgment(
     label: "Notes",
     sensitivity: "personal",
   });
+  runtime.contexts.tryRegister({
+    id: "device_admin",
+    label: "Device admin",
+    sensitivity: "system",
+  });
   const tools = toolCategories.length
     ? toolCategories.map((category) =>
         lookup(
-          `${category.toUpperCase().replace("+", "_")}_LOOKUP`,
+          `${category.toUpperCase().replaceAll("+", "_")}_LOOKUP`,
           `tool:${category}`,
           category.split("+"),
         ),
@@ -260,7 +266,7 @@ async function ownerModelAcknowledgment(
                 arguments: {
                   shouldRespond: "RESPOND",
                   thought: "Look it up.",
-                  contexts: ["general"],
+                  contexts: stage1Contexts,
                   intents: ["look up entry"],
                   candidateActionNames: tools.map((tool) => tool.name),
                   // No source originals: preserve current main plain reply text.
@@ -506,6 +512,61 @@ describe("awaited owner model acknowledgments", () => {
       expect(result.acknowledgments).toEqual(["Let me check."]);
     },
   );
+
+  // Stage 1 already chose the turn's contexts: when exactly one labelled
+  // category of a multi-category action is among them, it names the activity.
+  it.each([
+    ["notes+calendar", ["calendar"], "Using Calendar"],
+    ["notes+calendar", ["general", "notes"], "Using Notes"],
+    ["notes+unregistered_app", ["notes", "unregistered_app"], "Using Notes"],
+    ["notes+calendar", ["notes", "calendar"], "Working"],
+    ["notes+calendar", ["web"], "Working"],
+    [
+      "notes+calendar+device_admin",
+      ["calendar", "device_admin"],
+      "Using Calendar",
+    ],
+    ["general+simple+notes+calendar", ["general", "simple"], "Working"],
+    ["calendar", ["notes"], "Using Calendar"],
+  ])(
+    "names a %s action from Stage 1 contexts %j as %s",
+    async (category, stage1Contexts, label) => {
+      const result = await ownerModelAcknowledgment(true, {
+        toolCategories: [category],
+        stage1Contexts,
+      });
+      expect(result.statuses).toEqual([
+        {
+          actionName: `${category.toUpperCase().replaceAll("+", "_")}_LOOKUP`,
+          label,
+        },
+      ]);
+      expect(result.acknowledgments).toEqual(["Let me check."]);
+    },
+  );
+
+  // The selected public category only names the status. Every declared
+  // category still decides publicity, so a shared room never sees it.
+  it("keeps a selected public category of a mixed-publicity action from a shared room", async () => {
+    const shared = await ownerModelAcknowledgment(false, {
+      toolCategories: ["web+calendar"],
+      stage1Contexts: ["web"],
+      guestInRoom: true,
+    });
+    expect(shared.events).toEqual([
+      "ack-start",
+      "ack-end",
+      "tool:web+calendar",
+    ]);
+    expect(shared.statuses).toEqual([]);
+    const owner = await ownerModelAcknowledgment(false, {
+      toolCategories: ["web+calendar"],
+      stage1Contexts: ["web"],
+    });
+    expect(owner.statuses).toEqual([
+      { actionName: "WEB_CALENDAR_LOOKUP", label: "Using Web" },
+    ]);
+  });
 
   // Catalog-derived actions retain all categories too; a mixed-domain tool
   // must not imply that its first category is the actual selected resource.

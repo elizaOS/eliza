@@ -59,6 +59,8 @@ export type V5MessageRuntimeInput = {
    * failure-reply gate.
    */
   onStage1RespondDecision?: () => void;
+  /** Receives the turn's selected contexts once Stage 1 routes to planning. */
+  onStage1SelectedContexts?: (contexts: readonly string[]) => void;
   /** Receives the exact parsed Stage-1 decision and its inference provenance. */
   onStage1Decision?: (observation: Stage1DecisionObservation) => void;
   /** Stops after Stage-1 routing, before reply generation, planning, or tools. */

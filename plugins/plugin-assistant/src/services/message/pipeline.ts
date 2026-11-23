@@ -976,6 +976,7 @@ export async function runV5MessageRuntimeStage1(
     ];
     if (resumedPlanner && selectedContexts.length === 0)
       selectedContexts.push("general");
+    args.onStage1SelectedContexts?.(selectedContexts);
     if (resumedPlanner && !messageHandler.plan.intents?.length) {
       messageHandler.plan.intents = [
         ...(resumedPlanner.state.trajectory.outcomeIntents ?? []),
