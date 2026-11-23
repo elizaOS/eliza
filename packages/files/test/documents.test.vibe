@@ -1,9 +1,10 @@
-// spec/files/sourceReferences.md, "Story: Keep a source link and reopen the exact document I reviewed"; spec/files/scan/links.md, "Story: Review links in my scanned text and open the one I choose"; spec/files/archive.md, "Story: Download exactly the files I selected"; spec/files/pdfInterpretation.md, "Story: Interpret the complete attachment only while it is still authorized"
+// spec/files/sourceReferences.md, "Story: Keep a source link and reopen the exact document I reviewed"; spec/files/scan/event.md, "Story: Turn a scanned poster into a Calendar draft I review"; spec/files/scan/links.md, "Story: Review links in my scanned text and open the one I choose"; spec/files/archive.md, "Story: Download exactly the files I selected"; spec/files/pdfInterpretation.md, "Story: Interpret the complete attachment only while it is still authorized"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { fileArchive, mediaDownloads, type SelectedMedia } from "../src/documents/archive.vibe"
 import { blobOf, readBytes } from "../src/documents/images.vibe"
 import { interpretPdf, loadDocumentRuntime, PdfInterpretationFailed, type ParsedPage, type PdfPorts } from "../src/documents/pdf-interpretation.vibe"
+import { reviewScanAllDayEvent, reviewScanEvent, suggestScanEvent, suggestScanEventDetails } from "../src/documents/scan-event.vibe"
 import { scanLinkReview, scannedLinks } from "../src/documents/scan-links.vibe"
 import { copyScanTextLayers, scanTextLayer } from "../src/documents/scan-text-layer.vibe"
 import {
@@ -169,4 +170,40 @@ it.effect('Interpret the complete attachment only while it is still authorized (
       assert.equal(try map(Effect.flip(loadDocumentRuntime({ path: artifact, expectedCommit: commit, expectedCanvas: "0.1.80" })), (error) => "reason" in error ? error.reason : "io"), "artifact-refused")
     })
   }
+})
+
+it.effect('Turn a scanned poster into a Calendar draft I review (spec/files/scan/event.md, "Story: Turn a scanned poster into a Calendar draft I review"; spec/files/scan/event.md, "A date is suggested only when every date printed agrees, and a year, weekday or relative day is inferred only from the device\'s clock and disclosed"; spec/files/scan/event.md, "A start time is suggested only when every time printed agrees, in the device\'s zone or in one explicit zone it converts from"; spec/files/scan/event.md, "A repeat is only a hint the owner turns on"; spec/files/scan/event.md, "A draft holds only reviewed fields within their bounds, timed or all day as the owner reviewed it")', effect () => {
+  const now = new Date("2026-10-03T15:00:00Z")
+  const details = (text: string, timeZone = "America/New_York") => suggestScanEventDetails(text, { now, timeZone })
+  const valid = { title: " Reviewed event ", date: "2027-01-02", time: "23:45", minutes: 90, location: " Hall " }
+  const timed = try reviewScanEvent(valid, "Exact reviewed OCR text", new Date(2026, 11, 31, 12))
+  const allDay = try reviewScanAllDayEvent({ title: "Book fair", date: "2026-10-10", location: "Library", repeat: "weekly" }, "text", new Date(2026, 9, 3))
+  const refusals = try all([
+    { ...valid, title: "" }, { ...valid, date: "2026-02-30" }, { ...valid, date: "1969-12-31" }, { ...valid, date: "" }, { ...valid, time: "24:00" },
+    { ...valid, minutes: 15.5 }, { ...valid, minutes: 1441 }, { ...valid, allDay: true },
+  ].map((fields) => map(Effect.flip(reviewScanEvent(fields, "text")), (refused) => refused.answer)))
+  const longNotes = try map(Effect.flip(reviewScanEvent(valid, "x".repeat(16_001))), (refused) => refused.answer)
+  const converted = details("Launch\nOctober 10, 2026\n18:30\nTime zone: Europe/London")
+  const repeating = details("Yoga\nEvery Tuesday\n6 PM")
+  try check(() => {
+    assert.deepEqual(suggestScanEvent("Open studio\nOctober 10, 2026\nTime: 6:30 p.m.\nVenue: Main hall"), { title: "Open studio", date: "2026-10-10", time: "18:30", minutes: 60, location: "Main hall" })
+    assert.deepEqual(suggestScanEvent("Studio\nOctober 10, 2026\nTime: 6 PM - 8 PM"), { title: "Studio", date: "2026-10-10", time: "18:00", minutes: 120, location: "" })
+    assert.deepEqual(["Event\nOctober 10", "Event\n10/11/2026", "Event\n2026-02-30", "Event\n2026-10-10\nOctober 11"].map((text) => suggestScanEvent(text).date), ["", "", "", ""])
+    assert.deepEqual(["Event\n2026-10-10\n6 PM PST", "Event\n2026-10-10\n18:30\n19:00", "Event\n2026-10-10T18:30+02:00", "Event\n2026-10-10\n13 AM"].map((text) => suggestScanEvent(text).time), ["", "", "", ""])
+    assert.equal(suggestScanEvent("AC/DC tribute\nOctober 10, 2026\n6 PM\nhttps://example.com/events").time, "18:00")
+    assert.deepEqual([details("Open studio\nOctober 10\n7 PM"), details("Book club\nTuesday\n6:30 PM"), details("Party\nTomorrow\n8 PM"), details("Gala\n2 March\n7 PM")].map(({ fields }) => fields.date),
+      ["2026-10-10", "2026-10-06", "2026-10-04", "2027-03-02"])
+    assert.match(details("Open studio\nOctober 10\n7 PM").disclosures.join("\n"), /Year inferred/)
+    assert.match(details("Event\nFriday, October 10, 2026\n7 PM").disclosures.join("\n"), /does not match/)
+    assert.deepEqual({ date: converted.fields.date, time: converted.fields.time, sourceZone: converted.sourceZone }, { date: "2026-10-10", time: "13:30", sourceZone: "Europe/London" })
+    assert.deepEqual(["Event\n2026-10-10\n18:30 ET", "Event\n2026-10-10\n18:30 UTC\nTime zone: Asia/Tokyo", "Event\n2026-03-08\n02:30\nTime zone: America/New_York"]
+      .map((text) => { const found = details(text); return [found.fields.time, found.sourceZone, found.disclosures.length > 0] }), [["", null, true], ["", null, true], ["", null, true]])
+    assert.deepEqual([details("Book fair\nOctober 10, 2026\nVenue: Library").allDay, details("Book fair\nOctober 10, 2026\nNoon").allDay], [true, false])
+    assert.deepEqual(repeating.recurrence, { repeat: "weekly", evidence: "Every Tuesday" })
+    assert.deepEqual([details("Club\nEvery other week\n6 PM").recurrence, details("Club\nDaily and every Tuesday\n6 PM").recurrence], [null, null])
+    assert.deepEqual(timed, { title: "Reviewed event", location: "Hall", notes: "Exact reviewed OCR text", repeat: "none", date: "2027-01-02", dayOffset: 2, allDay: false, time: "23:45", minutes: 90 })
+    assert.deepEqual(allDay, { title: "Book fair", location: "Library", notes: "text", repeat: "weekly", date: "2026-10-10", dayOffset: 7, allDay: true })
+    assert.deepEqual(refusals, ["TitleOrLocationOutOfBounds", "DayMissing", "YearOutOfRange", "DateAndTimeMissing", "DateAndTimeMissing", "DurationOutOfRange", "DurationOutOfRange", "TimedNeedsStart"])
+    assert.equal(longNotes, "NotesTooLong")
+  })
 })

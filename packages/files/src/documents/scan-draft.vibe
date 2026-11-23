@@ -66,7 +66,6 @@ import { freshRevision, mutateRow, readRow, type TxOutcome } from browser
 
 export { copyScanTextLayers }
 
-/** The one stored scan draft: its exact revision, ordered pages and optional per-page edited text. */
 export interface ScanDraft {
   readonly id: "document"
   readonly revision: string
@@ -87,7 +86,6 @@ const draftText: Readonly<Record<DraftRefusal, string>> = {
   storage: "Draft storage interrupted.",
 }
 
-/** A draft read, save or delete that storage did not commit, with why. */
 export error DraftRefused { reason: DraftRefusal; message: string }
 
 const refused = (reason: DraftRefusal) => new DraftRefused({ reason, message: draftText[reason] })
@@ -122,7 +120,6 @@ function decodeRow(raw: unknown): Decoded {
   }
 }
 
-/** The device's scan draft store under a consumer-named database: exact-revision saves and deletes acknowledged only on commit. */
 export function createScanDraftStore(databaseName: string) {
   effect function readScanDraft(): (ScanDraft | undefined)!DraftRefused {
     const raw = try tryPromise({ try: () => readRow(databaseName), catch: () => refused("storage") })

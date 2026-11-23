@@ -32,7 +32,6 @@ export type FilesCategory = "downloads" | "images" | "videos" | "audio" | "docum
 export type SortMode = "name" | "date" | "size"
 export type CategoryFolder = { readonly folder: string; readonly count: number; readonly latest: StorageEntry }
 
-/** What a listing knows: its rows, and whether it may claim to be complete or empty. */
 export type Listing = {
   readonly entries: readonly StorageEntry[]
   readonly complete: boolean
@@ -40,11 +39,8 @@ export type Listing = {
 }
 
 const DAY = 86_400_000
-/** Days a trashed entry is kept before it expires. */
 export const TRASH_RETENTION_DAYS = expiryMillis / DAY
-/** The Downloads entry is the Download folder itself, never a query over other folders. */
 export const DOWNLOAD_FOLDER = "Download"
-/** The Browse categories in the order Files shows them. */
 export const CATEGORIES: readonly { readonly id: FilesCategory; readonly label: string }[] = [
   { id: "downloads", label: "Downloads" },
   { id: "images", label: "Images" },
@@ -52,7 +48,6 @@ export const CATEGORIES: readonly { readonly id: FilesCategory; readonly label: 
   { id: "audio", label: "Audio" },
   { id: "documents", label: "Documents" },
 ]
-/** PDF, office and text documents anywhere in shared storage. */
 export const DOCUMENT_MIME_TYPES: readonly string[] = [
   "application/pdf", "application/msword", "application/rtf", "text/plain", "text/csv", "text/markdown",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel",
@@ -71,34 +66,28 @@ const EXTENSIONS: Readonly<Record<string, string>> = {
   amr: "audio/amr", zip: "application/zip", apk: "application/vnd.android.package-archive",
 }
 
-/** The MIME type a file name's extension names, or the generic binary type. */
 export function mimeFromName(name: string): string {
   const dot = name.lastIndexOf(".")
   return dot > 0 ? EXTENSIONS[name.slice(dot + 1).toLowerCase()] ?? "application/octet-stream" : "application/octet-stream"
 }
 
-/** The folder that holds a volume-relative path; "" is the volume root. */
 export function parentOf(path: string): string {
   const slash = path.lastIndexOf("/")
   return slash < 0 ? "" : path.slice(0, slash)
 }
 
-/** The last component of a volume-relative path. */
 export function baseName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1)
 }
 
-/** A name placed in a folder. */
 export function joinPath(folder: string, name: string): string {
   return folder === "" ? name : `${folder}/${name}`
 }
 
-/** Whether a path is inside, or is, a folder. */
 export function within(path: string, folder: string): boolean {
   return folder === "" || path === folder || path.startsWith(`${folder}/`)
 }
 
-/** Whether a Browse category lists this entry; Downloads is the Download folder by path, folders included. */
 export function inCategory(category: FilesCategory, entry: Pick<StorageEntry, "path" | "directory" | "mimeType">): boolean {
   if (category === "downloads") return parentOf(entry.path) === DOWNLOAD_FOLDER
   if (entry.directory) return false
@@ -110,7 +99,6 @@ export function inCategory(category: FilesCategory, entry: Pick<StorageEntry, "p
   }
 }
 
-/** Category files grouped by the folder that holds them, newest folder first; storage counts win over the listed rows. */
 export function groupByFolder(entries: readonly StorageEntry[], counted?: readonly CategoryFolder[]) {
   const groups = new Map<string, { count: number; latest: StorageEntry }>()
   for (const group of counted ?? []) groups.set(group.folder, { count: group.count, latest: group.latest })
@@ -129,14 +117,12 @@ export function groupByFolder(entries: readonly StorageEntry[], counted?: readon
 const invalidNameCharacter = /[/\\\u0000-\u001f\u007f]/
 const filterControlCharacter = /[\u0000-\u001f]/
 
-/** One trimmed file or folder name, or undefined for a separator, a control character, "." or "..". */
 export function validName(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined
   const name = value.trim()
   return name !== "" && name.length <= 255 && name !== "." && name !== ".." && !invalidNameCharacter.test(name) ? name : undefined
 }
 
-/** A volume-relative path, "" only where the root is allowed, or undefined for one that is absolute or escapes the volume. */
 export function validPath(value: unknown, allowRoot = false): string | undefined {
   if (typeof value !== "string" || value.length > 1024) return undefined
   const path = value.replace(/^\/+|\/+$/g, "")
@@ -144,7 +130,6 @@ export function validPath(value: unknown, allowRoot = false): string | undefined
   return path.split("/").every((part) => validName(part) === part) ? path : undefined
 }
 
-/** A name free in a folder, keeping both on a clash as "name (1).ext", case-insensitively; undefined when none is left. */
 export function freeName(name: string, taken: Iterable<string>, directory = false): string | undefined {
   const used = new Set(Array.from(taken, (value) => value.toLowerCase()))
   if (!used.has(name.toLowerCase())) return name
@@ -158,7 +143,6 @@ export function freeName(name: string, taken: Iterable<string>, directory = fals
   return undefined
 }
 
-/** Folders first, then the chosen order; date and size are newest and largest first. */
 export function sortEntries<T extends Pick<StorageEntry, "name" | "directory" | "modified" | "size">>(entries: readonly T[], mode: SortMode, reverse = false): T[] {
   const byName = (a: T, b: T) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
   const order = (a: T, b: T) => a.directory && b.directory ? byName(a, b)
@@ -168,26 +152,21 @@ export function sortEntries<T extends Pick<StorageEntry, "name" | "directory" | 
   return [...entries].sort((a, b) => Number(b.directory) - Number(a.directory) || (reverse ? -1 : 1) * order(a, b))
 }
 
-/** The label of each sort order. */
 export const SORT_LABELS: Readonly<Record<SortMode, string>> = { name: "Name", date: "Date", size: "Size" }
 
-/** The folders from the volume root down to a path. */
 export function breadcrumbs(path: string, rootLabel = "Internal storage"): { label: string; path: string }[] {
   const parts = path === "" ? [] : path.split("/")
   return [{ label: rootLabel, path: "" }, ...parts.map((label, index) => ({ label, path: parts.slice(0, index + 1).join("/") }))]
 }
 
-/** Whole days left before a trashed entry expires. */
 export function trashDaysLeft(deletedAt: number, now: number): number {
   return Math.max(0, Math.ceil((deletedAt + expiryMillis - now) / DAY))
 }
 
-/** Whether a trashed entry is past its retention. */
 export function trashExpired(deletedAt: number, now: number): boolean {
   return now - deletedAt >= expiryMillis
 }
 
-/** A byte count in the largest unit that keeps it readable. */
 export function formatSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return ""
   if (bytes < 1024) return `${bytes} B`
@@ -201,14 +180,12 @@ export function formatSize(bytes: number): string {
   return `${value >= 100 ? Math.round(value) : Math.round(value * 10) / 10} ${units[unit]}`
 }
 
-/** A volume's free space, or the app files it holds when the total is unknown. */
 export function formatFree(volume: Pick<StorageVolume, "free" | "total" | "usage">): string {
   if (volume.total > 0) return `${formatSize(volume.free)} free of ${formatSize(volume.total)}`
   if (volume.usage === undefined) return ""
   return `${formatSize(volume.usage.bytes)} in ${volume.usage.files} app ${volume.usage.files === 1 ? "file" : "files"}`
 }
 
-/** Rows that claim completeness or emptiness only when the read knew every row. */
 export function listing(entries: readonly StorageEntry[], read: { readonly metadataKnown: boolean; readonly partial: boolean; readonly failed: boolean }): Listing {
   return {
     entries,
@@ -217,7 +194,6 @@ export function listing(entries: readonly StorageEntry[], read: { readonly metad
   }
 }
 
-/** The Downloads listing: the Download folder's own rows, folders included, and a complete empty listing when the folder is not there. */
 export function downloadsListing(folder: Exclude<DownloadFolder, "DownloadFolderUnreadable">, entries: readonly StorageEntry[], read: { readonly metadataKnown: boolean; readonly partial: boolean }): Listing {
   const listed = folder === "DownloadFolderListed"
   return listing(listed ? entries : [], { metadataKnown: downloadsKnown(folder, read.metadataKnown), partial: listed && read.partial, failed: false })
@@ -240,17 +216,14 @@ const FilterFields = {
 const filterChecks = Schema.makeFilter(({ text, kind, folder, from, to }: { text?: string; kind?: FilterKind; folder?: string; from?: string; to?: string }) =>
   (text !== undefined || kind !== undefined || folder !== undefined || from !== undefined || to !== undefined) &&
   (from === undefined || to === undefined || Date.parse(from) <= Date.parse(to)))
-/** The agent's read-only filter: it only narrows what Files shows. */
 export const FilesFilter = Schema.Struct(FilterFields).check(filterChecks)
 export type FilesFilter = typeof FilesFilter.Type
-/** The filter fields of a files_filter operation, with its type tag. */
 export const FilesFilterOperation = Schema.Struct({ type: Schema.Literal("files_filter"), ...FilterFields }).check(filterChecks)
 
 export error FilterRefused { input: unknown }
 
 const decodeFilter = Schema.decodeUnknownEffect(FilesFilter, { onExcessProperty: "error" })
 
-/** A filter from untrusted input, trimmed, with its folder normalized. */
 export effect function decodeFilesFilter(input: unknown): FilesFilter!FilterRefused {
   const filter = try mapError(decodeFilter(input), () => new FilterRefused({ input }))
   return {
@@ -260,7 +233,6 @@ export effect function decodeFilesFilter(input: unknown): FilesFilter!FilterRefu
   }
 }
 
-/** The instant a filter date bounds: a bare date is that whole day on this device, a zoned time is that instant. */
 export function filterTime(value: string, end = false): number {
   if (value.length !== 10) return Date.parse(value)
   const [year, month, day] = value.split("-").map(Number)
@@ -281,7 +253,6 @@ function kindMatches(kind: FilterKind, entry: StorageEntry): boolean {
   }
 }
 
-/** Whether an entry is among a filter's results: every filter word starts a word of its name. */
 export function filterMatches(filter: FilesFilter, entry: StorageEntry): boolean {
   if (filter.kind !== undefined && !kindMatches(filter.kind, entry)) return false
   if (filter.folder !== undefined && !within(parentOf(entry.path), filter.folder)) return false
@@ -294,7 +265,6 @@ export function filterMatches(filter: FilesFilter, entry: StorageEntry): boolean
 
 const KIND_LABELS: Readonly<Record<FilterKind, string>> = { image: "Images", video: "Videos", audio: "Audio", document: "Documents", pdf: "PDFs", folder: "Folders" }
 
-/** The chip a filter shows, such as `“lease” · PDFs · in Download`. */
 export function filterLabel(filter: FilesFilter): string {
   return [
     filter.text === undefined ? "" : `“${filter.text}”`,

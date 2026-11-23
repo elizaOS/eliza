@@ -3,19 +3,16 @@ module node {
   import { createHash, randomUUID } from "node:crypto"
   import { lstat } from "node:fs/promises"
 
-  /** The no-follow identity token of an entry, or undefined when it is missing or a link. */
   export async function identityOf(path: string): Promise<string | undefined> {
     const info = await lstat(path, { bigint: true }).catch(() => undefined)
     if (info === undefined || info.isSymbolicLink()) return undefined
     return createHash("sha256").update([info.dev, info.ino, info.mtimeNs, info.ctimeNs, info.size, info.isDirectory()].join(":")).digest("base64url")
   }
 
-  /** Whether an entry exists as a link, without following it. */
   export async function linked(path: string): Promise<boolean> {
     return (await lstat(path).catch(() => undefined))?.isSymbolicLink() === true
   }
 
-  /** A fresh trash ID. */
   export function trashId(): string {
     return randomUUID()
   }
@@ -39,7 +36,6 @@ const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(TrashRecor
 
 const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
 
-/** A volume over one directory of the local filesystem, with its Trash journal beside the files. */
 export function localVolume(root: string, name = "Internal storage") {
   return Layer.effect(FilesVolume, effect {
     const fs = try FileSystem.FileSystem

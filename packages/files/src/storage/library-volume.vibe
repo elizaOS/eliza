@@ -1,12 +1,10 @@
-// spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "A selection reads its file only while the file still has the revision it selected"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"
+// spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "A selection reads its file only while the file still has the revision it selected"; spec/files/library.md, "A change commits only at the revision it expected, never takes a name in use, and never puts a folder inside itself"; spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"
 module browser {
-  /** The base64url SHA-256 of a row's ID and revision. */
   export async function identityToken(id: string, revision: string): Promise<string> {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([id, revision])))
     return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
   }
 
-  /** The origin's storage quota and use, when the browser reports a consistent pair. */
   export async function storageEstimate(): Promise<{ free: number; total: number } | undefined> {
     const estimate = await navigator.storage?.estimate?.().catch(() => undefined)
     const quota = estimate?.quota, usage = estimate?.usage
@@ -25,7 +23,6 @@ module browser {
     return new Blob([bytes], { type })
   }
 
-  /** Hands one file to Web Share: "opened", "cancelled" when the owner closed the sheet, or "unsupported". */
   export async function shareFile(name: string, archive: Blob): Promise<"opened" | "cancelled" | "unsupported"> {
     const file = new File([archive], name, { type: "application/zip" })
     if (navigator.share === undefined || navigator.canShare?.({ files: [file] }) !== true) return "unsupported"
@@ -78,6 +75,10 @@ function folderIdAt(rows: readonly LibraryRow[], path: string): string | undefin
   return found?.directory === true ? found.id : undefined
 }
 
+function nameClash(rows: readonly LibraryRow[], row: LibraryRow, name: string): boolean {
+  return childrenOf(rows, row.parentId).some((other) => other.id !== row.id && other.name.toLowerCase() === name.toLowerCase())
+}
+
 function entryOf(rows: readonly LibraryRow[], path: string, row: LibraryRow): StorageEntry {
   return {
     path, name: row.name, directory: row.directory, mimeType: row.directory ? "" : row.mimeType || "application/octet-stream",
@@ -85,7 +86,6 @@ function entryOf(rows: readonly LibraryRow[], path: string, row: LibraryRow): St
   }
 }
 
-/** The owner's files kept in this browser's library, answered by path as the device's volume is. */
 export function libraryVolume(archiveName = "Files.zip") {
   return Layer.effect(FilesVolume, effect {
     const library = try LibraryStore
@@ -402,7 +402,7 @@ export function libraryVolume(archiveName = "Files.zip") {
         const row = rowAt(all, from)
         if (row === undefined) throw refused("missing", "The file is not there")
         if (valid === row.name) return from
-        if (childrenOf(all, row.parentId).some((other) => other.id !== row.id && other.name.toLowerCase() === valid.toLowerCase())) throw refused("exists", "A file with that name is already there")
+        if (nameClash(all, row, valid)) throw refused("exists", "A file with that name is already there")
         try commit(placePlan({ id: row.id, expectedRevision: row.revision, destinationId: row.parentId, name: valid }, try now))
         return joinPath(parentOf(from), valid)
       },
@@ -418,7 +418,6 @@ export function libraryVolume(archiveName = "Files.zip") {
   })
 }
 
-/** A file added to the library in a folder, under a name not in use there; it answers the path it was kept at. */
 export effect function importLibraryFile(folderPath: string, file: { readonly name: string; readonly mimeType: string; readonly bytes: Uint8Array<ArrayBuffer> }) {
   const library = try LibraryStore
   const name = validName(file.name)
@@ -441,7 +440,6 @@ export type SelectedFile = { readonly selectionId: string; readonly name: string
 
 const TEXT_TYPES = ["application/json", "application/xml", "application/javascript"]
 
-/** The library files the owner selected, each bound to the revision it had when selected. */
 export effect function librarySelections() {
   const library = try LibraryStore
   const bound = try Ref.make(new Map<string, { readonly id: string; readonly revision: string }>())
@@ -481,6 +479,18 @@ export effect function librarySelections() {
       const bytes = row.bytes.slice()
       try current(selectionId, limit)
       return { name: row.name, mimeType: row.mimeType, dataBase64: base64(bytes) }
+    },
+    effect rename(selectionId: string, newName: string): SelectedFile!VolumeRefused {
+      const row = try current(selectionId, Number.MAX_SAFE_INTEGER)
+      const valid = validName(newName)
+      if (valid === undefined || valid.startsWith(".")) throw refused("invalid", "Invalid name")
+      if (nameClash(try mapError(library.rows(), (failure) => refused("unavailable", failure.message)), row, valid)) throw refused("exists", "A file with that name is already there")
+      try mapError(library.commit(placePlan({ id: row.id, expectedRevision: row.revision, destinationId: row.parentId, name: valid }, try Clock.currentTimeMillis)),
+        (failure) => failure._tag === "LibraryRefused" ? refused(failure.answer === "LibraryNameTaken" ? "exists" : "changed", failure.message) : refused("unavailable", failure.message))
+      const renamed = (try mapError(library.rows(), (failure) => refused("unavailable", failure.message))).find((candidate) => candidate.id === row.id)
+      if (renamed === undefined) throw refused("changed", "Select this file again.")
+      try Ref.update(bound, (map) => new Map(map).set(selectionId, { id: renamed.id, revision: renamed.revision }))
+      return { selectionId, name: renamed.name, mimeType: renamed.mimeType, size: renamed.size }
     },
     effect bytes(selectionId: string) {
       const row = try current(selectionId, Number.MAX_SAFE_INTEGER)

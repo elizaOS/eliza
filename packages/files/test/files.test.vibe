@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import type { ElizaFilesPlugin } from "@elizaos/os/bridges/files"
 import { FilesVolume, filesReviews, filesView, nativeVolume, runBatch, undoBatch, type OpenPorts } from "../src/client.vibe"
-import { FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY, FILES_SHOWN_TARGET_GUIDANCE, FilesOperationRefused, filesOperationAdmitted, filesToolSurface, type FilesAgentRunner } from "../src/contract.vibe"
+import { FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY, FILES_SHOWN_TARGET_GUIDANCE, FilesOperationRefused, filesContextAllowed, filesContextNotice, filesOperationAdmitted, filesToolSurface, type FilesAgentRunner } from "../src/contract.vibe"
 import { localVolume } from "../src/storage/local-volume.vibe"
 import { workspace } from "../src/workspace.vibe"
 import { plugin } from "../src/index.vibe"
@@ -218,7 +218,7 @@ it.effect('Open the file I asked for, and only from what I was shown (spec/files
   })
 })
 
-it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed only within the Files bounds, as the peer negotiated it, and with Files on the unlocked screen for a change"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none")', effect () => {
+it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none")', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const { root } = try storage({ "Download/lease.pdf": "lease", "Download/lease notes.txt": "notes" })
@@ -276,18 +276,27 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
             rival: rival._tag, asked, unnegotiated: refusal(unnegotiatedAsk), chosenIdentity,
             hiddenFolder: hiddenFolder?.kind === "Refused" && hiddenFolder.code === "FILES_OPERATION_INVALID" &&
               hiddenFolder.forModel.startsWith("Invalid Files operation: ") && hiddenFolder.forModel.endsWith('Use paths on Internal storage such as "Download/lease.pdf".'),
-            trashFromHome: refusal(trashFromHome), filterFromHome, lockedScreen: refusal(lockedScreen), unseenScreen: refusal(unseenScreen), directOpen,
+            trashFromHome, filterFromHome, lockedScreen, unseenScreen, directOpen,
+            cards: [
+              filesContextNotice({ type: "files_trash", paths: ["Download/lease.pdf"] }, { view: "home", sensitive: false }),
+              filesContextNotice({ type: "files_filter", text: "lease" }, { view: "files", sensitive: true }),
+              filesContextNotice({ type: "files_open", path: "Download/lease.pdf" }, { view: "home" }),
+              filesContextNotice({ type: "files_trash", paths: ["Download/lease.pdf"] }, { view: "files", sensitive: false }),
+            ],
+            allowed: [filesContextAllowed({ type: "files_folder_create", parent: "Download", name: "Taxes" }, { view: "home" }), filesContextAllowed({ type: "files_filter", text: "lease" }, { view: "home" })],
             forms: [offeredForms(runtime, []), offeredForms(runtime, [FILES_CAPABILITY]), offeredForms(runtime, both)],
             guided: guidanceFor(runtime, both)?.includes(FILES_SHOWN_TARGET_GUIDANCE),
           }, {
             rival: "FamilyConflict", asked: { kind: "Grounded", operation: { type: "files_trash", shown: [2, 1] }, grounding: "GroundedForReview" },
             unnegotiated: { code: "FILES_FORM_NOT_NEGOTIATED", forOwner: "Your phone can't do that in Files from chat right now." },
             chosenIdentity: { kind: "Grounded", operation: { type: "files_move", paths: ["Download/lease.pdf"], dest: "Archive" }, grounding: "GroundedForReview" }, hiddenFolder: true,
-            trashFromHome: { code: "FILES_CONTEXT_NOT_SHOWN", forOwner: "Open Files to review this action." },
+            trashFromHome: { kind: "Grounded", operation: { type: "files_trash", paths: ["Download/lease.pdf"] }, grounding: "GroundedForReview" },
             filterFromHome: { kind: "Grounded", operation: { type: "files_filter", text: "lease" }, grounding: "GroundedForReview" },
-            lockedScreen: { code: "FILES_CONTEXT_LOCKED", forOwner: "Unlock the phone to review this action." },
-            unseenScreen: { code: "FILES_CONTEXT_LOCKED", forOwner: "Unlock the phone to review this action." },
+            lockedScreen: { kind: "Grounded", operation: { type: "files_filter", text: "lease" }, grounding: "GroundedForReview" },
+            unseenScreen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedForReview" },
             directOpen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedAsAsked" },
+            cards: ["Open Files to review this action.", "Unlock the phone to review this action.", undefined, undefined],
+            allowed: [false, true],
             forms: [0, 6, 9], guided: true,
           })
         })

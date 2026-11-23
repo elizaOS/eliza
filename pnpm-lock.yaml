@@ -596,6 +596,9 @@ importers:
 
   packages/files:
     dependencies:
+      '@elizaos/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@elizaos/core':
         specifier: workspace:*
         version: link:../core

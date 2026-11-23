@@ -1,19 +1,14 @@
-// spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
+// spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
 import type { ActionParameterSchema } from "@elizaos/core"
-import { bindsIdentity, formAdmitted, type FilesForm, type FilesKind } from "../gen/files__shownTargets.effect.vibe"
+import { bindsIdentity, filesCardNotice, formAdmitted, type FilesCardNotice, type FilesForm, type FilesKind } from "../gen/files__shownTargets.effect.vibe"
 import { baseName, filterLabel, FilesFilterOperation, validName, validPath, type FilesFilter } from "./storage/model.vibe"
 
-/** The capability every Files operation needs. */
 export const FILES_CAPABILITY = "files.browser.v1"
-/** The capability a share, move or trash needs to name files by their shown positions. */
 export const FILES_SHOWN_TARGET_CAPABILITY = "files.shown-target.v1"
-/** Every Files operation type. */
 export const FILES_OPERATION_TYPES = ["files_filter", "files_open", "files_share", "files_move", "files_trash", "files_folder_create"] as const
-/** The most files one operation names. */
 export const FILES_PATHS_MAX = 50
 
 export type FilesOperationType = typeof FILES_OPERATION_TYPES[number]
-/** The opaque storage identity of a reviewed file. */
 export type FilesIdentity = string
 
 const AgentPath = Schema.String.check(Schema.makeFilter((value: string) => !value.startsWith("/") && validPath(value) !== undefined))
@@ -42,9 +37,7 @@ const Operation = Schema.Union([
 const decodeOperation = Schema.decodeUnknownEffect(Operation, { onExcessProperty: "error" })
 
 export type FilesAgentOperation = typeof Operation.Type
-/** A share, move or trash that names shown positions instead of paths; the phone resolves them before the owner reviews the card. */
 export type FilesShownOperation = Extract<FilesAgentOperation, { readonly shown: readonly number[] }>
-/** Every operation but a not yet resolved shown share, move or trash. */
 export type FilesPathOperation = Exclude<FilesAgentOperation, FilesShownOperation>
 
 export error FilesOperationRefused { input: unknown; reason: string }
@@ -62,23 +55,19 @@ function normalized(op: FilesAgentOperation): FilesAgentOperation {
   }
 }
 
-/** Whether a value claims to be a Files operation; `decodeFilesOperation` says whether it is one. */
 export function isFilesOperation(value: unknown): value is { readonly type: FilesOperationType } {
   return typeof value === "object" && value !== null && "type" in value && FILES_OPERATION_TYPES.some((type) => type === value.type)
 }
 
-/** A Files operation from untrusted input, with its paths normalized; a validated operation decodes again unchanged. */
 export effect function decodeFilesOperation(input: unknown): FilesAgentOperation!FilesOperationRefused {
   const op = try mapError(decodeOperation(input), (issue) => new FilesOperationRefused({ input, reason: issue.message }))
   return normalized(op)
 }
 
-/** Whether a share, move or trash names shown positions. */
 export function filesShownTarget(op: FilesAgentOperation): op is FilesShownOperation {
   return (op.type === "files_share" || op.type === "files_move" || op.type === "files_trash") && "shown" in op
 }
 
-/** The kind and form the shown-target rules speak of. */
 export function filesForm(op: FilesAgentOperation): { readonly kind: FilesKind; readonly form: FilesForm } {
   const kinds: Readonly<Record<FilesOperationType, FilesKind>> = {
     files_filter: "FilterKind", files_open: "OpenKind", files_share: "ShareKind", files_move: "MoveKind", files_trash: "TrashKind", files_folder_create: "FolderCreateKind",
@@ -86,21 +75,39 @@ export function filesForm(op: FilesAgentOperation): { readonly kind: FilesKind; 
   return { kind: kinds[op.type], form: "shown" in op ? "ShownForm" : "PathForm" }
 }
 
-/** Whether a path move or trash must carry the identity of each file as the card showed it. */
 export function filesNeedsIdentity(op: FilesAgentOperation): op is Extract<FilesPathOperation, { readonly type: "files_move" | "files_trash" }> {
   return bindsIdentity(filesForm(op).kind) && !filesShownTarget(op)
 }
 
-/** Whether a peer that negotiated these capabilities may be offered, and may send, this operation. */
 export function filesOperationAdmitted(op: FilesAgentOperation, capabilities: readonly string[]): boolean {
   const { kind, form } = filesForm(op)
   return formAdmitted(kind, form, capabilities.includes(FILES_CAPABILITY), capabilities.includes(FILES_SHOWN_TARGET_CAPABILITY))
 }
 
-/** The filter fields of a files_filter operation. */
 export function filesFilterOf(op: Extract<FilesAgentOperation, { readonly type: "files_filter" }>): FilesFilter {
   const { type: _type, ...filter } = op
   return filter
+}
+
+export interface FilesScreen {
+  readonly view: string
+  readonly sensitive?: boolean
+}
+
+const CARD_NOTICES: Readonly<Record<FilesCardNotice, string | undefined>> = {
+  FilesReviewable: undefined, FilesUnlockNotice: "Unlock the phone to review this action.", FilesOpenNotice: "Open Files to review this action.",
+}
+
+function cardNotice(op: FilesAgentOperation, screen: FilesScreen): FilesCardNotice {
+  return filesCardNotice(filesForm(op).kind, screen.sensitive === true, screen.view === "files")
+}
+
+export function filesContextAllowed(op: FilesAgentOperation, screen: FilesScreen): boolean {
+  return cardNotice(op, screen) === "FilesReviewable"
+}
+
+export function filesContextNotice(op: FilesAgentOperation, screen: FilesScreen): string | undefined {
+  return CARD_NOTICES[cardNotice(op, screen)]
 }
 
 const place = (path: string) => path === "" ? "Internal storage" : path.split("/").join(" › ")
@@ -108,7 +115,6 @@ const listed = (list: readonly string[]) => list.length <= 3 ? list.map(baseName
 const count = (n: number) => n === 1 ? "1 item" : `${n} items`
 const shownLabel = (list: readonly number[]) => `${list.length === 1 ? "Item" : "Items"} ${list.join(", ")} in the results shown`
 
-/** The owner-facing title and the exact effect of a proposal. */
 export function describeFilesOperation(op: FilesAgentOperation): { readonly title: string; readonly description: string } {
   switch (op.type) {
     case "files_filter": return { title: "Show files", description: filterLabel(filesFilterOf(op)) }
@@ -152,10 +158,8 @@ const SHOWN_SCHEMAS = [
   branch("files_move", ["shown", "dest"], { shown: filesShown, dest: destination }),
 ]
 
-/** Guidance offered with files.shown-target.v1. */
 export const FILES_SHOWN_TARGET_GUIDANCE = "files_share, files_move and files_trash may also name files by shown instead of paths: the positions (1 is the first) of items in the files_filter results on screen, for example shown [1] after a filter found one file. The phone shows the owner the actual files to review."
 
-/** The tool schema branches and guidance a peer is offered for the capabilities it negotiated. */
 export function filesToolSurface(capabilities: readonly string[]): { readonly schemas: readonly ActionParameterSchema[]; readonly guidance: readonly string[] } {
   const browser = capabilities.includes(FILES_CAPABILITY)
   const shown = capabilities.includes(FILES_SHOWN_TARGET_CAPABILITY)
@@ -166,7 +170,6 @@ export function filesToolSurface(capabilities: readonly string[]): { readonly sc
   }
 }
 
-/** What the Files view registers while it is installed, for the coordinator to review and run operations. */
 export interface FilesAgentRunner {
   readonly reviewedIdentities: (paths: readonly string[]) => readonly FilesIdentity[]!FilesOperationRefused
   readonly shownPaths: (shown: readonly number[]) => readonly string[]!FilesOperationRefused

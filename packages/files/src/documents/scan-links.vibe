@@ -24,7 +24,6 @@ function trimmed(raw: string): string {
   return text
 }
 
-/** The first ten distinct explicit HTTP(S) addresses in scanned text, in encounter order; invalid tokens stay text only. */
 export function scannedLinks(text: unknown): string[] {
   const isText = typeof text === "string"
   const units = isText ? text.length : 0
@@ -44,17 +43,14 @@ export function scannedLinks(text: unknown): string[] {
   return urls
 }
 
-/** How the scan review hands an exact address to the device, reporting whether the handler took it. */
 export type ExternalLinkPort = (url: string) => boolean!!
 
-/** What the link list shows now. */
 export interface ScanLinkView {
   readonly urls: readonly string[]
   readonly status: LinkStatus
   readonly busy: boolean
 }
 
-/** A scan text's reviewed links: rebuilt on each edit, opened only by an explicit click on an exact listed address. */
 export effect function scanLinkReview(port: ExternalLinkPort, active: () => boolean) {
   const state = try Ref.make<ScanLinkReview>(initial)
   const links = try Ref.make<readonly string[]>([])

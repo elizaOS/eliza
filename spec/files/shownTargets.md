@@ -38,47 +38,57 @@ pure def lawFilterAndFolderNeverNamePositions(browserNegotiated: bool, shownNego
     not(formAdmitted(FolderCreateKind, ShownForm, browserNegotiated, shownNegotiated))
 ```
 
-### A Files operation the owner asks for in chat is proposed only within the Files bounds, as the peer negotiated it, and with Files on the unlocked screen for a change
+### A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is
 
 When the model proposes a Files operation from the owner's chat request,
 the Files decoder reads it by these Files bounds: paths relative to Internal
 storage, each named once, and a new folder whose name is not hidden; one
 outside them is refused with the bound it broke and never reaches the rule
 below. It is proposed only when its kind and form are admitted for the peer
-that sent the turn; a form the peer did not negotiate is refused as such. It is proposed only when the turn's
-observation shows a screen that is not sensitive, and a share, move, trash
-or new folder only when that screen is Files; a filter or an open may start
-from any unlocked screen. Otherwise the owner is asked to unlock the phone
-or to open Files. A move or trash keeps no identity the model sent, since
-the phone reads each one when it builds the card. A proposal carries the
-owner's message only on a direct-request turn ([device
+that sent the turn; a form the peer did not negotiate is refused as such.
+What the owner's screen shows does not decide whether it is proposed: a
+request made from Home, or from a turn that carries no observation, becomes
+the request, and the phone's card waits for the owner to open Files (next
+rule). A move or trash keeps no identity the model sent, since the phone
+reads each one when it builds the card. A proposal carries the owner's
+message only on a direct-request turn ([device
 surfaces](../agent/deviceActions/surfaces.md)), so outside one even a
 filter or an open is reviewed on the phone.
 
 ```quint
-type FilesChatAnswer = FilesProposed | FilesNotNegotiated | FilesNeedsUnlock | FilesNeedsFilesView
-pure def filesContextKept(kind: FilesKind, observed: bool, sensitive: bool, filesShown: bool): bool =
-  observed and not(sensitive) and (kind == FilterKind or kind == OpenKind or filesShown)
-pure def filesChatAnswer(kind: FilesKind, form: FilesForm, browserNegotiated: bool, shownNegotiated: bool, observed: bool, sensitive: bool, filesShown: bool): FilesChatAnswer =
-  if (not(formAdmitted(kind, form, browserNegotiated, shownNegotiated))) FilesNotNegotiated
-  else if (not(observed) or sensitive) FilesNeedsUnlock
-  else if (not(filesContextKept(kind, observed, sensitive, filesShown))) FilesNeedsFilesView
-  else FilesProposed
+type FilesChatAnswer = FilesProposed | FilesNotNegotiated
+pure def filesChatAnswer(kind: FilesKind, form: FilesForm, browserNegotiated: bool, shownNegotiated: bool): FilesChatAnswer =
+  if (formAdmitted(kind, form, browserNegotiated, shownNegotiated)) FilesProposed else FilesNotNegotiated
 pure def chatKeepsSentIdentities(kind: FilesKind): bool = false
 pure def filesChatBound(directRequests: bool, answer: FilesChatAnswer): bool = directRequests and answer == FilesProposed
-pure def lawAnUnnegotiatedFormIsNeverProposed(kind: FilesKind, form: FilesForm, browserNegotiated: bool, shownNegotiated: bool, observed: bool, sensitive: bool, filesShown: bool): bool =
-  not(formAdmitted(kind, form, browserNegotiated, shownNegotiated)) implies
-    filesChatAnswer(kind, form, browserNegotiated, shownNegotiated, observed, sensitive, filesShown) == FilesNotNegotiated
-pure def lawASensitiveOrUnseenScreenProposesNothing(kind: FilesKind, form: FilesForm, browserNegotiated: bool, shownNegotiated: bool, filesShown: bool): bool =
-  filesChatAnswer(kind, form, browserNegotiated, shownNegotiated, true, true, filesShown) != FilesProposed and
-    filesChatAnswer(kind, form, browserNegotiated, shownNegotiated, false, false, filesShown) != FilesProposed
-pure def lawAChangeNeedsFilesOnScreen(kind: FilesKind, form: FilesForm, browserNegotiated: bool, shownNegotiated: bool): bool =
-  (kind != FilterKind and kind != OpenKind) implies filesChatAnswer(kind, form, browserNegotiated, shownNegotiated, true, false, false) != FilesProposed
-pure def lawAFilterOrOpenStartsFromAnyUnlockedScreen(form: FilesForm, shownNegotiated: bool): bool =
-  filesChatAnswer(FilterKind, PathForm, true, shownNegotiated, true, false, false) == FilesProposed and
-    filesChatAnswer(OpenKind, form, true, shownNegotiated, true, false, false) == FilesProposed
+pure def lawAnUnnegotiatedFormIsNeverProposed(kind: FilesKind, form: FilesForm, browserNegotiated: bool, shownNegotiated: bool): bool =
+  not(formAdmitted(kind, form, browserNegotiated, shownNegotiated)) implies filesChatAnswer(kind, form, browserNegotiated, shownNegotiated) == FilesNotNegotiated
+pure def lawANegotiatedFormIsProposed(kind: FilesKind): bool = filesChatAnswer(kind, PathForm, true, false) == FilesProposed
 pure def lawAChatMoveOrTrashKeepsNoSentIdentity(kind: FilesKind): bool = (kind == MoveKind or kind == TrashKind) implies not(chatKeepsSentIdentities(kind))
 pure def lawWithoutDirectRequestsNoFilesProposalIsBound(answer: FilesChatAnswer): bool = not(filesChatBound(false, answer))
+```
+
+### A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen
+
+The phone shows a Files request's card for review, and runs a filter or an
+open the owner asked for directly, only while its screen is not sensitive;
+a share, move, trash or new folder also needs Files on screen, while a
+filter or an open may start from any unlocked screen and bring Files
+forward. Until then the card asks the owner to unlock the phone, on a
+sensitive screen, or to open Files, and the request waits.
+
+```quint
+type FilesCardNotice = FilesReviewable | FilesUnlockNotice | FilesOpenNotice
+pure def filesContextKept(kind: FilesKind, sensitive: bool, filesShown: bool): bool =
+  not(sensitive) and (kind == FilterKind or kind == OpenKind or filesShown)
+pure def filesCardNotice(kind: FilesKind, sensitive: bool, filesShown: bool): FilesCardNotice =
+  if (sensitive) FilesUnlockNotice else if (filesContextKept(kind, sensitive, filesShown)) FilesReviewable else FilesOpenNotice
+pure def lawASensitiveScreenReviewsNothing(kind: FilesKind, filesShown: bool): bool = filesCardNotice(kind, true, filesShown) == FilesUnlockNotice
+pure def lawAChangeNeedsFilesOnScreen(kind: FilesKind): bool =
+  (kind != FilterKind and kind != OpenKind) implies filesCardNotice(kind, false, false) == FilesOpenNotice
+pure def lawAFilterOrOpenStartsFromAnyUnlockedScreen(filesShown: bool): bool =
+  filesCardNotice(FilterKind, false, filesShown) == FilesReviewable and filesCardNotice(OpenKind, false, filesShown) == FilesReviewable
+pure def lawEveryKindIsReviewedWithFilesOnTheUnlockedScreen(kind: FilesKind): bool = filesCardNotice(kind, false, true) == FilesReviewable
 ```
 
 ### A card for shown positions exists only when every position resolved to one path, and it executes those paths

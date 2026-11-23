@@ -1,12 +1,13 @@
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request withdraws the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, executePlannedToolCall, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, sleepWithAbort, stableStringify,
+  type DirectActionRoutingRule,
 } from "@elizaos/core"
 import {
   acknowledges, callRunsFirst, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, turnNarrowed,
-  type CallFailure, type PlanStep, type StepOutcome,
+  withdrawnByRoute, type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
 import { composeReply, draftOf } from "./reply-text.vibe"
@@ -93,7 +94,26 @@ export async function offeredActions(runtime: AgentRuntime, message: Memory, sta
       return []
     }
   }))
-  return checked.flat()
+  return withoutReplaced(runtime, message, checked.flat())
+}
+
+function routeMatches(rule: DirectActionRoutingRule, message: Memory): boolean {
+  try {
+    return rule.wholeRequest?.matches(typeof message.content.text === "string" ? message.content.text : "", message) === true
+  } catch {
+    return false
+  }
+}
+
+function withoutReplaced(runtime: AgentRuntime, message: Memory, actions: Action[]): Action[] {
+  const names = new Set(actions.map(({ name }) => name))
+  const routes = getDirectActionRoutingRules(runtime).map((rule) => ({
+    owns: rule.wholeRequest !== undefined,
+    matched: routeMatches(rule, message),
+    routedOffered: rule.actionNames.length > 0 && rule.actionNames.every((name) => names.has(name)),
+    replaces: new Set(rule.replacesActionNames ?? []),
+  }))
+  return actions.filter(({ name }) => !routes.some((route) => withdrawnByRoute(route.owns, route.matched, route.routedOffered, route.replaces.has(name))))
 }
 
 function outcomeOf(receipt: EffectReceipt): StepOutcome {

@@ -71,10 +71,20 @@ export interface ProposalForm {
   offered(turn: DeviceTurn): boolean
 }
 
+export interface WholeRequestRoute {
+  readonly id: string
+  readonly replaces: readonly string[]
+  readonly tags: readonly string[]
+  readonly contexts: readonly string[]
+  readonly lead: string
+  claims(turn: DeviceTurn): readonly ProposalForm[]
+}
+
 export interface DeviceProposalFamily {
   readonly name: FamilyName
   readonly types: readonly DeviceOperationType[]
   readonly forms: readonly ProposalForm[]
+  readonly route?: WholeRequestRoute
   guidance(turn: DeviceTurn): string | undefined
   prepare?(operation: unknown): unknown
   wholeMessageOperation?(turn: DeviceTurn): DeviceOperation | undefined

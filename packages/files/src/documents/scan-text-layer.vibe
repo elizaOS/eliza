@@ -1,7 +1,6 @@
 // spec/files/scan/searchablePdf.md, "The layer keeps validated top-left positions and complete reviewed lines"; spec/files/scan/drafts.md, "A stored draft decodes to complete, ordered pages"
 import { pdfLayerAdmitted, pdfLineAdmitted } from "../../gen/files__scan__searchablePdf.effect.vibe"
 
-/** One reviewed line, positioned in the unchanged image with a top-left origin, normalized to 0..1. */
 export interface ScanTextLine {
   readonly text: string
   readonly x: number
@@ -10,7 +9,6 @@ export interface ScanTextLine {
   readonly height: number
 }
 
-/** A page's lines, or null for a page without edited text. */
 export type ScanTextLayers = readonly (readonly ScanTextLine[] | null)[]
 
 export type TextLayerRefusal = "invalid-line" | "too-many-lines" | "too-much-text" | "page-mismatch"
@@ -22,10 +20,8 @@ const layerText: Readonly<Record<TextLayerRefusal, string>> = {
   "page-mismatch": "Text review must match every document page.",
 }
 
-/** A text layer that is not exactly the reviewed lines of its page. */
 export error TextLayerRefused { reason: TextLayerRefusal; message: string }
 
-/** The refusal for a reason, worded as the reviewed text. */
 export function textLayerRefused(reason: TextLayerRefusal): TextLayerRefused {
   return new TextLayerRefused({ reason, message: layerText[reason] })
 }
@@ -65,20 +61,17 @@ function layerRefusal(input: unknown): TextLayerRefusal | undefined {
   return lines.length > 2000 ? "too-many-lines" : !admitted ? "invalid-line" : "too-much-text"
 }
 
-/** A validated fresh copy of one page's lines holding only text and the four position fields, or undefined. */
 export function admittedTextLayer(input: unknown): ScanTextLine[] | undefined {
   if (layerRefusal(input) !== undefined) return undefined
   return (input as readonly ScanTextLine[]).map(({ text, x, y, width, height }) => ({ text, x, y, width, height }))
 }
 
-/** A validated fresh copy of one page's lines, refused with the reason it is not a layer. */
 export effect function scanTextLayer(input: unknown): ScanTextLine[]!TextLayerRefused {
   const reason = layerRefusal(input)
   if (reason !== undefined) throw textLayerRefused(reason)
   return admittedTextLayer(input) ?? []
 }
 
-/** Validated copies of a page-ordered layer batch; missing layers stay missing. */
 export effect function copyScanTextLayers(input: unknown, count: number) {
   if (input === undefined) return undefined
   if (!Array.isArray(input) || input.length !== count) throw textLayerRefused("page-mismatch")
