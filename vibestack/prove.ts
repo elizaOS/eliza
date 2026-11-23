@@ -23,6 +23,7 @@ import { act, type Input } from "./action.ts";
 import { solver, type Memory } from "./cache.ts";
 import { bin } from "./run.ts";
 import { plainText } from "./scan.ts";
+import { allDone } from "./util.ts";
 
 /** The library of general lemmas that proof files call as ProofLib.<Name>. */
 export const LIB_FILE = path.join(import.meta.dirname, "proof", "lib.dfy");
@@ -771,7 +772,7 @@ export async function prove(memory: Memory, u: Unit, offered: { proof?: { file: 
     const { ok, out, files } = await act(memory, "lsc", ["gen", "--backend=dafny", u.unit], path.join(dir, at), sources(text));
     return { out, gen: ok ? files[`${file}.gen`] : undefined };
   };
-  const [generated, imported] = await Promise.all([lsc("gen", u.text), offered.proof && offered.axioms.length ? lsc("imported", u.imports.text) : undefined]);
+  const [generated, imported] = await allDone([lsc("gen", u.text), offered.proof && offered.axioms.length ? lsc("imported", u.imports.text) : undefined]);
   for (const g of [generated, imported]) if (g && !g.gen) return result([lastLines(g.out) || "lsc generated nothing"], g.out);
   const gen = generated.gen!;
   const prelude = await helperNames(root);
@@ -789,7 +790,7 @@ export async function prove(memory: Memory, u: Unit, offered: { proof?: { file: 
   const axiomNames = new Set([...axioms.map((a) => a.name), ...u.externs]);
   const { dfy } = spliced;
   // LemmaScript checks the exact generated-output relationship; Dafny verifies the same file with the pinned solver.
-  const [audited, integrity, checked] = await Promise.all([
+  const [audited, integrity, checked] = await allDone([
     audit(memory, dir, dfy, file, axiomNames),
     act(memory, "lsc", ["gen-check", "--backend=dafny", u.unit], path.join(dir, "check"), { ...sources(u.text), [file]: { text: dfy, key: dfy } }),
     act(memory, "dafny", [...verifyArgs(dfy, selectedSolver.path), file], path.join(dir, "verify"), { [file]: { text: dfy, key: dfy } }),

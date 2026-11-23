@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
@@ -10,7 +12,7 @@ import { positiveGuardEvaluation, positiveGuardProbe, simulated, witnessAction, 
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
 import { TABLE, compiledAs } from "./simulator.ts";
-import { allDone, digest, indent, SIMULATIONS } from "./util.ts";
+import { allDone, digest, indent, SIMULATIONS, writeWhole } from "./util.ts";
 
 const SAMPLES = 10000;
 const WITNESS_SAMPLES = 20 * SAMPLES;
@@ -100,13 +102,22 @@ const SHARD_SAMPLES = 1000;
 const MAX_SHARDS = 4;
 
 /** What a spec's runs of Quint share: the check's memory, the model, and every file of Quint its harness reads. */
-export interface Harness { memory: Memory; model: Model; files: Record<string, Input>; main?: string }
+export interface Harness { memory: Memory; model: Model; files: Record<string, Input>; main?: string; reproduceIn?: string }
 /** What a spec's harness reads: its modules, the harness itself, and the spec as the harness reads it where it has opaque functions. */
 export function harnessFiles(spec: Spec, specs: Spec[], model: Model, witness?: { harness: string }): Record<string, Input> {
   const sim = model.opaques.length ? simulated(spec.qnt, model.opaques) : undefined;
   const file = witness ? witnessFile(model.name) : `${model.name}.run.qnt`;
   const text = witness?.harness ?? model.harness;
   return { ...modules(spec, specs), [file]: { text, key: text }, ...(sim ? { [`${model.name}.sim.qnt`]: { text: sim, key: codeOf(sim) } } : {}) };
+}
+
+async function ordinaryModelInput(spec: Spec, model: Model): Promise<Input | undefined> {
+  if (!model.witness || model.opaques.length) return;
+  const guides = model.witness.names;
+  if (guides.some((name) => model.harness.includes(name) || model.guardHarness.includes(name))) return;
+  const { ordinarySource } = await import("./witness-source.ts");
+  const text = ordinarySource({ source: spec.qnt, module: spec.name, guides });
+  if (text !== undefined) return { text, key: codeOf(text) };
 }
 
 /**
@@ -132,7 +143,7 @@ function compiled(harness: Harness): Promise<Record<string, Input> | undefined> 
  * remembered (action.ts) is not.
  */
 export async function simulate(harness: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
-  const { memory, model, files, main = `${model.name}.run.qnt` } = harness;
+  const { memory, model, files, main = `${model.name}.run.qnt`, reproduceIn = "gen" } = harness;
   const dir = `${SIMULATIONS}/${model.name}.${invariant}.${step}`;
   const witness = main === witnessFile(model.name);
   const parts = await compiled(harness);
@@ -150,7 +161,7 @@ export async function simulate(harness: Harness, invariant: string, traces: numb
     const broken = violated(r);
     // In the order Quint wrote them, so that the same simulation always gives the traces in the same order.
     const written = Object.keys(r.files).filter((f) => f.endsWith(".itf.json")).sort((x, y) => parseInt(x, 10) - parseInt(y, 10) || x.localeCompare(y));
-    const again = `seed ${derivedSeed}; to simulate again: pnpm exec quint run gen/${main} ${args.join(" ")}`;
+    const again = `seed ${derivedSeed}; to simulate again: pnpm exec quint run ${reproduceIn}/${main} ${args.join(" ")}`;
     // Anything other than "held" or "violated", each with a trace, is Quint failing to run.
     if ((!r.ok && !broken) || !written.length) throw new Error(`quint run did not complete (${again}):\n${r.out.trim()}`);
     return { broken, traces: written.map((f) => readTrace(r.files[f], model, witness)).filter((t) => t.length), again };
@@ -349,10 +360,19 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
   const files = harnessFiles(spec, specs, model);
+  const modelFile = `${model.name}.qnt`;
+  const guardMain = `${model.name}.guard.run.qnt`;
+  const guardInput = { text: model.guardHarness, key: model.guardHarness };
+  const reproduceIn = `${SIMULATIONS}/${model.name}.ordinary`;
+  const replayCommand = `quint run ${reproduceIn}/`;
+  let reusable = true;
+  let ordinary: Promise<Input | undefined> | undefined;
+  const project = () => ordinary ??= ordinaryModelInput(spec, model).catch(() => { reusable = false; return undefined; });
   const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), model.guardHarness, ...(model.witness ? [model.witness.harness] : []), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), (memory) => inTurn(async () => {
-    const harness: Harness = { memory, model, files };
+    const mainInput = await project();
+    const harness: Harness = mainInput ? { memory, model, files: { ...files, [modelFile]: mainInput }, reproduceIn } : { memory, model, files };
     const guided = model.witness && { memory, model, files: harnessFiles(spec, specs, model, model.witness), main: witnessFile(model.name) } satisfies Harness;
     const said: Result[] = [];
     let tested: Simulated | undefined;
@@ -430,11 +450,10 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // run at once and are read in the guards' order. Only a guard that never allows its event fails the check, so
       // only that search goes deeper and gets the witness budget; one that never refuses it is only reported.
       const missing = guarded.flatMap((t) => (["allows", "refuses"] as const).filter((side) => !seen.get(t.guard!)![side]).map((side) => ({ t, side })));
-      const guardMain = `${model.name}.guard.run.qnt`;
       let positive: Harness | undefined;
       const searched = await allDone(missing.map(({ t, side }) => model.evals.some((v) => v.name === t.guard)
         ? side === "allows"
-          ? search(positive ??= { ...harness, main: guardMain, files: { ...files, [guardMain]: { text: model.guardHarness, key: model.guardHarness } } },
+          ? search(positive ??= { ...harness, main: guardMain, files: { ...harness.files, [guardMain]: guardInput } },
             `never_allows_${t.guard}`, positiveGuardProbe(t.guard!), DEPTHS, WITNESS_SAMPLES, seed)
           : search(harness, `never_refuses_${t.guard}`, "probe", [STEPS], SAMPLES, seed)
         : Promise.resolve(undefined)));
@@ -501,9 +520,24 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
     }
     return { said, tested };
-  }), ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN)).then(({ said, tested }) => {
+  }), ({ said }) => reusable && !said.some((r) => r.summary === COULD_NOT_RUN)).then(async ({ said, tested }) => {
+    let replayReady = true;
+    if (said.some((row) => row.detail.includes(replayCommand))) {
+      const mainInput = await project();
+      if (mainInput) {
+        try {
+          const directory = path.join(memory.root, reproduceIn);
+          fs.mkdirSync(directory, { recursive: true });
+          const sources = { ...files, [modelFile]: mainInput, ...(model.guardHarness ? { [guardMain]: guardInput } : {}) };
+          for (const [file, input] of Object.entries(sources)) writeWhole(path.join(directory, file), input.text);
+        } catch {
+          replayReady = false;
+        }
+      } else replayReady = false;
+    }
     const lines = new Map(spec.rules.map((r) => [r.key, r.line]));
     const placed = (text: string) => text.replace(/\0([^\0]*)\0/g, (_, key: string) => String(lines.get(key)));
-    return { said: said.map((r) => ({ ...r, summary: placed(r.summary), detail: placed(r.detail) })), tested };
+    const detail = (text: string) => replayReady ? text : text.split("\n").map((line) => line.includes(replayCommand) ? "      Could not restore the Quint inputs for replay." : line).join("\n");
+    return { said: said.map((r) => ({ ...r, summary: placed(r.summary), detail: placed(detail(r.detail)) })), tested };
   });
 }
