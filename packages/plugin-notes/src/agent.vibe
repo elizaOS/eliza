@@ -76,7 +76,7 @@ export effect function notesRefusalResult(notes: NotesCollection, error: NotesFa
   const candidateIds = error._tag === "NotesRefused" ? error.candidateIds : undefined
   const kind = refusalKind(refusals[error.code] ?? "OtherRefusal")
   const waits = kind === "RefusalWaitsOnOwner"
-  const pool = waits && candidateIds !== undefined ? (map(notes.snapshot(), (snapshot) => snapshot.notes) catch () => []) : []
+  const pool: readonly StickyNote[] = waits && candidateIds !== undefined ? (map(notes.snapshot(), (snapshot) => snapshot.notes) catch () => []) : []
   return {
     success: false,
     text: message,
