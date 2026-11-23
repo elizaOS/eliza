@@ -243,6 +243,37 @@ it.effect('A goal checks in on its cadence, a dismissed check-in stays gone, an 
   }
 })
 
+it.effect('Review how my goals are going: one goal from its latest answer, or every active goal grouped for the week, changing nothing (spec/assistant/goals.md, "Story: Review how my goals are going"; spec/assistant/goals.md, "A review reads one named goal\'s latest answer, or groups every active goal by how it is going, and changes nothing")', effect () => {
+  const seen = ports()
+  provide portsLayer(seen) {
+    const none = try changeGoal({ op: "review" }, "w0")
+    try changeGoal({ op: "create", title: "Run a 10k", cadence: "daily" }, "w1")
+    try changeGoal({ op: "create", title: "Read more", cadence: "weekly" }, "w2")
+    try changeGoal({ op: "create", title: "Learn piano", cadence: "none" }, "w3")
+    try changeGoal({ op: "create", title: "Old habit", cadence: "none" }, "w4")
+    try changeGoal({ op: "update", target: "Old habit", status: "paused" }, "w5")
+    const [morning] = rowsOf(seen, goalCheckinKind)
+    try deliverGoalCheckin(morning)
+    try changeGoal({ op: "checkin", target: "Run a 10k", progress: "at_risk", note: "skipped two runs" }, "w6")
+    const before = try listGoals()
+    const reviews = [
+      none, try changeGoal({ op: "review" }, "w7"), try changeGoal({ op: "review", target: "run a 10k" }, "w8"),
+      try changeGoal({ op: "review", target: "Learn piano" }, "w9"), try changeGoal({ op: "review", target: "Old habit" }, "w10"), try changeGoal({ op: "review", target: "Swim" }, "w11"),
+    ]
+    try equal({ reviews: reviews.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]), unchanged: try listGoals() }, {
+      reviews: [
+        [true, "You have no active goals to review."],
+        [true, "Weekly goal review: 3 active goals, 0 on track, 1 at risk, 0 needing attention. Drifting: Run a 10k. No check-in answered yet: Read more, Learn piano."],
+        [true, '"Run a 10k" is at risk: your last check-in, Sun, Nov 22, 10:00 AM, said so ("skipped two runs"). 1 check-in was answered in the last 7 days.'],
+        [true, '"Learn piano" has no check-ins, so there is nothing to review yet. A daily or weekly cadence would check in on it.'],
+        [true, '"Old habit" is paused, so it has no check-ins now.'],
+        [false, "not_found"],
+      ],
+      unchanged: before,
+    })
+  }
+})
+
 it.effect('To-dos change once per request, never on a guess between two items or on a near miss, and clear only after the owner confirms (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches")', effect () => {
   const seen = ports()
   provide portsLayer(seen) {

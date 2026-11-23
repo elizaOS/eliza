@@ -71,6 +71,7 @@ export const GoalRequest = Schema.Union([
   Schema.Struct({ op: Schema.Literal("delete"), target: Text(200) }),
   Schema.Struct({ op: Schema.Literal("dismiss_checkin"), target: Text(200), slot: Schema.Literals(["morning", "evening", "weekly"]) }),
   Schema.Struct({ op: Schema.Literal("checkin"), target: Text(200), progress: Schema.Literals(["on_track", "at_risk", "needs_attention"]), note: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))) }),
+  Schema.Struct({ op: Schema.Literal("review"), target: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))) }),
 ])
 /** A goal change the owner asks for. */
 export type GoalRequest = typeof GoalRequest.Type

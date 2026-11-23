@@ -97,3 +97,35 @@ pure def duplicatesGoal(status: GoalStatus, title: str, requested: str): bool = 
 pure def lawOnlyAnActiveGoalIsADuplicate(status: GoalStatus, title: str): bool = duplicatesGoal(status, title, title) iff status == GoalActive
 pure def lawADifferentTitleIsNeverADuplicate(status: GoalStatus, title: str, requested: str): bool = title != requested implies not(duplicatesGoal(status, title, requested))
 ```
+
+## Story: Review how my goals are going
+
+> As an owner, I want to ask how a goal is going, or how all my goals did
+> this week, and hear it from my own check-in answers, with nothing about
+> them changed.
+
+### A review reads one named goal's latest answer, or groups every active goal by how it is going, and changes nothing
+
+A review of a named goal gives its status, its latest check-in answer
+and when it came, and how many check-ins were answered in the last seven
+days. With no goal named, the weekly review groups every active goal by
+its latest answer: on track, at risk, needing attention, or not answered
+yet; a paused, archived or satisfied goal is left out. A name that
+matches no goal, or several, reviews none and says so.
+
+```quint
+type ReviewGroup = GroupOnTrack | GroupAtRisk | GroupNeedsAttention | GroupUnanswered | NotInReview
+pure val reviewLookbackMs = 604800000
+pure def reviewGroup(status: GoalStatus, state: ReviewState): ReviewGroup =
+  if (status != GoalActive) NotInReview
+  else if (state == OnTrack) GroupOnTrack
+  else if (state == AtRisk) GroupAtRisk
+  else if (state == NeedsAttention) GroupNeedsAttention
+  else GroupUnanswered
+pure def answeredRecently(at: int, now: int): bool = at <= now and now - at <= reviewLookbackMs
+pure def lawOnlyActiveGoalsAreReviewed(status: GoalStatus, state: ReviewState): bool = (reviewGroup(status, state) == NotInReview) iff status != GoalActive
+pure def lawAnActiveGoalIsGroupedByItsLatestAnswer(state: ReviewState): bool =
+  (reviewGroup(GoalActive, state) == GroupOnTrack iff state == OnTrack) and (reviewGroup(GoalActive, state) == GroupAtRisk iff state == AtRisk)
+  and (reviewGroup(GoalActive, state) == GroupNeedsAttention iff state == NeedsAttention) and (reviewGroup(GoalActive, state) == GroupUnanswered iff state == ReviewIdle)
+pure def lawAnAnswerOlderThanAWeekIsNotRecent(at: int, now: int): bool = now - at > reviewLookbackMs implies not(answeredRecently(at, now))
+```
