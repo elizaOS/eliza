@@ -12,6 +12,7 @@ export const browserCaptureAudio: CaptureAudioPort<MediaStream, AudioContext> = 
       node,
       stop: () => {
         node.port.onmessage = null
+        node.port.postMessage("stop")
         node.port.close()
       },
     }
