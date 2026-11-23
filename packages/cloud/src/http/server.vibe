@@ -1,5 +1,5 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
-import { listening, respond as respondWithFallback } from "./transport.vibe"
+import { respond as respondWithFallback } from "./transport.vibe"
 import type { Area, CloudContext, Route, Sweep } from "./routes.vibe"
 import { area as foundation } from "./routes/foundation.vibe"
 import { area as identity } from "./routes/identity.vibe"
@@ -13,6 +13,15 @@ import { area as maps } from "./routes/maps.vibe"
 import { area as google } from "./routes/google.vibe"
 import { area as operator } from "./routes/operator.vibe"
 import { returnPageRoute } from "../native-clients/return-routes.vibe"
+
+module node {
+  import { createServer } from "node:http"
+  import { NodeHttpServer } from "@effect/platform-node"
+  export function listening(port: number, host: string) {
+    return NodeHttpServer.layer(() => createServer(), { port, host, gracefulShutdownTimeout: 5_000 })
+  }
+}
+import { listening } from node
 
 export { listening }
 

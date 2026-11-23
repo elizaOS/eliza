@@ -10,17 +10,6 @@ import { refusalResponse, refused, Refused } from "./refusal.vibe"
 import { authenticate, type Caller } from "./request-auth.vibe"
 import { defaultMaxBodyBytes, matchRoute, type CloudContext, type Route } from "./routes.vibe"
 
-module node {
-  import { createServer } from "node:http"
-  import { NodeHttpServer } from "@effect/platform-node"
-  export function listening(port: number, host: string) {
-    return NodeHttpServer.layer(() => createServer(), { port, host, gracefulShutdownTimeout: 5_000 })
-  }
-}
-import { listening } from node
-
-export { listening }
-
 const requestIdPattern = /^[A-Za-z0-9._:-]{8,128}$/
 
 function corsHeaders(origin: string | undefined, settings: EnvironmentProfile): Readonly<Record<string, string>> {
