@@ -1,11 +1,17 @@
-// spec/cloud/shared/types.md, "Story: Speak one refusal language"
+// spec/cloud/shared/types.md, "Story: Speak one refusal language"; spec/cloud/services/inference.md, "A provider's 400 keeps only its listed code and parameter and a short message for the caller"
 import { refuse, refuseFor, refuseUntil, refuseAllowance, retryAfterSeconds, statusOf, retryableOf, type Refusal, type RefusalCode, type RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
 
 export type { Refusal, RefusalCode, RefusalReason }
 
-export error Refused { refusal: Refusal }
+export interface ProviderFields {
+  readonly code?: string
+  readonly param?: string
+  readonly providerMessage?: string
+}
 
-export interface RefusalBody {
+export error Refused { refusal: Refusal; fields?: ProviderFields }
+
+export interface RefusalBody extends ProviderFields {
   readonly error: string
   readonly errorDescription: string
   readonly retryable: boolean
@@ -25,7 +31,7 @@ export function refused(code: RefusalCode, reason: RefusalReason = "NoReason", r
   return new Refused({ refusal })
 }
 
-export function refusalBody(value: Refusal): RefusalBody {
+export function refusalBody(value: Refusal, fields: ProviderFields = {}): RefusalBody {
   const error = wireName(value.code)
   const reason = value.reason === "NoReason" ? undefined : wireName(value.reason)
   const words = error.replaceAll("_", " ")
@@ -35,15 +41,16 @@ export function refusalBody(value: Refusal): RefusalBody {
     retryable: retryableOf(value),
     ...(value.wait.tag === "RetryAt" ? { retryAt: value.wait.retryAtMs } : {}),
     ...(value.wait.tag === "ResetsAt" ? { resetsAt: value.wait.resetsAtMs } : {}),
-    ...(reason === undefined ? {} : { reason })
+    ...(reason === undefined ? {} : { reason }),
+    ...fields
   }
 }
 
-export function refusalResponse(value: Refusal, now: number): HttpServerResponse.HttpServerResponse {
+export function refusalResponse(value: Refusal, now: number, fields: ProviderFields = {}): HttpServerResponse.HttpServerResponse {
   const status = statusOf(value.code)
   const retryAfter = value.wait.tag === "RetryAt" && (status === 429 || status === 503)
     ? String(retryAfterSeconds(value.wait.retryAtMs, now)) : undefined
-  return HttpServerResponse.jsonUnsafe(refusalBody(value), {
+  return HttpServerResponse.jsonUnsafe(refusalBody(value, fields), {
     status,
     headers: {
       "cache-control": "no-store",
