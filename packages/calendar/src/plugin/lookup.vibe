@@ -1,0 +1,62 @@
+// spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"
+import { lookupKeeps, tripHolds } from "../../gen/calendar__actions.effect.vibe"
+import type { CalendarEvent } from "../model.vibe"
+
+const unasked = new Set(["a", "an", "the", "my", "our", "your", "his", "her", "their", "with", "and", "at", "in", "on", "of", "for", "to", "from", "about", "me", "i", "is", "are",
+  "was", "what", "what's", "whats", "when", "where", "which", "any", "event", "events", "calendar"])
+const denseScript = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u
+const folded = (text: string) => text.normalize("NFKC").toLowerCase().trim()
+const words = (text: string) => folded(text).split(/[^\p{L}\p{N}'’]+/u).map((word) => word.replace(/^['’]+|['’]+$/gu, "")).filter((word) => word !== "")
+
+function forms(word: string): readonly string[] {
+  const found = new Set([word])
+  if (word.length > 3 && word.endsWith("ies")) found.add(`${word.slice(0, -3)}y`)
+  if (word.length > 4 && word.endsWith("es")) found.add(word.slice(0, -2))
+  if (word.length > 3 && word.endsWith("s") && !word.endsWith("ss")) found.add(word.slice(0, -1))
+  return [...found]
+}
+
+function holds(field: string, word: string): boolean {
+  const asked = forms(word)
+  return words(field).some((other) => forms(other).some((form) => asked.includes(form))) || (denseScript.test(word) && folded(field).includes(word))
+}
+
+function fieldsOf(event: CalendarEvent): readonly string[] {
+  return [event.title, event.description, event.location, ...event.attendees.flatMap((attendee) => [attendee.displayName ?? "", attendee.email ?? ""])]
+}
+
+function askedWords(query: string): readonly string[] {
+  const all = words(query)
+  const meaningful = all.filter((word) => !unasked.has(word))
+  return meaningful.length > 0 ? meaningful : all
+}
+
+function coverage(event: CalendarEvent, asked: readonly string[], whole: string): { readonly found: number; readonly titleFound: number } {
+  const every = Math.max(asked.length, 1)
+  const wholeIn = (field: string) => whole !== "" && folded(field).includes(whole)
+  if (wholeIn(event.title)) return { found: every, titleFound: every }
+  const fields = fieldsOf(event)
+  return {
+    found: fields.some(wholeIn) ? every : asked.filter((word) => fields.some((field) => holds(field, word))).length,
+    titleFound: asked.filter((word) => holds(event.title, word)).length,
+  }
+}
+
+/** The events a query finds: those holding the most asked words, and among them those whose titles hold the most. */
+export function lookupMatches(events: readonly CalendarEvent[], query: string): CalendarEvent[] {
+  const asked = askedWords(query)
+  const scored = events.map((event) => ({ event, ...coverage(event, asked, folded(query)) }))
+  const bestFound = Math.max(0, ...scored.map((row) => row.found))
+  const bestTitle = Math.max(0, ...scored.filter((row) => row.found === bestFound).map((row) => row.titleFound))
+  return scored.filter((row) => lookupKeeps(row.found, row.titleFound, bestFound, bestTitle)).map((row) => row.event)
+}
+
+/** The events of a trip to a place: every event from the start of the first one holding a word of the place to the end of the last, or none. */
+export function tripEvents(events: readonly CalendarEvent[], place: string): CalendarEvent[] {
+  const asked = askedWords(place)
+  const marks = events.filter((event) => coverage(event, asked, folded(place)).found > 0)
+  if (marks.length === 0) return []
+  const first = Math.min(...marks.map((event) => Date.parse(event.startAt)))
+  const last = Math.max(...marks.map((event) => Date.parse(event.endAt)))
+  return events.filter((event) => tripHolds(Date.parse(event.startAt), Date.parse(event.endAt), first, last))
+}

@@ -204,6 +204,41 @@ it.effect(`Ask the agent about my calendar and get my active account's events (s
   assert.deepStrictEqual([invalidated.result, invalidated.failure?.code, google.events.size], ["ChangeInvalidated", "CALENDAR_REVIEW_UNBOUND", 1])
 })
 
+it.effect(`Find my events by their words, and what is on while I am away (spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last")`, effect () => {
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => ({ id: row.id, state: "pending" }) }) })
+  const google = googleCalendar()
+  try host.register(google.port)
+  try host.bindAccount(owner)
+  const sam = { email: "sam@example.com", displayName: "Sam Park", responseStatus: "accepted", self: false, organizer: false, optional: false }
+  const row = (id: string, title: string, startAt: string, endAt: string, extra: Partial<CalendarEvent> = {}): CalendarEvent => ({
+    id, externalId: id, agentId: "agent", provider: "google", side: "owner", calendarId: "work", title, description: "", location: "", status: "confirmed",
+    startAt, endAt, isAllDay: false, timezone: "UTC", htmlLink: null, conferenceLink: null, organizer: { self: true }, attendees: [], metadata: { etag: id },
+    syncedAt: "2030-01-01T00:00:00.000Z", updatedAt: "2030-01-01T00:00:00.000Z", connectorAccountId: owner.accountId, grantId: "grant", ...extra,
+  })
+  for (const event of [
+    row("dentist", "Dentist appointment", "2030-03-02T17:00:00.000Z", "2030-03-02T18:00:00.000Z"),
+    row("checkup", "Checkup", "2030-03-03T17:00:00.000Z", "2030-03-03T18:00:00.000Z", { description: "Right after the dentist" }),
+    row("planning", "Planning meeting", "2030-03-04T17:00:00.000Z", "2030-03-04T18:00:00.000Z", { attendees: [sam] }),
+    row("team", "Team meeting", "2030-03-04T19:00:00.000Z", "2030-03-04T20:00:00.000Z"),
+    row("lunch", "Lunch", "2030-03-05T19:00:00.000Z", "2030-03-05T20:00:00.000Z", { location: "Ferry Building, San Francisco" }),
+    row("flight", "Flight to Denver", "2030-03-06T15:00:00.000Z", "2030-03-06T17:00:00.000Z"),
+    row("dinner", "Dinner with Ana", "2030-03-07T01:00:00.000Z", "2030-03-07T02:00:00.000Z"),
+    row("hotel", "Hotel", "2030-03-06T18:00:00.000Z", "2030-03-08T16:00:00.000Z", { location: "Denver, CO" }),
+    row("home", "Back at the office", "2030-03-09T17:00:00.000Z", "2030-03-09T18:00:00.000Z"),
+  ]) google.events.set(event.id, event)
+  const ask = { by: "owner-entity", conversation: "room:owner", id: "message-1", text: "" }
+  const titles = effect (subaction: string, query: string) => (at((try runCalendarAction(host, ask, { subaction, query, ...march })).data, "events") as CalendarEvent[]).map((event) => event.title)
+  assert.deepStrictEqual([try titles("search_events", "dentist appointments"), try titles("search_events", "dentist"), try titles("search_events", "my meeting with Sam"),
+    try titles("search_events", "the Ferry Building"), try titles("search_events", "sam@example.com"), try titles("search_events", "plumber")], [
+    ["Dentist appointment"], ["Dentist appointment"], ["Planning meeting"], ["Lunch"], ["Planning meeting"], [],
+  ])
+  assert.deepStrictEqual(try titles("trip_window", "Denver"), ["Flight to Denver", "Hotel", "Dinner with Ana"])
+  const nowhere = try runCalendarAction(host, ask, { subaction: "trip_window", query: "Lisbon", ...march })
+  assert.deepStrictEqual([nowhere.success, nowhere.text, at(nowhere.data, "location")], [true, "I couldn't find a trip to Lisbon in your calendar in that range.", "Lisbon"])
+  const moved = try runCalendarAction(host, { ...ask, id: "message-2" }, { subaction: "update_event", query: "dentist appointments", ...march, title: "Dentist" })
+  assert.deepStrictEqual([moved.success, at(moved.data, "change", "target", "eventId")], [true, "dentist"])
+})
+
 it.effect(`Ask when I am free and get openings from my real calendar (spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A free-time question reads exactly the asked window and answers only from a complete read"; spec/calendar/actions.md, "A tomorrow-morning question reads only tomorrow, from midnight to noon"; spec/calendar/actions.md, "A period is free only when no blocking event overlaps it"; spec/calendar/actions.md, "Openings are at most two quarter-hour starts of the asked length inside the window")`, effect () => {
   try TestClock.setTime(Date.parse("2030-03-03T20:00:00Z"))
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })

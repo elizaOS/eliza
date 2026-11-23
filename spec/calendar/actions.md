@@ -28,6 +28,53 @@ pure val eventAccountValues = Set("owner", "other")
 pure val activeAccountValues = Set("owner", "other")
 ```
 
+### A lookup finds the events that hold the most asked words, preferring their titles
+
+A search, and the lookup that picks the event a change is for, read the
+asked words: the query's words without those that name no event ("a",
+"the", "my", "with", "at"), or all its words when every one is such a word.
+A word is found in an event when its title, notes, place, or a guest's name
+or address holds it as written or as its singular or plural
+("appointments" finds "appointment"); a word in Han, Hiragana, Katakana or
+Hangul script is also found inside a longer word. The whole query found in
+one of them finds every asked word. The answer is the events that hold the
+most asked words, and among them those whose titles hold the most; an event
+that holds none is never part of it. So "my meeting with Sam" finds the
+meeting Sam is invited to and not every meeting, and "the Ferry Building"
+finds the event held there.
+
+```quint
+pure def lookupKeeps(found: int, titleFound: int, bestFound: int, bestTitle: int): bool =
+  found > 0 and found == bestFound and titleFound == bestTitle
+pure def lawAnEventHoldingNoWordIsNeverFound(titleFound: int, bestFound: int, bestTitle: int): bool =
+  not(lookupKeeps(0, titleFound, bestFound, bestTitle))
+pure def lawAFullerMatchWins(found: int, titleFound: int, bestFound: int, bestTitle: int): bool =
+  found < bestFound implies not(lookupKeeps(found, titleFound, bestFound, bestTitle))
+pure def lawATitleMatchWinsATie(found: int, titleFound: int, bestTitle: int): bool =
+  titleFound < bestTitle implies not(lookupKeeps(found, titleFound, found, bestTitle))
+pure val foundValues = Set(0, 1, 2)
+pure val titleFoundValues = Set(0, 1, 2)
+pure val bestFoundValues = Set(0, 1, 2)
+pure val bestTitleValues = Set(0, 1, 2)
+```
+
+### A trip question shows everything from the first event at the place to the end of the last
+
+A trip question (`trip_window`) names the place in its query and reads the
+asked range, the next sixty days by default, on the calendar named or on
+every listed calendar. The events that hold a word of the place, as a
+lookup finds a word, mark the trip; the answer is every event from the
+start of the first of them to the end of the last. With none, the answer
+says that no trip there was found. A read that was not complete says so.
+
+```quint
+pure def tripHolds(eventBegin: int, eventFinish: int, first: int, last: int): bool = eventFinish >= first and eventBegin <= last
+pure def lawAMarkIsInsideItsTrip(eventBegin: int, eventFinish: int): bool =
+  eventBegin <= eventFinish implies tripHolds(eventBegin, eventFinish, eventBegin, eventFinish)
+pure def lawAnEventAfterTheTripIsLeftOut(eventBegin: int, eventFinish: int, first: int, last: int): bool =
+  eventBegin > last implies not(tripHolds(eventBegin, eventFinish, first, last))
+```
+
 ## Story: Ask when I am free and get openings from my real calendar
 
 > As the owner, I want the agent to tell me whether a whole period is
