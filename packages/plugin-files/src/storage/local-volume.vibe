@@ -3,19 +3,16 @@ module node {
   import { createHash, randomUUID } from "node:crypto"
   import { lstat } from "node:fs/promises"
 
-  /** The no-follow identity token of an entry, or undefined when it is missing or a link. */
   export async function identityOf(path: string): Promise<string | undefined> {
     const info = await lstat(path, { bigint: true }).catch(() => undefined)
     if (info === undefined || info.isSymbolicLink()) return undefined
     return createHash("sha256").update([info.dev, info.ino, info.mtimeNs, info.ctimeNs, info.size, info.isDirectory()].join(":")).digest("base64url")
   }
 
-  /** Whether an entry exists as a link, without following it. */
   export async function linked(path: string): Promise<boolean> {
     return (await lstat(path).catch(() => undefined))?.isSymbolicLink() === true
   }
 
-  /** A fresh trash ID. */
   export function trashId(): string {
     return randomUUID()
   }
@@ -39,7 +36,33 @@ const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(TrashRecor
 
 const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
 
-/** A volume over one directory of the local filesystem, with its Trash journal beside the files. */
+function localEntries(fs: FileSystem.FileSystem, at: (path: string) => string) {
+  effect function entry(path: string): (StorageEntry | undefined)!! {
+    const info = (fs.stat(at(path)) catch () => undefined)
+    if (info === undefined) return undefined
+    const directory = info.type === "Directory"
+    return {
+      path, name: baseName(path), directory, mimeType: directory ? "" : mimeFromName(baseName(path)), size: directory ? 0 : Number(info.size),
+      modified: Option.match(info.mtime, { onNone: () => 0, onSome: (date) => date.getTime() }),
+    }
+  }
+
+  effect function children(folder: string) {
+    const names = (fs.readDirectory(at(folder)) catch () => undefined)
+    if (names === undefined) return { entries: [] as StorageEntry[], known: false }
+    const entries: StorageEntry[] = []
+    let known = true
+    for (const child of names) {
+      if (folder === "" && child === TRASH) continue
+      const found = try entry(joinPath(folder, child))
+      if (found === undefined) known = false
+      else entries.push(found)
+    }
+    return { entries, known }
+  }
+  return { entry, children }
+}
+
 export function localVolume(root: string, name = "Internal storage") {
   return Layer.effect(FilesVolume, effect {
     const fs = try FileSystem.FileSystem
@@ -52,29 +75,7 @@ export function localVolume(root: string, name = "Internal storage") {
     const identity = (path: string) => promise(() => identityOf(at(path)))
     const attempt = <A, E>(work: A!E) => Effect.match(work, { onSuccess: () => true, onFailure: () => false })
 
-    effect function entry(path: string): (StorageEntry | undefined)!! {
-      const info = (fs.stat(at(path)) catch () => undefined)
-      if (info === undefined) return undefined
-      const directory = info.type === "Directory"
-      return {
-        path, name: baseName(path), directory, mimeType: directory ? "" : mimeFromName(baseName(path)), size: directory ? 0 : Number(info.size),
-        modified: Option.match(info.mtime, { onNone: () => 0, onSome: (date) => date.getTime() }),
-      }
-    }
-
-    effect function children(folder: string) {
-      const names = (fs.readDirectory(at(folder)) catch () => undefined)
-      if (names === undefined) return { entries: [] as StorageEntry[], known: false }
-      const entries: StorageEntry[] = []
-      let known = true
-      for (const child of names) {
-        if (folder === "" && child === TRASH) continue
-        const found = try entry(joinPath(folder, child))
-        if (found === undefined) known = false
-        else entries.push(found)
-      }
-      return { entries, known }
-    }
+    const { entry, children } = localEntries(fs, at)
 
     effect function walk(from: string, keep: (entry: StorageEntry) => boolean) {
       const found: StorageEntry[] = []

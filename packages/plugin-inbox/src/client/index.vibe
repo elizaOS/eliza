@@ -8,17 +8,15 @@ import type {
   GmailReadResult, GmailSearchPage, GmailThreadPage, GoogleConnection,
 } from "../mailbox/types.vibe"
 import {
-  AccountsWire, AttachmentWire, CapabilitiesWire, ConnectionWire, ConnectWire, DisconnectWire, DraftsWire, DraftWire, MailCardWire, MessageWire,
+  AccountsWire, AttachmentWire, CapabilitiesWire, ConnectionWire, ConnectWire, DisconnectWire, DraftsWire, DraftWire, type MailCardWire, MessageWire,
   OperationWire, SearchWire, ThreadWire,
 } from "./wire.schema.vibe"
 
-/** One authenticated request on the Cloud origin; a body makes it a POST, and a refusal fails with its status and code. */
 export interface ManagedGmailTransport {
   request(path: string, options: { readonly body?: unknown; readonly timeoutMs?: number }): unknown!(MailProtocolFailed | MailUnreachable)
   readonly reviewAttachment: MailAttachmentReviewer
 }
 
-/** A search page size Cloud accepts. */
 export type SearchSize = 10 | 25 | 50 | 100
 
 const google = "/api/v1/eliza/google"
@@ -140,7 +138,6 @@ effect function pageToken(token: string | undefined): void!MailProtocolFailed {
   if (token !== undefined && (token === "" || token.length > 4096)) throw invalid()
 }
 
-/** The managed Gmail client of a phone or browser mailbox, validating every answer before a caller sees it. */
 export function managedGmailClient(transport: ManagedGmailTransport) {
   effect function call(path: string, options: { readonly body?: unknown; readonly timeoutMs?: number } = {}) {
     return try transport.request(path, options)
@@ -258,5 +255,4 @@ export function managedGmailClient(transport: ManagedGmailTransport) {
   }
 }
 
-/** The managed Gmail client. */
 export type ManagedGmailClient = ReturnType<typeof managedGmailClient>

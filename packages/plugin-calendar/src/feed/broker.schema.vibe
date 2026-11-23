@@ -5,10 +5,8 @@ const Text = Schema.String
 const NullableText = Schema.NullOr(Schema.String)
 const Instant = sampledWireInstant(Schema.String.check(Schema.makeFilter((value) => Number.isFinite(Date.parse(value)))))
 
-/** A managed owner grant as the private broker scopes it. */
 export const ScopedGrant = Schema.String.check(Schema.isPattern(/^alpha-google:[a-f0-9]{64}$/))
 
-/** One row of the broker's source catalog. */
 export const BrokerSource = Schema.Struct({
   provider: Schema.Literal("google"),
   side: Schema.Literal("owner"),
@@ -24,10 +22,8 @@ export const BrokerSource = Schema.Struct({
   managedGoogleConnectionId: Schema.optionalKey(Schema.Unknown),
 })
 
-/** A host connection reference the broker may attach to a source; any other value is dropped, never the source. */
 export const ManagedConnectionReference = Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/))
 
-/** One attendee of a broker event. */
 export const BrokerAttendee = Schema.Struct({
   email: NullableText,
   displayName: NullableText,
@@ -37,7 +33,6 @@ export const BrokerAttendee = Schema.Struct({
   optional: Schema.Boolean,
 })
 
-/** One event of a broker feed, before the resident sets its own agent ID. */
 export const BrokerEvent = Schema.Struct({
   id: Text.check(Schema.isMinLength(1)),
   externalId: Text,
@@ -66,7 +61,6 @@ export const BrokerEvent = Schema.Struct({
   accountEmail: Schema.optionalKey(Text),
 })
 
-/** The one health row a broker feed carries for its source. */
 export const BrokerHealth = Schema.Struct({
   key: Schema.Struct({
     provider: Schema.Literal("google"),
@@ -81,7 +75,6 @@ export const BrokerHealth = Schema.Struct({
   syncedAt: Schema.optionalKey(NullableText),
 })
 
-/** The envelope of a broker feed reply; its events and health are checked row by row. */
 export const BrokerFeedEnvelope = Schema.Struct({
   feed: Schema.Struct({
     calendarId: Text,
@@ -95,10 +88,8 @@ export const BrokerFeedEnvelope = Schema.Struct({
   }),
 })
 
-/** The envelope of a broker source catalog reply; its rows are checked one by one. */
 export const BrokerSourcesEnvelope = Schema.Struct({ calendars: Schema.Array(Schema.Unknown) })
 
-/** The broker's proof that a connected calendar can take conditional, idempotent writes. */
 export const BrokerWriteCapabilities = Schema.Struct({
   version: Schema.Literal(1),
   grantId: ScopedGrant,

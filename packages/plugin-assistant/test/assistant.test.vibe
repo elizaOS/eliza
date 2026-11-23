@@ -15,7 +15,7 @@ import { answerReminder, createReminder, deliverReminder, reminderKind, reminder
 import { createRoutine, deleteRoutine, routineRoutes, updateRoutine } from "../src/routines.vibe"
 import { ownerCalendarZone, ownerClockAt, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
 import { changeTodos, currentTodos } from "../src/todos.vibe"
-import { ports, portsLayer, rowsOf, type Ports } from "./support/ports.vibe"
+import { ports, portsLayer, rowsOf } from "./support/ports.vibe"
 
 const check = (answer: object) => JSON.stringify({ requested: true, clock: "utc", destination: null, alert: "alert", ...answer })
 const plan = { title: "Call the dentist", due: { kind: "in", minutes: 20 }, destination: null, alert: null }

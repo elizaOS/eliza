@@ -5,7 +5,6 @@ import { browserAction } from "./native-browser.vibe"
 export { BROWSER_VIEW, NativeBrowser, browserAction, browserViewAsker, historyActionResult, viewNativeBrowser } from "./native-browser.vibe"
 export type { BrowserFailureCode, BrowserViewAsked, BrowserViewAsker, BrowserViewGrant, BrowserViewWait, HistoryOutcome, HistoryRequest } from "./native-browser.vibe"
 
-/** The browser plugin: the BROWSER action and its back, forward and reload actions for the requesting device's own browser. */
 export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
   description: "Authenticated native device browser control",

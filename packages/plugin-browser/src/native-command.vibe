@@ -1,29 +1,23 @@
 // spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"
 import { noSelection, observedSelection, rendererRunsHistory, type TurnObservation } from "../gen/browser__remoteControl.effect.vibe"
 
-/** The history moves a mounted browser runs for the agent. */
 export const NATIVE_HISTORY_SUBACTIONS = ["back", "forward", "reload"] as const
 
-/** One history move a mounted browser runs for the agent. */
 export type NativeHistorySubaction = (typeof NATIVE_HISTORY_SUBACTIONS)[number]
 
-/** The browser tab and document the agent's turn observed; the renderer refuses a command once either changed. */
 export interface NativeHistorySelection {
   readonly id: string
   readonly revision: string
   readonly navigation?: string
 }
 
-/** A complete history command for a mounted browser, with the tab it was bound to. */
 export interface NativeHistoryCommand {
   readonly subaction: NativeHistorySubaction
   readonly selection?: NativeHistorySelection
 }
 
-/** The outcome of reading a frame's command and observed selection. */
 export type NativeHistoryParse = { readonly ok: true; readonly command: NativeHistoryCommand } | { readonly ok: false; readonly message: string }
 
-/** A frame's command that a mounted browser does not run. */
 export error NativeHistoryRefused { message: string }
 
 const SELECTION_ID = /^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,511}$/
@@ -42,7 +36,6 @@ function token(value: unknown, pattern: RegExp): value is string {
   return typeof value === "string" && pattern.test(value)
 }
 
-/** Whether a value names a history move a mounted browser runs. */
 export function isNativeHistorySubaction(value: unknown): value is NativeHistorySubaction {
   return NATIVE_HISTORY_SUBACTIONS.some((subaction) => subaction === value)
 }
@@ -58,7 +51,6 @@ function selectionOf(value: unknown): NativeHistorySelection | undefined {
   return token(navigation, SELECTION_TOKEN) ? { id, revision, navigation } : undefined
 }
 
-/** Reads a frame's `command` and its optional observed `selection`, refusing anything but back, forward or reload. */
 export function parseNativeHistoryCommand(value: unknown, selection?: unknown): NativeHistoryParse {
   const command = record(value)
   if (command === undefined) return { ok: false, message: "Browser command is required" }
@@ -71,7 +63,6 @@ export function parseNativeHistoryCommand(value: unknown, selection?: unknown): 
   return observed === undefined ? { ok: false, message: "Browser selection is invalid" } : { ok: true, command: { subaction, selection: observed } }
 }
 
-/** `parseNativeHistoryCommand`, failing with NativeHistoryRefused where it refuses. */
 export effect function decodeNativeHistoryCommand(value: unknown, selection?: unknown): NativeHistoryCommand!NativeHistoryRefused {
   const parsed = parseNativeHistoryCommand(value, selection)
   if (!parsed.ok) throw new NativeHistoryRefused({ message: parsed.message })
@@ -98,13 +89,11 @@ function turnObservation(message: { readonly content: unknown }): TurnObservatio
   }
 }
 
-/** The browser tab the current turn observed, copied for a history command, or undefined when the turn saw no browser tab it may name. */
 export function observedNativeHistorySelection(message: { readonly content: unknown }, subaction: string): NativeHistorySelection | undefined {
   const selection = observedSelection(turnObservation(message), isNativeHistorySubaction(subaction))
   return selection.tabId === noSelection.tabId ? undefined : { id: selection.tabId, revision: selection.revision }
 }
 
-/** Whether the renderer may run a history command bound to `selection` on the tab and document it shows now. */
 export function observedTabCurrent(selection: NativeHistorySelection | undefined, current: { readonly id: string; readonly revision: string }): boolean {
   return rendererRunsHistory(selection === undefined ? noSelection : { tabId: selection.id, revision: selection.revision }, current.id, current.revision)
 }

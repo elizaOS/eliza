@@ -3,35 +3,29 @@ import type { HttpClient } from "effect/http"
 import { canCancelManagedRead, canRequestManagedPurge, machine, Machine, managedReadPermit, shouldOfferManagedPull } from "../../gen/calendar__managedFeed.effect.vibe"
 import type { CalendarEvent, CalendarFeed, CalendarSummary } from "../model.vibe"
 import { ManagedCalendarUnavailable, type FeedWindow, type ManagedCalendarBroker } from "./broker.vibe"
-import { CacheStoreFailed, writeFeedCache, type ImportedSourceScope, type ManagedCacheStore } from "./cache.vibe"
+import { type CacheStoreFailed, writeFeedCache, type ImportedSourceScope, type ManagedCacheStore } from "./cache.vibe"
 import { assembleFeed, civilDateOf, type CalendarLinkRecord, type FeedComponent } from "./merge.vibe"
 
-/** A read whose request was cancelled before it held a successful receipt. */
 export error ManagedReadCancelled { calendarId: string }
 
-/** Why a purge of imported data returned no receipt. */
 export error PurgeRefused { reason: "confirmation_required" | "removal_failed" }
 
-/** The owner's request to remove one grant's imported projection, confirmed immediately before deletion. */
 export interface PurgeRequest extends ImportedSourceScope {
   readonly confirmAction: boolean
 }
 
-/** What a committed purge removed; it never touches the provider. */
 export interface PurgeReceipt extends ImportedSourceScope {
   readonly events: number
   readonly providerMutation: false
   readonly purgedAt: string
 }
 
-/** What linked sync control shows the pull pass: its pause, its held dispatch and its destination. */
 export interface LinkedControlView {
   readonly paused: boolean
   readonly dispatchHeld: boolean
   readonly destination: { readonly connectorAccountId: string; readonly calendarId: string } | null
 }
 
-/** The host's resident feed, link records, sync control and the reconciler's pull of one link. */
 export interface AggregatePorts {
   readonly localFeed: (window: FeedWindow) => FeedComponent!CacheStoreFailed
   readonly links: () => readonly CalendarLinkRecord[]!CacheStoreFailed
@@ -40,20 +34,17 @@ export interface AggregatePorts {
   readonly pull: (link: CalendarLinkRecord) => ("pulled" | "refused")!CacheStoreFailed
 }
 
-/** An aggregate read: the merged feed, and each pull the reconciler refused. */
 export interface AggregateRead {
   readonly feed: CalendarFeed
   readonly refusedPulls: readonly CalendarLinkRecord[]
 }
 
-/** The resident's managed feed: exact broker reads into the cache, grant purges, and the aggregate with mapped pulls. */
 export interface ManagedFeed {
   read(source: CalendarSummary, window: FeedWindow, signal?: AbortSignal): CalendarFeed!(ManagedCalendarUnavailable | ManagedReadCancelled | CacheStoreFailed)!HttpClient.HttpClient
   purge(request: PurgeRequest): PurgeReceipt!PurgeRefused
   aggregate(sources: readonly CalendarSummary[], window: FeedWindow, ports: AggregatePorts, signal?: AbortSignal): AggregateRead!(ManagedReadCancelled | CacheStoreFailed)!HttpClient.HttpClient
 }
 
-/** Everything the managed feed needs from its host. */
 export interface ManagedFeedOptions {
   readonly agentId: string
   readonly broker: ManagedCalendarBroker
@@ -68,7 +59,6 @@ type Slot = {
   active: Deferred.Deferred<void> | undefined
 }
 
-/** Whether an event overlaps a window: a timed event by instant, an all-day event by civil date in the window's zone. */
 export function intersectsWindow(event: CalendarEvent, window: FeedWindow): boolean {
   if (!event.isAllDay) return Date.parse(event.startAt) < Date.parse(window.timeMax) && Date.parse(event.endAt) > Date.parse(window.timeMin)
   const first = civilDateOf(window.timeMin, window.timeZone)
@@ -78,7 +68,6 @@ export function intersectsWindow(event: CalendarEvent, window: FeedWindow): bool
   return first !== undefined && last !== undefined && start !== undefined && end !== undefined && start <= last && end > first
 }
 
-/** The links a healthy provider feed of one source may pull: exact clean mappings to the current destination whose provider copy moved or vanished. */
 export function mappedPullOffers(input: {
   readonly source: CalendarSummary
   readonly feed: CalendarFeed
@@ -107,7 +96,6 @@ export function mappedPullOffers(input: {
   })
 }
 
-/** The managed feed over its host, with four shared read permits, one read at a time per calendar and a purge fence per grant. */
 export effect function managedFeed(options: ManagedFeedOptions): ManagedFeed!!Scope.Scope {
   const scope = try Scope.Scope
   const permits = try Semaphore.make(4)

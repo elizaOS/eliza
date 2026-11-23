@@ -2,7 +2,8 @@
 import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/calendar__linkedSync.conformance.ts";
 import type { ControlLedger, ControlOp, ControlProof, Event } from "../../gen/calendar__linkedSync.ts";
-import { linkedCalendarControl, type CalendarLinkStorage, type LinkedCalendarControlRequest, type LinkedCalendarDestination } from "../../src/linked-sync/index.vibe";
+import { linkedCalendarControl, type LinkedCalendarControlRequest, type LinkedCalendarDestination } from "../../src/linked-sync/index.vibe";
+import { memoryCalendarLinkStorage } from "../support/calendar-link-storage.ts";
 
 interface Observed {
   readonly revision: number;
@@ -20,7 +21,6 @@ const operations: Record<ControlOp, LinkedCalendarControlRequest["operation"]> =
 const destinationOf = (id: number): LinkedCalendarDestination => ({ connectorAccountId: "account", providerCalendarId: `dest-${id}` });
 const numbered = (text: string | undefined, prefix: string) => text === undefined || !text.startsWith(prefix) ? 0 : Number(text.slice(prefix.length));
 
-let slots = new Map<string, unknown>();
 let failWrites = false;
 let proof: ControlProof | undefined;
 let control: Control | undefined;
@@ -29,25 +29,18 @@ let keys = 0;
 const tokens = new Map<number, string>();
 const references = new Map<number, string>();
 
-const storage: CalendarLinkStorage = {
-  read: async (slot) => structuredClone(slots.get(slot) ?? null),
-  async compareExchange(slot, expected, value) {
-    if (failWrites || JSON.stringify(slots.get(slot) ?? null) !== JSON.stringify(expected)) return { status: "conflict" };
-    slots.set(slot, structuredClone(value));
-    return { status: "saved" };
-  },
-};
+const storage = memoryCalendarLinkStorage(() => failWrites);
 
 const open = () => Effect.runPromise(linkedCalendarControl({
   agentId: "agent",
   storage,
   authority: () => proof?.authority ?? true,
-  verifyDestination: async () => {
+  verifyDestination: () => {
     const verified = proof?.destinationVerified ?? true;
-    return { ownerSource: verified, writable: verified, sameSource: verified, sameSelectionVersion: verified, approvedEmail: verified };
+    return Promise.resolve({ ownerSource: verified, writable: verified, sameSource: verified, sameSelectionVersion: verified, approvedEmail: verified });
   },
-  recoverDispatch: async () => ({ linkExact: proof?.linkExact ?? false, outcome: proof?.recoverySettled ? "landed" : "unresolved" }),
-  bootstrap: async () => undefined,
+  recoverDispatch: () => Promise.resolve({ linkExact: proof?.linkExact ?? false, outcome: proof?.recoverySettled ? "landed" : "unresolved" }),
+  bootstrap: () => Promise.resolve(),
   dispatchRunning: () => proof?.dispatchActive ?? false,
 }));
 
@@ -109,7 +102,7 @@ async function send(event: Event): Promise<"accepted" | "refused"> {
 
 export const driver: Driver<Observed> = {
   async reset() {
-    slots = new Map();
+    storage.reset();
     failWrites = false;
     proof = undefined;
     latest = undefined;

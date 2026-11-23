@@ -4,25 +4,19 @@ import { Machine as SpeechOutputMachine, machine, type Playback } from "../gen/l
 export { SpeechOutputMachine }
 export type { Playback }
 
-/** The device's speech output, kept in memory for the life of the process. */
 export const speechOutput = () => machine()
 
-/** The one playback slot: what it holds now, and how a published clip takes it, interrupting what played. */
 export interface PlaybackSlot<C> {
   current(): Playback!!
   play(clip: C): void!!
 }
 
-/** What became of a reply: played into an empty slot, played over what it interrupted, refused while something played, or cancelled. */
 export type Publication = "played" | "interrupted" | "busy" | "cancelled"
 
-/** One of the three requests that start streamed speech, in order. */
 export type BootstrapRequest = "consent" | "session" | "socket"
 
-/** Whether a bootstrap request goes over the connection already open or needs a new one. */
 export type Connection = "reuse" | "open"
 
-/** Prepares a reply off the playback path and publishes it into the slot only if it may take it; a prepared reply that was cancelled never plays. */
 export effect function publishReply<C, E, R>(slot: PlaybackSlot<C>, prepare: C!E!R, options: { readonly replace: boolean }) {
   const output = try SpeechOutputMachine
   let admitted = false
@@ -48,13 +42,11 @@ export effect function publishReply<C, E, R>(slot: PlaybackSlot<C>, prepare: C!E
   return try onExit(published, (exit) => Exit.isSuccess(exit) ? Effect.void : settle)
 }
 
-/** Cancels the reply being prepared, so it settles without playing. */
 export effect function cancelReply() {
   const output = try SpeechOutputMachine
   try Effect.ignore(output.send({ type: "cancelSpeech" }))
 }
 
-/** Sends consent, session and the socket upgrade in order, each on a new connection only where the protocol needs one, and stops on the first failure. */
 export effect function bootstrapStreamedSpeech<E, R>(protocol: { readonly http1: boolean; readonly keepAlive: boolean }, send: (request: BootstrapRequest, connection: Connection) => void!E!R) {
   provide machine() {
     const output = try SpeechOutputMachine

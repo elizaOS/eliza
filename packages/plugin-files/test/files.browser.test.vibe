@@ -1,6 +1,5 @@
 // spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything"; spec/files/localOcr.md, "Completed OCR uses validated text and positions and stays scoped to its review"; spec/files/library.md, "A selection reads its file only while the file still has the revision it selected"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/library.md, "A workflow attachment and its receipt commit together, and a replay returns the receipt without saving again"; spec/files/library.md, "A workflow reads its Files source whole and unchanged, or not at all"; spec/files/library.md, "An imported folder arrives whole under a name not yet used, or not at all"; spec/files/localOcr.md, "One exact worker reply advances the next local OCR action"; spec/files/localOcr.md, "Image admission is bounded before recognition and every decoded bitmap closes"
 module browser {
-  /** A worker script served from memory that answers the local OCR protocol, or fails on its first message. */
   export function engineUrl(failing: boolean): string {
     const script = failing ? "onmessage = () => { throw new Error('engine down') }" : `
       onmessage = ({ data }) => {

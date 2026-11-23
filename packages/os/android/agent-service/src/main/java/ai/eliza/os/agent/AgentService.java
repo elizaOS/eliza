@@ -506,9 +506,9 @@ public class AgentService extends Service {
       step(new AgentPolicy.Refuse(AgentPolicy.Cause.CONFIG, refused.getMessage()));
       return;
     }
-    if (!CHANNEL.policy().loadRoutes(CallerKind.RENDERER, config.routes(CallerKind.RENDERER))
-        || !CHANNEL.policy().loadRoutes(CallerKind.NATIVE, config.routes(CallerKind.NATIVE))) {
-      step(new AgentPolicy.Refuse(AgentPolicy.Cause.CONFIG, "The agent's route lists could not be loaded"));
+    CHANNEL.policy().loadRoutes(CallerKind.NATIVE, config.routes(CallerKind.NATIVE));
+    if (!CHANNEL.policy().loadRoutes(CallerKind.RENDERER, config.routes(CallerKind.RENDERER))) {
+      step(new AgentPolicy.Refuse(AgentPolicy.Cause.CONFIG, "The agent's renderer route list could not be loaded"));
       return;
     }
     PayloadCheck.Check payload;

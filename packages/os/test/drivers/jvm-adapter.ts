@@ -209,9 +209,7 @@ async function start(classes: string, main: string, args: string[]): Promise<Ses
   const answers = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]();
   const ask = async (request: Request): Promise<Answer> => {
     child.stdin.write(`${JSON.stringify(wire(request))}\n`);
-    let timer: NodeJS.Timeout | undefined;
-    const next = await Promise.race([answers.next(), new Promise<undefined>((resolve) => { timer = setTimeout(() => resolve(undefined), ANSWER_WITHIN_MS); })]);
-    clearTimeout(timer);
+    const next = await Promise.race([answers.next(), once(AbortSignal.timeout(ANSWER_WITHIN_MS), "abort").then(() => undefined)]);
     if (next === undefined) throw new Error(`${main} did not answer ${JSON.stringify(request)} within ${ANSWER_WITHIN_MS / 1000} seconds${stderr ? `; stderr: ${stderr}` : ""}`);
     if (next.done) throw new Error(`${main} ended without answering ${JSON.stringify(request)}${stderr ? `; stderr: ${stderr}` : ""}`);
     return parseAnswer(next.value, request);

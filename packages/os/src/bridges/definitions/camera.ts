@@ -12,9 +12,7 @@ export type CameraWhiteBalance = "auto" | "daylight" | "cloudy" | "tungsten" | "
 export type MediaType = "photo" | "video";
 export type CameraGrant = "granted" | "denied" | "prompt";
 export type CameraAccessKind = "camera" | "microphone";
-/** Photo stream aspect ratio, width:height in the sensor's landscape orientation. */
 export type CameraCaptureAspectRatio = "4:3" | "16:9";
-/** A viewfinder control the session still admits while a recording runs. */
 export type CameraRecordingControl = "zoom" | "torch";
 
 export interface CameraResolution {
