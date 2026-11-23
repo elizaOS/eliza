@@ -1,0 +1,343 @@
+name: setup
+description: Node 26, pnpm from packageManager and its cache; with verification, Dafny from its pinned release, Quint's evaluator, Chromium and the spec cache; Turborepo's local cache for pull requests and local-only branch pushes.
+inputs:
+  job:
+    description: Names the caches this job saves, so that jobs of one run do not save under one key, and what the spec cache holds for it; a job that saves nothing leaves it.
+    default: verify
+  verification:
+    description: Set up the tools pnpm verify needs beyond Node and pnpm.
+    default: "true"
+  cache-verification:
+    description: Restore prior verification results. Nightly checks run fresh.
+    default: "true"
+outputs:
+  spec-cache-path:
+    description: What the spec cache holds, for the step that saves it at the end of a job.
+    value: ${{ steps.spec-cache.outputs.path }}
+  spec-cache-key:
+    description: The key to save the spec cache under, unique to this run attempt and present when verification results are restored.
+    value: ${{ steps.spec-cache.outputs.key }}
+  spec-evaluator-restored:
+    description: Whether the fixture job reused its pinned evaluator from a spec cache for the same lockfile.
+    value: ${{ steps.install-quint-evaluator.outputs.spec-evaluator-restored }}
+  fixture-turbo-inventory:
+    description: Inventory of the bulk cache restored from this fixture job’s pull request.
+    value: ${{ steps.fixture-turbo-inventory.outputs.path }}
+  turbo-cache-key:
+    description: The key for Turborepo's local cache on pull requests and local-only branch pushes, unique to this run attempt.
+    value: ${{ steps.turbo-cache.outputs.key }}
+runs:
+  using: composite
+  steps:
+    - id: setup-pnpm
+      uses: pnpm/action-setup@v6
+    - name: Install Dafny
+      if: inputs.verification == 'true' && !startsWith(inputs.job, 'simulate-')
+      shell: bash
+      run: |
+        version=4.11.0
+        curl --fail --location --retry 3 -o "$RUNNER_TEMP/dafny.zip" "https://github.com/dafny-lang/dafny/releases/download/v$version/dafny-$version-x64-ubuntu-22.04.zip"
+        echo "a46a9ff7cdd720f7955854c78e95df13f4cfe6b80691b05f8654fe19e8267179  $RUNNER_TEMP/dafny.zip" | sha256sum --check --strict
+        unzip -q "$RUNNER_TEMP/dafny.zip" -d "$RUNNER_TEMP"
+        "$RUNNER_TEMP/dafny/dafny" --version
+        echo "$RUNNER_TEMP/dafny" >> "$GITHUB_PATH"
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+        package-manager-cache: false
+    - id: pnpm-store
+      shell: bash
+      env:
+        PNPM_SETUP_DIR: ${{ steps.setup-pnpm.outputs.dest }}
+        LOCK_HASH: ${{ hashFiles('pnpm-lock.yaml') }}
+      run: |
+        store=$(pnpm store path --silent) || exit 0
+        [[ $PNPM_SETUP_DIR == /* && ${store#"$PNPM_SETUP_DIR"/node_modules/.bin/store/v} =~ ^[0-9]+$ && $LOCK_HASH =~ ^[a-f0-9]{64}$ ]] || exit 0
+        [[ $(realpath -m -- "$store") == "$store" ]] || exit 0
+        arch=$(node -p 'process.arch')
+        printf 'path=%s\nkey=node-cache-%s-%s-pnpm-%s\n' "$store" "$RUNNER_OS" "$arch" "$LOCK_HASH" >> "$GITHUB_OUTPUT"
+    - id: restore-pnpm-store
+      if: steps.pnpm-store.outputs.key != ''
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ steps.pnpm-store.outputs.key }}
+    # Turborepo skips a task whose inputs it has seen; spec skips a simulation or proof it has seen, and the selftest's
+    # shared projects skip a tool run an earlier selftest made (nightly, fuzz.yml runs it without them).
+    # Quint downloads its evaluator to ~/.quint from GitHub's rate-limited API: once per cache, not per run.
+    # Only restored here: ci.yml saves it at the end, except a complete fixture replay with a restored evaluator
+    # or cancelled verification of a superseded default-branch push. A job tries both key layouts for this lockfile first.
+    # Each entry is named by the tools and inputs that produced it. A selftest-* job holds the selftest's tool runs,
+    # which no other job adds to, and any other job the spec caches of the projects, which no selftest-* job checks.
+    - id: spec-cache
+      if: inputs.verification == 'true' && inputs.cache-verification == 'true'
+      shell: bash
+      env:
+        JOB: ${{ inputs.job }}
+      run: |
+        [[ $JOB != simulate-* ]] || JOB=verify
+        lock='${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}'
+        named="spec-${{ runner.os }}-${{ runner.arch }}-${JOB}-"
+        prefix="${named}${lock}-"
+        legacy="spec-${{ runner.os }}-${{ runner.arch }}-${lock}-${JOB}-"
+        pr_prefix=
+        if [[ $JOB == selftest-* && $GITHUB_EVENT_NAME == pull_request && $GITHUB_REF =~ ^refs/pull/([1-9][0-9]*)/merge$ ]]; then
+          pr_prefix="${named}pr-${BASH_REMATCH[1]}-${lock}-"
+          echo "fixture-pr=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+        fi
+        key="${pr_prefix:-$prefix}${{ github.sha }}-${{ github.run_attempt }}"
+        [[ $key == spec-*-"$JOB"-*-${{ github.sha }}-${{ github.run_attempt }} ]] || { echo "::error::Malformed spec cache key '$key'"; exit 1; }
+        {
+          echo "restore<<EOF"
+          if [[ -n $pr_prefix ]]; then printf '%s\n' "$pr_prefix"; fi
+          printf '%s\n' "$prefix" "$legacy" "$named"
+          echo "EOF"
+          echo "pr-lock-prefix=$pr_prefix"
+          echo "lock-prefix=$prefix"
+          echo "legacy-lock-prefix=$legacy"
+          echo "key=$key"
+          echo "path<<EOF"
+          if [[ $JOB == selftest-* ]]; then printf '%s\n' .cache/selftest/.spec-cache
+          else printf '%s\n' .spec-cache 'apps/*/.spec-cache' 'packages/*/.spec-cache' vibestack/studio/.spec-cache 'vibestack/examples/*/.spec-cache'
+          fi
+          echo '~/.quint'
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+    - id: restore-spec-cache
+      if: steps.spec-cache.outputs.key != ''
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.spec-cache.outputs.path }}
+        key: ${{ steps.spec-cache.outputs.key }}
+        restore-keys: ${{ steps.spec-cache.outputs.restore }}
+    - id: turbo-cache
+      if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_type == 'branch' && env.TURBO_CACHE == 'local:rw')
+      shell: bash
+      env:
+        JOB: ${{ inputs.job }}
+        FIXTURE_PR: ${{ steps.spec-cache.outputs.fixture-pr }}
+      run: |
+        prefix="turbo-$RUNNER_OS-$RUNNER_ARCH-$JOB-"
+        scope=${FIXTURE_PR:+"${prefix}pr-${FIXTURE_PR}-"}
+        echo "fixture-prefix=$scope" >> "$GITHUB_OUTPUT"
+        echo "key=${scope:-$prefix}$GITHUB_SHA-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+    - id: restore-turbo-cache
+      if: steps.turbo-cache.outputs.key != ''
+      uses: actions/cache/restore@v6
+      with:
+        path: .turbo/cache
+        key: ${{ steps.turbo-cache.outputs.key }}
+        restore-keys: |
+          ${{ steps.turbo-cache.outputs.fixture-prefix }}
+          turbo-${{ runner.os }}-${{ runner.arch }}-${{ inputs.job }}-
+    - id: fixture-turbo-inventory
+      if: steps.turbo-cache.outputs.fixture-prefix != '' && startsWith(steps.restore-turbo-cache.outputs.cache-matched-key, steps.turbo-cache.outputs.fixture-prefix)
+      shell: bash
+      run: |
+        inventory=$(mktemp)
+        if find .turbo/cache -regextype posix-extended \
+          \( -type f -regex '\.turbo/cache/[0-9a-f]{16}-manifest\.json' \) -prune -o \
+          \( -type d -printf '%p %y:%m\0' -o -printf '%p %y:%m:%D:%i:%s:%C@\0' \) |
+          LC_ALL=C sort -z > "$inventory"; then
+          echo "path=$inventory" >> "$GITHUB_OUTPUT"
+        fi
+    - id: gen-seed
+      if: >-
+        inputs.job == 'verify' && inputs.cache-verification == 'true' &&
+        env.TURBO_CACHE == 'local:rw' && steps.turbo-cache.outputs.key != ''
+      shell: bash
+      run: printf 'prefix=turbo-gen-v2-%s-%s-verify-\n' "$RUNNER_OS" "$RUNNER_ARCH" >> "$GITHUB_OUTPUT"
+    - id: lookup-gen-seed
+      if: steps.gen-seed.outputs.prefix != ''
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: .turbo/gen-seed
+        key: ${{ steps.gen-seed.outputs.prefix }}${{ github.sha }}
+        restore-keys: |
+          ${{ steps.gen-seed.outputs.prefix }}${{ github.sha }}-
+          ${{ steps.gen-seed.outputs.prefix }}
+        lookup-only: true
+    - id: missing-gen-seed
+      if: steps.lookup-gen-seed.outputs.cache-matched-key != ''
+      shell: bash
+      env:
+        CACHE_KEY: ${{ steps.lookup-gen-seed.outputs.cache-matched-key }}
+        PREFIX: ${{ steps.gen-seed.outputs.prefix }}
+      run: |
+        seed=${CACHE_KEY#"$PREFIX"}
+        [[ $CACHE_KEY == "$PREFIX"* && $seed =~ ^[0-9a-f]{40}(-[0-9a-f]{16})+$ ]] || exit 0
+        IFS=- read -ra hashes <<< "${seed#*-}"
+        missing=()
+        for hash in "${hashes[@]}"; do
+          meta=".turbo/cache/$hash-meta.json"
+          archive=".turbo/cache/$hash.tar.zst"
+          if [[ ! -f $archive || ! -s $archive || ! -f $meta ]] || ! jq -e --arg hash "$hash" '.hash == $hash' "$meta" >/dev/null 2>&1; then
+            missing+=("$hash")
+          fi
+        done
+        printf 'hashes=%s\n' "${missing[*]}" >> "$GITHUB_OUTPUT"
+    - id: restore-gen-seed
+      if: steps.missing-gen-seed.outputs.hashes != ''
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: .turbo/gen-seed
+        key: ${{ steps.lookup-gen-seed.outputs.cache-matched-key }}
+    - name: Import the early generation cache
+      if: steps.restore-gen-seed.outputs.cache-hit == 'true'
+      continue-on-error: true
+      shell: bash
+      env:
+        HASHES: ${{ steps.missing-gen-seed.outputs.hashes }}
+      run: |
+        mkdir -p .turbo/cache
+        read -ra hashes <<< "$HASHES"
+        for hash in "${hashes[@]}"; do
+          archive=".turbo/gen-seed/$hash.tar.zst"
+          meta=".turbo/gen-seed/$hash-meta.json"
+          [[ -f $archive && -s $archive && -f $meta && -s $meta ]] || continue
+          jq -e --arg hash "$hash" '.hash == $hash' "$meta" >/dev/null || continue
+          rm -f ".turbo/cache/$hash-manifest.json"
+          mv "$archive" "$meta" .turbo/cache/
+        done
+    - name: Install workspace dependencies
+      id: install-workspace
+      shell: bash
+      env:
+        PUBLISH_GEN_SEED: ${{ inputs.verification == 'true' && steps.gen-seed.outputs.prefix != '' }}
+        REMEMBER_RESTORED_EVALUATORS: >-
+          ${{ startsWith(inputs.job, 'selftest-') &&
+              steps.restore-spec-cache.outcome == 'success' && steps.restore-spec-cache.outputs.cache-matched-key != '' &&
+              ((github.event_name == 'pull_request' && steps.spec-cache.outputs.pr-lock-prefix != '' &&
+                startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.pr-lock-prefix)) ||
+               (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+                steps.spec-cache.outputs.lock-prefix != '' && steps.spec-cache.outputs.legacy-lock-prefix != '' &&
+                (startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.lock-prefix) ||
+                 startsWith(steps.restore-spec-cache.outputs.cache-matched-key, steps.spec-cache.outputs.legacy-lock-prefix)))) }}
+      run: |
+        if [[ $REMEMBER_RESTORED_EVALUATORS == true ]]; then
+          {
+            echo 'evaluators<<EOF'
+            for evaluator in "$HOME"/.quint/rust-evaluator-*/quint_evaluator; do
+              [[ -f $evaluator && -x $evaluator && ! -L $evaluator ]] || continue
+              stat -c '%d:%i:%s:%y:%z' -- "$evaluator" || true
+            done
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+        fi
+        if [[ $PUBLISH_GEN_SEED == true ]]; then export TURBO_RUN_SUMMARY=true; fi
+        install=(install --frozen-lockfile)
+        if [[ $GITHUB_ACTIONS == true && $GITHUB_JOB == vibestack-precompute-simulations &&
+              $GITHUB_WORKSPACE == "$PWD" && $GITHUB_WORKFLOW_REF == "$GITHUB_REPOSITORY/.github/workflows/ci.yml@"* ]] &&
+          jq -e '.scripts.prepare == "node vibestack/spec.ts gen --install --skip-gen-on-pack //#build"' package.json >/dev/null; then
+          install=(--filter-prod '{.}...' "${install[@]}" --prod)
+        fi
+        /usr/bin/time -f "%e %U %S %M" -o "$RUNNER_TEMP/pnpm-install.time" pnpm "${install[@]}"
+    - id: publish-gen-seed
+      if: inputs.verification == 'true' && steps.gen-seed.outputs.prefix != ''
+      continue-on-error: true
+      shell: bash
+      env:
+        PREFIX: ${{ steps.gen-seed.outputs.prefix }}
+      run: |
+        shopt -s nullglob
+        reports=(.turbo/runs/*.json)
+        (( ${#reports[@]} )) || exit 0
+        seed=$(jq -sr '
+          map(select(.version == "1" and .execution.command == "turbo run //#gen" and .execution.exitCode == 0))
+          | select(length == 1) | .[0].tasks
+          | map(select(.taskId | test("#gen($|:)")))
+          | select(any(.[]; .taskId == "//#gen") and any(.[]; .cache.status == "MISS"))
+          | select(all(.[]; .execution.exitCode == 0 and (.cache.status == "HIT" or .cache.status == "MISS")))
+          | sort_by(.taskId != "//#gen", .taskId) | map(.hash) | join("-")
+        ' "${reports[@]}") || exit 0
+        [[ $seed =~ ^[0-9a-f]{16}(-[0-9a-f]{16})*$ ]] || exit 0
+        key="$PREFIX$GITHUB_SHA-"
+        if (( ${#key} + ${#seed} > 512 )); then seed=${seed%%-*}; fi
+        IFS=- read -ra hashes <<< "$seed"
+        rm -rf .turbo/gen-seed
+        mkdir -p .turbo/gen-seed
+        for hash in "${hashes[@]}"; do
+          archive=".turbo/cache/$hash.tar.zst"
+          meta=".turbo/cache/$hash-meta.json"
+          [[ -f $archive && -s $archive && -f $meta && -s $meta ]] || exit 0
+          jq -e --arg hash "$hash" '.hash == $hash' "$meta" >/dev/null || exit 0
+          cp "$archive" "$meta" .turbo/gen-seed/
+        done
+        printf 'key=%s%s\n' "$key" "$seed" >> "$GITHUB_OUTPUT"
+    - if: steps.publish-gen-seed.outputs.key != ''
+      uses: actions/cache/save@v6
+      with:
+        path: .turbo/gen-seed
+        key: ${{ steps.publish-gen-seed.outputs.key }}
+    - id: lookup-pnpm-store
+      if: >-
+        inputs.job == 'verify' && inputs.verification == 'true' && inputs.cache-verification == 'true' &&
+        github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+        steps.pnpm-store.outputs.key != '' && steps.restore-pnpm-store.outputs.cache-hit != 'true'
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ steps.pnpm-store.outputs.key }}
+        lookup-only: true
+    - if: steps.lookup-pnpm-store.outcome == 'success' && steps.lookup-pnpm-store.outputs.cache-hit != 'true'
+      continue-on-error: true
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ steps.pnpm-store.outputs.key }}
+    - name: Read the pinned Quint evaluator version
+      id: quint-evaluator
+      if: inputs.verification == 'true'
+      shell: bash
+      run: |
+        version=$(node -p "require('@informalsystems/quint/dist/src/rust/binaryManager.js').QUINT_EVALUATOR_VERSION")
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - id: quint-cache
+      if: inputs.verification == 'true' && inputs.cache-verification == 'false'
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.quint/rust-evaluator-${{ steps.quint-evaluator.outputs.version }}
+        key: quint-evaluator-${{ runner.os }}-${{ runner.arch }}-${{ steps.quint-evaluator.outputs.version }}
+    # Quint's first-run downloader uses the unauthenticated GitHub API.
+    # Fetch its pinned release directly before concurrent checks need it.
+    - name: Install Quint evaluator
+      id: install-quint-evaluator
+      if: inputs.verification == 'true'
+      env:
+        EVALUATOR_VERSION: ${{ steps.quint-evaluator.outputs.version }}
+        RESTORED_EVALUATORS: ${{ steps.install-workspace.outputs.evaluators }}
+      run: |
+        evaluator_dir="$HOME/.quint/rust-evaluator-$EVALUATOR_VERSION"
+        if [ ! -x "$evaluator_dir/quint_evaluator" ]; then
+          mkdir -p "$evaluator_dir"
+          curl --fail --location --retry 3 "https://github.com/quint-co/quint/releases/download/evaluator/$EVALUATOR_VERSION/quint_evaluator-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$evaluator_dir"
+        elif [[ -n $RESTORED_EVALUATORS ]] &&
+          stamp=$(stat -c '%d:%i:%s:%y:%z' -- "$evaluator_dir/quint_evaluator") &&
+          grep -Fxq -- "$stamp" <<< "$RESTORED_EVALUATORS"; then
+          echo 'spec-evaluator-restored=true' >> "$GITHUB_OUTPUT"
+        fi
+        "$evaluator_dir/quint_evaluator" --help
+      shell: bash
+    - if: inputs.job == 'verify' && steps.quint-cache.outputs.cache-primary-key != '' && steps.quint-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.quint/rust-evaluator-${{ steps.quint-evaluator.outputs.version }}
+        key: ${{ steps.quint-cache.outputs.cache-primary-key }}
+    - name: Install Chromium
+      if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest' && !startsWith(inputs.job, 'simulate-')
+      run: |
+        node --input-type=module - "${{ inputs.job == 'selftest-a' }}" "${{ inputs.job == 'verify' }}" "${{ inputs.cache-verification == 'true' }}" <<'JS'
+        import { installChromium, prepareChromiumShell } from "./vibestack/chromium.ts";
+        import { hostedCachedFixture } from "./vibestack/selftests/install.ts";
+        const [fullOnly, verify, cacheVerification] = process.argv.slice(2);
+        if (fullOnly === "true") {
+          if (cacheVerification !== "true" || !hostedCachedFixture()) await installChromium("full");
+        } else if (verify !== "true" || cacheVerification !== "true" || !await prepareChromiumShell()) {
+          await installChromium("both");
+        }
+        JS
+      shell: bash

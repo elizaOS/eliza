@@ -228,13 +228,7 @@ runs:
           } >> "$GITHUB_OUTPUT"
         fi
         if [[ $PUBLISH_GEN_SEED == true ]]; then export TURBO_RUN_SUMMARY=true; fi
-        install=(install --frozen-lockfile)
-        if [[ $GITHUB_ACTIONS == true && $GITHUB_JOB == vibestack-precompute-simulations &&
-              $GITHUB_WORKSPACE == "$PWD" && $GITHUB_WORKFLOW_REF == "$GITHUB_REPOSITORY/.github/workflows/ci.yml@"* ]] &&
-          jq -e '.scripts.prepare == "node vibestack/spec.ts gen --install --skip-gen-on-pack //#build"' package.json >/dev/null; then
-          install=(--filter-prod '{.}...' "${install[@]}" --prod)
-        fi
-        pnpm "${install[@]}"
+        /usr/bin/time -f "%e %U %S %M" -o "$RUNNER_TEMP/pnpm-install.time" pnpm install --frozen-lockfile
     - id: publish-gen-seed
       if: inputs.verification == 'true' && steps.gen-seed.outputs.prefix != ''
       continue-on-error: true
