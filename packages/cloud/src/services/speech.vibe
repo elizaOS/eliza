@@ -1,12 +1,14 @@
-// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"
-import { billedSeconds, providerRetryMs, withMarkup } from "../../gen/cloud__services__speech.effect.vibe"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"; spec/cloud/services/speech.md, "Each batch request holds once under its organization and its request id, and spends one request of the plan's standard limit"
+import { billedSeconds, providerRetryMs, synthesisCourseOf, withMarkup } from "../../gen/cloud__services__speech.effect.vibe"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"
 import { refused, Refused } from "../http/refusal.vibe"
 import { signed } from "../http/request-auth.vibe"
 import { jsonBody, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
 import { synthesize, synthesizeTimed, prepareTranscription, ProviderInvalidResponse, type SpeechFailure, type Synthesis, type TimedFrame, type Transcription } from "../providers/speech.vibe"
+import { requestDigest } from "../shared/dispatch-once.vibe"
 import { keepStanding, markDispatched, reserve, settle, type Settlement } from "../shared/metering.vibe"
+import { IdempotencyKey } from "./maps.schema.ts"
 import { SynthesisBody } from "./speech-batch.schema.ts"
 
 type SpeechSettings = NonNullable<EnvironmentProfile["speech"]>
@@ -19,6 +21,7 @@ const audioTypes: ReadonlyArray<string> = ["audio/mp3", "audio/mpeg", "audio/mp4
 const uploadFields: ReadonlyArray<string> = ["audio", "languageCode", "provider"]
 const kilobitsPerSecond: Readonly<Record<string, number>> = { "audio/wav": 1411, "audio/x-wav": 1411, "audio/webm": 96, "audio/ogg": 96 }
 const encoder = new TextEncoder()
+const decodeKey = Schema.decodeUnknownOption(IdempotencyKey)
 
 interface Upload {
   readonly audio: Uint8Array
@@ -92,12 +95,16 @@ function providerRefusal(failure: SpeechFailure, now: number): Refused {
   }
 }
 
-effect function heldCall<A, R>(context: RouteContext, quote: number, call: A!SpeechFailure!R, charge: (answer: A) => number) {
+effect function heldCall<A, R>(context: RouteContext, requestId: string, quote: number, call: A!SpeechFailure!R, charge: (answer: A) => number, repeatable: boolean) {
   const caller = signed(context.caller)
   if (caller === undefined) throw refused("AuthenticationRequired")
-  const key: HoldKey = { service: "MeteredSpeech", caller: caller.userId, requestId: context.requestId, part: { tag: "WholeRequest" } }
+  const key: HoldKey = { service: "MeteredSpeech", caller: caller.userId, requestId, part: { tag: "WholeRequest" } }
   const ticket = try reserve(caller, key, quote)
-  if (ticket.replayed) throw refused("IdempotencyConflict")
+  if (ticket.replayed) {
+    if (!repeatable || synthesisCourseOf(true, ticket.hold) !== "SpeakAgain") throw refused("IdempotencyConflict")
+    const again = call catch effect (failure) => { throw providerRefusal(failure, try Clock.currentTimeMillis) }
+    return again
+  }
   try keepStanding(context.request.headers.authorization, caller, "MeteredSpeech", ticket)
   try markDispatched(ticket.key)
   const answer = call catch effect (failure) => {
@@ -125,6 +132,14 @@ effect function synthesisOf(body: SynthesisBody, settings: SpeechSettings): Synt
   }
 }
 
+effect function synthesisRequestId(context: RouteContext, synthesis: Synthesis, timed: boolean): string!Refused {
+  const given = context.request.headers["idempotency-key"]
+  if (given === undefined) return context.requestId
+  const key = Option.getOrUndefined(decodeKey(given))
+  if (key === undefined) throw refused("InvalidRequest")
+  return `${key}:${requestDigest({ synthesis, timed })}`
+}
+
 effect function boundedFrames<R>(frames: ReadonlyArray<TimedFrame>!SpeechFailure!R): Uint8Array!SpeechFailure!R {
   const read = try frames
   const lines = [
@@ -141,12 +156,13 @@ effect function speak(context: RouteContext): HttpServerResponse.HttpServerRespo
   const body = try jsonBody(context, SynthesisBody)
   const synthesis = try synthesisOf(body, settings)
   const quote = ttsQuote(body.text, settings)
+  const requestId = try synthesisRequestId(context, synthesis, body.withTimestamps === true)
   const headers = { "cache-control": "no-store", "x-eliza-tts-provider": settings.provider, "x-eliza-tts-speed": String(synthesis.speed) }
   if (body.withTimestamps === true) {
-    const timed = try heldCall(context, quote, boundedFrames(synthesizeTimed(settings, synthesis)), () => quote)
+    const timed = try heldCall(context, requestId, quote, boundedFrames(synthesizeTimed(settings, synthesis)), () => quote, true)
     return HttpServerResponse.uint8Array(timed, { status: 200, contentType: "application/x-ndjson", headers: { ...headers, "x-eliza-tts-timing": "character-v1" } })
   }
-  const audio = try heldCall(context, quote, synthesize(settings, synthesis), () => quote)
+  const audio = try heldCall(context, requestId, quote, synthesize(settings, synthesis), () => quote, true)
   return HttpServerResponse.uint8Array(audio.audio, { status: 200, contentType: audio.contentType, headers })
 }
 
@@ -195,7 +211,7 @@ effect function hear(context: RouteContext): HttpServerResponse.HttpServerRespon
   const upload = try readUpload(context, settings)
   const request = { audio: upload.audio, mimeType: upload.mimeType, ...(upload.languageCode === undefined ? {} : { languageCode: upload.languageCode }) }
   const call = prepareTranscription(settings, request) catch effect (failure) => { throw providerRefusal(failure, context.now) }
-  const heard: Transcription = try heldCall(context, sttCharge(upload.durationMs, settings), call, (answer: Transcription) => sttCharge(answer.durationMs, settings))
+  const heard: Transcription = try heldCall(context, context.requestId, sttCharge(upload.durationMs, settings), call, (answer: Transcription) => sttCharge(answer.durationMs, settings), false)
   return HttpServerResponse.jsonUnsafe({
     transcript: heard.transcript,
     duration_ms: heard.durationMs,

@@ -1,14 +1,16 @@
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request refuses the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
 import {
-  type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type GenerateTextParams, type GenerateTextResult,
+  type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, executePlannedToolCall, ModelType, stableStringify,
+  buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
+  type DirectActionRoutingRule,
 } from "@elizaos/core"
 import {
-  acknowledges, failedOpen, keepsPlanning, maxPlanSteps, nextMove, offered, openOutcomes,
-  type PlanStep, type StepOutcome,
+  acknowledges, actionNoteSent, callAdmission, callRunsFirst, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
+  turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
-import { composeReply, draftOf } from "./reply-text.vibe"
+import { ModelRefusal } from "../models/chat.vibe"
+import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -47,17 +49,113 @@ export interface PlanInput {
   readonly onStepResult?: (result: ActionResult) => void | Promise<void>
 }
 
-export async function offeredActions(runtime: AgentRuntime, message: Memory, state: State, actionGate: PlanInput["actionGate"]): Promise<Action[]> {
+export interface TurnToolForm {
+  readonly description: string
+  readonly parameters: Readonly<Record<string, ActionParameterSchema>>
+}
+
+export const turnToolForms = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => TurnToolForm | undefined>()
+
+export function offeredOnlyWhere(action: Action, home: (runtime: IAgentRuntime, message: Memory) => boolean): void {
+  turnToolForms.set(action, (runtime, message) => home(runtime, message) ? { description: action.description, parameters: {} } : undefined)
+}
+
+export const turnFirstCalls = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => ToolCall["arguments"] | undefined>()
+
+export interface ServedElsewhere {
+  readonly code: string
+  readonly text: string
+}
+
+export const turnElsewhere = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory, params: Record<string, unknown>) => ServedElsewhere | undefined>()
+
+export const turnNotes = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => string | undefined>()
+
+export function actionNotes(runtime: IAgentRuntime, message: Memory, actions: readonly Action[]): string[] {
+  const names = new Set(actions.map(({ name }) => name))
+  return runtime.actions.flatMap((action) => {
+    const note = turnNotes.get(action)?.(runtime, message)
+    return note !== undefined && actionNoteSent(names.has(action.name), note.trim() !== "") ? [note] : []
+  })
+}
+
+function elsewhereOf(runtime: IAgentRuntime, message: Memory, action: Action | undefined, params: Record<string, unknown>): ServedElsewhere | undefined {
+  if (action === undefined) return undefined
+  try {
+    return turnElsewhere.get(action)?.(runtime, message, params)
+  } catch {
+    return undefined
+  }
+}
+
+function firstCall(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ToolCall | undefined {
+  const asked = actions.flatMap((action) => {
+    const params = turnFirstCalls.get(action)?.(runtime, message)
+    return params === undefined ? [] : [{ id: `first-${action.name}`, name: action.name, arguments: params }]
+  })
+  return callRunsFirst(asked.length) ? asked[0] : undefined
+}
+
+function forTurn(runtime: AgentRuntime, message: Memory, action: Action): Action {
+  const form = turnToolForms.get(action)?.(runtime, message)
+  if (form === undefined) return action
+  const registered = action.parameters ?? []
+  const narrowed = new Set(turnNarrowed(registered.map(({ name }) => name), Object.keys(form.parameters)))
+  return {
+    ...action, description: form.description,
+    parameters: registered.map((parameter) => {
+      const schema = form.parameters[parameter.name]
+      return narrowed.has(parameter.name) && schema !== undefined ? { ...parameter, schema } : parameter
+    }),
+  }
+}
+
+function formless(runtime: AgentRuntime, message: Memory, action: Action): boolean {
+  const form = turnToolForms.get(action)
+  return form !== undefined && form(runtime, message) === undefined
+}
+
+export function offeredActions(runtime: AgentRuntime, message: Memory, actionGate: PlanInput["actionGate"]): Action[] {
   const registered = runtime.actions.filter(({ name }) => !messageServiceActions.has(name) && toolNamePattern.test(name))
-  const allowed = new Set(offered(registered.map(({ name }) => name), registered.flatMap((action) => actionGate(action) === undefined ? [action.name] : [])))
-  const checked = await Promise.all(registered.filter(({ name }) => allowed.has(name)).map(async (action) => {
-    try {
-      return await action.validate(runtime, message, state) ? [action] : []
-    } catch {
-      return []
+  const names = new Set(offered(
+    registered.map(({ name }) => name),
+    registered.flatMap((action) => actionGate(action) === undefined ? [action.name] : []),
+    registered.flatMap((action) => formless(runtime, message, action) ? [action.name] : []),
+  ))
+  return registered.filter(({ name }) => names.has(name))
+}
+
+function routeMatches(rule: DirectActionRoutingRule, message: Memory): boolean {
+  try {
+    return rule.wholeRequest?.matches(typeof message.content.text === "string" ? message.content.text : "", message) === true
+  } catch {
+    return false
+  }
+}
+
+function routedAway(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ReadonlyMap<string, readonly string[]> {
+  const names = new Set(actions.map(({ name }) => name))
+  const refused = new Map<string, readonly string[]>()
+  for (const rule of getDirectActionRoutingRules(runtime)) {
+    const matched = routeMatches(rule, message)
+    const routedOffered = rule.actionNames.length > 0 && rule.actionNames.every((name) => names.has(name))
+    for (const name of rule.replacesActionNames ?? []) {
+      if (refusedByRoute(rule.wholeRequest !== undefined, matched, routedOffered, true)) refused.set(name, rule.actionNames)
     }
-  }))
-  return checked.flat()
+  }
+  return refused
+}
+
+function routeRefusal(action: string, routedTo: readonly string[]): ActionResult {
+  return {
+    success: false,
+    text: `The person's whole message is routed to ${routedTo.join(", ")}, so ${action} is refused for it and did not run. Do not call it for this request.`,
+    data: { code: "ROUTE_REFUSED", executionStatus: "not_started" },
+  }
+}
+
+function elsewhereRefusal({ code, text }: ServedElsewhere): ActionResult {
+  return { success: false, text, data: { code, executionStatus: "not_started" } }
 }
 
 function outcomeOf(receipt: EffectReceipt): StepOutcome {
@@ -114,7 +212,8 @@ function errorText(error: ActionResult["error"]): string | undefined {
 function toolMessage(result: ActionResult): string {
   const summary = {
     success: result.success,
-    text: result.userFacingText ?? result.text,
+    text: result.text ?? result.userFacingText,
+    ...(result.userFacingText === undefined || result.userFacingText === result.text ? {} : { userFacingText: result.userFacingText }),
     error: errorText(result.error),
     effects: (result.effectReceipts ?? []).map(({ operation, outcome, resource }) => ({ operation, outcome, resource: resource.kind })),
     data: result.data,
@@ -126,6 +225,45 @@ function toolMessage(result: ActionResult): string {
     text = JSON.stringify({ success: summary.success, text: summary.text, error: summary.error })
   }
   return text.length > toolMessageLimit ? `${text.slice(0, toolMessageLimit)}…` : text
+}
+
+function stoppedAtOutputLimit(error: unknown): boolean {
+  const evidence = modelOutputIncompleteEvidence(error)
+  return evidence !== undefined && typeof evidence.maxTokens !== "number" && isModelOutputLimitFinishReason(evidence.finishReason)
+}
+
+function callFailureOf(error: unknown): CallFailure {
+  if (error instanceof ModelRefusal) {
+    if (error.status === 429) return error.retryAfterMs === undefined ? { tag: "RateLimitedWithoutHint" } : { tag: "RateLimitedFor", hintMs: error.retryAfterMs }
+    if (error.code === "PROVIDER_TOOL_CALL_PARSE_FAILED") return { tag: "ToolCallUnparsed" }
+  }
+  return stoppedAtOutputLimit(error) ? { tag: "OutputLimitReached" } : { tag: "OtherFailure" }
+}
+
+export function conversationCache(runtime: IAgentRuntime, roomId: string, stage: "planner" | "evaluator"): GenerateTextParams["providerOptions"] {
+  return { cerebras: { promptCacheKey: `eliza-workflow-v1:${sha256Hex(`${JSON.stringify([runtime.agentId, roomId])}:${stage}`)}` } }
+}
+
+export async function sentAtMostTwice<T>(send: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  try {
+    return await send()
+  } catch (error: unknown) {
+    const wait = resendWait(callFailureOf(error), false)
+    if (wait < 0 || signal.aborted) throw error
+    await sleepWithAbort(wait, signal)
+    signal.throwIfAborted()
+    return send()
+  }
+}
+
+function stoppedAtModelMaximum(result: ActionResult): boolean {
+  if (result.success && result.error === undefined) return false
+  const settled = (result.data as { error?: unknown } | undefined)?.error
+  return [result.error, settled].some(stoppedAtOutputLimit)
+}
+
+function byName(left: { readonly name: string }, right: { readonly name: string }): number {
+  return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
 }
 
 function answerOf(value: unknown): { text: string; toolCalls: ToolCall[] } {
@@ -146,8 +284,27 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
 }
 
 function failureNotice(step: PlannedStep): string {
-  if (step.outcomes.some(({ outcome }) => outcome === "Rejected")) return `A ${step.action} call did not start.`
+  if (step.outcomes.some(({ outcome }) => outcome === "Rejected")) {
+    if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return unavailableNotice
+    const words = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
+    return words || `A ${step.action} call did not start.`
+  }
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
+}
+
+function toolLabel(runtime: AgentRuntime, action: Action | undefined): string {
+  const applicable = new Set<string>()
+  const labels = new Set<string>()
+  for (const context of action === undefined ? [] : resolveActionContexts(action)) {
+    if (context === "general" || context === "simple") continue
+    const definition = runtime.contexts.get(context)
+    if (definition?.sensitivity === "system") continue
+    const label = definition?.label?.trim()
+    applicable.add(label || context)
+    if (label) labels.add(label)
+  }
+  const [only] = labels
+  return toolActivity(applicable.size, labels.size) === "UsingApp" && only !== undefined ? `Using ${only}` : "Working"
 }
 
 function entryKey({ outcome, identity }: PlanStep): string {
@@ -170,71 +327,102 @@ function settleReply(steps: readonly PlannedStep[], prose: string | undefined): 
 
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
   const { runtime, message, state, roles, signal } = input
-  const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions)
+  const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions.toSorted(byName).map((action) => forTurn(runtime, message, action)))
   const conversation: ChatMessage[] = [...input.messages]
   const steps: PlannedStep[] = []
+  const named = new Map(actions.map((action) => [action.name, action]))
+  const refused = routedAway(runtime, message, actions)
+  const instruction = requestIsInstruction(typeof message.content.text === "string" ? message.content.text : "")
   let taken = 0
   let displayed = false
   let streamed = ""
   let prose: string | undefined
+  const execute = async (call: ToolCall): Promise<ActionResult> => {
+    signal.throwIfAborted()
+    const params = paramsOf(call)
+    const routedTo = refused.get(call.name)
+    const elsewhere = routedTo === undefined ? elsewhereOf(runtime, message, named.get(call.name), params) : undefined
+    const refusal = routedTo !== undefined ? routeRefusal(call.name, routedTo) : elsewhere === undefined ? undefined : elsewhereRefusal(elsewhere)
+    if (refusal !== undefined && !isTurnStep(callAdmission(routedTo !== undefined, elsewhere !== undefined))) {
+      conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(refusal) })
+      return refusal
+    }
+    await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name)) })
+    const captured: string[] = []
+    const result = await executePlannedToolCall(runtime, {
+      message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),
+      callback: async (content) => {
+        if (content.text?.trim()) captured.push(content.text)
+        return []
+      },
+    }, { id: call.id, name: call.name, params }, { abortSignal: signal })
+    if (!plannerOnlyCoaching(result.transcriptVisibility === "internal", result.data?.coachingFailure === true, result.success, (result.effectReceipts?.length ?? 0) > 0)) {
+      await input.onStepResult?.(result)
+      steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
+    }
+    conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
+    return result
+  }
+  const first = firstCall(runtime, message, actions)
+  if (first !== undefined) {
+    conversation.push({ role: "assistant", content: null, toolCalls: [first] })
+    await execute(first)
+  }
   plan: while (true) {
     signal.throwIfAborted()
     const restartFirst = displayed
     let restarted = false
     streamed = ""
     const onStreamChunk = input.onStreamChunk
-    const answered = answerOf(await runtime.useModel(ModelType.TEXT_LARGE, {
-      system: input.system, messages: conversation, reasoning: "off", signal,
-      ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
-      ...(onStreamChunk === undefined ? {} : {
-        stream: true,
-        onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
-          streamed = accumulated ?? streamed + chunk
-          if (restartFirst && !restarted) {
-            restarted = true
-            input.onReplyRestart?.(streamed)
-            return
-          }
-          return onStreamChunk(chunk, messageId, accumulated)
-        },
-      }),
-    }))
+    let said: unknown
+    try {
+      said = await sentAtMostTwice(() => runtime.useModel(ModelType.TEXT_LARGE, {
+        system: input.system, messages: conversation, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
+        ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
+        ...(onStreamChunk === undefined ? {} : {
+          stream: true,
+          onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
+            streamed = accumulated ?? streamed + chunk
+            if (restartFirst && !restarted) {
+              restarted = true
+              input.onReplyRestart?.(streamed)
+              return
+            }
+            return onStreamChunk(chunk, messageId, accumulated)
+          },
+        }),
+      }), signal)
+    } catch (error: unknown) {
+      if (signal.aborted || !stoppedAtOutputLimit(error)) throw error
+      prose = cutOffReply
+      break plan
+    }
+    const answered = answerOf(said)
     signal.throwIfAborted()
     taken += 1
     if (restartFirst && !restarted) input.onReplyRestart?.("")
     displayed = streamed.length > 0
     const reply = answered.toolCalls.find(({ name }) => name === "REPLY")
     const work = answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name))
-    const draft = draftOf(answered.text)
+    const draft = draftOf(answered.text, instruction, work.length)
+    let cutOff = false
     if (work.length > 0) {
-      if (acknowledges(draft, work.length)) await input.onPlanningAcknowledgment?.(answered.text.trim())
-      else if (displayed) {
+      if (acknowledges(draft, work.length, steps.length)) await input.onPlanningAcknowledgment?.(answered.text.trim())
+      if (displayed) {
         input.onReplyRestart?.("")
         displayed = false
       }
       conversation.push({ role: "assistant", content: answered.text || null, toolCalls: work })
       for (const call of work) {
-        signal.throwIfAborted()
-        await input.onActivityStatus?.({ actionName: call.name, label: call.name })
-        const params = paramsOf(call)
-        const captured: string[] = []
-        const result = await executePlannedToolCall(runtime, {
-          message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),
-          callback: async (content) => {
-            if (content.text?.trim()) captured.push(content.text)
-            return []
-          },
-        }, { id: call.id, name: call.name, params }, { abortSignal: signal })
-        await input.onStepResult?.(result)
-        steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
-        conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
+        cutOff ||= stoppedAtModelMaximum(await execute(call))
+        if (cutOff) break
       }
     }
     if (reply !== undefined) {
       prose = replyText(reply) ?? (draft === "Answer" ? answered.text : undefined)
       break plan
     }
-    if (keepsPlanning(taken, work.length, false)) continue plan
+    if (plansOn(cutOff, taken, work.length, false)) continue plan
     if (work.length > 0) break plan
     switch (nextMove(draft, 0, maxPlanSteps - taken)) {
       case "Deliver":

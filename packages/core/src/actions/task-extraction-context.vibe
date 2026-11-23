@@ -1,4 +1,4 @@
-// spec/core/requestIssuer.md, "Only a matching live original can create or use its issuer"; spec/core/requestIssuer.md, "A contradictory repeated commit permanently taints the issuer"; spec/core/requestCompletions.md, "Resolving a second different mutation invalidates an attempt"; spec/core/requestCompletions.md, "Result fingerprints and invalidation persist across projection"; spec/core/requestCompletions.md, "Denial projection needs the exact attempt and an unexecuted zero-effect failure"; spec/core/requestAuthorityRegistry.md, "Object identity and current request fields determine the active issuer"; spec/core/requestAuthorityRegistry.md, "State.data aliases share one exact view while serialized copies carry no view"; spec/core/requestAuthorityRegistry.md, "Attempts and result objects belong to one issuer across every map"; spec/core/context.md, "A historical evidence projection requires exact validated source binding"
+// spec/core/requestIssuer.md, "Only a matching live original can create or use its issuer"; spec/core/requestIssuer.md, "A contradictory repeated commit permanently taints the issuer"; spec/core/requestCompletions.md, "Resolving a second different mutation invalidates an attempt"; spec/core/requestCompletions.md, "Result fingerprints and invalidation persist across projection"; spec/core/requestCompletions.md, "Denial projection needs the exact attempt and an unexecuted zero-effect failure"; spec/core/requestAuthorityRegistry.md, "Object identity and current request fields determine the active issuer"; spec/core/requestAuthorityRegistry.md, "State.data aliases share one exact view while serialized copies carry no view"; spec/core/requestAuthorityRegistry.md, "Attempts and result objects belong to one issuer across every map"; spec/core/context.md, "A historical evidence projection requires exact validated source binding"; spec/core/context.md, "A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind"
 import {
   type Interpretation,
   Machine,
@@ -11,7 +11,7 @@ import {
 import { type Operation, type RequestClass } from "../../gen/core__requestCompletions.effect.vibe"
 import { getAmbientSingleton } from "../ambient-context.vibe"
 import { failingAs, foreignSync, thrown } from "../edge.vibe"
-import { completionContextSources, selectHistoricalNavigation } from "../runtime/completion-context.vibe"
+import { completionContextSources, historicalRequestSourceIds, selectHistoricalNavigation } from "../runtime/completion-context.vibe"
 import { hashStableJson } from "../runtime/context-hash.vibe"
 import type { ContextObject } from "../runtime/context-object.vibe"
 import { renderContextObject, segmentBlock } from "../runtime/context-renderer.vibe"
@@ -207,7 +207,7 @@ export function readTaskExtractionContext(
       (try projectDeferredProviders(binding.projected)).context,
     )
     return {
-      text: (try compactHistoricalReceiptSegments(rendered.promptSegments))
+      text: (try compactHistoricalReceiptSegments(rendered.promptSegments, { sourceIds: historicalRequestSourceIds(binding.original) }))
         .map(segmentBlock)
         .join("\n\n"),
       originalText: render(binding.original)

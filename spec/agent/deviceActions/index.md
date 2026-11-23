@@ -11,7 +11,9 @@ device does with a claimed request and its execution journal are
 [device execution](./execution.md); the reviewed wire shapes are
 [device operations](./operations.md). Native executors belong to the
 [Android device](../../os/index.md). The capability vocabulary and header negotiation are
-[capabilities](./capabilities.md).
+[capabilities](./capabilities.md). The agent's own proposal families are
+[telephony](./telephony.md) and the [device surfaces](./surfaces.md); the
+other families belong to the packages that own their records.
 
 The routes are `POST /api/client-devices/{register,revoke}`,
 `GET /api/client-devices/context`, `GET /api/client-devices/proposals` and
@@ -137,9 +139,12 @@ pure def sometimesLapsedApprovalCanBeDeclined(d: DeviceRequest): bool = d.phase 
 
 ### An unclaimed offer retires at its deadline or at the end of its turn
 
-Time only moves forward. An open offer past its deadline expires; an open
-offer whose turn ended retires. Either withdraws the session's authority, so
-the offer never reaches the device.
+Time only moves forward. An open offer past its deadline expires. A
+standalone agenda read, which the host offers for the displayed day without
+the model, retires when its turn ends; a proposal the owner's words asked
+for stays open after its turn, until the owner decides it or its deadline
+passes. Either withdraws the session's authority, so the offer never
+reaches the device.
 
 ```quint
 pure val elapsedValues = Set(0, 300000, 600000)
@@ -220,11 +225,16 @@ pure def sometimesReviewedUnresolved(d: DeviceRequest): bool = d.phase == Review
 ### A settled request never changes again
 
 Declined, expired, retired, receipted and reviewed requests are final,
-except an uncertain one, which only its review settles.
+except an uncertain one, which only its review settles. A request settled
+applied when its receipt or its confirmed review says so; nothing else is
+taken for an effect.
 
 ```quint
 pure def requestSettled(phase: RequestPhase): bool = phase == Declined or phase == Expired or phase == Retired or (afterDispatch(phase) and phase != Dispatched and phase != uncertainPhase)
+pure def settledApplied(phase: RequestPhase): bool = phase == Receipted({ reported: ReportedApplied }) or phase == Reviewed({ reviewed: ReviewedApplied })
 pure def stepSettledRequestNeverChanges(before: DeviceRequest, after: DeviceRequest): bool = requestSettled(before.phase) implies after.phase == before.phase
+pure val requestPhaseValues = Set(Offered, Approved, Declined, Expired, Retired, Dispatched, Receipted({ reported: ReportedApplied }), Receipted({ reported: ReportedNothingRan }), Receipted({ reported: ReportedUnknown }), Reviewed({ reviewed: ReviewedApplied }), Reviewed({ reviewed: ReviewedUnresolved }))
+pure def lawAnAppliedRequestIsSettled(requestPhase: RequestPhase): bool = settledApplied(requestPhase) implies (requestSettled(requestPhase) and afterDispatch(requestPhase))
 ```
 
 ## Story: Complete the original request with the result I shared
@@ -275,9 +285,13 @@ pure def stepCompletionMovesOnlyBeforeItsDeadline(before: DeviceRequest, via: st
 ### A durable claim allows at most one inference, even after a lost outcome
 
 Claiming the completion fixes the attempt and authorizes one model call with
-no tool. A prepared or delivered reply is read again without another call. A
-failure after the claim ends cancelled when the turn was aborted and unknown
-otherwise; neither admits a new inference.
+no tool. When the read's family continues the original request from the
+shared result, as with an edit or a deletion it prepares for its own
+review, that family's answer is the reply in place of the model's, and its
+follow-up is kept with the reply and offered once the reply is delivered,
+bound to the original message. A prepared or delivered reply is read again
+without another call. A failure after the claim ends cancelled when the turn
+was aborted and unknown otherwise; neither admits a new inference.
 
 ```quint
 pure val weight_failCompletion = 2
@@ -287,6 +301,8 @@ pure def alwaysOneInferencePerCompletion(d: DeviceRequest): bool = d.inferences 
 pure def stepInferenceOnlyFromAPendingCompletion(before: DeviceRequest, after: DeviceRequest): bool = after.inferences > before.inferences implies before.completion == CompletionPending
 pure def sometimesCompletionDelivered(d: DeviceRequest): bool = d.completion == CompletionDelivered
 pure def sometimesLostOutcomeNeverRestarts(d: DeviceRequest): bool = d.completion == CompletionUnknown
+pure val eval_witness_sometimesCompletionDelivered = (("registerDevice", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "key1", List("calendar.create.v1"), 0), ("offer", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "p1", "d1", "calendar.create.v1", 600000, true, { requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("decide", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", true), ("claim", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1"), ("receipt", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", 1, ReportedApplied), ("claimCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, { proposalId: "p1", digest: "d1", attemptId: 1, requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("prepareCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }), ("deliverCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }))
+pure val eval_witness_sometimesLostOutcomeNeverRestarts = (("registerDevice", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "key1", List("calendar.create.v1"), 0), ("offer", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "p1", "d1", "calendar.create.v1", 600000, true, { requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("decide", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", true), ("claim", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1"), ("receipt", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", 1, ReportedApplied), ("claimCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, { proposalId: "p1", digest: "d1", attemptId: 1, requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("failCompletion", false, { agentId: "agent1", actorId: "owner1", connector: "agent1" }))
 ```
 
 ### Cancelling never undoes a delivered reply
@@ -300,4 +316,281 @@ pure def canCancelCompletion(d: DeviceRequest, by: S::SessionOwner, digest: str)
 pure def cancelCompletion(d: DeviceRequest, by: S::SessionOwner, digest: str): DeviceRequest = if (d.completion == CompletionPending or d.completion == CompletionClaimed or d.completion == CompletionPrepared) { ...d, completion: CompletionCancelled } else d
 pure def stepClosedCompletionNeverReopens(before: DeviceRequest, after: DeviceRequest): bool = (before.completion == CompletionDelivered or before.completion == CompletionCancelled or before.completion == CompletionUnknown or (before.completion == NoCompletion and before.phase != Unoffered)) implies after.completion == before.completion
 pure def sometimesCancelledAfterClaim(d: DeviceRequest): bool = d.completion == CompletionCancelled and d.inferences == 1
+```
+
+## Story: Propose what I asked for on my phone, in my own words
+
+> As the owner, I want the agent to turn what I ask in chat, such as "call
+> mom" or "text Sam I'm late", into one request my phone reviews, with its
+> target taken from my own words, so that the agent never acts on a number,
+> an address or a record it invented, and a retry never asks my phone twice.
+
+### A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation
+
+`PROPOSE_DEVICE_ACTION` is offered to the model only on an owner turn the
+enrolled device sent, with a negotiation that was not refused, and with
+every form the operation families registered that the negotiation offers,
+in a fixed order: the families as they registered, each with its forms in
+its own order. Its description is the tool's own guidance, including how
+to read the device outcomes of earlier requests and that ordinary
+navigation needs no phone approval on a message whose views open with
+`VIEWS`, then the guidance of each of those forms and of each family that
+offers one, as the negotiation and the installation's enabled views decide
+it. So the tool is the same on every message of a device conversation
+while the negotiation and the installation's views hold
+([planning](../conversation/planning.md)), and nothing a message carries
+changes it. What depends on the message reaches the model after it, in
+the tool's note for the message, sent only while the tool is offered
+([planning](../conversation/planning.md)): the whole-message route that
+owns it, if any, as what to use; how views open on it; and the offered
+forms the message does not allow, each reason said once with the forms it
+holds back. The note says what applies, never that a proposal was made. A form may be offered and yet not available on a message: a family
+says which of its forms depend on what the message shows, as a new phone
+note depends on the Notes screen ([surfaces](./surfaces.md)), and on a
+message a whole-message route owns only the routed forms are available.
+The turn is live
+from the owner's message until its reply ends and only while it is not
+aborted: work that still holds it afterwards has no device turn, and the
+offer checks it again just before the request is kept. The model may write
+the operation as an object or as a JSON string of one. The family of its
+wire type may first prepare it, as telephony restores the digits of a
+number the owner wrote with separators, and the operation must then match
+one of the offered forms exactly, not only by its type, and be available
+on this message. One that matches no offered form is refused before the
+family grounds it, as a step of the turn: the model reads that nothing was
+created, so it may correct it, and the owner hears that it could not be
+prepared. One that is not the routed request's on a routed message, or
+whose form this message does not allow, is a call the message serves in
+another place: the planner refuses it before dispatch
+([planning](../conversation/planning.md)), the model reads which it was
+and that nothing was created, so it may ask the owner or take that other
+way, and it is no step of the turn, so the owner hears no failure for a
+form the tool offers only because the tool is the same on every message.
+The handler refuses it the same way if it is ever called otherwise, and
+the owner then hears that it could not be prepared, never a reason taken
+from the screen. Its family grounds
+it in the owner's words: the host-persisted text of the message, without
+its document wrapper, and none at all when that text carries an external
+envelope, so words inside a page, an email or a connector's payload never
+count as the owner's. The family may offer another operation of its own
+types in its place: a recipient restored from what the owner said, a send
+turned into a draft, an update turned into the read before it. The
+grounded operation is then validated again against the turn's negotiation
+with no binding, and only then offered, on the turn's request,
+conversation and message, for ten minutes. Each operation of a compound
+request is its own proposal: a photo kept for its review card never holds
+back the text the same message asked for. A family may name the operation
+the owner's whole message is a strict command for, as the Browser does for
+"open example.com" and the surfaces do for "take a picture"; where exactly
+one family names one and it matches a form available on this message
+(only the routed forms while a [whole-message route](./surfaces.md) owns
+the request), the tool names that proposal as the turn's call to run
+before the model's choice, and it is proposed, grounded and admitted as
+any other.
+
+```quint
+type GroundingVerdict = FamilyGrounded | FamilyRefused
+type ProposalReply = ProposalOffered | RefusedBeforeDispatch
+type FormAvailability = FormNotOffered | FormRoutedAway | FormNotAvailableNow | FormAvailable
+pure def formAvailability(offeredForm: bool, routedAway: bool, availableNow: bool): FormAvailability =
+  if (not(offeredForm)) FormNotOffered else if (routedAway) FormRoutedAway else if (not(availableNow)) FormNotAvailableNow else FormAvailable
+pure def proposalReply(deviceTurn: bool, availability: FormAvailability, verdict: GroundingVerdict, admitted: bool): ProposalReply =
+  if (deviceTurn and availability == FormAvailable and verdict == FamilyGrounded and admitted) ProposalOffered else RefusedBeforeDispatch
+pure def lawOnlyAnOwnerTurnOfTheEnrolledDeviceProposes(availability: FormAvailability, verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(false, availability, verdict, admitted) == RefusedBeforeDispatch
+pure def lawOnlyAnOfferedFormIsProposed(deviceTurn: bool, routedAway: bool, availableNow: bool, verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(deviceTurn, formAvailability(false, routedAway, availableNow), verdict, admitted) == RefusedBeforeDispatch
+pure def lawAFormThisMessageDoesNotAllowIsRefusedBeforeDispatch(deviceTurn: bool, offeredForm: bool, routedAway: bool, verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(deviceTurn, formAvailability(offeredForm, routedAway, false), verdict, admitted) == RefusedBeforeDispatch
+pure def lawARoutedMessageProposesOnlyItsRoute(deviceTurn: bool, offeredForm: bool, availableNow: bool, verdict: GroundingVerdict, admitted: bool): bool =
+  proposalReply(deviceTurn, formAvailability(offeredForm, true, availableNow), verdict, admitted) == RefusedBeforeDispatch
+pure def lawAGroundedProposalIsReadmitted(deviceTurn: bool, availability: FormAvailability, verdict: GroundingVerdict): bool =
+  proposalReply(deviceTurn, availability, verdict, false) == RefusedBeforeDispatch
+pure def servedElsewhere(availability: FormAvailability): bool = availability == FormRoutedAway or availability == FormNotAvailableNow
+pure def lawAFormServedElsewhereIsNeverProposed(deviceTurn: bool, availability: FormAvailability, verdict: GroundingVerdict, admitted: bool): bool =
+  servedElsewhere(availability) implies proposalReply(deviceTurn, availability, verdict, admitted) == RefusedBeforeDispatch
+pure def lawAnUnmatchedOperationIsNotServedElsewhere(routedAway: bool, availableNow: bool): bool =
+  not(servedElsewhere(formAvailability(false, routedAway, availableNow)))
+```
+
+### Each wire type belongs to at most one proposal family, and a family offers forms only of its own types
+
+The operation families that register with the agent own disjoint sets of
+wire types. A registration that claims a type another family already owns,
+or that offers a form naming a type outside its own set, is refused whole,
+and the module that made it does not start; registering the same family
+again changes nothing.
+
+```quint
+pure def registrationAdmitted(claimedByAnother: bool, formsWithinTypes: bool): bool = not(claimedByAnother) and formsWithinTypes
+pure def lawATypeAnotherFamilyOwnsIsRefused(formsWithinTypes: bool): bool = not(registrationAdmitted(true, formsWithinTypes))
+pure def lawAFormOutsideTheFamilysTypesIsRefused(claimedByAnother: bool): bool = not(registrationAdmitted(claimedByAnother, false))
+```
+
+### A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card
+
+A family grounds an operation as the owner asked for it, for review, or as
+a step on what the owner has open: the thread or voicemail on the screen,
+or the Calendar day a standalone agenda read shows. The proposal carries the
+owner's message as `requestMessageId` only while its turn is live, and then
+only for a step on the open selection, or for an operation grounded as
+asked on a turn whose message is a direct request (`voiceUi.agentActionMode`
+is `direct-request-v1`). Any other proposal carries none, so the phone
+never runs it without its card, whatever the operation and the owner's
+[direct-request preference](./execution.md); its origin is still the
+owner's message, so its identity, its read completion and the outcomes a
+later turn learns are the same. The choice is kept with the request, and
+the review routes serve the key only where it was kept. An open request of
+the same operation is returned for a repeat in another message only when
+neither carries a message: one that carries its message runs without its
+card only for that message, so a later message that asks again, such as
+"take a picture" said twice, is a request of its own.
+
+The reply follows the choice. A pending request that carries the message
+is answered in its family's words as the handoff it is ("Opening
+example.com.") and tells the model that it has not run yet, so it never
+claims what it found or shows; one kept for review asks the owner to
+review it on the phone, in the family's words and in the turn's time zone;
+an approved or running one only tells the model its state.
+
+```quint
+type ProposalGrounding = GroundedAsAsked | GroundedForReview | GroundedOnScreen
+pure def carriesRequestMessage(grounding: ProposalGrounding, directRequest: bool, turnLive: bool): bool =
+  turnLive and (grounding == GroundedOnScreen or (directRequest and grounding == GroundedAsAsked))
+pure def returnsOpenRequest(keptCarries: bool, proposedCarries: bool, sameOperation: bool): bool =
+  sameOperation and not(keptCarries) and not(proposedCarries)
+pure def lawAProposalForReviewCarriesNoMessage(directRequest: bool, turnLive: bool): bool =
+  not(carriesRequestMessage(GroundedForReview, directRequest, turnLive))
+pure def lawOnlyADirectRequestCarriesTheMessageAsAsked(turnLive: bool): bool =
+  not(carriesRequestMessage(GroundedAsAsked, false, turnLive))
+pure def lawAnEndedTurnCarriesNoMessage(grounding: ProposalGrounding, directRequest: bool): bool =
+  not(carriesRequestMessage(grounding, directRequest, false))
+pure def lawARepeatNeverReturnsADifferentlyBoundRequest(sameOperation: bool): bool =
+  not(returnsOpenRequest(true, false, sameOperation)) and not(returnsOpenRequest(false, true, sameOperation))
+pure def lawARequestThatCarriesItsMessageIsNeverReturnedToAnother(proposedCarries: bool, sameOperation: bool): bool =
+  not(returnsOpenRequest(true, proposedCarries, sameOperation))
+pure def lawAReviewedRepeatReturnsTheOpenRequest(sameOperation: bool): bool = returnsOpenRequest(false, false, sameOperation) == sameOperation
+```
+
+### A proposal's identity is its request message and its operation, so a repeat returns the same request
+
+The proposal id is derived from the owner's message and a digest of the
+grounded operation, never from the model. Proposing it again returns the
+request already kept under that id; an open request of the same
+conversation for the same operation is returned too when neither carries a
+message. A family's refusal is held while a request is kept that way for
+the exact operation the model proposed: re-proposing it only retrieves that
+request, its stored receipt or the same review, and never creates a new
+one. A request that already settled is reported from its stored receipt
+and is never dispatched again, in its family's words: what the model may
+say of the historical result, which is never a current read, and the
+owner's sentence where the family gives one; otherwise the model answers
+from that result.
+
+```quint
+type ProposalAnswer = OfferedNew | ReturnedOpen | ReturnedSettled | AnsweredRefused
+pure def proposalAnswer(reply: ProposalReply, sameKeyKept: bool, keptSettled: bool, sameOperationOpen: bool): ProposalAnswer =
+  if (sameKeyKept) (if (keptSettled) ReturnedSettled else ReturnedOpen)
+  else if (sameOperationOpen) ReturnedOpen
+  else if (reply == ProposalOffered) OfferedNew
+  else AnsweredRefused
+pure def lawARepeatNeverOffersASecondRequest(reply: ProposalReply, keptSettled: bool, sameOperationOpen: bool): bool =
+  proposalAnswer(reply, true, keptSettled, sameOperationOpen) != OfferedNew
+pure def lawASettledRepeatIsReportedNotDispatched(reply: ProposalReply, sameOperationOpen: bool): bool =
+  proposalAnswer(reply, true, true, sameOperationOpen) == ReturnedSettled
+pure def lawAnOpenRequestOfTheSameOperationIsReturned(reply: ProposalReply, keptSettled: bool): bool =
+  proposalAnswer(reply, false, keptSettled, true) == ReturnedOpen
+pure def lawAHeldRefusalReturnsTheKeptRequest(keptSettled: bool, sameOperationOpen: bool): bool =
+  proposalAnswer(RefusedBeforeDispatch, true, keptSettled, sameOperationOpen) != AnsweredRefused
+```
+
+### A grounding refusal offers nothing and is a refusal before dispatch
+
+When the family refuses and no request is kept for the exact operation,
+nothing is kept: the model learns why in its own words, the owner hears the
+family's own sentence verbatim, and the result is marked
+`executionStatus: "not_started"`, which [planning](../conversation/planning.md)
+records as `Rejected`. An operation that is not an offered form, that this
+message does not allow, or that the negotiation no longer admits, is
+refused the same way.
+
+```quint
+pure def lawAGroundingRefusalOffersNothing(deviceTurn: bool, availability: FormAvailability, admitted: bool, keptSettled: bool, sameOperationOpen: bool): bool =
+  proposalAnswer(proposalReply(deviceTurn, availability, FamilyRefused, admitted), false, keptSettled, sameOperationOpen) != OfferedNew
+pure def lawAnUnheldRefusalIsAnswered(deviceTurn: bool, availability: FormAvailability, admitted: bool, keptSettled: bool): bool =
+  proposalAnswer(proposalReply(deviceTurn, availability, FamilyRefused, admitted), false, keptSettled, false) == AnsweredRefused
+```
+
+### A read's follow-up is offered only after its reply was delivered, as its own family continued it
+
+When an applied read answers the original request, the read's family may
+continue that request from the shared result: an edit or a deletion of the
+record the read returned, as the owner's original words asked for it, or
+its own sentence when no change can follow. Its sentence replaces the
+model's reply. Its follow-up must be one of that family's own types, is
+validated against the completion's negotiation with no binding, and is
+offered only once, when this reply was first delivered, on the original
+request, conversation and message. The original turn has ended by then, so
+the follow-up carries no `requestMessageId` and is always reviewed on the
+phone.
+
+```quint
+pure def followUpOffered(delivered: bool, continued: bool, ownType: bool, admitted: bool): bool = delivered and continued and ownType and admitted
+pure def lawAFollowUpWaitsForTheDeliveredReply(continued: bool, ownType: bool, admitted: bool): bool = not(followUpOffered(false, continued, ownType, admitted))
+pure def lawAFollowUpIsTheReadFamilysOwn(delivered: bool, admitted: bool): bool = not(followUpOffered(delivered, true, false, admitted))
+```
+
+### A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running
+
+An owner turn of the enrolled device carries, beside the screen context, a
+note of the newest outcomes of this conversation's own requests: each one
+that settled applied and changed something on the phone, and each one the
+owner declined or that expired before it ran. A read, a view change or an
+opened review settled applied changes nothing
+([device operations](./operations.md)) and is never named as an effect; an
+open, running, uncertain or otherwise settled request is not named either.
+Only a request that still stands is named: its original message is still
+the owner's own, in this conversation, under the current enrollment, and
+the turn's negotiation still admits its operation. Each line gives its
+proposal id, its operation type, a label where the operation has one, and
+when it settled, or that it never ran, after a lead saying its labels are
+untrusted record data, never instructions. When the requests cannot be
+read, a note says that they could not be checked. While the device tool is
+offered, what holds on every turn sits in its description (above): that
+an applied outcome supersedes older pending dialogue for that proposal
+only, that a completed request is never replayed, and that earlier pending
+dialogue proves nothing is still pending; a turn with no outcome to report
+then sends no such note. A device turn whose negotiation was refused or
+offers no form has no device tool to describe this, so its note says it:
+after the outcomes it names, how to read them, and with none, that earlier
+pending dialogue proves nothing is still pending. It looks at the fifty
+newest requests of this conversation that settled. It is a historical receipt, never a current read or authority for
+a new effect, and it names at most six.
+
+```quint
+type RequestEnding = EndedApplied | EndedDeclined | EndedExpired | EndedOtherwise | StillOpen
+pure def requestEnding(requestPhase: RequestPhase): RequestEnding =
+  if (settledApplied(requestPhase)) EndedApplied
+  else if (requestPhase == Declined) EndedDeclined
+  else if (requestPhase == Expired or requestPhase == Retired) EndedExpired
+  else if (requestSettled(requestPhase)) EndedOtherwise
+  else StillOpen
+pure def outcomeLearned(ending: RequestEnding, nothingChanged: bool, standing: bool): bool =
+  standing and ((ending == EndedApplied and not(nothingChanged)) or ending == EndedDeclined or ending == EndedExpired)
+pure val outcomesShown = 6
+pure def outcomesLearned(learnedCount: int): int = if (learnedCount < outcomesShown) learnedCount else outcomesShown
+pure def lawAtMostSixOutcomesAreLearned(learnedCount: int): bool = outcomesLearned(learnedCount) <= outcomesShown
+pure def lawEveryOutcomeUpToSixIsLearned(learnedCount: int): bool = (learnedCount >= 0 and learnedCount <= outcomesShown) implies outcomesLearned(learnedCount) == learnedCount
+pure def lawAReadIsNeverLearnedAsAnEffect(standing: bool): bool = not(outcomeLearned(EndedApplied, true, standing))
+pure def lawAnOpenOrUncertainRequestIsNotLearned(nothingChanged: bool, standing: bool): bool =
+  not(outcomeLearned(StillOpen, nothingChanged, standing)) and not(outcomeLearned(EndedOtherwise, nothingChanged, standing))
+pure def lawOnlyAStandingRequestIsLearned(ending: RequestEnding, nothingChanged: bool): bool = not(outcomeLearned(ending, nothingChanged, false))
+pure def outcomesNoteSent(learnedCount: int, checked: bool, toolDescribed: bool): bool =
+  not(checked) or not(toolDescribed) or outcomesLearned(learnedCount) > 0
+pure def lawNoOutcomeSendsNoNote(learnedCount: int): bool = learnedCount <= 0 implies not(outcomesNoteSent(learnedCount, true, true))
+pure def lawAnUncheckedHistoryIsAlwaysSaid(learnedCount: int, toolDescribed: bool): bool = outcomesNoteSent(learnedCount, false, toolDescribed)
+pure def lawWithoutTheToolTheNoteIsAlwaysSent(learnedCount: int): bool = outcomesNoteSent(learnedCount, true, false)
+pure def lawAnEndingThatNeverRanWasNeverDispatched(requestPhase: RequestPhase): bool =
+  (requestEnding(requestPhase) == EndedDeclined or requestEnding(requestPhase) == EndedExpired) implies not(afterDispatch(requestPhase))
+pure def lawAnUncertainRequestIsStillOpen(requestPhase: RequestPhase): bool = requestPhase == uncertainPhase implies requestEnding(requestPhase) == StillOpen
 ```

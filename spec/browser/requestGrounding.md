@@ -51,3 +51,127 @@ pure def lawGroundingPreservesAuthoredSpelling(readable: bool, https: bool, veto
   result != "" implies candidates.some(c => c.qualifies and c.authoredHref == result)
 }
 ```
+
+### A page link opens only as an exact link of the page my message carried, and only after my review
+
+Besides an address the owner typed, a proposed destination may be one of
+the links of the Browser page the owner's current message carried, bound to
+that message's observation: the non-sensitive Browser view selecting that
+tab at that revision. The proposed address, read as an HTTPS address with
+its fragment dropped, must equal one of those links exactly, and the
+destination is the page's own spelling of it. A typed address wins over a
+link, a host the owner refused opens through no link, and a message with
+no such page grounds no link. A page link is never a direct request: it is
+offered unbound to the message, so the owner reviews it on the phone.
+
+```quint
+pure def pageLinkDestination(readable: bool, https: bool, vetoed: bool, candidates: List[GroundedAddress], pageLinks: List[str], proposedLink: str): str = {
+  val typed = groundProposedDestination(readable, https, vetoed, candidates)
+  if (typed != "") typed
+  else if (readable and https and not(vetoed) and pageLinks.includes(proposedLink)) proposedLink
+  else ""
+}
+pure val pageLinksValues = Set(List(), List("https://one.example/story"), List("https://one.example/story", "https://two.example/post?id=2"))
+pure val proposedLinkValues = Set("https://one.example/story", "https://two.example/post?id=3", "")
+pure def lawARefusedHostOpensNoPageLink(readable: bool, https: bool, candidates: List[GroundedAddress], pageLinks: List[str], proposedLink: str): bool =
+  pageLinkDestination(readable, https, true, candidates, pageLinks, proposedLink) == ""
+pure def lawAPageLinkIsOneOfThePagesLinks(readable: bool, https: bool, vetoed: bool, candidates: List[GroundedAddress], pageLinks: List[str], proposedLink: str): bool = {
+  val result = pageLinkDestination(readable, https, vetoed, candidates, pageLinks, proposedLink)
+  (result != "" and groundProposedDestination(readable, https, vetoed, candidates) == "") implies pageLinks.includes(result)
+}
+pure def lawWithoutAPageOnlyTypedAddressesGround(readable: bool, https: bool, vetoed: bool, candidates: List[GroundedAddress], proposedLink: str): bool =
+  pageLinkDestination(readable, https, vetoed, candidates, List(), proposedLink) == groundProposedDestination(readable, https, vetoed, candidates)
+```
+
+### An open runs without my review only when my whole message asked to open that address
+
+A grounded open is bound to the owner's current message only when that
+whole message is a direct request to open exactly that address: the strict
+command, a polite question, an everyday command or the bare address. An
+address the owner only mentioned, one whose dots they spoke as words, and
+a link of the page their message carried are grounding evidence alone: such
+an open is offered unbound to the message, so the owner reviews it on the
+phone before it loads.
+
+```quint
+pure def openBound(pageLink: bool, wholeMessageOpen: bool): bool = not(pageLink) and wholeMessageOpen
+pure def lawAPageLinkIsAlwaysReviewed(wholeMessageOpen: bool): bool = not(openBound(true, wholeMessageOpen))
+pure def lawOnlyMyWholeMessageOpenIsBound(pageLink: bool, wholeMessageOpen: bool): bool = openBound(pageLink, wholeMessageOpen) implies wholeMessageOpen
+```
+
+### My whole-message open command opens the address without waiting on the model's choice
+
+When the owner's whole message is the strict open command, "open",
+"visit", "go to" or "navigate to" an address, with an optional greeting
+and the assistant's name before it, "in the browser" or "in a new tab", a
+polite suffix and closing marks after it, on a phone that opens addresses
+from chat, the open of that address is the turn's first call, before the
+model is asked. The model can no longer answer it by opening the Browser
+view, which loads no address. The open is grounded, bound and placed in a
+new tab as any whole-message open. A polite question, an everyday command,
+the bare address and a spoken hostname still wait on the model's choice.
+
+```quint
+pure def openAskedFirst(strictCommand: bool, opensAddresses: bool): bool = strictCommand and opensAddresses
+pure def lawOnlyTheStrictCommandSkipsTheModel(strictCommand: bool, opensAddresses: bool): bool =
+  openAskedFirst(strictCommand, opensAddresses) implies strictCommand
+pure def lawTheStrictCommandOpensWhereThePhoneOpensAddresses(opensAddresses: bool): bool = openAskedFirst(true, opensAddresses) iff opensAddresses
+```
+
+### A closing mark that could belong to the address leaves the open for my review
+
+In an open command or request, a period, comma, exclamation or question
+mark that ends the message after a bare host is the sentence's, and the message still
+opens that host: "Open Reddit.com!" opens reddit.com. After a typed path,
+query or fragment the mark may be the address's own: where the address
+differs with and without it, as in "open nytimes.com/section/world.", the
+message is not a direct request to open it. A message that is the address
+alone is a direct request only as typed: a closing mark that changes it, as
+in "example.com?!", or leaves no address, as in "example.com.", makes it no
+direct request either. The address such a message grounds is offered
+unbound to the message, so the owner reviews it before it loads. A mark
+that leaves the address the same, such as an empty query, keeps the
+whole-message open.
+
+```quint
+pure def closingMarkIsProse(addressAlone: bool, afterTypedPath: bool, markChangesAddress: bool): bool =
+  not(markChangesAddress and (addressAlone or afterTypedPath))
+pure def lawAMarkAfterABareHostInACommandIsProse(markChangesAddress: bool): bool = closingMarkIsProse(false, false, markChangesAddress)
+pure def lawAMarkThatChangesATypedPathOpensNothingDirectly(readable: bool, addressAlone: bool, directHref: str): bool =
+  directDestination(readable, closingMarkIsProse(addressAlone, true, true), directHref) == ""
+pure def lawAMarkThatChangesAnAddressAloneOpensNothingDirectly(readable: bool, afterTypedPath: bool, directHref: str): bool =
+  directDestination(readable, closingMarkIsProse(true, afterTypedPath, true), directHref) == ""
+pure def lawAMarkThatLeavesTheAddressKeepsTheOpen(addressAlone: bool, afterTypedPath: bool): bool = closingMarkIsProse(addressAlone, afterTypedPath, false)
+```
+
+### An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one
+
+When the owner's whole message asks to open an address in a new tab,
+written as an address or with its dots spoken as words, the owner's words
+decide: an empty tab proposed for that message, unless it is private, is the
+open of that address in a new tab, grounded as any proposed address is, so
+the address opens once and no blank tab does. A private tab, and an empty
+tab proposed for any other message, stays the empty tab it was asked for.
+The model is told to open a typed address with an open, never an empty tab.
+An open goes to a tab of its own only on a phone that negotiated
+`browser.open-new-tab.v1`, and there when the model asked for one, as an
+empty tab that became the open does, or the owner's whole message, with the
+address written as one, opened that same address in a new tab; anywhere
+else the phone opens it as it always has.
+
+```quint
+type Placement = { proposedNewTab: bool, ownerAskedNewTab: bool, ownerAddressIsDestination: bool, newTabNegotiated: bool }
+pure def opensInNewTab(placement: Placement): bool =
+  placement.newTabNegotiated and (placement.proposedNewTab or (placement.ownerAskedNewTab and placement.ownerAddressIsDestination))
+pure def emptyTabOpensAddress(proposedPrivate: bool, ownerOpensAddressInNewTab: bool): bool = ownerOpensAddressInNewTab and not(proposedPrivate)
+pure val askedPlacement: Placement = { proposedNewTab: false, ownerAskedNewTab: true, ownerAddressIsDestination: true, newTabNegotiated: true }
+pure val placementValues = Set(askedPlacement, { ...askedPlacement, newTabNegotiated: false }, { ...askedPlacement, ownerAskedNewTab: false },
+  { ...askedPlacement, ownerAddressIsDestination: false }, { ...askedPlacement, ownerAskedNewTab: false, proposedNewTab: true },
+  { ...askedPlacement, ownerAskedNewTab: false, proposedNewTab: true, newTabNegotiated: false })
+pure def lawAnAddressAskedInANewTabIsNeverAnEmptyTab(proposedPrivate: bool): bool = not(proposedPrivate) implies emptyTabOpensAddress(proposedPrivate, true)
+pure def lawAPrivateTabOrAnotherMessageKeepsItsEmptyTab(proposedPrivate: bool, ownerOpensAddressInNewTab: bool): bool =
+  (proposedPrivate or not(ownerOpensAddressInNewTab)) implies not(emptyTabOpensAddress(proposedPrivate, ownerOpensAddressInNewTab))
+pure def lawATabOfItsOwnNeedsItsCapability(placement: Placement): bool = opensInNewTab(placement) implies placement.newTabNegotiated
+pure def lawMyNewTabOpensWhereThePhoneHasOne(placement: Placement): bool =
+  (placement.newTabNegotiated and placement.ownerAskedNewTab and placement.ownerAddressIsDestination) implies opensInNewTab(placement)
+```

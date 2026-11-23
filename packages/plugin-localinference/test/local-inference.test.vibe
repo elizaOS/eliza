@@ -97,7 +97,7 @@ effect function call(routes: readonly LocalRoute[], method: string, path: string
 
 const refusalOf = <A, E extends { readonly _tag: string }>(work: A!E) => map(Effect.flip(work), (failure) => failure._tag)
 
-it.effect('Download, verify, assign, activate and remove models, keeping the owner\'s choices across restarts (spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/models.md, "A download is installed only when every file matches its published digest"; spec/localInference/models.md, "A slot is assigned only to an installed model whose role serves it, one slot per change"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"; spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"; spec/localInference/models.md, "Removing a model first unloads it and clears every slot that named it")', effect () => {
+it.effect('Download, verify, assign, activate and remove models, keeping the owner\'s choices across restarts (spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/models.md, "A download is installed only when every file matches its published digest"; spec/localInference/models.md, "A slot is assigned only to an installed model whose role serves it, one slot per change"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"; spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"; spec/localInference/models.md, "Removing a model first unloads it and clears every slot that named it"; spec/localInference/models.md, "A model whose files cannot be read is reported unreadable, never as absent")', effect () => {
   const published = hub()
   const { engine, calls, controls } = fakeEngine()
   provide NodeServices.layer, Layer.succeed(HttpClient.HttpClient, published.client), InferenceEngine = engine {
@@ -190,6 +190,28 @@ it.effect('Download, verify, assign, activate and remove models, keeping the own
     assert.isFalse(try fs.exists(path.join(modelsDirectory, "bge-small-en-v1.5-f16.gguf")))
     assert.deepStrictEqual((try unreadable.view()).models[1], { name: "bge-small-en-v1.5", role: "embedding", install: "absent", evalsPassed: false, active: false, slots: [] })
     assert.deepStrictEqual(try call(routes, "POST", "/api/asr/local-inference/end-of-turn", { body: { transcript: " Water the plants. " } }), { status: 200, body: { available: true, complete: true, probability: 0.9 } })
+    try unreadable.close()
+
+    const installedFile = path.join(state, "local-inference", "installed.json")
+    try fs.remove(path.join(modelsDirectory, "eliza-1-2b"), { recursive: true })
+    try fs.writeFileString(path.join(modelsDirectory, "eliza-1-2b"), "not a directory")
+    const damaged = try openLocalModels(state, testCatalog)
+    const damagedView = try damaged.view()
+    assert.deepStrictEqual([damagedView.models.map((model) => model.install), damagedView.unreadable, damagedView.active.model], [["unreadable", "absent"], "ENOTDIR", null])
+    assert.strictEqual(try refusalOf(damaged.download("model1")), "Rejected")
+    assert.strictEqual(try refusalOf(damaged.activate("model1")), "Rejected")
+    try damaged.download("model2")
+    try settled(damaged, "model2")
+    assert.include(try fs.readFileString(installedFile), '"id": "model1"')
+    try damaged.close()
+
+    try fs.remove(modelsDirectory, { recursive: true })
+    try fs.writeFileString(modelsDirectory, "not a directory")
+    const unopened = try openLocalModels(state, testCatalog)
+    const unopenedView = try unopened.view()
+    assert.deepStrictEqual([unopenedView.models.map((model) => model.install), unopenedView.assignmentsReadable, typeof unopenedView.unreadable], [["unreadable", "unreadable"], false, "string"])
+    assert.strictEqual(try refusalOf(unopened.download("model2")), "Rejected")
+    assert.isUndefined(try unopened.embeddingModel())
   }
 })
 
