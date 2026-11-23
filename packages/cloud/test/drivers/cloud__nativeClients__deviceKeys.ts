@@ -12,7 +12,7 @@ import { routes as federatedRoutes } from "../../src/identity/federated.vibe";
 import { routes as factorRoutes } from "../../src/identity/second-factor.vibe";
 import { activateLease, endLease, issueSession, offerLease } from "../../src/identity/sessions.vibe";
 import { acknowledgeGrant, exchangeGrant, openGrant, renewGrant, retireGrant, routes } from "../../src/native-clients/device-keys.vibe";
-import { endGrantForLeaseTheft, observeGrant, phaseColumn, supersedeGrant } from "../../src/native-clients/grants.vibe";
+import { cancelLegacySuccessor, endGrantForLeaseTheft, observeGrant, phaseColumn, supersedeGrant } from "../../src/native-clients/grants.vibe";
 import { signInDevice } from "../../src/native-clients/mobile-google.vibe";
 import { decodeRegistration, readClient, registerClient, updateClient } from "../../src/native-clients/registry.vibe";
 import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe";
@@ -313,6 +313,16 @@ async function dispatch(key: string, event: Event) {
     case "token": return token(key, event);
     case "ack": return ack(key, event);
     case "renew": return renew(key, event);
+    case "cancelLegacySuccessor": {
+      const held = await device(key);
+      const answer = await attempt(within((tx) => Effect.gen(function* () {
+        yield* tx.query("UPDATE device_grants SET sign_in_at = $2 WHERE key = $1", [held.grantKey, event.legacy ? now : null]);
+        return yield* cancelLegacySuccessor(tx, held.grantKey);
+      })));
+      if (!answer.accepted) return "refused" as const;
+      outputs.set(key, answer.value.out.out);
+      return "accepted" as const;
+    }
     case "supersede": case "endForLeaseTheft": return endedByLease(key, event.type);
     case "selfRevoke": {
       const held = await device(key);

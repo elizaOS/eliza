@@ -13,7 +13,7 @@ import { s256 } from "../shared/credential-crypto.vibe"
 import { newId, sameText, seal, secretText, tokenDigest, unseal } from "../shared/sealing.vibe"
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
 import { type Columns } from "../store/rows.vibe"
-import { currentGrant, decodeGrant, endKey, inspectKey, isFlatGrant, keyExpiresAt, phaseColumn, stepGrant, supersedeGrant } from "./grants.vibe"
+import { cancelLegacySuccessor, currentGrant, decodeGrant, endKey, inspectKey, isFlatGrant, keyExpiresAt, phaseColumn, stepGrant, supersedeGrant } from "./grants.vibe"
 import { activateLease, admitLeaseRefresh, bearerToken, endLease, endLeasesOf, leaseRefreshExpiresIn, leaseRefreshPattern, leaseRefusedOr, moveLease, offerLease, type LeaseRefresh } from "../identity/sessions.vibe"
 import { admitClient, parseReturn, readRegistry, servedEnvironment } from "./registry.vibe"
 
@@ -375,8 +375,7 @@ effect function endLegacyRenewals(tx: Tx, root: Row, named: string, now: number)
     const pending = successor.phase === "code_issued" || successor.phase === "exchanged"
     if (keepChain && (!pending || successor.renewed_from !== root.key)) continue
     if (pending) {
-      try stepGrant(tx, toText(successor.key) ?? "", { type: "cancelLegacySuccessor", legacy: true }, (grant) =>
-        ({ phase: phaseColumn(grant), sealed_copy: null, sealed_lease: null, updated_at: grant.now }))
+      try cancelLegacySuccessor(tx, toText(successor.key) ?? "")
     } else {
       try endKey(tx, successor, now)
     }
