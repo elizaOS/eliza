@@ -3,7 +3,7 @@ import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch, type Worke
 import type { Client } from "pg"
 import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { sweepUsage } from "./worker-metering.vibe"
-import { cloudCredential, identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
+import { cloudCredential, identityRequest, nativeGooglePath, inferenceAccount, managedMailAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
 import { nativeAssetLinks } from "./native-registry.vibe"
 import { ownsPasswordBackupPath } from "./password-backup.vibe"
 export { nativeAssetLinks }
@@ -68,7 +68,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   const google = path.startsWith("/api/v1/eliza/google/")
   const nativeConnect = path === "/api/v1/eliza/google/connect/native"
   if (!reminders && !decisions && !inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
-  const account = reminders || decisions || inference || speech || nativeConnect ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
+  const account = reminders || decisions || inference || speech || nativeConnect ? await inferenceAccount(request, db, env) : google ? await managedMailAccount(request, db) : await sessionAccount(request, db)
   if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
   if ((reminders || nativeConnect) && !request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 403 })
   if (reminders) return reminderSchedule(request, env, db, account)
@@ -78,7 +78,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   if (inference) return inferenceRequest(request, env, db, account, workerFetch, lifetime)
   if (google) {
     const response = await googleRequest(request, env, db, account, providerFetch)
-    if (response.ok && request.method === "GET" && path.startsWith("/api/v1/eliza/google/gmail/") && await sessionAccount(request, db) !== account)
+    if (response.ok && request.method === "GET" && !nativeConnect && await managedMailAccount(request, db) !== account)
       return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
     return response
   }

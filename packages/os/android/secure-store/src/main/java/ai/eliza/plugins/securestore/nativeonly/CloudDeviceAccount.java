@@ -351,10 +351,24 @@ public final class CloudDeviceAccount {
    slots.write(CREDENTIAL, acknowledged.toString());
   } else if (current != null && replaces.equals(current.getString("token"))) {
    JSONObject replaced = new JSONObject().put("token", replaces).putOpt("credentialId", current.optString("credentialId", null));
+   current.put("binding", bindingOf(current));
    for (String key : List.of("token", "credentialId", "issuedAt", "expiresAt")) current.putOpt(key, acknowledged.opt(key));
    slots.write(CREDENTIAL, current.toString());
    oweRevocation(replaced);
   } else oweRevocation(duty(acknowledged));
+ }
+
+ private static String bindingOf(JSONObject current) throws Exception {
+  if (current.has("binding")) return current.getString("binding");
+  byte[] token = current.getString("token").getBytes(StandardCharsets.UTF_8);
+  return Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(token));
+ }
+
+ public String accountBinding(String currentSecret) throws Exception {
+  synchronized (LOCK) {
+   Session current = session();
+   return current != null && current.token().equals(currentSecret) ? bindingOf(stored()) : null;
+  }
  }
 
  public String credential() throws Exception {
@@ -551,8 +565,14 @@ public final class CloudDeviceAccount {
  }
 
  public boolean renewIfDue() throws Exception {
-  if (awaitingAcknowledgment()) return finishAcknowledgment();
   synchronized (LEASE) {
+   synchronized (LOCK) {
+    String pending = slots.read(ACK);
+    if (pending != null && !new JSONObject(pending).has("replaces")) return false;
+    String signingIn = slots.read(PENDING);
+    if (pending == null && signingIn != null && pendingActive(new JSONObject(signingIn))) return false;
+   }
+   if (awaitingAcknowledgment()) return finishAcknowledgment();
    JSONObject credential = stored();
    JSONObject lease = credential == null ? null : credential.optJSONObject("lease");
    if (lease == null) return false;
@@ -560,16 +580,20 @@ public final class CloudDeviceAccount {
    long issuedAt = credential.optLong("issuedAt", expiresAt - MAX_CREDENTIAL_SECONDS * 1000);
    if (now < issuedAt + (expiresAt - issuedAt) / 2) return false;
    if (newestExpiry(lease) <= now) {
-    clear();
+    dropLease(credential);
     return false;
    }
    boolean canonical = canonical(credential);
    Exchange reply = post(canonical ? RENEW : "/api/auth/device/renew", null, newest(lease), 200, 401);
    if (reply.status() == 401) {
-    clear();
+    dropLease(credential);
     return false;
    }
    JSONObject renewed = new JSONObject(reply.body());
+   String renewedAccount = canonical ? identifier(renewed.getJSONObject("user"), "id") : identifier(renewed, "accountId");
+   String renewedOrganization = canonical ? identifier(renewed, "organizationId") : credential.getString("organizationId");
+   if (!renewedAccount.equals(credential.getString("accountId")) || !renewedOrganization.equals(credential.getString("organizationId")))
+    throw new IOException("Cloud renewed a different device account");
    String token = renewed.getString(canonical ? "secret" : "token");
    long seconds = renewed.getLong("expiresIn");
    if (!opaque(token) || seconds < 1 || seconds * 1000 > (canonical ? MAX_DEVICE_KEY_MS : MAX_CREDENTIAL_SECONDS * 1000)) throw new IOException("Invalid device credential response");
@@ -580,14 +604,24 @@ public final class CloudDeviceAccount {
         .put("organizationId", credential.getString("organizationId")).put("issuedAt", now).put("expiresAt", now + seconds * 1000)
         .put("replaces", replaces);
     if (canonical) pending.put("credentialId", identifier(renewed, "credentialId"));
-    if (current == null || !replaces.equals(current.getString("token"))) {
-     oweRevocation(new JSONObject().put("token", token));
+    if (current == null || !replaces.equals(current.getString("token")) || slots.read(ACK) != null) {
+     oweRevocation(duty(pending));
      return false;
     }
     slots.write(ACK, pending.toString());
    }
+   return finishAcknowledgment();
   }
-  return finishAcknowledgment();
+ }
+
+ private void dropLease(JSONObject observed) throws Exception {
+  synchronized (LOCK) {
+   JSONObject current = stored();
+   if (current == null || !current.getString("token").equals(observed.getString("token"))) return;
+   current.remove("lease");
+   slots.write(CREDENTIAL, current.toString());
+   access = null;
+  }
  }
 
  private record Exchange(int status, String body) {

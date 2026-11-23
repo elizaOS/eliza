@@ -410,6 +410,16 @@ export effect function renewGrant(tx: Tx, refresh: string) {
   if (row === undefined) throw refused("AuthenticationRequired", "CredentialRevoked")
   const predecessor = try current(row, now)
   const client = try storedAdmission(tx, predecessor)
+  const pending = (try tx.query(`
+    SELECT key, state, sealed_copy FROM device_grants
+    WHERE renewed_from = $1 AND phase = 'exchanged' AND code_expires_at > $2
+    ORDER BY issued_at DESC LIMIT 1 FOR UPDATE
+  `, [lease.grantKey, now]))[0]
+  if (pending !== undefined) {
+    const grant = decodeGrant(pending.state) catch effect () => { throw refused("ServiceUnavailable") }
+    const replay = try currentGrant(grant, now)
+    return { kind: "done" as const, value: credential(replay, row, try unseal("device-key", toText(pending.sealed_copy) ?? ""), undefined) }
+  }
   const key = newId()
   const credentialId = newId()
   const secret = secretText("eliza_mobile_", 32, "hex")
