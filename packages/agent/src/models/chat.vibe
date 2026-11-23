@@ -377,9 +377,10 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
   const calls: { id: string; name: string; arguments: string }[] = []
   const silent = () => Stream.fail(new ShellRefused({ refusal: "SilentStream" }))
   const lines = Stream.timeoutOrElse(result.stream, { duration: Duration.seconds(streamIdleSeconds), orElse: silent }).pipe(Stream.decodeText(), Stream.splitLines)
-  const collect = Stream.runForEach(lines, effect (line) => {
+  const ended = (line: string) => line.startsWith("data:") && line.slice(5).trim() === "[DONE]"
+  const collect = Stream.runForEach(Stream.takeUntil(lines, ended), effect (line) => {
     if (line.length > 262144) throw providerIssue()
-    if (!line.startsWith("data:") || terminal) return
+    if (!line.startsWith("data:")) return
     const payload = line.slice(5).trim()
     if (payload === "[DONE]") {
       terminal = true
