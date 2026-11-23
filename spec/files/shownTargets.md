@@ -38,6 +38,27 @@ pure def lawFilterAndFolderNeverNamePositions(browserNegotiated: bool, shownNego
     not(formAdmitted(FolderCreateKind, ShownForm, browserNegotiated, shownNegotiated))
 ```
 
+### A Files operation the owner asks for in chat is proposed only within the Files bounds and as the peer negotiated it
+
+When the model proposes a Files operation from the owner's chat request,
+it is read by these Files bounds: paths relative to Internal storage, each
+named once, and a new folder whose name is not hidden. It is proposed only
+when its kind and form are admitted for the peer that sent the turn;
+otherwise nothing is kept and the owner is told it could not be prepared.
+A move or trash keeps no identity the model sent, since the phone reads
+each one when it builds the card. The model is told to name only paths the
+owner said or positions Files showed, and that a share, move, trash or new
+folder is reviewed with Files on screen.
+
+```quint
+pure def chatProposalKept(withinBounds: bool, kind: FilesKind, form: FilesForm, browserNegotiated: bool, shownNegotiated: bool): bool =
+  withinBounds and formAdmitted(kind, form, browserNegotiated, shownNegotiated)
+pure def lawOutOfBoundsIsNeverProposed(kind: FilesKind, form: FilesForm, browserNegotiated: bool, shownNegotiated: bool): bool =
+  not(chatProposalKept(false, kind, form, browserNegotiated, shownNegotiated))
+pure def lawAProposedFormIsAdmitted(withinBounds: bool, kind: FilesKind, form: FilesForm, browserNegotiated: bool, shownNegotiated: bool): bool =
+  chatProposalKept(withinBounds, kind, form, browserNegotiated, shownNegotiated) implies formAdmitted(kind, form, browserNegotiated, shownNegotiated)
+```
+
 ### A card for shown positions exists only when every position resolved to one path, and it executes those paths
 
 The phone resolves the positions against the filter results it shows now,
