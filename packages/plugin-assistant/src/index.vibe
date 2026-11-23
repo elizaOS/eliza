@@ -29,7 +29,9 @@ const deliverers: ReadonlyArray<readonly [string, Deliverer]> = [
   [routineKind, deliverRoutine],
   [checkinKind, deliverCheckin],
   [followupTickKind, () => effect {
-    followOwnerClock() catch () => undefined
+    followOwnerClock() catch effect (failure) => {
+      try annotateLogs(logWarning("the owner's clock could not be read for the standing tasks"), { failure: failure._tag })
+    }
     return try deliverFollowupTick()
   }],
 ]
@@ -41,7 +43,9 @@ export effect function followOwnerClock() {
   const scheduler = try Scheduler
   for (const task of try scheduler.list()) {
     if (!ownerClockKinds.has(task.kind) || task.trigger.kind !== "cron" || task.trigger.tz === zone || task.status === "Dismissed") continue
-    try scheduler.retrigger(task.taskId, { ...task.trigger, tz: zone }, `clock:${task.taskId}:${task.revision}:${zone}`)
+    scheduler.retrigger(task.taskId, { ...task.trigger, tz: zone }, `clock:${task.taskId}:${task.revision}:${zone}`) catch effect (failure) => {
+      try annotateLogs(logWarning("a standing task could not move to the owner's zone"), { taskId: task.taskId, zone, failure: failure._tag })
+    }
   }
 }
 
