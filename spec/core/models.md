@@ -207,7 +207,9 @@ The sampling settings merge under a call from `<model type>_<SETTING>`, then
 repetition, frequency and presence penalties. No setting caps output:
 `<model type>_MAX_TOKENS` and `DEFAULT_MAX_TOKENS` are not read, so a call
 that names no cap reaches its adapter without one and gets the model's own
-maximum.
+maximum. A character's `settings.defaultMaxTokens` is accepted and dropped
+while the character is parsed, so an older character still loads and no cap
+reaches a call from it.
 
 ```quint
 type ModelSetting = MaxTokensSetting | TemperatureSetting | TopPSetting | TopKSetting | MinPSetting | SeedSetting | RepetitionPenaltySetting | FrequencyPenaltySetting | PresencePenaltySetting
