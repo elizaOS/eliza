@@ -1,7 +1,7 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
 import { readTurnContext } from "@elizaos/agent"
 import { sha256Hex, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
-import { createNeedsConfirmation, createTimeZone, deviceTimeZone, inCreateYear, requestTimeZone } from "../clock.vibe"
+import { createNeedsConfirmation, createTimeZone, deviceTimeZone, inCreateYear, knownTimeZone, requestTimeZone } from "../clock.vibe"
 import type { CalendarEvent, CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
@@ -165,7 +165,7 @@ export function calendarAsk(message: Memory, ownerZone?: string): CalendarAsk {
 }
 
 function zonesOf(ask: CalendarAsk) {
-  return { owner: ask.ownerZone ?? deviceTimeZone(), ...(ask.clientZone === undefined ? {} : { client: ask.clientZone }) }
+  return { owner: knownTimeZone(ask.ownerZone) ? ask.ownerZone : deviceTimeZone(), ...(ask.clientZone === undefined ? {} : { client: ask.clientZone }) }
 }
 
 effect function target(host: CalendarHost, parameters: Parameters, now: number) {
@@ -273,8 +273,8 @@ async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
   const assistant: unknown = runtime.getService(assistantServiceType)
   const read = typeof assistant === "object" && assistant !== null && "ownerCalendarZone" in assistant ? assistant.ownerCalendarZone : undefined
   if (typeof read !== "function") return undefined
-  const zone: unknown = await Promise.resolve(read.call(assistant)).catch(() => undefined)
-  return typeof zone === "string" && zone !== "" ? zone : undefined
+  const zone: unknown = await Promise.resolve().then(() => read.call(assistant)).catch(() => undefined)
+  return typeof zone === "string" ? zone : undefined
 }
 
 /** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
