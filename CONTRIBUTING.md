@@ -395,8 +395,8 @@ need pruning. Turbo refreshes its checkout-specific restore manifests locally.
 The shared Dafny library is a direct input of the tool package build and the
 Studio tests that run proofs. An edit to that library leaves the application
 build keys unchanged.
-Hosted verification keys ordinary VibeLang plugin builds by the generated files
-of their spec owner. They still require root generation and their workspace
+Hosted verification keys ordinary VibeLang plugin builds and typechecks by their
+owner's generated files. They still require root generation and their workspace
 dependency builds.
 
 ### Seeds and budgets
