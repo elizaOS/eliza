@@ -172,6 +172,46 @@ function durationSeconds(value: unknown): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
+/**
+ * Google's 400 for a place details request. Only details carries a caller
+ * value Google can refuse (the place id; Cloud builds every other Google
+ * request from inputs it has already validated), so only here is a 400 the
+ * caller's fault, and only when Google refuses the argument itself: an
+ * INVALID_ARGUMENT error with no ErrorInfo reason, as for "Not a valid Place
+ * ID". Google also answers 400 INVALID_ARGUMENT for an invalid or expired API
+ * key (reason API_KEY_INVALID, API_KEY_EXPIRED) and other configuration
+ * faults; any stated reason, or an unreadable body, stays a provider fault.
+ * https://cloud.google.com/apis/design/errors#error_info
+ */
+async function refusedPlaceId(response: Response): Promise<MapsServiceError> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return invalidResponse(response.status);
+  }
+  const error =
+    body && typeof body === "object" ? (body as { error?: unknown }).error : undefined;
+  if (!error || typeof error !== "object") return invalidResponse(response.status);
+  const { status, details } = error as { status?: unknown; details?: unknown };
+  if (status !== "INVALID_ARGUMENT") return invalidResponse(response.status);
+  if (details !== undefined) {
+    if (!Array.isArray(details)) return invalidResponse(response.status);
+    const reasoned = details.some(
+      (detail) =>
+        !detail ||
+        typeof detail !== "object" ||
+        "reason" in detail ||
+        String((detail as { "@type"?: unknown })["@type"] ?? "").endsWith("ErrorInfo"),
+    );
+    if (reasoned) return invalidResponse(response.status);
+  }
+  return new MapsServiceError(
+    "invalid_request",
+    "The maps provider refused this place id as invalid.",
+  );
+}
+
 function latLng(value: unknown): MapsCoordinate | undefined {
   if (!value || typeof value !== "object") return undefined;
   const point = value as Record<string, unknown>;
@@ -564,8 +604,10 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       this.creditPrice("details", request),
       [200, 400, 404],
     );
-    // A place id Google no longer knows (or never issued) has no details.
+    // A place id Google no longer knows has no details; one it refuses as an
+    // invalid argument is the request's fault (see refusedPlaceId).
     if (response.status === 404) return null;
+    if (response.status === 400) throw await refusedPlaceId(response);
     if (response.status !== 200) throw invalidResponse(response.status);
     const candidate = this.placeCandidate(await responseJson(response), true);
     // Like search, details serves covered places only.
@@ -642,7 +684,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const fetchedAt = this.now();
     return Promise.all(
       routes.slice(0, alternatives ? 3 : 1).map(async (entry, index) => {
-        const { staticSeconds, ...candidate } = this.routeCandidate(entry, request.to);
+        const { staticSeconds, ...candidate } = this.routeCandidate(entry, request.from, request.to);
         return {
           providerId: this.providerId,
           id: await routeId(
@@ -941,18 +983,28 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
 
   private routeCandidate(
     value: unknown,
+    origin: MapsCoordinate,
     destination: MapsCoordinate,
   ): Pick<MapsRoute, "geometry" | "distanceMeters" | "durationSeconds" | "steps"> & {
     staticSeconds?: number;
   } {
     if (!value || typeof value !== "object") throw invalidResponse();
     const route = value as Record<string, unknown>;
-    const distanceMeters = finiteNumber(route.distanceMeters);
+    // Routes answers in proto3 JSON, which omits a zero distance: a route
+    // whose endpoints coincide has no distanceMeters and at most one point.
+    const distanceMeters =
+      route.distanceMeters === undefined ? 0 : finiteNumber(route.distanceMeters);
     const seconds = durationSeconds(route.duration);
     const encoded = (route.polyline as { encodedPolyline?: unknown } | undefined)?.encodedPolyline;
     if (distanceMeters === undefined || seconds === undefined || typeof encoded !== "string")
       throw invalidResponse();
-    const geometry = decodePolyline(encoded, 1e5);
+    const decoded = decodePolyline(encoded, 1e5);
+    const geometry =
+      decoded.length >= 2 || distanceMeters > 0
+        ? decoded
+        : decoded.length === 1
+          ? [decoded[0], decoded[0]]
+          : [origin, destination];
     if (geometry.length < 2) throw invalidResponse();
     const legs = route.legs;
     if (!Array.isArray(legs)) throw invalidResponse();

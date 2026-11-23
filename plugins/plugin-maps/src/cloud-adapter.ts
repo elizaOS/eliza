@@ -247,6 +247,9 @@ const MESSAGE_BY_CODE: Partial<Record<MapsErrorCode, string>> = {
   // The planner reads this text; the raw SDK message named internal transport.
   MAPS_PROVIDER_NETWORK:
     "Eliza Cloud Maps could not be reached from this device. Try again.",
+  MAPS_MALFORMED_RESPONSE:
+    "Eliza Cloud Maps returned an answer that could not be used.",
+  MAPS_INVALID_INPUT: "Eliza Cloud Maps could not use this request.",
 };
 
 const SDK_CODE: Record<ManagedProviderErrorCode, MapsErrorCode> = {
@@ -271,9 +274,11 @@ function toMapsError(error: unknown): MapsError {
       (typeof cloudCode === "string"
         ? CODE_BY_CLOUD_CODE[cloudCode]
         : undefined) ?? SDK_CODE[error.code];
+    // The SDK's transport wording ("The provider failed.") is never the
+    // message: the planner and the owner read it.
     return new MapsError(
       MESSAGE_BY_CODE[code] ??
-        `Eliza Cloud Maps request failed: ${error.message}`,
+        "Eliza Cloud Maps could not complete this request.",
       {
         code,
         retryAfterMs: error.retryAfterMs,

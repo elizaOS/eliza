@@ -4,6 +4,7 @@ import {
   type MapsResult,
   validateMapsResult,
 } from "./approved-read.ts";
+import { newMapsSelectionHandle } from "./selection-handle.ts";
 /** Process-local capability for a Maps observation. The identity envelope contains
  * no location data; content stays local behind the explicitly approved resolver. */
 export type MapsSelectedObject = Readonly<{
@@ -25,7 +26,7 @@ export function publishMapsSelection(
   const id =
     current?.kind === kind && identity === owner
       ? current.id
-      : `maps_${crypto.randomUUID()}`;
+      : newMapsSelectionHandle();
   identity = owner;
   readCurrent = read;
   current = Object.freeze({ kind, id, revision: String(revision) });

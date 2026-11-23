@@ -1327,3 +1327,178 @@ describe("Google Map Tiles", () => {
     ).toBe(400);
   });
 });
+
+describe("Google refusals and legitimately shaped answers", () => {
+  // The phone's opaque Maps selection handle (`maps_<uuid>`) is URL-safe, so it
+  // reaches Google, which refuses it as an invalid argument.
+  const SELECTION_HANDLE = "maps_3b0f6a52-6a4e-4c1b-9d55-0d1f2e3a4b5c";
+  const invalidArgument = (message: string) =>
+    Response.json(
+      { error: { code: 400, message, status: "INVALID_ARGUMENT" } },
+      { status: 400 },
+    );
+
+  test("a place id Google refuses is the request's fault, not a malformed provider answer", async () => {
+    const { calls, provider } = google(() =>
+      invalidArgument(`Not a valid Place ID: ${SELECTION_HANDLE}`),
+    );
+    expect(await refusal(provider.details({ id: SELECTION_HANDLE }))).toBe(
+      "invalid_request",
+    );
+    expect(calls.map((call) => call.url.pathname)).toEqual([
+      `/v1/places/${SELECTION_HANDLE}`,
+    ]);
+  });
+
+  // Google's answer to an invalid or expired key (and other configuration
+  // faults): also a 400 INVALID_ARGUMENT, but with an ErrorInfo reason.
+  const keyRefused = (reason: string) =>
+    Response.json(
+      {
+        error: {
+          code: 400,
+          message: "API key not valid. Please pass a valid API key.",
+          status: "INVALID_ARGUMENT",
+          details: [
+            {
+              "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+              reason,
+              domain: "googleapis.com",
+              metadata: { service: "places.googleapis.com" },
+            },
+          ],
+        },
+      },
+      { status: 400 },
+    );
+
+  test("a key Google refuses on place details is a provider fault, not the caller's", async () => {
+    for (const reason of [
+      "API_KEY_INVALID",
+      "API_KEY_EXPIRED",
+      "SERVICE_DISABLED",
+    ]) {
+      const { provider } = google(() => keyRefused(reason));
+      expect(await refusal(provider.details({ id: PLACE_ID }))).toBe(
+        "provider_invalid_response",
+      );
+    }
+  });
+
+  test("an unreadable or unexplained details 400 stays a provider fault", async () => {
+    for (const respond of [
+      () => new Response("not json", { status: 400 }),
+      () => Response.json({}, { status: 400 }),
+      () =>
+        Response.json(
+          {
+            error: { code: 400, message: "Bad", status: "FAILED_PRECONDITION" },
+          },
+          { status: 400 },
+        ),
+      () =>
+        Response.json(
+          { error: { code: 400, status: "INVALID_ARGUMENT", details: "x" } },
+          { status: 400 },
+        ),
+    ]) {
+      const { provider } = google(respond);
+      expect(await refusal(provider.details({ id: PLACE_ID }))).toBe(
+        "provider_invalid_response",
+      );
+    }
+  });
+
+  test("Google's 400 for a search, nearby or route request is never blamed on the caller", async () => {
+    // Cloud builds these requests from inputs it has already validated, so a
+    // 400 is a provider or operator fault, whether or not Google gives a reason.
+    for (const respond of [
+      () => invalidArgument("Invalid request."),
+      () => keyRefused("API_KEY_INVALID"),
+      () => keyRefused("API_KEY_EXPIRED"),
+    ]) {
+      const { provider } = google(respond);
+      expect(await refusal(provider.search({ query: "casino" }))).toBe(
+        "provider_invalid_response",
+      );
+      expect(
+        await refusal(
+          provider.reverse({ coordinate: CASINO, preferPlace: true }),
+        ),
+      ).toBe("provider_invalid_response");
+      expect(
+        await refusal(
+          provider.routes({ from: CASINO, to: PORT, mode: "walk" }),
+        ),
+      ).toBe("provider_invalid_response");
+    }
+  });
+
+  test("a zero-length route (proto3 omits distanceMeters 0) is a route, not a malformed answer", async () => {
+    const { provider } = google(() =>
+      Response.json({
+        routes: [
+          {
+            duration: "0s",
+            polyline: {
+              encodedPolyline: polyline5([[CASINO.latitude, CASINO.longitude]]),
+            },
+            legs: [{}],
+          },
+        ],
+      }),
+    );
+    const [route] = await provider.routes({
+      from: CASINO,
+      to: CASINO,
+      mode: "walk",
+    });
+    expect(route.distanceMeters).toBe(0);
+    expect(route.durationSeconds).toBe(0);
+    expect(route.geometry.length).toBeGreaterThanOrEqual(2);
+    const empty = google(() =>
+      Response.json({
+        routes: [
+          { duration: "0s", polyline: { encodedPolyline: "" }, legs: [{}] },
+        ],
+      }),
+    );
+    const [still] = await empty.provider.routes({
+      from: CASINO,
+      to: CASINO,
+      mode: "walk",
+    });
+    expect(still.distanceMeters).toBe(0);
+    expect(still.geometry).toEqual([CASINO, CASINO]);
+  });
+
+  test("a truly malformed route still fails closed", async () => {
+    for (const route of [
+      { distanceMeters: 300, duration: "60s", legs: [{}] },
+      {
+        distanceMeters: 300,
+        duration: "60s",
+        polyline: {
+          encodedPolyline: polyline5([[CASINO.latitude, CASINO.longitude]]),
+        },
+        legs: [{}],
+      },
+      {
+        polyline: {
+          encodedPolyline: polyline5([
+            [CASINO.latitude, CASINO.longitude],
+            [PORT.latitude, PORT.longitude],
+          ]),
+        },
+        legs: [{}],
+      },
+    ]) {
+      const { provider } = google(() => Response.json({ routes: [route] }));
+      expect(
+        await refusal(
+          provider.routes({ from: CASINO, to: PORT, mode: "walk" }),
+        ),
+      ).toBe("provider_invalid_response");
+    }
+  });
+});
