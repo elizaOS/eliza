@@ -271,6 +271,9 @@ it.live("Open the dial screen with an approved number, and place a call only whe
     capability: try promise(() => client.imageCapability()),
   }
   const opened = try promise(() => client.dial("+1 (555) 010-0105"))
+  for (const number of ["+44 (0)20 7946 0958", "+41 (0)44 668 18 00", "+39 (0)55 123 4567", "+378 (0)549 882 123", "+225 (0)7 12 34 56 78"]) {
+    try promise(() => client.dial(number))
+  }
   phone.dialer = "chooser"
   const chosen = try promise(() => client.dial("555 0100"))
   phone.dialer = "missing"
@@ -285,7 +288,7 @@ it.live("Open the dial screen with an approved number, and place a call only whe
   const unableToPlace = try promise(() => client.placeCall("+15550100105"))
   phone.voiceCapable = true
 
-  const placed = try promise(() => client.placeCall("+1 555 010 0105"))
+  const placed = try promise(() => client.placeCall("+49 (0)30 1234 5678"))
   const emergency = try promise(() => client.placeCall("911"))
   phone.inCall = true
   const busy = try promise(() => client.placeCall("+15550100105"))
@@ -313,8 +316,8 @@ it.live("Open the dial screen with an approved number, and place a call only whe
       ungranted: { placeStatus: "CallPermissionRequired", receipt: failed },
       roleless: { placeStatus: "CallRoleRequired", receipt: failed },
       lines: 1,
-      dialed: ["+15550100105", "5550100", "911"],
-      placedLog: ["+15550100105"],
+      dialed: ["+15550100105", "+442079460958", "+41446681800", "+390551234567", "+3780549882123", "+2250712345678", "5550100", "911"],
+      placedLog: ["+493012345678"],
     },
   ))
 })

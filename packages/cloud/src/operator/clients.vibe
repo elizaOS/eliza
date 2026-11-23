@@ -44,7 +44,7 @@ const RegistrationFile = Schema.Struct({
 })
 
 /** What `client apply` did to one client of the file. */
-export interface ClientReceipt {
+interface ClientReceipt {
   readonly clientId: string
   readonly action: "registered" | "updated" | "unchanged"
   readonly registration: string
