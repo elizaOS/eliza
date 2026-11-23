@@ -51,7 +51,7 @@ module node {
     return filesProposalFamily.forms.filter((form) => form.offered(turn)).length
   }
 
-  export function guidanceFor(runtime: AgentRuntime, capabilities: readonly string[]): string | undefined {
+  export function guidanceFor(runtime: AgentRuntime, capabilities: readonly string[]): readonly string[] {
     return filesProposalFamily.guidance(chatTurn(runtime, capabilities, onFiles))
   }
 
@@ -285,7 +285,7 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
             ],
             allowed: [filesContextAllowed({ type: "files_folder_create", parent: "Download", name: "Taxes" }, { view: "home" }), filesContextAllowed({ type: "files_filter", text: "lease" }, { view: "home" })],
             forms: [offeredForms(runtime, []), offeredForms(runtime, [FILES_CAPABILITY]), offeredForms(runtime, both)],
-            guided: guidanceFor(runtime, both)?.includes(FILES_SHOWN_TARGET_GUIDANCE),
+            guided: guidanceFor(runtime, both).includes(FILES_SHOWN_TARGET_GUIDANCE),
           }, {
             rival: "FamilyConflict", asked: { kind: "Grounded", operation: { type: "files_trash", shown: [2, 1] }, grounding: "GroundedForReview" },
             unnegotiated: { code: "FILES_FORM_NOT_NEGOTIATED", forOwner: "Your phone can't do that in Files from chat right now." },
