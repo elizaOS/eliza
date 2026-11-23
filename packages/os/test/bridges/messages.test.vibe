@@ -656,8 +656,8 @@ it.live("Keep my conversation list whole and current: a row too large to show ke
   const all = watching(androidTelephony(phone))
   const stop = try promise(() => follow(all, true))
   for (const [event, listener] of all.listeners)
-    listener(event === "messagesChanged" ? { sequence: 1, body: "Are you coming?" } : { operationId: event === "mmsSendUpdated" ? "mms-1" : "op-1", body: "On my way" })
-  for (const [event, listener] of all.listeners) if (event !== "messagesChanged") listener({ operationId: "bad id!" })
+    try Effect.try(() => listener(event === "messagesChanged" ? { sequence: 1, body: "Are you coming?" } : { operationId: event === "mmsSendUpdated" ? "mms-1" : "op-1", body: "On my way" }))
+  for (const [event, listener] of all.listeners) if (event !== "messagesChanged") try Effect.try(() => listener({ operationId: "bad id!" }))
   const watched = all.listeners.map(([event]) => event)
   try promise(stop)
   const changeOnly = watching(androidTelephony(phone))
@@ -670,7 +670,7 @@ it.live("Keep my conversation list whole and current: a row too large to show ke
   const stopAfterRefusedRemoval = try promise(() => follow(removeRefused, true))
   const removeFailure = try refusal(stopAfterRefusedRemoval)
   for (const watch of [listenerRefused, removeRefused])
-    for (const [, listener] of watch.listeners) listener({ operationId: "op-after-stop" })
+    for (const [, listener] of watch.listeners) try Effect.try(() => listener({ operationId: "op-after-stop" }))
 
   const left = (watch: ReturnType<typeof watching>) => ({ removed: watch.removed, observing: watch.observing })
   try Effect.try(() => assert.deepStrictEqual(
