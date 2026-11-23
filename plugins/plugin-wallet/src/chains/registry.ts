@@ -790,26 +790,18 @@ async function executePumpFunBuy(
   const signedTransaction = await signer.signTransaction(transaction);
 
   const connection = getSolanaConnection(context.runtime);
-  const signature = await connection.sendTransaction(signedTransaction, {
-    skipPreflight: false,
-    maxRetries: 3,
-    preflightCommitment: "confirmed",
-  });
-
-  const latestBlockhash = await connection.getLatestBlockhash();
-  const confirmation = await connection.confirmTransaction(
-    {
-      signature,
-      blockhash: latestBlockhash.blockhash,
-      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-    },
-    "confirmed",
-  );
-  if (confirmation.value.err) {
-    throw new Error(
-      `Pump.fun buy failed: ${JSON.stringify(confirmation.value.err)}`,
+  const { signature, confirmationStatus, sendUncertain } =
+    await sendAndConfirmSolanaTransaction(
+      connection,
+      signedTransaction,
+      {
+        skipPreflight: false,
+        maxRetries: 3,
+        preflightCommitment: "confirmed",
+      },
+      undefined,
+      "Pump.fun buy failed",
     );
-  }
 
   return {
     status: "submitted",
@@ -831,6 +823,8 @@ async function executePumpFunBuy(
       slippage: settings.slippage,
       priorityFee: settings.priorityFee,
       pool: settings.pool,
+      confirmationStatus,
+      ...(sendUncertain ? { sendUncertain: true } : {}),
     },
   };
 }
@@ -1046,10 +1040,10 @@ async function sendAndConfirmSolanaTransaction(
   connection: Connection,
   transaction: VersionedTransaction,
   sendOptions: SendOptions,
-  latestBlockhash: Readonly<{
+  blockhashExpiry: Readonly<{
     blockhash: string;
     lastValidBlockHeight: number;
-  }>,
+  }> | undefined,
   failurePrefix: string,
 ): Promise<{
   signature: string;
@@ -1072,14 +1066,12 @@ async function sendAndConfirmSolanaTransaction(
 
   let confirmation: Awaited<ReturnType<Connection["confirmTransaction"]>>;
   try {
-    confirmation = await connection.confirmTransaction(
-      {
-        signature,
-        blockhash: latestBlockhash.blockhash,
-        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-      },
-      "confirmed",
-    );
+    confirmation = blockhashExpiry === undefined
+      ? await connection.confirmTransaction(signature, "confirmed")
+      : await connection.confirmTransaction(
+          { signature, ...blockhashExpiry },
+          "confirmed",
+        );
   } catch {
     // error-policy:J2 the transaction was sent; its outcome is unknown.
     return {
