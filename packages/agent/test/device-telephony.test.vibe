@@ -1,0 +1,137 @@
+// spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"
+import { assert, it } from "@effect/vitest"
+import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vibe"
+
+module node {
+  import type { AgentRuntime } from "@elizaos/core"
+  import { text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+  import { deviceClient, type DeviceClient } from "./support/device.ts"
+
+  export const proposeTool = "PROPOSE_DEVICE_ACTION"
+  const capabilities = ["phone.call.v1", "phone.dial.v1", "sms.compose.v1", "sms.send.v1", "contacts.write.v1", "sms.latest-sender.v2"]
+
+  interface Turn {
+    readonly text: string
+    readonly userMessageId: string
+  }
+  interface Proposal {
+    readonly id: string
+    readonly digest: string
+    readonly state: string
+    readonly payload: { readonly requestMessageId?: string; readonly operation: unknown }
+    readonly execution?: { readonly attemptId: string }
+    readonly readReplyOrigin?: Record<string, unknown>
+  }
+
+  const propose = (operation: unknown) => ({ name: proposeTool, arguments: { operation } })
+  const call = (number: string) => ({ type: "phone_call", target: { kind: "number", number } })
+
+  async function proposals(client: DeviceClient): Promise<readonly Proposal[]> {
+    return ((await client.call("GET", "/api/client-devices/proposals")).json as { proposals: readonly Proposal[] }).proposals
+  }
+
+  async function deliverSender(client: DeviceClient, read: Proposal): Promise<string | undefined> {
+    const at = `/api/client-devices/proposals/${read.id}`
+    await client.call("POST", `${at}/decision`, { digest: read.digest, decision: "approve" })
+    const claimed = (await client.call("POST", `${at}/claim`, { digest: read.digest })).json as { proposal: Proposal }
+    const attemptId = claimed.proposal.execution?.attemptId ?? ""
+    const result = { kind: "sms-latest-sender", status: "found", address: "+14155550124" }
+    await client.call("POST", `${at}/receipt`, { digest: read.digest, attemptId, receipt: { outcome: "applied", operationId: "sender-1", result } })
+    const completed = await client.call("POST", `${at}/read-completion`, { ...read.readReplyOrigin, proposalId: read.id, digest: read.digest, attemptId })
+    return (completed.json as { reply?: { text?: string } }).reply?.text
+  }
+
+  export async function telephonyFromChat(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+    const client = deviceClient(socket, token, runtime.agentId, capabilities.join(","))
+    await client.call("POST", "/api/client-devices/register", { capabilities, workflowProtocol: 1 })
+    const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
+    const path = `/api/conversations/${conversation.id}/messages`
+    const offeredFor = async (turn: Turn) => (await proposals(client)).find(({ payload }) => payload.requestMessageId === turn.userMessageId)
+    const ask = async (words: string, operation: unknown) => {
+      cloud.script(toolCalls("", propose(operation)), text("Okay."))
+      const turn = (await client.call("POST", path, { text: words })).json as Turn
+      const offered = await offeredFor(turn)
+      return { reply: turn.text.split("\n\n").at(-1), operation: offered?.payload.operation }
+    }
+
+    const handedThrough = await ask("call 415-555-0100", call("6505715862"))
+    const ownerDialForm = await ask("could you ring +44 (0)20 7946 0958 after lunch", call("+442079460958"))
+    const invented = await ask("can you call 415-555-0100 when you get a sec", call("6505715862"))
+    const noNumber = await ask("call the pharmacy back", call("6505715862"))
+    const callBack = await ask("call mom back", { type: "phone_call", target: { kind: "contact", query: "Mom" } })
+    const unnamed = await ask("call my landlord back today", { type: "phone_call", target: { kind: "contact", query: "Shaw" } })
+    const bodyNumber = await ask("text Sam saying call me at 415-555-0100", { type: "sms_compose", query: "4155550100", body: "call me at 415-555-0100" })
+    const keypad = await ask("open the dialer and type 415 302 4399", { type: "phone_dial", target: { kind: "number", number: "6505715862" } })
+    const emergency = await ask("call an ambulance", call("911"))
+    const writtenEmergency = await ask("call 911", call("911"))
+    const contactNumber = await ask("save Ana as a contact with 415-555-0199", {
+      type: "contact_create", contact: { displayName: "Ana", phoneNumbers: ["6505715862"], emailAddresses: [] },
+    })
+    const draft = await ask("Draft a text to Sam to ask him about dinner tonight", {
+      type: "sms_send", recipients: ["6505715862"], body: "Are we on for dinner tonight?", subscriptionId: 1,
+    })
+    const unclear = await ask("Draft a text to Sam and Ana saying hi", { type: "sms_compose", query: "Sam", body: "hi" })
+    const partial = await ask("Who sent my latest text? Only the first three digits", { type: "sms_latest_sender" })
+
+    const asked = await ask("Who sent my latest text?", { type: "sms_latest_sender" })
+    const senderRead = (await proposals(client)).find(({ payload }) => JSON.stringify(payload.operation) === JSON.stringify(asked.operation))
+    const delivered = senderRead === undefined ? undefined : await deliverSender(client, senderRead)
+    const toThem = await ask("Draft a text to them saying I'm on my way", { type: "sms_compose", query: "6505715862", body: "I'm on my way" })
+
+    return {
+      handedThrough, ownerDialForm, invented, noNumber, callBack, unnamed, bodyNumber, keypad, emergency, writtenEmergency,
+      contactNumber, draft, unclear, partial, asked, delivered, toThem,
+    }
+  }
+}
+
+import { proposeTool, telephonyFromChat } from node
+
+const review = "Review this request on your phone before it can run."
+const numberNotWritten = "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use."
+
+it.live(`A call, dial, text or contact change goes only to the recipient the owner wrote, drafts go to the addressed recipient, and the sender is read only as asked (spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner is told to dial it themselves"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1, persistMemory: true,
+      load: [deviceActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
+  const observed = try host("telephony from chat", () => telephonyFromChat(agent.agent.runtime, socket, agent.frame.token, cloud))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    handedThrough: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "4155550100" } } },
+    ownerDialForm: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "+442079460958" } } },
+    invented: { reply: numberNotWritten, operation: undefined },
+    noNumber: {
+      reply: "I didn't set that up, because your message doesn't include a phone number. Nothing was called or sent. Tell me the number to use, or the name saved in Contacts.",
+      operation: undefined,
+    },
+    callBack: { reply: review, operation: { type: "phone_call", target: { kind: "contact", query: "mom" } } },
+    unnamed: {
+      reply: "I didn't set that up, because that name isn't one you wrote in your message. Nothing was called or sent. Tell me who, by their name as saved in Contacts or their number.",
+      operation: undefined,
+    },
+    bodyNumber: { reply: review, operation: { type: "sms_compose", query: "Sam", body: "call me at 415-555-0100" } },
+    keypad: { reply: review, operation: { type: "phone_dial", target: { kind: "number", number: "4153024399" } } },
+    emergency: {
+      reply: "I can't open the keypad on this phone. For an emergency, dial your local emergency number (911 in the US and Canada, 112 in most of Europe) on your phone's dialer now.",
+      operation: undefined,
+    },
+    writtenEmergency: { reply: review, operation: { type: "phone_call", target: { kind: "number", number: "911" } } },
+    contactNumber: {
+      reply: "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use.",
+      operation: undefined,
+    },
+    draft: { reply: review, operation: { type: "sms_compose", query: "Sam", body: "Are we on for dinner tonight?" } },
+    unclear: { reply: "Which person should receive this draft? Give one recipient.", operation: undefined },
+    partial: { reply: "Would you like the last four digits of the SMS sender’s number? Other partial numbers are unavailable.", operation: undefined },
+    asked: { reply: review, operation: { type: "sms_latest_sender", includeAddress: true } },
+    delivered: "Your latest incoming SMS came from +14155550124.",
+    toThem: { reply: review, operation: { type: "sms_compose", query: "+14155550124", body: "I'm on my way" } },
+  }))
+}, 180_000)
