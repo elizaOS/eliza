@@ -1011,9 +1011,21 @@ export async function generateStage1Decision(
     }
   };
   // Invalid model-authored source parts must never become trusted quotes or
-  // dispatch field effects. One turn-wide repair uses the same visible context,
-  // tools, signal and source validator; a second invalid result still fails closed.
+  // dispatch field effects, and two source-backed decisions in one answer are
+  // never resolved by picking one. Either refusal gets one turn-wide repair
+  // with the same visible context, tools, signal and source validator; a second
+  // invalid or duplicate result still fails closed.
   let sourceReplyRepairUsed = false;
+  const sourceReplyCorrections = new Map<string, string>([
+    [
+      "STAGE1_INVALID_SOURCE_REPLY",
+      "Your previous replyText did not match the ordered reply-parts contract or used an invalid source quote. No response fields or actions were accepted. Return a fresh HANDLE_RESPONSE decision with replyText as an array of reply parts with kind text or source and a string value, never a JSON-encoded string. A source part must copy an entire supplied original exactly, including whitespace; omit source parts if quoting is unnecessary. Keep authored prose in text parts. Preserve the user's requested intent and required approval boundaries.",
+    ],
+    [
+      "STAGE1_DUPLICATE_SOURCE_REPLY",
+      "Your previous answer contained more than one HANDLE_RESPONSE decision. No response fields or actions were accepted. Return exactly one HANDLE_RESPONSE decision for this turn, with replyText as an array of reply parts with kind text or source and a string value. A source part must copy an entire supplied original exactly, including whitespace; omit source parts if quoting is unnecessary. Preserve the user's requested intent and required approval boundaries.",
+    ],
+  ]);
   const generateInterpretedStage1 = async (
     params: typeof stage1ModelParams,
   ) => {
@@ -1021,17 +1033,16 @@ export async function generateStage1Decision(
     try {
       return await interpretNativeReply(raw);
     } catch (error) {
-      if (
-        !(error instanceof ElizaError) ||
-        error.code !== "STAGE1_INVALID_SOURCE_REPLY" ||
-        sourceReplyRepairUsed
-      )
-        throw error;
+      const code = error instanceof ElizaError ? error.code : undefined;
+      const correction = code && sourceReplyCorrections.get(code);
+      if (!correction || sourceReplyRepairUsed) throw error;
       sourceReplyRepairUsed = true;
       sourceReplyRendering = undefined;
       params.signal.throwIfAborted();
-      const correction =
-        "Your previous replyText did not match the ordered reply-parts contract or used an invalid source quote. No response fields or actions were accepted. Return a fresh HANDLE_RESPONSE decision with replyText as an array of reply parts with kind text or source and a string value, never a JSON-encoded string. A source part must copy an entire supplied original exactly, including whitespace; omit source parts if quoting is unnecessary. Keep authored prose in text parts. Preserve the user's requested intent and required approval boundaries.";
+      args.runtime.logger?.warn?.(
+        { src: "service:message", code },
+        "[message] Stage 1 source-backed reply was refused; asking the model once for a corrected decision",
+      );
       const messages = [
         ...params.messages,
         { role: "user" as const, content: correction },
