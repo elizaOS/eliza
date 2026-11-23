@@ -1,439 +1,135 @@
-name: ci
-
-# Every run is the tasks of `pnpm verify`, the tools' own self-test included,
-# split over jobs that run side by side: the self-test of the tools in three,
-# the root check's simulations in four shards, and everything else in one,
-# which starts once the shards have simulated and checks with what they found.
-# Turborepo and spec skip what the change does not reach, from the cache of the
-# last run. The fixed normal profile is the
-# same locally and in CI. The self-test also installs and checks each
-# standalone example.
+name: Verify real hosted spec archive path selection
 on:
-  pull_request:
-    branches: [vibestack, develop, main]
   push:
-    branches: [vibestack, develop, main]
-
-concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_attempt == '1' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-env:
-  TURBO_TELEMETRY_DISABLED: "1"
-
+    branches: [codex/measure-portable-spec-cache-1123]
 permissions:
   contents: read
-
 jobs:
-  android-node-lock:
-    name: Verify published Android Node lock
+  compare-native-cache:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 3
           persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            .github/actions/verify-android-node-lock/action.yml
-            packages/os/aosp/runtime/node.lock.json
-            packages/os/android/android-runtime-inventory.mjs
-      - uses: ./.github/actions/verify-android-node-lock
-
-  verify:
-    name: ${{ matrix.name }}
-    needs: vibestack-precompute-simulations
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: verify
-            tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
-    env: &cache-env
-      TURBO_CACHE: local:rw
-    steps: &verification-steps
-      - uses: actions/checkout@v7
-      - id: setup
-        uses: ./.github/actions/setup
-        with:
-          job: ${{ matrix.name }}
-      - id: tool-selftest-cache
-        if: startsWith(matrix.name, 'selftest-') && (env.TURBO_CACHE == 'local:rw' || github.event_name == 'push')
-        continue-on-error: true
-        shell: bash
-        env:
-          TASK: ${{ matrix.tasks }}
-          JOB: ${{ matrix.name }}
+      - name: Read the exact original and proposed setup action path outputs
+        id: paths
         run: |
-          hash=$(node vibestack/spec.ts tasks "$TASK" --only --dry=json --cache=local:w | jq -er --arg task "$TASK" '
-            .tasks | select(length == 1) | .[0]
-            | select(.taskId == $task and .resolvedTaskDefinition.cache == true and .resolvedTaskDefinition.outputs == [])
-            | .hash
-          ')
-          [[ $hash =~ ^[0-9a-f]{16}$ ]] || exit 0
-          archive=".turbo/cache/$hash.tar.zst"
-          meta=".turbo/cache/$hash-meta.json"
-          if [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] &&
-            jq -e --arg hash "$hash" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null; then
-            [[ $GITHUB_EVENT_NAME == push ]] || exit 0
-            echo 'lookup=true' >> "$GITHUB_OUTPUT"
-          fi
-          printf 'hash=%s\nkey=turbo-tool-selftest-v1-%s-%s-%s-%s\n' "$hash" "$RUNNER_OS" "$RUNNER_ARCH" "$JOB" "$hash" >> "$GITHUB_OUTPUT"
-      - id: restore-tool-selftest
-        if: steps.tool-selftest-cache.outputs.key != ''
-        continue-on-error: true
+          python3 - <<'PY'
+          import subprocess,os,re,pathlib
+          for name,sha,job in [('old','0d743619956147f3296becd7769c1b14ad48a8d3','verify'),('portable','d88aa603f605d1d9fd84fc41ae969f861a939ef9','verify'),('sim','d88aa603f605d1d9fd84fc41ae969f861a939ef9','simulate-3'),('fixture','d88aa603f605d1d9fd84fc41ae969f861a939ef9','selftest-a'),('oldfixture','0d743619956147f3296becd7769c1b14ad48a8d3','selftest-a')]:
+           text=subprocess.check_output(['git','show',sha+':.github/actions/setup/action.yml'],text=True)
+           script=text.split('echo "path<<EOF"',1)[1].split('echo "EOF"',1)[0]
+           paths=subprocess.check_output(['bash','-eu','-c',script],env={**os.environ,'JOB':job},text=True).strip()
+           with open(os.environ['GITHUB_OUTPUT'],'a') as o:o.write(name+'<<PATHS\n'+paths+'\nPATHS\n')
+           pathlib.Path(os.environ['RUNNER_TEMP'],name+'.paths').write_text(paths)
+          assert pathlib.Path(os.environ['RUNNER_TEMP'],'portable.paths').read_bytes()==pathlib.Path(os.environ['RUNNER_TEMP'],'sim.paths').read_bytes()
+          assert pathlib.Path(os.environ['RUNNER_TEMP'],'fixture.paths').read_bytes()==pathlib.Path(os.environ['RUNNER_TEMP'],'oldfixture.paths').read_bytes()
+          PY
+          cat > "$RUNNER_TEMP/receipt-audit.py" <<'PY'
+          import collections,glob,hashlib,json,os,pathlib,shutil,sys
+          P=pathlib.Path
+          tmp=P(os.environ['RUNNER_TEMP'])/'receipt-selection'
+          tmp.mkdir(exist_ok=True)
+          root=P.cwd()
+          patterns=['.spec-cache','apps/*/.spec-cache','packages/*/.spec-cache','vibestack/studio/.spec-cache','vibestack/examples/*/.spec-cache']
+          def roots():
+           return [p for pattern in patterns for p in sorted(root.glob(pattern)) if p.is_dir()]+([P.home()/'.quint'] if (P.home()/'.quint').is_dir() else [])
+          def snap(paths):
+           entries={}
+           for base in paths:
+            for p in base.rglob('*'):
+             if p.is_symlink():digest='symlink:'+os.readlink(p);size=len(digest)
+             elif p.is_file():size=p.stat().st_size;digest=hashlib.file_digest(p.open('rb'),'sha256').hexdigest()
+             elif p.is_dir():continue
+             else:raise ValueError(p)
+             name=p.relative_to(root).as_posix() if p.is_relative_to(root) else '~/.quint/'+p.relative_to(P.home()/'.quint').as_posix()
+             entries[name]=[size,digest,'evaluator' if base==P.home()/'.quint' else ('receipt' if p.parent==base and p.name.endswith(('.json.zst','.json.gz')) else 'process-or-other')]
+           return entries
+          def record(name,entries):
+           (tmp/(name+'.json')).write_text(json.dumps(entries,sort_keys=True))
+           counts=collections.Counter(x[2] for x in entries.values())
+           sizes=collections.Counter()
+           for x in entries.values():sizes[x[2]]+=x[0]
+           print(name,dict(counts),dict(sizes),flush=True)
+          def move_out(phase):
+           for i,p in enumerate(roots()):
+            dest=tmp/phase/str(i);dest.parent.mkdir(exist_ok=True);shutil.move(p,dest)
+          step=sys.argv[1]
+          if step=='source':
+           live=snap(roots());record('source',live);assert any(x[2]=='receipt' for x in live.values())
+           assert any('quint_evaluator' in name for name in live)
+           # Disposable non-receipts represent the on-disk names written by lockProject, staging, and writeWhole.
+           for i,base in enumerate([root/'.spec-cache',root/'apps/portable-probe/.spec-cache',root/'packages/portable-probe/.spec-cache',root/'vibestack/studio/.spec-cache',root/'vibestack/examples/portable-probe/.spec-cache']):
+            base.mkdir(parents=True,exist_ok=True)
+            for n in ['lock.9301.stale','precompute-private/nested.json','run-private/generated.ts','simulate-000000000000000000000000.json.zst.9301.test.tmp']:
+             p=base/n;p.parent.mkdir(parents=True,exist_ok=True);assert not p.exists();p.write_text('probe:'+str(i))
+            if not (base/'lock').exists():(base/'lock').write_text(str(os.getpid())+'\n')
+           record('published',snap(roots()))
+          elif step=='clear':move_out(sys.argv[2])
+          elif step in ('old','portable'):
+           actual=snap(roots());record(step,actual);published=json.loads((tmp/'published.json').read_text())
+           expected=published if step=='old' else {k:v for k,v in published.items() if v[2]!='process-or-other'}
+           assert actual==expected,{'missing':sorted(expected.keys()-actual.keys())[:20],'added':sorted(actual.keys()-expected.keys())[:20],'changed':[k for k in actual.keys()&expected.keys() if actual[k]!=expected[k]][:20]}
+          elif step=='fixture':
+           fs=snap([root/'.cache/selftest/.spec-cache',P.home()/'.quint']);record('fixture',fs)
+           assert fs and any('/.spec-cache/' in name for name in fs) and any('quint_evaluator' in name for name in fs)
+          PY
+      - name: Restore real current official broad verify archive
         uses: actions/cache/restore@v6
         with:
-          key: ${{ steps.tool-selftest-cache.outputs.key }}
-          path: |
-            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}.tar.zst
-            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}-meta.json
-          lookup-only: ${{ steps.tool-selftest-cache.outputs.lookup == 'true' }}
-      - if: steps.restore-tool-selftest.outputs.cache-hit == 'true' && steps.tool-selftest-cache.outputs.lookup != 'true'
-        continue-on-error: true
-        shell: bash
-        env:
-          HASH: ${{ steps.tool-selftest-cache.outputs.hash }}
-        run: |
-          archive=".turbo/tool-selftest-cache/$HASH.tar.zst"
-          meta=".turbo/tool-selftest-cache/$HASH-meta.json"
-          [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] || exit 0
-          jq -e --arg hash "$HASH" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null || exit 0
-          mkdir -p .turbo/cache
-          rm -f ".turbo/cache/$HASH-manifest.json"
-          mv "$archive" "$meta" .turbo/cache/
-      - id: simulations
-        if: matrix.name == 'verify'
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          pattern: simulations-*
-          path: ${{ runner.temp }}/simulation-receipts
-      - id: import-simulations
-        if: steps.simulations.outcome == 'success'
-        continue-on-error: true
-        env:
-          SIMULATION_RECEIPTS: ${{ runner.temp }}/simulation-receipts
-        run: &import-simulation-receipts |
-          node --input-type=module <<'JS'
-          import fs from "node:fs";
-          import path from "node:path";
-          const source = process.env.SIMULATION_RECEIPTS;
-          const cache = ".spec-cache";
-          const candidates = fs.globSync(["*", "simulations-*/*"], { cwd: source })
-            .filter((file) => /^(?:simulations-\d+\/)?(?:action|simulate)-[a-f0-9]{24}\.json\.(?:zst|gz)$/.test(file) && fs.lstatSync(path.join(source, file)).isFile());
-          fs.mkdirSync(cache, { recursive: true });
-          let imported = 0;
-          for (const [key, files] of Map.groupBy(candidates, (file) => path.basename(file, path.extname(file)))) {
-            if (["zst", "gz"].some((codec) => fs.lstatSync(path.join(cache, `${key}.${codec}`), { throwIfNoEntry: false }))) continue;
-            const name = path.basename(files[0]);
-            const bytes = fs.readFileSync(path.join(source, files[0]));
-            if (files.slice(1).some((file) => path.basename(file) !== name || !bytes.equals(fs.readFileSync(path.join(source, file))))) {
-              console.log(`::warning::Shards disagree on ${key}; the ordinary check will recompute it.`);
-              continue;
-            }
-            fs.writeFileSync(path.join(cache, name), bytes, { flag: "wx" });
-            imported++;
-          }
-          console.log(`Imported ${imported} simulation and typecheck receipts.`);
-          JS
-      - if: steps.simulations.outcome == 'failure' || steps.import-simulations.outcome == 'failure'
-        run: echo "::warning::The shard receipts were not fully imported; the ordinary check will compute missing results."
-      - id: verify-tasks
-        run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
-      - id: publish-tool-selftest
-        if: >-
-          github.event_name == 'push' && steps.tool-selftest-cache.outputs.key != '' &&
-          steps.restore-tool-selftest.outputs.cache-hit != 'true'
-        continue-on-error: true
-        shell: bash
-        env:
-          TASK: ${{ matrix.tasks }}
-          HASH: ${{ steps.tool-selftest-cache.outputs.hash }}
-        run: |
-          jq -e -s --arg task "$TASK" --arg hash "$HASH" '
-            map(select(.version == "1" and .execution.exitCode == 0 and (.tasks | length == 1)))
-            | map(.tasks[0] | select(.taskId == $task and .hash == $hash and .execution.exitCode == 0))
-            | length == 1
-          ' .turbo/runs/*.json >/dev/null || exit 0
-          archive=".turbo/cache/$HASH.tar.zst"
-          meta=".turbo/cache/$HASH-meta.json"
-          [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] || exit 0
-          jq -e --arg hash "$HASH" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null || exit 0
-          mkdir -p .turbo/tool-selftest-cache
-          cp "$archive" "$meta" .turbo/tool-selftest-cache/
-          echo 'ready=true' >> "$GITHUB_OUTPUT"
-      - if: steps.publish-tool-selftest.outputs.ready == 'true'
-        continue-on-error: true
+          path: ${{ steps.paths.outputs.old }}
+          key: spec-Linux-X64-verify-46b745cad7d74ac550c03615c3b39dd273347211fc3e36492628a902caf1fd74-0d743619956147f3296becd7769c1b14ad48a8d3-1
+          fail-on-cache-miss: true
+      - name: Inventory the real restored files and add isolated process-state controls
+        run: python3 "$RUNNER_TEMP/receipt-audit.py" source
+      - name: Publish baseline archive with native directory selection
         uses: actions/cache/save@v6
         with:
-          key: ${{ steps.tool-selftest-cache.outputs.key }}
-          path: |
-            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}.tar.zst
-            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}-meta.json
-      - name: Report Turbo task timings
-        id: task-timings
-        if: ${{ !cancelled() }}
-        env:
-          RESTORED_FIXTURE_EVALUATOR: ${{ steps.setup.outputs.spec-evaluator-restored == 'true' && steps.verify-tasks.outcome == 'success' }}
-          TASK: ${{ matrix.tasks }}
-        run: |
-          for report in .turbo/runs/*.json; do
-            [[ -f "$report" ]] || continue
-            jq -r '
-              select(.version == "1" and (.tasks | type == "array"))
-              | .execution as $run
-              | select([$run.startTime, $run.endTime, $run.cached, $run.attempted] | all(type == "number"))
-              | "### Turbo task timings", "",
-                "Wall time \(($run.endTime - $run.startTime) / 1000) s. Cache hits \($run.cached) of \($run.attempted) attempted tasks.",
-                "",
-                "| Task | Wall time (s) | Cache | Exit code |",
-                "| --- | ---: | --- | ---: |",
-                ([.tasks[]
-                  | select([.execution.startTime, .execution.endTime] | all(type == "number"))
-                  | {id: .taskId, elapsed: ((.execution.endTime - .execution.startTime) / 1000), cache: .cache.status, exit: .execution.exitCode}]
-                  | sort_by(-.elapsed) | .[]
-                  | "| \(.id) | \(.elapsed) | \(.cache // "-") | \(.exit // "-") |"),
-                ""
-            ' "$report" >> "$GITHUB_STEP_SUMMARY" || echo "::warning::Could not read the Turbo run summary"
-          done
-          [[ $RESTORED_FIXTURE_EVALUATOR == true ]] || exit 0
-          shopt -s nullglob
-          reports=(.turbo/runs/*.json)
-          (( ${#reports[@]} )) || exit 0
-          jq -es --arg task "$TASK" '
-            map(select(.version == "1" and any(.tasks[]?; .taskId == $task)))
-            | length == 1 and
-              (.[0] | .execution.exitCode == 0 and .execution.attempted == 1 and .execution.cached == 1 and
-                (.tasks | length == 1 and (.[0] | .taskId == $task and .cache.status == "HIT" and
-                  .execution.exitCode == 0 and .resolvedTaskDefinition.outputs == [])))
-          ' "${reports[@]}" >/dev/null || exit 0
-          echo 'skip-spec-cache=true' >> "$GITHUB_OUTPUT"
-          echo 'Skipping the spec cache upload after a full fixture replay.'
-      - id: superseded-spec-cache
-        if: >-
-          cancelled() && matrix.name == 'verify' && steps.verify-tasks.conclusion == 'cancelled' &&
-          steps.setup.outputs.spec-cache-key != '' &&
-          github.event_name == 'push' && github.run_attempt == '1' &&
-          github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        shell: bash
-        run: |
-          current=$(GIT_TERMINAL_PROMPT=0 timeout 4s git ls-remote --refs --exit-code origin "$GITHUB_REF") || exit 0
-          [[ $current != *$'\n'* ]] || exit 0
-          IFS=$'\t' read -r tip ref <<< "$current"
-          [[ $tip =~ ^[0-9a-f]{40}$ && $ref == "$GITHUB_REF" && $tip != "$GITHUB_SHA" ]] || exit 0
-          echo 'skip=true' >> "$GITHUB_OUTPUT"
-          echo "Skipping the spec cache upload for superseded commit $GITHUB_SHA."
-      - id: closed-pr-cache
-        if: >-
-          always() && github.event_name == 'pull_request' && github.run_attempt == '1' &&
-          (steps.setup.outputs.spec-cache-key != '' || steps.setup.outputs.turbo-cache-key != '')
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          [[ -n $GH_TOKEN && $GITHUB_REF =~ ^refs/pull/([1-9][0-9]*)/merge$ ]] || exit 0
-          number=${BASH_REMATCH[1]}
-          pull=$(curl --fail --silent --max-time 4 -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$number") || exit 0
-          jq -e --argjson number "$number" '
-            .number == $number and .state == "closed" and (.closed_at | type == "string")
-          ' <<< "$pull" >/dev/null 2>&1 || exit 0
-          echo 'skip=true' >> "$GITHUB_OUTPUT"
-          echo "Skipping verification cache uploads for closed PR #$number."
-      - if: >-
-          always() && steps.setup.outputs.spec-cache-key != '' &&
-          steps.superseded-spec-cache.outputs.skip != 'true' && steps.task-timings.outputs.skip-spec-cache != 'true' &&
-          steps.closed-pr-cache.outputs.skip != 'true'
+          path: ${{ steps.paths.outputs.old }}
+          key: receipt-path-evidence-old-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Publish portable archive with native receipt selection
         uses: actions/cache/save@v6
         with:
-          path: ${{ steps.setup.outputs.spec-cache-path }}
-          key: ${{ steps.setup.outputs.spec-cache-key }}
-      - id: prune-turbo-cache
-        if: always() && steps.setup.outputs.turbo-cache-key != '' && steps.closed-pr-cache.outputs.skip != 'true'
-        shell: bash
-        env:
-          FIXTURE_INVENTORY: ${{ steps.setup.outputs.fixture-turbo-inventory }}
-          FULL_REPLAY: ${{ steps.task-timings.outputs.skip-spec-cache == 'true' }}
-        run: |
-          [[ -d .turbo/cache ]] || exit 0
-          if [[ $FULL_REPLAY == true && -s $FIXTURE_INVENTORY ]] &&
-            find .turbo/cache -regextype posix-extended \
-              \( -type f -regex '\.turbo/cache/[0-9a-f]{16}-manifest\.json' \) -prune -o \
-              \( -type d -printf '%p %y:%m\0' -o -printf '%p %y:%m:%D:%i:%s:%C@\0' \) |
-              LC_ALL=C sort -z | cmp -s "$FIXTURE_INVENTORY" - &&
-            expired=$(find .turbo/cache -type f -mtime +7 -print -quit) && [[ -z $expired ]]; then
-            echo 'Reusing the unchanged pull request Turbo archive after a full fixture replay.'
-            exit 0
-          fi
-          shopt -s nullglob
-          summaries=(.turbo/runs/*.json)
-          if (( ${#summaries[@]} )); then
-            set +o pipefail
-            jq -r '
-              .tasks[] | select(.cache.status == "HIT")
-              | .hash | select(type == "string" and test("^[a-f0-9]{16}$"))
-              | ".turbo/cache/\(.)" as $entry
-              | $entry + (".tar.zst", "-meta.json", "-manifest.json")
-            ' "${summaries[@]}" | xargs -r touch -c --
-          fi
-          find .turbo/cache -type f -mtime +7 -delete
-          for archive in .turbo/cache/*.tar.zst; do
-            metadata="${archive%.tar.zst}-meta.json"
-            [[ -f "$archive" && -s "$archive" && -f "$metadata" && -s "$metadata" ]] || continue
-            echo "populated=true" >> "$GITHUB_OUTPUT"
-            break
-          done
-      - if: always() && steps.prune-turbo-cache.outputs.populated == 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: .turbo/cache
-          key: ${{ steps.setup.outputs.turbo-cache-key }}
-      - if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: proof-${{ matrix.name }}
-          path: |
-            gen/proof/
-            vibestack/studio/gen/proof/
-          if-no-files-found: ignore
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: failures-${{ matrix.name }}
-          path: |
-            test/counterexamples/
-            test/__traces__/
-            apps/*/test/counterexamples/
-            apps/*/test/__traces__/
-            packages/*/test/counterexamples/
-            packages/*/test/__traces__/
-            apps/*/.cache/vitest/attachments/
-            packages/*/.cache/vitest/attachments/
-            vibestack/studio/test/counterexamples/
-            vibestack/studio/test/__traces__/
-            vibestack/examples/*/test/counterexamples/
-            vibestack/examples/*/test/__traces__/
-          if-no-files-found: ignore
-          include-hidden-files: true
-
-  vibestack-precompute-simulations:
-    name: simulate-${{ matrix.shard }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with:
-          job: simulate-${{ matrix.shard }}
-      - id: simulation-cache
-        env:
-          LOCK_HASH: ${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}
-          SHARD_LAYOUT: ${{ strategy.job-total }}-${{ matrix.shard }}
-        run: echo "prefix=simulation-shard-v1-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH-$SHARD_LAYOUT-" >> "$GITHUB_OUTPUT"
-      - id: restore-simulation-cache
-        continue-on-error: true
+          path: ${{ steps.paths.outputs.portable }}
+          key: receipt-path-evidence-portable-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Move source files out of the runner cache directories
+        run: python3 "$RUNNER_TEMP/receipt-audit.py" clear original
+      - name: Restore baseline comparison from the cache service
         uses: actions/cache/restore@v6
         with:
-          path: ${{ runner.temp }}/cached-simulation-receipts
-          key: ${{ steps.simulation-cache.outputs.prefix }}restore
-          restore-keys: ${{ steps.simulation-cache.outputs.prefix }}
-      - name: Import receipts from a previous run
-        if: steps.restore-simulation-cache.outputs.cache-matched-key != ''
-        continue-on-error: true
-        env:
-          SIMULATION_RECEIPTS: ${{ runner.temp }}/cached-simulation-receipts
-        run: *import-simulation-receipts
-      - name: Simulate the specs whose files hash to this shard
-        id: precompute
-        env:
-          SHARD: ${{ matrix.shard }}
-          SHARDS: ${{ strategy.job-total }}
-          CACHE_PREFIX: ${{ steps.simulation-cache.outputs.prefix }}
-          RESTORED_KEY: ${{ steps.restore-simulation-cache.outputs.cache-matched-key }}
-        run: |
-          node --input-type=module <<'JS'
-          import { createHash } from "node:crypto";
-          import fs from "node:fs";
-          import path from "node:path";
-          import { prepareSimulationReceipts, readSpecs } from "./vibestack/formal.ts";
-          const aggregate = (name) => /^simulate-[a-f0-9]{24}\.json\.(?:zst|gz)$/.test(name);
-          const simulations = () => fs.globSync("simulate-*.json.*", { cwd: ".spec-cache" })
-            .filter((name) => aggregate(name) && fs.lstatSync(path.join(".spec-cache", name)).isFile());
-          const digest = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
-          const restored = new Map();
-          for (const name of simulations()) {
-            try { restored.set(name, digest(path.join(".spec-cache", name))); } catch { }
-          }
-          const specs = readSpecs(process.cwd());
-          const inShard = ({ file }) => parseInt(createHash("sha256").update(file).digest("hex").slice(0, 8), 16) % Number(process.env.SHARDS) === Number(process.env.SHARD) - 1;
-          const names = specs.filter(inShard).map(({ name }) => name);
-          const { results, seedDirectory, partialDirectory } = await prepareSimulationReceipts(process.cwd(), specs, names, process.env.RUNNER_TEMP);
-          const checkpoint = seedDirectory ?? partialDirectory;
-          let transfer = checkpoint ?? fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, "simulation-delta-"));
-          if (!checkpoint) {
-            for (const name of simulations()) if (!restored.has(name)) {
-              fs.copyFileSync(path.join(".spec-cache", name), path.join(transfer, name));
-            }
-          } else {
-            const contents = fs.readdirSync(checkpoint).sort().map((name) => [name, digest(path.join(checkpoint, name))]);
-            if (contents.some(([name, hash]) => aggregate(name) && restored.get(name) !== hash)) {
-              const fingerprint = createHash("sha256").update(JSON.stringify(contents)).digest("hex");
-              const prefix = `${process.env.CACHE_PREFIX}${fingerprint}-`;
-              if (!process.env.RESTORED_KEY.startsWith(prefix)) {
-                const key = `${prefix}${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`;
-                const directory = path.join(process.env.RUNNER_TEMP, "cached-simulation-receipts");
-                try {
-                  fs.rmSync(directory, { recursive: true, force: true });
-                  fs.renameSync(checkpoint, directory);
-                  transfer = directory;
-                  fs.appendFileSync(process.env.GITHUB_OUTPUT, `cache-key=${key}\n`);
-                } catch (error) {
-                  console.log(`::warning::Could not stage the simulation cache: ${error.message}`);
-                }
-              }
-            }
-          }
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `directory=${transfer}\n`);
-          const failed = results.filter(({ ok }) => !ok);
-          for (const { stage, summary, detail, where } of failed) console.log(`✗ ${stage} ${where ?? ""}: ${summary}\n${detail}`);
-          const kind = seedDirectory ? "complete seed" : partialDirectory ? "partial seed" : "new aggregate";
-          console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${fs.readdirSync(transfer).length} ${kind} entries, ${failed.length} failed`);
-          process.exitCode = failed.length ? 1 : 0;
-          JS
-      - if: ${{ !cancelled() && steps.precompute.outputs.cache-key != '' }}
-        continue-on-error: true
-        uses: actions/cache/save@v6
+          path: ${{ steps.paths.outputs.old }}
+          key: receipt-path-evidence-old-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: true
+      - name: Check all original and process-only files in the native baseline round trip
+        run: python3 "$RUNNER_TEMP/receipt-audit.py" old
+      - name: Move baseline files away for an independent portable receiver
+        run: python3 "$RUNNER_TEMP/receipt-audit.py" clear baseline
+      - name: Restore portable comparison from the cache service
+        uses: actions/cache/restore@v6
         with:
-          key: ${{ steps.precompute.outputs.cache-key }}
-          path: ${{ runner.temp }}/cached-simulation-receipts
-      - if: always() && steps.precompute.outputs.directory != ''
-        uses: actions/upload-artifact@v7
+          path: ${{ steps.paths.outputs.portable }}
+          key: receipt-path-evidence-portable-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: true
+      - name: Check every reusable receipt and evaluator byte and every process-state exclusion
+        run: python3 "$RUNNER_TEMP/receipt-audit.py" portable
+      - name: Start a separate native fixture receiver
+        run: python3 "$RUNNER_TEMP/receipt-audit.py" clear current
+      - name: Restore the existing official selftest A archive with the proposed path output
+        uses: actions/cache/restore@v6
         with:
-          name: simulations-${{ matrix.shard }}
-          path: ${{ steps.precompute.outputs.directory }}
-          compression-level: 0
-          if-no-files-found: ignore
-          include-hidden-files: true
-          retention-days: 1
-
-  vibestack-fixture-selftests:
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: selftest-a
-            tasks: //#selftest:tools:a
-          - name: selftest-b
-            tasks: //#selftest:tools:b
-          - name: selftest-rest
-            tasks: //#selftest:tools:rest
-    env: *cache-env
-    steps: *verification-steps
+          path: ${{ steps.paths.outputs.fixture }}
+          key: spec-Linux-X64-selftest-a-46b745cad7d74ac550c03615c3b39dd273347211fc3e36492628a902caf1fd74-0d743619956147f3296becd7769c1b14ad48a8d3-1
+          fail-on-cache-miss: true
+      - name: Verify physical fixture data and pinned native evaluator presence
+        run: python3 "$RUNNER_TEMP/receipt-audit.py" fixture
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: archive-selection
+          path: |
+            ${{ runner.temp }}/receipt-selection/*.json
+            ${{ runner.temp }}/*.paths
+          if-no-files-found: error
+          retention-days: 5
