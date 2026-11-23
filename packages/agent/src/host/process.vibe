@@ -44,7 +44,7 @@ module node {
 
   import { randomUUID } from "node:crypto"
   import { Effect, Redacted, Result } from "effect"
-  import { AgentEventService, AgentRuntime, EventType, NotificationService, QUIET_ERROR_CODES, SECRET_SWAP_STABLE_REFERENCES_SETTING, TaskService, createCharacter, logger, privacyPlugin, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload, type ServiceClass } from "@elizaos/core"
+  import { AgentEventService, AgentRuntime, EventType, NotificationService, QUIET_ERROR_CODES, TaskService, createCharacter, logger, privacyPlugin, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload, type ServiceClass } from "@elizaos/core"
   import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
   import { storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
   import { backendOf, runStateOf, statusRoutes } from "./status.vibe"
@@ -127,11 +127,8 @@ module node {
     return localEmbeddingsBoot(launch.embeddings === "local", server, launch.policy.plugins.load.includes(deviceEmbeddingsPlugin))
   }
 
-  function privacyOf(launch: LaunchDocument): Privacy {
-    const { secretSwap = false, piiSwap = false } = launch.privacy ?? {}
-    if (!secretSwap && !piiSwap) return { kind: "off" }
-    const stableReferences = settingOn(launch.environment?.[SECRET_SWAP_STABLE_REFERENCES_SETTING])
-    return { kind: "on", plugin: privacyPlugin({ secretSwap, piiSwap, stableReferences }) }
+  function privacyOf({ privacy }: LaunchDocument): Privacy {
+    return privacy?.secretSwap || privacy?.piiSwap ? { kind: "on", plugin: privacyPlugin(privacy) } : { kind: "off" }
   }
 
   function runtimeServicesAdmitted(services: readonly ServiceClass[], owned: readonly string[]): boolean {
