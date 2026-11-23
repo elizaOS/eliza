@@ -1,6 +1,32 @@
 // spec/agent/storage/database.md, "Only one live process holds a data directory"; spec/agent/tasks/store.md, "Storage opens only with a private path, the exclusive lock, a 32-byte key and the launch account"; spec/agent/access/transport.md, "Story: Answer each local request exactly once"
 module node {
+  import { readFileSync } from "node:fs"
   import { userInfo } from "node:os"
+
+  function isError(error: unknown, code: string): boolean {
+    return typeof error === "object" && error !== null && "code" in error && error.code === code
+  }
+
+  export function processStart(pid: number): string | undefined {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+      const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
+      return fields[0] === "Z" ? undefined : fields[19]
+    } catch (error) {
+      if (isError(error, "ENOENT") || isError(error, "ESRCH")) return undefined
+      throw error
+    }
+  }
+
+  export function processAlive(pid: number, start: string | undefined): boolean {
+    try {
+      process.kill(pid, 0)
+    } catch (error) {
+      if (isError(error, "ESRCH")) return false
+      if (!isError(error, "EPERM")) throw error
+    }
+    return start === undefined || processStart(process.pid) === undefined || processStart(pid) === start
+  }
 
   export function processOwnerUid(): number {
     const uid = process.getuid?.() ?? (process.platform === "android" ? userInfo().uid : undefined)
@@ -8,4 +34,4 @@ module node {
     return uid
   }
 }
-export { processOwnerUid } from node
+export { processAlive, processOwnerUid, processStart } from node
