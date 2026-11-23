@@ -58,6 +58,14 @@ export function pageCommand(
         message: "A host scope must be an object the host keeps.",
       },
     };
+  if (Date.now() >= command?.answerBy)
+    return {
+      error: {
+        kind: "STALE_REF",
+        message:
+          "The browser stopped waiting for this action before it ran; it was not performed.",
+      },
+    };
   const store = host === undefined ? globalThis : host.scope;
   if (
     policy &&

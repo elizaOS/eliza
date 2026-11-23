@@ -16,8 +16,6 @@ export const cnFor = (groups: Record<string, unknown>) => {
   return (...inputs: ClassValue[]) => twMerge(clsx(inputs));
 };
 
-/** Joins class names; a later Tailwind utility replaces an earlier one it conflicts with. */
 export const cn = cnFor(tokens);
 
-/** The ring every control shows under keyboard focus. */
 export const focusRing = "outline-none focus-visible:ring-2 focus-visible:ring-ring";
