@@ -23,6 +23,10 @@ map goes to showing or finding it; travelling to a destination, or going to
 a named place or street address, goes to navigation from here unless the
 destination names one of the agent's views; a nearby or nearest kind of
 place, and a kind of place near a named place, go to place search.
+Weather, traffic, news or a forecast near a place, and things kept on the
+phone such as photos, messages or notes, are not a kind of place; a time,
+a holiday, a price or the owner's own place after "near" is not a named
+place. Those requests keep the planner's own choice.
 
 ```quint
 type RequestShape = DirectionsRequest | PlaceOnMap | TravelTo | GoToNamedPlace | NearbyKind | KindNearNamedPlace | ChoiceReply | OtherRequest
