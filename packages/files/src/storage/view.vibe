@@ -71,8 +71,8 @@ export effect function filesView() {
     return try viewEvent({ type: "loadReply", success }, (state) => canLoadReply(state))
   }
 
-  effect function show(filter: FilesFilter, results: Listing): ShownResults!! {
-    try viewEvent({ type: "replaceRows" }, canReplaceRows)
+  effect function show(filter: FilesFilter, results: Listing): (ShownResults | undefined)!! {
+    if (!(try viewEvent({ type: "replaceRows" }, canReplaceRows))) return undefined
     const next = { filter, label: filterLabel(filter), paths: results.entries.map((entry) => entry.path), complete: results.complete, empty: results.empty }
     try Ref.set(shown, next)
     return next

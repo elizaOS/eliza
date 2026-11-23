@@ -58,8 +58,11 @@ pure def leadsToRequestSettles(s: FileRequest, later: FileRequest): bool =
 
 ### The view's reload never retires the request
 
-Entering Files starts a new view and its reload; leaving ends the view.
-Replacing the shown rows retires a request made from them. A reload reply
+Entering Files starts a new view and its reload; leaving ends the view
+and clears the filter results it showed. Rows replace the shown ones only
+while the view is active, so a filter that finishes after the owner left
+shows nothing on the next visit. Replacing the shown rows retires a
+request made from them. A reload reply
 only records whether the list loaded; it never changes the request's
 stage, view or rows, so a file can open while the list is still loading.
 

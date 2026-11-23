@@ -139,7 +139,13 @@ it.effect('Open the file I asked for, and only from what I was shown (spec/files
     return true
   } })
   const after = try view.open({ shown: 1 }, ports())
+  try view.leave()
+  const lateFilter = try view.show({ text: "lease" }, { entries: [{ path: "Download/lease.pdf", name: "lease.pdf", directory: false, mimeType: "application/pdf", size: 5, modified: 1 }], complete: true, empty: false })
+  try view.enter()
+  const reopened = try view.shown()
   try check(() => {
+    assert.isUndefined(lateFilter)
+    assert.isUndefined(reopened)
     assert.deepEqual(cold, { kind: "opened", path: "Download/lease.pdf" })
     assert.deepEqual(shown, { kind: "opened", path: "Download/lease.pdf" })
     assert.deepEqual(missing, { kind: "refused", reason: "not_shown" })
