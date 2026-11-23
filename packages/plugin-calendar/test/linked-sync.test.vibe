@@ -36,6 +36,7 @@ function memoryStorage(): CalendarLinkStorage & { readonly slots: Map<string, un
 function fakeGoogle() {
   const events = new Map<string, { eventId: string; etag: string; key: string; event: LinkedCalendarSemanticEvent }>()
   let next = 0
+  let down = false
   const envelope = (body: Record<string, unknown>) => ({ version: 1, calendarId: binding.calendarId, providerExactlyOnce: false, ...body })
   const snapshot = (row: { eventId: string; etag: string; event: LinkedCalendarSemanticEvent }) =>
     ({ eventId: row.eventId, etag: row.etag, visibility: "private", remindersDisabled: true, event: row.event })
@@ -59,6 +60,10 @@ function fakeGoogle() {
           return envelope({ event: snapshot(row) })
         }
         case "update": {
+          if (down) {
+            down = false
+            throw Object.assign(new Error("Calendar sync did not answer."), { status: 502 })
+          }
           const row = events.get(input.eventId)
           if (row === undefined || row.etag !== input.expectedEtag) throw refused("precondition_failed")
           const updated = { ...row, etag: `${row.etag}+`, event: input.event }
@@ -78,7 +83,7 @@ function fakeGoogle() {
     const row = events.get(eventId)
     if (row !== undefined) events.set(eventId, { ...row, etag: `${row.etag}!`, event: { ...row.event, ...change } })
   }
-  return { client, events, edit }
+  return { client, events, edit, dropNextUpdate: () => { down = true } }
 }
 
 function residentCalendar() {
@@ -141,6 +146,15 @@ it.effect('Link my resident calendar to a verified provider destination (spec/ca
   google.edit("g1", { location: "Park" })
   assert.equal((try controller.sync()).pulled, 1)
   assert.equal(resident.rows.get("lunch")?.event.location, "Park")
+
+  google.dropNextUpdate()
+  resident.write("lunch", { ...lunch, location: "Park", title: "Lunch outside" })
+  assert.equal((try controller.sync()).quarantined, 1)
+  assert.equal((try controller.sync()).quarantined, 1)
+  try TestClock.adjust("6 minutes")
+  assert.equal((try controller.sync()).dirty, 1)
+  assert.equal((try controller.sync()).pushed, 1)
+  assert.equal(google.events.get("g1")?.event.title, "Lunch outside")
 
   google.edit("g1", { title: "Lunch with Ada" })
   resident.write("lunch", { ...lunch, location: "Park", title: "Team lunch" })
