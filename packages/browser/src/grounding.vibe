@@ -1,4 +1,4 @@
-// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that would change a typed path leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"
 import { parseBrowserAddressInput } from "@elizaos/os/browser/address"
 import { groundedSearch } from "../gen/browser__control.effect.vibe"
 import { closingMarkIsProse, directDestination, pageLinkDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
@@ -164,9 +164,9 @@ function plain(text: string): string {
     .replace(/[*_~[\]{}<>|^]|\p{Extended_Pictographic}|\p{Emoji_Modifier}|\ufe0f|\u20e3/gu, " ")
 }
 
-function closingMarkProse(address: string): boolean {
+function closingMarkProse(address: string, addressAlone: boolean): boolean {
   const bare = stripTrailingPunctuation(address, ".,!?")
-  return closingMarkIsProse(/[/?#]/.test(bare.replace(/^https?:\/\//i, "")), webAddress(bare)?.href !== webAddress(address)?.href)
+  return closingMarkIsProse(addressAlone, /[/?#]/.test(bare.replace(/^https?:\/\//i, "")), webAddress(bare)?.href !== webAddress(address)?.href)
 }
 
 /** The strict whole-message open command and where it asks the address to open; only this form may skip the model's judgment. */
@@ -192,7 +192,7 @@ export function authoredBrowserOpen(text: string, assistantName: string = DEFAUL
     if (QUOTE_PAIRS[quoted[1] ?? ""] !== quoted[3]) return undefined
     target = quoted[2] ?? ""
   } else {
-    if (!closingMarkProse(target)) return undefined
+    if (!closingMarkProse(target, false)) return undefined
     target = stripTrailingPunctuation(target, ".,!?")
   }
   const href = webAddress(target)?.href
@@ -220,7 +220,7 @@ export function directBrowserOpen(text: string, assistantName: string = DEFAULT_
   }
   const bare = text.trim()
   const url = webAddress(bare)
-  if (url === undefined || !closingMarkProse(bare)) return undefined
+  if (url === undefined || !closingMarkProse(bare, true)) return undefined
   if (FILE_TYPE_TLDS.has(topLevel(url)) && !/^(?:https?:\/\/|www\.)/i.test(bare)) return undefined
   return { href: url.href, newTab: false }
 }

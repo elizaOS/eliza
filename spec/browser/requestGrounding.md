@@ -99,22 +99,30 @@ pure def lawAPageLinkIsAlwaysReviewed(wholeMessageOpen: bool): bool = not(openBo
 pure def lawOnlyMyWholeMessageOpenIsBound(pageLink: bool, wholeMessageOpen: bool): bool = openBound(pageLink, wholeMessageOpen) implies wholeMessageOpen
 ```
 
-### A closing mark that would change a typed path leaves the open for my review
+### A closing mark that could belong to the address leaves the open for my review
 
-A period, comma, exclamation or question mark that ends the message after
-a bare host is the sentence's, and the whole message still opens that
-host. After a typed path, query or fragment the mark may be the address's
-own: where the address differs with and without it, as in "open
-nytimes.com/section/world.", the message is not a direct request to open
-it. The address it grounds is offered unbound to the message, so the owner
-reviews it before it loads. A mark that leaves the address the same, such
-as an empty query, keeps the whole-message open.
+In an open command or request, a period, comma, exclamation or question
+mark that ends the message after a bare host is the sentence's, and the message still
+opens that host: "Open Reddit.com!" opens reddit.com. After a typed path,
+query or fragment the mark may be the address's own: where the address
+differs with and without it, as in "open nytimes.com/section/world.", the
+message is not a direct request to open it. A message that is the address
+alone is a direct request only as typed: a closing mark that changes it, as
+in "example.com?!", or leaves no address, as in "example.com.", makes it no
+direct request either. The address such a message grounds is offered
+unbound to the message, so the owner reviews it before it loads. A mark
+that leaves the address the same, such as an empty query, keeps the
+whole-message open.
 
 ```quint
-pure def closingMarkIsProse(afterTypedPath: bool, markChangesAddress: bool): bool = not(afterTypedPath and markChangesAddress)
-pure def lawAMarkAfterABareHostIsProse(markChangesAddress: bool): bool = closingMarkIsProse(false, markChangesAddress)
-pure def lawAMarkThatChangesATypedPathOpensNothingDirectly(readable: bool, directHref: str): bool =
-  directDestination(readable, closingMarkIsProse(true, true), directHref) == ""
+pure def closingMarkIsProse(addressAlone: bool, afterTypedPath: bool, markChangesAddress: bool): bool =
+  not(markChangesAddress and (addressAlone or afterTypedPath))
+pure def lawAMarkAfterABareHostInACommandIsProse(markChangesAddress: bool): bool = closingMarkIsProse(false, false, markChangesAddress)
+pure def lawAMarkThatChangesATypedPathOpensNothingDirectly(readable: bool, addressAlone: bool, directHref: str): bool =
+  directDestination(readable, closingMarkIsProse(addressAlone, true, true), directHref) == ""
+pure def lawAMarkThatChangesAnAddressAloneOpensNothingDirectly(readable: bool, afterTypedPath: bool, directHref: str): bool =
+  directDestination(readable, closingMarkIsProse(true, afterTypedPath, true), directHref) == ""
+pure def lawAMarkThatLeavesTheAddressKeepsTheOpen(addressAlone: bool, afterTypedPath: bool): bool = closingMarkIsProse(addressAlone, afterTypedPath, false)
 ```
 
 ### An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one
