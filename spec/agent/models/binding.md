@@ -76,7 +76,8 @@ pure def handlerSource(backend: Backend, embeddings: Embeddings, handler: ModelH
   else NotRegistered
 pure val backendValues = Set(NoBackend,
   CloudBackend({ baseUrl: "https://cloud.example", baseUrlShape: HttpsOrigin, smallModel: "", largeModel: "", imageModel: "" }),
-  OwnKeyBackend({ baseUrl: "https://own.example/v1", baseUrlShape: HttpsWithPath, smallModel: "small", largeModel: "large" }))
+  OwnKeyBackend({ baseUrl: "https://own.example/v1", baseUrlShape: HttpsWithPath, smallModel: "small", largeModel: "large" }),
+  OwnKeyBackend({ baseUrl: "https://api.cerebras.ai/v1", baseUrlShape: HttpsWithPath, smallModel: "small", largeModel: "large" }))
 pure val embeddingsValues = Set(NoEmbeddings, LocalEmbeddings({ dimensions: 384 }))
 pure def lawNoTextHandlerFromALocalModel(backend: Backend, embeddings: Embeddings, handler: ModelHandler): bool =
   handler != TextEmbedding implies handlerSource(backend, embeddings, handler) != FromLocalInference
@@ -202,7 +203,7 @@ pure def refuseCall(s: ModelBinding, id: int, now: int, e: C::CloudError): Model
   val failure = failureOf(e, callVersion(s.calls, id))
   val ignored = staleRefusal(failure, s.credentialVersion)
   { ...s, calls: s.calls.select(c => c.id != id), clock: t,
-    accountState: if (ignored) s.accountState else afterFailure(s.accountState, failure, t),
+    accountState: if (ignored) s.accountState else afterFailure(s.accountState, heldFailure(s.backend, failure, t), t),
     lastCloudFailure: if (ignored) s.lastCloudFailure else CloudFailedAt({ failure: failure, at: t }) }
 }
 pure def alwaysFailingAccountHasALastFailure(s: ModelBinding): bool = s.accountState != Usable implies s.lastCloudFailure != NoCloudFailure
@@ -215,7 +216,9 @@ pure def sometimesProviderIssue(s: ModelBinding): bool = s.accountState == Faili
 
 ### No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force
 
-A refused credential, spent credits or a newer limit replace a limit.
+A refused credential, spent credits or a newer limit replace a limit. The
+retry time a limit holds calls to is the provider's, except on the direct
+Cerebras endpoint, where it is the brief hold of the next rule.
 
 ```quint
 pure def limitedBy(f: AccountFailure, t: int): bool = match f { | LimitReached(x) => t < x.retryAt | _ => false }
@@ -226,6 +229,33 @@ pure def stepNoCallBeforeRetryAt(before: ModelBinding, via: str, after: ModelBin
 pure def sometimesLimitReached(s: ModelBinding): bool = limitedAt(s.accountState, s.clock)
 pure def sometimesProviderIssueKeepsTheLimit(s: ModelBinding): bool =
   limitedAt(s.accountState, s.clock) and lastFailureKind(s.lastCloudFailure) == "provider_issue"
+```
+
+### On the direct Cerebras endpoint a rate limit holds calls for at most 4 seconds, and the last failure keeps the provider's retry time
+
+Cerebras answers a per-minute refusal with a retry time about a minute
+away, refills its allowance all the time and does not charge a refused
+request. An own-key backend at `https://api.cerebras.ai/v1` therefore holds
+calls until the provider's retry time or 4 seconds after the refusal,
+whichever comes first. Every other backend holds them for the provider's
+whole window, because those providers count a refused request against the
+limit. The last failure records the provider's own retry time either way.
+
+```quint
+pure val briefHoldMs = 4000
+pure val cerebrasBaseUrl = "https://api.cerebras.ai/v1"
+pure def refillsContinuously(backend: Backend): bool = match backend { | OwnKeyBackend(k) => k.baseUrl == cerebrasBaseUrl | _ => false }
+pure def heldFailure(backend: Backend, failure: AccountFailure, t: int): AccountFailure = match failure {
+  | LimitReached(x) => if (refillsContinuously(backend) and x.retryAt > t + briefHoldMs) LimitReached({ retryAt: t + briefHoldMs }) else failure
+  | _ => failure
+}
+pure val failureValues = Set(LimitReached({ retryAt: 3 }), LimitReached({ retryAt: 60000 }), ProviderIssue, InsufficientCredits)
+pure def lawABriefHoldNeverOutlastsTheProvider(backend: Backend, failure: AccountFailure, t: int): bool = {
+  val held = heldFailure(backend, failure, t)
+  failureName(held) == failureName(failure) and retryAtOf(held) <= retryAtOf(failure)
+    and (refillsContinuously(backend) implies retryAtOf(held) <= t + briefHoldMs)
+    and (not(refillsContinuously(backend)) implies held == failure)
+}
 ```
 
 ### An answer clears the account state, except a limit not yet over

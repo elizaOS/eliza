@@ -157,6 +157,30 @@ it.effect('The own-key backend answers text only, classifies its refusals into t
   assert.strictEqual(lineBreak._tag, "LaunchFrameRejected")
 })
 
+it.live('A rate limit holds the direct Cerebras endpoint for at most 4 seconds and any other own-key endpoint for the provider\'s whole window (spec/agent/models/binding.md, "On the direct Cerebras endpoint a rate limit holds calls for at most 4 seconds, and the last failure keeps the provider\'s retry time")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: "large" }
+  const cerebras = try bound({ kind: "ownKey", baseUrl: "https://api.cerebras.ai/v1", smallModel: "small", largeModel: "large" }, cloud.ownKey)
+  const other = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, cloud.ownKey)
+  registerOwnKeyModels(cerebras.runtime, cerebras.binding, own)
+  registerOwnKeyModels(other.runtime, other.binding, own)
+  const minute = refusal(429, "rate_limit_exceeded", { retryAfterSeconds: 59 })
+  try Effect.sync(() => cloud.script(minute, minute))
+  const asked = Date.now()
+  const refused = [try refusalOf(cerebras.runtime, { prompt: "Limited." }), try refusalOf(other.runtime, { prompt: "Limited." })]
+  const held = [try refusalOf(cerebras.runtime, { prompt: "Held." }), try refusalOf(other.runtime, { prompt: "Held." })]
+  assert.deepStrictEqual([...refused, ...held].map((failure) => failure?.code), Array(4).fill("MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED"))
+  assert.strictEqual(completions(cloud), 2)
+  const limited = try cerebras.binding.read()
+  assert.isAtLeast(limited.lastCloudFailure?.retryAt ?? 0, asked + 59_000)
+  try Effect.sleep(Math.max(0, (limited.lastCloudFailure?.at ?? asked) + 4_000 - Date.now()) + 50)
+  try Effect.sync(() => cloud.script(text("after the hold")))
+  const answered = try host("own-key text after the hold", () => cerebras.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Again." }))
+  const still = try refusalOf(other.runtime, { prompt: "Still limited." })
+  assert.deepStrictEqual([answered, still?.code, completions(cloud)], ["after the hold", "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", 3])
+  assert.deepStrictEqual([(try cerebras.binding.read()).accountState, (try other.binding.read()).blocked], ["usable", true])
+})
+
 it.effect('A tool call and its token use reach the caller as one result, and each tool result follows the call that asked for it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud)
