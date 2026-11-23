@@ -1,5 +1,9 @@
 /** Consumes native requests once; cancellation bypasses the command queue. */
-import { executeCommand, prepareCommand } from "./commands.mjs";
+import {
+  answeredInTime,
+  executeCommand,
+  prepareCommand,
+} from "./commands.mjs";
 import { applyEffectWatch, WATCHED_EFFECTS } from "./effect-watch.mjs";
 import {
   createManualActivity,
@@ -13,7 +17,8 @@ import { createTaskGuidance } from "./task-guidance.mjs";
  * `effects` is the network watch (createEffectWatch). Without one, task
  * snapshots report only what the page itself saw.
  */
-export function createCommandHandler(api, { effects } = {}) {
+export function createCommandHandler(browser, { effects } = {}) {
+  const api = answeredInTime(browser);
   let protectionAdvisory = null;
   let protectionRevision = 0;
   const cancelled = new Set();

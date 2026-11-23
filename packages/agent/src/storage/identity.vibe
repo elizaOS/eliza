@@ -1,15 +1,11 @@
 // spec/agent/storage/database.md, "Story: Keep one agent identity for my data across restarts"; spec/agent/storage/database.md, "A damaged or linked identity file fails the open and is left in place"; spec/agent/storage/database.md, "Only one live process holds a data directory"; spec/core/atomicPublication.md, "The final path changes only after a complete temporary file is renamed"
 module node {
-  import { processOwnerUid } from "../host/process-owner.vibe"
+  import { isError, processAlive, processOwnerUid, processStart } from "../host/process-owner.vibe"
   import { randomUUID } from "node:crypto"
   import { lstat, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises"
   import { join, resolve } from "node:path"
   import { logger, validateUuid, type UUID } from "@elizaos/core"
   import { StoreFailed } from "./fault.vibe"
-
-  function isError(error: unknown, code: string): boolean {
-    return typeof error === "object" && error !== null && "code" in error && error.code === code
-  }
 
   async function privateDirectory(directory: string): Promise<void> {
     await mkdir(directory, { mode: 0o700, recursive: true })
@@ -19,31 +15,9 @@ module node {
     }
   }
 
-  function alive(pid: number): boolean {
-    try {
-      process.kill(pid, 0)
-      return true
-    } catch (error) {
-      if (isError(error, "ESRCH")) return false
-      if (isError(error, "EPERM")) return true
-      throw error
-    }
-  }
-
-  async function started(pid: number): Promise<string | undefined> {
-    try {
-      const stat = await readFile(`/proc/${pid}/stat`, "utf8")
-      const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
-      return fields[0] === "Z" ? undefined : fields[19]
-    } catch (error) {
-      if (isError(error, "ENOENT") || isError(error, "ESRCH")) return undefined
-      throw error
-    }
-  }
-
   async function claim(directory: string): Promise<() => Promise<void>> {
     await privateDirectory(directory)
-    const own = await started(process.pid)
+    const own = processStart(process.pid)
     const ownName = `${process.pid}${own === undefined ? "" : `.${own}`}-${randomUUID()}`
     const ownClaim = join(directory, ownName)
     await mkdir(ownClaim, { mode: 0o700 })
@@ -55,7 +29,7 @@ module node {
         const pid = Number(claimed?.[1])
         const start = claimed?.[2]
         if (!Number.isSafeInteger(pid) || pid < 1) throw new Error("Invalid storage owner claim")
-        if (alive(pid) && (own === undefined || start === undefined || await started(pid) === start)) {
+        if (processAlive(pid, start)) {
           throw new StoreFailed({ fault: "DirectoryInUse" })
         }
         await rm(join(directory, name), { force: true, recursive: true })
