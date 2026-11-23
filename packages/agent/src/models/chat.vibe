@@ -1,9 +1,9 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A host may shorten how long a rate limit holds the account, never past the provider's retry time"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, effortFor, failureOf, outcomeOf, retryAtOf, shellOutcome, streamIdleSeconds, usageAsked,
+  cacheKeySent, capSent, chatReturn, effortFor, failureOf, outcomeOf, reportedRetryAt, shellOutcome, streamIdleSeconds, usageAsked,
   type CapAsk, type ChatAsk, type ChatReturn, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
@@ -450,8 +450,8 @@ function holdAt(retryAt: number, now: number): Hold {
   return { retryAt: retryAt > 0 ? retryAt : undefined, retryAfterMs: retryAt < 0 ? undefined : Math.max(0, retryAt - now) }
 }
 
-function heldFor(state: ModelBinding, now: number): Hold {
-  return holdAt(state.accountState.tag === "Failing" ? retryAtOf(state.accountState.failure) : -1, now)
+function reportedFor(state: ModelBinding, now: number): Hold {
+  return holdAt(reportedRetryAt(state), now)
 }
 
 effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, fields: object | undefined, sink: Sink, ask: ChatAsk) {
@@ -468,7 +468,7 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
     }
     if (!(failure instanceof Refused)) throw failure
     try binding.refuseCall(started, refused, failure.cloud)
-    throw refusalOf(failure.cloud, failure.cloud.tag === "CloudRateLimited" ? heldFor(try binding.state(), refused) : unheld)
+    throw refusalOf(failure.cloud, failure.cloud.tag === "CloudRateLimited" ? reportedFor(try binding.state(), refused) : unheld)
   }
   const at = try Clock.currentTimeMillis
   try binding.answerCall(started, at)

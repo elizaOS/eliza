@@ -18,7 +18,7 @@ import { routeProgress } from "../src/client/route-distance.vibe"
 import { savedPlaces } from "../src/client/saved-places.vibe"
 import { mapsPlugin } from "../src/index.vibe"
 import { addressArea, createMapsPlugin, phonePositionProvider } from "../src/plugin.vibe"
-import { mapsNavigationRelay } from "../src/relay.vibe"
+import { mapsNavigationRelay, type MapsDeviceNavigation } from "../src/relay.vibe"
 import { nearbyPlaceKind, routeOf } from "../src/routing.vibe"
 import type { AgentSavedPlaceStore } from "../src/saves.vibe"
 import type { MapsCloudLink } from "../src/service.vibe"
@@ -467,10 +467,12 @@ function linkFake() {
           if (query === "Union Square") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("union-nyc", "Union Square", { latitude: 40.7359, longitude: -73.9911 }, "New York, NY 10003, USA"), place("union-sf", "Union Square", { latitude: 37.788, longitude: -122.4075 }, "San Francisco, CA 94108, USA")] } }
           if (query === "Union Station in Washington") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [chicagoUnion] } }
           if (query === "Nowhere Plaza") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [] } }
+          if (query === "Broken Plaza") return { kind: "answered", status: 200, body: { providerId: "google", places: [] } }
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("tower", "Coit Tower", tower)] } }
         }
         case "/api/v1/maps/places/details": {
           const id = (request.body as { readonly id: string }).id
+          if (id === "refused-id") return { kind: "refused", status: 400, body: { error: "invalid_request" } }
           const known = [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry), place("tower", "Coit Tower", tower), place("union-sf", "Union Square", { latitude: 37.788, longitude: -122.4075 }, "San Francisco, CA 94108, USA")].find((item) => item.id === id)
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: known ?? null } }
         }
@@ -811,5 +813,69 @@ it.live('Share a place only once I agree, and hear where Maps works: the asking 
     yes: [true, ["share", "geo:37.7955,-122.3937?q=37.7955,-122.3937(Ferry%20Building)", "https://www.openstreetmap.org/?mlat=37.7955&mlon=-122.3937#map=17/37.7955/-122.3937"]],
     again: false, no: [false, "Not shared."],
     coverage: [true, "Maps covers World (dataset 2026-11). Routes: driving and walking, with alternatives. No transit schedules or offline use. Searches, search areas and route points are sent to Eliza Cloud and Google Maps Platform for search, operated by Google. Data: Google Maps Platform via Eliza Cloud"],
+  }))
+})
+
+it.live('Ask for directions to the place on my phone\'s map: a selection handle alone is sent back to the planner with nothing looked up, a handle beside the place\'s name is found by name, a place id Cloud refuses falls back to the name, a choice reply still continues, the place shown on the phone carries its provider id, and an answer Maps cannot use names the place (spec/maps/routing.md, "Story: Ask for directions to the place on my phone\'s map"; spec/maps/routing.md, "The phone\'s Maps selection handle is never a provider place id"; spec/maps/routing.md, "A request whose only place is the phone\'s selection handle is sent back to the planner to name it"; spec/maps/routing.md, "A place id Cloud refuses or no longer knows falls back to the place\'s name"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner\'s words, naming the place a start could not look up")', effect () => {
+  const { link, bodies } = linkFake()
+  const handle = "maps_3b0f6a52-6a4e-4c1b-9d55-0d1f2e3a4b5c"
+  const phone: MapsDeviceNavigation = {
+    available: () => sync(() => true),
+    select: (place) => sync(() => ({ state: "selected" as const, placeName: place.name })),
+    start: ({ destination }) => sync(() => ({ state: "awaiting-confirmation" as const, placeName: destination.name })),
+    reroute: () => sync(() => ({ state: "stopped" as const })),
+    stop: () => sync(() => ({ state: "stopped" as const })),
+  }
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => phone), savedPlaces: () => memoryStore(), namesView: () => false })
+  const runtime = {} as IAgentRuntime
+  const act = (name: string, text: string, parameters: JsonObject) => promise(async () => {
+    const action = plugin.actions?.find((found) => found.name === name)
+    if (action === undefined) throw new Error(`${name} is not registered`)
+    return await action.handler(runtime, ownerTurn(text, "00000000-0000-4000-8000-000000000009"), undefined, { parameters })
+  })
+  const sentBack = (result: { readonly success: boolean; readonly data?: unknown }) => {
+    const data = result.data as { readonly code?: string; readonly field?: string; readonly nameField?: string; readonly coachingFailure?: boolean }
+    return [result.success, data.code, data.field, data.nameField, data.coachingFailure]
+  }
+  const said = (result: { readonly success: boolean; readonly text?: string }) => [result.success, result.text]
+  const placeOf = (result: { readonly data?: unknown }) => (result.data as { readonly place?: { readonly providerPlaceId: string } }).place?.providerPlaceId
+  const before = bodies.length
+  const select = try act("MAPS_SELECT", "show it on the map", { placeId: handle })
+  const save = try act("MAPS_SAVE", "save it as Work", { placeId: handle, label: "Work" })
+  const share = try act("MAPS_SHARE", "share it", { placeId: handle })
+  const start = try act("MAPS_NAVIGATION_START", "directions to it", { placeId: handle })
+  const place = try act("MAPS_PLACE", "what is it", { placeId: handle })
+  const toIt = try act("MAPS_ROUTE", "how far is it from the Ferry Building", { origin: "Ferry Building", destinationPlaceId: handle })
+  const fromIt = try act("MAPS_ROUTE", "how far is Coit Tower from it", { originPlaceId: handle, destination: "Coit Tower" })
+  const lookedUpForHandles = bodies.length - before
+  const shown = try act("MAPS_SELECT", "show Coit Tower", { placeId: handle, query: "Coit Tower" })
+  const directions = try act("MAPS_NAVIGATION_START", "directions to it", { placeId: placeOf(shown) ?? "" })
+  const routedByName = try act("MAPS_ROUTE", "walk from the Ferry Building to Coit Tower", { origin: "Ferry Building", destination: "Coit Tower", destinationPlaceId: handle, travelMode: "walk" })
+  const refusedWithName = try act("MAPS_SELECT", "show Coit Tower", { placeId: "refused-id", query: "Coit Tower" })
+  const refusedAlone = try act("MAPS_SELECT", "show it", { placeId: "refused-id" })
+  const asked = try act("MAPS_NAVIGATION_START", "take me to the pharmacy", { destination: "pharmacy" })
+  const picked = try act("MAPS_NAVIGATION_START", "the first one", { placeId: handle })
+  const broken = try act("MAPS_NAVIGATION_START", "take me to Broken Plaza", { destination: "Broken Plaza" })
+  const brokenSearch = try act("MAPS_PLACE", "find Broken Plaza", { query: "Broken Plaza" })
+  const handleSentToCloud = bodies.some((made) => made.path === "/api/v1/maps/places/details" && (made.body as { readonly id: string }).id === handle)
+  try Effect.try(() => assert.deepStrictEqual({
+    handleOnly: [select, save, share, start, place, toIt, fromIt].map(sentBack), lookedUpForHandles, handleSentToCloud,
+    shown: [shown.success, placeOf(shown)], directions: said(directions), routedByName: routedByName.success,
+    refusedWithName: [refusedWithName.success, placeOf(refusedWithName)], refusedAlone: said(refusedAlone),
+    asked: [asked.success, (asked.data as { readonly choice?: string }).choice], picked: said(picked),
+    broken: said(broken), brokenSearch: said(brokenSearch),
+  }, {
+    handleOnly: [
+      [false, "MAPS_SELECTION_HANDLE", "placeId", "query", true], [false, "MAPS_SELECTION_HANDLE", "placeId", "query", true],
+      [false, "MAPS_SELECTION_HANDLE", "placeId", "query", true], [false, "MAPS_SELECTION_HANDLE", "placeId", "destination", true],
+      [false, "MAPS_SELECTION_HANDLE", "placeId", "query", true], [false, "MAPS_SELECTION_HANDLE", "destinationPlaceId", "destination", true],
+      [false, "MAPS_SELECTION_HANDLE", "originPlaceId", "origin", true],
+    ],
+    lookedUpForHandles: 0, handleSentToCloud: false,
+    shown: [true, "tower"], directions: [true, "The route to Coit Tower is on your phone. Press Start on the phone to begin guidance."], routedByName: true,
+    refusedWithName: [true, "tower"], refusedAlone: [false, "Cloud Maps could not use this request."],
+    asked: [false, "destination"], picked: [true, "The route to Far Pharmacy is on your phone. Press Start on the phone to begin guidance."],
+    broken: [false, "Maps couldn't look up Broken Plaza right now, so the route isn't planned. Try again in a moment."],
+    brokenSearch: [false, "Maps got an answer it couldn't use. Try again in a moment."],
   }))
 })

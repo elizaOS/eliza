@@ -34,9 +34,10 @@ credential routes and the device hosts' provider settings.
 ### The binding is set once from an admitted launch and never changes while the process runs
 
 The process binds after the launch is admitted, with the public view of the
-launch frame and the host's rate-limit hold in milliseconds (0 when the host
-sets none). The binding keeps only the credential's version, and keeps it
-exactly when the backend needs one.
+launch frame and whether the backend is a Cerebras route for rate limits: an
+own-key endpoint whose host is `cerebras.ai` or under it, never the cloud.
+The binding keeps only the credential's version, and keeps it exactly when
+the backend needs one.
 
 ```quint
 import launch.* from "../host/launch"
@@ -46,21 +47,21 @@ type AccountState = Usable | Failing({ failure: AccountFailure })
 type LastCloudFailure = NoCloudFailure | CloudFailedAt({ failure: AccountFailure, at: int })
 type Call = { id: int, credentialVersion: int }
 type ModelBinding = { phase: BindPhase, backend: Backend, account: OwnerAccount, embeddings: Embeddings, google: GoogleConsent,
-  credentialVersion: int, maxHold: int, accountState: AccountState, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
+  credentialVersion: int, cerebrasRoute: bool, accountState: AccountState, providerRetryAt: int, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
 pure val initial: ModelBinding = { phase: Unbound, backend: NoBackend, account: NoAccount, embeddings: NoEmbeddings,
-  google: { gmailChanges: false, calendarEdits: false }, credentialVersion: 0, maxHold: 0, accountState: Usable, lastCloudFailure: NoCloudFailure, calls: List(), nextCall: 0, clock: 0 }
+  google: { gmailChanges: false, calendarEdits: false }, credentialVersion: 0, cerebrasRoute: false, accountState: Usable, providerRetryAt: 0, lastCloudFailure: NoCloudFailure, calls: List(), nextCall: 0, clock: 0 }
 pure val viewValues = Set({ epoch: 1, credentialVersion: 1 }, { epoch: 1, credentialVersion: 0 }, { epoch: 2, credentialVersion: 2 })
-pure val maxHoldValues = Set(0, 5)
-pure def canBind(s: ModelBinding, doc: LaunchDocument, view: FrameView, maxHold: int): bool =
-  s.phase == Unbound and documentAdmitted(doc) and view.epoch >= 1 and view.credentialVersion >= 0 and (needsCredential(doc.backend) implies view.credentialVersion >= 1) and maxHold >= 0
-pure def bind(s: ModelBinding, doc: LaunchDocument, view: FrameView, maxHold: int): ModelBinding =
+pure def canBind(s: ModelBinding, doc: LaunchDocument, view: FrameView, cerebrasRoute: bool): bool =
+  s.phase == Unbound and documentAdmitted(doc) and view.epoch >= 1 and view.credentialVersion >= 0 and (needsCredential(doc.backend) implies view.credentialVersion >= 1)
+    and (cerebrasRoute implies isOwnKey(doc.backend))
+pure def bind(s: ModelBinding, doc: LaunchDocument, view: FrameView, cerebrasRoute: bool): ModelBinding =
   { ...s, phase: Bound, backend: doc.backend, account: doc.account, embeddings: doc.embeddings, google: doc.google,
-    credentialVersion: if (needsCredential(doc.backend)) view.credentialVersion else 0, maxHold: maxHold }
+    credentialVersion: if (needsCredential(doc.backend)) view.credentialVersion else 0, cerebrasRoute: cerebrasRoute }
 pure def alwaysUnboundHoldsNothing(s: ModelBinding): bool = s.phase == Unbound implies
   (s.backend == NoBackend and s.credentialVersion == 0 and s.calls.length() == 0 and s.nextCall == 0 and s.accountState == Usable and s.lastCloudFailure == NoCloudFailure)
 pure def alwaysCredentialFollowsBackend(s: ModelBinding): bool = s.credentialVersion >= 0 and (s.phase == Bound implies (needsCredential(s.backend) iff s.credentialVersion >= 1))
 pure def stepBindingFixedOnceBound(before: ModelBinding, after: ModelBinding): bool = before.phase == Bound implies
-  (after.phase == Bound and after.backend == before.backend and after.account == before.account and after.embeddings == before.embeddings and after.google == before.google and after.maxHold == before.maxHold)
+  (after.phase == Bound and after.backend == before.backend and after.account == before.account and after.embeddings == before.embeddings and after.google == before.google and after.cerebrasRoute == before.cerebrasRoute)
 pure def sometimesBoundToCloud(s: ModelBinding): bool = s.phase == Bound and isCloud(s.backend)
 pure def sometimesBoundWithoutBackend(s: ModelBinding): bool = s.phase == Bound and s.backend == NoBackend
 ```
@@ -123,7 +124,7 @@ handler classifies its HTTP failures into the same variants. Core retries
 `RefusedConnection` and `RetryEnvelope` on the second registration. A rate
 limit is core's exhausted budget, which removes the provider's remaining
 registration, so the transport never re-sends it; the refusal carries the
-time left until the account's retry time, and the turn that made the call
+time left until the provider's retry time, and the turn that made the call
 waits for that, at most five seconds, and sends it once more
 ([planning](../conversation/planning.md)). A refused request is a bad
 request; every other refusal ends the call.
@@ -290,10 +291,12 @@ pure def callVersion(calls: List[Call], id: int): int = calls.select(c => c.id =
 pure def canRefuseCall(s: ModelBinding, id: int): bool = s.calls.some(c => c.id == id)
 pure def refuseCall(s: ModelBinding, id: int, now: int, e: C::CloudError): ModelBinding = {
   val t = clockAt(s, now)
-  val failure = heldFailure(failureOf(e, callVersion(s.calls, id)), t, s.maxHold)
+  val provider = failureOf(e, callVersion(s.calls, id))
+  val failure = heldFailure(provider, t, s.cerebrasRoute)
   val ignored = staleRefusal(failure, s.credentialVersion)
   { ...s, calls: s.calls.select(c => c.id != id), clock: t,
     accountState: if (ignored) s.accountState else afterFailure(s.accountState, failure, t),
+    providerRetryAt: if (ignored or retryAtOf(provider) <= s.providerRetryAt) s.providerRetryAt else retryAtOf(provider),
     lastCloudFailure: if (ignored) s.lastCloudFailure else CloudFailedAt({ failure: failure, at: t }) }
 }
 pure def alwaysFailingAccountHasALastFailure(s: ModelBinding): bool = s.accountState != Usable implies s.lastCloudFailure != NoCloudFailure
@@ -319,29 +322,40 @@ pure def sometimesProviderIssueKeepsTheLimit(s: ModelBinding): bool =
   limitedAt(s.accountState, s.clock) and lastFailureKind(s.lastCloudFailure) == "provider_issue"
 ```
 
-### A host may shorten how long a rate limit holds the account, never past the provider's retry time
+### A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint
 
-`OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS`, or its alias
-`CEREBRAS_RATE_LIMIT_MAX_HOLD_SECONDS`, in the launch environment is a
-positive number of seconds: a rate limit holds the account for at most that
-long after the refusal. Unset, blank, zero or anything else that is not a
-positive number keeps the provider's whole retry time. A provider whose
-per-minute allowance refills all the time admits a refused request within
-seconds though it names a minute, and a held account fails every call in
-that minute without asking the model. The limit's retry time, which status
-reports and the turn's re-send waits for, is the held one.
+No launch setting changes the hold. On an own-key endpoint whose host is
+`cerebras.ai` or under it, a rate limit holds the account for at most
+4 seconds after the refusal, so the hold ends before the turn's single
+re-send, which waits at most 5 seconds
+([planning](../conversation/planning.md)). Cerebras refills its per-minute
+allowance all the time and admits a refused request within seconds though
+its retry time names a minute; a hold for that minute would fail the
+re-send without asking the model. The cloud backend and every other own-key
+endpoint hold the provider's whole retry time, because a provider such as
+OpenAI counts refused requests against its limit. Status reports the held
+retry time, when the account takes calls again. A refusal of a rate-limited
+call, and of a call refused while the account is held, reports the
+provider's whole remaining retry time, the latest any refusal named.
 
 ```quint
-pure def heldFailure(failure: AccountFailure, t: int, maxHold: int): AccountFailure = match failure {
-  | LimitReached(x) => if (maxHold > 0 and x.retryAt > t + maxHold) LimitReached({ retryAt: t + maxHold }) else failure
+pure val maxHoldMs = 4000
+pure def heldFailure(failure: AccountFailure, t: int, cerebrasRoute: bool): AccountFailure = match failure {
+  | LimitReached(x) => if (cerebrasRoute and x.retryAt > t + maxHoldMs) LimitReached({ retryAt: t + maxHoldMs }) else failure
   | _ => failure
 }
-pure val failureValues = Set(LimitReached({ retryAt: 60 }), LimitReached({ retryAt: 3 }), ProviderIssue, InsufficientCredits)
-pure def lawAHeldLimitEndsByTheHostHold(failure: AccountFailure, t: int, maxHold: int): bool =
-  (maxHold > 0 and t >= 0) implies retryAtOf(heldFailure(failure, t, maxHold)) <= t + maxHold
-pure def lawAHoldNeverOutlastsTheProvider(failure: AccountFailure, t: int, maxHold: int): bool =
-  retryAtOf(heldFailure(failure, t, maxHold)) <= retryAtOf(failure)
-pure def lawWithoutAHoldTheProviderTimeStands(failure: AccountFailure, t: int): bool = heldFailure(failure, t, 0) == failure
+pure def heldRetryAt(st: AccountState): int = match st { | Failing(x) => retryAtOf(x.failure) | Usable => -1 }
+pure def reportedRetry(held: int, provider: int): int = if (held >= 0 and provider > held) provider else held
+pure def reportedRetryAt(s: ModelBinding): int = reportedRetry(heldRetryAt(s.accountState), s.providerRetryAt)
+pure val failureValues = Set(LimitReached({ retryAt: 60000 }), LimitReached({ retryAt: 3500 }), LimitReached({ retryAt: 3 }), ProviderIssue, InsufficientCredits)
+pure def lawAHoldNeverOutlastsTheProvider(failure: AccountFailure, t: int, cerebrasRoute: bool): bool =
+  retryAtOf(heldFailure(failure, t, cerebrasRoute)) <= retryAtOf(failure)
+pure def lawACerebrasHoldEndsWithinFourSeconds(failure: AccountFailure, t: int): bool =
+  t >= 0 implies retryAtOf(heldFailure(failure, t, true)) <= t + maxHoldMs
+pure def lawOnlyTheCerebrasRouteIsShortened(failure: AccountFailure, t: int): bool = heldFailure(failure, t, false) == failure
+pure def lawARefusalDuringAHoldReportsTheProviderTime(failure: AccountFailure, t: int, cerebrasRoute: bool): bool =
+  (t >= 0 and limitedBy(heldFailure(failure, t, cerebrasRoute), t))
+    implies reportedRetry(retryAtOf(heldFailure(failure, t, cerebrasRoute)), retryAtOf(failure)) == retryAtOf(failure)
 ```
 
 ### An answer clears the account state, except a limit not yet over

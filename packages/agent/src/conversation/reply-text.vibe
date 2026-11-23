@@ -1,4 +1,4 @@
-// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"
+// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"; spec/agent/conversation/planning.md, "A directly routed call acknowledges once if it is still running after 400 milliseconds"
 import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput } from "@elizaos/core/protocol"
 import { actionLabel, compose, readDraft, type ActionLabel, type Composition, type Draft, type DraftShape, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
 
@@ -80,6 +80,10 @@ const commandVerb = new Set([
   "search", "send", "set", "share", "show", "silence", "skip", "snap", "snooze", "start", "stop", "switch", "take", "tell", "text",
   "toggle", "translate", "turn", "unlock", "unmute", "update", "wake", "write",
 ])
+
+export function requestedNoCue(request: string): boolean {
+  return /\b(?:(?:no|without|skip)(?:\s+(?:an?|any|the))?\s+(?:acknowledg(?:e?ment)s?|cues?|preamble)|(?:don['’]t|do not|no need to|never)\s+(?:acknowledge|speak|say anything)|(?:stay|keep|be)\s+(?:quiet|silent)|silently|quietly)\b/iu.test(request)
+}
 
 function clauseWords(clause: string): string[] {
   return [...clause.matchAll(/[\p{L}'‘’ʼ]+/gu)].map((match) => match[0].toLowerCase().replace(/['‘’ʼ]/gu, ""))

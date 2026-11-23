@@ -138,6 +138,99 @@ pure def lawFarAreasStillAsk(meters: int): bool = meters > landmarkAreaMeters im
 pure def lawCloseAreasAreOneLandmark(meters: int): bool = (meters >= 0 and meters <= landmarkAreaMeters) implies sameLandmark(true, true, meters)
 ```
 
+## Story: Ask for directions to the place on my phone's map
+
+> As the owner, after "show me Coit Tower" I want "directions to it" to
+> plan the route to Coit Tower, not fail on a Cloud error or ask me which
+> place I mean again.
+
+### The phone's Maps selection handle is never a provider place id
+
+The phone names what its Maps screen shows by an opaque selection handle,
+`maps_` and a UUID, which the turn's device context carries as the
+selected object's id. It names an on-screen selection for the phone's own
+approved read, not a place Cloud knows, so a place id, starting place id
+or destination id shaped like it counts as absent: Maps never asks Cloud
+for its details. When the request also names the place, Maps finds it by
+that name, as for any typed place (above).
+
+```quint
+type PlaceIdShape = ProviderPlaceIdShape | SelectionHandleShape | NoPlaceIdShape
+pure def detailsAsked(shape: PlaceIdShape): bool = shape == ProviderPlaceIdShape
+pure def lawASelectionHandleIsNeverLookedUp(shape: PlaceIdShape): bool =
+  detailsAsked(shape) implies shape == ProviderPlaceIdShape
+```
+
+### A request whose only place is the phone's selection handle is sent back to the planner to name it
+
+A request to show, look up near, save, share or start directions to a
+place, or a route, whose only reference to a place it needs is the
+phone's selection handle (no name, saved place or coordinates for that
+place, and for a route's start no "from here") looks nothing up and changes
+nothing. The planner, which saw the place named earlier in the
+conversation, gets a coaching failure (`MAPS_SELECTION_HANDLE`, the field
+that held the handle and the field to fill with the place's name, by name
+or address) and calls again with it, asking the owner only when no place
+was named; the owner hears nothing of it
+([planning](../agent/conversation/planning.md)). A reply that picks from
+the operation's open question ("the first one") names its place through
+that question, so it is never sent back. A place shown on the phone's map
+is reported with its provider, provider place id and name, so a later
+"directions to it" can pass a real id.
+
+```quint
+pure def sentBackToNameIt(handle: bool, named: bool, otherwisePlaced: bool, picksOpenChoice: bool): bool =
+  handle and not(named) and not(otherwisePlaced) and not(picksOpenChoice)
+pure def lawOnlyAHandleIsSentBack(handle: bool, named: bool, otherwisePlaced: bool, picksOpenChoice: bool): bool =
+  sentBackToNameIt(handle, named, otherwisePlaced, picksOpenChoice) implies handle
+pure def lawANamedPlaceIsLookedUpByName(handle: bool, otherwisePlaced: bool, picksOpenChoice: bool): bool =
+  not(sentBackToNameIt(handle, true, otherwisePlaced, picksOpenChoice))
+pure def lawAChoiceReplyIsNeverSentBack(handle: bool, named: bool, otherwisePlaced: bool): bool =
+  not(sentBackToNameIt(handle, named, otherwisePlaced, true))
+```
+
+### A place id Cloud refuses or no longer knows falls back to the place's name
+
+A place id Cloud refuses (`400 invalid_request`, or a place outside its
+coverage), or has no details for, does not end the request when the
+request also names the place: Maps looks the place up by that name
+instead. With no name it is the plain "which place" question for a place
+id Cloud does not know, and Cloud's refusal for one it refused. Any other
+failure, such as Cloud being unreachable, is reported as it is.
+
+```quint
+type DetailsAnswer = DetailsFound | DetailsUnknown | DetailsRefused | DetailsFailed
+type PlaceCourse = UseTheDetails | SearchByName | AskWhichPlace | ReportTheFailure
+pure def placeCourse(answer: DetailsAnswer, named: bool): PlaceCourse = match answer {
+  | DetailsFound => UseTheDetails
+  | DetailsUnknown => if (named) SearchByName else AskWhichPlace
+  | DetailsRefused => if (named) SearchByName else ReportTheFailure
+  | DetailsFailed => ReportTheFailure
+}
+pure def lawARefusedOrUnknownIdWithANameIsSearchedByName(answer: DetailsAnswer): bool =
+  (answer == DetailsUnknown or answer == DetailsRefused) implies placeCourse(answer, true) == SearchByName
+pure def lawAnyOtherFailureIsReported(named: bool): bool = placeCourse(DetailsFailed, named) == ReportTheFailure
+```
+
+### An answer Maps cannot use is said in the owner's words, naming the place a start could not look up
+
+An answer from Cloud Maps that does not decode, including one too large
+to keep, and Cloud's own `502 provider_invalid_response`, are said as
+"Maps got an answer it couldn't use. Try again in a moment.", never in
+transport or provider wording. When that happens while directions are
+being started, the reply names the place: "Maps couldn't look up <place>
+right now, so the route isn't planned. Try again in a moment." A place id
+Cloud refused, with no name to fall back to, is "Cloud Maps could not use
+this request."
+
+```quint
+type UnusableAnswerReply = UnusableAnswer | StartNotPlanned
+pure def unusableAnswerReply(startingDirections: bool): UnusableAnswerReply =
+  if (startingDirections) StartNotPlanned else UnusableAnswer
+pure def lawOnlyAStartNamesThePlaceItCouldNotLookUp(startingDirections: bool): bool =
+  (unusableAnswerReply(startingDirections) == StartNotPlanned) iff startingDirections
+```
+
 ## Story: Share a place only once I agree, and hear where Maps works
 
 > As the owner, I want "share this place" to send its location only after

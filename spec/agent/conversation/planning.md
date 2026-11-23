@@ -250,6 +250,27 @@ pure def actionNoteSent(actionOffered: bool, noted: bool): bool = actionOffered 
 pure def lawOnlyAnOfferedActionNotesTheMessage(noted: bool): bool = not(actionNoteSent(false, noted))
 ```
 
+### A call its action sends back for the model to restate is never reported as a failure
+
+An action may decline a call with a coaching failure: `success` false,
+`data.coachingFailure` true and no effect receipt, its text telling the
+model what to restate, such as Maps given the phone's on-screen selection
+handle where it needs the place's name ([Maps routing](../../maps/routing.md)).
+Nothing ran and nothing changed, so the model reads it as it reads any
+result, but the reply never reports it: the model calls again, asks or
+answers within the turn's step bound, and what that retry or answer says is
+the reply. A result
+that carries an effect receipt is reported as any other, whatever it says
+of itself.
+
+```quint
+pure def reportsResult(coaching: bool, receipts: int): bool = not(coaching) or receipts > 0
+pure val receiptsValues = Set(0, 1, 2)
+pure def lawACoachingFailureIsNeverReported(receipts: int): bool = receipts == 0 implies not(reportsResult(true, receipts))
+pure def lawEveryOtherResultIsReported(receipts: int): bool = reportsResult(false, receipts)
+pure def lawAResultWithAnEffectIsReported(coaching: bool, receipts: int): bool = receipts > 0 implies reportsResult(coaching, receipts)
+```
+
 ### The model reads what was said in the conversation, in a window taken once for the whole turn
 
 A host notice the agent process stored in the conversation (a message of
@@ -421,9 +442,10 @@ after any message: `Sure.` to `Call me Bob` or `Remember that I like tea`
 is delivered, never asked again. `Sure!` before a lead form (`Sure! Let me
 check your calendar.`) is a cue after any message. The acknowledgment is
 delivered at most once per turn, as the [reply stream](./replyStream.md)'s
-`acknowledgment` frame, and only while no tool of the turn has run, a call
-the whole message asked for outright included; a cue at a later step is
-dropped with the rest of that step's text.
+`acknowledgment` frame. A model cue is delivered only while no tool of the
+turn has run, a call the whole message asked for outright included; that
+call has its own cue (below), and a model cue at a later step is dropped
+with the rest of that step's text.
 
 ```quint
 type DraftShape = Blank | GrammarCue | AssentCue | OtherText
@@ -437,6 +459,34 @@ pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int):
 pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool, calls: int): bool = readDraft(GrammarCue, instruction, calls) == Cue
 pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: int, laterDraft: Draft, laterCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
+```
+
+### A directly routed call acknowledges once if it is still running after 400 milliseconds
+
+A call the whole message asked for outright (above) runs without waiting
+for the model, so no model cue comes with it. On a streaming turn it says
+`One sec.` once, as the turn's `acknowledgment` frame, if it is still
+running 400 milliseconds after it starts: most such calls, such as opening
+a view or reading a named note, settle well within that, where a cue is
+noise, while a slow read would otherwise show nothing. It stays silent when
+the call has settled or the turn has been cancelled by then, and when the
+person asked for no acknowledgment (`without an acknowledgment`, `stay
+quiet`, `silently`). Nothing the turn delivers after the call, its text and
+progress or the reply, goes out before a cue already going out; the cue is
+never reply text, and since the call is a tool of the turn, no model cue
+follows it.
+
+```quint
+pure val directCueDelayMs = 400
+pure def cuesDirectCall(pending: bool, elapsedMs: int, quiet: bool): bool =
+  pending and not(quiet) and elapsedMs >= directCueDelayMs
+pure val elapsedMsValues = Set(0, 399, 400, 401)
+pure def lawADirectCueWaitsUntilTheDelay(pending: bool, elapsedMs: int, quiet: bool): bool =
+  cuesDirectCall(pending, elapsedMs, quiet) implies elapsedMs >= 400
+pure def lawOnlyAPendingCallTheOwnerLeftAudibleCues(pending: bool, elapsedMs: int, quiet: bool): bool =
+  cuesDirectCall(pending, elapsedMs, quiet) implies (pending and not(quiet))
+pure def lawNoModelCueFollowsADirectCall(draft: Draft, calls: int): bool =
+  not(acknowledges(draft, calls, 1))
 ```
 
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
@@ -453,13 +503,32 @@ labelled context when it loads (Notes registers `Notes`) and its actions
 declare that context; an action that declares no context, or only contexts
 nobody labelled, is `Working`.
 
+An action shared by several apps, such as `VIEWS`, is named by the app the
+turn is about when that settles it: the turn's selected contexts are those
+of every [direct route](../../core/registries.md) the message matches (a
+Maps route selects `maps`, a Notes route `notes`), taken once per turn by
+normalized id. When several of the action's contexts apply and exactly one
+labelled one is selected, the progress is `Using <that label>`; with none
+or more than one selected it stays `Working`. The selection only picks
+among the contexts the action declares, never adds one, never names a
+`system` context or an unlabelled one, and never changes the contexts the
+action runs with.
+
 ```quint
 type ToolActivity = UsingApp | Working
-pure def toolActivity(applicable: int, labelled: int): ToolActivity = if (applicable == 1 and labelled == 1) UsingApp else Working
-pure val applicableValues = Set(0, 1, 2)
+pure def toolActivity(applicable: int, labelled: int, selectedLabelled: int): ToolActivity =
+  if ((applicable == 1 and labelled == 1) or (applicable > 1 and selectedLabelled == 1)) UsingApp else Working
+pure val applicableValues = Set(0, 1, 2, 3)
 pure val labelledValues = Set(0, 1, 2)
-pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatApplies(applicable: int, labelled: int): bool =
-  toolActivity(applicable, labelled) == UsingApp implies (applicable == 1 and labelled == 1)
+pure val selectedLabelledValues = Set(0, 1, 2)
+pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatAppliesOrTheTurnSelected(applicable: int, labelled: int, selectedLabelled: int): bool =
+  toolActivity(applicable, labelled, selectedLabelled) == UsingApp implies ((applicable == 1 and labelled == 1) or selectedLabelled == 1)
+pure def lawWithoutASelectionOnlyASingleAppIsNamed(applicable: int, labelled: int): bool =
+  toolActivity(applicable, labelled, 0) == UsingApp implies (applicable == 1 and labelled == 1)
+pure def lawASingleLabelledAppIsNamedWhateverTheTurnSelected(selectedLabelled: int): bool =
+  toolActivity(1, 1, selectedLabelled) == UsingApp
+pure def lawSelectingSeveralAppsNamesNone(applicable: int, labelled: int, selectedLabelled: int): bool =
+  (applicable > 1 and selectedLabelled != 1) implies toolActivity(applicable, labelled, selectedLabelled) == Working
 ```
 
 ### A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other

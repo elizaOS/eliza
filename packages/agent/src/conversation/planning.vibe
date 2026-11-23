@@ -1,16 +1,16 @@
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request refuses the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A route that owns the whole request refuses the actions it replaces while its own actions are offered"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "A call its action sends back for the model to restate is never reported as a failure"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "A directly routed call acknowledges once if it is still running after 400 milliseconds"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, executePlannedToolCall, getDirectActionRoutingRules, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import {
-  acknowledges, actionNoteSent, callAdmission, callRunsFirst, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, toolActivity,
+  acknowledges, actionNoteSent, callAdmission, callRunsFirst, cuesDirectCall, cutOffReply, directCueDelayMs, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, reportsResult, resendWait, toolActivity,
   turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
+import { composeReply, draftOf, requestedNoCue, requestIsInstruction } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -18,6 +18,7 @@ const toolNamePattern = /^[A-Za-z0-9_-]{1,64}$/
 const toolMessageLimit = 4_000
 const answerNow = "Note from the agent host, not the person: no further work will run in this turn. Answer the person's latest message now with what this turn holds."
 const messageServiceActions = new Set(["REPLY", "IGNORE", "NONE"])
+const directCue = "One sec."
 
 export interface PlannedStep {
   readonly action: string
@@ -96,6 +97,23 @@ function firstCall(runtime: AgentRuntime, message: Memory, actions: readonly Act
   return callRunsFirst(asked.length) ? asked[0] : undefined
 }
 
+async function withDirectCue(input: PlanInput, quiet: boolean, run: () => Promise<ActionResult>): Promise<ActionResult> {
+  const publish = input.onPlanningAcknowledgment
+  if (publish === undefined || quiet || input.signal.aborted) return run()
+  const settled = new AbortController()
+  const pending = AbortSignal.any([input.signal, settled.signal])
+  const started = Date.now()
+  const cue = sleepWithAbort(directCueDelayMs, pending)
+    .then(() => cuesDirectCall(!pending.aborted, Date.now() - started, quiet) ? publish(directCue) : undefined)
+    .catch(() => undefined)
+  try {
+    return await run()
+  } finally {
+    settled.abort()
+    await cue
+  }
+}
+
 function forTurn(runtime: AgentRuntime, message: Memory, action: Action): Action {
   const form = turnToolForms.get(action)?.(runtime, message)
   if (form === undefined) return action
@@ -131,6 +149,16 @@ function routeMatches(rule: DirectActionRoutingRule, message: Memory): boolean {
   } catch {
     return false
   }
+}
+
+function selectedContexts(runtime: AgentRuntime, message: Memory, text: string): ReadonlySet<string> {
+  return new Set(getDirectActionRoutingRules(runtime).flatMap((rule) => {
+    try {
+      return rule.matches(text, message) ? rule.contexts.map(normalizeContextId) : []
+    } catch {
+      return []
+    }
+  }))
 }
 
 function routedAway(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ReadonlyMap<string, readonly string[]> {
@@ -181,8 +209,13 @@ function notStarted(result: ActionResult): boolean {
   return data?.executionStatus === "not_started" && (result.effectReceipts ?? []).length === 0
 }
 
+function coaches(result: ActionResult): boolean {
+  return !result.success && (result.data as { coachingFailure?: unknown } | undefined)?.coachingFailure === true
+}
+
 function planStepsOf(action: string, params: Record<string, unknown>, result: ActionResult): PlanStep[] {
   const receipts = result.effectReceipts ?? []
+  if (!reportsResult(coaches(result), receipts.length)) return []
   if (receipts.length > 0) {
     return receipts.map((receipt) => ({
       outcome: outcomeOf(receipt),
@@ -292,19 +325,22 @@ function failureNotice(step: PlannedStep): string {
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
 
-function toolLabel(runtime: AgentRuntime, action: Action | undefined): string {
+function toolLabel(runtime: AgentRuntime, action: Action | undefined, selected: ReadonlySet<string>): string {
   const applicable = new Set<string>()
   const labels = new Set<string>()
+  const selectedLabels = new Set<string>()
   for (const context of action === undefined ? [] : resolveActionContexts(action)) {
     if (context === "general" || context === "simple") continue
     const definition = runtime.contexts.get(context)
     if (definition?.sensitivity === "system") continue
     const label = definition?.label?.trim()
     applicable.add(label || context)
-    if (label) labels.add(label)
+    if (!label) continue
+    labels.add(label)
+    if (selected.has(normalizeContextId(context))) selectedLabels.add(label)
   }
-  const [only] = labels
-  return toolActivity(applicable.size, labels.size) === "UsingApp" && only !== undefined ? `Using ${only}` : "Working"
+  const [named] = selectedLabels.size === 1 && applicable.size > 1 ? selectedLabels : labels
+  return toolActivity(applicable.size, labels.size, selectedLabels.size) === "UsingApp" && named !== undefined ? `Using ${named}` : "Working"
 }
 
 function entryKey({ outcome, identity }: PlanStep): string {
@@ -332,7 +368,9 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))
   const refused = routedAway(runtime, message, actions)
-  const instruction = requestIsInstruction(typeof message.content.text === "string" ? message.content.text : "")
+  const request = typeof message.content.text === "string" ? message.content.text : ""
+  const selected = selectedContexts(runtime, message, request)
+  const instruction = requestIsInstruction(request)
   let taken = 0
   let displayed = false
   let streamed = ""
@@ -347,7 +385,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(refusal) })
       return refusal
     }
-    await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name)) })
+    await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name), selected) })
     const captured: string[] = []
     const result = await executePlannedToolCall(runtime, {
       message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),
@@ -364,7 +402,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const first = firstCall(runtime, message, actions)
   if (first !== undefined) {
     conversation.push({ role: "assistant", content: null, toolCalls: [first] })
-    await execute(first)
+    await withDirectCue(input, requestedNoCue(request), () => execute(first))
   }
   plan: while (true) {
     signal.throwIfAborted()
