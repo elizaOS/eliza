@@ -385,10 +385,16 @@ describe("resolveCloudDeployment: product deployment", () => {
         "https://alpha.example",
         "https://cloud.alpha.example",
         "https://api.alpha.example",
+        "capacitor://localhost",
+        "https://localhost",
       ]) {
         expect(isFirstPartyOrigin(origin)).toBe(true);
       }
-      for (const origin of [...ELIZA_ORIGINS, "https://evil.alpha.example"]) {
+      for (const origin of [
+        ...ELIZA_ORIGINS,
+        "https://evil.alpha.example",
+        "electrobun://localhost",
+      ]) {
         expect(isFirstPartyOrigin(origin)).toBe(false);
       }
       // Production never reflects loopback, on any deployment.
@@ -433,10 +439,13 @@ describe("resolveCloudDeployment: product deployment", () => {
         "Access-Control-Allow-Origin": "https://cloud.alpha.example",
         "Access-Control-Allow-Credentials": "true",
       });
-      expect(getCorsHeaders("capacitor://localhost")["Access-Control-Allow-Origin"]).toBe(
-        "capacitor://localhost",
-      );
-      for (const origin of ELIZA_ORIGINS) {
+      for (const origin of ["capacitor://localhost", "https://localhost"]) {
+        expect(getCorsHeaders(origin)).toMatchObject({
+          "Access-Control-Allow-Origin": origin,
+          "Access-Control-Allow-Credentials": "true",
+        });
+      }
+      for (const origin of [...ELIZA_ORIGINS, "electrobun://localhost"]) {
         expect(getCorsHeaders(origin)["Access-Control-Allow-Origin"]).toBeUndefined();
       }
     });

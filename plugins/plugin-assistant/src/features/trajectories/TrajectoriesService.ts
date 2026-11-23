@@ -10,6 +10,9 @@ import {
   type IAgentRuntime,
   type JsonValue,
   logger,
+  type RecordedStage,
+  type RecordedTrajectory,
+  recordedStageToSemanticStage,
   resolveTrajectoryGate,
   Service,
   type TrajectoryDetailRecord,
@@ -17,8 +20,14 @@ import {
   type TrajectoryExportResult,
   type TrajectoryListOptions,
   type TrajectoryListResult,
+  type TrajectorySemanticStageRecord,
   type TrajectoryStatus,
 } from "@elizaos/core";
+import {
+  type RecordedTrajectoryHeader,
+  withRecordedTrajectoryHeader,
+} from "./store/recorded-trajectory.ts";
+import { writeRecordedTrajectoryFile } from "./store/recorded-trajectory-files.ts";
 import { exportPersistedTrajectories } from "./store/trajectory-export.ts";
 import {
   enqueueStepWrite,
@@ -48,6 +57,7 @@ import {
   getDatabaseTrajectoryDetail,
   listDatabaseTrajectories,
   loadPersistedTrajectoriesForExport,
+  loadRecordedTrajectories,
   normalizeSemanticStagePayload,
   readDatabaseTrajectoryStatistics,
   releaseAllTrajectoryBridgeState,
@@ -59,8 +69,19 @@ import {
   stopTrajectoryBridge,
   type TrajectoryRewardRequest,
   terminalizeBridgeTrajectory,
+  writeRecordedTrajectoryHeader,
   writeStartedTrajectoryStep,
 } from "./store/trajectory-storage.ts";
+
+/** Where the store keeps one recorded trajectory's header and stages. */
+export interface RecordedTrajectoryLocation {
+  /** The row that carries the header. */
+  trajectoryId: string;
+  /** The step whose semantic stages hold the recorded stages. */
+  stepId: string;
+  /** True when the recorded trajectory owns the row and terminalizes it. */
+  ownsRow: boolean;
+}
 
 export type TrajectoryStats = Omit<DatabaseTrajectoryStatistics, "byStatus">;
 
@@ -406,6 +427,179 @@ export class TrajectoriesService extends Service {
       },
     );
     lastWritePromises.set(this.runtime as object, writePromise);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Recorded trajectories (the per-file RecordedTrajectory shape)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Store a new recorded trajectory. Inside a turn whose step is still open,
+   * the header joins that turn's row, so the viewer shows the stages on the
+   * turn. Without an open turn step, the recorded trajectory gets its own row
+   * (`source: "recorder"`) whose single step holds its stages. Returns null
+   * when the store does not persist (policy off, no SQL adapter, stopping).
+   */
+  startRecordedTrajectory(
+    header: RecordedTrajectoryHeader,
+    turnStepId?: string,
+  ): RecordedTrajectoryLocation | null {
+    if (!this.isEnabled()) return null;
+    // A stored header must name the agent that owns the row (the projection
+    // rejects a mismatch), so another agent's record stays export-only.
+    if (header.agentId !== this.runtime.agentId) return null;
+    if (
+      turnStepId &&
+      acceptsTrajectoryStepCapture(
+        this.runtime,
+        this.persistenceEnabled(),
+        turnStepId,
+        "semanticStage",
+      )
+    ) {
+      const trajectoryId = resolveBridgeTrajectoryId(this.runtime, turnStepId);
+      const writePromise = enqueueStepWrite(
+        this.runtime,
+        trajectoryId,
+        async () => {
+          if (!this.persistenceEnabled()) return;
+          if (!(await ensureTrajectoriesTable(this.runtime))) return;
+          await writeRecordedTrajectoryHeader(
+            this.runtime,
+            trajectoryId,
+            header,
+          );
+        },
+      );
+      lastWritePromises.set(this.runtime as object, writePromise);
+      return { trajectoryId, stepId: turnStepId, ownsRow: false };
+    }
+    const trajectoryId = header.trajectoryId;
+    void this.startTrajectory(trajectoryId, {
+      agentId: this.runtime.agentId,
+      roomId: header.roomId,
+      source: "recorder",
+      scenarioId: header.scenarioId,
+      traceId: header.traceId,
+      metadata: withRecordedTrajectoryHeader({}, header),
+    }).catch((error) => {
+      // error-policy:J7 the store copy is diagnostic; the export still runs.
+      warnRuntime(this.runtime, "Recorded trajectory start failed", error);
+      this.runtime.reportError("TrajectoriesService.startRecorded", error, {
+        trajectoryId,
+        diagnosticOnly: true,
+      });
+    });
+    return { trajectoryId, stepId: trajectoryId, ownsRow: true };
+  }
+
+  /** Append one stage to a stored recorded trajectory, in record order. */
+  logRecordedStage(
+    location: RecordedTrajectoryLocation,
+    recordedTrajectoryId: string,
+    stage: RecordedStage,
+  ): void {
+    if (
+      !acceptsTrajectoryStepCapture(
+        this.runtime,
+        this.persistenceEnabled(),
+        location.stepId,
+        "semanticStage",
+      )
+    )
+      return;
+    let semantic: TrajectorySemanticStageRecord;
+    try {
+      semantic = recordedStageToSemanticStage(stage);
+    } catch (error) {
+      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
+      reportInvalidTrajectoryCapture(this.runtime, "semanticStage", error);
+      return;
+    }
+    const writePromise = enqueueStepWrite(
+      this.runtime,
+      location.trajectoryId,
+      async () => {
+        if (!this.persistenceEnabled()) return;
+        if (!(await ensureTrajectoriesTable(this.runtime))) return;
+        await appendSemanticStage(
+          this.runtime,
+          location.trajectoryId,
+          location.stepId,
+          semantic,
+          recordedTrajectoryId,
+        );
+      },
+    );
+    lastWritePromises.set(this.runtime as object, writePromise);
+  }
+
+  /**
+   * Store a recorded trajectory's terminal header and wait for its writes.
+   * A recorded trajectory with its own row also terminalizes that row.
+   */
+  async endRecordedTrajectory(
+    location: RecordedTrajectoryLocation,
+    header: RecordedTrajectoryHeader,
+  ): Promise<void> {
+    const writePromise = enqueueStepWrite(
+      this.runtime,
+      location.trajectoryId,
+      async () => {
+        if (!this.persistenceEnabled()) return;
+        if (!(await ensureTrajectoriesTable(this.runtime))) return;
+        await writeRecordedTrajectoryHeader(
+          this.runtime,
+          location.trajectoryId,
+          header,
+        );
+      },
+    );
+    lastWritePromises.set(this.runtime as object, writePromise);
+    await writePromise;
+    if (location.ownsRow) {
+      await this.endTrajectory(
+        location.trajectoryId,
+        header.status === "finished" ? "completed" : "error",
+      );
+    }
+  }
+
+  /** The recorded trajectories one stored row carries, in the per-file format. */
+  getRecordedTrajectories(
+    trajectoryId: string,
+  ): Promise<RecordedTrajectory[] | null> {
+    return loadRecordedTrajectories(this.runtime, trajectoryId);
+  }
+
+  /**
+   * Export the recorded trajectories of the given rows as per-file
+   * `RecordedTrajectory` JSON under `rootDir` (the `ELIZA_TRAJECTORY_DIR`
+   * layout). Returns the written file paths. A missing row fails the export.
+   */
+  async exportRecordedTrajectoryFiles(options: {
+    rootDir: string;
+    trajectoryIds: readonly string[];
+  }): Promise<string[]> {
+    const written: string[] = [];
+    for (const trajectoryId of options.trajectoryIds) {
+      const recorded = await this.getRecordedTrajectories(trajectoryId);
+      if (!recorded) {
+        throw new ElizaError(
+          "A requested trajectory is unavailable; retry with an accessible export selection",
+          {
+            code: "TRAJECTORY_EXPORT_INCOMPLETE",
+            context: { trajectoryId },
+          },
+        );
+      }
+      for (const trajectory of recorded) {
+        written.push(
+          await writeRecordedTrajectoryFile(options.rootDir, trajectory),
+        );
+      }
+    }
+    return written;
   }
 
   /** In-memory capture buffers do not exist; every capture is persisted. */

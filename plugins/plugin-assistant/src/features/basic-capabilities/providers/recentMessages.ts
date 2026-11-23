@@ -9,10 +9,11 @@
  *
  * The filtering is load-bearing for prompt hygiene: internal bridge rows
  * (sub-agent-router / swarm-synthesis), synthetic provider-failure replies,
- * transient orchestrator status posts, leaked tool transcripts and local-path
- * dumps are stripped so the model does not treat its own machinery as fact on a later
- * turn. Distinct dialogue occurrences retain their IDs and exact text, even when
- * wording repeats. Only identical copies of the same record are deduplicated.
+ * host status notices, transient orchestrator status posts, leaked tool
+ * transcripts and local-path dumps are stripped so the model does not treat
+ * its own machinery as fact on a later turn. Distinct dialogue occurrences
+ * retain their IDs and exact text, even when wording repeats. Only identical
+ * copies of the same record are deduplicated.
  * Every retained dialogue row is rendered; runtime conversation-length
  * settings and old compaction timestamps must never silently remove prompt
  * history. Errors are reported and returned as explicit history unavailability.
@@ -39,6 +40,7 @@ import {
   formatMessages,
   formatPosts,
   isInternalBridgeMessage,
+  readSystemNotice,
 } from "@elizaos/core";
 import { getEntityDetails } from "../../../entities.ts";
 
@@ -140,6 +142,19 @@ function isSyntheticAssistantFailureMessage(
     /^something went wrong on my end\b/.test(normalized)
   );
 }
+/**
+ * A host status notice ("Eliza needs attention. ...") is stored as the agent's
+ * message so the owner sees it in the conversation, but the agent never said
+ * it. Read back as its own reply it tells the model it cannot act, and a host
+ * that posts one per failing turn fills the transcript with it.
+ */
+function isSystemNoticeMessage(
+  memory: Memory,
+  agentId: UUID | undefined,
+): boolean {
+  if (!agentId || memory.entityId !== agentId) return false;
+  return readSystemNotice(memory.content?.systemNotice) !== undefined;
+}
 function isLeakedAssistantToolTranscript(
   memory: Memory,
   agentId: UUID | undefined,
@@ -183,10 +198,10 @@ function normalizeDialogueText(memory: Memory): string {
  * row is real conversation that may be exposed to the model, false for
  * machinery and noise — the agent's own `action_result` records, internal
  * bridge relays (sub-agent-router / swarm-synthesis), synthetic assistant
- * failure replies, transient orchestrator status posts, leaked tool
- * transcripts, and leaked local-path dumps. This is the single model-exposure
- * contract for room history: RECENT_MESSAGES applies it to the prompt
- * transcript and CHANNEL_RECAP applies it before rows count toward a
+ * failure replies, host status notices, transient orchestrator status posts,
+ * leaked tool transcripts, and leaked local-path dumps. This is the single
+ * model-exposure contract for room history: RECENT_MESSAGES applies it to the
+ * prompt transcript and CHANNEL_RECAP applies it before rows count toward a
  * requested recap depth, so a row this boundary strips can never resurface
  * through either surface. Exported for that reuse — do not fork the logic.
  */
@@ -198,6 +213,7 @@ export function isHygienicDialogueMessage(
     !(memory.content && memory.content.type === "action_result") &&
     !isInternalBridgeMessage(memory) &&
     !isSyntheticAssistantFailureMessage(memory, agentId) &&
+    !isSystemNoticeMessage(memory, agentId) &&
     !isTransientStatusMessage(memory, agentId) &&
     !isLeakedAssistantToolTranscript(memory, agentId) &&
     !isLeakedAssistantPathDump(memory, agentId)

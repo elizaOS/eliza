@@ -65,3 +65,31 @@ it("preserves the cache metadata and input object when resolving the environment
   expect(resolve(params, runtime(), "qwen-3.8-27b")?.eliza).toEqual(params.providerOptions.eliza);
   expect(params).toEqual(before);
 });
+it("bounds the thinking-low hint to low on documented Cerebras models, keeping host pins", () => {
+  vi.stubEnv("OPENAI_REASONING_EFFORT", undefined);
+  const low = { providerOptions: { eliza: { thinking: "low" } } };
+  expect(effort(low)).toBe("low");
+  expect(effort(low, undefined, "cerebras/gpt-oss-120b")).toBe("low");
+  // Models without a documented low effort keep their own default.
+  expect(effort(low, undefined, "zai-glm-4.7")).toBe("high");
+  expect(effort(low, undefined, "gemma-4-31b")).toBeUndefined();
+  // A host pin the resolver honors still decides; an explicit caller effort wins.
+  expect(effort(low, "high")).toBe("high");
+  expect(effort(low, "none")).toBe("none");
+  expect(
+    effort({
+      providerOptions: { eliza: { thinking: "low" }, openai: { reasoningEffort: "medium" } },
+    })
+  ).toBe("medium");
+  // Off an exact Cerebras route the hint adds no wire field.
+  const openaiRuntime = {
+    getSetting: (key: string) => (key === "ELIZA_PROVIDER" ? "openai" : null),
+  } as unknown as IAgentRuntime;
+  expect(
+    (
+      resolve(low, openaiRuntime, "qwen-3.8-27b")?.openai as
+        | { reasoningEffort?: string }
+        | undefined
+    )?.reasoningEffort
+  ).toBeUndefined();
+});

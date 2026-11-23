@@ -1,10 +1,17 @@
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  AgentRuntime,
+  getDirectActionRoutingRules,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,
   registerDeferredMessageScheduler,
 } from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { promoteMessageActions } from "../../plugin-assistant/src/features/advanced-capabilities/actions/message.ts";
+import { resolveEligibleDirectActionRoutes } from "../../plugin-assistant/src/services/message/stage1-evaluators.ts";
 import { ManagedGmailAdapter } from "../src/inbox/managed-gmail-adapter.ts";
 import { inboxPlugin } from "../src/plugin.ts";
 
@@ -331,6 +338,87 @@ describe("managed Gmail owner boundary", () => {
         .filter((adapter) => adapter.source === "gmail"),
     ).toHaveLength(1);
   });
+  it("routes direct Sent questions to the existing owner-bound Gmail search", async () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Gmail read test", bio: [] },
+      logLevel: "fatal",
+    });
+    for (const action of promoteMessageActions())
+      runtime.registerAction(action);
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        items: [
+          {
+            id: `alpha-gmail:${"b".repeat(64)}:sent1`,
+            platform: "gmail",
+            channel: "Sent",
+            senderName: "Test owner",
+            snippet: "The most recent sent message",
+            threadTopic: "Sent message",
+            receivedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+    await inboxPlugin.init?.({}, runtime);
+    const routes = getDirectActionRoutingRules(runtime);
+    for (const request of [
+      "what was my latest email i sent?",
+      "whats the latest email i sent?",
+      "Show me my most recent sent mail.",
+    ]) {
+      const matching = routes.filter((rule) => rule.matches(request));
+      expect(matching.flatMap((rule) => rule.actionNames)).toEqual([
+        "MESSAGE_SEARCH_INBOX",
+      ]);
+      expect(
+        matching.flatMap((rule) => rule.replacesActionNames ?? []),
+      ).toContain("MESSAGE_LIST_INBOX");
+    }
+    for (const request of [
+      "whats in my email?",
+      "Send my latest email to Maya",
+      "Show my latest sent email and archive it",
+      "Show my latest sent email to Maya",
+    ]) {
+      expect(routes.some((rule) => rule.matches(request))).toBe(false);
+    }
+
+    const message = {
+      agentId: runtime.agentId,
+      content: { text: "whats the latest email i sent?", channelType: "DM" },
+    } as Memory;
+    const state = { values: {}, data: {}, text: "" };
+    const [eligible] = await resolveEligibleDirectActionRoutes({
+      runtime,
+      message,
+      state,
+      userRoles: ["OWNER"],
+    });
+    expect(eligible?.action.name).toBe("MESSAGE_SEARCH_INBOX");
+    expect(
+      await resolveEligibleDirectActionRoutes({
+        runtime,
+        message,
+        state,
+        userRoles: ["USER"],
+      }),
+    ).toEqual([]);
+    expect(fetcher).not.toHaveBeenCalled();
+    const result = await eligible?.action.handler(runtime, message, state, {
+      parameters: { sources: ["gmail"], query: "in:sent", limit: 1 },
+    });
+    expect(result).toMatchObject({
+      success: true,
+      data: { count: 1, operation: "search_inbox" },
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      limit: 2, // Existing overflow probe before returning one message.
+      query: "in:sent",
+    });
+  });
+
   it("refuses a source call without an executing owner action before network access", async () => {
     const network = vi.spyOn(globalThis, "fetch");
     const adapter = new ManagedGmailAdapter();

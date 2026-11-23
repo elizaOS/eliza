@@ -154,7 +154,19 @@ async function loadCheckModule(
   if (cached) return cached;
   try {
     await fs.access(absolute);
-  } catch {
+  } catch (err) {
+    // A manifest may legitimately declare a module that was never built
+    // (ENOENT/ENOTDIR): that is "this plugin ships no check module", so it is
+    // cached as missing, exactly like `readPluginPackageManifest` treats a
+    // missing package.json. Any other error (ELOOP, EACCES, EIO) means the
+    // module exists but cannot be read — a broken install, not an absent
+    // module. Caching that as "missing" would hide the fault for the rest of
+    // the process and report it as "did not export a shouldEnable function",
+    // blaming the plugin author instead of the unreadable file.
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") {
+      throw err;
+    }
     CHECK_MODULE_CACHE.set(absolute, "missing");
     return null;
   }

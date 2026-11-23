@@ -5,10 +5,12 @@ import {
   type EffectReceipt,
   type Memory,
   ModelType,
+  type State,
   stringToUuid,
 } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+import { currentTimeProvider } from "../../features/basic-capabilities/providers/currentTime.ts";
 import {
   evaluatePlannedReplyEgress,
   resolvePlannedReplyEgress,
@@ -20,6 +22,7 @@ const wrong = "Done. Meet with Shaw, tonight 5:52 to 6:52 PM.";
 const correct = "Created your meeting with Shaw for today, 4:52–5:52 PM.";
 const runtimes: ReturnType<typeof createSQLiteTestRuntime>[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   for (const runtime of runtimes.splice(0)) {
     await runtime.stop();
     await runtime.close();
@@ -382,5 +385,87 @@ it("keeps the current-time observation guard independent of Calendar event times
       actionResults: [result],
     }),
   ).toEqual({ text: "It's 4:32 PM PDT.", effectReceiptIds: [] });
+  expect(calls()).toBe(0);
+});
+
+it("judges a current-time answer in the zone label and whole-hour clock CURRENT_TIME renders", async () => {
+  const { runtime, result, message, calls } = fixture();
+  const observe = async (uiTimeZone: string, instant: string) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(instant));
+    try {
+      const entry = await currentTimeProvider.get(
+        runtime,
+        {
+          ...message,
+          content: { text: "What time is it?", metadata: { uiTimeZone } },
+        },
+        {} as State,
+      );
+      return { CURRENT_TIME: entry };
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+  const verdict = (
+    providers: Awaited<ReturnType<typeof observe>>,
+    reply: string,
+  ) =>
+    evaluatePlannedReplyEgress({
+      providers,
+      request: "What time is it?",
+      reply,
+      currentScope: context(runtime.agentId),
+      actionResults: [result],
+      actions: [calendar],
+    });
+  // The live 2026-09-11 instant: New York read 11:18:30 AM EDT and the model
+  // answered "Sunday, November 22, 2026 at 5:01 PM" instead.
+  const live = "2026-09-11T15:18:30.000Z";
+  for (const [uiTimeZone, rendered] of [
+    ["America/New_York", "Friday, September 11, 2026 at 11:18:30 AM EDT"],
+    ["Asia/Tokyo", "Saturday, September 12, 2026 at 12:18:30 AM GMT+9"],
+    ["Asia/Kolkata", "Friday, September 11, 2026 at 8:48:30 PM GMT+5:30"],
+    ["Europe/Berlin", "Friday, September 11, 2026 at 5:18:30 PM GMT+2"],
+    ["Pacific/Honolulu", "Friday, September 11, 2026 at 5:18:30 AM HST"],
+    ["America/Anchorage", "Friday, September 11, 2026 at 7:18:30 AM AKDT"],
+  ] as const) {
+    const providers = await observe(uiTimeZone, live);
+    expect(providers.CURRENT_TIME.data?.humanReadable).toBe(rendered);
+    const zone = rendered.slice(rendered.lastIndexOf(" ") + 1);
+    expect(verdict(providers, `It's ${rendered}.`)).toEqual({
+      verdict: "allow",
+    });
+    expect(
+      verdict(providers, `It's Sunday, November 22, 2026 at 5:01 PM ${zone}.`),
+    ).toEqual({ verdict: "reject", kind: "stated_time" });
+  }
+  const tokyo = await observe("Asia/Tokyo", live);
+  expect(
+    await resolvePlannedReplyEgress({
+      runtime,
+      message: { ...message, content: { text: "What time is it?" } },
+      reply: "It's Sunday, November 22, 2026 at 5:01 PM GMT+9.",
+      providers: tokyo,
+      actionResults: [result],
+    }),
+  ).toEqual({
+    text: "It's Saturday, September 12, 2026 at 12:18:30 AM GMT+9.",
+    effectReceiptIds: [],
+  });
+  // A whole-hour clock gets the same ten-minute tolerance as "11:04 AM".
+  const nearHour = await observe(
+    "America/New_York",
+    "2026-09-11T15:04:00.000Z",
+  );
+  expect(verdict(nearHour, "It's 11 AM.")).toEqual({ verdict: "allow" });
+  expect(verdict(nearHour, "It's 11 a.m. EDT.")).toEqual({ verdict: "allow" });
+  expect(verdict(nearHour, "It's 5 PM.")).toEqual({
+    verdict: "reject",
+    kind: "stated_time",
+  });
+  expect(
+    verdict(nearHour, "It's Sunday, November 22, 2026 at 11 AM EDT."),
+  ).toEqual({ verdict: "reject", kind: "stated_time" });
   expect(calls()).toBe(0);
 });

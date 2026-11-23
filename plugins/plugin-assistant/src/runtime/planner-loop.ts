@@ -1,8 +1,10 @@
+import { requestedSmsDraftRecipient } from "@elizaos/contracts/telephony-actions";
 import {
   bindRequestOperationProjection,
   bindRequestOperationResult,
   copyBoundOperationDenial,
   copyRequestOperationResult,
+  extractUserText,
   getBoundOperationDenialAttempt,
   getBoundOperationDenialOperation,
   isMatchingNotesMutationCompletion,
@@ -10,11 +12,13 @@ import {
   readNotesMutationCompletion,
 } from "@elizaos/core";
 import { findViewActionHandoff } from "@elizaos/core/protocol";
+import { postTurnReviewRuns } from "../services/evaluator-progress.ts";
 import {
   completedSideEffectClaimIsUngrounded,
   evaluatePlannedReplyEgress,
 } from "../services/message/egress-policy.ts";
 import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
+import { REQUEST_SOURCE_REFERENCE } from "../services/message/source-selection-binding.ts";
 import {
   replyNamesStructuredEffectDestination,
   structuredEffectFromToolResult,
@@ -24,6 +28,11 @@ import {
   describePlannerSourceReview,
   type PlannerSourceReviewAttribution,
 } from "./evaluator-context-attribution.ts";
+import {
+  isDeliveredNavigationOnlyTurn,
+  readViewNavigationReceipt,
+  requiredViewNavigationStatus,
+} from "./nav-evaluator-eligibility";
 
 import {
   applyTypedReadReply,
@@ -46,6 +55,7 @@ import type {
   ActionResult,
   ContextEvent,
   ContextObject,
+  ContextObjectPromptSegment,
   ContextObjectTool,
   ContextProviderEvent,
   EffectReceipt,
@@ -98,9 +108,9 @@ import {
   hasAppliedUserFacingEffectProof,
   hashString,
   hasReasoningResidue,
+  historicalRequestSourceIds,
   inflectionTermKeys,
   isDiscoveryActionName,
-  isLocalProvider,
   isModelOutputLimitFinishReason,
   isModelProviderError,
   isObjectRecord,
@@ -110,7 +120,6 @@ import {
   isRateLimitError,
   type JSONSchema,
   MODEL_CANONICAL_CONTEXT,
-  type ModelAttemptContext,
   ModelType,
   mergeChainingLoopConfig,
   modelOutputIncompleteEvidence,
@@ -145,6 +154,8 @@ import {
   sanitizeUserVisibleModelOutput,
   segmentBlock,
   selectCompletionContext,
+  selectHistoricalNavigation,
+  sleepWithAbort,
   stableJsonStringify,
   stringifyForModel,
   stripJsonStructuralJunkReply,
@@ -169,11 +180,19 @@ import {
   plannerTemplate,
   plannerToolScopedRules,
 } from "../prompts/planner.ts";
+import { withDialNumber } from "../services/device-actions/action.ts";
+import { isCameraCapture } from "../services/device-actions/camera-contract.ts";
+import { validateDeviceOperation } from "../services/device-actions/contract.ts";
 import {
   DEVICE_APPROVAL_REVIEW_TEXT,
   isPersistedDeviceApprovalPause,
   isRequestedDeviceHandoff,
 } from "../services/device-actions/effect-receipts.ts";
+import { getDeviceActionTurn } from "../services/device-actions/service.ts";
+import {
+  turnObservation,
+  UNREADABLE_TURN_OBSERVATION,
+} from "../services/device-actions/turn-observation.ts";
 import {
   labelHistorySources,
   orderHistoryFirst,
@@ -195,6 +214,7 @@ import {
 import {
   applyEvaluatorEffects,
   declaredIntentsFromContext,
+  rateLimitRetryWaitMs,
   repairFinishWithProgressPromise,
   runEvaluator,
   validatedOutcomeCoverage,
@@ -206,6 +226,7 @@ import {
   TURN_SCOPE_ARG,
   trajectoryStepsToMessages,
 } from "./planner-rendering.ts";
+import { containsRenderedCardBlock } from "./rendered-card-blocks.ts";
 
 export {
   looksLikeActionEnvelopeJson,
@@ -301,67 +322,6 @@ export function resolvePositivePlannerInt(
     );
   }
   return Number(rawValue);
-}
-
-/**
- * Resolve an explicitly configured planner output ceiling. A set override is
- * sent to every provider; a set-but-malformed one throws rather than silently
- * defaulting. Unset returns undefined: non-coding planning rounds then take
- * the per-attempt default from {@link plannerDefaultMaxTokens}, and coding
- * planners and reply-only synthesis rounds stay uncapped (the provider owns
- * its real output boundary).
- */
-function resolvePlannerMaxTokens(codingMode: boolean): number | undefined {
-  const envVarName = codingMode
-    ? "ELIZA_CODING_PLANNER_MAX_TOKENS"
-    : "ELIZA_PLANNER_MAX_TOKENS";
-  const rawValue = process.env[envVarName];
-  if (rawValue === undefined || rawValue === "") return undefined;
-  return resolvePositivePlannerInt(envVarName, rawValue, 1);
-}
-
-const PLANNER_DEFAULT_MAX_TOKENS = 8192;
-
-/**
- * Default output cap for one resolved non-coding planner attempt, or
- * undefined to send that attempt uncapped exactly as before the default
- * existed. The default bounds runaway generations on remote API providers:
- * live 2026-10-30, an uncapped calendar create streamed 40,960 tokens in 29s
- * on Cerebras before failing, and a sibling call carried 5,786 empty attendee
- * objects. 8192 still fits a complete tool call or REPLY and stops a runaway
- * in about 6s; the dispatch retries a capped generation once.
- *
- * The default never reduces availability elsewhere:
- * - Local and on-device registrations (declared `metadata.local`, else the
- *   core provider-name heuristic) and eliza-router, which can front them, get
- *   no default. Their adapters treat an explicit cap unlike an omitted one:
- *   AOSP rejects a cap above the remaining context (4096-token default), the
- *   older capacitor bridge rejects any cap above 256, and the iOS bridge
- *   forwards it past its context window.
- * - A registered `maxOutputTokens` below 8192 lowers the default to it.
- * - Anthropic gets no default. Adaptive thinking spends max_tokens, so it
- *   would share the 8192 with the answer, and it is not the planner's to
- *   predict: an effort setting turns it on, claude-opus-5-5 and claude-fable-5
- *   always think adaptively and turn an `ANTHROPIC_COT_BUDGET` into adaptive
- *   thinking, and the model id is resolved inside plugin-anthropic. An
- *   `ANTHROPIC_MAX_OUTPUT_TOKENS` below 8192 would also make the plugin reject
- *   the explicit cap before dispatch.
- */
-function plannerDefaultMaxTokens(
-  attempt: ModelAttemptContext,
-): number | undefined {
-  if (
-    attempt.provider === "eliza-router" ||
-    attempt.provider === "anthropic" ||
-    (attempt.metadata?.local ?? isLocalProvider(attempt.provider))
-  )
-    return undefined;
-  const registered = attempt.metadata?.maxOutputTokens;
-  return typeof registered === "number" &&
-    Number.isFinite(registered) &&
-    registered >= 1
-    ? Math.min(PLANNER_DEFAULT_MAX_TOKENS, Math.floor(registered))
-    : PLANNER_DEFAULT_MAX_TOKENS;
 }
 
 /**
@@ -733,6 +693,30 @@ export async function runPlannerLoop(
     // not re-enter the pre-tool acknowledgement heuristic and be replaced by
     // another synthesis that lacks the recorded failure context.
     let final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
+    const navigation = requiredViewNavigationStatus(final.trajectory);
+    if (
+      final.status === "finished" &&
+      final.evaluator?.success === true &&
+      (navigation === "missing" || navigation === "prepared")
+    ) {
+      const message =
+        navigation === "prepared"
+          ? final.finalMessage
+          : "I couldn’t confirm that the requested screen opened.";
+      final = {
+        ...final,
+        finalMessage: message,
+        ...(navigation === "missing" ? { finalContent: undefined } : {}),
+        evaluator: {
+          ...final.evaluator,
+          success: false,
+          requestFullyCovered: false,
+          replyEffectStatus: "non_applied",
+          outcomeCoverage: undefined,
+          messageToUser: message,
+        },
+      };
+    }
     if (
       final.status === "finished" &&
       final.evaluator?.success === true &&
@@ -1294,6 +1278,7 @@ async function runPlannerLoopIterations(
   // pending. A later explicit final declaration releases this authority.
   let lastPlannerExplicitCompleted: boolean | undefined;
   let pendingUnverifiedTerminalReply = false;
+  let navigationCompletionDeferrals = 0;
   let consecutiveScopeProtocolRejections = 0;
   // The successful FINISH most recently rejected by the pending-scope rule. If
   // the planner repeats settled operations, do not replay them. Repetition
@@ -1339,6 +1324,46 @@ async function runPlannerLoopIterations(
         replyEffectStatus: "non_applied",
         messageToUser:
           partialReply ?? getNonEmptyString(latestResult?.userFacingText),
+      };
+    }
+    if (
+      evaluator.decision === "FINISH" &&
+      evaluator.success === true &&
+      requiredViewNavigationStatus(trajectory) === "missing"
+    ) {
+      if (
+        hasExecutionPrerequisite(latestResult) ||
+        latestUnresolvedFailedNonTerminalToolStep(trajectory) ||
+        navigationCompletionDeferrals >= config.maxTerminalOnlyContinuations
+      ) {
+        return {
+          ...evaluator,
+          success: false,
+          requestFullyCovered: false,
+          replyEffectStatus: "non_applied",
+          outcomeCoverage: undefined,
+          messageToUser:
+            getNonEmptyString(latestResult?.userFacingText) ??
+            "I couldn’t confirm that the requested screen opened.",
+        };
+      }
+      navigationCompletionDeferrals++;
+      appendPlannerModelFeedbackEvent(trajectory, {
+        id: `required-view-navigation:${iteration}`,
+        type: "instruction",
+        source: "planner-loop",
+        createdAt: Date.now(),
+        metadata: { code: "REQUIRED_VIEW_NAVIGATION_MISSING" },
+        content:
+          "The requested view is still pending. Continue the open-view operation without repeating the completed work, or report the blocker.",
+      });
+      return {
+        ...evaluator,
+        success: false,
+        decision: "CONTINUE",
+        requestFullyCovered: false,
+        outcomeCoverage: undefined,
+        messageToUser: undefined,
       };
     }
     if (evaluator.decision === "FINISH" && evaluator.success === true) {
@@ -2690,12 +2715,14 @@ async function runPlannerLoopIterations(
             )))
       ) {
         // A native/text terminal is a proposed answer, not evidence of a completed read.
-        const evaluator = await evaluateTrajectory(
+        const evaluated = await evaluateTrajectory(
           params,
           trajectory,
           iteration,
           typedReadDeclined,
         );
+        const evaluator =
+          correctPendingSuccessfulFinish(evaluated, iteration) ?? evaluated;
         trajectory.evaluatorOutputs.push(evaluator);
         appendEvaluatorContextEvent(
           trajectory,
@@ -3598,6 +3625,27 @@ async function runPlannerLoopIterations(
       isRequestedDeviceHandoff(latestResult) &&
       trajectory.plannedQueue.length === 0 &&
       lastPlannerExplicitCompleted !== false;
+    // "Text Sam I'll be late, and set an alarm for 7am": the planner's one
+    // reply holds both proposals, and the turn pauses at the first review
+    // with the second still queued, which nothing runs later. Record the other
+    // owner reviews already queued in that reply before the one pause. A
+    // photo in a compound request ("Take a picture and text mom that I'm
+    // here.") is a review card too (camera-request.ts), so the same holds.
+    if (
+      !requestedHandoff &&
+      isPersistedDeviceApprovalPause(latestResult) &&
+      (sameReplyDeviceReviewOperation(toolCall, trajectory) !== undefined ||
+        isCameraCapture(plannerCallOperation(toolCall)))
+    )
+      await recordSameReplyDeviceReviews({
+        params,
+        trajectory,
+        iteration,
+        config,
+        failures,
+        plannerCompleted: lastPlannerExplicitCompleted,
+        checkpoint,
+      });
     if (requestedHandoff || isPersistedDeviceApprovalPause(latestResult)) {
       // Otherwise the owner must supply the next event. Do not spend another
       // evaluator or planner call, manufacture a new operation key, or dispatch
@@ -4144,6 +4192,12 @@ function renderPlannerModelInput(params: {
   sourceSelectionApplied: boolean;
   restoreContextTool?: ToolDefinition;
   actionSourceSelectionSchema?: JSONSchema & ActionParameterSchema;
+  /** Identity of the originals an offered review covers, captured before
+   * dispatch: the context may change while the model is awaited. */
+  actionSourceSetId?: string;
+  /** A review was due but not offered: nothing reviews this turn once it
+   * ends, or it could not defer more than it adds to the request. */
+  actionSourceReviewWithheld: boolean;
 } {
   const original = params.trajectory.modelBaseContext ?? params.context;
   const selected =
@@ -4191,7 +4245,7 @@ function renderPlannerModelInput(params: {
     )
       ? completionContextSources(original)
       : undefined;
-  const actionSourceSelectionSchema:
+  const reviewableSourceSchema:
     | (JSONSchema & ActionParameterSchema)
     | undefined = actionSources?.sources.length
     ? {
@@ -4200,24 +4254,52 @@ function renderPlannerModelInput(params: {
           ...COMPLETION_CONTEXT_SCHEMA.properties,
           sourceSetId: {
             type: "string",
-            enum: [actionSources.sourceSetId],
+            // The real identity is new every turn and would change each
+            // reviewing tool's definition with it. Offer a request-local
+            // alias; the dispatcher binds it to actionSourceSetId.
+            enum: [REQUEST_SOURCE_REFERENCE],
             description:
               "Use this exact identity for the originals supplied with this planner request.",
           },
         },
       }
     : undefined;
+  const actionSourceReview: ContextObjectPromptSegment = {
+    id: "action-source-review",
+    label: "action_source_review",
+    stable: false,
+    content: `${COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS.replaceAll("completionContext", ACTION_CONTEXT_ARG)}\nUse ${ACTION_CONTEXT_ARG} to review originals for the WHOLE remaining user request, including every pending intent, not only this tool. Return the same review on every eligible domain call in this batch; discovery, reply and restoration protocol calls do not carry this review. Include all applicable standing constraints, corrections, guest identities and referents needed by any remaining operation or final answer. If uncertain, select all_prior_dialogue with complete=false. Current requests, provider facts, tool receipts and complete restorable originals remain available. This never changes the reply handler input.`,
+  };
+  // A due review is withheld in two cases. Where nothing reviews the turn once
+  // it ends, offering it would add its argument to every reviewing tool on a
+  // long transcript and drop it again when a review is accepted or the
+  // positional window applies; a prompt cache reads tool definitions first,
+  // so each change costs the rest of the request. Elsewhere it is withheld
+  // when it cannot defer more than offering it adds: that compares complete
+  // encodings and never caps or selects away any source.
+  const actionSourceReviewWithheld =
+    reviewableSourceSchema !== undefined &&
+    actionSources !== undefined &&
+    (!postTurnReviewRunsFor(original) ||
+      deferrableHistoryChars(
+        original,
+        actionSources.sources,
+        renderedContext.promptSegments,
+      ) <=
+        actionSourceReviewChars(
+          actionSourceReview,
+          reviewableSourceSchema,
+          params.tools ?? [],
+        ));
+  const actionSourceSelectionSchema = actionSourceReviewWithheld
+    ? undefined
+    : reviewableSourceSchema;
   if (actionSourceSelectionSchema && actionSources) {
     renderedContext.promptSegments = labelHistorySources(
       renderedContext.promptSegments,
       new Map(actionSources.sources.map(({ id, event }) => [event.id, id])),
     );
-    renderedContext.promptSegments.push({
-      id: "action-source-review",
-      label: "action_source_review",
-      stable: false,
-      content: `${COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS.replaceAll("completionContext", ACTION_CONTEXT_ARG)}\nUse ${ACTION_CONTEXT_ARG} to review originals for the WHOLE remaining user request, including every pending intent, not only this tool. Return the same review on every eligible domain call in this batch; discovery, reply and restoration protocol calls do not carry this review. Include all applicable standing constraints, corrections, guest identities and referents needed by any remaining operation or final answer. If uncertain, select all_prior_dialogue with complete=false. Current requests, provider facts, tool receipts and complete restorable originals remain available. This never changes the reply handler input.`,
-    });
+    renderedContext.promptSegments.push(actionSourceReview);
   }
   if (
     params.allowSourceSelection &&
@@ -4248,7 +4330,12 @@ function renderPlannerModelInput(params: {
     renderedContext.promptSegments.push({
       id: "planner-background-history",
       stable: false,
-      content: `A complete background review deferred ${background.omittedSourceCount} earlier originals. This is not a current-request source review. Retained constraints, recent continuity and loaded originals are shown; all canonical originals remain available. For missing or uncertain historical dependencies call RESTORE_CONTEXT alone with scope=history before effects; never infer or count omitted history.`,
+      // Nothing reviewed what a positional window defers, so "uncertain" would
+      // hold on every turn; only a named gap justifies restoring the room.
+      content:
+        "windowed" in background && background.windowed
+          ? `${background.omittedSourceCount} earlier messages are not shown; they were deferred by position, not reviewed. The most recent messages and originals loaded during routing are shown. Omitted dialogue is not itself a missing dependency: call RESTORE_CONTEXT alone with scope=history before effects only for a specific referent, constraint or fact this request names that is not shown. Never infer or count omitted history.`
+          : `A complete background review deferred ${background.omittedSourceCount} earlier originals. This is not a current-request source review. Retained constraints, recent continuity and loaded originals are shown; all canonical originals remain available. For missing or uncertain historical dependencies call RESTORE_CONTEXT alone with scope=history before effects; never infer or count omitted history.`,
     });
   if (selected.applied)
     renderedContext.promptSegments.push({
@@ -4309,6 +4396,7 @@ function renderPlannerModelInput(params: {
     extraSegments.length > 0
       ? [...renderedContext.promptSegments, ...extraSegments]
       : renderedContext.promptSegments,
+    { sourceIds: historicalRequestSourceIds(original) },
   );
   // The planner stage instructions are template-derived (`plannerTemplate`)
   // and use stable authored variants for the exposed tools, so they belong in
@@ -4383,6 +4471,10 @@ function renderPlannerModelInput(params: {
     promptSegments,
     cacheKeySegments,
     actionSourceSelectionSchema,
+    actionSourceSetId: actionSourceSelectionSchema
+      ? actionSources?.sourceSetId
+      : undefined,
+    actionSourceReviewWithheld,
     restoreContextTool,
     sourceSelectionApplied:
       selected.applied ||
@@ -4390,6 +4482,75 @@ function renderPlannerModelInput(params: {
       diagnosticProjection.applied ||
       deferred.available.length > 0,
   };
+}
+
+/** Whether the host reviews this turn once it ends, by the gate Stage 1 uses.
+ * The planner is handed the turn's context, not its message: the current
+ * request in it holds the stored content, channel included. Without one the
+ * platform alone decides. */
+function postTurnReviewRunsFor(context: ContextObject): boolean {
+  const messageId = context.metadata?.messageId;
+  const request = context.events.find(
+    (event): event is Extract<ContextEvent, { type: "message" }> =>
+      event.type === "message" && "message" in event && event.id === messageId,
+  );
+  const content = request?.message.content;
+  return postTurnReviewRuns({ content: isPlainObject(content) ? content : {} });
+}
+
+/** Wire characters a complete review could defer at most: every reviewable
+ * original and each historical receipt that follows its request out. */
+function deferrableHistoryChars(
+  original: ContextObject,
+  sources: ReturnType<typeof completionContextSources>["sources"],
+  segments: ContextObjectPromptSegment[],
+): number {
+  const kept = new Set(
+    selectHistoricalNavigation(original, new Set(), {
+      historicalEffects: true,
+    }).events,
+  );
+  const deferrable = new Set(sources.map(({ event }) => event.id));
+  for (const event of original.events)
+    if (!kept.has(event)) deferrable.add(event.id);
+  return segments.reduce(
+    (chars, segment) =>
+      segment.id !== undefined && deferrable.has(segment.id)
+        ? chars + segmentBlock(segment).length + 2
+        : chars,
+    0,
+  );
+}
+
+/** Wire characters a review adds to one request: its instruction segment, the
+ * shared field instructions and the argument schema on each reviewing tool. */
+function actionSourceReviewChars(
+  review: ContextObjectPromptSegment,
+  schema: JSONSchema,
+  tools: ToolDefinition[],
+): number {
+  const fieldInstructions = completionContextFieldInstructions(schema);
+  const perTool =
+    JSON.stringify({
+      [ACTION_CONTEXT_ARG]: withSharedCompletionContextDescriptions(
+        schema,
+        fieldInstructions,
+      ),
+    }).length + JSON.stringify(ACTION_CONTEXT_ARG).length;
+  const reviewingTools = tools.filter(
+    (tool) =>
+      !isTerminalToolCall({ name: tool.name }) &&
+      !isDiscoveryActionName(tool.name) &&
+      tool.name !== "RESTORE_CONTEXT" &&
+      tool.parameters?.type === "object",
+  ).length;
+  return (
+    segmentBlock(review).length +
+    2 +
+    fieldInstructions.length +
+    2 +
+    reviewingTools * perTool
+  );
 }
 
 /**
@@ -4710,20 +4871,7 @@ async function dispatchWithCodingCallTimeout<T>(args: {
             },
             "[planner-loop] coding inference is rate limited; waiting for the provider window",
           );
-          await new Promise<void>((resolve, reject) => {
-            const onAbort = (): void => {
-              clearTimeout(retryTimer);
-              reject(controller.signal.reason);
-            };
-            const retryTimer = setTimeout(() => {
-              controller.signal.removeEventListener("abort", onAbort);
-              resolve();
-            }, delayMs);
-            controller.signal.addEventListener("abort", onAbort, {
-              once: true,
-            });
-            if (controller.signal.aborted) onAbort();
-          });
+          await sleepWithAbort(delayMs, controller.signal);
         }
       }
     };
@@ -5184,11 +5332,6 @@ async function dispatchPlannerModelCall(params: {
     responseSkeleton?: ResponseSkeleton;
     grammar?: string;
     spanSamplerPlan?: SpanSamplerPlan;
-    maxTokens?: number;
-    prepareModelAttempt?: (
-      attempt: ModelAttemptContext,
-      request: { maxTokens?: number },
-    ) => void;
     stream?: boolean;
     signal?: AbortSignal;
   } = {
@@ -5208,31 +5351,6 @@ async function dispatchPlannerModelCall(params: {
         : params.trajectoryId,
     }),
   };
-  const configuredMaxTokens = resolvePlannerMaxTokens(
-    params.trajectory.codingMode === true,
-  );
-  if (configuredMaxTokens !== undefined) {
-    modelParams.maxTokens = configuredMaxTokens;
-  }
-  // The planner-owned cap carried by the latest dispatched attempt; only a
-  // generation stopped at this cap is retried.
-  let attemptMaxTokens = configuredMaxTokens;
-  if (
-    configuredMaxTokens === undefined &&
-    params.trajectory.codingMode !== true &&
-    params.allowReplyContextProjection !== true
-  ) {
-    // The runtime prepares a fresh request for every resolved registration,
-    // including failover, so each attempt gets the default its provider can
-    // honor. A cap already merged from model settings is left untouched.
-    modelParams.prepareModelAttempt = (attempt, request) => {
-      attemptMaxTokens =
-        request.maxTokens === undefined
-          ? plannerDefaultMaxTokens(attempt)
-          : undefined;
-      if (attemptMaxTokens !== undefined) request.maxTokens = attemptMaxTokens;
-    };
-  }
   modelParams.providerOptions = {
     ...modelParams.providerOptions,
     eliza: {
@@ -5534,7 +5652,6 @@ async function dispatchPlannerModelCall(params: {
     // runtime otherwise fills this from the streaming context; setting it
     // here is a no-op for adapters that ignore it.
     if (signal) modelParams.signal = signal;
-    attemptMaxTokens = configuredMaxTokens;
     return runWithStreamingContext(
       streamingContext
         ? {
@@ -5586,27 +5703,26 @@ async function dispatchPlannerModelCall(params: {
         logger: params.runtime.logger,
         providerAttributionState: params.providerAttributionState,
       });
-      // A non-coding generation that reached its output cap is usually
-      // degenerate, not long. Sample the identical request once more; a
-      // second cap or any other failure keeps the existing failure path.
-      if (
-        retryIdx !== undefined ||
-        params.trajectory.codingMode === true ||
-        attemptMaxTokens === undefined ||
-        !isModelOutputLimitFinishReason(
-          modelOutputIncompleteEvidence(error)?.finishReason,
-        )
-      )
+      // A temporary rate limit gets a single re-send after a short wait, so a
+      // turn does not fail after its earlier calls were paid for. Any other
+      // failure keeps the existing failure path. Planner rounds send no output
+      // cap, so a generation that stops at an output limit stopped at the
+      // model's own maximum: the same request would stop there again, and the
+      // turn ends instead of paying for a second runaway.
+      if (retryIdx !== undefined || params.trajectory.codingMode === true)
         throw error;
+      const rateLimitWaitMs = rateLimitRetryWaitMs(error);
+      if (rateLimitWaitMs === undefined) throw error;
       streamingContext?.abortSignal?.throwIfAborted();
       params.runtime.logger?.warn?.(
         {
           src: "planner-loop",
           iteration: params.iteration,
-          maxTokens: attemptMaxTokens,
+          delayMs: rateLimitWaitMs,
         },
-        "[planner-loop] planner output reached its token cap; retrying the generation once",
+        "[planner-loop] planner inference is rate limited; waiting before one re-send",
       );
+      await sleepWithAbort(rateLimitWaitMs, streamingContext?.abortSignal);
       retryIdx = 1;
       startedAt = Date.now();
     }
@@ -5614,6 +5730,23 @@ async function dispatchPlannerModelCall(params: {
   const endedAt = Date.now();
 
   const parsed = parsePlannerOutput(raw);
+  // Bind the offered alias to the identity captured when this request was
+  // rendered, before anything reads, compares or stores the selection. With
+  // no review offered the alias stays unbound and is refused like any other
+  // identity that is not this request's.
+  const offeredSourceSetId = renderedInput.actionSourceSetId;
+  if (offeredSourceSetId !== undefined)
+    parsed.toolCalls = parsed.toolCalls.map((call) =>
+      call.completionContext?.sourceSetId === REQUEST_SOURCE_REFERENCE
+        ? {
+            ...call,
+            completionContext: {
+              ...call.completionContext,
+              sourceSetId: offeredSourceSetId,
+            },
+          }
+        : call,
+    );
   const privateContent =
     typeof raw !== "string" && Array.isArray(raw.content)
       ? raw.content.flatMap((part) =>
@@ -5695,15 +5828,19 @@ async function dispatchPlannerModelCall(params: {
         previousApplied: previous.applied,
         unanimous,
         accepted,
-        offeredSourceSetId:
-          renderedInput.actionSourceSelectionSchema?.properties?.sourceSetId
-            ?.enum?.[0],
+        offeredSourceSetId,
       });
+    // A withheld review is not a review: an explicit earlier selection stays
+    // stored and keeps the background view from taking over.
+    const storedSelection =
+      submitted || !renderedInput.actionSourceReviewWithheld
+        ? { completionContext: accepted ?? (submitted ? null : undefined) }
+        : {};
     params.trajectory.modelBaseContext = {
       ...original,
       metadata: {
         ...original.metadata,
-        completionContext: accepted ?? (submitted ? null : undefined),
+        ...storedSelection,
         ...(submitted ? { backgroundHistory: undefined } : {}),
       },
     };
@@ -5711,7 +5848,7 @@ async function dispatchPlannerModelCall(params: {
       ...params.trajectory.context,
       metadata: {
         ...params.trajectory.context.metadata,
-        completionContext: accepted ?? (submitted ? null : undefined),
+        ...storedSelection,
         ...(submitted ? { backgroundHistory: undefined } : {}),
       },
     };
@@ -6551,6 +6688,310 @@ function appendSilentFailedFinishRecoveryEvent(args: {
   });
 }
 
+/**
+ * Phone operations whose proposal always waits on its own review card, in
+ * both action modes, with nothing the host completes after it. Absent on
+ * purpose: reads (the host completes them after the owner shares them, and a
+ * later call may depend on what they return), every kind the phone runs
+ * without a card for the owner's own message (client-coordinator
+ * performRequested: a note, an app view, an address, a photo, the keypad, a
+ * reply or number draft, Notes, Files, Photos and Browser controls), ringing
+ * alarm controls, and selected-record edits whose change follows a shared
+ * snapshot. A new operation kind keeps the single-review pause.
+ */
+const SAME_REPLY_DEVICE_REVIEW_TYPES: ReadonlySet<string> = new Set([
+  "sms_compose",
+  "sms_send",
+  "phone_call",
+  "phone_dial",
+  "clock_alarm",
+  "clock_handoff",
+  "calendar_create_local",
+  "calendar_create",
+  "reminder_create",
+  "create_reminder",
+  "contact_create",
+  "contact_update",
+  "contact_delete",
+]);
+
+/** The owner's words in the current message, or undefined when the context
+ * does not carry them. */
+function currentOwnerRequestText(
+  trajectory: PlannerTrajectory,
+): string | undefined {
+  const events = [
+    ...(trajectory.modelBaseContext?.events ?? []),
+    ...(trajectory.context.events ?? []),
+  ];
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    const message =
+      event.type === "message" && "message" in event
+        ? (event.message as { role?: unknown; content?: unknown } | undefined)
+        : undefined;
+    if (message?.role !== "user") continue;
+    const content = message.content;
+    const text =
+      typeof content === "string"
+        ? content
+        : content &&
+            typeof content === "object" &&
+            !Array.isArray(content) &&
+            typeof (content as { text?: unknown }).text === "string"
+          ? (content as { text: string }).text
+          : undefined;
+    return text === undefined ? undefined : extractUserText(text);
+  }
+  return undefined;
+}
+
+/** A planner call's `operation` as the handler receives it, or undefined. The
+ * phone's Cloud route sends planner tools non-strict, and the model then
+ * writes `operation` as a JSON string (117 of 121 calls in the token audit's
+ * decode-mode run); core decodes it only into the copy it dispatches
+ * (validate-tool-args normalizeModelParameters). The queued call keeps the
+ * string, so every check on it here decodes it the same way. */
+function plannerCallOperation(
+  call: PlannerToolCall | undefined,
+): Record<string, unknown> | undefined {
+  let operation = call?.params?.operation;
+  if (typeof operation === "string") {
+    try {
+      operation = JSON.parse(operation);
+    } catch {
+      // Malformed model JSON fails the operation schema at dispatch.
+      return undefined;
+    }
+  }
+  return isObjectRecord(operation) ? operation : undefined;
+}
+
+/** The review key of a PROPOSE_DEVICE_ACTION call that can only end as an
+ * owner review card, or undefined for every other call. */
+function sameReplyDeviceReviewOperation(
+  call: PlannerToolCall,
+  trajectory: PlannerTrajectory,
+): string | undefined {
+  if (call.name !== "PROPOSE_DEVICE_ACTION") return undefined;
+  const operation = plannerCallOperation(call);
+  if (!operation) return undefined;
+  const { type, action, draft } = operation;
+  if (typeof type !== "string" || !SAME_REPLY_DEVICE_REVIEW_TYPES.has(type))
+    return undefined;
+  // A draft for a typed number or the open thread runs without a card. The
+  // service turns any text into a draft when the owner's message asks for
+  // one ("Draft a text to 415-555-0100 ..."), whatever the call says.
+  if (type === "sms_compose" || type === "sms_send") {
+    if (draft !== undefined && draft !== false) return undefined;
+    const request = currentOwnerRequestText(trajectory);
+    if (
+      request === undefined ||
+      requestedSmsDraftRecipient(request) !== undefined
+    )
+      return undefined;
+  }
+  // Dismiss and snooze go to the ringing alarm without owner input.
+  if (
+    type === "clock_alarm" &&
+    !(
+      action === "set" ||
+      action === "update" ||
+      action === "delete" ||
+      action === "enable"
+    )
+  )
+    return undefined;
+  if (type === "clock_handoff" && action !== "set") return undefined;
+  return deviceOperationReviewKey(operation);
+}
+
+/** A proposed operation in the form the device service persists it, so a
+ * repeat that writes 4155550100 as "415-555-0100", or adds a `draft: false`
+ * the service drops, is the same review. A text body that differs only in
+ * surrounding whitespace, or a contact name that differs only in case, is
+ * also the same review: approving both cards would send or call twice. An
+ * operation validation refuses keeps its exact form; its own call then fails
+ * and stops the recording. */
+function deviceOperationReviewKey(operation: unknown): string {
+  let persisted: Record<string, unknown>;
+  try {
+    persisted = { ...validateDeviceOperation(withDialNumber(operation)) };
+  } catch {
+    return stableJsonStringify(operation);
+  }
+  if (typeof persisted.body === "string")
+    persisted.body = persisted.body.trim();
+  const target = persisted.target;
+  if (
+    isPlainObject(target) &&
+    target.kind === "contact" &&
+    typeof target.query === "string"
+  )
+    persisted.target = {
+      ...target,
+      query: target.query.trim().toLowerCase(),
+    };
+  return stableJsonStringify(persisted);
+}
+
+/**
+ * Client views that hold one open proposal card at a time. On the product's
+ * phone image the Phone, Messages and Contacts screens show a new card in
+ * place of the open one and decline the replaced proposal upstream, which
+ * stores it as rejected. A second review recorded from the same reply would
+ * replace the first card there and record a refusal the owner never made, so
+ * a request sent from one of these screens keeps the single-review pause.
+ */
+const SINGLE_PROPOSAL_CARD_VIEWS: ReadonlySet<string> = new Set([
+  "phone",
+  "messages",
+  "contacts",
+]);
+
+/** Whether the current device request was sent from a screen that holds one
+ * proposal card at a time, read from its client observation as device-action
+ * admission reads it. An observation the shared contract rejects names no
+ * screen anyone can trust, so it counts as one (fail-safe). False outside a
+ * current device turn, and when the request carries no observation or the
+ * screen-less device context a native host sends. */
+function deviceRequestScreenHoldsOneCard(): boolean {
+  const current = getDeviceActionTurn();
+  if (!current?.isCurrent()) return false;
+  const message =
+    current.requestMessage?.message ?? current.replyContext?.message;
+  const observation = message && turnObservation(message.content.metadata);
+  return (
+    observation === UNREADABLE_TURN_OBSERVATION ||
+    (observation !== undefined &&
+      SINGLE_PROPOSAL_CARD_VIEWS.has(observation.view))
+  );
+}
+
+/** A step that opened, or prepared the renderer to open, an app view. */
+function isViewHandoffStep(step: PlannerStep): boolean {
+  const result = step.result;
+  return (
+    result !== undefined &&
+    findViewActionHandoff([
+      {
+        success: result.success,
+        actionName: step.toolCall?.name,
+        values: result.data?.values,
+      },
+    ]) !== null
+  );
+}
+
+/**
+ * After a queued phone proposal or photo became a recorded owner review, record
+ * the other owner reviews queued behind it from the same planner reply, in order,
+ * so the one pause covers all of them. No planner or evaluator call is made.
+ * A call that repeats an operation already awaiting review this turn is
+ * dropped and the next one is tried; the first call that is not an owner
+ * review proposal, or that does not end as one, stops the recording and
+ * stays queued and unrun, exactly as the single-review pause leaves it.
+ * Nothing more is recorded when the request was sent from a screen that holds
+ * one card at a time, or when any step this turn is an app-view handoff: the
+ * product's voice path opens that view before it shows the reply's cards, so
+ * they would land on a screen other than the request's, which may hold one.
+ */
+async function recordSameReplyDeviceReviews(args: {
+  params: PlannerLoopParams;
+  trajectory: PlannerTrajectory;
+  iteration: number;
+  config: ChainingLoopConfig;
+  failures: FailureLike[];
+  plannerCompleted?: boolean;
+  checkpoint?: (
+    trajectory: PlannerTrajectory,
+    phase: "before_tool" | "after_tool",
+  ) => Promise<void>;
+}): Promise<void> {
+  const { trajectory } = args;
+  if (deviceRequestScreenHoldsOneCard()) return;
+  const turnSteps = allTrajectorySteps(trajectory);
+  if (turnSteps.some(isViewHandoffStep)) return;
+  const awaiting = new Set<string>();
+  for (const step of turnSteps) {
+    const operation = plannerCallOperation(step.toolCall);
+    if (operation !== undefined && isPersistedDeviceApprovalPause(step.result))
+      awaiting.add(deviceOperationReviewKey(operation));
+  }
+  while (trajectory.plannedQueue.length > 0) {
+    const next = trajectory.plannedQueue[0];
+    let operation: string | undefined;
+    try {
+      operation = sameReplyDeviceReviewOperation(next, trajectory);
+    } catch {
+      // An operation dispatch would refuse (a decoded model string nested
+      // past its walk budget can overflow the review key): stop here and keep
+      // the pause on the reviews already recorded, as for any call that does
+      // not end as a review.
+      return;
+    }
+    if (operation === undefined) return;
+    if (awaiting.has(operation)) {
+      // A second card for the same text would be a second send if approved.
+      trajectory.plannedQueue.shift();
+      trajectory.context = {
+        ...trajectory.context,
+        plannedQueue: (trajectory.context.plannedQueue ?? []).map((entry) =>
+          entry.id !== undefined && entry.id === next.id
+            ? { ...entry, status: "skipped" as const }
+            : entry,
+        ),
+      };
+      args.params.runtime.logger?.debug?.(
+        { iteration: args.iteration, toolCallId: next.id },
+        "[planner-loop] skipped a queued device proposal that repeats one already awaiting review",
+      );
+      continue;
+    }
+    // Never let recording a queued review end the turn on the tool budget.
+    const toolCalls = [...trajectory.archivedSteps, ...trajectory.steps].filter(
+      (step) => step.toolCall && !isDiscoveryActionName(step.toolCall.name),
+    ).length;
+    if (toolCalls >= args.config.maxToolCalls) return;
+    try {
+      await args.checkpoint?.(trajectory, "before_tool");
+      getStreamingContext()?.abortSignal?.throwIfAborted();
+      await executeQueuedToolCall({
+        params: args.params,
+        trajectory,
+        toolCall: next,
+        iteration: args.iteration,
+        config: args.config,
+        failures: args.failures,
+        ...(args.plannerCompleted !== undefined
+          ? { plannerCompleted: args.plannerCompleted }
+          : {}),
+      });
+      await args.checkpoint?.(trajectory, "after_tool");
+    } catch (error) {
+      getStreamingContext()?.abortSignal?.throwIfAborted();
+      // The first review is already recorded: keep the turn's pause on it.
+      args.params.runtime.logger?.warn?.(
+        {
+          iteration: args.iteration,
+          toolCallId: next.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "[planner-loop] recording a queued device review failed; pausing on the reviews already recorded",
+      );
+      return;
+    }
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    const result = trajectory.steps.at(-1)?.result;
+    if (
+      !isPersistedDeviceApprovalPause(result) ||
+      isRequestedDeviceHandoff(result)
+    )
+      return;
+    awaiting.add(operation);
+  }
+}
+
 async function executeQueuedToolCall(params: {
   params: PlannerLoopParams;
   trajectory: PlannerTrajectory;
@@ -6663,17 +7104,28 @@ async function executeQueuedToolCall(params: {
   const isParameterValidationFailure = Array.isArray(
     (result.data as { parameterErrors?: unknown } | undefined)?.parameterErrors,
   );
-  const failureError = isParameterValidationFailure
-    ? "parameter_validation_failed"
-    : (result.error ?? diagnosticFailureReason(result));
+  // An action whose own model call sent no cap and still stopped at an output
+  // limit ran to the model's own maximum, and a re-call is likely to stop the
+  // same way at the same cost. The planner would re-call it until the
+  // repeated-failure limit (a 2026-11-20 eval turn: three identical reminder
+  // extractor cut-offs), so this failure ends the turn the first time. A
+  // cut-off under a cap that was sent keeps the ordinary budget.
+  const stoppedAtModelOutputLimit = modelOutputLimitStop(result) !== undefined;
+  const failureError = stoppedAtModelOutputLimit
+    ? "model_output_limit"
+    : isParameterValidationFailure
+      ? "parameter_validation_failed"
+      : (result.error ?? diagnosticFailureReason(result));
   const failure = {
     toolName: params.toolCall.name,
     success: result.success,
     error: projectToolDiagnosticValue(failureError, redactDiagnosticText),
     failureProvenance: result.failureProvenance,
-    repeatKey: isParameterValidationFailure
-      ? "parameter_validation"
-      : toolFailureRepeatKey(params.toolCall),
+    repeatKey: stoppedAtModelOutputLimit
+      ? "model_output_limit"
+      : isParameterValidationFailure
+        ? "parameter_validation"
+        : toolFailureRepeatKey(params.toolCall),
   };
   if (!result.success || result.error != null) {
     params.failures.push(failure);
@@ -6771,7 +7223,9 @@ async function executeQueuedToolCall(params: {
     assertRepeatedFailureLimit({
       failures: params.failures,
       latestFailure: failure,
-      maxRepeatedFailures: params.config.maxRepeatedFailures,
+      maxRepeatedFailures: stoppedAtModelOutputLimit
+        ? 0
+        : params.config.maxRepeatedFailures,
     });
   }
 }
@@ -9148,6 +9602,26 @@ function isRepeatableObservation(result: PlannerToolResult): boolean {
     : result.data?.readOnlyOperation === true;
 }
 
+/**
+ * The model error of a failed tool whose own model call sent no output cap and
+ * still stopped at an output limit, or undefined. A settled handler error
+ * rides on `data.error` (`error` is its message); a tool that threw has it on
+ * `error`, directly or as a cause. A cut-off under a cap that was sent, or one
+ * that does not report its cap, is not such a stop.
+ */
+export function modelOutputLimitStop(
+  result: Pick<PlannerToolResult, "success" | "error" | "data">,
+): unknown {
+  if (result.success && result.error == null) return undefined;
+  return [result.error, result.data?.error].find((candidate) => {
+    const evidence = modelOutputIncompleteEvidence(candidate);
+    return (
+      evidence?.maxTokens === null &&
+      isModelOutputLimitFinishReason(evidence.finishReason)
+    );
+  });
+}
+
 /** Canonical failed receipts carry retry policy even without legacy data markers. */
 export function hasNonRetryableToolFailure(result: PlannerToolResult): boolean {
   if (
@@ -9772,10 +10246,7 @@ function preparedNavigationSynthesisStep(
   const result = step?.result;
   if (
     !step?.toolCall ||
-    result?.success !== true ||
-    result.transcriptVisibility !== "internal" ||
-    !result.modelReplyRequired ||
-    !hasAwaitingDeviceExecutionMarker(result) ||
+    !result ||
     hasAwaitingUserInputMarker(result) ||
     hasRequiresConfirmationMarker(result) ||
     result.error != null ||
@@ -9784,34 +10255,15 @@ function preparedNavigationSynthesisStep(
     result.userFacingEffectReceiptIds?.length
   )
     return;
-  const handoff = findViewActionHandoff([
-    {
-      success: true,
-      actionName: step.toolCall.name,
-      values: result.data?.values,
-    },
-  ]);
+  const receipt = readViewNavigationReceipt(step);
   const effect = structuredEffectFromToolResult(result);
-  const navigation = result.data?.navigation;
   if (
-    !handoff?.navigationPrepared ||
+    receipt?.status !== "prepared" ||
     effect?.effect !== "view_navigation" ||
     effect.status !== "prepared" ||
-    !effect.label ||
-    !isObjectRecord(navigation) ||
-    navigation.viewId !== handoff.viewId ||
-    effect.viewId !== handoff.viewId ||
-    navigation.handoffId !== handoff.completedActionHandoffId ||
-    navigation.label !== effect.label ||
-    navigation.status !== "prepared" ||
-    effect.resolvedAlias !== navigation.resolvedAlias
-  )
-    return;
-  const view = result.data?.view;
-  if (
-    !isObjectRecord(view) ||
-    view.id !== handoff.viewId ||
-    view.installationId !== handoff.navigationBinding?.installationId
+    effect.viewId !== receipt.handoff.viewId ||
+    effect.label !== receipt.label ||
+    effect.resolvedAlias !== receipt.navigation.resolvedAlias
   )
     return;
   const wanted = step.toolCall.params?.view;
@@ -10843,15 +11295,20 @@ function singleVerifiedUserFacingToolResult(
  * own callback, the evaluator finished with success:false and "I couldn't
  * read that image, so I have no description to give…", and the user got both
  * as two messages. Prose after a success verdict still combines with the
- * verified text (a second intent answered from context).
+ * verified text (a second intent answered from context), except on a
+ * navigation-only turn: there the single intent is the navigation itself, so
+ * success prose can only restate it, and with no durable receipt it may claim
+ * more than the tool proved ("I asked the browser to reload the page. It may
+ * still be loading." followed by "The page has finished reloading."). The
+ * action's `turnComplete` declares its verified text the whole reply.
  */
 function evaluatorFinishProse(
   trajectory: PlannerTrajectory,
   evaluator: { success?: boolean; messageToUser?: unknown },
 ): unknown {
   if (
-    evaluator.success === false &&
-    singleVerifiedUserFacingToolResult(trajectory)?.turnComplete === true
+    singleVerifiedUserFacingToolResult(trajectory)?.turnComplete === true &&
+    (evaluator.success === false || isDeliveredNavigationOnlyTurn(trajectory))
   ) {
     return undefined;
   }
@@ -11051,6 +11508,12 @@ function combinedVerifiedToolTextAndProse(
   // Widget payloads ([CHOICE]/[FORM] interaction blocks) are grammar the
   // client renders; appended prose would corrupt the block contract.
   if (parseInteractionBlocks(verified).blocks.length > 0) return undefined;
+  // A client-rendered card block ([MAPSCARD]{json}[/MAPSCARD]) makes the
+  // verified text the action's own presentation, not command output: fencing
+  // it shows literal ``` lines around the card's list (Pixel v620, "find
+  // coffee near the Ferry Building"). It is delivered unfenced; evaluator
+  // prose still follows, since it may answer more than the card shows.
+  const presentsCard = containsRenderedCardBlock(verified);
   const prose = modelText.trim();
   // Combining must preserve the same user-safety boundary as selecting model
   // text directly; evaluator channels can contain serialized tool invocations.
@@ -11061,7 +11524,7 @@ function combinedVerifiedToolTextAndProse(
   // can distinguish units, identifiers, or quoted source values.
   if (verified.includes(prose)) return undefined;
   const fenced =
-    verified.includes("\n") && !verified.includes("```")
+    !presentsCard && verified.includes("\n") && !verified.includes("```")
       ? `\`\`\`\n${verified}\n\`\`\``
       : verified;
   return `${fenced}\n\n${prose}`;
@@ -12405,9 +12868,15 @@ function userSafeRefusalCandidate(
 // looksLikeProgressOnlyReply classifier (services/message.ts). Single-sourced
 // HERE because message.ts imports from this module and the reverse import
 // would be a cycle. The two consumers deliberately extend it differently —
-// see PROGRESS_ONLY_ANSWER_REJECT below.
-export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN =
-  "calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will";
+// see PROGRESS_ONLY_ANSWER_REJECT below. A wait cue the acknowledgment grammar
+// speaks ("On it.", "One sec.", "Just a moment.") opens progress only as the
+// whole reply, or when one of the grammar's separators leads into more
+// progress ("One sec, let me check."). Answers that open with the same words
+// ("Just a second, your dentist is Thursday.", "One second is 1,000
+// milliseconds.", "On it — the alarm is set.") stay answers.
+const WAIT_CUE = "(?:on it|(?:one|just a) (?:sec(?:ond)?|moment))";
+const WAIT_CUE_OPENER = `${WAIT_CUE}(?=(?:[.!…]+\\s+${WAIT_CUE}){0,2}[.!…]*\\s*$|\\s*(?:,|[.!…]+|[—–:;]|\\s-)\\s*(?:let me|i(?:'|’)ll|i will|i(?:'|’)m going to|i am going to|checking|looking|pulling|digging|searching|reading|taking a look|having a look)\\b)`;
+export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN = `calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|${WAIT_CUE_OPENER}|let me|i(?:'|’)ll|i will`;
 
 // Bare opener screen (no final-answer-only extensions) for text where a
 // progress-shaped opener is disqualifying but "Okay, …" openings are

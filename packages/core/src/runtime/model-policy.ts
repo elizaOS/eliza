@@ -178,6 +178,37 @@ export function readReasoningTokensFromResponse(
 	return undefined;
 }
 
+/**
+ * Provider-reported token counts for one completed call, for the model-call log.
+ * Only counts the result carries are returned: a missing cache count stays
+ * missing, never zero, so "no cache report" is distinguishable from a miss.
+ */
+export function readTokenUsageFromResponse(response: unknown):
+	| {
+			promptTokens: number;
+			completionTokens?: number;
+			cacheReadInputTokens?: number;
+			reasoningTokens?: number;
+	  }
+	| undefined {
+	if (typeof response !== "object" || response === null) return undefined;
+	const record = response as Record<string, unknown>;
+	const usage = isPlainObject(record.usage) ? record.usage : undefined;
+	const count = (value: unknown) =>
+		typeof value === "number" ? finiteNonNegative(value) : undefined;
+	const promptTokens = count(usage?.promptTokens);
+	if (promptTokens === undefined) return undefined;
+	const completionTokens = count(usage?.completionTokens);
+	const cacheReadInputTokens = count(usage?.cacheReadInputTokens);
+	const reasoningTokens = readReasoningTokensFromResponse(response);
+	return {
+		promptTokens,
+		...(completionTokens === undefined ? {} : { completionTokens }),
+		...(cacheReadInputTokens === undefined ? {} : { cacheReadInputTokens }),
+		...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+	};
+}
+
 function finiteNonNegative(value: number): number | undefined {
 	return Number.isFinite(value) && value >= 0 ? value : undefined;
 }

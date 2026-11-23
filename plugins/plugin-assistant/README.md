@@ -269,7 +269,19 @@ still match. A prior or uncertain request is not replayed. Camera permissions
 remain controlled by the device. Clients without this capability do not receive
 the operation in their tool schema. A device that also negotiates
 `camera.capture-lens.v1` can receive `lens: "front"` or `lens: "back"`; without
-it the phone uses the camera that is showing.
+it the phone uses the camera that is showing. A device that negotiates
+`camera.capture-library-id.v1` may add `libraryId`, the saved photo's Photos
+library id, to the receipt so the agent can open or share that photo with the
+Photos operations. The shared client coordinator removes the id for an agent
+that did not negotiate the capability.
+
+The agent reaches the capture through `DEVICE_CAMERA_CAPTURE`, a
+single-operation tool over the same proposal path. Opening the Camera view does
+not take a photo, so a request to take a picture is device work, not navigation:
+the capability guidance says so on every turn, and a whole-message command
+such as "take a picture" or "take a selfie with the front camera" is routed to
+the tool in place of a view-only plan. For such a command the owner's words set
+the lens; the model's lens choice does not override them.
 
 ## Current-request Gmail policy
 

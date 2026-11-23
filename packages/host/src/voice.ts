@@ -73,6 +73,18 @@ export function hasConfiguredApiKey(
   return true;
 }
 
+const DEFAULT_ELEVENLABS_VOICE: VoicePreset = {
+  id: "sarah",
+  name: "Talia",
+  voiceId: "OZ0L6eISlOejga3XjDFt",
+  gender: "female",
+  hint: "Warm Soft Guide",
+  hintKey: "voice.hint.warm_soft_guide",
+  previewUrl: "",
+};
+
+export const DEFAULT_ELEVENLABS_VOICE_ID = DEFAULT_ELEVENLABS_VOICE.voiceId;
+
 export const PREMADE_VOICES: VoicePreset[] = [
   // Female
   {
@@ -85,56 +97,43 @@ export const PREMADE_VOICES: VoicePreset[] = [
     previewUrl:
       "https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/df6788f9-5c96-470d-8312-aab3b3d8f50a.mp3",
   },
-  {
-    id: "sarah",
-    name: "Sarah",
-    voiceId: "EXAVITQu4vr4xnSDxMaL",
-    gender: "female",
-    hint: "Soft, warm",
-    hintKey: "voice.hint.soft_warm",
-    previewUrl:
-      "https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/6851ec91-9950-471f-8586-357c52539069.mp3",
-  },
+  DEFAULT_ELEVENLABS_VOICE,
   {
     id: "matilda",
-    name: "Matilda",
-    voiceId: "XrExE9yKIg1WjnnlVkGX",
+    name: "Maisie",
+    voiceId: "QtY3JBOUKEB5xzrRfOKc",
     gender: "female",
-    hint: "Warm, friendly",
-    hintKey: "voice.hint.warm_friendly",
-    previewUrl:
-      "https://storage.googleapis.com/eleven-public-prod/premade/voices/XrExE9yKIg1WjnnlVkGX/b930e18d-6b4d-466e-bab2-0ae97c6d8535.mp3",
+    hint: "Friendly Casual Neighbor",
+    hintKey: "voice.hint.friendly_casual_neighbor",
+    previewUrl: "",
   },
   {
     id: "lily",
-    name: "Lily",
-    voiceId: "pFZP5JQG7iQjIQuC4Bku",
+    name: "Florence",
+    voiceId: "22N9cF8z0o7y23njdyaY",
     gender: "female",
-    hint: "British, raspy",
-    hintKey: "voice.hint.british_raspy",
-    previewUrl:
-      "https://storage.googleapis.com/eleven-public-prod/premade/voices/pFZP5JQG7iQjIQuC4Bku/0ab8bd74-fcd2-489d-b70a-3e1bcde8c999.mp3",
+    hint: "Atmospheric Storyteller",
+    hintKey: "voice.hint.atmospheric_storyteller",
+    previewUrl: "",
   },
   {
     id: "alice",
-    name: "Alice",
-    voiceId: "Xb7hH8MSUJpSbSDYk0k2",
+    name: "Alicia",
+    voiceId: "BFd5oBc2DDna33pSi4Gf",
     gender: "female",
-    hint: "British, confident",
-    hintKey: "voice.hint.british_confident",
-    previewUrl:
-      "https://storage.googleapis.com/eleven-public-prod/premade/voices/Xb7hH8MSUJpSbSDYk0k2/f5409e2f-d9c3-4ac9-9e7d-916a5dbd1ef1.mp3",
+    hint: "Polished Global Anchor",
+    hintKey: "voice.hint.polished_global_anchor",
+    previewUrl: "",
   },
   // Male
   {
     id: "brian",
-    name: "Brian",
-    voiceId: "nPczCjzI2devNBz1zQrb",
+    name: "Sawyer",
+    voiceId: "8dEUmyPMdDdK91vboYih",
     gender: "male",
-    hint: "Deep, smooth",
-    hintKey: "voice.hint.deep_smooth",
-    previewUrl:
-      "https://storage.googleapis.com/eleven-public-prod/premade/voices/nPczCjzI2devNBz1zQrb/f4dbda0c-aff0-45c0-93fa-f5d5ec95a2eb.mp3",
+    hint: "Midnight Storyteller",
+    hintKey: "voice.hint.midnight_storyteller",
+    previewUrl: "",
   },
   {
     id: "adam",
@@ -158,23 +157,21 @@ export const PREMADE_VOICES: VoicePreset[] = [
   },
   {
     id: "daniel",
-    name: "Daniel",
-    voiceId: "onwK4e9ZLuTAKqWW03F9",
+    name: "Finley",
+    voiceId: "fnYMz3F5gMEDGMWcH1ex",
     gender: "male",
-    hint: "British, presenter",
-    hintKey: "voice.hint.british_presenter",
-    previewUrl:
-      "https://storage.googleapis.com/eleven-public-prod/premade/voices/onwK4e9ZLuTAKqWW03F9/7eee0236-1a72-4b86-b303-5dcadc007ba9.mp3",
+    hint: "Articulate Anchor",
+    hintKey: "voice.hint.articulate_anchor",
+    previewUrl: "",
   },
   {
     id: "liam",
-    name: "Liam",
-    voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+    name: "Lawrence",
+    voiceId: "ktkP7Nsj67dw2zcplQYt",
     gender: "male",
-    hint: "Young, natural",
-    hintKey: "voice.hint.young_natural",
-    previewUrl:
-      "https://storage.googleapis.com/eleven-public-prod/premade/voices/TX3LPaxmHKxFdv7VOQHJ/63148076-6363-42db-aea8-31424308b92c.mp3",
+    hint: "Bright and Informative",
+    hintKey: "voice.hint.bright_informative",
+    previewUrl: "",
   },
   // Character / Cutesy / Game
   {
@@ -230,12 +227,11 @@ export const PREMADE_VOICES: VoicePreset[] = [
   {
     id: "callum",
     name: "Callum",
-    voiceId: "N2lVS1w4EtoT3dr4eOWO",
+    voiceId: "fs2OqxduwXgp9foh2xjK",
     gender: "character",
-    hint: "Gruff, game hero",
-    hintKey: "voice.hint.gruff_game_hero",
-    previewUrl:
-      "https://storage.googleapis.com/eleven-public-prod/premade/voices/N2lVS1w4EtoT3dr4eOWO/ac833bd8-ffda-4938-9ebc-b0f99ca25481.mp3",
+    hint: "Husky Trickster",
+    hintKey: "voice.hint.husky_trickster",
+    previewUrl: "",
   },
   // Custom Character Voices
   {

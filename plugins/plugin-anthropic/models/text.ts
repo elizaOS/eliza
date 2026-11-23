@@ -1347,8 +1347,9 @@ function resolveTextParams(
   // Anthropic requires max_tokens. Use the model's real output limit only when
   // the caller omitted a budget; an explicit request must be preserved exactly
   // or rejected before dispatch, never silently reduced to partial output.
-  // ANTHROPIC_MAX_OUTPUT_TOKENS overrides the heuristic (bare number or
-  // per-model `id:tokens` pairs) so unknown ids get the right ceiling.
+  // ANTHROPIC_MAX_OUTPUT_TOKENS declares the model's capacity in place of the
+  // heuristic (bare number or per-model `id:tokens` pairs) so unknown ids get
+  // the right ceiling; it is a capacity declaration, not an output cap.
   const modelHardCap = resolveAnthropicMaxOutputTokens(runtime, modelName);
   const requestedMaxTokens = params.maxTokens;
   if (

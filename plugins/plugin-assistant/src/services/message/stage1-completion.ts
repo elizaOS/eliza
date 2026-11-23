@@ -13,27 +13,17 @@ export function getStage1FinishReason(
   return typeof raw.finishReason === "string" ? raw.finishReason : "";
 }
 
+/**
+ * Whether a Stage 1 generation stopped at an output limit. Stage 1 sends no
+ * cap, so there is no caller cap to compare usage against: truncation is
+ * detected from the provider's finish reason.
+ */
 export function stage1HitCompletionLimit(
   raw: string | GenerateTextResult,
-  maxTokens: number | undefined,
 ): boolean {
   if (typeof raw === "string") return false;
-  const finishReason = getStage1FinishReason(raw).toLowerCase();
-  if (
-    /\b(?:length|max[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)\b/u.test(
-      finishReason,
-    )
-  ) {
-    return true;
-  }
-  // With direct-channel provider/model-max output, the runtime has no reliable
-  // caller cap to compare against. Truncation is detected via finishReason.
-  const completionTokens = raw.usage?.completionTokens;
-  return (
-    typeof maxTokens === "number" &&
-    typeof completionTokens === "number" &&
-    Number.isFinite(completionTokens) &&
-    completionTokens >= maxTokens
+  return /\b(?:length|max[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)\b/u.test(
+    getStage1FinishReason(raw).toLowerCase(),
   );
 }
 

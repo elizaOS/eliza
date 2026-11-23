@@ -15,6 +15,7 @@ import {
 	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
 	type OwnerExclusiveDisclosureDecision,
 	type OwnerExclusiveDisclosureDenial,
+	renewExpiredTrustedDeliveryAudience,
 	revalidateOwnerExclusiveDisclosure,
 	trustedDeliveryAudienceIsBoundToRuntime,
 } from "../security/trusted-delivery-audience";
@@ -639,6 +640,9 @@ export async function searchCanonicalConversationMemories(
 ): Promise<CanonicalRecallResult> {
 	const { deliveryMessage } = input;
 	const destinationRoomId = deliveryMessage.roomId;
+	// The synchronous turn check below rejects expired evidence outright; an
+	// active long turn first renews it from current trusted authority.
+	await renewExpiredTrustedDeliveryAudience(input.runtime, deliveryMessage);
 	const deliveryTurnDenial = trustedDeliveryTurnDenial(
 		input.runtime,
 		deliveryMessage,

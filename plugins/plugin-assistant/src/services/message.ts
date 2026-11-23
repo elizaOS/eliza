@@ -384,12 +384,10 @@ export class DefaultMessageService implements IMessageService {
 
     // Support runtime-configurable overrides via env settings
     const customChannels = normalizeResponseBypassList(
-      runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
-        runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
+      runtime.getSetting("ALWAYS_RESPOND_CHANNELS"),
     );
     const customSources = normalizeResponseBypassList(
-      runtime.getSetting("ALWAYS_RESPOND_SOURCES") ??
-        runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
+      runtime.getSetting("ALWAYS_RESPOND_SOURCES"),
     );
 
     const respondChannels = new Set(

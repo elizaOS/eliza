@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "plugins/plugin-telegram/src/task-board.ts",
+    "plugins/plugin-telegram/__tests__/task-board-store.real.test.ts",
+    "plugins/plugin-telegram/quint/check-telegram-task-board-store.mjs"
+  ],
+  "conformance": "plugins/plugin-telegram/quint/check-telegram-task-board-store.mjs",
+  "bounds": "One agent, one Telegram chat without a forum thread, and one orchestrator task. Each case is four events: `/tasks` after a task status change, an agent restart (a new runtime on the same PGlite directory), or the user deleting the bot's board message while it is shown. `/tasks` runs through registerTelegramTaskBoardCommand, the registration TelegramService uses, with createRuntimeMemoryBoardStore on plugin-sql. The conformance script replays all 34 generated event sequences against a loopback Bot API that refuses an edit of a deleted message and an edit that does not change the text, as Telegram does, and compares the Bot API calls, the board messages left in the chat, the pinned message and the stored board id. The supervisor digest refresh (it calls the same render), forum threads, the authorization middleware of TelegramService, an edit that does not change the text, concurrent renders and the SQLite adapter are not covered by this model. Under weak fairness of the replay step all four events run. Explicit stuttering lets the replay stop before them, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "task-board-store",
+      "main": "TelegramTaskBoardStore",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ChatBoardIsPinned",
+        "ChatBoardIsStored",
+        "OneBoardInChat",
+        "PostsOnlyWithoutBoard",
+        "TasksEditOrPost",
+        "TypeOK"
+      ],
+      "temporal": ["ReplayEnds", "ReplayEndsWithoutFairness"],
+      "maxSteps": 8,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "ReplayEnds",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled replay step eventually runs (weak fairness). This checks that the replay then runs all four events, not how long the database or loopback work takes."
+          ]
+        },
+        {
+          "property": "ReplayEndsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The replay may stop before the four events, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

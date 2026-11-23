@@ -1,13 +1,14 @@
 /** Replays live trajectory tj-4f3ec3c2630bb7 (Alpha Phone, 2026-10-29): the
  * user asked "What did you see in the current calendar results?". The recent
  * originals were inline without hN labels, so the only ID the prompt gave each
- * earlier request was its historical receipt's requestSourceEventId,
+ * earlier request was its historical receipt's requestSourceEventId, then
  * "history:<message id>": that request's exact prior-dialogue source event ID.
  * Stage 1 read it twice (the observation's request, then after the repair the
  * navigation's request); both were rejected as unknown and the turn ended in
  * "Something went wrong on my end". Bound event IDs now read as the offered
- * history:hN; unbound ones still fail closed. Recorded tool calls only; no
- * model is called. */
+ * history:hN; unbound ones still fail closed. The receipt now prints that
+ * canonical history:hN itself, and the recorded message-ID reads still
+ * resolve. Recorded tool calls only; no model is called. */
 import {
   type Action,
   ChannelType,
@@ -378,15 +379,19 @@ describe("historical receipt request IDs", () => {
     const result = await f.run();
     expect(result.kind).toBe("decision");
     expect(f.useModel).toHaveBeenCalledTimes(3);
-    // The prompt printed exactly the IDs the model read, beside the unlabeled
-    // inline originals and an hN-only history index.
+    // Each receipt names its request by the offered canonical read, beside
+    // the unlabeled inline originals and an hN-only history index; the
+    // message IDs the recorded calls read are no longer printed.
     expect(f.prompt(0)).toContain("history:h1–history:h33");
-    expect(f.prompt(0)).toContain(
-      `\\"requestSourceEventId\\":\\"history:${editCoffee.id}\\"`,
+    const wire = JSON.stringify(
+      (
+        f.useModel.mock.calls[0] as unknown as [unknown, { messages: unknown }]
+      )[1].messages,
     );
-    expect(f.prompt(0)).toContain(
-      `\\"requestSourceEventId\\":\\"history:${openCalendar.id}\\"`,
-    );
+    for (const request of [editCoffee, openCalendar]) {
+      expect(wire).toContain(`[\\"${f.hN(request)}\\",[[`);
+      expect(wire).not.toContain(String(request.id));
+    }
     expect(f.prompt(0)).toContain(EDIT_COFFEE);
     expect(f.prompt(0)).not.toMatch(/\[h\d+[\];]/);
     // Each recorded read resolved to its offered canonical source read.

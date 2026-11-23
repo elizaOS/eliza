@@ -191,7 +191,6 @@ async function ensureNativeIMessagePluginLoaded(
   const backend = String(
     runtime.getSetting("ELIZA_IMESSAGE_BACKEND") ??
       process.env.ELIZA_IMESSAGE_BACKEND ??
-      process.env.IMESSAGE_BACKEND ??
       "",
   )
     .trim()

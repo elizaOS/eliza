@@ -1,0 +1,43 @@
+{
+  "sources": [
+    "plugins/plugin-health/src/sleep/sleep-cycle.ts",
+    "plugins/plugin-personal-assistant/test/schedule-open-night-day-key.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-open-night-day-key.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-open-night-day-key.mjs",
+  "bounds": "One agent in UTC. An Oura reading of the night before (23:00 on 2026-11-14 to 07:00 on 2026-11-15) is stored or not. Tonight's sleep starts at 14:00, 21:00 or 23:00 on 2026-11-15 or at 00:30 or 02:00 on 2026-11-16 and lasts 2 or 8 hours. The ring reports the sleep in progress 5 minutes before each inspection while it lasts and the finished sleep 5 minutes after the wake. The schedule is inspected 30 minutes before the sleep, every hour from 30 minutes after it starts while it lasts, and 25 minutes after the wake. The conformance script replays all 20 generated nights through the production captureActivitySignal and inspectSchedule on a fresh PGlite-backed runtime per night and compares the effective day key after every inspection. Other time zones and DST nights, sleeps inferred from activity gaps instead of a health reading, several overlapping readings, readings older than two hours, sleeps longer than 8 hours, several sleeps in one night and the merged schedule state are not covered by this model. Under weak fairness of the inspect step the night reaches the inspection after the wake. Explicit stuttering lets the inspection never run, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "open-night-day-key",
+      "main": "OpenNightDayKey",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "HeldWhileAsleep",
+        "NapKeepsDay",
+        "NeverMovesBack",
+        "TypeOK",
+        "WakeOpensDay"
+      ],
+      "temporal": ["NightEnds", "NightEndsWithoutFairness"],
+      "maxSteps": 40,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "NightEnds",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled inspection eventually runs (weak fairness). This checks that the night then reaches the inspection after the wake, not how long the database work takes."
+          ]
+        },
+        {
+          "property": "NightEndsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The inspection may never run, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

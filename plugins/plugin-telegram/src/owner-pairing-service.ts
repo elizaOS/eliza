@@ -4,6 +4,8 @@
  * Implements the connector side of the owner-pairing flow for Telegram:
  *   - `/eliza_pair <code>` bot command: relays a 6-digit pair code to the
  *     backend `verifyOwnerBindFromConnector` service and reports the result.
+ *     TelegramService registers the command with its other commands
+ *     (`registerBotCommands`), before its catch-all message handler.
  *   - `sendOwnerLoginDmLink({ externalId, link })`: called by the backend's
  *     `/api/auth/login/owner/dm-link/request` handler to DM a login link to
  *     the Telegram user identified by their numeric user ID.
@@ -147,6 +149,15 @@ function resolveVerifyService(
 }
 
 /**
+ * Whether this runtime hosts the backend verifier that `/eliza_pair` relays
+ * to. TelegramService checks it when the command arrives, because the
+ * verifier may start after the Telegram services.
+ */
+export function hasOwnerBindVerifyService(runtime: IAgentRuntime): boolean {
+  return resolveVerifyService(runtime) !== null;
+}
+
+/**
  * Derives a human-readable display handle from a Telegram user object.
  */
 function resolveDisplayHandle(from: {
@@ -215,7 +226,7 @@ export async function handleElizaPairCommand(
 
   if (!code?.trim()) {
     await ctx.reply(
-      "Usage: /eliza\\_pair <code> — enter the 6-digit code shown in the Eliza dashboard.",
+      "Usage: /eliza_pair <code> — enter the 6-digit code shown in the Eliza dashboard.",
     );
     return;
   }
@@ -333,75 +344,18 @@ export class TelegramOwnerPairingServiceImpl
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new TelegramOwnerPairingServiceImpl(runtime);
-    if (resolveVerifyService(runtime)) {
-      service.registerPairCommand(runtime);
-      logger.info(
-        {
-          src: "plugin:telegram:owner-pairing",
-          agentId: runtime.agentId,
-        },
-        "TelegramOwnerPairingService started; /eliza_pair command registered",
-      );
-    } else {
-      logger.info(
-        {
-          src: "plugin:telegram:owner-pairing",
-          agentId: runtime.agentId,
-        },
-        "TelegramOwnerPairingService started without /eliza_pair because OWNER_BIND_VERIFY is not registered",
-      );
-    }
+    logger.info(
+      {
+        src: "plugin:telegram:owner-pairing",
+        agentId: runtime.agentId,
+      },
+      "TelegramOwnerPairingService started; TelegramService relays /eliza_pair while OWNER_BIND_VERIFY is registered",
+    );
     return service;
   }
 
   async stop(): Promise<void> {
     pairAttempts.clear();
-  }
-
-  /**
-   * Registers the /eliza_pair command with the active Telegraf bot instance
-   * by looking up the TelegramService from the runtime service registry.
-   * Called during `start`; it is safe to call this before or after the bot
-   * has finished initialising because Telegraf accepts handler registration
-   * at any point before `launch()`.
-   *
-   * If the TelegramService is unavailable, the command is not registered.
-   */
-  private registerPairCommand(runtime: IAgentRuntime): void {
-    const telegramSvc = runtime.getService(TELEGRAM_SERVICE_NAME) as unknown;
-    if (!telegramSvc || typeof telegramSvc !== "object") {
-      logger.warn(
-        { src: "plugin:telegram:owner-pairing", agentId: runtime.agentId },
-        "TelegramService unavailable during owner-pairing start; /eliza_pair command not registered",
-      );
-      return;
-    }
-
-    const bot =
-      "bot" in (telegramSvc as Record<string, unknown>)
-        ? (telegramSvc as { bot: unknown }).bot
-        : null;
-
-    if (
-      !bot ||
-      typeof (bot as Record<string, unknown>).command !== "function"
-    ) {
-      logger.warn(
-        { src: "plugin:telegram:owner-pairing", agentId: runtime.agentId },
-        "Telegraf bot instance not available — /eliza_pair will not be registered",
-      );
-      return;
-    }
-
-    const telegrafBot = bot as import("telegraf").Telegraf<Context>;
-    telegrafBot.command("eliza_pair", async (ctx) => {
-      await handleElizaPairCommand(ctx, runtime);
-    });
-
-    logger.debug(
-      { src: "plugin:telegram:owner-pairing", agentId: runtime.agentId },
-      "/eliza_pair command registered with Telegraf bot",
-    );
   }
 
   async sendOwnerLoginDmLink(params: {

@@ -25,7 +25,10 @@ const deletion = deletionCandidate;
 
 type Context = {
   service: NotesService;
-  remove: (parameters: Record<string, unknown>) => Promise<ActionResult>;
+  remove: (
+    parameters: Record<string, unknown>,
+    text?: string,
+  ) => Promise<ActionResult>;
 };
 
 async function withService(run: (context: Context) => Promise<void>) {
@@ -56,9 +59,10 @@ async function withService(run: (context: Context) => Promise<void>) {
   await service.initialize();
   const remove = async (
     parameters: Record<string, unknown>,
+    text = "Delete the Alpha launch check note.",
   ): Promise<ActionResult> => {
     const request = await boundNotesRequest(runtime, {
-      text: "Delete the Alpha launch check note.",
+      text,
       operations: ["delete"],
     });
     const result = await request.handler(deletion, parameters);
@@ -122,7 +126,15 @@ test("exact ID deletes only its selected note when titles match", () =>
       [target.id, other.id].sort(),
     );
     assert.equal(service.snapshot().revision, before);
-    const result = await remove({ noteId: target.id });
+    // A planner picking one candidate's ID for the same named request is not
+    // the owner's selection; it asks again instead of deleting.
+    const repicked = await remove({ noteId: target.id });
+    assert.equal(repicked.error, "NOTES_AMBIGUOUS_NOTE");
+    assert.equal(service.snapshot().revision, before);
+    const result = await remove(
+      { noteId: target.id },
+      "The one about the jacket.",
+    );
     assert.equal(result.success, true);
     assert.ok(result.data);
     assert.equal(result.data.noteId, target.id);

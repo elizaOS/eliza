@@ -6,7 +6,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildScriptTestInventory,
-  SCRIPT_TEST_LANE_COMMANDS,
   SCRIPT_TEST_RUNNER,
 } from "../lib/script-test-inventory.ts";
 import {
@@ -120,7 +119,6 @@ describe("script-test inventory discovery", () => {
     verifyReadable: false,
     packageScripts: {
       "test:scripts": SCRIPT_TEST_RUNNER,
-      ...SCRIPT_TEST_LANE_COMMANDS,
     },
   });
 

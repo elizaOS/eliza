@@ -452,7 +452,7 @@ test.describe("Settings appearance and model controls", () => {
         .toBeGreaterThan(requestsBeforeRetry);
       await expect(error).toBeVisible();
       await voice.click();
-      await page.getByRole("option", { name: /Sarah/ }).click();
+      await page.getByRole("option", { name: /Talia/ }).click();
       await expect(error).toHaveCount(0);
     });
   }

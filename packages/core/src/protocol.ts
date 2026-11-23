@@ -160,7 +160,6 @@ export {
 } from "./runtime/context-renderer.ts";
 export * from "./runtime/direct-action-routing";
 export * from "./runtime/effect-delivery.ts";
-export * from "./runtime/historical-receipt-wire";
 export {
 	containsToolCallShapedMarkup,
 	extractJsonObjectSpans,
@@ -515,6 +514,7 @@ export { getLogPrefix } from "./utils/log-prefix.js";
 export { userRequestFromAugmentedText } from "./utils/message-text.js";
 export {
 	assertModelOutputComplete,
+	isModelConnectionError,
 	isModelOutputLimitFinishReason,
 	isModelProviderError,
 	isProviderContextOverflowError,

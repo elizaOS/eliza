@@ -4,10 +4,15 @@ import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { afterEach, describe, expect, it } from "vitest";
+import { createNotesClient } from "../client/notes-api.js";
 import { notesRoutes } from "../routes.js";
 import { NotesService } from "../service.js";
 import { NotesStore } from "../store.js";
-import { NOTES_TRASH_RETENTION_MS } from "../trash-retention.js";
+import {
+  NOTES_RECORDING_CLEANUP_VERIFIER_SERVICE,
+  NOTES_TRASH_RETENTION_MS,
+  type NotesRecordingCleanupVerifier,
+} from "../trash-retention.js";
 import type { NotesTrashRecordingCleanup } from "../types.js";
 
 const directories: string[] = [];
@@ -287,6 +292,44 @@ describe("canonical Notes Trash retention", () => {
       false,
     );
     expect(await restarted.readTrashRecordingCleanup()).toEqual([]);
+  });
+
+  it("lets the Notes client erase Trash and finish recording cleanup through the owner routes", async () => {
+    const f = await fixture();
+    const client = createNotesClient({
+      async fetch<T>(path: string, init?: RequestInit): Promise<T> {
+        const method = init?.method === "POST" ? "POST" : "GET";
+        const body =
+          typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+        const response = (await request(
+          f.service,
+          method,
+          path,
+          body,
+          true,
+        )) as { status: number; body: unknown };
+        if (response.status !== 200)
+          throw Object.assign(new Error("refused"), response);
+        return response.body as T;
+      },
+    });
+    const kept = await trashNote(f.service, "Kept in Trash");
+    const entry = await trashNote(f.service, "Voice to erase", "recording-c");
+    const erased = await client.eraseTrash(entry);
+    expect(erased.erased).toBe(1);
+    expect(erased.state.trash?.map((item) => item.note.id)).toEqual([kept.id]);
+    const [receipt] = erased.recordingCleanup;
+    if (!receipt) throw new Error("Missing recording cleanup receipt");
+    expect(receipt).toMatchObject({ noteId: entry.id, audioId: "recording-c" });
+    expect(await client.readTrashRecordingCleanup()).toEqual([receipt]);
+    f.verify(receipt);
+    expect(await client.completeTrashRecordingCleanup(receipt)).toBe(true);
+    expect(await client.readTrashRecordingCleanup()).toEqual([]);
+    const all = await client.eraseTrash({
+      scope: "all",
+      expectedRevision: f.service.snapshot().revision,
+    });
+    expect(all).toMatchObject({ erased: 1, state: { trash: [] } });
   });
 
   it("refuses an audio claim shared by a retained note", async () => {
@@ -768,4 +811,95 @@ describe("canonical Notes Trash retention", () => {
         );
     },
   );
+});
+
+describe("host-registered recording cleanup verifier", () => {
+  async function hostService(
+    lookup: (type: string) => unknown,
+    verifyRecordingCleanup?: NotesRecordingCleanupVerifier["verifyRecordingCleanup"],
+  ) {
+    const directory = await mkdtemp(join(tmpdir(), "canonical-trash-host-"));
+    directories.push(directory);
+    let sequence = 0;
+    const runtime = {
+      agentId: "0c846f26-58e3-4d66-8f86-d848cb331a64",
+      getService: lookup,
+      getServiceLoadPromise: async () => {
+        throw new Error("no shell broadcast in this test");
+      },
+      reportError: () => {},
+    } as unknown as IAgentRuntime;
+    const service = new NotesService(runtime, {
+      store: new NotesStore({ filePath: join(directory, "notes.json") }),
+      createId: () => `note-host-${++sequence}`,
+      threeDayTrash: true,
+      verifyRecordingCleanup,
+    });
+    services.push(service);
+    await service.initialize();
+    const entry = await trashNote(service, "Voice note", "recording-host");
+    const { value } = await service.eraseTrash(entry);
+    const receipt = value.recordingCleanup[0];
+    if (!receipt) throw new Error("Missing recording cleanup receipt");
+    return { service, receipt };
+  }
+
+  it("retires a receipt only after the registered host service confirms it", async () => {
+    const confirmed = new Set<string>();
+    const asked: Array<{ type: string }> = [];
+    const host: NotesRecordingCleanupVerifier & { confirmed: Set<string> } = {
+      confirmed,
+      async verifyRecordingCleanup(receipt) {
+        return this.confirmed.has(receipt.audioId);
+      },
+    };
+    const { service, receipt } = await hostService((type) => {
+      asked.push({ type });
+      return type === NOTES_RECORDING_CLEANUP_VERIFIER_SERVICE ? host : null;
+    });
+    await expect(
+      service.acknowledgeTrashRecordingCleanup(receipt),
+    ).rejects.toMatchObject({ code: "NOTES_TRASH_RECORDING_UNAVAILABLE" });
+    confirmed.add("recording-host");
+    expect(await service.acknowledgeTrashRecordingCleanup(receipt)).toBe(true);
+    expect(await service.readTrashRecordingCleanup()).toEqual([]);
+    expect(asked).toContainEqual({
+      type: NOTES_RECORDING_CLEANUP_VERIFIER_SERVICE,
+    });
+  });
+
+  it("keeps the receipt when no host verifier is registered or it lacks the method", async () => {
+    for (const registered of [null, {}]) {
+      const { service, receipt } = await hostService(() => registered);
+      await expect(
+        service.acknowledgeTrashRecordingCleanup(receipt),
+      ).rejects.toMatchObject({ code: "NOTES_TRASH_RECORDING_UNAVAILABLE" });
+      expect(await service.readTrashRecordingCleanup()).toEqual([receipt]);
+    }
+  });
+
+  it("keeps the receipt when a registered host answers with anything but true", async () => {
+    for (const answer of ["false", 1, {}]) {
+      const host = { verifyRecordingCleanup: async () => answer };
+      const { service, receipt } = await hostService(() => host);
+      await expect(
+        service.acknowledgeTrashRecordingCleanup(receipt),
+      ).rejects.toMatchObject({ code: "NOTES_TRASH_RECORDING_UNAVAILABLE" });
+      expect(await service.readTrashRecordingCleanup()).toEqual([receipt]);
+    }
+  });
+
+  it("prefers the constructor verifier over a registered host service", async () => {
+    const host: NotesRecordingCleanupVerifier = {
+      verifyRecordingCleanup: async () => true,
+    };
+    const { service, receipt } = await hostService(
+      () => host,
+      async () => false,
+    );
+    await expect(
+      service.acknowledgeTrashRecordingCleanup(receipt),
+    ).rejects.toMatchObject({ code: "NOTES_TRASH_RECORDING_UNAVAILABLE" });
+    expect(await service.readTrashRecordingCleanup()).toEqual([receipt]);
+  });
 });

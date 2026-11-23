@@ -10,18 +10,21 @@ import java.util.concurrent.Executor;
 
 /**
  * Android glue for {@link SpeechAudioFocusPolicy}: transient, duckable audio focus for assistant
- * speech (USAGE_ASSISTANT, CONTENT_TYPE_SPEECH), held only while an utterance plays, plus the
+ * speech (USAGE_ASSISTANT, CONTENT_TYPE_SPEECH), held while the owner needs it (while it speaks; the cloud bridge also while it listens), plus the
  * telephony/VoIP mode checks that keep speech and assistant capture off an active call.
  */
 public final class SpeechAudioFocus {
  public interface Changes { void apply(SpeechAudioFocusPolicy.Action action,boolean callActive); }
  public static final AudioAttributes ATTRIBUTES=new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
  private final AudioManager audio;
- private final SpeechAudioFocusPolicy policy=new SpeechAudioFocusPolicy();
+ private final SpeechAudioFocusPolicy policy;
  private final AudioFocusRequest request;
  private AudioManager.OnModeChangedListener modeListener;
 
- public SpeechAudioFocus(Context context,Handler main,Changes changes){
+ public SpeechAudioFocus(Context context,Handler main,Changes changes){this(context,main,false,changes);}
+ /** With {@code pauseOnTransientLoss}, a transient loss reports PAUSE and its regain RESUME instead of STOP. */
+ public SpeechAudioFocus(Context context,Handler main,boolean pauseOnTransientLoss,Changes changes){
+  policy=new SpeechAudioFocusPolicy(pauseOnTransientLoss);
   audio=context.getSystemService(AudioManager.class);
   // Speech content is not auto-ducked by the platform; the duck callback lowers it here instead.
   request=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
@@ -55,6 +58,10 @@ public final class SpeechAudioFocus {
  }
  public SpeechAudioFocusPolicy.Mode mode(){return audio==null?SpeechAudioFocusPolicy.Mode.OTHER:mode(audio.getMode());}
  public boolean callActive(){return SpeechAudioFocusPolicy.callActive(mode());}
+ /** Another app holds a duckable loss: new speech starts lowered. */
+ public boolean ducked(){return policy.ducked();}
+ /** A transient loss paused the owner: {@link #acquire} still reports focus held, so callers check this first. */
+ public boolean paused(){return policy.paused();}
  /** Null once focus is held (requested now or already held); otherwise the refusal code. Main thread. */
  public String acquire(){
   String refusal=SpeechAudioFocusPolicy.admission(mode());
@@ -63,7 +70,7 @@ public final class SpeechAudioFocus {
   if(audio==null)return SpeechAudioFocusPolicy.FOCUS_DENIED;
   return policy.granted(audio.requestAudioFocus(request)==AudioManager.AUDIOFOCUS_REQUEST_GRANTED)?null:SpeechAudioFocusPolicy.FOCUS_DENIED;
  }
- /** The utterance ended or was stopped. Main thread. */
+ /** The owner neither speaks nor listens any more. Main thread. */
  public void release(){
   if(policy.released()&&audio!=null)try{audio.abandonAudioFocusRequest(request);}catch(RuntimeException ignored){/* Nothing held. */}
  }

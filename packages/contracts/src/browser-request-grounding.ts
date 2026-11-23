@@ -39,6 +39,26 @@ const QUOTE_PAIRS: Record<string, string> = {
 // "(please) open|visit|go to|navigate to <address>", then an optional polite
 // suffix and closing punctuation. A closed allow-list; nothing else matches.
 const OPEN_COMMAND = String.raw`(?:open|visit|go\s+to|navigate\s+to)`;
+// A speech transcript may leave the dots between hostname labels as words.
+// Keep each label explicit and let the same address validator check the result.
+// Such a hostname only grounds a model proposal, which the owner reviews: it is
+// never the strict command or a direct request.
+const SPOKEN_DOT_SOURCE = String.raw`\p{Zs}+dot\p{Zs}+`;
+const SPOKEN_ADDRESS_TOKEN = String.raw`\S+(?:${SPOKEN_DOT_SOURCE}\S+)+`;
+const ADDRESS_TOKEN = String.raw`(?:${SPOKEN_ADDRESS_TOKEN}|\S+)`;
+const SPOKEN_DOT = new RegExp(SPOKEN_DOT_SOURCE, "giu");
+const HOST_LABEL_GROUP = String.raw`[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*`;
+const SPOKEN_HOSTNAME = new RegExp(
+  `^${HOST_LABEL_GROUP}(?:${SPOKEN_DOT_SOURCE}${HOST_LABEL_GROUP})+$`,
+  "iu",
+);
+// A spoken first label that starts a phrase, not a hostname: "the dot app",
+// "my dot app", "this dot com".
+const SPOKEN_PROSE_LABELS = new Set(
+  "the a an my your our their his her its this that these those some any".split(
+    " ",
+  ),
+);
 // Everyday verbs that ask for a site. Direct requests only: the router never
 // claims them without the model.
 const EVERYDAY_COMMAND = String.raw`(?:take\s+me\s+to|pull\s+up|bring\s+up|show\s+me|head\s+to|browse\s+to)`;
@@ -51,6 +71,14 @@ const SEARCH_SUFFIX =
 export const BROWSER_SEARCH_QUERY_MAX = 512;
 const SUFFIX =
   /^\s+(?:please|for\s+me|thanks|thank\s+you|(?:would|will|could|can)\s+you)[.,!?]*$/i;
+// Where the owner asks for the address to open, right after it: "in the
+// browser" names the app the strict command already opens it in; "in a new tab"
+// asks for a tab of its own. A private tab is not a placement: that request
+// goes to the model.
+const IN_BROWSER =
+  /^\s+in\s+(?:(?:the|my|your|this)\s+)?(?:web\s+)?browser(?:\s+app)?(?=[\s,.!?]|$)/i;
+const IN_NEW_TAB =
+  /^\s+in\s+(?:a\s+)?(?:new|another|separate|different)\s+(?:browser\s+)?tab(?=[\s,.!?]|$)/i;
 // The word website or site right before or after an address.
 const SITE_BEFORE = /\b(?:web\s?)?site[:,]?\s+(?:(?:at|called|named)\s+)?$/i;
 const SITE_AFTER = /^\s+(?:web\s?)?site\b/i;
@@ -60,6 +88,14 @@ const SITE_AFTER = /^\s+(?:web\s?)?site\b/i;
 // opening") or the address itself ("not youtube.com").
 const OPEN_VERB =
   /\b(?:open(?:s|ed|ing)?|visit(?:s|ed|ing)?|go(?:es|ing)?|went|head(?:s|ed|ing)?|navigat(?:e|es|ed|ing)|tak(?:e|es|en|ing)|took|pull(?:s|ed|ing)?|bring(?:s|ing)?|brought|show(?:s|n|ed|ing)?|load(?:s|ed|ing)?|launch(?:es|ed|ing)?|brows(?:e|es|ed|ing)|access(?:es|ed|ing)?|check(?:s|ed|ing)?)\b/gi;
+// Read a spoken target starting after a known request verb or direct refusal.
+// A raw word scan would mistake "open dot dot" for a host and miss "dot dot com".
+const ADDRESS_INTRO = String.raw`(?:${EVERYDAY_COMMAND}|${OPEN_COMMAND}|${OPEN_VERB.source}|\b(?:not|nor)(?=\p{Zs}+dot\b))[,.:!?]?\p{Zs}+`;
+const SITE_QUALIFIERS = String.raw`(?:(?:the|(?:web\s?)?site|at|called|named)\p{Zs}+)*`;
+const ADDRESS_WORD = new RegExp(
+  `(?:${ADDRESS_INTRO}${SITE_QUALIFIERS}(${SPOKEN_ADDRESS_TOKEN})|(${ADDRESS_TOKEN}))`,
+  "giu",
+);
 // Open verbs joined by "or", "and", "nor", "/" or "&", with their particles
 // ("go to", "pull up"), are one group, and a negation before its first verb
 // governs them all ("don't open or visit x.com"). A list comma joins only
@@ -113,6 +149,8 @@ const TAIL_END =
 type NamePatterns = {
   command: RegExp;
   directRequest: RegExp;
+  spokenCommand: RegExp;
+  spokenRequest: RegExp;
   search: RegExp;
   sentenceStart: RegExp;
   questionStart: RegExp;
@@ -141,6 +179,17 @@ function patterns(assistantName: string): NamePatterns {
     directRequest: new RegExp(
       String.raw`${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`,
       "i",
+    ),
+    // The same two forms around a spoken hostname: the words before it, the
+    // hostname, and the words after it. "Show me the polka dot shoes" names
+    // no hostname, so no "the" comes before one.
+    spokenCommand: new RegExp(
+      String.raw`(${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+)(${SPOKEN_ADDRESS_TOKEN})(\s.*)?$`,
+      "iu",
+    ),
+    spokenRequest: new RegExp(
+      String.raw`(${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+)(${SPOKEN_ADDRESS_TOKEN})(\s.*)?$`,
+      "iu",
     ),
     search: new RegExp(
       String.raw`${lead}(?:please,?\s+)?${SEARCH_COMMAND}\s+(\S.*)$`,
@@ -173,18 +222,40 @@ const LABEL_AFTER = /^(?:-*|\.)[a-z\d]/;
 
 /** The address of a strict open command that is the whole current message:
  * "(please) open|visit|go to|navigate to <address>", with an optional
- * "hey/hi/ok/okay" and the assistant's name before it and a polite suffix and
- * closing punctuation after it. Only this form may skip the model's judgment. */
+ * "hey/hi/ok/okay" and the assistant's name before it, an optional "in the
+ * browser" or "in a new tab", and a polite suffix and closing punctuation
+ * after it. Only this form may skip the model's judgment. */
 export function authoredBrowserDestination(
   text: string,
   assistantName: string = DEFAULT_ASSISTANT_NAME,
 ): string | undefined {
+  return authoredBrowserOpen(text, assistantName)?.href;
+}
+
+/** The strict open command of authoredBrowserDestination with where it asks
+ * the address to open: `newTab` is true only when the owner said "in a new
+ * tab" (or another, separate or different tab). */
+export function authoredBrowserOpen(
+  text: string,
+  assistantName: string = DEFAULT_ASSISTANT_NAME,
+): { href: string; newTab: boolean } | undefined {
   if (unreadable(text)) return;
   const command = patterns(assistantName).command.exec(text.trim());
   if (!command) return;
   let target = command[1];
+  let newTab = false;
   if (command[2]) {
-    if (!SUFFIX.test(command[2])) return;
+    let rest = command[2];
+    const placement = IN_NEW_TAB.exec(rest) ?? IN_BROWSER.exec(rest);
+    if (placement) {
+      newTab = IN_NEW_TAB.test(rest);
+      rest = rest.slice(placement[0].length);
+    }
+    if (
+      !(placement && /^[.,!?]*$/.test(rest)) &&
+      !SUFFIX.test(placement ? rest.replace(/^,/, "") : rest)
+    )
+      return;
     target = target.replace(/,$/, "");
   }
   // Quotes delimit an exact address, so nothing inside them is prose.
@@ -193,12 +264,17 @@ export function authoredBrowserDestination(
     if (QUOTE_PAIRS[quoted[1]] !== quoted[3]) return;
     target = quoted[2];
   } else {
-    // Closing punctuation after a bare host is prose. It is never removed
-    // from a path, query or fragment.
+    // Closing punctuation after a bare host is prose. After a path, query or
+    // fragment it may be either: when the address differs with and without
+    // it, the message is not a strict command. The model proposes the address
+    // and the owner reviews it, instead of the phone guessing whether
+    // "x.com/a." meant the dot. (An empty query "x.com/a?" is the same page.)
     const bare = stripTrailingPunctuation(target, ".,!?");
     if (!/[/?#]/.test(bare.replace(/^https?:\/\//i, ""))) target = bare;
+    else if (webAddress(bare)?.href !== webAddress(target)?.href) return;
   }
-  return webAddress(target)?.href;
+  const href = webAddress(target)?.href;
+  return href ? { href, newTab } : undefined;
 }
 
 /** A direct client request must be a whole-message open command, a polite
@@ -208,16 +284,27 @@ export function directBrowserDestination(
   text: string,
   assistantName: string = DEFAULT_ASSISTANT_NAME,
 ): string | undefined {
+  return directBrowserOpen(text, assistantName)?.href;
+}
+
+/** The direct request of directBrowserDestination with where it asks the
+ * address to open: `newTab` is true only when the owner said "in a new tab",
+ * in the strict command or a polite question ("can you open x.com in a new
+ * tab?"). */
+export function directBrowserOpen(
+  text: string,
+  assistantName: string = DEFAULT_ASSISTANT_NAME,
+): { href: string; newTab: boolean } | undefined {
   if (unreadable(text)) return;
-  const strict = authoredBrowserDestination(text, assistantName);
+  const strict = authoredBrowserOpen(text, assistantName);
   if (strict) return strict;
   const question = patterns(assistantName).directRequest.exec(text.trim());
   if (question) {
-    const destination = authoredBrowserDestination(
+    const destination = authoredBrowserOpen(
       `Open ${question[1]}${question[3] ?? ""}`,
     );
     if (!destination) return;
-    const url = new URL(destination),
+    const url = new URL(destination.href),
       tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
     if (
       FILE_TYPE_TLDS.has(tld) &&
@@ -230,9 +317,63 @@ export function directBrowserDestination(
   const bare = text.trim(),
     url = webAddress(bare);
   if (!url) return;
+  // As in the strict command: a closing mark that changes a typed path,
+  // query or fragment may be the sentence's, so the owner reviews the open.
+  if (webAddress(stripTrailingPunctuation(bare, ".,!?"))?.href !== url.href)
+    return;
   const tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
   if (FILE_TYPE_TLDS.has(tld) && !/^(?:https?:\/\/|www\.)/i.test(bare)) return;
-  return url.href;
+  return { href: url.href, newTab: false };
+}
+
+/** The hostname of a whole-message open request whose dots were spoken as
+ * words: "open example dot com", "can you pull up maps dot example dot com?".
+ * It only grounds a model proposal for that exact hostname: it is never the
+ * strict command or a direct request, so the owner reviews the open. A phrase
+ * ("the dot app", "my dot app") is not a hostname. Nor is a file name ("main
+ * dot py"), unless an open command places it "in the browser" or "in a new
+ * tab", or a question or everyday command says website or site right after it
+ * ("can you open notes dot app website?"). A question that only names the
+ * browser or a new tab keeps it a file name. */
+export function spokenBrowserDestination(
+  text: string,
+  assistantName: string = DEFAULT_ASSISTANT_NAME,
+): string | undefined {
+  return spokenBrowserOpen(text, assistantName)?.href;
+}
+
+/** spokenBrowserDestination with the owner's placement: "open example dot com
+ * in a new tab" reads newTab like the typed address would. The result only
+ * places a reviewed open; it never makes the request direct. */
+export function spokenBrowserOpen(
+  text: string,
+  assistantName: string = DEFAULT_ASSISTANT_NAME,
+): ReturnType<typeof directBrowserOpen> {
+  if (unreadable(text)) return;
+  const names = patterns(assistantName);
+  const request = text.trim();
+  const spoken =
+    names.spokenCommand.exec(request) ?? names.spokenRequest.exec(request);
+  if (!spoken) return;
+  const [, before, address, after = ""] = spoken;
+  const words = stripTrailingPunctuation(address, ".,!?");
+  if (!SPOKEN_HOSTNAME.test(words)) return;
+  // The words around the hostname read as they do around a typed one.
+  const open = directBrowserOpen(
+    `${before}${words.replace(SPOKEN_DOT, ".")}${address.slice(words.length)}${after}`,
+    assistantName,
+  );
+  if (!open) return;
+  const labels = new URL(open.href).hostname.replace(/^www\./, "").split(".");
+  if (SPOKEN_PROSE_LABELS.has(labels[0])) return;
+  if (
+    FILE_TYPE_TLDS.has(labels[labels.length - 1]) &&
+    !IN_BROWSER.test(after) &&
+    !IN_NEW_TAB.test(after) &&
+    !SITE_AFTER.test(after)
+  )
+    return;
+  return open;
 }
 
 /** The destination to open for a model-proposed browser URL, built from the
@@ -271,9 +412,20 @@ export function groundBrowserDestination(
     )
   )
     return;
+  // A typed piece of a mixed spoken hostname ("example.com dot ai") never
+  // opens on its own. Any other spoken word after a typed host leaves it typed
+  // ("youtube.com dot ever").
+  const literal = typed.filter(({ piece }) => !piece);
+  // A whole utterance with spoken dots may have no literal URL token. Exact
+  // confirmation of the normalized hostname still comes from the owner text,
+  // and that open is reviewed: it is never a direct request.
+  if (literal.length === 0) {
+    const spoken = spokenBrowserDestination(userText, assistantName);
+    if (spoken === proposed.href) return spoken;
+  }
   const strict = authoredBrowserDestination(userText, assistantName);
   const strictHost = strict && new URL(strict).host;
-  const candidates = typed.filter(
+  const candidates = literal.filter(
     ({ url, webSignal }) =>
       url.port === proposed.port &&
       (webSignal ||
@@ -436,14 +588,32 @@ function webAddress(token: string): URL | undefined {
 }
 
 // Every web address in the message, each word read with and without the
-// sentence punctuation around it.
+// sentence punctuation around it. `piece` marks a word inside a spoken
+// hostname that reads as a longer address ("example.com" in "example.com dot
+// ai", "maps dot example.com"): it names that address, not its own.
 function typedAddresses(
   text: string,
   assistantName: string,
-): { url: URL; webSignal: boolean; negated: boolean }[] {
-  const found: { url: URL; webSignal: boolean; negated: boolean }[] = [];
-  for (const word of text.matchAll(/\S+/g)) {
-    const lead = word[0].replace(/^[("'“‘«<[]+/u, "");
+): { url: URL; webSignal: boolean; negated: boolean; piece: boolean }[] {
+  const found: {
+    url: URL;
+    webSignal: boolean;
+    negated: boolean;
+    piece: boolean;
+  }[] = [];
+  const spoken = [...addressWords(text)].filter(({ value }) => {
+    const words = stripTrailingPunctuation(
+      value.replace(/^[("'“‘«<[]+/u, ""),
+      ")]>\"'”’».,!?;:",
+    );
+    return (
+      SPOKEN_HOSTNAME.test(words) &&
+      webAddress(words.replace(SPOKEN_DOT, ".")) !== undefined
+    );
+  });
+  for (const match of text.matchAll(/\S+/g)) {
+    const word = { value: match[0], index: match.index };
+    const lead = word.value.replace(/^[("'“‘«<[]+/u, "");
     const tokens = new Set([
       lead,
       stripTrailingPunctuation(lead, ")]>\"'”’».,!?;:").replace(/['’]s$/u, ""),
@@ -453,7 +623,7 @@ function typedAddresses(
       if (!url) continue;
       // The nearby words only: a governing verb or "website" is close by.
       const before = text.slice(Math.max(0, word.index - 500), word.index);
-      const after = text.slice(word.index + word[0].length);
+      const after = text.slice(word.index + word.value.length);
       found.push({
         url,
         webSignal:
@@ -461,6 +631,10 @@ function typedAddresses(
           SITE_BEFORE.test(before.slice(-40)) ||
           SITE_AFTER.test(after),
         negated: refused(text, word, assistantName),
+        piece: spoken.some(
+          ({ value, index }) =>
+            word.index >= index && word.index < index + value.length,
+        ),
       });
     }
   }
@@ -470,7 +644,7 @@ function typedAddresses(
 // Every word of the message that names the host, read as an address or not:
 // "**x.com**", "http://x.com", "x.com…", "X．COM" and "www.x.com" all name
 // x.com. A "www." label before the host is not part of another host.
-function hostWords(text: string, host: string): RegExpExecArray[] {
+function hostWords(text: string, host: string) {
   // "https://www./" names no host.
   if (!host) return [];
   const names = (form: string) => {
@@ -490,14 +664,27 @@ function hostWords(text: string, host: string): RegExpExecArray[] {
     }
     return false;
   };
-  return [...text.matchAll(/\S+/g)].filter((word) => {
-    const read = plain(word[0].replace(DOTS, "."));
+  // Each word alone and each spoken hostname whole, so neither reading hides a
+  // refusal: "don't open x.com dot dot dot" and "don't open x dot com".
+  const words = [...text.matchAll(/\S+/g)].map((word) => ({
+    value: word[0],
+    index: word.index,
+  }));
+  return [...words, ...addressWords(text)].filter((word) => {
+    const read = plain(word.value.replace(DOTS, ".").replace(SPOKEN_DOT, "."));
     return (
       names(read.toLowerCase()) ||
       (/[^\p{ASCII}]/u.test(read) &&
         names(read.replace(HOST_RUN, asciiHost).toLowerCase()))
     );
   });
+}
+
+function* addressWords(text: string) {
+  for (const match of text.matchAll(ADDRESS_WORD)) {
+    const value = match[1] ?? match[2];
+    yield { value, index: match.index + match[0].length - value.length };
+  }
 }
 
 // A host as a URL reads it, so "münchen.de" names xn--mnchen-3ya.de.
@@ -514,10 +701,10 @@ function asciiHost(run: string): string {
 // a bare "don't" or "never".
 function refused(
   text: string,
-  word: RegExpExecArray,
+  word: { value: string; index: number },
   assistantName: string,
 ): boolean {
-  const end = word.index + word[0].length;
+  const end = word.index + word.value.length;
   return (
     BARE_END.test(plain(text.slice(-200))) ||
     negatesOpen(text, word.index, assistantName) ||
