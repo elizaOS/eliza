@@ -3549,6 +3549,8 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     ["26", "牙医预约", "删除牙医预约", "牙医预约", 0],
     ["27", "치과", "치과를 삭제해줘", "치과", 0],
     ["28", "Dentist", "Delete the dentistry booking", "Dentist", 1],
+    ["29", "歯医者", "小児歯医者を削除して", "歯医者", 1],
+    ["30", "牙医预约", "删除儿童牙医预约", "牙医预约", 1],
   ])(
     "reads a whole title written without spaces as the event named (%s: %s)",
     async (id, title, text, query, left) => {
