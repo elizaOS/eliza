@@ -188,7 +188,10 @@ webhook. The billing snapshot and the entitlement with its keys stay open, so
 an account funded only by `credits add` still shows its balance. The maps
 capabilities route stays open and answers `{available: false}` with maps off
 (`services/maps`). Managed Google gates the Google routes and their callback.
-Text inference needs no capability but inference. Sign-in, native client,
+Text inference needs no capability but inference. An inference model’s optional
+`defaultMaxTokens` is its provider’s verified maximum generation length for
+that exact upstream model, between 1 and 2,000,000. Profiles that omit it
+continue to serve requests with an explicit output limit. Sign-in, native client,
 public service and return page routes need none.
 
 ```quint

@@ -32,7 +32,10 @@ const Usage = Schema.Struct({
 })
 
 function profiledModels(settings: InferenceSettings): ProfiledModel[] {
-  return settings.models.map((offer) => ({ id: offer.id, provider: offer.provider, upstreamModel: offer.upstreamModel, vision: offer.vision }))
+  return settings.models.map(({ defaultMaxTokens, ...offer }) => ({
+    ...offer,
+    defaultMaxTokens: defaultMaxTokens === undefined ? { tag: "NoOutputDefault" } : { tag: "OutputDefaultOf", tokens: defaultMaxTokens },
+  }))
 }
 
 export effect function readPriceRows(tx: Tx): PriceRow[]!StoreFailure {

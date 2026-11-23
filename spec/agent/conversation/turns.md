@@ -3,7 +3,8 @@
 One message in, one reply out. `POST /api/conversations/:id/messages`
 (Root) takes `{text, images?, channelType, metadata?, task?,
 clientMessageId?}` and answers `{text, agentName, messageId, userMessageId,
-actionResults: [{action, data}], taskChoices?, failureKind?}`. The boundary
+actionResults: [{action, data}], taskChoices?, failureKind?, planAction?,
+retryAfterMs?}`. The boundary
 checks the body before this machine sees it: `channelType` is `DM` or
 `VOICE_DM`; images follow core's chat-upload limits; `metadata` is a JSON
 object of at most 64 KiB stored with the user message, of which only
@@ -190,6 +191,35 @@ pure def alwaysAnsweredKeysNameTheirReply(s: Turns): bool =
 pure def sometimesAccountFailureStored(s: Turns): bool = s.replies.some(r => failureKind(r.kind) == "insufficient_credits")
 pure def sometimesTimedOut(s: Turns): bool = s.replies.some(r => r.kind == TimedOut)
 pure def sometimesKeyLeftWithoutReply(s: Turns): bool = s.records.some(q => q.phase == KeyUnanswered)
+```
+
+### A failed reply names the owner's fix, and only a live rate limit carries its wait
+
+The fix follows the failure kind: `sign-in` for a refused credential,
+`funding` for spent credits or allowance, `retry` for a provider issue. A
+rate limit, a timeout and a stop name none: waiting, or sending again, is
+the fix. A rate-limited reply answered live carries `retryAfterMs`, the
+milliseconds from the answer to the binding's retry time, never negative.
+A replay, the history and a limit whose retry time is unknown carry none,
+so a client never restarts a stale wait.
+
+```quint
+pure def accountFailed(k: ReplyKind): bool = match k { | AccountFailed(_) => true | _ => false }
+pure def planActionOf(k: ReplyKind): str =
+  if (failureKind(k) == "credential_invalid") "sign-in"
+  else if (failureKind(k) == "insufficient_credits") "funding"
+  else if (failureKind(k) == "provider_issue") "retry"
+  else ""
+pure def retryAtIn(k: ReplyKind): int = match k { | AccountFailed(x) => B::retryAtOf(x.failure) | _ => -1 }
+pure def providerWaitMs(k: ReplyKind, now: int): int =
+  if (retryAtIn(k) <= 0) -1 else if (retryAtIn(k) > now) retryAtIn(k) - now else 0
+pure val endedValues = Set(Answered, TimedOut, Aborted, AccountFailed({ failure: B::ProviderIssue }), AccountFailed({ failure: B::InsufficientCredits }),
+  AccountFailed({ failure: B::CredentialInvalid({ version: 1 }) }), AccountFailed({ failure: B::LimitReached({ retryAt: 0 }) }),
+  AccountFailed({ failure: B::LimitReached({ retryAt: 200000 }) }))
+pure def lawOnlyAnAccountFailureNamesAFix(ended: ReplyKind): bool = planActionOf(ended) != "" implies accountFailed(ended)
+pure def lawARateLimitNamesNoFix(ended: ReplyKind): bool = failureKind(ended) == "limit_reached" implies planActionOf(ended) == ""
+pure def lawOnlyARateLimitCarriesAWait(ended: ReplyKind, now: int): bool = providerWaitMs(ended, now) >= 0 implies failureKind(ended) == "limit_reached"
+pure def lawAWaitEndsAtTheRetryTime(ended: ReplyKind, now: int): bool = providerWaitMs(ended, now) > 0 implies now + providerWaitMs(ended, now) == retryAtIn(ended)
 ```
 
 ### After a restart a repeat replays the stored reply, and a turn the restart cut is never run again

@@ -144,7 +144,9 @@ A call that offers tools, names the tool to use or asks for a schema gets one
 result: the text, every tool call with its arguments, the finish reason and
 the token use. Any other call gets the text alone. Tool results follow the
 call that asked for them; a result no call asked for is sent as the person's
-text. An answer with neither text nor a tool call is a provider issue.
+text. An answer with neither text nor a tool call is a provider issue. A text
+request sends an output cap only when the caller or its admitted lease sets
+one. Otherwise the backend owns the output limit.
 
 ```quint
 type ChatAsk = { offersTools: bool, choosesTool: bool, asksSchema: bool }
