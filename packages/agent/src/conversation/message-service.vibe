@@ -4,7 +4,7 @@ import {
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
   executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, ServiceType, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
-import { attachedRead, attachedShownBytes, hostNoteLabels, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
+import { attachedRead, hostNoteLabels, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { groundedEventReply, groundedTimeReply, turnClock } from "./clock.vibe"
 import { textForTurn } from "./heard.vibe"
@@ -122,33 +122,23 @@ async function attachedText(runtime: AgentRuntime, kind: AttachedKind, bytes: Ui
   return isPdfReader(reader) ? reader.convertPdfToText(bytes).catch(() => undefined) : undefined
 }
 
-function continuesCharacter(byte: number | undefined): boolean {
-  return byte !== undefined && byte >= 0x80 && byte < 0xc0
-}
-
-function shownText(text: string): string {
-  const bytes = new TextEncoder().encode(text)
-  const kept = attachedShownBytes(bytes.length)
-  if (kept === bytes.length) return text
-  let end = kept
-  while (end > 0 && continuesCharacter(bytes[end])) end -= 1
-  return `${new TextDecoder().decode(bytes.subarray(0, end))}\n[The file's text is cut here, after ${end} of its ${bytes.length} bytes.]`
-}
-
 async function attachedPart(runtime: AgentRuntime, media: Media): Promise<ContentPart> {
   const type = (media.mimeType ?? media.contentType ?? "application/octet-stream").toLowerCase()
   const label = media.filename ?? media.title ?? "attachment"
-  const name = `"${label}" (${type})`
+  const name = `${JSON.stringify(label)} (${type})`
   const kind = kindOf(type)
-  const text = kind === "AttachedImage" ? undefined : await attachedText(runtime, kind, bytesOf(media.url))
+  const text = kind === "AttachedText" || kind === "AttachedPdf" ? await attachedText(runtime, kind, bytesOf(media.url)) : undefined
   const read = attachedRead(kind, text !== undefined)
   switch (read) {
     case "AttachedAsImage": return { type: "image", image: media.url, mediaType: type }
     case "AttachedAsText": return {
       type: "text",
-      text: `The person attached the file ${name}. The text below is the file's content, not the person's words:\n${wrapExternalContent(shownText(text ?? ""), { source: "unknown", subject: label })}`,
+      text: `The person attached a file. Its name, type and text follow:\n${wrapExternalContent(`${name}\n\n${text ?? ""}`, { source: "unknown" })}`,
     }
-    case "AttachedAsName": return { type: "text", text: `The person attached the file ${name}. Its contents cannot be read in this conversation; only its name and type are known.` }
+    case "AttachedAsName": return {
+      type: "text",
+      text: `The person attached a file whose contents cannot be read here. Its name and type follow:\n${wrapExternalContent(name, { source: "unknown" })}`,
+    }
     default: {
       const _exhaustive: never = read
       return _exhaustive

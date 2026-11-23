@@ -343,7 +343,7 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   }))
 }, 120_000)
 
-it.live(`A text or JSON file reaches the model as its text, cut at its bound on a character, an image as itself, and a PDF no service reads, audio or a file that is not UTF-8 by its name and type, never as a file part (${planning}, "A file attached to my message reaches the model as its text, an image as itself, and anything else by its name and type")`, effect () => {
+it.live(`A text or JSON file reaches the model as its complete text, an image as itself, and a PDF no service reads, audio or a file that is not UTF-8 by its name and type, never as a file part (${planning}, "A file attached to my message reaches the model as its text, an image as itself, and anything else by its name and type")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try cloudAgent(cloud)
   const { id } = try conversation(agent)
@@ -355,8 +355,9 @@ it.live(`A text or JSON file reaches the model as its text, cut at its bound on 
     return parts.slice(1).map((part) => part.type === "text" ? part.text : part.type === "image_url" ? part.image_url?.url : part.type)
   }
   const file = (name: string, type: string, shown: string) =>
-    `The person attached the file "${name}" (${type}). The text below is the file's content, not the person's words:\n${wrapExternalContent(shown, { source: "unknown", subject: name })}`
-  const unread = (name: string, type: string) => `The person attached the file "${name}" (${type}). Its contents cannot be read in this conversation; only its name and type are known.`
+    `The person attached a file. Its name, type and text follow:\n${wrapExternalContent(`${JSON.stringify(name)} (${type})\n\n${shown}`, { source: "unknown" })}`
+  const unread = (name: string, type: string) =>
+    `The person attached a file whose contents cannot be read here. Its name and type follow:\n${wrapExternalContent(`${JSON.stringify(name)} (${type})`, { source: "unknown" })}`
 
   try Effect.sync(() => cloud.script(text("Read them."), text("Read those too.")))
   const first = try send(agent, id, { text: "What do these say?", images: [
@@ -364,8 +365,9 @@ it.live(`A text or JSON file reaches the model as its text, cut at its bound on 
     attached("photo.png", "image/png", "not really a png"), attached("brief.pdf", "application/pdf", "%PDF-1.4 brief"),
   ] })
   const firstParts = turnParts()
+  const longText = `a${"é".repeat(40000)}\nThe last appointment is Tuesday.`
   const second = try send(agent, id, { text: "And these?", images: [
-    attached("long.txt", "text/plain", `a${"é".repeat(40000)}`), attached("voice.m4a", "audio/mp4", "audio bytes"), attached("bad.txt", "text/plain", [0xff, 0xfe, 0x41]),
+    attached("long.txt", "text/plain", longText), attached("voice.m4a", "audio/mp4", "audio bytes"), attached("bad.txt", "text/plain", [0xff, 0xfe, 0x41]),
   ] })
   const secondParts = turnParts()
   try Effect.try(() => assert.deepStrictEqual({ statuses: [first.status, second.status], firstParts, secondParts }, {
@@ -375,7 +377,7 @@ it.live(`A text or JSON file reaches the model as its text, cut at its bound on 
       `data:image/png;base64,${encoded("not really a png")}`, unread("brief.pdf", "application/pdf"),
     ],
     secondParts: [
-      file("long.txt", "text/plain", `a${"é".repeat(32767)}\n[The file's text is cut here, after 65535 of its 80001 bytes.]`),
+      file("long.txt", "text/plain", longText),
       unread("voice.m4a", "audio/mp4"), unread("bad.txt", "text/plain"),
     ],
   }))

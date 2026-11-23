@@ -274,32 +274,26 @@ Each attachment of the person's latest message follows its text (develop
 `plugin-assistant` `services/message/attachments.ts`). An image is an image
 part. A plain-text, CSV, Markdown or JSON file is read as UTF-8, and a PDF
 through the PDF service when the host loads one; either reaches the model
-as a line naming the file and its type and saying the text that follows is
-the file's, not the person's words, then that text as external content, cut
-at a character boundary after 65,536 bytes (the page develop's attachment
-read served) with a line saying where. Audio, video, a PDF no service reads
-and a file that is not valid UTF-8 reach the model as a line naming the
-file and its type and saying its contents cannot be read here. No model
+with its name, type and complete text in one external content block. The
+model service can refuse a request that exceeds its size limit. Audio,
+video, a PDF no service reads and a file with invalid UTF-8 are reported as
+unreadable. Their names and types stay in an external content block. No model
 call carries a file part: neither the Cloud nor an own-key provider reads
 one, and a part a provider refuses fails the whole turn.
 
 ```quint
 type AttachedKind = AttachedImage | AttachedText | AttachedPdf | AttachedMedia
 type AttachedRead = AttachedAsImage | AttachedAsText | AttachedAsName
-pure val attachedTextMaxBytes: int = 65536
 pure def attachedRead(attachedKind: AttachedKind, textRead: bool): AttachedRead =
   if (attachedKind == AttachedImage) AttachedAsImage
   else if ((attachedKind == AttachedText or attachedKind == AttachedPdf) and textRead) AttachedAsText
   else AttachedAsName
-pure def attachedShownBytes(textBytes: int): int = if (textBytes > attachedTextMaxBytes) attachedTextMaxBytes else textBytes
-pure val textBytesValues = Set(0, 1, 65535, 65536, 65537, 1048576)
 pure def lawOnlyAnImageReachesTheModelAsItself(attachedKind: AttachedKind, textRead: bool): bool =
   (attachedRead(attachedKind, textRead) == AttachedAsImage) iff (attachedKind == AttachedImage)
 pure def lawAudioAndVideoReachTheModelOnlyByName(textRead: bool): bool = attachedRead(AttachedMedia, textRead) == AttachedAsName
-pure def lawAFileIsReadAsTextOnlyWhenItsTextWasRead(attachedKind: AttachedKind, textRead: bool): bool =
-  attachedRead(attachedKind, textRead) == AttachedAsText implies textRead
-pure def lawAttachedTextIsWholeUpToItsBound(textBytes: int): bool =
-  attachedShownBytes(textBytes) <= attachedTextMaxBytes and (textBytes <= attachedTextMaxBytes implies attachedShownBytes(textBytes) == textBytes)
+pure def lawAReadableDocumentReachesTheModelAsText(attachedKind: AttachedKind, textRead: bool): bool =
+  (attachedRead(attachedKind, textRead) == AttachedAsText) iff
+    ((attachedKind == AttachedText or attachedKind == AttachedPdf) and textRead)
 ```
 
 ### A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse
