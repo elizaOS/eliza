@@ -543,6 +543,9 @@ it("tells the reviewer a successful retry supersedes a failed attempt", async ()
   expect(f.reviewPrompts[0]).toContain(
     "a later successful retry supersedes the failed attempt",
   );
+  expect(f.reviewPrompts[0]).toContain(
+    "A success of the same action for a different resource, such as a text that reached a different person, is not a retry",
+  );
 });
 
 it("still degrades a false completion claim after a failed action", async () => {
