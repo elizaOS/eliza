@@ -1388,6 +1388,8 @@ function eachCheckB() {
     assert.deepEqual(failed, ["review"], text);
     assert.ok(said("types", /./)?.ok, text);
     assert.ok(said("proof", /^hall\.ts: all \d+ obligations proved/), text);
+    const compiled = await tool("tsc", ["--ignoreConfig", "--noEmit", "--target", "es2023", "--module", "nodenext", "--strict", "--skipLibCheck", path.join(root, "gen/hall.ts")], project);
+    assert.ok(compiled.ok, compiled.out);
     const hall = await import(path.join(root, "gen/hall.ts"));
     // A seat equal to a booked one, though another object, is booked already.
     const booked = hall.step(hall.initial, { type: "book", row: 1, kind: "Adult" });
@@ -4114,4 +4116,42 @@ test("a trace integer of 16 or more digits that Quint wrote as a BigNumber decod
   assert.equal(bigNumberInteger({ s: n(1), e: n(29), c: [n(10), n(0), n(1)] }), 10n ** 29n + 1n);
   assert.equal(bigNumberInteger({ s: n(1), e: n(0), c: [n(15)] }), undefined, "1.5 is not an integer");
   assert.equal(bigNumberInteger({ s: n(1), e: n(15), c: [n(10)], d: n(0) }), undefined, "a record with other fields is not a BigNumber");
+});
+
+test("the lint refuses, in a project's own code, a comment that is neither a citation nor a tool directive, an effect hook, a timer, a console call, inline config that would hide one, and one more than a listed file keeps", async () => {
+  const { ESLint } = await import("eslint");
+  const eslint = new ESLint({ cwd: project });
+  const found = async (file: string, lines: string[]) => (await eslint.lintText(lines.join("\n"), { filePath: path.join(project, file) }))[0]!.messages
+    .filter((m) => m.fatal || m.ruleId === "no-console" || m.ruleId?.startsWith("code/")).map((m) => `${m.line} ${m.ruleId ?? "inline config"}`);
+  const specFile = "spec/app/index.md";
+  assert.deepEqual(await found("apps/app/src/probe.vibe", [
+    `// ${specFile}, "Story: Say hello"; ${specFile}, "The number of greetings is never negative"`,
+    `/* ${specFile}, "Story: Say hello" */`,
+    "//@ ghost",
+    "/** @model spec/app/index.md */",
+    "// a note",
+    "/** What it is. */",
+    "//@ pure-ish",
+    "useEffect(() => {}, []);",
+    "window.setTimeout(() => {}, 1);",
+    "requestAnimationFrame(() => {});",
+    `console.log("seen");`,
+    "const later = React.useLayoutEffect;",
+    `globalThis["queueMicrotask"](later);`,
+    "// eslint-disable-next-line no-undef -- a global the page defines",
+  ]), ["5 code/comments", "6 code/comments", "7 code/comments", "8 code/effects", "9 code/effects", "10 code/effects", "11 no-console", "12 code/effects", "13 code/effects"]);
+  const hiding = [["useEffect(() => {}, []); // eslint-disable-line"], ["/* eslint-disable */", "// a note"], ["/* eslint-disable code/comments, code/effects -- it must */", "setTimeout(() => {}, 1);"], ["/* eslint code/comments: off, no-console: off */", `console.log("seen");`], ["// eslint-disable-next-line no-console -- it must", `console.log("seen");`]];
+  assert.deepEqual(await Promise.all(hiding.map((lines) => found("apps/app/src/probe.vibe", lines))), hiding.map(() => ["1 inline config"]));
+  assert.deepEqual(await found("packages/ui/src/components/probe.vibe", ["/** What a component takes, which the stories generator reads. */", "export function Probe() {", "  /** inside it */", "  return 1;", "}", "// a note"]), ["3 code/comments", "6 code/comments"]);
+  const consoleLines = (count: number) => Array.from({ length: count }, () => 'console.warn("seen");');
+  const logger = "packages/core/src/logger.vibe";
+  assert.deepEqual(await found(logger, consoleLines(3)), []);
+  assert.deepEqual(await found(logger, consoleLines(4)), ["1 code/console", "2 code/console", "3 code/console", "4 code/console"]);
+  const message = async (file: string) => (await eslint.lintText(consoleLines(4).join("\n"), { filePath: path.join(project, file) }))[0]!.messages
+    .filter((m) => m.ruleId === "no-console" || m.ruleId === "code/console").map((m) => m.message);
+  assert.deepEqual(await message(logger), await message("apps/app/src/probe.vibe"));
+  const { default: config } = await import(path.join(project, "eslint.config.js"));
+  const [file, left] = Object.entries(config.find((block: { rules?: Record<string, unknown> }) => block.rules?.["code/comments"]).rules["code/comments"][1].left as Record<string, number>).find(([file]) => file.endsWith(".vibe"))!;
+  const notes = (n: number) => Array.from({ length: n }, () => "// a note");
+  assert.deepEqual([(await found(file, notes(left))).length, (await found(file, notes(left + 1))).length], [0, left + 1]);
 });
