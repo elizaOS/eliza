@@ -142,12 +142,11 @@ interface Consumer {
   readonly options: (mode: string, signing: "none" | "partial" | "all", extra?: Partial<BuildAndroid>) => BuildAndroid
 }
 
-effect function consumer() {
+effect function consumer(apks: "standard" | "with-rejections") {
   const path = try Path.Path
   if (tools.kind === "missing") return undefined
   const work = try scratch("android-build")
   const signer = try Effect.try(() => testSigner(tools, work, "release"))
-  const other = try Effect.try(() => testSigner(tools, work, "other"))
   const prebuilt = path.join(work, "prebuilt")
   const apk = (name: string, owner: typeof signer, assets: Readonly<Record<string, string>>) =>
     Effect.try(() => buildApk(tools, { directory: prebuilt, manifest: MANIFEST, signer: owner, name, assets }))
@@ -155,8 +154,11 @@ effect function consumer() {
     try apk(`${variant}-debug`, signer, { "variant.txt": `${variant} debug` })
     try apk(`${variant}-release`, signer, { "variant.txt": `${variant} release` })
   }
-  try apk("sideload-other", other, { "variant.txt": "sideload release" })
-  try apk("launcher-model", signer, { "variant.txt": "launcher release", "models/tiny.gguf": "GGUF" })
+  if (apks === "with-rejections") {
+    const other = try Effect.try(() => testSigner(tools, work, "other"))
+    try apk("sideload-other", other, { "variant.txt": "sideload release" })
+    try apk("launcher-model", signer, { "variant.txt": "launcher release", "models/tiny.gguf": "GGUF" })
+  }
   try writeTree(work, { "gradle.mjs": GRADLE, "verify.mjs": VERIFY })
   const repo = try scratchRepo("android-build-consumer", {
     "host/.eliza-consumer-profile.json": JSON.stringify({ signing: { storeFile: SIGNING[0], storePassword: SIGNING[1], keyAlias: SIGNING[2], keyPassword: SIGNING[3] }, runtimeMain: null }),
@@ -221,7 +223,7 @@ it.effect.skipIf(skipped !== null)(`Refuse bad requests before Gradle and replac
   provide NodeServices.layer {
     const files = try FileSystem.FileSystem
     const path = try Path.Path
-    const fixture = try consumer()
+    const fixture = try consumer("with-rejections")
     if (fixture === undefined) return
     const output = path.join(fixture.root, "artifacts")
 
@@ -268,7 +270,7 @@ it.effect.skipIf(skipped !== null)(`Publish a debug-only set without stale relea
   provide NodeServices.layer {
     const files = try FileSystem.FileSystem
     const path = try Path.Path
-    const fixture = try consumer()
+    const fixture = try consumer("standard")
     if (fixture === undefined) return
     const output = path.join(fixture.root, "artifacts")
     const archived = path.join(fixture.root, "archive")
