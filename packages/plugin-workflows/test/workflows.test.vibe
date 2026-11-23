@@ -11,7 +11,7 @@ import {
 import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
 import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
 import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
-import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
+import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort } from "../src/service/host.vibe"
 import { workflowRoutes } from "../src/routes.vibe"
 import { workflowHttpError } from "../src/client/workflow-client.vibe"
@@ -88,7 +88,7 @@ interface Phone {
   notes: readonly { readonly id: string; readonly title: string; readonly text: string }[]
 }
 
-effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads } = {}) {
+effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests } = {}) {
   const db = try acquireRelease(promise(() => openDatabase()), (opened) => promise(() => opened.close()))
   const wakeups = new Map<string, { readonly dueAt: number; readonly metadata: Readonly<Record<string, string | number>> }>()
   const notices: WorkflowNotice[] = []
@@ -109,7 +109,7 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
     draft: draft === undefined ? undefined : (prompt) => Effect.suspend(() => {
       const text = draft(prompt)
       return text === undefined ? Effect.never : succeed(text)
-    }), nativeDigests: undefined, google: options.google,
+    }), nativeDigests: options.native, google: options.google,
     notify: (notice) => sync(() => { notices.push(notice) }),
     scheduler: {
       set: (key, dueAt, metadata) => sync(() => { wakeups.set(key, { dueAt, metadata }) }),
@@ -410,7 +410,9 @@ it.live('Run a digest over a live Google source read through managed Google (spe
       }),
       calendarFeed: () => Promise.resolve({ calendarId: "work@example.com", events: [], syncedAt: new Date().toISOString() }),
     } as unknown as ManagedGoogleReads
-    const rig = try harness({ google, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
+    const reads: string[] = []
+    const native: WorkflowNativeDigests = { grant: () => succeed({ timeZone: "UTC" }), read: (selection) => sync(() => { reads.push(selection.sourceId); return "Water the plants" }) }
+    const rig = try harness({ google, native, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
     const protocol = hostedDigestProtocol(rig.request)
     const [account] = try protocol.liveAccounts()
     const calendars = try protocol.liveCalendars(account)
@@ -430,6 +432,17 @@ it.live('Run a digest over a live Google source read through managed Google (spe
     const inbox = try digestInbox("scope-google")
     const results = try inbox.sync(protocol, 1)
     try check(() => assert.deepStrictEqual([done.status, results.map((result) => result.status), prompts.some((prompt) => prompt.includes("live_selected_google_read") && prompt.includes("Release"))], ["finished", ["finished"], true], done.error))
+
+    const phoneLive = { provider: "native", ownerId: owner, agentId: "agent", ...device, sourceId: "tasks", revision: "a".repeat(64) }
+    const phoneSaved = try protocol.mutate("sources", { id: "phone-1", kind: "tasks", label: "Tasks", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, live: phoneLive, confirmed: true })
+    const phoneRevision = (phoneSaved.source as { readonly revision: string }).revision
+    const asked = { sourceId: "phone-1", sourceRevision: phoneRevision, mutationId: "dossier-1", confirmed: true }
+    const dossier = try protocol.mutate("dossier", asked)
+    const dossierRun = (dossier.execution as { readonly id: string }).id
+    try protocol.mutate("sources/revoke", { id: "phone-1", confirmed: true })
+    const replayed = try protocol.mutate("dossier", asked)
+    const afterRevoke = try Effect.flip(rig.request("/api/workflow/hosted/dossier", { ...asked, mutationId: "dossier-2" }))
+    try check(() => assert.deepStrictEqual([(replayed.execution as { readonly id: string }).id, afterRevoke._tag === "WorkflowHttpError" ? afterRevoke.status : 0, reads], [dossierRun, 409, ["tasks"]]))
   }
 })
 

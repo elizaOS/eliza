@@ -295,18 +295,19 @@ export function hostedDigests(service: WorkflowService) {
       const source = try sourceOf(sourceId)
       if (source.revision !== sourceRevision || source.live?.provider !== "native") throw new WorkflowRefused({ status: 409, message: "Dossier source binding changed" })
       const existing = try db(store.receipt(definitionKey))
-      if (existing === undefined && (source.revoked || Date.parse(source.expiresAt) <= (try now))) throw new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" })
-      const grant = existing === undefined ? try mapError(native.grant(source.live, Date.parse(source.expiresAt)), () => new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" })) : undefined
-      const spec: DigestSpec = existing === undefined
-        ? { version: 1, template: "morning", sourceId, sourceRevision, timeZone: grant?.timeZone ?? "UTC", localTime: "08:00", enabled: false, manualOnly: true }
-        : (try service.definitionOf(String(existing.data.workflowId))).row.hostedDigest ?? { version: 1, template: "morning", sourceId, sourceRevision, timeZone: "UTC", localTime: "08:00", enabled: false, manualOnly: true }
+      const defined = existing === undefined ? undefined : try service.definitionOf(String(existing.data.workflowId))
+      const prior = defined === undefined ? undefined : A.readSubmission(try service.project(defined.row), owner, mutationId)
+      if (defined !== undefined && prior?.reply === "ExistingRun") return { replayed: try service.runOf(`${defined.row.id}-r${prior.replyRun}`) }
+      if (digestSourceState(source, try now) !== "current") throw new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" })
+      const grant = try mapError(native.grant(source.live, Date.parse(source.expiresAt)), () => new WorkflowRefused({ status: 409, message: "Review a current native source for this dossier" }))
+      const spec: DigestSpec = defined?.row.hostedDigest
+        ?? { version: 1, template: "morning", sourceId, sourceRevision, timeZone: grant.timeZone, localTime: "08:00", enabled: false, manualOnly: true }
       const receipt = try digestMutation(definitionKey, spec, source)
       return { workflowId: String(receipt.workflowId), spec, source }
     })
+    if ("replayed" in prepared) return { execution: service.runView(prepared.replayed) }
     const definition = try service.definitionOf(prepared.workflowId)
     const at = try now
-    const prior = A.readSubmission(try service.project(definition.row), owner, mutationId)
-    if (prior.reply === "ExistingRun") return { execution: service.runView(try service.runOf(`${definition.row.id}-r${prior.replyRun}`)) }
     const runnable = try runSpec(definition.row, prepared.spec, prepared.source, at)
     const submitted = try submitWith(runnable, mutationId, definition.row.admission.version, provenance(prepared.spec, prepared.source, at))
     if (submitted.fresh) try service.launch(submitted.run.id)
