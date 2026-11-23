@@ -3480,8 +3480,10 @@ function eachCheck() {
 
 function theCommandLine() {
   test("a concurrent verifier install retries once without duplicating the check JSON stream", { skip: process.platform === "win32" }, async () => {
-    for (const changedModel of [false, true]) {
-      const root = toolchain(oneRule("value", "A value", "pure val answer = 42"), "quint", "lsc");
+    for (const change of ["installation", "model", "simulation"] as const) {
+      const changedModel = change === "model";
+      const duringSimulation = change === "simulation";
+      const root = toolchain(oneRule("value", "A value", duringSimulation ? COUNTER : "pure val answer = 42"), "quint", "lsc");
       const shim = path.join(root, "node_modules/.bin/quint");
       fs.unlinkSync(shim);
       fs.copyFileSync(path.join(nodeModules, ".bin/quint"), shim);
@@ -3489,24 +3491,40 @@ function theCommandLine() {
         import assert from "node:assert/strict";
         import fs from "node:fs";
         import path from "node:path";
+        import { certifyInstallation } from "./vibestack/cache.ts";
         import { main } from "./vibestack/pipeline.ts";
+        import { TABLE } from "./vibestack/simulator.ts";
+        import { SIMULATIONS } from "./vibestack/util.ts";
         const attempts = new Set();
-        const { mkdirSync } = fs;
+        const { mkdirSync, readdirSync } = fs;
         fs.mkdirSync = (dir, ...args) => {
           if (typeof dir === "string" && path.basename(dir).startsWith("run-")) attempts.add(dir);
           return mkdirSync(dir, ...args);
         };
         const { log } = console;
         let linked = false;
+        const changeInstallation = () => {
+          linked = true;
+          fs.linkSync("node_modules/.bin/quint", "second-install-quint");
+        };
+        const compiled = path.resolve(SIMULATIONS, "value.compiled");
+        fs.readdirSync = (dir, ...args) => {
+          const entries = readdirSync(dir, ...args);
+          if (${duringSimulation} && !linked && dir === compiled && fs.existsSync(path.join(compiled, TABLE))) {
+            changeInstallation();
+            certifyInstallation();
+          }
+          return entries;
+        };
         console.log = (line) => {
-          if (JSON.parse(line).stage === "model" && !linked) {
-            linked = true;
-            fs.linkSync("node_modules/.bin/quint", "second-install-quint");
+          if (!${duringSimulation} && JSON.parse(line).stage === "model" && !linked) {
+            changeInstallation();
             if (${changedModel}) fs.renameSync("spec/value.md", "spec/renamed.md");
           }
           log(line);
         };
         await main(["check", "--json"]);
+        assert.equal(linked, true);
         assert.equal(attempts.size, ${changedModel ? 3 : 2});
       `], root);
       assert.equal(retry.status, 1, retry.stdout + retry.stderr);
@@ -3518,6 +3536,7 @@ function theCommandLine() {
         assert.equal(retry.stderr, "");
         assert.deepEqual(rows.slice(0, -1), rows.at(-1).results);
         assert.ok(rows.at(-1).results.some((r: Result) => r.stage === "proof" && r.ok), retry.stdout);
+        if (duringSimulation) assert.deepEqual(rows.filter((r) => r.stage === "always").map((r) => r.ok), [true]);
       }
       assert.equal(rows.filter((row) => row.stage === "model").length, 1);
       assert.ok(!fs.existsSync(path.join(root, ".spec-cache/lock")));
