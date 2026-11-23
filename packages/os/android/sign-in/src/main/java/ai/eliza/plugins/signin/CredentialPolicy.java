@@ -162,7 +162,8 @@ public final class CredentialPolicy {
 
   public static boolean mailLeaseUpgradeMayAcknowledge(State s, MailLeaseUpgrade expected) {
     return mailLeaseUpgradeAdmits(s, expected) && s.attempt() instanceof Attempt.Acknowledging pending
-      && expected.account().equals(pending.account()) && pending.lease() instanceof LeaseOffer.Offered offered
+      && pending.version() > expected.version() && expected.account().equals(pending.account())
+      && pending.lease() instanceof LeaseOffer.Offered offered
       && offered.refreshExpiresAt() > s.now() && pending.lapsesAt() > s.now();
   }
 
