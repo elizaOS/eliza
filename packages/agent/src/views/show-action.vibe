@@ -1,6 +1,6 @@
 // spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"
 import { readViewInteractionClientId, type Action, type ActionResult, type Memory } from "@elizaos/core"
-import { declaredAt } from "../../gen/agent__views.effect.vibe"
+import { declaredAt, targets } from "../../gen/agent__views.effect.vibe"
 import { foldName } from "./declarations.vibe"
 import type { ViewHost } from "./host.vibe"
 
@@ -33,6 +33,7 @@ effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>,
   const target = targetOf(options)
   if (target === undefined) return refused("Name the view to show by its id, label or alias.")
   const requestId = newRequestId()
+  if (targets(try views.current(), target).length === 1) try views.awaitNavigationIdle(clientId)
   const pending = try views.show(requestId, clientId, target)
   if (pending === undefined) return refused(`No single view named "${target}" can be shown now.`)
   const binding = pending.binding

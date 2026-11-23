@@ -1,6 +1,6 @@
-// spec/cloud/services/maps.md, "A deployment answers capabilities always, and any other operation only when its provider serves it"; spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A tile is never stored, and none is sent without a freshly admitted hold"
+// spec/cloud/services/maps.md, "A deployment answers capabilities always, and any other operation only when its provider serves it"; spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A tile is never stored, and none is sent without a freshly admitted hold"; spec/cloud/services/maps.md, "A well-formed zero-distance Google route can omit intermediate points"; spec/cloud/services/maps.md, "Only an unreasoned Google Place Details argument refusal identifies an unusable place ID"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { billingOf, detailsPrice, geocodePrice, nearbyPrice, offerOf, placeLookup, quoteOf, searchPrice, supportsMode, tilePrice, upstreamBodyCap, upstreamTimeout, type MapsProvider as ProviderKind, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
+import { billingOf, detailsPrice, geocodePrice, googleDetailsBadRequest, googleGeometry, nearbyPrice, offerOf, placeLookup, quoteOf, searchPrice, supportsMode, tilePrice, upstreamBodyCap, upstreamTimeout, type MapsProvider as ProviderKind, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
 import type { Micros } from "../../gen/cloud__shared__types.ts"
 import type { MapsSettings as MapsSettingsSchema } from "../profile/profile.schema.ts"
 import { Deployment } from "../profile/profile.vibe"
@@ -9,10 +9,10 @@ import { osmAttribution, osmMapsProvider } from "./maps-osm.vibe"
 
 export type MapsSettings = typeof MapsSettingsSchema.Type
 type GoogleSettings = Extract<MapsSettings, { readonly provider: "google" }>
-export type ProviderRefusal = "NoRoute" | "UnsupportedMode" | "UnsupportedRegion" | "ProviderInvalidResponse" | "ProviderUnavailable"
+export type ProviderRefusal = "InvalidRequest" | "NoRoute" | "UnsupportedMode" | "UnsupportedRegion" | "ProviderInvalidResponse" | "ProviderUnavailable"
 export type MapsReply<A> =
   | { readonly kind: "answered"; readonly value: A; readonly observedMicros: Micros }
-  | { readonly kind: "refused"; readonly code: ProviderRefusal; readonly observedMicros: Micros }
+  | { readonly kind: "refused"; readonly code: ProviderRefusal; readonly observedMicros: Micros | null }
   | { readonly kind: "unknown"; readonly cause: string }
 export interface MapsTile { readonly bytes: Uint8Array; readonly contentType: "image/png" | "image/jpeg" | "image/webp"; readonly attribution: string }
 export type MapsContext = HttpClient.HttpClient | Deployment
@@ -76,9 +76,10 @@ export function describeMaps(settings: MapsSettings | undefined, operator: strin
 }
 
 error Refused { code: ProviderRefusal }
+error UnpricedRefusal { code: "InvalidRequest" | "ProviderInvalidResponse" }
 error Rejected { status: number }
 error Lost { cause: string }
-type Stop = Refused | Rejected | Lost
+type Stop = Refused | UnpricedRefusal | Rejected | Lost
 type Meter = { observed: Micros }
 type Got = { readonly status: number; readonly bytes: Uint8Array; readonly contentType: string | undefined }
 
@@ -96,9 +97,14 @@ effect function capped(response: HttpClientResponse.HttpClientResponse): Uint8Ar
   return bytes
 }
 
-effect function send(meter: Meter, request: HttpClientRequest.HttpClientRequest, price: Micros): Got!Stop!HttpClient.HttpClient {
+effect function send(meter: Meter, request: HttpClientRequest.HttpClientRequest, price: Micros, inspectDetailsBadRequest = false): Got!Stop!HttpClient.HttpClient {
   const exchange = effect {
     const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect (cause) => { throw new Lost({ cause: cause._tag }) }
+    if (response.status === 400) {
+      const bytes = capped(response) catch effect () => { throw new Lost({ cause: "unreadable Google Maps refusal" }) }
+      if (!inspectDetailsBadRequest) throw new UnpricedRefusal({ code: "ProviderInvalidResponse" })
+      return { status: response.status, bytes, contentType: response.headers["content-type"] }
+    }
     const billing = billingOf(response.status)
     if (billing === "CallBilled") meter.observed += price
     if (billing !== "CallBilled") {
@@ -126,8 +132,25 @@ effect function metered<A>(work: (meter: Meter) => A!Stop!MapsContext): MapsRepl
   }
   return answered catch (stop): MapsReply<A> => match (stop) {
     when Refused: { kind: "refused", code: stop.code, observedMicros: meter.observed };
+    when UnpricedRefusal: { kind: "refused", code: stop.code, observedMicros: null };
     when Rejected: { kind: "refused", code: "ProviderUnavailable", observedMicros: meter.observed };
     when Lost: { kind: "unknown", cause: stop.cause };
+  }
+}
+
+function detailsBadRequest(bytes: Uint8Array): "InvalidRequest" | "ProviderInvalidResponse" {
+  try {
+    const envelope: unknown = JSON.parse(new TextDecoder().decode(bytes))
+    const error = typeof envelope === "object" && envelope !== null && "error" in envelope ? envelope.error : undefined
+    if (typeof error !== "object" || error === null || Array.isArray(error)) return "ProviderInvalidResponse"
+    const invalidArgument = "status" in error && error.status === "INVALID_ARGUMENT"
+    const details = "details" in error ? error.details : undefined
+    const unreasoned = details === undefined || (Array.isArray(details) && details.every((detail) =>
+      typeof detail === "object" && detail !== null && !Array.isArray(detail) && !("reason" in detail)
+      && (!("@type" in detail) || (typeof detail["@type"] === "string" && !detail["@type"].endsWith("ErrorInfo")))))
+    return googleDetailsBadRequest(invalidArgument, unreasoned) === "GooglePlaceRejected" ? "InvalidRequest" : "ProviderInvalidResponse"
+  } catch {
+    return "ProviderInvalidResponse"
   }
 }
 
@@ -379,9 +402,10 @@ function googleMapsProvider(settings: GoogleSettings): MapsProvider {
       return single((try geocoding(meter, { latlng: `${point.latitude},${point.longitude}` }))[0])
     }),
     details: (request) => metered(effect (meter) => {
-      if (!placeId.test(request.id)) return single(undefined)
+      if (!placeId.test(request.id)) throw new Refused({ code: "InvalidRequest" })
       const key = try apiKey()
-      const got = try send(meter, HttpClientRequest.get(url("places", `/v1/places/${encodeURIComponent(request.id)}`)).pipe(HttpClientRequest.setHeaders({ "x-goog-api-key": key, "x-goog-fieldmask": detailFields })), detailsPrice)
+      const got = try send(meter, HttpClientRequest.get(url("places", `/v1/places/${encodeURIComponent(request.id)}`)).pipe(HttpClientRequest.setHeaders({ "x-goog-api-key": key, "x-goog-fieldmask": detailFields })), detailsPrice, true)
+      if (got.status === 400) throw new UnpricedRefusal({ code: detailsBadRequest(got.bytes) })
       if (got.status === 404) return single(undefined)
       const [place] = try places([try decoded(got, GooglePlace)])
       if (place === undefined) throw new Refused({ code: "UnsupportedRegion" })
@@ -406,13 +430,18 @@ function googleMapsProvider(settings: GoogleSettings): MapsProvider {
       const reply = try decoded(try send(meter, try google(url("routes", "/directions/v2:computeRoutes"), fields, body), quoteOf("Routes", false, mode, live)), RoutesReply)
       const found: MapsRoute[] = []
       for (const [index, route] of (reply.routes ?? []).slice(0, alternatives ? 3 : 1).entries()) {
-        const geometry = decodePolyline(route.polyline.encodedPolyline) ?? []
+        const points = decodePolyline(route.polyline.encodedPolyline)
+        const distanceMeters = route.distanceMeters ?? 0
+        const geometryRule = googleGeometry(points !== undefined, points?.length ?? 0, distanceMeters === 0)
+        if (points === undefined || geometryRule === "InvalidPolyline") throw new Refused({ code: "ProviderInvalidResponse" })
+        const geometry = geometryRule === "UseEndpoints" ? [request.from, request.to]
+          : geometryRule === "DuplicatePoint" ? [points[0], points[0]] : points
         const durationSeconds = seconds(route.duration)
         const staticSeconds = seconds(route.staticDuration)
-        if (geometry.length < 2 || durationSeconds === undefined) throw new Refused({ code: "ProviderInvalidResponse" })
+        if (durationSeconds === undefined) throw new Refused({ code: "ProviderInvalidResponse" })
         const steps = stepsOf(route, geometry[geometry.length - 1])
         const candidate = {
-          providerId: "google", from: request.from, to: request.to, mode: request.mode, geometry: simplified(geometry, steps), distanceMeters: route.distanceMeters ?? 0,
+          providerId: "google", from: request.from, to: request.to, mode: request.mode, geometry: simplified(geometry, steps), distanceMeters,
           durationSeconds, steps, attribution: googleAttribution, traffic: live ? "live" : "none", ...(live && staticSeconds !== undefined ? { staticDurationSeconds: staticSeconds } : {}),
         } as const
         const built = { id: routeId(JSON.stringify({ index, departAt, ...candidate })), ...candidate, fetchedAt: now }

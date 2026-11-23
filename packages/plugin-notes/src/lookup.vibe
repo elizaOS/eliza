@@ -1,4 +1,4 @@
-// spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"
+// spec/notes/records.md, "The agent reads and changes Notes only for the owner, on the owner's own words in the bound request"; spec/notes/records.md, "Moving a note by name takes its identical saved copies along"
 import { extractUserText, incomingMessagePersistenceSnapshot, unwrapUserMessageText, type Memory } from "@elizaos/core"
 import { ownerWordsSource } from "../gen/notes__records.effect.vibe"
 import { authoredNoteText } from "./format.vibe"
@@ -59,7 +59,7 @@ export function lookupMatches(notes: readonly StickyNote[], selector: NoteSelect
 }
 
 export function noteContentKey(note: StickyNote): string {
-  return [note.format === undefined ? "" : note.id, note.title, note.body, note.color].join("\u0000")
+  return JSON.stringify(note.format === undefined ? [note.title, note.body, note.color] : [note.id])
 }
 
 export function notesNamedIn(text: string, notes: readonly StickyNote[]): StickyNote[] {

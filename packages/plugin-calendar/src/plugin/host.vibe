@@ -61,7 +61,7 @@ export interface CalendarFound {
 export type CalendarChangeRequest =
   | { readonly kind: "create"; readonly source: CalendarSourceKey; readonly fields: CalendarEventFields; readonly recurrence: CalendarRecurrence | null; readonly askedBy: string; readonly askId: string }
   | { readonly kind: "update"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly fields: CalendarEventFields; readonly askedBy: string; readonly askId: string }
-  | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly askedBy: string; readonly askId: string }
+  | { readonly kind: "delete"; readonly target: CalendarFound; readonly scope: CalendarWriteScope; readonly askedBy: string; readonly askId: string; readonly review?: "owner" }
 
 export type CalendarChangeResult =
   | { readonly kind: "ran"; readonly request: CalendarMutationRequest; readonly outcome: CalendarMutationOutcome }
@@ -197,7 +197,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
         : { action: "cancel_event", account: account.accountId, target: { source, eventId: asked.target.event.id, expectedVersion: eventVersion(asked.target.event) }, scope: asked.scope }
     const digest = reviewDigest(payload)
     const request: CalendarMutationRequest = { id: `calendar-${sha256Hex(`${asked.askId}\n${digest}`).slice(0, 40)}`, digest, payload }
-    if (route === "ApplyNow") return { kind: "ran", request, outcome: try Effect.provide(ledger.run(request, port), rows) }
+    if (route === "ApplyNow" && !(asked.kind === "delete" && asked.review === "owner")) return { kind: "ran", request, outcome: try Effect.provide(ledger.run(request, port), rows) }
     const approvals = options.approvals()
     if (approvals === undefined) return { kind: "refused", reason: "approvals_unavailable" }
     const now = try Clock.currentTimeMillis

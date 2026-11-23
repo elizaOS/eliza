@@ -74,6 +74,41 @@ function googleCalendar() {
 
 const march = { timeMin: "2030-03-01T00:00:00Z", timeMax: "2030-03-10T00:00:00Z" }
 
+it.effect(`Authorize only the entire named event in dense delete commands (spec/calendar/actions.md, "A resident chat deletion requires one exact target in the owner's words or a screen review")`, effect () => {
+  const filed: CalendarApprovalRow[] = []
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({
+    request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } },
+  }) })
+  const now = try Clock.currentTimeMillis
+  const fields = {
+    startAt: new Date(now + 86_400_000).toISOString(),
+    endAt: new Date(now + 90_000_000).toISOString(),
+  }
+  const ask = { by: "owner", id: "resident" }
+  for (const [title, exact, longer] of [
+    ["牙医", "请删除牙医", "删除儿童牙医预约"],
+    ["歯医者", "歯医者を削除してください", "小児歯医者を削除して"],
+    ["치과", "치과를 삭제해 주세요", "소아치과를 삭제해줘"],
+  ] as const) {
+    const created = try runCalendarAction(host, { ...ask, id: title }, { subaction: "create_event", reviewBeforeCreate: false, title, ...fields })
+    const eventId = at(created.data, "event", "id")
+    const deleteInput = { subaction: "delete_event", eventId }
+    const review = try runCalendarAction(host, { ...ask, id: longer, chat: { original: longer } }, deleteInput)
+    assert.isUndefined(review.effectReceipts?.find((receipt) => receipt.outcome === "applied"))
+    const queued = filed.at(-1)
+    assert.strictEqual(at(queued?.payload.change, "target", "eventId"), eventId)
+    assert.isDefined(try host.find(String(eventId)))
+    const deleted = try runCalendarAction(host, { ...ask, id: exact, chat: { original: exact } }, deleteInput)
+    assert.deepStrictEqual([at(deleted.data, "deleted"), deleted.effectReceipts?.[0]?.resource.id], [true, eventId])
+    assert.isUndefined(try host.find(String(eventId)))
+    if (queued !== undefined) {
+      const stale = try host.executeApproval({ id: queued.id, action: queued.action, payload: queued.payload })
+      assert.strictEqual(stale.result, "ChangeInvalidated")
+    }
+  }
+  assert.strictEqual(filed.length, 3)
+})
+
 it.effect(`Change my calendar only as I asked and know it happened (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all")`, effect () => {
   const filed: CalendarApprovalRow[] = []
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })

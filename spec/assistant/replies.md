@@ -45,43 +45,50 @@ pure def lawACueNeverEndsTheTurn(reply: ReplyKind): bool = heardWhile(WorkSettle
 ### A claim that something was done needs a result that applied it to that record
 
 ```quint
+import receipts as R from "../core/receipts"
 type ResultEnd = EndApplied | EndRefused | EndUnknown | EndPreviewed
-type TurnResult = { actionName: str, target: str, ended: ResultEnd }
+type TurnResult = { target: str, ended: ResultEnd, evidence: R::EffectIdentity }
 type ClaimKind = ClaimedDone | ClaimedNotDone
-pure val noResult: TurnResult = { actionName: "", target: "", ended: EndUnknown }
+pure val noResult: TurnResult = { target: "", ended: EndUnknown, evidence: R::noEffectIdentity }
 pure def committedTo(results: List[TurnResult], target: str): bool =
   target != "" and results.some(r => r.target == target and r.ended == EndApplied)
 ```
 
 ### A claim that something was not done needs a cited result that failed and was not superseded
 
-A failure is superseded by a later result that applied the same record,
-or, for a failure that named no record, by a result of the same action
-that applied. A failure whose acceptance is unknown proves neither
-outcome, and a success of another record supersedes nothing.
+An active committed receipt supersedes a failure when it proves the
+same receipt, effect or retry as defined by [receipt identity](../core/receipts.md).
+A receiptless failure reports only that attempt. Unknown acceptance
+proves neither outcome. A result that contains several receipts keeps
+their evidence separate and uses the original result's citation number.
 
 ```quint
 pure def supersedes(later: TurnResult, failed: TurnResult): bool =
-  later.ended == EndApplied and ((failed.target != "" and later.target == failed.target) or (failed.target == "" and later.actionName == failed.actionName))
+  later.ended == EndApplied and R::sameEffectEvidence(failed.evidence, later.evidence)
 pure def provesNotDone(results: List[TurnResult], failed: TurnResult): bool =
   (failed.ended == EndRefused or failed.ended == EndPreviewed) and not(results.some(r => supersedes(r, failed)))
-pure def claimSupported(results: List[TurnResult], claim: ClaimKind, target: str, cited: int): bool =
+pure def claimSupported(results: List[TurnResult], claim: ClaimKind, target: str, cited: int): bool = {
+  val selected = results.nthOr(cited, noResult)
   if (claim == ClaimedDone) committedTo(results, target)
-  else cited >= 0 and cited < results.length() and provesNotDone(results, results.nthOr(cited, noResult))
-pure val failedValues: Set[TurnResult] = List(
-  { actionName: "SAVE", target: "r1", ended: EndRefused }, { actionName: "SAVE", target: "r1", ended: EndUnknown },
-  { actionName: "SAVE", target: "", ended: EndRefused }, { actionName: "SAVE", target: "r1", ended: EndPreviewed },
-  { actionName: "SAVE", target: "r1", ended: EndApplied }
-).foldl(Set(), (acc, r) => acc.union(Set(r)))
-pure val laterValues: Set[TurnResult] = List(
-  { actionName: "SAVE", target: "r1", ended: EndApplied }, { actionName: "SAVE", target: "r2", ended: EndApplied },
-  { actionName: "OTHER", target: "r2", ended: EndApplied }, { actionName: "SAVE", target: "", ended: EndApplied },
-  { actionName: "SAVE", target: "r1", ended: EndRefused }
-).foldl(Set(), (acc, r) => acc.union(Set(r)))
+  else cited >= 0 and cited < results.length() and (target == "" or selected.target == target) and provesNotDone(results, selected)
+}
+pure val failedValues = Set(
+  { target: "r1", ended: EndRefused, evidence: R::exampleIdentity },
+  { target: "r1", ended: EndUnknown, evidence: R::exampleIdentity },
+  { target: "", ended: EndRefused, evidence: R::noEffectIdentity },
+  { target: "r1", ended: EndPreviewed, evidence: R::exampleIdentity },
+  { target: "r1", ended: EndApplied, evidence: R::exampleIdentity }
+)
+pure val laterValues = Set(
+  { target: "r1", ended: EndApplied, evidence: R::exampleIdentity },
+  { target: "r2", ended: EndApplied, evidence: { ...R::exampleIdentity, receiptId: "r2", resourceId: "n2", retryKey: "" } },
+  { target: "r2", ended: EndApplied, evidence: { ...R::exampleIdentity, receiptId: "r2", resourceId: "n2" } },
+  { target: "", ended: EndApplied, evidence: R::noEffectIdentity }
+)
 pure def lawALaterCommitToTheSameRecordSupersedesAFailure(failed: TurnResult, later: TurnResult): bool =
   supersedes(later, failed) implies not(claimSupported(List(failed, later), ClaimedNotDone, failed.target, 0))
 pure def lawASuccessOfAnotherRecordSupersedesNothing(failed: TurnResult, later: TurnResult): bool =
-  (failed.ended == EndRefused and failed.target != "" and later.target != failed.target) implies claimSupported(List(failed, later), ClaimedNotDone, failed.target, 0)
+  (failed.ended == EndRefused and not(R::sameEffectEvidence(failed.evidence, later.evidence))) implies claimSupported(List(failed, later), ClaimedNotDone, failed.target, 0)
 pure def lawAnUnknownAcceptanceProvesNeither(failed: TurnResult, later: TurnResult): bool =
   failed.ended == EndUnknown implies (not(claimSupported(List(failed), ClaimedNotDone, failed.target, 0)) and not(claimSupported(List(failed), ClaimedDone, failed.target, 0)))
 pure def lawDoneIsClaimedOnlyForAnAppliedRecord(failed: TurnResult, later: TurnResult): bool =

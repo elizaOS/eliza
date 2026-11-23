@@ -72,7 +72,7 @@ function failureOf(error: NotesFailure): ActionResult {
   }
 }
 
-const noteResult = (verb: string, note: StickyNote, revision: number, extra: { readonly replayed?: boolean } = {}): ActionResult => ({
+const noteResult = (verb: string, note: StickyNote, revision: number, extra: { readonly replayed?: boolean; readonly consolidatedCount?: number; readonly folder?: string | null } = {}): ActionResult => ({
   success: true,
   text: `${verb} note ${json(note.title)} (${note.id}). notesRevision: ${revision}.`,
   data: { note: projectNoteForModel(note), noteId: note.id, notesRevision: revision, ...extra },
@@ -257,11 +257,12 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction({
       name: "NOTES_MOVE",
       operation: "update",
-      description: "Put one note in a folder by the exact folder name the device sent, or take it out with folder null. Folders are created on the device, not in chat. The note's text is unchanged.",
+      description: "Put a note in a folder using the exact folder name the device sent, or take it out with folder null. A name moves identical copies together. An exact note ID moves that record alone. Folders are created on the device. The note's text is unchanged.",
       parameters: [
         idParameter("Exact note ID."),
         contentParameter("The note's title or text."),
         { name: "folder", description: "The exact folder name, or null for no folder.", required: true, schema: { anyOf: [{ type: "string" }, { type: "null" }] } },
+        revisionParameter,
       ],
       run: effect (params, message) => {
         const target = targetOf(params, "noteId", "content")
@@ -273,8 +274,9 @@ function writeActions(notes: NotesCollection): Action[] {
         if (name !== null && folder === undefined) {
           return { success: false, text: `No folder is named ${json(name)}. Folders: ${folders.map((row) => json(row.name)).join(", ") || "none"}. Nothing changed.`, data: { code: "NOTES_FOLDER_UNKNOWN" } }
         }
-        const moved = try notes.move(target, folder?.id ?? null)
-        return noteResult(folder === undefined ? "Took out of its folder" : `Moved to ${folder.name}:`, moved.value, moved.snapshot.revision)
+        const moved = try notes.move(target, folder?.id ?? null, params.expectedRevision)
+        return noteResult(folder === undefined ? "Took out of its folder" : `Moved to ${folder.name}:`, moved.value, moved.snapshot.revision,
+          { consolidatedCount: moved.consolidatedCount, folder: folder?.name ?? null })
       },
     }),
   ]

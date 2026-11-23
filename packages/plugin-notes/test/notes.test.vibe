@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import type { LocalRoute } from "@elizaos/agent/routes"
 import { bindIncomingMessagePersistence, type Content, type Memory } from "@elizaos/core"
-import { notesPlugin, notesRoutes } from "../src/agent.vibe"
+import { notesModule, notesModuleName, notesPlugin, notesRoutes } from "../src/agent.vibe"
 import { namedNoteReadEvaluator, notesRequestEffectField } from "../src/request-effect.vibe"
 import { createNotesClient, noteScheduleText, recordNoteOriginFor } from "../src/client.vibe"
 import { authoredNoteText, noteShareText, parseNoteFormat } from "../src/format.vibe"
@@ -16,7 +16,9 @@ import { NotesReadRefused, selectedNotes, type NotesAuthority, type NotesClaim, 
   type NotesReadPorts, type NotesTarget } from "../src/selected-read.vibe"
 import { notesCollection, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
 import type { NotesStorage } from "../src/store.vibe"
-import type { StickyNote } from "../src/types.vibe"
+import type { NotesSnapshot, StickyNote } from "../src/types.vibe"
+import { call, cloudFake, deviceKey, startInProcess } from "../../agent/test/support/kernel.vibe"
+import { held, text as modelText, toolCalls } from "../../agent/test/support/cloud-fake.ts"
 
 const day = 86_400_000
 const start = Date.parse("2026-11-20T10:00:00.000Z")
@@ -95,7 +97,7 @@ function action(plugin: ReturnType<typeof notesPlugin>, name: string) {
 
 const voice = (id: string, audioId: string) => ({ kind: "voice", data: { recordingId: audioId, audio: { audioId }, lines: [{ s: "speaker-1", t: `Said in ${id}` }] } })
 
-it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged")', effect () => {
+it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "Moving a note by name takes its identical saved copies along")', effect () => {
   const f = fixture()
   const notes = notesOver(f)
   const first = try notes.create({ content: "Groceries\n- milk", creationId: "step-1" })
@@ -169,7 +171,114 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   const oversized = { field: "checklist", index: 0, expectedText: "tent", text: "x".repeat(262_145) } as const
   assert.equal(try code(notes.update({ id: camp.value.note.id }, { authoredEdit: oversized }, camp.snapshot.revision)), "NOTES_VALIDATION_FAILED")
   assert.equal((try notes.snapshot()).revision, camp.snapshot.revision)
+
+  const recipe = try notes.create({ content: "Recipe\nSalt", creationId: "recipe-a" })
+  const copy = try notes.create({ content: "Recipe\nSalt", creationId: "recipe-b" })
+  const exact = try notes.move({ id: copy.value.note.id }, "folder-work", copy.snapshot.revision)
+  const pair = exact.snapshot.notes.filter((note) => note.title === "Recipe")
+  assert.deepEqual(pair.map((note) => [note.id, note.format?.data.folderId]), [
+    [copy.value.note.id, "folder-work"], [recipe.value.note.id, undefined],
+  ])
+  const another = try notes.create({ content: "Recipe\nSalt", creationId: "recipe-c" })
+  const named = { selector: "title", value: "Recipe" } as const
+  assert.equal(try code(notes.move(named, "folder-home", copy.snapshot.revision)), "NOTES_EDIT_CONFLICT")
+  assert.equal(try code(notes.move(named, "folder-home", another.snapshot.revision)), "NOTES_AMBIGUOUS_NOTE")
+  assert.deepEqual(try notes.snapshot(), another.snapshot)
+
+  const distinct = try notes.create({ content: "Recipes index\nSalt", forceNew: true })
+  const retryTarget = { selector: "title", value: "Packing" } as const
+  const packing = try notes.create({ content: "Packing\nBatteries", creationId: "packing-original" })
+  const otherPacking = try notes.create({ content: "Packing\nBatteries", creationId: "packing-copy" })
+  assert.equal(try code(notes.move(retryTarget, "folder-work", packing.snapshot.revision)), "NOTES_EDIT_CONFLICT")
+  const moved = try notes.move(retryTarget, "folder-work", otherPacking.snapshot.revision)
+  const reopened = try notesOver(f).snapshot()
+  const storedPacking = reopened.notes.filter((note) => note.title === "Packing")
+  assert.deepEqual([reopened.revision, storedPacking, reopened.trash], [
+    otherPacking.snapshot.revision + 1,
+    [{ ...otherPacking.value.note, format: { kind: "text", data: { folderId: "folder-work" } } }],
+    otherPacking.snapshot.trash,
+  ])
+  assert.deepEqual(reopened.notes.find((note) => note.id === distinct.value.note.id), distinct.value.note)
+  assert.deepEqual([exact.consolidatedCount, moved.value.id, moved.consolidatedCount], [0, otherPacking.value.note.id, 1])
+  const sameCreation = try notes.create({ content: "Packing\nBatteries", creationId: "packing-copy" })
+  assert.deepEqual([sameCreation.value.note.id, sameCreation.value.replayed, sameCreation.snapshot.revision],
+    [otherPacking.value.note.id, true, reopened.revision])
+
 })
+
+it.live('A named Notes move from owner chat changes one revision and a read-only turn cannot move it (spec/notes/records.md, "Moving a note by name takes its identical saved copies along"; spec/agent/conversation/planning.md, "The live owner turn classifies a Notes write from its original conversation before dispatch")', effect () => {
+  const model = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { callerRole: "owner", backend: { kind: "cloud", origin: model.origin }, load: [notesModuleName], allowed: ["REPLY", "IGNORE", "NONE", "NOTES_MOVE"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map([[notesModuleName, { name: notesModuleName, description: "Notes hosted module" }]]),
+    modules: new Map([[notesModuleName, notesModule]]),
+  })
+  for (let copy = 0; copy < 2; copy++) {
+    const created = try call(agent, { method: "POST", path: "/api/notes/interact",
+      body: { capability: "create-note", params: { content: "Packing\nBatteries", forceNew: true } } })
+    assert.propertyVal(created, "status", 200)
+  }
+  const opened = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
+  if (!("status" in opened)) return try Effect.die(new Error("Conversation transport refused the request"))
+  assert.equal(opened.status, 201, JSON.stringify(opened.json))
+  const { conversation: { id, roomId } } = opened.json as { conversation: { id: string; roomId: string } }
+  const path = `/api/conversations/${id}/messages`
+  const metadata = { notesFolders: [{ id: "travel", name: "Travel" }] }
+  const allowed = { text: "Move my Packing note to Travel.", clientMessageId: "notes-move", metadata }
+  const move = (folder: string | null) => toolCalls("", { name: "NOTES_MOVE", arguments: { content: "Packing", folder } })
+  const neutralReview = try sync(() => modelText('{"grounded":true,"claims":[]}'))
+  try Effect.sync(() => model.script(
+    move("Travel"),
+    modelText('{"notesRequestEffect":{"classification":"mutation_requested","operations":["update"]}}'),
+    modelText("Okay."),
+    move(null),
+    modelText('{"notesRequestEffect":{"classification":"read_only","operations":["get"]}}'),
+    modelText("Okay."), neutralReview,
+    move(null),
+    modelText('{"notesRequestEffect":"mutation_requested"}'),
+    modelText("Please clarify what you want to change."), neutralReview,
+  ))
+  const changed = try call(agent, { method: "POST", path, body: allowed })
+  const replayed = try call(agent, { method: "POST", path, body: allowed })
+  const denied = try call(agent, { method: "POST", path, body: { text: "Read my Packing note.", metadata } })
+  const unresolved = try call(agent, { method: "POST", path, body: { text: "Packing.", metadata } })
+  const release = Promise.withResolvers<void>()
+  const { plannedMove, classifying } = try Effect.sync(() => ({ plannedMove: model.nextCompletion(), classifying: model.nextCompletion() }))
+  try Effect.sync(() => model.script(move(null),
+    held(release.promise, modelText('{"notesRequestEffect":{"classification":"mutation_requested","operations":["update"]}}'))))
+  const moving = fork call(agent, { method: "POST", path, body: { text: "Take my Packing note out of Travel.", metadata } })
+  try promise(() => plannedMove)
+  const classifier = try promise(() => classifying)
+  const stopped = try call(agent, { method: "POST", path: `/api/turns/${roomId}/abort`, body: {} })
+  try sync(() => release.resolve())
+  const cancelled = try join moving
+  const snapshot = try call(agent, { method: "GET", path: "/api/notes/state" })
+  if (!("status" in stopped) || !("status" in cancelled) || !("status" in changed) || !("status" in replayed) || !("status" in denied) || !("status" in unresolved) || !("status" in snapshot)) {
+    return try Effect.die(new Error("Owner route did not return a response"))
+  }
+  const accepted = changed.json as { messageId: string; actionResults: Array<{ data: { consolidatedCount?: number } }> }
+  const refusalOf = (body: unknown) => (body as { actionResults: Array<{ data: { code?: string; executionStatus?: string } }> })
+    .actionResults.map(({ data }) => [data.code, data.executionStatus])
+  const saved = (snapshot.json as { data: NotesSnapshot }).data
+  assert.deepEqual({
+    statuses: [changed.status, replayed.status, denied.status, unresolved.status, snapshot.status],
+    replay: (replayed.json as { messageId: string }).messageId,
+    copies: accepted.actionResults[0]?.data.consolidatedCount,
+    refusals: [refusalOf(denied.json), refusalOf(unresolved.json)],
+    cancellation: [(stopped.json as { outcome?: string }).outcome, (cancelled.json as { failureKind?: string }).failureKind],
+    classificationSawCurrentWords: JSON.stringify(classifier.body).includes("Take my Packing note out of Travel."),
+    saved: [saved.revision, saved.notes.map((note) => [note.title, note.body, note.format?.data.folderId])],
+    requests: model.calls.filter(({ path: called }) => called.endsWith("/chat/completions")).length,
+  }, {
+    statuses: [200, 200, 200, 200, 200], replay: accepted.messageId, copies: 1,
+    refusals: [[["REQUEST_OPERATION_RESTRICTED", "not_started"]], [["REQUEST_OPERATION_UNRESOLVED", "not_started"]]],
+    cancellation: ["stopped", "aborted"],
+    classificationSawCurrentWords: true,
+    saved: [3, [["Packing", "\nBatteries", "travel"]]],
+    requests: 13,
+  })
+}, 120_000)
 
 it.effect('Restore a deleted note exactly, at the revision the owner saw (spec/notes/trash.md, "Story: Recover a deleted note")', effect () => {
   const f = fixture()
