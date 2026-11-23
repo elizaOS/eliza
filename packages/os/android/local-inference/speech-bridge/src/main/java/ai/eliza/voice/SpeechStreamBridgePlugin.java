@@ -324,7 +324,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     if (own.askedAt == 0) own.askedAt = SystemClock.elapsedRealtime();
     JSONObject answer;
     try {
-      answer = post(own, "consent", new JSONObject());
+      answer = consentAnswer(own);
     } catch (Exception failure) {
       if (failure instanceof Changed) {
         invalidate(own);
@@ -459,6 +459,15 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       }
     }
     return new Refused(status, data, CloudSpeechWire.refused(status, body, retryAfter, System.currentTimeMillis()));
+  }
+
+  private JSONObject consentAnswer(Session own) throws Exception {
+    try {
+      return post(own, "consent", new JSONObject());
+    } catch (java.net.SocketException failure) {
+      if (!CloudSpeechWire.connectionReset(failure)) throw failure;
+      return post(own, "consent", new JSONObject());
+    }
   }
 
   private JSONObject post(Session own, String path, JSONObject body) throws Exception {
