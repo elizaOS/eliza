@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
 import { reminderProposalFamily } from "../src/device-proposals.vibe"
-import { readReminderPresentation, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
+import { canActionRun, ContextRegistry, readReminderPresentation, resolveActionContexts, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
 import { composeBrief, recalibrateBrief } from "../src/brief.vibe"
 import { checkinKind, checkinSchedules, collectFacts, followOwnerClock, reconcileCheckins, runCheckin, checkinReport, setCheckinTimes } from "../src/checkin.vibe"
 import { ownerActivity, setDossier } from "../src/dossier.vibe"
@@ -10,10 +10,10 @@ import { restoreEarlier } from "../src/evaluators/pages.vibe"
 import { commitEvaluatorProgress, evidenceOf, sourceOf, stageEvaluatorOutput, stagedOutput } from "../src/evaluators/progress.vibe"
 import { runEvaluators } from "../src/evaluators/runner.vibe"
 import { followupIndex, followupTick } from "../src/followups.vibe"
-import { admitRoute } from "@elizaos/agent"
+import { activityLabel, admitRoute, turnContexts } from "@elizaos/agent"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
 import { heardReply, replyKind } from "../src/replies.vibe"
-import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, listReminders, moveReminder, reminderKind, reminderReply, renameReminder, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
+import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, listReminders, moveReminder, ownerRemindersAction, reminderKind, reminderReply, remindersContext, renameReminder, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
 import { onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
 import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKind, routineNudgeKind, routineRoutes, updateRoutine } from "../src/routines.vibe"
@@ -47,6 +47,15 @@ it.effect('Create each reminder I asked for, once, at the planned time with the 
       { trigger: { kind: "once", atIso: new Date(seen.now + 40 * 60_000).toISOString() }, destination: "chat", alert: "alert", clock: "UtcClock" },
     ])
   }
+})
+
+it.effect('A reminder the owner asks for in chat runs on the owner\'s turn and shows Reminders while it is saved (spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results")', effect () => {
+  const runtime = { contexts: try Effect.try(() => new ContextRegistry()) } as unknown as IAgentRuntime
+  try Effect.sync(() => runtime.contexts.tryRegister(remindersContext))
+  const runs = (contexts: readonly string[]) => canActionRun({ ...ownerRemindersAction, contexts: [...contexts] }, { userRoles: ["OWNER"], activeContexts: turnContexts })
+  const catalog = resolveActionContexts({ ...ownerRemindersAction, contexts: undefined })
+  try equal({ label: activityLabel(runtime, ownerRemindersAction), declared: runs(ownerRemindersAction.contexts ?? []), catalog, catalogRuns: runs(catalog) },
+    { label: "Using Reminders", declared: true, catalog: ["tasks", "automation"], catalogRuns: false })
 })
 
 it.effect('A plan alone never saves a reminder: a message that did not ask, or a check that cannot run, writes nothing (spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing")', effect () => {

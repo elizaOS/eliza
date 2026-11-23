@@ -7,7 +7,7 @@ import {
 } from "@elizaos/core"
 import {
   acknowledges, actionNoteSent, callAdmission, callRunsFirst, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait, toolActivity,
-  turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome,
+  turnContexts, turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
 import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
@@ -353,7 +353,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     await input.onActivityStatus?.({ actionName: call.name, label: activityLabel(runtime, named.get(call.name), params) })
     const captured: string[] = []
     const result = await executePlannedToolCall(runtime, {
-      message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),
+      message, state, activeContexts: turnContexts, userRoles: roles, previousResults: steps.map(({ result }) => result),
       callback: async (content) => {
         if (content.text?.trim()) captured.push(content.text)
         return []

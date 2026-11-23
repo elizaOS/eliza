@@ -48,6 +48,17 @@ reported as any other refusal before dispatch. The owner hears a call the
 action's own check declined as `unavailableNotice`, which names no action,
 never as the action's internal name.
 
+Each call runs under the turn's one active context, the catch-all
+`general`. Core's action gate refuses a call before it runs unless the
+action's contexts (core's catalog when it declares none, and `general` when
+the catalog names none) include an active one, so an offered action runs
+only when its contexts include `general`. Each app's actions therefore
+declare `general` beside the app's own context: Calendar's `CALENDAR`,
+Browser's `BROWSER` and the assistant's `OWNER_REMINDERS` do, and their
+calls run on the owner's turn, where core's catalog alone gave them only
+their own contexts (`calendar` and `automation`, `browser`, `tasks` and
+`automation`) and every call of them was refused.
+
 ```quint
 type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect
 type StepIdentity = RequestAttempt({ key: str }) | ReceiptOperation({ key: str })
@@ -69,6 +80,10 @@ pure def lawEveryAllowedRegisteredActionWithAFormIsOffered(registered: Set[str],
 pure def lawPlanningStopsAtTheBound(taken: int, calls: int, terminal: bool): bool =
   taken >= maxPlanSteps implies not(keepsPlanning(taken, calls, terminal))
 pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool = not(keepsPlanning(taken, 0, terminal))
+pure val turnContexts = Set("general")
+pure val contextsValues = Set(Set("general", "calendar"), Set("calendar", "automation"), Set("browser"), Set("general"), Set("tasks", "automation"))
+pure def lawACallRunsUnderTheTurnOnlyWhenItsActionDeclaresGeneral(contexts: Set[str]): bool =
+  contexts.exists(c => turnContexts.contains(c)) iff contexts.contains("general")
 ```
 
 ### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
@@ -472,9 +487,13 @@ pure val applicableValues = Set(0, 1, 2)
 pure val labelledValues = Set(0, 1, 2)
 pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatApplies(applicable: int, labelled: int): bool =
   toolActivity(applicable, labelled) == UsingApp implies (applicable == 1 and labelled == 1)
-pure def deviceCallApps(familyDeclaresApp: bool): int = if (familyDeclaresApp) 1 else 0
-pure def lawADeviceCallIsNamedOnlyByItsFamilysApp(familyDeclaresApp: bool, labelled: int): bool =
-  toolActivity(deviceCallApps(familyDeclaresApp), labelled) == UsingApp implies familyDeclaresApp
+type DeviceFamilyApp = FamilyApp({ app: str }) | NoFamilyApp
+pure def deviceCallReach(deviceFamily: DeviceFamilyApp): Set[str] = match deviceFamily { | FamilyApp(f) => Set(f.app) | NoFamilyApp => Set() }
+pure val deviceFamilyValues = Set(FamilyApp({ app: "calendar" }), FamilyApp({ app: "notes" }), NoFamilyApp)
+pure def lawADeviceCallReachesAtMostItsFamilysApp(deviceFamily: DeviceFamilyApp): bool = match deviceFamily {
+  | FamilyApp(f) => deviceCallReach(deviceFamily) == Set(f.app) | NoFamilyApp => deviceCallReach(deviceFamily) == Set() }
+pure def lawADeviceCallIsNamedOnlyByItsFamilysApp(deviceFamily: DeviceFamilyApp, labelled: int): bool =
+  toolActivity(deviceCallReach(deviceFamily).size(), labelled) == UsingApp implies deviceFamily != NoFamilyApp
 ```
 
 ### A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other

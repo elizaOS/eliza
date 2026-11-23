@@ -7,6 +7,7 @@ export { type ActionResultFrame, type ReplyFrame } from "./conversation/stream.v
 export { publishEventServiceType, type PublishEventService } from "./conversation/events.vibe"
 export { deviceConversation, type TurnReply } from "./conversation/turns.vibe"
 export { activityLabel, offeredActions, offeredOnlyWhere } from "./conversation/planning.vibe"
+export { turnContexts } from "../gen/agent__conversation__planning.ts"
 export { readTurnContext } from "./conversation/turn-context.schema.vibe"
 export { cloudServiceType, type CloudLinkReply, type CloudLinkRequest, type CloudLinkService, type GoogleAdmission, type GoogleChange } from "./models/cloud-link.vibe"
 export { scheduledTasksServiceType, type FireResult, type ScheduledTasksApi, type VerbRequest, type VerbResult } from "./schedule/scheduled-task-routes.vibe"

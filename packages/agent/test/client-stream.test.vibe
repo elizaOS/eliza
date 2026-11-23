@@ -5,8 +5,8 @@ import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "../src/client/stream-reader.vibe"
-import { activityLabel } from "../src/conversation/planning.vibe"
-import { proposeDeviceAction } from "../src/device-actions/proposal/action.vibe"
+import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
+import { deviceKeyHex } from "./support/device.ts"
 
 module node {
   import { Effect } from "effect"
@@ -21,16 +21,20 @@ module node {
     readonly seen: readonly string[]
   }
 
+  export const ran: string[] = []
+
   export const agendaApp: AgentPlugin = {
-    name: "agenda-app", description: "An app whose one action reads the owner's agenda",
+    name: "agenda-app", description: "An app that reads the owner's agenda, and runs its phone operations in Agenda",
     init: async (_config, runtime) => {
       runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" })
       await Effect.runPromise(registerDeviceProposalFamily(runtime, { ...unoffered("calendar"), types: ["calendar_named"], app: "agenda" }))
-      await Effect.runPromise(registerDeviceProposalFamily(runtime, { ...unoffered("telephony"), types: ["sms_send"] }))
     },
     actions: [{
       name: "AGENDA_READ", description: "Reads the owner's agenda.", contexts: ["general", "agenda"],
-      validate: async () => true, handler: async () => ({ success: true, text: "Nothing booked." }),
+      validate: async () => true, handler: async () => { ran.push("AGENDA_READ"); return { success: true, text: "Nothing booked." } },
+    }, {
+      name: "AGENDA_CLEAR", description: "Clears the owner's agenda.", contexts: ["agenda"],
+      validate: async () => true, handler: async () => { ran.push("AGENDA_CLEAR"); return { success: true, text: "Cleared." } },
     }],
   }
 
@@ -66,7 +70,7 @@ module node {
     return reading.then(() => false, (answered: unknown) => answered === reason)
   }
 }
-import { agendaApp, leftRead, readSplit } from node
+import { agendaApp, leftRead, ran, readSplit } from node
 
 schema Created { conversation: { id: string } }
 const created = Schema.decodeUnknownOption(Created)
@@ -178,12 +182,12 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
 
 const planning = "spec/agent/conversation/planning.md"
 
-it.live(`Hear that the agent heard me once before it works, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results")`, effect () => {
+it.live(`Hear that the agent heard me once before it works, and see which app it uses (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
       backend: { kind: "cloud", origin: cloud.origin }, load: [basicActionsModuleName, agendaApp.name],
-      allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE", "AGENDA_READ"],
+      allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE", "AGENDA_READ", "AGENDA_CLEAR"],
     },
     frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[agendaApp.name, agendaApp]]),
   })
@@ -217,10 +221,12 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
   const answer = try turn("Hi")
   try Effect.sync(() => cloud.script(text("Sure.")))
   const assentWithoutWork = try turn("Remember that I like tea")
-  const deviceCalls = ["calendar_named", "sms_send"].map((type) => activityLabel(agent.agent.runtime, proposeDeviceAction, { operation: { type } }))
+  try Effect.sync(() => { ran.length = 0; cloud.script(toolCalls("", { name: "AGENDA_CLEAR", arguments: {} }), toolCalls("", agenda), text("Your agenda is empty.")) })
+  const { tools } = try turn("Clear my agenda and read it back")
+  const withoutGeneral = { tools, ran: [...ran] }
 
   const done = (reply: string) => ({ kind: "Done", text: reply, failureKind: undefined, keyed: true })
-  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer, assentWithoutWork, deviceCalls }, {
+  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer, assentWithoutWork, withoutGeneral }, {
     instruction: {
       done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
@@ -232,6 +238,33 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
     },
     answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     assentWithoutWork: { done: done("Sure."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
-    deviceCalls: ["Using Agenda", "Working"],
+    withoutGeneral: { tools: ["tool:AGENDA_CLEAR:Using Agenda", "tool:AGENDA_READ:Using Agenda"], ran: ["AGENDA_READ"] },
   }))
+}, 120_000)
+
+it.live(`See which app a call on my phone runs in, by the app its operations belong to (${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/deviceActions/index.md, "Each wire type belongs to at most one proposal family, and a family offers forms only of its own types")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", hostContextRevision: 1,
+      load: [deviceActionsModuleName, agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "PROPOSE_DEVICE_ACTION"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[agendaApp.name, agendaApp]]),
+  })
+  const capabilities = ["sms.send.v1", "sms.compose.v2"]
+  const headers = { "x-eliza-device-id": agent.agent.runtime.agentId, "x-eliza-device-key": deviceKeyHex, "x-eliza-device-capabilities": capabilities.join(",") }
+  try call(agent, { method: "POST", path: "/api/client-devices/register", headers, body: { capabilities, workflowProtocol: 1 } })
+  const id = try conversation(agent)
+  const propose = (operation: object) => ({ name: "PROPOSE_DEVICE_ACTION", arguments: { operation } })
+  try Effect.sync(() => cloud.script(
+    toolCalls("", propose({ type: "calendar_named", query: "standup" })),
+    toolCalls("", propose({ type: "sms_send", recipients: ["4155550100"], body: "hi", subscriptionId: 1 })),
+    text("Okay."),
+  ))
+  const answer = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, headers, body: { text: "Check my standup" } })
+  const whole = try read(answer.chunks, 0)
+  try Effect.try(() => assert.deepStrictEqual(
+    { kind: whole.outcome.kind, tools: whole.seen.filter((entry) => entry.startsWith("tool:")) },
+    { kind: "Done", tools: ["tool:PROPOSE_DEVICE_ACTION:Using Agenda", "tool:PROPOSE_DEVICE_ACTION:Working"] },
+  ))
 }, 120_000)

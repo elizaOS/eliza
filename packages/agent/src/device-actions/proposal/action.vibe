@@ -6,6 +6,7 @@ module node {
   import { isRefused } from "../../../gen/agent__deviceActions__capabilities.ts"
   import { completableRead, directEligible } from "../../../gen/agent__deviceActions__operations.ts"
   import { proposeDeviceAction as declared } from "../../../gen/agent__plugins__profile.ts"
+  import { deviceCallReach } from "../../../gen/agent__conversation__planning.ts"
   import { callContexts, turnElsewhere, turnFirstCalls, turnNotes, turnToolForms, type TurnToolForm } from "../../conversation/planning.vibe"
   import { gateRoles } from "../../plugins/basic-actions.vibe"
   import { bindingHash } from "../operation-schemas/telephony.vibe"
@@ -279,7 +280,7 @@ module node {
 
   callContexts.set(proposeDeviceAction, (runtime, params) => {
     const app = familyFor(runtime, operationOf(params))?.app
-    return app === undefined ? [] : [app]
+    return deviceCallReach(app === undefined ? { tag: "NoFamilyApp" } : { tag: "FamilyApp", app })
   })
 
   turnNotes.set(proposeDeviceAction, (runtime, message) => {
