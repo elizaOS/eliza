@@ -223,7 +223,10 @@ pure def alwaysOneForkPerRequest(s: Conversations): bool = s.forks.every(f => f.
 
 The fork, titled `<source title> · edit`, holds a timed copy of each source
 message before the chosen one. It is listed only once the copy is stored
-whole; a retry of a pending fork publishes the copy already stored.
+whole; a retry of a pending fork publishes the copy already stored. A copy
+carries its source message's whole stored content, the stored segments of
+a long text or attachment included, and no idempotency marker, so a copy
+never answers or recovers a turn of the source.
 
 ```quint
 pure def conversationOf(s: Conversations, conversationId: int): Conversation = s.conversations.select(c => c.id == conversationId).nthOr(0, noConversation)

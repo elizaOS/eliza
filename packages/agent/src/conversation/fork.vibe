@@ -2,7 +2,7 @@
 module node {
   import { createHash } from "node:crypto"
   import { Schema } from "effect"
-  import { stringToUuid, type AgentRuntime, type IDatabaseAdapter, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core"
+  import { collectMessageContentSegmentIds, MESSAGE_CONTENT_SEGMENT_TABLE, messageContentSegmentId, stringToUuid, type AgentRuntime, type IDatabaseAdapter, type Memory, type MemoryMetadata, type MessageContentSegmentMetadata, type UUID } from "@elizaos/core"
   import { fork, forkAnswer, type Conversations, type Fork, type Message } from "../../gen/agent__conversation__conversations.ts"
   import type { LocalRoute } from "../access/routes.vibe"
   import { conversationView, type ConversationRecord, type ConversationStore } from "./conversations.vibe"
@@ -92,18 +92,42 @@ module node {
       message.conversationId === sourceId || message.origin.tag !== "Copied" ? [] : byModel.get(message.origin.fromId) ?? [])
   }
 
+  async function copiedSegments(runtime: AgentRuntime, memory: StoredMessage, copyId: UUID, roomId: UUID): Promise<Memory[]> {
+    const wanted = collectMessageContentSegmentIds(memory.id, memory.content)
+    if (wanted.length === 0) return []
+    const found = new Map((await runtime.adapter.getMemoriesByIds(wanted, MESSAGE_CONTENT_SEGMENT_TABLE)).map((segment) => [segment.id, segment]))
+    return wanted.map((id) => {
+      const segment = found.get(id)
+      const meta = segment?.metadata as unknown as MessageContentSegmentMetadata | undefined
+      if (segment === undefined || meta === undefined || segment.roomId !== memory.roomId || meta.messageId !== memory.id) {
+        throw new Error("The conversation's stored content is incomplete")
+      }
+      const { embedding: _embedding, similarity: _similarity, ...kept } = segment
+      return {
+        ...kept, roomId,
+        id: messageContentSegmentId({ messageId: copyId, kind: meta.sourceKind, revision: meta.sourceRevision, ordinal: meta.ordinal, attachmentHash: meta.attachmentIdHash }),
+        metadata: { ...meta, messageId: copyId } as unknown as MemoryMetadata,
+      }
+    })
+  }
+
   async function copyPrefix(runtime: AgentRuntime, source: ConversationRecord, prefix: readonly StoredMessage[], target: ConversationRecord) {
-    const ids = new Map(prefix.map((memory) => [memory.id, stringToUuid(`conversation-fork:${target.roomId}:${memory.id}`)]))
+    const copyOf = (id: UUID) => stringToUuid(`conversation-fork:${target.roomId}:${id}`)
+    const ids = new Map(prefix.map((memory) => [memory.id, copyOf(memory.id)]))
     const copies = prefix.map(({ embedding: _embedding, similarity: _similarity, ...memory }): Memory => {
-      const { inReplyTo, ...content } = memory.content
+      const { inReplyTo, chatIdempotency: _chatIdempotency, ...content } = memory.content
       const replyTo = inReplyTo === undefined ? undefined : ids.get(inReplyTo) ?? inReplyTo
       return {
-        ...memory, id: ids.get(memory.id), roomId: target.roomId,
+        ...memory, id: copyOf(memory.id), roomId: target.roomId,
         content: replyTo === undefined ? content : { ...content, inReplyTo: replyTo },
         metadata: { ...memory.metadata, forkSourceMessageId: memory.id, forkSourceRoomId: source.roomId } as MemoryMetadata,
       }
     })
-    await runtime.adapter.upsertMemories(copies.map((memory) => ({ memory, tableName: "messages" })))
+    const segments = (await Promise.all(prefix.map((memory) => copiedSegments(runtime, memory, copyOf(memory.id), target.roomId)))).flat()
+    await runtime.adapter.upsertMemories([
+      ...segments.map((memory) => ({ memory, tableName: MESSAGE_CONTENT_SEGMENT_TABLE })),
+      ...copies.map((memory) => ({ memory, tableName: "messages" })),
+    ])
   }
 
   async function completed(runtime: AgentRuntime, store: ConversationStore, source: ConversationRecord, placed: readonly Placed[], prior: ForkRecord) {

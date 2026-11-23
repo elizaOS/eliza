@@ -1,7 +1,7 @@
 // spec/agent/conversation/conversations.md, "Story: Fork a conversation at a message without changing the original"; spec/agent/conversation/conversations.md, "Story: Remove private text I sent by mistake"
 module node {
   import { randomUUID } from "node:crypto"
-  import { stringToUuid, type AgentRuntime, type Log, type Memory, type UUID } from "@elizaos/core"
+  import { collectMessageContentSegmentIds, MESSAGE_CONTENT_SEGMENT_TABLE, stringToUuid, type AgentRuntime, type Log, type Memory, type MessageContentSegmentMetadata, type UUID } from "@elizaos/core"
   import { conversationStore } from "../src/conversation/conversations.vibe"
   import { forkService, type ForkRequest } from "../src/conversation/fork.vibe"
 
@@ -15,6 +15,29 @@ module node {
     }))
     await runtime.adapter.createMemories(memories.map((memory) => ({ memory, tableName: "messages" })))
     return memories.map((memory) => String(memory.id))
+  }
+
+  export async function seedStoredContent(runtime: AgentRuntime, roomId: UUID, long: string, from: number) {
+    const owner = ownerId(runtime)
+    const marked: Memory = {
+      id: fresh(), roomId, agentId: runtime.agentId, createdAt: from, entityId: owner,
+      content: { text: "marked", source: "device", chatIdempotency: { scope: "device-chat", clientMessageId: "m1" } },
+    }
+    await runtime.adapter.createMemories([{ memory: marked, tableName: "messages" }])
+    await runtime.createMessageMemory({ id: fresh(), roomId, agentId: runtime.agentId, createdAt: from + 1, entityId: owner, content: { text: long, source: "device" } })
+    const [next] = await seedMessages(runtime, roomId, [{ text: "next", agent: false }], from + 2)
+    return next
+  }
+
+  export async function storedCopies(runtime: AgentRuntime, roomId: UUID) {
+    const copies = (await runtime.adapter.getMemories({ roomId, tableName: "messages" })).sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+    return Promise.all(copies.map(async (copy) => {
+      const ids = collectMessageContentSegmentIds(copy.id as UUID, copy.content)
+      const segments = await runtime.adapter.getMemoriesByIds(ids, MESSAGE_CONTENT_SEGMENT_TABLE)
+      const owned = segments.length === ids.length && segments.every((segment) =>
+        segment.roomId === roomId && (segment.metadata as unknown as MessageContentSegmentMetadata).messageId === copy.id)
+      return { text: copy.content.text ?? segments.map((segment) => segment.content.text ?? "").join(""), marked: "chatIdempotency" in copy.content, segments: owned ? segments.length : -1 }
+    }))
   }
 
   export async function seedLogs(runtime: AgentRuntime, rows: readonly { readonly roomId: UUID; readonly type: string; readonly prompt: string }[]) {
@@ -40,7 +63,7 @@ module node {
   }
 }
 
-import { fresh, forkRecordText, interruptedFork, promptsOf, seedLogs, seedMessages } from node
+import { fresh, forkRecordText, interruptedFork, promptsOf, seedLogs, seedMessages, seedStoredContent, storedCopies } from node
 import { assert, it } from "@effect/vitest"
 import type { UUID } from "@elizaos/core"
 import { privateNotice } from "../gen/agent__conversation__conversations.ts"
@@ -119,6 +142,11 @@ it.effect('Fork at my own message: the copy is whole before it is listed, a retr
   const retried = try forkAt(agent, plans.id, { messageId: sure, requestId: "r3", expectedText: "sure" })
   const published = try history(agent, pendingId)
   const finally_ = try listed(agent)
+  const notes = try open(agent, "Notes")
+  const long = "a".repeat(70_000)
+  const next = try host("seed stored content", () => seedStoredContent(runtime, notes.roomId, long, base))
+  const noted = try forkAt(agent, notes.id, { messageId: next, requestId: "n1", expectedText: "next" })
+  const stored = try host("stored copies", () => storedCopies(runtime, noted.conversation?.roomId ?? notes.roomId))
 
   try Effect.try(() => {
     assert.deepStrictEqual({
@@ -140,6 +168,9 @@ it.effect('Fork at my own message: the copy is whole before it is listed, a retr
     }, {
       pendingListed: false, pendingHistory: 404,
       retried: [200, true], published: ["hello", "hi there", "plan a trip"], listed: 2,
+    })
+    assert.deepStrictEqual({ noted: noted.status, stored }, {
+      noted: 200, stored: [{ text: "marked", marked: false, segments: 0 }, { text: long, marked: false, segments: 2 }],
     })
   })
 }, 180_000)
