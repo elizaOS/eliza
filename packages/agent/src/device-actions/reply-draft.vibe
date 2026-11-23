@@ -111,7 +111,7 @@ error DraftCallFailed { cause: unknown }
 
 effect function draftCall(runtime: AgentRuntime, thread: ReadThread, signal: AbortSignal) {
   const raw = try tryPromise({
-    try: () => runtime.useModel(ModelType.TEXT_SMALL, { system: systemText, prompt: userText(thread), omitMaxTokens: true, signal }),
+    try: () => runtime.useModel(ModelType.TEXT_SMALL, { system: systemText, prompt: userText(thread), omitMaxTokens: true, reasoning: "off", signal }),
     catch: (cause) => new DraftCallFailed({ cause }),
   })
   return signal.aborted ? closed : saidOf(raw)

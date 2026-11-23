@@ -62,7 +62,7 @@ const closedSchema = {
 }
 
 describe("WP5 Inference: chat admission", () => {
-  it.live("Refuse a chat body the cloud does not accept and quote the one it does (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\")", () => scoped(effect {
+  it.live("Refuse a chat body the cloud does not accept and quote the one it does, a planning turn included (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
     const cloud = try testCloud()
     const reached: Array<string> = []
     const caller = try signedCaller(cloud, "chat-admission")
@@ -70,7 +70,26 @@ describe("WP5 Inference: chat admission", () => {
     const send = (body: unknown) => call({ headers: { ...caller.headers, "content-type": "application/json" }, json: body })
     const user = { role: "user", content: "Name this picture in one short title ok." }
     const answers = {
-      unsupportedField: outcome(try send({ model: "test-chat", messages: [user], tools: [] })),
+      unsupportedField: outcome(try send({ model: "test-chat", messages: [user], functions: [] })),
+      planningTurn: outcome(try send({
+        model: "test-chat",
+        messages: [
+          { role: "system", content: "Plan." },
+          { role: "user", content: user.content, name: "owner" },
+          { role: "assistant", content: null, reasoning: "Look it up.", tool_calls: [{ id: "call-1", type: "function", function: { name: "SEARCH", arguments: "{\"q\":\"x\"}" } }] },
+          { role: "tool", tool_call_id: "call-1", content: "found" }
+        ],
+        tools: [{ type: "function", function: { name: "SEARCH", description: "Search", parameters: { type: "object", properties: { q: { type: "string" } } } } }],
+        tool_choice: "auto",
+        top_p: 0.9,
+        stop: ["\n\n"],
+        seed: 7,
+        frequency_penalty: 0.1,
+        presence_penalty: -0.1,
+        prompt_cache_key: "agent-1",
+        max_tokens: 8
+      })),
+      emptyCacheKey: outcome(try send({ model: "test-chat", messages: [user], prompt_cache_key: "" })),
       emptyMessages: outcome(try send({ model: "test-chat", messages: [] })),
       tooManyTokens: outcome(try send({ model: "test-chat", messages: [user], max_tokens: 2_000_001 })),
       nestedExtra: outcome(try send({ model: "test-chat", messages: [{ ...user, cache: true }] })),
@@ -92,6 +111,8 @@ describe("WP5 Inference: chat admission", () => {
     }
     try check(() => assert.deepStrictEqual(answers, {
       unsupportedField: "400 invalid_request unsupported_field",
+      planningTurn: { counts: { inputTokens: 17, outputTokens: 8 }, micros: 39, image: false },
+      emptyCacheKey: "400 invalid_request",
       emptyMessages: "400 invalid_request",
       tooManyTokens: "400 invalid_request",
       nestedExtra: "400 invalid_request",
@@ -102,7 +123,7 @@ describe("WP5 Inference: chat admission", () => {
       defaultOutput: { counts: { inputTokens: 10, outputTokens: 4096 }, micros: 9842, image: false },
       shortDefaultOutput: { counts: { inputTokens: 10, outputTokens: 500 }, micros: 1212, image: false }
     }))
-    try check(() => assert.deepStrictEqual(reached.length, 10))
+    try check(() => assert.deepStrictEqual(reached.length, 12))
   }))
 
   it.live("Limit chat ingress to 600 requests a minute from one address before authentication (spec/cloud/shared/rateLimit.md, \"Story: Refuse excess requests with a usable retry time\")", () => scoped(effect {
