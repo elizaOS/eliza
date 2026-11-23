@@ -482,17 +482,22 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     expect(fields((await codeRead(secure)).codeReadback).matches).toBe(true);
   });
 
-  it("through the browser host, presses a bound frame control once and never reads a partner origin's frame", async () => {
+  it("through the browser host, presses a bound frame control once, never reads a partner origin's frame, and goes on past a tab that never answers", async () => {
     await open(`${shop}/framed-plain`);
     const target = selectorOf(find(await snapshot(), "Show details"));
     const records: Fields = {};
+    const held: { func: (...args: never[]) => unknown; args: unknown[] }[] = [];
     const handle = createCommandHandler({
       runtime: { id: "test-extension" },
       storage: { local: { get: (key: string) => Promise.resolve({ [key]: records[key] }), set: (values: Fields) => Promise.resolve(Object.assign(records, values)) } },
       tabs: { query: () => Promise.resolve([{ id: 1 }]), get: () => Promise.resolve({ url: tab.url(), status: "complete" }) },
       webNavigation: { getAllFrames: async () => (await frameList()).map(({ frameId, documentId }) => ({ frameId, documentId })) },
       scripting: {
-        executeScript: async (request: { target: { frameIds?: number[]; allFrames?: boolean }; func: (...args: never[]) => unknown; args: unknown[] }) => {
+        executeScript: async (request: { target: { tabId: number; frameIds?: number[]; allFrames?: boolean }; func: (...args: never[]) => unknown; args: unknown[] }) => {
+          if (request.target.tabId === 2) {
+            held.push(request);
+            return new Promise(() => {});
+          }
           const chosen = (await frameList()).filter(({ frameId }) => request.target.allFrames === true || request.target.frameIds?.includes(frameId));
           return Promise.all(chosen.map(async ({ frameId, documentId, contextId }) => ({ frameId, documentId, result: await evaluate(`(${Function.prototype.toString.call(request.func)})(...${JSON.stringify(request.args)})`, await contextId()) })));
         },
@@ -522,6 +527,20 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     const frame = fields(Schema.decodeUnknownSync(Schema.Array(Fields))(fields(again.result).frames)[0]);
     expect(Schema.decodeUnknownSync(Schema.Array(Fields))(frame.childFrames).map((child) => child.read)).toEqual([true, false]);
     expect(text(frame.text)).not.toContain("Partner words");
+    let unanswered: unknown;
+    const hung = handle({ type: "command", id: "hung-1", command: { subaction: "snapshot", id: "2" } }, { send: (value) => { unanswered = value; } }, () => true);
+    expect(await send({ type: "command", id: "read-3", command: { subaction: "snapshot", id: "1", taskContext } })).toMatchObject({ ok: true });
+    await hung;
+    expect(unanswered).toMatchObject({ id: "hung-1", ok: false, error: { kind: "INCOMPLETE_SNAPSHOT", reason: "page-unresponsive" } });
+    held.splice(0);
+    await open(`${shop}/static-dialog`);
+    const noticeId = crypto.randomUUID();
+    const notice = Schema.decodeUnknownSync(Read)(await call(pageCommand, [{ subaction: "snapshot" }, noticeId]));
+    const close = `${noticeId}:0:${text(fields(notice.elements.find((element) => element.label === "Close")).id)}`;
+    expect(await send({ type: "command", id: "hung-2", command: { subaction: "click", id: "2", selector: close } })).toMatchObject({ ok: false, error: { kind: "UNCERTAIN_OUTCOME" } });
+    const late = await Promise.all(held.splice(0).map(async (request) => evaluate(`(${Function.prototype.toString.call(request.func)})(...${JSON.stringify(request.args)})`, await realm())));
+    expect(late).toMatchObject([{ error: { kind: "STALE_REF" } }]);
+    expect(await presses()).toEqual([]);
   });
 });
 
