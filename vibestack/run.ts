@@ -1,8 +1,9 @@
 // Shared bounded execution for the Quint, TypeScript, test and proof stages.
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { execFile, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { availableParallelism } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 // --- running tools -------------------------------------------------------------
 
@@ -50,10 +51,18 @@ export function bin(cmd: string, root: string): string {
 const seconds = (time = "0") => { const [days, clock] = time.includes("-") ? time.split("-") : ["0", time]; return Number(days) * 86400 + clock.split(":").reduce((sum, part) => sum * 60 + Number(part), 0); };
 
 /** Every process as its id, its parent's, its group's and the processor seconds it has used. */
-const processes = () => WINDOWS ? [] : (spawnSync("ps", ["-Ao", "pid=,ppid=,pgid=,time="], { encoding: "utf8" }).stdout ?? "").trim().split("\n").filter(Boolean).map((line) => {
+const psArgs = ["-Ao", "pid=,ppid=,pgid=,time="];
+const processTable = (output: string) => output.trim().split("\n").filter(Boolean).map((line) => {
   const [pid, parent, group, time] = line.trim().split(/\s+/);
   return [Number(pid), Number(parent), Number(group), seconds(time)];
 });
+const processes = () => WINDOWS ? [] : processTable(spawnSync("ps", psArgs, { encoding: "utf8", timeout: WATCH, killSignal: "SIGKILL" }).stdout ?? "");
+
+const execFileAsync = promisify(execFile);
+async function readCounters(command: string, args: string[], signal?: AbortSignal) {
+  try { return (await execFileAsync(command, args, { encoding: "utf8", timeout: WATCH, killSignal: "SIGKILL", signal })).stdout; }
+  catch { return ""; }
+}
 
 /** The processes in `table` that `child` started, itself included. */
 function startedBy(child: ChildProcess, table: number[][]) {
@@ -77,13 +86,12 @@ function run(pids) {
 }`;
 
 let linuxTicksPerSecond: number | undefined;
-function cpuCounters(pids: number[], table: number[][]) {
+async function cpuCounters(pids: number[], table: number[][], signal?: AbortSignal) {
   const readings = new Map<number, number>();
   if (!pids.length) return readings;
   if (process.platform === "darwin") {
-    const result = spawnSync("/usr/bin/osascript", ["-l", "JavaScript", "-e", darwinCpu, ...pids.map(String)], { encoding: "utf8" });
-    if (result.status !== 0) return readings;
-    const [first, ...rows] = result.stdout.trim().split("\n");
+    const output = await readCounters("/usr/bin/osascript", ["-l", "JavaScript", "-e", darwinCpu, ...pids.map(String)], signal);
+    const [first, ...rows] = output.trim().split("\n");
     const clock = Buffer.from(first, "base64");
     if (clock.length !== 8 || !clock.readUInt32LE(4) || rows.length !== pids.length) return readings;
     const secondsPerTick = clock.readUInt32LE(0) / clock.readUInt32LE(4) / 1e9;
@@ -96,18 +104,19 @@ function cpuCounters(pids: number[], table: number[][]) {
     }
   } else if (process.platform === "linux") {
     if (linuxTicksPerSecond === undefined) {
-      const rate = Number(spawnSync("getconf", ["CLK_TCK"], { encoding: "utf8" }).stdout);
+      const rate = Number(await readCounters("getconf", ["CLK_TCK"], signal));
       if (!(rate > 0)) return readings;
       linuxTicksPerSecond = rate;
     }
-    for (const pid of pids) {
+    const rate = linuxTicksPerSecond;
+    await Promise.all(pids.map(async (pid) => {
       try {
-        const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+        const stat = await fs.promises.readFile(`/proc/${pid}/stat`, { encoding: "utf8", signal });
         const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
         const ticks = fields.slice(11, 15).map(Number);
-        if (ticks.length === 4 && ticks.every(Number.isFinite)) readings.set(pid, ticks.reduce((sum, n) => sum + n, 0) / linuxTicksPerSecond);
-      } catch { continue; }
-    }
+        if (ticks.length === 4 && ticks.every(Number.isFinite)) readings.set(pid, ticks.reduce((sum, n) => sum + n, 0) / rate);
+      } catch { return; }
+    }));
   } else {
     for (const [pid, , , time] of table) readings.set(pid, time);
   }
@@ -116,10 +125,10 @@ function cpuCounters(pids: number[], table: number[][]) {
 
 type CpuReading = { seconds: number; complete: boolean };
 
-export function toolCpuSeconds(children: ChildProcess[]): (CpuReading | undefined)[] {
-  const table = processes();
+export async function toolCpuSeconds(children: ChildProcess[], signal?: AbortSignal): Promise<(CpuReading | undefined)[]> {
+  const table = processTable(await readCounters("ps", psArgs, signal));
   const trees = children.map(child => startedBy(child, table).map(([pid]) => pid));
-  const counters = cpuCounters([...new Set(trees.flat())], table);
+  const counters = await cpuCounters([...new Set(trees.flat())], table, signal);
   return trees.map((tree, index) => {
     const root = children[index].pid;
     const reapedAndOwn = root === undefined ? undefined : counters.get(root);
@@ -137,18 +146,25 @@ export function toolCpuSeconds(children: ChildProcess[]): (CpuReading | undefine
   });
 }
 
-const watched = new Map<ChildProcess, (reading: CpuReading | undefined) => void>();
+const watched = new Map<ChildProcess, (reading: CpuReading | undefined, signal: AbortSignal) => Promise<void>>();
 let watchTimer: NodeJS.Timeout | undefined;
-function watchCpu(child: ChildProcess, check: (reading: CpuReading | undefined) => void) {
+let polling: AbortController | undefined;
+function watchCpu(child: ChildProcess, check: (reading: CpuReading | undefined, signal: AbortSignal) => Promise<void>) {
   watched.set(child, check);
-  watchTimer ??= setInterval(() => {
-    const jobs = [...watched];
-    const readings = WINDOWS ? [] : toolCpuSeconds(jobs.map(([job]) => job));
-    for (const [index, [, report]] of jobs.entries()) report(readings[index]);
+  watchTimer ??= setInterval(async () => {
+    if (polling) return;
+    const cycle = new AbortController();
+    polling = cycle;
+    try {
+      const jobs = [...watched];
+      const readings = WINDOWS ? [] : await toolCpuSeconds(jobs.map(([job]) => job), cycle.signal);
+      await Promise.all(jobs.map(([job, report], index) => watched.has(job) && report(readings[index], cycle.signal)));
+    } finally { polling = undefined; }
   }, WATCH);
   return () => {
     watched.delete(child);
     if (!watched.size) {
+      polling?.abort();
       clearInterval(watchTimer);
       watchTimer = undefined;
     }
@@ -209,7 +225,7 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
       const minutes = TOOL_TIMEOUT / 60_000;
       let lastComplete: { seconds: number; since: number } | undefined;
       let observedAt = started;
-      unwatch = watchCpu(child, (reading) => {
+      unwatch = watchCpu(child, async (reading, signal) => {
         const now = Date.now(), ran = now - started;
         const sample = WINDOWS ? { seconds: ran / 1000, complete: true } : reading;
         if (!sample) {
@@ -223,8 +239,8 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
         const over = sample.seconds * 1000 > TOOL_TIMEOUT;
         const idle = ran > TOOL_TIMEOUT && lastComplete !== undefined && now - lastComplete.since >= WATCH;
         if (!over && !idle) return;
-        const confirmed = WINDOWS ? sample : toolCpuSeconds([child])[0];
-        if (!confirmed) return;
+        const confirmed = WINDOWS ? sample : (await toolCpuSeconds([child], signal))[0];
+        if (!confirmed || !watched.has(child) || child.exitCode !== null || child.signalCode !== null) return;
         if (over && confirmed.seconds * 1000 > TOOL_TIMEOUT) stop(`used more than ${minutes} minutes of processor time`);
         else if (idle && confirmed.complete && confirmed.seconds === sample.seconds) stop(`ran for more than ${minutes} minutes, the last minute without the processor,`);
       });

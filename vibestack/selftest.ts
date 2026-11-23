@@ -3830,11 +3830,11 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
     const closed = once(verifier, "close");
     try {
       await once(verifier, "message");
-      const [before] = toolCpuSeconds([verifier]);
+      const [before] = await toolCpuSeconds([verifier]);
       const reaped = once(verifier, "message");
       verifier.send("work");
       assert.equal((await reaped)[0], 0);
-      const [after] = toolCpuSeconds([verifier]);
+      const [after] = await toolCpuSeconds([verifier]);
       assert.ok(before?.complete && after?.complete && after.seconds - before.seconds >= 0.28, `CPU seconds before ${before?.seconds}, after ${after?.seconds}`);
     } finally {
       verifier.kill();
