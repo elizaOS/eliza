@@ -147,22 +147,26 @@ export async function toolCpuSeconds(children: ChildProcess[], signal?: AbortSig
   const deadline = AbortSignal.timeout(WATCH);
   const observation = signal ? AbortSignal.any([signal, deadline]) : deadline;
   const table = processTable(await readCounters("ps", psArgs, observation));
-  const trees = children.map(child => startedBy(child, table).map(([pid]) => pid));
-  const counters = await cpuCounters([...new Set(trees.flat())], table, observation);
-  return trees.map((tree, index) => {
-    const root = children[index].pid;
-    const reapedAndOwn = root === undefined ? undefined : counters.get(root);
-    if (reapedAndOwn === undefined) return undefined;
+  const trees = children.map(child => {
+    const leader = child.exitCode === null && child.signalCode === null ? child.pid : undefined;
+    const rows = leader === undefined ? table.filter(([, , group]) => group === child.pid) : startedBy(child, table);
+    return { leader, pids: rows.map(([pid]) => pid) };
+  });
+  const counters = await cpuCounters([...new Set(trees.flatMap(tree => tree.pids))], table, observation);
+  return trees.map(({ leader, pids }) => {
+    if (leader !== undefined && !counters.has(leader)) return undefined;
     const known = new Map<number, number>();
-    let seconds = 0, lowerBound = reapedAndOwn;
-    for (const pid of tree) {
+    let seconds = 0, lowerBound = 0;
+    for (const pid of pids) {
       const used = counters.get(pid);
       if (used === undefined) continue;
       known.set(pid, used);
       seconds += used;
       lowerBound = Math.max(lowerBound, used);
     }
-    return known.size === tree.length ? { seconds, complete: true } : { seconds: lowerBound, complete: false, known };
+    if (!known.size) return undefined;
+    if (leader !== undefined && known.size === pids.length) return { seconds, complete: true };
+    return { seconds: leader === undefined ? 0 : lowerBound, complete: false, known };
   });
 }
 
