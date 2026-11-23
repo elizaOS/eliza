@@ -37,7 +37,7 @@ type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect | Coaching 
 type StepIdentity = RequestAttempt({ key: str }) | ReceiptOperation({ key: str })
 type PlanStep = { outcome: StepOutcome, identity: StepIdentity }
 pure val maxPlanSteps = 8
-pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
+pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE", "RESTORE_CONTEXT")
 pure def offered(registered: Set[str], allowed: Set[str]): Set[str] = registered.intersect(allowed).exclude(messageServiceActions)
 pure def keepsPlanning(taken: int, calls: int, terminal: bool): bool = calls > 0 and not(terminal) and taken < maxPlanSteps
 pure def acceptsPlannedReply(reply: bool, coaching: bool): bool = reply and not(coaching)
@@ -51,6 +51,51 @@ pure def lawPlanningStopsAtTheBound(taken: int, calls: int, terminal: bool): boo
 pure def lawAReplyAlongsideACoachingRefusalDoesNotEndPlanning(taken: int): bool =
   (taken < maxPlanSteps implies keepsPlanning(taken, 1, acceptsPlannedReply(true, true))) and not(acceptsPlannedReply(true, true))
 pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool = not(keepsPlanning(taken, 0, terminal))
+```
+
+### A request to restore original history runs alone and keeps the settled tool results
+
+> As the owner, I can refer to earlier messages without making the agent
+> run a tool again just to recover the missing words.
+
+In a tool-enabled planning round the host offers one stable
+`RESTORE_CONTEXT` definition. It advertises the deferred original
+history only while the current request omits that history. The sole
+source is the same bounded room snapshot the turn already opened.
+The valid scopes are `history`, `providers` and `full` (the default).
+This host has no deferred provider context. Each call gives a nonempty
+reason. Calls in one response combine their valid scopes. If any of its
+calls request a restore, the draft, acknowledgments, and all sibling
+calls from that response are withheld. A valid restore replaces the shown
+history with the ordered original messages, keeps the current request and
+settled tool results, and then replans. It does not reread the room.
+
+An offered restore with malformed arguments or with no requested deferred
+source receives one host correction per planning round. The base history
+is unchanged. A second invalid restore in that round, an unoffered
+restore, or no remaining model call ends planning with the outcomes
+already available. A successful restore leaves the correction allowance
+as it was. Only a normal action round can open a fresh allowance.
+Restoration calls share the existing turn lease, cancellation and
+eight-call bound.
+
+```quint
+type RestoreIntent = RestoreHistory | RestoreProviders | RestoreAll | MalformedRestore
+type RestoreDisposition = UseOriginalHistory | CorrectRestore | EndRestore
+pure val intentValues = Set(RestoreHistory, RestoreProviders, RestoreAll, MalformedRestore)
+pure def restoreDisposition(intent: RestoreIntent, deferred: bool, offered: bool, corrected: bool, budget: bool): RestoreDisposition =
+  if (not(offered and budget)) EndRestore
+  else if (deferred and (intent == RestoreHistory or intent == RestoreAll)) UseOriginalHistory
+  else if (corrected) EndRestore
+  else CorrectRestore
+pure def lawUnofferedRestorationIsRefused(intent: RestoreIntent, deferred: bool, corrected: bool, budget: bool): bool =
+  restoreDisposition(intent, deferred, false, corrected, budget) == EndRestore
+pure def lawASecondInvalidRestoreGetsNoCorrection(intent: RestoreIntent, offered: bool, budget: bool): bool =
+  restoreDisposition(intent, false, offered, true, budget) == EndRestore
+pure def lawTheOriginalHistoryWasAdvertised(intent: RestoreIntent, offered: bool, corrected: bool, budget: bool): bool =
+  restoreDisposition(intent, false, offered, corrected, budget) != UseOriginalHistory
+pure def lawAValidRestoreCanFollowACorrection(intent: RestoreIntent): bool =
+  (intent == RestoreHistory or intent == RestoreAll) implies restoreDisposition(intent, true, true, true, true) == UseOriginalHistory
 ```
 
 ### The live owner turn classifies a Notes write from its original conversation before dispatch

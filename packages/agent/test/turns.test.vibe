@@ -57,11 +57,21 @@ module node {
     return id
   }
 
+  export async function seedHistory(runtime: AgentRuntime, asked: Memory, marker: string) {
+    for (let index = 0; index < 64; index += 1) {
+      await runtime.createMessageMemory({
+        ...asked, id: `00000000-0000-4000-8000-${String(index + 1000).padStart(12, "0")}` as UUID,
+        createdAt: (asked.createdAt ?? Date.now()) - 10_000 + index,
+        content: { text: index === 0 ? marker : `Filler entry ${index}.`, source: "device" },
+      })
+    }
+  }
+
   export async function roomMessages(runtime: AgentRuntime, roomId: UUID): Promise<Memory[]> {
     return runtime.getMemories({ tableName: "messages", roomId, count: 1000 })
   }
 }
-import { completions, cutTurn, overlapping, roomMessages } from node
+import { completions, cutTurn, overlapping, roomMessages, seedHistory } from node
 
 const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 
@@ -220,6 +230,78 @@ it.live(`A planner-only refusal keeps a bundled reply from ending the owner turn
   })
 }, 120_000)
 
+it.live(`Restore original history alone and preserve one settled calculation (${planning}, "A request to restore original history runs alone and keeps the settled tool results")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const { id, roomId } = try conversation(agent)
+  try Effect.sync(() => cloud.script(text("I’m ready.")))
+  const first = replyOf(try send(agent, id, { text: "Prepare for a later question." }))
+  const original = try host("seeded conversation", () => agent.agent.runtime.getMemoryById(first.userMessageId as UUID))
+  if (original === null) return try Effect.die(new Error("The owner message was not stored"))
+  const marker = "Pebble tundra."
+  try host("store original history", () => seedHistory(agent.agent.runtime, original, marker))
+  const restore = (scope: string) => ({ name: "RESTORE_CONTEXT", arguments: { scope, reason: "The earlier details are needed." } })
+  const calculate = (expression: string) => ({ name: "CALCULATE", arguments: { expression } })
+  const discarded = "This mixed draft must stay out of the reply."
+  try Effect.sync(() => cloud.script(
+    toolCalls("", calculate("7 + 5")),
+    toolCalls(discarded, restore("unexpected"), calculate("55 + 55")),
+    toolCalls(discarded, restore("history"), calculate("99 + 1"), { name: "REPLY", arguments: { text: discarded } }),
+    text("The original marker was Pebble tundra, and the total is 12."),
+  ))
+  const current = "Recover the earlier item and calculate 7 + 5."
+  const answer = replyOf(try send(agent, id, { text: current }))
+  const calls = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).slice(-4)
+    .map(({ body }) => body as { messages: { role: string; content?: string }[]; tools: Array<{ function?: { name?: string } }> })
+  try Effect.try(() => {
+    assert.deepStrictEqual(answer.actionResults.map(({ action }) => action), ["CALCULATE"])
+    assert.strictEqual(answer.text, "The original marker was Pebble tundra, and the total is 12.")
+    assert.deepStrictEqual(calls.map(({ messages }) => messages.filter(({ content }) => content === marker).length), [0, 0, 0, 1])
+    const final = calls[3]?.messages ?? []
+    assert.strictEqual(final.filter(({ content }) => content === current).length, 1)
+    assert.strictEqual(final.filter(({ role }) => role === "tool").length, 1)
+    assert.isTrue(final.some(({ role, content }) => role === "tool" && content?.includes("12") === true))
+    assert.strictEqual(final.filter(({ content }) => content?.includes("context restore did not run")).length, 1)
+    assert.strictEqual(final.filter(({ content }) => content?.includes("deferred original history was restored")).length, 1)
+    assert.notInclude(JSON.stringify(calls), discarded)
+    assert.notInclude(JSON.stringify(calls), "99 + 1")
+    assert.isFalse(final.some(({ role, content }) => role === "system" && content?.includes("earlier conversation messages are deferred") === true))
+    assert.deepStrictEqual(calls.map(({ tools }) => tools[0]), calls.map(() => calls[0]?.tools[0]))
+  })
+
+  try Effect.sync(() => cloud.script(
+    toolCalls(discarded, restore("providers"), calculate("2 + 3")),
+    toolCalls(discarded, restore("providers"), calculate("6 + 7")),
+  ))
+  const refused = replyOf(try send(agent, id, { text: "Can you check the unavailable context?" }))
+  try Effect.try(() => {
+    assert.strictEqual(refused.text, "I couldn’t restore additional context for that reply.")
+    assert.deepStrictEqual(refused.actionResults, [])
+    assert.strictEqual(completions(cloud), 7)
+  })
+
+  const finish = Promise.withResolvers<void>()
+  const { starting, restored } = try Effect.sync(() => ({ starting: cloud.nextCompletion(), restored: cloud.nextCompletion() }))
+  try Effect.sync(() => cloud.script(
+    toolCalls("", restore("history")),
+    held(finish.promise, toolCalls("", calculate("400 + 500"))),
+  ))
+  const parked = fork send(agent, id, { text: "Use my earlier context one more time." })
+  try promise(() => starting)
+  try promise(() => restored)
+  const stop = answerOf(try call(agent, { method: "POST", path: `/api/turns/${roomId}/abort`, body: {} }))
+  try sync(() => finish.resolve())
+  const interrupted = replyOf(try join parked)
+  try Effect.try(() => {
+    assert.deepStrictEqual([stop.status, (stop.body as { outcome: string }).outcome, interrupted.failureKind], [200, "stopped", "aborted"])
+    assert.deepStrictEqual(interrupted.actionResults, [])
+    assert.strictEqual(completions(cloud), 9)
+  })
+}, 120_000)
+
 const receiptFixture = {
   name: "receipt-fixture",
   description: "Return recorded outcomes without doing external work.",
@@ -333,7 +415,7 @@ it.live(`An allowed action runs as a tool, its result grounds the reply, a failu
     duration: duration.text,
     labels: { text: solved.action, voice: spoken.action },
   }, {
-    offered: ["CALCULATE"],
+    offered: ["RESTORE_CONTEXT", "CALCULATE"],
     toolResult: true,
     solved: "That is 1,123,324.",
     actions: ["CALCULATE"],

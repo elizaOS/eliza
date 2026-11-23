@@ -2,7 +2,7 @@
 import {
   type Action, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
-  executePlannedToolCall, getTrajectoryContext, historyWindowNotice, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement,
+  executePlannedToolCall, getTrajectoryContext, runWithTrajectoryContext, RunTerminalOwner, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement,
 } from "@elizaos/core"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { textForTurn } from "./heard.vibe"
@@ -147,15 +147,21 @@ async function respond(
           return [{ id: previous.id ?? "", fromUser: previous.entityId !== runtime.agentId, text: content }]
         })
         const window = windowHistory(sources, asked)
-        const history: ChatMessage[] = window.shown.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
-        const messages: ChatMessage[] = [...history, said(message, asked)]
+        const historyOf = (entries: readonly (typeof sources)[number][]): ChatMessage[] =>
+          entries.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
+        const history = historyOf(window.shown)
+        const current = said(message, asked)
+        const messages: ChatMessage[] = [...history, current]
+        const deferredHistory = window.deferred.length === 0 ? undefined : {
+          count: window.deferred.length,
+          originals: [...historyOf(sources), current],
+        }
         const character = runtime.character
         const examples = (character.messageExamples ?? []).map(({ examples }) =>
           examples.flatMap(({ name, content }) => content.text ? [`${name}: ${content.text}`] : []).join("\n"))
           .filter(Boolean)
         const system = [character.system, ...(character.bio ?? []), ...(character.style?.all ?? []),
-          ...(character.style?.chat ?? []), ...examples, contextNote(message), options?.taskContext,
-          window.windowed ? historyWindowNotice(window) : undefined].filter(Boolean).join("\n\n")
+          ...(character.style?.chat ?? []), ...examples, contextNote(message), options?.taskContext].filter(Boolean).join("\n\n")
         const state = await runtime.composeState(message, [], true, true)
         const actions = await offeredActions(runtime, message, state, actionGate)
         const notesHistoryIds = new Set(recent.flatMap(({ id, entityId }) =>
@@ -167,6 +173,7 @@ async function respond(
         })
         const planned = await planTurn({
           runtime, message, state, roles, actionGate, system, messages, signal, actionContext,
+          ...(deferredHistory === undefined ? {} : { deferredHistory }),
           onStepResult: (result) => Effect.runPromise(Effect.try({
             try: () => terminal.recordActionResult(result),
             catch: toElizaError,
