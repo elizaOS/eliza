@@ -82,11 +82,12 @@ pure def sometimesListedFixedPluginRefused(s: PluginPlan): bool = s.phase == Ref
 
 The privacy service is core's, in the launch's mode, and loads only when
 either privacy switch is on. Its mode is the launch's two switches, each
-turning its swap on or off for every model call the agent makes, with stable
-references when the launch environment sets
-`ELIZA_SECRET_SWAP_STABLE_REFERENCES`. Each plugin registers through core plugins in
-this order, one at a time, and the product plugin registers only after every
-other plugin has. The plan starts from an admitted launch policy, which
+turning its swap on or off for every model call the agent makes; secret
+swap keeps a conversation's references stable by itself
+([secret sessions](../../core/secretSession.md)). Each plugin registers
+through core plugins in this order, one at a time, and the product plugin
+registers only after every other plugin has. The plan starts from an
+admitted launch policy, which
 names each plugin once and never names the product plugin in the load list,
 so no plugin is planned twice.
 
