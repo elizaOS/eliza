@@ -1,4 +1,4 @@
-// spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/hostedDigest.md, "Notice retry and an uncertain ACK preserve the committed journal"
+// spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/hostedDigest.md, "Notice retry and an uncertain ACK preserve the committed journal"; spec/workflow/execution.md, "A run's stored record leaves out U+0000, which the store cannot hold"
 import type { Lifecycle } from "../../gen/workflow__lifecycle.effect.vibe"
 import type { Workflow as Admission } from "../../gen/workflow__admission.effect.vibe"
 import type { WakeupRun } from "../../gen/workflow__execution.effect.vibe"
@@ -90,6 +90,7 @@ export interface RunRow {
   readonly allowed: boolean
   readonly approvals: readonly ApprovalRow[]
   readonly events: readonly RunEvent[]
+  readonly eventsDropped?: number
   readonly cancellationRequestedAt?: string
   readonly hostedDigest?: Readonly<Record<string, unknown>>
   readonly waitingSignal?: string
@@ -126,6 +127,10 @@ module node {
     return (typeof value === "string" ? JSON.parse(value) : value) as A
   }
 
+  function jsonb(value: unknown): string {
+    return JSON.stringify(value, (_key, item: unknown) => typeof item === "string" ? item.replaceAll("\u0000", "") : item)
+  }
+
   export function migrate(sql: WorkflowSql, statements: string): Promise<void> {
     return sql.transaction(async (q) => {
       for (const statement of statements.split(";").map((text) => text.trim()).filter((text) => text !== "")) await q.query(statement)
@@ -149,7 +154,7 @@ module node {
 
   async function putReceipt(q: WorkflowQuery, receipt: { mutationId: string; owner: string; kind: string; data: unknown } | undefined): Promise<void> {
     if (receipt === undefined) return
-    await q.query("INSERT INTO workflow_receipts (mutation_id, owner, kind, data) VALUES ($1, $2, $3, $4::jsonb)", [receipt.mutationId, receipt.owner, receipt.kind, JSON.stringify(receipt.data)])
+    await q.query("INSERT INTO workflow_receipts (mutation_id, owner, kind, data) VALUES ($1, $2, $3, $4::jsonb)", [receipt.mutationId, receipt.owner, receipt.kind, jsonb(receipt.data)])
   }
 
   export function writeDefinition(
@@ -157,7 +162,7 @@ module node {
     receipt?: { mutationId: string; owner: string; kind: string; data: unknown },
   ): Promise<"written" | "stale"> {
     return sql.transaction(async (q) => {
-      const data = JSON.stringify(next)
+      const data = jsonb(next)
       const result = read === 0
         ? await q.query("INSERT INTO workflow_definitions (id, owner, revision, data) VALUES ($1, $2, 1, $3::jsonb) ON CONFLICT (id) DO NOTHING", [id, owner, data])
         : await q.query("UPDATE workflow_definitions SET revision = revision + 1, data = $3::jsonb WHERE id = $1 AND revision = $2", [id, read, data])
@@ -197,10 +202,10 @@ module node {
     sql: WorkflowSql, definition: { id: string; read: number; next: unknown }, created: { id: string; workflowId: string; owner: string; at: number; data: unknown },
   ): Promise<"written" | "stale"> {
     return sql.transaction(async (q) => {
-      const moved = await q.query("UPDATE workflow_definitions SET revision = revision + 1, data = $3::jsonb WHERE id = $1 AND revision = $2", [definition.id, definition.read, JSON.stringify(definition.next)])
+      const moved = await q.query("UPDATE workflow_definitions SET revision = revision + 1, data = $3::jsonb WHERE id = $1 AND revision = $2", [definition.id, definition.read, jsonb(definition.next)])
       if (moved.affectedRows !== 1) return "stale"
       await q.query("INSERT INTO workflow_runs (id, workflow_id, owner, finished, created_at, data) VALUES ($1, $2, $3, false, $4, $5::jsonb)",
-        [created.id, created.workflowId, created.owner, created.at, JSON.stringify(created.data)])
+        [created.id, created.workflowId, created.owner, created.at, jsonb(created.data)])
       return "written"
     })
   }
@@ -208,23 +213,23 @@ module node {
   export function insertRun(sql: WorkflowSql, created: { id: string; workflowId: string; owner: string; at: number; finished: boolean; data: unknown }): Promise<boolean> {
     return sql.transaction(async (q) => {
       const result = await q.query("INSERT INTO workflow_runs (id, workflow_id, owner, finished, created_at, data) VALUES ($1, $2, $3, $4, $5, $6::jsonb) ON CONFLICT (id) DO NOTHING",
-        [created.id, created.workflowId, created.owner, created.finished, created.at, JSON.stringify(created.data)])
+        [created.id, created.workflowId, created.owner, created.finished, created.at, jsonb(created.data)])
       return result.affectedRows === 1
     })
   }
 
   export function writeRun(sql: WorkflowSql, id: string, finished: boolean, data: unknown, digest?: { owner: string; runId: string; workflowId: string; result: unknown }): Promise<void> {
     return sql.transaction(async (q) => {
-      await q.query("UPDATE workflow_runs SET finished = $2, data = $3::jsonb WHERE id = $1", [id, finished, JSON.stringify(data)])
+      await q.query("UPDATE workflow_runs SET finished = $2, data = $3::jsonb WHERE id = $1", [id, finished, jsonb(data)])
       if (digest === undefined) return
       await q.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [JSON.stringify(["workflow.hosted-results", digest.owner])])
       const existing = await q.query<{ data: unknown }>("SELECT data FROM workflow_digest_results WHERE run_id = $1", [digest.runId])
       const prior = existing.rows[0] === undefined ? undefined : parsed<{ status?: unknown }>(existing.rows[0].data)
       if (prior === undefined) {
-        await q.query("INSERT INTO workflow_digest_results (owner, run_id, workflow_id, data) VALUES ($1, $2, $3, $4::jsonb)", [digest.owner, digest.runId, digest.workflowId, JSON.stringify(digest.result)])
+        await q.query("INSERT INTO workflow_digest_results (owner, run_id, workflow_id, data) VALUES ($1, $2, $3, $4::jsonb)", [digest.owner, digest.runId, digest.workflowId, jsonb(digest.result)])
       } else if (prior.status === "cancelled" && (digest.result as { status?: unknown }).status === "failed") {
         await q.query("DELETE FROM workflow_digest_results WHERE run_id = $1", [digest.runId])
-        await q.query("INSERT INTO workflow_digest_results (owner, run_id, workflow_id, data) VALUES ($1, $2, $3, $4::jsonb)", [digest.owner, digest.runId, digest.workflowId, JSON.stringify(digest.result)])
+        await q.query("INSERT INTO workflow_digest_results (owner, run_id, workflow_id, data) VALUES ($1, $2, $3, $4::jsonb)", [digest.owner, digest.runId, digest.workflowId, jsonb(digest.result)])
       }
     })
   }
@@ -238,7 +243,7 @@ module node {
 
   export function saveSource(sql: WorkflowSql, owner: string, id: string, data: unknown): Promise<void> {
     return sql.transaction(async (q) => {
-      await q.query("INSERT INTO workflow_digest_sources (owner, id, data) VALUES ($1, $2, $3::jsonb) ON CONFLICT (owner, id) DO UPDATE SET data = EXCLUDED.data", [owner, id, JSON.stringify(data)])
+      await q.query("INSERT INTO workflow_digest_sources (owner, id, data) VALUES ($1, $2, $3::jsonb) ON CONFLICT (owner, id) DO UPDATE SET data = EXCLUDED.data", [owner, id, jsonb(data)])
     })
   }
 

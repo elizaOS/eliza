@@ -25,6 +25,12 @@ module node {
   import type { LocalRoute } from "@elizaos/agent/routes"
   import type { WorkflowSql } from "../src/index.vibe"
 
+  export async function plant(sql: WorkflowSql, statements: readonly string[]): Promise<void> {
+    await sql.transaction(async (q) => {
+      for (const statement of statements) await q.query(statement)
+    })
+  }
+
   export async function openDatabase(): Promise<{ readonly sql: WorkflowSql; close(): Promise<void> }> {
     const db = new PGlite()
     return { sql: { transaction: (work) => db.transaction((tx) => work(tx)) }, close: () => db.close() }
@@ -74,7 +80,7 @@ module node {
     return { status: 404, body: { error: "No route" } }
   }
 }
-import { call, joinPath, listEntries, openDatabase, readText, scratch, writeTree } from node
+import { call, joinPath, listEntries, openDatabase, plant, readText, scratch, writeTree } from node
 
 const owner = "owner"
 const device = { installationId: "phone-1", enrollmentId: "enrollment-1" }
@@ -135,8 +141,8 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
 
 type Harness = Effect.Success<ReturnType<typeof harness>>
 
-effect function settled(client: WorkflowClient, run: Pick<WorkflowRun, "id" | "workflowId">, done: (run: WorkflowRun) => boolean = (found) => found.finished) {
-  for (let attempt = 0; attempt < 400; attempt++) {
+effect function settled(client: WorkflowClient, run: Pick<WorkflowRun, "id" | "workflowId">, done: (run: WorkflowRun) => boolean = (found) => found.finished, attempts = 400) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const found = try client.receipt(run.id, run.workflowId)
     if (done(found)) return found
     try sleep("5 millis")
@@ -626,6 +632,55 @@ it.live('Turn on generated code only after review and resume it without repeatin
   try sleep("2 seconds")
   const limited = try settled(rig.client, longRun)
   try check(() => assert.deepStrictEqual([limited.status, drafts], ["failed", 1]))
+})
+
+const countingSource = `import type { WorkflowContext } from "eliza-workflow"
+export default async function (ctx: WorkflowContext) {
+  await ctx.sleep("pause", 1)
+  let total = 0
+  for (let index = 0; index < 205; index++) total += await ctx.step("count" + index, () => index)
+  return total
+}
+`
+
+it.live('Recover a parked workflow without creating a second execution, past rows it cannot read, and keep each run storable and bounded (spec/workflow/execution.md, "Story: Recover a parked workflow without creating a second execution"; spec/workflow/execution.md, "One unreadable run or schedule does not stop the recovery of the others"; spec/workflow/execution.md, "A run\'s stored record leaves out U+0000, which the store cannot hold"; spec/workflow/execution.md, "A stored run keeps its newest 200 progress events and every timer and approval event, and counts the ones it dropped")', effect () => {
+  const nul = String.fromCharCode(0)
+  const rig = try harness({ draft: () => `Invoice 42${nul} paid` })
+  const invoice = (try saved(rig, manual("Invoice summary", [
+    { id: "text", kind: "Read", operation: "supplied_text", text: "Invoice 42" },
+    { id: "line", kind: "Write", operation: "model_draft", source: "text", instruction: "Summarize" },
+  ]))).receipt
+  const queued = (try rig.service.submit(invoice.workflowId, "77777777-7777-4777-8777-777777777777", Number(invoice.versionId.slice(1)), {})).run
+  const timed = (try saved(rig, manual("Nightly note", greeting.steps, { trigger: { kind: "time", localTime: "23:00", timeZone: "UTC", days: [0, 1, 2, 3, 4, 5, 6] } }))).receipt
+  try rig.client.activate(timed.workflowId, timed.versionId)
+  const key = `workflow:${timed.workflowId}`
+  rig.wakeups.delete(key)
+  try promise(() => plant(rig.host.sql, [
+    `INSERT INTO workflow_runs (id, workflow_id, owner, finished, created_at, data) VALUES ('broken-run', 'gone', '${owner}', false, 0, '{"id":"broken-run"}'::jsonb)`,
+    `INSERT INTO workflow_definitions (id, owner, revision, data) VALUES ('00000000-broken', '${owner}', 1, '{"id":"00000000-broken","origin":"view"}'::jsonb)`,
+  ]))
+  const restarted = try openWorkflows(rig.host)
+  try addFinalizer(() => restarted.stop())
+  try restarted.start()
+  const resumed = try settled(rig.client, queued)
+  try check(() => assert.deepStrictEqual([queued.status, resumed.status, resumed.output, rig.wakeups.has(key)], ["queued", "finished", "Invoice 42 paid", true]))
+
+  const live = try harness()
+  const created = try live.request("/api/workflow/workflows", { name: "Counter", description: "Counts", source: countingSource, mutationId: "66666666-6666-4666-8666-666666666666" })
+  const counter = (created as { readonly receipt: { readonly workflowId: string; readonly versionId: string; readonly sourceDigest: string } }).receipt
+  try live.request(`/api/workflow/workflows/${counter.workflowId}/review`, { expectedVersionId: counter.versionId, sourceDigest: counter.sourceDigest })
+  const on = try live.client.activate(counter.workflowId, counter.versionId)
+  const run = try live.client.run(counter.workflowId, on.versionId, () => succeed(undefined))
+  const pausing = try settled(live.client, run, (found) => found.status === "waiting-timer")
+  try sleep("10 millis")
+  const wakeup = live.wakeups.get(`run:${pausing.id}`)
+  if (wakeup === undefined) return try die(new Error("The timer was not armed"))
+  try live.service.fire(wakeup.metadata, live.digests.fire)
+  const counted = try settled(live.client, pausing, (found) => found.finished, 4000)
+  const stored = try live.service.runOf(counted.id)
+  try check(() => assert.deepStrictEqual(
+    [counted.status, counted.output, stored.events.length, stored.events[0]?.type, stored.events.at(-1)?.type, stored.eventsDropped],
+    ["finished", String(204 * 205 / 2), 201, "TimerCreated", "RunFinished", 8]))
 })
 
 it.live('Import only complete reviewed workflow source, and run only a worker built and installed intact (spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"; spec/workflow/worker.md, "Story: Run workflows from the reviewed source and signed device assets")', effect () => {

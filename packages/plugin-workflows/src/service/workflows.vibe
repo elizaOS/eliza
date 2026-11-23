@@ -1,4 +1,4 @@
-// spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/authoring.md, "A draft uses the advertised operation catalog and only earlier step outputs"; spec/workflow/authoring.md, "A save receipt identifies the reviewed bytes and compiler"; spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/workflow/execution.md, "Retirement releases host reservations without rewriting the terminal result"; spec/workflow/approvals.md, "One caller at a time holds the execution lock, and only the canonical decision is reported"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/workflow/schedule.md, "A fresh occurrence uses the current reviewed version and exact cron instant"; spec/workflow/schedule.md, "An inactive schedule never queues an occurrence"; spec/workflow/runScope.md, "A relative range resolves from the run's own day and needs a device that understands it"
+// spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/authoring.md, "A draft uses the advertised operation catalog and only earlier step outputs"; spec/workflow/authoring.md, "A save receipt identifies the reviewed bytes and compiler"; spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/workflow/execution.md, "Retirement releases host reservations without rewriting the terminal result"; spec/workflow/execution.md, "One unreadable run or schedule does not stop the recovery of the others"; spec/workflow/execution.md, "A stored run keeps its newest 200 progress events and every timer and approval event, and counts the ones it dropped"; spec/workflow/approvals.md, "One caller at a time holds the execution lock, and only the canonical decision is reported"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/workflow/schedule.md, "A fresh occurrence uses the current reviewed version and exact cron instant"; spec/workflow/schedule.md, "An inactive schedule never queues an occurrence"; spec/workflow/runScope.md, "A relative range resolves from the run's own day and needs a device that understands it"
 import * as A from "../../gen/workflow__admission.effect.vibe"
 import * as L from "../../gen/workflow__lifecycle.effect.vibe"
 import * as X from "../../gen/workflow__execution.effect.vibe"
@@ -76,6 +76,18 @@ function timeTrigger(spec: PhoneWorkflowSpec): PhoneTimeTrigger | undefined {
 
 function terminal(phase: X.ExecutionPhase): boolean {
   return phase === "ExecutionDone" || phase === "ExecutionCancelled" || phase === "ExecutionFailed"
+}
+
+function stateEvent(event: RunEvent): boolean {
+  return event.type.startsWith("Timer") || event.type.startsWith("Approval")
+}
+
+function boundedHistory(row: RunRow): RunRow {
+  const progress = row.events.filter((event) => !stateEvent(event))
+  const dropped = new Set(progress.slice(0, X.progressEventsDropped(progress.length)))
+  if (dropped.size === 0) return row
+  const events = row.events.filter((event) => !dropped.has(event))
+  return { ...row, events, eventsDropped: (row.eventsDropped ?? 0) + dropped.size }
 }
 
 const statusOf: Readonly<Record<X.ExecutionPhase, string>> = {
@@ -444,7 +456,8 @@ function workflowRows(
     return { ...row, execution, status: statusOf[execution.phase], finished, ...(finished && row.stoppedAt === undefined ? { stoppedAt: iso(try now) } : {}) }
   }
 
-  effect function persist(row: RunRow): void!WorkflowRefused {
+  effect function persist(written: RunRow): void!WorkflowRefused {
+    const row = boundedHistory(written)
     try db(store.writeRun(row, row.hostedDigest === undefined || !row.finished ? undefined : try digestDelivery(row)))
     try SubscriptionRef.update(ticks, (tick) => tick + 1)
   }
@@ -491,8 +504,9 @@ function workflowRows(
     let sent = 0
     for try (const _tick of SubscriptionRef.changes(ticks)) {
       const row = try runOf(runId)
-      for (const entry of row.events.slice(sent)) yield { runId: row.id, workflowId: row.workflowId, ...entry }
-      sent = row.events.length
+      const total = (row.eventsDropped ?? 0) + row.events.length
+      for (const entry of row.events.slice(Math.max(0, row.events.length - (total - sent)))) yield { runId: row.id, workflowId: row.workflowId, ...entry }
+      sent = total
       if (row.finished) {
         yield { runId: row.id, workflowId: row.workflowId, type: "RunSettled", timestamp: row.stoppedAt ?? row.startedAt, status: row.status }
         break
@@ -699,7 +713,7 @@ function workflowWorker(
       const starting = try onError(lock(effect {
         const current = try runOf(runId)
         if (current.execution.worker || terminal(current.execution.phase) || current.execution.cancelAsked) return undefined
-        const next = try executed({ ...current, events: [...current.events, try event(current.events.some((e) => e.type === "RunStarted") ? "NodeStarted" : "RunStarted")] }, { type: "startWorker" })
+        const next = try executed({ ...current, events: [...current.events, try event((current.eventsDropped ?? 0) > 0 || current.events.some((e) => e.type === "RunStarted") ? "NodeStarted" : "RunStarted")] }, { type: "startWorker" })
         try persist(next)
         return next
       }), () => connection.close)
@@ -1393,46 +1407,56 @@ export effect function openWorkflows(host: WorkflowHost) {
     return runView(try runOf(runId))
   }
 
+  effect function recoverRun(row: RunRow): void!WorkflowRefused {
+    const restarted = row.execution.stopping ? try executed(row, { type: "restartWorkerService" }) : row
+    if (restarted.execution.worker) {
+      const recovered = restarted.generated !== undefined && restarted.generated.pending !== ""
+        ? { ...(try journaled(restarted, { type: "recoverEffect", receiptFound: false })), error: "The agent stopped while a model call was in flight, so its outcome is unknown. It was not sent again." }
+        : restarted
+      try persist(try executed(recovered, { type: "observeUncertain", workerKnownLive: false }))
+    } else if (restarted.generated !== undefined && (restarted.execution.phase === "WaitingTimer" || restarted.execution.phase === "WaitingEvent")) {
+      if (restarted !== row) try persist(restarted)
+      try armWake(restarted)
+    } else if (restarted.execution.phase === "WaitingApproval" && restarted.generated !== undefined) {
+      if (restarted !== row) try persist(restarted)
+      const decided = restarted.approvals.at(-1)
+      const wait = restarted.generated.wait
+      if (decided !== undefined && decided.machine.canonical !== "PendingApproval" && wait.tag === "WaitApproval" && wait.call === decided.nodeId) {
+        try resumeGenerated(restarted.id, decided.nodeId, decided.machine.canonical === "ApprovedRequest")
+        try launch(restarted.id)
+      }
+    } else if (restarted.execution.phase === "WaitingApproval") {
+      if (restarted !== row) try persist(restarted)
+      const decided = restarted.approvals.at(-1)
+      if (decided !== undefined && decided.machine.canonical !== "PendingApproval") {
+        try launch(restarted.id, decided.machine.canonical === "ApprovedRequest" ? try performDevice(restarted, decided) : { stepId: decided.nodeId, outcome: "denied" })
+      }
+    } else if (restarted.execution.phase === "PostedRun" && restarted.occurrence !== undefined) {
+      const asked = try executed(restarted, { type: "askCancellation" })
+      const cancelled = try executed({ ...asked, output: { status: "missed", scheduledAt: restarted.occurrence.scheduledAt, text: TYPED_STOPPED_TEXT } }, { type: "confirmCancellation", native: "NativeRunAbsent" })
+      try persist(cancelled)
+    } else if (restarted.execution.phase === "PostedRun") {
+      if (restarted !== row) try persist(restarted)
+      try launch(restarted.id)
+    } else if (restarted !== row) try persist(restarted)
+  }
+
+  effect function rearm(row: DefinitionRow, held: readonly string[]): void!! {
+    if (!held.includes(scheduleKey(row)) || !scheduleWanted(row)) try arm(row)
+    if (row.lifecycleState.removed && !row.lifecycleState.cleaned) (cleanup(row.id) catch () => undefined)
+  }
+
   effect function start(): void!! {
     try Ref.set(stopping, false)
     void (effect {
       for (const row of try db(store.runs({ owner, unfinished: true }))) {
-        const restarted = row.execution.stopping ? try executed(row, { type: "restartWorkerService" }) : row
-        if (restarted.execution.worker) {
-          const recovered = restarted.generated !== undefined && restarted.generated.pending !== ""
-            ? { ...(try journaled(restarted, { type: "recoverEffect", receiptFound: false })), error: "The agent stopped while a model call was in flight, so its outcome is unknown. It was not sent again." }
-            : restarted
-          try persist(try executed(recovered, { type: "observeUncertain", workerKnownLive: false }))
-        } else if (restarted.generated !== undefined && (restarted.execution.phase === "WaitingTimer" || restarted.execution.phase === "WaitingEvent")) {
-          if (restarted !== row) try persist(restarted)
-          try armWake(restarted)
-        } else if (restarted.execution.phase === "WaitingApproval" && restarted.generated !== undefined) {
-          if (restarted !== row) try persist(restarted)
-          const decided = restarted.approvals.at(-1)
-          const wait = restarted.generated.wait
-          if (decided !== undefined && decided.machine.canonical !== "PendingApproval" && wait.tag === "WaitApproval" && wait.call === decided.nodeId) {
-            try resumeGenerated(restarted.id, decided.nodeId, decided.machine.canonical === "ApprovedRequest")
-            try launch(restarted.id)
-          }
-        } else if (restarted.execution.phase === "WaitingApproval") {
-          if (restarted !== row) try persist(restarted)
-          const decided = restarted.approvals.at(-1)
-          if (decided !== undefined && decided.machine.canonical !== "PendingApproval") {
-            try launch(restarted.id, decided.machine.canonical === "ApprovedRequest" ? try performDevice(restarted, decided) : { stepId: decided.nodeId, outcome: "denied" })
-          }
-        } else if (restarted.execution.phase === "PostedRun" && restarted.occurrence !== undefined) {
-          const asked = try executed(restarted, { type: "askCancellation" })
-          const cancelled = try executed({ ...asked, output: { status: "missed", scheduledAt: restarted.occurrence.scheduledAt, text: TYPED_STOPPED_TEXT } }, { type: "confirmCancellation", native: "NativeRunAbsent" })
-          try persist(cancelled)
-        } else if (restarted.execution.phase === "PostedRun") {
-          if (restarted !== row) try persist(restarted)
-          try launch(restarted.id)
-        } else if (restarted !== row) try persist(restarted)
+        const recovered = try exit(recoverRun(row))
+        if (Exit.isFailure(recovered)) try log("workflow run could not be recovered", row.id, Cause.squash(recovered.cause))
       }
       const held: readonly string[] = host.scheduler.keys catch () => []
       for (const stored of try db(store.definitions(owner))) {
-        if (!held.includes(scheduleKey(stored.row)) || !scheduleWanted(stored.row)) try arm(stored.row)
-        if (stored.row.lifecycleState.removed && !stored.row.lifecycleState.cleaned) (cleanup(stored.row.id) catch () => undefined)
+        const rearmed = try exit(rearm(stored.row, held))
+        if (Exit.isFailure(rearmed)) try log("workflow schedule could not be recovered", stored.row.id, Cause.squash(rearmed.cause))
       }
     } catch effect (error) => try log("workflow service could not recover its runs", "start", error))
   }
