@@ -8,7 +8,6 @@ export interface OwnKeyModels {
   readonly large: string
 }
 
-/** Registers the own-key text and image description handlers for the launch's OpenAI-compatible endpoint, describing images with the large model. */
 export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, own: OwnKeyModels): void {
   const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large, ImageDescription: own.large }, maxTokensField: "max_completion_tokens" } as const
   registerTwice(runtime, "@elizaos/agent/own-key", {
