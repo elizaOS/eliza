@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
-import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, textWithoutEof, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
@@ -69,6 +69,15 @@ it.effect('A cloud text call keeps its image parts, streams, and an image descri
     ["/api/v1/chat/completions", "vision", `Bearer ${deviceKey}`, undefined],
   ])
   assert.strictEqual((try binding.read()).accountState, "usable")
+})
+
+it.effect('A completed provider stream returns while the HTTP connection is still open (spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { runtime } = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.script(textWithoutEof("Complete.")))
+  const arrived = try timeout(host("receive the terminal stream marker", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Reply once.", stream: true })), "15 seconds")
+  assert.strictEqual(arrived, "Complete.")
+  assert.strictEqual(completions(cloud), 1)
 })
 
 it.effect('An outage or a dropped connection is retried on the next registration and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {

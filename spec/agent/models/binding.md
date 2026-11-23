@@ -157,9 +157,10 @@ failed, so the transport never re-sends it and the turn decides whether it
 gets one more try ([planning](../conversation/planning.md)). A streamed
 answer whose provider sends no bytes for 60 seconds, first its headers and
 then each next chunk, is abandoned and not re-sent, and the turn ends with
-its failure reply. Only the time between bytes is bounded, never the whole
-answer, so a long answer is never cut. Both are a provider issue in the
-account state.
+its failure reply. Only the time between bytes before the provider's
+`[DONE]` marker is bounded, never the whole answer. The marker ends
+collection even if the HTTP connection remains open. A parse failure and
+a silent stream both count as a provider issue in the account state.
 
 ```quint
 type ShellRefusal = ToolCallUnparsed | SilentStream
