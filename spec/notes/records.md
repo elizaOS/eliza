@@ -136,6 +136,51 @@ pure def lawAnEditByNameKeepsOneNote(identicalAfter: bool): bool = copyFate(Edit
 pure def lawANoteThatDiffersIsNeverTouched(change: NoteChange, byName: bool): bool = copyFate(change, byName, false, false) == CopyStays
 ```
 
+### A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on
+
+A create, edit, move, delete or restore asked in chat answers with one
+durable receipt of kind notes.note for the note's ID at the collection
+revision the change produced, named notes.note.create, notes.note.update,
+notes.note.delete or notes.note.restore, with the same operation and note
+ID in its data; a move is an update. The phone follows the change to that
+revision. A creation that returned the note already saved is a replayed
+no-op, never a second commit, and a read carries no receipt. A refusal
+that needs the owner's choice between notes, or the owner's word that the
+closest note is the one meant, says it waits on the owner and carries the
+candidates. A refused edit the planner can correct from a fresh read (a
+stale or missing revision, old text that is absent or matches twice, a
+rich note edited as plain text) is coaching for the planner, not an
+outcome the owner is told. Every other refusal is an outcome. A list of
+the whole collection that finds no note says the collection is empty at
+that revision.
+
+```quint
+type NotesWrite = WriteCreate | WriteEdit | WriteMove | WriteDelete | WriteRestore
+type ReceiptOutcome = AppliedReceipt | ReplayedReceipt
+pure def receiptOperation(write: NotesWrite): str =
+  if (write == WriteCreate) "notes.note.create"
+  else if (write == WriteDelete) "notes.note.delete"
+  else if (write == WriteRestore) "notes.note.restore"
+  else "notes.note.update"
+pure def receiptOutcome(write: NotesWrite, replayed: bool): ReceiptOutcome =
+  if (write == WriteCreate and replayed) ReplayedReceipt else AppliedReceipt
+type NotesRefusal = AmbiguousNote | NameMismatch | EditConflict | RevisionRequired | TextNotFound | TextAmbiguous | RichEditRequired | OtherRefusal
+type RefusalKind = RefusalWaitsOnOwner | RefusalCoachesPlanner | RefusalIsOutcome
+pure def refusalKind(refusal: NotesRefusal): RefusalKind =
+  if (refusal == AmbiguousNote or refusal == NameMismatch) RefusalWaitsOnOwner
+  else if (refusal == OtherRefusal) RefusalIsOutcome
+  else RefusalCoachesPlanner
+pure def emptyCollectionObserved(filtered: bool, found: int): bool = not(filtered) and found == 0
+pure val foundValues = Set(0, 1, 2)
+pure def lawOnlyARepeatedCreationIsANoOp(write: NotesWrite, replayed: bool): bool =
+  receiptOutcome(write, replayed) == ReplayedReceipt iff (write == WriteCreate and replayed)
+pure def lawAMoveIsAnUpdate(replayed: bool): bool =
+  receiptOperation(WriteMove) == receiptOperation(WriteEdit) and receiptOutcome(WriteMove, replayed) == AppliedReceipt
+pure def lawAChoiceBetweenNotesIsNeverCoaching(refusal: NotesRefusal): bool =
+  refusalKind(refusal) == RefusalWaitsOnOwner iff (refusal == AmbiguousNote or refusal == NameMismatch)
+pure def lawAFilteredReadNeverSaysTheCollectionIsEmpty(found: int): bool = not(emptyCollectionObserved(true, found))
+```
+
 ### A calendar draft made from a note is admitted only while that exact note is unchanged
 
 A draft made from a note carries a source reference: this agent's ID, the
