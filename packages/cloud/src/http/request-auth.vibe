@@ -120,7 +120,7 @@ effect function leaseCaller(token: string, routeClass: RouteClass, countRequest:
   return try store.transaction(effect (tx) => {
     const candidate = (try tx.query(
       "SELECT key, user_id FROM sessions WHERE kind = 'device_lease' AND (access_digest = $1 OR offered_access_digest = $1)", [digest]
-    )))[0]
+    ))[0]
     if (candidate === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
     try tx.query("SELECT key FROM accounts WHERE key = $1 FOR UPDATE", [candidate.user_id])
     const row = (try tx.query(
