@@ -15,7 +15,7 @@ export const mapsPluginName = "@elizaos/plugin-maps"
 
 export interface MapsPluginPorts {
   cloud(runtime: IAgentRuntime): MapsCloudLink | undefined
-  navigation(runtime: IAgentRuntime, message: Memory): MapsDeviceNavigation | undefined
+  navigation(runtime: IAgentRuntime, message: Memory): (MapsDeviceNavigation | undefined)!MapsFailure
   savedPlaces(runtime: IAgentRuntime): AgentSavedPlaceStore | undefined
   namesView(runtime: IAgentRuntime, destination: string): boolean | undefined
 }
@@ -456,7 +456,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       const ask: Ask = (field, choices, asked = params) => {
         if (operation !== undefined) openChoice(runtime, message.roomId, { operation, field, options: choices, params: asked, askedAt: Date.now() })
       }
-      return settle(linked(ports, runtime, (service) => work(service, ports.navigation(runtime, message), message, params, ask, runtime)))
+      return settle(linked(ports, runtime, effect (service) => try work(service, try ports.navigation(runtime, message), message, params, ask, runtime)))
     }
   const always: Action["validate"] = () => Promise.resolve(true)
   return [
