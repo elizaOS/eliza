@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, runExtractorPipeline, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, recordLlmCall, registerScheduledProcessTask, removeLogListener, requireConfirmation, runExtractorPipeline, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
@@ -159,10 +159,16 @@ it.live("Host a runtime from construction to close and restart (spec/core/runtim
 
   // spec/core/runtime.md, "Initialization releases waiters on success and failure"
   const waiterStates: string[] = []
-  for concurrent (const caller of ["host", "waiter", "waiter"]) {
+  const agentReads = { phase: 0, counts: [0, 0] }
+  const readAgents = a.getAgentsByIds.bind(a)
+  try Effect.try(() => { a.getAgentsByIds = (ids) => { agentReads.counts[agentReads.phase] += 1; return readAgents(ids) } })
+  for concurrent (const caller of ["host", "host", "waiter", "waiter"]) {
     try host(() => caller === "host" ? runtime.initialize({ skipMigrations: true }) : runtime.initPromise.then(() => { waiterStates.push(runtime.getLifecycleState()) }))
   }
+  agentReads.phase = 1
   try host(() => runtime.initialize({ skipMigrations: true }))
+  try Effect.try(() => Reflect.deleteProperty(a, "getAgentsByIds"))
+  try Effect.try(() => assert.strictEqual(agentReads.counts[0], agentReads.counts[1]))
   const stored = {
     agents: (try host(() => a.getAgentsByIds([agentId]))).map((agent) => agent.name),
     entities: (try host(() => a.getEntitiesByIds([agentId]))).map((entity) => entity.names),
@@ -402,6 +408,7 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   const gate = () => Effect.try(() => Promise.withResolvers<void>())
   const providerStarted = try gate()
   const providerRelease = try gate()
+  const hangingProvider = try gate()
   const afterReturn = try gate()
   const waitEntered = try gate()
   const waitRelease = try gate()
@@ -424,6 +431,10 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   const groupWorld = stringToUuid("j02-group-world")
   const other = stringToUuid("j02-other")
   const at = new Date().toISOString()
+
+  // spec/core/grammar.md, "Portable escaping preserves literal members and range structure"
+  const slugGrammar = try Effect.try(() => buildPlannerActionGrammarStrict([{ name: "TAG_FILE", parameters: [{ name: "slug", description: "File slug", required: true, schema: { type: "string", pattern: "^[\\w-]+$" } }] }])?.grammar ?? "")
+  try Effect.try(() => assert.ok(slugGrammar.includes("[A-Za-z0-9_\\x2d]"), slugGrammar))
 
   const recordNote: Action = {
     name: "RECORD_NOTE",
@@ -551,6 +562,13 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
           throw new Error("notes store unavailable")
         },
       },
+      {
+        name: "HANGING_CONTEXT",
+        get: async () => {
+          await hangingProvider.promise
+          return { text: "too late" }
+        },
+      },
     ],
     services: [EchoService, AgentEventService],
     events: {
@@ -650,6 +668,13 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   const shared = try host(() => Promise.all([firstCompose, secondCompose]))
   const brokenMessage = say("j02-broken", dm, "what do I have?")
   const brokenCompose = try host(() => runtime.composeState(brokenMessage, ["BROKEN_CONTEXT"], true).then(() => "resolved", (error: unknown) => error instanceof ElizaError ? error.code : String(error)))
+  // spec/core/providers/waiter.md, "Story: Release a caller with its own outcome"
+  const unbudgeted = runtime.character.settings
+  runtime.character.settings = { ...unbudgeted, providersTotalTimeoutMs: 100 }
+  const hungCompose = try host(() => runtime.composeState(say("j02-hung", dm, "anything new?"), ["HANGING_CONTEXT"], true).then(() => "resolved", (error: unknown) => error instanceof ElizaError ? error.code : String(error)))
+  runtime.character.settings = unbudgeted
+  hangingProvider.resolve()
+  try Effect.try(() => assert.strictEqual(hungCompose, "PROVIDER_COMPOSITION_ABORTED"))
   const thirdCompose = try host(() => runtime.composeState(say("j02-m1b", dm, "another message"), ["NOTES_CONTEXT"], true))
   const composed = [shared.map((state) => state.text), refreshed, whileHeld, counts.notes, brokenCompose, reported("PROVIDER_COMPOSITION_FAILED"), runtime.stateCache.has(brokenMessage.id ?? ""), thirdCompose.text]
 
@@ -1092,6 +1117,17 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
     try host(() => runtime.unloadPlugin(recognizerModel.plugin.name))
     try Effect.try(() => assert.deepStrictEqual([recognizedReply, recognition, recognizerModel.seen.length], ["recognizer reply", { reads: 1, calls: 1, receiver: true }, 1]))
 
+    // spec/core/models.md, "Story: Dispatch a complete admitted request"
+    const localModel = try Effect.try(() => scriptedModels("ollama", 50, { [ModelType.TEXT_SMALL]: [{ reply: "local prose" }] }))
+    const remoteModel = try Effect.try(() => scriptedModels("j03-remote", 0, { [ModelType.TEXT_SMALL]: [{ reply: "remote prose" }, { reply: "{\"ok\":true}" }] }))
+    try host(() => runtime.registerPlugin(localModel.plugin))
+    try host(() => runtime.registerPlugin(remoteModel.plugin))
+    const pinnedRemote = try host(() => callModelWithValidation(runtime, { modelType: ModelType.TEXT_SMALL, provider: "j03-remote", params: { prompt: "pinned remote" }, schema: { type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } } }))
+    for (let attempt = 0; attempt < pinnedRemote.attempts; attempt++) answered.push(`useModel:${ModelType.TEXT_SMALL}`)
+    try host(() => runtime.unloadPlugin(remoteModel.plugin.name))
+    try host(() => runtime.unloadPlugin(localModel.plugin.name))
+    try Effect.try(() => assert.deepStrictEqual([pinnedRemote.parsed, pinnedRemote.attempts, localModel.seen.length], [{ ok: true }, 2, 0]))
+
     // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"
     class TrajectoryPort extends Service {
       static serviceType = "trajectories"
@@ -1157,6 +1193,11 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       trajectoryFailures.push([member === "startTrajectory" ? capture === undefined && diagnostic("StandaloneTrajectory.start") === before + 1 : capture instanceof TypeError])
       try Effect.try(() => Object.assign(trajectory, defaults))
     }
+    trajectory.logLlmCall = throwOnRead({ failure: new TypeError("j03 logger fault") })
+    const providerCallBefore = diagnostic("TrajectoryProviderCall")
+    const recordedReply = try host(async () => runWithTrajectoryContext({ trajectoryId: "j03-parent", trajectoryStepId: "j03-parent-step" }, async () => recordLlmCall(runtime, { model: "j03-model", systemPrompt: "", userPrompt: "", purpose: "test" }, () => "generated")))
+    trajectoryFailures.push([recordedReply, diagnostic("TrajectoryProviderCall") === providerCallBefore + 1])
+    try Effect.try(() => Object.assign(trajectory, defaults))
     for (const next of [undefined, null]) {
       const context: TrajectoryContext = {}
       const observed = try changingMethod(context, "activateTaskCapture", next)
@@ -1171,6 +1212,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       ["kept", { reads: 2, totalReads: 4, cachedCalls: 0 }, true],
       ["kept", { reads: 2, totalReads: 4, cachedCalls: 0 }, true],
       [true], [true], [true],
+      ["generated", true],
       [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
       [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
     ]))
@@ -2830,6 +2872,27 @@ it.live("Story: Execute due work within its owning agent, across scheduler stora
       ["TASK_TICK_FAILED", "ephemeral", "TASK_PREFLIGHT_FAILED", true, { reads: 2, totalReads: 2, cachedCalls: 0 }, 0],
     ]]))
 
+    // spec/core/taskServiceOwners.md, "An orphaned task is quarantined only after the startup grace and leaves quarantine when its worker returns or a heal succeeds"
+    let orphanNow = 0
+    const orphanService = try Effect.try(() => new TaskService(runtimeA, { now: () => orphanNow, setTimeout: () => undefined, clearTimeout: () => {} }))
+    const orphanId = try host(() => runtimeA.createTask({ name: "J07_ORPHAN_ONCE", description: "one-shot whose worker is late", tags: ["manual"], metadata: {} }))
+    const orphanRow = () => host(async () => {
+      const stored = (await runtimeA.getTasksByIds([orphanId]))[0]
+      if (!stored) throw new Error("An orphaned one-shot task must keep its row")
+      return stored
+    })
+    const orphanStates: unknown[] = []
+    for (const step of ["grace", "quarantine", "heal"]) {
+      if (step === "quarantine") orphanNow = 60_000
+      if (step === "heal") try worker(runtimeA, "J07_ORPHAN_ONCE", async () => undefined)
+      const row = try orphanRow()
+      try host(() => orphanService.runTick([row]))
+      const after = try orphanRow()
+      orphanStates.push([after.metadata?.paused ?? false, after.metadata?.orphanedNoWorker ?? false])
+    }
+    try host(() => runtimeA.deleteTask(orphanId))
+    try Effect.try(() => assert.deepStrictEqual(orphanStates, [[false, false], [true, true], [false, false]]))
+
     const owned: string[] = []
     for (const runtime of [runtimeA, runtimeB]) {
       try worker(runtime, "J07_OWNED", async (rt, _options, task) => {
@@ -3306,6 +3369,13 @@ it.live("Pair a sender and approve an action across a restart (spec/core/pairing
       deployRow: try host(() => runtime.getTask(deployId)),
       sameWorker: runtime.getTaskWorker("DEPLOY") === worker,
     }
+
+    const distant = [30 * 24 * 3_600_000, Number.POSITIVE_INFINITY]
+    const waiting = try Effect.forEach(distant, (timeoutMs) => host(() => approvals.requestApprovalAsync(ask("ARCHIVE", { timeoutMs, timeoutDefault: "approve" }))))
+    try sleep("200 millis")
+    const distantRows = try Effect.forEach(waiting, (id) => host(async () => (await runtime.getTask(id))?.id === id))
+    try Effect.forEach(waiting, (id) => host(() => approvals.cancelApproval(id)))
+    try Effect.try(() => assert.deepStrictEqual(distantRows, [true, true]))
 
     const started = Date.now()
     const expiring = try host(() => approvals.requestApprovalAsync(ask("ARCHIVE", { timeoutMs: 150, timeoutDefault: "approve" })))

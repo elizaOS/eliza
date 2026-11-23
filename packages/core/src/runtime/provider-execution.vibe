@@ -52,6 +52,7 @@ export effect function awaitProviderExecution(
   execution: InFlightProviderExecution,
   signal: AbortSignal | undefined,
   evict: () => void,
+  budgetMs?: number,
 ): ProviderResult!Foreign {
   execution.waiters += 1
   let released = false
@@ -62,16 +63,24 @@ export effect function awaitProviderExecution(
     return true
   }
   const joined = ensuring(Fiber.join(execution.work), sync(() => void release()))
-  if (!signal) return try joined
-  const aborted = effect {
-    const reason = try whenAborted(signal)
+  const abandon = (reason: unknown) => effect {
     if (release() && execution.waiters === 0) {
       evict()
       execution.controller.abort(reason)
     }
     throw abortedProviderExecution(reason)
   }
-  return try (signal.aborted ? aborted : raceFirst(joined, aborted))
+  const bounded = budgetMs === undefined
+    ? joined
+    : raceFirst(joined, effect {
+      try sleep(budgetMs)
+      return try abandon(new TurnAbortedError("providers-total-timeout"))
+    })
+  if (!signal) return try bounded
+  const aborted = effect {
+    return try abandon(try whenAborted(signal))
+  }
+  return try (signal.aborted ? aborted : raceFirst(bounded, aborted))
 }
 
 export function calculateProviderOverlaps(

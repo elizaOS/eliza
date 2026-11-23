@@ -27,8 +27,27 @@ module node {
 
   /** @throws {unknown} */
   export function publishSync(tmp: string, file: string, body: string, mode: number): void {
-    fs.writeFileSync(tmp, body, { encoding: "utf-8", mode, flag: "wx" })
+    const fd = fs.openSync(tmp, "wx", mode)
+    try {
+      fs.writeFileSync(fd, body, "utf-8")
+      fs.fsyncSync(fd)
+    } finally {
+      fs.closeSync(fd)
+    }
     fs.renameSync(tmp, file)
+    syncDirectorySync(path.dirname(file))
+  }
+
+  /** @throws {never} */
+  function syncDirectorySync(dir: string): void {
+    try {
+      const fd = fs.openSync(dir, "r")
+      try {
+        fs.fsyncSync(fd)
+      } finally {
+        fs.closeSync(fd)
+      }
+    } catch {}
   }
 
   /** @throws {unknown} */
@@ -42,13 +61,15 @@ module node {
   }
 
   /** @throws {never} */
-  export function writeTemporary(tmp: string, body: string, mode: number): Promise<void> {
-    return fsp.writeFile(tmp, body, { encoding: "utf-8", mode, flag: "wx" })
+  export async function writeTemporary(tmp: string, body: string, mode: number): Promise<void> {
+    const handle = await fsp.open(tmp, "wx", mode)
+    await handle.writeFile(body, "utf-8").then(() => handle.sync()).finally(() => handle.close())
   }
 
   /** @throws {never} */
-  export function rename(from: string, to: string): Promise<void> {
-    return fsp.rename(from, to)
+  export async function rename(from: string, to: string): Promise<void> {
+    await fsp.rename(from, to)
+    await fsp.open(path.dirname(to), "r").then((dir) => dir.sync().finally(() => dir.close())).catch(() => undefined)
   }
 
   /** @throws {never} */
