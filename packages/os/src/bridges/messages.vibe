@@ -1,10 +1,13 @@
-// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Native confirmation and current ownership precede dispatch, and a cancel is refused once Android has the message"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A send is denied before any platform call unless Android allows it at review and again at dispatch"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "Story: Mark a conversation read from its notice without sending anything"; spec/os/android/messages.md, "Story: Delete one message I chose"; spec/os/android/messages.md, "Story: Delete a conversation I chose"; spec/os/android/deletionWindow.md, "A record waiting in its window is hidden from its list until Undo or the provider settles it"; spec/os/android/bridge.md, "Story: Admit a bridge call only with current evidence"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/os/android/messages.md, "Story: Name the sender of my latest text without reading it"
+// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Native confirmation and current ownership precede dispatch, and a cancel is refused once Android has the message"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A send is denied before any platform call unless Android allows it at review and again at dispatch"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "Story: Mark a conversation read from its notice without sending anything"; spec/os/android/messages.md, "Story: Delete one message I chose"; spec/os/android/messages.md, "Story: Delete a conversation I chose"; spec/os/android/deletionWindow.md, "A record waiting in its window is hidden from its list until Undo or the provider settles it"; spec/os/android/bridge.md, "Story: Admit a bridge call only with current evidence"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/os/android/messages.md, "Story: Name the sender of my latest text without reading it"; spec/os/android/messages.md, "Story: Read my conversations a page at a time"; spec/os/android/messages.md, "A page of conversations or messages is read only on an unlocked phone with the SMS grant, and holds 1 to 50 rows"; spec/os/android/messages.md, "Opening a conversation marks read only its received messages up to the newest one shown, and only as the SMS app"
 import type { Admission, HandoffOutcome, HostFacts } from "../../gen/os__android__bridge.ts"
 import { admitCall } from "../../gen/os__android__bridge.effect.vibe"
 import {
   Machine,
   canCancelReview,
+  checkPageAsk,
   machine,
+  maxConversationPage,
+  readMarkHolds,
   sendCall,
   type Event as ReviewEvent,
   type MessageKind,
@@ -18,8 +21,6 @@ import { parseTelephonyStatus, type TelephonyHandoffResult, type TelephonyStatus
 import {
   SMS_DIRECT_MAX_BODY,
   SMS_DIRECT_MAX_RECIPIENTS,
-  SMS_MAX_MESSAGES,
-  SMS_MAX_THREADS,
   messageCursorOf,
   operationIdOf,
   parseMessageDeleteReference,
@@ -102,7 +103,7 @@ import { base64, mmsBinding, smsBindingHash } from digest
 export { mmsBinding, smsBindingHash }
 
 const PLUGIN = "ElizaTelephony"
-const READ_ALL = 50
+const READ_ALL = maxConversationPage
 
 export type MessageRequestProblem =
   | "invalid-operation"
@@ -331,20 +332,22 @@ effect function withoutQueued<Row extends ThreadRow | MessageRow>(journal: Actio
   return rows.filter((row) => !hidden.has(row.id))
 }
 
-effect function bounded(limit: number, max: number, before: number | undefined) {
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > max) try refuse("invalid-limit")
-  if (before !== undefined && (!Number.isSafeInteger(before) || before <= 0)) try refuse("invalid-cursor")
+effect function bounded(limit: number, before: number | undefined) {
+  if (!Number.isSafeInteger(limit)) try refuse("invalid-limit")
+  const asked = checkPageAsk(limit, before !== undefined, before !== undefined && Number.isSafeInteger(before) ? before : 0)
+  if (asked === "PageLimitRefused") try refuse("invalid-limit")
+  if (asked === "PageDateRefused") try refuse("invalid-cursor")
   return before === undefined ? { limit } : { limit, before }
 }
 
 effect function listThreads(plugin: MessagesNativePlugin, journal: ActionJournalPlugin, limit: number, before: number | undefined) {
-  const page = try bounded(limit, SMS_MAX_THREADS, before)
+  const page = try bounded(limit, before)
   return try withoutQueued(journal, "thread", try checked("listThreads", (raw) => parseThreads(raw, limit), try nativeCall(PLUGIN, "listThreads", () => plugin.listThreads(page))))
 }
 
 effect function listMessages(plugin: MessagesNativePlugin, journal: ActionJournalPlugin, threadId: ThreadId, limit: number, before: number | undefined) {
   const thread = try requestThread(threadId)
-  const page = try bounded(limit, SMS_MAX_MESSAGES, before)
+  const page = try bounded(limit, before)
   return try withoutQueued(journal, "message", try checked("listMessages", (raw) => parseMessages(raw, thread, limit), try nativeCall(PLUGIN, "listMessages", () => plugin.listMessages({ threadId: thread, ...page }))))
 }
 
@@ -381,8 +384,8 @@ function readMark(raw: unknown): { defaultSmsApp: boolean; updated: number } | u
   const data = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : undefined
   const defaultSmsApp = data?.defaultSmsApp
   const updated = data?.updated
-  if (typeof defaultSmsApp !== "boolean" || !Number.isSafeInteger(updated) || (updated as number) < 0) return undefined
-  return defaultSmsApp || updated === 0 ? { defaultSmsApp, updated: updated as number } : undefined
+  if (typeof defaultSmsApp !== "boolean" || typeof updated !== "number" || !Number.isSafeInteger(updated)) return undefined
+  return readMarkHolds(defaultSmsApp, updated) ? { defaultSmsApp, updated } : undefined
 }
 
 effect function markThreadRead(plugin: MessagesNativePlugin, threadId: ThreadId, throughDate: number) {

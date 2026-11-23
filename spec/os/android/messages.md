@@ -1,4 +1,4 @@
-# Text messages: reviewed sends, receipts, incoming messages, notices and deletion
+# Text messages: reviewed sends, receipts, incoming messages, notices, reads and deletion
 
 The messages module (`packages/os/android/messages/`, from
 `plugins/plugin-native-messages/android`). A host that declares telephony
@@ -12,13 +12,15 @@ their shape checks and the capabilities `sms.send.v1`, `mms.send.v1` and
 default SMS role is [system](./system.md)'s. This spec keeps what Android must
 confirm before a send, what the send journal answers, what a status may
 claim, what the default SMS app stores and announces for an incoming text or
-picture message, what a new-message notice action may write, and what a
-deletion of a message or a conversation may stage in the
+picture message, what a new-message notice action may write, what a page of
+conversations or messages may hold and what opening a conversation marks
+read, and what a deletion of a message or a conversation may stage in the
 [deletion journal](./deferredDeletion.md) and report. Carrier delivery is never inferred. Calls and voicemail are
 [phone](./phone.md)'s and [voicemail](./voicemail.md)'s. A new-message
 notice is this module's own: it is posted for an incoming message, not for
 an agent result, so the account fence and tap tokens of
-[notice routes](./noticeRoutes.md) do not apply to it.
+[notice routes](./noticeRoutes.md) do not apply to it. Pages follow
+[keyset paging](./paging.md).
 
 ## Story: Send only what I reviewed, once
 
@@ -512,4 +514,74 @@ pure def lawOnlyTheAskNamesTheWholeAddress(presence: PluginPresence, facts: Host
     senderAnswer(presence, facts, AskSenderAddress, newest, fenceHolds) != SenderSuffixNamed
 pure def lawAWholeAddressIsADialableNumber(digits: int): bool =
   senderAddressNamed(senderAnswer(PluginRegistered, { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }, AskSenderAddress, SenderDialShaped({ digits: digits, plusOnlyFirst: true, thread: 0 }), true)) iff senderNumberAdmitted(digits)
+```
+
+## Story: Read my conversations a page at a time
+
+> As the person, I want to read my conversations and the messages of one,
+> newest first and a page at a time, and have opening a conversation mark
+> read only what I was shown, so that nothing is repeated, skipped or
+> marked read behind my back.
+
+### A page of conversations or messages is read only on an unlocked phone with the SMS grant, and holds 1 to 50 rows
+
+A page is a read with the SMS grant on the unlocked phone in front, admitted
+as a sender lookup is (`senderCall`), run off the main thread and fenced
+again before it is published. Its limit is 1 to `maxConversationPage` rows
+and an older-than date, when one is given, is a positive whole number of
+milliseconds; any other ask is refused before Android is asked anything.
+Messages are read newest first; at one date a picture message comes before a
+text, and the higher provider ID first, so that rows with one timestamp are
+neither repeated nor lost between two pages. A row the provider cannot
+report completely is returned with only its ID, its date and the reason,
+never cut short, and drafts and attachment bytes are never read. A
+conversation or message waiting in its
+[deletion window](./deletionWindow.md) is left off the page.
+
+```quint
+import paging as Pg from "./paging"
+type PageCheck = PageAdmitted | PageLimitRefused | PageDateRefused
+pure val maxConversationPage = 50
+pure def checkPageAsk(pageLimit: int, dated: bool, beforeDate: int): PageCheck =
+  if (pageLimit < 1 or pageLimit > maxConversationPage) PageLimitRefused
+  else if (dated and beforeDate <= 0) PageDateRefused
+  else PageAdmitted
+pure def messageKey(date: int, kind: MessageKind, rowId: int): Pg::RowKey =
+  { major: 0 - date, minor: if (kind == MultimediaMessage) 0 else 1, rowId: 0 - rowId }
+pure val pageLimitValues = Set(0, 1, 50, 51)
+pure val beforeDateValues = Set(-1, 0, 1)
+pure val dateValues = Set(1, 2)
+pure val rowIdValues = Set(1, 2)
+pure def lawAPageAskIsAdmittedOnlyWithinItsBounds(pageLimit: int, dated: bool, beforeDate: int): bool =
+  checkPageAsk(pageLimit, dated, beforeDate) == PageAdmitted iff (pageLimit >= 1 and pageLimit <= maxConversationPage and (not(dated) or beforeDate > 0))
+pure def lawNewerMessagesComeFirst(date: int, kind: MessageKind, rowId: int): bool =
+  Pg::precedes(messageKey(date + 1, kind, rowId), messageKey(date, kind, rowId)) and Pg::precedes(messageKey(date, kind, rowId + 1), messageKey(date, kind, rowId))
+    and Pg::precedes(messageKey(date, MultimediaMessage, rowId), messageKey(date, TextMessage, rowId))
+```
+
+### Opening a conversation marks read only its received messages up to the newest one shown, and only as the SMS app
+
+The owner's screen names the conversation and the date of the newest
+message it shows. As the default SMS app the module marks read, in SMS and
+then MMS, the received rows of that conversation at or before that date
+that were still unread, removes the conversation's notice and answers how
+many rows changed; a message that arrived after the shown page stays
+unread, and a sent row is never touched. Android accepts this write only
+from the default SMS app, so without the role nothing is written and the
+answer says so with no rows changed; an answer that claims rows without the
+role is refused as malformed. The call has the admission and fence of a
+read and returns no message content.
+
+```quint
+pure def openingMarksRead(smsRoleHeld: bool, received: bool, unread: bool, rowDate: int, throughDate: int): bool =
+  smsRoleHeld and received and unread and throughDate > 0 and rowDate <= throughDate
+pure def readMarkHolds(defaultSmsApp: bool, updated: int): bool = updated >= 0 and (defaultSmsApp or updated == 0)
+pure val rowDateValues = Set(1, 2, 3)
+pure val throughDateValues = Set(0, 1, 2)
+pure def lawWithoutTheRoleNothingIsMarkedRead(received: bool, unread: bool, rowDate: int, throughDate: int, updated: int): bool =
+  not(openingMarksRead(false, received, unread, rowDate, throughDate)) and (readMarkHolds(false, updated) iff updated == 0)
+pure def lawAMessageAfterTheShownPageStaysUnread(smsRoleHeld: bool, received: bool, unread: bool, rowDate: int, throughDate: int): bool =
+  rowDate > throughDate implies not(openingMarksRead(smsRoleHeld, received, unread, rowDate, throughDate))
+pure def lawOnlyReceivedUnreadMessagesAreMarked(smsRoleHeld: bool, received: bool, unread: bool, rowDate: int, throughDate: int): bool =
+  openingMarksRead(smsRoleHeld, received, unread, rowDate, throughDate) implies (received and unread)
 ```

@@ -452,7 +452,7 @@ it.live("Send only what I reviewed, once: a repeated operation answers its recor
   ))
 })
 
-it.live("Mark a conversation read only while the app holds the SMS role, and never accept a write claimed without it (spec/os/android/messages.md, \"Story: Mark a conversation read from its notice without sending anything\"; spec/os/android/messages.md, \"A notice action writes only for its own conversation and only while its ticket is current\")", () => effect {
+it.live("Mark a conversation read only while the app holds the SMS role, and never accept a write claimed without it (spec/os/android/messages.md, \"Story: Mark a conversation read from its notice without sending anything\"; spec/os/android/messages.md, \"A notice action writes only for its own conversation and only while its ticket is current\"; spec/os/android/messages.md, \"Story: Read my conversations a page at a time\"; spec/os/android/messages.md, \"Opening a conversation marks read only its received messages up to the newest one shown, and only as the SMS app\")", () => effect {
   const phone = device({ roleHeld: false })
   const client = messagesClient(androidTelephony(phone))
   const thread = "thread:1" as ThreadId
