@@ -22,7 +22,7 @@ export interface IntervalSummary {
   readonly coveredMs: number
 }
 
-export effect function summarizeIntervals(ownerId: string, window: HealthWindow, kind: ObservationKind): IntervalSummary!HealthReadFailed | InvalidHealthWindow!HealthConnector {
+export effect function summarizeIntervals(ownerId: string, window: HealthWindow, kind: ObservationKind): IntervalSummary!(HealthReadFailed | InvalidHealthWindow)!HealthConnector {
   if (!Number.isSafeInteger(window.fromMs) || !Number.isSafeInteger(window.untilMs) || !validHealthWindow(window)) {
     throw new InvalidHealthWindow()
   }
