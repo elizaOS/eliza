@@ -81,33 +81,39 @@ function fixture(
     );
   return { id, make, post, rows: () => rows };
 }
-test("settlement fence replays after a lost acknowledgement and recreation", async () => {
-  const f = fixture();
-  const settled = await f.post(f.make(), "/settle", {
-    requestId: f.id,
-    balanceBackedUsd: 1,
-    gateConsumedUsd: 1,
-    balanceUsd: 9,
-    balanceRevision: "2",
-    balanceView: "funding",
-  });
-  expect(settled.status).toBe(200); // Caller discards this acknowledgement.
-  const before = JSON.stringify(f.rows().get("ledger"));
-  const replay = await f.post(f.make(), "/settlement-fence", {
-    requestId: f.id,
-    estimatedCostUsd: 1,
-  });
-  expect(replay.status).toBe(200);
-  const body: unknown = await replay.json();
-  if (!isSettlementFenceReply(body))
-    throw Error("Expected settlement fence response object");
-  expect(body).toEqual({
-    settlementFenced: true,
-    estimatedCostUsd: 1,
-    duplicate: true,
-  });
-  expect(JSON.stringify(f.rows().get("ledger"))).toBe(before);
-});
+test.each([
+  "speech:11111111-1111-4111-8111-111111111111:tts",
+  "speech:11111111-1111-4111-8111-111111111111:stt:7",
+])(
+  "settlement fence replays %s after a lost acknowledgement and recreation",
+  async (id) => {
+    const f = fixture(false, id);
+    const settled = await f.post(f.make(), "/settle", {
+      requestId: f.id,
+      balanceBackedUsd: 1,
+      gateConsumedUsd: 1,
+      balanceUsd: 9,
+      balanceRevision: "2",
+      balanceView: "funding",
+    });
+    expect(settled.status).toBe(200); // Caller discards this acknowledgement.
+    const before = JSON.stringify(f.rows().get("ledger"));
+    const replay = await f.post(f.make(), "/settlement-fence", {
+      requestId: f.id,
+      estimatedCostUsd: 1,
+    });
+    expect(replay.status).toBe(200);
+    const body: unknown = await replay.json();
+    if (!isSettlementFenceReply(body))
+      throw Error("Expected settlement fence response object");
+    expect(body).toEqual({
+      settlementFenced: true,
+      estimatedCostUsd: 1,
+      duplicate: true,
+    });
+    expect(JSON.stringify(f.rows().get("ledger"))).toBe(before);
+  },
+);
 test("settled fence refuses changed target and legacy missing evidence", async () => {
   const f = fixture();
   await f.post(f.make(), "/settle", {

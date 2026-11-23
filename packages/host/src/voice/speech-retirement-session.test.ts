@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import {
   createSpeechRelaySession,
+  SPEECH_RELAY_SETTLE_WAIT_MS,
   type SpeechRelayCreditReservation,
   type SpeechRelayPorts,
   type SpeechRelayRetirementHandle,
@@ -10,8 +11,10 @@ import { InMemoryVoiceUsageStore } from "./usage";
 function ports() {
   let handle!: SpeechRelayRetirementHandle;
   let unknownDrain = false,
-    settlementFails = false,
-    money = 0;
+    settlementFails = 0,
+    money = 0,
+    window = 0,
+    delivered = 0;
   const value: SpeechRelayPorts = {
     enabled: true,
     assertCurrent() {},
@@ -25,52 +28,64 @@ function ports() {
     registerRetirement: (value) => {
       handle = value;
     },
-    reserveCredits: async (scope) => ({
-      supportsPerKindSettlement: true,
-      beforeProviderDispatch: async () => {},
-      settle: async (details, kinds = ["stt", "tts"]) => {
-        if (settlementFails) {
-          settlementFails = false;
-          throw Error("settlement failed");
-        }
-        money++;
-        return {
-          ...(kinds.includes("stt") && {
-            stt: {
-              state:
-                details.dispatched?.stt !== true ||
-                details.outcomes?.stt === "complete"
-                  ? ("actual" as const)
-                  : ("conservative" as const),
-              requestId: `speech:${scope.cloudSessionId}:stt`,
-              amountUsd: "0",
-              terminal: true as const,
-            },
-          }),
-          ...(kinds.includes("tts") && {
-            tts: {
-              state: details.ttsAccountingBasis
-                ? ("conservative" as const)
-                : ("actual" as const),
-              requestId: `speech:${scope.cloudSessionId}:tts`,
-              amountUsd: "0",
-              terminal: true as const,
-              ...(details.ttsAccountingBasis
-                ? { basis: details.ttsAccountingBasis }
-                : {}),
-            },
-          }),
-        };
-      },
-    }),
+    reserveCredits: async (scope) => {
+      // Later windows carry their budget window in each request ID.
+      const index = window++;
+      const suffix = index ? `:${index}` : "";
+      return {
+        supportsPerKindSettlement: true,
+        beforeProviderDispatch: async () => {},
+        settle: async (details, kinds = ["stt", "tts"]) => {
+          if (settlementFails > 0) {
+            settlementFails--;
+            throw Error("settlement failed");
+          }
+          money++;
+          // Mirrors the Cloud admission's per-kind choice.
+          const basis = (kind: "stt" | "tts") =>
+            details.dispatched?.[kind] === true
+              ? details.accountingBasis
+              : undefined;
+          const stt = basis("stt"),
+            tts = basis("tts");
+          return {
+            ...(kinds.includes("stt") && {
+              stt: {
+                state:
+                  !stt &&
+                  (details.dispatched?.stt !== true ||
+                    details.outcomes?.stt === "complete")
+                    ? ("actual" as const)
+                    : ("conservative" as const),
+                requestId: `speech:${scope.cloudSessionId}:stt${suffix}`,
+                amountUsd: "0",
+                terminal: true as const,
+                ...(stt ? { basis: stt } : {}),
+              },
+            }),
+            ...(kinds.includes("tts") && {
+              tts: {
+                state: tts ? ("conservative" as const) : ("actual" as const),
+                requestId: `speech:${scope.cloudSessionId}:tts${suffix}`,
+                amountUsd: "0",
+                terminal: true as const,
+                ...(tts ? { basis: tts } : {}),
+              },
+            }),
+          };
+        },
+      };
+    },
     openStt: () => ({
-      sendAudioChunk() {},
+      sendAudioChunk(chunk) {
+        delivered += chunk.byteLength;
+      },
       cancel() {},
       drain: async () => {
         if (unknownDrain) throw Error("no trusted drain");
         return {
           source: "provider-graceful-close",
-          audioBytes: 0,
+          audioBytes: delivered,
           sampleRate: 16000,
           channels: 1,
           encoding: "pcm_s16le",
@@ -95,8 +110,8 @@ function ports() {
     restoreDrain() {
       unknownDrain = false;
     },
-    failSettlement() {
-      settlementFails = true;
+    failSettlement(times = 1) {
+      settlementFails = times;
     },
     get money() {
       return money;
@@ -113,27 +128,11 @@ test("paid renewal retains one STT connection and settles each window once", asy
   vi.setSystemTime(1_000);
   const p = ports();
   const events: unknown[] = [];
-  const original = p.value.reserveCredits;
-  let window = 0,
-    opened = 0;
+  let opened = 0;
   const open = p.value.openStt;
   p.value.openStt = (...args) => {
     opened++;
     return open(...args);
-  };
-  p.value.reserveCredits = async (...args) => {
-    const index = window++;
-    const admission = await original(...args);
-    return {
-      ...admission,
-      settle: async (details, kinds) => {
-        const result = await admission.settle(details, kinds);
-        for (const kind of ["stt", "tts"] as const)
-          if (result?.[kind])
-            result[kind].requestId += index ? `:${index}` : "";
-        return result;
-      },
-    };
   };
   p.value.maxWindows = 2;
   p.value.extend = async (_scope, expiresAt) => expiresAt;
@@ -164,6 +163,458 @@ test("paid renewal retains one STT connection and settles each window once", asy
     vi.useRealTimers();
   }
 });
+/** An org gate that holds every unsettled kind's estimate until it settles. */
+function gated(p: ReturnType<typeof ports>, windowsOfBalance: number) {
+  let available = windowsOfBalance * 2,
+    window = 0;
+  const settled = new Map<
+    string,
+    Parameters<SpeechRelayCreditReservation["settle"]>[0][]
+  >();
+  const renewals: unknown[] = [];
+  // Settlements and TTS dispatch gates a test holds open until it releases them.
+  const holds = new Map<string, Promise<void>>();
+  const hold = (key: string) => {
+    let release!: () => void;
+    holds.set(
+      key,
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
+    return () => {
+      holds.delete(key);
+      release();
+    };
+  };
+  const reserve = p.value.reserveCredits;
+  p.value.reserveCredits = async (...args) => {
+    const index = window++;
+    if (available < 2)
+      throw Object.assign(Error("Insufficient credits"), {
+        name: "InsufficientCreditsError",
+        required: 2,
+        available,
+      });
+    available -= 2;
+    const reservation = await reserve(...args);
+    return {
+      ...reservation,
+      beforeProviderDispatch: async (kind) => {
+        await holds.get(`${index}:dispatch:${kind}`);
+        return reservation.beforeProviderDispatch(kind);
+      },
+      settle: async (details, kinds = ["stt", "tts"]) => {
+        for (const kind of kinds) {
+          const key = `${index}:${kind}`;
+          settled.set(key, [...(settled.get(key) ?? []), details]);
+          await holds.get(key);
+        }
+        const result = await reservation.settle(details, kinds);
+        available += kinds.length;
+        return result;
+      },
+    };
+  };
+  p.value.extend = async (_scope, expiresAt) => expiresAt;
+  p.value.onRenewal = (result) => renewals.push(result);
+  return {
+    settled,
+    renewals,
+    hold,
+    get available() {
+      return available;
+    },
+  };
+}
+const SUPERSEDED = {
+  providerMayHaveStarted: true,
+  outcome: "unknown",
+  outcomes: { stt: "unknown", tts: "unknown" },
+  accountingBasis: "submitted_counter_provider_unconfirmed",
+} as const;
+const EXTENDED = { phase: "extend", result: "extended" } as const;
+test("superseded windows settle once their end passes so two holds of balance renew every window", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  const gate = gated(p, 2);
+  p.value.maxWindows = 4;
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    session.sendPcm(new Uint8Array(3200));
+    await session.control({ t: "tts", id: "turn", text: "hello" });
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(gate.renewals).toEqual([EXTENDED]);
+    expect(gate.settled.size).toBe(0);
+    // The first window settles at its own end, 40 s before the next renewal.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect([...gate.settled.keys()]).toEqual(["0:stt", "0:tts"]);
+    await vi.advanceTimersByTimeAsync(40_000);
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(gate.renewals).toEqual([EXTENDED, EXTENDED, EXTENDED]);
+    // The balance only ever held the live window and the one it reserved.
+    expect(gate.available).toBe(0);
+    expect([...gate.settled.keys()]).toEqual([
+      "0:stt",
+      "0:tts",
+      "1:stt",
+      "1:tts",
+    ]);
+    for (const kind of ["stt", "tts"]) {
+      expect(gate.settled.get(`0:${kind}`)).toEqual([
+        {
+          ...SUPERSEDED,
+          pcmBytes: 3200,
+          ttsCharacters: 5,
+          dispatched: { stt: true, tts: true },
+        },
+      ]);
+      expect(gate.settled.get(`1:${kind}`)).toEqual([
+        {
+          ...SUPERSEDED,
+          pcmBytes: 0,
+          ttsCharacters: 0,
+          dispatched: { stt: false, tts: false },
+        },
+      ]);
+    }
+    await session.close();
+    expect([...gate.settled.keys()].sort()).toEqual(
+      [0, 1, 2, 3].flatMap((index) => [`${index}:stt`, `${index}:tts`]),
+    );
+    for (const details of gate.settled.values())
+      expect(details).toHaveLength(1);
+    // The oldest held window still carries the open streams' closure.
+    expect(gate.settled.get("2:stt")?.[0]).toMatchObject({
+      pcmBytes: 0,
+      dispatched: { stt: true },
+      outcomes: { stt: "complete" },
+    });
+    expect(gate.settled.get("3:stt")?.[0]).toMatchObject({
+      dispatched: { stt: false, tts: false },
+    });
+    expect(p.handle.evidence()).toMatchObject({
+      stt: "gracefully_drained",
+      tts: "transport_closed",
+      accounting: "settled_actual",
+      moneyTerminal: true,
+    });
+    expect(gate.available).toBe(4);
+    await session.close();
+    for (const details of gate.settled.values())
+      expect(details).toHaveLength(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+test("a failed superseded settlement is reported and retried with its frozen target before the next reservation", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  const gate = gated(p, 2);
+  p.value.maxWindows = 3;
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    session.sendPcm(new Uint8Array(3200));
+    await vi.advanceTimersByTimeAsync(50_000);
+    p.failSettlement();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(gate.renewals).toMatchObject([
+      EXTENDED,
+      {
+        phase: "settle",
+        result: "error",
+        error: { errors: [{ message: "settlement failed" }] },
+      },
+    ]);
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(gate.renewals).toHaveLength(3);
+    expect(gate.renewals[2]).toEqual(EXTENDED);
+    const attempts = gate.settled.get("0:stt");
+    expect(attempts).toHaveLength(2);
+    expect(attempts?.[1]).toBe(attempts?.[0]);
+    expect(attempts?.[0]).toEqual({
+      ...SUPERSEDED,
+      pcmBytes: 3200,
+      ttsCharacters: 0,
+      dispatched: { stt: true, tts: false },
+    });
+    expect(gate.settled.get("0:tts")).toHaveLength(1);
+    await session.close();
+    expect(gate.settled.get("0:stt")).toHaveLength(2);
+    for (const key of ["0:tts", "1:stt", "1:tts", "2:stt", "2:tts"])
+      expect(gate.settled.get(key)).toHaveLength(1);
+    expect(p.handle.evidence()).toMatchObject({
+      accounting: "settled_actual",
+      moneyTerminal: true,
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+test("an unsettled superseded window refuses renewal at the current end and close retries its frozen target", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  const gate = gated(p, 2);
+  p.value.maxWindows = 4;
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    session.sendPcm(new Uint8Array(3200));
+    await vi.advanceTimersByTimeAsync(50_000);
+    // Both kinds of the first window fail when it ends and again when the
+    // next renewal retries them, so that renewal finds no headroom.
+    p.failSettlement(4);
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(gate.renewals).toMatchObject([
+      EXTENDED,
+      { phase: "settle", result: "error" },
+      { phase: "settle", result: "error" },
+      {
+        phase: "reserve",
+        result: "error",
+        error: { name: "InsufficientCreditsError", required: 2, available: 0 },
+      },
+    ]);
+    // The refusal leaves the second window's end in force.
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(p.handle.evidence()).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    await session.close();
+    for (const kind of ["stt", "tts"]) {
+      const attempts = gate.settled.get(`0:${kind}`);
+      expect(attempts).toHaveLength(3);
+      for (const attempt of attempts ?? []) expect(attempt).toBe(attempts?.[0]);
+    }
+    expect(gate.settled.get("0:stt")?.[0]).toEqual({
+      ...SUPERSEDED,
+      pcmBytes: 3200,
+      ttsCharacters: 0,
+      dispatched: { stt: true, tts: false },
+    });
+    expect(gate.settled.get("1:stt")?.[0]).toMatchObject({
+      pcmBytes: 0,
+      dispatched: { stt: true },
+      outcomes: { stt: "complete" },
+    });
+    expect([...gate.settled.keys()].sort()).toEqual([
+      "0:stt",
+      "0:tts",
+      "1:stt",
+      "1:tts",
+    ]);
+    expect(p.handle.evidence()).toMatchObject({
+      accounting: "settled_actual",
+      moneyTerminal: true,
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+test("a slow superseded settlement neither holds renewal past its bound nor escapes close", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  const gate = gated(p, 3);
+  p.value.maxWindows = 3;
+  const release = gate.hold("0:stt");
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    session.sendPcm(new Uint8Array(3200));
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(gate.settled.get("0:stt")).toHaveLength(1);
+    expect(gate.renewals).toEqual([EXTENDED]);
+    await vi.advanceTimersByTimeAsync(SPEECH_RELAY_SETTLE_WAIT_MS);
+    expect(gate.renewals).toEqual([EXTENDED, EXTENDED]);
+    let closed = false;
+    const closing = session.close().then(() => {
+      closed = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(closed).toBe(false);
+    expect(p.handle.evidence()).toBeUndefined();
+    release();
+    await closing;
+    expect(p.handle.evidence()).toMatchObject({
+      accounting: "settled_actual",
+      moneyTerminal: true,
+    });
+    // Close joined the attempt in flight instead of starting another.
+    expect([...gate.settled.keys()].sort()).toEqual(
+      [0, 1, 2].flatMap((index) => [`${index}:stt`, `${index}:tts`]),
+    );
+    for (const details of gate.settled.values())
+      expect(details).toHaveLength(1);
+  } finally {
+    release();
+    vi.useRealTimers();
+  }
+});
+test.each(["pcm", "tts"] as const)(
+  "after a quiet window settles, %s beyond the held window's budget retires the session",
+  async (kind) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const p = ports();
+    const gate = gated(p, 3);
+    p.value.maxWindows = 3;
+    try {
+      const session = await createSpeechRelaySession(
+        identity,
+        "consent",
+        p.value,
+      );
+      await vi.advanceTimersByTimeAsync(99_000);
+      expect(gate.renewals).toEqual([EXTENDED]);
+      expect(gate.settled.get("0:tts")?.[0]).toMatchObject({
+        pcmBytes: 0,
+        ttsCharacters: 0,
+      });
+      // Only the live second window's budget remains; the quiet first
+      // window's unused budget was released with its hold.
+      if (kind === "pcm") {
+        for (let n = 0; n < 600; n++) session.sendPcm(new Uint8Array(3200));
+        expect(() => session.sendPcm(new Uint8Array(3200))).toThrow(
+          "exceeds the admitted format or rate",
+        );
+      } else {
+        for (let n = 0; n < 4; n++)
+          await session.control({
+            t: "tts",
+            id: "turn",
+            text: "a".repeat(1024),
+          });
+        await expect(
+          session.control({ t: "tts", id: "turn", text: "a" }),
+        ).rejects.toThrow("exceeds the admitted budget");
+      }
+      await session.close();
+      expect(p.handle.evidence()).toMatchObject({
+        accounting: "settled_actual",
+        moneyTerminal: true,
+      });
+      expect(gate.settled.get("1:stt")?.[0]).toMatchObject(
+        kind === "pcm" ? { pcmBytes: 1_920_000 } : { ttsCharacters: 4096 },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+test.each(["dispatched", "cancelled"] as const)(
+  "text in flight when a window ends is frozen by the next renewal once %s",
+  async (outcome) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const p = ports();
+    const gate = gated(p, 2);
+    p.value.maxWindows = 3;
+    try {
+      const session = await createSpeechRelaySession(
+        identity,
+        "consent",
+        p.value,
+      );
+      await vi.advanceTimersByTimeAsync(50_000);
+      // TTS dispatch waits on the live second window's reservation.
+      const release = gate.hold("1:dispatch:tts");
+      const sending = session.control({ t: "tts", id: "turn", text: "hello" });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(gate.settled.size).toBe(0);
+      if (outcome === "cancelled")
+        await session.control({ t: "cancel", id: "turn" });
+      release();
+      await sending;
+      expect(gate.settled.size).toBe(0);
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(gate.renewals).toEqual([EXTENDED, EXTENDED]);
+      const dispatched = outcome === "dispatched";
+      for (const kind of ["stt", "tts"])
+        expect(gate.settled.get(`0:${kind}`)).toEqual([
+          {
+            ...SUPERSEDED,
+            pcmBytes: 0,
+            ttsCharacters: dispatched ? 5 : 0,
+            dispatched: { stt: false, tts: dispatched },
+          },
+        ]);
+      await session.close();
+      expect(p.handle.evidence()).toMatchObject({
+        accounting: "settled_actual",
+        moneyTerminal: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+test.each(["transport_closed", "not_dispatched"] as const)(
+  "superseded TTS counters confirm once an unknown TTS transport later reports %s",
+  async (stopped) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const p = ports();
+    const gate = gated(p, 2);
+    p.value.maxWindows = 2;
+    try {
+      const session = await createSpeechRelaySession(
+        identity,
+        "consent",
+        p.value,
+      );
+      await session.control({ t: "tts", id: "turn", text: "hello" });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(gate.settled.get("0:tts")?.[0]).toMatchObject({
+        ttsCharacters: 5,
+        accountingBasis: "submitted_counter_provider_unconfirmed",
+      });
+      p.value.confirmTtsTransportStopped = async () => "unknown";
+      await expect(session.close()).rejects.toThrow(
+        "cleanup was not confirmed",
+      );
+      expect(gate.settled.has("1:tts")).toBe(false);
+      await p.handle.finalizeUnknownTtsAccounting?.();
+      expect(gate.settled.get("1:tts")).toMatchObject([
+        {
+          ttsCharacters: 0,
+          accountingBasis: "submitted_counter_provider_unconfirmed",
+        },
+      ]);
+      expect(p.handle.evidence()).toMatchObject({
+        tts: "unknown",
+        accounting: "unknown",
+      });
+      p.value.confirmTtsTransportStopped = async () => stopped;
+      await p.handle.retryRetirement();
+      expect(p.handle.evidence()).toMatchObject({
+        tts: stopped,
+        accounting: "settled_actual",
+        moneyTerminal: true,
+      });
+      for (const details of gate.settled.values())
+        expect(details).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
 test.each(["quota", "admission", "extension"] as const)(
   "Stop requests provider teardown while renewal waits on %s",
   async (pending) => {
@@ -207,11 +658,7 @@ test.each(["quota", "admission", "extension"] as const)(
             const key = `${index}:${kind}`;
             settled.set(key, [...(settled.get(key) ?? []), details]);
           }
-          const result = await reservation.settle(details, kinds);
-          for (const kind of kinds)
-            if (result?.[kind])
-              result[kind].requestId += index ? `:${index}` : "";
-          return result;
+          return reservation.settle(details, kinds);
         },
       };
     };
@@ -351,11 +798,7 @@ test.each(["credit", "quota", "legacy"] as const)(
             failCredit = false;
             throw Error("zero settlement acknowledgement lost");
           }
-          const result = await reservation.settle(details, kinds);
-          for (const kind of kinds)
-            if (result?.[kind])
-              result[kind].requestId += index ? `:${index}` : "";
-          return result;
+          return reservation.settle(details, kinds);
         },
       };
     };
@@ -707,7 +1150,7 @@ test("final bounded retry settles the frozen submitted counter but leaves provid
   expect(ttsInputs).toMatchObject([
     {
       ttsCharacters: 0,
-      ttsAccountingBasis: "submitted_counter_provider_unconfirmed",
+      accountingBasis: "submitted_counter_provider_unconfirmed",
     },
   ]);
   expect(p.handle.evidence()).toMatchObject({
@@ -802,11 +1245,7 @@ for (const failedKind of ["stt", "tts"] as const) {
             if (failure && kinds.includes(failedKind))
               throw Error("Lost settlement reply");
           }
-          const result = await reservation.settle(details, kinds);
-          for (const kind of kinds)
-            if (result?.[kind] && window)
-              result[kind].requestId += `:${window}`;
-          return result;
+          return reservation.settle(details, kinds);
         },
       };
     };
@@ -845,21 +1284,6 @@ test("a lost unused-quota reply stays unknown and is never replayed", async () =
   let released = 0;
   p.value.maxWindows = 2;
   p.value.extend = async () => 0;
-  const reserve = p.value.reserveCredits;
-  let index = 0;
-  p.value.reserveCredits = async (...args) => {
-    const window = index++;
-    const reservation = await reserve(...args);
-    return {
-      ...reservation,
-      settle: async (details, kinds) => {
-        const result = await reservation.settle(details, kinds);
-        for (const kind of ["stt", "tts"] as const)
-          if (result?.[kind] && window) result[kind].requestId += `:${window}`;
-        return result;
-      },
-    };
-  };
   p.value.usageStore.release = async () => {
     released++;
     throw Error("Reply lost after quota release");
@@ -905,10 +1329,7 @@ test("a nonzero unused settlement proof cannot confirm retirement", async () => 
         settle: async (details, kinds) => {
           const result = await reservation.settle(details, kinds);
           for (const kind of ["stt", "tts"] as const)
-            if (result?.[kind] && window) {
-              result[kind].requestId += `:${window}`;
-              result[kind].amountUsd = "1";
-            }
+            if (result?.[kind] && window) result[kind].amountUsd = "1";
           return result;
         },
       };
@@ -955,10 +1376,7 @@ test("close retries a transient unused settlement once and keeps its zero target
           if (kinds.includes("stt") && attempts.stt === 1)
             throw Error("Temporary transport failure");
         }
-        const result = await reservation.settle(details, kinds);
-        for (const kind of ["stt", "tts"] as const)
-          if (result?.[kind] && window) result[kind].requestId += `:${window}`;
-        return result;
+        return reservation.settle(details, kinds);
       },
     };
   };
