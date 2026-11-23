@@ -222,3 +222,36 @@ pure def lawNoVerifierProvesNothing(answer: VerifierAnswer): bool = not(verifier
 pure def lawOnlyLiteralTrueProves(verifier: CleanupVerifier): bool =
   not(verifierProvedErase(verifier, AnsweredOther)) and not(verifierProvedErase(verifier, AnswerFailed))
 ```
+
+## Story: Delete the phone note I asked to delete
+
+> As the owner, I want a note my phone looked up to be offered for deletion
+> only when my own message told the agent to delete a note, and only once I
+> chose exactly which note it is.
+
+### A phone note a lookup found is offered for deletion only on the owner's direct deletion command
+
+The owner's own words in the original message decide, never the model's.
+They are a direct deletion command when, after an optional please or a
+can, could, would or will you, they begin with delete, remove or erase and
+then a note, optionally only, the, this, that, my, one or a note; a request
+to explain, describe or say how or why is not one, and neither is a
+message with a later clause, split at a semicolon, but, however or instead,
+that forbids or cancels the deletion, keeps it read-only or asks to read or
+show instead. After the owner shares the note a title or latest lookup
+found, its exact target is offered for a separate deletion review, bound to
+the original message. A lookup that found no note, or left the choice to
+the owner's uncertain pick, deletes nothing.
+
+```quint
+type DeletionWords = DirectDeletion | DeletionWithdrawn | ExplanationAsked | NoDeletionWords
+type LookupOutcome = NoteFound | NoNoteFound | ChoiceUncertain
+pure def deletionCommand(words: DeletionWords): bool = words == DirectDeletion
+pure def deleteAfterLookup(words: DeletionWords, found: LookupOutcome): bool = deletionCommand(words) and found == NoteFound
+pure def lawOnlyTheOwnersCommandDeletes(words: DeletionWords, found: LookupOutcome): bool =
+  deleteAfterLookup(words, found) implies words == DirectDeletion
+pure def lawAnUnresolvedLookupDeletesNothing(words: DeletionWords): bool =
+  not(deleteAfterLookup(words, NoNoteFound)) and not(deleteAfterLookup(words, ChoiceUncertain))
+pure def lawAWithdrawnDeletionDeletesNothing(found: LookupOutcome): bool =
+  not(deleteAfterLookup(DeletionWithdrawn, found)) and not(deleteAfterLookup(ExplanationAsked, found))
+```
