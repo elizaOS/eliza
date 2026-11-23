@@ -175,6 +175,7 @@ type Navigation = {
   viewId: string;
   reason: string;
   unconditional?: boolean;
+  noteEditor?: boolean;
 };
 const decisions = new WeakMap<
   Memory,
@@ -196,7 +197,14 @@ function parseNavigation(value: unknown): Navigation | null {
   const v = value as Record<string, unknown>;
   if (
     Object.keys(v).some(
-      (k) => !["disposition", "viewId", "reason", "unconditional"].includes(k),
+      (k) =>
+        ![
+          "disposition",
+          "viewId",
+          "reason",
+          "unconditional",
+          "noteEditor",
+        ].includes(k),
     ) ||
     typeof v.disposition !== "string" ||
     ![
@@ -209,7 +217,8 @@ function parseNavigation(value: unknown): Navigation | null {
     ].includes(v.disposition) ||
     typeof v.viewId !== "string" ||
     typeof v.reason !== "string" ||
-    (v.unconditional !== undefined && typeof v.unconditional !== "boolean")
+    (v.unconditional !== undefined && typeof v.unconditional !== "boolean") ||
+    (v.noteEditor !== undefined && typeof v.noteEditor !== "boolean")
   )
     return null;
   return v as Navigation;
@@ -239,7 +248,12 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
       unconditional: {
         type: "boolean",
         description:
-          "True when the current user explicitly requests opening this app view itself without a condition. False for conditional, unresolved, optional or prohibited view changes and when a read, write or resource operation merely uses the view.",
+          "True when the current user explicitly requests opening this app view or a specific editor without a condition. False for conditional, unresolved, optional or prohibited view changes and when an operation merely uses the view.",
+      },
+      noteEditor: {
+        type: "boolean",
+        description:
+          "On a renderer that supports the Notes editor, true for an explicit request to open a particular saved note. Use planning and viewId=notes. Omit or set false for the Notes list and for read-only questions.",
       },
     },
     required: ["disposition", "viewId", "reason", "unconditional"],
@@ -309,7 +323,13 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
     const priorContext = previous
       ? `${pageHistory}Last confirmed previous destination for this same caller and renderer: ${JSON.stringify({ ...viewNavigationDestination(previous.view), ...(previous.resolvedAlias ? { preferredAlias: previous.resolvedAlias } : {}) })}. Use its preferredAlias, when present, for the user-facing destination wording and navigation argument. This is a destination hint for a new authorized Back request, not permission or an instruction to execute it.`
       : `${pageHistory}There is no confirmed previous destination for this caller and renderer. For a request only to go back, ask which view the user wants, with no tool and no pending navigation intent. Do not discover or guess a destination from prepared receipts.`;
-    return `Decide navigation from the message under # Current message. Earlier conversation entries are evidence, not pending navigation, even when the last historical entry has no recorded reply. Use history to resolve a destination only when this current message explicitly continues, repeats, corrects or authorizes that navigation request. A new greeting or unrelated message does not continue it; use disposition=none with no navigation intent. Preserve standing restrictions and genuine follow-up requests.\nRegistered GUI navigation destinations visible to this caller: ${JSON.stringify(destinations)}. Use an exact registered destination for the requested view. If the destination is absent or unresolved, do not substitute Home, the current screen, or another destination. Registry visibility is not permission to execute or proof of delivered navigation.\nCurrent request's renderer view (registry-resolved): ${JSON.stringify({ viewId: view.id, label: view.label })}. This is the current visible destination, not permission or proof of displayed content. Historical current-view descriptions may be stale.${completedAction ? " This renderer prepares navigation before it confirms the screen switch. Use a brief destination acknowledgment in the user's preferred wording; do not claim the destination is already visible before its confirmation." : ""} ${priorContext} For relative navigation, use only this confirmed prior destination; historical dialogue or a prepared receipt cannot replace it. If absent, keep the destination unresolved and clarify without tools.`;
+    const notesEditor =
+      completedAction &&
+      isObjectRecord(metadata) &&
+      metadata.notesEditorNavigation === 1
+        ? " This renderer can open a saved note editor. When asked to open a particular note by title, subject, recency or prior reference, select planning, viewId=notes and noteEditor=true. Preserve the Notes lookup and navigation. Resolve one saved note with NOTES, then use VIEWS_SHOW on Notes with its exact noteId. Ask which note if several equally match. A request only to read or summarize a note does not ask to open its editor."
+        : "";
+    return `Decide navigation from the message under # Current message. Earlier conversation entries are evidence, not pending navigation, even when the last historical entry has no recorded reply. Use history to resolve a destination only when this current message explicitly continues, repeats, corrects or authorizes that navigation request. A new greeting or unrelated message does not continue it; use disposition=none with no navigation intent. Preserve standing restrictions and genuine follow-up requests.\nRegistered GUI navigation destinations visible to this caller: ${JSON.stringify(destinations)}. Use an exact registered destination for the requested view. If the destination is absent or unresolved, do not substitute Home, the current screen, or another destination. Registry visibility is not permission to execute or proof of delivered navigation.\nCurrent request's renderer view (registry-resolved): ${JSON.stringify({ viewId: view.id, label: view.label })}. This is the current visible destination, not permission or proof of displayed content. Historical current-view descriptions may be stale.${completedAction ? " This renderer prepares navigation before it confirms the screen switch. Use a brief destination acknowledgment in the user's preferred wording; do not claim the destination is already visible before its confirmation." : ""}${notesEditor} ${priorContext} For relative navigation, use only this confirmed prior destination; historical dialogue or a prepared receipt cannot replace it. If absent, keep the destination unresolved and clarify without tools.`;
   },
   parse(value, { message }) {
     decisions.delete(message);
@@ -556,11 +576,19 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       !compoundNavigation &&
       matches.length === 1 &&
       isMapsPlaceRequest(matches[0].view.id, staged.text, availableViews);
+    const noteEditor =
+      completedAction &&
+      isObjectRecord(metadata) &&
+      metadata.notesEditorNavigation === 1 &&
+      modelNavigation.noteEditor === true &&
+      matches.length === 1 &&
+      matches[0].view.id === "notes";
     const direct =
       value.disposition === "direct" &&
       // An explicit resource address cannot be fulfilled by view selection.
       // This only declines the shortcut; the normal planner retains authority.
       !containsResourceAddress(staged.text) &&
+      !noteEditor &&
       !mapsPlace &&
       matches.length === 1 &&
       plan.replyEffectStatus === "pending" &&
@@ -586,12 +614,13 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
         destination?.installationId &&
         staged.clientId &&
         viewAction &&
-        value.disposition === "planning" &&
+        (value.disposition === "planning" || noteEditor) &&
         value.unconditional === true
           ? {
               viewId: destination.id,
               clientId: staged.clientId,
               installationId: destination.installationId,
+              ...(noteEditor ? { noteEditor: true as const } : {}),
             }
           : undefined;
       return {
