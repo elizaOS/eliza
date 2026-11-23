@@ -443,6 +443,11 @@
       "dependsOn": [
         "^build"
       ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!test/**",
+        "!vitest.config.ts"
+      ],
       "outputs": []
     },
     "@repo/ui#typecheck": {
