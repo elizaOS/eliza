@@ -7,6 +7,7 @@
  * from the wallet provider instead of coupling it to browser workspace state.
  */
 
+import { readClientTurnObservation } from "@elizaos/contracts/client-turn-observation";
 import type { Provider } from "@elizaos/core";
 import {
   BROWSER_SERVICE_TYPE,
@@ -19,6 +20,11 @@ import {
 } from "../workspace/browser-workspace.js";
 
 const PROVIDER_NAME = "browser_workspace";
+// A message from a client device carries what that device shows. The agent's
+// own workspace tabs are not that screen: a phone owner asking about "this
+// page" with no page attached was told about the workspace's google.com tab.
+const CLIENT_DEVICE_NOTE =
+  "This is the agent's own browser workspace on its host, not the Browser on the device the owner is messaging from. Never describe these tabs as the page the owner has open; that page arrives only as clientDevice.browserPage.";
 
 export const browserWorkspaceProvider: Provider = {
   name: PROVIDER_NAME,
@@ -56,6 +62,9 @@ export const browserWorkspaceProvider: Provider = {
         {
           [PROVIDER_NAME]: {
             target: "workspace",
+            ...(readClientTurnObservation(message.content.metadata)
+              ? { note: CLIENT_DEVICE_NOTE }
+              : {}),
             availableTargets: targets.map((target) => ({
               id: target.id,
               description: target.description,
