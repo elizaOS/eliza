@@ -4,6 +4,9 @@ import { sha256Hex } from "../runtime/trajectory-provider-attribution.vibe"
 import { fromHex, toHex } from "../utils/buffer.vibe"
 import { findBasicEmailSpans } from "./basic-email.vibe"
 import { findAllMnemonicPhrases } from "./bip39-wordlist.vibe"
+import { coordinateSpanTest } from "./phone-span-context.vibe"
+
+const PHONE_PATTERN = /(?<!\d)(?:\+?1[ .-]?)?(?:\(\d{3}\)[ .-]?|\d{3}[ .-])\d{3}[ .-]?\d{4}(?!\d)|\+[1-9]\d{7,14}(?!\d)/g
 
 export interface PiiDetector {
   readonly kind: string
@@ -320,7 +323,14 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 
   {
     kind: "phone",
-    pattern: /(?<!\d)(?:\+?1[ .-]?)?(?:\(\d{3}\)[ .-]?|\d{3}[ .-])\d{3}[ .-]?\d{4}(?!\d)|\+[1-9]\d{7,14}(?!\d)/g,
+    pattern: PHONE_PATTERN,
+    findSpans: (text) => {
+      const isCoordinate = coordinateSpanTest(text)
+      return [...text.matchAll(PHONE_PATTERN)].flatMap((found) => {
+        const end = found.index + found[0].length
+        return isCoordinate(found.index, end) ? [] : [{ value: found[0], start: found.index, end }]
+      })
+    },
   },
 ]
 

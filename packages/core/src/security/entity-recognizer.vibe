@@ -1,6 +1,7 @@
 // spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
 import { foreign, runDetached } from "../edge.vibe"
 import { findBasicEmailSpans } from "./basic-email.vibe"
+import { coordinateSpanTest } from "./phone-span-context.vibe"
 
 export interface EntitySpan {
   readonly kind: string
@@ -63,11 +64,14 @@ export class RegexEntityRecognizer implements PiiEntityRecognizer {
       }
       for (const { kind, pattern } of this.detectors) {
         pattern.lastIndex = 0
+        const isCoordinate = kind === "phone" ? coordinateSpanTest(text) : undefined
         for (const match of text.matchAll(pattern)) {
           const value = match[0].trim()
           if (!value) continue
           const start = match.index ?? 0
-          spans.push({ kind, value, start, end: start + match[0].length })
+          const end = start + match[0].length
+          if (isCoordinate?.(start, end)) continue
+          spans.push({ kind, value, start, end })
         }
       }
     }
