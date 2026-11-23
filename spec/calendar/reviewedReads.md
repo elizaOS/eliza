@@ -90,3 +90,130 @@ pure val evidenceValues = Set({ zoneMatches: true, exactChosenSources: true, fre
 pure def shareAvailability(evidence: AvailabilityEvidence): bool = evidence.zoneMatches and evidence.exactChosenSources and evidence.freshLocal and evidence.sameReviewedProjection and evidence.stillCurrent and evidence.confirmed
 pure def lawChangedReadbackDoesNotPublish(evidence: AvailabilityEvidence): bool = shareAvailability(evidence) implies evidence.sameReviewedProjection and evidence.freshLocal and evidence.confirmed and evidence.stillCurrent
 ```
+
+## Story: Propose on my phone only the Calendar request I made
+
+> As the owner, I want a chat request about my phone's calendar to become a
+> phone review only for the event, source, name and time that my own words
+> and my screen give, and never for one the agent chose.
+
+### A phone Calendar proposal is offered only where its record may be proposed
+
+The turn's screen decides whose calendar records a request is about. A
+sensitive screen, or a Calendar screen whose selection is malformed or a
+calendar record of another kind, is about no records the agent may name.
+A Calendar screen with a phone event or phone calendar selected is about
+the phone's records; any other screen is about the app's records. The next
+event read and a new event on the phone's own calendar may be proposed from
+any screen; a named event and an availability check from Home or Calendar;
+a selected read, delete or new event in a chosen calendar only with that
+phone record selected. A selected app calendar record is never proposed to
+the phone. When the agent keeps its own calendar, a new phone event needs
+the phone's record selected or the owner's words naming the phone's
+calendar, so one request never writes two stores.
+
+```quint
+type CalendarView = HomeView | CalendarAppView | OtherView
+type RecordSource = AppRecords | PhoneRecords | UnknownRecords
+type ProposalReach = AnyView | HomeOrCalendar | SelectedOnPhone
+pure def recordSource(view: CalendarView, sensitive: bool, phoneSelected: bool, otherCalendarSelected: bool): RecordSource =
+  if (sensitive) UnknownRecords
+  else if (view != CalendarAppView) AppRecords
+  else if (phoneSelected) PhoneRecords
+  else if (otherCalendarSelected) UnknownRecords
+  else AppRecords
+pure def reachAdmits(reach: ProposalReach, view: CalendarView, source: RecordSource): bool = match reach {
+  | AnyView => true
+  | HomeOrCalendar => view != OtherView
+  | SelectedOnPhone => source == PhoneRecords
+}
+pure def calendarProposalAdmitted(reach: ProposalReach, view: CalendarView, source: RecordSource, appSelected: bool, unnamedLocalCreate: bool): bool =
+  source != UnknownRecords and not(appSelected) and not(unnamedLocalCreate and source != PhoneRecords) and reachAdmits(reach, view, source)
+pure def lawASelectedProposalNeedsAPhoneRecord(view: CalendarView, source: RecordSource, appSelected: bool, unnamedLocalCreate: bool): bool =
+  calendarProposalAdmitted(SelectedOnPhone, view, source, appSelected, unnamedLocalCreate) implies source == PhoneRecords
+pure def lawAnAppSelectionIsNeverProposed(reach: ProposalReach, view: CalendarView, source: RecordSource, unnamedLocalCreate: bool): bool =
+  not(calendarProposalAdmitted(reach, view, source, true, unnamedLocalCreate))
+pure def lawASensitiveScreenProposesNothing(view: CalendarView, phoneSelected: bool, otherCalendarSelected: bool): bool =
+  recordSource(view, true, phoneSelected, otherCalendarSelected) == UnknownRecords
+```
+
+### A selected target, a chosen calendar and a named event are the ones the owner gave
+
+A selected read or delete names exactly the event selected on the phone
+screen, by source and event with their revisions, and a new event in a
+chosen calendar names exactly the selected calendar; a target the model
+wrote that differs offers nothing. A named delete or change names an event
+whose name is in the owner's own words. The agent never proposes a named
+read of its own: a named read is offered only as the first step of a change
+the owner asked for.
+
+```quint
+pure def targetGrounded(selectionKnown: bool, sameAsSelected: bool): bool = selectionKnown and sameAsSelected
+pure def namedGrounded(nameInOwnerWords: bool, ownerAskedTheChange: bool): bool = nameInOwnerWords and ownerAskedTheChange
+pure def lawAnUnselectedTargetIsNeverProposed(sameAsSelected: bool): bool = not(targetGrounded(false, sameAsSelected))
+pure def lawAnUnnamedEventIsNeverProposed(ownerAskedTheChange: bool): bool = not(namedGrounded(false, ownerAskedTheChange))
+```
+
+### A delete is proposed only when the owner's own words ask for it, and a no keeps the event
+
+An owner who turns a delete down ("no, keep it", "don't delete it") has
+asked for nothing, so no delete is proposed from those words, even when the
+model proposes one; a delete the owner declined on the phone stays declined.
+
+```quint
+pure def deleteAsked(asksToDelete: bool, declines: bool): bool = asksToDelete and not(declines)
+pure def lawADeclineIsNeverADelete(asksToDelete: bool): bool = not(deleteAsked(asksToDelete, true))
+```
+
+### A new phone event starts at the day and time the owner stated, in the phone's zone
+
+A new event is proposed only when the owner's words state its day and one
+clock time, the phone reported its zone, and the request asks for nothing
+one timed event cannot hold: a repeat, guests or an all-day event. Its
+start is that day and time on the phone's clock, and a time the clock skips
+or repeats offers nothing. Its end is the end of a stated range, else the
+start plus a stated length, else the start plus the length the model
+proposed, else one hour later. The zone is the phone's, never one the
+model chose.
+
+```quint
+type StatedClock = NoClock | OneClock | SeveralClocks
+pure def eventTimeStated(dayStated: bool, clock: StatedClock, phoneZoneKnown: bool, unsupportedAsked: bool, wallTimeExists: bool): bool =
+  dayStated and clock == OneClock and phoneZoneKnown and not(unsupportedAsked) and wallTimeExists
+pure def statedEnd(startsAt: int, rangeEnd: int, statedLength: int, proposedLength: int): int =
+  if (rangeEnd > startsAt) rangeEnd
+  else if (statedLength > 0) startsAt + statedLength
+  else if (proposedLength > 0) startsAt + proposedLength
+  else startsAt + 3600000
+pure def lawAStatedEventEndsAfterItStarts(startsAt: int, rangeEnd: int, statedLength: int, proposedLength: int): bool =
+  statedEnd(startsAt, rangeEnd, statedLength, proposedLength) > startsAt
+pure def lawSeveralClocksAreNeverAStart(dayStated: bool, phoneZoneKnown: bool, unsupportedAsked: bool, wallTimeExists: bool): bool =
+  not(eventTimeStated(dayStated, SeveralClocks, phoneZoneKnown, unsupportedAsked, wallTimeExists))
+```
+
+### A change after a shared read moves the event to the day and time the owner gave it, keeping its length unless the owner gave one
+
+A change to an event is proposed in two steps: a read of the selected or
+named event, which the owner shares, and then the edit, prepared from the
+shared record and the owner's original words with no model call. A time
+change takes its day and clock time from the words after the destination
+marker ("to", or "for", "until" or "till" before a day or time), so
+"reschedule the standup for tomorrow at 10am" moves the standup to tomorrow
+and never looks for a standup tomorrow. It keeps the event's length unless
+the owner states exactly one length, on the clock the phone reported for
+the original turn, and offers nothing for a time that clock skips or repeats, for a compound or
+conditional request, or for one that names a zone or changes anything else.
+A rename takes the new title exactly as the owner wrote it and keeps every
+other field. Any other change offers no edit.
+
+```quint
+pure def changedEnd(newStart: int, oldStart: int, oldEnd: int, statedLength: int): int =
+  if (statedLength > 0) newStart + statedLength else newStart + (oldEnd - oldStart)
+pure def lawAnUnstatedLengthIsKept(newStart: int, oldStart: int, oldEnd: int): bool =
+  changedEnd(newStart, oldStart, oldEnd, 0) - newStart == oldEnd - oldStart
+pure def timeChangeStated(destinationDay: bool, clock: StatedClock, lengthsStated: int, wallTimeExists: bool, otherAsked: bool): bool =
+  destinationDay and clock == OneClock and lengthsStated <= 1 and wallTimeExists and not(otherAsked)
+pure def editAfterRead(timeChange: bool, renamed: bool): bool = timeChange or renamed
+pure def lawACompoundRequestIsNeverATimeChange(destinationDay: bool, clock: StatedClock, lengthsStated: int, wallTimeExists: bool): bool =
+  not(timeChangeStated(destinationDay, clock, lengthsStated, wallTimeExists, true))
+```

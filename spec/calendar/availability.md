@@ -201,6 +201,32 @@ pure val accValues = Set(emptyData, refusedData, { ...emptyData, transparentCoun
 pure val transparentCountValues = Set(-1, 0, 1, 200, 201)
 ```
 
+### An availability window is the day and time the owner asked about, in the phone's zone
+
+A chat question about free time becomes an availability check only when
+the owner's words state its day, in the zone the phone reported for the
+turn; the model's own instants are never the authority. With one clock
+time stated, the window starts there and ends at the end of a stated range,
+else after a stated length, else one hour later. With no clock time, the
+model's window is kept when it lies within that day ("tomorrow afternoon"),
+and otherwise the window is the whole day. Several clock times, no stated
+day, or a time the phone's clock skips or repeats asks the owner instead.
+The window still meets the bounds above.
+
+```quint
+pure def askedAvailability(dayBegin: int, dayFinish: int, clockAt: int, clockStated: bool, statedFinish: int, proposed: TimeWindow): TimeWindow =
+  if (clockStated) { begin: clockAt, finish: if (statedFinish > clockAt) statedFinish else clockAt + 3600000 }
+  else if (proposed.finish > proposed.begin and proposed.begin >= dayBegin and proposed.finish <= dayFinish) proposed
+  else { begin: dayBegin, finish: dayFinish }
+pure def lawAnAskedDayStaysOnThatDay(dayBegin: int, dayFinish: int, clockAt: int, statedFinish: int, proposed: TimeWindow): bool =
+  val asked = askedAvailability(dayBegin, dayFinish, clockAt, false, statedFinish, proposed)
+  asked.begin >= dayBegin and asked.finish <= dayFinish
+pure def lawAStatedClockStartsTheWindow(dayBegin: int, dayFinish: int, clockAt: int, statedFinish: int, proposed: TimeWindow): bool =
+  val asked = askedAvailability(dayBegin, dayFinish, clockAt, true, statedFinish, proposed)
+  asked.begin == clockAt and asked.finish > clockAt
+pure val proposedValues = Set({ begin: 0, finish: 4 }, { begin: 2, finish: 9 }, { begin: 3, finish: 3 })
+```
+
 ## Story: Read the reviewed local source with its actual calendar rules
 
 > As the owner, I want my availability computed from the calendars I chose,
