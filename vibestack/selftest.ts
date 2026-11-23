@@ -4626,6 +4626,13 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
     `globalThis["queueMicrotask"](later);`,
     "// eslint-disable-next-line no-undef -- a global the page defines",
   ]), ["6 code/comments", "7 code/comments", "8 code/comments", "9 code/comments", "10 code/effects", "11 code/effects", "12 code/effects", "13 no-console", "14 code/effects", "15 code/effects"]);
+  assert.deepEqual([...new Set(await found("apps/app/src/probe.vibe", [
+    "const clock = { setTimeout: () => undefined }",
+    "const capture = { setTimeout: globalThis.setTimeout }",
+    "const { setTimeout: schedule } = globalThis",
+    'const computed = globalThis["setTimeout"]',
+    "const shorthand = { setTimeout }",
+  ]))], ["2 code/effects", "3 code/effects", "4 code/effects", "5 code/effects"]);
   assert.deepEqual(await found("apps/app/src/probe.vibe", [
     "module bridge {",
     "  /**",
