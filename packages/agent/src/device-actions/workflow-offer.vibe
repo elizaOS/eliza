@@ -1,20 +1,14 @@
-// spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"
+// spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/index.md, "A settled request never changes again"
 import { hashStableJson, stringToUuid, type IAgentRuntime, type IDatabaseAdapter } from "@elizaos/core"
-import { beforeDeadline, canExpire, enrolledOwner, Rejected, type DeviceRequest } from "../../gen/agent__deviceActions.effect.vibe"
+import { beforeDeadline, canExpire, enrolledOwner, Rejected, settledApplied, type DeviceRequest } from "../../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
 import { negotiation } from "./capabilities.vibe"
 import { enrollmentId } from "./enrollment.vibe"
 import { capabilityNamesOf, validate } from "./operations.schema.vibe"
-import { devicePayload } from "./proposal-review.vibe"
+import { devicePayload, type WorkflowScope } from "./proposal-review.vibe"
 import { DeviceStoreUnavailable, ProposalIdTaken, enrollment, offerRequest, openRequest, requestSnapshot, retireRequest, workflowAuthority } from "./store.vibe"
 
-export interface WorkflowStep {
-  readonly workflowId: string
-  readonly versionId: string
-  readonly runId: string
-  readonly stepId: string
-  readonly specDigest: string
-}
+export type WorkflowStep = WorkflowScope
 
 export interface WorkflowStepTarget {
   readonly installationId: string
@@ -61,7 +55,7 @@ type Settlement = { readonly kind: "applied"; readonly result: unknown } | { rea
 
 function settlementOf(state: DeviceRequest, receiptCode: string | undefined, result: unknown): Settlement {
   const { phase } = state
-  if ((phase.tag === "Receipted" && phase.reported === "ReportedApplied") || (phase.tag === "Reviewed" && phase.reviewed === "ReviewedApplied")) return { kind: "applied", result }
+  if (settledApplied(phase)) return { kind: "applied", result }
   if (phase.tag === "Receipted" && phase.reported === "ReportedNothingRan") return { kind: "refused", code: receiptCode ?? "DEVICE_STEP_NOT_APPLIED" }
   if (phase.tag === "Reviewed") return { kind: "refused", code: phase.reviewed === "ReviewedNotApplied" ? "DEVICE_STEP_NOT_APPLIED" : "DEVICE_STEP_UNRESOLVED" }
   if (phase.tag === "Declined") return { kind: "refused", code: "DEVICE_STEP_DECLINED" }
