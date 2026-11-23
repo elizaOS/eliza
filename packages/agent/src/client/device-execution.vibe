@@ -412,9 +412,9 @@ effect function confirmReview<Op>(ports: DeviceExecutionPorts<Op>, live: Map<str
   for (const emitted of step.out) {
     if (emitted.tag !== "SendReview") continue
     const { binding, agentAttemptId } = attempt.slot
-    const { result } = attempt.slot.evidence
+    const { result: savedResult } = attempt.slot.evidence
     const applied = emitted.review === "ReviewedApplied"
-      ? { applied: { operationId: binding.operationId, ...(result === undefined ? {} : { result }) } }
+      ? { applied: { operationId: binding.operationId, ...(savedResult === undefined ? {} : { result: savedResult }) } }
       : {}
     const body = { digest: binding.digest, attemptId: emitted.attemptId, review: reviewWire[emitted.review], ...applied, ...(agentAttemptId === undefined ? {} : { agentAttemptId }) }
     if (try agentAnswered(() => ports.agent.reconcile(proposalId, body))) result = "sent"
