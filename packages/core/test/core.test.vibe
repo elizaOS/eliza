@@ -7,6 +7,7 @@ import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
 import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from "./support/models.ts"
 import { scriptedOAuthProvider } from "./support/oauth.ts"
 import { type Handler, loopback, loopbackTls, pinnedLookup } from "./support/servers.ts"
+import { validateCharacter } from "../src/character-schema.vibe"
 import { DatabaseAdapter } from "../src/database.vibe"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 
@@ -1669,7 +1670,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
 }), 60_000)
 
 // spec/core/models.md, "Story: Get a whole answer from a busy provider"; spec/core/models.md, "A model call takes no output cap from settings"; spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more"; spec/core/models.md, "A failed dispatch tells its caller how many provider attempts it made"
-it.live("Get a whole answer from a busy provider: no setting caps output, each extractor pass waits out a rate limit once, and a rate limit after an outage was retried is not sent again (spec/core/models.md, \"Story: Get a whole answer from a busy provider\")", () => scoped(effect {
+it.live("Get a whole answer from a busy provider: no setting caps output, an old character's default cap loads as nothing, each extractor pass waits out a rate limit once, and a rate limit after an outage was retried is not sent again (spec/core/models.md, \"Story: Get a whole answer from a busy provider\")", () => scoped(effect {
   const limited = () => Object.assign(new Error("Too many requests"), { status: 429, retryAfterMs: 200 })
   const models = try Effect.try(() => scriptedModels("busy", 10, {
     [ModelType.TEXT_LARGE]: [{ fail: limited() }, { reply: "unreadable" }, { fail: limited() }, { reply: "ok" }, { fail: limited() }, { fail: limited() }],
@@ -1688,7 +1689,10 @@ it.live("Get a whole answer from a busy provider: no setting caps output, each e
   try Effect.sync(() => [outage, spare].forEach((provider) => provider.register(stacked)))
   const afterOutage = try host(() => runExtractorPipeline({ runtime: stacked, prompt: "Plan after an outage.", parser }).then(() => "resolved", (error: unknown) => (error as { status?: unknown }).status))
   const sent = models.seen.map(({ params }) => params as { prompt?: unknown; maxTokens?: unknown; temperature?: unknown; providerOptions?: { eliza?: { modelInputBudget?: unknown } } })
+  const legacy = validateCharacter({ name: "legacy", settings: { defaultMaxTokens: 16, defaultTemperature: 0.25 } })
+  const retired = validateCharacter({ name: "retired", settings: { maxReplyTokens: 16 } })
   try Effect.try(() => assert.deepStrictEqual({
+    characters: [legacy.success, legacy.data?.settings, retired.success],
     repaired, refused, waitedForBoth: waited >= 400,
     afterOutage, stackedSends: [outage.seen.length, spare.seen.length],
     sent: sent.map(({ prompt, maxTokens, temperature, providerOptions: options }) => {
@@ -1696,6 +1700,7 @@ it.live("Get a whole answer from a busy provider: no setting caps output, each e
       return { prompt, capped: maxTokens !== undefined, temperature, options: Object.keys(eliza).length ? { ...options, eliza } : undefined }
     }),
   }, {
+    characters: [true, { defaultTemperature: 0.25 }, false],
     repaired: { parsed: "ok", raw: "ok", repaired: true }, refused: 429, waitedForBoth: true,
     afterOutage: 429, stackedSends: [1, 1],
     sent: [

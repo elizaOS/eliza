@@ -166,7 +166,10 @@ The sampling settings merge under a call from `<model type>_<SETTING>`, then
 repetition, frequency and presence penalties. No setting caps output:
 `<model type>_MAX_TOKENS` and `DEFAULT_MAX_TOKENS` are not read, so a call
 that names no cap reaches its adapter without one and gets the model's own
-maximum.
+maximum. A character's settings cap nothing either: one that names
+`defaultMaxTokens` loads without it, so an old character still starts, and
+one that names `maxReplyTokens` is refused; the settings that cap nothing
+load as they always did.
 
 ```quint
 type ModelSetting = MaxTokensSetting | TemperatureSetting | TopPSetting | TopKSetting | MinPSetting | SeedSetting | RepetitionPenaltySetting | FrequencyPenaltySetting | PresencePenaltySetting
@@ -174,6 +177,16 @@ pure def mergedFromSettings(setting: ModelSetting): bool = setting != MaxTokensS
 pure val settingValues = Set(MaxTokensSetting, TemperatureSetting, TopPSetting, SeedSetting, PresencePenaltySetting)
 pure def lawNoSettingCapsOutput(setting: ModelSetting): bool = setting == MaxTokensSetting implies not(mergedFromSettings(setting))
 pure def lawSamplingSettingsStillMerge(setting: ModelSetting): bool = setting != MaxTokensSetting implies mergedFromSettings(setting)
+type CharacterSetting = CharacterDefaultMaxTokens | CharacterMaxReplyTokens | OtherCharacterSetting
+type CharacterLoad = SettingKept | SettingDropped | CharacterRefused
+pure def characterLoad(characterSetting: CharacterSetting): CharacterLoad = match characterSetting {
+  | CharacterDefaultMaxTokens => SettingDropped | CharacterMaxReplyTokens => CharacterRefused | OtherCharacterSetting => SettingKept
+}
+pure def characterCapsOutput(characterSetting: CharacterSetting): bool = characterSetting != OtherCharacterSetting
+pure val characterSettingValues = Set(CharacterDefaultMaxTokens, CharacterMaxReplyTokens, OtherCharacterSetting)
+pure def lawNoCharacterSettingCapsOutput(characterSetting: CharacterSetting): bool = characterCapsOutput(characterSetting) implies characterLoad(characterSetting) != SettingKept
+pure def lawAnOldDefaultCapStillLoads(characterSetting: CharacterSetting): bool = characterSetting == CharacterDefaultMaxTokens implies characterLoad(characterSetting) == SettingDropped
+pure def lawOtherCharacterSettingsAreKept(characterSetting: CharacterSetting): bool = not(characterCapsOutput(characterSetting)) implies characterLoad(characterSetting) == SettingKept
 ```
 
 ### A failed dispatch tells its caller how many provider attempts it made
