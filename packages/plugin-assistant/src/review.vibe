@@ -1,40 +1,32 @@
 // spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "Only a reversible local operation bound to the owner's current message may run without a review"
 import { negotiation, readOperation, receiptOutcome, validate, type DeviceOperation } from "@elizaos/agent/device-actions"
 
-/** The operations a phone resolves in a foreground local review: free/busy reads, Notes search and edits that name their record. */
 export const foregroundReviewTypes = ["calendar_availability", "notes_search", "notes_named", "calendar_named", "reminder_named"] as const
-/** One foreground review operation. */
 export type ForegroundReviewOperation = Extract<DeviceOperation, { readonly type: (typeof foregroundReviewTypes)[number] }>
 
 const reviewTypes: ReadonlySet<string> = new Set(foregroundReviewTypes)
 
-/** Whether a wire type is resolved in a foreground review. */
 export function isForegroundReviewType(type: unknown): boolean {
   return typeof type === "string" && reviewTypes.has(type)
 }
 
-/** The foreground review operation a value is, or undefined when it is not one or not well formed. */
 export function readForegroundReviewOperation(value: unknown): ForegroundReviewOperation | undefined {
   const operation = readOperation(value)?.operation
   return operation !== undefined && isForegroundReviewType(operation.type) ? operation as ForegroundReviewOperation : undefined
 }
 
-/** Whether a value is a well-formed foreground review operation. */
 export function isForegroundReviewOperation(value: unknown): value is ForegroundReviewOperation {
   return readForegroundReviewOperation(value) !== undefined
 }
 
 const offered = (capabilities: readonly string[] | undefined) => negotiation(true, (capabilities ?? []).join(","))
 
-/** Whether the device's negotiated capabilities meet the operation's need, timing fields of a named reminder edit included. */
 export function foregroundReviewOperationAvailable(operation: ForegroundReviewOperation, capabilities: readonly string[] | undefined): boolean {
   return validate(operation, offered(capabilities), "NoBinding") !== undefined
 }
 
-/** The device's review result does not bind to the operation the owner reviewed. */
 export error ReviewResultRefused { type: string; reason: string }
 
-/** The review's result, admitted only when it binds to the operation, and an owner-chosen record only when the device can act on it. */
 export effect function foregroundReviewResult(operation: ForegroundReviewOperation, value: unknown, claimKey: string, capabilities?: readonly string[]) {
   const checked = readOperation(operation)
   if (checked === undefined) throw new ReviewResultRefused({ type: operation.type, reason: "The operation is not well formed" })

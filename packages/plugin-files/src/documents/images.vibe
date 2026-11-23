@@ -58,7 +58,6 @@ import { admitsDecodedPixels, admitsImageBytes, admitsPageSet, longSide, maxLong
 import { blobOf, bytesOf, decodeBitmap, paint, type Bitmap, type Raster } from browser
 export { blobOf, bytesOf, type Bitmap, type Raster }
 
-/** The image types every scan, correction and recognition admits. */
 export const scanImageTypes: readonly string[] = ["image/jpeg", "image/png", "image/webp"]
 
 export type ImageRefusal = "unsupported" | "no-dimensions" | "too-many-pixels" | "page-set" | "unavailable" | "conversion-failed"
@@ -72,25 +71,20 @@ const imageText: Readonly<Record<ImageRefusal, string>> = {
   "conversion-failed": "Image conversion failed.",
 }
 
-/** An image the shared bounds refuse, or a drawing or encoding that failed. */
 export error ImageRefused { reason: ImageRefusal; message: string }
 
-/** The refusal for a reason, worded as the reviewed text. */
 export function imageRefused(reason: ImageRefusal): ImageRefused {
   return new ImageRefused({ reason, message: imageText[reason] })
 }
 
-/** Whether an encoded image is a supported type within the byte bound. */
 export function imageAdmitted(image: { readonly type: string; readonly size: number }): boolean {
   return admitsImageBytes(scanImageTypes.includes(image.type), image.size)
 }
 
-/** Whether an ordered page set holds 1 to 20 admitted images within 64 MiB. */
 export function pageSetAdmitted(pages: readonly { readonly type: string; readonly size: number }[]): boolean {
   return pages.every(imageAdmitted) && admitsPageSet(pages.length, pages.reduce((total, page) => total + page.size, 0))
 }
 
-/** Decodes an admitted image and closes the bitmap when the scope ends. */
 export effect function decodedImage(image: Blob) {
   if (!imageAdmitted(image)) throw imageRefused("unsupported")
   const bitmap: Bitmap = try acquireRelease(
@@ -102,7 +96,6 @@ export effect function decodedImage(image: Blob) {
   return bitmap
 }
 
-/** The size a decoded image is drawn at: its longer side scaled to `bound`, never up, at least `minimum` pixels. */
 export function fittedSize(width: number, height: number, bound: number = maxLongSide, minimum = 1) {
   const long = longSide(width, height)
   const target = bound === maxLongSide ? scaledLongSide(width, height) : Math.min(long, bound)
@@ -110,14 +103,12 @@ export function fittedSize(width: number, height: number, bound: number = maxLon
   return { width: Math.max(minimum, Math.round(width * scale)), height: Math.max(minimum, Math.round(height * scale)) }
 }
 
-/** Draws a bitmap, or a blank page, on a white raster of the given size. */
 export effect function rasterOf(bitmap: Bitmap | undefined, width: number, height: number): Raster!ImageRefused {
   const raster = try Effect.try({ try: () => paint(bitmap, width, height), catch: () => imageRefused("unavailable") })
   if (raster === undefined) throw imageRefused("unavailable")
   return raster
 }
 
-/** Decodes, bounds and redraws an admitted image; the bitmap closes before this returns. */
 export effect function scaledImage(image: Blob, bound: number = maxLongSide, minimum = 1): Raster!ImageRefused {
   return try scoped(effect {
     const bitmap = try decodedImage(image)
@@ -126,14 +117,12 @@ export effect function scaledImage(image: Blob, bound: number = maxLongSide, min
   })
 }
 
-/** Encodes a raster, failing explicitly when the browser yields nothing. */
 export effect function encoded(raster: Raster, type: string, quality?: number): Blob!ImageRefused {
   const blob = try tryPromise({ try: () => raster.encode(type, quality), catch: () => imageRefused("conversion-failed") })
   if (blob === null) throw imageRefused("conversion-failed")
   return blob
 }
 
-/** Reads a whole Blob's bytes. */
 export effect function readBytes(blob: Blob): Uint8Array<ArrayBuffer>!ImageRefused {
   return try tryPromise({ try: () => bytesOf(blob), catch: () => imageRefused("unavailable") })
 }

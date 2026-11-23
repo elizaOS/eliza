@@ -84,7 +84,7 @@ const Claims = Schema.Struct({
   iat: numericDate,
   exp: numericDate,
   ver: Schema.Int,
-  plan: Schema.Struct({ id: label(128), name: label(80), status: Schema.Literals(["active", "past_due", "none"]) }),
+  plan: Schema.Struct({ id: label(128), name: label(80), status: Schema.Literals(["active", "past_due", "canceled", "none"]) }),
   plan_ends_at: Schema.NullOr(numericDate),
   services: Schema.Array(Schema.Literals(["inference", "speech", "maps"])).check(Schema.isMaxLength(16)),
   plan_allowance: Schema.NullOr(Schema.Struct({
@@ -127,7 +127,7 @@ export async function verifyEntitlement(token: string, expected: EntitlementExpe
   const read = readClaims(jsonOf(body))
   if (read._tag === "None") throw invalid("BadClaims")
   const claims = read.value
-  if (claims.ver !== entitlementVersion) throw invalid("WrongVersion")
+  if (claims.ver < entitlementVersion) throw invalid("WrongVersion")
   if (claims.iss !== expected.issuer) throw invalid("WrongIssuer")
   if (claims.aud !== expected.audience) throw invalid("WrongAudience")
   if (claims.exp <= claims.iat || claims.exp - claims.iat > maxEntitlementLifetimeSeconds) throw invalid("LifetimeTooLong")

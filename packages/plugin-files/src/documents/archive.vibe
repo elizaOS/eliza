@@ -10,12 +10,10 @@ const archiveText: Readonly<Record<ArchiveRefusal, string>> = {
   "too-large": "Choose a smaller selection.",
 }
 
-/** A selection the stored ZIP writer cannot hold exactly. */
 export error ArchiveRefused { reason: ArchiveRefusal; message: string }
 
 const refused = (reason: ArchiveRefusal) => new ArchiveRefused({ reason, message: archiveText[reason] })
 
-/** One archive entry: a relative path (a trailing slash names a folder) and its exact bytes. */
 export interface ArchiveFile {
   readonly path: string
   readonly bytes: Uint8Array<ArrayBuffer>
@@ -34,7 +32,6 @@ function safePath(path: string): boolean {
   return path !== "" && !/[\\\0]/.test(path) && !/^[a-z]:/i.test(path) && path.split("/").every((part) => part.trim() !== "" && ![".", ".."].includes(part.trim()))
 }
 
-/** A stored (uncompressed) ZIP of exactly these entries, in order, with portable relative paths only. */
 export effect function fileArchive(files: readonly ArchiveFile[]): Blob!ArchiveRefused {
   if (files.length >= 0xffff) throw refused("too-many")
   const parts: Uint8Array<ArrayBuffer>[] = [], central: Uint8Array<ArrayBuffer>[] = [], paths = new Set<string>()
@@ -65,7 +62,6 @@ export effect function fileArchive(files: readonly ArchiveFile[]): Blob!ArchiveR
   return blobOf([...parts, ...central, end], "application/zip")
 }
 
-/** One reviewed media file as it was read for review. */
 export interface SelectedMedia {
   readonly source: string
   readonly name: string
@@ -78,13 +74,11 @@ const extension = (media: SelectedMedia) => {
   return dot > 0 && /^\.[A-Za-z0-9]{1,8}$/.test(media.name.slice(dot)) ? media.name.slice(dot).toLowerCase() : ""
 }
 
-/** A multi-file download: each selected file's bytes in selection order, named by its position counting from one. */
 export effect function mediaArchive(selection: readonly SelectedMedia[]): Blob!ArchiveRefused {
   const entries = archiveEntries(selection.map((media) => ({ source: media.source, bytes: media.source })))
   return try fileArchive(entries.map((entry, at) => ({ path: `${entry.position}${extension(selection[at])}`, bytes: selection[at].bytes })))
 }
 
-/** What the shell reads, rechecks and hands over for one download. */
 export interface DownloadPorts {
   readonly read: (sources: readonly string[]) => (readonly SelectedMedia[] | undefined)!!
   readonly reread: (selection: readonly SelectedMedia[]) => boolean!!
@@ -93,10 +87,8 @@ export interface DownloadPorts {
   readonly deliver: (file: Blob, name: string) => void!!
 }
 
-/** How a download request ended: handed over (not confirmed saved) or refused. */
 export type DownloadOutcome = { readonly kind: "requested"; readonly name: string } | { readonly kind: "refused" }
 
-/** Downloads of the owner's reviewed media: one at a time, the newest request current, handed over only after a matching re-read. */
 export effect function mediaDownloads(ports: DownloadPorts) {
   const state = try Ref.make<ExportFlight>(initial)
   const flight = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))

@@ -159,7 +159,6 @@ export function readReasoningTokensFromResponse(
   return undefined
 }
 
-/** Provider-reported token counts of one completed call for the model-call log, keeping a count the result does not carry absent. */
 export function readTokenUsageFromResponse(response: unknown): ModelLogUsage | undefined {
   if (typeof response !== "object" || response === null) return undefined
   const record = response as Record<string, unknown>

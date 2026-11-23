@@ -32,9 +32,6 @@ export { forwardScript };
 
 export const forwardScriptHash = `sha256-${createHash("sha256").update(forwardScript).digest("base64")}`;
 
-/**
- * The CSP hashes of a page's inline stylesheets.
- * @throws {never}
- */
+/** @throws {never} */
 export const styleHashes = (source: string): ReadonlyArray<string> =>
   [...source.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((found) => `'sha256-${createHash("sha256").update(found[1] ?? "").digest("base64")}'`);

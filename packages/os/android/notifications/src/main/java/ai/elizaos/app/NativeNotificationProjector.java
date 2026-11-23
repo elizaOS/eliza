@@ -84,11 +84,7 @@ final class NativeNotificationProjector {
                 .addExtras(extras).build();
         String tag = TAG + key;
         manager.notify(tag, 0, post);
-        boolean accepted = false;
-        for (StatusBarNotification active : manager.getActiveNotifications()) {
-            if (active.getId() == 0 && tag.equals(active.getTag()) && owner.equals(active.getNotification().extras.getString(OWNER))) accepted = true;
-        }
-        if (!accepted) { receipts.edit().remove(key).apply(); return false; }
+        if (!listed(manager, tag, owner)) { receipts.edit().remove(key).apply(); return false; }
         if (!group.isEmpty()) {
             SharedPreferences.Editor retired = receipts.edit();
             for (StatusBarNotification active : manager.getActiveNotifications()) {
@@ -101,6 +97,17 @@ final class NativeNotificationProjector {
             if (!retired.commit()) throw new IOException("Replaced notification tap could not be retired");
         }
         return true;
+    }
+
+    private static boolean listed(NotificationManager manager, String tag, String owner) throws InterruptedException {
+        long end = android.os.SystemClock.elapsedRealtime() + 2000;
+        do {
+            for (StatusBarNotification active : manager.getActiveNotifications()) {
+                if (active.getId() == 0 && tag.equals(active.getTag()) && owner.equals(active.getNotification().extras.getString(OWNER))) return true;
+            }
+            Thread.sleep(20);
+        } while (android.os.SystemClock.elapsedRealtime() < end);
+        return false;
     }
 
     /** Call before native deep-link capture. Only current-profile, private-token taps become routes. */

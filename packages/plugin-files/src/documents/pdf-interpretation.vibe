@@ -30,13 +30,10 @@ import {
 } from "../../gen/files__pdfInterpretation.effect.vibe"
 import { absolute, base64Bytes, importFile, sha256Hex } from node
 
-/** The five callables a reviewed document runtime exports. */
 export const DOCUMENT_RUNTIME_EXPORTS = ["pdfService", "imageDescription", "resolveAuthority", "nativeSlot", "callerAttribution"] as const
 
-/** The loaded document runtime's exports, by name. */
 export type DocumentRuntime = Readonly<Record<(typeof DOCUMENT_RUNTIME_EXPORTS)[number], (...args: never[]) => unknown>>
 
-/** What the task bundle pins for its document runtime. */
 export interface DocumentRuntimePin {
   readonly path: string
   readonly expectedCommit: string
@@ -45,13 +42,11 @@ export interface DocumentRuntimePin {
 
 export type PdfRefusal = "artifact-refused" | "artifact-shape" | "unsupported" | "invalid-pdf" | "aborted" | "owner-lost" | "transcription-unavailable" | "page-failed" | "malformed-document"
 
-/** A PDF interpretation that stopped, with the page it stopped at when one failed. */
 export error PdfInterpretationFailed { reason: PdfRefusal; pageNumber?: number; pageCount?: number }
 
 schema Sidecar { schema: number; commit: string; canvas: string; sha256: string }
 const decodeSidecar = Schema.decodeUnknownEffect(Schema.fromJsonString(Sidecar))
 
-/** Loads the exact reviewed document runtime the bundle pins: sidecar provenance and bytes first, its five callables after import. */
 export effect function loadDocumentRuntime(pin: DocumentRuntimePin) {
   const files = try FileSystem.FileSystem
   const shaped = absolute(pin.path) && /^[a-f0-9]{40}$/.test(pin.expectedCommit) && pin.expectedCanvas.trim() !== ""
@@ -73,7 +68,6 @@ export effect function loadDocumentRuntime(pin: DocumentRuntimePin) {
   return loaded as DocumentRuntime
 }
 
-/** One page's parser evidence and rendering, as the runtime's PDF parser yields it. */
 export interface ParsedPage {
   readonly width: number
   readonly height: number
@@ -84,7 +78,6 @@ export interface ParsedPage {
   readonly render: () => string!unknown
 }
 
-/** The document runtime's parser and model ports, bound to the admitted actor. */
 export interface PdfPorts {
   readonly open: (bytes: Uint8Array<ArrayBuffer>) => { readonly pageCount: unknown; readonly page: (pageNumber: number) => ParsedPage!unknown }!unknown
   readonly describe: (imageUrl: string, prompt: string) => string!unknown
@@ -93,7 +86,6 @@ export interface PdfPorts {
   readonly lifecycle: () => void!unknown
 }
 
-/** One transcribed page of the complete checked document. */
 export interface PdfPage {
   readonly pageNumber: number
   readonly width: number
@@ -107,7 +99,6 @@ export interface PdfPage {
   readonly hasVisualContent: boolean
 }
 
-/** The complete document: every declared page, in order. */
 export interface PdfDocument {
   readonly complete: true
   readonly pageCount: number
@@ -153,7 +144,6 @@ function prompt(pageNumber: number, page: ParsedPage, ocrText: string | null): s
   ].join("\n")
 }
 
-/** Interprets one PDF attachment: reads every declared page under the current scope, checks the whole document, then maps it once. */
 export effect function interpretPdf<A>(mimeType: string, input: Uint8Array, ports: PdfPorts, documentRef: number,
   mapper: (document: PdfDocument) => A!unknown): A!PdfInterpretationFailed {
   const state = try Ref.make<PdfRun>(initial)

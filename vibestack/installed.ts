@@ -4,6 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { findBin, stamp } from "./run.ts";
 
+export class InstallationChanged extends Error {
+  constructor() { super("a tool installation changed during this check; run the check again"); }
+}
+
 export function packageLocation(name: string, from: string, exists: (file: string) => boolean = fs.existsSync): string | undefined {
   for (let dir = from; ; dir = path.dirname(dir)) {
     const candidate = path.join(dir, "node_modules", name);

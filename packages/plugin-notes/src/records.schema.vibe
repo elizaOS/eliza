@@ -3,25 +3,18 @@ import { SchemaGetter } from "effect"
 import { authoredNoteText, parseNoteFormat } from "./format.vibe"
 import { STICKY_COLORS, type NoteFormat } from "./types.vibe"
 
-/** A stable lowercase note ID or an RFC-shaped UUID, as installed records carry. */
 export const noteIdPattern = /^(?:[a-z][a-z0-9-]{2,127}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$/
 
-/** The recording and owner identity bound of the device's recording store. */
 export const recordingIdPattern = /^[A-Za-z0-9_-]{1,100}$/
 
-/** The longest title and body a note keeps. */
 export const noteLimits = { title: 240, body: 20_001, content: 20_241, trash: 10_000, cleanup: 10_000, creationId: 200 } as const
 
-/** A note ID. */
 export const NoteId = Schema.String.check(Schema.isPattern(noteIdPattern))
 
-/** A UTC instant written as an ISO timestamp. */
 export const Instant = Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/))
 
-/** A collection revision. */
 export const Revision = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 
-/** One of the four note colors. */
 export const Color = Schema.Literals(STICKY_COLORS)
 
 const FormatText = Schema.String.check(Schema.isMaxLength(128))
@@ -42,7 +35,6 @@ function sampledFormat({ kind, folderId, title, entries }: typeof FormatSeed.Typ
   return { kind, data: { ...data[kind], ...(folderId === undefined ? {} : { folderId }) } }
 }
 
-/** A rich note format that is bounded plain JSON of a known kind. */
 export const Format = Schema.declare((value: unknown): value is NoteFormat => parseNoteFormat(value) !== undefined, {
   toCodecArbitrary: () => Schema.link<NoteFormat>()(FormatSeed, { decode: SchemaGetter.transform(sampledFormat), encode: SchemaGetter.forbiddenEncoding }),
 })
@@ -72,17 +64,14 @@ const NoteSeed = Schema.Struct({
   words: FormatText.check(Schema.isPattern(/\S/)),
 })
 
-/** One stored note: bounded fields and authored content that is not blank. */
 export const NoteRow = sampled(NoteWire, NoteSeed, ({ contentIn, words, ...note }): typeof NoteWire.Type => {
   if (contentIn === "title") return { ...note, title: words }
   if (contentIn === "body") return { ...note, body: words }
   return { ...note, title: "", body: "", format: { kind: "list", data: { items: [{ t: words, done: false }] } } }
 })
 
-/** One Trash row. */
 export const TrashRow = Schema.Struct({ note: NoteRow, deletedAt: Instant })
 
-/** A pending recording cleanup receipt, bound to its erase operation. */
 export const CleanupReceipt = Schema.Struct({
   operationId: Schema.String.check(Schema.isPattern(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/)),
   noteId: NoteId.check(Schema.isPattern(recordingIdPattern)),
@@ -90,16 +79,13 @@ export const CleanupReceipt = Schema.Struct({
   deletedAt: Instant,
 })
 
-/** The owner's reviewed erase: all of Trash or one exact entry, at the revision the owner saw. */
 export const TrashErase = Schema.Union([
   Schema.Struct({ scope: Schema.Literal("all"), expectedRevision: Revision }),
   Schema.Struct({ scope: Schema.Literal("entry"), expectedRevision: Revision, id: NoteId, deletedAt: Instant }),
 ])
 
-/** A restore of one Trash entry at the revision the owner saw. */
 export const RestoreRequest = Schema.Struct({ id: NoteId, expectedRevision: Revision, deletedAt: Schema.optionalKey(Instant) })
 
-/** The receipt of the one-time import of the earlier Notes document. */
 export const ImportReceipt = Schema.Struct({
   source: Schema.Literal("notes-state"),
   schemaVersion: Schema.Literals([1, 2, 3]),
@@ -133,7 +119,6 @@ const DocumentSeed = Schema.Struct({
   recordingCleanup: Schema.Array(CleanupReceipt).check(Schema.isMaxLength(4)),
 })
 
-/** The stored collection document: one schema, unique IDs across notes and Trash, bounded Trash and cleanup. */
 export const StoredDocument = sampled(DocumentWire, DocumentSeed, ({ notes, trash, creations, ...document }) => {
   const saved = notes.map((note, index) => ({ ...note, id: `note-${index}` }))
   const deleted = trash.map((row, index) => ({ ...row, note: { ...row.note, id: `trash-${index}` } }))
@@ -142,7 +127,6 @@ export const StoredDocument = sampled(DocumentWire, DocumentSeed, ({ notes, tras
   return { ...document, notes: saved, trash: deleted, creations: references }
 })
 
-/** A creation from a capability or route: complete content, or a separate title and body. */
 export const CreateRequest = Schema.Struct({
   content: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.content))),
   title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(noteLimits.title))),
@@ -178,7 +162,6 @@ const AuthoredAppend = Schema.Struct({
   text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.body)),
 })
 
-/** One edit of an existing note: a literal edit, an authored edit, or field replacements. */
 export const UpdateRequest = Schema.Struct({
   textEdit: Schema.optionalKey(Schema.Union([TextReplace, TextAppend])),
   authoredEdit: Schema.optionalKey(Schema.Union([AuthoredReplace, AuthoredAppend])),
@@ -189,11 +172,7 @@ export const UpdateRequest = Schema.Struct({
   color: Schema.optionalKey(Color),
 })
 
-/** A decoded import receipt. */
 export type ImportReceipt = typeof ImportReceipt.Type
-/** A decoded stored document. */
 export type StoredDocument = typeof StoredDocument.Type
-/** A decoded creation request. */
 export type CreateRequest = typeof CreateRequest.Type
-/** A decoded edit request. */
 export type UpdateRequest = typeof UpdateRequest.Type

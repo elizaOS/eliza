@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import {
   deviceCalendar, findRow, occurrenceId, removeRow, removeScoped, reviewSeries, saveEdit, saveScopedEdit, saveSeriesEdit, settleDeletions, stageDeletion, stageSeriesDeletion,
-  guardPendingChanges, trimJournal, undoDeletion, DeletionRefused, DeviceBridgeFault, InvalidSeriesTime, ScopeMismatch, SeriesChanged,
+  guardPendingChanges, trimJournal, undoDeletion, type DeletionRefused, DeviceBridgeFault, InvalidSeriesTime, ScopeMismatch, SeriesChanged,
   type CalendarDocument, type CalendarRow, type DeletionClock, type DeletionOwner, type DeviceInspection, type DeviceRemoval, type DeviceRow,
   type DeviceTicket, type OwnerFacts,
 } from "../src/series/index.vibe"

@@ -7,9 +7,12 @@ lemma revokeAnswered_ensures(s: DeviceCredential, version: int, reply: RevokeRep
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> alwaysRefreshWaitersAreCounted(revokeAnswered(s, version, reply)))
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepGenerationCountsOwnerActions(s, "revokeAnswered", revokeAnswered(s, version, reply)))
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepEachNewKeyIsAnnouncedOnce(s, "revokeAnswered", revokeAnswered(s, version, reply), []))
+  ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepAReplacedKeyNamesItsSuccessor(s, "revokeAnswered", revokeAnswered(s, version, reply)))
+  ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepAnEndedKeyNamesNoSuccessor(s, "revokeAnswered", revokeAnswered(s, version, reply)))
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepAKeyLeavesOnlyWithItsDuty(s, "revokeAnswered", revokeAnswered(s, version, reply), []))
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepRestartKeepsCustody(s, "revokeAnswered", revokeAnswered(s, version, reply)))
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepOneRefreshInFlight(s, "revokeAnswered", revokeAnswered(s, version, reply), []))
+  ensures (inv(s) ==> canRevokeAnswered(s, version) ==> stepARenewalKeepsTheActiveKey(s, "revokeAnswered", revokeAnswered(s, version, reply)))
 {
   if inv(s) && canRevokeAnswered(s, version) {
     var after := revokeAnswered(s, version, reply);
@@ -42,9 +45,12 @@ lemma elapse_ensures(s: DeviceCredential, ms: int)
   ensures (inv(s) ==> canElapse(s, ms) ==> alwaysRefreshWaitersAreCounted(elapse(s, ms)))
   ensures (inv(s) ==> canElapse(s, ms) ==> stepGenerationCountsOwnerActions(s, "elapse", elapse(s, ms)))
   ensures (inv(s) ==> canElapse(s, ms) ==> stepEachNewKeyIsAnnouncedOnce(s, "elapse", elapse(s, ms), []))
+  ensures (inv(s) ==> canElapse(s, ms) ==> stepAReplacedKeyNamesItsSuccessor(s, "elapse", elapse(s, ms)))
+  ensures (inv(s) ==> canElapse(s, ms) ==> stepAnEndedKeyNamesNoSuccessor(s, "elapse", elapse(s, ms)))
   ensures (inv(s) ==> canElapse(s, ms) ==> stepAKeyLeavesOnlyWithItsDuty(s, "elapse", elapse(s, ms), []))
   ensures (inv(s) ==> canElapse(s, ms) ==> stepRestartKeepsCustody(s, "elapse", elapse(s, ms)))
   ensures (inv(s) ==> canElapse(s, ms) ==> stepOneRefreshInFlight(s, "elapse", elapse(s, ms), []))
+  ensures (inv(s) ==> canElapse(s, ms) ==> stepARenewalKeepsTheActiveKey(s, "elapse", elapse(s, ms)))
 {
   if inv(s) && canElapse(s, ms) {
     var after := elapse(s, ms);
@@ -83,4 +89,137 @@ lemma RetiredCredentialDutyKeepsItsBounds(before: DeviceCredential, after: Devic
 {
   assert activeVersion(before) == activeVersion(after);
   assert pendingVersion(before) == pendingVersion(after);
+}
+
+lemma beginSignIn_ensures(s: DeviceCredential)
+  ensures (inv(s) ==> alwaysCountersAreNatural(beginSignIn(s)))
+  ensures (inv(s) ==> alwaysSignInIsTheNewestAction(beginSignIn(s)))
+  ensures (inv(s) ==> alwaysKeysAreMintedInOrder(beginSignIn(s)))
+  ensures (inv(s) ==> alwaysDutiesNameRetiredKeys(beginSignIn(s)))
+  ensures (inv(s) ==> alwaysSessionBelongsToTheActiveKey(beginSignIn(s)))
+  ensures (inv(s) ==> alwaysRefreshWaitersAreCounted(beginSignIn(s)))
+  ensures (inv(s) ==> stepGenerationCountsOwnerActions(s, "beginSignIn", beginSignIn(s)))
+  ensures (inv(s) ==> stepEachNewKeyIsAnnouncedOnce(s, "beginSignIn", beginSignIn(s), []))
+  ensures (inv(s) ==> stepAReplacedKeyNamesItsSuccessor(s, "beginSignIn", beginSignIn(s)))
+  ensures (inv(s) ==> stepAnEndedKeyNamesNoSuccessor(s, "beginSignIn", beginSignIn(s)))
+  ensures (inv(s) ==> stepAKeyLeavesOnlyWithItsDuty(s, "beginSignIn", beginSignIn(s), []))
+  ensures (inv(s) ==> stepRestartKeepsCustody(s, "beginSignIn", beginSignIn(s)))
+  ensures (inv(s) ==> stepOneRefreshInFlight(s, "beginSignIn", beginSignIn(s), []))
+  ensures (inv(s) ==> stepARenewalKeepsTheActiveKey(s, "beginSignIn", beginSignIn(s)))
+{
+  if inv(s) {
+    UnlinkedDutyPreservesSuccessorCount(s.duties, pendingDuty(s.attempt, signOutAttempts));
+  }
+}
+
+lemma acknowledged_ensures(s: DeviceCredential, attempt: int, credentialId: string, keyExpiresAt: int)
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> alwaysCountersAreNatural(acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> alwaysSignInIsTheNewestAction(acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> alwaysKeysAreMintedInOrder(acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> alwaysDutiesNameRetiredKeys(acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> alwaysSessionBelongsToTheActiveKey(acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> alwaysRefreshWaitersAreCounted(acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> stepGenerationCountsOwnerActions(s, "acknowledged", acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> stepEachNewKeyIsAnnouncedOnce(s, "acknowledged", acknowledged(s, attempt, credentialId, keyExpiresAt).state, acknowledged(s, attempt, credentialId, keyExpiresAt).out))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> stepAReplacedKeyNamesItsSuccessor(s, "acknowledged", acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> stepAnEndedKeyNamesNoSuccessor(s, "acknowledged", acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> stepAKeyLeavesOnlyWithItsDuty(s, "acknowledged", acknowledged(s, attempt, credentialId, keyExpiresAt).state, acknowledged(s, attempt, credentialId, keyExpiresAt).out))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> stepRestartKeepsCustody(s, "acknowledged", acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> stepOneRefreshInFlight(s, "acknowledged", acknowledged(s, attempt, credentialId, keyExpiresAt).state, acknowledged(s, attempt, credentialId, keyExpiresAt).out))
+  ensures (inv(s) ==> canAcknowledged(s, attempt, credentialId, keyExpiresAt) ==> stepARenewalKeepsTheActiveKey(s, "acknowledged", acknowledged(s, attempt, credentialId, keyExpiresAt).state))
+{
+  if inv(s) && canAcknowledged(s, attempt, credentialId, keyExpiresAt) && s.custody.Active? {
+    var pending := s.attempt;
+    var active := s.custody;
+    assert pending.Acknowledging?;
+    assert pending.credentialId != "";
+    var after := acknowledged(s, attempt, credentialId, keyExpiresAt).state;
+    var retired := Duty(active.version, active.keyExpiresAt, signOutAttempts, pending.credentialId);
+    assert after.duties == s.duties + [retired];
+    assert retired in after.duties;
+    assert credentialIdOf(after) == pending.credentialId;
+  }
+}
+
+lemma signInEnded_ensures(s: DeviceCredential, attempt: int)
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> alwaysCountersAreNatural(signInEnded(s, attempt)))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> alwaysSignInIsTheNewestAction(signInEnded(s, attempt)))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> alwaysKeysAreMintedInOrder(signInEnded(s, attempt)))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> alwaysDutiesNameRetiredKeys(signInEnded(s, attempt)))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> alwaysSessionBelongsToTheActiveKey(signInEnded(s, attempt)))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> alwaysRefreshWaitersAreCounted(signInEnded(s, attempt)))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> stepGenerationCountsOwnerActions(s, "signInEnded", signInEnded(s, attempt)))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> stepEachNewKeyIsAnnouncedOnce(s, "signInEnded", signInEnded(s, attempt), []))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> stepAReplacedKeyNamesItsSuccessor(s, "signInEnded", signInEnded(s, attempt)))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> stepAnEndedKeyNamesNoSuccessor(s, "signInEnded", signInEnded(s, attempt)))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> stepAKeyLeavesOnlyWithItsDuty(s, "signInEnded", signInEnded(s, attempt), []))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> stepRestartKeepsCustody(s, "signInEnded", signInEnded(s, attempt)))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> stepOneRefreshInFlight(s, "signInEnded", signInEnded(s, attempt), []))
+  ensures (inv(s) ==> canSignInEnded(s, attempt) ==> stepARenewalKeepsTheActiveKey(s, "signInEnded", signInEnded(s, attempt)))
+{
+  if inv(s) && canSignInEnded(s, attempt) {
+    UnlinkedDutyPreservesSuccessorCount(s.duties, pendingDuty(s.attempt, signOutAttempts));
+  }
+}
+
+lemma signOut_ensures(s: DeviceCredential)
+  ensures (inv(s) ==> alwaysCountersAreNatural(signOut(s).state))
+  ensures (inv(s) ==> alwaysSignInIsTheNewestAction(signOut(s).state))
+  ensures (inv(s) ==> alwaysKeysAreMintedInOrder(signOut(s).state))
+  ensures (inv(s) ==> alwaysDutiesNameRetiredKeys(signOut(s).state))
+  ensures (inv(s) ==> alwaysSessionBelongsToTheActiveKey(signOut(s).state))
+  ensures (inv(s) ==> alwaysRefreshWaitersAreCounted(signOut(s).state))
+  ensures (inv(s) ==> stepGenerationCountsOwnerActions(s, "signOut", signOut(s).state))
+  ensures (inv(s) ==> stepEachNewKeyIsAnnouncedOnce(s, "signOut", signOut(s).state, signOut(s).out))
+  ensures (inv(s) ==> stepAReplacedKeyNamesItsSuccessor(s, "signOut", signOut(s).state))
+  ensures (inv(s) ==> stepAnEndedKeyNamesNoSuccessor(s, "signOut", signOut(s).state))
+  ensures (inv(s) ==> stepAKeyLeavesOnlyWithItsDuty(s, "signOut", signOut(s).state, signOut(s).out))
+  ensures (inv(s) ==> stepRestartKeepsCustody(s, "signOut", signOut(s).state))
+  ensures (inv(s) ==> stepOneRefreshInFlight(s, "signOut", signOut(s).state, signOut(s).out))
+  ensures (inv(s) ==> stepARenewalKeepsTheActiveKey(s, "signOut", signOut(s).state))
+{
+  EndedByPreservesSuccessorCount(s, signOutAttempts, "signOut");
+}
+
+lemma reset_ensures(s: DeviceCredential)
+  ensures (inv(s) ==> alwaysCountersAreNatural(reset(s).state))
+  ensures (inv(s) ==> alwaysSignInIsTheNewestAction(reset(s).state))
+  ensures (inv(s) ==> alwaysKeysAreMintedInOrder(reset(s).state))
+  ensures (inv(s) ==> alwaysDutiesNameRetiredKeys(reset(s).state))
+  ensures (inv(s) ==> alwaysSessionBelongsToTheActiveKey(reset(s).state))
+  ensures (inv(s) ==> alwaysRefreshWaitersAreCounted(reset(s).state))
+  ensures (inv(s) ==> stepGenerationCountsOwnerActions(s, "reset", reset(s).state))
+  ensures (inv(s) ==> stepEachNewKeyIsAnnouncedOnce(s, "reset", reset(s).state, reset(s).out))
+  ensures (inv(s) ==> stepAReplacedKeyNamesItsSuccessor(s, "reset", reset(s).state))
+  ensures (inv(s) ==> stepAnEndedKeyNamesNoSuccessor(s, "reset", reset(s).state))
+  ensures (inv(s) ==> stepAKeyLeavesOnlyWithItsDuty(s, "reset", reset(s).state, reset(s).out))
+  ensures (inv(s) ==> stepRestartKeepsCustody(s, "reset", reset(s).state))
+  ensures (inv(s) ==> stepOneRefreshInFlight(s, "reset", reset(s).state, reset(s).out))
+  ensures (inv(s) ==> stepARenewalKeepsTheActiveKey(s, "reset", reset(s).state))
+{
+  EndedByPreservesSuccessorCount(s, resetAttempts, "reset");
+}
+
+lemma UnlinkedDutyPreservesSuccessorCount(held: seq<Duty>, added: seq<Duty>)
+  requires |added| <= 1
+  requires |added| == 1 ==> added[0].successor == ""
+  ensures |ProofLib.Filter((d: Duty) => (d.successor != ""), held + added)| ==
+    |ProofLib.Filter((d: Duty) => (d.successor != ""), held)|
+{
+  if |added| == 1 {
+    assert added == [added[0]];
+    ProofLib.FilterAppend((d: Duty) => (d.successor != ""), held, added[0]);
+  } else {
+    assert added == [];
+    assert held + added == held;
+  }
+}
+
+lemma EndedByPreservesSuccessorCount(s: DeviceCredential, tries: int, action: string)
+  ensures stepAnEndedKeyNamesNoSuccessor(s, action, endedBy(tries, s).state)
+{
+  var active := keyDuty(s.custody, tries, "");
+  var pending := pendingDuty(s.attempt, tries);
+  UnlinkedDutyPreservesSuccessorCount(s.duties, active);
+  UnlinkedDutyPreservesSuccessorCount(s.duties + active, pending);
 }
