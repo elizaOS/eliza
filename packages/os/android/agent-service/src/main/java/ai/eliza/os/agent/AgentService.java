@@ -681,7 +681,7 @@ public class AgentService extends Service {
     AtomicBoolean connected = new AtomicBoolean();
     AtomicReference<AgentSocketClient.Result> answer = new AtomicReference<>();
     try {
-      client.exchange(agentSocket, launchToken, "health-" + UUID.randomUUID(), new AgentSocketClient.HttpCall("GET", HEALTH, null, false),
+      client.exchange(agentSocket, launchToken, "health-" + UUID.randomUUID(), new AgentSocketClient.HttpCall("GET", HEALTH, null, false, Map.of()),
         link -> connected.set(true), frame -> {
           if (frame instanceof AgentSocketClient.Result result) answer.set(result);
           return false;

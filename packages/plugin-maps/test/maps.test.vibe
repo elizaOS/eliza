@@ -1,8 +1,9 @@
 // spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"; spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"
-import { assert, it } from "@effect/vitest"
+import { assert, it, layer } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
 import type { IAgentRuntime, JsonObject, Memory } from "@elizaos/core"
+import { mapsChat, mapsToolCall } from "./support/cloud.ts"
 import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
 import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
 import { MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route } from "../src/client/contracts.vibe"
@@ -117,13 +118,13 @@ it.live('Keep Cloud Maps on the account that requested it: coverage installs the
 
 it.live('Show the right copyright for the map I am looking at: a view inside the attributed area keeps its copyright and a reply for a view I left is never shown (spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at")', effect () => {
   const replies = try Queue.unbounded<Deferred.Deferred<string>>()
-  let asked = 0
+  const asked: number[] = []
   const basemap: CloudMapsBasemap = {
     kind: "cloud-raster", attribution: "Google", minZoom: 0, maxZoom: 20, tileSize: 256,
     tile: () => succeed(new Uint8Array()),
-    effect copyright() {
+    effect copyright(view) {
       const reply = try Deferred.make<string>()
-      asked++
+      asked.push(view.north)
       try Queue.offer(replies, reply)
       return try Deferred.await(reply)
     },
@@ -152,7 +153,7 @@ it.live('Show the right copyright for the map I am looking at: a view inside the
   try attribution.dispose()
   const disposed = try attribution.current()
   try Effect.try(() => assert.deepStrictEqual({ shown, within, hidden, asked, late, current, disposed },
-    { shown: "Map data ©2026 Google", within: "Map data ©2026 Google", hidden: "", asked: 3, late: "", current: "Map data ©2026 Google, INEGI", disposed: "" }))
+    { shown: "Map data ©2026 Google", within: "Map data ©2026 Google", hidden: "", asked: [38, 41, 42], late: "", current: "Map data ©2026 Google, INEGI", disposed: "" }))
 })
 
 function screenFake() {
@@ -429,6 +430,70 @@ it.effect('Let the agent see only what the Maps screen shows now (spec/maps/obse
     { current: true, republished: true, changed: false, retired: false, fresh: true }))
 })
 
+service MapsChatFixture {
+  readonly chat: Awaited<ReturnType<typeof mapsChat>>
+  readonly bodies: ReturnType<typeof linkFake>["bodies"]
+}
+
+const mapsChatFixture = Layer.effect(MapsChatFixture, effect {
+  const { link, bodies } = linkFake()
+  const chat = try acquireRelease(tryPromise(() => mapsChat(mapsPlugin, link.request)), (running) => promise(() => running.close()))
+  return { chat, bodies }
+})
+
+layer(mapsChatFixture, { excludeTestServices: true, timeout: "3 minutes" })("Maps recovery over the resident API", (it) => {
+  it.effect('Recover directions from a phone Maps selection without asking for the named place again (spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript")', effect () => {
+    const { chat, bodies } = try MapsChatFixture
+    const observed = try mapsObservation()
+    try observed.publish({ query: "Coit Tower", area: "San Francisco", results: ["Coit Tower"], provider: "google", ready: true })
+    const selectedObject = try observed.observe()
+    if (selectedObject === undefined) return try die("The Maps screen has no selection handle")
+    try Effect.try(() => chat.script(mapsToolCall("MAPS_PLACE", { query: "Coit Tower", placeId: selectedObject.id }), { content: "Here is Coit Tower." }))
+    const opened = try tryPromise(() => chat.post("/api/conversations", {}))
+    const { conversation } = try Schema.decodeUnknownEffect(Schema.Struct({ conversation: Schema.Struct({ id: Schema.String }) }))(opened.body)
+    const path = `/api/conversations/${conversation.id}/messages`
+    const first = try tryPromise(() => chat.post(path, { text: "Show me Coit Tower on the map." }))
+    if (first.status !== 200) return try die("Showing the original place was refused")
+    try Effect.try(() => chat.script(
+      mapsToolCall("MAPS_NAVIGATION_START", { placeId: selectedObject.id }),
+      mapsToolCall("MAPS_NAVIGATION_START", { placeId: selectedObject.id, destination: "Coit Tower" }),
+      { content: "Here are directions to Coit Tower." },
+    ))
+    const sent = try tryPromise(() => chat.post(path, {
+      text: "Directions to it.", metadata: { observation: { view: "maps", revision: 1, sensitive: false, selectedObject } },
+    }))
+    if (sent.status !== 200) return try die("The directions turn was refused")
+    const answer = try Schema.decodeUnknownEffect(Schema.Struct({
+      text: Schema.String,
+      actionResults: Schema.Array(Schema.Struct({
+        action: Schema.String, data: Schema.Struct({ card: Schema.optionalKey(Schema.Struct({ kind: Schema.String })) }),
+      })),
+    }))(sent.body)
+    const planningRequest = try Schema.decodeUnknownEffect(Schema.Struct({
+      messages: Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.optionalKey(Schema.Unknown) })),
+    }))(chat.prompts.at(-3))
+    try Effect.try(() => {
+      const prompts = chat.prompts.slice(-3).map((body) => JSON.stringify(body))
+      const sentDetails = bodies.filter(({ path }) => path.endsWith("/places/details"))
+      const searches = bodies.filter(({ path }) => path.endsWith("/places/search"))
+      assert.deepStrictEqual({
+        sawSelection: prompts[0]?.includes(selectedObject.id),
+        priorPlace: planningRequest.messages.some(({ role, content }) => role === "user" && content === "Show me Coit Tower on the map."),
+        coached: prompts[1]?.includes("MAPS_SELECTION_HANDLE") && prompts[1]?.includes("destination"),
+        lookupsOfHandle: sentDetails.length,
+        searches: searches.map(({ body }) => body),
+        actions: answer.actionResults.map(({ action }) => action),
+        route: answer.actionResults[0]?.data.card?.kind ?? recognizedMapsCards(answer.text)[0]?.card.kind,
+        named: answer.text.includes("Coit Tower"),
+        falseFailure: /did not start|did not complete|MAPS_SELECTION_HANDLE/iu.test(answer.text),
+      }, {
+        sawSelection: true, priorPlace: true, coached: true, lookupsOfHandle: 0, searches: [{ query: "Coit Tower" }, { query: "Coit Tower", limit: 5 }],
+        actions: ["MAPS_NAVIGATION_START"], route: "handoff", named: true, falseFailure: false,
+      })
+    })
+  })
+})
+
 it.effect('Keep my saved places safe on this phone: saving the same place again replaces it, and a list that cannot be read is never written over (spec/maps/savedPlaces.md, "Story: Keep my saved places safe on this phone")', effect () => {
   provide KeyValueStore.layerMemory {
     try TestClock.adjust("1000 seconds")
@@ -644,7 +709,9 @@ it.live('Keep one location watch and clean up stale callbacks and handles: liste
   const order: string[] = []
   const listeners: { fix?: (fix: NativeFix) => void } = {}
   let hidden = true
-  let show = () => {}
+  const waitingForVisibility = try Deferred.make<void>()
+  const shown = try Deferred.make<void>()
+  const watchCleared = try Deferred.make<void>()
   const location = try nativeMapsLocation({
     checkPermissions: () => sync(() => ({ location: "prompt" as const })),
     requestPermissions: () => sync(() => {
@@ -656,7 +723,10 @@ it.live('Keep one location watch and clean up stale callbacks and handles: liste
       order.push("watch")
       return { watchId: "w1" }
     }),
-    clearWatch: (watchId) => sync(() => { order.push(`clear:${watchId}`) }),
+    clearWatch: (watchId) => effect {
+      order.push(`clear:${watchId}`)
+      try Deferred.succeed(watchCleared, undefined)
+    },
     onFix: (listener) => sync(() => {
       order.push("fixes")
       listeners.fix = listener
@@ -670,21 +740,24 @@ it.live('Keep one location watch and clean up stale callbacks and handles: liste
     isNative: () => true,
     available: () => true,
     hidden: () => hidden,
-    visible: () => callback<void>((resume) => { show = () => resume(Effect.void) }),
+    visible: () => effect {
+      try Deferred.succeed(waitingForVisibility, undefined)
+      try Deferred.await(shown)
+    },
   })
   const fixes: number[] = []
   const errors: string[] = []
   const starting = fork location.start(false, (position) => { fixes.push(position.accuracyMeters) }, (error) => { errors.push(error.code) })
-  try sleep("20 millis")
+  try Deferred.await(waitingForVisibility)
   const waiting = [...order]
   hidden = false
-  show()
+  try Deferred.succeed(shown, undefined)
   try join starting
   const now = Date.now()
   listeners.fix?.({ coords: { latitude: here.latitude, longitude: here.longitude, accuracy: 8, timestamp: now } })
   listeners.fix?.({ coords: { latitude: here.latitude, longitude: here.longitude, accuracy: 9, timestamp: now - 60_000 } })
   listeners.fix?.({ coords: { latitude: 200, longitude: here.longitude, accuracy: 9, timestamp: now } })
-  try sleep("20 millis")
+  try Deferred.await(watchCleared)
   try Effect.try(() => assert.deepStrictEqual({ waiting, order, fixes, errors },
     { waiting: ["prompt"], order: ["prompt", "fixes", "errors", "watch", "remove:fixes", "remove:errors", "clear:w1"], fixes: [8], errors: ["invalid-response"] }))
 })
@@ -816,7 +889,7 @@ it.live('Share a place only once I agree, and hear where Maps works: the asking 
   }))
 })
 
-it.live('Ask for directions to the place on my phone\'s map: a selection handle alone is sent back to the planner with nothing looked up, a handle beside the place\'s name is found by name, a place id Cloud refuses falls back to the name, a choice reply still continues, the place shown on the phone carries its provider id, and an answer Maps cannot use names the place (spec/maps/routing.md, "Story: Ask for directions to the place on my phone\'s map"; spec/maps/routing.md, "The phone\'s Maps selection handle is never a provider place id"; spec/maps/routing.md, "A request whose only place is the phone\'s selection handle is sent back to the planner to name it"; spec/maps/routing.md, "A place id Cloud refuses or no longer knows falls back to the place\'s name"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner\'s words, naming the place a start could not look up")', effect () => {
+it.live('Ask for directions to the place on my phone\'s map: a selection handle alone is sent back to the planner with nothing looked up, a handle beside the place\'s name is found by name, a place id Cloud refuses falls back to the name, a choice reply still continues, the place shown on the phone carries its provider id, and an answer Maps cannot use names the place (spec/maps/routing.md, "Story: Ask for directions to the place on my phone\'s map"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/maps/routing.md, "A place id Cloud refuses or no longer knows falls back to the place\'s name"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner\'s words, naming the place a start could not look up")', effect () => {
   const { link, bodies } = linkFake()
   const handle = "maps_3b0f6a52-6a4e-4c1b-9d55-0d1f2e3a4b5c"
   const phone: MapsDeviceNavigation = {
@@ -833,9 +906,9 @@ it.live('Ask for directions to the place on my phone\'s map: a selection handle 
     if (action === undefined) throw new Error(`${name} is not registered`)
     return await action.handler(runtime, ownerTurn(text, "00000000-0000-4000-8000-000000000009"), undefined, { parameters })
   })
-  const sentBack = (result: { readonly success: boolean; readonly data?: unknown }) => {
-    const data = result.data as { readonly code?: string; readonly field?: string; readonly nameField?: string; readonly coachingFailure?: boolean }
-    return [result.success, data.code, data.field, data.nameField, data.coachingFailure]
+  const sentBack = (result: { readonly success: boolean; readonly error?: unknown; readonly transcriptVisibility?: string; readonly data?: unknown }) => {
+    const data = result.data as { readonly field?: string; readonly coachingFailure?: boolean }
+    return [result.success, result.error, result.transcriptVisibility, data.field, data.coachingFailure]
   }
   const said = (result: { readonly success: boolean; readonly text?: string }) => [result.success, result.text]
   const placeOf = (result: { readonly data?: unknown }) => (result.data as { readonly place?: { readonly providerPlaceId: string } }).place?.providerPlaceId
@@ -857,6 +930,8 @@ it.live('Ask for directions to the place on my phone\'s map: a selection handle 
   const picked = try act("MAPS_NAVIGATION_START", "the first one", { placeId: handle })
   const broken = try act("MAPS_NAVIGATION_START", "take me to Broken Plaza", { destination: "Broken Plaza" })
   const brokenSearch = try act("MAPS_PLACE", "find Broken Plaza", { query: "Broken Plaza" })
+  const fromHere = try act("MAPS_ROUTE", "how far is Coit Tower from here", { originPlaceId: handle, destination: "Coit Tower", useCurrentLocation: true })
+  const atPoint = try act("MAPS_PLACE", "what is at 37.8024, -122.4058", { placeId: handle, latitude: 37.8024, longitude: -122.4058 })
   const handleSentToCloud = bodies.some((made) => made.path === "/api/v1/maps/places/details" && (made.body as { readonly id: string }).id === handle)
   try Effect.try(() => assert.deepStrictEqual({
     handleOnly: [select, save, share, start, place, toIt, fromIt].map(sentBack), lookedUpForHandles, handleSentToCloud,
@@ -864,12 +939,13 @@ it.live('Ask for directions to the place on my phone\'s map: a selection handle 
     refusedWithName: [refusedWithName.success, placeOf(refusedWithName)], refusedAlone: said(refusedAlone),
     asked: [asked.success, (asked.data as { readonly choice?: string }).choice], picked: said(picked),
     broken: said(broken), brokenSearch: said(brokenSearch),
+    placedOtherwise: [fromHere, atPoint].map((result) => (result.data as { readonly coachingFailure?: boolean } | undefined)?.coachingFailure === true),
   }, {
     handleOnly: [
-      [false, "MAPS_SELECTION_HANDLE", "placeId", "query", true], [false, "MAPS_SELECTION_HANDLE", "placeId", "query", true],
-      [false, "MAPS_SELECTION_HANDLE", "placeId", "query", true], [false, "MAPS_SELECTION_HANDLE", "placeId", "destination", true],
-      [false, "MAPS_SELECTION_HANDLE", "placeId", "query", true], [false, "MAPS_SELECTION_HANDLE", "destinationPlaceId", "destination", true],
-      [false, "MAPS_SELECTION_HANDLE", "originPlaceId", "origin", true],
+      [false, "MAPS_SELECTION_HANDLE", "internal", "placeId", true], [false, "MAPS_SELECTION_HANDLE", "internal", "placeId", true],
+      [false, "MAPS_SELECTION_HANDLE", "internal", "placeId", true], [false, "MAPS_SELECTION_HANDLE", "internal", "placeId", true],
+      [false, "MAPS_SELECTION_HANDLE", "internal", "placeId", true], [false, "MAPS_SELECTION_HANDLE", "internal", "destinationPlaceId", true],
+      [false, "MAPS_SELECTION_HANDLE", "internal", "originPlaceId", true],
     ],
     lookedUpForHandles: 0, handleSentToCloud: false,
     shown: [true, "tower"], directions: [true, "The route to Coit Tower is on your phone. Press Start on the phone to begin guidance."], routedByName: true,
@@ -877,5 +953,6 @@ it.live('Ask for directions to the place on my phone\'s map: a selection handle 
     asked: [false, "destination"], picked: [true, "The route to Far Pharmacy is on your phone. Press Start on the phone to begin guidance."],
     broken: [false, "Maps couldn't look up Broken Plaza right now, so the route isn't planned. Try again in a moment."],
     brokenSearch: [false, "Maps got an answer it couldn't use. Try again in a moment."],
+    placedOtherwise: [false, false],
   }))
 })

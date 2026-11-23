@@ -1,0 +1,20 @@
+// spec/nativeWifi/index.md, "Story: See whether I joined the network I chose"
+export { wifiClient, wifiPlugin } from "@elizaos/os/bridges/wifi"
+export type * from "@elizaos/os/bridges/definitions/wifi"
+
+import { wifiClient, type WiFiClient } from "@elizaos/os/bridges/wifi"
+import type { ConnectOptions } from "@elizaos/os/bridges/definitions/wifi"
+import { wifiJoinReport, type WifiRead } from "../gen/nativeWifi.effect.vibe"
+
+export effect function joinNativeWifi(network: ConnectOptions, device: WiFiClient = wifiClient()) {
+  const receipt = try tryPromise(() => device.addNetworkWithApproval(network))
+  if (receipt.status !== "connected" && receipt.status !== "captivePortal") {
+    const disconnected = receipt.status === "declined" || receipt.status === "notConnected" || receipt.status === "wrongPassword"
+    return { receipt, report: wifiJoinReport(network.ssid, false, disconnected ? { tag: "WifiDisconnected" } : { tag: "WifiNoAnswer" }) }
+  }
+  const read = tryPromise(() => device.getConnectivity()) catch () => undefined
+  const observed: WifiRead = read === undefined ? { tag: "WifiNoAnswer" } :
+    read.ssid === null ? { tag: "WifiDisconnected" } :
+    { tag: "WifiLink", networkId: read.ssid, validated: read.validated, portal: read.captivePortal }
+  return { receipt, report: wifiJoinReport(network.ssid, false, observed) }
+}

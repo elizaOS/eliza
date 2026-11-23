@@ -250,27 +250,6 @@ pure def actionNoteSent(actionOffered: bool, noted: bool): bool = actionOffered 
 pure def lawOnlyAnOfferedActionNotesTheMessage(noted: bool): bool = not(actionNoteSent(false, noted))
 ```
 
-### A call its action sends back for the model to restate is never reported as a failure
-
-An action may decline a call with a coaching failure: `success` false,
-`data.coachingFailure` true and no effect receipt, its text telling the
-model what to restate, such as Maps given the phone's on-screen selection
-handle where it needs the place's name ([Maps routing](../../maps/routing.md)).
-Nothing ran and nothing changed, so the model reads it as it reads any
-result, but the reply never reports it: the model calls again, asks or
-answers within the turn's step bound, and what that retry or answer says is
-the reply. A result
-that carries an effect receipt is reported as any other, whatever it says
-of itself.
-
-```quint
-pure def reportsResult(coaching: bool, receipts: int): bool = not(coaching) or receipts > 0
-pure val receiptsValues = Set(0, 1, 2)
-pure def lawACoachingFailureIsNeverReported(receipts: int): bool = receipts == 0 implies not(reportsResult(true, receipts))
-pure def lawEveryOtherResultIsReported(receipts: int): bool = reportsResult(false, receipts)
-pure def lawAResultWithAnEffectIsReported(coaching: bool, receipts: int): bool = receipts > 0 implies reportsResult(coaching, receipts)
-```
-
 ### The model reads what was said in the conversation, in a window taken once for the whole turn
 
 A host notice the agent process stored in the conversation (a message of
@@ -376,6 +355,23 @@ pure def lawASuccessOfAnotherOperationKeepsTheFailure(steps: List[PlanStep], ear
   (earlier.outcome == Failed and later.identity != earlier.identity) implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
 pure def lawARefusalBeforeDispatchStaysReported(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
   earlier.outcome == Rejected implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
+```
+
+### A coaching response stays in the planner transcript
+
+A tool can ask the planner to correct its call. An unsuccessful result
+marked as internal coaching and carrying no effect receipt goes back to
+the planner and does not appear among the owner's action outcomes.
+The call still uses a planning step. A result that records an effect
+remains an action outcome.
+
+```quint
+pure def plannerOnlyCoaching(internal: bool, coaching: bool, success: bool, hasReceipt: bool): bool =
+  internal and coaching and not(success) and not(hasReceipt)
+pure def lawCoachingNeverHidesReceipts(internal: bool, coaching: bool, success: bool): bool =
+  not(plannerOnlyCoaching(internal, coaching, success, true))
+pure def lawOrdinaryRefusalsRemainOutcomes(internal: bool): bool =
+  not(plannerOnlyCoaching(internal, false, false, false))
 ```
 
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole

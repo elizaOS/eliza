@@ -1040,6 +1040,14 @@
 					"placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
 					"advanced": false
 				},
+				"ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS": {
+					"type": "secret",
+					"required": false,
+					"sensitive": true,
+					"label": "Cloud Image Description Max Tokens",
+					"help": "Optional positive-integer image-description output limit; unset sends no provider cap.",
+					"advanced": false
+				},
 				"ELIZAOS_CLOUD_TTS_MODEL": {
 					"type": "string",
 					"required": false,

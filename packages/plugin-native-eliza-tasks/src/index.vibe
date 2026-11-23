@@ -1,0 +1,34 @@
+// spec/nativeElizaTasks/index.md, "Story: Schedule a background wake without stacking duplicate requests"
+import type { ElizaTasksPlugin } from "./native-contract.vibe"
+
+export type * from "./native-contract.vibe"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { ElizaTasksPlugin } from "./native-contract.vibe"
+
+  export const native = registerPlugin<ElizaTasksPlugin>("ElizaTasks")
+}
+import { native } from capacitor
+
+export const ElizaTasks = native
+
+import { nativeReply } from "@elizaos/os/bridges/bridge"
+import { canScheduleNext, initial } from "../gen/nativeElizaTasks.effect.vibe"
+
+const ScheduleResult = Schema.Struct({
+  scheduled: Schema.Boolean,
+  identifier: Schema.Literals(["ai.eliza.tasks.refresh", "ai.eliza.tasks.processing"]),
+  earliestBeginAtMs: Schema.NullOr(Schema.Int),
+  reason: Schema.NullOr(Schema.String),
+})
+
+export error InvalidWakeDelay { delaySeconds: number }
+
+export effect function scheduleNativeWake(options: Parameters<ElizaTasksPlugin["scheduleNext"]>[0], port: ElizaTasksPlugin = ElizaTasks) {
+  const nowMs = try Clock.currentTimeMillis
+  const delaySeconds = options?.earliestBeginSec
+  if (delaySeconds !== undefined && (!Number.isSafeInteger(delaySeconds * 1000) ||
+      !canScheduleNext(initial, nowMs, delaySeconds * 1000, true))) throw new InvalidWakeDelay({ delaySeconds })
+  return try nativeReply("ElizaTasks", "scheduleNext", ScheduleResult, () => port.scheduleNext(options))
+}

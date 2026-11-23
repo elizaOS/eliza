@@ -41,7 +41,7 @@ module node {
       const entry = (options as { readonly parameters?: { readonly name?: unknown } } | undefined)?.parameters?.name
       return typeof entry === "string"
         ? { success: true, text: `Found ${entry}.` }
-        : { success: false, text: "Call AGENDA_FIND again with the entry's name from the conversation.", data: { coachingFailure: true } }
+        : { success: false, transcriptVisibility: "internal", text: "Call AGENDA_FIND again with the entry's name from the conversation.", data: { coachingFailure: true } }
     },
   }
 
@@ -210,7 +210,7 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
 
 const planning = "spec/agent/conversation/planning.md"
 
-it.live(`Hear that the agent heard me once while work is pending, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; ${planning}, "A directly routed call acknowledges once if it is still running after 400 milliseconds"; ${planning}, "A call its action sends back for the model to restate is never reported as a failure")`, effect () => {
+it.live(`Hear that the agent heard me once while work is pending, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; ${planning}, "A directly routed call acknowledges once if it is still running after 400 milliseconds"; ${planning}, "A coaching response stays in the planner transcript")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {

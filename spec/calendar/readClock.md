@@ -131,5 +131,5 @@ pure val statedYearValues = Set(2026, 2027, 2028)
 pure val currentYearValues = Set(2026)
 pure val trailingYearValues = Set(0, 2028)
 pure val startYearValues = Set(2025, 2026, 2027)
-pure val extractedYearValues = Set(2025, 2026, 2030)
+pure val extractedYearValues = Set(2025, 2026, 2030, 2031)
 ```

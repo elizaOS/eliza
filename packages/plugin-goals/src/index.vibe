@@ -1,0 +1,38 @@
+// spec/goals/index.md, "Story: Review my goals and check-in history"
+import {
+  checkinsFor,
+  mayImportGoal,
+  visibleGoals,
+  type GoalReviewEntry,
+  type GoalViewFilter,
+  type GoalViewRow,
+} from "../gen/goals.effect.vibe"
+
+export error GoalDirectoryFailed { reason: string }
+
+export service GoalDirectory {
+  listForOwner(ownerId: string): GoalViewRow[]!GoalDirectoryFailed
+  checkinsForOwner(ownerId: string, goalId: string): GoalReviewEntry[]!GoalDirectoryFailed
+  insertMissing(row: GoalViewRow): boolean!GoalDirectoryFailed
+}
+
+export effect function listGoals(ownerId: string, filter: GoalViewFilter) {
+  if (ownerId === "") return []
+  const directory = try GoalDirectory
+  return visibleGoals(try directory.listForOwner(ownerId), ownerId, filter)
+}
+
+export effect function listGoalHistory(ownerId: string, goalId: string) {
+  if (ownerId === "" || goalId === "") return []
+  const directory = try GoalDirectory
+  return checkinsFor(try directory.checkinsForOwner(ownerId, goalId), ownerId, goalId)
+}
+
+export effect function importLegacyGoal(ownerId: string, row: GoalViewRow) {
+  if (ownerId === "") return false
+  const directory = try GoalDirectory
+  const existing = try directory.listForOwner(ownerId)
+  const known = [...new Set(existing.map((goal) => goal.goalId))]
+  if (!mayImportGoal(row, ownerId, known)) return false
+  return try directory.insertMissing(row)
+}

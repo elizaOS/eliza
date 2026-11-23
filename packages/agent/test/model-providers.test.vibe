@@ -33,9 +33,9 @@ effect function bound(backend: Backend, key: string, environment?: Readonly<Reco
   return { binding, runtime }
 }
 
-effect function cloudAgent(cloud: CloudFake) {
+effect function cloudAgent(cloud: CloudFake, large = "large") {
   const made = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
-  registerCloudModels(made.runtime, made.binding, { baseUrl: cloud.origin, small: "small", large: "large", image: "vision" })
+  registerCloudModels(made.runtime, made.binding, { baseUrl: cloud.origin, small: "small", large, image: "vision" })
   return made
 }
 
@@ -47,7 +47,7 @@ function refusalOf(runtime: AgentRuntime, params: GenerateTextParams) {
   return host("refused model call", () => runtime.useModel(ModelType.TEXT_SMALL, params).then(() => undefined, (failure: unknown) => failure as { code?: unknown; status?: unknown; name?: unknown; retryAfterMs?: unknown }))
 }
 
-it.effect('A cloud text call keeps its image parts, streams, and an image description uses the image model (spec/agent/models/binding.md, "No text handler is ever served by a model on the device")', effect () => {
+it.effect('A cloud text call keeps its image parts and streams, and an image description uses the image model (spec/agent/models/binding.md, "No text handler is ever served by a model on the device")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud)
   try Effect.sync(() => cloud.script(echoImages(), text("Title: A cat", "\nA cat on a mat.")))
@@ -71,7 +71,7 @@ it.effect('A cloud text call keeps its image parts, streams, and an image descri
   assert.strictEqual((try binding.read()).accountState, "usable")
 })
 
-it.effect('An outage or a dropped connection is retried on the next registration and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
+it.effect('An outage or a dropped connection is retried on the next registration under the same idempotency key and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud)
   try Effect.sync(() => cloud.script(unavailable(1), text("after outage"), dropped(), text("after drop"), unavailable(1), unavailable(1), unavailable(1), unavailable(1)))
@@ -81,6 +81,8 @@ it.effect('An outage or a dropped connection is retried on the next registration
   assert.deepStrictEqual([first, second], ["after outage", "after drop"])
   assert.strictEqual(third?.status, 503)
   assert.strictEqual(completions(cloud), 8)
+  const keys = cloud.calls.map((call) => call.idempotencyKey ?? "")
+  assert.deepStrictEqual([keys.every((key) => /^[\da-f-]{36}$/.test(key)), keys.map((key) => [...new Set(keys)].indexOf(key))], [true, [0, 0, 1, 1, 2, 2, 2, 2]])
   const view = try binding.read()
   assert.strictEqual(view.accountState, "provider_issue")
   assert.strictEqual(view.lastCloudFailure?.kind, "provider_issue")
@@ -134,7 +136,7 @@ it.live('A caller abort ends the call without an account failure (spec/agent/mod
   assert.deepStrictEqual([view.accountState, view.lastCloudFailure], ["usable", undefined])
 })
 
-it.effect('The own-key backend answers text only, classifies its refusals into the same states, probes its key and holds only a key its slot accepts (spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts")', effect () => {
+it.effect('The own-key backend answers text and image description, classifies its refusals into the same states, probes its key and holds only a key its slot accepts (spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: "large" }
   const good = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, cloud.ownKey)
@@ -144,7 +146,7 @@ it.effect('The own-key backend answers text only, classifies its refusals into t
   const limited = try refusalOf(good.runtime, { prompt: "Again." })
   assert.strictEqual(answered, "own answer")
   assert.strictEqual(limited?.code, "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED")
-  assert.strictEqual(good.runtime.getModel(ModelType.IMAGE_DESCRIPTION), undefined)
+  assert.notStrictEqual(good.runtime.getModel(ModelType.IMAGE_DESCRIPTION), undefined)
   assert.strictEqual((try good.binding.read()).accountState, "limit_reached")
   provide FetchHttpClient.layer {
     const listed = try probeOwnKey(own, Redacted.make(cloud.ownKey))
@@ -168,9 +170,9 @@ it.effect('The own-key backend answers text only, classifies its refusals into t
   assert.strictEqual(lineBreak._tag, "LaunchFrameRejected")
 })
 
-it.effect('A tool call and its token use reach the caller as one result, a streamed call asks for its token use and records the cached prompt tokens of its last chunk, and each tool result follows the call that asked for it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
+it.effect('A tool call and its token use reach the caller as one result, a streamed call asks for its token use and records the cached prompt tokens of its last chunk, each tool result follows the call that asked for it, and a thinking hint sets the reasoning effort only on a model that documents it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
   const cloud = try cloudFake(deviceKey)
-  const { runtime, binding } = try cloudAgent(cloud)
+  const { runtime, binding } = try cloudAgent(cloud, "cerebras/qwen-3.8-27b")
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
     choices: [{ message: { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "CALCULATE", arguments: "{\"expression\":\"2+2\"}" } }] }, finish_reason: "tool_calls" }],
     usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17, prompt_tokens_details: { cached_tokens: 4 } },
@@ -179,6 +181,7 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
   const result = try host("tool call", () => runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
     tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }],
     toolChoice: "auto",
+    reasoning: "off",
     messages: [
       { role: "user", content: "What is 2+2?" },
       { role: "tool", toolCallId: "orphan", content: "stale" },
@@ -191,7 +194,7 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
     text: "", toolCalls: [{ id: "call-1", name: "CALCULATE", arguments: { expression: "2+2" } }], finishReason: "tool_calls",
     usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17, cacheReadInputTokens: 4 },
   })
-  const sent = cloud.calls.at(-1)?.body as { messages: Array<{ role: string } & Record<string, unknown>>; tools: unknown; tool_choice: unknown }
+  const sent = cloud.calls.at(-1)?.body as { messages: Array<{ role: string } & Record<string, unknown>>; tools: unknown; tool_choice: unknown; reasoning_effort: unknown }
   assert.deepStrictEqual(sent.messages.filter((message) => message.role !== "system"), [
     { role: "user", content: "What is 2+2?" },
     { role: "user", content: "[tool result]\nstale" },
@@ -199,7 +202,7 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
     { role: "tool", tool_call_id: "call-0", content: "2" },
     { role: "user", content: "And now?" },
   ])
-  assert.deepStrictEqual([sent.tools, sent.tool_choice], [[{ type: "function", function: { name: "CALCULATE", description: "Arithmetic.", parameters } }], "auto"])
+  assert.deepStrictEqual([sent.tools, sent.tool_choice, sent.reasoning_effort], [[{ type: "function", function: { name: "CALCULATE", description: "Arithmetic.", parameters } }], "auto", "none"])
   assert.strictEqual((try binding.read()).accountState, "usable")
 
   const scripted = try cloudFake(deviceKey)

@@ -1,6 +1,6 @@
 // spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"
 import { phoneDialNumber } from "./dial-number.vibe"
-import { namesSomeone } from "./names.vibe"
+import { isWrittenCallbackName, namesSomeone } from "./names.vibe"
 import { completeSpokenPhoneNumber } from "./spoken-number.vibe"
 
 export type PhoneTarget = { readonly kind: "number"; readonly number: string } | { readonly kind: "contact"; readonly query: string }
@@ -11,9 +11,9 @@ type SenderDisclosure = "address" | "last-four" | "clarify"
 const targetOf = (names: "{0,2}" | "{0,2}?") =>
   String.raw`(?:\+?[\d(][\d\s().-]{5,}\d|\d{3,6}|[\p{L}][\p{L}'’.-]*(?:\s+[\p{L}][\p{L}'’.-]*)${names})`
 const trailing = String.raw`(?:,?\s+(?:please|now|right\s+now|right\s+away|again|back|asap|for\s+me))`
-const trailingWords = new RegExp(`${trailing}+$`, "iu")
+const trailingWord = new RegExp(`${trailing}$`, "iu")
 const courtesy = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
-const callCommand = new RegExp(`${courtesy}(?:call|ring|phone|dial)\\s+(${targetOf("{0,2}")})${trailing}*[.!?]*$`, "iu")
+const callCommand = new RegExp(`${courtesy}(?:call|ring|phone|dial)\\s+(${targetOf("{0,2}")})(${trailing}*)[.!?]*$`, "iu")
 const textCommand = (recipient: string) => new RegExp(
   `${courtesy}(?:text|sms|send\\s+(?:a\\s+)?(?:text|sms)(?:\\s+message)?\\s+to)\\s+(${recipient})\\s*,?\\s+(?:saying|that|to\\s+say)\\s+\\S[\\s\\S]*$`, "iu",
 )
@@ -131,16 +131,29 @@ export interface AuthoredTelephonyTarget {
   readonly target?: PhoneTarget
 }
 
+function stripTimingSuffixes(targetText: string): string {
+  let written = targetText.replace(/[.!?]+$/u, "")
+  let suffix = trailingWord.exec(written)
+  while (suffix !== null && !isWrittenCallbackName(suffix[0].trim())) {
+    written = written.slice(0, suffix.index)
+    suffix = trailingWord.exec(written)
+  }
+  return written
+}
+
 export function authoredTelephonyTarget(text: string): AuthoredTelephonyTarget | undefined {
   const request = authoredTelephonyRequest(text)
   if (request === undefined) return undefined
-  const written = (request === "call" ? callCommand : textRecipient).exec(text.trim())?.[1]
-    ?.replace(/[.!?]+$/u, "")
-    .replace(trailingWords, "")
+  const matched = (request === "call" ? callCommand : textRecipient).exec(text.trim())
+  const captured = matched?.[1]
+  if (captured === undefined) return { request }
+  const numeric = /^[+\d(]/.test(captured)
+  const trailer = numeric ? "" : (matched?.[2] ?? "")
+  const written = stripTimingSuffixes(captured + trailer)
     .replace(/['’]s\s+(?:cell(?:\s+phone)?|mobile(?:\s+phone)?|phone|work(?:\s+phone)?|home(?:\s+phone)?|office|landline)(?:\s+(?:number|line))?$/iu, "")
     .trim()
-  if (written === undefined || written === "") return { request }
-  if (/^[+\d(]/.test(written)) {
+  if (written === "") return { request }
+  if (numeric) {
     const number = phoneDialNumber(written)
     return number === undefined ? { request } : { request, target: { kind: "number", number } }
   }

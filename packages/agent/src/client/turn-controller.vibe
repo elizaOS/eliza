@@ -1,9 +1,9 @@
-// spec/agent/client/turns.md, "Story: Stop a reply without sending the next message against an uncertain room"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"; spec/agent/client/turns.md, "A message is posted only to the bound room, one turn at a time, and never while a Stop is waiting or uncertain"; spec/agent/client/turns.md, "Stop is posted once for the posted turn, and only a receipt for its room and reason confirms it"; spec/agent/client/turns.md, "An uncertain Stop refuses the next send once and unbinds only the stopped conversation"; spec/agent/client/turns.md, "Binding another conversation or resetting starts a new generation with no open or stopped turn"; spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"; spec/agent/client/turns.md, "A conversation the agent no longer has ends the turn as a conversation failure and unbinds it"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/client/turns.md, "Story: Stop a reply without sending the next message against an uncertain room"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"; spec/agent/client/turns.md, "A message is posted only to the bound room, one turn at a time, and never while a Stop is waiting or uncertain"; spec/agent/client/turns.md, "Stop is posted once for the posted turn, and only a receipt for its room and reason confirms it"; spec/agent/client/turns.md, "An uncertain Stop refuses the next send once and unbinds only the stopped conversation"; spec/agent/client/turns.md, "Binding another conversation or resetting starts a new generation with no open or stopped turn"; spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"; spec/agent/client/turns.md, "A conversation the agent no longer has ends the turn as a conversation failure and unbinds it"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few"
 import {
   Machine, boundConversation, boundRoom, enabled, heldConversation, machine, stopConfirmedBy, stopReason, stopTurn, turnId,
   type Attempt, type ClientCall, type ClientStep, type Event, type StopReceipt, type StreamEnd, type TurnClient,
 } from "../../gen/agent__client__turns.effect.vibe"
-import type { RuntimeStream } from "./index.vibe"
+import type { RuntimeRequestHeaders, RuntimeStream } from "./index.vibe"
 import type { TaskPresentation } from "../tasks/chat-task.vibe"
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- the schema declarations below read these schemas as values
 import { ActionResultFrame, PlanAction, ProviderWait } from "./reply-frame.schema.vibe"
@@ -38,11 +38,11 @@ export interface TurnMessage {
   readonly task?: { readonly taskId: TaskPresentation["taskId"]; readonly expectedEpoch: TaskPresentation["epoch"] }
 }
 
-export interface TurnOptions { readonly stream?: ReplyStreamHooks }
+export interface TurnOptions { readonly stream?: ReplyStreamHooks; readonly headers?: RuntimeRequestHeaders }
 
 export interface TurnTransport {
-  request(path: string, body?: unknown): Promise<unknown>
-  stream(path: string, body: unknown, signal?: AbortSignal): Promise<RuntimeStream>
+  request(path: string, body?: unknown, headers?: RuntimeRequestHeaders): Promise<unknown>
+  stream(path: string, body: unknown, signal?: AbortSignal, headers?: RuntimeRequestHeaders): Promise<RuntimeStream>
 }
 
 export interface TurnRefusal { readonly status: number; readonly code: string; readonly message: string }
@@ -82,7 +82,7 @@ export type TurnSession = Session
 
 const idle: StopResult = { kind: "Idle" }
 const replyProtocol = "REPLY_PROTOCOL"
-const unsent = new Set(["NoRoute", "InvalidPath", "StartupFailed", "RefreshFailed"])
+const unsent = new Set(["NoRoute", "InvalidPath", "InvalidHeaders", "StartupFailed", "RefreshFailed"])
 const stopOutcome = { stopped: "StopConfirmed", nothingRunning: "NothingRunning", uncertain: "StopUncertain" } as const
 const decodeRecord = Schema.decodeUnknownOption(ConversationRecord)
 const decodeCreated = Schema.decodeUnknownOption(Created)
@@ -203,12 +203,12 @@ function failed(error: unknown): Posted {
   return why === "AccountChanged" ? { ending: "ConversationGone" } : unsent.has(why) ? { ending: "NotDispatched" } : { ending: "Dropped" }
 }
 
-async function post(session: Session, record: ConversationRecord, body: object, attempt: Attempt, hooks: ReplyStreamHooks | undefined, signal: AbortSignal): Promise<Posted> {
+async function post(session: Session, record: ConversationRecord, body: object, attempt: Attempt, options: TurnOptions, signal: AbortSignal): Promise<Posted> {
   const path = `/api/conversations/${encodeURIComponent(record.id)}/messages`
   try {
-    if (attempt !== "Streamed") return buffered(await session.transport.request(path, body))
-    const opened = await session.transport.stream(`${path}/stream`, body, signal)
-    return streamed(await readReplyStream(opened.body, guarded(hooks ?? {}, signal), signal))
+    if (attempt !== "Streamed") return buffered(await session.transport.request(path, body, options.headers))
+    const opened = await session.transport.stream(`${path}/stream`, body, signal, options.headers)
+    return streamed(await readReplyStream(opened.body, guarded(options.stream ?? {}, signal), signal))
   } catch (error) {
     return failed(error)
   }
@@ -262,7 +262,7 @@ effect function sendTurn(session: Session, message: TurnMessage, options: TurnOp
   for (;;) {
     const call = calls.find((each) => each.tag === "PostMessage")
     if (call !== undefined && record !== undefined) {
-      posted = try promise(() => post(session, record, body, call.attempt, options.stream, abort.signal))
+      posted = try promise(() => post(session, record, body, call.attempt, options, abort.signal))
       if (!(try owns(session, turn))) return stopped
     }
     const finished = try advanceTurns(session, { type: "finishTurn", turn, ending: posted.ending })

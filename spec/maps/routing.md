@@ -144,49 +144,33 @@ pure def lawCloseAreasAreOneLandmark(meters: int): bool = (meters >= 0 and meter
 > plan the route to Coit Tower, not fail on a Cloud error or ask me which
 > place I mean again.
 
-### The phone's Maps selection handle is never a provider place id
+### A Maps screen selection asks the planner to name the place
 
-The phone names what its Maps screen shows by an opaque selection handle,
+A screen selection handle identifies an observation of the Maps screen:
 `maps_` and a UUID, which the turn's device context carries as the
-selected object's id. It names an on-screen selection for the phone's own
-approved read, not a place Cloud knows, so a place id, starting place id
-or destination id shaped like it counts as absent: Maps never asks Cloud
-for its details. When the request also names the place, Maps finds it by
-that name, as for any typed place (above).
-
-```quint
-type PlaceIdShape = ProviderPlaceIdShape | SelectionHandleShape | NoPlaceIdShape
-pure def detailsAsked(shape: PlaceIdShape): bool = shape == ProviderPlaceIdShape
-pure def lawASelectionHandleIsNeverLookedUp(shape: PlaceIdShape): bool =
-  detailsAsked(shape) implies shape == ProviderPlaceIdShape
-```
-
-### A request whose only place is the phone's selection handle is sent back to the planner to name it
-
-A request to show, look up near, save, share or start directions to a
-place, or a route, whose only reference to a place it needs is the
-phone's selection handle (no name, saved place or coordinates for that
-place, and for a route's start no "from here") looks nothing up and changes
-nothing. The planner, which saw the place named earlier in the
-conversation, gets a coaching failure (`MAPS_SELECTION_HANDLE`, the field
-that held the handle and the field to fill with the place's name, by name
-or address) and calls again with it, asking the owner only when no place
-was named; the owner hears nothing of it
-([planning](../agent/conversation/planning.md)). A reply that picks from
-the operation's open question ("the first one") names its place through
-that question, so it is never sent back. A place shown on the phone's map
-is reported with its provider, provider place id and name, so a later
+selected object's id. It is never a place Cloud knows. When it is offered
+as a provider place ID, starting place ID or destination ID, Maps uses
+what else the request gives for that place: its name or address,
+coordinates or "near me" for a search, "from here" for a route's start,
+or an already bound answer to an open Maps question. When the handle is
+the only target, nothing is looked up or changed and the planner receives
+a coaching request (`MAPS_SELECTION_HANDLE`) to name the place from the
+conversation, asking the owner only when no place was named; the owner
+hears nothing of it ([planning](../agent/conversation/planning.md)). The
+handle never reaches the provider. A place shown on the phone's map is
+reported with its provider, provider place id and name, so a later
 "directions to it" can pass a real id.
 
 ```quint
-pure def sentBackToNameIt(handle: bool, named: bool, otherwisePlaced: bool, picksOpenChoice: bool): bool =
-  handle and not(named) and not(otherwisePlaced) and not(picksOpenChoice)
-pure def lawOnlyAHandleIsSentBack(handle: bool, named: bool, otherwisePlaced: bool, picksOpenChoice: bool): bool =
-  sentBackToNameIt(handle, named, otherwisePlaced, picksOpenChoice) implies handle
-pure def lawANamedPlaceIsLookedUpByName(handle: bool, otherwisePlaced: bool, picksOpenChoice: bool): bool =
-  not(sentBackToNameIt(handle, true, otherwisePlaced, picksOpenChoice))
-pure def lawAChoiceReplyIsNeverSentBack(handle: bool, named: bool, otherwisePlaced: bool): bool =
-  not(sentBackToNameIt(handle, named, otherwisePlaced, true))
+type SelectionTarget = UsePlaceId | UsePlaceName | AskPlannerForPlace
+pure def mapsSelectionTarget(hasHandle: bool, hasName: bool): SelectionTarget =
+  if (not(hasHandle)) UsePlaceId
+  else if (hasName) UsePlaceName
+  else AskPlannerForPlace
+pure def lawMapsHandleNeverServesAsPlaceId(hasName: bool): bool =
+  mapsSelectionTarget(true, hasName) != UsePlaceId
+pure def lawMapsHandleOnlyAsksForThePlace(hasName: bool): bool =
+  (mapsSelectionTarget(true, hasName) == AskPlannerForPlace) == not(hasName)
 ```
 
 ### A place id Cloud refuses or no longer knows falls back to the place's name

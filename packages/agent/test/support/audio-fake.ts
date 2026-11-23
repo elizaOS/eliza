@@ -1,4 +1,5 @@
 // spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "A WAV holds every sample in order as mono PCM16 behind a 44-byte header"
+import { Effect } from "effect"
 import type { CaptureAudioPort, CaptureContext, CaptureNode, ClipAudioPort, DecodedClip } from "../../src/voice/capture.vibe"
 import { browserCaptureAudio } from "../../src/voice/capture-browser.ts"
 import type {
@@ -167,7 +168,7 @@ class FakeSourceBuffer extends FakeEvents<"updateend" | "error"> implements Spee
 
   appendBuffer(data: ArrayBuffer): void {
     this.appended.push(data.byteLength)
-    queueMicrotask(() => this.emit("updateend"))
+    Effect.runFork(Effect.andThen(Effect.yieldNow, Effect.sync(() => this.emit("updateend"))))
   }
 }
 
@@ -177,7 +178,7 @@ class FakeMediaSource extends FakeEvents<"sourceopen" | "error"> implements Spee
 
   override addEventListener(type: "sourceopen" | "error", listener: () => void): void {
     super.addEventListener(type, listener)
-    if (type === "sourceopen") queueMicrotask(() => this.emit("sourceopen"))
+    if (type === "sourceopen") Effect.runFork(Effect.andThen(Effect.yieldNow, Effect.sync(() => this.emit("sourceopen"))))
   }
 
   addSourceBuffer(): SpeechSourceBuffer {

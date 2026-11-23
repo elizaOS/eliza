@@ -2,7 +2,7 @@
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
 import type { HttpClient } from "effect/http"
 import { onCerebras } from "./binding.vibe"
-import { Refused, generateText, listModels, registerTwice, type Binding, type ShellRefused } from "./chat.vibe"
+import { Refused, describeImage, generateText, listModels, registerTwice, type Binding, type ShellRefused } from "./chat.vibe"
 
 export interface OwnKeyModels {
   readonly baseUrl: string
@@ -11,10 +11,11 @@ export interface OwnKeyModels {
 }
 
 export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, own: OwnKeyModels): void {
-  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large }, maxTokensField: "max_completion_tokens", reasoningHints: onCerebras(own.baseUrl) } as const
+  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large, ImageDescription: own.large }, maxTokensField: "max_completion_tokens", reasoningHints: onCerebras(own.baseUrl) } as const
   registerTwice(runtime, "@elizaos/agent/own-key", {
     [ModelType.TEXT_SMALL]: generateText(binding, endpoint, "TextSmall"),
     [ModelType.TEXT_LARGE]: generateText(binding, endpoint, "TextLarge"),
+    [ModelType.IMAGE_DESCRIPTION]: describeImage(binding, endpoint),
   }, { streamable: true })
 }
 

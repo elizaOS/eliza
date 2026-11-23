@@ -148,6 +148,10 @@ it("Propose only operations the device can check: each operation needs its own c
   assert.strictEqual(validate(whole, negotiation(true, "sms.latest-sender.v2"), "NoBinding")?.versionTwo, true)
   assert.strictEqual(readOperation({ type: "sms_latest_sender", includeAddress: false }), undefined)
   assert.isTrue(mayRunDirectly(checked(whole), "NoBinding", true))
+  const newTab = { type: "browser_navigate", url: "example.com/menu", newTab: true }
+  assert.isDefined(validate(samples.BrowserNavigate, negotiation(true, "files.browser.v1"), "NoBinding"))
+  assert.isUndefined(validate(newTab, negotiation(true, "files.browser.v1"), "NoBinding"))
+  assert.isDefined(validate(newTab, negotiation(true, "browser.open-new-tab.v1"), "NoBinding"))
 })
 
 it("Propose only operations the device can check: a targeted text, a draft in the sender's thread, a contact change by value and a dial to a contact need their newer capability, and a draft never reports a send", () => {
@@ -232,7 +236,7 @@ it("Propose only operations the device can check: a keypad, a contact search or 
     ["ReportedApplied", "refused", "ReportedApplied", "refused", "ReportedApplied", "ReportedUnknown", "ReportedApplied"])
 })
 
-it("Propose only operations the device can check: an album or share names the open photo only under photos.view-selected.v1, and a capture's library ID needs its capability", () => {
+it("Propose only operations the device can check: an album or share names the open photo only under photos.view-selected.v1, and a capture's library ID and lens each need their capability", () => {
   const view = "photos.library.v1,photos.view.v1"
   const openShare = { type: "photos_share", selected: true }
   const openAlbum = { type: "photos_album_create", name: "Trip", ids: [], selected: true }
@@ -254,6 +258,12 @@ it("Propose only operations the device can check: an album or share names the op
   assert.strictEqual(settled("camera.capture-photo.v1,camera.capture-library-id.v1", saved), "ReportedApplied")
   const { libraryId: _left, ...withoutId } = saved
   assert.strictEqual(settled("camera.capture-photo.v1", withoutId), "ReportedApplied")
+  const front = { type: "camera_capture_photo", lens: "front" }
+  assert.isUndefined(validate(front, negotiation(true, "camera.capture-photo.v1"), "NoBinding"))
+  assert.isUndefined(validate(front, negotiation(true, "camera.capture-lens.v1"), "NoBinding"))
+  assert.strictEqual(validate(front, negotiation(true, "camera.capture-photo.v1,camera.capture-lens.v1"), "NoBinding")?.versionTwo, false)
+  assert.strictEqual(validate({ type: "camera_capture_photo", lens: "back" }, negotiation(true, "camera.capture-photo.v1,camera.capture-lens.v1,camera.capture-library-id.v1"), "NoBinding")?.versionTwo, true)
+  assert.strictEqual(readOperation({ type: "camera_capture_photo", lens: "wide" }), undefined)
 })
 
 it("Propose only operations the device can check: only a reversible local operation bound to the owner's message runs directly", () => {

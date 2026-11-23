@@ -1,4 +1,4 @@
-// spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "The phone's Maps selection handle is never a provider place id"
+// spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"
 module browser {
   /** @throws {never} */
   export function webAddress(value: string): boolean {
@@ -35,13 +35,6 @@ export const MapsFailureCode = Schema.Literals(["unconfigured", "unavailable", "
 export type MapsFailureCode = typeof MapsFailureCode.Type
 
 export error MapsFailure { code: MapsFailureCode; message: string }
-
-const selectionHandle = /^maps_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-/** Whether a value is the phone's opaque Maps selection handle rather than a provider place id. */
-export function isMapsSelectionHandle(value: string): boolean {
-  return selectionHandle.test(value)
-}
 
 export interface ProviderCapabilities {
   readonly map: boolean

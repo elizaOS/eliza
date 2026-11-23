@@ -4958,7 +4958,7 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
 }), 300_000)
 
 // spec/core/context.md, "A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind"
-it('An expired proposal takes its preview\'s row and the legend says a never-ran reason answers only whether the request ran (spec/core/context.md, "A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind")', () => {
+it.effect('An expired proposal takes its preview\'s row and the legend says a never-ran reason answers only whether the request ran (spec/core/context.md, "A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind")', effect () => {
   const scope = "Past recorded outcomes only."
   const proposal = (id: string, ended: boolean) => normalizeEffectReceipt({
     receiptId: id,
@@ -4987,12 +4987,12 @@ it('An expired proposal takes its preview\'s row and the legend says a never-ran
     ["receipt_wire_1", "runtime:historical_receipt_encoding"],
     ["historical-effects:a", "runtime:historical_effects"],
   ])
-  assert.deepStrictEqual(JSON.parse(folded[0].content), {
+  assert.deepStrictEqual(try Effect.try(() => JSON.parse(folded[0].content) as unknown), {
     id: "receipt_wire_1",
     encoding: "row=[requestSourceEventId,[[actionName,success,receipt],...]]; receipt=[shape,[operation,[resourceKind,resourceId],outcome]]; shape 1 adds reason, 2 adds [commitKind], 3 adds [failureCode,failureRetryable,failureAcceptance]; other receipts are objects. history:hN names history source hN. Values are exact. A preview records a proposal, not its completion; a later proposal state takes its place. A reason that says it never ran means the owner declined it or it expired: that answers whether the request ran, not what the resource holds now. Each [id,row] segment with this id holds one row under this scope at its own chronological position.",
     scope,
   })
-  assert.deepStrictEqual(JSON.parse(folded[1].content), [
+  assert.deepStrictEqual(try Effect.try(() => JSON.parse(folded[1].content) as unknown), [
     "receipt_wire_1",
     [
       "history:a",
