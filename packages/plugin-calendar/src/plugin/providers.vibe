@@ -129,7 +129,15 @@ function rowFields(fields: CalendarEventFields): CalendarRowFields {
 }
 
 /** The agent's own calendar, one document Calendar per account in the KeyValueStore: series, overrides and exclusions, with optimistic revisions and idempotent writes. */
-export effect function residentCalendar(): CalendarProviderPort!!KeyValueStore.KeyValueStore {
+type ResidentCalendarPort = CalendarProviderPort & {
+  exactNamedOneOff(account: CalendarAccount, title: string): (CalendarEvent | undefined)!CalendarSourceUnavailable
+}
+
+export function calendarTitleKey(text: string): string {
+  return text.normalize("NFKC").toLowerCase().trim()
+}
+
+export effect function residentCalendar(): ResidentCalendarPort!!KeyValueStore.KeyValueStore {
   const store = try KeyValueStore.KeyValueStore
   const serialize = (try Semaphore.make(1)).withPermits(1)
   const accountScope = (account: CalendarAccount) => `${encodeURIComponent(account.agentId)}.${encodeURIComponent(account.accountId)}`
@@ -219,6 +227,14 @@ export effect function residentCalendar(): CalendarProviderPort!!KeyValueStore.K
   return {
     provider: "eliza",
     recurrenceLines: true,
+    effect exactNamedOneOff(account, title) {
+      const document = try readable(account)
+      const matches = document.rows.filter((row) => calendarTitleKey(row.title) === title)
+      const [row] = matches
+      return matches.length === 1 && row !== undefined && row.seriesId === undefined && recurrenceLines(row).length === 0
+        ? eventOf(account, document, row)
+        : undefined
+    },
     effect sources(account) {
       return [{ ...residentSource(account), accountEmail: null, summary: "Calendar", description: null, primary: true, accessRole: "owner", timeZone: null, selected: true, includeInFeed: true }]
     },

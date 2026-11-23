@@ -54,6 +54,31 @@ pure def lawForeignAccountRefused(provider: WriteProvider, writable: bool): bool
   writeRoute(provider, false, writable) == RefuseWrite
 ```
 
+### A chat delete runs directly only for the exact one-off event the owner named
+
+A request to delete a resident event needs the owner's own affirmative
+words from the authenticated turn. The full title must name one current
+one-off event in the resident calendar. If the owner did not name the
+resident calendar, it must be the only known source after a complete
+source listing. An ambiguous request or a planner hint that disagrees
+with the owner's title or event has no authority to delete. A recurring
+event or a request to delete more than one occurrence must be selected
+through the Calendar screen. A direct chat delete keeps one ledger
+identity for its owner request, so a replay cannot delete a second event.
+
+```quint
+type ResidentDeleteIntent = NamedResidentDelete | UnclearResidentDelete
+type ResidentDeleteTarget = ExactOneOff | NoExactOneOff
+type ResidentDeleteIdentity = { deleteActor: str, deleteTurn: str }
+pure def residentDeleteIdentity(deleteActor: str, deleteTurn: str): ResidentDeleteIdentity = { deleteActor: deleteActor, deleteTurn: deleteTurn }
+pure def directResidentDelete(intent: ResidentDeleteIntent, target: ResidentDeleteTarget, hintAgrees: bool, instanceOnly: bool): bool =
+  intent == NamedResidentDelete and target == ExactOneOff and hintAgrees and instanceOnly
+pure def lawPlannerCannotAuthorizeResidentDelete(target: ResidentDeleteTarget, hintAgrees: bool, instanceOnly: bool): bool =
+  not(directResidentDelete(UnclearResidentDelete, target, hintAgrees, instanceOnly))
+pure def lawResidentChatDeleteCannotBroaden(intent: ResidentDeleteIntent, target: ResidentDeleteTarget, hintAgrees: bool): bool =
+  not(directResidentDelete(intent, target, hintAgrees, false))
+```
+
 ### An approved change runs only with its reviewed fields for the account that approved it
 
 The executed change is the reviewed one: the same operation, target,

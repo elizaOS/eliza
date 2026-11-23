@@ -1,5 +1,6 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
-import { sha256Hex, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/actions.md, "A chat delete runs directly only for the exact one-off event the owner named"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
+import { incomingMessagePersistenceSnapshot, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
+import { directResidentDelete } from "../../gen/calendar__actions.effect.vibe"
 import { mustAskBeforeCreate } from "../../gen/calendar__readClock.effect.vibe"
 import type { CalendarEvent, CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
@@ -7,6 +8,7 @@ import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearchResult } from "./host.vibe"
+import { calendarTitleKey, eventInWindow, eventVersion } from "./providers.vibe"
 import { CalendarService, calendarServiceType } from "./service.vibe"
 
 /** The one Calendar action's name. */
@@ -185,6 +187,52 @@ effect function target(host: CalendarHost, parameters: Parameters, now: number) 
   return found === undefined ? { kind: "missing" as const } : { kind: "found" as const, found }
 }
 
+type OwnerDelete = { readonly title: string; readonly explicitResident: boolean }
+
+const deleteCommand = /^(?:please[ \t]+)?delete[ \t]+(.+?)([ \t]+from[ \t]+(?:my[ \t]+|the[ \t]+)?eliza[ \t]+calendar)?$/iu
+const localizedDeleteCommands = [/^删除(.+)$/u, /^(.+)を削除して(?:ください)?$/u, /^(.+?)(?:을|를)[ \t]*삭제해[ \t]*줘$/u]
+const quotedTitle = /^(?:"([^"]+)"|“([^”]+)”)$/u
+const bareTitle = /^[\p{L}\p{M}\p{N} -]+$/u
+const uncertainTitle = /(?:^| )(?:and|or|if|unless|not|except|instead|without)(?: |$)|不要|别|不删除|削除しない|削除しな|삭제하지/u
+
+function ownerDelete(words: string): OwnerDelete | undefined {
+  const text = words.normalize("NFKC").trim()
+  const command = deleteCommand.exec(text)
+  const operand = (command?.[1] ?? localizedDeleteCommands.find((pattern) => pattern.test(text))?.exec(text)?.[1])?.trim()
+  if (operand === undefined || operand.length === 0) return undefined
+  const quoted = quotedTitle.exec(operand)
+  const title = calendarTitleKey(quoted?.[1] ?? quoted?.[2] ?? operand)
+  const explicitResident = command?.[2] !== undefined
+  if (title.length === 0 || (quoted === null && (explicitResident || !bareTitle.test(title) || uncertainTitle.test(title)))) return undefined
+  return { title, explicitResident }
+}
+
+effect function residentDelete(host: CalendarHost, ask: CalendarAsk, askId: string, parameters: Parameters, now: number, zone: string, named: OwnerDelete | undefined) {
+  const found = named === undefined ? undefined : try host.residentDeleteTarget(named.title, named.explicitResident)
+  const span = parameters.timeMin === undefined && parameters.timeMax === undefined ? undefined : window(parameters, now - day, 60 * day)
+  const hintAgrees = found !== undefined
+    && (parameters.eventId === undefined || parameters.eventId === found.event.id)
+    && (parameters.calendarId === undefined || parameters.calendarId === found.source.calendarId)
+    && (parameters.query === undefined || calendarTitleKey(parameters.query) === named?.title)
+    && ((parameters.timeMin === undefined && parameters.timeMax === undefined)
+      || (span !== undefined && eventInWindow(found.event, span.timeMin, span.timeMax)))
+  const allowed = directResidentDelete(named === undefined ? "UnclearResidentDelete" : "NamedResidentDelete",
+    found === undefined ? "NoExactOneOff" : "ExactOneOff", hintAgrees, (parameters.recurrenceScope ?? "instance") === "instance")
+  if (!allowed || found === undefined) {
+    return failed("delete_event", 'Say Delete "Exact Title" from my Eliza calendar, or select the event in Calendar.', { needsConfirmation: "delete_target" })
+  }
+  const result = host.change({ kind: "residentChatDelete", target: found, askedBy: ask.by, askId }) catch () => undefined
+  if (result === undefined) return failed("delete_event", ledgerDown)
+  if (result.kind === "ran" && result.outcome.kind === "succeeded" && result.outcome.replayed) {
+    const receipt = result.outcome.receipt
+    if (receipt.target === null || receipt.eventId !== found.event.id || eventVersion(receipt.target) !== eventVersion(found.event)
+      || receipt.source.connectorAccountId !== found.source.connectorAccountId) {
+      return failed("delete_event", "This request already settled a different event. Ask again if you want to delete this one.")
+    }
+  }
+  return changeResult("delete_event", result, zone)
+}
+
 function updatedFields(found: CalendarFound, parameters: Parameters, zone: string): CalendarEventFields {
   const event = found.event
   return {
@@ -198,7 +246,7 @@ function updatedFields(found: CalendarFound, parameters: Parameters, zone: strin
   }
 }
 
-effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Parameters): ActionResult!! {
+effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Parameters, ownerWords: string): ActionResult!! {
   const subaction = parameters.subaction
   const now = try Clock.currentTimeMillis
   const zone = parameters.timeZone !== undefined && knownZone(parameters.timeZone) ? parameters.timeZone : hostZone()
@@ -237,7 +285,12 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
     }
     case "update_event":
     case "delete_event": {
+      const named = subaction === "delete_event" ? ownerDelete(ownerWords) : undefined
+      if (named?.explicitResident === true) return try residentDelete(host, ask, askId, parameters, now, zone, named)
       const lookup = try target(host, parameters, now)
+      if (subaction === "delete_event" && (lookup.kind !== "found" || lookup.found.source.provider === "eliza")) {
+        return try residentDelete(host, ask, askId, parameters, now, zone, named)
+      }
       if (lookup.kind === "ambiguous") {
         return failed(subaction, lookup.matches.length === 0 ? "I couldn't find that event." : `Which one? ${lookup.matches.slice(0, 5).map((event) => line(event, zone)).join("; ")}`,
           { candidates: lookup.matches.slice(0, 5).map((event) => ({ id: event.id, title: event.title, startAt: event.startAt })) })
@@ -254,10 +307,12 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
 }
 
 /** One Calendar action run for an ask, from the planner's untrusted parameters. */
-export effect function runCalendarAction(host: CalendarHost, ask: CalendarAsk, input: unknown): ActionResult!! {
+export effect function runCalendarAction(host: CalendarHost, ask: CalendarAsk, input: unknown, message?: Memory): ActionResult!! {
   const parameters = parametersOf({ parameters: input })
   if (parameters === undefined) return { success: false, text: `${calendarActionName} needs a subaction: ${subactions.join(", ")}.` }
-  return try handle(host, ask, parameters)
+  const boundDelete = parameters.subaction === "delete_event" && message !== undefined && message.id === ask.id && message.entityId === ask.by
+  const original = boundDelete ? (Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => undefined) : undefined
+  return try handle(host, ask, parameters, original === undefined ? "" : unwrapUserMessageText(original))
 }
 
 function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
@@ -268,7 +323,7 @@ function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
 /** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all, applied at once on the agent's own calendar and through the owner's approval on a connected provider calendar.",
+  description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all, applied on the agent's own calendar and through the owner's approval on a connected provider calendar. A direct resident delete needs the one-off event's exact title in the owner's request.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [
@@ -297,7 +352,7 @@ export const calendarAction: Action = {
     const host = serviceOf(runtime)
     if (host === undefined) return { success: false, text: "The calendar isn't running." }
     const input = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
-    return runPromise(runCalendarAction(host, askOf(message), input))
+    return runPromise(runCalendarAction(host, askOf(message), input, message))
   },
 }
 
