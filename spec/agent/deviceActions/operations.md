@@ -41,7 +41,7 @@ type OperationType =
   | SmsDraft | PhoneKeypad | ContactShow | ContactReadSelected
   | ReadSelectedNotes | ReadCalendarRange | ReadSelectedReminders | PostNotification | SpeakText
   | CreateNote | CreateReminder | OpenView | BrowserNavigate
-  | BrowserSearch | BrowserTabNew | BrowserTabSwitch | BrowserTabClose | BrowserFind | BrowserHistory
+  | BrowserSearch | BrowserTabNew | BrowserTabSwitch | BrowserTabClose | BrowserTabsShow | BrowserFind | BrowserHistory
 type Family = CalendarFamily | ReminderFamily | ReminderCreateFamily | CameraFamily | FilesFamily | ReviewFamily | MapsFamily | NotesFamily
   | NotesOrganizeFamily | NotesQueryFamily | PhotoLibraryFamily | PhotosViewFamily | TelephonyFamily | ClockFamily | WorkflowFamily | BaseFamily
   | BrowserFamily
@@ -69,7 +69,7 @@ pure def wireType(t: OperationType): str = match t {
   | PostNotification => "post_notification" | SpeakText => "speak_text"
   | CreateNote => "create_note" | CreateReminder => "create_reminder" | OpenView => "open_view" | BrowserNavigate => "browser_navigate"
   | BrowserSearch => "browser_search" | BrowserTabNew => "browser_tab_new" | BrowserTabSwitch => "browser_tab_switch"
-  | BrowserTabClose => "browser_tab_close" | BrowserFind => "browser_find" | BrowserHistory => "browser_history"
+  | BrowserTabClose => "browser_tab_close" | BrowserTabsShow => "browser_tabs_show" | BrowserFind => "browser_find" | BrowserHistory => "browser_history"
 }
 pure def family(t: OperationType): Family = match t {
   | CalendarCreateLocal => CalendarFamily | CalendarReadNext => CalendarFamily | CalendarCreate => CalendarFamily
@@ -95,7 +95,7 @@ pure def family(t: OperationType): Family = match t {
   | PostNotification => WorkflowFamily | SpeakText => WorkflowFamily
   | CreateNote => BaseFamily | CreateReminder => BaseFamily | OpenView => BaseFamily | BrowserNavigate => BaseFamily
   | BrowserSearch => BrowserFamily | BrowserTabNew => BrowserFamily | BrowserTabSwitch => BrowserFamily
-  | BrowserTabClose => BrowserFamily | BrowserFind => BrowserFamily | BrowserHistory => BrowserFamily
+  | BrowserTabClose => BrowserFamily | BrowserTabsShow => BrowserFamily | BrowserFind => BrowserFamily | BrowserHistory => BrowserFamily
 }
 pure def lawOneWireTypeIsOneOperation(a: OperationType, b: OperationType): bool =
   wireType(a) == wireType(b) implies
@@ -130,8 +130,9 @@ paths, which needs `files.shown-target.v1` beside `files.browser.v1`
 ([shown targets](../../files/shownTargets.md)); a typed address opened in a
 tab of its own (`newTab`), which needs `browser.open-new-tab.v1`; a tab
 close that names `all`, which needs `browser.tabs.close-all.v1` beside
-`browser.tabs.v1`; and each other Browser control, which needs its
-group's capability
+`browser.tabs.v1`. Showing the Browser's own list of open tabs needs
+`browser.tabs.show.v1` alone, never `browser.tabs.v1`; each other Browser
+control needs its group's capability
 ([Browser controls](../../browser/control.md)). The base and workflow
 operations need any capability other than the Clock handoff, so a device
 that advertised only the Clock handoff never receives them.
@@ -181,6 +182,7 @@ pure def familyNeed(f: Family, t: OperationType, versionTwo: bool): Need = match
   | BrowserFamily =>
       if (t == BrowserSearch) needOne(BrowserSearchV1) else if (t == BrowserFind) needOne(BrowserFindV1)
       else if (t == BrowserHistory) needOne(BrowserHistoryV1) else if (t == BrowserTabClose and versionTwo) needAll(BrowserTabsV1, BrowserTabsCloseAllV1)
+      else if (t == BrowserTabsShow) needOne(BrowserTabsShowV1)
       else needOne(BrowserTabsV1)
 }
 pure val negValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: Set() }), Negotiated({ capabilities: Set(ClockHandoffV1) }),
@@ -189,7 +191,7 @@ pure val negValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: S
   Negotiated({ capabilities: Set(CameraCapturePhotoV1, BrowserOpenNewTabV1) }),
   Negotiated({ capabilities: Set(CameraCapturePhotoV1, CameraCaptureLensV1) }),
   Negotiated({ capabilities: Set(BrowserTabsV1, BrowserTabsCloseAllV1, BrowserOpenNewTabV1, FilesBrowserV1, FilesShownTargetV1) }),
-  Negotiated({ capabilities: Set(BrowserTabsV1, FilesBrowserV1) }))
+  Negotiated({ capabilities: Set(BrowserTabsV1, FilesBrowserV1) }), Negotiated({ capabilities: Set(BrowserTabsShowV1) }))
 pure def clockOnly(neg: Negotiation): bool = allCapabilities.forall(c => negotiatedHas(neg, c) implies (c == ClockHandoffV1 or c == ClockHandoffV2))
 pure def recordingAlone(neg: Negotiation): bool = negotiatedHas(neg, NotesRecordV1)
 pure def lawRecordingRunsUnderItsOwnCapabilityAlone(t: OperationType): bool =
@@ -217,6 +219,8 @@ pure def lawClosingEveryTabNeedsItsOwnCapability(neg: Negotiation): bool =
   meets(neg, operationNeed(BrowserTabClose, true)) implies (negotiatedHas(neg, BrowserTabsCloseAllV1) and negotiatedHas(neg, BrowserTabsV1))
 pure def lawANewTabNeedsItsCapability(neg: Negotiation): bool =
   meets(neg, operationNeed(BrowserNavigate, true)) implies negotiatedHas(neg, BrowserOpenNewTabV1)
+pure def lawTheTabListNeedsOnlyItsCapability(versionTwo: bool, neg: Negotiation): bool =
+  meets(neg, operationNeed(BrowserTabsShow, versionTwo)) iff negotiatedHas(neg, BrowserTabsShowV1)
 ```
 
 ### A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability
@@ -317,7 +321,8 @@ pure def lawACaptureWithoutALensNeedsNoLens(neg: Negotiation): bool =
 
 Filtering or opening files, notes and photos, starting or stopping a voice
 note in the open Notes view, creating a note, opening a view or a web page,
-a Browser search, new tab, tab switch, find or history move, taking a photo,
+a Browser search, new tab, tab switch, find or history move, showing the
+Browser's own list of open tabs, taking a photo,
 selecting library photos, placing a reply draft in the open conversation or
 a Messages draft (which never sends), opening the Phone keypad (which never
 dials) and reading the latest SMS sender may skip the separate review, and
@@ -333,7 +338,7 @@ the [Browser](../../browser/control.md)'s.
 pure def directEligible(t: OperationType): bool =
   t == FilesFilter or t == FilesOpen or t == NotesFilter or t == NotesListFilter or t == NotesRecord or t == PhotosFilter or t == PhotosOpen
   or t == CreateNote or t == OpenView or t == BrowserNavigate or t == CameraCapturePhoto or t == PhotoLibrarySelect or t == SmsReplySelected
-  or t == BrowserSearch or t == BrowserTabNew or t == BrowserTabSwitch or t == BrowserFind or t == BrowserHistory
+  or t == BrowserSearch or t == BrowserTabNew or t == BrowserTabSwitch or t == BrowserTabsShow or t == BrowserFind or t == BrowserHistory
   or t == SmsDraft or t == PhoneKeypad or t == SmsLatestSender
 pure def mayRunDirectly(prop: Proposal, boundToCurrentMessage: bool): bool =
   directEligible(prop.opType) and prop.binding == NoBinding and boundToCurrentMessage
@@ -383,7 +388,8 @@ operation, failure code and typed result, which must show what the receipt
 reports. Phone and Clock results are evidence: one is missing only from an
 unknown receipt. Other reads and edits carry a result exactly when applied;
 files, notes organizing, Browser controls, workflow presentations and the
-base operations never carry one. An applied receipt names its native operation. An SMS or
+base operations never carry one, so a shown list of open tabs never reaches
+the agent as a list, a title, an address or a count. An applied receipt names its native operation. An SMS or
 MMS send, or a Messages text or draft, names the journal key of its claim, so a lost
 response reconciles against one native row and never sends twice. A
 failure the device reports as never dispatched, with no result, is admitted
@@ -438,6 +444,8 @@ pure def lawPhoneEvidenceIsMissingOnlyFromAnUnknownReceipt(t: OperationType, r: 
   (receiptAdmitted(t, r, claimKey) and evidenceOf(t) == OutcomeEvidence and r.result == NoResult and not(notDispatchedFailure(r))) implies r.reported == ReportsUnknown
 pure def lawASimSendNamesItsClaim(t: OperationType, r: DeviceReceipt, claimKey: str): bool =
   (receiptAdmitted(t, r, claimKey) and sharesSimJournal(t) and not(notDispatchedFailure(r))) implies r.operationId == claimKey
+pure def lawAShownTabListCarriesNoResult(r: DeviceReceipt, claimKey: str): bool =
+  receiptAdmitted(BrowserTabsShow, r, claimKey) implies r.result == NoResult
 ```
 
 ### A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it

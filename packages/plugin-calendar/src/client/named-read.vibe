@@ -1,5 +1,6 @@
 // spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/reviewedReads.md, "A named read opens Share for the owner's existing selected event"; spec/calendar/reviewedReads.md, "The read window covers the whole second around the selected start"
 import { Machine, canCancel, canStart, wholeSecond, type EventTarget, type NamedRequest } from "../../gen/calendar__reviewedReads.effect.vibe"
+export { Machine as ReviewedReadsMachine, machine as reviewedReadsMachine } from "../../gen/calendar__reviewedReads.effect.vibe"
 import { Instant, ZoneName } from "../availability/index.vibe"
 
 export const CALENDAR_NAMED_READ_CAPABILITY = "calendar.named-read.v1"

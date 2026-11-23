@@ -249,101 +249,113 @@ describe("the documents name what exists", () => {
 async function verifyGenerationInputs(root: string) {
   fs.rmSync(path.join(root, "packages/kit/spec"), { recursive: true });
   fs.symlinkSync(path.join(project, "node_modules"), path.join(root, "node_modules"), "dir");
-  const generationPlan = async ({ hosted = true, options = [], env = {} }: { hosted?: boolean; options?: string[]; env?: NodeJS.ProcessEnv } = {}) => {
+  const generationPlan = async (options: string[] = [], env: NodeJS.ProcessEnv = {}) => {
     const dry = await exec(process.execPath, [path.join(root, "vibestack/spec.ts"), "tasks", "//#gen", "@repo/kit#build", "//#lint:css", "--dry=json", "--cache=local:w", ...options], root, {
-      ...process.env, TURBO_TOKEN: "", TURBO_ROOT_TURBO_JSON: undefined, GITHUB_ACTIONS: String(hosted), GITHUB_JOB: "verify", GITHUB_WORKSPACE: root,
+      ...process.env, TURBO_TOKEN: "", TURBO_ROOT_TURBO_JSON: undefined, GITHUB_ACTIONS: "true", GITHUB_JOB: "verify", GITHUB_WORKSPACE: root,
       GITHUB_REPOSITORY: "elizaOS/eliza", GITHUB_WORKFLOW_REF: "elizaOS/eliza/.github/workflows/ci.yml@refs/heads/vibestack", ...env,
     });
     assert.equal(dry.status, 0, dry.stderr);
     const tasks: { taskId: string; hash: string; resolvedTaskDefinition: { cache: boolean; env: string[] } }[] = JSON.parse(dry.stdout).tasks;
-    return Object.fromEntries(tasks.map(({ taskId, hash, resolvedTaskDefinition }) => [taskId, { hash, ...resolvedTaskDefinition }]));
+    const generation = tasks.find(({ taskId }) => taskId === "//#gen");
+    const build = tasks.find(({ taskId }) => taskId === "@repo/kit#build");
+    const css = tasks.find(({ taskId }) => taskId === "//#lint:css");
+    assert.ok(generation && build && css);
+    assert.ok(build.resolvedTaskDefinition.cache);
+    return { gen: generation.hash, genCache: generation.resolvedTaskDefinition.cache, build: build.hash, cssEnv: css.resolvedTaskDefinition.env };
   };
-  type Plan = Awaited<ReturnType<typeof generationPlan>>;
-  const changed = (before: Plan, after: Plan, file: string) => {
-    assert.notEqual(after["//#gen"].hash, before["//#gen"].hash, `generation key for ${file}`);
-    assert.notEqual(after["@repo/kit#build"].hash, before["@repo/kit#build"].hash, `dependent build key for ${file}`);
+  const changed = (before: { gen: string; build: string }, after: { gen: string; build: string }, file: string) => {
+    assert.notEqual(after.gen, before.gen, `generation key for ${file}`);
+    assert.notEqual(after.build, before.build, `dependent build key for ${file}`);
   };
-  const proof = path.join(root, "spec/audit.proof.dfy");
-  fs.writeFileSync(proof, "lemma One() {}\n");
-  const local = await generationPlan({ hosted: false });
-  const hosted = await generationPlan();
-  fs.appendFileSync(proof, "lemma Two() {}\n");
-  assert.notEqual((await generationPlan({ hosted: false }))["//#gen"].hash, local["//#gen"].hash);
-  assert.equal((await generationPlan())["//#gen"].hash, hosted["//#gen"].hash);
-  fs.appendFileSync(path.join(root, "spec/app/index.md"), "\nMore words.\n");
-  changed(hosted, await generationPlan(), "spec/app/index.md");
+
+  const companion = path.join(root, "spec/kit/index.proof.dfy");
+  fs.writeFileSync(companion, "lemma One() {}\n");
+  const canonical = await generationPlan();
+  const local = await generationPlan([], { GITHUB_ACTIONS: "false" });
+  fs.appendFileSync(companion, "lemma Two() {}\n");
+  assert.deepEqual(await generationPlan(), canonical);
+  changed(local, await generationPlan([], { GITHUB_ACTIONS: "false" }), "ordinary local proof inputs");
+  fs.appendFileSync(path.join(root, "spec/kit/index.md"), "\nThis is still the kit.\n");
+  changed(canonical, await generationPlan(), "spec/kit/index.md");
 
   const alternate = "other turbo.jsonc";
-  const config = JSON.parse(read("turbo.json", root));
-  config.tasks["//#lint:css"].env = ["AUDIT_CONFIG"];
-  fs.writeFileSync(path.join(root, alternate), JSON.stringify(config).replace(/^{/, "{\n// Explicit workspace config\n"));
-  const explicit = await generationPlan({ options: ["--root-turbo-json", alternate] });
-  fs.unlinkSync(proof);
-  fs.symlinkSync("../missing-proof.dfy", proof);
-  const invalid = await generationPlan({ options: [`--root-turbo-json=${alternate}`] });
-  assert.ok(invalid["//#lint:css"].env.includes("AUDIT_CONFIG"));
-  assert.notEqual(invalid["//#gen"].hash, explicit["//#gen"].hash);
-  assert.deepEqual(await generationPlan({ env: { TURBO_ROOT_TURBO_JSON: alternate } }), invalid);
+  const alternateConfig = JSON.parse(read("turbo.json", root));
+  alternateConfig.tasks["//#lint:css"].env = ["AUDIT_CONFIG"];
+  fs.writeFileSync(path.join(root, alternate), JSON.stringify(alternateConfig).replace(/^{/, "{\n// Explicit workspace config\n"));
+  const selectedAlternate = ["--root-turbo-json", alternate];
+  const explicit = await generationPlan(selectedAlternate);
+  fs.unlinkSync(companion);
+  fs.symlinkSync("../missing-proof.dfy", companion);
+  const invalid = await generationPlan([`--root-turbo-json=${alternate}`]);
+  assert.deepEqual(invalid.cssEnv, ["AUDIT_CONFIG"]);
+  changed(explicit, invalid, "invalid companion in the explicitly selected config");
+  assert.deepEqual(await generationPlan([], { TURBO_ROOT_TURBO_JSON: alternate }), invalid);
+  fs.unlinkSync(companion);
+  fs.writeFileSync(companion, "lemma One() {}\nlemma Two() {}\n");
+  assert.deepEqual(await generationPlan(selectedAlternate), explicit);
+  const passthrough = await generationPlan(["--", "--root-turbo-json", alternate]);
+  assert.ok(!passthrough.cssEnv.includes("AUDIT_CONFIG"));
+
   const legacy = "legacy turbo.jsonc";
-  config.tasks["//#gen"].cache = true;
+  const config = JSON.parse(read("turbo.json", root));
   config.tasks["//#gen"].inputs.push("!spec/**/*.proof.dfy");
-  const writeLegacy = () => fs.writeFileSync(path.join(root, legacy), JSON.stringify(config).replace(/^{/, "{\n// Explicit workspace config\n"));
-  writeLegacy();
+  const customEnv = ["LEGACY_PROOF_TEST"];
+  config.tasks["//#lint:css"].env = customEnv;
+  const writeLegacyConfig = () => fs.writeFileSync(path.join(root, legacy), JSON.stringify(config).replace(/^{/, "{\n// The project selects this config.\n"));
+  writeLegacyConfig();
   const selected = ["--root-turbo-json", legacy];
-  const negative = await generationPlan({ options: selected });
-  assert.ok(negative["//#lint:css"].env.includes("AUDIT_CONFIG"));
-  assert.ok(negative["//#gen"].cache && negative["@repo/kit#build"].cache);
-  assert.deepEqual(await generationPlan({ env: { TURBO_ROOT_TURBO_JSON: legacy } }), negative);
-  assert.deepEqual(await generationPlan({ options: [...selected, "--cwd", root] }), negative);
-  assert.deepEqual(await generationPlan({ options: [...selected, "--cwd=packages/kit"] }), negative);
-  assert.equal((await generationPlan({ options: ["--cwd", root] }))["//#gen"].hash, (await generationPlan({ options: ["--cwd=packages/kit"] }))["//#gen"].hash);
-  fs.unlinkSync(proof);
-  fs.writeFileSync(proof, "lemma One() {}\nlemma Two() {}\n");
-  assert.deepEqual(await generationPlan({ options: ["--root-turbo-json", alternate] }), explicit);
-  const passThrough = await generationPlan({ options: ["--", "--root-turbo-json", alternate] });
-  assert.ok(!passThrough["//#lint:css"].env.includes("AUDIT_CONFIG"));
-  const attached = await generationPlan({ options: selected });
-  changed(negative, attached, "spec/audit.proof.dfy becomes a regular companion");
-  fs.appendFileSync(proof, "lemma Three() {}\n");
-  assert.deepEqual(await generationPlan({ options: selected }), attached);
+  const rootOnly = await generationPlan(selected);
+  assert.deepEqual(rootOnly.cssEnv, customEnv);
+  fs.appendFileSync(companion, "lemma Three() {}\n");
+  assert.deepEqual(await generationPlan(selected), rootOnly);
 
   const standalone = path.join(root, "packages/kit/spec");
   fs.mkdirSync(standalone);
-  changed(attached, await generationPlan({ options: selected }), "empty packages/kit/spec");
+  changed(rootOnly, await generationPlan(selected), "empty packages/kit/spec with only the root proof exclusion");
   fs.rmdirSync(standalone);
-  assert.deepEqual(await generationPlan({ options: selected }), attached);
+  assert.deepEqual(await generationPlan(selected), rootOnly);
 
   config.tasks["//#gen"].inputs.push("!apps/*/spec/**/*.proof.dfy", "!packages/*/spec/**/*.proof.dfy");
-  writeLegacy();
-  const allScopes = await generationPlan({ options: selected });
-  for (const area of ["spec/kit", "apps/app/spec", "packages/kit/spec"]) {
-    const nested = path.join(root, area, "nested.proof.dfy", "model.md");
-    fs.mkdirSync(path.dirname(nested), { recursive: true });
-    fs.writeFileSync(nested, "# Hidden model\n");
-    const before = await generationPlan({ options: selected });
-    changed(allScopes, before, nested);
-    const canonicalBefore = area === "spec/kit" ? await generationPlan() : undefined;
-    fs.appendFileSync(nested, "\nMore words.\n");
-    const after = await generationPlan({ options: selected });
-    changed(before, after, nested);
-    assert.ok(after["//#lint:css"].env.includes("AUDIT_CONFIG"));
-    if (canonicalBefore) {
-      changed(canonicalBefore, await generationPlan(), nested);
-      assert.deepEqual(await generationPlan({ options: [`--root-turbo-json=${legacy}`] }), after);
+  writeLegacyConfig();
+  const attached = await generationPlan(selected);
+
+  for (const area of ["spec/kit", "apps/app/spec", "packages/ui/spec"]) {
+    const file = `${area}/old.proof.dfy/model.md`;
+    const directory = path.join(root, area);
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), "# Hidden model\n");
+    const before = await generationPlan(selected);
+    changed(attached, before, file);
+    fs.appendFileSync(path.join(root, file), "\nA second version of this model.\n");
+    const after = await generationPlan(selected);
+    changed(before, after, file);
+    assert.deepEqual(after.cssEnv, customEnv);
+    if (area === "spec/kit") {
+      assert.deepEqual(await generationPlan([`--root-turbo-json=${legacy}`]), after);
+      assert.deepEqual(await generationPlan([], { TURBO_ROOT_TURBO_JSON: legacy }), after);
+      assert.deepEqual(await generationPlan([...selected, "--cwd=packages/kit"]), after);
     }
-    fs.rmSync(path.dirname(nested), { recursive: true });
-    if (area !== "spec/kit") fs.rmdirSync(path.join(root, area));
+    fs.rmSync(path.join(directory, "old.proof.dfy"), { recursive: true });
+    if (area !== "spec/kit") fs.rmdirSync(directory);
   }
+  config.tasks["//#gen"].cache = false;
+  writeLegacyConfig();
+  const disabled = await generationPlan(selected);
+  assert.equal(disabled.genCache, false);
+  assert.deepEqual(disabled.cssEnv, customEnv);
+  fs.mkdirSync(standalone);
+  const independentBuild = await generationPlan([...selected, "--cwd", root]);
+  changed(disabled, independentBuild, "a dependent build when generation caching is disabled");
+  assert.equal(independentBuild.genCache, false);
+  fs.rmdirSync(standalone);
 
   const manifest = JSON.parse(read("package.json", root));
   for (const scripts of [{ ...manifest.scripts, pregen: "node -e 0" }, { ...manifest.scripts, gen: "node custom-generator.mjs" }]) {
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ ...manifest, scripts }));
-    const attached = await generationPlan({ options: selected });
+    const attached = await generationPlan(selected);
     fs.mkdirSync(standalone);
-    const independent = await generationPlan({ options: selected });
-    changed(attached, independent, "a legacy generation task with a project-defined command or hook");
-    assert.ok(independent["//#lint:css"].env.includes("AUDIT_CONFIG"));
-    assert.ok(independent["//#gen"].cache && independent["@repo/kit#build"].cache);
+    changed(attached, await generationPlan(selected), "a legacy generation task with a project-defined command or hook");
     fs.rmdirSync(standalone);
   }
+
 }
