@@ -1,0 +1,346 @@
+// spec/nativeTalkmode/index.md, "Story: Converse by voice without audio from a retired session playing or recording"
+import type { PluginListenerHandle } from "@capacitor/core";
+
+export interface TTSDirective {
+
+  voiceId?: string;
+
+  modelId?: string;
+
+  outputFormat?: string;
+
+  speed?: number;
+
+  rateWpm?: number;
+
+  stability?: number;
+
+  similarity?: number;
+
+  style?: number;
+
+  speakerBoost?: boolean;
+
+  seed?: number;
+
+  normalize?: boolean;
+
+  language?: string;
+
+  latencyTier?: number;
+
+  once?: boolean;
+}
+
+export interface TTSConfig {
+
+  voiceId?: string;
+
+  modelId?: string;
+
+  outputFormat?: string;
+
+  apiKey?: string;
+
+  voiceAliases?: Record<string, string>;
+
+  interruptOnSpeech?: boolean;
+}
+
+export interface SpeakOptions {
+
+  text: string;
+
+  directive?: TTSDirective;
+
+  useLocalInferenceTts?: boolean;
+
+  useSystemTts?: boolean;
+}
+
+export interface SpeakResult {
+
+  completed: boolean;
+
+  interrupted: boolean;
+
+  interruptedAt?: number;
+
+  usedSystemTts: boolean;
+
+  error?: string;
+}
+
+export type TalkModeSessionMode =
+  | "idle"
+  | "compose"
+  | "push-to-talk"
+  | "hands-free"
+  | "passive";
+
+export interface TalkModeSpeakerMetadata {
+
+  entityId?: string;
+
+  sourceId?: string;
+
+  source?: string;
+
+  name?: string;
+
+  userName?: string;
+
+  channelId?: string;
+  roomId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface TalkModeVoiceTurn {
+
+  id?: string;
+
+  text: string;
+
+  mode: TalkModeSessionMode;
+
+  isFinal: boolean;
+
+  speaker?: TalkModeSpeakerMetadata;
+
+  source?: string;
+
+  startedAtMs?: number;
+
+  endedAtMs?: number;
+
+  confidence?: number;
+
+  metadata?: Record<string, unknown>;
+}
+
+export interface TalkModeConfig {
+
+  mode?: Exclude<TalkModeSessionMode, "idle">;
+
+  sessionKey?: string;
+
+  tts?: TTSConfig;
+
+  stt?: {
+
+    engine?: "native" | "web";
+
+    modelSize?: "tiny" | "base" | "small" | "medium" | "large";
+
+    language?: string;
+
+    sampleRate?: number;
+  };
+
+  silenceWindowMs?: number;
+
+  interruptOnSpeech?: boolean;
+}
+
+export type TalkModeState =
+  | "idle"
+  | "listening"
+  | "processing"
+  | "speaking"
+  | "error";
+
+export interface TalkModeStateEvent {
+
+  state: TalkModeState;
+
+  previousState: TalkModeState;
+
+  mode?: TalkModeSessionMode;
+
+  statusText: string;
+
+  usingSystemTts?: boolean;
+}
+
+export interface TalkModeTranscriptEvent {
+
+  transcript: string;
+
+  isFinal: boolean;
+
+  mode?: Exclude<TalkModeSessionMode, "idle">;
+
+  speaker?: TalkModeSpeakerMetadata;
+
+  turn?: TalkModeVoiceTurn;
+
+  source?: string;
+
+  confidence?: number;
+}
+
+export interface TTSSpeakingEvent {
+
+  text: string;
+
+  isSystemTts: boolean;
+}
+
+export interface TTSCompleteEvent {
+
+  completed: boolean;
+
+  interruptedAt?: number;
+}
+
+export interface TalkModeErrorEvent {
+
+  code: string;
+
+  message: string;
+
+  recoverable: boolean;
+}
+
+export interface TalkModePlaybackStartEvent {
+
+  provider: "elevenlabs" | "local-inference" | "system";
+
+  sampleRate?: number;
+
+  channels?: number;
+}
+
+export interface TalkModePlaybackFrameEvent {
+
+  provider: "elevenlabs" | "local-inference" | "system";
+
+  pcm16: string;
+
+  sampleRate: number;
+
+  channels: number;
+
+  samples: number;
+
+  timestamp: number;
+
+  frameIndex: number;
+}
+
+export interface TalkModeAudioFrameEvent {
+
+  pcm16: string;
+
+  sampleRate: number;
+
+  channels: 1;
+
+  samples: number;
+
+  rms: number;
+
+  timestamp: number;
+
+  frameIndex: number;
+}
+
+export interface AudioFrameOptions {
+
+  sampleRate?: number;
+
+  frameMs?: number;
+}
+
+export interface AudioFrameResult {
+
+  started: boolean;
+
+  sampleRate?: number;
+
+  frameSamples?: number;
+
+  suspendedStt?: boolean;
+
+  error?: string;
+}
+
+export interface TalkModePermissionStatus {
+
+  microphone: "granted" | "denied" | "prompt";
+
+  speechRecognition: "granted" | "denied" | "prompt" | "not_supported";
+}
+
+export interface TalkModePlugin {
+
+  start(options?: {
+    config?: TalkModeConfig;
+  }): Promise<{ started: boolean; error?: string }>;
+
+  stop(): Promise<void>;
+
+  isEnabled(): Promise<{ enabled: boolean }>;
+
+  getState(): Promise<{ state: TalkModeState; statusText: string }>;
+
+  updateConfig(options: { config: Partial<TalkModeConfig> }): Promise<void>;
+
+  speak(options: SpeakOptions): Promise<SpeakResult>;
+
+  stopSpeaking(): Promise<{ interruptedAt?: number }>;
+
+  isSpeaking(): Promise<{ speaking: boolean }>;
+
+  checkPermissions(): Promise<TalkModePermissionStatus>;
+
+  requestPermissions(): Promise<TalkModePermissionStatus>;
+
+  startAudioFrames(options?: AudioFrameOptions): Promise<AudioFrameResult>;
+
+  stopAudioFrames(): Promise<void>;
+
+  isCapturingAudioFrames(): Promise<{ capturing: boolean }>;
+
+  addListener(
+    eventName: "stateChange",
+    listenerFunc: (event: TalkModeStateEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "transcript",
+    listenerFunc: (event: TalkModeTranscriptEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "speaking",
+    listenerFunc: (event: TTSSpeakingEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "speakComplete",
+    listenerFunc: (event: TTSCompleteEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "error",
+    listenerFunc: (event: TalkModeErrorEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "playbackStart",
+    listenerFunc: (event: TalkModePlaybackStartEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "playbackFrame",
+    listenerFunc: (event: TalkModePlaybackFrameEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "audioFrame",
+    listenerFunc: (event: TalkModeAudioFrameEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  removeAllListeners(): Promise<void>;
+}

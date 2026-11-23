@@ -1,0 +1,35 @@
+{
+  "name": "@elizaos/plugin-network",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Network member availability, updates and relay actions.",
+  "license": "MIT",
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "typecheck": "vibelang --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "@effect/vitest": "4.1.1",
+    "@mockoon/cli": "9.9.0",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
+  },
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    }
+  }
+}

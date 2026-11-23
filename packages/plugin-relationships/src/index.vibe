@@ -1,0 +1,41 @@
+// spec/relationships/index.md, "Story: Resolve people and manage the graph inside my agent"
+import { findIdentity, graphFor, mayMergeEntities, redirectMergedEdge, type GraphEdge, type GraphEntity, type GraphIdentity } from "../gen/relationships.effect.vibe"
+
+export error RelationshipStoreFailure { reason: string }
+export error InvalidEntityMerge { tenant: string; targetId: string }
+
+export interface GraphSnapshot {
+  readonly entities: GraphEntity[]
+  readonly edges: GraphEdge[]
+  readonly identities: GraphIdentity[]
+  readonly revision: number
+}
+
+export service GraphStore {
+  snapshot(tenant: string): GraphSnapshot!RelationshipStoreFailure
+  merge(tenant: string, seenRevision: number, targetId: string, sourceIds: readonly string[], edges: readonly GraphEdge[]): boolean!RelationshipStoreFailure
+}
+
+export effect function resolveIdentity(tenant: string, source: string, identity: string) {
+  if (tenant === "" || source === "" || identity === "") return undefined
+  const graph = try (try GraphStore).snapshot(tenant)
+  const matching = findIdentity(graph.identities, tenant, source, identity)
+  return matching.length === 1 ? matching[0] : undefined
+}
+
+export effect function readRelationships(tenant: string) {
+  if (tenant === "") return []
+  const graph = try (try GraphStore).snapshot(tenant)
+  return graphFor(graph.edges, graph.entities, tenant)
+}
+
+export effect function mergeEntities(tenant: string, targetId: string, sourceIds: readonly string[]) {
+  const store = try GraphStore
+  const graph = try store.snapshot(tenant)
+  const sources = [...new Set(sourceIds)]
+  if (!mayMergeEntities(graph.entities, tenant, targetId, sources)) throw new InvalidEntityMerge({ tenant, targetId })
+  const affected = graph.edges
+    .filter((edge) => edge.edgeSpace === tenant && (sources.includes(edge.fromId) || sources.includes(edge.toId)))
+    .map((edge) => redirectMergedEdge(edge, tenant, targetId, sources))
+  return try store.merge(tenant, graph.revision, targetId, sources, affected)
+}

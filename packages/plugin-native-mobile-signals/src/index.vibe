@@ -1,0 +1,39 @@
+// spec/nativeMobileSignals/index.md, "Story: Observe only the mobile signals I have authorized"
+import type { MobileSignalsPlugin } from "./native-contract.vibe"
+
+export type * from "./native-contract.vibe"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { MobileSignalsPlugin } from "./native-contract.vibe"
+
+  export const native = registerPlugin<MobileSignalsPlugin>("MobileSignals")
+}
+import { native } from capacitor
+
+export const MobileSignals = native
+
+import { nativeReply } from "@elizaos/os/bridges/bridge"
+import { mayObserveSignal, type MobileMonitor, type SignalGrants } from "../gen/nativeMobileSignals.effect.vibe"
+
+const DeviceObservation = Schema.Struct({
+  source: Schema.Literal("mobile_device"),
+  platform: Schema.Literals(["android", "ios", "web"]),
+  observedAt: Schema.Number,
+  idleState: Schema.NullOr(Schema.Literals(["active", "idle", "locked", "unknown"])),
+  idleTimeSeconds: Schema.NullOr(Schema.Number),
+})
+const Snapshot = Schema.Struct({ supported: Schema.Boolean, snapshot: Schema.NullOr(DeviceObservation) })
+
+export error MobileObservationRefused
+
+export effect function readMobileObservation(monitor: () => MobileMonitor, generation: number, grants: () => SignalGrants, port: MobileSignalsPlugin = MobileSignals) {
+  if (!Number.isSafeInteger(generation) || !mayObserveSignal(monitor(), generation, grants(), "DeviceBattery")) {
+    throw new MobileObservationRefused()
+  }
+  const state = try nativeReply("MobileSignals", "getSnapshot", Snapshot, () => port.getSnapshot())
+  if (!state.supported || state.snapshot === null || !mayObserveSignal(monitor(), generation, grants(), "DeviceBattery")) {
+    throw new MobileObservationRefused()
+  }
+  return state.snapshot
+}
