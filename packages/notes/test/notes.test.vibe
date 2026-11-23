@@ -95,7 +95,7 @@ function action(plugin: ReturnType<typeof notesPlugin>, name: string) {
 
 const voice = (id: string, audioId: string) => ({ kind: "voice", data: { recordingId: audioId, audio: { audioId }, lines: [{ s: "speaker-1", t: `Said in ${id}` }] } })
 
-it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged")', effect () => {
+it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A turn\'s Notes classification narrows what Notes may write and never grants a write"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along")', effect () => {
   const f = fixture()
   const notes = notesOver(f)
   const first = try notes.create({ content: "Groceries\n- milk", creationId: "step-1" })
@@ -136,6 +136,9 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.deepEqual(home, { id: "folder-home", name: "Home stuff" })
   try notes.move({ id: "note-1" }, home?.id ?? null)
   assert.equal((try notes.snapshot()).notes.find((note) => note.id === "note-1")?.format?.data.folderId, "folder-home")
+  const packing = [try notes.create({ content: "Packing\n- tent", forceNew: true }), try notes.create({ content: "Packing\n- tent", forceNew: true })].map((made) => made.value.note.id)
+  try notes.move({ selector: "query", value: "packing" }, findNoteFolder(folders ?? [], "work")?.id ?? null)
+  assert.deepEqual((try notes.snapshot()).notes.filter((note) => packing.includes(note.id)).map((note) => note.format?.data.folderId), ["folder-work", "folder-work"])
   assert.isUndefined(readNoteFolders({ notesFolders: [{ id: "a", name: "Work" }, { id: "b", name: "work" }] }))
 
   const listed = try action(plugin, "NOTES_LIST")(message("latest note"), { latestBy: "createdAt" })
@@ -162,7 +165,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   const namedRead = (text: string) => promise(async () => namedNoteReadEvaluator(notes).evaluate({ messageHandler: { processMessage: "RESPOND", plan, thought: "" }, message: message(text) } as never))
   assert.isUndefined(try namedRead("read my groceries note"))
   assert.deepEqual(try namedRead("read my shopping note"), { requiresTool: true, clearReply: true, deterministicToolCall: { name: "NOTES_GET", params: { noteId: "note-1" } } })
-  assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:created", "note:deleted", "note:moved", "note:updated"])
+  assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:created", "note:deleted", "note:moved", "note:created", "note:created", "note:moved", "note:updated"])
 })
 
 it.effect('Restore a deleted note exactly, at the revision the owner saw (spec/notes/trash.md, "Story: Recover a deleted note")', effect () => {

@@ -82,6 +82,22 @@ pure def lawOnlyTheOwnerReachesNotes(wordsNameTitle: bool): bool = not(deleteByN
 pure def lawUnnamedNoteIsNotDeleted(isOwner: bool): bool = not(deleteByNameAllowed(isOwner, false))
 ```
 
+### A move by name takes the identical copies of the note along
+
+Plain saved notes with the same title, body and color are one note to a
+lookup, as when the owner's editor saved the same text twice. A move that
+names the note by its words puts every such copy in the folder, so no copy
+stays behind outside it; a move by ID changes only that note.
+
+```quint
+pure def moveTakesCopy(byName: bool, resolvedNote: bool, identicalCopy: bool): bool =
+  resolvedNote or (byName and identicalCopy)
+pure def lawResolvedNoteMoves(byName: bool, identicalCopy: bool): bool = moveTakesCopy(byName, true, identicalCopy)
+pure def lawMoveByIdLeavesOtherNotes(identicalCopy: bool): bool = not(moveTakesCopy(false, false, identicalCopy))
+pure def lawMoveByNameLeavesNoCopyBehind(resolvedNote: bool): bool = moveTakesCopy(true, resolvedNote, true)
+pure def lawDifferentNoteStays(byName: bool): bool = not(moveTakesCopy(byName, false, false))
+```
+
 ### A calendar draft made from a note is admitted only while that exact note is unchanged
 
 A draft made from a note carries a source reference: this agent's ID, the
