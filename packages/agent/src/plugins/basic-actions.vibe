@@ -155,7 +155,7 @@ export effect function calculate(expression: string): Calculation!ExpressionRefu
   return { expression, value: String(Number(result.value.toPrecision(15))), exact: false }
 }
 
-const gateRoles: Partial<Record<Role, RoleGateRole>> = { Guest: "GUEST", User: "USER", Admin: "ADMIN", Owner: "OWNER" }
+export const gateRoles: Partial<Record<Role, RoleGateRole>> = { Guest: "GUEST", User: "USER", Admin: "ADMIN", Owner: "OWNER" }
 
 function expressionOf(options: unknown): string {
   const parameters = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined

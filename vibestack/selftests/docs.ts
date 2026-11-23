@@ -254,7 +254,7 @@ async function verifyGenerationInputs(root: string) {
       GITHUB_REPOSITORY: "elizaOS/eliza", GITHUB_WORKFLOW_REF: "elizaOS/eliza/.github/workflows/ci.yml@refs/heads/vibestack", ...env,
     });
     assert.equal(dry.status, 0, dry.stderr);
-    const tasks: { taskId: string; hash: string; resolvedTaskDefinition: { env: string[] } }[] = JSON.parse(dry.stdout).tasks;
+    const tasks: { taskId: string; hash: string; resolvedTaskDefinition: { cache: boolean; env: string[] } }[] = JSON.parse(dry.stdout).tasks;
     return Object.fromEntries(tasks.map(({ taskId, hash, resolvedTaskDefinition }) => [taskId, { hash, ...resolvedTaskDefinition }]));
   };
   const proof = path.join(root, "spec/audit.proof.dfy");
@@ -278,6 +278,15 @@ async function verifyGenerationInputs(root: string) {
   assert.ok(invalid["//#lint:css"].env.includes("AUDIT_CONFIG"));
   assert.notEqual(invalid["//#gen"].hash, explicit["//#gen"].hash);
   assert.deepEqual(await generationPlan({ env: { TURBO_ROOT_TURBO_JSON: alternate } }), invalid);
+  const legacy = "legacy turbo.jsonc";
+  config.tasks["//#gen"].cache = true;
+  config.tasks["//#gen"].inputs.push("!spec/**/*.proof.dfy", "!apps/*/spec/**/*.proof.dfy", "!packages/*/spec/**/*.proof.dfy");
+  fs.writeFileSync(path.join(root, legacy), JSON.stringify(config).replace(/^{/, "{\n// Explicit workspace config\n"));
+  const negative = await generationPlan({ options: ["--root-turbo-json", legacy] });
+  assert.deepEqual({ selected: negative["//#lint:css"].env.includes("AUDIT_CONFIG"), cached: negative["//#gen"].cache }, { selected: true, cached: false });
+  assert.deepEqual(await generationPlan({ env: { TURBO_ROOT_TURBO_JSON: legacy } }), negative);
+  assert.equal((await generationPlan({ options: ["--root-turbo-json", legacy, "--cwd", root] }))["//#gen"].cache, false);
+  assert.equal((await generationPlan({ options: ["--root-turbo-json", legacy, "--cwd=packages/kit"] }))["//#gen"].cache, false);
   assert.equal((await generationPlan({ options: ["--cwd", root] }))["//#gen"].hash, (await generationPlan({ options: ["--cwd=packages/kit"] }))["//#gen"].hash);
   fs.unlinkSync(proof);
   fs.writeFileSync(proof, "lemma One() {}\nlemma Two() {}\n");
@@ -288,6 +297,7 @@ async function verifyGenerationInputs(root: string) {
   const nested = path.join(root, "spec/nested.proof.dfy/model.md");
   fs.appendFileSync(nested, "\nMore words.\n");
   const beforeNested = await generationPlan();
+  assert.equal((await generationPlan({ options: ["--root-turbo-json", legacy] }))["//#gen"].cache, false);
   fs.appendFileSync(nested, "\nMore words.\n");
   assert.notEqual((await generationPlan())["//#gen"].hash, beforeNested["//#gen"].hash);
 }

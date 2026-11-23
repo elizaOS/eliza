@@ -131,7 +131,7 @@ function definitionView(row: DefinitionRow) {
   return {
     id: row.id, name: row.name, description: row.description, active: row.admission.active, removed: row.lifecycleState.removed,
     triggerCleanup: row.lifecycleState.removed && !row.lifecycleState.cleaned ? "pending" : "complete", versionId: versionId(row.admission.version),
-    steps: generated === undefined ? row.spec.steps.map((step) => ({ label: stepLabel(step) })) : generated.calls.map((call) => ({ label: `${call.method}: ${call.id}` })), metadata, origin: row.origin, createdAt: row.createdAt, updatedAt: row.updatedAt,
+    steps: generated === undefined ? row.spec.steps.map((step) => ({ id: step.id, label: stepLabel(step) })) : generated.calls.map((call) => ({ id: call.id, label: `${call.method}: ${call.id}` })), metadata, origin: row.origin, createdAt: row.createdAt, updatedAt: row.updatedAt,
   }
 }
 
@@ -1403,6 +1403,12 @@ export effect function openWorkflows(host: WorkflowHost) {
     admissionFor, lifecycleFor, executionStep, executionState, approvalStep, approvalState, generatedStep, generatedState,
   } = workflowConformance(rows)
 
+  effect function settle(runId: string) {
+    const fiber = running.get(runId)
+    if (fiber !== undefined) try Fiber.join(fiber)
+    return runView(try runOf(runId))
+  }
+
   effect function start(): void!! {
     try Ref.set(stopping, false)
     void (effect {
@@ -1448,7 +1454,7 @@ export effect function openWorkflows(host: WorkflowHost) {
   }
   return {
     host, store, owner, lock, now, db, status, catalog, validate, generate, draftSpec, save, saveReceipt, list, detail, activation, metadata, metadataReceipt, lifecycle, lifecycleReceipt,
-    run, submit, launch, submission, executions, execution, cancel, approvals, decide, phoneReview, arm, fire, start, stop, definitionOf, writeDefinition, admitted,
+    run, submit, launch, settle, submission, executions, execution, cancel, approvals, decide, phoneReview, arm, fire, start, stop, definitionOf, writeDefinition, admitted,
     project, runOf, updateRun, executed, persist, finishApprovals, freshRun, definitionView, runView, recordOccurrence, deviceProtocol, refuse,
     admissionFor, lifecycleFor, executionStep, executionState, approvalStep, approvalState, signal, runEvents, revisions, restoreRevision, evaluationSuite,
     generatedStep, generatedState, checkSource, generatedActivation,

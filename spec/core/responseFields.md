@@ -97,19 +97,19 @@ When a handler's whole effect applies without failure, its requested preemption 
 type PreemptMode = AcknowledgeAndStop | IgnoreReply | DirectReply
 type PreemptEffect = NoPreemptEffect | RequestPreempt({ mode: PreemptMode, reason: str })
 type HandlerOutcome = HandlerReturned({ effect: PreemptEffect }) | HandlerCallbackFailed | HandlerEffectFailed | HandlerCallbackCancelled | HandlerEffectCancelled | HandlerSkippedSignalAborted
-type FieldPreemption = NoFieldPreemption | PreemptedField({ field: str, mode: PreemptMode, reason: str })
+type FieldPreemption = NoFieldPreemption | PreemptedField({ part: str, mode: PreemptMode, reason: str })
 pure def preemptModeLabel(mode: PreemptMode): str = match mode { | AcknowledgeAndStop => "ack-and-stop" | IgnoreReply => "ignore" | DirectReply => "direct-reply" }
 pure def hasFieldPreemption(preemption: FieldPreemption): bool = match preemption { | PreemptedField(preempt) => true | _ => false }
 pure def isPreempted(f: FieldDispatch): bool = hasFieldPreemption(f.preemption)
 pure def runPreemption(f: FieldDispatch): PreemptEffect = { val preemption = f.preemption
   match preemption { | PreemptedField(preempt) => RequestPreempt({ mode: preempt.mode, reason: preempt.reason }) | _ => NoPreemptEffect } }
 pure def tracePreemption(f: FieldDispatch, name: str): PreemptEffect = { val preemption = f.preemption
-  match preemption { | PreemptedField(preempt) => if (preempt.field == name) RequestPreempt({ mode: preempt.mode, reason: preempt.reason }) else NoPreemptEffect | _ => NoPreemptEffect } }
+  match preemption { | PreemptedField(preempt) => if (preempt.part == name) RequestPreempt({ mode: preempt.mode, reason: preempt.reason }) else NoPreemptEffect | _ => NoPreemptEffect } }
 pure def hasPreemptEffect(effect: PreemptEffect, mode: PreemptMode, reason: str): bool = match effect { | RequestPreempt(preempt) => preempt.mode == mode and preempt.reason == reason | _ => false }
 pure def completedCallback(handlerResult: HandlerOutcome): bool = match handlerResult { | HandlerReturned(returned) => true | HandlerEffectFailed => true | HandlerEffectCancelled => true | _ => false }
 pure def failedHandler(handlerResult: HandlerOutcome): bool = match handlerResult { | HandlerCallbackFailed => true | HandlerEffectFailed => true | _ => false }
 pure def cancelledHandler(handlerResult: HandlerOutcome): bool = match handlerResult { | HandlerCallbackCancelled => true | HandlerEffectCancelled => true | _ => false }
-pure def effectPreemption(name: str, effect: PreemptEffect): FieldPreemption = match effect { | RequestPreempt(preempt) => PreemptedField({ field: name, mode: preempt.mode, reason: preempt.reason }) | _ => NoFieldPreemption }
+pure def effectPreemption(name: str, effect: PreemptEffect): FieldPreemption = match effect { | RequestPreempt(preempt) => PreemptedField({ part: name, mode: preempt.mode, reason: preempt.reason }) | _ => NoFieldPreemption }
 pure def handlerPreemption(name: str, handlerResult: HandlerOutcome): FieldPreemption = match handlerResult { | HandlerReturned(returned) => effectPreemption(name, returned.effect) | _ => NoFieldPreemption }
 pure def canHandleFieldOutcome(f: FieldDispatch, name: str): bool = canHandleField(f, name)
 pure def handleFieldOutcome(f: FieldDispatch, name: str, handlerResult: HandlerOutcome): FieldDispatch = {
@@ -117,7 +117,7 @@ pure def handleFieldOutcome(f: FieldDispatch, name: str, handlerResult: HandlerO
   { ...f, ready: f.ready.exclude(Set(name)), attempted: f.attempted.union(Set(name)), handled: if (completedCallback(handlerResult)) f.handled.union(Set(name)) else f.handled, errors: if (failedHandler(handlerResult)) f.errors.union(Set(name)) else f.errors, preempted: hasFieldPreemption(preemption), preemption: preemption, aborted: cancelledHandler(handlerResult) }
 }
 pure def alwaysPreemptionNamesHandledField(f: FieldDispatch): bool = { val preemption = f.preemption
-  match preemption { | PreemptedField(preempt) => f.handled.contains(preempt.field) and f.preempted and not(f.aborted) | _ => true } }
+  match preemption { | PreemptedField(preempt) => f.handled.contains(preempt.part) and f.preempted and not(f.aborted) | _ => true } }
 pure def stepPreemptionPersistsUntilNextDispatch(before: FieldDispatch, via: str, after: FieldDispatch): bool = via != "beginDispatch" and isPreempted(before) implies after.preemption == before.preemption
 pure def lawRequestedPreemptionRetained(f: FieldDispatch, name: str, mode: PreemptMode, reason: str): bool = {
   val handledField = handleFieldOutcome(f, name, HandlerReturned({ effect: RequestPreempt({ mode: mode, reason: reason }) }))
@@ -125,9 +125,9 @@ pure def lawRequestedPreemptionRetained(f: FieldDispatch, name: str, mode: Preem
 }
 pure def lawPreemptModesAreDistinct(mode: PreemptMode, other: PreemptMode): bool = mode != other implies preemptModeLabel(mode) != preemptModeLabel(other)
 pure def lawRunAndTracePreemptionAgree(f: FieldDispatch): bool = { val preemption = f.preemption
-  match preemption { | PreemptedField(preempt) => runPreemption(f) == tracePreemption(f, preempt.field) | _ => true } }
+  match preemption { | PreemptedField(preempt) => runPreemption(f) == tracePreemption(f, preempt.part) | _ => true } }
 pure def lawOtherFieldTraceHasNoPreemption(f: FieldDispatch, name: str): bool = { val preemption = f.preemption
-  match preemption { | PreemptedField(preempt) => name != preempt.field implies tracePreemption(f, name) == NoPreemptEffect | _ => true } }
+  match preemption { | PreemptedField(preempt) => name != preempt.part implies tracePreemption(f, name) == NoPreemptEffect | _ => true } }
 pure def sometimesAcknowledgementPreemption(f: FieldDispatch): bool = { val preemption = f.preemption
   match preemption { | PreemptedField(preempt) => preempt.mode == AcknowledgeAndStop and preempt.reason == "" | _ => false } }
 pure def sometimesIgnorePreemption(f: FieldDispatch): bool = { val preemption = f.preemption

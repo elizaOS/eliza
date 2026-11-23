@@ -182,31 +182,22 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
     }
     Activity host = activity.get();
     String browser = externalBrowser(context, url);
+    if (browser == null) { unlaunched(environment, opened); return; }
     Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(browser);
     try {
-      if (browser == null) throw new ActivityNotFoundException("no external browser");
       if (host == null || host.isFinishing()) context.startActivity(view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
       else host.startActivity(view);
     } catch (ActivityNotFoundException | SecurityException unavailable) {
-      worker.execute(() -> {
-        Live failed = take(environment.name, opened.reservation().generation());
-        engine(environment).cancel(opened.reservation());
-        if (failed != null) failed.returned().refused(Failure.GOOGLE_UNAVAILABLE);
-      });
+      unlaunched(environment, opened);
     }
   }
 
-  static String externalBrowser(Context context, String url) {
-    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE);
-    PackageManager manager = context.getPackageManager();
-    List<String> handlers = new ArrayList<>();
-    for (ResolveInfo resolved : manager.queryIntentActivities(view, PackageManager.MATCH_DEFAULT_ONLY)) {
-      if (resolved.activityInfo != null) handlers.add(resolved.activityInfo.packageName);
-    }
-    ResolveInfo preferred = manager.resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY);
-    String chosen = ReadinessPolicy.browserToOpen(handlers,
-      preferred == null || preferred.activityInfo == null ? "" : preferred.activityInfo.packageName, context.getPackageName());
-    return chosen.isEmpty() ? null : chosen;
+  private void unlaunched(Environment environment, Live opened) {
+    worker.execute(() -> {
+      Live failed = take(environment.name, opened.reservation().generation());
+      engine(environment).cancel(opened.reservation());
+      if (failed != null) failed.returned().refused(Failure.GOOGLE_UNAVAILABLE);
+    });
   }
 
   @Override public void cancel(int attempt) {
@@ -224,6 +215,19 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
       }
       if (reserved != null) engine(registration.environment(reserved.client())).cancel(reserved);
     });
+  }
+
+  static String externalBrowser(Context context, String url) {
+    PackageManager packages = context.getPackageManager();
+    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE);
+    ResolveInfo chosen = packages.resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY);
+    List<String> handlers = new ArrayList<>();
+    for (ResolveInfo handler : packages.queryIntentActivities(view, PackageManager.MATCH_DEFAULT_ONLY)) {
+      if (handler.activityInfo != null) handlers.add(handler.activityInfo.packageName);
+    }
+    String browser = ReadinessPolicy.browserToOpen(handlers, chosen == null || chosen.activityInfo == null ? "" : chosen.activityInfo.packageName,
+      context.getPackageName());
+    return browser.isEmpty() ? null : browser;
   }
 
   static boolean appLinkVerified(Context context, Environment environment) {

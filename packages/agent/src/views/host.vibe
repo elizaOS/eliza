@@ -160,14 +160,14 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
     return { binding: bindingOf(state, requestId), wait: Deferred.await(done) }
   }
 
-  effect function idle(clientId: string) {
+  effect function settledFor(clientId: string) {
     const state = try views.get()
     const claimed = busy(state, clientId) ? waiting.get(openNavigationOf(state, clientId)) : undefined
-    if (claimed !== undefined) try raceFirst(as(sleep(Duration.millis(navigationBusyWaitMs)), false), as(Deferred.await(claimed.done), true))
+    if (claimed !== undefined) try timeoutOption(Deferred.await(claimed.done), navigationBusyWaitMs)
   }
 
   effect function navigation(event: Event, requestId: string, clientId: string) {
-    try idle(clientId)
+    try settledFor(clientId)
     const state = try send(event)
     return state === undefined ? undefined : try wait(state, requestId, navigationWaitMs)
   }
@@ -190,9 +190,7 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
       const state = try send({ type: "claimRequest", binding, claimId })
       if (state === undefined) return undefined
       const entry = waiting.get(binding.requestId)
-      if (entry !== undefined && waiterAt(state, binding.requestId).kind === "Navigation") {
-        fork.detached expire(binding.requestId, entry.done, navigationClaimLeaseMs)
-      }
+      if (entry !== undefined && waiterAt(state, binding.requestId).kind === "Navigation") fork.detached expire(binding.requestId, entry.done, navigationClaimLeaseMs)
       return claimId
     },
     answer: effect (binding: Binding, claimId: string, reply: Reply, answer: ViewAnswer) => {

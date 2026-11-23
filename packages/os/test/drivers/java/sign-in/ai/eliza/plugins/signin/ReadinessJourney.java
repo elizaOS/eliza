@@ -207,18 +207,32 @@ public final class ReadinessJourney {
       emit("resume-after-screen-probes", probes(requests, "staging") - before);
 
       AtomicReference<Boolean> appLink = new AtomicReference<>(false);
+      AtomicReference<List<String>> browsers = new AtomicReference<>(List.of("ai.example.phone", "browser.full"));
       SignInRegistration browserMode = SignInRegistration.parse(config("browser", false, List.of(environment("production", ORIGIN))));
       SignInReadiness browser = new SignInReadiness(browserMode, http, new SignInReadiness.Store() {
         private final Map<String, String> held = new HashMap<>();
         @Override public String get(String key) { return held.get(key); }
         @Override public void put(String key, String value) { held.put(key, value); }
-      }, Runnable::run, clock::get, () -> new ReadinessPolicy.DeviceFacts(ReadinessPolicy.GoogleMode.PICKER, appLink.get(), true), (environment, s) -> {});
+      }, Runnable::run, clock::get, () -> new ReadinessPolicy.DeviceFacts(ReadinessPolicy.GoogleMode.PICKER, appLink.get(),
+        BrowserReturnPolicy.externalBrowser(null, browsers.get(), "ai.example.phone") != null), (environment, s) -> {});
       configReply.set(new Reply(200, configBody(true, true, true, false, "", "production")));
       browser.status("production", false, s -> served.add(status(s)));
       emit("browser-unverified", served.get(served.size() - 1));
       appLink.set(true);
       browser.status("production", false, s -> served.add(status(s)));
       emit("browser-verified", served.get(served.size() - 1));
+      before = probes(requests, "production");
+      browsers.set(List.of("ai.example.phone", BrowserReturnPolicy.WEBVIEW_SHELL));
+      browser.status("production", false, s -> served.add(status(s)));
+      emit("browser-shell-only", served.get(served.size() - 1));
+      browsers.set(List.of(BrowserReturnPolicy.WEBVIEW_SHELL, "browser.without.custom.tabs"));
+      browser.status("production", false, s -> served.add(status(s)));
+      emit("browser-full", served.get(served.size() - 1));
+      emit("browser-change-probes", probes(requests, "production") - before);
+      emit("browser-choice", new JSONArray(List.of(
+        String.valueOf(BrowserReturnPolicy.externalBrowser("browser.default", List.of("browser.other", "browser.default"), "ai.example.phone")),
+        String.valueOf(BrowserReturnPolicy.externalBrowser(BrowserReturnPolicy.WEBVIEW_SHELL, List.of(BrowserReturnPolicy.WEBVIEW_SHELL, "browser.other"), "ai.example.phone")),
+        String.valueOf(BrowserReturnPolicy.externalBrowser("ai.example.phone", List.of("ai.example.phone", BrowserReturnPolicy.WEBVIEW_SHELL), "ai.example.phone")))));
 
       List<String> outcomes = new ArrayList<>();
       String document = new JSONObject().put("success", true).put("version", 1)
