@@ -303,16 +303,20 @@ export class WebhookEventsRepository {
 
   /** Drops the stored event once it is delivered: the row keeps only its marker and hash for retention. */
   async completeStripeDelivery(delivery: ClaimedStripeDelivery): Promise<boolean> {
-    return Boolean(await this.settleStripeDelivery(delivery, {
-      delivery_completed_at: sql`clock_timestamp()`,
-      delivery_payload: null,
-    }));
+    return Boolean(
+      await this.settleStripeDelivery(delivery, {
+        delivery_completed_at: sql`clock_timestamp()`,
+        delivery_payload: null,
+      }),
+    );
   }
 
   async retryStripeDelivery(delivery: ClaimedStripeDelivery, delayMs: number): Promise<boolean> {
-    return Boolean(await this.settleStripeDelivery(delivery, {
-      delivery_next_attempt_at: sql`clock_timestamp() + make_interval(secs => CASE WHEN ${webhookEvents.delivery_attempts} = 0 THEN 0 ELSE ${delayMs / 1000} END)`,
-    }));
+    return Boolean(
+      await this.settleStripeDelivery(delivery, {
+        delivery_next_attempt_at: sql`clock_timestamp() + make_interval(secs => CASE WHEN ${webhookEvents.delivery_attempts} = 0 THEN 0 ELSE ${delayMs / 1000} END)`,
+      }),
+    );
   }
 
   async deadLetterStripeDelivery(
@@ -320,9 +324,10 @@ export class WebhookEventsRepository {
     reason: "terminal" | "budget",
   ): Promise<"dead-lettered" | "retried" | "lease-lost"> {
     const settled = await this.settleStripeDelivery(delivery, {
-      delivery_dead_lettered_at: reason === "terminal"
-        ? sql`clock_timestamp()`
-        : sql`CASE WHEN ${webhookEvents.delivery_attempts} = 0 THEN NULL ELSE clock_timestamp() END`,
+      delivery_dead_lettered_at:
+        reason === "terminal"
+          ? sql`clock_timestamp()`
+          : sql`CASE WHEN ${webhookEvents.delivery_attempts} = 0 THEN NULL ELSE clock_timestamp() END`,
     });
     if (!settled) return "lease-lost";
     return settled.deadLetteredAt === null ? "retried" : "dead-lettered";

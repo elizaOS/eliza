@@ -79,7 +79,12 @@ describe("interruption decider addressing", () => {
       ).toEqual({ action: "ignore", reason: "ambient chatter during turn" });
     }
     // An "@" the room cannot map to another sub-agent still addresses Bob.
-    for (const text of ["<@1234567890> stop", "@eliza stop", "@Adam stop", "@Ada @Bob stop"]) {
+    for (const text of [
+      "<@1234567890> stop",
+      "@eliza stop",
+      "@Adam stop",
+      "@Ada @Bob stop",
+    ]) {
       expect(
         decideInterruption({
           ...room,
@@ -105,7 +110,10 @@ describe("interruption decider addressing", () => {
         peerLabels: ["Ada"],
         sessionBusy: true,
       }),
-    ).resolves.toEqual({ action: "ignore", reason: "ambient chatter during turn" });
+    ).resolves.toEqual({
+      action: "ignore",
+      reason: "ambient chatter during turn",
+    });
   });
 
   it("falls back to the same addressing when the model is unavailable", async () => {

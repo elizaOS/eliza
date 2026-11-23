@@ -190,8 +190,7 @@ async function refusedPlaceId(response: Response): Promise<MapsServiceError> {
   } catch {
     return invalidResponse(response.status);
   }
-  const error =
-    body && typeof body === "object" ? (body as { error?: unknown }).error : undefined;
+  const error = body && typeof body === "object" ? (body as { error?: unknown }).error : undefined;
   if (!error || typeof error !== "object") return invalidResponse(response.status);
   const { status, details } = error as { status?: unknown; details?: unknown };
   if (status !== "INVALID_ARGUMENT") return invalidResponse(response.status);
@@ -684,7 +683,11 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const fetchedAt = this.now();
     return Promise.all(
       routes.slice(0, alternatives ? 3 : 1).map(async (entry, index) => {
-        const { staticSeconds, ...candidate } = this.routeCandidate(entry, request.from, request.to);
+        const { staticSeconds, ...candidate } = this.routeCandidate(
+          entry,
+          request.from,
+          request.to,
+        );
         return {
           providerId: this.providerId,
           id: await routeId(

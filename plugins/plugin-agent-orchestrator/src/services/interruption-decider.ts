@@ -101,7 +101,8 @@ function isAddressed(
   agentLabel?: string,
   peerLabels: readonly string[] = [],
 ): boolean {
-  if (!text.includes("@")) return Boolean(agentLabel && labelNamed(text, agentLabel));
+  if (!text.includes("@"))
+    return Boolean(agentLabel && labelNamed(text, agentLabel));
   return !namesOnlyPeer(text, agentLabel, peerLabels);
 }
 

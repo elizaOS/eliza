@@ -2755,7 +2755,9 @@ export function ownerNamedCalendarEvent(
       return false;
   }
   const denseTitle =
-    /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(named);
+    /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(
+      named,
+    );
   return userTexts.some((text) => {
     if (typeof text !== "string") return false;
     const spoken = words(text).join(" ");
