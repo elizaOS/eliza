@@ -138,6 +138,8 @@ jobs:
                   {name: "plugin-inbox", dir: "plugin-inbox", inputs: ["$TURBO_DEFAULT$"]},
                   {name: "plugin-local-inference", dir: "plugin-localinference", inputs: ["$TURBO_DEFAULT$"]},
                   {name: "plugin-maps", dir: "plugin-maps", inputs: ["$TURBO_DEFAULT$"]},
+                  {name: "capacitor-canvas", dir: "plugin-native-canvas", inputs: ["$TURBO_DEFAULT$"]},
+                  {name: "native-plugin-shared-types", dir: "plugin-native-shared-types", inputs: ["$TURBO_DEFAULT$"]},
                   {name: "plugin-notes", dir: "plugin-notes"},
                   {name: "plugin-personal-assistant", dir: "plugin-assistant", inputs: ["$TURBO_DEFAULT$"]},
                   {name: "plugin-workflow", dir: "plugin-workflows", inputs: ["$TURBO_DEFAULT$"]}
