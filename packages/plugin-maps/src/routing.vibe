@@ -44,6 +44,7 @@ const ordinals: Readonly<Record<string, number>> = {
   sixth: 6, "6th": 6, six: 6, seventh: 7, "7th": 7, seven: 7, eighth: 8, "8th": 8, eight: 8, ninth: 9, "9th": 9, nine: 9, tenth: 10, "10th": 10, ten: 10, top: 1,
 }
 const maxRequestLength = 160
+const ownerChannels: ReadonlySet<unknown> = new Set([undefined, "DM", "VOICE_DM"])
 
 /** The operations that ask "which one did you mean?", and the action each continues through. */
 export const choiceActions = { route: "MAPS_ROUTE", select: "MAPS_SELECT", save: "MAPS_SAVE", "navigation-start": "MAPS_NAVIGATION_START" } as const
@@ -127,7 +128,7 @@ export function requestShape(text: string, openChoiceAnswered: boolean): { reado
 export function routeOf(text: string, message: Memory | undefined, openChoiceAnswered: boolean, namesView: (destination: string) => boolean): RoutedTo {
   const { shape, destination } = requestShape(text, openChoiceAnswered)
   return mapsRouteOf({
-    ownerTurn: message?.content.source === "client_chat" && (message.content.channelType === "DM" || message.content.channelType === "VOICE_DM"),
+    ownerTurn: message?.content.source === "device" && ownerChannels.has(message.content.channelType),
     shape,
     compound: destination !== undefined && compound(destination),
     webAddress: destination !== undefined && containsResourceAddress(destination),
