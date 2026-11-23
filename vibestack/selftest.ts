@@ -1079,6 +1079,49 @@ pure def witnessStep_sometimesDone(n: int): int = n`;
     const [command] = again.detail.split("\n").filter((line) => line.includes(`quint run ${reproduction}`));
     const rerun = await tool("quint", command.slice(command.indexOf("quint run ") + "quint ".length).split(" "), ordinary);
     assert.ok(violated(rerun), rerun.out);
+
+    const refusalSource = `type Clock = { elapsed: int }
+pure val initial: Clock = { elapsed: 0 }
+pure def canTick(c: Clock, amount: int): bool = amount >= 0
+pure def tick(c: Clock, amount: int): Clock = { elapsed: c.elapsed + amount }
+pure def alwaysNonnegative(c: Clock): bool = c.elapsed >= 0
+pure val amountValues = Set(0, 1)`;
+    const clock = (guide = "") => oneRule("clock", "A tick never goes backward", refusalSource + guide);
+    const refusing = clock("\npure val eval_refuse_canTick = { amount: -1 }");
+    const allowed = clock("\npure val eval_refuse_canTick = { amount: 0 }");
+    const checkClock = async (root: string) => {
+      const spec = readSpecs(root)[0];
+      const model = await gen(root, spec);
+      const domain = await import(pathToFileURL(path.join(root, "gen", "clock.ts")).href);
+      const check = await simulation({ root, fresh: false, used: new Set() }, spec, [spec], model, domain, 1);
+      return { model, check };
+    };
+    const [before, after, miss] = await Promise.all([checkClock(clock()), checkClock(refusing), checkClock(allowed)]);
+    assert.ok(before.check.said.some((r) => r.summary.includes("never seen to refuse") && r.summary.includes("canTick")));
+    assert.ok(after.check.said.some((r) => r.ok && r.summary.endsWith("and refuse it in another")));
+    assert.ok(after.check.said.some((r) => r.ok && r.stage === "replay"));
+    assert.deepEqual(miss.check, before.check);
+    assert.deepEqual(after.check.tested, before.check.tested);
+    assert.deepEqual(
+      [after.model.ts, after.model.harness, after.model.guardHarness],
+      [before.model.ts, before.model.harness, before.model.guardHarness],
+    );
+    const candidateRun = "gen/traces/clock.never_refuses_canTick.eval_canTick__2/0.itf.json";
+    const randomProbe = "gen/traces/clock.never_refuses_canTick.probe/0.itf.json";
+    const last = JSON.parse(read(candidateRun, refusing)).states.at(-1);
+    assert.deepEqual(last.outcome, { tag: "Out_canTick", value: false });
+    assert.deepEqual(last["mbt::nondetPicks"].amount.value, { "#bigint": "-1" });
+    assert.ok(fs.existsSync(path.join(allowed, candidateRun)));
+    assert.ok(fs.existsSync(path.join(allowed, randomProbe)));
+    assert.ok(!fs.existsSync(path.join(refusing, randomProbe)));
+    for (const [guide, error] of [
+      ["eval_refuse_canMissing = { amount: -1 }", /name a transition guard/],
+      ["eval_refuse_canTick = { elapsed: -1 }", /needs the argument amount/],
+      ['eval_refuse_canTick = { amount: "no" }', /does not have the type expected/],
+    ] as const) {
+      const root = clock(`\npure val ${guide}`);
+      await assert.rejects(gen(root, readSpecs(root)[0]), error);
+    }
   });
 
   test("hand-written code that changes what it is checked against is refused or flagged", async () => {
