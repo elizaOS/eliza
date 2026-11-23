@@ -395,11 +395,14 @@ describe("a reload on a page the phone withheld", () => {
     ).toContain("the phone cannot read this page's text");
   });
 
-  it("honors the owner's retraction before dispatching a withheld page reload", async () => {
-    const { result, execute } = await run(
-      turn("Reload this page. Actually, don't reload it.", unreadable),
-      { action: "reload" },
-    );
+  it.each([
+    "Reload this page. Actually, don't reload it.",
+    "Reload this page. Actually, don't.",
+    "Reload this page. Never mind.",
+  ])("honors the owner's retraction before dispatching: %s", async (text) => {
+    const { result, execute } = await run(turn(text, unreadable), {
+      action: "reload",
+    });
     expect(result).toMatchObject({
       success: false,
       data: { code: "BROWSER_PAGE_WITHHELD", executed: false },

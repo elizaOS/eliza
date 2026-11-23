@@ -594,6 +594,11 @@ const RELOAD_NOUN_AFTER =
 const RELOAD_RETRACTION_LEAD =
   /^\s*(?:(?:actually|instead|please|pls|just|now|no|wait)\s+)*(?:don['’]?t|do\s+not|never|stop|no\s+need\s+to|i\s+(?:don['’]?t|do\s+not)\s+(?:want|need)\s+you\s+to)\s+(?:.*\b(?:and|or)\s+)?(?:(?:just|ever|even|please|try(?:\s+to)?|need\s+to|have\s+to|bother\s+to)\s+)*$/i;
 
+// A short withdrawal names no verb. It refers to a reload only when it follows
+// the reload clause directly, without another intervening request.
+const SHORT_RELOAD_RETRACTION =
+  /^[^.?!;:\n–—]*[.?!;,:\n–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)[.!?\s]*$/i;
+
 /** Whether the owner's own message asks to reload, refresh or reopen the page
  * that is showing ("reload this page", "it won't load, so refresh", "can you
  * open it again?"). Only the request form asks: a negated reload ("don't
@@ -616,12 +621,14 @@ export function asksToReloadBrowserPage(text: string): boolean {
       .trim();
     // "try reloading" asks; "reloading it" on its own does not.
     const form = match[1] ? /\btry$/i.test(clause) : true;
-    const noun = RELOAD_NOUN_AFTER.test(
-      text.slice((match.index ?? 0) + match[0].length),
-    );
+    const after = text.slice((match.index ?? 0) + match[0].length);
+    const noun = RELOAD_NOUN_AFTER.test(after);
     if (noun) continue;
     if (RELOAD_RETRACTION_LEAD.test(`${clause} `)) return false;
-    if (form && RELOAD_REQUEST_LEAD.test(`${clause} `)) requested = true;
+    if (form && RELOAD_REQUEST_LEAD.test(`${clause} `)) {
+      if (SHORT_RELOAD_RETRACTION.test(after)) return false;
+      requested = true;
+    }
   }
   return requested;
 }
