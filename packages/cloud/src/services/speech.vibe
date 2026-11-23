@@ -1,14 +1,12 @@
 // spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"
 import { billedSeconds, providerRetryMs, withMarkup } from "../../gen/cloud__services__speech.effect.vibe"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"
-import { laneFor } from "../billing/policy.vibe"
 import { refused, Refused } from "../http/refusal.vibe"
-import { recheckServiceAccess, signed } from "../http/request-auth.vibe"
+import { signed } from "../http/request-auth.vibe"
 import { jsonBody, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
 import { synthesize, synthesizeTimed, prepareTranscription, ProviderInvalidResponse, type SpeechFailure, type Synthesis, type TimedFrame, type Transcription } from "../providers/speech.vibe"
-import { markDispatched, reserve, settle, type Settlement } from "../shared/metering.vibe"
-import { Store } from "../store/connection.vibe"
+import { keepStanding, markDispatched, reserve, settle, type Settlement } from "../shared/metering.vibe"
 import { SynthesisBody } from "./speech-batch.schema.ts"
 
 type SpeechSettings = NonNullable<EnvironmentProfile["speech"]>
@@ -100,17 +98,7 @@ effect function heldCall<A, R>(context: RouteContext, quote: number, call: A!Spe
   const key: HoldKey = { service: "MeteredSpeech", caller: caller.userId, requestId: context.requestId, part: { tag: "WholeRequest" } }
   const ticket = try reserve(caller, key, quote)
   if (ticket.replayed) throw refused("IdempotencyConflict")
-  const standing = effect {
-    try recheckServiceAccess(context.request.headers.authorization, caller)
-    const store = try Store
-    const now = try Clock.currentTimeMillis
-    const lane = try store.transaction((tx) => laneFor(tx, caller.organizationId, "MeteredSpeech", now))
-    if (lane !== ticket.lane) throw refused("BillingStateConflict")
-  }
-  standing catch effect (failure) => {
-    try settle(ticket.key, { kind: "release" })
-    throw failure
-  }
+  try keepStanding(context.request.headers.authorization, caller, "MeteredSpeech", ticket)
   try markDispatched(ticket.key)
   const answer = call catch effect (failure) => {
     try settle(ticket.key, failedSettlement(failure))
