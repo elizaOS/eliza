@@ -151,11 +151,12 @@ pure val atValues = Set(-1, 0, 1, 900000, 1350000)
 
 A write needs the active account and a calendar that account can write.
 The resident calendar applies it at once for the owner who asked, unless
-the owner asked to review the new event before it is saved: that create
-queues for approval like any other reviewed change, and nothing is saved
-before the owner approves it. Any provider calendar queues the exact
-fields for the owner's approval. A write for another account, or to a
-calendar it cannot write, is refused.
+the owner asked to review the new event before it is saved, or a delete
+names an event the owner did not point at: that create or delete queues
+for approval like any other reviewed change, and nothing is saved or
+removed before the owner approves it. Any provider calendar queues the
+exact fields for the owner's approval. A write for another account, or to
+a calendar it cannot write, is refused.
 
 ```quint
 type WriteProvider = ResidentProvider | AccountProvider
@@ -170,6 +171,52 @@ pure def lawForeignAccountRefused(provider: WriteProvider, writable: bool, revie
   writeRoute(provider, false, writable, reviewFirst) == RefuseWrite
 pure def lawAskedReviewWaitsForApproval(provider: WriteProvider, sameAccount: bool, writable: bool): bool =
   writeRoute(provider, sameAccount, writable, true) != ApplyNow
+```
+
+### A resident delete runs at once only for the event the owner pointed at
+
+The resident calendar has no review of its own, so a delete there runs at
+once only for the one event the owner pointed at: its whole title is in
+the owner's own words, as a [reviewed phone request](./reviewedReads.md)
+names an event ("Delete Willow Harbor QA", "歯医者を削除して"), and the search
+that found it read every listed calendar completely; or it is the event
+selected in Calendar on a screen that is not sensitive. A partial or
+model-chosen match ("delete the dentistry booking" for "Dentist"), or one
+found while a calendar could not be read, asks first: the delete waits for
+the owner's approval, and the event stays until they approve it.
+
+```quint
+pure def ownerPointedAt(wholeTitleSaid: bool, everyCalendarRead: bool, selectedOnScreen: bool): bool =
+  (wholeTitleSaid and everyCalendarRead) or selectedOnScreen
+pure def lawAPartialMatchIsNeverAnImmediateDelete(sameAccount: bool, writable: bool, everyCalendarRead: bool): bool =
+  writeRoute(ResidentProvider, sameAccount, writable, not(ownerPointedAt(false, everyCalendarRead, false))) != ApplyNow
+pure def lawAnIncompleteSearchNeverDeletesAtOnce(sameAccount: bool, writable: bool, wholeTitleSaid: bool): bool =
+  writeRoute(ResidentProvider, sameAccount, writable, not(ownerPointedAt(wholeTitleSaid, false, false))) != ApplyNow
+```
+
+### Attendees hear of a change only when the owner asked and the calendar can tell them
+
+An update, a delete or an answer to an invitation carries whether the
+owner asked to let the event's attendees know, as part of its reviewed
+change and digest. It is asked only for an event with an attendee other
+than the owner; with none, nobody is told and nothing is carried. A
+provider calendar sends its update to the attendees exactly when the
+change carries it (for Google, `sendUpdates` all, else none). The resident
+calendar cannot email anyone: its change lands as asked, and the reply
+says that nobody was notified.
+
+```quint
+type AttendeeNotice = NotifyAttendees | NotifyNobody | CannotNotify
+pure def attendeeNotice(asked: bool, otherAttendees: bool, resident: bool): AttendeeNotice =
+  if (not(asked and otherAttendees)) NotifyNobody
+  else if (resident) CannotNotify
+  else NotifyAttendees
+pure def lawAnUnaskedChangeTellsNobody(otherAttendees: bool, resident: bool): bool =
+  attendeeNotice(false, otherAttendees, resident) == NotifyNobody
+pure def lawTheResidentCalendarNeverNotifies(asked: bool, otherAttendees: bool): bool =
+  attendeeNotice(asked, otherAttendees, true) != NotifyAttendees
+pure def lawNoAttendeesNoNotice(asked: bool, resident: bool): bool =
+  attendeeNotice(asked, false, resident) == NotifyNobody
 ```
 
 ### An approved change runs only with its reviewed fields for the account that approved it

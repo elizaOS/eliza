@@ -1,4 +1,4 @@
-// spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"; spec/calendar/residentStore.md, "The earlier events are imported once, exactly, and never over the series rows"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"
+// spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"; spec/calendar/residentStore.md, "The earlier events are imported once, exactly, and never over the series rows"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"
 import { sha256Hex } from "@elizaos/core"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import type { CalendarEvent, CalendarEventFields, CalendarProvider, CalendarSourceKey, CalendarSummary } from "../model.vibe"
@@ -29,7 +29,7 @@ export interface CalendarWindowRead {
 
 type WriteFailure = CalendarWriteNotAccepted | CalendarWriteUnconfirmed
 
-/** How the Calendar action reaches one provider for one account: whether it writes RFC 5545 recurrence lines, its calendars, reads and the three writes, an update or removal under the scope it names, and, when the provider can, an invitee's answer to an invitation. */
+/** How the Calendar action reaches one provider for one account: whether it writes RFC 5545 recurrence lines, its calendars, reads and the three writes, an update or removal under the scope it names, and, when the provider can, an invitee's answer to an invitation; a change of an existing event tells its attendees exactly when `notifyAttendees` is true (Google's `sendUpdates` all, else none). */
 export interface CalendarProviderPort {
   readonly provider: CalendarProvider
   readonly recurrenceLines: boolean
@@ -37,9 +37,9 @@ export interface CalendarProviderPort {
   read(account: CalendarAccount, source: CalendarSourceKey, timeMin: number, timeMax: number): CalendarWindowRead!CalendarSourceUnavailable
   get(account: CalendarAccount, source: CalendarSourceKey, eventId: string): (CalendarEvent | undefined)!CalendarSourceUnavailable
   create(account: CalendarAccount, source: CalendarSourceKey, fields: CalendarEventFields, recurrence: CalendarRecurrence | null, idempotencyKey: string): CalendarEvent!WriteFailure
-  update(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarWriteScope, fields: CalendarEventFields, expectedVersion: string, idempotencyKey: string): CalendarEvent!WriteFailure
-  remove(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarWriteScope, expectedVersion: string, idempotencyKey: string): void!WriteFailure
-  respond?(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarAnswerScope, response: CalendarInvitationResponse, expectedVersion: string, idempotencyKey: string): CalendarEvent!WriteFailure
+  update(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarWriteScope, fields: CalendarEventFields, expectedVersion: string, idempotencyKey: string, notifyAttendees: boolean): CalendarEvent!WriteFailure
+  remove(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarWriteScope, expectedVersion: string, idempotencyKey: string, notifyAttendees: boolean): void!WriteFailure
+  respond?(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarAnswerScope, response: CalendarInvitationResponse, expectedVersion: string, idempotencyKey: string, notifyAttendees: boolean): CalendarEvent!WriteFailure
 }
 
 /** The provider version of an event: its etag, else its update time. */
@@ -54,6 +54,11 @@ export function ownerRole(event: CalendarEvent, accountEmail: string | null): Ow
   if (own !== undefined) return own.organizer ? "OrganizerRole" : "InviteeRole"
   const organizer = typeof event.organizer?.email === "string" ? event.organizer.email.trim().toLowerCase() : ""
   return organizer !== "" && organizer === (accountEmail ?? "").trim().toLowerCase() ? "OrganizerRole" : "UnknownRole"
+}
+
+/** Whether an event has an attendee other than the owner, who could be told of a change. */
+export function hasOtherAttendees(event: CalendarEvent): boolean {
+  return event.attendees.some((attendee) => !attendee.self)
 }
 
 /** Whether an event reads back with the owner's own attendee answering as asked. */

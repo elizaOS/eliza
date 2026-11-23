@@ -1,4 +1,4 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"
 import type { CalendarEvent } from "../model.vibe"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
@@ -41,11 +41,11 @@ const UpdateBody = Schema.Struct({
   title: Schema.optionalKey(Schema.String), notes: Schema.optionalKey(Schema.String), location: Schema.optionalKey(Schema.String),
   startAt: Schema.optionalKey(Instant), endAt: Schema.optionalKey(Instant), isAllDay: Schema.optionalKey(Schema.Boolean),
   timeZone: Schema.optionalKey(Schema.String), calendarId: Schema.optionalKey(Schema.String), recurrenceScope: Schema.optionalKey(WriteScopeRecord),
-  expectedProviderVersion: Key, idempotencyKey: Key,
+  notifyAttendees: Schema.optionalKey(Schema.Boolean), expectedProviderVersion: Key, idempotencyKey: Key,
 })
 const RespondBody = Schema.Struct({
   responseStatus: Schema.Literals(["accepted", "tentative", "declined"]), recurrenceScope: Schema.optionalKey(Schema.Literals(["instance", "series"])),
-  calendarId: Schema.optionalKey(Schema.String), expectedProviderVersion: Key, idempotencyKey: Key,
+  calendarId: Schema.optionalKey(Schema.String), notifyAttendees: Schema.optionalKey(Schema.Boolean), expectedProviderVersion: Key, idempotencyKey: Key,
 })
 const decodeScope = Schema.decodeUnknownOption(WriteScopeRecord)
 const decodeRespond = Schema.decodeUnknownOption(RespondBody)
@@ -168,7 +168,8 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
           isAllDay: request.isAllDay ?? event.isAllDay, timeZone: request.timeZone ?? event.timezone ?? hostZone(),
         })
         if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return refused(400, "CALENDAR_FIELDS_INVALID", "The event needs a title and a start before its end.")
-        return changed(await runPromise(Effect.option(calendar.change({ kind: "update", target: found, scope: request.recurrenceScope ?? "instance", fields: fields.value, askedBy: "owner", askId: request.idempotencyKey }))))
+        return changed(await runPromise(Effect.option(calendar.change({ kind: "update", target: found, scope: request.recurrenceScope ?? "instance", fields: fields.value,
+          notifyAttendees: request.notifyAttendees === true, askedBy: "owner", askId: request.idempotencyKey }))))
       }) },
     { method: "POST", path: `${base}/events/{eventId}/response`, maxBodyBytes: 4_096,
       handler: (input) => withHost(async (calendar) => {
@@ -180,7 +181,7 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         const found = await target(calendar, input, request.calendarId, request.expectedProviderVersion)
         if (!("event" in found)) return found
         return changed(await runPromise(Effect.option(calendar.change({ kind: "respond", target: found, scope: request.recurrenceScope ?? "instance", response: request.responseStatus,
-          askedBy: "owner", askId: request.idempotencyKey }))))
+          notifyAttendees: request.notifyAttendees === true, askedBy: "owner", askId: request.idempotencyKey }))))
       }) },
     { method: "DELETE", path: `${base}/events/{eventId}`, query: anyOf("calendarId", "grantId", "side", "recurrenceScope", "notifyAttendees", "expectedProviderVersion", "idempotencyKey", "cancellationMode"),
       handler: (input) => withHost(async (calendar) => {
@@ -193,7 +194,7 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         if (Option.isNone(scope)) return refused(400, "CALENDAR_SCOPE_INVALID", "The recurrence scope is instance, this_and_following or series.")
         const found = await target(calendar, input, input.query.get("calendarId"), expected)
         if (!("event" in found)) return found
-        return changed(await runPromise(Effect.option(calendar.change({ kind: "delete", target: found, scope: scope.value, askedBy: "owner", askId: key }))))
+        return changed(await runPromise(Effect.option(calendar.change({ kind: "delete", target: found, scope: scope.value, notifyAttendees: input.query.get("notifyAttendees") === "true", askedBy: "owner", askId: key }))))
       }) },
   ]
 }
