@@ -442,9 +442,10 @@
         "^build"
       ],
       "inputs": [
-        "$TURBO_DEFAULT$",
-        "!test/**",
-        "!vitest.config.ts"
+        "package.json",
+        "src/**",
+        "styles.css",
+        "tsconfig.json"
       ],
       "outputs": []
     },
