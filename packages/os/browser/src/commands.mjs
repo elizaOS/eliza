@@ -5,6 +5,35 @@ import { BridgeError } from "./protocol.mjs";
 
 export { COMMIT_CONTROL, pageCommand } from "./page-command.mjs";
 
+const PAGE_ANSWER_MS = 10000;
+
+export const answeredInTime = (browser) =>
+  Object.create(browser, {
+    scripting: {
+      value: {
+        executeScript(details) {
+          let timer;
+          return Promise.race([
+            browser.scripting.executeScript(details),
+            new Promise((_, reject) => {
+              timer = setTimeout(
+                () =>
+                  reject(
+                    new BridgeError(
+                      "INCOMPLETE_SNAPSHOT",
+                      "The browser tab did not answer in time; nothing was read from it.",
+                      "page-unresponsive",
+                    ),
+                  ),
+                PAGE_ANSWER_MS,
+              );
+            }),
+          ]).finally(() => clearTimeout(timer));
+        },
+      },
+    },
+  });
+
 /** Resolves required browser context without admitting or performing an effect. */
 export async function prepareCommand(api, command) {
   if (command.subaction !== "open") return {};
@@ -41,7 +70,14 @@ export async function executeCommand(
   };
   const effect = async (operation) => {
     requireCurrent();
-    const value = await operation();
+    const value = await operation().catch((error) => {
+      throw error?.reason === "page-unresponsive"
+        ? new BridgeError(
+            "UNCERTAIN_OUTCOME",
+            "The browser tab did not answer in time; inspect the same tab without replaying the effect.",
+          )
+        : error;
+    });
     if (!isCurrent())
       throw new BridgeError(
         "UNCERTAIN_OUTCOME",
@@ -213,7 +249,15 @@ export async function executeCommand(
       api.scripting.executeScript({
         target: { tabId, frameIds: [Number(match[2])] },
         func: pageCommand,
-        args: [{ ...command, snapshotId: match[1], nodeId: match[3] }, null],
+        args: [
+          {
+            ...command,
+            snapshotId: match[1],
+            nodeId: match[3],
+            answerBy: Date.now() + PAGE_ANSWER_MS,
+          },
+          null,
+        ],
         world: "ISOLATED",
       }),
     );
