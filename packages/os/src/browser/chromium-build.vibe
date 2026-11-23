@@ -246,7 +246,7 @@ export effect function buildBrowserExtension(options: BrowserExtensionBuild) {
     version: "2.0.34",
     key,
     description: "Native, authenticated control of this Chromium profile for your Eliza agent.",
-    permissions: ["tabs", "scripting", "webNavigation", "webRequest", "storage", "nativeMessaging", "alarms"],
+    permissions: ["tabs", "scripting", "webNavigation", "webRequest", "storage", "unlimitedStorage", "nativeMessaging", "alarms"],
     host_permissions: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"],
     background: { service_worker: "background.mjs", type: "module" },
   }

@@ -213,7 +213,7 @@ it.effect(`Build the protection module with esbuild and embed its complete inven
     const text = (name: string) => new TextDecoder().decode(composed[name] ?? new Uint8Array())
     const manifest = json(text("manifest.json"))
     assert.deepInclude(manifest, { web_accessible_resources: [{ resources: ["warning.html"], matches: ["<all_urls>"] }] })
-    assert.include(typeof manifest === "object" && manifest !== null && "permissions" in manifest && Array.isArray(manifest.permissions) ? manifest.permissions : [], "declarativeNetRequest")
+    assert.includeMembers(typeof manifest === "object" && manifest !== null && "permissions" in manifest && Array.isArray(manifest.permissions) ? manifest.permissions : [], ["declarativeNetRequest", "unlimitedStorage"], "spent request identities are kept without a storage quota")
     assert.notInclude(text("warning.html"), "{{", "every warning slot is filled")
     assert.include(text("licenses.html"), "tldts")
     assert.include(text("protection.mjs"), "installBrowserProtection({chrome:globalThis.chrome")
