@@ -81,9 +81,15 @@ it.effect.skipIf(!builtinModuleFactories.has(tasksModule))(`A product route unde
   try Effect.try(() => assert.strictEqual(phase, "Config"))
 }, 120_000)
 
-it.effect('A bundled package whose plugin has another name is refused (spec/agent/plugins/profile.md, "The product plugin must be in the bundle")', effect () => {
+it.effect('A bundled package whose plugin has another name is refused, and one that exports no plugin is carried only as a hosted module (spec/agent/plugins/profile.md, "The product plugin must be in the bundle"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent\'s own modules")', effect () => {
   const failed = try Effect.flip(bundledPluginMap([{ packageName: "@product/plugin", plugin: productPlugin }]))
-  try Effect.try(() => assert.deepStrictEqual({ tag: failed._tag, packageName: failed.packageName }, { tag: "BundleEntryRefused", packageName: "@product/plugin" }))
+  const hostedName = "@elizaos/plugin-local-inference"
+  const unexported = try Effect.flip(bundledPluginMap([{ packageName: hostedName, plugin: undefined }]))
+  const hosted = try bundledPluginMap([{ packageName: hostedName, plugin: undefined }], new Set([hostedName]))
+  try Effect.try(() => assert.deepStrictEqual(
+    { renamed: [failed._tag, failed.packageName], unexported: [unexported._tag, unexported.packageName], hosted: [...hosted.keys()].map((name) => [name, hosted.get(name)?.name]) },
+    { renamed: ["BundleEntryRefused", "@product/plugin"], unexported: ["BundleEntryRefused", hostedName], hosted: [[hostedName, hostedName]] },
+  ))
 })
 
 it.effect('A malformed product route refuses the whole list, then a corrected launch serves its action and route (spec/agent/plugins/profile.md, "Story: Register my product\'s own actions and routes"; spec/agent/access/routes.md, "A list is loaded whole or not at all")', effect () => {

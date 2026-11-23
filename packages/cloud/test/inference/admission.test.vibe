@@ -13,7 +13,7 @@ import { callCloud, type CallInit } from "../support/http.ts"
 import { testProfile } from "../support/profile.ts"
 
 const minuteMs = 60_000
-const model: Model = { id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true, inputPer1K: 1000, outputPer1K: 2000 }
+const model: Model = { id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true, defaultMaxTokens: { tag: "OutputDefaultOf", tokens: 4096 }, inputPer1K: 1000, outputPer1K: 2000 }
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -96,7 +96,7 @@ describe("WP5 Inference: chat admission", () => {
       openStrictSchema: "400 invalid_request",
       notJson: "400 invalid_request",
       accepted: { counts: { inputTokens: 10, outputTokens: 64 }, micros: 166, image: true },
-      defaultOutput: { counts: { inputTokens: 10, outputTokens: 500 }, micros: 1212, image: false }
+      defaultOutput: { counts: { inputTokens: 10, outputTokens: 4096 }, micros: 9842, image: false }
     }))
     try check(() => assert.deepStrictEqual(reached.length, 9))
   }))

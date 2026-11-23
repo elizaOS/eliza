@@ -57,7 +57,6 @@ async function runOne(runtime: AgentRuntime, evaluator: RegisteredEvaluator, mes
   }
 }
 
-/** Runs every inline evaluator registered on the runtime over the finished turn, in priority order, isolating each one's failures. */
 export async function runTurnEvaluators(runtime: AgentRuntime, message: Memory, state: State, responses: Memory[], signal: AbortSignal): Promise<void> {
   const evaluators = byPriority(runtime.evaluators.filter((evaluator) => inline(runtime, evaluator)))
   for (const [done, evaluator] of evaluators.entries()) {

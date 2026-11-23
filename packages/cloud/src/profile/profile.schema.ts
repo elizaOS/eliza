@@ -1,5 +1,6 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { Schema, SchemaGetter } from "effect";
+import { maxTokensPerSide } from "../../gen/cloud__services__models.ts";
 
 const pattern = (regex: RegExp) => Schema.String.check(Schema.isPattern(regex));
 const bounded = (minimum: number, maximum: number) => Schema.Int.check(Schema.isBetween({ minimum, maximum }));
@@ -72,7 +73,10 @@ export const BillingSettings = Schema.Struct({
 
 export const InferenceSettings = Schema.Struct({
   providers: Schema.NonEmptyArray(Schema.Struct({ id: Identifier, baseUrl: ProviderUrl, apiKeyEnv: SecretName })),
-  models: Schema.NonEmptyArray(Schema.Struct({ id: Identifier, provider: Identifier, upstreamModel: Identifier, vision: Schema.Boolean })),
+  models: Schema.NonEmptyArray(Schema.Struct({
+    id: Identifier, provider: Identifier, upstreamModel: Identifier, vision: Schema.Boolean,
+    defaultMaxTokens: Schema.optionalKey(bounded(1, maxTokensPerSide)),
+  })),
 });
 
 export const SpeechSettings = Schema.Struct({
