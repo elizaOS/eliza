@@ -45,7 +45,7 @@ import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
 import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
-import { googleMapsFake, tilePng } from "./support/maps-fake.ts"
+import { googleMapsFake, googlePlace, tilePng } from "./support/maps-fake.ts"
 import { mapsSweeps } from "../src/services/maps.vibe"
 import { osmFake } from "./support/maps-osm-fake.ts"
 import { accountUsable, checkEntitlement, CloudError, createCloudClient, creditFromSnapshot, deviceRoutes, EntitlementInvalid, httpVerb, parseEntitlementKeys, verifyEntitlement as verifyOnDevice, type AuthClass, type CloudClient, type DeviceRoute } from "../src/client/index.vibe"
@@ -1522,6 +1522,81 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
   }), 60_000)
 })
 describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
+  it.live('Give a zero-distance route usable geometry and reject malformed Google geometry (spec/cloud/services/maps.md, "Story: Get a route result when the endpoints coincide")', () => scoped(effect {
+    const maps = try sync(() => googleMapsFake())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+    const caller = try signedCaller(cloud, "same-place")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 100_000, requestKey: "route-funding" }))
+    const berlin = { latitude: 52.5163, longitude: 13.3777 }
+    const post = (key: string, point = berlin) => cloud.call("/api/v1/maps/routes", {
+      json: { from: point, to: point, mode: "walk" }, headers: { ...caller.headers, "idempotency-key": key },
+    })
+    try sync(() => maps.script(
+      { kind: "routeGeometry", encodedPolyline: "" },
+      { kind: "routeGeometry", encodedPolyline: "??", distanceMeters: 0 },
+      { kind: "routeGeometry", encodedPolyline: "!" },
+      { kind: "routeGeometry", encodedPolyline: "", distanceMeters: 100 },
+    ))
+    const atOrigin = { latitude: 0, longitude: 0 }
+    const empty = try post("empty-geometry")
+    const one = try post("one-point", atOrigin)
+    const malformed = try post("bad-polyline")
+    const positive = try post("nonzero-route")
+    const geometryOf = (body: unknown) => (body as { routes: Array<{ distanceMeters: number; geometry: unknown }> }).routes
+      .map(({ distanceMeters, geometry }) => [distanceMeters, geometry])
+    try Effect.try(() => {
+      assert.deepStrictEqual([empty.status, geometryOf(empty.body), one.status, geometryOf(one.body)],
+        [200, [[0, [berlin, berlin]]], 200, [[0, [atOrigin, atOrigin]]]])
+      assert.deepStrictEqual([malformed.status, positive.status], [502, 502])
+    })
+  }), 60_000)
+
+  it.live('Preserve a classified Google 400 for replay with its quoted charge (spec/cloud/services/maps.md, "Only an unreasoned Google Place Details argument refusal identifies an unusable place ID")', () => scoped(effect {
+    const maps = try sync(() => googleMapsFake())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+    const caller = try signedCaller(cloud, "invalid-place")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 250_000, requestKey: "detail-funding" }))
+    const post = (path: string, key: string, body: unknown) => cloud.call(`/api/v1/maps/${path}`, {
+      json: body, headers: { ...caller.headers, "idempotency-key": key },
+    })
+    const details = (key: string, id: string = googlePlace.id) => post("places/details", key, { id })
+    try sync(() => maps.script(
+      { kind: "badRequest", body: { error: { status: "INVALID_ARGUMENT", message: "Irrelevant upstream text" } } },
+      { kind: "badRequest", body: { error: { status: "INVALID_ARGUMENT", details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "API_KEY_INVALID" }] } } },
+      { kind: "badRequest", body: { error: { status: "INVALID_ARGUMENT", details: [[]] } } },
+      { kind: "badRequest", body: { error: { status: "INVALID_ARGUMENT" } } },
+      { kind: "empty" },
+    ))
+    const rejected = try details("invalid-provider-id")
+    const replay = try details("invalid-provider-id")
+    const conflict = try details("invalid-provider-id", "different_valid_id")
+    const callsAfterReplay = maps.count("details")
+    const reasoned = try details("google-configuration")
+    const malformed = try details("malformed-details")
+    const search = try post("places/search", "bad-search", { query: "Brandenburger Tor" })
+    const absent = try details("missing-place")
+    const beforeLexical = maps.count("details")
+    const lexical = try details("invalid-lexical-id", "tiny")
+    const usage = try cloud.store.transaction((tx) => tx.query("SELECT r.status, r.result IS NULL AS unkept, u.quote, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key ORDER BY u.settled_at, r.hold_key", []))
+    const failure = (answer: { status: number; body: unknown }) => [answer.status, (answer.body as { error?: string }).error]
+    try Effect.try(() => {
+      assert.deepStrictEqual(failure(rejected), [400, "invalid_request"])
+      assert.deepStrictEqual([replay.status, replay.body, callsAfterReplay], [400, rejected.body, 1])
+      assert.deepStrictEqual(failure(conflict), [409, "idempotency_conflict"])
+      assert.deepStrictEqual([failure(reasoned), failure(malformed), failure(search)], Array.from({ length: 3 }, () => [502, "provider_invalid_response"]))
+      assert.deepStrictEqual([absent.status, (absent.body as { place: unknown }).place], [200, null])
+      assert.deepStrictEqual([failure(lexical), maps.count("details")], [[400, "invalid_request"], beforeLexical])
+      assert.deepStrictEqual(usage.map((row) => [row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome]), [
+        ["refused", false, 20_000, 20_000, "unknown"],
+        ["refused", false, 20_000, 20_000, "unknown"],
+        ["refused", false, 20_000, 20_000, "unknown"],
+        ["lost", true, 32_000, 32_000, "unknown"],
+        ["answered", false, 20_000, 20_000, "known"],
+        ["refused", false, 20_000, 0, "known"],
+      ])
+    })
+  }), 60_000)
+
   it.live("Answer a maps request once and pay for it once, keep tiles unstored and look a place up nearby first (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\"; spec/cloud/services/maps.md, \"Story: Keep maps requests within the provider's terms\")", () => scoped(effect {
     const maps = try sync(() => googleMapsFake())
     const timer = try TestClock.make()
