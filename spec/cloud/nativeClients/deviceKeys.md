@@ -425,12 +425,29 @@ pure def lawNoLaterEpochRevivesAKey(g: Grant, now: Millis, deviceEpoch: int, lat
 
 `DELETE /api/v1/api-keys/current`, admitted by the key itself, answers `204`;
 a repeat answers `401 credential_revoked`, which the device takes as done.
-It ends the key's device lease in the same transaction.
+It ends the key's device lease in the same transaction. For a pre-lease
+renewal chain, signing out also ends the keys renewed from the presenting key.
+The shell finds those legacy renewals by their stored original sign-in time
+and predecessor, under the same account lock. It confines the chain to the
+same account, client and device epoch. Only an exact, live direct successor
+named in `X-Renewed-Credential-Id` preserves the chain. In that case the
+presenting key and pending alternatives to that successor end. A malformed name is
+`400 invalid_request`. A renewed key issued through a lease follows the lease
+instead of the legacy chain.
 
 ```quint
 pure def canSelfRevoke(g: Grant, deviceEpoch: int): bool = keyRefusal(g, g.now, deviceEpoch) == NoReason
 pure def selfRevoke(g: Grant, deviceEpoch: int): GrantStep = { state: { ...g, phase: Ended({ endedBy: SelfRevoked }) }, out: List(EndLease) }
 pure def sometimesSignedOut(g: Grant): bool = g.phase == Ended({ endedBy: SelfRevoked })
+pure def signOutEndsSuccessor(namedSuccessor: str, successorCredentialId: str, successorLive: bool): bool =
+  not(namedSuccessor != "" and successorLive and namedSuccessor == successorCredentialId)
+pure val namedSuccessorValues = Set("", "k1", "k2")
+pure def lawOnlyTheNamedLiveSuccessorSurvivesSignOut(namedSuccessor: str, successorCredentialId: str, successorLive: bool): bool =
+  not(signOutEndsSuccessor(namedSuccessor, successorCredentialId, successorLive)) implies (successorLive and namedSuccessor == successorCredentialId and namedSuccessor != "")
+pure def canCancelLegacySuccessor(g: Grant, legacy: bool): bool = legacy and isRenewal(g) and isCodePending(g)
+pure def cancelLegacySuccessor(g: Grant, legacy: bool): GrantStep =
+  if (g.phase == Exchanged) { state: { ...g, phase: Ended({ endedBy: NeverAcknowledged }) }, out: List(EraseSealedCopy) }
+  else { state: { ...g, phase: Ended({ endedBy: NeverExchanged }) }, out: List() }
 ```
 
 ### Ending every key of a person moves the person's device epoch, which revokes every key issued before it

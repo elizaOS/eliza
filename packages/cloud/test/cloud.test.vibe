@@ -557,6 +557,49 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     }
   }))
 
+  it.live("Keep pre-lease renewal duties through enrollment and sign-out (spec/cloud/nativeClients/deviceKeys.md, \"Signing out ends only the presenting key\")", () => scoped(effect {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const owner = try signedIn(cloud, "legacy-devices@example.com")
+    const replacing = try device(cloud, owner.accessToken, "Replaced tablet")
+    const named = try device(cloud, owner.accessToken, "Acknowledged successor")
+    const alternative = try device(cloud, owner.accessToken, "Pending alternative")
+    const leaving = try device(cloud, owner.accessToken, "Signing out")
+    const descendant = try device(cloud, owner.accessToken, "Renewed key")
+    const upgraded = try device(cloud, owner.accessToken, "Enrolled for mail")
+
+    const legacy = effect (credentialId: string, from: string | null) => {
+      try sql(cloud, "DELETE FROM sessions s USING device_grants d WHERE s.grant_key = d.key AND d.credential_id = $1", [credentialId])
+      try sql(cloud, `
+        UPDATE device_grants SET sign_in_at = issued_at,
+          renewed_from = (SELECT key FROM device_grants WHERE credential_id = $2),
+          state = CASE WHEN $2::text IS NULL THEN state ELSE jsonb_set(state, '{origin}',
+            jsonb_build_object('tag', 'Renewed', 'fromKey', (SELECT key FROM device_grants WHERE credential_id = $2))) END
+        WHERE credential_id = $1
+      `, [credentialId, from])
+    }
+    try legacy(replacing.credential.credentialId, null)
+    try legacy(named.credential.credentialId, replacing.credential.credentialId)
+    try legacy(alternative.credential.credentialId, replacing.credential.credentialId)
+    try legacy(leaving.credential.credentialId, null)
+    try legacy(descendant.credential.credentialId, leaving.credential.credentialId)
+    try sql(cloud, "UPDATE device_grants SET phase = 'exchanged', state = jsonb_set(state, '{phase}', jsonb_build_object('tag', 'Exchanged')), sealed_copy = 'pending' WHERE credential_id = $1", [alternative.credential.credentialId])
+
+    const replacement = try cloud.call("/api/v1/api-keys/current", {
+      method: "DELETE",
+      headers: { ...bearer(replacing.credential.secret), "x-renewed-credential-id": named.credential.credentialId }
+    })
+    const signOut = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
+    const kept = try cloud.call("/api/v1/user", { headers: bearer(named.credential.secret) })
+    const ended = try cloud.call("/api/v1/user", { headers: bearer(descendant.credential.secret) })
+    const enrolled = try cloud.call("/api/v1/user", { headers: bearer(upgraded.credential.secret) })
+    const pending = (try sql(cloud, "SELECT phase, sealed_copy FROM device_grants WHERE credential_id = $1", [alternative.credential.credentialId]))[0]
+    try check(() => assert.deepStrictEqual(
+      [replacement.status, signOut.status, kept.status, ended.status, ...refusal(ended.body), enrolled.status, pending?.phase, pending?.sealed_copy],
+      [204, 204, 200, 401, "authentication_required", "credential_revoked", 200, "ended", null]
+    ))
+  }))
+
   it.live("Keep a tablet signed in: the key's sign-in offers a lease, a lost reply answers it again, rotation is two-phase, mail admits only the lease, a renewed key replaces the old one, and a spent lease ends only its device (spec/cloud/identity/sessions.md, \"Story: Keep a tablet signed in to mail and calendar\"; spec/cloud/nativeClients/deviceKeys.md, \"Story: Keep a tablet's key without signing in again\")", () => scoped(effect {
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(1_000_000))
