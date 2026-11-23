@@ -226,7 +226,8 @@ module node {
         input.id = key.inputId
         input.content.chatIdempotency = { ...key.marker }
       }
-      const requestedReply = validateUuid(options.input?.metadata?.replyToMessageId)
+      const rawReply = options.input?.metadata?.replyToMessageId
+      const requestedReply = typeof rawReply === "string" ? validateUuid(rawReply.toLowerCase()) : null
       const [candidate] = requestedReply === null || requestedReply === input.id ? []
         : await runtime.getMemoriesByIds([requestedReply], "messages")
       const replyTarget = candidate !== undefined && candidate.id === requestedReply && admitsReplyTarget(
