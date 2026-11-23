@@ -3,6 +3,7 @@ package ai.eliza.plugins.camera
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
+import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
@@ -27,11 +28,18 @@ class GalleryFailureProvider : ContentProvider() {
         var initialPending: Int? = null
         var finalPending: Int? = null
         var deleted = 0
+        var row: Array<Any?>? = null
     }
     private fun file() = File(requireNotNull(context).cacheDir, "gallery-provider-fixture.bin")
     override fun onCreate() = true
     override fun getType(uri: Uri) = "image/jpeg"
-    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, order: String?): Cursor? = null
+    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, order: String?): Cursor? {
+        if (mode == "query-error") throw IllegalStateException("Intentional fixture query failure")
+        val values = row ?: return null
+        return MatrixCursor(requireNotNull(projection)).apply {
+            addRow(projection.map { if (it == MediaStore.MediaColumns.VOLUME_NAME) values[1] else values[0] })
+        }
+    }
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
         events.add("insert")
         initialPending = values?.getAsInteger(MediaStore.Images.Media.IS_PENDING)
@@ -105,6 +113,36 @@ class GalleryImageWriterInstrumentedTest {
                 putString("nativeArtifactName", "camera-gallery-provider-failures.json")
                 putString("nativeArtifactBase64", Base64.encodeToString(receipts.toString().toByteArray(), Base64.NO_WRAP))
             })
+        }
+    }
+
+    // spec/nativeCamera/index.md, "Story: Take a picture or record a clip through the current camera view"
+    @Test fun savedPhotoLibraryIdNamesTheRowsOwnVolume() {
+        org.junit.Assume.assumeTrue(android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+        val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
+        val collection = Uri.parse("content://${GalleryFailureProvider.AUTHORITY}/images")
+        GalleryFailureProvider.mode = "success"
+        val bytes = byteArrayOf(1, 4, 9, 16)
+        val saved = GalleryImageWriter(resolver, collection).save(bytes, "jpeg")
+        try {
+            GalleryFailureProvider.row = arrayOf(42L, "external_primary")
+            assertEquals("m:external_primary:i:42", savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = arrayOf(7L, "1a2b-3c4d")
+            assertEquals("m:1a2b-3c4d:i:7", savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = arrayOf(42L, "external")
+            assertNull(savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = arrayOf(42L, null)
+            assertNull(savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = null
+            assertNull(savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.mode = "query-error"
+            GalleryFailureProvider.row = arrayOf(42L, "external_primary")
+            assertNull(savedImageLibraryId(resolver, saved))
+            assertArrayEquals(bytes, requireNotNull(resolver.openInputStream(saved)).use { it.readBytes() })
+        } finally {
+            GalleryFailureProvider.mode = "success"
+            GalleryFailureProvider.row = null
+            resolver.delete(saved, null, null)
         }
     }
 }
