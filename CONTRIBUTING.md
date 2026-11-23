@@ -144,8 +144,9 @@ and `hardware`, separated by commas.
   Include a request or run ID and the observed failure and recovery. Include
   the provider and exact model ID when inference affects the result.
 - `UI video:` Upload the MP4 walkthrough of the changed flow. Include the app
-  visual audit, desktop and mobile screenshots, and reviewer test steps as
-  described above.
+  visual audit and reviewer test steps as described above.
+- `UI screenshots:` Attach the required desktop and mobile before-and-after
+  screenshots of the changed flow.
 - `Benchmarks:` For a performance claim, attach comparable base and PR runs
   from the affected suite or a reproducible workload. Record hardware, input,
   provider and model if applicable, iteration count, metric and units, and
