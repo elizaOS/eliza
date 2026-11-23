@@ -223,11 +223,13 @@ pure def lawOnlyA401WithACredentialIsReported(attach: Attach, d: DeviceRoute, st
 pure def usesDeviceKey(attach: Attach): bool = match attach { | WithKey(k) => true | _ => false }
 pure def lawASession401NeverReachesTheKey(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
   isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and usesDeviceKey(attach))
-pure def lawARequestCarriesOnlyAPositiveKeyVersion(h: Holding, d: DeviceRoute): bool =
-  match attachFor(h, d) {
+pure def lawARequestCarriesOnlyAPositiveKeyVersion(h: Holding, d: DeviceRoute): bool = {
+  val plan = attachFor(h, d)
+  match plan {
     | Send(s) => usesDeviceKey(s.attach) implies keyOf(s.attach) >= 1
     | _ => true
   }
+}
 ```
 
 ### A cancel disconnects only the page's own call still in flight, which then settles once as cancelled
