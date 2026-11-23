@@ -115,7 +115,7 @@ pure def stepEveryOutcomeIsItsAnswerOrAnEnding(before: PageRequests, via: str, a
   after.requests.every(r => before.requests.includes(r) or
     (via == "pageAsks" and r.id == after.issued and (r.status == Waiting or r.status == ended(r.kind))) or
     before.requests.some(b => b.id == r.id and b.surface == r.surface and b.gen == r.gen and b.kind == r.kind and
-      (answerStep(via, r.kind, b.status, r.status) or (active(b.status) and r.status == ended(r.kind)))))
+      (answerStep(via, r.kind, b.status, r.status) or ((active(b.status) or saveStops(after.host, b)) and r.status == ended(r.kind)))))
 pure def stepRequestsAreNeverForgotten(before: PageRequests, after: PageRequests): bool =
   before.requests.every(b => after.requests.some(r => r.id == b.id))
 pure def sometimesDialogAccepted(s: PageRequests): bool = s.requests.some(r => r.status == DialogAccepted)
@@ -165,12 +165,12 @@ end, while a held other-app link or sign-in page stays until a page start,
 a newer one or the answer. Pausing cancels dialogs only: a held file
 request or permission stays, since the system picker or Android's own
 permission dialog may be what covers the page. Destroying a surface ends
-all it holds; a download already saving finishes but reports nothing.
+all it holds, and stops a download still saving from it.
 
 ```quint
 pure def endsOn(host: L::SurfaceHost, r: PageRequest): bool = active(r.status) and not(mayHold(host, r))
 pure def endUnheld(host: L::SurfaceHost, s: PageRequests): PageChange =
-  { state: { ...s, host: host, requests: s.requests.listMap(r => if (endsOn(host, r)) { ...r, status: ended(r.kind) } else r) },
+  { state: { ...s, host: host, requests: s.requests.listMap(r => if (endsOn(host, r) or saveStops(host, r)) { ...r, status: ended(r.kind) } else r) },
     out: withdrawn(s.requests.select(r => endsOn(host, r))) }
 pure def canLearnSupport(s: PageRequests): bool = L::canLearnSupport(s.host)
 pure def learnSupport(s: PageRequests, isolatedRenderer: bool, multiProfile: bool): PageChange = endUnheld(L::learnSupport(s.host, isolatedRenderer, multiProfile), s)
@@ -270,6 +270,23 @@ pure def downloadFinished(s: PageRequests, request: int, published: bool): PageC
     out: s.requests.select(r => r.id == request and s.host.surfaces.some(x => x.id == r.surface and x.gen == r.gen))
       .listMap(r => DownloadFinished({ surface: r.surface, request: r.id, saved: published })) }
 pure def sometimesDownloadSaved(s: PageRequests): bool = s.requests.some(r => r.status == Saved)
+```
+
+### A save stops unpublished once its surface is closed, so its cookie is not sent again and no file lands unreported
+
+Only an https address or an inline `data:` file is saved; `saveDownload`
+refuses any other address (`DOWNLOAD_UNSUPPORTED`) before anything is
+fetched. A save still running when its surface is destroyed, replaced or
+closed by a purge of its profile's sign-ins stops before the file is
+published: the site's cookie is not sent again, no file lands in
+Downloads, and the request ends dismissed, so `downloadFinished` finds
+nothing to report. A page start or hiding the surface does not stop it.
+
+```quint
+pure def saveStops(host: L::SurfaceHost, r: PageRequest): bool =
+  r.status == Saving and not(host.surfaces.some(x => x.id == r.surface and x.gen == r.gen))
+pure def alwaysASaveRunsOnlyWhileItsSurfaceIsOpen(s: PageRequests): bool =
+  s.requests.every(r => r.status == Saving implies s.host.surfaces.some(x => x.id == r.surface and x.gen == r.gen))
 ```
 
 ## Story: Leave the page for another app or a full browser only when I choose
