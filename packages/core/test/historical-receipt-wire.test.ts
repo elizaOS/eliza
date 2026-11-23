@@ -96,7 +96,7 @@ describe("historical outcome wire", () => {
 
 	it("prints one fixed legend per record kind that says each rule once", () => {
 		const effects =
-			"row=[requestSourceEventId,[[actionName,success,receipt],...]]; receipt=[shape,[operation,[resourceKind,resourceId],outcome]]; shape 1 adds reason, 2 adds [commitKind], 3 adds [failureCode,failureRetryable,failureAcceptance]; other receipts are objects. history:hN names history source hN. Values are exact. A preview records a proposal, not its completion; a later proposal state takes its place.";
+			"row=[requestSourceEventId,[[actionName,success,receipt],...]]; receipt=[shape,[operation,[resourceKind,resourceId],outcome]]; shape 1 adds reason, 2 adds [commitKind], 3 adds [failureCode,failureRetryable,failureAcceptance]; other receipts are objects. history:hN names history source hN. Values are exact. A preview records a proposal, not its completion; a later proposal state takes its place. A reason that says it never ran means the owner declined it or it expired: that answers whether the request ran, not what the resource holds now.";
 		const navigation =
 			"row=[requestSourceEventId,[[success,receipt],...]]; receipt is the recorded navigation object. history:hN names history source hN. Values are exact.";
 		const position =
@@ -255,8 +255,8 @@ describe("historical outcome wire", () => {
 	});
 
 	it("folds an ending only into its one matching preview of the same request", () => {
-		const terminal = (request: string, proposal: string) =>
-			record(
+		const terminal = (request: string, proposal: string) => {
+			const ending = record(
 				request,
 				[
 					normalizeEffectReceipt({
@@ -265,13 +265,18 @@ describe("historical outcome wire", () => {
 						operation: "device.sms_compose",
 						resource: { kind: "device.approval", id: proposal },
 						outcome: "noop",
-						reason:
-							"No verified completed device effect is available; durable proposal state is expired.",
+						reason: "Expired; it never ran.",
 					}),
 				],
 				`${HISTORICAL_PROPOSAL_TERMINAL_ID_PREFIX}${proposal}`,
 				`Authoritative later proposal state: expired. This supersedes the earlier preview of proposal ${proposal} only.`,
 			);
+			// An ended proposal records no success, as the reconciler writes it.
+			return {
+				...ending,
+				content: ending.content.replace('"success":true', '"success":false'),
+			};
+		};
 		// Two previews with one id, another request's preview, a foreign label.
 		for (const segments of [
 			[record("a", [preview("p"), preview("p")]), terminal("a", "p")],
@@ -293,19 +298,39 @@ describe("historical outcome wire", () => {
 			terminal("a", "p"),
 		]);
 		expect(folded).toHaveLength(2);
-		const [, outcomes] = rowOf(folded[1]);
-		expect(outcomes.map((outcome: unknown[]) => outcome[2])).toEqual([
+		// The ending's own scope is gone, so its row states the end and the
+		// legend says what an ended proposal means.
+		expect(rowOf(folded[1])).toEqual([
+			"history:a",
 			[
-				1,
 				[
-					"device.sms_compose",
-					["device.approval", "p"],
-					"noop",
-					"No verified completed device effect is available; durable proposal state is expired.",
+					"PROPOSE_DEVICE_ACTION",
+					false,
+					[
+						1,
+						[
+							"device.sms_compose",
+							["device.approval", "p"],
+							"noop",
+							"Expired; it never ran.",
+						],
+					],
+				],
+				[
+					"PROPOSE_DEVICE_ACTION",
+					true,
+					[0, ["device.sms_compose", ["device.approval", "q"], "preview"]],
 				],
 			],
-			[0, ["device.sms_compose", ["device.approval", "q"], "preview"]],
 		]);
+		const legend = JSON.parse(folded[0].content);
+		expect(legend.scope).toBe(SCOPE);
+		expect(legend.encoding).toContain(
+			"a later proposal state takes its place. A reason that says it never ran means the owner declined it or it expired: that answers whether the request ran, not what the resource holds now.",
+		);
+		expect(folded.map((segment) => segment.content).join("\n")).not.toContain(
+			"Authoritative later proposal state",
+		);
 	});
 
 	it("writes one table per record kind at its first record, rows in order", () => {
