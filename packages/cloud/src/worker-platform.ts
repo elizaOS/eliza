@@ -50,5 +50,5 @@ function safeInteger(text: string): number {
 }
 
 export const safeIntegerTypes = {
-  getTypeParser: (oid: number, format?: string) => oid === 20 ? safeInteger : types.getTypeParser(oid, format as "text")
+  getTypeParser: (oid: number, format?: Parameters<typeof types.getTypeParser>[1]): unknown => oid === 20 ? safeInteger : types.getTypeParser(oid, format)
 }

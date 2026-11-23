@@ -49,7 +49,7 @@ if (import.meta.main) {
   for await (const line of readline.createInterface({ input: process.stdin })) {
     if (line.trim() === "") continue;
     const event = (JSON.parse(line) as { event?: Event }).event;
-    if (event === undefined) driver.reset();
+    if (event === undefined) await driver.reset();
     else await driver.dispatch("consumer", event);
     process.stdout.write(`${JSON.stringify({ state: await driver.observe("consumer") })}\n`);
   }
