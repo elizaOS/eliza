@@ -301,7 +301,7 @@ export effect function parseWorkflowPhoneReview(
   const device = canonical.device
   if (device === undefined) return try refuse()
   const specDigest = try digest(p.specDigest)
-  if ((try workflowSha(spec)) !== specDigest) return try refuse()
+  if ((try workflowSha(canonical)) !== specDigest) return try refuse()
   const anchor = p.calendarAnchorAt === undefined ? {} : { calendarAnchorAt: try utc(p.calendarAnchorAt) }
   return {
     runId: try workflowId(p.runId), workflowId: try workflowId(p.workflowId), versionId: try workflowId(p.versionId), specDigest,

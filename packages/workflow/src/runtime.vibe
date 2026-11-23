@@ -161,7 +161,7 @@ export function runtimeWorkflowHost(runtime: IAgentRuntime): WorkflowHost {
   const native = serviceWith<WorkflowNativeDigestService>(runtime, WORKFLOW_NATIVE_DIGEST_SERVICE, ["grant", "read"])
   const unavailable = (cause: unknown) => new WorkflowScheduleUnavailable({ cause })
   const tasks = <A>(call: () => Promise<A>) => tryPromise({ try: call, catch: unavailable })
-  const scheduled = () => tasks(() => runtime.getTasks({ tags: [scheduleTag] }))
+  const scheduled = () => tasks(() => runtime.getTasks({ tags: [scheduleTag], agentIds: [runtime.agentId] }))
   return {
     sql: adapterSql(runtime.adapter),
     owner: String(runtime.agentId),

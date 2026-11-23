@@ -8,7 +8,7 @@ import {
   digestCron, digestId, digestKeys, digestOccurrenceMissed, digestPhoneSpec, digestRecord, digestSourceState, digestSourceType, digestText, validateDigestSpec, DigestRefused,
   type DigestSourceRecord, type DigestSpec, type HostedNativeSelection,
 } from "../contract/digest.vibe"
-import { phoneWorkflowBytes, workflowSha, workflowUuid } from "../contract/phone.vibe"
+import { phoneWorkflowBytes, validatePhoneWorkflowSpec, workflowSha, workflowUuid } from "../contract/phone.vibe"
 import type { DefinitionRow, RunRow } from "./store.vibe"
 import { assertHostedGoogleSource, liveGoogleAccounts, liveGoogleCalendars, readHostedGoogleSource, validateHostedGoogleSelection } from "./google.vibe"
 import { PHONE_COMPILER_REVISION, versionId, WorkflowRefused, type WorkflowService } from "./workflows.vibe"
@@ -231,8 +231,9 @@ export function hostedDigests(service: WorkflowService) {
   effect function runSpec(row: DefinitionRow, spec: DigestSpec, source: DigestSourceRecord, at: number) {
     if (source.live === undefined) return row
     const text = try liveText(source, at)
-    const phone = source.live.provider === "native" ? digestPhoneSpec(spec, { ...source, text })
+    const materialized = source.live.provider === "native" ? digestPhoneSpec(spec, { ...source, text })
       : { ...row.spec, steps: row.spec.steps.map((step) => step.id === "source" && step.operation === "supplied_text" ? { ...step, text } : step) }
+    const phone = try mapError(validatePhoneWorkflowSpec(materialized), () => new WorkflowRefused({ status: 409, message: DIGEST_SOURCE_UNAVAILABLE_TEXT }))
     return { ...row, spec: phone, specDigest: try workflowSha(phone) }
   }
 

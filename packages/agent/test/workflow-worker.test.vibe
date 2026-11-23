@@ -12,11 +12,33 @@ module node {
   import type { ChildProcessWithoutNullStreams } from "node:child_process"
 
   const script = "#!/bin/sh\nprintf 'ARGS=%s\\n' \"$*\"\n/usr/bin/env\n"
+  const nodeScript = [
+    '#!/usr/bin/env node',
+    'const { mkdtempSync, realpathSync, rmSync } = require("node:fs")',
+    'const { dirname, join } = require("node:path")',
+    'const { tmpdir } = require("node:os")',
+    'const probe = mkdtempSync(join(realpathSync(tmpdir()), "workflow-"))',
+    'console.log("TMP_USED=" + dirname(probe))',
+    'rmSync(probe, { recursive: true })',
+    'console.log("ARGS=" + process.argv.slice(2).join(" "))',
+    'for (const [name, value] of Object.entries(process.env)) console.log(name + "=" + value)',
+  ].join("\n")
 
   export const workerDigest = createHash("sha256").update(script).digest("hex")
+  export const nodeWorkerDigest = createHash("sha256").update(nodeScript).digest("hex")
 
   export async function writeWorker(directory: string, name: string): Promise<void> {
-    await writeFile(`${directory}/${name}`, script, { mode: 0o755 })
+    const javascript = name.endsWith(".js")
+    await writeFile(`${directory}/${name}`, javascript ? nodeScript : script, { mode: javascript ? 0o600 : 0o755 })
+  }
+
+  export function useTempDirectory(path: string): () => void {
+    const previous = process.env.TMPDIR
+    process.env.TMPDIR = path
+    return () => {
+      if (previous === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = previous
+    }
   }
 
   export async function linkWorker(directory: string, target: string, name: string): Promise<void> {
@@ -33,15 +55,17 @@ module node {
     return { code, lines: output.split("\n").filter((line) => line !== "") }
   }
 }
-import { finished, linkWorker, workerDigest, writeWorker } from node
+import { finished, linkWorker, nodeWorkerDigest, useTempDirectory, workerDigest, writeWorker } from node
 
 it.effect('A verified worker runs with plain settings only (spec/agent/plugins/profile.md, "Story: Run my workflows only in the pinned worker")', effect () => {
   const state = try scratch("ww-state")
   const workers = try scratch("ww-dir")
-  try host("worker fixture", () => writeWorker(workers.path, "worker"))
+  const temporary = try scratch("ww-tmp")
+  try acquireRelease(Effect.try(() => useTempDirectory(temporary.path)), (restore) => orDie(Effect.try(restore)))
+  try host("worker fixture", () => writeWorker(workers.path, "worker.js"))
   const frame = launchFrame({ storageKey: "sealing-key-material-1" })
   const document = try Effect.try(() => launchDocument({
-    workflowWorker: { runtimeDir: workers.path, executable: "worker", sha256: workerDigest },
+    workflowWorker: { runtimeDir: workers.path, executable: "worker.js", sha256: nodeWorkerDigest },
     environment: { WORKER_SETTING: "plain" },
   }))
   const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
@@ -52,16 +76,17 @@ it.effect('A verified worker runs with plain settings only (spec/agent/plugins/p
   const worker = running.workflowWorker
   if (worker === undefined) return try die("The verified worker was not installed")
   const child = try host("spawn worker", () => worker.spawnWorker(["run", "flow"], {
-    env: { REQUEST_SETTING: "x", LEAKED_TOKEN: frame.token, LEAKED_KEY: `prefix-${frame.storageKey}` },
+    env: { REQUEST_SETTING: "x", PATH: "/system/bin", TMPDIR: workers.path, LEAKED_TOKEN: frame.token, LEAKED_KEY: `prefix-${frame.storageKey}` },
   }))
   const ran = try host("worker exit", () => finished(child))
   try Effect.try(() => assert.deepStrictEqual({
     code: ran.code,
     args: ran.lines.includes("ARGS=run flow"),
     plain: ran.lines.includes("WORKER_SETTING=plain") && ran.lines.includes("REQUEST_SETTING=x"),
+    temporary: ran.lines.includes(`TMP_USED=${temporary.path}`) && ran.lines.includes(`TMPDIR=${temporary.path}`),
     secret: ran.lines.some((line) => line.includes(frame.token) || line.includes("sealing-key-material-1") || line.startsWith("LEAKED_")),
     executable: worker.executable,
-  }, { code: 0, args: true, plain: true, secret: false, executable: `${workers.path}/worker` }))
+  }, { code: 0, args: true, plain: true, temporary: true, secret: false, executable: `${workers.path}/worker.js` }))
 }, 180_000)
 
 it.effect('A worker whose digest differs from the launch stops the agent with Config (spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch")', effect () => {
@@ -111,7 +136,7 @@ it.effect(`A pinned worker is the workflow-worker service, a host's bridges are 
   const worker = running.runtime.getService("workflow-worker") as unknown as { spawnWorker?: (args: readonly string[]) => Promise<Parameters<typeof finished>[0]> } | null
   const spawn = worker?.spawnWorker
   if (spawn === undefined) return try die("The workflow-worker service was not registered")
-  const ran = try host("worker through the service", () => spawn.call(worker, ["run", "flow"]).then(finished))
+  const ran = try host("worker through the service", async () => finished(await spawn.call(worker, ["run", "flow"])))
   const crowded = try scratch("ww-crowded-state")
   const refused = try Effect.flip(startAgent({ ...parsed, stateDirectory: crowded.path, binding: { kind: "socket", path: crowded.file("agent.sock") },
     runtimeServices: [hostService("cloud")] }))

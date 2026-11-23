@@ -82,10 +82,12 @@ module node {
     const virtual = new Map([[file, source], [ambient, declaration], [contract, contractText]])
     const host = ts.createCompilerHost(options)
     const getSourceFile = host.getSourceFile.bind(host)
+    const directoryExists = host.directoryExists?.bind(host)
     const fileExists = host.fileExists.bind(host)
     const readFile = host.readFile.bind(host)
     host.getSourceFile = (name, version, onError, shouldCreate) => name === file ? parsed
       : virtual.has(name) ? ts.createSourceFile(name, virtual.get(name) ?? "", version, true) : getSourceFile(name, version, onError, shouldCreate)
+    host.directoryExists = (name) => name === root || (directoryExists?.(name) ?? false)
     host.fileExists = (name) => virtual.has(name) || fileExists(name)
     host.readFile = (name) => virtual.get(name) ?? readFile(name)
     const program = ts.createProgram([file, ambient, contract], options, host)

@@ -116,14 +116,19 @@ module node {
 
   export interface WorkerClosure { readonly entries: readonly { readonly path: string; readonly from: string }[]; readonly dependencies: Readonly<Record<string, string>> }
 
-  const conditions = ["node", "import", "default"]
+  type ModuleMode = "import" | "require"
+  const commonConditions = ["node", "node-addons", "module-sync", "default"]
+  const conditions = {
+    import: new Set([...commonConditions, "import"]),
+    require: new Set([...commonConditions, "require"]),
+  }
 
-  function target(exportsField: unknown, subpath: string): string | undefined {
+  function target(exportsField: unknown, subpath: string, mode: ModuleMode): string | undefined {
     const pick = (value: unknown): string | undefined => {
       if (typeof value === "string") return value
       if (Array.isArray(value)) return value.map(pick).find((found) => found !== undefined)
-      if (typeof value === "object" && value !== null) for (const condition of conditions) if (condition in value) {
-        const found = pick(Reflect.get(value, condition))
+      if (typeof value === "object" && value !== null) for (const [condition, candidate] of Object.entries(value)) if (conditions[mode].has(condition)) {
+        const found = pick(candidate)
         if (found !== undefined) return found
       }
       return undefined
@@ -196,16 +201,24 @@ module node {
       }
       if (!/\.(?:m|c)?js$/.test(current)) continue
       const text = await readFile(current, "utf8")
-      const specifiers = new Set<string>()
+      const loads = new Map<string, { specifier: string; mode: ModuleMode }>()
+      const commonJs = current.endsWith(".cjs")
       const visit = (node: import("typescript").Node): void => {
-        const specifier = ts.isImportDeclaration(node) || ts.isExportDeclaration(node) ? node.moduleSpecifier
-          : ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword ? node.arguments[0]
-          : undefined
-        if (specifier !== undefined && ts.isStringLiteralLike(specifier)) specifiers.add(specifier.text)
+        let argument: import("typescript").Node | undefined
+        let mode: ModuleMode = "import"
+        if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) argument = node.moduleSpecifier
+        if (ts.isCallExpression(node)) {
+          if (node.expression.kind === ts.SyntaxKind.ImportKeyword) argument = node.arguments[0]
+          if (commonJs && ts.isIdentifier(node.expression) && node.expression.text === "require") {
+            argument = node.arguments[0]
+            mode = "require"
+          }
+        }
+        if (argument !== undefined && ts.isStringLiteralLike(argument)) loads.set(`${mode}:${argument.text}`, { specifier: argument.text, mode })
         ts.forEachChild(node, visit)
       }
       visit(ts.createSourceFile(current, text, ts.ScriptTarget.ESNext, false, ts.ScriptKind.JS))
-      for (const specifier of specifiers) {
+      for (const { specifier, mode } of loads.values()) {
         if (specifier.startsWith("node:") || builtinModules.includes(specifier.split("/")[0])) continue
         if (specifier.startsWith(".") || specifier.startsWith("/")) {
           const next = await file(resolve(dirname(current), specifier))
@@ -218,7 +231,7 @@ module node {
         const subpath = "." + specifier.slice(name.length)
         const found_ = await packageOf(name, current)
         if (found_ === undefined) return refuse(`A worker dependency cannot be resolved: ${name}`)
-        const mapped = found_.manifest.exports === undefined ? (subpath === "." ? found_.manifest.main ?? "index.js" : subpath) : target(found_.manifest.exports, subpath)
+        const mapped = found_.manifest.exports === undefined ? (subpath === "." ? found_.manifest.main ?? "index.js" : subpath) : target(found_.manifest.exports, subpath, mode)
         const next = mapped === undefined ? undefined : await file(join(found_.root, mapped))
         if (next === undefined) return refuse(`A worker dependency entry cannot be resolved: ${specifier}`)
         pending.push(next)
