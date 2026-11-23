@@ -39,11 +39,14 @@ const manifest = (passed: boolean) => JSON.stringify({
 
 function fakeEngine() {
   const calls: string[] = []
-  const controls = { pooling: "ClsPooling" as "ClsPooling" | "MeanPooling", failLoad: false, holdLoad: false }
+  const controls = { pooling: "ClsPooling" as "ClsPooling" | "MeanPooling", failLoad: false, holdLoad: undefined as Deferred.Deferred<void> | undefined }
   const engine: InferenceEngine.Shape = {
     effect load(model: InstalledModel) {
       calls.push(`load ${model.model.name} ${model.files.length}`)
-      if (controls.holdLoad) try Effect.never
+      if (controls.holdLoad !== undefined) {
+        try Deferred.succeed(controls.holdLoad, undefined)
+        try Effect.never
+      }
       if (controls.failLoad) throw new EngineFailed({ capability: "text", reason: "out of memory" })
     },
     effect unload() { calls.push("unload") },
@@ -123,14 +126,16 @@ it.effect('Download, verify, assign, activate and remove models, keeping the own
     try models.download("model1")
     try settled(models, "model1")
     const modelRoutes = localInferenceRoutes(models, engine)
-    controls.holdLoad = true
+    const loadStarted = try Deferred.make<void>()
+    controls.holdLoad = loadStarted
     const loading = try call(modelRoutes, "POST", "/api/local-inference/active", { body: { modelId: "eliza-1-2b" } })
+    try Deferred.await(loadStarted)
     assert.deepStrictEqual(loading, { status: 202, body: try models.view() })
     assert.deepStrictEqual((try models.view()).active, { model: "eliza-1-2b", status: "loading", servesText: false })
     assert.strictEqual((try call(modelRoutes, "DELETE", "/api/local-inference/active"))?.status, 200)
     assert.deepStrictEqual((try models.view()).active, { model: null, status: "idle", servesText: false })
     assert.deepStrictEqual(calls, ["load eliza-1-2b 2", "unload"])
-    controls.holdLoad = false
+    controls.holdLoad = undefined
     calls.length = 0
     assert.strictEqual(try activated(models, "model1"), "ActiveReady")
     assert.deepStrictEqual(calls, ["load eliza-1-2b 2"])
