@@ -243,15 +243,16 @@ func pruneArtifacts(directory string, keep ...string) error {
 		if name == ".pair.lock" || name == ".download.lock" {
 			continue
 		}
+		temporary := strings.HasPrefix(name, artifactResumeTempPrefix)
 		extension := filepath.Ext(name)
 		digest := strings.TrimSuffix(name, extension)
-		if !validHex(digest) || (extension != ".apk" && extension != ".part" && extension != ".resume") {
+		if !temporary && (!validHex(digest) || (extension != ".apk" && extension != ".part" && extension != ".resume")) {
 			return errors.New("unknown artifact cache entry")
 		}
 		if !entry.Type().IsRegular() {
 			return errors.New("unsafe artifact cache entry")
 		}
-		if !slices.Contains(keep, digest) {
+		if temporary || !slices.Contains(keep, digest) {
 			obsolete = append(obsolete, name)
 		}
 	}
