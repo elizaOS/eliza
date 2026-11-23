@@ -6,7 +6,7 @@ import type { Evidence, FamilySchemas, OperationSchema, WireOperation } from "./
 import { civilDay, day, isoInstant, knownZone, realDate, utf8Bytes, zonedWall } from "./personal.schema.vibe"
 import { telephonyOperations } from "./telephony.vibe"
 
-const noControl = (value: string) => !/[\u0000-\u001f\u007f]/.test(value)
+const noControl = (value: string) => !/[^\u0020-\u007e\u0080-\uffff]/.test(value)
 const filled = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum), Schema.makeFilter((value: string) => value.trim() !== "" && !value.includes("\0")))
 const blank = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum), Schema.makeFilter((value: string) => !value.includes("\0")))
 const bounded = (minimum: number, maximum: number) => Schema.Int.check(Schema.isBetween({ minimum, maximum }))
@@ -306,8 +306,9 @@ const PhotosShare = Schema.Union([
   Schema.Struct({ type: Schema.Literal("photos_share"), ids: MediaIds(100) }),
   Schema.Struct({ type: Schema.Literal("photos_share"), ...OpenItem }),
 ])
-const openItem = (operation: { readonly selected?: true }) => operation.selected === true
-const targetsOf = (operation: { readonly ids?: readonly string[]; readonly selected?: true }) =>
+type PhotoReviewOperation = typeof PhotosAlbumCreate.Type | typeof PhotosShare.Type
+const openItem = (operation: PhotoReviewOperation) => "selected" in operation && operation.selected === true
+const targetsOf = (operation: PhotoReviewOperation) =>
   photoTargets(openItem(operation), operation.ids?.length ?? 0)
 
 const PhotosFilterResult = Schema.Struct({ kind: Schema.Literal("photos_filter"), shown: MediaCount, more: Schema.Boolean })

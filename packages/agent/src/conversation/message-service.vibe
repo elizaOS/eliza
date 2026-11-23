@@ -158,7 +158,7 @@ async function respond(
         const actions = await offeredActions(runtime, message, state, actionGate)
         const planned = await planTurn({
           runtime, message, state, roles, actionGate, system, messages, signal, maxTokens: replyMaxTokens,
-          onStepResult: (result) => terminal.recordActionResult(result),
+          onStepResult: async (result) => terminal.recordActionResult(result),
           ...(onStreamChunk === undefined ? {} : {
             onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
               written = accumulated ?? written + chunk
