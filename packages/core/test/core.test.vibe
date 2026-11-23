@@ -3289,6 +3289,13 @@ it.live("Pair a sender and approve an action across a restart (spec/core/pairing
       sameWorker: runtime.getTaskWorker("DEPLOY") === worker,
     }
 
+    const distant = [30 * 24 * 3_600_000, Number.POSITIVE_INFINITY]
+    const waiting = try Effect.forEach(distant, (timeoutMs) => host(() => approvals.requestApprovalAsync(ask("ARCHIVE", { timeoutMs, timeoutDefault: "approve" }))))
+    try sleep("200 millis")
+    const distantRows = try Effect.forEach(waiting, (id) => host(async () => (await runtime.getTask(id))?.id === id))
+    try Effect.forEach(waiting, (id) => host(() => approvals.cancelApproval(id)))
+    try Effect.try(() => assert.deepStrictEqual(distantRows, [true, true]))
+
     const started = Date.now()
     const expiring = try host(() => approvals.requestApprovalAsync(ask("ARCHIVE", { timeoutMs: 150, timeoutDefault: "approve" })))
     try until(async () => (await runtime.getTask(expiring)) === null)
