@@ -386,10 +386,11 @@ asked for by its bare name (Calendar, Notes, Inbox, Maps, Files, Photos,
 Settings, Workflows, Camera, Browser, Contacts, Messages, Phone or Clock)
 and `On it.` for any other app; `Sure.`, `Sure, one sec.` or `Yeah, one
 sec.` for a plain command (`Text Sam I'm late`, `Set an alarm for seven`);
-`On it.` or `One sec.` for any other action. A request whose only work is
-opening one app (`Open Maps.`) gets no cue: the model writes nothing with
-that call, and the reply after it confirms the destination (`Maps is
-open.`). The cue never names the people, items, times or outcome, never
+`On it.` or `One sec.` for any other action. A request only to open one
+app, with nothing to read, find or change there (`Open Maps.`), still calls
+the tool that opens it, with no cue: the model writes nothing with that
+call, and the reply after it confirms the destination (`Maps is open.`).
+Any question or lookup gets its cue, even one about what is on the screen. The cue never names the people, items, times or outcome, never
 says the work is done or under way, never repeats the request, and is left
 empty, with the work still done, when the person asked for silence; later
 tool calls come with no text.
