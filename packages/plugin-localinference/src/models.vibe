@@ -102,6 +102,11 @@ effect function machineOf(start: LocalModels) {
 
 const failed = (model: CatalogModel, reason: string) => new DownloadFailed({ model: model.name, reason })
 
+effect function readRecordText(fs: FileSystem.FileSystem, file: string) {
+  if (!(fs.exists(file) catch () => false)) return undefined
+  return (fs.readFileString(file) catch () => "")
+}
+
 effect function fetchPlan(http: HttpClient.HttpClient, model: CatalogModel) {
   const source = model.source
   if (source.kind === "pinned") return { files: source.files, evalsPassed: true }
@@ -136,11 +141,6 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
   const lock = Semaphore.makeUnsafe(1)
   const directoryOf = (model: CatalogModel) => model.source.kind === "pinned" ? modelsDirectory : path.join(modelsDirectory, model.name)
 
-  effect function readText(file: string) {
-    if (!(fs.exists(file) catch () => false)) return undefined
-    return (fs.readFileString(file) catch () => "")
-  }
-
   effect function present(directory: string, list: readonly InstalledFile[]) {
     for (const file of list) {
       const info = (fs.stat(path.join(directory, file.path)) catch () => undefined)
@@ -161,7 +161,7 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
     try fs.rename(temporary, file)
   }
 
-  const installedText = try readText(installedFile)
+  const installedText = try readRecordText(fs, installedFile)
   const installedRecord = installedText === undefined ? { version: 1 as const, models: [] } : Option.getOrUndefined(decodeInstalled(installedText))
   let start = initial
   for (const entry of installedRecord?.models ?? []) {
@@ -169,7 +169,7 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
     start = withInstall(entry.id, start, "Installed", entry.evalsPassed)
     files.set(entry.id, entry.files)
   }
-  const assignmentsText = try readText(assignmentsFile)
+  const assignmentsText = try readRecordText(fs, assignmentsFile)
   const recorded = assignmentsText === undefined ? {} : Option.getOrUndefined(Option.map(decodeAssignments(assignmentsText), (record) => record.assignments))
   start = installedRecord !== undefined && recorded !== undefined ? withRecorded(start, recorded, catalog) : assignmentsUnreadable(start)
   const models = try machineOf(try orDie(decodeState(start)))
@@ -361,7 +361,7 @@ export effect function openLocalModels(stateDirectory: string, catalog: Catalog 
       if (catalog[id].source.kind === "bundle") (fs.remove(directory, { recursive: true }) catch () => undefined)
     }),
     repairAssignments: () => lock.withPermits(1)(effect {
-      const text = try readText(assignmentsFile)
+      const text = try readRecordText(fs, assignmentsFile)
       const repaired = text === undefined ? {} : Option.getOrUndefined(Option.map(decodeAssignments(text), (record) => record.assignments))
       if (repaired === undefined) throw new AssignmentsUnreadable({ path: assignmentsFile })
       let state = try models.send({ type: "assignmentsRepaired" })

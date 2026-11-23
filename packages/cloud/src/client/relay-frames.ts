@@ -153,7 +153,7 @@ export function utf8Valid(b: number[]): boolean {
 }
 
 function ascii(s: string): number[] {
-  let out: number[] = []
+  const out: number[] = []
   let i = 0
   while (i < s.length) {
     //@ invariant 0 <= i && i <= s.length
@@ -329,7 +329,7 @@ function readObject(b: number[], start: number, depth: number): ReadFields {
   //@ ensures \result.ok ==> start < \result.at && \result.at <= b.length
   //@ decreases 2 * depth + 1
   if (start >= b.length || b[start] !== 123) return { ok: false, at: start, fields: [] }
-  let fields: JsonField[] = []
+  const fields: JsonField[] = []
   let i = skipSpace(b, start + 1)
   if (i < b.length && b[i] === 125) return { ok: true, at: i + 1, fields: fields }
   while (i < b.length) {
