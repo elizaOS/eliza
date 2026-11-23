@@ -27,7 +27,8 @@ module node {
   import type { AgentTurnProcessingOptions } from "./message-service.vibe"
   import { recordHeard } from "./heard.vibe"
   import { decodeBrowserPage, decodeObservation, decodeVoiceUiContext } from "./turn-context.schema.vibe"
-  import { streamRoutes, type ReplyWriter, type StreamStart, type TurnEnd } from "./stream.vibe"
+  import { visiblePreparedNavigation } from "../views/show-action.vibe"
+  import { streamRoutes, type ActionResultFrame, type ReplyWriter, type StreamStart, type TurnEnd } from "./stream.vibe"
 
   export interface TurnReply {
     readonly fullText: string
@@ -35,7 +36,7 @@ module node {
     readonly agentName: string
     readonly messageId: UUID
     readonly userMessageId: UUID
-    readonly actionResults: readonly { readonly action: string; readonly data: unknown }[]
+    readonly actionResults: readonly ActionResultFrame[]
     readonly failureKind?: string
     readonly planAction?: "sign-in" | "funding" | "retry"
     readonly retryAfterMs?: number
@@ -96,7 +97,7 @@ module node {
     }
     const metadata = parsed.value.metadata
     if (metadata === undefined) return { kind: "input", body: parsed.value, clientId }
-    const { observation, voiceUi, browserPage, ...rest } = metadata
+    const { observation, voiceUi, browserPage, viewClientId, viewDelivery, ...rest } = metadata
     const voice = voiceUi === undefined ? undefined : Effect.runSync(Effect.result(decodeVoiceUiContext(voiceUi, clientId)))
     if (voice !== undefined && Result.isFailure(voice)) return { kind: "refused", status: 400, error: "VOICE_UI_CONTEXT_INVALID" }
     const seen = observation === undefined ? undefined : Effect.runSync(Effect.result(decodeObservation(observation)))
@@ -105,6 +106,8 @@ module node {
     return {
       kind: "input", body: parsed.value, clientId, metadata: {
         ...rest,
+        ...(viewDelivery === "completed-action" && clientId !== undefined && (viewClientId === undefined || viewClientId === clientId)
+          ? { viewClientId: clientId, viewDelivery } : {}),
         ...(voice === undefined ? {} : { voiceUi: voice.success }),
         ...(kept === undefined ? {} : { observation: kept }),
         ...(page !== undefined && Result.isSuccess(page) ? { browserPage: page.success } : {}),
@@ -288,11 +291,21 @@ module node {
     }, { signal })
   }
 
-  function turnActions(results: readonly ActionResult[]): TurnReply["actionResults"] {
-    return results.flatMap(({ data }) => {
+  async function turnActions(results: readonly ActionResult[], renderer: string | undefined): Promise<TurnReply["actionResults"]> {
+    const actions: ActionResultFrame[] = []
+    for (const result of results) {
+      const data = result.data
       const action = data?.actionName
-      return typeof action === "string" && action !== "REPLY" ? [{ action, data: data ?? null }] : []
-    })
+      if (typeof action !== "string" || action === "REPLY") continue
+      const preparedNavigation = action === "VIEWS" ? await visiblePreparedNavigation(result, renderer) : undefined
+      actions.push({ action, data: data ?? null, ...(preparedNavigation === undefined ? {} : { preparedNavigation }) })
+    }
+    return actions
+  }
+
+  function withoutPreparedNavigation(answer: SendAnswer): SendAnswer {
+    if ("error" in answer.body) return answer
+    return { ...answer, body: { ...answer.body, actionResults: answer.body.actionResults.map(({ action, data }) => ({ action, data })) } }
   }
 
   export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void, device?: DeviceTurnPort): LocalRoute[] {
@@ -338,7 +351,7 @@ module node {
           current.key.marker.fingerprint === key.marker.fingerprint ? 1 : 2, 1)
         if (admission.tag !== "Duplicate") return failure(409, "CHAT_IDEMPOTENCY_CONFLICT")
         if (await current.admitted) stream?.admit(admission)
-        return current.result
+        return withoutPreparedNavigation(await current.result)
       }
 
       const admitted = Promise.withResolvers<boolean>()
@@ -418,7 +431,7 @@ module node {
         const shown = taskPresentation === undefined ? undefined
           : replayTaskChoices(await taskPresentation.end(turnSignal), reply.content.taskPresentationReceipt)
         if (shown?.kind === "Refused") return failure(shown.status, shown.error)
-        const ran = turnActions(result.actionResults ?? [])
+        const ran = await turnActions(result.actionResults ?? [], parsed.clientId)
         return answer(result.responseContent.text, reply.id, result.userMessageId, undefined, shown?.choices, ran,
           voiceActionLabel(channelType === ChannelType.VOICE_DM, text, result.responseContent.text, ran.map(({ action }) => action)))
       }

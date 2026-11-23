@@ -4,7 +4,9 @@ import { findViewActionHandoff, type Action, type ActionResult, type Memory, typ
 import { navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs } from "../gen/agent__views.effect.vibe"
 import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
 import { viewHostServiceType, viewsModuleName } from "../src/views/module.vibe"
-import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
+import { held, text, toolCalls } from "./support/cloud-fake.ts"
+import type { PreparedViewNavigation } from "../src/views/prepared-navigation.schema.vibe"
 import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
 
 const loaded = {
@@ -152,10 +154,10 @@ it.effect('An ask with no view-interact feed is unavailable, and stopping ends e
   })
 }, 120_000)
 
-const turn = (metadata: Record<string, unknown>): Memory => ({
+const turn = (metadata: Record<string, unknown>, clientId?: string): Memory => ({
   entityId: "00000000-0000-4000-8000-000000000001" as UUID,
   roomId: "00000000-0000-4000-8000-000000000002" as UUID,
-  content: { text: "show my notes", metadata },
+  content: { text: "show my notes", metadata, ...(clientId === undefined ? {} : { clientId }) },
 } as Memory)
 
 effect function show(agent: InProcess, message: Memory, view: string) {
@@ -169,7 +171,7 @@ effect function show(agent: InProcess, message: Memory, view: string) {
 it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer by alias, and the renderer confirms it (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown")', effect () => {
   const agent = try startInProcess(loaded)
   const { views } = try viewHost(agent)
-  const renderer = turn({ viewClientId: "c2", viewDelivery: "completed-action" })
+  const renderer = turn({ viewClientId: "c2", viewDelivery: "completed-action" }, "c2")
 
   const shown = try show(agent, renderer, "Jottings")
   const unknown = try show(agent, renderer, "nowhere")
@@ -196,5 +198,67 @@ it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer 
     assert.deepStrictEqual([unknown.success, noRenderer.success], [false, false])
     assert.deepStrictEqual(switched.body, { ok: true, accepted: true })
     assert.strictEqual(now, "notes")
+  })
+}, 120_000)
+
+it.live(`Publish only the originating renderer's live navigation in a settled reply (spec/agent/conversation/turns.md, "Only the originating reply carries a live prepared view navigation")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { ...loaded.launch, callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin },
+      allowed: ["REPLY", "IGNORE", "NONE", "VIEWS"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+  })
+  const { views } = try viewHost(agent)
+  const opened = try ask(agent, { method: "POST", path: "/api/conversations", body: {} })
+  const { conversation: { id } } = opened.body as { conversation: { id: string } }
+  const path = `/api/conversations/${id}/messages`
+  const headers = { "x-elizaos-client-id": "c9" }
+  const body = { text: "Show Jottings.", clientMessageId: "prepare-once", metadata: { viewDelivery: "completed-action", viewClientId: "c9" } }
+  const post = () => ask(agent, { method: "POST", path, headers, body })
+  const choose = (view: string) => toolCalls("", { name: "VIEWS", arguments: { view } })
+  const release = Promise.withResolvers<void>()
+  const entered = try sync(() => cloud.nextCompletion())
+  try sync(() => cloud.script(held(release.promise, choose("Jottings")), text("The Notes view is ready.")))
+  const sending = fork post()
+  try promise(() => entered)
+  const duplicate = fork post()
+  try sync(() => release.resolve())
+  const first = try join sending
+  const joined = try join duplicate
+  const replay = try post()
+  type Envelope = { readonly messageId?: string; readonly actionResults: readonly { readonly action: string; readonly preparedNavigation?: PreparedViewNavigation }[] }
+  const frame = first.body as Envelope
+  const [made] = frame.actionResults
+  if (made?.preparedNavigation === undefined) return try Effect.die(new Error(JSON.stringify(first.body)))
+  const old = made.preparedNavigation
+  const shownBefore = try views.shownViewOf("c9")
+  const wrong = try claim(agent, { ...old.binding, clientId: "c10" })
+
+  try sync(() => cloud.script(choose("Chat"), text("The Chat view is ready.")))
+  const streamed = try stream(agent, { method: "POST", path: `${path}/stream`, headers, body: {
+    text: "Show Chat.", metadata: { viewDelivery: "completed-action" },
+  } })
+  const events = "text" in streamed ? streamed.text.split("\n\n").filter((event) => event.startsWith("data: "))
+    .map((event) => JSON.parse(event.slice(6)) as { type: string; actionResults?: Envelope["actionResults"] }) : []
+  const navigation = events.find(({ type }) => type === "done")?.actionResults?.[0]?.preparedNavigation
+  if (navigation === undefined) return try Effect.die(new Error("The owner stream did not carry the prepared binding"))
+  const stale = try claim(agent, old.binding)
+  const claimed = try claim(agent, navigation.binding)
+  const switched = try result(agent, navigation.binding, claimIdOf(claimed.body), true)
+  const shownAfter = try views.shownViewOf("c9")
+  try sync(() => cloud.script(text("There was no bound renderer for the request.")))
+  const mismatched = try ask(agent, { method: "POST", path, headers, body: {
+    text: "Show Notes again.", metadata: { viewDelivery: "completed-action", viewClientId: "c10" },
+  } })
+  try Effect.try(() => {
+    assert.deepStrictEqual([first.status, made.action, old.binding.clientId, old.binding.viewId, old.viewPath, shownBefore],
+      [200, "VIEWS", "c9", "notes", "/notes", undefined])
+    assert.notInclude(JSON.stringify(joined.body), "preparedNavigation")
+    assert.notInclude(JSON.stringify(replay.body), "preparedNavigation")
+    assert.strictEqual((replay.body as Envelope).messageId, frame.messageId)
+    assert.deepStrictEqual([wrong.status, stale.status, claimed.status, switched.body, shownAfter],
+      [409, 409, 200, { ok: true, accepted: true }, "chat"])
+    assert.isTrue(events.filter(({ type }) => type !== "done").every(({ actionResults }) => actionResults === undefined))
+    assert.deepStrictEqual((mismatched.body as Envelope).actionResults, [])
   })
 }, 120_000)

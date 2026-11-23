@@ -1,11 +1,14 @@
 // spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"
 import { readViewInteractionClientId, type Action, type ActionResult, type Memory } from "@elizaos/core"
+import { parseViewInteractionClientId } from "@elizaos/core/protocol"
 import { viewsShowsOnDevice } from "../../gen/agent__deviceActions__surfaces.ts"
-import { declaredAt } from "../../gen/agent__views.effect.vibe"
+import { declaredAt, openNavigationOf, pending, waiterAt } from "../../gen/agent__views.effect.vibe"
 import { turnElsewhere } from "../conversation/planning.vibe"
 import { deviceTurnFor } from "../device-actions/proposal/turn.vibe"
 import { foldName } from "./declarations.vibe"
+import { preparedNavigationMayLeave, rendererMayPrepare } from "../../gen/agent__conversation__turns.ts"
 import type { ViewHost } from "./host.vibe"
+import type { PreparedViewNavigation } from "./prepared-navigation.schema.vibe"
 
 module node {
   import { randomUUID } from "node:crypto"
@@ -16,10 +19,25 @@ import { newRequestId } from node
 
 const refused = (text: string): ActionResult => ({ success: false, text })
 
+const minted = new WeakMap<object, { readonly navigation: PreparedViewNavigation; readonly views: ViewHost.Shape }>()
+
+export async function visiblePreparedNavigation(result: ActionResult, renderer: string | undefined): Promise<PreparedViewNavigation | undefined> {
+  const values = result.values
+  const record = typeof values === "object" && values !== null ? minted.get(values) : undefined
+  if (record === undefined || renderer === undefined || !result.success) return undefined
+  const { navigation, views } = record
+  if (navigation.binding.clientId !== renderer) return undefined
+  const state = await runPromise(views.current())
+  const requestId = navigation.binding.requestId
+  const current = openNavigationOf(state, renderer) === requestId && pending(waiterAt(state, requestId))
+  return preparedNavigationMayLeave(true, result.success, true, current, true) ? navigation : undefined
+}
+
 function rendererOf(message: Memory): string | undefined {
   const metadata = message.content.metadata
   const completedAction = typeof metadata === "object" && metadata !== null && "viewDelivery" in metadata && metadata.viewDelivery === "completed-action"
-  return completedAction ? readViewInteractionClientId(message) : undefined
+  const renderer = parseViewInteractionClientId(message.content.clientId)
+  return rendererMayPrepare(completedAction, renderer !== undefined, readViewInteractionClientId(message) === renderer) ? renderer : undefined
 }
 
 function targetOf(options: unknown): string | undefined {
@@ -45,15 +63,13 @@ effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>,
     try views.abandon(requestId)
     return refused("The prepared navigation is not bound to this turn's renderer.")
   }
-  return {
-    success: true,
-    text: `Prepared the switch to ${label}.`,
-    values: {
-      mode: "show", viewId: view.viewId, viewPath: view.path, viewType: "gui", label,
-      completedActionDelivered: false, completedActionHandoffId: requestId, navigationPrepared: true,
-      navigationBinding: { requestId, clientId, viewId: view.viewId, viewType: "gui", installationId: view.installationId },
-    },
-  } satisfies ActionResult
+  const navigationBinding = Object.freeze({ requestId, clientId, viewId: view.viewId, viewType: "gui" as const, installationId: view.installationId })
+  const values = Object.freeze({
+    mode: "show", viewId: view.viewId, viewPath: view.path, viewType: "gui", label,
+    completedActionDelivered: false, completedActionHandoffId: requestId, navigationPrepared: true, navigationBinding,
+  })
+  minted.set(values, { navigation: Object.freeze({ binding: navigationBinding, viewPath: view.path, label }), views })
+  return { success: true, text: `Prepared the switch to ${label}.`, values } satisfies ActionResult
 }
 
 const elsewhere = {
