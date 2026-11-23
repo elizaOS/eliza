@@ -77,10 +77,13 @@ export function ownerMessageService(
   }
 }
 
+const unreadable = "[This message's stored text could not be read back.]"
+
 async function spoken(runtime: AgentRuntime, memory: Memory): Promise<string> {
   if (memory.entityId === runtime.agentId && readSystemNotice(memory.content.systemNotice) !== undefined) return ""
-  const text = await storedText(runtime.adapter, memory).catch(() => "")
-  return memory.entityId === runtime.agentId ? textForTurn(memory, text) : text
+  const read = await storedText(runtime.adapter, memory).then((text) => ({ text }), () => undefined)
+  if (read === undefined) return unreadable
+  return memory.entityId === runtime.agentId ? textForTurn(memory, read.text) : read.text
 }
 
 function partOf(media: Media): ContentPart {

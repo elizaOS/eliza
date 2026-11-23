@@ -7,7 +7,7 @@ import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client
 
 module node {
   import { randomUUID } from "node:crypto"
-  import type { AgentRuntime, UUID } from "@elizaos/core"
+  import { messageTextSourceDescriptor, type AgentRuntime, type UUID } from "@elizaos/core"
   import { heardView } from "../src/conversation/heard.vibe"
   import { storedText } from "../src/conversation/history.vibe"
 
@@ -33,8 +33,15 @@ module node {
     const [reply] = await runtime.adapter.getMemoriesByIds([fresh[8]], "messages")
     return { id: String(fresh[8]), inline: typeof reply?.content.text === "string" }
   }
+
+  export async function breakStoredDigest(runtime: AgentRuntime, id: UUID) {
+    const [reply] = await runtime.adapter.getMemoriesByIds([id], "messages")
+    const source = reply === undefined ? null : messageTextSourceDescriptor(reply.content)
+    if (reply === undefined || source === null) throw new Error("The reply keeps no stored segments")
+    await runtime.adapter.updateMemories([{ id, content: { ...reply.content, messageTextSource: { ...source, sha256: "0".repeat(64) } } }])
+  }
 }
-import { fresh, holdRoom, seedLongReply, storedReply } from node
+import { breakStoredDigest, fresh, holdRoom, seedLongReply, storedReply } from node
 
 interface Conversation { readonly id: string; readonly roomId: UUID }
 
@@ -160,7 +167,7 @@ it.live('Report what of a spoken reply was heard: prefix, collapsed and spoken p
   }))
 }, 120_000)
 
-it.live('A spoken reply over 64 KiB is heard against its whole stored text, and the next turn reads its unheard remainder (spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply")', effect () => {
+it.live('A spoken reply over 64 KiB is heard against its whole stored text, the next turn reads its unheard remainder, and one whose stored text cannot be read back is noted, never dropped (spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply")', effect () => {
   const { cloud, agent } = try cloudAgent()
   const chat = try open(agent)
   const runtime = agent.agent.runtime
@@ -176,12 +183,18 @@ it.live('A spoken reply over 64 KiB is heard against its whole stored text, and 
   const next = try ask(agent, { method: "POST", path: `/api/conversations/${chat.id}/messages`, body: { text: "What did I miss?" } })
   const prompt = cloud.calls.filter((made) => made.path.endsWith("/chat/completions")).at(-1)?.body as { readonly messages?: ReadonlyArray<{ readonly role: string; readonly content: unknown }> } | undefined
   const replayed = prompt?.messages?.find((said) => said.role === "assistant")?.content
+  try host("break the long reply's digest", () => breakStoredDigest(runtime, seeded.id as UUID))
+  try Effect.sync(() => cloud.script(text("Still here.")))
+  const broken = try ask(agent, { method: "POST", path: `/api/conversations/${chat.id}/messages`, body: { text: "And now?" } })
+  const brokenPrompt = cloud.calls.filter((made) => made.path.endsWith("/chat/completions")).at(-1)?.body as { readonly messages?: ReadonlyArray<{ readonly role: string; readonly content: unknown }> } | undefined
+  const unreadable = brokenPrompt?.messages?.find((said) => said.role === "assistant")?.content
   const changed = (value: boolean) => ({ status: 200, body: { ok: true, messageId: seeded.id, changed: value } })
   try Effect.try(() => assert.deepStrictEqual({
-    inline: seeded.inline, wholeHeard, notPrefix: notPrefix.status, part, stored: stored.view, next: next.status, replayed,
+    inline: seeded.inline, wholeHeard, notPrefix: notPrefix.status, part, stored: stored.view, next: next.status, replayed, broken: broken.status, unreadable,
   }, {
     inline: false, wholeHeard: changed(false), notPrefix: 409, part: changed(true),
     stored: { heard: heardPart, unheard: whole.slice(heardPart.length) }, next: 200,
     replayed: `${heardPart}\n[Unheard remainder: ${whole.slice(heardPart.length)}]`,
+    broken: 200, unreadable: "[This message's stored text could not be read back.]",
   }))
 }, 120_000)

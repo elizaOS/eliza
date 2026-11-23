@@ -335,7 +335,9 @@ pure def sometimesPartHeard(s: Turns): bool = s.replies.some(r => boundaryOf(r) 
 
 The next turn's context shows the stored reply with its unheard remainder
 marked; nothing is dropped, a reply read back from its stored segments
-included.
+included. A message whose stored segments are missing or do not match its
+digest is shown as a note that its text could not be read back, never left
+out of the history.
 
 ```quint
 pure def heardPart(r: Reply): List[int] = sliceUnits(r.units, 0, boundaryOf(r))
