@@ -137,13 +137,12 @@ module node {
             : failure(409, "decision_refused")
         }
         if (event.kind === "review") {
-          const binding = record.claim
-          if (binding === undefined || binding.wireAttemptId !== event.value.attemptId) return failure(409, "attempt_refused")
           const kept = await Effect.runPromise(recordRequestReview(adapter, {
-            ...request, attemptId: binding.modelAttemptId, review: reviewOutcome[event.value.review],
+            ...request, attemptId: event.value.attemptId, review: reviewOutcome[event.value.review],
           }))
+          if (kept.kind === "attempt_refused") return failure(409, "attempt_refused")
           if (kept.kind !== "reviewed") return failure(409, "reconciliation_refused")
-          const phase = observedPhase({ state: kept.state, claim: binding, providerReceipt: record.providerReceipt })
+          const phase = observedPhase(kept)
           return phase === undefined ? failure(409, "reconciliation_refused") : sent(reviewed, kept.state, by, phase)
         }
         if (event.kind === "receipt") {

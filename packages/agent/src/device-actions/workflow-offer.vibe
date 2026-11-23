@@ -6,7 +6,7 @@ import { negotiation } from "./capabilities.vibe"
 import { enrollmentId } from "./enrollment.vibe"
 import { capabilityNamesOf, validate } from "./operations.schema.vibe"
 import { devicePayload } from "./proposal-review.vibe"
-import { DeviceStoreUnavailable, ProposalIdTaken, enrollment, offerRequest, openRequest, retireRequest, workflowAuthority } from "./store.vibe"
+import { DeviceStoreUnavailable, ProposalIdTaken, enrollment, offerRequest, openRequest, requestSnapshot, retireRequest, workflowAuthority } from "./store.vibe"
 
 /** The run, version, step and spec digest one workflow device operation is bound to. */
 export interface WorkflowStep {
@@ -77,10 +77,10 @@ function settlementOf(state: DeviceRequest, receiptCode: string | undefined, res
 
 effect function settled(adapter: IDatabaseAdapter, proposalId: string, pollMs: number): unknown!(WorkflowStepRefused | DeviceStoreUnavailable) {
   while (true) {
-    const record = try openRequest(adapter, proposalId)
+    const record = try requestSnapshot(adapter, proposalId)
     if (record === undefined) throw refused("DEVICE_STEP_EXPIRED")
-    const state = try record.machine.get()
-    const settlement = settlementOf(state, record.providerReceipt?.code, record.result)
+    const { state, providerReceipt, result } = record
+    const settlement = settlementOf(state, providerReceipt?.code, result)
     if (settlement?.kind === "applied") return settlement.result
     if (settlement?.kind === "refused") throw refused(settlement.code)
     if (!beforeDeadline(state)) {

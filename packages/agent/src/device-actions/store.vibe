@@ -195,12 +195,14 @@ module node {
     })
   }
 
+  async function requestIn(sql: Sql, proposalId: string, lock = false): Promise<RequestRow | undefined> {
+    const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE proposal_id = $1${lock ? " FOR UPDATE" : ""}`, [proposalId])
+    const row = found.rows[0]
+    return row === undefined ? undefined : request(row)
+  }
+
   export function readRequest(adapter: IDatabaseAdapter, proposalId: string): Promise<RequestRow | undefined> {
-    return within(adapter, async (sql) => {
-      const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE proposal_id = $1`, [proposalId])
-      const row = found.rows[0]
-      return row === undefined ? undefined : request(row)
-    })
+    return within(adapter, (sql) => requestIn(sql, proposalId))
   }
 
   export type ReceiptEvent = Extract<Event, { type: "receipt" }>
@@ -217,12 +219,12 @@ module node {
     | { readonly kind: "decided"; readonly state: DeviceRequest }
     | { readonly kind: "missing" | "refused" }
   export interface RequestReview extends RequestClaim {
-    readonly attemptId: number
+    readonly attemptId: string
     readonly review: ReviewOutcome
   }
   export type ReviewCommit =
-    | { readonly kind: "reviewed"; readonly state: DeviceRequest }
-    | { readonly kind: "missing" | "refused" }
+    | { readonly kind: "reviewed"; readonly state: DeviceRequest; readonly claim: ClaimBinding; readonly providerReceipt: DeviceReceipt }
+    | { readonly kind: "missing" | "refused" | "attempt_refused" }
   export type ClaimCommit =
     | { readonly kind: "claimed"; readonly state: DeviceRequest; readonly binding: ClaimBinding }
     | { readonly kind: "missing" | "refused" }
@@ -316,15 +318,17 @@ module node {
 
   export function writeReview(adapter: IDatabaseAdapter, { proposalId, digest, by, attemptId, review }: RequestReview): Promise<ReviewCommit> {
     return within(adapter, async (sql) => {
-      const row = await lockedRequest(sql, proposalId)
+      const row = await requestIn(sql, proposalId, true)
       if (row === undefined) return { kind: "missing" }
-      const current = atWallTime(parsed(`request ${proposalId}`, row.state))
-      if (!canReconcile(current, by, digest, attemptId, review)) return { kind: "refused" }
-      const reviewed = step(current, { type: "reconcile", digest, attemptId, review }, by)
+      const { claim, providerReceipt } = row
+      if (claim === undefined || claim.wireAttemptId !== attemptId) return { kind: "attempt_refused" }
+      const current = atWallTime(row.state)
+      if (providerReceipt === undefined || !canReconcile(current, by, digest, claim.modelAttemptId, review)) return { kind: "refused" }
+      const reviewed = step(current, { type: "reconcile", digest, attemptId: claim.modelAttemptId, review }, by)
       if (reviewed.phase.tag !== current.phase.tag && await keepRequest(sql, proposalId, row.revision, reviewed) !== "written") {
         throw new Error(`The locked review for ${proposalId} could not be saved`)
       }
-      return { kind: "reviewed", state: reviewed }
+      return { kind: "reviewed", state: reviewed, claim, providerReceipt }
     })
   }
 
@@ -507,6 +511,11 @@ export effect function changeEnrollment(adapter: IDatabaseAdapter, event: Enroll
   }
   const machine = try machineOver(load, keep)
   return try machine.send(event, by)
+}
+
+export effect function requestSnapshot(adapter: IDatabaseAdapter, proposalId: string): (RequestRow | undefined)!DeviceStoreUnavailable {
+  const row = try stored("read a device request", () => readRequest(adapter, proposalId))
+  return row === undefined ? undefined : { ...row, state: try caughtUp(row.state) }
 }
 
 export effect function openRequest(adapter: IDatabaseAdapter, proposalId: string): (DeviceRequestRecord | undefined)!DeviceStoreUnavailable {
