@@ -360,23 +360,23 @@ notify there is refused before anything changes.
 
 ```quint
 type AttendeeNotice = NotifyAttendees | NotifyNobody | CannotNotify
-pure def attendeeNotice(asked: bool, otherAttendees: bool, canNotify: bool): AttendeeNotice =
-  if (not(asked and otherAttendees)) NotifyNobody
+pure def attendeeNotice(noticeWanted: bool, otherAttendees: bool, canNotify: bool): AttendeeNotice =
+  if (not(noticeWanted and otherAttendees)) NotifyNobody
   else if (not(canNotify)) CannotNotify
   else NotifyAttendees
 pure def noticeAsked(flagged: bool, ownerWordsAsk: bool, ownerWordsDecline: bool): bool =
   flagged and ownerWordsAsk and not(ownerWordsDecline)
-pure def clientNoticeRefused(asked: bool, canNotify: bool): bool = asked and not(canNotify)
+pure def clientNoticeRefused(noticeWanted: bool, canNotify: bool): bool = noticeWanted and not(canNotify)
 pure def lawAnUnaskedChangeTellsNobody(otherAttendees: bool, canNotify: bool): bool =
   attendeeNotice(false, otherAttendees, canNotify) == NotifyNobody
-pure def lawACalendarThatCannotSendNeverNotifies(asked: bool, otherAttendees: bool): bool =
-  attendeeNotice(asked, otherAttendees, false) != NotifyAttendees
-pure def lawNoAttendeesNoNotice(asked: bool, canNotify: bool): bool =
-  attendeeNotice(asked, false, canNotify) == NotifyNobody
+pure def lawACalendarThatCannotSendNeverNotifies(noticeWanted: bool, otherAttendees: bool): bool =
+  attendeeNotice(noticeWanted, otherAttendees, false) != NotifyAttendees
+pure def lawNoAttendeesNoNotice(noticeWanted: bool, canNotify: bool): bool =
+  attendeeNotice(noticeWanted, false, canNotify) == NotifyNobody
 pure def lawAModelFlagAloneAsksNothing(ownerWordsDecline: bool): bool =
   not(noticeAsked(true, false, ownerWordsDecline))
-pure def lawAClientNoticeIsRefusedWhereNobodyCanBeTold(asked: bool): bool =
-  clientNoticeRefused(asked, false) == asked
+pure def lawAClientNoticeIsRefusedWhereNobodyCanBeTold(noticeWanted: bool): bool =
+  clientNoticeRefused(noticeWanted, false) == noticeWanted
 ```
 
 ### An approved change runs only with its reviewed fields for the account that approved it

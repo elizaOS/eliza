@@ -195,8 +195,8 @@ answer ends the quiet.
 ```quint
 pure val quietStreakMs = 259200000
 pure def ownerQuiet(lastAnswerAt: int, now: int): bool = lastAnswerAt > 0 and now - lastAnswerAt >= quietStreakMs
-pure def quietIntensity(intensity: ReminderIntensity, quiet: bool): ReminderIntensity =
-  if (not(quiet)) intensity
+pure def quietIntensity(intensity: ReminderIntensity, ownerIsQuiet: bool): ReminderIntensity =
+  if (not(ownerIsQuiet)) intensity
   else if (intensity == IntensityPersistent) IntensityNormal
   else if (intensity == IntensityHighPriorityOnly) IntensityHighPriorityOnly
   else IntensityMinimal
