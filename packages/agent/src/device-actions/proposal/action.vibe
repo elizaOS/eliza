@@ -1,7 +1,7 @@
 // spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/operations.md, "Only a read whose result answers the owner's request completes that request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call my whole message asked for outright runs first, without waiting on the model's choice"; spec/agent/deviceActions/surfaces.md, "A whole-message photo command is routed to the capture, never to opening Camera"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
 module node {
   import { Effect } from "effect"
-  import { validateSchema, type Action, type ActionResult, type IAgentRuntime, type JsonSchema, type Memory, type ProviderValue } from "@elizaos/core"
+  import { validateSchema, type Action, type ActionContext, type ActionResult, type EffectReceipt, type IAgentRuntime, type JsonSchema, type Memory, type ProviderValue } from "@elizaos/core"
   import { canExpire, proposalAnswer, proposalReply, requestSettled, returnsOpenRequest, settledApplied, type ProposalGrounding } from "../../../gen/agent__deviceActions.ts"
   import { isRefused } from "../../../gen/agent__deviceActions__capabilities.ts"
   import { completableRead, directEligible } from "../../../gen/agent__deviceActions__operations.ts"
@@ -57,6 +57,11 @@ module node {
     return typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
   }
 
+  function earlierOf(options: Parameters<Action["handler"]>[3]): readonly ActionResult[] {
+    const context = typeof options === "object" && options !== null && "actionContext" in options ? options.actionContext : undefined
+    return typeof context === "object" && context !== null && "previousResults" in context && Array.isArray(context.previousResults) ? (context as ActionContext).previousResults : []
+  }
+
   function familyFor(runtime: IAgentRuntime, raw: unknown): DeviceProposalFamily | undefined {
     const type = typeof raw === "object" && raw !== null && "type" in raw ? deviceOperationTypes.find((known) => known === raw.type) : undefined
     return type === undefined ? undefined : familyOf(runtime, type)
@@ -91,13 +96,18 @@ module node {
     }
   }
 
-  async function reported(family: DeviceProposalFamily | undefined, record: DeviceRequestRecord, replayed: boolean, { timeZone, ownerText }: Pick<DeviceTurn, "timeZone" | "ownerText">): Promise<ActionResult> {
+  function turnReceipts(fresh: EffectReceipt[], earlier: readonly ActionResult[]): EffectReceipt[] {
+    const held = earlier.flatMap(({ effectReceipts }) => effectReceipts ?? [])
+    return fresh.map((receipt) => held.find(({ receiptId }) => receiptId === receipt.receiptId) ?? receipt)
+  }
+
+  async function reported(family: DeviceProposalFamily | undefined, record: DeviceRequestRecord, replayed: boolean, { timeZone, ownerText }: Pick<DeviceTurn, "timeZone" | "ownerText">, earlier: readonly ActionResult[]): Promise<ActionResult> {
     const state = await Effect.runPromise(record.machine.get())
     const checked = readOperation(record.terms.operation)
     if (checked === undefined) return refused(notOffered)
     const { operation } = checked
     const proposalId = record.proposalId
-    const effectReceipts = proposalEffectReceipts(proposalId, checked, state, replayed)
+    const effectReceipts = turnReceipts(proposalEffectReceipts(proposalId, checked, state, replayed), earlier)
     if (settledApplied(state.phase)) {
       const told = family?.settledText(operation, record.result, timeZone)
       return {
@@ -163,7 +173,7 @@ module node {
     }
   }
 
-  async function propose(runtime: IAgentRuntime, message: Memory, input: unknown): Promise<ActionResult> {
+  async function propose(runtime: IAgentRuntime, message: Memory, input: unknown, earlier: readonly ActionResult[]): Promise<ActionResult> {
     const turn = deviceTurnFor(runtime, message)
     if (turn === undefined || isRefused(turn.negotiation)) return refused(unbound)
     const prepared = familyFor(runtime, input)?.prepare?.(input) ?? input
@@ -181,7 +191,7 @@ module node {
     const open = kept === undefined ? await Effect.runPromise(sameOperationOpen(turn, sought, grounding === undefined ? undefined : carriesMessage(turn, grounding))) : undefined
     const found = kept ?? open
     const answer = proposalAnswer(reply, kept !== undefined, keptState !== undefined && requestSettled(keptState.phase), open !== undefined)
-    if ((answer === "ReturnedOpen" || answer === "ReturnedSettled") && found !== undefined) return reported(family, found, true, turn)
+    if ((answer === "ReturnedOpen" || answer === "ReturnedSettled") && found !== undefined) return reported(family, found, true, turn, earlier)
     if (answer !== "OfferedNew" || admitted === undefined) return refused(grounded.kind === "Refused" ? grounded : unavailable)
     const offer = await Effect.runPromise(offerProposal(turn, admitted, {
       readBack: turn.completesReads && completableRead(admitted.opType, "NoBinding"), grounding,
@@ -189,8 +199,8 @@ module node {
     switch (offer.kind) {
       case "ended": return refused(unbound)
       case "refused": return refused(unavailable)
-      case "kept": return reported(family, offer.record, true, turn)
-      case "offered": return reported(family, offer.record, false, turn)
+      case "kept": return reported(family, offer.record, true, turn, earlier)
+      case "offered": return reported(family, offer.record, false, turn, earlier)
     }
   }
 
@@ -203,7 +213,7 @@ module node {
       const turn = deviceTurnFor(runtime, message)
       return turn !== undefined && !isRefused(turn.negotiation) && offeredForms(runtime, turn).length > 0
     },
-    handler: (runtime, message, _state, options) => propose(runtime, message, operationOf(parametersOf(options))),
+    handler: (runtime, message, _state, options) => propose(runtime, message, operationOf(parametersOf(options)), earlierOf(options)),
   }
 
   turnToolForms.set(proposeDeviceAction, (runtime, message) => {

@@ -46,27 +46,27 @@ module node {
   }
 
   export function proposalEffectReceipts(proposalId: string, checked: CheckedOperation, state: DeviceRequest, replayed: boolean): EffectReceipt[] {
-    const base = {
-      receiptId: proposalId, operation: `device.${checked.operation.type}`, resource: { kind: "device.request", id: proposalId },
+    const base = (stage: string) => ({
+      receiptId: `${proposalId}:${stage}`, operation: `device.${checked.operation.type}`, resource: { kind: "device.request", id: proposalId },
       artifacts: [], idempotency: { key: proposalId, replayed }, observedAt: new Date().toISOString(),
-    }
-    const noop = (reason: string): EffectReceipt => ({ ...base, idempotency: { key: proposalId, replayed: false }, outcome: "noop", reason })
+    })
+    const noop = (stage: string, reason: string): EffectReceipt => ({ ...base(stage), idempotency: { key: proposalId, replayed: false }, outcome: "noop", reason })
     const ending = requestEnding(state.phase)
     switch (ending) {
       case "EndedApplied":
         return [changesNothing(checked.opType)
-          ? noop(shownReasons[checked.operation.type] ?? readReason)
-          : { ...base, outcome: "applied", commit: { kind: "durable", id: proposalId, committedAt: iso(state.claimedAt) } }]
-      case "EndedDeclined":
-      case "EndedExpired": return [noop(neverRan[ending])]
-      case "EndedOtherwise": return [noop(unverified("done"))]
+          ? noop("applied", shownReasons[checked.operation.type] ?? readReason)
+          : { ...base("applied"), outcome: "applied", commit: { kind: "durable", id: proposalId, committedAt: iso(state.claimedAt) } }]
+      case "EndedDeclined": return [noop("declined", neverRan[ending])]
+      case "EndedExpired": return [noop("expired", neverRan[ending])]
+      case "EndedOtherwise": return [noop("done", unverified("done"))]
       case "StillOpen":
         switch (state.phase.tag) {
           case "Receipted":
-            return [{ ...base, idempotency: { key: proposalId, replayed: false }, outcome: "failed", failure: { code: "DEVICE_RESULT_UNCONFIRMED", retryable: false, acceptance: "unknown" } }]
-          case "Approved": return [noop(unverified("approved"))]
-          case "Dispatched": return [noop(unverified("executing"))]
-          default: return [canExpire(state) ? noop(neverRan.EndedExpired) : { ...base, outcome: "preview" }]
+            return [{ ...base("receipted"), idempotency: { key: proposalId, replayed: false }, outcome: "failed", failure: { code: "DEVICE_RESULT_UNCONFIRMED", retryable: false, acceptance: "unknown" } }]
+          case "Approved": return [noop("approved", unverified("approved"))]
+          case "Dispatched": return [noop("dispatched", unverified("executing"))]
+          default: return [canExpire(state) ? noop("expired", neverRan.EndedExpired) : { ...base("offered"), outcome: "preview" }]
         }
     }
   }
