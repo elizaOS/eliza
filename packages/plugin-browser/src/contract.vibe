@@ -7,7 +7,6 @@ export const BROWSER_TABS_CAPABILITY = "browser.tabs.v1"
 export const BROWSER_FIND_CAPABILITY = "browser.find.v1"
 export const BROWSER_HISTORY_CAPABILITY = "browser.history.v1"
 export const BROWSER_OPEN_NEW_TAB_CAPABILITY = "browser.open-new-tab.v1"
-/** The capability a phone advertises, beside `browser.tabs.v1`, to close every open tab from one review that lists them. */
 export const BROWSER_TABS_CLOSE_ALL_CAPABILITY = "browser.tabs.close-all.v1"
 
 export const BROWSER_TAB_TARGET_MAX = 128
@@ -34,14 +33,12 @@ export interface BrowserNavigateOperation {
   readonly newTab?: true
 }
 
-/** An open tab as the phone lists it on the review card of a close of every tab; the agent never receives it. */
 export interface BrowserTabLine {
   readonly title: string
   readonly host?: string
   readonly private?: boolean
 }
 
-/** The outcome of reading an untrusted value as a Browser control or navigation. */
 export type BrowserParse<A> = { readonly ok: true; readonly operation: A } | { readonly ok: false; readonly reason: string }
 
 export error BrowserControlRefused { reason: string }
@@ -97,7 +94,6 @@ function closeOf(operation: Extract<BrowserControlOperation, { type: "browser_ta
 const CLOSE_ALL_UNAVAILABLE = "This phone's Browser closes one tab at a time and cannot close all tabs at once. Nothing was closed. Tell the owner, and offer to close the tab that is showing or a tab they name."
 const CONTROL_UNAVAILABLE = "This phone's Browser did not offer this control. Nothing was sent."
 
-/** Why this exact control may not be sent to the phone, or undefined when the phone negotiated it; closing every tab is never narrowed to one. */
 export function browserControlRefusal(operation: BrowserControlOperation, capabilities?: readonly string[]): string | undefined {
   if (operation.type !== "browser_tab_close") return browserControlCapabilityAvailable(operation.type, capabilities) ? undefined : CONTROL_UNAVAILABLE
   const negotiated = negotiatedOf(capabilities)
@@ -105,7 +101,6 @@ export function browserControlRefusal(operation: BrowserControlOperation, capabi
   return "all" in operation && negotiated.tabsCapability ? CLOSE_ALL_UNAVAILABLE : CONTROL_UNAVAILABLE
 }
 
-/** Whether the phone negotiated opening an address this way: a tab of its own needs its own capability. */
 export function browserNavigationAvailable(newTab: boolean, capabilities?: readonly string[]): boolean {
   return navigationOffered(newTab, negotiatedOf(capabilities))
 }
@@ -211,7 +206,6 @@ function describeCloseAll(closing: readonly BrowserTabLine[] | undefined): { rea
   return { title: `Close ${plural(closing.length, "tab")}`, description: `${lines.join("\n")}\n\nCloses every tab listed here. The agent does not see your tabs.` }
 }
 
-/** The review card of a Browser control: the change itself and nothing else; a close of every tab lists the tabs the phone read for this card. */
 export function describeBrowserControl(operation: BrowserControlOperation, closing?: readonly BrowserTabLine[]): { readonly title: string; readonly description: string } {
   switch (operation.type) {
     case "browser_search":
