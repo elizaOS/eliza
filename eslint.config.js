@@ -40,9 +40,11 @@ const suppressible = String.raw`(?!code\/|no-console\b)[\w@/-]+`
 const cited = new RegExp(String.raw`^\s*${citation}(?:; ${citation})*\s*$`)
 const suppression = new RegExp(String.raw`^ eslint-disable(?:-next-line|-line)? ${suppressible}(?:, ${suppressible})* -- \S`)
 const configs = [suppression, /^ eslint-enable\b/]
+const throwsType = String.raw`[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*`
+const throwsDirective = new RegExp(String.raw`^\*(?:[\s*]*@throws \{[ \t]*${throwsType}(?:[ \t]*\|[ \t]*${throwsType})*[ \t]*\})+[\s*]*$`)
 const directives = {
   Line: [cited, suppression, /^@ (?:backend|requires|ensures|invariant|decreases|assert|pure|type|ghost)(?: |$)/, /^\/ <reference /, /^ @vitest-environment [\w-]+$/],
-  Block: [cited, ...configs, /^\*(?:[\s*]*@(?:model|design) \S+)+[\s*]*$/, /^\*(?:[\s*]*@throws \{[^{}]+\})+[\s*]*$/],
+  Block: [cited, ...configs, /^\*(?:[\s*]*@(?:model|design) \S+)+[\s*]*$/, throwsDirective],
   Shebang: [/^/],
 }
 const inline = /^\s*(?:eslint(?:-[a-z]+)*|exported|globals?)(?:\s|$)/
@@ -98,24 +100,17 @@ const commented = {
   "packages/agent/src/conversation/heard.vibe": 1,
   "packages/agent/src/conversation/turns.vibe": 2,
   "packages/agent/src/host/process.vibe": 1,
-  "packages/agent/src/models/chat.vibe": 5,
   "packages/agent/src/schedule/store.vibe": 3,
   "packages/agent/src/voice/capture.worklet.mjs": 1,
   "packages/agent/test/schedule-triggers.test.vibe": 1,
   "packages/cloud/src/google-read.vibe": 1,
-  "packages/cloud/src/providers/speech.vibe": 1,
   "packages/cloud/src/services/google/mail-read.vibe": 1,
   "packages/core/src/network/ssrf.vibe": 3,
   "packages/core/src/retrieval.vibe": 21,
-  "packages/core/src/runtime/model-dispatch.vibe": 1,
   "packages/core/src/security/outbound-sanitize.vibe": 3,
-  "packages/core/src/security/secret-swap.vibe": 5,
   "packages/core/src/utils/crypto-compat.vibe": 2,
   "packages/core/src/utils/task-scheduling.vibe": 1,
-  "packages/os/src/bridges/camera.vibe": 1,
-  "packages/os/src/image/apk.vibe": 2,
-  "packages/os/src/image/device.vibe": 5,
-  "packages/os/test/image-apk.test.vibe": 2
+  "packages/os/test/image-apk.test.vibe": 2,
 }
 const scheduled = {
   "packages/agent/src/access/socket.vibe": 3,
