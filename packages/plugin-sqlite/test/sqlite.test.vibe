@@ -1,9 +1,9 @@
 // spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime"
-import { assert, it } from "@effect/vitest"
+import { assert, it } from "vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { openSqlite } from "../src/index.vibe"
 
-it.effect('Reopen my agent\'s SQLite database in the owning runtime (spec/sqlite/index.md, "Story: Reopen my agent\'s SQLite database in the owning runtime")', effect () => {
+Effect.runSync(Effect.try(() => it('Reopen my agent\'s SQLite database in the owning runtime (spec/sqlite/index.md, "Story: Reopen my agent\'s SQLite database in the owning runtime")', () => runPromise(effect {
   provide NodeServices.layer {
     try scoped(effect {
       const fs = try FileSystem.FileSystem
@@ -22,4 +22,4 @@ it.effect('Reopen my agent\'s SQLite database in the owning runtime (spec/sqlite
       try Effect.try(() => assert.deepStrictEqual(row && { ...row }, { body: "renew", completed: 0 }))
     })
   }
-})
+}))));
