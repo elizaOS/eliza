@@ -171,7 +171,12 @@ effect function entryRegistration(entry: typeof ClientEntry.Type, environment: "
   return try decodeRegistration(input)
 }
 
-export effect function seedClients(tx: Tx, entries: unknown, now: number) {
+type SeedClientFailure =
+  | ClientFlagsInvalid
+  | Effect.Error<ReturnType<typeof entryRegistration>>
+  | Effect.Error<ReturnType<typeof registerClient>>
+
+export effect function seedClients(tx: Tx, entries: unknown, now: number): string[]!SeedClientFailure!Deployment {
   const parsed = try Effect.mapError(
     Schema.decodeUnknownEffect(SeedClients, { onExcessProperty: "error" })(entries),
     (error) => new ClientFlagsInvalid({ problem: `seed clients: ${error.message}` })
