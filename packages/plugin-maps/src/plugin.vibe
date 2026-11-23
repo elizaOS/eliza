@@ -1,9 +1,10 @@
-// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"
+// spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/maps/phonePosition.md, "Where the owner is names the place at a recent position, and only the area when it is rough"
 import type { AgentPlugin } from "@elizaos/agent"
 import type { Action, ActionResult, IAgentRuntime, Memory, Provider } from "@elizaos/core"
 import { appendMapsCard, type MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
 import { MapsFailure, TravelMode, travelModes, type Coordinate, type Place } from "./client/contracts.vibe"
 import type { AgentPlaceRef, DeviceNavigationFailure, MapsDeviceNavigationStatus } from "./client/device-navigation.vibe"
+import { whereAnswer } from "../gen/maps__phonePosition.effect.vibe"
 import { messageLocation, nearbyPoint } from "./client/location.vibe"
 import type { MapsDeviceNavigation } from "./relay.vibe"
 import { answeredChoice, closeChoice, openChoice, registerMapsRouting, type ChoiceOperation, type PlaceChoice } from "./routing.vibe"
@@ -249,6 +250,33 @@ effect function listSaved(saves: AgentSavedPlaceStore | undefined, message: Memo
     { count: listed.length, savedPlaces: listed })
 }
 
+/** The area part of an address: without its street part, without any word that has a digit, and at most its last three parts. */
+export function addressArea(address: string | undefined): string | undefined {
+  const parts = (address ?? "").split(",").map((part) => part.trim()).filter((part) => part !== "")
+  const street = parts.length > 1 && (parts.length >= 3 || /\d/u.test(parts[0] ?? ""))
+  const area = (street ? parts.slice(1) : parts).map((part) => part.split(/\s+/u).filter((word) => !/\d/u.test(word)).join(" ")).filter((part) => part !== "").slice(-3)
+  return area.length === 0 ? undefined : area.join(", ")
+}
+
+effect function whereOwnerIs(service: MapsService, message: Memory): ActionResult!Refusal {
+  const reported = messageLocation(message.content.metadata)
+  const now = try Clock.currentTimeMillis
+  const accuracy = reported?.accuracyMeters
+  const answer = whereAnswer({ present: reported !== undefined, age: reported === undefined ? 0 : now - reported.capturedAt, hasAccuracy: accuracy !== undefined, accuracy: accuracy ?? 0 })
+  if (reported === undefined || answer === "NoRecentPosition") return reply(false, "Your phone didn't share a recent position with this message, so I can't tell where you are. Open Maps on the phone to see your location.", { state: "no-position" })
+  const found = try service.reverse({ latitude: reported.latitude, longitude: reported.longitude })
+  if (answer === "NameOnlyTheArea") {
+    const area = addressArea(found?.address)
+    const about = `within about ${distanceText(accuracy ?? 0)}`
+    return reply(true, area === undefined ? `Your phone's position is approximate (${about}), and no area is known there.` : `Your phone's position is approximate (${about}): somewhere around ${area}.`,
+      { status: area === undefined ? "empty" : "approximate", accuracyMeters: accuracy ?? null, area: area ?? null })
+  }
+  if (found === null) return reply(true, "I couldn't find a named place at your phone's position.", { status: "empty" })
+  const target = agentPlace(found)
+  return reply(true, `You're at ${target.name}${target.formattedAddress === undefined ? "" : `, ${target.formattedAddress}`}.\n${found.attribution}`, { status: "place", place: target },
+    { kind: "place", place: cardPlace(target), attribution: found.attribution })
+}
+
 async function settle(work: ActionResult!Refusal): Promise<ActionResult> {
   const outcome = await runPromise(Effect.result(work))
   if (Result.isSuccess(outcome)) return outcome.success
@@ -286,6 +314,15 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       ],
       validate: always,
       handler: handle(undefined, (service, _navigation, message, params) => findPlaces(service, message, params)),
+    },
+    {
+      name: "MAPS_WHERE_AM_I",
+      description: "Where the owner is now, from the position the phone reported with this message: the place there, or only the area when the phone knows its position only roughly.",
+      similes: ["WHERE_AM_I", "MY_LOCATION", "CURRENT_LOCATION"],
+      tags: ["domain:maps", "capability:read"],
+      roleGate: ownerOnly,
+      validate: always,
+      handler: handle(undefined, (service, _navigation, message) => whereOwnerIs(service, message)),
     },
     {
       name: "MAPS_ROUTE",
@@ -375,7 +412,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
 /** What the agent knows of the phone's position for this message: whether a recent one was reported, never the coordinates themselves. */
 export const phonePositionProvider: Provider = {
   name: "MAPS_PHONE_POSITION",
-  description: "Whether the phone reported a recent position with this message, which a nearby Maps search uses.",
+  description: "Whether the phone reported a recent position with this message, which a nearby Maps search and MAPS_WHERE_AM_I use.",
   dynamic: true,
   contexts: ["maps"],
   roleGate: ownerOnly,
