@@ -102,11 +102,11 @@ start of the first of them to the end of the last. With none, the answer
 says that no trip there was found. A read that was not complete says so.
 
 ```quint
-pure def tripHolds(eventBegin: int, eventFinish: int, first: int, last: int): bool = eventFinish >= first and eventBegin <= last
+pure def tripHolds(eventBegin: int, eventFinish: int, tripStart: int, tripEnd: int): bool = eventFinish >= tripStart and eventBegin <= tripEnd
 pure def lawAMarkIsInsideItsTrip(eventBegin: int, eventFinish: int): bool =
   eventBegin <= eventFinish implies tripHolds(eventBegin, eventFinish, eventBegin, eventFinish)
-pure def lawAnEventAfterTheTripIsLeftOut(eventBegin: int, eventFinish: int, first: int, last: int): bool =
-  eventBegin > last implies not(tripHolds(eventBegin, eventFinish, first, last))
+pure def lawAnEventAfterTheTripIsLeftOut(eventBegin: int, eventFinish: int, tripStart: int, tripEnd: int): bool =
+  eventBegin > tripEnd implies not(tripHolds(eventBegin, eventFinish, tripStart, tripEnd))
 ```
 
 ## Story: Ask when I am free and get openings from my real calendar
