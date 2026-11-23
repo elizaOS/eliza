@@ -19,7 +19,7 @@
     "selftest:tools:rest": "node --test --test-skip-pattern=\"^the tools each check catches its own kind of mistake in shard [ab] \" vibestack/selftest.ts",
     "selftest:docs": "node --test --test-name-pattern=\"^the documents name what exists \" vibestack/selftests/docs.ts",
     "selftest:examples": "node --test --test-name-pattern=\"^the standalone examples \" vibestack/selftests/examples.ts",
-    "build": "node vibestack/spec.ts tasks vibestack-studio#build && node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && vibelang -p tsconfig.build.json && node -e \"fs.chmodSync('dist/spec.js', 0o755); fs.mkdirSync('dist/proof', { recursive: true }); fs.copyFileSync('vibestack/proof/lib.dfy', 'dist/proof/lib.dfy'); fs.cpSync('vibestack/studio/dist/page', 'dist/studio/dist/page', { recursive: true }); fs.cpSync('vibestack/std', 'dist/std', { recursive: true }); fs.copyFileSync('vibestack/conformance.ts', 'dist/conformance.ts')\"",
+    "build": "node vibestack/spec.ts tasks vibestack-studio#build && node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && vibelang -p tsconfig.build.json && node -e \"fs.chmodSync('dist/spec.js', 0o755); fs.mkdirSync('dist/proof', { recursive: true }); fs.copyFileSync('vibestack/proof/lib.dfy', 'dist/proof/lib.dfy'); fs.cpSync('vibestack/std', 'dist/std', { recursive: true }); fs.copyFileSync('vibestack/conformance.ts', 'dist/conformance.ts')\" && node vibestack/studio/pack-page.ts",
     "pnpm:devPreinstall": "node vibestack/skill-links.ts",
     "prepare": "node vibestack/spec.ts gen --install --skip-gen-on-pack //#build",
     "prepack": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
