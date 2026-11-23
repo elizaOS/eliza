@@ -217,10 +217,10 @@ and visible labels referenced by the section accompany their own scope.
 A nested section also carries enclosing labels so a neutral child cannot
 hide its historical parent's identity. An owned section header contributes
 its ordinary visible text, excluding links and controls. Site banners and
-unowned headers contribute no statement fragments. Links elsewhere on the
-page and invisible labels supply no heading. Competing primary headings leave the
-read incomplete, and ambiguous section labels mark that section and its
-descendants ambiguous.
+unowned headers contribute no statement fragments. Links, controls, and
+invisible text do not contribute to headings or referenced labels.
+Competing primary headings leave the read incomplete, and ambiguous
+section labels mark that section and its descendants ambiguous.
 
 ```quint
 pure def canSettleRead(s: SurfaceReceiver): bool = s.phase == ReceiverReading

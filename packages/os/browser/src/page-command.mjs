@@ -1489,6 +1489,8 @@ export function pageCommand(
       const scope = areas[0] ?? document.body;
       const excluded =
         'nav,aside,footer,form,input,textarea,select,button,iframe,frame,object,embed,script,style,template,noscript,[contenteditable],[role="navigation"],[role="complementary"],[role="banner"],[role="contentinfo"],[hidden],[aria-hidden="true"],[inert]';
+      const interactive = 'a,[role="link"],[role="button"]';
+      const labelExcluded = excluded + "," + interactive;
       if (!scope || scope.closest(excluded + ",header")) return incomplete;
       for (let ancestor = scope.parentElement; ancestor; ancestor = ancestor.parentElement) {
         const style = styleOf(ancestor);
@@ -1535,7 +1537,7 @@ export function pageCommand(
           return true;
         }
         if (!is(node, "Element") || node.matches(excluded)) return true;
-        if (insideHeader && node.matches('a,[role="link"],[role="button"]')) {
+        if (insideHeader && node.matches(interactive)) {
           previousRun = undefined;
           return true;
         }
@@ -1577,7 +1579,7 @@ export function pageCommand(
       };
       let labelNodes = 0;
       const visibleLabel = (root) => {
-        if (!root || !scope.contains(root) || root.closest(excluded + ",a")) return undefined;
+        if (!root || !scope.contains(root) || root.closest(labelExcluded)) return undefined;
         const header = root.closest("header");
         if (header && scope === document.body && !ownerOf(header)) return undefined;
         const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -1585,7 +1587,7 @@ export function pageCommand(
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
           if (++labelNodes > 1024) return null;
           const parent = node.parentElement;
-          if (!parent || parent.closest(excluded) ||
+          if (!parent || parent.closest(labelExcluded) ||
               !parent.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
           const range = document.createRange();
           range.selectNodeContents(node);
