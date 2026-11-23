@@ -1,4 +1,4 @@
-// spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/modelDiagnostics.md, "Promise identity governs membership independently of the final outcome"; spec/core/registries.md, "Each extension registry preserves its own normalization and replacement policy"; spec/core/models.md, "A model-call log row records the request parts its prompt omits and only the token counts the provider reported"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"
+// spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/modelDiagnostics.md, "Promise identity governs membership independently of the final outcome"; spec/core/registries.md, "Each extension registry preserves its own normalization and replacement policy"; spec/core/models.md, "A model-call log row records the request parts its prompt omits and only the token counts the provider reported"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"
 import { errorText } from "../utils/errors.vibe"
 import { Machine, machine } from "../../gen/core__registries.effect.vibe"
 import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
@@ -1553,7 +1553,8 @@ effect function protectModelParams(
     if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
       trajectoryCtx.piiSwapSession = session
     }
-    try learnPseudonyms(session, try collectPiiPromptText(modelParams, systemPrompt))
+    const promptText = try collectPiiPromptText(modelParams, systemPrompt)
+    try learnPseudonyms(session, stream.secret?.maskReferencesForPiiRecognition(promptText) ?? promptText)
     modelParams = try substitutePseudonymsInValue(session, modelParams)
     systemPrompt = systemPrompt === undefined ? undefined : session.substituteText(systemPrompt)
     piiSubstitutedText = try collectPiiPromptText(modelParams, systemPrompt)
@@ -1582,7 +1583,7 @@ effect function protectModelParams(
   if (stream.pii) {
     const postHookText = try collectPiiPromptText(modelParams, systemPrompt)
     if (postHookText !== piiSubstitutedText) {
-      try learnPseudonyms(stream.pii, postHookText)
+      try learnPseudonyms(stream.pii, stream.secret?.maskReferencesForPiiRecognition(postHookText) ?? postHookText)
     }
     modelParams = try substitutePseudonymsInValue(stream.pii, modelParams)
     const postHookSystemPrompt = resolveEffectiveSystemPrompt({ params: modelParams, fallback: systemPrompt })

@@ -117,3 +117,41 @@ pure def lawAStableNonceIsTheSameInEverySession(derived: str, one: str, other: s
 pure def lawOnlyAWrittenReferenceRestores(written: Set[str], reference: str): bool =
   referenceRestorable(written, reference) implies written.contains(reference)
 ```
+
+### Egress restores pseudonyms before placeholders, and recognition never reads a placeholder
+
+Ingress replaces a credential or contact value with its placeholder first
+and names with pseudonyms second. The local recogniser reads each of the
+session's placeholders as blanks of the same length, so it never learns a
+placeholder as a name: the model keeps the placeholder and is told its
+kind. Every egress undoes the layers in reverse order: the action execution
+boundary restores pseudonyms and then placeholders, strictly, and a
+connector send to a target restores pseudonyms and then applies the secret
+reply policy. A phone or email target that a pseudonym carried therefore
+reaches the handler as its value, never as a placeholder the phone and
+email validators refuse.
+
+```quint
+type PrivacyLayer = PlaceholderLayer | PseudonymLayer
+pure val ingressLayers: List[PrivacyLayer] = List(PlaceholderLayer, PseudonymLayer)
+pure val egressLayers: List[PrivacyLayer] = List(PseudonymLayer, PlaceholderLayer)
+type CarriedTarget = { value: str, placeholder: str, pseudonym: str }
+pure val carriedValues = Set(
+  { value: "+15550100", placeholder: "__ELIZA_CONTACT_n_1__", pseudonym: "Aria Larsson" },
+  { value: "ann@example.com", placeholder: "__ELIZA_CONTACT_n_2__", pseudonym: "Esme Weber" }
+)
+pure def carriedIsDistinct(carried: CarriedTarget): bool = carried.value != "" and carried.placeholder != "" and carried.pseudonym != "" and carried.value != carried.placeholder and carried.value != carried.pseudonym and carried.placeholder != carried.pseudonym
+pure def recognisedText(carried: CarriedTarget, masked: bool): str = if (masked) "" else carried.placeholder
+pure def ingressLayer(carried: CarriedTarget, masked: bool, shown: str, layer: PrivacyLayer): str =
+  if (layer == PlaceholderLayer) (if (shown == carried.value) carried.placeholder else shown)
+  else (if (shown != "" and shown == recognisedText(carried, masked)) carried.pseudonym else shown)
+pure def egressLayer(carried: CarriedTarget, masked: bool, shown: str, layer: PrivacyLayer): str =
+  if (layer == PseudonymLayer) (if (not(masked) and shown == carried.pseudonym) carried.placeholder else shown)
+  else (if (shown == carried.placeholder) carried.value else shown)
+pure def ingressOf(carried: CarriedTarget, masked: bool): str = ingressLayers.foldl(carried.value, (shown, layer) => ingressLayer(carried, masked, shown, layer))
+pure def egressOf(carried: CarriedTarget, masked: bool, shown: str): str = egressLayers.foldl(shown, (restored, layer) => egressLayer(carried, masked, restored, layer))
+pure def lawEgressRestoresTheCarriedValue(carried: CarriedTarget, masked: bool): bool =
+  carriedIsDistinct(carried) implies egressOf(carried, masked, ingressOf(carried, masked)) == carried.value
+pure def lawTheModelKeepsTheMaskedPlaceholder(carried: CarriedTarget): bool =
+  carriedIsDistinct(carried) implies ingressOf(carried, true) == carried.placeholder
+```
