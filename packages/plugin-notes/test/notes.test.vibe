@@ -1,7 +1,7 @@
 // spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/read.md, "Story: Search private notes and share only what I select"; spec/notes/trash.md, "Story: Recover a deleted note"; spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/organize.md, "Story: Organize my notes only where I can see it"; spec/notes/client.md, "Story: Read and save a note under the current connection"; spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { negotiation, validate, type DeviceOperation, type DeviceTurn, type EarlierRequest } from "@elizaos/agent/device-actions"
+import { negotiation, untrustedReturnGuidance, validate, type DeviceOperation, type DeviceTurn, type EarlierRequest } from "@elizaos/agent/device-actions"
 import type { LocalRoute } from "@elizaos/agent/routes"
 import { bindIncomingMessagePersistence, stringToUuid, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { notesPlugin, notesRoutes } from "../src/agent.vibe"
@@ -549,7 +549,7 @@ const patch = (textEdit: unknown, changes: unknown[] = []) => JSON.stringify({ r
 const question = "What should the note say instead?"
 const deletedRequestId = stringToUuid("Delete this note")
 
-it.effect('Ask about, delete or change a phone note only as the owner said it (spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn\'s own screen selects the phone\'s Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner\'s direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly")', effect () => {
+it.effect('Ask about, delete or change a phone note only as the owner said it (spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn\'s own screen selects the phone\'s Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only on the owner\'s direct deletion command"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only where that branch accepts exactly what its forms accept")', effect () => {
   const model = phoneModel([patch(null), patch(null), patch({ action: "append", field: "item", text: "eggs" }), JSON.stringify({ requiresInput: true, clarification: question, changes: [], textEdit: null })])
   const family = notesDeviceFamily(model.runtime)
   const home = { view: "home", revision: 1, sensitive: false }
@@ -570,6 +570,15 @@ it.effect('Ask about, delete or change a phone note only as the owner said it (s
     elsewhere: [],
     unobserved: ["notes_filter", "notes_folder_create", "notes_restore", "notes_record"],
   })
+
+  const device = phoneTurn(model.runtime, "", opened)
+  const told = [...new Set([...family.forms.filter((form) => form.offered(device)).flatMap((form) => form.guidance ?? []), ...family.guidance(device)])]
+  assert.deepEqual({
+    edit: told.filter((fragment) => fragment.includes("To change the note open in Notes")).length,
+    untrusted: told.filter((fragment) => fragment.includes("untrusted data")),
+    capabilitiesNamed: told.filter((fragment) => /\b[a-z]+(?:\.[a-z-]+)+\.v\d+\b/.test(fragment)),
+    fieldsWritten: family.types.filter((type) => told.some((fragment) => fragment.includes(`${type} {`))),
+  }, { edit: 1, untrusted: [untrustedReturnGuidance], capabilitiesNamed: [], fieldsWritten: [] })
 
   const grounding = (words: string, observation: DeviceTurn["observation"], operation: unknown, metadata?: Record<string, unknown>, earlier?: readonly EarlierRequest[], completesReads?: boolean) => {
     const turn = phoneTurn(model.runtime, words, observation, metadata, earlier, completesReads)
