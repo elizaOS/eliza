@@ -1,10 +1,15 @@
 // spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner's words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"
-import { incomingMessagePersistenceSnapshot, unwrapUserMessageText, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { incomingMessagePersistenceSnapshot, registerDirectActionRoutingRule, unwrapUserMessageText, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { readTurnContext } from "@elizaos/agent"
-import { bindToCommand, resolveWorkflow, type CommandBinding, type ProposedWorkflowChange, type WorkflowCommand } from "../gen/workflow__lifecycle.effect.vibe"
+import {
+  bindToCommand, commandRoutes, referenceAnswer, resolveWorkflow, searchKeeps, searchScore,
+  type CommandBinding, type ProposedWorkflowChange, type ReferenceOp, type WorkflowCommand,
+} from "../gen/workflow__lifecycle.effect.vibe"
 import type { WorkflowRefused, WorkflowService } from "./service/workflows.vibe"
 
 module edge {
+  import { Effect } from "effect"
+  import type { IAgentRuntime } from "@elizaos/core"
   const courtesy = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
   const end = String.raw`(?:,?\s+(?:please|for\s+me))?[.!?]*$`
   const name = String.raw`(["“'‘]?[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`
@@ -23,12 +28,14 @@ module edge {
     | { readonly op: "create"; readonly name: string }
     | { readonly op: "rename"; readonly workflowName: string; readonly name: string }
     | { readonly op: "remove"; readonly workflowName: string }
-    | { readonly op: "list" }
+    | { readonly op: "list"; readonly saysShow: boolean }
+
+  const fullStop = /[.]+$/u
 
   function nameOf(value: string | undefined): string | undefined {
-    const written = value?.trim().replace(/[.]+$/u, "")
+    const written = value?.trim().replace(fullStop, "")
     const closing = written === undefined ? undefined : closingQuote[written.charAt(0)]
-    const trimmed = closing === undefined || written === undefined ? written : written.slice(1).replace(closing, "")
+    const trimmed = (closing === undefined || written === undefined ? written : written.slice(1).replace(closing, ""))?.replace(fullStop, "")
     if (!trimmed || trimmed.length > 80 || notAName.test(trimmed)) return undefined
     if (/^(?:the|my|a|an)$/iu.test(trimmed) || /^workflows?$/iu.test(trimmed)) return undefined
     return describesNotNames.test(trimmed) || pronounClause.test(trimmed) ? undefined : trimmed
@@ -54,7 +61,21 @@ module edge {
       const named = nameOf(removed[1] ?? removed[2])
       return named ? { op: "remove", workflowName: named } : undefined
     }
-    return list.test(request) || whatDoIHave.test(request) ? { op: "list" } : undefined
+    const listed = list.exec(request)
+    if (listed) return { op: "list", saysShow: listed[1] !== undefined }
+    return whatDoIHave.test(request) ? { op: "list", saysShow: false } : undefined
+  }
+
+  /** @throws {never} */
+  export function workflowsViewDeclared(runtime: IAgentRuntime): boolean {
+    try {
+      const host = runtime.getService("agent_view_host") as { readonly views?: { current(): Effect.Effect<{ readonly views: readonly { readonly viewId: string; readonly label: string; readonly aliases: readonly string[] }[] }> } } | null
+      const current = host?.views?.current()
+      if (current === undefined) return false
+      return Effect.runSync(current).views.some((view) => [view.viewId, view.label, ...view.aliases].includes("workflows"))
+    } catch {
+      return false
+    }
   }
 
   /** @throws {never} */
@@ -117,19 +138,19 @@ module edge {
     return validZone(observed) ?? validZone(shown) ?? validZone(setting) ?? validZone(system) ?? "UTC"
   }
 }
-import { authoredWorkflowRequest, createdOn, firstValidZone, nameMatchTier, normalizeWorkflowName, type AuthoredWorkflowRequest } from edge
+import { authoredWorkflowRequest, createdOn, firstValidZone, nameMatchTier, normalizeWorkflowName, workflowsViewDeclared, type AuthoredWorkflowRequest } from edge
 
 export { normalizeWorkflowName }
 
 export type WorkflowView = {
-  readonly id: string; readonly name: string; readonly active: boolean; readonly versionId: string; readonly createdAt: string; readonly updatedAt: string
-  readonly removed: boolean; readonly origin: string; readonly steps: readonly { readonly label: string }[]
+  readonly id: string; readonly name: string; readonly description: string; readonly active: boolean; readonly versionId: string; readonly createdAt: string; readonly updatedAt: string
+  readonly removed: boolean; readonly origin: string; readonly steps: readonly { readonly id: string; readonly label: string }[]
 }
 
 export error WorkflowReferenceRefused { code: string; text: string; userFacingText: string; retryable: boolean; data: Record<string, unknown> }
 
 export interface ReferenceOptions {
-  readonly removed: boolean
+  readonly op: ReferenceOp
   readonly strict: boolean
   readonly ownerWords: boolean
   readonly timeZone: string
@@ -164,6 +185,34 @@ export function commandBinding(words: string, proposed: ProposedWorkflowChange):
   return { binding: bindToCommand(command === undefined ? "NoCommand" : commands[command.op], proposed), names: commandNames(command) }
 }
 
+export function workflowRequestRoutes(text: string, workflowsView: () => boolean): boolean {
+  const command = authoredWorkflowRequest(text)
+  if (command === undefined) return false
+  const saysShow = command.op === "list" && command.saysShow
+  return commandRoutes(commands[command.op], saysShow, saysShow && workflowsView())
+}
+
+export function registerWorkflowRequestRouting(runtime: IAgentRuntime): void {
+  const matches = (text: string) => workflowRequestRoutes(text, () => workflowsViewDeclared(runtime))
+  registerDirectActionRoutingRule(runtime, {
+    id: "workflow.authored-request", actionNames: ["WORKFLOW"], replacesActionNames: ["VIEWS", "VIEWS_SHOW"], requiredActionTags: [],
+    contexts: ["automation", "general"], matches, wholeRequest: { matches, invalidateFields: ["visualContinuation"] },
+  })
+}
+
+export function searchWorkflows(workflows: readonly WorkflowView[], query: string): WorkflowView[] {
+  const terms = query.toLowerCase().split(/\s+/).filter((term) => term !== "")
+  return workflows
+    .map((workflow) => {
+      const haystack = `${workflow.name} ${workflow.description}`.toLowerCase()
+      const hits = terms.map((term) => haystack.includes(term))
+      return { workflow, hits, score: searchScore(hits) }
+    })
+    .filter(({ hits }) => searchKeeps(hits))
+    .sort((a, b) => b.score - a.score || a.workflow.id.localeCompare(b.workflow.id))
+    .map(({ workflow }) => workflow)
+}
+
 function quoted(workflows: readonly WorkflowView[], timeZone: string): string {
   const counts = new Map<string, number>()
   for (const workflow of workflows) counts.set(normalizeWorkflowName(workflow.name), (counts.get(normalizeWorkflowName(workflow.name)) ?? 0) + 1)
@@ -180,16 +229,27 @@ function refusal(code: string, text: string, userFacingText: string, data: Recor
   return new WorkflowReferenceRefused({ code, text, userFacingText, retryable, data })
 }
 
+effect function answeredByState(workflow: WorkflowView, op: ReferenceOp): WorkflowView!WorkflowReferenceRefused {
+  const label = `“${workflow.name}”`
+  const found = identities([workflow])
+  switch (referenceAnswer(op, workflow.removed)) {
+    case "ActOnWorkflow": return workflow
+    case "NotRemovedAnswer": throw refusal("WORKFLOW_NOT_REMOVED", `${label} is not removed. Nothing was changed.`, `${label} is not removed.`, { workflows: found }, false)
+    case "AlreadyRemovedAnswer": throw refusal("WORKFLOW_REMOVED", `${label} is already removed. Nothing was changed.`, `${label} is already removed.`, { workflows: found }, false)
+    case "RestoreFirstAnswer": throw refusal("WORKFLOW_REMOVED", `${label} was removed. Nothing was changed. Use action=restore_removed first.`, `${label} was removed. Restore it before you change or run it.`, { workflows: found }, false)
+  }
+}
+
 export effect function resolveWorkflowReference(
   service: WorkflowService, reference: { readonly workflowId?: string; readonly workflowName?: string }, options: ReferenceOptions,
 ): WorkflowView!(WorkflowRefused | WorkflowReferenceRefused) {
   const { workflowId, workflowName } = reference
-  const detailed = workflowId === undefined ? undefined : ((service.detail(workflowId) catch effect (refused) => {
+  const removed = options.op === "RestoreReference"
+  const loaded = workflowId === undefined ? undefined : ((service.detail(workflowId) catch effect (refused) => {
     if (refused.status !== 404) throw refused
     return undefined
   })) as WorkflowView | undefined
-  const loaded = detailed?.removed === options.removed ? detailed : undefined
-  const all = (try service.list(options.removed)) as WorkflowView[]
+  const all = (try service.list(removed)) as WorkflowView[]
   const source = workflowName ?? workflowId
   const tiered = source === undefined ? [] : all.map((workflow) => ({ workflow, tier: nameMatchTier(workflow.name, source) }))
   const inTier = (wanted: "exact" | "bare" | "partial") => tiered.filter(({ tier }) => tier === wanted).map(({ workflow }) => workflow)
@@ -204,8 +264,8 @@ export effect function resolveWorkflowReference(
   const resolution = resolveWorkflow(loaded !== undefined, workflowName !== undefined, source !== undefined, options.ownerWords,
     loaded !== undefined && (workflowName === undefined || nameMatchTier(loaded.name, workflowName) !== undefined),
     full.length, full.some(({ id }) => id === loaded?.id), partial.length, options.strict)
-  if (resolution === "RefResolved" && chosen !== undefined) return chosen
-  const kind = options.removed ? "removed workflow" : "workflow"
+  if (resolution === "RefResolved" && chosen !== undefined) return try answeredByState(chosen, options.op)
+  const kind = removed ? "removed workflow" : "workflow"
   const listed = quoted(all, options.timeZone)
   switch (resolution) {
     case "RefMismatch":

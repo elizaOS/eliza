@@ -45,6 +45,28 @@ pure def lawUnreviewedCodeNeverTurnsOn(review: GeneratedReview, enable: bool): b
 pure def lawTurningOffNeedsNoReview(review: GeneratedReview): bool = generatedActivationAdmitted(review, false)
 ```
 
+### A drafted workflow carries the schedule the owner asked for, in the owner's zone, and gets one repair pass
+
+The drafting model is told the owner's zone, the same zone chat names
+same-named workflows by ([lifecycle](./lifecycle.md)), and that a schedule
+uses it unless the request names another. A draft may carry a trigger: run
+only when started, or at one local time on chosen weekdays in a named zone.
+A draft whose code fails the check, or whose trigger is malformed or never
+falls due, is sent back once with its diagnostics as data, never as
+instructions, and the second answer is final. A chat edit keeps the
+workflow's trigger unless the revised draft carries one. The saved trigger
+is the one the draft carried, and a created workflow is still off until its
+code is reviewed and it is turned on.
+
+```quint
+type DraftAttempt = DraftAccepted | DraftRepair | DraftRefused
+pure def draftAttempt(attempt: int, passes: bool): DraftAttempt =
+  if (passes) DraftAccepted else if (attempt == 0) DraftRepair else DraftRefused
+pure val attemptValues = Set(0, 1)
+pure def lawADraftIsRepairedAtMostOnce(passes: bool): bool = draftAttempt(1, passes) != DraftRepair
+pure def lawAPassingDraftIsKept(attempt: int): bool = draftAttempt(attempt, true) == DraftAccepted
+```
+
 ## Story: Resume generated code after a wait without repeating what it already did
 
 > As the owner, I want a generated workflow that waits for my approval, a
