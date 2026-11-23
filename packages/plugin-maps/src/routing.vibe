@@ -14,6 +14,7 @@ const directionsRequest = new RegExp([
   String.raw`^\s*${courtesy}${bareDirectionsNoun}\s+${destinationWords}`,
   String.raw`^\s*${courtesy}(?:get|give|show|find|pull\s+up)\s+(?:me\s+)?(?:(?:the|some)\s+)?${directionsNoun}\s+${destinationWords}`,
 ].join("|"), "iu")
+const directionsDestination = /^.*\bto\s+(\S.*?)\s*[.!?]*\s*$/isu
 const placeOnMapRequest = new RegExp(String.raw`^\s*${courtesy}(?:show|find|locate|pin|put)\s+(?:me\s+)?\S.*?\s+on\s+(?:the\s+|a\s+)?maps?\s*[.!?]?\s*$`, "iu")
 const travelToRequest = new RegExp(String.raw`^\s*${courtesy}(?:(?:take|bring|get)\s+me|navigate(?:\s+me)?|how\s+(?:do|can|would|should)\s+(?:i|we)\s+get|how\s+to\s+get|what(?:'s|’s|\s+is)\s+the\s+(?:best|fastest|quickest)\s+way\s+to\s+get)\s+to\s+${notAPlace}(?!(?:the\s+)?(?:next|previous|last|first|top|bottom|end|beginning|start|middle|same|other|point|know|sleep)\b)(\S.{0,79}?)${end}`, "iu")
 const goToRequest = new RegExp(String.raw`^\s*${courtesy}(?:let(?:'s|’s|\s+us)\s+)?go\s+to\s+(\S.{0,79}?)${end}`, "iu")
@@ -25,7 +26,8 @@ const compoundRequest = /\b(?:then|if|unless|when|once)\b/iu
 const addressWithLocality = /^\d+[a-z]?\s+[^,]+(?:,\s*[\p{Lu}\d][\p{L}\d.'’ -]*)+$/u
 const notAPlaceKind = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`
 const findVerb = String.raw`(?:(?:find|show|locate|get|search\s+for|look\s+(?:for|up))\s+(?:me\s+)?|where(?:'s|’s|\s+is|\s+are)\s+|what(?:'s|’s|\s+is)\s+)`
-const placeKind = String.raw`(?:(?:a|an|some|any)\s+)?[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3}`
+const notASearchKind = String.raw`(?!(?:(?:the|a|an|some|any|today['’]?s|current|live)\s+)?(?:weather|forecasts?|traffic|news|temperatures?|prices?)\b)`
+const placeKind = String.raw`${notASearchKind}(?:(?:a|an|some|any)\s+)?[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3}`
 const nearby = String.raw`(?:near\s+(?:me|here|by)|nearby|around\s+here|close\s+by)`
 const notAThere = String.raw`(?!(?:anyone|anybody|someone|somebody|no\s?one|nobody|one|(?:a|any)\s+(?:way|chance|reason|problem|issue|bug|error|difference|need|point))\b)`
 const nearestRequest = new RegExp(String.raw`^\s*${courtesy}${findVerb}?(?:(?:the|a|my)\s+)?(?:nearest|closest)\s+${notAPlaceKind}[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,4}${end}`, "iu")
@@ -112,7 +114,7 @@ function goToPlace(destination: string): boolean {
 export function requestShape(text: string, openChoiceAnswered: boolean): { readonly shape: RequestShape; readonly destination?: string } {
   if (openChoiceAnswered) return { shape: "ChoiceReply" }
   if (text.length > maxRequestLength) return { shape: "OtherRequest" }
-  if (directionsRequest.test(text)) return { shape: "DirectionsRequest" }
+  if (directionsRequest.test(text)) return { shape: "DirectionsRequest", destination: directionsDestination.exec(text)?.[1]?.trim() ?? "" }
   if (placeOnMapRequest.test(text)) return { shape: "PlaceOnMap" }
   const travel = travelToRequest.exec(text)?.[1]?.trim()
   if (travel !== undefined && travel !== "") return { shape: "TravelTo", destination: travel }
