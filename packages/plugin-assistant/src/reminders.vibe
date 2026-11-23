@@ -1,8 +1,8 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminders.md, "Story: Move the reminder I just saved"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"; spec/assistant/reminders.md, "A reminder is high priority only when the owner's message says so"; spec/assistant/reminders.md, "A stated time moves a waiting reminder to that time, and a time already passed changes nothing"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminders.md, "Listing reminders changes nothing, and a rename changes the title of the one reminder named"; spec/assistant/reminders.md, "An alert nobody stated is an alert"; spec/assistant/reminders.md, "A silent reminder comes due without a phone notification"; spec/assistant/reminders.md, "A reminder repeats on an interval only when the interval divides the hour or the day evenly"; spec/assistant/reminders.md, "Story: Answer the question a reminder I asked for drew"; spec/assistant/reminders.md, "An answer finishes only the reminder this conversation asked about, from a later message within five minutes"; spec/assistant/reminders.md, "Story: Answer or put off a reminder I keep"; spec/assistant/names.md, "A title that is the name wins, and otherwise the titles that hold the name's words are the candidates"; spec/assistant/reminders.md, "A skip passes over one occurrence of a repeating reminder, and a reminder that does not repeat is not skipped"; spec/assistant/reminders.md, "A snooze until tonight comes at 20:00, and one until tomorrow morning at 08:00, on the owner's clock"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing"; spec/assistant/reminders.md, "The written reminder keeps the planned clock"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes"; spec/assistant/reminderEscalation.md, "A reminder, nudge or check-in that may have reached the owner is never sent again"; spec/assistant/reminders.md, "Story: Move the reminder I just saved"; spec/assistant/reminders.md, "A delay moves a waiting reminder to that long after the request, and anything else changes nothing"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder's own intensity wins over the owner's, and an unset one is normal"; spec/assistant/reminders.md, "A reminder is high priority only when the owner's message says so"; spec/assistant/reminders.md, "A stated time moves a waiting reminder to that time, and a time already passed changes nothing"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminders.md, "Listing reminders changes nothing, and a rename changes the title of the one reminder named"; spec/assistant/reminders.md, "An alert nobody stated is an alert"; spec/assistant/reminders.md, "A silent reminder comes due without a phone notification"; spec/assistant/reminders.md, "A reminder for a day comes at 09:00 that day, and a repeat at its time on the days it names, or every day when it names none"; spec/assistant/reminders.md, "A reminder repeats on an interval only when the interval divides the hour or the day evenly"; spec/assistant/reminders.md, "Story: Answer the question a reminder I asked for drew"; spec/assistant/reminders.md, "An answer finishes only the reminder this conversation asked about, from a later message within five minutes"; spec/assistant/reminders.md, "Story: Answer or put off a reminder I keep"; spec/assistant/names.md, "A title that is the name wins, and otherwise the titles that hold the name's words are the candidates"; spec/assistant/reminders.md, "A skip passes over one occurrence of a repeating reminder, and a reminder that does not repeat is not skipped"; spec/assistant/reminders.md, "A snooze until tonight comes at 20:00, and one until tomorrow morning at 08:00, on the owner's clock"
 import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type IAgentRuntime, type Provider, type UUID } from "@elizaos/core"
 import {
-  Machine, alertWhenUnstated, answersKeptReminder, firstAlert, intervalRepeats, machine, minutesUntilTomorrowMorning, minutesUntilTonight, moveAdmitted, moveToAdmitted,
-  movedDueAt, maxMoveDelayMs, recoveredChoice, renameAdmitted, retractsRecentSave, skipAdmitted, type DeliveryChoice, type ReminderClock, type ReminderIntent,
+  Machine, alertWhenUnstated, answersKeptReminder, dayReminderMinute, firstAlert, intervalRepeats, machine, minutesUntilTomorrowMorning, minutesUntilTonight, moveAdmitted, moveToAdmitted,
+  movedDueAt, maxMoveDelayMs, recoveredChoice, renameAdmitted, repeatsOnDay, retractsRecentSave, skipAdmitted, type DeliveryChoice, type ReminderClock, type ReminderIntent,
 } from "../gen/assistant__reminders.effect.vibe"
 import { namedCount } from "../gen/assistant__names.effect.vibe"
 import {
@@ -23,7 +23,7 @@ export const reminderKind = "personal-assistant.reminder"
 const weekdayNumbers = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 } as const
 const weekdayWords = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" } as const
 type Weekday = keyof typeof weekdayNumbers
-const dayDueTime = "09:00"
+const weekdayOrder: readonly Weekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
 
 type Repeat = { readonly time: string; readonly days: readonly Weekday[] } | { readonly every: number }
 
@@ -39,13 +39,15 @@ function dueTrigger(due: ReminderDue, now: number, zone: string): DueTrigger {
     case "in": return once(now + due.minutes * 60_000)
     case "at": return once(offsetInstant(due.instant))
     case "local": return once(zonedInstant(due.date, due.time, zone))
-    case "day": return once(zonedInstant(due.date, dayDueTime, zone))
+    case "day": return once(zonedInstant(due.date, hhmm(dayReminderMinute), zone))
     case "repeat": {
       const minute = minuteOf(due.time)
       if (minute === undefined) return { kind: "unreadable" }
-      const days = [...new Set(due.days ?? [])]
-      const dow = days.length === 0 ? "*" : days.map((day) => weekdayNumbers[day]).sort((a, b) => a - b).join(",")
-      return { kind: "repeat", trigger: { kind: "cron", expression: `${minute % 60} ${Math.floor(minute / 60)} * * ${dow}`, tz: zone }, repeat: { time: due.time, days } }
+      const named = [...new Set(due.days ?? [])]
+      const on = weekdayOrder.filter((day) => repeatsOnDay(named.length, named.includes(day)))
+      const everyDay = on.length === weekdayOrder.length
+      const dow = everyDay ? "*" : on.map((day) => weekdayNumbers[day]).join(",")
+      return { kind: "repeat", trigger: { kind: "cron", expression: `${minute % 60} ${Math.floor(minute / 60)} * * ${dow}`, tz: zone }, repeat: { time: due.time, days: everyDay ? [] : named } }
     }
     case "every": {
       if (!intervalRepeats(due.minutes)) return { kind: "uneven" }
@@ -62,8 +64,6 @@ const repeatWords = (repeat: Repeat) => "every" in repeat ? `every ${durationWor
 
 const unevenInterval = "I can repeat a reminder every 5, 6, 10, 12, 15, 20 or 30 minutes, or every 1, 2, 3, 4, 6, 8, 12 or 24 hours."
 const stepOf = (field: string | undefined) => field !== undefined && field.includes("/") ? Number(field.split("/")[1]) : undefined
-
-const weekdayOrder: readonly Weekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
 
 export function reminderWhen(task: TaskRow, zone: string): string {
   if (task.trigger.kind === "once") return wallText(Date.parse(task.trigger.atIso), zone)

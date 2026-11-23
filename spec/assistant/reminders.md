@@ -126,6 +126,20 @@ pure def lawASilentReminderNeverNotifiesThePhone(hasConversation: bool): bool = 
 pure def lawAnAlertingReminderNotifiesThePhone(hasConversation: bool): bool = firstAlert(FirstChoice, hasConversation) == NotifiesPhone
 ```
 
+### A reminder for a day comes at 09:00 that day, and a repeat at its time on the days it names, or every day when it names none
+
+A reminder asked for a day without a time, as a deadline "by the 25th"
+is, comes at 09:00 on that day on the owner's clock. A repeat at a time
+comes at that time on each weekday it names, and every day when it names
+no day or names all seven, which the reply then calls every day.
+
+```quint
+pure val dayReminderMinute = 540
+pure def repeatsOnDay(namedDays: int, namesThisDay: bool): bool = namedDays == 0 or namesThisDay
+pure def lawARepeatNamingNoDayComesEveryDay(namesThisDay: bool): bool = repeatsOnDay(0, namesThisDay)
+pure def lawARepeatNamingDaysComesOnlyOnThem(namedDays: int): bool = namedDays > 0 implies not(repeatsOnDay(namedDays, false))
+```
+
 ### A reminder repeats on an interval only when the interval divides the hour or the day evenly
 
 An interval is whole minutes, from five minutes to a day. One shorter
