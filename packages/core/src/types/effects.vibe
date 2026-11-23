@@ -1,7 +1,11 @@
-// spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"
+// spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"; spec/core/receipts.md, "An active commit supersedes a report only for the same receipt, effect or retry key"
+import { noEffectIdentity, sameEffectEvidence, type EffectIdentity } from "../../gen/core__receipts.effect.vibe"
 import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { asObjectRecord } from "../utils/type-guards.vibe"
+
+export { noEffectIdentity, sameEffectEvidence }
+export type { EffectIdentity }
 
 export interface EffectResourceRef {
   kind: string
@@ -65,6 +69,13 @@ export type EffectReceipt =
   | NoopEffectReceipt
   | FailedEffectReceipt
   | RolledBackEffectReceipt
+
+export function effectReceiptIdentity(receipt: EffectReceipt): EffectIdentity {
+  return {
+    receiptId: receipt.receiptId, operation: receipt.operation, resourceKind: receipt.resource.kind,
+    resourceId: receipt.resource.id, retryKey: receipt.idempotency.key ?? "",
+  }
+}
 
 export type ReplayedNoopEffectReceipt = NoopEffectReceipt & {
   idempotency: EffectIdempotency & { replayed: true }

@@ -1,8 +1,9 @@
 // spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/replies.md, "A cue is heard only while the work is pending, and never in place of an answer"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"
-import { revertedEffectReceiptIds, type ActionResult, type EffectReceipt, type ProviderDataRecord } from "@elizaos/core"
-import { claimSupported, heardWhile, type ReplyKind, type ResultEnd, type TurnResult, type WorkPhase } from "../gen/assistant__replies.effect.vibe"
+import { effectReceiptIdentity, noEffectIdentity, revertedEffectReceiptIds, type ActionResult, type EffectReceipt, type ProviderDataRecord } from "@elizaos/core"
+import { claimSupported, heardWhile, type ReplyKind, type ResultEnd, type TurnResult as ModeledTurnResult, type WorkPhase } from "../gen/assistant__replies.effect.vibe"
 
-export type { ReplyKind, TurnResult, WorkPhase }
+export type { ReplyKind, WorkPhase }
+export type TurnResult = ModeledTurnResult & { readonly actionName: string }
 
 const waitCue = /^(?:on it|(?:one|just a) (?:sec|second|moment))$/iu
 const progressLead = /^(?:let me (?:check|look|open|pull up|take a look|have a look)|checking|looking|searching|reading)\b/iu
@@ -43,12 +44,16 @@ function ended(receipt: EffectReceipt, reverted: ReadonlySet<string>): ResultEnd
   }
 }
 
-export function turnResults(attempts: readonly Attempt[]): TurnResult[] {
+function indexedResults(attempts: readonly Attempt[]): { index: number; result: TurnResult }[] {
   const reverted = revertedEffectReceiptIds(attempts.flatMap((attempt) => attempt.receipts))
-  return attempts.flatMap(({ actionName, success, receipts }) => receipts.length === 0
-    ? [{ actionName, target: "", ended: success ? "EndApplied" : "EndRefused" } satisfies TurnResult]
+  return attempts.flatMap<{ index: number; result: TurnResult }>(({ actionName, success, receipts }, index) => receipts.length === 0
+    ? [{ index, result: { actionName, target: "", ended: success ? "EndApplied" : "EndRefused", evidence: noEffectIdentity } }]
     : receipts.filter((receipt) => receipt.outcome !== "rolled_back")
-      .map((receipt) => ({ actionName, target: receiptTarget(receipt), ended: ended(receipt, reverted) } satisfies TurnResult)))
+      .map((receipt) => ({ index, result: { actionName, target: receiptTarget(receipt), ended: ended(receipt, reverted), evidence: effectReceiptIdentity(receipt) } })))
+}
+
+export function turnResults(attempts: readonly Attempt[]): TurnResult[] {
+  return indexedResults(attempts).map(({ result }) => result)
 }
 
 export type Proven =
@@ -57,14 +62,16 @@ export type Proven =
   | { readonly kind: "unproven" }
 
 export function proven(attempts: readonly Attempt[], target: string): Proven {
-  const results = turnResults(attempts)
+  const rows = indexedResults(attempts)
+  const results = rows.map(({ result }) => result)
   if (claimSupported(results, "ClaimedDone", target, 0)) {
     const receipts = attempts.flatMap((attempt) => attempt.receipts)
     const reverted = revertedEffectReceiptIds(receipts)
     return { kind: "done", receiptIds: receipts.filter((receipt) => receiptTarget(receipt) === target && ended(receipt, reverted) === "EndApplied").map((receipt) => receipt.receiptId) }
   }
   const cited = results.findIndex((_, index) => claimSupported(results, "ClaimedNotDone", target, index) && results[index]?.target === target)
-  return cited >= 0 ? { kind: "notDone", cited } : { kind: "unproven" }
+  const failed = rows[cited]
+  return failed === undefined ? { kind: "unproven" } : { kind: "notDone", cited: failed.index }
 }
 
 export interface Telling {

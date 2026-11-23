@@ -8,6 +8,8 @@ export type GoogleScript =
   | { readonly kind: "answer" }
   | { readonly kind: "slow"; readonly delayMs: number }
   | { readonly kind: "empty" }
+  | { readonly kind: "routeGeometry"; readonly encodedPolyline: string; readonly distanceMeters?: number }
+  | { readonly kind: "badRequest"; readonly body: unknown }
   | { readonly kind: "notJson" }
   | { readonly kind: "outage" }
   | { readonly kind: "oversized" };
@@ -144,6 +146,11 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
       return answerOf(operation, request);
     case "empty":
       return emptyOf(operation, request);
+    case "routeGeometry":
+      return { status: 200, body: { routes: [{ duration: "0s", polyline: { encodedPolyline: script.encodedPolyline }, legs: [],
+        ...(script.distanceMeters === undefined ? {} : { distanceMeters: script.distanceMeters }) }] } };
+    case "badRequest":
+      return { status: 400, body: script.body };
     case "notJson":
       return { status: 200, body: "{\"places\": [", headers: { "content-type": "application/json" } };
     case "outage":

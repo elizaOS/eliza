@@ -1,7 +1,7 @@
 // spec/agent/views.md, "Story: Switch to the view the agent named"; spec/agent/views.md, "Story: Answer what the agent asks a view"; spec/agent/views.md, "Story: Stop waiting when my agent stops"
 import { assert, it } from "@effect/vitest"
 import { findViewActionHandoff, type Action, type ActionResult, type Memory, type UUID } from "@elizaos/core"
-import { navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs } from "../gen/agent__views.effect.vibe"
+import { navigationBusyWaitMs, navigationClaimLeaseMs } from "../gen/agent__views.effect.vibe"
 import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
 import { viewHostServiceType, viewsModuleName } from "../src/views/module.vibe"
 import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
@@ -88,7 +88,7 @@ it.effect('Prepare, claim and confirm a switch through the routes; only a confir
   })
 }, 120_000)
 
-it.effect('A second prepare supersedes an unclaimed navigation, waits for a claimed one and is refused only if it stays claimed, and a lost claim or wait is unknown (spec/agent/views.md, "Preparing again supersedes the client\'s unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again")', effect () => {
+it.effect('The renderer can prepare another switch after a lost claim (spec/agent/views.md, "Preparing again supersedes the client\'s unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A lost navigation claim releases the renderer after a short lease")', effect () => {
   const agent = try startInProcess(loaded)
   const { views } = try viewHost(agent)
 
@@ -96,40 +96,30 @@ it.effect('A second prepare supersedes an unclaimed navigation, waits for a clai
   const second = try views.prepare("r2", "c1", "chat")
   const superseded = try first!.wait
   const claimed = try views.claim(second!.binding)
-  const whileClaimed = try fork views.prepare("r3", "c1", "notes")
-  for (let round = 0; round < 20; round += 1) try Effect.yieldNow
+  const duplicate = try claim(agent, second!.binding)
+  const competing = try forkChild(views.awaitNavigationIdle("c1"))
+  const otherRenderer = try prepare(agent, "notes", "r3", "c2")
   try TestClock.adjust(Duration.millis(navigationBusyWaitMs))
-  const refused = try join whileClaimed
+  try Fiber.join(competing)
+  const whileClaimed = try views.prepare("r4", "c1", "notes")
   try TestClock.adjust(Duration.millis(navigationClaimLeaseMs - navigationBusyWaitMs))
   const lost = try second!.wait
   const shown = try views.shownViewOf("c1")
   const late = try result(agent, second!.binding, claimed!, true)
-  const afterLease = try prepare(agent, "notes", "r4", "c1")
+  const replacement = try prepare(agent, "notes", "r4", "c1")
+  const replacementClaim = try claim(agent, bindingOf(replacement.body))
+  const switched = try result(agent, bindingOf(replacement.body), claimIdOf(replacementClaim.body), true)
+  const shownAfterSwitch = try views.shownViewOf("c1")
   try Effect.try(() => {
     assert.deepStrictEqual(superseded, { kind: "Superseded" })
     assert.isString(claimed)
-    assert.isUndefined(refused)
+    assert.deepStrictEqual([duplicate.status, otherRenderer.status], [409, 200])
+    assert.isUndefined(whileClaimed)
     assert.deepStrictEqual(lost, { kind: "Unknown" })
     assert.isUndefined(shown)
     assert.deepStrictEqual(late.body, { ok: true, accepted: false })
-    assert.strictEqual(afterLease.status, 200)
-  })
-
-  const fourth = bindingOf(afterLease.body)
-  const fourthClaim = try views.claim(fourth)
-  const waited = try fork views.prepare("r5", "c1", "chat")
-  for (let round = 0; round < 20; round += 1) try Effect.yieldNow
-  const switched = try result(agent, fourth, fourthClaim!, true)
-  const fifth = try join waited
-  const unclaimed = try views.prepare("r6", "c1", "notes")
-  const retired = try fifth!.wait
-  try TestClock.adjust(Duration.millis(navigationWaitMs))
-  const expired = try unclaimed!.wait
-  try Effect.try(() => {
     assert.deepStrictEqual(switched.body, { ok: true, accepted: true })
-    assert.strictEqual(fifth?.binding.requestId, "r5")
-    assert.deepStrictEqual(retired, { kind: "Superseded" })
-    assert.deepStrictEqual(expired, { kind: "Unknown" })
+    assert.strictEqual(shownAfterSwitch, "notes")
   })
 }, 120_000)
 

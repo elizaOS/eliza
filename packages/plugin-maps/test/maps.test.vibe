@@ -1,4 +1,4 @@
-// spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"; spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"
+// spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"; spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/routing.md, "Story: Use the place I already named when following up on my map"
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
@@ -463,6 +463,10 @@ function linkFake() {
         }
         case "/api/v1/maps/places/details": {
           const id = (request.body as { readonly id: string }).id
+          if (id === "provider-rejected") return { kind: "refused", status: 400, body: { error: "invalid_request" } }
+          if (id === "bad-envelope") return { kind: "refused", status: 400, body: { error: "unrecognized" } }
+          if (id === "provider-fault") return { kind: "refused", status: 502, body: { error: "provider_invalid_response" } }
+          if (id === "unfunded") return { kind: "refused", status: 402, body: { error: "insufficient_credits" } }
           const known = [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry), place("tower", "Coit Tower", tower)].find((item) => item.id === id)
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: known ?? null } }
         }
@@ -503,6 +507,14 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const rough = try act("MAPS_WHERE_AM_I", messageWith({ latitude: here.latitude, longitude: here.longitude, accuracyMeters: 25_000, capturedAt: now - 60_000 }), {})
   const precise = try act("MAPS_WHERE_AM_I", recent, {})
   const unknown = try act("MAPS_WHERE_AM_I", old, {})
+  const handle = "maps_12345678-1234-4123-8123-123456789abc"
+  const beforeCorrection = bodies.length
+  const fixNavigation = try act("MAPS_NAVIGATION_START", recent, { placeId: handle })
+  const fixRoute = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destinationPlaceId: handle })
+  const fixPlace = try act("MAPS_PLACE", recent, { placeId: handle })
+  const correctionCalledProvider = bodies.length !== beforeCorrection
+  const named = try act("MAPS_NAVIGATION_START", recent, { destination: "Coit Tower", placeId: handle, travelMode: "walk" })
+  const providerId = try act("MAPS_SELECT", recent, { placeId: "tower" })
   const provider = try promise(() => phonePositionProvider.get(runtime, recent, {} as never))
   const routeText = route.text ?? ""
   const nearByCard = recognizedMapsCards(nearBy.text ?? "")[0]?.card
@@ -517,6 +529,13 @@ it.live('Search near me with where my phone is now: a recent reported position s
     plain: withoutMapsCards(routeText).includes("MAPSCARD"),
     fromHere: [fromHere.success, (fromHere.data as { readonly origin: string }).origin],
     handoff: recognizedMapsCards(handoff.text ?? "")[0]?.card.kind,
+    fixNavigation: [fixNavigation.success, fixNavigation.error, fixNavigation.data],
+    fixRoute: [fixRoute.success, fixRoute.error, fixRoute.data],
+    fixPlace: [fixPlace.success, fixPlace.error, fixPlace.data],
+    correctionCalledProvider,
+    named: recognizedMapsCards(named.text ?? "")[0]?.card.kind,
+    details: bodies.filter((item) => item.path === "/api/v1/maps/places/details").map((item) => item.body),
+    providerId: [providerId.success, recognizedMapsCards(providerId.text ?? "")[0]?.card.kind],
     provider: provider.values,
     fenced: recognizedMapsCards(fenced).length,
     whereAmI: [rough.text, recognizedMapsCards(rough.text ?? "").length, recognizedMapsCards(precise.text ?? "")[0]?.card.kind, withoutMapsCards(precise.text ?? "").startsWith("You're at The Sun Building"), unknown.success, bodies.filter((made) => made.path === "/api/v1/maps/reverse").length],
@@ -530,11 +549,57 @@ it.live('Search near me with where my phone is now: a recent reported position s
     plain: false,
     fromHere: [false, "own-position"],
     handoff: "handoff",
+    fixNavigation: [false, "MAPS_SELECTION_HANDLE", { actionName: "MAPS_NAVIGATION_START", reason: "selection_handle", field: "placeId", nameField: "destination", coachingFailure: true }],
+    fixRoute: [false, "MAPS_SELECTION_HANDLE", { actionName: "MAPS_ROUTE", reason: "selection_handle", field: "destinationPlaceId", nameField: "destination", coachingFailure: true }],
+    fixPlace: [false, "MAPS_SELECTION_HANDLE", { actionName: "MAPS_PLACE", reason: "selection_handle", field: "placeId", nameField: "query", coachingFailure: true }],
+    correctionCalledProvider: false,
+    named: "handoff",
+    details: [{ id: "tower" }],
+    providerId: [true, "place"],
     provider: { phonePositionAvailable: true },
     fenced: 0,
     whereAmI: ["Your phone's position is approximate (within about 25.0 km): somewhere around New York, NY, USA.", 0, "place", true, false, 2],
     kinds: ["pharmacy", undefined, "coffee"],
   }))
+})
+
+it.live('Keep provider details ahead of a nearby search and fall back only when the place ID is refused (spec/maps/routing.md, "Story: Use the place I already named when following up on my map")', effect () => {
+  const { link, bodies } = linkFake()
+  const plugin = createMapsPlugin({
+    cloud: () => link,
+    navigation: effect () => ({
+      available: effect () => true,
+      select: effect (place) => ({ state: "selected", placeName: place.name }),
+      start: effect ({ destination, travelMode }) => ({ state: "awaiting-location", placeName: destination.name, travelMode }),
+      reroute: effect () => ({ state: "awaiting-location" }),
+      stop: effect () => ({ state: "stopped" }),
+    }),
+    savedPlaces: () => undefined,
+    namesView: () => false,
+  })
+  const runtime = {} as IAgentRuntime
+  const message = messageWith(undefined)
+  const act = (name: string, parameters: JsonObject) => promise(async () => {
+    const action = plugin.actions?.find((found) => found.name === name)
+    if (action === undefined) throw new Error(`${name} is not registered`)
+    return await action.handler(runtime, message, undefined, { parameters })
+  })
+  const selected = try act("MAPS_SELECT", { placeId: "tower" })
+  const exact = try act("MAPS_NAVIGATION_START", { placeId: "tower", destination: "nearest pharmacy", useCurrentLocation: true })
+  const fallback = try act("MAPS_SELECT", { placeId: "provider-rejected", query: "Coit Tower" })
+  const nearby = try act("MAPS_NAVIGATION_START", { placeId: "provider-rejected", destination: "nearest pharmacy" })
+  const malformed = try act("MAPS_SELECT", { placeId: "bad-envelope", query: "Coit Tower" })
+  const fault = try act("MAPS_SELECT", { placeId: "provider-fault", query: "Coit Tower" })
+  const unfunded = try act("MAPS_SELECT", { placeId: "unfunded", query: "Coit Tower" })
+  const status = (answer: typeof selected) => (answer.data?.status as { state: string; placeName?: string; travelMode?: string } | undefined)
+  try Effect.try(() => {
+    assert.deepStrictEqual(selected.data?.place, { provider: "eliza-cloud", placeId: "tower", name: "Coit Tower" })
+    assert.deepStrictEqual(status(exact), { state: "awaiting-location", placeName: "Coit Tower", travelMode: "drive" })
+    assert.deepStrictEqual(status(fallback), { state: "selected", placeName: "Coit Tower" })
+    assert.strictEqual(recognizedMapsCards(nearby.text ?? "")[0]?.card.kind, "locate")
+    assert.deepStrictEqual([malformed.success, fault.success, unfunded.success], [false, false, false])
+    assert.deepStrictEqual(bodies.filter((item) => item.path === "/api/v1/maps/places/search").map((item) => item.body), [{ query: "Coit Tower", limit: 5 }])
+  })
 })
 
 it.live('Keep one location watch and clean up stale callbacks and handles: listeners attach before the watch, a grant received while hidden waits for the screen, a stale fix is skipped, an invalid one ends the watch, and cleanup is confirmed (spec/maps/navigationService.md, "Story: Keep one location watch and clean up stale callbacks and handles")', effect () => {

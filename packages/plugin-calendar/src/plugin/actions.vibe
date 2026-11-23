@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"
-import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
-import { chatCreateReviewed } from "../../gen/calendar__actions.effect.vibe"
+import { incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
+import { chatCreateReviewed, residentChatDelete } from "../../gen/calendar__actions.effect.vibe"
 import { mustAskBeforeCreate } from "../../gen/calendar__readClock.effect.vibe"
 import type { CalendarEvent, CalendarEventFields } from "../model.vibe"
 import type { CalendarMutationOutcome, CalendarMutationReceipt, CalendarMutationRequest } from "../mutations/ledger.vibe"
@@ -8,6 +8,7 @@ import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearchResult } from "./host.vibe"
+import { eventVersion } from "./providers.vibe"
 import { CalendarService, calendarServiceType } from "./service.vibe"
 
 export const calendarActionName = "CALENDAR"
@@ -162,10 +163,47 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
 export interface CalendarAsk {
   readonly by: string
   readonly id: string
+  readonly chat?: { readonly original: string }
 }
 
 function askOf(message: Memory): CalendarAsk {
-  return { by: String(message.entityId), id: String(message.id ?? `${message.roomId}:${message.createdAt ?? 0}`) }
+  const original = incomingMessagePersistenceSnapshot(message) ?? message
+  return { by: String(message.entityId), id: String(message.id ?? `${message.roomId}:${message.createdAt ?? 0}`), chat: { original: unwrapUserMessageText(original) } }
+}
+
+const deletePhrases = [
+  /^(?:please )?(?:delete|remove) (.+)$/u,
+  /^(?:(?:请|請) *)?(?:删除|刪除) *(.+)$/u,
+  /^(.+?) *を *削除して(?:ください)?$/u,
+  /^(.+?) *(?:을|를) *(?:삭제해줘|삭제해 *주세요)$/u,
+]
+
+function comparableTitle(value: string): string {
+  return value.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, " ").trim()
+}
+
+function namedDelete(words: string): string | undefined {
+  if (/[?？]/u.test(words)) return undefined
+  const command = comparableTitle(words)
+  for (const phrase of deletePhrases) {
+    const name = phrase.exec(command)?.[1]?.trim()
+    if (name !== undefined && name !== "") return name
+  }
+  return undefined
+}
+
+effect function residentDelete(host: CalendarHost, found: CalendarFound, original: string, now: number, parameters: Parameters) {
+  const name = namedDelete(original)
+  const exact = name !== undefined && name === comparableTitle(found.event.title)
+  const search = exact ? try host.search({ timeMin: now - day, timeMax: now + 59 * day }) : undefined
+  const matches = search?.events.filter((item) => comparableTitle(item.title) === name) ?? []
+  const [only] = matches
+  const same = only !== undefined && only.id === found.event.id && only.provider === found.source.provider
+    && only.side === found.source.side && only.calendarId === found.source.calendarId
+    && only.connectorAccountId === found.event.connectorAccountId && only.grantId === found.event.grantId
+    && eventVersion(only) === eventVersion(found.event)
+  return residentChatDelete(exact, search?.complete === true, matches.length === 1, same,
+    (parameters.recurrenceScope ?? "instance") === "instance")
 }
 
 effect function target(host: CalendarHost, parameters: Parameters, now: number) {
@@ -242,9 +280,12 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
           { candidates: lookup.matches.slice(0, 5).map((event) => ({ id: event.id, title: event.title, startAt: event.startAt })) })
       }
       if (lookup.kind === "missing") return failed(subaction, "I couldn't find that event in this account's calendars.")
+      const review = subaction === "delete_event" && ask.chat !== undefined && lookup.found.source.provider === "eliza"
+        && (try residentDelete(host, lookup.found, ask.chat.original, now, parameters)) === "ReviewResidentDelete"
       const asked = subaction === "update_event"
         ? { kind: "update" as const, target: lookup.found, scope: parameters.recurrenceScope ?? "instance", fields: updatedFields(lookup.found, parameters, zone), askedBy, askId }
-        : { kind: "delete" as const, target: lookup.found, scope: parameters.recurrenceScope ?? "instance", askedBy, askId }
+        : { kind: "delete" as const, target: lookup.found, scope: parameters.recurrenceScope ?? "instance", askedBy, askId,
+          ...(review ? { review: "owner" as const } : {}) }
       if (asked.kind === "update" && (Option.isNone(decodeFields(asked.fields)) || !fieldsSpanValid(asked.fields))) return failed(subaction, "The changed event needs a title and a start before its end.")
       const result = host.change(asked) catch () => undefined
       return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
@@ -265,7 +306,7 @@ function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
 
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all, applied at once on the agent's own calendar and through the owner's approval on a connected provider calendar. A new event goes to the owner's review first unless reviewBeforeCreate is false.",
+  description: "The owner's calendar. search_events lists events in a time range (optionally matching a title query); next_event finds the next upcoming event; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all. A provider change or a resident deletion that cannot be tied to one exact event in the owner's words asks for approval. A new event goes to the owner’s review first unless reviewBeforeCreate is false.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [
