@@ -250,6 +250,7 @@
         "vibestack-studio#test:browser"
       ],
       "inputs": [
+        ".gitignore",
         "vibestack/**",
         "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!vibestack/selftests/{docs,examples}.ts",

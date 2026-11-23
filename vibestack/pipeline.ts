@@ -19,7 +19,7 @@ import { contracts, citationLookup, pending, pendingKey, pendingContracts, accep
 import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
-import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
+import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, owner, specOwnerPaths, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
 import { setupProjectAgents } from "./skill-links.ts";
 
@@ -774,7 +774,7 @@ async function watch(root: string) {
   const containers = ["apps", "packages"];
   const attach = () => {
     const areas = read("spec").filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-    const packages = containers.flatMap((dir) => [dir, ...areas.map((area) => `${dir}/${area}`)]);
+    const packages = [...containers, ...areas.flatMap((area) => specOwnerPaths(root, area))];
     const own = (dir: string) => read(dir).filter((e) => e.isDirectory() && !UNREAD.test(e.name) && e.name !== "gen" && !(dir === "" && containers.includes(e.name))
       && !fs.existsSync(path.join(root, dir, e.name, "package.json"))).map((e): [string, boolean] => [`${dir}${e.name}`, true]);
     const owners = codeDirs(root);
@@ -824,14 +824,14 @@ async function generateFiles(root: string, output = root, ownerName?: string) {
 }
 
 async function generateOwner(root: string, name: string) {
-  const ownerDir = codeDirs(root).find((dir) => path.basename(dir) === name);
+  const ownerDir = badSpecName(name) ? undefined : owner(root, `spec/${name}/`);
   if (!ownerDir) throw new Error(`${name}: no package owns spec/${name}/`);
   const release = lockProject(root);
   try {
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-owner-gen-"));
     try {
       const specs = await generateFiles(root, scratch, name);
-      mirrorGen(root, specs, { scratch, ownerDir });
+      mirrorGen(root, specs, { scratch, ownerDir: `${ownerDir}/` });
     } finally {
       fs.rmSync(scratch, { recursive: true, force: true });
     }

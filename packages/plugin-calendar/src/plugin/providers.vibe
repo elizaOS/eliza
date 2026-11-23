@@ -1,0 +1,297 @@
+// spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"; spec/calendar/residentStore.md, "The earlier events are imported once, exactly, and never over the series rows"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
+import { sha256Hex } from "@elizaos/core"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import type { CalendarEvent, CalendarEventFields, CalendarProvider, CalendarSourceKey, CalendarSummary } from "../model.vibe"
+import { CalendarWriteNotAccepted, CalendarWriteUnconfirmed, type CalendarAnswerScope, type CalendarInvitationResponse } from "../mutations/ledger.vibe"
+import type { OwnerRole } from "../../gen/calendar__actions.effect.vibe"
+import { expandDocumentCalendar } from "../availability/recurrence.vibe"
+import { findRow, InvalidSeriesTime, removeScoped, saveScopedEdit, ScopeMismatch, SeriesChanged, type CalendarRow, type CalendarRowFields, type CalendarWriteScope } from "../series/document.vibe"
+import { CalendarRowRecord } from "../series/rows.schema.vibe"
+import { EventRecord } from "../mutations/records.schema.vibe"
+import { residentImport, residentImportedRevision } from "../../gen/calendar__residentStore.effect.vibe"
+import { recurrenceLines, rowRecurrence, type CalendarRecurrence } from "../series/recurrence-rule.vibe"
+
+/** The owner and connector account the agent is acting for now. */
+export interface CalendarAccount {
+  readonly agentId: string
+  readonly ownerId: string
+  readonly accountId: string
+}
+
+/** A provider could not be read for this account. */
+export error CalendarSourceUnavailable { provider: CalendarProvider; reason: string }
+
+/** One provider read of a window: the events it holds and whether the provider declared the read complete. */
+export interface CalendarWindowRead {
+  readonly events: readonly CalendarEvent[]
+  readonly complete: boolean
+}
+
+type WriteFailure = CalendarWriteNotAccepted | CalendarWriteUnconfirmed
+
+/** How the Calendar action reaches one provider for one account: whether it writes RFC 5545 recurrence lines and can send attendees an update, its calendars, reads, creates and updates, an update or removal under the scope it names, and, when the provider can, a removal and an invitee's answer to an invitation; a port that sends updates tells a changed event's attendees exactly when `notifyAttendees` is true (Google's `sendUpdates` all, else none). */
+export interface CalendarProviderPort {
+  readonly provider: CalendarProvider
+  readonly recurrenceLines: boolean
+  readonly notifies: boolean
+  sources(account: CalendarAccount): readonly CalendarSummary[]!CalendarSourceUnavailable
+  read(account: CalendarAccount, source: CalendarSourceKey, timeMin: number, timeMax: number): CalendarWindowRead!CalendarSourceUnavailable
+  get(account: CalendarAccount, source: CalendarSourceKey, eventId: string): (CalendarEvent | undefined)!CalendarSourceUnavailable
+  create(account: CalendarAccount, source: CalendarSourceKey, fields: CalendarEventFields, recurrence: CalendarRecurrence | null, idempotencyKey: string): CalendarEvent!WriteFailure
+  update(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarWriteScope, fields: CalendarEventFields, expectedVersion: string, idempotencyKey: string, notifyAttendees: boolean): CalendarEvent!WriteFailure
+  remove?(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarWriteScope, expectedVersion: string, idempotencyKey: string, notifyAttendees: boolean): void!WriteFailure
+  respond?(account: CalendarAccount, source: CalendarSourceKey, eventId: string, scope: CalendarAnswerScope, response: CalendarInvitationResponse, expectedVersion: string, idempotencyKey: string, notifyAttendees: boolean): CalendarEvent!WriteFailure
+}
+
+/** The provider version of an event: its etag, else its update time. */
+export function eventVersion(event: CalendarEvent): string {
+  return typeof event.metadata.etag === "string" && event.metadata.etag !== "" ? event.metadata.etag : event.updatedAt
+}
+
+/** The owner's role on an event as read: organizer, invitee or unknown; every resident event is the owner's own. */
+export function ownerRole(event: CalendarEvent, accountEmail: string | null): OwnerRole {
+  if (event.provider === "eliza" || event.organizer?.self === true) return "OrganizerRole"
+  const own = event.attendees.find((attendee) => attendee.self)
+  if (own !== undefined) return own.organizer ? "OrganizerRole" : "InviteeRole"
+  const organizer = typeof event.organizer?.email === "string" ? event.organizer.email.trim().toLowerCase() : ""
+  return organizer !== "" && organizer === (accountEmail ?? "").trim().toLowerCase() ? "OrganizerRole" : "UnknownRole"
+}
+
+/** Whether an event has an attendee other than the owner, who could be told of a change. */
+export function hasOtherAttendees(event: CalendarEvent): boolean {
+  return event.attendees.some((attendee) => !attendee.self)
+}
+
+/** Whether an event reads back with the owner's own attendee answering as asked. */
+export function answeredWith(event: CalendarEvent, response: CalendarInvitationResponse): boolean {
+  return event.attendees.some((attendee) => attendee.self && attendee.responseStatus === response)
+}
+
+/** The fields of an event as it is, to compare a readback that must leave them unchanged. */
+export function fieldsOf(event: CalendarEvent): CalendarEventFields {
+  return { title: event.title, description: event.description, location: event.location, startAt: event.startAt, endAt: event.endAt, isAllDay: event.isAllDay, timeZone: event.timezone ?? "UTC" }
+}
+
+/** Whether an event's half-open span meets the window, a zero-length event counting at its start. */
+export function eventInWindow(event: CalendarEvent, timeMin: number, timeMax: number): boolean {
+  const start = Date.parse(event.startAt)
+  const end = Date.parse(event.endAt)
+  return Number.isFinite(start) && Number.isFinite(end) && (end === start ? start >= timeMin && start < timeMax : start < timeMax && end > timeMin)
+}
+
+/** The addresses of an event's guests other than the owner, lower-cased, once each and in order. */
+export function guestAddresses(event: CalendarEvent): readonly string[] {
+  return [...new Set(event.attendees.flatMap((attendee) => attendee.self || attendee.email === null ? [] : [attendee.email.trim().toLowerCase()]))].sort()
+}
+
+/** Whether an event holds exactly the reviewed fields, comparing instants rather than their spelling, and its guests when the fields name them. */
+export function holdsFields(event: CalendarEvent, fields: CalendarEventFields): boolean {
+  const guests = fields.attendees === undefined ? undefined : [...new Set(fields.attendees.map((address) => address.trim().toLowerCase()))].sort()
+  return event.title === fields.title && event.description === fields.description && event.location === fields.location
+    && event.isAllDay === fields.isAllDay && Date.parse(event.startAt) === Date.parse(fields.startAt) && Date.parse(event.endAt) === Date.parse(fields.endAt)
+    && (guests === undefined || JSON.stringify(guests) === JSON.stringify(guestAddresses(event)))
+}
+
+const ImportReceipt = Schema.Struct({
+  format: Schema.Literal("resident-events-1"),
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  sha256: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+  events: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+})
+const ResidentDocument = Schema.Struct({
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  rows: Schema.Array(CalendarRowRecord),
+  changedAt: Schema.Record(Schema.String, Schema.String),
+  replays: Schema.Record(Schema.String, Schema.String),
+  imported: Schema.NullOr(ImportReceipt),
+})
+type ResidentDocument = typeof ResidentDocument.Type
+const decodeDocument = Schema.decodeUnknownEffect(Schema.fromJsonString(ResidentDocument))
+const admitDocument = Schema.decodeUnknownOption(ResidentDocument)
+const emptyDocument: ResidentDocument = { revision: 0, rows: [], changedAt: {}, replays: {}, imported: null }
+const PriorDocument = Schema.Struct({
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  events: Schema.Array(EventRecord),
+  replays: Schema.Record(Schema.String, Schema.String),
+})
+const decodePrior = Schema.decodeUnknownOption(Schema.fromJsonString(PriorDocument))
+
+/** The resident calendar cannot be shown: its earlier record could not be read or kept exactly, so it waits for review rather than starting empty. */
+export error ResidentNeedsReview { reason: string }
+
+function priorRow(event: CalendarEvent): CalendarRow | undefined {
+  const begin = Date.parse(event.startAt)
+  const end = Date.parse(event.endAt)
+  const revision = eventVersion(event)
+  if ((event.recurrence?.length ?? 0) > 0 || (event.recurringEventId ?? null) !== null || !Number.isSafeInteger(begin) || !Number.isSafeInteger(end) || revision === "") return undefined
+  return { id: event.id, calendarId: "primary", title: event.title, body: event.description, location: event.location, begin, end, revision,
+    allDay: event.isAllDay, ...(event.timezone === null ? {} : { timeZone: event.timezone }) }
+}
+
+/** The series rows an earlier record of resident events becomes, with its import receipt, or undefined when any of its events cannot be kept exactly. */
+export function importPriorResident(raw: string): ResidentDocument | undefined {
+  const prior = decodePrior(raw)
+  if (Option.isNone(prior)) return undefined
+  const rows = prior.value.events.map(priorRow)
+  if (rows.some((row) => row === undefined) || new Set(rows.map((row) => row?.id)).size !== rows.length) return undefined
+  const imported = admitDocument({
+    revision: residentImportedRevision(prior.value.revision),
+    rows,
+    changedAt: Object.fromEntries(prior.value.events.map((event) => [event.id, event.updatedAt])),
+    replays: prior.value.replays,
+    imported: { format: "resident-events-1", revision: prior.value.revision, sha256: sha256Hex(raw), events: rows.length },
+  })
+  return Option.isSome(imported) ? imported.value : undefined
+}
+const deletedMark = "\0deleted"
+const residentCalendarId = "primary"
+
+/** The resident calendar's one source for an account. */
+export function residentSource(account: CalendarAccount): CalendarSourceKey {
+  return { provider: "eliza", side: "owner", grantId: "resident", connectorAccountId: account.accountId, calendarId: residentCalendarId }
+}
+
+function isResident(account: CalendarAccount, source: CalendarSourceKey): boolean {
+  const own = residentSource(account)
+  return source.provider === own.provider && source.side === own.side && source.grantId === own.grantId
+    && source.connectorAccountId === own.connectorAccountId && source.calendarId === own.calendarId
+}
+
+function rowFields(fields: CalendarEventFields): CalendarRowFields {
+  return { title: fields.title, body: fields.description, location: fields.location, begin: Date.parse(fields.startAt), end: Date.parse(fields.endAt),
+    allDay: fields.isAllDay, timeZone: fields.timeZone, ...(fields.attendees === undefined ? {} : { who: [...fields.attendees] }) }
+}
+
+/** The agent's own calendar, one document Calendar per account in the KeyValueStore: series, overrides and exclusions, with optimistic revisions and idempotent writes. */
+export effect function residentCalendar(): CalendarProviderPort!!KeyValueStore.KeyValueStore {
+  const store = try KeyValueStore.KeyValueStore
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+  const accountScope = (account: CalendarAccount) => `${encodeURIComponent(account.agentId)}.${encodeURIComponent(account.accountId)}`
+  const documentKey = (account: CalendarAccount) => `calendar.resident.rows.${accountScope(account)}`
+  const priorKey = (account: CalendarAccount) => `calendar.resident.${accountScope(account)}`
+  const refused = (code: string, message: string) => new CalendarWriteNotAccepted({ failure: { code, message, retryable: false } })
+
+  effect function load(account: CalendarAccount) {
+    const saved = try mapError(store.get(documentKey(account)), () => new ResidentNeedsReview({ reason: "The resident calendar could not be read" }))
+    const prior = saved === undefined ? (store.get(priorKey(account)) catch () => null) : undefined
+    const imported = typeof prior === "string" ? importPriorResident(prior) : undefined
+    const step = residentImport(saved === undefined ? "NothingSaved" : "SavedRows",
+      prior === undefined ? "PriorAbsent" : prior === null ? "PriorUnreadable" : imported === undefined ? "PriorInvalid" : "PriorValid")
+    switch (step) {
+      case "KeepRows": return try mapError(decodeDocument(saved ?? ""), () => new ResidentNeedsReview({ reason: "The resident calendar's saved rows are not valid" }))
+      case "StartEmpty": return emptyDocument
+      case "ImportNeedsReview": throw new ResidentNeedsReview({ reason: "The resident calendar's earlier events could not be read or kept exactly" })
+      case "ImportPrior": {
+        const rows = imported ?? emptyDocument
+        try mapError(store.set(documentKey(account), JSON.stringify(rows)), () => new ResidentNeedsReview({ reason: "The resident calendar's earlier events could not be saved as series rows" }))
+        return rows
+      }
+    }
+  }
+
+  effect function readable(account: CalendarAccount) {
+    return try mapError(serialize(load(account)), (needs) => new CalendarSourceUnavailable({ provider: "eliza", reason: needs.reason }))
+  }
+
+  function eventOf(account: CalendarAccount, document: ResidentDocument, row: CalendarRow): CalendarEvent {
+    const changedAt = document.changedAt[row.id] ?? (row.seriesId === undefined ? undefined : document.changedAt[row.seriesId]) ?? ""
+    const lines = row.seriesId === undefined ? recurrenceLines(row) : []
+    return {
+      id: row.id, externalId: row.id, agentId: account.agentId, provider: "eliza", side: "owner", calendarId: residentCalendarId,
+      title: row.title, description: row.body, location: row.location, status: "confirmed",
+      startAt: new Date(row.begin).toISOString(), endAt: new Date(row.end).toISOString(), isAllDay: row.allDay === true, timezone: row.timeZone ?? null,
+      htmlLink: null, conferenceLink: null, organizer: null,
+      attendees: (row.who ?? []).map((email) => ({ email, displayName: null, responseStatus: row.responses?.[email] ?? null, self: false, organizer: false, optional: false })),
+      metadata: { etag: row.revision, ...(row.occurrenceBegin === undefined ? {} : { originalStartTime: new Date(row.occurrenceBegin).toISOString() }) },
+      recurrence: lines.length === 0 ? null : lines, recurringEventId: row.seriesId ?? null,
+      syncedAt: changedAt, updatedAt: changedAt, calendarSummary: "Calendar", connectorAccountId: account.accountId, grantId: "resident",
+    }
+  }
+
+  effect function change(account: CalendarAccount, source: CalendarSourceKey, idempotencyKey: string,
+    edit: (document: ResidentDocument, mint: () => string) => { readonly rows: readonly CalendarRow[]; readonly selected: string }!CalendarWriteNotAccepted) {
+    return try serialize(effect {
+      if (!isResident(account, source)) throw refused("CALENDAR_SOURCE_NOT_RESIDENT", "That calendar is not this account's resident calendar.")
+      const document = try mapError(load(account), () => new CalendarWriteNotAccepted({ failure: { code: "CALENDAR_STORE_UNREADABLE", message: "The resident calendar could not be read.", retryable: true } }))
+      const replayed = document.replays[idempotencyKey]
+      if (replayed !== undefined) return { document, id: replayed }
+      const at = new Date(try Clock.currentTimeMillis).toISOString()
+      const revision = document.revision + 1
+      let minted = 0
+      const mint = () => `r${revision}.${minted++}`
+      const { rows, selected } = try edit(document, mint)
+      const before = new Map(document.rows.map((row) => [row.id, JSON.stringify(row)]))
+      const changedAt = Object.fromEntries([...Object.entries(document.changedAt).filter(([id]) => rows.some((row) => row.id === id)),
+        ...rows.filter((row) => before.get(row.id) !== JSON.stringify(row)).map((row) => [row.id, at])])
+      const next: ResidentDocument = { revision, rows: [...rows], changedAt, replays: { ...document.replays, [idempotencyKey]: selected }, imported: document.imported }
+      try mapError(store.set(documentKey(account), JSON.stringify(next)), () => new CalendarWriteUnconfirmed({ failure: { code: "CALENDAR_STORE_WRITE_UNKNOWN", message: "The resident calendar write was not confirmed.", retryable: false } }))
+      return { document: next, id: selected }
+    })
+  }
+
+  effect function scoped<A>(run: A!(SeriesChanged | ScopeMismatch | InvalidSeriesTime)) {
+    return try mapError(run, (error) => match (error) {
+      when SeriesChanged: refused("CALENDAR_PRECONDITION_FAILED", "The event or its series changed since it was reviewed.");
+      when ScopeMismatch: refused("CALENDAR_SCOPE_MISMATCH", "That scope does not fit the event: a one-off event changes only as this event.");
+      when InvalidSeriesTime: refused("CALENDAR_SERIES_TIME_INVALID", "The series could not be moved to that time in its zone.");
+    })
+  }
+
+  effect function reviewedRow(document: ResidentDocument, eventId: string, expectedVersion: string) {
+    const found = findRow(document.rows, eventId)
+    if (found === undefined) throw refused("CALENDAR_EVENT_NOT_FOUND", "That event is no longer in the calendar.")
+    if (found.revision !== expectedVersion) throw refused("CALENDAR_PRECONDITION_FAILED", "The event changed since it was reviewed.")
+    return { id: found.id, revision: found.revision }
+  }
+
+  effect function readEvent(account: CalendarAccount, document: ResidentDocument, id: string) {
+    const row = findRow(document.rows, id)
+    if (row === undefined) throw new CalendarWriteUnconfirmed({ failure: { code: "CALENDAR_EVENT_NOT_FOUND", message: "The changed event is no longer in the calendar.", retryable: false } })
+    return eventOf(account, document, row)
+  }
+
+  return {
+    provider: "eliza",
+    recurrenceLines: true,
+    notifies: false,
+    effect sources(account) {
+      return [{ ...residentSource(account), accountEmail: null, summary: "Calendar", description: null, primary: true, accessRole: "owner", timeZone: null, selected: true, includeInFeed: true }]
+    },
+    effect read(account, source, timeMin, timeMax) {
+      if (!isResident(account, source)) return { events: [], complete: false }
+      const document = try readable(account)
+      const range = expandDocumentCalendar(document.rows, { start: new Date(timeMin).toISOString(), end: new Date(timeMax).toISOString() })
+      if (range === undefined) throw new CalendarSourceUnavailable({ provider: "eliza", reason: "The resident calendar's series could not be expanded over that range" })
+      return { events: range.rows.map((row) => eventOf(account, document, row)).filter((event) => eventInWindow(event, timeMin, timeMax)), complete: !range.truncated }
+    },
+    effect get(account, source, eventId) {
+      if (!isResident(account, source)) return undefined
+      const document = try readable(account)
+      const row = findRow(document.rows, eventId)
+      return row === undefined ? undefined : eventOf(account, document, row)
+    },
+    effect create(account, source, fields, recurrence, idempotencyKey) {
+      const { document, id } = try change(account, source, idempotencyKey, effect (document, mint) => {
+        const id = `resident-${sha256Hex(`${account.accountId}\n${idempotencyKey}`).slice(0, 32)}`
+        const row: CalendarRow = { id, calendarId: residentCalendarId, title: "", body: "", location: "", begin: 0, end: 0, revision: mint(), ...rowFields(fields),
+          ...(recurrence === null ? {} : rowRecurrence(recurrence)) }
+        return { rows: [...document.rows, row], selected: id }
+      })
+      return try readEvent(account, document, id)
+    },
+    effect update(account, source, eventId, scope, fields, expectedVersion, idempotencyKey) {
+      const { document, id } = try change(account, source, idempotencyKey, effect (document, mint) => {
+        const selected = try reviewedRow(document, eventId, expectedVersion)
+        const newSeriesId = `resident-${sha256Hex(`${account.accountId}\n${idempotencyKey}\nsplit`).slice(0, 32)}`
+        return try scoped(saveScopedEdit(document.rows, selected, scope, rowFields(fields), mint, newSeriesId))
+      })
+      return try readEvent(account, document, id)
+    },
+    effect remove(account, source, eventId, scope, expectedVersion, idempotencyKey) {
+      try change(account, source, idempotencyKey, effect (document, mint) => {
+        const selected = try reviewedRow(document, eventId, expectedVersion)
+        return { rows: try scoped(removeScoped(document.rows, selected, scope, mint)), selected: deletedMark }
+      })
+    },
+  }
+}

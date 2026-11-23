@@ -3,6 +3,7 @@
 import { existsSync, globSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import ts from "typescript";
+import { owner } from "../util.ts";
 
 /** A value in a metadata file that only running it would give, such as JSX or a function. */
 const dynamic = Symbol("dynamic");
@@ -66,14 +67,14 @@ export function packageOf(dir: string): { name: string; dir: string } {
 const moduleOf = (spec: string) => spec.replace(/^(\.\/)?spec\//, "").replace(/\.md$/, "").replace(/\/index$/, "").replaceAll("/", "__");
 /**
  * The generated module of `spec`: in the component's own package, or, for a shared package such as a component
- * library, in the spec's owner (`spec/<name>/` is `apps/<name>` or `packages/<name>`), else the root's (SPEC.md, "One spec tree").
+ * library, in the spec's owner, else the root's (SPEC.md, "One spec tree").
  */
-const modelFile = (abs: string, spec: string) => {
+const modelInputs = (abs: string, spec: string): [model: string, ...manifests: string[]] => {
   const own = packageOf(dirname(abs)).dir, name = `${moduleOf(spec)}.ts`;
   const root = ancestors(own).find((dir) => existsSync(join(dir, spec)));
-  const owner = /^(?:\.\/)?spec\/([^/]+)\//.exec(spec)?.[1];
-  const candidates = [join(own, "gen", name), ...(root ? [...(owner ? ["apps", "packages"].map((group) => join(root, group, owner, "gen", name)) : []), join(root, "gen", name)] : [])];
-  return candidates.find(existsSync) ?? candidates[0]!;
+  const dir = root && owner(root, spec.replace(/^\.\//, ""));
+  const candidates = [join(own, "gen", name), ...(root && dir ? [join(root, dir, "gen", name)] : []), ...(root ? [join(root, "gen", name)] : [])];
+  return [candidates.find(existsSync) ?? candidates[0]!, ...(root ? [join(root, "package.json")] : [])];
 };
 const ancestors = (dir: string): string[] => (dirname(dir) === dir ? [dir] : [dir, ...ancestors(dirname(dir))]);
 const modelTag = (text: string) => /@model\s+(\S+)/.exec(text)?.[1];
@@ -93,7 +94,7 @@ const sibling = (abs: string, name: string, kind: "meta" | "stories") => ["tsx",
 /** The files beside a component that change its stories, present or not: metadata, hand-written stories, its model. */
 export function beside(abs: string, names: string[]): string[] {
   const spec = existsSync(abs) ? modelTag(readFileSync(abs, "utf8")) : undefined;
-  return [...names.flatMap((name) => [...sibling(abs, name, "meta"), ...sibling(abs, name, "stories")]), ...(spec ? [modelFile(abs, spec)] : [])];
+  return [...names.flatMap((name) => [...sibling(abs, name, "meta"), ...sibling(abs, name, "stories")]), ...(spec ? modelInputs(abs, spec) : [])];
 }
 
 /**
@@ -117,7 +118,7 @@ export function programs(root: string): (files: string[]) => ts.Program {
   let last: ts.Program | undefined;
   return (files) => {
     const metas = [...new Set(files.map(dirname))].flatMap((dir) => readdirSync(dir).filter((name) => /\.meta\.tsx?$/.test(name)).map((name) => join(dir, name)));
-    const models = files.flatMap((file) => beside(file, []).filter(existsSync));
+    const models = files.flatMap((file) => beside(file, []).filter((input) => input.endsWith(".ts") && existsSync(input)));
     return (last = ts.createProgram({ rootNames: [...new Set([...files, ...metas, ...models])], options, host, oldProgram: last }));
   };
 }
@@ -260,7 +261,7 @@ export function analyze(built: ts.Program, abs: string): Found[] {
   if (!file || !module) return [];
   const own = (d: ts.Declaration) => !built.isSourceFileFromExternalLibrary(d.getSourceFile()) && !built.isSourceFileDefaultLibrary(d.getSourceFile());
   const spec = modelTag(file.text);
-  const gen = spec && built.getSourceFile(modelFile(abs, spec));
+  const gen = spec && built.getSourceFile(modelInputs(abs, spec)[0]);
 
   const found = checker.getExportsOfModule(module).flatMap((exportOf): Found[] => {
     const symbol = exportOf.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(exportOf) : exportOf;

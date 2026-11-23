@@ -1,0 +1,296 @@
+// spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once"; spec/assistant/goals.md, "A new goal is refused only when an active goal has the same title"; spec/assistant/goals.md, "A goal's check-ins are reconciled with its status and cadence on every change"; spec/assistant/goals.md, "A check-in the owner dismissed never comes back for the same slot"; spec/assistant/goals.md, "The owner's answer to a fired check-in sets the goal's review state"; spec/assistant/goals.md, "Story: Review how my goals are going"; spec/assistant/goals.md, "A review reads one named goal's latest answer, or groups every active goal by how it is going, and changes nothing"
+import { createReminderPresentation, type Action, type ActionResult, type Provider, type UUID } from "@elizaos/core"
+import { Machine, answerFresh, answeredRecently, canFireCheckin, cadenceSlots, checkinLogLimit, duplicatesGoal, reviewGroup, stored, type Cadence, type Goal, type GoalStatus, type ReviewGroup, type ReviewState } from "../gen/assistant__goals.effect.vibe"
+import { Facts, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, requestOf, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import { appliedReceipt, attributed, failedReceipt, unchangedReceipt, type Attempt } from "./replies.vibe"
+import { noteOwnerAnswer } from "./escalation.vibe"
+import { liveReminders, reminderWhen } from "./reminders.vibe"
+import { GoalRequest } from "./requests.schema.vibe"
+import { listRoutines, routineTimes } from "./routines.vibe"
+import { currentTodos, renderTodos } from "./todos.vibe"
+import { wallText } from "./time.vibe"
+import { ownerClockAt } from "./timezone.vibe"
+
+/** The scheduled-task kind of a goal's check-in. */
+export const goalCheckinKind = "personal-assistant.goal-checkin"
+
+const cadences = { none: "NoCadence", daily: "DailyCadence", weekly: "WeeklyCadence" } as const satisfies Record<string, Cadence>
+const statuses = { active: "GoalActive", paused: "GoalPaused", archived: "GoalArchived", satisfied: "GoalSatisfied" } as const satisfies Record<string, GoalStatus>
+const progresses = { on_track: "OnTrack", at_risk: "AtRisk", needs_attention: "NeedsAttention" } as const satisfies Record<string, ReviewState>
+const slotNames = { morning: 1, evening: 2, weekly: 3 } as const
+const slotCron: Readonly<Record<number, string>> = { 1: "0 9 * * *", 2: "0 18 * * *", 3: "0 9 * * 1" }
+const statusWord = (status: GoalStatus) => status.replace("Goal", "").toLowerCase()
+const titleKey = (title: string) => title.trim().toLowerCase()
+
+const LogEntry = Schema.Struct({ at: Schema.Number, progress: Schema.Literals(["on_track", "at_risk", "needs_attention"]), note: Schema.String })
+const GoalRecord = Schema.Struct({
+  goalId: Schema.String,
+  title: Schema.String,
+  description: Schema.String,
+  cadence: Schema.Literals(["none", "daily", "weekly"]),
+  tasks: Schema.Record(Schema.String, Schema.String),
+  generations: Schema.Record(Schema.String, Schema.Number),
+  lastFired: Schema.Number,
+  log: Schema.Array(LogEntry),
+})
+/** A goal's words and the check-in tasks it keeps, beside its spec state. */
+export type GoalRecord = typeof GoalRecord.Type
+const decodeIndex = Schema.decodeUnknownOption(Schema.Struct({ goals: Schema.Array(GoalRecord) }))
+const indexKey = "goals"
+const stateKey = (goalId: string) => `goal:${goalId}`
+
+/** Every goal the owner made, with its state. */
+export effect function listGoals() {
+  const goals = (try readRecord(indexKey, decodeIndex))?.goals ?? []
+  const found: Array<{ readonly record: GoalRecord; readonly goal: Goal }> = []
+  for (const record of goals) {
+    provide stored(stateKey(record.goalId)) {
+      const goal = try (try Machine).get()
+      if (goal.status !== "GoalDeleted" && goal.status !== "NoGoal") found.push({ record, goal })
+    }
+  }
+  return found
+}
+
+/** Where an active goal stands now: by its latest answer while that answer is fresh for its cadence, and needing attention once it has gone quiet. */
+export function goalStanding(record: GoalRecord, goal: Goal, now: number): ReviewGroup {
+  const latest = record.log.at(-1)
+  return reviewGroup(goal.status, goal.reviewState, latest !== undefined && answerFresh(cadences[record.cadence], latest.at, now))
+}
+
+effect function goalState(goalId: string) {
+  provide stored(stateKey(goalId)) {
+    return try (try Machine).get()
+  }
+}
+
+effect function keepRecord(record: GoalRecord) {
+  const goals = (try readRecord(indexKey, decodeIndex))?.goals ?? []
+  try writeRecord(indexKey, { goals: [...goals.filter((goal) => goal.goalId !== record.goalId), record] })
+}
+
+effect function reconcileTasks(record: GoalRecord, goal: Goal, key: string) {
+  const scheduler = try Scheduler
+  const zone = try ownerClockAt(try (try Facts).now())
+  const tasks: Record<string, string> = { ...record.tasks }
+  const generations: Record<string, number> = { ...record.generations }
+  for (const slot of [1, 2, 3]) {
+    const name = String(slot)
+    const taskId = tasks[name]
+    const live = goal.liveSlots.includes(slot)
+    if (live && taskId === undefined) {
+      const generation = (generations[name] ?? 0) + 1
+      const made = try scheduler.create({
+        kind: goalCheckinKind, ownerVisible: true, promptInstructions: `Check in on "${record.title}"`,
+        trigger: { kind: "cron", expression: slotCron[slot] ?? "0 9 * * *", tz: zone },
+        metadata: { goalId: record.goalId, goalTitle: record.title, slot },
+        idempotencyKey: `goals:checkin:${record.goalId}:${slot}:${generation}`,
+      })
+      tasks[name] = made.task.taskId
+      generations[name] = generation
+    } else if (!live && taskId !== undefined) {
+      try scheduler.answer(taskId, { tag: "Dismiss" }, `${key}:slot:${slot}`)
+      delete tasks[name]
+    }
+  }
+  return { ...record, tasks, generations }
+}
+
+/** Moves every live goal check-in onto the zone the owner's clock follows now. */
+export effect function followGoalClock(zone: string, key: string) {
+  const scheduler = try Scheduler
+  for (const { record } of try listGoals()) {
+    for (const [slot, taskId] of Object.entries(record.tasks)) {
+      const row = try scheduler.find(taskId)
+      if (row?.trigger.kind === "cron" && row.trigger.tz !== zone) try scheduler.edit(taskId, { trigger: { ...row.trigger, tz: zone } }, `${key}:${record.goalId}:${slot}`)
+    }
+  }
+}
+
+type GoalEvent = Parameters<Machine.Shape["send"]>[0]
+
+effect function stepGoal(record: GoalRecord, event: GoalEvent, key: string) {
+  provide stored(stateKey(record.goalId)) {
+    const goal = try (try Machine).send(event)
+    const kept = try reconcileTasks(record, goal, key)
+    try keepRecord(kept)
+    return { record: kept, goal }
+  }
+}
+
+const goalsAction = "OWNER_GOALS"
+
+effect function changed(record: GoalRecord, event: GoalEvent, key: string, done: string, notDone: string) {
+  const at = try (try Facts).now()
+  const facts = { operation: `goal.${event.type}`, kind: "goal", id: record.goalId, key, at }
+  const result = stepGoal(record, event, key) catch (refused) => refused
+  const receipt = result instanceof SchedulerUnavailable ? failedReceipt(facts, "SCHEDULER_UNAVAILABLE", "unknown")
+    : "goal" in result ? appliedReceipt(facts) : failedReceipt(facts, result._tag, "rejected")
+  const attempts: Attempt[] = [{ actionName: goalsAction, success: receipt.outcome === "applied", receipts: [receipt] }]
+  return attributed(attempts, `goal:${record.goalId}`, { done, notDone, unproven: `I couldn't confirm the change to "${record.title}" was saved.` }, { goalId: record.goalId })
+}
+
+effect function named(target: string, key: string) {
+  const name = titleKey(target)
+  const matches = (try listGoals()).filter(({ record }) => record.goalId === target || titleKey(record.title) === name)
+  if (matches.length === 1) return matches[0]
+  const at = try (try Facts).now()
+  return {
+    success: false, effectReceipts: [unchangedReceipt({ operation: "goal.find", kind: "goal", id: target, key, at }, matches.length === 0 ? "no_match" : "ambiguous")],
+    text: matches.length === 0 ? `You have no goal called "${target}", so nothing was changed.`
+      : `${matches.length} goals match "${target}", so nothing was changed. Which one did you mean: ${matches.map(({ record, goal }) => `"${record.title}" (${statusWord(goal.status)}, ${record.goalId})`).join(", ")}?`,
+    data: { outcome: matches.length === 0 ? "not_found" : "ambiguous", candidates: matches.map(({ record }) => record.goalId) },
+  } satisfies ActionResult
+}
+
+const standings: Readonly<Record<string, string>> = { on_track: "is on track", at_risk: "is at risk", needs_attention: "needs attention" }
+
+effect function overview() {
+  const zone = try ownerClockAt(try (try Facts).now())
+  const todos = renderTodos((try currentTodos()).todos, false)
+  const reminders = (try liveReminders()).map((task) => `- ${task.promptInstructions}, ${reminderWhen(task, zone)}`)
+  const routines = (try listRoutines()).filter((routine) => routine.status === "active").map((routine) => `- ${routine.title}, ${routineTimes(routine)}`)
+  const parts = [todos, reminders.length === 0 ? "" : ["# Reminders", ...reminders].join("\n"), routines.length === 0 ? "" : ["# Routines", ...routines].join("\n")].filter((part) => part !== "")
+  const text = ["You have no active goals to review.", ...(parts.length === 0 ? ["You have no open to-dos, waiting reminders or active routines either."] : ["Here is what you have on:", ...parts])].join("\n\n")
+  return { success: true, text, data: { outcome: "no_goals" } } satisfies ActionResult
+}
+
+effect function reviewGoals(target: string | undefined, key: string) {
+  const now = try (try Facts).now()
+  if (target === undefined || target.trim() === "") {
+    const goals = try listGoals()
+    const titles = (group: ReviewGroup) => goals.filter(({ record, goal }) => goalStanding(record, goal, now) === group).map(({ record }) => record.title)
+    const [onTrack, atRisk, needsAttention, unanswered] = (["GroupOnTrack", "GroupAtRisk", "GroupNeedsAttention", "GroupUnanswered"] as const).map(titles)
+    const total = onTrack.length + atRisk.length + needsAttention.length + unanswered.length
+    if (total === 0) return try overview()
+    const listed = (lead: string, names: readonly string[]) => names.length === 0 ? [] : [`${lead}: ${names.join(", ")}.`]
+    const text = [
+      `Weekly goal review: ${total} active ${total === 1 ? "goal" : "goals"}, ${onTrack.length} on track, ${atRisk.length} at risk, ${needsAttention.length} needing attention.`,
+      ...listed("Drifting", atRisk), ...listed("Needs attention", needsAttention), ...listed("On track", onTrack), ...listed("No check-in answered yet", unanswered),
+    ].join(" ")
+    return { success: true, text, data: { onTrack, atRisk, needsAttention, unanswered } } satisfies ActionResult
+  }
+  const found = try named(target, key)
+  if (!("record" in found)) return found
+  const { record, goal } = found
+  const latest = record.log.at(-1)
+  const recent = record.log.filter((entry) => answeredRecently(entry.at, now)).length
+  const quiet = goalStanding(record, goal, now) === "GroupNeedsAttention" && latest?.progress !== "needs_attention" ? " It has gone quiet since then, so it needs a fresh check-in." : ""
+  const zone = try ownerClockAt(now)
+  const text = goal.status === "GoalSatisfied" ? `"${record.title}" is marked satisfied and does not need more check-ins.`
+    : goal.status !== "GoalActive" ? `"${record.title}" is ${statusWord(goal.status)}, so it has no check-ins now.`
+    : latest === undefined ? (record.cadence === "none"
+      ? `"${record.title}" has no check-ins, so there is nothing to review yet. A daily or weekly cadence would check in on it.`
+      : `"${record.title}" has no check-in answered yet.`)
+    : `"${record.title}" ${standings[latest.progress] ?? latest.progress}: your last check-in, ${wallText(latest.at, zone)}, said so${latest.note === "" ? "" : ` ("${latest.note}")`}. ${recent} ${recent === 1 ? "check-in was" : "check-ins were"} answered in the last 7 days.${quiet}`
+  return { success: true, text, data: { goalId: record.goalId, status: goal.status, reviewState: goal.reviewState, recentCheckins: recent } } satisfies ActionResult
+}
+
+const decodeRequest = Schema.decodeUnknownOption(GoalRequest, { onExcessProperty: "error" })
+
+/** Creates, changes, deletes or checks in on one of the owner's goals, reconciling its check-ins on every change. */
+export effect function changeGoal(input: unknown, messageId: string) {
+  const decoded = decodeRequest(input)
+  if (Option.isNone(decoded)) return { success: false, text: "Say which goal and what to change.", data: { outcome: "GOAL_REQUEST_INVALID" } } satisfies ActionResult
+  const request = decoded.value
+  const key = `goal:${request.op}:${messageId}`
+  if (request.op === "create") {
+    const title = request.title.trim()
+    const same = (try listGoals()).find(({ record, goal }) => duplicatesGoal(goal.status, titleKey(record.title), titleKey(title)))
+    if (same !== undefined) return { success: true, text: `"${same.record.title}" is already one of your goals.`, data: { goalId: same.record.goalId, outcome: "existing" } } satisfies ActionResult
+    const record: GoalRecord = { goalId: `goal-${messageId}`, title, description: request.description ?? "", cadence: request.cadence, tasks: {}, generations: {}, lastFired: 0, log: [] }
+    const checkins = cadenceSlots(cadences[request.cadence]).length
+    return try changed(record, { type: "createGoal", cadence: cadences[request.cadence] }, key,
+      `Saved the goal "${title}"${checkins === 0 ? "" : request.cadence === "daily" ? ", with morning and evening check-ins" : ", with a weekly check-in"}.`,
+      `The goal "${title}" was not saved.`)
+  }
+  if (request.op === "review") return try reviewGoals(request.target, key)
+  const found = try named(request.target, key)
+  if (!("record" in found)) return found
+  const { record, goal } = found
+  switch (request.op) {
+    case "update": {
+      const cadence = request.cadence ?? record.cadence
+      return try changed({ ...record, cadence }, { type: "updateGoal", status: statuses[request.status], cadence: cadences[cadence] }, key,
+        `"${record.title}" is now ${request.status}${request.status === "active" && cadence !== "none" ? `, with ${cadence} check-ins` : ""}.`, `"${record.title}" was not changed.`)
+    }
+    case "delete": return try changed(record, { type: "deleteGoal" }, key, `Deleted the goal "${record.title}".`, `"${record.title}" was not deleted.`)
+    case "dismiss_checkin": {
+      const slot = slotNames[request.slot]
+      if (!goal.liveSlots.includes(slot)) return { success: false, text: `"${record.title}" has no ${request.slot} check-in to dismiss.`, data: { outcome: "no_checkin" } } satisfies ActionResult
+      return try changed(record, { type: "dismissCheckin", slot }, key, `The ${request.slot} check-in for "${record.title}" won't come back.`, `The check-in for "${record.title}" was not dismissed.`)
+    }
+    case "checkin": {
+      const slot = goal.firedSlots.includes(record.lastFired) ? record.lastFired : goal.firedSlots[0]
+      if (slot === undefined) return { success: false, text: `"${record.title}" has no check-in waiting for an answer.`, data: { outcome: "no_fired_checkin" } } satisfies ActionResult
+      const at = try (try Facts).now()
+      const log = [...record.log, { at, progress: request.progress, note: request.note ?? "" }].slice(-checkinLogLimit)
+      const answered = try changed({ ...record, log }, { type: "answerCheckin", slot, progress: progresses[request.progress] }, key,
+        `Noted: "${record.title}" is ${request.progress.replace("_", " ")}.`, `The check-in answer for "${record.title}" was not saved.`)
+      const taskId = record.tasks[String(slot)]
+      if (answered.success) try noteOwnerAnswer()
+      if (answered.success && taskId !== undefined) (try Scheduler).answer(taskId, { tag: "Complete" }, `${key}:complete`) catch () => undefined
+      return answered
+    }
+  }
+}
+
+/** Shows a goal's check-in to the owner when its slot fires, once until it is answered, counting it fired only once it was shown. */
+export effect function deliverGoalCheckin(task: TaskRow) {
+  const goalId = task.metadata.goalId
+  const slot = task.metadata.slot
+  if (typeof goalId !== "string" || typeof slot !== "number") return { kind: "undeliverable", error: "The check-in names no goal" } satisfies DeliveryAnswer
+  const record = (((try readRecord(indexKey, decodeIndex))?.goals ?? []).find((goal) => goal.goalId === goalId))
+  if (record === undefined) return { kind: "undeliverable", error: "The goal is gone" } satisfies DeliveryAnswer
+  const goal = try goalState(goalId)
+  if (!canFireCheckin(goal, slot)) return { kind: "undeliverable", error: "The check-in is not live or is waiting for an answer" } satisfies DeliveryAnswer
+  const body = `How is "${record.title}" going: on track, at risk, or needs attention?`
+  const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Goal check-in"), catch: () => "unpresentable" }) catch () => undefined
+  if (presentation === undefined) return { kind: "undeliverable", error: "The check-in has no text to present" } satisfies DeliveryAnswer
+  const room = task.metadata.roomId
+  const answer = try presentOnce({ taskId: task.taskId, kind: task.kind, roomId: typeof room === "string" ? room as UUID : undefined, presentation })
+  if (answer.kind !== "delivered") return answer
+  stepGoal({ ...record, lastFired: slot }, { type: "fireCheckin", slot }, `goal:fire:${task.taskId}:${task.revision}`) catch effect (failure) => {
+    try annotateLogs(logWarning("a shown goal check-in was not counted fired, so its answer will be refused"), { goalId, slot, failure: failure._tag })
+  }
+  return answer
+}
+
+/** Creates, updates, deletes and checks in on the owner's goals. */
+export const ownerGoalsAction: Action = {
+  name: goalsAction,
+  description: "Create, update, pause, archive, delete, check in on or review the owner's goals. A daily goal checks in morning and evening, a weekly goal once a week; a dismissed check-in never comes back. Review one goal by its target, or every active goal this week with no target.",
+  similes: ["GOALS", "SET_GOAL", "UPDATE_GOAL", "REVIEW_GOALS", "GOAL_CHECKIN"],
+  parameters: [
+    { name: "op", required: true, description: "create, update, delete, dismiss_checkin, checkin or review.", schema: { type: "string", enum: ["create", "update", "delete", "dismiss_checkin", "checkin", "review"] } },
+    { name: "title", required: false, description: "For create: the goal.", schema: { type: "string" } },
+    { name: "description", required: false, description: "For create: what the goal means.", schema: { type: "string" } },
+    { name: "cadence", required: false, description: "none, daily or weekly check-ins.", schema: { type: "string", enum: ["none", "daily", "weekly"] } },
+    { name: "target", required: false, description: "The goal's title or id; leave it out of review for the weekly review of every active goal.", schema: { type: "string" } },
+    { name: "status", required: false, description: "For update: active, paused, archived or satisfied.", schema: { type: "string", enum: ["active", "paused", "archived", "satisfied"] } },
+    { name: "slot", required: false, description: "For dismiss_checkin: morning, evening or weekly.", schema: { type: "string", enum: ["morning", "evening", "weekly"] } },
+    { name: "progress", required: false, description: "For checkin: on_track, at_risk or needs_attention.", schema: { type: "string", enum: ["on_track", "at_risk", "needs_attention"] } },
+    { name: "note", required: false, description: "For checkin: what the owner said.", schema: { type: "string" } },
+  ],
+  tags: ["domain:goals", "capability:write", "effect:receipt-required"],
+  roleGate: { minRole: "OWNER" },
+  validate: async () => true,
+  handler: async (runtime, message, _state, options) => {
+    const given = typeof options === "object" && options !== null && "parameters" in options && typeof options.parameters === "object" && options.parameters !== null ? options.parameters : {}
+    const input = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null))
+    return onAgent(runtime, Effect.catch(changeGoal(input, requestOf(message).messageId), (failed) => Effect.succeed({ success: false, text: "The goal could not be changed.", data: { outcome: failed._tag } } satisfies ActionResult)))
+  },
+}
+
+/** The owner's goals and their review states. */
+export const ownerGoalsProvider: Provider = {
+  name: "PERSONAL_ASSISTANT_GOALS",
+  description: "The owner's goals, their status, cadence and latest review state.",
+  dynamic: true,
+  private: true,
+  get: async (runtime) => {
+    const goals = await onAgent(runtime, Effect.orElseSucceed(listGoals(), () => []))
+    const lines = goals.map(({ record, goal }) => `- "${record.title}" (${statusWord(goal.status)}, ${record.cadence} check-ins, ${goal.reviewState})`)
+    return { text: lines.length === 0 ? "" : ["# Owner goals", ...lines].join("\n"), data: { goals: goals.map(({ record, goal }) => ({ goalId: record.goalId, title: record.title, status: goal.status, reviewState: goal.reviewState })) } }
+  },
+}

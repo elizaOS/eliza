@@ -1,0 +1,649 @@
+// spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"
+import { assert, it } from "@effect/vitest"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import { computeNextCronRunAtMs, type ActionResult, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
+import { activeWorkflowsProvider, workflowAction, workflowInstances } from "../src/agent.vibe"
+import {
+  keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
+  workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected,
+  type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun,
+} from "../src/client/index.vibe"
+import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
+import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
+import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
+import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
+import { inProcessWorkerPort } from "../src/service/host.vibe"
+import { workflowRoutes } from "../src/routes.vibe"
+import { workflowHttpError } from "../src/client/workflow-client.vibe"
+import type { ManagedGoogleReads } from "../src/service/google.vibe"
+
+module node {
+  import { PGlite } from "@electric-sql/pglite"
+  import { mkdtemp, mkdir, readdir, realpath, rm, writeFile, chmod } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
+  import type { LocalRoute } from "@elizaos/agent/routes"
+  import type { WorkflowSql } from "../src/index.vibe"
+
+  export async function openDatabase(): Promise<{ readonly sql: WorkflowSql; close(): Promise<void> }> {
+    const db = new PGlite()
+    return { sql: { transaction: (work) => db.transaction((tx) => work(tx)) }, close: () => db.close() }
+  }
+
+  export async function scratch(prefix: string): Promise<{ readonly path: string; remove(): Promise<void> }> {
+    const path = await mkdtemp(join(await realpath(tmpdir()), prefix))
+    await chmod(path, 0o700)
+    return { path, remove: () => rm(path, { recursive: true, force: true }) }
+  }
+
+  export function listEntries(path: string): Promise<string[]> {
+    return readdir(path)
+  }
+
+  export async function writeTree(root: string, files: Readonly<Record<string, string>>): Promise<void> {
+    for (const [path, text] of Object.entries(files)) {
+      await mkdir(join(root, path, ".."), { recursive: true })
+      await writeFile(join(root, path), text)
+    }
+  }
+
+  export async function readText(path: string): Promise<string> {
+    const { readFile } = await import("node:fs/promises")
+    return readFile(path, "utf8")
+  }
+
+  export function joinPath(...parts: string[]): string {
+    return join(...parts)
+  }
+
+  export interface Answer { readonly status: number; readonly body: unknown }
+
+  export async function call(routes: readonly LocalRoute[], target: string, body: unknown): Promise<Answer> {
+    const [path, search = ""] = target.split("?")
+    for (const route of routes) {
+      if (body === undefined ? route.method !== "GET" : route.method !== "POST" && route.method !== "PUT") continue
+      const names: string[] = []
+      const pattern = new RegExp("^" + route.path.replace(/\{([a-zA-Z]+)\}/g, (_all, name: string) => { names.push(name); return "([^/]+)" }) + "$")
+      const found = pattern.exec(path)
+      if (found === null) continue
+      const parameters = new Map(names.map((name, index) => [name, decodeURIComponent(found[index + 1])]))
+      const answer = await route.handler({ parameters, query: new Map(new URLSearchParams(search)), headers: new Map(), body, signal: new AbortController().signal })
+      if (answer instanceof Response) return { status: answer.status, body: await answer.json() }
+      return answer
+    }
+    return { status: 404, body: { error: "No route" } }
+  }
+}
+import { call, joinPath, listEntries, openDatabase, readText, scratch, writeTree } from node
+
+const owner = "owner"
+const device = { installationId: "phone-1", enrollmentId: "enrollment-1" }
+
+effect function check(assertion: () => void): void!unknown {
+  try Effect.try(assertion)
+}
+
+interface Phone {
+  performed: { readonly stepId: string; readonly type: string }[]
+  notes: readonly { readonly id: string; readonly title: string; readonly text: string }[]
+}
+
+effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests } = {}) {
+  const db = try acquireRelease(promise(() => openDatabase()), (opened) => promise(() => opened.close()))
+  const wakeups = new Map<string, { readonly dueAt: number; readonly metadata: Readonly<Record<string, string | number>> }>()
+  const notices: WorkflowNotice[] = []
+  const phone = options.phone
+  const port: WorkflowDevicePort | undefined = phone === undefined ? undefined : {
+    enrollment: succeed({ ...device, protocol: 5 }),
+    effect perform(binding, _target, operation) {
+      phone.performed.push({ stepId: binding.stepId, type: operation.type })
+      if (operation.type !== "read_selected_notes") return { kind: "applied" }
+      const notes = []
+      for (const note of phone.notes) notes.push({ ...note, revision: try workflowSha([note.title, note.text]) })
+      return { kind: "notes", notes }
+    },
+  }
+  const draft = options.draft
+  const host: WorkflowHost = {
+    sql: db.sql as WorkflowSql, owner, agentId: "agent", origin: "agent:test", worker: try inProcessWorkerPort(), device: port,
+    draft: draft === undefined ? undefined : (prompt) => Effect.suspend(() => {
+      const text = draft(prompt)
+      return text === undefined ? Effect.never : succeed(text)
+    }), nativeDigests: options.native, google: options.google,
+    notify: (notice) => sync(() => { notices.push(notice) }),
+    scheduler: {
+      set: (key, dueAt, metadata) => sync(() => { wakeups.set(key, { dueAt, metadata }) }),
+      clear: (key) => sync(() => { wakeups.delete(key) }),
+      keys: sync(() => [...wakeups.keys()]),
+    },
+    nextCron: (expression, after, timeZone) => computeNextCronRunAtMs(expression, after, timeZone) ?? undefined,
+    processStartedAt: 0,
+  }
+  const service = try openWorkflows(host)
+  const digests = hostedDigests(service)
+  try service.start()
+  try addFinalizer(() => service.stop())
+  const generated = generatedWorkflows(service)
+  const routes = workflowRoutes(() => ({ service, digests, generated }))
+  const request: WorkflowRequest = effect (path, body) => {
+    const answer = try promise(() => call(routes, path, body))
+    if (answer.status >= 300) throw workflowHttpError(answer.status, answer.body)
+    return answer.body
+  }
+  return { host, service, digests, generated, wakeups, notices, request, client: workflowClient(request), routes }
+}
+
+type Harness = Effect.Success<ReturnType<typeof harness>>
+
+effect function settled(client: WorkflowClient, run: Pick<WorkflowRun, "id" | "workflowId">, done: (run: WorkflowRun) => boolean = (found) => found.finished) {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const found = try client.receipt(run.id, run.workflowId)
+    if (done(found)) return found
+    try sleep("5 millis")
+  }
+  return try die(new Error("The run did not settle"))
+}
+
+const manual = (name: string, steps: PhoneWorkflowSpec["steps"], extra: Partial<PhoneWorkflowSpec> = {}): PhoneWorkflowSpec =>
+  ({ version: 1, name, description: "", trigger: { kind: "manual" }, steps, ...extra })
+
+const greeting = manual("Morning note", [
+  { id: "text", kind: "Read", operation: "supplied_text", text: "good morning" },
+  { id: "line", kind: "Write", operation: "compose_draft", source: "text", prefix: "Say: ", suffix: "!" },
+])
+
+const chatRuntime = () => ({ getSetting: (key: string) => key === "TIMEZONE" ? "Asia/Tokyo" : null }) as unknown as IAgentRuntime
+
+effect function saved(rig: Harness, draft: PhoneWorkflowSpec, copy = "") {
+  const spec = try validatePhoneWorkflowSpec(draft)
+  const catalog = try rig.client.phoneCatalog()
+  const validated = try rig.client.validatePhone(spec, catalog)
+  const mutationId = "11111111-1111-4111-8111-" + (try workflowSha([spec.name, copy])).slice(0, 12)
+  const receipt = try rig.client.savePhone(validated.spec, catalog, { mutationId, specDigest: validated.specDigest, compilerRevision: catalog.compilerRevision })
+  return { catalog, receipt, mutationId, specDigest: validated.specDigest }
+}
+
+it.live('Recover one reviewed run across an interrupted reply (spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/workflow/intents.md, "Story: Preserve the owner’s pending action across transport uncertainty"; spec/workflow/authoring.md, "Story: Review the exact typed workflow that my agent will save")', effect () => {
+  provide KeyValueStore.layerMemory {
+    const rig = try harness()
+    try check(() => assert.deepStrictEqual([scopeEntry("call Maya at noon", ["supplied_text"]).refused, scopeEntry("summarize the notes on the website redesign", []).refused], [true, false]))
+    const { catalog, receipt, mutationId, specDigest } = try saved(rig, greeting)
+    const replay = try rig.client.savePhone(greeting, catalog, { mutationId, specDigest, compilerRevision: catalog.compilerRevision })
+    try check(() => assert.deepStrictEqual(replay, receipt))
+    const conflict = try Effect.flip(rig.client.savePhone({ ...greeting, name: "Another" }, catalog, { mutationId, specDigest, compilerRevision: catalog.compilerRevision }))
+    try check(() => assert.equal(conflict._tag, "WorkflowHttpError"))
+
+    const archiveOwner = { origin: "agent:test", ownerId: owner, agentId: "agent" }
+    const intents = try workflowIntentStore(archiveOwner, try keyValueIntentBackend(workflowIntentOwnerPrefix(archiveOwner)))
+    const key = workflowIntentKey(archiveOwner, `${receipt.workflowId}:run`)
+    try intents.load()
+    let submitted = ""
+    const run = try rig.client.run(receipt.workflowId, receipt.versionId, effect (submissionId) => {
+      submitted = submissionId
+      try orDie(intents.admit(key, { submissionId, versionId: receipt.versionId }))
+    })
+    const held = try intents.read(key)
+    const locked = try intents.locked(key)
+    try check(() => assert.isTrue(held !== null && locked))
+    const lost = try rig.client.resubmit(receipt.workflowId, receipt.versionId, submitted)
+    try check(() => assert.equal(lost.id, run.id))
+    const finished = try settled(rig.client, run)
+    try check(() => assert.deepStrictEqual([finished.status, finished.output], ["finished", "Say: good morning!"]))
+
+    const reviewed = try rig.client.validatePhone({ ...greeting, name: "Renamed note" }, catalog)
+    const renamed = try rig.client.savePhone(reviewed.spec, catalog, {
+      mutationId: "11111111-1111-4111-8111-111111111111",
+      specDigest: reviewed.specDigest,
+      compilerRevision: catalog.compilerRevision,
+      workflowId: receipt.workflowId,
+      versionId: receipt.versionId,
+    })
+    const current = try rig.client.detail(receipt.workflowId)
+    const recovered = try rig.client.reconcile(receipt.workflowId, receipt.versionId, submitted)
+    try check(() => assert.deepStrictEqual([recovered?.id, current.versionId === renamed.versionId, current.versionId !== receipt.versionId], [run.id, true, true]))
+    const decision = workflowRecovery({ currentOwner: true, canReconcile: true, receiptValid: true, receiptRun: recovered !== null, ownVersion: receipt.versionId, observedBeforeReceipt: current.versionId })
+    try check(() => assert.equal(decision, "PublishExistingRun"))
+    if (held !== null) try intents.acknowledge(key, held)
+    const unlocked = !(try intents.locked(key))
+    try check(() => assert.isTrue(unlocked))
+
+    for (let attempt = 0; attempt < 200 && !rig.notices.some((posted) => posted.kind === "result" && posted.route.runId === run.id); attempt++) try sleep("5 millis")
+    const notice = rig.notices.find((posted) => posted.kind === "result" && posted.route.runId === run.id)
+    const route = notice === undefined ? undefined : parseWorkflowRunDeepLink(notice.deepLink)
+    try check(() => assert.deepStrictEqual(route, { runId: run.id, workflowId: receipt.workflowId, versionId: receipt.versionId }))
+    const reopened = try openWorkflowNotice(rig.client, { scope: "s", origin: "agent:test", ownerId: owner, agentId: "agent", ...route ?? { runId: "", workflowId: "", versionId: "" } })
+    try check(() => assert.deepStrictEqual(reopened.kind === "run" ? reopened.run.id : reopened.reason, run.id))
+  }
+})
+
+it.live('Run the version I reviewed, and turn a schedule on or off only at that version (spec/workflow/admission.md, "Story: Run the version I reviewed and recover an ambiguous response"; spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced")', effect () => {
+  const rig = try harness()
+  const timed = manual("Weekday note", greeting.steps, { trigger: { kind: "time", localTime: "07:30", timeZone: "Europe/Paris", days: [1, 2, 3, 4, 5] } })
+  const { receipt } = try saved(rig, timed)
+  const stale = try Effect.flip(rig.client.activate(receipt.workflowId, "v9"))
+  try check(() => assert.equal(stale._tag, "WorkflowResponseInvalid"))
+  const active = try rig.client.activate(receipt.workflowId, receipt.versionId)
+  try check(() => assert.isTrue(active.active && rig.wakeups.has(`workflow:${receipt.workflowId}`)))
+  const changed = try Effect.flip(rig.client.run(receipt.workflowId, receipt.versionId, () => succeed(undefined)))
+  try check(() => assert.equal(changed._tag, "WorkflowResponseInvalid"))
+  const refused = try Effect.flip(rig.request(`/api/workflow/workflows/${receipt.workflowId}/run`, { input: {}, submissionId: "22222222-2222-4222-8222-222222222222", expectedVersionId: receipt.versionId }))
+  try check(() => assert.equal(refused._tag === "WorkflowHttpError" ? refused.code : undefined, "WORKFLOW_VERSION_NOT_ADMITTED"))
+
+  const runtime = chatRuntime()
+  workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
+  const act = (parameters: JsonObject) => promise(() => workflowAction.handler(runtime, { content: { text: "" } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
+  const read = try act({ action: "list" })
+  const malformed = try act({ action: "deactivate", workflowId: receipt.workflowId, versionId: "" })
+  const passed = try act({ action: "deactivate", workflowId: receipt.workflowId, versionId: receipt.versionId })
+  const exact = try act({ action: "deactivate", workflowId: receipt.workflowId, versionId: active.versionId })
+  const after = try rig.client.detail(receipt.workflowId)
+  try check(() => assert.deepStrictEqual(
+    [read.effectReceipts, malformed.success, passed.success, exact.success, exact.effectReceipts?.[0]?.resource.version, after.active, rig.wakeups.has(`workflow:${receipt.workflowId}`)],
+    [undefined, false, false, true, after.versionId, false, false]))
+  const onFromChat = try act({ action: "activate", workflowId: receipt.workflowId })
+  const stillOff = (try rig.client.detail(receipt.workflowId)).active
+  try check(() => assert.deepStrictEqual([onFromChat.success, stillOff], [false, false]))
+})
+
+it.live('Remove a workflow only when its runs are settled and restore it safely (spec/workflow/lifecycle.md, "Story: Remove a workflow only when its runs are settled and restore it safely"; spec/workflow/execution.md, "Retirement releases host reservations without rewriting the terminal result")', effect () => {
+  const phone: Phone = { performed: [], notes: [] }
+  let drafting = false
+  const rig = try harness({ phone, draft: () => { drafting = true; return undefined } })
+  const slow = try saved(rig, manual("Slow draft", [
+    { id: "text", kind: "Read", operation: "supplied_text", text: "Stand up" },
+    { id: "line", kind: "Write", operation: "model_draft", source: "text", instruction: "Rephrase" },
+  ]))
+  const hung = try rig.client.run(slow.receipt.workflowId, slow.receipt.versionId, () => succeed(undefined))
+  for (let attempt = 0; attempt < 400 && !drafting; attempt++) try sleep("5 millis")
+  const stopped = try rig.client.cancel(hung.id, hung.workflowId)
+  try check(() => assert.deepStrictEqual([drafting, stopped.status], [true, "cancelled"]))
+  const spec = manual("Notify me", [
+    { id: "text", kind: "Read", operation: "supplied_text", text: "Stand up" },
+    { id: "tell", kind: "Notify", operation: "app_notification", source: "text", title: "Reminder" },
+  ], { device })
+  const { receipt } = try saved(rig, spec)
+  const run = try rig.client.run(receipt.workflowId, receipt.versionId, () => succeed(undefined))
+  const parked = try settled(rig.client, run, (found) => found.status === "waiting-approval")
+  let removalId = ""
+  const blocked = try Effect.flip(rig.client.lifecycle(receipt.workflowId, receipt.versionId, "remove", (id) => sync(() => { removalId = id })))
+  try check(() => assert.instanceOf(blocked, WorkflowLifecycleRejected))
+  const cancelled = try rig.client.cancel(parked.id, parked.workflowId)
+  try check(() => assert.equal(cancelled.status, "cancelled"))
+  const removed = try rig.client.lifecycle(receipt.workflowId, receipt.versionId, "remove", (id) => sync(() => { removalId = id }))
+  const replayed = try rig.client.reconcileLifecycle(receipt.workflowId, receipt.versionId, removalId, "remove")
+  const listed = try rig.client.removedWorkflows()
+  try check(() => assert.deepStrictEqual([replayed, listed.map((workflow) => [workflow.id, workflow.triggerCleanup])], [removed, [[receipt.workflowId, "complete"]]]))
+  const restored = try rig.client.lifecycle(receipt.workflowId, removed.versionId, "restore", () => succeed(undefined))
+  const back = try rig.client.detail(receipt.workflowId)
+  try check(() => assert.deepStrictEqual([back.removed, back.active, back.versionId], [false, false, restored.versionId]))
+  try check(() => assert.deepStrictEqual(phone.performed, []))
+})
+
+it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A whole-message workflow command binds its operation and its names to the owner\'s words"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")', effect () => {
+  const rig = try harness({ draft: () => JSON.stringify({ name: "Drafted", description: "Drafts a summary", source: generatedSource }) })
+  const morning = (try saved(rig, greeting)).receipt
+  const garden = (try saved(rig, manual("Garden digest", greeting.steps))).receipt
+  const twin = (try saved(rig, manual("Twin", greeting.steps))).receipt
+  try saved(rig, manual("Twin", greeting.steps), "second")
+  const backup = (try saved(rig, manual("Backup", greeting.steps))).receipt
+  try saved(rig, manual("Backup workflow", greeting.steps))
+  const runtime = chatRuntime()
+  workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
+  const say = (words: string, parameters: Record<string, unknown>, metadata: Record<string, unknown> = {}) =>
+    promise(() => workflowAction.handler(runtime, { content: { text: words, metadata } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
+  const code = (result: ActionResult) => result.success ? "applied" : (result.data as { readonly code?: string } | undefined)?.code
+
+  const conflict = try say("rename the workflow Morning note to Evening note", { action: "remove", workflowName: "Morning note" })
+  const renamed = try say("rename the workflow Morning note to Evening note", { action: "rename", workflowName: "Garden digest", name: "Something else" })
+  const partial = try say("delete the Garden workflow", { action: "remove", workflowId: garden.workflowId })
+  const descriptive = try say("delete the new workflow", { action: "remove", workflowName: "Garden" })
+  const mispaired = try say("pause it", { action: "deactivate", workflowId: morning.workflowId, workflowName: "Garden digest" })
+  const twins = try say("run Twin", { action: "run", workflowName: "Twin" }, { voiceUi: { uiTimeZone: "Pacific/Kiritimati" } })
+  const twinCreated = ((try rig.service.detail(String(twin.workflowId))) as { readonly createdAt: string }).createdAt
+  const kiritimati = try Effect.try(() => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Pacific/Kiritimati" }).format(Date.parse(twinCreated)))
+  const exactName = try say("delete the Backup workflow", { action: "remove", workflowName: "Backup" })
+  const removedId = try say("run it", { action: "run", workflowId: backup.workflowId })
+  const currentId = try say("bring it back", { action: "restore_removed", workflowId: garden.workflowId })
+  const taken = try say("create a workflow called Garden digest", { action: "create", name: "Fresh" })
+  const created = try say("create a workflow called Fresh one", { action: "create", name: "Something else" })
+  const unknown = try say("show me the Payroll workflow", { action: "get", workflowName: "Payroll" })
+  const quoted = [
+    try say("rename the workflow 'Evening note' to 'Parents' Day'", { action: "rename", workflowName: "Evening note'", name: "Parents' Day'" }),
+    try say("Create a workflow called ‘Morning brief’.", { action: "create", name: "Morning brief’" }),
+    try say("create a workflow called Mom’s birthday", { action: "create", name: "Mom" }),
+    try say("create a workflow called 'Weekly plan.'", { action: "create", name: "Weekly plan.'" }),
+  ]
+  const again = try say("remove it", { action: "remove", workflowId: backup.workflowId })
+  const names = ((try rig.service.list(false)) as { readonly name: string }[]).map(({ name }) => name).sort()
+  const listed = try say("list my workflows", { action: "list", limit: 2 })
+  const found = try say("which workflow drafts a summary?", { action: "search", query: "summary drafts" })
+  const ran = try say("run the Garden digest workflow", { action: "run", workflowName: "Garden digest" })
+  const dossier = try say("give me today's dossier", { action: "dossier" })
+  const context = (words: string) => promise(() => activeWorkflowsProvider.get(runtime, { content: { text: words } } as Memory, {} as Parameters<Provider["get"]>[2]))
+  const matching = try context("which workflow drafts a summary")
+  const unmatched = try context("payroll automation")
+  const namesOf = (data: unknown) => ((data as { readonly workflows?: readonly { readonly name: string }[] } | undefined)?.workflows ?? []).map(({ name }) => name)
+  const widget = (result: ActionResult) => (result.data as { readonly widget?: { readonly type: string; readonly workflowId: string } } | undefined)?.widget
+  try check(() => assert.deepStrictEqual({
+    codes: [conflict, renamed, partial, descriptive, mispaired, twins, taken, created, unknown, exactName, removedId, currentId, again, dossier].map(code),
+    quoted: quoted.map(code),
+    listed: { ...(listed.data as { readonly total: number; readonly truncated: boolean }), workflows: namesOf(listed.data).length },
+    found: namesOf(found.data).sort(),
+    cards: [widget(created)?.type, widget(ran)?.type, widget(ran)?.workflowId],
+    context: { matching: namesOf(matching.data).slice(0, 4).sort(), twin: namesOf(matching.data).includes("Twin"), unmatched: [unmatched.values?.hasWorkflows, namesOf(unmatched.data)] },
+    twins: (twins.data as { readonly matches?: readonly unknown[] } | undefined)?.matches?.length,
+    ownerZone: twins.userFacingText?.includes(`created ${kiritimati}`),
+    confirm: partial.userFacingText,
+    names,
+  }, {
+    codes: [
+      "WORKFLOW_REQUEST_CONFLICT", "applied", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_CONFIRM_TARGET", "WORKFLOW_REF_MISMATCH", "WORKFLOW_AMBIGUOUS", "WORKFLOW_NAME_TAKEN", "applied",
+      "WORKFLOW_NOT_FOUND", "applied", "WORKFLOW_REMOVED", "WORKFLOW_NOT_REMOVED", "WORKFLOW_REMOVED", "NATIVE_DOSSIER_SOURCE_REVIEW_REQUIRED",
+    ],
+    quoted: ["applied", "applied", "applied", "applied"],
+    listed: { total: names.length, truncated: true, workflows: 2 },
+    found: ["Fresh one", "Mom’s birthday", "Morning brief", "Weekly plan"],
+    cards: ["workflow", "workflow-run", garden.workflowId],
+    context: { matching: ["Fresh one", "Mom’s birthday", "Morning brief", "Weekly plan"], twin: false, unmatched: [false, []] },
+    twins: 2,
+    ownerZone: true,
+    confirm: "Do you mean “Garden digest”? I left it unchanged.",
+    names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Twin", "Twin", "Weekly plan"],
+  }))
+})
+
+it.live('Decide one reviewed approval once and run its device step only as reviewed (spec/workflow/approvals.md, "Story: Decide one reviewed approval once and run its device step only as reviewed"; spec/workflow/runScope.md, "Story: A reviewed calendar read stays inside its run\'s scope")', effect () => {
+  const phone: Phone = { performed: [], notes: [{ id: "n1", title: "Plan", text: "Ship it" }] }
+  const rig = try harness({ phone })
+  const revision = try workflowSha(["Plan", "Ship it"])
+  const spec = manual("Notes digest", [
+    { id: "notes", kind: "Read", operation: "selected_notes", notes: [{ id: "n1", revision }] },
+    { id: "line", kind: "Write", operation: "compose_draft", source: "notes", prefix: "", suffix: "" },
+    { id: "tell", kind: "Notify", operation: "app_notification", source: "line", title: "Notes" },
+  ], { device })
+  const { receipt } = try saved(rig, spec)
+  const run = try rig.client.run(receipt.workflowId, receipt.versionId, () => succeed(undefined))
+  const first = try settled(rig.client, run, (found) => found.status === "waiting-approval")
+  const pending = try rig.client.approvals(first)
+  const read = pending?.approvals[0]
+  if (read === undefined) return try die(new Error("No approval was requested"))
+  const review = try rig.client.phoneReview(first)
+  try check(() => assert.deepStrictEqual([review.specDigest, read.status, read.supported, rig.notices.some((notice) => notice.kind === "approval")], [receipt.specDigest, "pending", true, true]))
+  const forged = try Effect.flip(rig.request(`/api/workflow/executions/${first.id}/approvals/${read.nodeId}/${read.iteration}`, { approved: true, expectedVersionId: first.versionId, requestDigest: "0".repeat(64) }))
+  try check(() => assert.equal(forged._tag === "WorkflowHttpError" ? forged.code : undefined, "WORKFLOW_APPROVAL_NOT_APPLIED"))
+  const [approved, again] = try.all [rig.client.decideApproval(first, read, true), rig.client.decideApproval(first, read, true)]
+  try check(() => assert.deepStrictEqual([approved.approvals[0].status, again.approvals[0].status], ["approved", "approved"]))
+  const second = try settled(rig.client, first, (found) => found.finished || (found.status === "waiting-approval"
+    && found.events.some((event) => event.type === "ApprovalRequested" && event.node === "tell")))
+  const notify = (try rig.client.approvals(second))?.approvals.find((approval) => approval.nodeId === "tell")
+  if (notify === undefined) return try die(new Error(second.error ?? "No notification approval was requested"))
+  try check(() => assert.include(notify.summary, "Ship it"))
+  try rig.client.decideApproval(second, notify, false)
+  const done = try settled(rig.client, second)
+  try check(() => assert.deepStrictEqual([done.status, phone.performed.map((step) => step.type)], ["failed", ["read_selected_notes"]]))
+  const late = try Effect.flip(rig.client.decideApproval(second, { ...notify, status: "pending" }, true))
+  try check(() => assert.equal(late._tag, "WorkflowHttpError"))
+
+  const range = { calendarIds: ["work"], days: 1, timeZone: "Pacific/Auckland", maximumEvents: 5 }
+  const calendar = manual("Today", [{ id: "day", kind: "Read", operation: "calendar_range", range }], { device })
+  const today = try saved(rig, calendar)
+  const calendarRun = try rig.client.run(today.receipt.workflowId, today.receipt.versionId, () => succeed(undefined))
+  const asking = try settled(rig.client, calendarRun, (found) => found.status === "waiting-approval")
+  const scope = (try rig.client.approvals(asking))?.approvals[0]
+  const expected = try resolvePhoneCalendarRange(range, Date.parse(asking.startedAt))
+  try check(() => assert.include(scope?.target ?? "", `${expected.start} to ${expected.end}`))
+
+  const timed = try saved(rig, manual("Nightly", calendar.steps, { device, trigger: { kind: "time", localTime: "23:59", timeZone: "Pacific/Auckland", days: [0, 1, 2, 3, 4, 5, 6] } }))
+  const on = try rig.client.activate(timed.receipt.workflowId, timed.receipt.versionId)
+  const scheduledAt = computeNextCronRunAtMs("59 23 * * *", Date.now() - 2 * 86_400_000, "Pacific/Auckland") ?? 0
+  try rig.service.fire({ workflowId: on.id, armVersion: Number(on.versionId.slice(1)), scheduledAt }, rig.digests.fire)
+  const occurrences = try rig.client.executions(on.id)
+  try check(() => assert.deepStrictEqual(occurrences.map((found) => found.occurrence?.status), ["missed"]))
+})
+
+it.live('An automation runs at its reviewed local time or records why it skipped (spec/workflow/schedule.md, "Story: An automation runs at its reviewed local time or records why it skipped"; spec/workflow/schedule.md, "An inactive schedule never queues an occurrence")', effect () => {
+  const rig = try harness()
+  const every = manual("Every minute", greeting.steps, { trigger: { kind: "time", localTime: "00:00", timeZone: "UTC", days: [0, 1, 2, 3, 4, 5, 6] } })
+  const { receipt } = try saved(rig, every)
+  const inactive = try rig.client.detail(receipt.workflowId)
+  const midnight = Math.floor(Date.now() / 86_400_000) * 86_400_000
+  try rig.service.fire({ workflowId: receipt.workflowId, armVersion: Number(inactive.versionId.slice(1)), scheduledAt: midnight }, rig.digests.fire)
+  const none = try rig.client.executions(receipt.workflowId)
+  try check(() => assert.deepStrictEqual(none, []))
+  const on = try rig.client.activate(receipt.workflowId, receipt.versionId)
+  const version = Number(on.versionId.slice(1))
+  try rig.service.fire({ workflowId: receipt.workflowId, armVersion: version - 1, scheduledAt: midnight }, rig.digests.fire)
+  try rig.service.fire({ workflowId: receipt.workflowId, armVersion: version, scheduledAt: midnight - 86_400_000 }, rig.digests.fire)
+  try rig.service.fire({ workflowId: receipt.workflowId, armVersion: version, scheduledAt: midnight - 86_400_000 }, rig.digests.fire)
+  const runs = try rig.client.executions(receipt.workflowId)
+  try check(() => assert.deepStrictEqual(runs.map((found) => [found.occurrence?.status, found.finished]), [["missed", true]]))
+  const key = `workflow:${receipt.workflowId}`
+  const armed = rig.wakeups.get(key)
+  try check(() => assert.isTrue(armed !== undefined && armed.dueAt > Date.now() && armed.metadata.armVersion === version))
+
+  const whileDown = midnight - 2 * 86_400_000
+  const due = { dueAt: whileDown, metadata: { workflowId: receipt.workflowId, armVersion: version, scheduledAt: whileDown } }
+  rig.wakeups.set(key, due)
+  const restarted = try openWorkflows(rig.host)
+  try restarted.start()
+  try check(() => assert.deepStrictEqual(rig.wakeups.get(key), due))
+  try restarted.fire(due.metadata, hostedDigests(restarted).fire)
+  const recorded = try rig.client.executions(receipt.workflowId)
+  const rearmed = rig.wakeups.get(key)
+  try check(() => assert.deepStrictEqual([recorded.map((found) => [found.occurrence?.status, found.occurrence?.scheduledAt]), (rearmed?.dueAt ?? 0) > Date.now()],
+    [[["missed", new Date(whileDown).toISOString()], ["missed", new Date(midnight - 86_400_000).toISOString()]], true]))
+})
+
+it.live('Acknowledge a page of digests only after it is stored (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Story: Review a missed digest only while its source and result are current")', effect () => {
+  provide KeyValueStore.layerMemory {
+    const rig = try harness({ draft: () => "Your morning brief" })
+    const protocol = hostedDigestProtocol(rig.request)
+    const capabilities = try protocol.capabilities()
+    try check(() => assert.deepStrictEqual([capabilities.digests, capabilities.nativeSources, capabilities.dossier], [true, false, false]))
+    const observedAt = new Date(Date.now() - 60_000).toISOString()
+    const expiresAt = new Date(Date.now() + 86_400_000).toISOString()
+    const saved = try protocol.mutate("sources", { id: "snapshot-1", kind: "tasks", label: "Tasks", text: "Ship the release", observedAt, expiresAt, confirmed: true })
+    const source = saved.source as { readonly revision: string }
+    const loop = try protocol.mutate("loops", { mutationId: "loop-1", confirmed: true, spec: { version: 1, template: "morning", sourceId: "snapshot-1", sourceRevision: source.revision, timeZone: "UTC", localTime: "06:00", enabled: true } })
+    const workflowId = String((loop.receipt as { readonly workflowId: string }).workflowId)
+    const loops = try protocol.loops()
+    const version = Number(loops[0].versionId.slice(1))
+    const due = computeNextCronRunAtMs("0 6 * * *", Date.now() - 2 * 86_400_000, "UTC") ?? 0
+    try rig.service.fire({ workflowId, armVersion: version, scheduledAt: due }, rig.digests.fire)
+    const inbox = try digestInbox("scope-a")
+    const first = try inbox.sync(protocol, 1)
+    try check(() => assert.deepStrictEqual(first.map((result) => [result.status, (result.output as { readonly text?: string }).text]), [["missed", DIGEST_MISSED_TEXT]]))
+    const offers = missedRunNowOffers(first, loops, try protocol.sources(), Date.now())
+    try check(() => assert.equal(offers.size, 0))
+    try rig.service.fire({ workflowId, armVersion: version, scheduledAt: due - 86_400_000 }, rig.digests.fire)
+    const lostAck = { ...protocol, ack: () => Effect.fail(workflowHttpError(503, {})) }
+    const second = try Effect.flip(inbox.sync(lostAck, 1))
+    try check(() => assert.equal(second._tag, "DigestInboxFailed"))
+    const replay = try inbox.sync(protocol, 1)
+    try check(() => assert.equal(replay.length, 2))
+    try check(() => assert.deepStrictEqual(replay.slice(0, 1).map((result) => result.runId), first.map((result) => result.runId)))
+    const store = try KeyValueStore.KeyValueStore
+    const raw = try store.get("scope-a")
+    const index = try Effect.try(() => JSON.parse(String(raw)) as { readonly clientId: string })
+    const drained = try protocol.results(index.clientId)
+    try check(() => assert.deepStrictEqual(drained, []))
+
+    try Effect.flip(Effect.timeout(inbox.sync({ ...protocol, results: () => Effect.never }, 1), "20 millis"))
+    const afterInterrupt = try inbox.sync(protocol, 1)
+    const retiring = { ...protocol, results: (clientId: string) => Effect.andThen(inbox.retire(), protocol.results(clientId)) }
+    const retired = try Effect.flip(inbox.sync(retiring, 1))
+    const nextGeneration = try inbox.sync(protocol, 2)
+    try check(() => assert.deepStrictEqual([afterInterrupt.length, retired._tag, nextGeneration.length], [2, "DigestInboxFailed", 2]))
+  }
+})
+
+it.live('Run a digest over a live Google source read through managed Google (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible")', effect () => {
+  provide KeyValueStore.layerMemory {
+    const prompts: string[] = []
+    const google = {
+      googleStatus: () => Promise.resolve({
+        provider: "google", side: "owner", mode: "managed", configured: true, connected: true, reason: "connected", identity: { email: "owner@example.com" },
+        grantedCapabilities: ["google.gmail.triage", "google.calendar.read"], grantedScopes: [], expiresAt: null, hasRefreshToken: true, connectionId: "conn-1", linkedAt: "2026-11-01T00:00:00.000Z", lastUsedAt: null,
+      }),
+      calendarCalendars: () => Promise.resolve([{ calendarId: "work@example.com", accountId: "acct", accountEmail: "owner@example.com", label: "Work", accessRole: "reader", read: true, write: false }]),
+      gmailSearch: () => Promise.resolve({
+        messages: [{ id: "m1", threadId: "t1", subject: "Release", from: "a@example.com", to: [], cc: [], snippet: "Ship it", receivedAt: new Date().toISOString(), labels: [], isUnread: true, isImportant: false, likelyReplyNeeded: false, triageScore: 1 }],
+        nextPageToken: null, syncedAt: new Date().toISOString(), mailboxHistoryId: "1", supportsSpamTrash: false,
+      }),
+      calendarFeed: () => Promise.resolve({ calendarId: "work@example.com", events: [], syncedAt: new Date().toISOString() }),
+    } as unknown as ManagedGoogleReads
+    const reads: string[] = []
+    const native: WorkflowNativeDigests = { grant: () => succeed({ timeZone: "UTC" }), read: (selection) => sync(() => { reads.push(selection.sourceId); return "Water the plants" }) }
+    const rig = try harness({ google, native, draft: (prompt) => { prompts.push(prompt); return "Your morning brief" } })
+    const protocol = hostedDigestProtocol(rig.request)
+    const [account] = try protocol.liveAccounts()
+    const calendars = try protocol.liveCalendars(account)
+    try check(() => assert.deepStrictEqual([account.kinds, calendars.calendars.map((calendar) => calendar.calendarId)], [["email", "calendar"], ["work@example.com"]]))
+    const live = { provider: "google", accountId: account.accountId, accountRevision: account.accountRevision, kind: "email", windowHours: 12, maxItems: 5 }
+    const expiresAt = new Date(Date.now() + 86_400_000).toISOString()
+    const saved = try protocol.mutate("sources", { id: "google-1", kind: "email", label: "Inbox", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, live, confirmed: true })
+    const revision = (saved.source as { readonly revision: string }).revision
+    const minute = Math.floor(Date.now() / 60_000) * 60_000
+    const localTime = new Date(minute).toISOString().slice(11, 16)
+    const loop = try protocol.mutate("loops", { mutationId: "loop-google", confirmed: true, spec: { version: 1, template: "morning", sourceId: "google-1", sourceRevision: revision, timeZone: "UTC", localTime, enabled: true } })
+    const workflowId = String((loop.receipt as { readonly workflowId: string }).workflowId)
+    const version = Number((try protocol.loops())[0].versionId.slice(1))
+    try rig.service.fire({ workflowId, armVersion: version, scheduledAt: minute }, rig.digests.fire)
+    const [run] = try rig.client.executions(workflowId)
+    const done = try settled(rig.client, run)
+    const inbox = try digestInbox("scope-google")
+    const results = try inbox.sync(protocol, 1)
+    try check(() => assert.deepStrictEqual([done.status, results.map((result) => result.status), prompts.some((prompt) => prompt.includes("live_selected_google_read") && prompt.includes("Release"))], ["finished", ["finished"], true], done.error))
+
+    const phoneLive = { provider: "native", ownerId: owner, agentId: "agent", ...device, sourceId: "tasks", revision: "a".repeat(64) }
+    const phoneSaved = try protocol.mutate("sources", { id: "phone-1", kind: "tasks", label: "Tasks", observedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, live: phoneLive, confirmed: true })
+    const phoneRevision = (phoneSaved.source as { readonly revision: string }).revision
+    const asked = { sourceId: "phone-1", sourceRevision: phoneRevision, mutationId: "dossier-1", confirmed: true }
+    const dossier = try protocol.mutate("dossier", asked)
+    const dossierRun = (dossier.execution as { readonly id: string }).id
+    try protocol.mutate("sources/revoke", { id: "phone-1", confirmed: true })
+    const replayed = try protocol.mutate("dossier", asked)
+    const afterRevoke = try Effect.flip(rig.request("/api/workflow/hosted/dossier", { ...asked, mutationId: "dossier-2" }))
+    try check(() => assert.deepStrictEqual([(replayed.execution as { readonly id: string }).id, afterRevoke._tag === "WorkflowHttpError" ? afterRevoke.status : 0, reads], [dossierRun, 409, ["tasks"]]))
+  }
+})
+
+const generatedSource = `import type { WorkflowContext } from "eliza-workflow"
+export default async function (ctx: WorkflowContext) {
+  const count = await ctx.step("count", () => 2)
+  const approved = await ctx.approval("review", { title: "Draft a summary", summary: "Ask the model for a summary", operation: "Draft", target: "Run history", account: "This agent" })
+  if (!approved) return "skipped"
+  const text = await ctx.generate("draft", { prompt: "Summarize " + String(count) })
+  const signal = await ctx.signal("ready", "go", { timeoutMs: 60000 })
+  await ctx.sleep("pause", 1)
+  return { text, signal }
+}
+`
+
+it.live('Turn on generated code only after review and resume it without repeating an effect (spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Story: Resume generated code after a wait without repeating what it already did"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes")', effect () => {
+  let drafts = 0
+  const rig = try harness({ draft: () => { drafts += 1; return "Your summary" } })
+  const refusedImport = try Effect.flip(rig.request("/api/workflow/workflows", { name: "Leaky", source: `import { readFileSync } from "node:fs"\n${generatedSource}`, mutationId: "33333333-3333-4333-8333-333333333333" }))
+  const refusedGlobal = try Effect.flip(rig.request("/api/workflow/workflows", { name: "Exit", source: generatedSource.replace("return { text, signal }", "process.exit(0)"), mutationId: "33333333-3333-4333-8333-333333333334" }))
+  try check(() => assert.deepStrictEqual([refusedImport._tag === "WorkflowHttpError" ? refusedImport.status : 0, refusedGlobal._tag === "WorkflowHttpError" ? refusedGlobal.status : 0], [422, 422]))
+  const created = try rig.request("/api/workflow/workflows", { name: "Summary", description: "Drafts a summary", source: generatedSource, mutationId: "44444444-4444-4444-8444-444444444444" })
+  const receipt = (created as { readonly receipt: { readonly workflowId: string; readonly versionId: string; readonly sourceDigest: string } }).receipt
+  const replay = try rig.request("/api/workflow/workflows", { name: "Summary", description: "Drafts a summary", source: generatedSource, mutationId: "44444444-4444-4444-8444-444444444444" })
+  const listed = try rig.client.detail(receipt.workflowId)
+  try check(() => assert.deepStrictEqual([(replay as { readonly receipt: unknown }).receipt, listed.steps.map((step) => step.label), listed.active],
+    [receipt, ["step: count", "approval: review", "generate: draft", "signal: ready", "sleep: pause"], false]))
+  const unreviewed = try Effect.flip(rig.request(`/api/workflow/workflows/${receipt.workflowId}/activate`, { expectedVersionId: receipt.versionId }))
+  const wrongDigest = try Effect.flip(rig.request(`/api/workflow/workflows/${receipt.workflowId}/review`, { expectedVersionId: receipt.versionId, sourceDigest: "0".repeat(64) }))
+  try check(() => assert.deepStrictEqual([unreviewed._tag === "WorkflowHttpError" ? unreviewed.code : "", wrongDigest._tag === "WorkflowHttpError" ? wrongDigest.code : ""], ["WORKFLOW_ACTIVATION_NOT_APPLIED", "WORKFLOW_REVIEW_NOT_APPLIED"]))
+  try rig.request(`/api/workflow/workflows/${receipt.workflowId}/review`, { expectedVersionId: receipt.versionId, sourceDigest: receipt.sourceDigest })
+  const on = try rig.client.activate(receipt.workflowId, receipt.versionId)
+  try check(() => assert.isTrue(on.active))
+
+  const run = try rig.client.run(receipt.workflowId, on.versionId, () => succeed(undefined))
+  const asking = try settled(rig.client, run, (found) => found.status === "waiting-approval")
+  const approval = (try rig.client.approvals(asking))?.approvals[0]
+  if (approval === undefined) return try die(new Error("The generated approval was not requested"))
+  try rig.client.decideApproval(asking, approval, true)
+  const waiting = try settled(rig.client, asking, (found) => found.status === "waiting-event")
+  const early = try Effect.flip(rig.request(`/api/workflow/executions/${waiting.id}/signals/other`, { payload: null }))
+  try check(() => assert.equal(early._tag === "WorkflowHttpError" ? early.status : 0, 409))
+  try rig.request(`/api/workflow/executions/${waiting.id}/signals/go`, { payload: { ok: true } })
+  const sleeping = try settled(rig.client, waiting, (found) => found.status === "waiting-timer")
+  try sleep("10 millis")
+  const wakeup = rig.wakeups.get(`run:${sleeping.id}`)
+  if (wakeup === undefined) return try die(new Error("The timer was not armed"))
+  try rig.service.fire(wakeup.metadata, rig.digests.fire)
+  const done = try settled(rig.client, sleeping)
+  const result: unknown = try Effect.try(() => JSON.parse(done.output ?? "null"))
+  try check(() => assert.deepStrictEqual([done.status, drafts, result], ["finished", 1, { text: "Your summary", signal: { received: true, payload: { ok: true } } }]))
+
+  const edited = try rig.request(`/api/workflow/workflows/${receipt.workflowId}`, { name: "Summary", description: "", source: "export default async function (): Promise<never> { for (;;) {} }", mutationId: "55555555-5555-4555-8555-555555555555", expectedVersionId: on.versionId })
+  const after = try rig.client.detail(receipt.workflowId)
+  const editedReceipt = (edited as { readonly receipt: { readonly versionId: string; readonly sourceDigest: string } }).receipt
+  const editedVersion = editedReceipt.versionId
+  const stale = try Effect.flip(rig.request(`/api/workflow/workflows/${receipt.workflowId}/activate`, { expectedVersionId: editedVersion }))
+  try check(() => assert.deepStrictEqual([after.active, after.versionId === editedVersion, stale._tag === "WorkflowHttpError" ? stale.code : ""], [false, true, "WORKFLOW_ACTIVATION_NOT_APPLIED"]))
+  try rig.request(`/api/workflow/workflows/${receipt.workflowId}/review`, { expectedVersionId: editedVersion, sourceDigest: editedReceipt.sourceDigest })
+  const updated = try rig.client.activate(receipt.workflowId, editedVersion)
+  const longRun = try rig.client.run(receipt.workflowId, updated.versionId, () => succeed(undefined))
+  try sleep("2 seconds")
+  const limited = try settled(rig.client, longRun)
+  try check(() => assert.deepStrictEqual([limited.status, drafts], ["failed", 1]))
+})
+
+it.live('Import only complete reviewed workflow source, and run only a worker built and installed intact (spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"; spec/workflow/worker.md, "Story: Run workflows from the reviewed source and signed device assets")', effect () => {
+  {
+    const dir = try acquireRelease(promise(() => scratch("workflow-source-")), (made) => promise(() => made.remove()))
+    const bytes = new TextEncoder().encode(JSON.stringify(greeting))
+    const key = try workflowSha(greeting)
+    const published = try publishWorkflowSource(dir.path, `${key}.json`, bytes, key)
+    const again = try publishWorkflowSource(dir.path, `${key}.json`, bytes, key)
+    const other = try Effect.flip(publishWorkflowSource(dir.path, `${key}.json`, new TextEncoder().encode("{}"), key))
+    const imported = try importWorkflowSource(dir.path, `${key}.json`, bytes)
+    const files = try promise(() => listEntries(dir.path))
+    try check(() => assert.deepStrictEqual([published, again, other instanceof SourceRefused, imported.byteLength, files], ["published", "existing", true, bytes.byteLength, [`${key}.json`]]))
+
+    const worker = try acquireRelease(promise(() => scratch("workflow-worker-")), (made) => promise(() => made.remove()))
+    try promise(() => writeTree(worker.path, {
+      "package.json": JSON.stringify({ name: "fake-workflow", type: "module" }),
+      "dist/src/worker/main.js": "import { serve } from \"./protocol.js\"\nimport { Effect } from \"dep-a\"\nserve(Effect)\n",
+      "dist/src/worker/protocol.js": "export { helper } from \"../../gen/helper.js\"\nimport \"./compiler.js\"\nimport \"./engine.js\"\nexport const serve = () => undefined\n",
+      "dist/src/worker/compiler.js": "export const load = () => import(\"typescript\")\n",
+      "dist/src/worker/engine.js": "export{guest as engine}from\"./guest.js\"\n",
+      "dist/src/worker/guest.js": "export const guest = 1\n",
+      "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version: "6.0.3", main: "./lib/typescript.js" }),
+      "node_modules/typescript/lib/typescript.js": "module.exports = {}\n",
+      "node_modules/typescript/lib/lib.es2022.d.ts": "interface Array<T> {}\n",
+      "node_modules/typescript/lib/lib.es5.d.ts": "interface Object {}\n",
+      "dist/gen/helper.js": "export const helper = 1\n",
+      "dist/src/unused.js": "export const unused = 1\n",
+      "node_modules/dep-a/package.json": JSON.stringify({ name: "dep-a", version: "1.2.3", type: "module", exports: {
+        ".": { types: "./index.d.ts", "module-sync": "./dist/index.js", node: "./dist/unused.js", import: "./dist/unused.js" },
+        "./guard": { import: "./dist/unused.js", require: "./dist/guard.cjs", default: "./dist/unused.js" },
+      } }),
+      "node_modules/dep-a/dist/index.js": "import './bridge.cjs'\nexport * as Effect from './namespace.mjs'\n",
+      "node_modules/dep-a/dist/bridge.cjs": "module.exports = require('dep-a/guard')\n",
+      "node_modules/dep-a/dist/guard.cjs": "module.exports = true\n",
+      "node_modules/dep-a/dist/namespace.mjs": "export const value = 1\n",
+      "node_modules/dep-a/dist/unused.js": "export {}\n",
+    }))
+    const closure = try workerArtifactClosure(worker.path)
+    try check(() => assert.deepStrictEqual([closure.entries.map((entry) => entry.path).sort(), closure.dependencies], [
+      ["gen/helper.js", "node_modules/dep-a/dist/bridge.cjs", "node_modules/dep-a/dist/guard.cjs", "node_modules/dep-a/dist/index.js", "node_modules/dep-a/dist/namespace.mjs", "node_modules/dep-a/package.json", "node_modules/typescript/lib/typescript.js", "node_modules/typescript/package.json",
+        "src/worker/compiler.js", "src/worker/engine.js", "src/worker/guest.js", "src/worker/main.js", "src/worker/protocol.js"], { "dep-a": "1.2.3", typescript: "6.0.3" },
+    ]))
+    const identity = { sourceStampSha256: "a".repeat(64), lockSha256: "b".repeat(64) }
+    const provenance = try workerProvenance()
+    const output = try Effect.try(() => joinPath(worker.path, "artifact"))
+    const stagedDirectory = try Effect.try(() => joinPath(worker.path, "staged"))
+    const built = try provenance.build({ packageDir: worker.path, outputDir: output, identity, observeIdentity: () => succeed(identity) })
+    const staged = try provenance.stage(output, stagedDirectory, "apk-current", identity)
+    const index = (try verifyWorkerArtifact(output, identity)).files.length - 1
+    const listing = try promise(() => readText(joinPath(stagedDirectory, "files.sha256")))
+    const installed = try provenance.install(stagedDirectory, "apk-current", listing)
+    try check(() => assert.deepStrictEqual([built.phase, staged.files, installed.phase, installed.enabled], ["WorkerBuilt", index + 1, "WorkerInstalled", true]))
+    try promise(() => writeTree(output, { "src/worker/main.js": "tampered\n" }))
+    const tampered = try Effect.flip(verifyWorkerArtifact(output, identity))
+    try check(() => assert.instanceOf(tampered, WorkerArtifactRefused))
+  }
+})

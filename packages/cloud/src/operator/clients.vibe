@@ -43,14 +43,12 @@ const RegistrationFile = Schema.Struct({
   clients: Schema.Array(ClientEntry)
 })
 
-/** What `client apply` did to one client of the file. */
-export interface ClientReceipt {
+interface ClientReceipt {
   readonly clientId: string
   readonly action: "registered" | "updated" | "unchanged"
   readonly registration: string
 }
 
-/** The audit receipt `client apply` prints: where it applied which file, when, and what each client became. */
 interface ApplyReceipt {
   readonly receipt: "client-apply"
   readonly environment: "production" | "staging"

@@ -1,0 +1,242 @@
+// spec/calendar/seriesScope.md, "Story: Change one occurrence without changing its siblings"; spec/calendar/seriesScope.md, "Story: Delete the exact Calendar event or scope I selected"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"
+import { assert, it } from "@effect/vitest"
+import {
+  deviceCalendar, findRow, occurrenceId, removeRow, removeScoped, reviewSeries, saveEdit, saveScopedEdit, saveSeriesEdit, settleDeletions, stageDeletion, stageSeriesDeletion,
+  guardPendingChanges, trimJournal, undoDeletion, DeletionRefused, DeviceBridgeFault, InvalidSeriesTime, ScopeMismatch, SeriesChanged,
+  type CalendarDocument, type CalendarRow, type DeletionClock, type DeletionOwner, type DeviceInspection, type DeviceRemoval, type DeviceRow,
+  type DeviceTicket, type OwnerFacts,
+} from "../src/series/index.vibe"
+
+const day = 86_400_000
+const begin = Date.parse("2026-03-02T17:00:00.000Z")
+const standup: CalendarRow = { id: "standup", calendarId: "local", title: "Standup", body: "", location: "", begin, end: begin + 1_800_000,
+  revision: "r1", timeZone: "America/Los_Angeles", repeat: "daily" }
+const dentist: CalendarRow = { id: "dentist", calendarId: "local", title: "Dentist", body: "", location: "Main St", begin: begin + 3 * day, end: begin + 3 * day + 3_600_000, revision: "d1" }
+const second = occurrenceId("standup", begin + day)
+const third = occurrenceId("standup", begin + 2 * day)
+
+function minter() {
+  let next = 0
+  return () => `m${++next}`
+}
+
+const clock = (elapsed: number, continuity = "boot"): DeletionClock => ({ continuity, elapsed, wall: 1_000_000 + elapsed })
+const document = (events: readonly CalendarRow[]): CalendarDocument => ({ sourceRevision: "source-1", events, deletions: {}, deleteClaims: {} })
+const manual: DeletionOwner = { kind: "manual", sourceRevision: "source-1" }
+const facts: OwnerFacts = { origin: "https://phone.local", ownerId: "owner", agentId: "agent", installationId: "install", enrollmentId: "enroll", sessionId: "s1" }
+const agent: DeletionOwner = { kind: "agent", facts, proposalId: "proposal", operationId: "operation", operationDigest: "digest" }
+const refused = <A>(plan: A!DeletionRefused) => map(Effect.flip(plan), (error) => error.reason)
+
+it.effect('Edit one occurrence, delete another and move the series (spec/calendar/seriesScope.md, "Story: Change one occurrence without changing its siblings"; spec/calendar/seriesScope.md, "An occurrence becomes a standalone override or an exclusion under its series")', effect () => {
+  const mint = minter()
+  const generated = findRow([standup], second)
+  assert.deepStrictEqual(generated, { ...standup, id: second, begin: begin + day, end: begin + day + 1_800_000, seriesId: "standup", occurrenceBegin: begin + day })
+  const edited = try saveEdit([standup], { id: second, revision: "r1" }, { title: "Standup, later", begin: begin + day + 3_600_000, end: begin + day + 5_400_000 }, mint)
+  assert.deepStrictEqual(edited, [
+    { ...standup, revision: "m1" },
+    { ...standup, id: second, title: "Standup, later", begin: begin + day + 3_600_000, end: begin + day + 5_400_000, revision: "m1", repeat: "none", seriesId: "standup", occurrenceBegin: begin + day },
+  ])
+  assert.equal(findRow(edited, third)?.title, "Standup")
+  const removed = try removeRow(edited, findRow(edited, third)!, mint())
+  assert.deepStrictEqual(removed[0], { ...standup, revision: "m2", excluded: [begin + 2 * day] })
+  assert.equal(findRow(removed, third), undefined)
+  assert.equal(try map(Effect.flip(saveEdit(removed, { id: second, revision: "r1" }, { title: "stale" }, mint)), (error) => error._tag), "SeriesChanged")
+  const eastern = Date.parse("2026-03-02T14:00:00.000Z")
+  const moved = try saveEdit(removed, { id: "standup", revision: "m2" }, { timeZone: "America/New_York", begin: eastern, end: eastern + 1_800_000 }, mint)
+  assert.deepStrictEqual(moved[0].excluded, [Date.parse("2026-03-04T14:00:00.000Z"), Date.parse("2026-03-03T14:00:00.000Z")])
+  assert.equal(moved[1].begin, begin + day + 3_600_000)
+  const once = try saveEdit(moved, { id: "standup", revision: moved[0].revision }, { repeat: "none" }, mint)
+  assert.equal(once[0].excluded, undefined)
+  assert.deepStrictEqual([once[1].seriesId, once[1].occurrenceBegin, once[1].revision], [undefined, undefined, "m5"])
+  assert.equal(try map(Effect.flip(removeRow([], { ...generated!, id: "orphan:occ:1" }, "m6")), (error) => error._tag), "SeriesChanged")
+})
+
+it.effect('Change this event, this and following, or all of a series from one occurrence (spec/calendar/seriesScope.md, "Story: Change one occurrence without changing its siblings"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all")', effect () => {
+  const mint = minter()
+  const hour = 3_600_000
+  const rows: CalendarRow[] = [{ ...standup, excluded: [begin + 4 * day] }, dentist]
+  const split = try saveScopedEdit(rows, { id: third, revision: "r1" }, "this_and_following", { title: "Standup v2", begin: begin + 2 * day + hour, end: begin + 2 * day + hour + 1_800_000 }, mint, "standup-2")
+  assert.equal(split.selected, occurrenceId("standup-2", begin + 2 * day + hour))
+  assert.deepStrictEqual([findRow(split.rows, second)?.title, findRow(split.rows, third), findRow(split.rows, split.selected)?.title, findRow(split.rows, split.selected)?.begin],
+    ["Standup", undefined, "Standup v2", begin + 2 * day + hour])
+  assert.deepStrictEqual([findRow(split.rows, occurrenceId("standup-2", begin + 3 * day + hour))?.title, findRow(split.rows, occurrenceId("standup-2", begin + 4 * day + hour))],
+    ["Standup v2", undefined])
+  assert.deepStrictEqual(split.rows.find((row) => row.id === "standup"), { ...standup, until: begin + 2 * day, excluded: [], revision: "m1" })
+  assert.deepStrictEqual(split.rows.find((row) => row.id === "dentist"), dentist)
+
+  const ended = try removeScoped(split.rows, { id: second, revision: "m1" }, "this_and_following", mint)
+  assert.deepStrictEqual([findRow(ended, occurrenceId("standup", begin))?.title, findRow(ended, second), findRow(ended, split.selected)?.title], ["Standup", undefined, "Standup v2"])
+  const allGone = try removeScoped(ended, { id: occurrenceId("standup", begin), revision: findRow(ended, occurrenceId("standup", begin))!.revision }, "this_and_following", mint)
+  assert.deepStrictEqual(allGone.map((row) => row.id), ["dentist", "standup-2"])
+
+  const moved = try saveScopedEdit([standup], { id: second, revision: "r1" }, "series", { title: "Sync", begin: begin + day + 1_800_000, end: begin + day + 3_600_000 }, mint, "unused")
+  assert.deepStrictEqual([moved.selected, findRow(moved.rows, moved.selected)?.title, findRow(moved.rows, occurrenceId("standup", begin + 1_800_000))?.title],
+    [occurrenceId("standup", begin + day + 1_800_000), "Sync", "Sync"])
+  const one = try saveScopedEdit([standup], { id: second, revision: "r1" }, "instance", { title: "Just today" }, mint, "unused")
+  assert.deepStrictEqual([findRow(one.rows, second)?.title, findRow(one.rows, third)?.title], ["Just today", "Standup"])
+  const fromOverride = try saveScopedEdit(one.rows, { id: second, revision: findRow(one.rows, second)!.revision }, "series",
+    { title: "Sync", begin: begin + day + hour, end: begin + day + hour + 1_800_000 }, mint, "unused")
+  assert.deepStrictEqual([fromOverride.selected, findRow(fromOverride.rows, second)?.title, findRow(fromOverride.rows, second)?.begin, findRow(fromOverride.rows, occurrenceId("standup", begin + 2 * day + hour))?.title],
+    [second, "Sync", begin + day + hour, "Sync"])
+  const friday = occurrenceId("standup", begin + 4 * day)
+  const weekend = try Effect.flip(saveScopedEdit([{ ...standup, repeat: "weekdays" }], { id: friday, revision: "r1" }, "series", { begin: begin + 5 * day, end: begin + 5 * day + 1_800_000 }, mint, "unused"))
+  assert.isTrue(weekend instanceof InvalidSeriesTime)
+  const mismatch = try Effect.flip(saveScopedEdit([dentist], { id: "dentist", revision: "d1" }, "series", { title: "Dentist" }, mint, "unused"))
+  assert.isTrue(mismatch instanceof ScopeMismatch)
+  const stale = try Effect.flip(removeScoped([standup], { id: second, revision: "old" }, "series", mint))
+  assert.isTrue(stale instanceof SeriesChanged)
+})
+
+it.effect('Review a whole series from an occurrence and recheck both revisions (spec/calendar/seriesScope.md, "Story: Change one occurrence without changing its siblings"; spec/calendar/seriesScope.md, "A pending deletion guards the same row until transaction settlement")', effect () => {
+  const mint = minter()
+  const review = try reviewSeries([standup], { id: second, revision: "r1" }, effect () => true)
+  assert.deepStrictEqual(review, { occurrenceId: second, occurrenceRevision: "r1", parentId: "standup", parentRevision: "r1", occurrenceExact: true, parentFound: true, confirmed: true })
+  assert.equal(try map(Effect.flip(reviewSeries([standup], { id: second, revision: "r1" }, effect () => false)), (error) => error._tag), "SeriesChanged")
+  const edited = try saveSeriesEdit([standup], review, { title: "Daily sync" }, mint)
+  assert.equal(edited[0].title, "Daily sync")
+  assert.equal(try map(Effect.flip(saveSeriesEdit(edited, review, { title: "again" }, mint)), (error) => error._tag), "SeriesChanged")
+  assert.equal(try refused(stageSeriesDeletion(document(edited), review, manual, "series", clock(0))), "changed")
+  const staged = try stageSeriesDeletion(document([standup]), review, manual, "series", clock(0))
+  assert.deepStrictEqual([staged.entry.target.scope, staged.entry.target.row.id, staged.document.events], ["series", "standup", [standup]])
+  assert.equal(try refused(stageDeletion(staged.document, { id: second, revision: "r1", calendarId: "local" }, manual, "occurrence", clock(1))), "pending")
+  const settled = try settleDeletions(staged.document, clock(10_000), undefined, mint)
+  assert.deepStrictEqual(settled?.events, [])
+  assert.equal(settled?.deletions.series.tx.phase, "DeleteDeleted")
+})
+
+it.effect('Queue, undo and settle deletions inside the document (spec/calendar/seriesScope.md, "Story: Delete the exact Calendar event or scope I selected"; spec/calendar/seriesScope.md, "A pending deletion guards the same row until transaction settlement"; spec/calendar/seriesScope.md, "Publish a deletion only with the committed document")', effect () => {
+  const mint = minter()
+  const start = document([standup, dentist])
+  const first = try stageDeletion(start, { id: second, revision: "r1", calendarId: "local" }, manual, "one", clock(1000))
+  assert.deepStrictEqual(first.document.events, start.events)
+  assert.deepStrictEqual([first.entry.tx, first.entry.deadline], [{ phase: "DeleteQueued", staged: true, eventPresent: true, writes: 0 },
+    { deadlineContinuity: "boot", createdElapsed: 1000, expiresElapsed: 11_000, expiresAt: 1_011_000 }])
+  const sibling = try stageDeletion(first.document, { id: third, revision: "r1", calendarId: "local" }, manual, "two", clock(1000))
+  assert.equal(try refused(stageDeletion(sibling.document, { id: "standup", revision: "r1", calendarId: "local" }, manual, "three", clock(1000))), "pending")
+  assert.equal(try refused(stageDeletion(sibling.document, { id: "dentist", revision: "d1", calendarId: "local" }, manual, "one", clock(1000))), "duplicate")
+  assert.equal(try refused(stageDeletion(sibling.document, { id: "dentist", revision: "d0", calendarId: "local" }, manual, "four", clock(1000))), "changed")
+  const override = try saveEdit(sibling.document.events, { id: second, revision: "r1" }, { title: "changed" }, mint)
+  assert.equal(try map(Effect.flip(guardPendingChanges(sibling.document, { ...sibling.document, events: override })), (error) => error._tag), "PendingDeletionBlocks")
+  assert.equal(try settleDeletions(sibling.document, clock(5000), undefined, mint), undefined)
+  const undone = try undoDeletion(sibling.document, "two", clock(5000), undefined)
+  assert.equal(undone.entry.tx.phase, "DeleteUndone")
+  assert.deepStrictEqual((try undoDeletion(undone.document, "two", clock(20_000), undefined)).entry, undone.entry)
+  const settled = try settleDeletions(undone.document, clock(11_000), undefined, mint)
+  assert.deepStrictEqual(settled?.events, [{ ...standup, revision: "m2", excluded: [begin + day] }, dentist])
+  assert.deepStrictEqual(settled?.deletions.one.tx, { phase: "DeleteDeleted", staged: true, eventPresent: false, writes: 1 })
+  assert.equal(try refused(undoDeletion(settled!, "one", clock(11_000), undefined)), "window-closed")
+
+  const byAgent = try stageDeletion(settled!, { id: "dentist", revision: "d1", calendarId: "local" }, agent, "agent-1", clock(12_000))
+  assert.equal(try refused(stageDeletion(byAgent.document, { id: "dentist", revision: "d1", calendarId: "local" }, agent, "agent-2", clock(12_000))), "unknown-outcome")
+  const restarted = { ...facts, sessionId: "s2" }
+  const paused = try settleDeletions(byAgent.document, clock(30_000), restarted, mint)
+  assert.equal(paused?.deletions["agent-1"].tx.phase, "DeletePaused")
+  assert.equal(try refused(undoDeletion(paused!, "agent-1", clock(30_000), { ...facts, enrollmentId: "other" })), "owner-changed")
+  const kept = try undoDeletion(paused!, "agent-1", clock(30_000), restarted)
+  assert.deepStrictEqual([kept.entry.tx.phase, kept.document.events.map((row) => row.id)], ["DeleteUndone", ["standup", "dentist"]])
+
+  const queued = try stageDeletion(kept.document, { id: "dentist", revision: "d1", calendarId: "local" }, manual, "manual-1", clock(40_000))
+  assert.equal(try settleDeletions(queued.document, clock(60_000, "boot2"), undefined, mint), undefined)
+  const edited = { ...queued.document, events: queued.document.events.map((row) => row.id === "dentist" ? { ...row, title: "Dentist (moved)" } : row) }
+  const conflicted = try settleDeletions(edited, clock(60_000), undefined, mint)
+  assert.deepStrictEqual([conflicted?.deletions["manual-1"].tx.phase, conflicted?.events.find((row) => row.id === "dentist")?.title], ["DeleteConflict", "Dentist (moved)"])
+  const lost = try stageDeletion(kept.document, { id: "dentist", revision: "d1", calendarId: "local" }, manual, "manual-2", clock(70_000))
+  assert.equal((try undoDeletion(lost.document, "manual-2", clock(90_000, "boot2"), undefined)).entry.tx.phase, "DeleteUndone")
+  assert.equal(try refused(stageDeletion(kept.document, { id: "dentist", revision: "d1", calendarId: "local" }, manual, "manual-3", { continuity: "", elapsed: 0, wall: 0 })), "clock-unavailable")
+
+  const definite = Object.fromEntries(Array.from({ length: 130 }, (_, index) => [`old-${index}`,
+    { ...first.entry, id: `old-${index}`, deadline: { ...first.entry.deadline, createdElapsed: index }, tx: { phase: "DeleteUndone" as const, staged: true, eventPresent: true, writes: 0 } }]))
+  const trimmed = trimJournal({ ...first.document, deletions: { ...first.document.deletions, ...definite }, deleteClaims: { stale: "old-0" } })
+  assert.deepStrictEqual([Object.keys(trimmed.deletions).length, Object.hasOwn(trimmed.deletions, "old-2"), Object.hasOwn(trimmed.deletions, "old-3"), trimmed.deleteClaims],
+    [128, false, true, {}])
+  const full = Object.fromEntries(Array.from({ length: 500 }, (_, index) => [`open-${index}`, { ...first.entry, id: `open-${index}`, target: { ...first.entry.target, row: { ...dentist, id: `x-${index}` } } }]))
+  assert.equal(try refused(stageDeletion({ ...start, deletions: full }, { id: "dentist", revision: "d1", calendarId: "local" }, manual, "late", clock(0))), "history-full")
+})
+
+it.effect('Send only the inspected device target and hold an uncertain write (spec/calendar/seriesScope.md, "Story: Delete the exact Calendar event or scope I selected"; spec/calendar/seriesScope.md, "Transfer only the admitted target to the device calendar"; spec/calendar/seriesScope.md, "An uncertain delete holds its event until a complete read settles it")', effect () => {
+  const session = { owner: "alice", openRow: "row-1" as string | undefined, generation: 1 }
+  const calls: unknown[] = []
+  const controls: { inspect: DeviceInspection; deletion: DeviceInspection; removal: DeviceRemoval | "before" | "after"; onInspect?: () => void } = {
+    inspect: { status: "changed" },
+    deletion: { status: "ready", sourceRevision: "src-3", eventRevision: "ev-9" },
+    removal: "queued",
+  }
+  const port = {
+    effect inspect(row: DeviceRow) {
+      calls.push(["inspect", row.id])
+      return controls.inspect
+    },
+    effect inspectDeletion(row: DeviceRow, scope: "series" | undefined) {
+      calls.push(["inspectDeletion", row.id, scope])
+      controls.onInspect?.()
+      return controls.deletion
+    },
+    effect removeScoped(ticket: DeviceTicket) {
+      calls.push(["removeScoped", ticket])
+      if (controls.removal === "before" || controls.removal === "after") throw new DeviceBridgeFault({ invoked: controls.removal === "after" })
+      return controls.removal
+    },
+    effect openExternal(target: { readonly id: string; readonly begin: number; readonly end: number }) {
+      calls.push(["openExternal", target])
+    },
+  }
+  const device = try deviceCalendar(port, { owner: () => session.owner, openRow: () => session.openRow, generation: () => session.generation })
+  const row: DeviceRow = { id: "row-1", calendarId: "cal-1", title: "Lunch", body: "", location: "", begin: 10_000, end: 20_000, allDay: false,
+    recurring: false, local: false, appAccount: false, complexTiming: false }
+
+  assert.deepStrictEqual(try device.selectForAgent(row), { eventId: "row-1", sourceId: "cal-1", sourceRevision: "src-3", eventRevision: "ev-9" })
+  controls.onInspect = () => { session.generation = 2 }
+  assert.equal(try device.selectForAgent(row), undefined)
+  controls.onInspect = undefined
+
+  controls.deletion = { status: "ready", eventId: "evt-7", sourceId: "cal-2", sourceRevision: "src-3", eventRevision: "ev-9" }
+  calls.length = 0
+  assert.deepStrictEqual(try device.remove(row, true), { status: "sent", reply: "queued", applied: false, uncertain: false })
+  assert.deepStrictEqual(calls, [["inspectDeletion", "row-1", undefined], ["removeScoped", { eventId: "evt-7", sourceId: "cal-2", sourceRevision: "src-3", eventRevision: "ev-9" }]])
+  calls.length = 0
+  controls.removal = "deleted"
+  assert.deepStrictEqual(try device.remove({ ...row, recurring: true }, true), { status: "sent", reply: "deleted", applied: true, uncertain: false })
+  assert.deepStrictEqual(calls[0], ["inspectDeletion", "row-1", "series"])
+
+  controls.onInspect = () => { session.owner = "bob" }
+  calls.length = 0
+  assert.deepStrictEqual(try device.remove(row, false), { status: "ignored" })
+  assert.deepStrictEqual(calls.map((call) => (call as unknown[])[0]), ["inspectDeletion"])
+  controls.onInspect = undefined
+  session.owner = "alice"
+
+  controls.deletion = { status: "external" }
+  calls.length = 0
+  assert.deepStrictEqual(try device.remove(row, false), { status: "external" })
+  assert.deepStrictEqual(calls, [["inspectDeletion", "row-1", undefined], ["openExternal", { id: "row-1", begin: 10_000, end: 20_000 }]])
+  controls.deletion = { status: "changed" }
+  assert.deepStrictEqual(try device.remove(row, false), { status: "refresh" })
+
+  controls.deletion = { status: "ready", eventId: "evt-7", sourceId: "cal-2", sourceRevision: "src-3", eventRevision: "ev-9" }
+  controls.removal = "before"
+  assert.deepStrictEqual(try device.remove(row, false), { status: "sent", reply: "fault", applied: false, uncertain: false })
+  assert.equal(try device.held(), undefined)
+  controls.removal = "unknown"
+  assert.equal((try device.remove(row, false)).status, "sent")
+  assert.equal(try device.held(), "row-1")
+  assert.deepStrictEqual(try device.remove(row, false), { status: "busy" })
+  controls.removal = "queued"
+  session.openRow = "row-2"
+  assert.equal((try device.remove({ ...row, id: "row-2" }, false)).status, "sent")
+  session.openRow = row.id
+  const read = { accepted: true, cause: "requested" as const, complete: true, eventIds: [] as string[], begin: 0, end: 100_000 }
+  assert.equal(try device.observeRead({ ...read, complete: false }), false)
+  assert.equal(try device.observeRead({ ...read, cause: "ordinary" }), false)
+  assert.equal(try device.observeRead({ ...read, begin: 50_000 }), false)
+  assert.equal(try device.observeRead(read), true)
+  assert.equal(try device.held(), undefined)
+
+  calls.length = 0
+  assert.deepStrictEqual(try device.edit(row, succeed("saved")), { status: "external" })
+  assert.deepStrictEqual(calls, [["openExternal", { id: "row-1", begin: 10_000, end: 20_000 }]])
+  const inline = { ...row, local: true, appAccount: true }
+  assert.deepStrictEqual(try device.edit(inline, succeed("unknown")), { status: "sent", reply: "unknown", applied: false, uncertain: true })
+  assert.equal(try device.observeRead(read), false)
+  assert.equal(try device.observeRead({ ...read, eventIds: ["row-1"] }), true)
+  assert.deepStrictEqual(try device.edit(inline, fail(new DeviceBridgeFault({ invoked: true }))), { status: "sent", reply: "fault", applied: false, uncertain: true })
+})

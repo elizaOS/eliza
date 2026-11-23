@@ -1,0 +1,102 @@
+// spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedSync.md, "Story: Keep a link local or move it to the selected destination only while sync is drained"
+import { assert, it } from "@effect/vitest"
+import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
+import { calendarHost } from "../src/plugin/host.vibe"
+import { linkedCalendarRoutes } from "../src/plugin/linked-routes.vibe"
+import type { CalendarAccount, CalendarProviderPort } from "../src/plugin/providers.vibe"
+import type { CalendarRouteInput } from "../src/plugin/routes.vibe"
+import type { CalendarCache } from "../src/plugin/runtime-store.vibe"
+
+function memoryCache(): CalendarCache {
+  const rows = new Map<string, unknown>()
+  return {
+    async getCache<T>(key: string) { return rows.get(key) as T | undefined },
+    async setCache<T>(key: string, value: T) { rows.set(key, value); return true },
+    async deleteCache(key: string) { return rows.delete(key) },
+  }
+}
+
+const owner: CalendarAccount = { agentId: "agent", ownerId: "owner", accountId: "google-account" }
+const summary = (provider: "eliza" | "google", calendarId: string, accessRole: string, primary: boolean): CalendarSummary => ({
+  provider, side: "owner", grantId: "grant", connectorAccountId: owner.accountId, calendarId, accountEmail: "owner@example.com", summary: calendarId,
+  description: null, primary, accessRole, timeZone: "UTC", selected: true, includeInFeed: true,
+})
+const standup: CalendarEvent = {
+  id: "local-standup", externalId: "local-standup", agentId: "agent", provider: "eliza", side: "owner", calendarId: "resident", title: "Standup",
+  description: "", location: "Room 4", status: "confirmed", startAt: "2026-11-23T17:00:00.000Z", endAt: "2026-11-23T17:30:00.000Z", isAllDay: false,
+  timezone: "UTC", htmlLink: null, conferenceLink: null, organizer: null, attendees: [], metadata: { etag: "local-1" },
+  syncedAt: "2026-11-22T10:00:00.000Z", updatedAt: "2026-11-22T10:00:00.000Z", connectorAccountId: owner.accountId,
+}
+
+function port(provider: "eliza" | "google", rows: readonly CalendarSummary[], events: readonly CalendarEvent[]): CalendarProviderPort {
+  return {
+    provider,
+    recurrenceLines: false,
+    notifies: false,
+    effect sources() { return rows },
+    effect read() { return { events, complete: true } },
+    effect get(_account, _source, eventId) { return events.find((event) => event.id === eventId) },
+    effect create() { return try die("The linked-control routes never write events") },
+    effect update() { return try die("The linked-control routes never write events") },
+    effect remove() { try die("The linked-control routes never write events") },
+  }
+}
+
+const ask = (body: unknown, query: Readonly<Record<string, string>> = {}, parameters: Readonly<Record<string, string>> = {}): CalendarRouteInput =>
+  ({ parameters: new Map(Object.entries(parameters)), query: new Map(Object.entries(query)), body })
+
+it.effect('Link my resident calendar to a verified provider destination, then keep a link local only while sync is drained (spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"; spec/calendar/linkedSync.md, "Report sync only after a current control and mapping readback"; spec/calendar/linkedSync.md, "Story: Pause, resume or recover without replacing a newer sync decision"; spec/calendar/linkedSync.md, "A control transition checks revision and writes its receipt atomically"; spec/calendar/linkedSync.md, "Story: Keep a link local or move it to the selected destination only while sync is drained"; spec/calendar/linkedSync.md, "A mapping edit commits only while paused with no admitted dispatch, against the exact revision")', effect () => {
+  const cache = memoryCache()
+  const host = try calendarHost({ cache, agentId: "agent", approvals: () => undefined })
+  try host.register(port("eliza", [summary("eliza", "resident", "owner", false)], [standup]))
+  try host.register(port("google", [summary("google", "primary", "owner", true), summary("google", "shared", "reader", false)], []))
+  try host.bindAccount(owner)
+  const routes = linkedCalendarRoutes(async () => ({ host, cache, agentId: "agent" }))
+  const call = (method: string, path: string, input: CalendarRouteInput) => {
+    const found = routes.find((candidate) => candidate.method === method && candidate.path === `/api/lifeops/calendar${path}`)
+    return tryPromise(() => found === undefined ? Promise.resolve({ status: 404, body: { code: "NO_ROUTE" } }) : found.handler(input))
+  }
+  const primary = { connectorAccountId: owner.accountId, providerCalendarId: "primary" }
+  const link = { localEventId: standup.id, ...primary, expectedLocalRevision: "local-1", idempotencyKey: "link-standup" }
+
+  const offered = try call("GET", "/sync-control/destinations", ask(undefined))
+  assert.deepEqual([offered.status, "choice" in offered.body && offered.body.choice, "destination" in offered.body && offered.body.destination], [200, "SelectPrimary", primary])
+  assert.equal((try call("POST", "/links", ask(link))).status, 409)
+
+  const selected = try call("POST", "/sync-control", ask({ operation: "select", expectedRevision: 0, idempotencyKey: "select-1", destination: primary }))
+  assert.deepEqual([selected.status, "revision" in selected.body && selected.body.revision, "paused" in selected.body && selected.body.paused], [200, 1, true])
+  const replayed = try call("POST", "/sync-control", ask({ operation: "select", expectedRevision: 0, idempotencyKey: "select-1", destination: primary }))
+  assert.equal("receipt" in replayed.body && typeof replayed.body.receipt === "object" && replayed.body.receipt !== null && "replayed" in replayed.body.receipt
+    && replayed.body.receipt.replayed, true)
+  const reader = try call("POST", "/sync-control", ask({ operation: "select", expectedRevision: 1, idempotencyKey: "select-2",
+    destination: { connectorAccountId: owner.accountId, providerCalendarId: "shared" } }))
+  assert.deepEqual([reader.status, "code" in reader.body && reader.body.code], [409, "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED"])
+
+  const stale = try call("POST", "/links", ask({ ...link, expectedLocalRevision: "local-0" }))
+  assert.deepEqual([stale.status, "code" in stale.body && stale.body.code], [409, "LINKED_CALENDAR_EVENT_CHANGED"])
+  const linked = try call("POST", "/links", ask(link))
+  assert.equal(linked.status, 201)
+  assert.equal((try call("POST", "/links", ask(link))).status, 200)
+  const views = try call("GET", "/links", ask(undefined, { view: "events" }))
+  const [view] = "links" in views.body && Array.isArray(views.body.links) ? views.body.links : []
+  assert.deepEqual([view?.localEventId, view?.state, view?.event?.title], [standup.id, "dirty", "Standup"])
+
+  const resumed = try call("POST", "/sync-control", ask({ operation: "resume", expectedRevision: 1, idempotencyKey: "resume-1" }))
+  assert.deepEqual([resumed.status, "paused" in resumed.body && resumed.body.paused], [200, false])
+  assert.deepEqual((try call("GET", "/sync-control/report", ask(undefined, { expectedRevision: "2" }))).body, { report: "unconfirmed" })
+  assert.deepEqual((try call("GET", "/sync-control/report", ask(undefined, { expectedRevision: "1" }))).body, { report: "changed" })
+
+  const { event: _event, ...reviewed } = view
+  const early = try call("POST", "/links/{linkId}/disconnect", ask({ expectedRevision: 2, reviewed }, {}, { linkId: reviewed.linkId }))
+  assert.deepEqual([early.status, "code" in early.body && early.body.code], [409, "LINKED_CALENDAR_MAPPING_EDIT_REJECTED"])
+  assert.equal((try call("POST", "/sync-control", ask({ operation: "pause", expectedRevision: 2, idempotencyKey: "pause-1" }))).status, 200)
+  const kept = try call("POST", "/links/{linkId}/disconnect", ask({ expectedRevision: 3, reviewed }, {}, { linkId: reviewed.linkId }))
+  assert.deepEqual([kept.status, "revision" in kept.body && kept.body.revision], [200, 4])
+  const after = try call("GET", "/links", ask(undefined))
+  const [local] = "links" in after.body && Array.isArray(after.body.links) ? after.body.links : []
+  assert.deepEqual([local?.state, local?.localOnly, local?.destination], ["local_only", true, primary])
+
+  try host.bindAccount(undefined)
+  const signedOut = try call("GET", "/sync-control", ask(undefined))
+  assert.deepEqual([signedOut.status, "code" in signedOut.body && signedOut.body.code], [409, "CALENDAR_NO_ACCOUNT"])
+})

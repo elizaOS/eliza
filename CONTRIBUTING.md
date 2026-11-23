@@ -20,9 +20,9 @@ The default branch is the primary branch and the base for every pull request.
   before and after the change under comparable conditions. For UI changes,
   attach screenshots of the same flow and state before and after.
 - Keep the diff tidy and focused. Remove unnecessary files and dead,
-  redundant, or superseded code and legacy paths. Prose comments in code
-  are banned. Keep only required machine-readable directives in comment
-  syntax.
+  redundant, or superseded code and legacy paths. Follow the code comment
+  rule in AGENTS.md; keep only its permitted machine-readable directives
+  and generated component metadata.
 - Satisfy all Vibestack requirements and TypeScript conventions before
   merging. [Vibestack spec reference](SPEC.md) · [Required stack](AGENTS.md#the-stack) · [TypeScript conventions](AGENTS.md#typescript-best-practices)
 
@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `d4de372`](https://github.com/lalalune/vibestack/commit/d4de37215720fe2465f810b0b1129003a8e0761d).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `f5d18d3`](https://github.com/lalalune/vibestack/commit/f5d18d3ef363c6213b5d2f98477adb33e61c97e4).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -197,9 +197,10 @@ shell applies events through `Machine` or the generated Effect adapter.
 
 ### Sources and generated files
 
-Every root spec module is generated into the root's `gen/`. Modules owned by
-`apps/<name>` or `packages/<name>`, and the modules they import, are also
-written into that owner's `gen/`; packages import their own generated files.
+Every root spec module is generated into the root's `gen/`. A workspace
+receives the modules it owns and their imports in its own `gen/`. The root
+`package.json` maps plugin spec areas to their `plugin-*` workspace directories
+through `specOwners`. Packages import their own generated files.
 See [SPEC.md, "One spec tree"](SPEC.md#one-spec-tree).
 
 | Source | Output | Written by; kept in Git |
@@ -422,7 +423,14 @@ compare screenshots.
 Asynchronous Effect programs are tested, not proved. Each `proof` line says
 how many obligations are proved and how many are simulated only.
 
-ESLint enforces package exports and the stack boundaries. Knip finds unused
+ESLint enforces package exports and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
+citation or tool directive, no effect hook, timer or `console`, and no inline
+config but a reasoned `eslint-disable` of another rule. `commented` and
+`scheduled` in `eslint.config.js` give each file that still breaks them the
+count it may keep; one more fails, and cleaning a file lowers or deletes its
+entry. Eliza's native logger bridge keeps its three existing console accesses
+under the same count limit, enforced by the built-in diagnostics; new files
+and any increase fail. Knip finds unused
 files, exports and dependencies, reading `.vibe` and `.vibex` through VibeLang's
 compiler. Madge checks cycles in `.ts` and `.tsx` imports. jscpd fails on any
 duplicated block of code outside the examples and test fixtures. Their
@@ -434,7 +442,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 | When | Runs |
 |---|---|
 | Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
-| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
+| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
@@ -445,8 +453,9 @@ The run summary lists Turbo task times, cache status and exit codes.
 Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
 tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job, the
-lockfile and the commit. A job restores what a job of its name last saved under the same lockfile, or else under
-another: each entry is named by the tools and inputs that produced it, so a job reads only the entries that still apply.
+lockfile and the commit. A job tries both key layouts for its own name and current lockfile, then tries the current
+layout for another lockfile. Each entry is named by the tools and inputs that produced it, so a job reads only the
+entries that still apply.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
 The default branch's `verify` job publishes the pnpm store after the frozen

@@ -7,7 +7,7 @@ product must do; agents build it, from verified rules to a tested, running
 React application, and every layer they touch is checked before you sign
 off.
 
-This checkout imports tooling from [Vibestack `d4de372`](https://github.com/lalalune/vibestack/commit/d4de37215720fe2465f810b0b1129003a8e0761d), retaining Eliza's guard coverage, proof compiler compatibility and application task graph.
+This checkout imports tooling from [Vibestack `f5d18d3`](https://github.com/lalalune/vibestack/commit/f5d18d3ef363c6213b5d2f98477adb33e61c97e4), retaining Eliza's guard coverage, proof compiler compatibility and application task graph.
 
 [![Use this template](https://img.shields.io/badge/Use_this_template-2ea44f?style=for-the-badge&logo=github)](https://github.com/lalalune/vibestack/generate)
 
@@ -179,8 +179,8 @@ pnpm --filter vibestack-studio test           # its journeys only, Playwright in
 A `##` heading is a story, a `###` heading is a rule, and a `quint` block
 under a rule states its formal meaning. Write the prose; the agent writes
 the rules and their Quint. `spec/index.md` introduces the product and links
-to each area; `spec/<name>/` holds the requirements of the package
-`apps/<name>` or `packages/<name>` ([one spec tree](../SPEC.md#one-spec-tree)).
+to each area. A package's requirements live in the spec area it owns
+([one spec tree](../SPEC.md#one-spec-tree)).
 `pnpm new <name>` writes `spec/<name>/index.md` with a scaffold to replace.
 The format is in the [spec reference](../SPEC.md#writing-a-spec).
 

@@ -1,0 +1,392 @@
+// spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"; spec/localInference/speechOutput.md, "Story: Speak a reply without cutting off what is playing"; spec/localInference/speechOutput.md, "Story: Start streamed speech without needless connections"; spec/localInference/speechRoute.md, "Story: Hear a reply on the admitted speech route"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { LaunchDocument } from "@elizaos/agent/launch"
+import type { LocalRoute } from "@elizaos/agent/routes"
+import { AgentRuntime, ModelType } from "@elizaos/core"
+import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/core/protocol"
+import { HttpClient } from "effect/http"
+import { modelOf } from "../gen/localInference__models.effect.vibe"
+import { curatedModels, type Catalog, type CatalogId } from "../src/catalog.vibe"
+import { embedText } from "../src/embeddings.vibe"
+import { EngineFailed, InferenceEngine, type InstalledModel } from "../src/engine.vibe"
+import { openLocalModels, type LocalModelsApi } from "../src/models.vibe"
+import { localInferencePlugin, localInferenceProvider } from "../src/plugin.vibe"
+import { localInferenceRoutes } from "../src/routes.vibe"
+import { bootstrapStreamedSpeech, cancelReply, publishReply, speechOutput, type BootstrapRequest, type Connection, type Playback, type PlaybackSlot } from "../src/speech-output.vibe"
+import {
+  MisroutedSpeech, SpeechAttemptFailed, SpeechRoutingMachine, SpeechUnavailable, nextSpeechRoute, serviceLimitOf, speakOnRoute, speechFailureOf, speechKeyChanged,
+  speechLimitChanged, speechRouting, type SpeechFailure, type SpeechRoute,
+} from "../src/speech-route.vibe"
+import { decodeWav, encodeWav } from "../src/wav.ts"
+import { digestOf, hub } from "./support/hub.ts"
+
+const textWeights = "chat model text weights"
+const voiceWeights = "chat model voice weights"
+const embeddingWeights = "local embedding weights"
+const testCatalog: Catalog = {
+  model1: { ...curatedModels.model1, source: { kind: "bundle", manifestUrl: "https://hub.test/e2b/eliza-1.manifest.json", fileBase: "https://hub.test/e2b" } },
+  model2: {
+    ...curatedModels.model2,
+    source: { kind: "pinned", files: [{ path: "bge-small-en-v1.5-f16.gguf", url: "https://hub.test/bge-small-en-v1.5-f16.gguf", sha256: digestOf(embeddingWeights) }] },
+  },
+}
+const manifest = (passed: boolean) => JSON.stringify({
+  id: "eliza-1-2b", tier: "2b",
+  files: { text: [{ path: "text/eliza-1-e2b-128k.gguf", sha256: digestOf(textWeights) }], voice: [{ path: "tts/voice.gguf", sha256: digestOf(voiceWeights) }], asr: [] },
+  evals: { textEval: { score: 0.9, passed } },
+})
+
+type LoadHold = { readonly name: string; readonly started: Deferred.Deferred<void>; readonly released: Deferred.Deferred<void> }
+
+effect function holdLoad(name: string) {
+  return { name, started: try Deferred.make<void>(), released: try Deferred.make<void>() } satisfies LoadHold
+}
+
+function fakeEngine() {
+  const calls: string[] = []
+  const controls = { pooling: "ClsPooling" as "ClsPooling" | "MeanPooling", failLoad: false, holdLoad: undefined as LoadHold | undefined }
+  const engine: InferenceEngine.Shape = {
+    effect load(model: InstalledModel) {
+      calls.push(`load ${model.model.name} ${model.files.length}`)
+      const hold = controls.holdLoad
+      if (hold !== undefined) {
+        try Deferred.succeed(hold.started, undefined)
+        try Deferred.await(hold.released)
+        calls.push(`loaded ${hold.name}`)
+      }
+      if (controls.failLoad) throw new EngineFailed({ capability: "text", reason: "out of memory" })
+    },
+    effect unload() { calls.push("unload") },
+    effect warmEmbedding(model: InstalledModel) { calls.push(`warm ${model.model.name}`) },
+    effect embed(model: InstalledModel, text: string) {
+      calls.push(`embed ${model.model.name} ${text}`)
+      return { values: Array.from({ length: 384 }, (_, index) => index === 0 ? 3 : index === 1 ? 4 : 0), space: { spaceModel: "BAAI/bge-small-en-v1.5", dimensions: 384, pooling: controls.pooling } }
+    },
+    effect speechReady() { return { synthesis: true, transcription: true } },
+    effect synthesize(text: string) {
+      calls.push(`speak ${text}`)
+      return { sampleRate: 24000, samples: new Float32Array([0, 0.5, -0.5]) }
+    },
+    effect transcribe(audio) { return ` heard ${audio.samples.length} samples at ${audio.sampleRate} ` },
+    effect scoreEndOfTurn(transcript: string) { return { available: true, complete: transcript.endsWith("."), probability: 0.9 } },
+  }
+  return { engine, calls, controls }
+}
+
+effect function settled(models: LocalModelsApi, id: CatalogId) {
+  try Stream.runHead(Stream.filter(models.changes, (state) => modelOf(state, id).install !== "Downloading"))
+}
+
+effect function activated(models: LocalModelsApi, id: CatalogId) {
+  try models.activate(id)
+  return try loaded(models)
+}
+
+effect function loaded(models: LocalModelsApi) {
+  const state = try Stream.runHead(Stream.filter(models.changes, (current) => current.activeStatus !== "ActiveLoading"))
+  return Option.getOrThrow(state).activeStatus
+}
+
+effect function call(routes: readonly LocalRoute[], method: string, path: string, input: { readonly body?: unknown; readonly parameters?: Record<string, string> } = {}) {
+  const found = routes.find((route) => route.method === method && route.path === path)
+  return try promise(() => Promise.resolve(found?.handler({
+    parameters: new Map(Object.entries(input.parameters ?? {})), query: new Map(), headers: new Map(), body: input.body, signal: new AbortController().signal,
+  })))
+}
+
+const refusalOf = <A, E extends { readonly _tag: string }>(work: A!E) => map(Effect.flip(work), (failure) => failure._tag)
+
+it.effect('Download, verify, assign, activate and remove models, keeping the owner\'s choices across restarts (spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/models.md, "A download is installed only when every file matches its published digest"; spec/localInference/models.md, "A slot is assigned only to an installed model whose role serves it, one slot per change"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"; spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"; spec/localInference/models.md, "Removing a model first unloads it and clears every slot that named it"; spec/localInference/models.md, "A model whose files cannot be read is reported unreadable, never as absent")', effect () => {
+  const published = hub()
+  const { engine, calls, controls } = fakeEngine()
+  provide NodeServices.layer, Layer.succeed(HttpClient.HttpClient, published.client), InferenceEngine = engine {
+    const fs = try FileSystem.FileSystem
+    const path = try Path.Path
+    const state = try fs.makeTempDirectoryScoped({ prefix: "local-inference-models-" })
+    const modelsDirectory = path.join(state, "local-inference", "models")
+    const assignmentsFile = path.join(state, "local-inference", "assignments.json")
+    const models = try openLocalModels(state, testCatalog)
+    assert.deepStrictEqual((try models.view()).models.map((model) => [model.name, model.install]), [["eliza-1-2b", "absent"], ["bge-small-en-v1.5", "absent"]])
+
+    published.serve("https://hub.test/bge-small-en-v1.5-f16.gguf", "tampered weights")
+    try models.download("model2")
+    try settled(models, "model2")
+    assert.strictEqual(modelOf(try models.state(), "model2").install, "NotInstalled")
+    assert.isFalse(try fs.exists(path.join(modelsDirectory, "bge-small-en-v1.5-f16.gguf")))
+
+    published.serve("https://hub.test/bge-small-en-v1.5-f16.gguf", embeddingWeights)
+    try models.download("model2")
+    try settled(models, "model2")
+    assert.strictEqual(try refusalOf(models.download("model2")), "Rejected")
+    try models.assign("EmbeddingSlot", "model2")
+    assert.strictEqual(try refusalOf(models.assign("TextLargeSlot", "model2")), "Rejected")
+
+    published.serve("https://hub.test/e2b/eliza-1.manifest.json", manifest(false))
+    published.serve("https://hub.test/e2b/text/eliza-1-e2b-128k.gguf", textWeights)
+    published.serve("https://hub.test/e2b/tts/voice.gguf", voiceWeights)
+    try models.download("model1")
+    try settled(models, "model1")
+    const candidate = (try models.view()).models[0]
+    assert.deepStrictEqual([candidate.install, candidate.evalsPassed], ["installed", false])
+    assert.strictEqual(try refusalOf(models.activate("model1")), "Rejected")
+    assert.deepStrictEqual(calls, [])
+    try models.uninstall("model1")
+    assert.isFalse(try fs.exists(path.join(modelsDirectory, "eliza-1-2b")))
+
+    published.serve("https://hub.test/e2b/eliza-1.manifest.json", manifest(true))
+    try models.download("model1")
+    try settled(models, "model1")
+    const modelRoutes = localInferenceRoutes(models, engine)
+    const abandoned = try holdLoad("abandoned")
+    controls.holdLoad = abandoned
+    const loading = try call(modelRoutes, "POST", "/api/local-inference/active", { body: { modelId: "eliza-1-2b" } })
+    try Deferred.await(abandoned.started)
+    assert.deepStrictEqual(loading, { status: 202, body: try models.view() })
+    assert.deepStrictEqual((try models.view()).active, { model: "eliza-1-2b", status: "loading", servesText: false })
+    assert.strictEqual((try call(modelRoutes, "DELETE", "/api/local-inference/active"))?.status, 200)
+    assert.deepStrictEqual((try models.view()).active, { model: null, status: "idle", servesText: false })
+    assert.deepStrictEqual(calls, ["load eliza-1-2b 2", "unload"])
+    const chosen = try holdLoad("chosen")
+    controls.holdLoad = chosen
+    assert.strictEqual((try call(modelRoutes, "POST", "/api/local-inference/active", { body: { modelId: "eliza-1-2b" } }))?.status, 202)
+    try Deferred.await(chosen.started)
+    try Deferred.succeed(abandoned.released, undefined)
+    try Deferred.succeed(chosen.released, undefined)
+    assert.strictEqual(try loaded(models), "ActiveReady")
+    assert.deepStrictEqual(calls, ["load eliza-1-2b 2", "unload", "load eliza-1-2b 2", "loaded chosen"])
+    controls.holdLoad = undefined
+    assert.deepStrictEqual((try models.view()).active, { model: "eliza-1-2b", status: "ready", servesText: true })
+    try models.assign("EmbeddingSlot", "model2")
+    assert.deepStrictEqual((try models.view()).models.map((model) => model.slots), [["TEXT_SMALL", "TEXT_LARGE", "TEXT_TO_SPEECH", "TRANSCRIPTION"], ["TEXT_EMBEDDING"]])
+    try models.deactivate()
+    controls.failLoad = true
+    assert.strictEqual(try activated(models, "model1"), "ActiveFailed")
+    assert.isUndefined(try models.textModel())
+    try models.assign("EmbeddingSlot", "model2")
+    try models.close()
+
+    const reopened = try openLocalModels(state, testCatalog)
+    assert.deepStrictEqual((try reopened.view()).models.map((model) => [model.install, model.evalsPassed, model.slots]), [
+      ["installed", true, ["TEXT_SMALL", "TEXT_LARGE", "TEXT_TO_SPEECH", "TRANSCRIPTION"]], ["installed", true, ["TEXT_EMBEDDING"]],
+    ])
+
+    try fs.writeFileString(assignmentsFile, "{ not json")
+    const unreadable = try openLocalModels(state, testCatalog)
+    assert.isFalse((try unreadable.view()).assignmentsReadable)
+    assert.strictEqual(try refusalOf(unreadable.assign("TextSmallSlot", "model1")), "Rejected")
+    assert.strictEqual(try refusalOf(unreadable.repairAssignments()), "AssignmentsUnreadable")
+    assert.strictEqual(try fs.readFileString(assignmentsFile), "{ not json")
+    try fs.remove(assignmentsFile)
+    try unreadable.repairAssignments()
+    try unreadable.assign("EmbeddingSlot", "model2")
+
+    const routes = localInferenceRoutes(unreadable, engine)
+    assert.deepStrictEqual(try call(routes, "POST", "/api/local-inference/assignments", { body: { slot: "BOGUS", modelId: "eliza-1-2b" } }), { status: 400, body: { error: "unknown-slot" } })
+    assert.deepStrictEqual(try call(routes, "POST", "/api/local-inference/downloads", { body: { modelId: "unknown" } }), { status: 404, body: { error: "unknown-model" } })
+    assert.deepStrictEqual(try call(routes, "POST", "/api/local-inference/assignments", { body: { slot: "TEXT_LARGE", modelId: "bge-small-en-v1.5" } }), { status: 409, body: { error: "not-allowed" } })
+    const removed = try call(routes, "DELETE", "/api/local-inference/installed/{modelId}", { parameters: { modelId: "bge-small-en-v1.5" } })
+    assert.strictEqual(removed?.status, 200)
+    assert.isFalse(try fs.exists(path.join(modelsDirectory, "bge-small-en-v1.5-f16.gguf")))
+    assert.deepStrictEqual((try unreadable.view()).models[1], { name: "bge-small-en-v1.5", role: "embedding", install: "absent", evalsPassed: false, active: false, slots: [] })
+    assert.deepStrictEqual(try call(routes, "POST", "/api/asr/local-inference/end-of-turn", { body: { transcript: " Water the plants. " } }), { status: 200, body: { available: true, complete: true, probability: 0.9 } })
+    try unreadable.close()
+
+    const installedFile = path.join(state, "local-inference", "installed.json")
+    try fs.remove(path.join(modelsDirectory, "eliza-1-2b"), { recursive: true })
+    try fs.writeFileString(path.join(modelsDirectory, "eliza-1-2b"), "not a directory")
+    const damaged = try openLocalModels(state, testCatalog)
+    const damagedView = try damaged.view()
+    assert.deepStrictEqual([damagedView.models.map((model) => model.install), damagedView.unreadable, damagedView.active.model], [["unreadable", "absent"], "ENOTDIR", null])
+    assert.strictEqual(try refusalOf(damaged.download("model1")), "Rejected")
+    assert.strictEqual(try refusalOf(damaged.activate("model1")), "Rejected")
+    try damaged.download("model2")
+    try settled(damaged, "model2")
+    assert.include(try fs.readFileString(installedFile), '"id": "model1"')
+    try damaged.close()
+
+    try fs.remove(modelsDirectory, { recursive: true })
+    try fs.writeFileString(modelsDirectory, "not a directory")
+    const unopened = try openLocalModels(state, testCatalog)
+    const unopenedView = try unopened.view()
+    assert.deepStrictEqual([unopenedView.models.map((model) => model.install), unopenedView.assignmentsReadable, typeof unopenedView.unreadable], [["unreadable", "unreadable"], false, "string"])
+    assert.strictEqual(try refusalOf(unopened.download("model2")), "Rejected")
+    assert.isUndefined(try unopened.embeddingModel())
+  }
+})
+
+it.effect('Embed with the assigned model in its vector space and serve speech on the device (spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"; spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"; spec/localInference/textAndEmbeddings.md, "Vectors are compared only within one vector space"; spec/localInference/textAndEmbeddings.md, "The operator\'s embedding endpoint wins, then the hosted service when chosen, then the device")', effect () => {
+  const published = hub()
+  const { engine, calls, controls } = fakeEngine()
+  provide NodeServices.layer, Layer.succeed(HttpClient.HttpClient, published.client), InferenceEngine = engine {
+    const fs = try FileSystem.FileSystem
+    const path = try Path.Path
+    const state = try fs.makeTempDirectoryScoped({ prefix: "local-inference-embeddings-" })
+    const modelsDirectory = path.join(state, "local-inference", "models")
+    try fs.makeDirectory(modelsDirectory, { recursive: true })
+    try fs.writeFileString(path.join(modelsDirectory, "bge-small-en-v1.5-f16.gguf"), embeddingWeights)
+
+    const models = try openLocalModels(state, testCatalog)
+    assert.deepStrictEqual((try models.view()).models[1].slots, ["TEXT_EMBEDDING"])
+    const vector = try embedText(models, "water the plants")
+    assert.deepStrictEqual(vector.slice(0, 3), [0.6, 0.8, 0])
+    assert.strictEqual(getEmbeddingVectorSpace(vector), BGE_SMALL_VECTOR_SPACE)
+    controls.pooling = "MeanPooling"
+    assert.strictEqual(try map(Effect.flip(embedText(models, "water the plants")), (failure) => failure._tag === "EmbeddingRefused" ? failure.reason : failure._tag), "other-space")
+    controls.pooling = "ClsPooling"
+    try models.close()
+
+    const launch = try Schema.decodeUnknownEffect(LaunchDocument)({
+      schema: 1, character: { name: "Eliza", system: "You are Eliza." }, policy: { actions: { allowed: ["REPLY"] }, plugins: { load: [] } },
+      model: { backend: "none" }, embeddings: "local", embeddingDimensions: 384, callerRole: "owner",
+    })
+    const plugin = try localInferencePlugin(engine, { launch, stateDirectory: state }, testCatalog)
+    const runtime = try Effect.try(() => new AgentRuntime({ character: { name: "Eliza", bio: [] } }))
+    try promise(() => Promise.resolve(plugin.init?.({}, runtime)))
+    assert.deepStrictEqual(runtime.getModelRegistrations().map((entry) => [entry.modelType, entry.provider, entry.metadata?.displayModel]), [
+      [ModelType.TEXT_EMBEDDING, localInferenceProvider, "bge-small-en-v1.5"], [ModelType.TEXT_TO_SPEECH, localInferenceProvider, undefined], [ModelType.TRANSCRIPTION, localInferenceProvider, undefined],
+    ])
+    const embedded = try promise(() => runtime.getModel(ModelType.TEXT_EMBEDDING)!(runtime, { text: "where are my keys" }))
+    assert.strictEqual(getEmbeddingVectorSpace(embedded), BGE_SMALL_VECTOR_SPACE)
+    const audio = try promise(() => runtime.getModel(ModelType.TEXT_TO_SPEECH)!(runtime, { text: "Your keys are on the hook." }))
+    const wav = decodeWav(audio as Uint8Array)
+    assert.deepStrictEqual([wav?.sampleRate, wav?.samples.length], [24000, 3])
+    const heard = try promise(() => runtime.getModel(ModelType.TRANSCRIPTION)!(runtime, { audio: encodeWav({ sampleRate: 16000, samples: new Float32Array(8) }) }))
+    assert.strictEqual(heard, "heard 8 samples at 16000")
+    assert.includeMembers(calls, ["warm bge-small-en-v1.5", "speak Your keys are on the hook."])
+    try promise(() => Promise.resolve(plugin.dispose?.()))
+
+    const withoutEmbeddings = try localInferencePlugin(engine, { launch: { ...launch, embeddings: "none" }, stateDirectory: state }, testCatalog)
+    const plain = try Effect.try(() => new AgentRuntime({ character: { name: "Eliza", bio: [] } }))
+    try promise(() => Promise.resolve(withoutEmbeddings.init?.({}, plain)))
+    assert.isUndefined(plain.getModel(ModelType.TEXT_EMBEDDING))
+    const unassigned = try openLocalModels(state, testCatalog)
+    try unassigned.assign("EmbeddingSlot", undefined)
+    assert.strictEqual(try map(Effect.flip(embedText(unassigned, "anything")), (failure) => failure._tag === "EmbeddingRefused" ? failure.reason : failure._tag), "no-model")
+  }
+})
+
+it.effect('Publish a reply only into a slot it may take, and never play a cancelled one (spec/localInference/speechOutput.md, "Story: Speak a reply without cutting off what is playing"; spec/localInference/speechOutput.md, "A prepared reply is published into the playback slot only if it may take it"; spec/localInference/speechOutput.md, "A busy or cancelled publication leaves what is playing untouched"; spec/localInference/speechOutput.md, "Only a replacing, uncancelled reply interrupts what was playing")', effect () => {
+  provide speechOutput() {
+    const slot = { holds: "EmptyPlayback" as Playback, played: [] as string[] }
+    const port: PlaybackSlot<string> = {
+      effect current() { return slot.holds },
+      effect play(clip: string) {
+        slot.played.push(clip)
+        slot.holds = "PreparedClip"
+      },
+    }
+    assert.strictEqual(try publishReply(port, succeed("first"), { replace: false }), "played")
+    slot.holds = "StreamPlayback"
+    assert.strictEqual(try publishReply(port, succeed("second"), { replace: false }), "busy")
+    assert.strictEqual(slot.holds, "StreamPlayback")
+    assert.strictEqual(try publishReply(port, effect {
+      try cancelReply()
+      return "withdrawn"
+    }, { replace: true }), "cancelled")
+    const pending = fork publishReply(port, Effect.never, { replace: true })
+    try Fiber.interrupt(pending)
+    assert.strictEqual(try publishReply(port, succeed("third"), { replace: true }), "interrupted")
+    assert.deepStrictEqual(slot.played, ["first", "third"])
+  }
+})
+
+error SessionRefused
+
+it.effect('Start streamed speech over as few connections as the server allows (spec/localInference/speechOutput.md, "Story: Start streamed speech without needless connections"; spec/localInference/speechOutput.md, "Bootstrap runs consent, session and socket in order, reusing the connection when it can"; spec/localInference/speechOutput.md, "A persistent HTTP/1.1 server needs one connection for the whole bootstrap")', effect () => {
+  const plans: (readonly [readonly Connection[], number])[] = []
+  for (const protocol of [{ http1: true, keepAlive: true }, { http1: false, keepAlive: true }, { http1: true, keepAlive: false }]) {
+    const used: Connection[] = []
+    const connections = try bootstrapStreamedSpeech(protocol, (_request, connection) => sync(() => { used.push(connection) }))
+    plans.push([used, connections])
+  }
+  assert.deepStrictEqual(plans, [[["open", "reuse", "reuse"], 1], [["open", "reuse", "open"], 2], [["open", "open", "open"], 3]])
+  const sent: BootstrapRequest[] = []
+  const refused = try exit(bootstrapStreamedSpeech({ http1: true, keepAlive: true }, effect (request: BootstrapRequest) => {
+    sent.push(request)
+    if (request === "session") throw new SessionRefused()
+  }))
+  assert.isTrue(Exit.isFailure(refused))
+  assert.deepStrictEqual(sent, ["consent", "session"])
+})
+
+it.effect('Hear each reply on its admitted route, on this phone when the network fails before audio (spec/localInference/speechRoute.md, "Story: Hear a reply on the admitted speech route"; spec/localInference/speechRoute.md, "The owner\'s speech key speaks first, then a usable hosted account, then this device"; spec/localInference/speechRoute.md, "A turn is heard only on the route admitted when it began"; spec/localInference/speechRoute.md, "A network route that fails before audio hands its turn to this device once and holds its key off the network"; spec/localInference/speechRoute.md, "Once audio started, or when the person cancels, the turn ends on its route and holds nothing"; spec/localInference/speechRoute.md, "A hold belongs to the key that failed, lapses at its time, and lifts when the device cannot speak")', effect () => {
+  provide speechRouting() {
+    const tried: SpeechRoute[] = []
+    const failing = (error: unknown): SpeechAttemptFailed => new SpeechAttemptFailed({ failure: speechFailureOf(error) ?? { tag: "RequestRefused" }, cause: error })
+    const speaks = (route: SpeechRoute, heard: () => void!MisroutedSpeech) => effect {
+      tried.push(route)
+      try heard()
+      return route
+    }
+    const failsOn = (network: unknown) => (route: SpeechRoute, heard: () => void!MisroutedSpeech) => effect {
+      if (route !== "DeviceRoute") {
+        tried.push(route)
+        throw failing(network)
+      }
+      return try speaks(route, heard)
+    }
+    const unavailable = <E extends { readonly _tag: string }, R>(work: SpeechRoute!E!R) => map(Effect.flip(work), (failure: E | SpeechUnavailable) =>
+      failure instanceof SpeechUnavailable ? { route: failure.route, failure: failure.failure, fellBackFrom: failure.fellBackFrom } : failure._tag)
+
+    assert.strictEqual(try speakOnRoute(speaks), "DeviceRoute")
+    try speechKeyChanged({ tag: "CloudKey", credential: 1 })
+    assert.strictEqual(try speakOnRoute(speaks), "CloudRoute")
+
+    assert.strictEqual(try speakOnRoute(failsOn(new TypeError("fetch failed"))), "DeviceRoute")
+    assert.deepStrictEqual(tried.splice(0), ["DeviceRoute", "CloudRoute", "CloudRoute", "DeviceRoute"])
+    assert.strictEqual(try nextSpeechRoute(), "DeviceRoute")
+    try speechKeyChanged({ tag: "CloudKey", credential: 2 })
+    assert.strictEqual(try nextSpeechRoute(), "CloudRoute")
+    try speechKeyChanged({ tag: "CloudKey", credential: 1 })
+    try TestClock.adjust("61 seconds")
+    assert.strictEqual(try nextSpeechRoute(), "CloudRoute")
+
+    const refusedRequest = try unavailable(speakOnRoute(failsOn({ code: "voice-http-422" })))
+    assert.deepStrictEqual([refusedRequest, tried.splice(0)], [{ route: "CloudRoute", failure: { tag: "RequestRefused" }, fellBackFrom: undefined }, ["CloudRoute"]])
+    assert.strictEqual(try nextSpeechRoute(), "CloudRoute")
+
+    const afterAudio = try unavailable(speakOnRoute((route, heard) => effect {
+      tried.push(route)
+      try heard()
+      throw failing({ code: "voice-http-503" })
+    }))
+    assert.deepStrictEqual([afterAudio, tried.splice(0)], [{ route: "CloudRoute", failure: { tag: "ServerFailed" }, fellBackFrom: undefined }, ["CloudRoute"]])
+
+    let stale: (() => void!MisroutedSpeech) | undefined
+    const misrouted: string[] = []
+    assert.strictEqual(try speakOnRoute((route, heard) => effect {
+      if (route === "CloudRoute") {
+        stale = heard
+        throw failing({ code: "voice-http-429", data: { retryAfterSeconds: 2.5 } })
+      }
+      const late = stale
+      if (late !== undefined) misrouted.push((map(late(), () => "played") catch (failure) => failure._tag))
+      return try speaks(route, heard)
+    }), "DeviceRoute")
+    assert.deepStrictEqual(misrouted, ["MisroutedSpeech"])
+    assert.strictEqual(try nextSpeechRoute(), "DeviceRoute")
+    try TestClock.adjust("3 seconds")
+    assert.strictEqual(try nextSpeechRoute(), "CloudRoute")
+
+    const now = try Clock.currentTimeMillis
+    try speechLimitChanged(serviceLimitOf({ kind: "rate-limited", observedAt: now }, now))
+    assert.strictEqual(try nextSpeechRoute(), "DeviceRoute")
+    try speechKeyChanged({ tag: "DirectKey", revision: 1 })
+    assert.strictEqual(try nextSpeechRoute(), "DirectRoute")
+
+    const holdBefore = (try (try SpeechRoutingMachine).get()).hold
+    const listening = fork speakOnRoute((route, heard) => effect {
+      try heard()
+      return try Effect.never
+    })
+    try Effect.yieldNow
+    try Fiber.interrupt(listening)
+    const routing = try (try SpeechRoutingMachine).get()
+    assert.deepStrictEqual([routing.turn, routing.ending, routing.hold], [{ tag: "Quiet" }, { tag: "TurnCancelled" }, holdBefore])
+    assert.strictEqual(speechFailureOf({ name: "AbortError" }), undefined)
+    const accountRefusal: SpeechFailure | undefined = speechFailureOf({ code: "cloud-http-401" })
+    assert.deepStrictEqual(accountRefusal, { tag: "AccountRefused" })
+    assert.strictEqual(try speakOnRoute(speaks), "DirectRoute")
+  }
+})
