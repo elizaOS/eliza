@@ -3,6 +3,7 @@
 // small specs in vibestack/fixtures/, breaks one thing, and asserts which stage of `check` fails.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import { request as httpRequest } from "node:http";
 import { stripTypeScriptTypes } from "node:module";
@@ -15,7 +16,7 @@ import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
 import { cacheCredentials, collectGarbage, isActionEntry, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
-import { exec, run as tool } from "./run.ts";
+import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
 import { filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
 import { profile } from "./testing/profile.ts";
@@ -427,6 +428,40 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     fs.writeFileSync(path.join(root, "driver.mjs"), 'import fs from "node:fs"; import readline from "node:readline"; let n=0; for await (const line of readline.createInterface({input:process.stdin})) { const request=JSON.parse(line), {offset,limit}=JSON.parse(fs.readFileSync("driver.json","utf8")); if (!request.event) n=0; else if (n<limit) n++; console.log(JSON.stringify({state:n+offset})); }');
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({type:"module",scripts:{"driver:counter":`${JSON.stringify(process.execPath)} driver.mjs`}}));
     const machines = new Map([["counter", { domain, model, found }]]);
+    if (process.platform !== "win32") {
+      const driver = `let state = 0;
+export const options = { keys: ["counter"], walks: 1, steps: 1 };
+export const driver = {
+  reset() { state = 0; },
+  dispatch() { if (state === 2) return "refused"; state++; return "accepted"; },
+  observe() { return state; },
+};`;
+      const file = path.join(root, "test/drivers/counter.ts");
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.symlinkSync(nodeModules, path.join(root, "node_modules"), "dir");
+      const checkDriver = async (source: string) => {
+        fs.writeFileSync(file, source);
+        const kept: boolean[] = [];
+        const [result] = await checkTraces(root, machines, {}, async (_, run, keep) => {
+          const value = await run();
+          kept.push(keep(value));
+          return value;
+        }, new Map());
+        return { result, kept };
+      };
+      const passed = await checkDriver(driver);
+      assert.ok(passed.result[0] && passed.result[2].includes("1 walks of seed 1"), passed.result.join("\n"));
+      assert.deepEqual(passed.kept, [true]);
+      const stopped = await checkDriver(`${driver}\nprocess.on("exit", () => process.kill(process.pid, "SIGKILL"));`);
+      assert.equal(stopped.result[0], false, stopped.result.join("\n"));
+      assert.match(stopped.result[3] ?? "", /did not finish: node was killed by SIGKILL[\s\S]*"summary":"1 walks of seed 1"/);
+      assert.deepEqual(stopped.kept, [false]);
+      const disagreement = await checkDriver(driver.replace("return state;", "return state + 1;"));
+      assert.equal(disagreement.result[0], false, disagreement.result.join("\n"));
+      assert.match(disagreement.result[2], /the program departs from the spec/);
+      assert.deepEqual(disagreement.kept, [false]);
+      fs.rmSync(file);
+    }
     const departs = async () => (await checkTraces(root, machines, packageScripts(root), (_, ran) => ran(), new Map())).filter(([ok]) => !ok).map(([, , summary, detail]) => `${summary}\n${detail}`);
     assert.deepEqual(await departs(), []);
     // A driver that starts elsewhere, or takes the event the spec refuses in the last state of a trace, departs.
@@ -3820,8 +3855,103 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
     }
   });
 
+  test("a verifier retains the CPU used by a helper it has already waited for", { skip: process.platform !== "linux" && process.platform !== "darwin" }, async () => {
+    const root = scratch({
+      "helper.mjs": 'const start = process.cpuUsage();\nfor (;;) { const cpu = process.cpuUsage(start); if (cpu.user + cpu.system >= 300_000) break; }\n',
+      "inherited.mjs": `import fs from "node:fs";
+import { setTimeout as wait } from "node:timers/promises";
+while (!fs.existsSync("work")) await wait(20);
+await import("./helper.mjs");
+fs.writeFileSync("writer-work", "complete");
+setInterval(() => {}, 60_000);`,
+      "handoff.mjs": `import fs from "node:fs";
+import { spawn } from "node:child_process";
+const writer = spawn(process.execPath, ["inherited.mjs"], { stdio: ["ignore", process.stdout, process.stderr] });
+writer.once("spawn", () => { fs.writeFileSync("writer.pid", String(writer.pid)); process.exit(0); });`,
+      "verifier.mjs": 'import { spawnSync } from "node:child_process";\nprocess.on("message", () => { const child = spawnSync(process.execPath, ["helper.mjs"]); process.send(child.status); });\nprocess.send("ready");\n',
+    });
+    const verifier = spawn(process.execPath, ["verifier.mjs"], { cwd: root, stdio: ["ignore", "ignore", "inherit", "ipc"] });
+    const closed = once(verifier, "close");
+    try {
+      await once(verifier, "message");
+      const [before] = await toolCpuSeconds([verifier]);
+      const reaped = once(verifier, "message");
+      verifier.send("work");
+      assert.equal((await reaped)[0], 0);
+      const [after] = await toolCpuSeconds([verifier]);
+      assert.ok(before?.complete && after?.complete && after.seconds - before.seconds >= 0.28, `CPU seconds before ${before?.seconds}, after ${after?.seconds}`);
+    } finally {
+      verifier.kill();
+      await closed;
+    }
+    const leader = spawn(process.execPath, ["handoff.mjs"], { cwd: root, detached: true, stdio: ["ignore", "pipe", "inherit"] });
+    const outputClosed = once(leader, "close");
+    await once(leader, "exit");
+    const writer = Number(read("writer.pid", root));
+    try {
+      const [before] = await toolCpuSeconds([leader]);
+      fs.writeFileSync(path.join(root, "work"), "");
+      await until(() => fs.existsSync(path.join(root, "writer-work")));
+      const [after] = await toolCpuSeconds([leader]);
+      assert.ok(before && !before.complete && after && !after.complete);
+      assert.ok(after.seconds - before.seconds >= 0.28, "the surviving writer continued to use CPU");
+    } finally {
+      process.kill(writer, "SIGKILL");
+      await outputClosed;
+    }
+  });
+
   test("a check that is interrupted, or that exits, ends each tool it started and what the tool started, in its process group or out of it, as it ends a tool that writes too much", { skip: process.platform === "win32" }, async () => {
     const root = scratch({
+      "short-watchdog.ts": read("vibestack/run.ts")
+        .replace(/^const WATCH = .*;$/m, "const WATCH = 100;"),
+      "inherited-output.mjs": `import { spawn } from "node:child_process";
+const mode = process.argv[2];
+const helper = spawn(process.execPath, ["hold-output.mjs", mode, String(process.pid)], {
+  stdio: ["ignore", process.stdout, process.stderr], detached: mode === "detached",
+});
+helper.once("spawn", () => process.exit(0));
+`,
+      "hold-output.mjs": `import fs from "node:fs";
+const [mode, parent] = process.argv.slice(2);
+const marker = "helper-" + mode;
+fs.writeFileSync(marker + ".tmp", JSON.stringify([Number(parent), process.pid]));
+fs.renameSync(marker + ".tmp", marker);
+setTimeout(() => fs.writeFileSync("finished-" + mode, "done"), 60_000);
+`,
+      "watchdog-check.mjs": `import assert from "node:assert/strict";
+import fs from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
+import { exec } from "./short-watchdog.ts";
+const modes = ["same-group", "detached"];
+const helper = (mode) => fs.existsSync("helper-" + mode) ? JSON.parse(fs.readFileSync("helper-" + mode, "utf8")) : undefined;
+const running = (pid) => {
+  try { process.kill(pid, 0); return true; } catch (error) { if (error.code !== "ESRCH") throw error; return false; }
+};
+const ready = () => modes.every(mode => { const pids = helper(mode); return pids && !running(pids[0]) && running(pids[1]); });
+const originalNow = Date.now;
+const finished = Promise.all(modes.map(mode => exec(process.execPath, ["inherited-output.mjs", mode], import.meta.dirname)));
+try {
+  const deadline = performance.now() + 30_000;
+  while (!ready() && performance.now() < deadline) await delay(50);
+  assert.ok(ready(), "both writers started and their parents were reaped");
+  const clockStart = performance.now();
+  Date.now = () => originalNow() + 61 * 60_000 + Math.floor((performance.now() - clockStart) * 10_000);
+  const results = await Promise.race([finished, delay(20_000, undefined, { ref: false })]);
+  assert.ok(results, "the watchdog released both inherited pipes");
+  for (const [index, mode] of modes.entries()) {
+    assert.ok(results[index].stopped, mode + ": the watchdog ended the command");
+    assert.ok(!fs.existsSync("finished-" + mode), mode + ": the command returned while its inherited pipe was still held");
+  }
+} finally {
+  Date.now = originalNow;
+  for (const mode of modes) {
+    const pids = helper(mode);
+    if (!pids || fs.existsSync("finished-" + mode)) continue;
+    try { process.kill(pids[1], "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+  }
+}
+`,
       "tool.mjs": 'import { spawn } from "node:child_process";\nimport fs from "node:fs";\nconst started = [false, true].map((detached) => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached }).pid);\nfs.writeFileSync(process.argv[2], `${process.pid} ${started.join(" ")} `);\nsetInterval(() => {}, 1000);\nconst flood = () => { while (process.stdout.write("x".repeat(1 << 20))); process.stdout.once("drain", flood); };\nif (process.argv[3]) flood();\n',
       "check.mjs": `import { exec } from ${JSON.stringify(path.join(project, "vibestack/run.ts"))};\nvoid exec(process.execPath, ["tool.mjs", process.argv[2]], import.meta.dirname);\nprocess.stdin.once("data", () => process.exit(3));\n`,
     });
@@ -3830,6 +3960,8 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
     assert.match(flooded.stopped ?? "", /^node wrote more than \d+ MB of output and was stopped$/);
     const flooding = read("flood", root).trim().split(" ").map(Number);
     await until(() => !flooding.some(running), () => `a tool stopped for its output left ${flooding.filter(running).join(" and ")} running`);
+    const inherited = await exec(process.execPath, ["watchdog-check.mjs"], root);
+    assert.equal(inherited.status, 0, inherited.stdout + inherited.stderr);
     for (const how of ["SIGTERM", "SIGINT", "SIGHUP", "exit"] as const) {
       const checking = spawn(process.execPath, ["check.mjs", how], { cwd: root, stdio: ["pipe", "ignore", "inherit"] });
       const ended = new Promise((resolve) => checking.once("close", (code, signal) => resolve(signal ?? code)));
