@@ -118,6 +118,32 @@ pure def lawOnlyAWrittenReferenceRestores(written: Set[str], reference: str): bo
   referenceRestorable(written, reference) implies written.contains(reference)
 ```
 
+### A reserved example contact in a tool definition or response schema stays as written
+
+A model request's `tools` and `responseSchema` are authored text, and a
+schema description documents a format with an example such as
+`+1 415 555 0100`. A phone number in the fictional range 555-0100 to
+555-0199 (with or without an area code and country code 1), or an email
+address at `example.com`, `example.org` or `example.net` or under
+`.example`, `.test`, `.invalid` or `.localhost`, belongs to nobody: it is
+never learned from an authored field nor replaced in one, so a definition's
+bytes do not change with the session's nonce or with what the conversation
+mentions. A field of the request outside the conversation (`messages`,
+`prompt`, `system`, `promptSegments`) treats such an example the same way,
+so the request lists a contact only when the conversation carries it. Every
+other value, a real number or address written in a definition included, is
+learned and replaced wherever it is written.
+
+```quint
+type SwapField = AuthoredField | ConversationField | OtherRequestField
+pure def keepsExamples(field: SwapField): bool = field != ConversationField
+pure def contactSwapped(field: SwapField, reservedExample: bool): bool = not(reservedExample and keepsExamples(field))
+pure val fieldValues = Set(AuthoredField, ConversationField, OtherRequestField)
+pure def lawAReservedExampleOutsideTheConversationStaysAsWritten(field: SwapField): bool = field != ConversationField implies not(contactSwapped(field, true))
+pure def lawARealContactIsSwappedEverywhere(field: SwapField): bool = contactSwapped(field, false)
+pure def lawTheConversationSwapsEveryContact(reservedExample: bool): bool = contactSwapped(ConversationField, reservedExample)
+```
+
 ### Egress restores pseudonyms before placeholders, and recognition never reads a placeholder
 
 Ingress replaces a credential or contact value with its placeholder first

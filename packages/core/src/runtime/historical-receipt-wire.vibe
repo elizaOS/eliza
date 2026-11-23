@@ -1,85 +1,20 @@
-// spec/core/execution.md, "Story: Settle an action before publishing its callback"
-import { errorText } from "../utils/errors.vibe"
-import { failingAs, thrown } from "../edge.vibe"
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/context.md, "A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind"
+import { thrown } from "../edge.vibe"
+import { type EffectReceipt, normalizeEffectReceipt } from "../types/effects.vibe"
 import { isObjectRecord } from "../utils/type-guards.vibe"
-import type { ContextObjectPromptSegment } from "./context-object.vibe"
-import { segmentBlock } from "./context-renderer.vibe"
+import { collectCompletionContextSources } from "./completion-context.vibe"
+import { hashStableJson } from "./context-hash.vibe"
+import type { ContextObject, ContextObjectPromptSegment } from "./context-object.vibe"
 
-function parseCanonicalJson(text: string): { value: unknown } | undefined {
-  try {
-    const value: unknown = JSON.parse(text)
-    return JSON.stringify(value) === text ? { value } : undefined
-  } catch {
-    return undefined
-  }
+export const HISTORICAL_PROPOSAL_TERMINAL_ID_PREFIX = "historical-proposal-terminal:"
+
+type Field = "navigation" | "outcomes" | "observations"
+
+const RECORD_FIELDS: Readonly<Record<string, Field>> = {
+  "runtime:historical_navigation": "navigation",
+  "runtime:historical_effects": "outcomes",
+  "runtime:historical_observations": "observations",
 }
-
-function receiptTableEntry(segment: ContextObjectPromptSegment) {
-  const field = segment.label === "runtime:historical_navigation"
-    ? "navigation"
-    : segment.label === "runtime:historical_effects"
-    ? "outcomes"
-    : segment.label === "runtime:historical_observations"
-    ? "observations"
-    : undefined
-  if (!field || segment.stable) return undefined
-  const parsed = parseCanonicalJson(segment.content)
-  if (!parsed) return undefined
-  const record = parsed.value
-  if (
-    !isObjectRecord(record)
-    || typeof record.requestSourceEventId !== "string"
-  ) {
-    return undefined
-  }
-  const allowed = field === "navigation"
-    ? ["requestSourceEventId", field]
-    : ["requestSourceEventId", "scope", field]
-  if (JSON.stringify(Object.keys(record)) !== JSON.stringify(allowed)) {
-    return undefined
-  }
-  if (field !== "navigation" && typeof record.scope !== "string") {
-    return undefined
-  }
-  const receipts = record[field]
-  if (!Array.isArray(receipts) || receipts.length === 0) return undefined
-  const columns = Object.keys(receipts[0] ?? {})
-  const allowedReceipt = field === "navigation"
-    ? ["success", "receipt"]
-    : ["actionName", "success", "receipt"]
-  if (
-    !columns.includes("success")
-    || !columns.includes("receipt")
-    || columns.some((key) => !allowedReceipt.includes(key))
-  ) {
-    return undefined
-  }
-  if (
-    receipts.some(
-      (receipt) =>
-        !isObjectRecord(receipt)
-        || JSON.stringify(Object.keys(receipt)) !== JSON.stringify(columns)
-        || typeof receipt.success !== "boolean"
-        || (field === "navigation"
-          ? typeof receipt.receipt !== "string"
-          : !isObjectRecord(receipt.receipt))
-        || ("actionName" in receipt && typeof receipt.actionName !== "string"),
-    )
-  ) {
-    return undefined
-  }
-  return {
-    field,
-    columns,
-    scope: record.scope,
-    row: [
-      record.requestSourceEventId,
-      receipts.map((receipt) => columns.map((key) => receipt[key])),
-    ] as [string, unknown[][]],
-  }
-}
-
-type ReceiptEntry = NonNullable<ReturnType<typeof receiptTableEntry>>
 
 const NAVIGATION_RECEIPT_FIELDS: ReadonlySet<string> = new Set([
   "effect",
@@ -91,255 +26,297 @@ const NAVIGATION_RECEIPT_FIELDS: ReadonlySet<string> = new Set([
   "label",
   "subview",
   "path",
+  "resolvedAlias",
 ])
-const EFFECT_RECEIPT_FIELDS: ReadonlySet<string> = new Set([
-  "receiptId",
-  "operation",
-  "resource",
-  "artifacts",
-  "idempotency",
-  "observedAt",
-  "outcome",
-  "reason",
-  "commit",
-  "failure",
-  "rollback",
-])
-const NESTED_RECEIPT_FIELDS: ReadonlySet<string> = new Set([
-  "resource",
-  "idempotency",
-  "commit",
-  "failure",
-  "rollback",
-])
+const NAVIGATION_DROPPED_FIELDS: ReadonlySet<string> = new Set(["effect", "stepId", "handoffId"])
 
-export error ReceiptTableUnreadable { message: string; cause: unknown }
-
-interface ReceiptTable {
-  encoding: string
+type Outcome = Record<string, unknown>
+type Entry = {
+  field: Field
   columns: string[]
-  receiptColumns: string[]
   scope?: string
-  rows: ReceiptEntry["row"][]
-  receiptEncoding?: string
-  receiptShapes?: (string | [string, string[]])[][]
+  request: string
+  outcomes: Outcome[]
+  receipts: (EffectReceipt | Record<string, unknown>)[]
 }
 
-effect function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]): ReceiptTable!ReceiptTableUnreadable {
-  const table = {
-    encoding:
-      "Each row uses columns; nested receipt rows use receiptColumns. Preserve order. Values are exact; shared scope applies to every row.",
-    columns: ["requestSourceEventId", entry.field],
-    receiptColumns: entry.columns,
+function parseCanonicalJson(text: string): { value: unknown } | undefined {
+  try {
+    const value: unknown = JSON.parse(text)
+    return JSON.stringify(value) === text ? { value } : undefined
+  } catch {
+    return undefined
+  }
+}
+
+effect function effectReceipt(value: unknown) {
+  if (!isObjectRecord(value)) return undefined
+  const receipt = normalizeEffectReceipt(value) catch () => undefined
+  if (receipt === undefined) return undefined
+  const hashes = all([hashStableJson(receipt), hashStableJson(value)]) catch () => undefined
+  return hashes !== undefined && hashes[0] === hashes[1] ? receipt : undefined
+}
+
+function navigationReceipt(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== "string") return undefined
+  const parsed = parseCanonicalJson(value)
+  const receipt = parsed?.value
+  if (
+    !isObjectRecord(receipt)
+    || Object.entries(receipt).some(([key, field]) => !NAVIGATION_RECEIPT_FIELDS.has(key) || (typeof field !== "string" && field !== null))
+  ) {
+    return undefined
+  }
+  return receipt
+}
+
+effect function recordEntry(segment: ContextObjectPromptSegment) {
+  const field = segment.label ? RECORD_FIELDS[segment.label] : undefined
+  if (!field || segment.stable) return undefined
+  const parsed = parseCanonicalJson(segment.content)
+  if (!parsed) return undefined
+  const record = parsed.value
+  if (!isObjectRecord(record) || typeof record.requestSourceEventId !== "string") return undefined
+  const allowed = field === "navigation" ? ["requestSourceEventId", field] : ["requestSourceEventId", "scope", field]
+  if (JSON.stringify(Object.keys(record)) !== JSON.stringify(allowed)) return undefined
+  if (field !== "navigation" && typeof record.scope !== "string") return undefined
+  const outcomes = record[field]
+  if (!Array.isArray(outcomes) || outcomes.length === 0) return undefined
+  const columns = Object.keys(outcomes[0] ?? {})
+  const allowedColumns = field === "navigation" ? ["success", "receipt"] : ["actionName", "success", "receipt"]
+  if (!columns.includes("success") || !columns.includes("receipt") || columns.some((key) => !allowedColumns.includes(key))) return undefined
+  const receipts: Entry["receipts"] = []
+  for (const outcome of outcomes) {
+    if (
+      !isObjectRecord(outcome)
+      || JSON.stringify(Object.keys(outcome)) !== JSON.stringify(columns)
+      || typeof outcome.success !== "boolean"
+      || ("actionName" in outcome && typeof outcome.actionName !== "string")
+    ) {
+      return undefined
+    }
+    const receipt = field === "navigation" ? navigationReceipt(outcome.receipt) : (try effectReceipt(outcome.receipt))
+    if (!receipt) return undefined
+    receipts.push(receipt)
+  }
+  return {
+    field,
+    columns,
+    ...(field === "navigation" ? {} : { scope: record.scope as string }),
+    request: record.requestSourceEventId,
+    outcomes: outcomes as Outcome[],
+    receipts,
+  } satisfies Entry
+}
+
+type ShapeEntry = string | readonly [string, readonly string[]]
+const RECEIPT_BASE: readonly ShapeEntry[] = ["operation", ["resource", ["kind", "id"]], "outcome"]
+const RECEIPT_DETAILS: readonly (ShapeEntry | undefined)[] = [
+  undefined,
+  "reason",
+  ["commit", ["kind"]],
+  ["failure", ["code", "retryable", "acceptance"]],
+]
+const SHAPE_KEYS = RECEIPT_DETAILS.map((detail) => JSON.stringify(detail === undefined ? RECEIPT_BASE : [...RECEIPT_BASE, detail]))
+
+function slimReceipt(receipt: EffectReceipt, receiptIds: boolean): unknown {
+  const slim: Record<string, unknown> = {}
+  if (receiptIds) slim.receiptId = receipt.receiptId
+  slim.operation = receipt.operation
+  slim.resource = { kind: receipt.resource.kind, id: receipt.resource.id }
+  if (receipt.artifacts.length) slim.artifacts = receipt.artifacts.map(({ kind, id }) => ({ kind, id }))
+  slim.outcome = receipt.outcome
+  switch (receipt.outcome) {
+    case "noop":
+      slim.reason = receipt.reason
+      break
+    case "applied":
+      slim.commit = receipt.commit.id === receipt.resource.id ? { kind: receipt.commit.kind } : { kind: receipt.commit.kind, id: receipt.commit.id }
+      break
+    case "failed":
+      slim.failure = { ...receipt.failure }
+      break
+    case "rolled_back":
+      slim.rollback = {
+        receiptId: receipt.rollback.receiptId,
+        revertedReceiptIds: [...receipt.rollback.revertedReceiptIds],
+        rolledBackAt: receipt.rollback.rolledBackAt,
+      }
+      break
+    case "preview":
+      break
+  }
+  const keys = Object.entries(slim).map(([key, value]) => isObjectRecord(value) ? [key, Object.keys(value)] : key)
+  const shape = SHAPE_KEYS.indexOf(JSON.stringify(keys))
+  if (shape < 0) return slim
+  return [shape, Object.values(slim).map((value) => isObjectRecord(value) ? Object.values(value) : value)]
+}
+
+function slimNavigation(receipt: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(receipt).filter(([key]) => !NAVIGATION_DROPPED_FIELDS.has(key)))
+}
+
+const template = (entry: ShapeEntry) =>
+  typeof entry === "string" ? entry : `[${entry[1].map((child) => entry[0] + child[0].toUpperCase() + child.slice(1)).join(",")}]`
+const RECEIPT_ENCODING = `receipt=[shape,[${RECEIPT_BASE.map(template).join(",")}]]; ${
+  RECEIPT_DETAILS.flatMap((detail, shape) => detail === undefined ? [] : [`${shape === 1 ? "shape " : ""}${shape} adds ${template(detail)}`]).join(", ")
+}; other receipts are objects.`
+const NAVIGATION_ENCODING = "receipt is the recorded navigation object."
+const SOURCE_ENCODING = "history:hN names history source hN. Values are exact."
+const PROPOSAL_ENCODING = "A preview records a proposal, not its completion; a later proposal state takes its place."
+const POSITION_ENCODING = "Each [id,row] segment with this id holds one row under this scope at its own chronological position."
+
+function legend(entry: Entry, positioned: boolean) {
+  return {
+    encoding: [
+      `row=[requestSourceEventId,[[${entry.columns.join(",")}],...]];`,
+      entry.field === "navigation" ? NAVIGATION_ENCODING : RECEIPT_ENCODING,
+      SOURCE_ENCODING,
+      ...(entry.field === "outcomes" ? [PROPOSAL_ENCODING] : []),
+      ...(positioned ? [POSITION_ENCODING] : []),
+    ].join(" "),
     ...(entry.scope === undefined ? {} : { scope: entry.scope }),
   }
-  let content = JSON.stringify({ ...table, rows })
-  const receiptIndex = entry.columns.indexOf("receipt")
-  const navigation = entry.field === "navigation"
-  const allowedFields = navigation
-    ? NAVIGATION_RECEIPT_FIELDS
-    : EFFECT_RECEIPT_FIELDS
+}
 
-  for (const packNested of navigation ? [false] : [false, true]) {
-    const receiptShapes: (string | [string, string[]])[][] = []
-    const shapeIndices = new Map<string, number>()
-    const encodedReceipts: unknown[] = []
-    let packable = true
-    for (const [, receipts] of rows) {
-      for (const receipt of receipts) {
-        const original = receipt[receiptIndex]
-        let object = original
-        if (navigation) {
-          const parsed = parseCanonicalJson(String(original))
-          if (!parsed) {
-            packable = false
-            break
-          }
-          object = parsed.value
-        }
-        if (
-          !isObjectRecord(object)
-          || Object.keys(object).some((key) => !allowedFields.has(key))
-        ) {
-          packable = false
-          break
-        }
-        const keys = Object.keys(object).map((key) =>
-          packNested
-            && NESTED_RECEIPT_FIELDS.has(key)
-            && isObjectRecord(object[key])
-            && Object.keys(object[key]).length > 0
-            ? ([key, Object.keys(object[key])] as [string, string[]])
-            : key
-        )
-        const shapeKey = JSON.stringify(keys)
-        let shapeIndex = shapeIndices.get(shapeKey)
-        if (shapeIndex === undefined) {
-          shapeIndex = receiptShapes.length
-          receiptShapes.push(keys)
-          shapeIndices.set(shapeKey, shapeIndex)
-        }
-        encodedReceipts.push([
-          shapeIndex,
-          keys.map((key) =>
-            typeof key === "string"
-              ? object[key]
-              : Object.values(object[key[0]] as Record<string, unknown>)
-          ),
-        ])
+function encodeRow(entry: Entry, sourceIds: ReadonlyMap<string, string> | undefined): [string, unknown[][]] {
+  const label = sourceIds?.get(entry.request)
+  const receiptIds = entry.receipts.some((receipt) => receipt.outcome === "rolled_back")
+  return [
+    label ? `history:${label}` : entry.request,
+    entry.outcomes.map((outcome, index) =>
+      entry.columns.map((column) => {
+        if (column !== "receipt") return outcome[column]
+        const receipt = entry.receipts[index]
+        return entry.field === "navigation"
+          ? slimNavigation(receipt as Record<string, unknown>)
+          : slimReceipt(receipt as EffectReceipt, receiptIds)
+      })
+    ),
+  ]
+}
+
+function terminalProposalId(segment: ContextObjectPromptSegment): string | undefined {
+  return segment.id?.startsWith(HISTORICAL_PROPOSAL_TERMINAL_ID_PREFIX)
+    ? segment.id.slice(HISTORICAL_PROPOSAL_TERMINAL_ID_PREFIX.length)
+    : undefined
+}
+
+function foldProposalTerminals(segments: ContextObjectPromptSegment[], entries: (Entry | undefined)[]): Set<number> {
+  const folded = new Set<number>()
+  segments.forEach((segment, index) => {
+    const terminal = entries[index]
+    const proposalId = terminalProposalId(segment)
+    if (!terminal || !proposalId || terminal.field !== "outcomes" || terminal.outcomes.length !== 1) return
+    const matches: { entry: Entry; at: number }[] = []
+    entries.forEach((entry, other) => {
+      if (
+        !entry
+        || other === index
+        || folded.has(other)
+        || entry.field !== "outcomes"
+        || entry.request !== terminal.request
+        || terminalProposalId(segments[other]) !== undefined
+      ) {
+        return
       }
-      if (!packable) break
-    }
-    if (!packable) break
-    let receiptOffset = 0
-    const packed = {
-      ...table,
-      receiptEncoding: (navigation
-        ? "receipt=[shapeIndex,values]; receiptShapes gives exact property order. Reconstruct the original receipt string with JSON.stringify(Object.fromEntries(columns paired with values)). Only canonical JSON strings are encoded; every value is exact."
-        : "receipt=[shapeIndex,values]; receiptShapes gives property order. Pair columns with values to reconstruct the complete original receipt object. Every value is exact.")
-        + (packNested && receiptShapes.some((shape) => shape.some(Array.isArray))
-          ? " A string shape entry copies its corresponding value unchanged, including arrays and objects. A [fieldName,childColumns] shape entry pairs the corresponding child value array with those columns to reconstruct that complete nested object in property order."
-          : ""),
-      receiptShapes,
-      rows: rows.map(([requestSourceEventId, receipts]) => [
-        requestSourceEventId,
-        receipts.map((receipt) =>
-          receipt.map((value, column) => column === receiptIndex ? encodedReceipts[receiptOffset++] : value)
-        ),
-      ]),
-    }
-    const candidate = JSON.stringify(packed)
-    if (candidate.length < content.length) content = candidate
-
-    const firstReceipts = new Map<string, number>()
-    let position = 0
-    const referenced = {
-      ...packed,
-      receiptEncoding: packed.receiptEncoding
-        + " A one-item receipt [n] repeats the complete receipt at zero-based receipt position n earlier in this table (including rows sharing its legend). Each occurrence retains its own source and position.",
-      rows: packed.rows.map(([source, receipts]) => [
-        source,
-        (receipts as unknown[][]).map((receipt) =>
-          receipt.map((value, column) => {
-            if (column !== receiptIndex) return value
-            const key = JSON.stringify(value)
-            const first = firstReceipts.get(key)
-            const current = position++
-            if (first !== undefined) return [first]
-            firstReceipts.set(key, current)
-            return value
-          })
-        ),
-      ]),
-    }
-    const referenceCandidate = JSON.stringify(referenced)
-    if (referenceCandidate.length < content.length) {
-      content = referenceCandidate
-    }
-  }
-  return try Effect.try({
-    try: () => JSON.parse(content) as ReceiptTable,
-    catch: (cause) => new ReceiptTableUnreadable({ message: errorText(cause), cause }),
+      entry.receipts.forEach((receipt, at) => {
+        const preview = receipt as EffectReceipt
+        if (preview.outcome === "preview" && preview.resource.kind === "device.approval" && preview.resource.id === proposalId) {
+          matches.push({ entry, at })
+        }
+      })
+    })
+    if (matches.length !== 1) return
+    const [{ entry, at }] = matches
+    if (JSON.stringify(entry.columns) !== JSON.stringify(terminal.columns)) return
+    entry.outcomes = entry.outcomes.map((outcome, position) => position === at ? terminal.outcomes[0] : outcome)
+    entry.receipts = entry.receipts.map((receipt, position) => position === at ? terminal.receipts[0] : receipt)
+    folded.add(index)
   })
+  return folded
+}
+
+const REQUEST_NOTE_LABELS: ReadonlySet<string> = new Set([
+  "runtime:interrupted_turn",
+  "runtime:historical_read_continuations",
+])
+
+function relabelRequestNote(
+  segment: ContextObjectPromptSegment,
+  sourceIds: ReadonlyMap<string, string> | undefined,
+): ContextObjectPromptSegment | undefined {
+  if (!sourceIds?.size || segment.stable || !segment.label || !REQUEST_NOTE_LABELS.has(segment.label)) return undefined
+  const note = parseCanonicalJson(segment.content)?.value
+  if (!isObjectRecord(note) || typeof note.requestSourceEventId !== "string") return undefined
+  const label = sourceIds.get(note.requestSourceEventId)
+  return label ? { ...segment, content: JSON.stringify({ ...note, requestSourceEventId: `history:${label}` }) } : undefined
+}
+
+export function historicalRequestSourceIds(context: ContextObject): Map<string, string> {
+  if (!Array.isArray(context?.events)) return new Map()
+  return new Map(collectCompletionContextSources(context).map(({ id, event }) => [event.id, id]))
+}
+
+export type HistoricalReceiptWireOptions = {
+  sourceIds?: ReadonlyMap<string, string>
+  layout?: "positioned" | "table"
 }
 
 export effect function compactHistoricalReceiptSegments(
   segments: ContextObjectPromptSegment[],
-): ContextObjectPromptSegment[]!ReceiptTableUnreadable {
-  const entries = segments.map(receiptTableEntry)
-  const groups = new Map<string, { index: number; entry: ReceiptEntry }[]>()
+  options: HistoricalReceiptWireOptions = {},
+): ContextObjectPromptSegment[]!! {
+  const entries: (Entry | undefined)[] = []
+  for (const segment of segments) entries.push(try recordEntry(segment))
+  const notes = segments.map((segment) => relabelRequestNote(segment, options.sourceIds))
+  const folded = foldProposalTerminals(segments, entries)
+  const groups = new Map<string, number[]>()
   let stableBoundary = 0
   for (let index = 0; index < segments.length; index++) {
     if (segments[index].stable) stableBoundary++
     const entry = entries[index]
-    if (!entry) continue
-    const key = JSON.stringify([
-      stableBoundary,
-      entry.field,
-      entry.columns,
-      entry.scope,
-    ])
-    const indices = groups.get(key)
-    if (indices) indices.push({ index, entry })
-    else groups.set(key, [{ index, entry }])
+    if (!entry || folded.has(index)) continue
+    const key = JSON.stringify([stableBoundary, entry.field, entry.columns, entry.scope])
+    const members = groups.get(key)
+    if (members) members.push(index)
+    else groups.set(key, [index])
+  }
+  if (groups.size === 0) {
+    return notes.some(Boolean) ? segments.map((segment, index) => notes[index] ?? segment) : segments
   }
   const replacements = new Map<number, ContextObjectPromptSegment[]>()
-  const wireChars = (blocks: ContextObjectPromptSegment[]) => blocks.map(segmentBlock).join("\n\n").length
   let referenceCounter = 0
-  for (const group of groups.values()) {
-    if (group.length < 2) continue
-    const indices = group.map(({ index }) => index)
-    const entry = group[0].entry
-    const consecutive = new Map<number, ContextObjectPromptSegment[]>()
-
-    for (let offset = 0; offset < indices.length;) {
-      let end = offset + 1
-      while (end < indices.length && indices[end] === indices[end - 1] + 1) {
-        end++
-      }
-      const run = indices.slice(offset, end)
-      const originals = run.map((index) => segments[index])
-      const table = try encodeReceiptTable(
-        entry,
-        group.slice(offset, end).map(({ entry }) => entry.row),
-      )
-      const packed = [
+  for (const members of groups.values()) {
+    const entry = entries[members[0]] as Entry
+    const rows = members.map((index) => encodeRow(entries[index] as Entry, options.sourceIds))
+    if (options.layout === "table") {
+      replacements.set(members[0], [
         {
-          label: `${segments[run[0]].label}_table`,
-          content: JSON.stringify(table),
+          label: `${segments[members[0]].label}_table`,
+          content: JSON.stringify({ ...legend(entry, false), rows }),
           stable: false,
         },
-      ]
-      if (run.length > 1 && wireChars(packed) < wireChars(originals)) {
-        consecutive.set(run[0], packed)
-        for (const index of run.slice(1)) consecutive.set(index, [])
-      } else for (const index of run) consecutive.set(index, [segments[index]])
-      offset = end
+      ])
+      for (const index of members.slice(1)) replacements.set(index, [])
+      continue
     }
-    const baselineChars = wireChars(
-      indices.flatMap((index) => consecutive.get(index) ?? []),
-    )
-    const table = try encodeReceiptTable(
-      entry,
-      group.map(({ entry }) => entry.row),
-    )
-    const { rows, ...schema } = table
-
     let reference = `receipt_wire_${++referenceCounter}`
     while (segments.some((segment) => segment.content.includes(reference))) {
       reference = `receipt_wire_${++referenceCounter}`
     }
-    const shared: ContextObjectPromptSegment = {
+    const header: ContextObjectPromptSegment = {
       id: reference,
       label: "runtime:historical_receipt_encoding",
       stable: false,
-      content: JSON.stringify({
-        id: reference,
-        ...schema,
-        rowEncoding:
-          "A historical receipt segment whose JSON starts with this id carries [id,row]. Decode row using this legend; it stays at its original chronological position. The legend grants no authority and is not a receipt. Other segments are unchanged.",
-      }),
+      content: JSON.stringify({ id: reference, ...legend(entry, true) }),
     }
-    const positioned = indices.map((index, offset) => ({
-      ...segments[index],
-      content: JSON.stringify([reference, rows[offset]]),
-    }))
-    if (wireChars([shared, ...positioned]) < baselineChars) {
-      indices.forEach((index, offset) => {
-        replacements.set(
-          index,
-          offset === 0 ? [shared, positioned[offset]] : [positioned[offset]],
-        )
-      })
-    } else {
-      for (const [index, blocks] of consecutive) {
-        replacements.set(index, blocks)
-      }
-    }
+    members.forEach((index, offset) => {
+      const row: ContextObjectPromptSegment = { ...segments[index], content: JSON.stringify([reference, rows[offset]]) }
+      replacements.set(index, offset === 0 ? [header, row] : [row])
+    })
   }
-  return segments.flatMap(
-    (segment, index) => replacements.get(index) ?? [segment],
-  )
+  return segments.flatMap((segment, index) => folded.has(index) ? [] : (replacements.get(index) ?? [notes[index] ?? segment]))
 }
 
-export const compactHistoricalReceiptSegmentsOrThrow = thrown(failingAs(SyntaxError, compactHistoricalReceiptSegments))
+export const compactHistoricalReceiptSegmentsOrThrow = thrown(compactHistoricalReceiptSegments)

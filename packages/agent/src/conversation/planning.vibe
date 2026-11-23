@@ -1,13 +1,14 @@
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"
 import {
   type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type GenerateTextParams, type GenerateTextResult,
   type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, executePlannedToolCall, ModelType, stableStringify,
+  buildPlannerToolsFromActions, executePlannedToolCall, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, sleepWithAbort, stableStringify,
 } from "@elizaos/core"
 import {
-  acknowledges, failedOpen, keepsPlanning, maxPlanSteps, nextMove, offered, openOutcomes,
-  type PlanStep, type StepOutcome,
+  acknowledges, cutOffReply, failedOpen, maxPlanSteps, nextMove, offered, openOutcomes, plansOn, resendWait,
+  type CallFailure, type PlanStep, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
+import { ModelRefusal } from "../models/chat.vibe"
 import { composeReply, draftOf } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
@@ -43,7 +44,6 @@ export interface PlanInput {
   readonly system: string
   readonly messages: readonly ChatMessage[]
   readonly signal: AbortSignal
-  readonly maxTokens: number
   readonly onStreamChunk?: StreamChunkCallback
   readonly onReplyRestart?: (fullText: string) => void
   readonly onPlanningAcknowledgment?: (text: string) => void | Promise<void>
@@ -133,6 +133,43 @@ function toolMessage(result: ActionResult): string {
   return text.length > toolMessageLimit ? `${text.slice(0, toolMessageLimit)}…` : text
 }
 
+/** True when a model call ended at an output limit with no cap of its own: it ran to the model's whole maximum. */
+export function stoppedAtOutputLimit(error: unknown): boolean {
+  const evidence = modelOutputIncompleteEvidence(error)
+  return evidence !== undefined && typeof evidence.maxTokens !== "number" && isModelOutputLimitFinishReason(evidence.finishReason)
+}
+
+function callFailureOf(error: unknown): CallFailure {
+  if (error instanceof ModelRefusal) {
+    if (error.status === 429) return error.retryAfterMs === undefined ? { tag: "RateLimitedWithoutHint" } : { tag: "RateLimitedFor", hintMs: error.retryAfterMs }
+    if (error.code === "PROVIDER_TOOL_CALL_PARSE_FAILED") return { tag: "ToolCallUnparsed" }
+  }
+  return stoppedAtOutputLimit(error) ? { tag: "OutputLimitReached" } : { tag: "OtherFailure" }
+}
+
+/** Sends a model call, and once more after a temporary rate limit or a tool call the provider could not parse. */
+export async function sentAtMostTwice<T>(send: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  try {
+    return await send()
+  } catch (error: unknown) {
+    const wait = resendWait(callFailureOf(error), false)
+    if (wait < 0 || signal.aborted) throw error
+    await sleepWithAbort(wait, signal)
+    signal.throwIfAborted()
+    return send()
+  }
+}
+
+function stoppedAtModelMaximum(result: ActionResult): boolean {
+  if (result.success && result.error === undefined) return false
+  const settled = (result.data as { error?: unknown } | undefined)?.error
+  return [result.error, settled].some(stoppedAtOutputLimit)
+}
+
+function byName(left: ToolDefinition, right: ToolDefinition): number {
+  return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+}
+
 function answerOf(value: unknown): { text: string; toolCalls: ToolCall[] } {
   if (typeof value === "string") return { text: value, toolCalls: [] }
   if (typeof value !== "object" || value === null) return { text: "", toolCalls: [] }
@@ -176,7 +213,7 @@ export function settleReply(steps: readonly PlannedStep[], prose: string | undef
 /** Runs one turn's planning loop: the model calls offered actions as tools until it answers, and the reply is composed from what the turn proved. */
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
   const { runtime, message, state, roles, signal } = input
-  const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions)
+  const tools: ToolDefinition[] = actions.length === 0 ? [] : [...buildPlannerToolsFromActions(actions)].sort(byName)
   const conversation: ChatMessage[] = [...input.messages]
   const steps: PlannedStep[] = []
   let taken = 0
@@ -189,22 +226,30 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     let restarted = false
     streamed = ""
     const onStreamChunk = input.onStreamChunk
-    const answered = answerOf(await runtime.useModel(ModelType.TEXT_LARGE, {
-      system: input.system, messages: conversation, maxTokens: input.maxTokens, signal,
-      ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
-      ...(onStreamChunk === undefined ? {} : {
-        stream: true,
-        onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
-          streamed = accumulated ?? streamed + chunk
-          if (restartFirst && !restarted) {
-            restarted = true
-            input.onReplyRestart?.(streamed)
-            return
-          }
-          return onStreamChunk(chunk, messageId, accumulated)
-        },
-      }),
-    }))
+    let said: unknown
+    try {
+      said = await sentAtMostTwice(() => runtime.useModel(ModelType.TEXT_LARGE, {
+        system: input.system, messages: conversation, signal,
+        ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
+        ...(onStreamChunk === undefined ? {} : {
+          stream: true,
+          onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
+            streamed = accumulated ?? streamed + chunk
+            if (restartFirst && !restarted) {
+              restarted = true
+              input.onReplyRestart?.(streamed)
+              return
+            }
+            return onStreamChunk(chunk, messageId, accumulated)
+          },
+        }),
+      }), signal)
+    } catch (error: unknown) {
+      if (signal.aborted || !stoppedAtOutputLimit(error)) throw error
+      prose = cutOffReply
+      break plan
+    }
+    const answered = answerOf(said)
     signal.throwIfAborted()
     taken += 1
     if (restartFirst && !restarted) input.onReplyRestart?.("")
@@ -212,6 +257,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const reply = answered.toolCalls.find(({ name }) => name === "REPLY")
     const work = answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name))
     const draft = draftOf(answered.text)
+    let cutOff = false
     if (work.length > 0) {
       if (acknowledges(draft, work.length)) await input.onPlanningAcknowledgment?.(answered.text.trim())
       else if (displayed) {
@@ -232,15 +278,17 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
           },
         }, { id: call.id, name: call.name, params }, { abortSignal: signal })
         input.onStepResult?.(result)
+        cutOff ||= stoppedAtModelMaximum(result)
         steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
         conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
+        if (cutOff) break
       }
     }
     if (reply !== undefined) {
       prose = replyText(reply) ?? (draft === "Answer" ? answered.text : undefined)
       break plan
     }
-    if (keepsPlanning(taken, work.length, false)) continue plan
+    if (plansOn(cutOff, taken, work.length, false)) continue plan
     if (work.length > 0) break plan
     switch (nextMove(draft, 0, maxPlanSteps - taken)) {
       case "Deliver":

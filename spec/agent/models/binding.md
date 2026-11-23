@@ -7,15 +7,19 @@ an OpenAI-compatible endpoint, or none ([launch](../host/launch.md)). An
 account, backend or embeddings change is a new launch, decided by the host.
 Retry, fallback and cancellation are core [models](../../core/models.md):
 the cloud and own-key text handlers are each registered twice, so core
-retries a transient refusal once. This spec decides which handler a backend
-serves, how a cloud refusal maps onto core's outcomes and onto the account
-state, and when a pushed credential takes effect.
+retries a transient refusal once. A rate-limited call is re-sent once by the
+turn that made it, never by the transport ([planning](../conversation/planning.md)).
+This spec decides which handler a backend serves, what a call sends, how a
+cloud refusal maps onto core's outcomes and onto the account state, how long
+a rate limit holds the account, and when a pushed credential takes effect.
 
 Text and image description use the cloud client's chat completion (an image
 description is a chat completion with an image part); the own-key handler
 classifies its HTTP failures into the same refusal vocabulary: a spent quota
-is insufficient credits, and a timeout, a conflict or an overloaded bad
-request without a validation complaint is a provider issue. HTTP, the
+is insufficient credits, and a timeout, a conflict or a bad request without
+a validation complaint that says the provider is overloaded or rate limited
+(`rate` as a word, or a rate limit in any spelling, never the `rate` inside
+`generate`) is a provider issue. HTTP, the
 credential value and the client stay in the shell (`models/*.vibe`); the
 credential lives in memory only and appears in no state here. Source: the
 develop cloud plugin's text and image handlers, the pinned embedded host's
@@ -30,7 +34,8 @@ credential routes and the device hosts' provider settings.
 ### The binding is set once from an admitted launch and never changes while the process runs
 
 The process binds after the launch is admitted, with the public view of the
-launch frame. The binding keeps only the credential's version, and keeps it
+launch frame and the host's rate-limit hold in milliseconds (0 when the host
+sets none). The binding keeps only the credential's version, and keeps it
 exactly when the backend needs one.
 
 ```quint
@@ -41,20 +46,21 @@ type AccountState = Usable | Failing({ failure: AccountFailure })
 type LastCloudFailure = NoCloudFailure | CloudFailedAt({ failure: AccountFailure, at: int })
 type Call = { id: int, credentialVersion: int }
 type ModelBinding = { phase: BindPhase, backend: Backend, account: OwnerAccount, embeddings: Embeddings, google: GoogleConsent,
-  credentialVersion: int, accountState: AccountState, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
+  credentialVersion: int, maxHold: int, accountState: AccountState, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
 pure val initial: ModelBinding = { phase: Unbound, backend: NoBackend, account: NoAccount, embeddings: NoEmbeddings,
-  google: { gmailChanges: false, calendarEdits: false }, credentialVersion: 0, accountState: Usable, lastCloudFailure: NoCloudFailure, calls: List(), nextCall: 0, clock: 0 }
+  google: { gmailChanges: false, calendarEdits: false }, credentialVersion: 0, maxHold: 0, accountState: Usable, lastCloudFailure: NoCloudFailure, calls: List(), nextCall: 0, clock: 0 }
 pure val viewValues = Set({ epoch: 1, credentialVersion: 1 }, { epoch: 1, credentialVersion: 0 }, { epoch: 2, credentialVersion: 2 })
-pure def canBind(s: ModelBinding, doc: LaunchDocument, view: FrameView): bool =
-  s.phase == Unbound and documentAdmitted(doc) and view.epoch >= 1 and view.credentialVersion >= 0 and (needsCredential(doc.backend) implies view.credentialVersion >= 1)
-pure def bind(s: ModelBinding, doc: LaunchDocument, view: FrameView): ModelBinding =
+pure val maxHoldValues = Set(0, 5)
+pure def canBind(s: ModelBinding, doc: LaunchDocument, view: FrameView, maxHold: int): bool =
+  s.phase == Unbound and documentAdmitted(doc) and view.epoch >= 1 and view.credentialVersion >= 0 and (needsCredential(doc.backend) implies view.credentialVersion >= 1) and maxHold >= 0
+pure def bind(s: ModelBinding, doc: LaunchDocument, view: FrameView, maxHold: int): ModelBinding =
   { ...s, phase: Bound, backend: doc.backend, account: doc.account, embeddings: doc.embeddings, google: doc.google,
-    credentialVersion: if (needsCredential(doc.backend)) view.credentialVersion else 0 }
+    credentialVersion: if (needsCredential(doc.backend)) view.credentialVersion else 0, maxHold: maxHold }
 pure def alwaysUnboundHoldsNothing(s: ModelBinding): bool = s.phase == Unbound implies
   (s.backend == NoBackend and s.credentialVersion == 0 and s.calls.length() == 0 and s.nextCall == 0 and s.accountState == Usable and s.lastCloudFailure == NoCloudFailure)
 pure def alwaysCredentialFollowsBackend(s: ModelBinding): bool = s.credentialVersion >= 0 and (s.phase == Bound implies (needsCredential(s.backend) iff s.credentialVersion >= 1))
 pure def stepBindingFixedOnceBound(before: ModelBinding, after: ModelBinding): bool = before.phase == Bound implies
-  (after.phase == Bound and after.backend == before.backend and after.account == before.account and after.embeddings == before.embeddings and after.google == before.google)
+  (after.phase == Bound and after.backend == before.backend and after.account == before.account and after.embeddings == before.embeddings and after.google == before.google and after.maxHold == before.maxHold)
 pure def sometimesBoundToCloud(s: ModelBinding): bool = s.phase == Bound and isCloud(s.backend)
 pure def sometimesBoundWithoutBackend(s: ModelBinding): bool = s.phase == Bound and s.backend == NoBackend
 ```
@@ -110,14 +116,17 @@ pure def stepClockNeverGoesBack(before: ModelBinding, after: ModelBinding): bool
 pure def sometimesOwnKeyAnswered(s: ModelBinding): bool = isOwnKey(s.backend) and s.nextCall >= 1 and s.calls.length() == 0 and s.accountState == Usable
 ```
 
-### Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call
+### Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once
 
 The handlers read a refusal as the cloud client's `CloudError`; the own-key
 handler classifies its HTTP failures into the same variants. Core retries
 `RefusedConnection` and `RetryEnvelope` on the second registration. A rate
 limit is core's exhausted budget, which removes the provider's remaining
-registration; a refused request is a bad request; every other refusal ends
-the call.
+registration, so the transport never re-sends it; the refusal carries the
+time left until the account's retry time, and the turn that made the call
+waits for that, at most five seconds, and sends it once more
+([planning](../conversation/planning.md)). A refused request is a bad
+request; every other refusal ends the call.
 
 ```quint
 import models as M from "../../core/models"
@@ -136,6 +145,29 @@ pure def transient(e: C::CloudError): bool = match e { | CloudNetwork => true | 
 pure def rateLimited(e: C::CloudError): bool = match e { | CloudRateLimited(_) => true | _ => false }
 pure def lawOnlyTransientRefusalsAreRetried(e: C::CloudError): bool = (M::retryable(outcomeOf(e)) and outcomeOf(e) != M::ExhaustedBudget) iff transient(e)
 pure def lawRateLimitExhaustsTheProvider(e: C::CloudError): bool = rateLimited(e) iff outcomeOf(e) == M::ExhaustedBudget
+```
+
+### A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry
+
+A refusal body that says the provider could not parse a tool call out of
+the model's own generation (`code` `parser_error`, or `type`
+`generation_error` with `param` `tool_calls`, flat or inside an `error`
+envelope) is a bad request of its own: the request was sound and the sample
+failed, so the transport never re-sends it and the turn decides whether it
+gets one more try ([planning](../conversation/planning.md)). A streamed
+answer whose provider sends no bytes for 60 seconds, first its headers and
+then each next chunk, is abandoned and not re-sent, and the turn ends with
+its failure reply. Only the time between bytes is bounded, never the whole
+answer, so a long answer is never cut. Both are a provider issue in the
+account state.
+
+```quint
+type ShellRefusal = ToolCallUnparsed | SilentStream
+pure val streamIdleSeconds = 60
+pure def shellOutcome(r: ShellRefusal): M::Outcome = match r { | ToolCallUnparsed => M::BadRequest | SilentStream => M::ProcessingDenied }
+pure val rValues = Set(ToolCallUnparsed, SilentStream)
+pure def lawAShellRefusalIsNeverRetried(r: ShellRefusal): bool = not(M::retryable(shellOutcome(r)))
+pure def lawOnlyAParseFailureIsABadRequest(r: ShellRefusal): bool = (shellOutcome(r) == M::BadRequest) iff (r == ToolCallUnparsed)
 ```
 
 ### A tool call, a structured answer and the token use reach the caller as one result
@@ -164,6 +196,41 @@ pure def lawOnlyAToolOrSchemaCallGetsTheResult(ask: ChatAsk, answer: ChatAnswer)
   chatReturn(ask, answer) != AnswerProviderIssue implies (chatReturn(ask, answer) == AnswerResult iff wantsResult(ask))
 pure def lawToolCallsAreNeverDroppedForText(ask: ChatAsk, answer: ChatAnswer): bool =
   (answer.toolCalls > 0 and not(wantsResult(ask))) implies chatReturn(ask, answer) == AnswerText
+```
+
+### A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it
+
+No handler adds an output cap of its own: a call that names none, or asks
+to omit it, sends neither `max_tokens` nor `max_completion_tokens`, and the
+model's own maximum applies. A caller's `providerOptions.eliza.thinking`
+hint is `low` (bounded reasoning) or `off`. It becomes `reasoning_effort`
+only for a Cerebras model that documents the value, on the cloud and on an
+own-key endpoint whose host is `cerebras.ai` or under it: `low` is `low` on
+`qwen-3.8-27b` and `gpt-oss-120b`; `off` is `none` on `qwen-3.8-27b`,
+`zai-glm-4.7` and `gemma-4-31b`, and `low` on `gpt-oss-120b`. The shell
+reads the model id without a `cerebras/` or `openai/` prefix and without a
+`:` suffix. Any other model, any other endpoint, or no hint sends no effort,
+and the hint itself never reaches the wire.
+
+```quint
+type ThinkingHint = NoThinkingHint | ThinkingLow | ThinkingOff
+type ReasoningFamily = QwenReasoning | GptOssReasoning | OffOnlyReasoning | OtherReasoning
+type ReasoningEffort = ProviderDefault | EffortLow | EffortNone
+pure def effortFor(family: ReasoningFamily, hint: ThinkingHint): ReasoningEffort = match hint {
+  | ThinkingLow => if (family == QwenReasoning or family == GptOssReasoning) EffortLow else ProviderDefault
+  | ThinkingOff => if (family == GptOssReasoning) EffortLow else if (family == QwenReasoning or family == OffOnlyReasoning) EffortNone else ProviderDefault
+  | NoThinkingHint => ProviderDefault
+}
+type CapAsk = NoCapAsked | CapAsked({ tokens: int })
+pure def capSent(asked: CapAsk, omit: bool): CapAsk = if (omit) NoCapAsked else asked
+pure val familyValues = Set(QwenReasoning, GptOssReasoning, OffOnlyReasoning, OtherReasoning)
+pure val hintValues = Set(NoThinkingHint, ThinkingLow, ThinkingOff)
+pure val askedValues = Set(NoCapAsked, CapAsked({ tokens: 256 }))
+pure def lawNoHintSendsNoEffort(family: ReasoningFamily): bool = effortFor(family, NoThinkingHint) == ProviderDefault
+pure def lawAnUndocumentedModelGetsNoEffort(hint: ThinkingHint): bool = effortFor(OtherReasoning, hint) == ProviderDefault
+pure def lawLowNeverTurnsReasoningOff(family: ReasoningFamily): bool = effortFor(family, ThinkingLow) != EffortNone
+pure def lawNoCapUnlessTheCallerNamesOne(omit: bool): bool = capSent(NoCapAsked, omit) == NoCapAsked
+pure def lawOmittingDropsTheCap(asked: CapAsk): bool = capSent(asked, true) == NoCapAsked
 ```
 
 ## Story: Keep the account state honest
@@ -197,7 +264,7 @@ pure def callVersion(calls: List[Call], id: int): int = calls.select(c => c.id =
 pure def canRefuseCall(s: ModelBinding, id: int): bool = s.calls.some(c => c.id == id)
 pure def refuseCall(s: ModelBinding, id: int, now: int, e: C::CloudError): ModelBinding = {
   val t = clockAt(s, now)
-  val failure = failureOf(e, callVersion(s.calls, id))
+  val failure = heldFailure(failureOf(e, callVersion(s.calls, id)), t, s.maxHold)
   val ignored = staleRefusal(failure, s.credentialVersion)
   { ...s, calls: s.calls.select(c => c.id != id), clock: t,
     accountState: if (ignored) s.accountState else afterFailure(s.accountState, failure, t),
@@ -224,6 +291,31 @@ pure def stepNoCallBeforeRetryAt(before: ModelBinding, via: str, after: ModelBin
 pure def sometimesLimitReached(s: ModelBinding): bool = limitedAt(s.accountState, s.clock)
 pure def sometimesProviderIssueKeepsTheLimit(s: ModelBinding): bool =
   limitedAt(s.accountState, s.clock) and lastFailureKind(s.lastCloudFailure) == "provider_issue"
+```
+
+### A host may shorten how long a rate limit holds the account, never past the provider's retry time
+
+`OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS`, or its alias
+`CEREBRAS_RATE_LIMIT_MAX_HOLD_SECONDS`, in the launch environment is a
+positive number of seconds: a rate limit holds the account for at most that
+long after the refusal. Unset, blank, zero or anything else that is not a
+positive number keeps the provider's whole retry time. A provider whose
+per-minute allowance refills all the time admits a refused request within
+seconds though it names a minute, and a held account fails every call in
+that minute without asking the model. The limit's retry time, which status
+reports and the turn's re-send waits for, is the held one.
+
+```quint
+pure def heldFailure(failure: AccountFailure, t: int, maxHold: int): AccountFailure = match failure {
+  | LimitReached(x) => if (maxHold > 0 and x.retryAt > t + maxHold) LimitReached({ retryAt: t + maxHold }) else failure
+  | _ => failure
+}
+pure val failureValues = Set(LimitReached({ retryAt: 60 }), LimitReached({ retryAt: 3 }), ProviderIssue, InsufficientCredits)
+pure def lawAHeldLimitEndsByTheHostHold(failure: AccountFailure, t: int, maxHold: int): bool =
+  (maxHold > 0 and t >= 0) implies retryAtOf(heldFailure(failure, t, maxHold)) <= t + maxHold
+pure def lawAHoldNeverOutlastsTheProvider(failure: AccountFailure, t: int, maxHold: int): bool =
+  retryAtOf(heldFailure(failure, t, maxHold)) <= retryAtOf(failure)
+pure def lawWithoutAHoldTheProviderTimeStands(failure: AccountFailure, t: int): bool = heldFailure(failure, t, 0) == failure
 ```
 
 ### An answer clears the account state, except a limit not yet over

@@ -1,7 +1,8 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
 import { assert, it } from "@effect/vitest"
 import type { Memory, UUID } from "@elizaos/core"
-import { held, insufficientCredits, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+import { cutOffReply } from "../gen/agent__conversation__planning.ts"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
@@ -19,7 +20,8 @@ interface Reply {
 }
 
 module node {
-  import { ChannelType, conversationClientUserMemoryId, hashStableJson, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
+  import { randomUUID } from "node:crypto"
+  import { ChannelType, conversationClientUserMemoryId, hashStableJson, systemNoticeText, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
   import type { CloudFake } from "./support/cloud-fake.ts"
   import { request, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
 
@@ -69,13 +71,24 @@ module node {
   }
 
   /** @throws {never} */
-  export function lastSystemPrompt(cloud: CloudFake): string {
+  export function lastTurnPrompt(cloud: CloudFake): string {
     const body = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { messages?: { role: string; content?: unknown }[] } | undefined
-    const system = body?.messages?.find(({ role }) => role === "system")?.content
-    return typeof system === "string" ? system : ""
+    const turn = body?.messages?.at(-1)?.content
+    return typeof turn === "string" ? turn : JSON.stringify(turn ?? "")
+  }
+
+  export async function storeNotice(runtime: AgentRuntime, roomId: UUID): Promise<string> {
+    const room = await runtime.getRoom(roomId)
+    const text = systemNoticeText("runtime-error")
+    await runtime.createMessageMemory({
+      id: randomUUID() as UUID, roomId, agentId: runtime.agentId, entityId: runtime.agentId, createdAt: Date.now(),
+      ...(room?.worldId === undefined ? {} : { worldId: room.worldId }),
+      content: { text, systemNotice: "runtime-error", source: "device" },
+    })
+    return text
   }
 }
-import { completions, cutTurn, lastSystemPrompt, localDay, overlapping, roomMessages } from node
+import { completions, cutTurn, lastTurnPrompt, localDay, overlapping, roomMessages, storeNotice } from node
 
 const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 
@@ -239,14 +252,14 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
 
   try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}, ${awayTokyo.monthDay} at 5 PM GMT+9.`)))
   const invented = replyOf(try send(agent, id, { text: "What time is it now?", metadata: tokyo }))
-  const phonePrompt = lastSystemPrompt(cloud)
+  const phonePrompt = lastTurnPrompt(cloud)
 
   try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}.`)))
   const clause = replyOf(try send(agent, id, { text: "What time is it now that the meeting has ended?", metadata: tokyo }))
 
   try Effect.sync(() => cloud.script(text(`Today is ${awayHome.weekday}.`)))
   const launched = replyOf(try send(agent, id, { text: "What day is it?" }))
-  const launchPrompt = lastSystemPrompt(cloud)
+  const launchPrompt = lastTurnPrompt(cloud)
 
   const today = { tokyo: localDay("Asia/Tokyo", 0), home: localDay("America/New_York", 0) }
   try Effect.try(() => assert.deepStrictEqual({
@@ -261,5 +274,56 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
     clause: `It's ${awayTokyo.weekday}.`,
     launched: true,
     launchClock: true,
+  }))
+}, 120_000)
+
+it.live(`Each call keeps the system prompt and puts the turn's notes after the history, a host notice is not read back, a rate limit or an unparsed tool call is sent once more, and a cut-off ends the turn (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "The model reads what was said in the conversation, in a window taken once for the whole turn"; ${planning}, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; ${planning}, "A call that stopped at the model's own output limit ends planning")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const actions = { load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"], environment: { OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS: "1" } }
+  const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin }, ...actions }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
+  const { id, roomId } = try conversation(agent)
+  const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[] } & Record<string, unknown>)
+
+  try Effect.sync(() => cloud.script(text("First answer.")))
+  const first = replyOf(try send(agent, id, { text: "Hi", metadata: { observation: { view: "home", revision: 1, sensitive: false } } }))
+  const notice = try host("host notice", () => storeNotice(agent.agent.runtime, roomId))
+  try Effect.sync(() => cloud.script(rateLimited(Date.now() + 60_000), text("After the wait.")))
+  const beforeWait = completions(cloud)
+  const waited = replyOf(try send(agent, id, { text: "Still there?" }))
+  const waitedCalls = completions(cloud) - beforeWait
+  const bodies = sent()
+  const [opening, latest] = [bodies[0], bodies.at(-1)]
+
+  try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({ choices: [{ message: { role: "assistant", content: "A long answer that" }, finish_reason: "length" }] })))
+  const beforeCut = completions(cloud)
+  const cut = replyOf(try send(agent, id, { text: "Write it all out." }))
+  const cutCalls = completions(cloud) - beforeCut
+
+  const own = try startInProcess({
+    launch: { backend: { kind: "ownKey", baseUrl: cloud.ownKeyBaseUrl, smallModel: "small", largeModel: "large" }, ...actions },
+    frame: { credential: { version: 1, value: cloud.ownKey } }, modules: builtinModuleFactories,
+  })
+  const ownConversation = try conversation(own)
+  try Effect.sync(() => cloud.script(refusal(400, "generation_error", { reason: "parser_error" }), text("Read on the second try.")))
+  const beforeParse = completions(cloud)
+  const parsed = replyOf(try send(own, ownConversation.id, { text: "Work it out." }))
+  const parseCalls = completions(cloud) - beforeParse
+
+  const textOf = (content: unknown) => typeof content === "string" ? content : JSON.stringify(content)
+  try Effect.try(() => assert.deepStrictEqual({
+    first: first.text,
+    sameSystem: opening?.messages[0]?.role === "system" && textOf(opening.messages[0].content) === textOf(latest?.messages[0]?.content),
+    screenNoteLast: textOf(opening?.messages.at(-1)?.content).startsWith("Hi\n\nNote from the agent host, not the person: screen context"),
+    screenNoteOutOfSystem: !textOf(opening?.messages[0]?.content).includes("screen context"),
+    uncapped: bodies.every((body) => !("max_tokens" in body)),
+    waited: waited.text, waitedCalls,
+    noticeUnread: latest?.messages.every(({ content }) => !textOf(content).includes(notice)),
+    cut: cut.text, cutCalls,
+    parsed: parsed.text, parseCalls,
+  }, {
+    first: "First answer.", sameSystem: true, screenNoteLast: true, screenNoteOutOfSystem: true, uncapped: true,
+    waited: "After the wait.", waitedCalls: 2, noticeUnread: true,
+    cut: cutOffReply, cutCalls: 1,
+    parsed: "Read on the second try.", parseCalls: 2,
   }))
 }, 120_000)
