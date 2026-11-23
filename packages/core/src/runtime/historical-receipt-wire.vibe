@@ -5,7 +5,7 @@ import { isObjectRecord } from "../utils/type-guards.vibe"
 import type { ContextObjectPromptSegment } from "./context-object.vibe"
 import { stableJson } from "./stable-json.vibe"
 
-export const HISTORICAL_PROPOSAL_TERMINAL_ID_PREFIX = "historical-proposal-terminal:"
+const HISTORICAL_PROPOSAL_TERMINAL_ID_PREFIX = "historical-proposal-terminal:"
 
 type Field = "navigation" | "outcomes" | "observations"
 

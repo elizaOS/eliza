@@ -103,7 +103,7 @@ export type CalendarRefusal =
   | "organizer_unknown" | "not_invitee" | "invitee_edit" | "answers_unsupported" | "answer_scope" | "deletes_unsupported"
 
 /** A delete the Calendar action asked the owner to confirm in chat: the event, the request that asked, and when. */
-export interface CalendarDeleteQuestion {
+interface CalendarDeleteQuestion {
   readonly eventId: string
   readonly askedIn: string
   readonly askedAt: number

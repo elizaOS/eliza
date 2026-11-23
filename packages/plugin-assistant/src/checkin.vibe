@@ -144,7 +144,7 @@ export effect function checkinSchedules() {
 }
 
 /** The scheduler refused to change a check-in, so it still comes as it did. */
-export error CheckinRefused { reason: string }
+error CheckinRefused { reason: string }
 
 /** Keeps exactly one daily check-in task per slot the owner's times turn on, at that time on the owner's clock now; a check-in the owner dismissed stays off unless they just chose its time. */
 export effect function reconcileCheckins(key: string, chosen: readonly SlotName[] = []) {

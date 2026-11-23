@@ -30,7 +30,7 @@ function approvalsOf(runtime: IAgentRuntime): CalendarApprovals | undefined {
 }
 
 /** The calendar host over the agent's durable cache, with the managed Google calendar when the host's environment names its private broker. */
-export effect function startCalendarHost(runtime: IAgentRuntime) {
+effect function startCalendarHost(runtime: IAgentRuntime) {
   const endpoint = try Config.withDefault(Config.String("ELIZA_MANAGED_CALENDAR_READ_BROKER"), "")
   const token = try Config.withDefault(Config.String("ELIZA_API_TOKEN"), "")
   const managed = try configuredBroker(endpoint, token)

@@ -52,7 +52,7 @@ export function invitationChangeOf(action: Exclude<CalendarMutationPayload["acti
 }
 
 /** Why the invitation rule refused a change: its code and sentence. */
-export function invitationRefusal(change: InvitationChange, role: OwnerRole, verdict: InvitationVerdict): { readonly code: string; readonly message: string } {
+function invitationRefusal(change: InvitationChange, role: OwnerRole, verdict: InvitationVerdict): { readonly code: string; readonly message: string } {
   if (verdict === "RefuseScope") return { code: "CALENDAR_RECURRENCE_RESPONSE_SCOPE_UNSUPPORTED", message: "An invitation is answered for this event or the whole series, not this and following." }
   if (verdict === "RefuseUnsupported") return { code: "CALENDAR_INVITATION_RESPONSE_UNSUPPORTED", message: "That calendar's provider can't answer invitations." }
   if (verdict === "RunAsDecline") return { code: "CALENDAR_CANCELLATION_AUTHORITY_MISMATCH", message: "You are invited to this event, so it can be declined but not removed." }

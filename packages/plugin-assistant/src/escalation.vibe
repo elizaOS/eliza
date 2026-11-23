@@ -38,7 +38,7 @@ function describePlan(plan: EscalationPlan, zone: string): string {
 }
 
 /** The escalation plan kept for a saved reminder, or undefined when it has none. */
-export effect function escalationOf(taskId: string) {
+effect function escalationOf(taskId: string) {
   return try readRecord(recordKey(taskId), decodeRecord)
 }
 

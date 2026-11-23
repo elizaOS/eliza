@@ -18,7 +18,7 @@ const isEvent = Schema.is(BrokerEvent)
 const refusalCode = /^CALENDAR_SYNC_[A-Z_]{1,80}$/
 
 /** The managed calendar's kept events, one document in the agent's store, so a failed broker read can still show what the last good read held. */
-export effect function managedCache(store: KeyValueStore.KeyValueStore): ManagedCacheStore!! {
+effect function managedCache(store: KeyValueStore.KeyValueStore): ManagedCacheStore!! {
   const serialize = (try Semaphore.make(1)).withPermits(1)
   const lost = (reason: string) => new CacheStoreFailed({ reason })
 

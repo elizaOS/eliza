@@ -23,7 +23,7 @@ const weekdayWords: Readonly<Record<Weekday, string>> = { mon: "Mon", tue: "Tue"
 const doneLogLimit = 50
 
 /** The cron expressions a routine comes on: its windows and exact times, every day or on its weekdays, or undefined when it names no valid time. */
-export function routineCrons(when: RoutineWhen): readonly string[] | undefined {
+function routineCrons(when: RoutineWhen): readonly string[] | undefined {
   const exact = (when.times ?? []).map(minuteOf)
   const minutes = [...(when.windows ?? []).map((window) => windowHours[window] * 60), ...exact.filter((minute) => minute !== undefined)]
   if (minutes.length === 0 || exact.includes(undefined)) return undefined

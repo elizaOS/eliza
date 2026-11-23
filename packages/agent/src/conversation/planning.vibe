@@ -186,7 +186,7 @@ function toolMessage(result: ActionResult): string {
   return text.length > toolMessageLimit ? `${text.slice(0, toolMessageLimit)}…` : text
 }
 
-export function stoppedAtOutputLimit(error: unknown): boolean {
+function stoppedAtOutputLimit(error: unknown): boolean {
   const evidence = modelOutputIncompleteEvidence(error)
   return evidence !== undefined && typeof evidence.maxTokens !== "number" && isModelOutputLimitFinishReason(evidence.finishReason)
 }

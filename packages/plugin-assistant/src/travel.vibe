@@ -37,7 +37,7 @@ interface ReadDate {
 }
 
 /** Whether a message says the owner is back, says they are away, or says neither; a return is read first. */
-export function travelSignal(text: string): TravelSignal {
+function travelSignal(text: string): TravelSignal {
   if (backPattern.test(text)) return "SaysBack"
   return awayPattern.test(text) ? "SaysAway" : "SaysNothing"
 }
@@ -62,12 +62,12 @@ const dateText = (day: CalendarDay) => `${day.year}-${String(day.month).padStart
 const midnight = (day: CalendarDay, zone: string) => isCalendarDay(day.year, day.month, day.day) ? zonedInstant(dateText(day), "00:00", zone) : undefined
 
 /** Today on the owner's clock, as the travel rules order days. */
-export function todayKey(now: number, zone: string): number {
+function todayKey(now: number, zone: string): number {
   return Number(civilDate(now, zone).replace(/-/gu, ""))
 }
 
 /** The return a phrase after "until" names, on the owner's clock in `zone` at `now`. */
-export function statedReturn(phrase: string | undefined, now: number, zone: string): StatedReturn {
+function statedReturn(phrase: string | undefined, now: number, zone: string): StatedReturn {
   if (phrase === undefined) return noReturn
   const read = readDate(phrase)
   if (read === undefined) return { ...noReturn, named: true }
