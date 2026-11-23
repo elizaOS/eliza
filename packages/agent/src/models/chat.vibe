@@ -4,7 +4,7 @@ import { markModelProviderResendSpent, type GenerateTextParams, type GenerateTex
 import { isPermanentQuotaError, MODEL_PROVIDER_ATTEMPTS } from "@elizaos/core/protocol"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, effortFor, failureOf, outcomeOf, ownerResend, retryAtOf, shellOutcome, streamIdleSeconds, usageAsked,
+  cacheKeySent, capSent, chatReturn, effortFor, failureOf, outcomeOf, ownerResend, ownerResendWires, retryAtOf, shellOutcome, streamIdleSeconds, usageAsked,
   type CapAsk, type ChatAsk, type ChatReturn, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint, type TurnResendAdvice,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
@@ -627,7 +627,7 @@ function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProvi
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
   return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => {
     const scope = ownerResendScope()
-    const resend = scope === undefined ? undefined : { scope, dispatched: params[MODEL_PROVIDER_ATTEMPTS]?.length ?? 0 }
+    const resend = scope === undefined ? undefined : { scope, dispatched: ownerResendWires(scope.retrySpent === true, params[MODEL_PROVIDER_ATTEMPTS]?.length ?? 0) }
     return run(
       Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, params), params, askOf(params), resend), returned), FetchHttpClient.layer),
       params.signal,

@@ -201,12 +201,16 @@ pure def ownerResendDelay(advice: TurnResendAdvice, resendNow: int): int = match
   | NoResendHint => maximumOwnerResendWaitMs
   | ResendAt(d) => if (d.at > resendNow) d.at - resendNow else 0
 }
+pure def ownerResendWires(spentByPlanner: bool, dispatched: int): int =
+  if (spentByPlanner) 2 else dispatched
 pure def ownerResend(advice: TurnResendAdvice, temporary: bool, wires: int, live: bool, output: bool, resendNow: int, deadline: int): TurnResendDecision = {
   val wait = ownerResendDelay(advice, resendNow)
   if (temporary and wires == 1 and live and not(output) and wait <= maximumOwnerResendWaitMs and resendNow + wait < deadline)
     WaitToResend({ delay: wait })
   else DoNotResend
 }
+pure def lawAPlannerResendLeavesNoProviderResend(advice: TurnResendAdvice, dispatched: int, resendNow: int, deadline: int): bool =
+  ownerResend(advice, true, ownerResendWires(true, dispatched), true, false, resendNow, deadline) == DoNotResend
 pure def lawOnlyTheFirstActualRefusalCanResend(advice: TurnResendAdvice, temporary: bool, wires: int, live: bool, output: bool, resendNow: int, deadline: int): bool =
   wires != 1 implies ownerResend(advice, temporary, wires, live, output, resendNow, deadline) == DoNotResend
 pure def lawFundingLimitsAndOtherRefusalsNeverResend(advice: TurnResendAdvice, live: bool, output: bool, resendNow: int, deadline: int): bool =

@@ -11,7 +11,7 @@ import {
   turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type RestoreIntent, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { ownerResendScope } from "../models/owner-resend.vibe"
+import { ownerResendScope, withOwnerResend } from "../models/owner-resend.vibe"
 import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
 import { needsReplyReview, reviewRecoveredProse } from "./reply-grounding.vibe"
 
@@ -298,15 +298,18 @@ export function conversationCache(runtime: IAgentRuntime, roomId: string, stage:
 }
 
 export async function sentAtMostTwice<T>(send: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  const scope = ownerResendScope()
   try {
     return await send()
   } catch (error: unknown) {
-    if (modelProviderResendIsSpent(error) || (ownerResendScope() !== undefined && error instanceof ModelRefusal && error.status === 429)) throw error
+    if (modelProviderResendIsSpent(error) || scope?.retrySpent === true || (scope !== undefined && error instanceof ModelRefusal && error.status === 429)) throw error
     const wait = resendWait(callFailureOf(error), false)
     if (wait < 0 || signal.aborted) throw error
     await sleepWithAbort(wait, signal)
     signal.throwIfAborted()
-    return send()
+    if (scope === undefined) return send()
+    if (!scope.current() || Date.now() >= scope.deadline) throw error
+    return withOwnerResend({ ...scope, retrySpent: true }, send)
   }
 }
 

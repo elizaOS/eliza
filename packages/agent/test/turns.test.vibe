@@ -609,7 +609,7 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   const cutCalls = completions(cloud) - beforeCut
 
   const own = try startInProcess({
-    launch: { backend: { kind: "ownKey", baseUrl: cloud.ownKeyBaseUrl, smallModel: "small", largeModel: "large" }, ...actions },
+    launch: { callerRole: "owner", backend: { kind: "ownKey", baseUrl: cloud.ownKeyBaseUrl, smallModel: "small", largeModel: "large" }, ...actions },
     frame: { credential: { version: 1, value: cloud.ownKey } }, modules: builtinModuleFactories,
   })
   const ownConversation = try conversation(own)
@@ -617,6 +617,12 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   const beforeParse = completions(cloud)
   const parsed = replyOf(try send(own, ownConversation.id, { text: "Work it out." }))
   const parseCalls = completions(cloud) - beforeParse
+
+  try Effect.sync(() => cloud.script(refusal(400, "generation_error", { reason: "parser_error" }),
+    rateLimited(Date.now() + 60_000), text("A third wire attempt must never run.")))
+  const beforeMixed = completions(cloud)
+  const limitedResend = replyOf(try send(own, ownConversation.id, { text: "Try another calculation." }))
+  const mixedCalls = completions(cloud) - beforeMixed
 
   try Effect.try(() => assert.deepStrictEqual({
     first: first.text,
@@ -630,11 +636,13 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     stableReference: [asked.includes("ada.lovelace@gmail.com"), asked.includes("__ELIZA_"), replayed === asked],
     cut: cut.text, cutCalls,
     parsed: parsed.text, parseCalls,
+    mixed: limitedResend.failureKind, mixedCalls,
   }, {
     first: "First answer.", sameSystem: true, screenNoteLast: true, hostLabels: 1, screenNoteOutOfSystem: true, uncapped: true,
     waited: "After the wait.", waitedCalls: 2, noticeUnread: true, stableReference: [false, true, true],
     cut: cutOffReply, cutCalls: 1,
     parsed: "Read on the second try.", parseCalls: 2,
+    mixed: "rate_limited", mixedCalls: 2,
   }))
 }, 120_000)
 

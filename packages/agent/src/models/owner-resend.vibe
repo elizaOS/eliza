@@ -1,6 +1,7 @@
 // spec/agent/models/binding.md, "One temporarily rate-limited owner model call can resend before its deadline"
 export interface OwnerResendScope {
   readonly deadline: number
+  readonly retrySpent?: boolean
   current(): boolean
 }
 
