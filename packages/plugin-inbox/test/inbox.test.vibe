@@ -441,7 +441,7 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
     roomId: "8c3d4e5f-6a7b-4c8d-9e0f-a1b2c3d4e5f6", content: { text: "Email Bo about lunch", source: "device" },
   } as Memory
   const handed = emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], subject: "Lunch", body: "Noon?" } })
-  assert.deepEqual(handed?.values?.emailDraft, { version: 1, requestMessageId: request.id, to: ["bo@example.com"], subject: "Lunch", body: "Noon?" })
+  assert.deepEqual(handed?.data, { actionName: "INBOX_COMPOSE_EMAIL", version: 1, requestMessageId: request.id, to: ["bo@example.com"], subject: "Lunch", body: "Noon?" })
   assert.equal(emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], body: "Noon?", cc: ["cy@example.com"] } })?.data?.handoff, "inbox")
   assert.isUndefined(emailDraftAnswer({ ...request, content: { text: "Email Bo", source: "discord" } }, { parameters: { to: ["bo@example.com"], body: "Noon?" } }))
   assert.equal(cloud.state.dispatches, 0)

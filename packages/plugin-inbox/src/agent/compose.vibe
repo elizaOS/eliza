@@ -49,11 +49,7 @@ export function emailDraftAnswer(message: Memory, options: unknown): ActionResul
         version: 1, requestMessageId: (message.id ?? "").toLowerCase(), to, subject: typeof parameters.subject === "string" ? parameters.subject : "", body,
       } satisfies EmailDraftHandoff
       const text = "Here’s the draft."
-      return {
-        success: true, text, userFacingText: text, verifiedUserFacing: true,
-        values: { mode: "local-compose", targetId: "inbox", emailDraft: { ...emailDraft, to: [...emailDraft.to] } },
-        data: { actionName: inboxComposeActionName },
-      }
+      return { success: true, text, userFacingText: text, verifiedUserFacing: true, data: { actionName: inboxComposeActionName, ...emailDraft } }
     }
   }
 }
