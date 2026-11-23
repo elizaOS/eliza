@@ -1,5 +1,5 @@
-// spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review"
-import { controlOffered, navigationOffered, reviewAdmitted, runsUnreviewed, type BrowserControl, type Negotiated } from "../gen/browser__control.effect.vibe"
+// spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, and a request for several tabs is never narrowed to one"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review"
+import { closeOffered, controlOffered, navigationOffered, reviewAdmitted, runsUnreviewed, type BrowserControl, type Negotiated, type TabClose } from "../gen/browser__control.effect.vibe"
 import { BROWSER_SEARCH_QUERY_MAX } from "./grounding.vibe"
 
 export const BROWSER_SEARCH_CAPABILITY = "browser.search.v1"
@@ -7,6 +7,7 @@ export const BROWSER_TABS_CAPABILITY = "browser.tabs.v1"
 export const BROWSER_FIND_CAPABILITY = "browser.find.v1"
 export const BROWSER_HISTORY_CAPABILITY = "browser.history.v1"
 export const BROWSER_OPEN_NEW_TAB_CAPABILITY = "browser.open-new-tab.v1"
+export const BROWSER_TABS_CLOSE_ALL_CAPABILITY = "browser.tabs.close-all.v1"
 
 export const BROWSER_TAB_TARGET_MAX = 128
 export const BROWSER_FIND_TEXT_MAX = 256
@@ -20,6 +21,7 @@ export type BrowserControlOperation =
   | { readonly type: "browser_tab_new"; readonly private?: true }
   | { readonly type: "browser_tab_switch"; readonly target: string }
   | { readonly type: "browser_tab_close"; readonly target?: string }
+  | { readonly type: "browser_tab_close"; readonly all: true }
   | { readonly type: "browser_find"; readonly text: string }
   | { readonly type: "browser_history"; readonly action: BrowserHistoryAction }
 
@@ -29,6 +31,12 @@ export interface BrowserNavigateOperation {
   readonly type: "browser_navigate"
   readonly url: string
   readonly newTab?: true
+}
+
+export interface BrowserTabLine {
+  readonly title: string
+  readonly host?: string
+  readonly private?: boolean
 }
 
 export type BrowserParse<A> = { readonly ok: true; readonly operation: A } | { readonly ok: false; readonly reason: string }
@@ -63,6 +71,7 @@ function negotiatedOf(capabilities: readonly string[] | undefined): Negotiated {
     findCapability: has(BROWSER_FIND_CAPABILITY),
     historyCapability: has(BROWSER_HISTORY_CAPABILITY),
     newTabCapability: has(BROWSER_OPEN_NEW_TAB_CAPABILITY),
+    closeAllCapability: has(BROWSER_TABS_CLOSE_ALL_CAPABILITY),
   }
 }
 
@@ -76,6 +85,20 @@ export function isBrowserControl(value: unknown): value is BrowserControlOperati
 
 export function browserControlCapabilityAvailable(type: BrowserControlType, capabilities?: readonly string[]): boolean {
   return controlOffered(CONTROLS[type], negotiatedOf(capabilities))
+}
+
+function closeOf(operation: Extract<BrowserControlOperation, { type: "browser_tab_close" }>): TabClose {
+  return "all" in operation ? "CloseAll" : operation.target === undefined ? "CloseShowing" : "CloseNamed"
+}
+
+const CLOSE_ALL_UNAVAILABLE = "This phone's Browser closes one tab at a time and cannot close all tabs at once. Nothing was closed. Tell the owner, and offer to close the tab that is showing or a tab they name."
+const CONTROL_UNAVAILABLE = "This phone's Browser did not offer this control. Nothing was sent."
+
+export function browserControlRefusal(operation: BrowserControlOperation, capabilities?: readonly string[]): string | undefined {
+  if (operation.type !== "browser_tab_close") return browserControlCapabilityAvailable(operation.type, capabilities) ? undefined : CONTROL_UNAVAILABLE
+  const negotiated = negotiatedOf(capabilities)
+  if (closeOffered(closeOf(operation), negotiated)) return undefined
+  return "all" in operation && negotiated.tabsCapability ? CLOSE_ALL_UNAVAILABLE : CONTROL_UNAVAILABLE
 }
 
 export function browserNavigationAvailable(newTab: boolean, capabilities?: readonly string[]): boolean {
@@ -127,8 +150,11 @@ export function parseBrowserControl(value: unknown): BrowserParse<BrowserControl
       return target === undefined ? refuse("Invalid tab target") : accept({ type: value.type, target })
     }
     case "browser_tab_close": {
-      if (!onlyKeys(value, ["target"])) return refuse("Unexpected Browser field")
+      if (!onlyKeys(value, ["target", "all"])) return refuse("Unexpected Browser field")
       const named = field(value, "target")
+      const all = field(value, "all")
+      if (all !== undefined && all !== true) return refuse("Invalid all tabs flag")
+      if (all === true) return named === undefined ? accept({ type: value.type, all: true }) : refuse("Close one named tab or all tabs, not both")
       if (named === undefined) return accept({ type: value.type })
       const target = words(named, BROWSER_TAB_TARGET_MAX)
       return target === undefined ? refuse("Invalid tab target") : accept({ type: value.type, target })
@@ -167,7 +193,20 @@ const quoted = (value: string) => `“${value}”`
 const HISTORY_TITLES: Readonly<Record<BrowserHistoryAction, string>> = { back: "Go back", forward: "Go forward", reload: "Reload page", stop: "Stop loading" }
 const TAB_MATCH = "\n\nYour phone finds the tab. You pick one when more than one matches. The agent does not see your tabs."
 
-export function describeBrowserControl(operation: BrowserControlOperation): { readonly title: string; readonly description: string } {
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`
+
+function describeCloseAll(closing: readonly BrowserTabLine[] | undefined): { readonly title: string; readonly description: string } {
+  if (closing === undefined) return { title: "Close all tabs", description: "Closes every open tab in Browser. The agent does not see your tabs." }
+  const named = closing.filter((tab) => tab.private !== true)
+  const hidden = closing.length - named.length
+  const lines = [
+    ...named.map((tab) => `• ${tab.title}${tab.host !== undefined && tab.host !== tab.title ? ` (${tab.host})` : ""}`),
+    ...(hidden === 0 ? [] : [`• ${plural(hidden, "private tab")}`]),
+  ]
+  return { title: `Close ${plural(closing.length, "tab")}`, description: `${lines.join("\n")}\n\nCloses every tab listed here. The agent does not see your tabs.` }
+}
+
+export function describeBrowserControl(operation: BrowserControlOperation, closing?: readonly BrowserTabLine[]): { readonly title: string; readonly description: string } {
   switch (operation.type) {
     case "browser_search":
       return { title: "Search the web", description: `${quoted(operation.query)}\n\nOpens a web search for these words in Browser, with your search engine.` }
@@ -178,6 +217,7 @@ export function describeBrowserControl(operation: BrowserControlOperation): { re
     case "browser_tab_switch":
       return { title: "Switch tab", description: `Tab matching ${quoted(operation.target)}${TAB_MATCH}` }
     case "browser_tab_close":
+      if ("all" in operation) return describeCloseAll(closing)
       return { title: "Close tab", description: operation.target === undefined ? "Closes the tab that is showing in Browser." : `Tab matching ${quoted(operation.target)}${TAB_MATCH}` }
     case "browser_find":
       return { title: "Find in page", description: `${quoted(operation.text)}\n\nShows the matches on the page that is open in Browser. The agent does not see the page.` }

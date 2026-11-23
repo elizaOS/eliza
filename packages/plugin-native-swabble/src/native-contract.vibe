@@ -1,0 +1,144 @@
+// spec/nativeSwabble/index.md, "Story: Listen for a wake phrase only during the current authorized session"
+import type { PluginListenerHandle } from "@capacitor/core";
+
+export interface SwabbleConfig {
+
+  triggers: string[];
+
+  minPostTriggerGap?: number;
+
+  minCommandLength?: number;
+
+  locale?: string;
+
+  sampleRate?: number;
+
+  modelSize?: "tiny" | "base" | "small" | "medium" | "large";
+}
+
+export interface SwabbleStartOptions {
+
+  config: SwabbleConfig;
+}
+
+export interface SwabbleStartResult {
+
+  started: boolean;
+
+  error?: string;
+}
+
+export interface SwabbleWakeWordEvent {
+
+  wakeWord: string;
+
+  command: string;
+
+  transcript: string;
+
+  postGap: number;
+
+  confidence?: number;
+}
+
+export interface SwabbleSpeechSegment {
+
+  text: string;
+
+  start: number;
+
+  duration: number;
+
+  isFinal: boolean;
+}
+
+export interface SwabbleTranscriptEvent {
+
+  transcript: string;
+
+  segments: SwabbleSpeechSegment[];
+
+  isFinal: boolean;
+
+  confidence?: number;
+}
+
+export interface SwabbleStateEvent {
+
+  state: "idle" | "listening" | "processing" | "error";
+
+  reason?: string;
+}
+
+export interface SwabbleAudioLevelEvent {
+
+  level: number;
+
+  peak: number;
+}
+
+export interface SwabbleErrorEvent {
+
+  code: string;
+
+  message: string;
+
+  recoverable: boolean;
+}
+
+export interface SwabblePermissionStatus {
+
+  microphone: "granted" | "denied" | "prompt";
+
+  speechRecognition: "granted" | "denied" | "prompt" | "not_supported";
+}
+
+export interface SwabblePlugin {
+
+  start(options: SwabbleStartOptions): Promise<SwabbleStartResult>;
+
+  stop(): Promise<void>;
+
+  isListening(): Promise<{ listening: boolean }>;
+
+  getConfig(): Promise<{ config: SwabbleConfig | null }>;
+
+  updateConfig(options: { config: Partial<SwabbleConfig> }): Promise<void>;
+
+  checkPermissions(): Promise<SwabblePermissionStatus>;
+
+  requestPermissions(): Promise<SwabblePermissionStatus>;
+
+  getAudioDevices(): Promise<{
+    devices: Array<{ id: string; name: string; isDefault: boolean }>;
+  }>;
+
+  setAudioDevice(options: { deviceId: string }): Promise<void>;
+
+  addListener(
+    eventName: "wakeWord",
+    listenerFunc: (event: SwabbleWakeWordEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "transcript",
+    listenerFunc: (event: SwabbleTranscriptEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "stateChange",
+    listenerFunc: (event: SwabbleStateEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "audioLevel",
+    listenerFunc: (event: SwabbleAudioLevelEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "error",
+    listenerFunc: (event: SwabbleErrorEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  removeAllListeners(): Promise<void>;
+}

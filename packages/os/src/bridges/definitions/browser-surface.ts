@@ -346,6 +346,7 @@ export interface ElizaSurfaceManagerPlugin {
           | "scroll"
           | "follow"
           | "guide";
+        statementRegions?: true;
         validateOnly?: boolean;
         guidance?: NativePageGuidance;
         snapshotId?: string;
