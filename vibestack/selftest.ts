@@ -1393,7 +1393,11 @@ function eachCheckB() {
     // A seat equal to a booked one, though another object, is booked already.
     const booked = hall.step(hall.initial, { type: "book", row: 1, kind: "Adult" });
     assert.equal(hall.enabled(booked, { type: "book", row: 1, kind: "Adult" }), false);
-    assert.deepEqual(hall.parseState(booked), { booked: [{ row: 1, kind: "Adult" }], byRow: { 1: 1 }, byKind: { Adult: 1 } });
+    const parsed = hall.parseState(booked);
+    assert.deepEqual(parsed, { booked: [{ row: 1, kind: "Adult" }], byRow: { 1: 1 }, byKind: { Adult: 1 } });
+    parsed.byRow[1] = 2;
+    parsed.byKind.Adult = 2;
+    assert.deepEqual([booked.byRow, booked.byKind], [{ 1: 1 }, { Adult: 1 }]);
     for (const x of [{ ...booked, byRow: { "01": 1 } }, { ...booked, byRow: { $1: 1 } }, { ...booked, byKind: { Senior: 1 } }])
       assert.equal(hall.parseState(x), undefined, JSON.stringify(x));
   });
