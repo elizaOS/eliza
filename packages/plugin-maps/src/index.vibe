@@ -35,7 +35,7 @@ const relay = runSync(mapsNavigationRelay())
 
 effect function turnNavigation(runtime: IAgentRuntime, message: Memory): (MapsDeviceNavigation | undefined)!MapsFailure {
   const room = try mapError(tryPromise(() => runtime.getRoom(message.roomId)), () => new MapsFailure({ code: "storage", message: "The conversation of this turn could not be read." }))
-  const conversationId = room === null ? undefined : deviceConversation(room)?.id
+  const conversationId = room === null ? undefined : (try mapError(Effect.try(() => deviceConversation(room)), () => new MapsFailure({ code: "storage", message: "The conversation of this turn could not be read." })))?.id
   return conversationId === undefined ? undefined : conversationNavigation(relay, conversationId, () => true)
 }
 
