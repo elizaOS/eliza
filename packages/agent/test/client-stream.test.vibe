@@ -148,17 +148,19 @@ for (const rolledBack of [false, true]) {
     const path = `/api/conversations/${id}/messages`
     const body = { text: "Make the requested change.", clientMessageId: "effect-proof" }
     const headers = { "x-elizaos-cut-off-effect": "applied" }
-    const patch = toolCalls("", { name: "APPLY_FIXTURE", arguments: {} })
-    const undo = toolCalls("", { name: "ROLL_BACK_FIXTURE", arguments: {} })
-    try Effect.sync(() => cloud.script(...(rolledBack ? [patch, undo] : [patch]), insufficientCredits()))
+    try Effect.sync(() => {
+      const patch = toolCalls("", { name: "APPLY_FIXTURE", arguments: {} })
+      const undo = toolCalls("", { name: "ROLL_BACK_FIXTURE", arguments: {} })
+      cloud.script(...(rolledBack ? [patch, undo] : [patch]), insufficientCredits())
+    })
     const initial = try stream(agent, { method: "POST", path: `${path}/stream`, body, headers })
     const live = (try read(initial.chunks, 7)).outcome
     const replay = try call(agent, { method: "POST", path, body, headers })
     const legacy = try stream(agent, { method: "POST", path: `${path}/stream`, body })
     const old = (try read(legacy.chunks, 7)).outcome
     const expected = rolledBack ? undefined : "applied"
+    if (live.kind !== "Done" || old.kind !== "Done" || !("json" in replay)) return try Effect.die(new Error("The turn did not leave replayable replies"))
     try Effect.try(() => {
-      if (live.kind !== "Done" || old.kind !== "Done" || !("json" in replay)) throw new Error("The turn did not leave replayable replies")
       const buffered = replay.json as typeof live
       assert.strictEqual(live.failureKind, "insufficient_credits")
       assert.strictEqual(live.cutOffEffect, expected)
