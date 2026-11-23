@@ -6,7 +6,7 @@
   },
   {
     "source": "packages/host/src/config/types.eliza.ts",
-    "sha256": "d97046698739ce48c590a4ec4f202f595d63a10dbbc28ef0a2b1be2c2fa95ccc",
+    "sha256": "3462f4b1c151d5e3440c0f35b85c5bef63f743f6f1db5cd192660e2cdc5a4405",
     "reason": "Declares host configuration and snapshot shapes. The agent configuration loader and writer apply defaults, validate input and persist changes."
   },
   {
