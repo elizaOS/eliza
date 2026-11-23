@@ -101,24 +101,11 @@ const countedConsole = {
 const code = { rules: { comments, effects, console: countedConsole } }
 const own = ["apps/**", "packages/**"]
 const commented = {
-  "packages/agent/src/client/coordination.vibe": 1,
   "packages/agent/src/client/device-execution.vibe": 1,
-  "packages/agent/src/client/index.vibe": 1,
-  "packages/agent/src/conversation/events.vibe": 1,
-  "packages/agent/src/conversation/heard.vibe": 1,
-  "packages/agent/src/conversation/turns.vibe": 2,
-  "packages/agent/src/host/process.vibe": 1,
-  "packages/agent/src/schedule/store.vibe": 3,
   "packages/agent/src/voice/capture.worklet.mjs": 1,
-  "packages/agent/test/schedule-triggers.test.vibe": 1,
   "packages/cloud/src/google-read.vibe": 1,
   "packages/cloud/src/services/google/mail-read.vibe": 1,
-  "packages/core/src/network/ssrf.vibe": 3,
   "packages/core/src/retrieval.vibe": 21,
-  "packages/core/src/security/outbound-sanitize.vibe": 3,
-  "packages/core/src/utils/crypto-compat.vibe": 2,
-  "packages/core/src/utils/task-scheduling.vibe": 1,
-  "packages/os/test/image-apk.test.vibe": 2,
 }
 const scheduled = {
   "packages/agent/src/access/socket.vibe": 3,
