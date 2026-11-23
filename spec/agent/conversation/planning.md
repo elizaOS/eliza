@@ -76,7 +76,9 @@ when what the turn offers does: no action's own check of a message
 changes them, and an action family's description is stated on the first
 of its offered actions by name. Only an action that narrows its tool to
 the turn, and a route that withdraws what it replaces, change them from
-one message to the next. The history follows, then the person's
+one message to the next: on the phone the device tool's forms follow the
+screen, the routes and how views are delivered, so a phone conversation's
+tools still change when those do. The history follows, then the person's
 latest message, and only after it what this turn adds: the screen
 context, the device outcomes of this conversation's earlier requests, the
 task the turn runs for and the note that older history is not shown,
@@ -113,7 +115,16 @@ An action that narrows its tool may have no form for a turn, as the device
 proposal tool has none off an owner turn of the enrolled device, under a
 refused negotiation, or when no operation form is offered; it is then not
 offered that turn, since a tool with nothing it could be called with is
-never sent.
+never sent. An action whose job has another home on some turns has no form
+there, so each job is offered in one place: the native `BROWSER` command
+has none unless it is the home of a history move
+([browser control](../../browser/control.md)), and `VIEWS` none on a device
+turn whose views are not delivered as completed actions, where the device
+tool offers `open_view` instead
+([device surfaces](../deviceActions/surfaces.md)). These follow what the
+device negotiated, the browser the agent can command and how views are
+delivered, which change the device tool's own form anyway, never the words
+of a message.
 
 ```quint
 pure def turnNarrowed(params: Set[str], narrowed: Set[str]): Set[str] = params.intersect(narrowed)

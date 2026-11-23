@@ -56,6 +56,10 @@ export interface TurnToolForm {
 
 export const turnToolForms = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => TurnToolForm | undefined>()
 
+export function offeredOnlyWhere(action: Action, home: (runtime: IAgentRuntime, message: Memory) => boolean): void {
+  turnToolForms.set(action, (runtime, message) => home(runtime, message) ? { description: action.description, parameters: {} } : undefined)
+}
+
 export const turnFirstCalls = new WeakMap<Action, (runtime: IAgentRuntime, message: Memory) => ToolCall["arguments"] | undefined>()
 
 function firstCall(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ToolCall | undefined {

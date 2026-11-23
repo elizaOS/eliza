@@ -1,6 +1,7 @@
 // spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"
 import { assert, it } from "@effect/vitest"
-import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core"
+import type { ActionResult, AgentRuntime, IAgentRuntime, Memory } from "@elizaos/core"
+import { offeredActions } from "@elizaos/agent"
 import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import {
   BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_NO_TABS_TO_CLOSE_NOTICE, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY,
@@ -154,7 +155,7 @@ const failureKind = (result: ActionResult) => {
   return typeof failure === "object" && failure !== null && "kind" in failure ? failure.kind : undefined
 }
 
-it.effect('Go back on the tab the turn observed and say only that the browser was asked (spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command")', effect () => {
+it.effect('Go back on the tab the turn observed and say only that the browser was asked (spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form")', effect () => {
   const back = browserPlugin.actions?.find((action) => action.name === "BROWSER_BACK")
   const reload = browserPlugin.actions?.find((action) => action.name === "BROWSER_RELOAD")
   try Effect.try(() => assert.isTrue(back !== undefined && reload !== undefined))
@@ -170,6 +171,10 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
   const run = (message: Memory, action = back) => promise(() => action!.handler(device.runtime, message, undefined, {}))
   const commandOffered = try promise(() => back!.validate(device.runtime, turn(browserTab)))
   const commandWithoutBrowser = try promise(() => back!.validate({ getService: () => null } as unknown as IAgentRuntime, turn(browserTab)))
+  const toolsOffered = (getService: IAgentRuntime["getService"]) =>
+    offeredActions({ actions: browserPlugin.actions ?? [], getService } as unknown as AgentRuntime, turn(browserTab), () => undefined).map(({ name }) => name).toSorted()
+  const offeredWithBrowser = toolsOffered(device.runtime.getService)
+  const offeredWithoutBrowser = toolsOffered(() => null)
   const observed = try run(turn(browserTab))
   const sensitive = try run(turn({ ...browserTab, sensitive: true, selectedObject: undefined }), reload)
   const completed = try run(turn(browserTab))
@@ -187,6 +192,7 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
     ])
     assert.strictEqual(device.asks.length, 8)
     assert.deepStrictEqual([commandOffered, commandWithoutBrowser], [true, false])
+    assert.deepStrictEqual([offeredWithBrowser, offeredWithoutBrowser], [["BROWSER", "BROWSER_BACK", "BROWSER_FORWARD", "BROWSER_RELOAD"], []])
     assert.deepStrictEqual([observed.success, observed.turnComplete, observed.verifiedUserFacing, observed.data?.executionStatus], [true, true, true, "dispatched"])
     assert.deepStrictEqual(JSON.parse(observed.text ?? "").value, { dispatched: true, completed: false, requiresReadback: false })
     assert.isTrue(sensitive.success)
