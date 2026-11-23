@@ -46,9 +46,8 @@ module node {
   }
 
   /** @throws {Error} */
-  export function launchOutcome(root: string, frame: string): { readonly exit: number | null; readonly stateCreated: boolean } {
-    const cli = JSON.stringify(import.meta.resolve("@elizaos/agent/cli"))
-    const invoke = `import { runAgentCli } from ${cli}; runAgentCli({ bundled: [] });`
+  export function launchOutcome(cli: string, root: string, frame: string): { readonly exit: number | null; readonly stateCreated: boolean } {
+    const invoke = `import { runAgentCli } from ${JSON.stringify(cli)}; runAgentCli({ bundled: [] });`
     const state = path.join(root, "state")
     const child = spawnSync(process.execPath, [
       "--input-type=module", "--eval", invoke, "--", "eliza-agent", "serve", "--launch", path.join(root, "launch.json"),
@@ -210,7 +209,8 @@ it.effect('Start my agent with my character, policy and model: the service and t
     const oversized = try admittedAnswer(oversizedOwnKey)
     const launchRoot = try scratch("oversized-own-key")
     try writeTree(launchRoot, { "launch.json": oversized.document })
-    assert.deepStrictEqual(try Effect.try(() => launchOutcome(launchRoot, oversized.frame ?? "")), { exit: 77, stateCreated: false })
+    const agentCli = import.meta.resolve("@elizaos/agent/cli")
+    assert.deepStrictEqual(try Effect.try(() => launchOutcome(agentCli, launchRoot, oversized.frame ?? "")), { exit: 77, stateCreated: false })
 
     for (const [index, entry] of REFUSED.entries()) {
       assert.strictEqual(answers[ADMITTED.length + index]?.kind, "refused", `the service admitted ${entry.name}`)
