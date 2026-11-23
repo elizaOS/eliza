@@ -1,4 +1,4 @@
-// spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed only within the Files bounds, as the peer negotiated it, and with Files on the unlocked screen for a change"
+// spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"
 import { Service, resolveStateDir, type IAgentRuntime, type Plugin } from "@elizaos/core"
 import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import { filesProposalFamily } from "./device-proposals.vibe"

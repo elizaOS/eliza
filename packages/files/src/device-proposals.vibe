@@ -1,4 +1,4 @@
-// spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed only within the Files bounds, as the peer negotiated it, and with Files on the unlocked screen for a change"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
+// spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
 import { directRequests, readOperation, type CheckedOperation, type DeviceProposalFamily, type DeviceTurn, type Grounding, type ProposalForm } from "@elizaos/agent/device-actions"
 import { chatKeepsSentIdentities, filesChatAnswer, filesChatBound } from "../gen/files__shownTargets.effect.vibe"
 import {
@@ -8,7 +8,7 @@ import {
 
 type Refusal = Extract<Grounding, { readonly kind: "Refused" }>
 
-const filesGuidance = "Phone Files: to find files, use files_filter; it only narrows what Files shows and returns a count, never file names or contents. files_open shows one file by path or by shown, for example shown 1 when the filter found one file. files_share, files_move, files_trash and files_folder_create are reviewed with Files on screen; a move never replaces a file with the same name, and Trash is restorable for 30 days. Use only paths the owner named or Files showed."
+const filesGuidance = "Phone Files: to find files, use files_filter; it only narrows what Files shows and returns a count, never file names or contents. files_open shows one file by path or by shown, for example shown 1 when the filter found one file. files_share, files_move, files_trash and files_folder_create are reviewed on the phone once the owner opens Files there; a move never replaces a file with the same name, and Trash is restorable for 30 days. Use only paths the owner named or Files showed."
 
 const every = filesToolSurface([FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY]).schemas
 
@@ -30,16 +30,6 @@ const notNegotiated: Refusal = {
   forModel: "This phone did not negotiate this Files form: name files by path unless shown positions are offered. No device proposal was created.",
   forOwner: "Your phone can't do that in Files from chat right now.",
 }
-const needsUnlock: Refusal = {
-  kind: "Refused", code: "FILES_CONTEXT_LOCKED",
-  forModel: "Files operations are reviewed only on the owner's unlocked phone. No device proposal was created.",
-  forOwner: "Unlock the phone to review this action.",
-}
-const needsFilesView: Refusal = {
-  kind: "Refused", code: "FILES_CONTEXT_NOT_SHOWN",
-  forModel: "A Files share, move, trash or new folder is reviewed only with Files on the owner's screen. No device proposal was created.",
-  forOwner: "Open Files to review this action.",
-}
 
 function sentIdentitiesDropped(operation: FilesAgentOperation): FilesAgentOperation {
   if ((operation.type !== "files_move" && operation.type !== "files_trash") || !("reviewed" in operation) || chatKeepsSentIdentities(filesForm(operation).kind)) return operation
@@ -56,15 +46,9 @@ export const filesProposalFamily: DeviceProposalFamily = {
     const decoded = try Effect.result(decodeFilesOperation(proposed.operation))
     if (Result.isFailure(decoded)) return invalid(decoded.failure.reason)
     const { kind, form } = filesForm(decoded.success)
-    const observation = turn.observation
-    const answer = filesChatAnswer(
-      kind, form, turn.capabilities.includes(FILES_CAPABILITY), turn.capabilities.includes(FILES_SHOWN_TARGET_CAPABILITY),
-      observation !== undefined, observation?.sensitive !== false, observation?.view === "files",
-    )
+    const answer = filesChatAnswer(kind, form, turn.capabilities.includes(FILES_CAPABILITY), turn.capabilities.includes(FILES_SHOWN_TARGET_CAPABILITY))
     switch (answer) {
       case "FilesNotNegotiated": return notNegotiated
-      case "FilesNeedsUnlock": return needsUnlock
-      case "FilesNeedsFilesView": return needsFilesView
       case "FilesProposed": {
         const operation = readOperation(sentIdentitiesDropped(decoded.success))?.operation
         return operation === undefined

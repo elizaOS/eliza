@@ -1,6 +1,6 @@
-// spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
+// spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
 import type { ActionParameterSchema } from "@elizaos/core"
-import { bindsIdentity, formAdmitted, type FilesForm, type FilesKind } from "../gen/files__shownTargets.effect.vibe"
+import { bindsIdentity, filesCardNotice, formAdmitted, type FilesCardNotice, type FilesForm, type FilesKind } from "../gen/files__shownTargets.effect.vibe"
 import { baseName, filterLabel, FilesFilterOperation, validName, validPath, type FilesFilter } from "./storage/model.vibe"
 
 export const FILES_CAPABILITY = "files.browser.v1"
@@ -87,6 +87,27 @@ export function filesOperationAdmitted(op: FilesAgentOperation, capabilities: re
 export function filesFilterOf(op: Extract<FilesAgentOperation, { readonly type: "files_filter" }>): FilesFilter {
   const { type: _type, ...filter } = op
   return filter
+}
+
+export interface FilesScreen {
+  readonly view: string
+  readonly sensitive?: boolean
+}
+
+const CARD_NOTICES: Readonly<Record<FilesCardNotice, string | undefined>> = {
+  FilesReviewable: undefined, FilesUnlockNotice: "Unlock the phone to review this action.", FilesOpenNotice: "Open Files to review this action.",
+}
+
+function cardNotice(op: FilesAgentOperation, screen: FilesScreen): FilesCardNotice {
+  return filesCardNotice(filesForm(op).kind, screen.sensitive === true, screen.view === "files")
+}
+
+export function filesContextAllowed(op: FilesAgentOperation, screen: FilesScreen): boolean {
+  return cardNotice(op, screen) === "FilesReviewable"
+}
+
+export function filesContextNotice(op: FilesAgentOperation, screen: FilesScreen): string | undefined {
+  return CARD_NOTICES[cardNotice(op, screen)]
 }
 
 const place = (path: string) => path === "" ? "Internal storage" : path.split("/").join(" › ")
