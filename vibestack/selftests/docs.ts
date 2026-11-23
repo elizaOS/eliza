@@ -18,6 +18,13 @@ const examplesSource = "vibestack/selftests/examples.ts";
 const toolMetadata = "vibestack/selftests/tools.ts";
 const EXAMPLES = "vibestack/examples";
 
+test("the prove skill lists everything the proof library declares", () => {
+  const skill = read(".agents/skills/prove/SKILL.md");
+  const declared = [...fs.readFileSync(LIB_FILE, "utf8").matchAll(/^\s*(?:ghost )?(?:lemma|function|predicate) (\w+)/gm)].map((m) => m[1]);
+  assert.ok(declared.length > 30, "vibestack/proof/lib.dfy declares its lemmas one to a line");
+  assert.deepEqual(declared.filter((name) => !skill.includes(`\`${name}\``)), []);
+});
+
 describe("the documents name what exists", () => {
   const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".agents/skills").filter((file) => file.endsWith(".md"))];
   const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
@@ -45,13 +52,6 @@ describe("the documents name what exists", () => {
       return [...links, ...paths, ...commands].map((what) => `${doc}: ${what}`);
     });
     assert.deepEqual([...new Set(lost)], []);
-  });
-
-  test("the prove skill lists everything the proof library declares", () => {
-    const skill = read(".agents/skills/prove/SKILL.md");
-    const declared = [...fs.readFileSync(LIB_FILE, "utf8").matchAll(/^\s*(?:ghost )?(?:lemma|function|predicate) (\w+)/gm)].map((m) => m[1]);
-    assert.ok(declared.length > 30, "vibestack/proof/lib.dfy declares its lemmas one to a line");
-    assert.deepEqual(declared.filter((name) => !skill.includes(`\`${name}\``)), []);
   });
 
   test("each example pins Effect, VibeLang, Vite and Vitest where the tools do", () => {
