@@ -81,13 +81,6 @@ it.effect('View declarations are exactly {id, label, path, aliases?} within thei
     [["notes", "chat"], refused.map(() => "LaunchDocumentRejected")]))
 })
 
-it.effect('A launch that declares views boots and serves (spec/agent/views.md, "Views are declared once at boot with distinct ids, paths and names, and never change after")', effect () => {
-  const booted = try boot({ launch: { views: [{ id: "notes", label: "Notes", path: "/notes" }] } })
-  const health = try ready(booted)
-  try host("stop", () => booted.child.stop())
-  try Effect.try(() => assert.strictEqual(health.status, 200))
-}, 180_000)
-
 it.effect('A malformed frame, version 2 or epoch 0 is a Config refusal whatever the document (spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error")', effect () => {
   const document = JSON.stringify(launchDocument({ backend: cloudBackend }))
   const frames = ["not json", JSON.stringify({ ...launchFrame(keyed), version: 2 }), JSON.stringify({ ...launchFrame(keyed), epoch: 0 }),
@@ -142,8 +135,8 @@ it.effect('The argv is exactly serve --launch --state and one endpoint (spec/age
   try Effect.try(() => assert.strictEqual(exited.code, 78))
 }, 180_000)
 
-it.effect('The token, credential and storage key never appear in output or any reply (spec/agent/host/launch.md, "Only the epoch and the credential version of a frame may be shown, never the token, the credential or the storage key")', effect () => {
-  const booted = try boot({ launch: {}, frame: { storageKey: "storage-key-material-1", epoch: 7 } })
+it.effect('A launch with a declared view serves health without leaking the token or storage key (spec/agent/views.md, "Views are declared once at boot with distinct ids, paths and names, and never change after"; spec/agent/host/launch.md, "Only the epoch and the credential version of a frame may be shown, never the token, the credential or the storage key")', effect () => {
+  const booted = try boot({ launch: { views: [{ id: "notes", label: "Notes", path: "/notes" }] }, frame: { storageKey: "storage-key-material-1", epoch: 7 } })
   const health = try ready(booted)
   const status = try host("status", () => booted.child.health())
   const secrets = [booted.frame.token, "storage-key-material-1"]
