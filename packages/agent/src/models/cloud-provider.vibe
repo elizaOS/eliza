@@ -1,4 +1,4 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Generic model fallback retries transient connection and provider failures"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
 import { describeImage, generateText, registerTwice, type Binding } from "./chat.vibe"
 

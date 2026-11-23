@@ -1,13 +1,15 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Generic model fallback retries transient connection and provider failures"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
-import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
+import { markModelProviderResendSpent, type GenerateTextParams, type GenerateTextResult, type IAgentRuntime, type ModelRegistrationMetadata, type StreamChunkCallback, type TokenUsage, type ToolCall } from "@elizaos/core"
+import { isPermanentQuotaError, MODEL_PROVIDER_ATTEMPTS } from "@elizaos/core/protocol"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { chatReturn, failureOf, outcomeOf, retryAtOf, type ChatAsk, type ChatReturn, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
+import { chatReturn, failureOf, outcomeOf, ownerResend, retryAtOf, type ChatAsk, type ChatReturn, type ModelHandler, type TurnResendAdvice } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
+import { ownerResendScope, type OwnerResendScope } from "./owner-resend.vibe"
 
 export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
 
-export type Binding = Pick<BoundModels, "credential" | "startCall" | "answerCall" | "refuseCall">
+export type Binding = Pick<BoundModels, "credential" | "startCall" | "answerCall" | "cancelCall" | "refuseCall">
 
 export interface Endpoint {
   readonly url: string
@@ -30,7 +32,7 @@ interface Reply {
 
 export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind; retryAt: number | undefined }
 
-export error Refused { cloud: CloudFailure }
+export error Refused { cloud: CloudFailure; temporary429?: TurnResendAdvice }
 
 error StreamConsumerFailed { cause: unknown }
 
@@ -303,6 +305,20 @@ function providerRefusal(status: number, words: string): CloudFailure | undefine
   return undefined
 }
 
+function periodLimit(text: string): boolean {
+  try {
+    const body: unknown = JSON.parse(text)
+    if (typeof body !== "object" || body === null) return false
+    const namesPeriod = (value: unknown) => typeof value === "object" && value !== null && "scope" in value && value.scope === "period"
+    const nested = "error" in body ? body.error : undefined
+    return namesPeriod(body) || namesPeriod(nested)
+      || ("rateLimit" in body && namesPeriod(body.rateLimit))
+      || (typeof nested === "object" && nested !== null && "rateLimit" in nested && namesPeriod(nested.rateLimit))
+  } catch {
+    return false
+  }
+}
+
 effect function refusalFrom(result: HttpClientResponse.HttpClientResponse) {
   const now = try Clock.currentTimeMillis
   const raw = timeout(result.text, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
@@ -311,7 +327,12 @@ effect function refusalFrom(result: HttpClientResponse.HttpClientResponse) {
   if (classified !== undefined) return new Refused({ cloud: classified })
   const response = { status: result.status, headers: { get: (name: string) => result.headers[name] ?? null }, text: async () => raw }
   const read = try Effect.promise(() => readCloudError(response, now))
-  return new Refused({ cloud: read.failure })
+  const failure = read.failure
+  const temporary429: TurnResendAdvice | undefined = result.status === 429 && failure.tag === "CloudRateLimited"
+    && !isPermanentQuotaError({ responseBody: raw }) && !periodLimit(raw)
+    ? failure.retryAt > 0 ? { tag: "ResendAt", at: failure.retryAt } : { tag: "NoResendHint" }
+    : undefined
+  return new Refused({ cloud: failure, ...(temporary429 === undefined ? {} : { temporary429 }) })
 }
 
 function usageOf(usage: WireUsage | null | undefined): TokenUsage | undefined {
@@ -409,20 +430,45 @@ effect function send(url: string, credential: Redacted.Redacted<string>, body: o
   }, ask)
 }
 
-effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, fields: object | undefined, sink: Sink, ask: ChatAsk) {
+effect function callOnce(binding: Binding, handler: ChatHandler, endpoint: Endpoint, body: object | undefined, sink: Sink, ask: ChatAsk) {
   const began = try Clock.currentTimeMillis
-  const started = try binding.startCall(handler, began)
-  if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil })
+  return try acquireUseRelease(binding.startCall(handler, began), effect (started) => {
+    if (typeof started !== "number") throw new Refused({ cloud: { tag: "CloudRateLimited", retryAt: started.limitedUntil } })
+    const answer = send(endpoint.url, binding.credential(), body, sink, ask) catch effect (failure) => {
+      if (!(failure instanceof Refused)) throw failure
+      const refused = try Clock.currentTimeMillis
+      try binding.refuseCall(started, refused, failure.cloud)
+      throw failure
+    }
+    const at = try Clock.currentTimeMillis
+    try binding.answerCall(started, at)
+    return answer
+  }, (started) => typeof started === "number" ? binding.cancelCall(started) : Effect.void)
+}
+
+interface CallResend {
+  readonly scope: OwnerResendScope
+  readonly dispatched: number
+}
+
+effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, fields: object | undefined, sink: Sink, ask: ChatAsk, resend?: CallResend) {
   const body = fields === undefined ? undefined : { model: endpoint.models[handler], stream: sink.stream === true, ...fields }
-  const answer = send(endpoint.url, binding.credential(), body, sink, ask) catch effect (failure) => {
+  const sendAgain = () => callOnce(binding, handler, endpoint, body, sink, ask)
+  return sendAgain() catch effect (failure) => {
     if (!(failure instanceof Refused)) throw failure
-    const refused = try Clock.currentTimeMillis
-    try binding.refuseCall(started, refused, failure.cloud)
-    throw refusalOf(failure.cloud)
+    const first = refusalOf(failure.cloud)
+    if (resend === undefined || failure.temporary429 === undefined) throw first
+    const now = try Clock.currentTimeMillis
+    const decision = ownerResend(failure.temporary429, true, resend.dispatched, resend.scope.current(), false, now, resend.scope.deadline)
+    if (decision.tag !== "WaitToResend") throw first
+    try sleep(Duration.millis(decision.delay))
+    const resumed = try Clock.currentTimeMillis
+    if (!resend.scope.current() || resumed >= resend.scope.deadline) throw first
+    return sendAgain() catch effect (second) => {
+      if (!(second instanceof Refused)) throw second
+      throw markModelProviderResendSpent(refusalOf(second.cloud))
+    }
   }
-  const at = try Clock.currentTimeMillis
-  try binding.answerCall(started, at)
-  return answer
 }
 
 function requestOf(endpoint: Endpoint, params: GenerateTextParams): object | undefined {
@@ -468,10 +514,14 @@ function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProvi
 }
 
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
-  return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
-    Effect.provide(Effect.map(serve(binding, handler, endpoint, requestOf(endpoint, params), params, askOf(params)), returned), FetchHttpClient.layer),
-    params.signal,
-  )
+  return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => {
+    const scope = ownerResendScope()
+    const resend = scope === undefined ? undefined : { scope, dispatched: params[MODEL_PROVIDER_ATTEMPTS]?.length ?? 0 }
+    return run(
+      Effect.provide(Effect.map(serve(binding, handler, endpoint, requestOf(endpoint, params), params, askOf(params), resend), returned), FetchHttpClient.layer),
+      params.signal,
+    )
+  }
 }
 
 export function describeImage(binding: Binding, endpoint: Endpoint) {

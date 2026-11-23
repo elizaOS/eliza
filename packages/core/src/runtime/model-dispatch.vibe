@@ -22,6 +22,7 @@ import {
   describeModelCallError,
   isModelProviderFallbackError,
   isModelProviderRetryBudgetExhaustedError,
+  modelProviderResendIsSpent,
 } from "../security/model-failure.vibe"
 import {
   collectPiiPromptText,
@@ -2223,7 +2224,7 @@ effect function afterFailedAttempt(run: DispatchRun, attempt: Attempt, error: un
     run.lastFailed = model
   }
   if (attempt.providerAttempt) attempt.providerAttempt.error = error
-  if (isModelProviderRetryBudgetExhaustedError(error)) {
+  if (isModelProviderRetryBudgetExhaustedError(error) || modelProviderResendIsSpent(error)) {
     run.exhaustedProviders.add(model.provider)
   }
   const nextModelIndex = run.resolvedModels.findIndex(

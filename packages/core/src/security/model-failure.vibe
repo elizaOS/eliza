@@ -55,6 +55,18 @@ export function isModelProviderRetryBudgetExhaustedError(
   )
 }
 
+const spentProviderResends = new WeakSet<object>()
+
+export function markModelProviderResendSpent<A extends object>(error: A): A {
+  spentProviderResends.add(error)
+  return error
+}
+
+export function modelProviderResendIsSpent(error: unknown): boolean {
+  const result = asErrorObject(unwrapRetryError(error))
+  return result !== null && spentProviderResends.has(result)
+}
+
 function hasHttpStatus(error: unknown, statuses: readonly number[]): boolean {
   const status = modelProviderErrorStatus(error)
   return status !== undefined && statuses.includes(status)
