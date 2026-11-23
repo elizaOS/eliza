@@ -213,13 +213,16 @@ module node {
     const llm = llmFake()
     const fakes = await startFakeServer()
     const keyOf = (n: number) => "00000000-0000-4000-8000-" + String(n).padStart(12, "0")
-    const beforeHeaders = Promise.withResolvers<void>()
-    const releaseHeaders = Promise.withResolvers<void>()
+    const gateOf = () => ({ reached: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() })
+    const streamGate = gateOf()
+    const wholeGate = gateOf()
+    const gates = new Map([[keyOf(7), streamGate], [keyOf(9), wholeGate]])
     try {
       fakes.mount("/llm/", async (request) => {
-        if (request.headers["idempotency-key"] !== keyOf(7)) return llm.handler(request)
-        beforeHeaders.resolve()
-        await releaseHeaders.promise
+        const held = gates.get(String(request.headers["idempotency-key"]))
+        if (held === undefined) return llm.handler(request)
+        held.reached.resolve()
+        await held.release.promise
         return { status: 503 }
       })
       const fixture = await openBackupDatabase()
@@ -246,14 +249,14 @@ module node {
           STRIPE_PRODUCT_ID: "unused", STRIPE_PLAN: "plus_monthly",
         } satisfies CloudBindings
         const retained = new Map<number, Promise<unknown>[]>()
-        const call = (n: number, includeUsage = false, signal?: AbortSignal) => {
+        const call = (n: number, includeUsage = false, signal?: AbortSignal, stream = true) => {
           const work: Promise<unknown>[] = []
           retained.set(n, work)
           return worker.fetch(new Request(api + "/api/v1/chat/completions", {
             method: "POST", signal,
             headers: { origin: web, cookie: "__Host-eliza-session=" + owner.access, "content-type": "application/json", "idempotency-key": keyOf(n) },
             body: JSON.stringify({ model: "test-chat", messages: [{ role: "user", content: "Please say hello" }],
-              max_tokens: 16, stream: true, stream_options: { include_usage: includeUsage } }),
+              max_tokens: 16, ...(stream ? { stream: true, stream_options: { include_usage: includeUsage } } : {}) }),
           }), env, { waitUntil: (pending) => { work.push(pending) } })
         }
         const ledger = async () => (await fixture.db.query<{
@@ -284,13 +287,13 @@ module node {
         await Promise.all(retainedStream)
         const abort = new AbortController()
         const earlyResponse = call(7, false, abort.signal)
-        await beforeHeaders.promise
+        await streamGate.reached.promise
         const beforeEarlyCancel = (await ledger()).find((row) => row.request === keyOf(7))
         const retainedBeforeHeaders = retained.get(7)?.length
         abort.abort()
         await Promise.all(retained.get(7) ?? [])
         await (await earlyResponse).text()
-        releaseHeaders.resolve()
+        streamGate.release.resolve()
         const idleAbort = new AbortController()
         const idle = await call(8, false, idleAbort.signal)
         const beforeIdleCancel = (await ledger()).find((row) => row.request === keyOf(8))
@@ -298,12 +301,19 @@ module node {
         const retainedIdle = retained.get(8) ?? []
         await Promise.all(retainedIdle)
         await llm.untilAborted(2)
+        const wholeAbort = new AbortController()
+        const wholeResponse = call(9, false, wholeAbort.signal, false)
+        await wholeGate.reached.promise
+        wholeAbort.abort()
+        const whole = await wholeResponse
+        await whole.text()
+        wholeGate.release.resolve()
         const settled = await ledger()
         const duplicate = await call(6)
         await duplicate.text()
         const replayed = await ledger()
         return {
-          asked, notAsked, truncated, usedBeforeFailure, preHeader, hangingStatus: hanging.status,
+          asked, notAsked, truncated, usedBeforeFailure, preHeader, hangingStatus: hanging.status, wholeStatus: whole.status,
           liveCompleteFrame: !first.done && partial.startsWith("data: ") && partial.endsWith("\n\n")
             && !second.done && new TextDecoder().decode(second.value).includes(replyText.slice(0, 2)),
           beforeCancel: beforeCancel !== undefined && beforeCancel.phase === "dispatched" && beforeCancel.usageKey === null,
@@ -322,7 +332,7 @@ module node {
         await fixture.close()
       }
     } finally {
-      releaseHeaders.resolve()
+      for (const held of gates.values()) held.release.resolve()
       await fakes.close()
     }
   }
@@ -335,7 +345,7 @@ it.live('Worker streams complete frames and settles the original hold (spec/clou
   const answer = { status: 200, content: replyText, models: ["test-chat"], usage: 0, errors: 0, done: 1, terminal: true, complete: true }
   try check(() => assert.deepStrictEqual(got, {
     asked: { ...answer, usage: 1 }, notAsked: answer, truncated: { ...answer, errors: 1 },
-    usedBeforeFailure: { ...answer, errors: 1 }, preHeader: true, hangingStatus: 200, liveCompleteFrame: true, beforeCancel: true, beforeEarlyCancel: true, idleDispatched: true,
+    usedBeforeFailure: { ...answer, errors: 1 }, preHeader: true, hangingStatus: 200, wholeStatus: 502, liveCompleteFrame: true, beforeCancel: true, beforeEarlyCancel: true, idleDispatched: true,
     holds: [
       [true, "settled", true, "known", 31],
       [true, "settled", true, "known", 31],
@@ -343,6 +353,7 @@ it.live('Worker streams complete frames and settles the original hold (spec/clou
       [true, "settled", true, "known", 31],
       [true, "settled", true, "known", 0],
       [true, "settled", true, "known", 36],
+      [true, "settled", true, "known", 38],
       [true, "settled", true, "known", 38],
       [true, "settled", true, "known", 38],
     ],

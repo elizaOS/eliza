@@ -143,7 +143,7 @@ export async function inferenceRequest(request: Request, env: InferenceEnv, db: 
         })
       }
     } catch {
-      const actual = streaming && request.signal.aborted ? price(hangUpCounts(quoted, 0, 0)) : null
+      const actual = request.signal.aborted ? price(hangUpCounts(quoted, 0, 0)) : null
       await settleUsage(db, admission.key, actual)
       return jsonError(502, "inference_provider_unavailable")
     }
