@@ -164,7 +164,6 @@ const settingsKnownKeys = new Set([
 	"alwaysRespondChannels",
 	"alwaysRespondSources",
 	"defaultTemperature",
-	"defaultMaxTokens",
 	"maxReplyTokens",
 	"defaultFrequencyPenalty",
 	"defaultPresencePenalty",
@@ -181,11 +180,7 @@ export const settingsSchema = z
 		alwaysRespondChannels: z.string().optional(),
 		alwaysRespondSources: z.string().optional(),
 		defaultTemperature: z.number().optional(),
-		// The former settings imposed an arbitrary completion ceiling (and
-		// `defaultMaxTokens` never reached a request). Keep the keys reserved so
-		// old configurations fail validation instead of being silently relocated
-		// into `settings.extra`.
-		defaultMaxTokens: z.never().optional(),
+		defaultMaxTokens: z.number().int().optional(),
 		maxReplyTokens: z.never().optional(),
 		defaultFrequencyPenalty: z.number().optional(),
 		defaultPresencePenalty: z.number().optional(),
@@ -198,6 +193,7 @@ export const settingsSchema = z
 		const knownValues: Record<string, JsonValue> = {};
 
 		for (const [key, entryValue] of entries) {
+			if (key === "defaultMaxTokens") continue;
 			if (settingsKnownKeys.has(key)) {
 				knownValues[key] = entryValue;
 			} else {

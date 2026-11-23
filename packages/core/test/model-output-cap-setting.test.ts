@@ -90,13 +90,25 @@ describe("output cap settings", () => {
 });
 
 describe("retired character cap settings", () => {
-	it.each(["defaultMaxTokens", "maxReplyTokens"])(
-		"rejects settings.%s instead of moving it into extra",
-		(key) => {
-			const result = parseAndValidateCharacter(
-				JSON.stringify({ name: "retired-cap", settings: { [key]: 16 } }),
-			);
-			expect(result.success).toBe(false);
-		},
-	);
+	it("loads a legacy character without carrying its default output cap", () => {
+		const result = parseAndValidateCharacter(
+			JSON.stringify({
+				name: "legacy-character",
+				settings: { defaultMaxTokens: 16, defaultTemperature: 0.25 },
+			}),
+		);
+		expect(result).toMatchObject({
+			success: true,
+			data: { settings: { defaultTemperature: 0.25 } },
+		});
+		expect(result.data?.settings).not.toHaveProperty("defaultMaxTokens");
+		expect(result.data?.settings?.extra).toBeUndefined();
+	});
+
+	it("rejects maxReplyTokens instead of moving it into extra", () => {
+		const result = parseAndValidateCharacter(
+			JSON.stringify({ name: "retired-cap", settings: { maxReplyTokens: 16 } }),
+		);
+		expect(result.success).toBe(false);
+	});
 });
