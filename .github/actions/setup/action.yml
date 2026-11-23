@@ -61,22 +61,23 @@ runs:
     # shared projects skip a tool run an earlier selftest made (nightly, fuzz.yml runs it without them).
     # Quint downloads its evaluator to ~/.quint from GitHub's rate-limited API: once per cache, not per run.
     # Only restored here: ci.yml saves it at the end, including failures, except cancelled verification of a superseded
-    # default-branch push. A job restores what a job of its name last saved, else another's
-    # that holds the same paths: a selftest-* job holds the selftest's tool runs, which no other job adds to, and any
-    # other job the spec caches of the projects, which no selftest-* job checks.
+    # default-branch push. A job restores what a job of its name last saved, under this lockfile first and under any
+    # other after it: an entry is named by the tools and inputs that produced it, so one from another lockfile is read
+    # only where those are the same. A selftest-* job holds the selftest's tool runs, which no other job adds to, and
+    # any other job the spec caches of the projects, which no selftest-* job checks.
     - id: spec-cache
       if: inputs.verification == 'true' && inputs.cache-verification == 'true'
       shell: bash
       env:
         JOB: ${{ inputs.job }}
       run: |
-        shared='spec-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}-'
-        prefix="${shared}${JOB}-"
+        named="spec-${{ runner.os }}-${{ runner.arch }}-${JOB}-"
+        prefix="${named}${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}-"
         key="${prefix}${{ github.sha }}-${{ github.run_attempt }}"
-        [[ $key == spec-*-"$JOB"-${{ github.sha }}-${{ github.run_attempt }} ]] || { echo "::error::Malformed spec cache key '$key'"; exit 1; }
+        [[ $key == spec-*-"$JOB"-*-${{ github.sha }}-${{ github.run_attempt }} ]] || { echo "::error::Malformed spec cache key '$key'"; exit 1; }
         {
           echo "restore<<EOF"
-          printf '%s\n' "$prefix" "$shared"
+          printf '%s\n' "$prefix" "$named"
           echo "EOF"
           echo "key=$key"
           echo "path<<EOF"
@@ -103,9 +104,7 @@ runs:
       with:
         path: .turbo/cache
         key: ${{ steps.turbo-cache.outputs.key }}
-        restore-keys: |
-          turbo-${{ runner.os }}-${{ runner.arch }}-${{ inputs.job }}-
-          turbo-${{ runner.os }}-${{ runner.arch }}-
+        restore-keys: turbo-${{ runner.os }}-${{ runner.arch }}-${{ inputs.job }}-
     - id: gen-seed
       if: >-
         inputs.job == 'verify' && inputs.cache-verification == 'true' &&
