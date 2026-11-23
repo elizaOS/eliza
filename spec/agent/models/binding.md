@@ -67,9 +67,9 @@ pure def sometimesBoundWithoutBackend(s: ModelBinding): bool = s.phase == Bound 
 
 ### No text handler is ever served by a model on the device
 
-`TEXT_SMALL` and `TEXT_LARGE` come from the backend, `IMAGE_DESCRIPTION`
-only from the cloud, and `TEXT_EMBEDDING` only from `localInference` when
-the launch asks for local embeddings.
+`TEXT_SMALL` and `TEXT_LARGE` come from the backend. Image description uses
+the cloud's image model or the own-key backend's large model. The only
+local model handler is `TEXT_EMBEDDING`, when the launch asks for it.
 
 ```quint
 type ModelHandler = TextSmall | TextLarge | ImageDescription | TextEmbedding
@@ -78,7 +78,7 @@ pure def isCloud(backend: Backend): bool = match backend { | CloudBackend(_) => 
 pure def handlerSource(backend: Backend, embeddings: Embeddings, handler: ModelHandler): HandlerSource =
   if (handler == TextEmbedding) (if (embeddings == NoEmbeddings) NotRegistered else FromLocalInference)
   else if (isCloud(backend)) FromCloud
-  else if (isOwnKey(backend) and handler != ImageDescription) FromOwnKey
+  else if (isOwnKey(backend)) FromOwnKey
   else NotRegistered
 pure val backendValues = Set(NoBackend,
   CloudBackend({ baseUrl: "https://cloud.example", baseUrlShape: HttpsOrigin, smallModel: "", largeModel: "", imageModel: "" }),
@@ -86,8 +86,8 @@ pure val backendValues = Set(NoBackend,
 pure val embeddingsValues = Set(NoEmbeddings, LocalEmbeddings({ dimensions: 384 }))
 pure def lawNoTextHandlerFromALocalModel(backend: Backend, embeddings: Embeddings, handler: ModelHandler): bool =
   handler != TextEmbedding implies handlerSource(backend, embeddings, handler) != FromLocalInference
-pure def lawImageDescriptionOnlyFromTheCloud(backend: Backend, embeddings: Embeddings): bool =
-  handlerSource(backend, embeddings, ImageDescription) != NotRegistered iff isCloud(backend)
+pure def lawImageDescriptionOnlyFromTheBackend(backend: Backend, embeddings: Embeddings): bool =
+  handlerSource(backend, embeddings, ImageDescription) != NotRegistered iff (isCloud(backend) or isOwnKey(backend))
 ```
 
 ### A model call starts only for a handler the backend serves, with the credential the binding holds
@@ -126,7 +126,10 @@ registration, so the transport never re-sends it; the refusal carries the
 time left until the account's retry time, and the turn that made the call
 waits for that, at most five seconds, and sends it once more
 ([planning](../conversation/planning.md)). A refused request is a bad
-request; every other refusal ends the call.
+request. Every other refusal ends the call. Both registrations of one call
+share a fresh `Idempotency-Key`.
+If the cloud already dispatched the first attempt, it answers the retry
+with `409 already_dispatched` and does not run or charge it again.
 
 ```quint
 import models as M from "../../core/models"
@@ -180,9 +183,8 @@ call that asked for them; a result no call asked for is sent as the person's
 text. An answer with neither text nor a tool call is a provider issue. A
 streamed call asks for its token use (`stream_options.include_usage`), which
 the provider sends in a last chunk without choices, and a call that is not
-streamed sends no stream options. The token use carries the prompt tokens
-the provider read from its prompt cache, when it names any, so a streamed
-call is measured as a whole one is.
+streamed sends no stream options. The token use retains the provider's
+cached input and reasoning counts when supplied, including a zero count.
 
 ```quint
 type ChatAsk = { offersTools: bool, choosesTool: bool, asksSchema: bool }
@@ -210,8 +212,10 @@ pure def lawOnlyAStreamAsksForItsTokenUse(streamed: bool): bool = usageAsked(str
 
 No handler adds an output cap of its own: a call that names none, or asks
 to omit it, sends neither `max_tokens` nor `max_completion_tokens`, and the
-model's own maximum applies. A caller's `providerOptions.eliza.thinking`
-hint is `low` (bounded reasoning) or `off`. It becomes `reasoning_effort`
+model's own maximum applies. A caller's `reasoning` hint is `low` (bounded
+reasoning) or `off`. The older `providerOptions.eliza.thinking` supplies the
+hint if the caller omits `reasoning`. Planning rounds, turn evaluators and
+SMS reply drafts request `off`. A hint becomes `reasoning_effort`
 only for a Cerebras model that documents the value, on the cloud and on an
 own-key endpoint whose host is `cerebras.ai` or under it: `low` is `low` on
 `qwen-3.8-27b` and `gpt-oss-120b`; `off` is `none` on `qwen-3.8-27b`,
@@ -244,7 +248,10 @@ pure def lawOmittingDropsTheCap(asked: CapAsk): bool = capSent(asked, true) == N
 ### A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one
 
 A caller names its conversation's prompt cache key in
-`providerOptions.cerebras.promptCacheKey`. It is sent as
+`providerOptions.cerebras.promptCacheKey`. The key starts with
+`eliza-workflow-v1:` and ends with the hex SHA-256 of the JSON array of agent
+and room IDs with a colon and the planner or evaluator stage appended
+before hashing. The agent accepts keys in that format. It is sent as
 `prompt_cache_key` only on the routes that take reasoning hints (the cloud,
 and an own-key endpoint whose host is `cerebras.ai` or under it) and only
 for `qwen-3.8-27b`, read as the hint rule reads the id, so the cloud's

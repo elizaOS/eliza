@@ -6,7 +6,7 @@ import { parseProfile } from "../../src/profile/profile.vibe"
 import { setModelPrice } from "../../src/services/models.vibe"
 import { Store, storeLayer } from "../../src/store/store.vibe"
 import { testCloud, type TestCloud } from "../support/cloud.vibe"
-import { llmFake, replyText, upstreamModel, type LlmFake } from "../support/llm-fake.ts"
+import { llmFake, replyText, upstreamModel, usage as providerUsage, type LlmFake } from "../support/llm-fake.ts"
 import { signedCaller } from "../support/caller.vibe"
 import { testProfile } from "../support/profile.ts"
 
@@ -96,7 +96,7 @@ effect function hangUpAfterFirstBytes(url: string, key: string) {
 }
 
 describe("WP5 Inference: chat completions", () => {
-  it.live("Answer a chat completion once and charge it once (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")", () => scoped(effect {
+  it.live("Answer a chat completion once and charge it once, forwarding a planning turn as sent and answering a provider's refusal of the request as the caller's (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
     const { cloud, llm, chat } = try chatCloud(true)
     const { model, messages } = request
     const unbounded = { model, messages }
@@ -108,13 +108,20 @@ describe("WP5 Inference: chat completions", () => {
     const callsBeforeAdmission = llm.bodies.length
     const whole = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
     const again = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
-    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }))
+    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "reject", status: 400 }, { kind: "reject", status: 401 }))
     const refusedByProvider = try chat(request)
     const unreadable = try chat(request)
-    const legacy = try chat({ ...request, model: "legacy-chat", max_completion_tokens: 64 })
+    const rejectedByProvider = try chat(request)
+    const providerAuthFailed = try chat(request)
+    const planning = {
+      tools: [{ type: "function", function: { name: "SEARCH", parameters: { type: "object", properties: {} } } }],
+      tool_choice: { type: "function", function: { name: "SEARCH" } },
+      top_p: 0.5, stop: "END", seed: 3, frequency_penalty: 0.2, presence_penalty: 0.3, prompt_cache_key: "agent-1"
+    }
+    const legacy = try chat({ ...request, ...planning, model: "legacy-chat", max_completion_tokens: 64 })
     const wide = try chat({ ...unbounded, model: "wide-chat", stream: true })
     const answer = whole.body as { readonly model: string; readonly choices: ReadonlyArray<{ readonly message: { readonly content: string } }> }
-    const usage = try settledCount(cloud, "org-owner", 5)
+    const usage = try settledCount(cloud, "org-owner", 7)
     const holds = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = 'org-owner' ORDER BY phase", [])
     const funds = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = 'org-owner'", [])
     const brokeUsage = try usageRows(cloud, "org-broke")
@@ -129,8 +136,11 @@ describe("WP5 Inference: chat completions", () => {
         whole: [whole.status, answer.model, answer.choices[0]?.message.content, whole.headers["cache-control"], status(again)],
         upstream: llm.bodies.map((body) => [body.model, body.stream ?? false, body.max_tokens, body.max_completion_tokens]),
         idempotencyForwarded: llm.headers.some((headers) => headers["idempotency-key"] !== undefined),
+        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[5]?.[field]])),
         refusedByProvider: status(refusedByProvider),
         unreadable: status(unreadable),
+        rejectedByProvider: status(rejectedByProvider),
+        providerAuthFailed: status(providerAuthFailed),
         usage,
         brokeUsage,
         holds: holds.map((row) => row.phase),
@@ -145,13 +155,17 @@ describe("WP5 Inference: chat completions", () => {
         callsBeforeAdmission: 0,
         whole: [200, "test-chat", replyText, "no-store", [409, "already_dispatched", undefined]],
         upstream: [[upstreamModel, false, 4096, undefined], [upstreamModel, false, 16, undefined],
-          [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
+          [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
         idempotencyForwarded: false,
+        planningForwarded: planning,
         refusedByProvider: [503, "provider_unavailable", "7"],
         unreadable: [502, "provider_invalid_response", undefined],
-        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 166, 31], ["known", 19673, 31]],
+        rejectedByProvider: [400, "invalid_request", undefined],
+        providerAuthFailed: [503, "provider_unavailable", "5"],
+        usage: [["known", 9842, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["known", 166, 31], ["known", 19673, 31]],
         brokeUsage: [],
-        holds: ["settled", "settled", "settled", "settled", "settled"],
+        holds: ["settled", "settled", "settled", "settled", "settled", "settled", "settled"],
         balance: 1_000_000 - 31 * 3 - 50
       }
     ))
@@ -159,7 +173,9 @@ describe("WP5 Inference: chat completions", () => {
 
   it.live("Stream a reply in the shape clients read (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
     const { cloud, llm, key, chat } = try chatCloud()
-    const streamed = try chat({ ...request, stream: true, stream_options: { include_usage: true } })
+    const keyForRoom = "eliza-workflow-v1:" + "1".repeat(64)
+    const tools = [{ type: "function", function: { name: "CALCULATE" } }]
+    const streamed = try chat({ ...request, stream: true, stream_options: { include_usage: true }, prompt_cache_key: keyForRoom, tools, tool_choice: "auto" })
     try sync(() => llm.script({ kind: "streamWithoutUsage" }, { kind: "hang", after: 2 }))
     const withoutUsage = try chat({ ...request, stream: true })
     const hungUp = try hangUpAfterFirstBytes(cloud.url, key)
@@ -173,7 +189,9 @@ describe("WP5 Inference: chat completions", () => {
         ending: frames(text).at(-1),
         doneFrames: frames(text).filter((frame) => frame === "[DONE]").length,
         content: parsed.flatMap((chunk) => chunk.choices.map((choice) => choice.delta.content ?? "")).join(""),
-        usageChunks: parsed.filter((chunk) => chunk.usage !== undefined && chunk.usage !== null).length,
+        usageFrames: parsed.flatMap((chunk) => chunk.usage == null ? [] : [chunk.usage]),
+        lastUsage: parsed.at(-1)?.usage,
+        forwardedPlanner: [llm.bodies[0]?.prompt_cache_key, llm.bodies[0]?.tools, llm.bodies[0]?.tool_choice],
         models: [...new Set(parsed.map((chunk) => chunk.model))],
         withoutUsage: [withoutUsage.status, frames(String(withoutUsage.body)).at(-1)],
         upstream: llm.bodies.map((body) => [body.model, body.stream, body.stream_options]),
@@ -186,7 +204,9 @@ describe("WP5 Inference: chat completions", () => {
         ending: "[DONE]",
         doneFrames: 1,
         content: replyText,
-        usageChunks: 1,
+        usageFrames: [providerUsage],
+        lastUsage: providerUsage,
+        forwardedPlanner: [keyForRoom, tools, "auto"],
         models: ["test-chat"],
         withoutUsage: [200, "[DONE]"],
         upstream: [[upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }]],

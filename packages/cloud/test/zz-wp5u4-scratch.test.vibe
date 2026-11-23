@@ -69,7 +69,7 @@ describe("WP5 Inference: chat admission", () => {
     const send = (body: unknown) => call({ headers: { ...caller.headers, "content-type": "application/json" }, json: body })
     const user = { role: "user", content: "Name this picture in one short title ok." }
     const answers = {
-      unsupportedField: outcome(try send({ model: "test-chat", messages: [user], tools: [] })),
+      unsupportedField: outcome(try send({ model: "test-chat", messages: [user], functions: [] })),
       emptyMessages: outcome(try send({ model: "test-chat", messages: [] })),
       tooManyTokens: outcome(try send({ model: "test-chat", messages: [user], max_tokens: 2_000_001 })),
       nestedExtra: outcome(try send({ model: "test-chat", messages: [{ ...user, cache: true }] })),

@@ -11,7 +11,7 @@ import tls from "node:tls";
 import { promisify } from "node:util";
 
 export type CloudReply =
-  | { readonly kind: "text"; readonly chunks: readonly string[]; readonly cachedTokens?: number; readonly keepOpenAfterDone?: boolean }
+  | { readonly kind: "text"; readonly chunks: readonly string[]; readonly cachedTokens?: number; readonly usage?: Readonly<Record<string, unknown>>; readonly keepOpenAfterDone?: boolean }
   | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: number | string; readonly resetsAt?: number; readonly retryAfterSeconds?: number }
   | { readonly kind: "images" }
   | { readonly kind: "drop" }
@@ -24,6 +24,7 @@ export interface CloudCall {
   readonly method: string;
   readonly path: string;
   readonly authorization: string | undefined;
+  readonly idempotencyKey: string | undefined;
   readonly body: unknown;
   readonly aborted: Promise<void>;
 }
@@ -176,7 +177,7 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       const content = reply.chunks.join("");
       const cached = reply.cachedTokens ?? 0;
       const completion = Math.max(1, Math.ceil(content.length / 4));
-      const usage = {
+      const usage = reply.usage ?? {
         prompt_tokens: 1 + cached, completion_tokens: completion, total_tokens: 1 + cached + completion,
         ...(cached > 0 ? { prompt_tokens_details: { cached_tokens: cached } } : {}),
       };
@@ -243,7 +244,8 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
     const body = await readBody(request);
     const aborted = new Promise<void>((resolve) => response.once("close", () => resolve()));
     const authorization = request.headers.authorization;
-    const call = { method: request.method ?? "", path: request.url ?? "", authorization, body, aborted };
+    const idempotencyKey = request.headers["idempotency-key"];
+    const call = { method: request.method ?? "", path: request.url ?? "", authorization, idempotencyKey: typeof idempotencyKey === "string" ? idempotencyKey : undefined, body, aborted };
     calls.push(call);
     const pathname = new URL(request.url ?? "/", "https://localhost").pathname;
     if (call.method === "POST" && pathname.endsWith("/chat/completions")) completions.shift()?.(call);
