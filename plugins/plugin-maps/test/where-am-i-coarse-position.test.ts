@@ -138,8 +138,16 @@ describe("where am I from a rough phone position", () => {
     );
     expect(addressArea("Paris, France")).toBe("Paris, France");
     expect(addressArea("Times Square, Manhattan, New York, NY, USA")).toBe(
-      "Manhattan, New York, NY, USA",
+      "New York, NY, USA",
     );
+    expect(
+      addressArea(
+        "The Sun Building, 280, Broadway, Civic Center, Manhattan, New York County, City of New York, New York, 10007, United States",
+      ),
+    ).toBe("City of New York, New York, United States");
+    expect(
+      addressArea("12, Main Street, Smallville, Kansas, United States"),
+    ).toBe("Smallville, Kansas, United States");
     expect(addressArea("Iceland")).toBe("Iceland");
     expect(addressArea(undefined)).toBeUndefined();
   });

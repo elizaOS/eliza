@@ -435,8 +435,10 @@ function coarsePhonePosition(
 /**
  * The area part of an address: the street part (a first segment with a number,
  * or the first of three or more) and any token with a digit (house numbers,
- * postcodes) are left out. "278 W Broadway, New York, NY 10006, USA" is
- * "New York, NY, USA"; "Paris, France" stays whole.
+ * postcodes) are left out, and at most the last three parts are kept, so an
+ * address written "name, number, road, suburb, city, state, country" keeps no
+ * road. "278 W Broadway, New York, NY 10006, USA" is "New York, NY, USA";
+ * "Paris, France" stays whole.
  */
 export function addressArea(
   formattedAddress: string | undefined,
@@ -455,7 +457,8 @@ export function addressArea(
         .filter((token) => !/\d/.test(token))
         .join(" "),
     )
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(-3);
   return area.length ? area.join(", ") : undefined;
 }
 
