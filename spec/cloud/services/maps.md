@@ -18,7 +18,11 @@ operation but tiles) with `limitOf` in one store transaction, the body,
 `providerQuote`, the hold (`M::admission`, then `courseOf`), `mayDispatch`,
 `M::markDispatched`, the provider, and one `settlementOf`. Wire shapes and string formats are the
 Effect Schemas of `src/services/maps.schema.ts`. Every maps answer is sent
-`Cache-Control: no-store`.
+`Cache-Control: no-store`. A metered answer also reports in `Server-Timing`
+how long the request spent in each phase, by name and duration only:
+`maps_auth` (request authentication), `maps_admission` (the limits and the
+hold, through `M::markDispatched`) and, for a dispatched request,
+`maps_provider`.
 
 ## Story: Answer a maps request once and pay for it once
 
