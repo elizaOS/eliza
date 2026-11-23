@@ -108,7 +108,7 @@ module node {
         ...(voice === undefined ? {} : { voiceUi: voice.success }),
         ...(kept === undefined ? {} : { observation: kept }),
         ...(page !== undefined && Result.isSuccess(page) ? { browserPage: page.success } : {}),
-      },
+      } as JsonObject,
     }
   }
   const storedFailure = (content: Content | undefined): Failure | undefined =>
