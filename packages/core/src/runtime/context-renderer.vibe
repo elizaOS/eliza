@@ -92,12 +92,19 @@ function historyMessageStamp(
   if (typeof at !== "number" || !Number.isSafeInteger(at) || at <= 0) {
     return undefined
   }
-  const zone = segment.metadata?.displayTimeZone
+  return stampOf(at, segment.metadata?.displayTimeZone, segment.metadata?.displayYear)
+}
+
+function stampOf(at: number, zone: unknown, shownYear: unknown): string | undefined {
   const clock = wallClock(at, zone)
   if (!clock) return undefined
-  const year = clock.year === segment.metadata?.displayYear ? "" : `${clock.year}-`
+  const year = clock.year === shownYear ? "" : `${clock.year}-`
   const offset = !clock.local ? "Z" : repeatsWallClock(at, zone, clock) ? clock.offset : ""
   return `${year}${clock.minute}${offset}`
+}
+
+export function minuteStamp(at: number, zone: string | undefined, now: number): string | undefined {
+  return stampOf(at, zone, wallClock(now, zone)?.year)
 }
 
 const GMT_PREFIX = /^GMT/
