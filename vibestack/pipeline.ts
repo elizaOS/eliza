@@ -137,12 +137,15 @@ export async function precomputeSimulations(root: string, specs: Spec[], targets
   return (await precomputedSimulations(root, specs, targets)).results;
 }
 
-interface SimulationPreparation { results: Result[]; seedDirectory?: string }
+interface SimulationPreparation { results: Result[]; seedDirectory?: string; partialDirectory?: string }
+interface CapturedSimulation { complete: boolean; receipts: Map<string, Uint8Array> }
 
-/** Prepare the selected simulations and, when complete, a compact seed for a trusted job's ordinary check. */
+/** Prepare the selected simulations and capture certified receipts for a trusted runner. */
 export async function prepareSimulationReceipts(root: string, specs: Spec[], targets: readonly string[], seedParent: string): Promise<SimulationPreparation> {
-  const { results, receipts } = await precomputedSimulations(root, specs, targets, true);
-  return receipts ? { results, seedDirectory: writeSimulationSeed(seedParent, receipts) } : { results };
+  const { results, captured } = await precomputedSimulations(root, specs, targets, true);
+  if (!captured?.receipts.size) return { results };
+  const directory = writeSimulationSeed(seedParent, captured.receipts);
+  return captured.complete ? { results, seedDirectory: directory } : { results, partialDirectory: directory };
 }
 
 function writeSimulationSeed(parent: string, receipts: ReadonlyMap<string, Uint8Array>): string {
@@ -160,7 +163,7 @@ function writeSimulationSeed(parent: string, receipts: ReadonlyMap<string, Uint8
   }
 }
 
-async function precomputedSimulations(root: string, specs: Spec[], targets: readonly string[], capture = false): Promise<{ results: Result[]; receipts?: Map<string, Uint8Array> }> {
+async function precomputedSimulations(root: string, specs: Spec[], targets: readonly string[], capture = false): Promise<{ results: Result[]; captured?: CapturedSimulation }> {
   const requested = new Set(targets);
   if (!requested.size) return { results: [] };
   const byName = new Map(specs.map((spec) => [spec.name, spec]));
@@ -203,11 +206,9 @@ async function precomputedSimulations(root: string, specs: Spec[], targets: read
         const simulations = await allDone([...requested].map((name) => started.get(name)).filter((result) => result !== undefined));
         certifyInstallation();
         const results = simulations.flatMap(({ said }) => said);
-        return receipts && receipts.typechecks.size === selected.size &&
-          receipts.simulations.size === started.size && results.every((row) => row.ok) &&
-          (!started.size || evaluatorForCheck(root) === evaluatorIdentity(root))
-          ? { results, receipts: new Map([...receipts.typechecks, ...receipts.simulations]) }
-          : { results };
+        if (!receipts || (started.size && evaluatorForCheck(root) !== evaluatorIdentity(root))) return { results };
+        const complete = receipts.typechecks.size === selected.size && receipts.simulations.size === started.size && results.every((row) => row.ok);
+        return { results, captured: { complete, receipts: new Map([...receipts.typechecks, ...receipts.simulations]) } };
       } finally {
         await Promise.allSettled(started.values());
         fs.rmSync(loaded, { recursive: true, force: true });
