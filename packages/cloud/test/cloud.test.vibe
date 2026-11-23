@@ -1298,7 +1298,7 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
   }), 60_000)
 })
 describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
-  it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\")", () => scoped(effect {
+  it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\"; spec/cloud/services/speech.md, \"Story: Pay once for each batch speech request\")", () => scoped(effect {
     const speech = try sync(() => speechFake())
     const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
     const caller = try signedCaller(cloud, "speaker")
@@ -1319,6 +1319,17 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     const busy = try tts({ text: "Busy" })
     const down = try tts({ text: "Busy" })
 
+    const keyed = (key: string, text: string) => cloud.call("/api/v1/voice/tts", { json: { text }, headers: { ...caller.headers, "idempotency-key": key } })
+    const synthesizedBeforeKeys = speech.synthesized.length
+    const firstKeyed = try keyed("utterance-1", "Table at seven")
+    const retriedKeyed = try keyed("utterance-1", "Table at seven")
+    const otherWords = try keyed("utterance-1", "Table at eight")
+    try sync(() => speech.script({ kind: "refuse", status: 422 }))
+    const refusedKeyed = try keyed("utterance-2", "Refused words")
+    const retriedRefusal = try keyed("utterance-2", "Refused words")
+    const malformedKey = try keyed("not a key", "Hello")
+    const synthesizedWithKeys = speech.synthesized.length - synthesizedBeforeKeys
+
     const heard = try stt({ languageCode: "en-US", provider: "speech" })
     const otherProvider = try stt({ provider: "elsewhere" })
     const otherLanguage = try stt({ languageCode: "fr" })
@@ -1336,6 +1347,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         rejected: [rejected.status, (rejected.body as { readonly error: string }).error],
         busy: [busy.status, (busy.body as { readonly error: string }).error, Number(busy.headers["retry-after"]) >= 7],
         down: [down.status, (down.body as { readonly error: string }).error, down.headers["retry-after"]],
+        keyed: [firstKeyed.status, retriedKeyed.status, retriedKeyed.body === firstKeyed.body, otherWords.status, refusedKeyed.status, retriedRefusal.status, (retriedRefusal.body as { readonly error: string }).error, malformedKey.status, (malformedKey.body as { readonly error: string }).error, synthesizedWithKeys],
         heard: [heard.status, heard.body, heard.headers["x-eliza-stt-provider"]],
         sentHeard: speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length]),
         otherProvider: [otherProvider.status, (otherProvider.body as { readonly error: string }).error],
@@ -1360,6 +1372,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         rejected: [502, "provider_invalid_response"],
         busy: [503, "provider_unavailable", true],
         down: [503, "provider_unavailable", "1"],
+        keyed: [200, 200, true, 200, 502, 409, "idempotency_conflict", 400, "invalid_request", 4],
         heard: [200, { transcript: spokenTranscript, duration_ms: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) }, "speech"],
         sentHeard: [["audio/wav", "ink-whisper", "en", recordingBytes]],
         otherProvider: [400, "invalid_request"],
@@ -1371,6 +1384,9 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
           ["speech", 288, 0, "known"],
           ["speech", 144, 144, "unknown"],
           ["speech", 144, 144, "unknown"],
+          ["speech", 504, 504, "known"],
+          ["speech", 504, 504, "known"],
+          ["speech", 468, 0, "known"],
           ["speech", 120, 360, "known"]
         ]
       }
@@ -1432,6 +1448,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     try check(() => assert.deepStrictEqual(
       {
         minted: [minted.status, minted.headers["x-eliza-speech-extend"], session.wsUrl.endsWith(`/api/v1/voice/speech/ws?sessionId=${session.sessionId}`)],
+        phases: [consent.headers["server-timing"], minted.headers["server-timing"]].map((value) => (value ?? "").split(", ").map((entry) => entry.replace(/;dur=\d+$/, ""))),
         second: [second.status, (second.body as { readonly error?: string }).error],
         opened: shown(opened),
         heard: shown(heard),
@@ -1446,6 +1463,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       },
       {
         minted: [200, "1", true],
+        phases: [["speech_identity_rate", "speech_consent_write"], ["speech_identity_rate", "speech_consent_consume"]],
         second: [410, "session_closed"],
         opened: [
           { t: "ready", version: 1, sampleRate: 16_000, channels: 1, expiresAt: session.expiresAt },
@@ -1470,6 +1488,36 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         usage: [[1, "transcribe", 6_000, "unknown"], [1, "synthesize", 122_880, "unknown"], [2, "transcribe", 6_000, "unknown"], [2, "synthesize", 122_880, "unknown"]],
         spent: [402, "allowance_exhausted"]
       }
+    ))
+  }), 60_000)
+
+  it.effect("A stop that meets a renewal closes the session with every window settled, and the renewed window it never used costs nothing (spec/cloud/services/speechRelay.md, \"Each admitted window settles once, and a retiring session closes only after all its receipts\")", () => scoped(effect {
+    try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
+    const speech = try sync(() => speechFake())
+    const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
+    try TestClock.adjust(Duration.seconds(5))
+    const caller = try signedCaller(cloud, "stopper")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 4 * (reservedFor(60 * 100) + reservedFor(4096 * 30)), requestKey: "stop-funding" }))
+    const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+    const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+    const session = minted.body as { readonly sessionId: string; readonly token: string }
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+    try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
+    try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
+    try TestClock.adjust(Duration.seconds(50))
+    try sync(() => socket.send({ t: "stop" }))
+    try promise(() => socket.until((received) => received.kind === "close"))
+    let phase: unknown = undefined
+    for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
+      try TestClock.withLive(sleep(Duration.millis(50)))
+      phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
+    }
+    const windows = try sql(cloud, "SELECT number, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
+    const renewed = try sql(cloud, `SELECT u.charged, u.outcome FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
+      WHERE w.session_id = $1 AND w.number > 1`, [session.sessionId])
+    try check(() => assert.deepStrictEqual(
+      { phase, settled: windows.every((row) => row.settled === true), renewedUnused: renewed.every((row) => Number(row.charged) === 0 && row.outcome === "released") },
+      { phase: "closed", settled: true, renewedUnused: true }
     ))
   }), 60_000)
 })
@@ -1529,6 +1577,23 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const offCapabilities = try off.call("/api/v1/maps/capabilities", { headers: offCaller.headers })
     const offGeocode = try off.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: { ...offCaller.headers, "idempotency-key": "geo-off" } })
 
+    const coldMaps = try sync(() => googleMapsFake())
+    const cold = try testCloud({ mount: (fakes) => fakes.mount("/maps/", coldMaps.handler) })
+    const coldCaller = try signedCaller(cold, "cold-mapper")
+    try cold.inside(addCredits({ organizationId: coldCaller.organizationId, amount: 1_000_000, requestKey: "cold-maps-funding" }))
+    try sync(() => coldMaps.delaySessions(500))
+    const coldTile = (key: string) => cold.call("/api/v1/maps/tiles/3/4/2", { headers: { ...coldCaller.headers, "idempotency-key": key } })
+    const abandoned = try promise(async () => {
+      const controller = new AbortController()
+      const pending = openCloud(cold.url, "/api/v1/maps/tiles/3/4/2", { headers: { ...coldCaller.headers, "idempotency-key": "cold-abandoned" }, signal: controller.signal }).then(
+        (response) => String(response.status), (failure: unknown) => failure instanceof Error && failure.name === "AbortError" ? "cancelled" : "failed"
+      )
+      await coldMaps.sessionRequested
+      controller.abort()
+      return await pending
+    })
+    const together = try.all [coldTile("cold-1"), coldTile("cold-2"), coldTile("cold-3")]
+
     try check(() => assert.deepStrictEqual(
       {
         lost: [lost.status, errorOf(lost)],
@@ -1539,10 +1604,12 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         noRoute: [noRoute.status, errorOf(noRoute)],
         tiles: [tileOne.status, tileOne.headers.get("cache-control"), tileOne.headers.get("content-type"), tileOneBytes, tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
         reverse: [nearbyFound.status, lookupsWithPlace, nearbyEmpty.status, (nearbyEmpty.body as { readonly place: unknown }).place !== null, lookupsWithoutPlace],
+        timing: [tileOne.headers.get("server-timing"), repeated.headers["server-timing"]].map((value) => (value ?? "").split(", ").map((entry) => entry.replace(/;dur=\d+$/, ""))),
         broke: [broke.status, errorOf(broke), callsAfterBroke - callsBeforeBroke],
         rollback: [rolledBack.status, callsAfterRollback - callsBeforeRollback, Number(holdsAfterRollback[0]?.n), retried.status, maps.count("geocode") - callsAfterRollback, Number(retriedUsage[0]?.n), Number(retriedUsage[0]?.charged)],
         usage: usage.map((row) => [row.operation, row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome]),
-        off: [offCapabilities.status, offCapabilities.body, offGeocode.status, errorOf(offGeocode)]
+        off: [offCapabilities.status, offCapabilities.body, offGeocode.status, errorOf(offGeocode)],
+        cold: [abandoned, together.map((answer) => answer.status), coldMaps.count("createSession")]
       },
       {
         lost: [503, "provider_unavailable"],
@@ -1553,6 +1620,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         noRoute: [422, "no_route"],
         tiles: [200, "no-store", "image/png", tilePng, 200, "no-store", 409, "idempotency_conflict", 2],
         reverse: [200, [1, 2], 200, true, [2, 3]],
+        timing: [["maps_auth", "maps_admission", "maps_provider"], ["maps_auth", "maps_admission"]],
         broke: [402, "insufficient_credits", 0],
         rollback: [503, 0, 7, 200, 1, 8, 95_200],
         usage: [
@@ -1564,7 +1632,8 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           ["reverse", "answered", false, 37_000, 32_000, "known"],
           ["reverse", "answered", false, 37_000, 37_000, "known"]
         ],
-        off: [200, { available: false }, 404, "capability_unavailable"]
+        off: [200, { available: false }, 404, "capability_unavailable"],
+        cold: ["cancelled", [200, 200, 200], 1]
       }
     ))
   }), 60_000)
@@ -1602,13 +1671,21 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
 
       try sync(() => maps.script({ kind: "oversized" }))
       const oversized = try geocode("geo-oversized")
+      try sync(() => maps.script(
+        { kind: "geocodeReply", status: 200, geocode: "UNKNOWN_ERROR" }, { kind: "geocodeReply", status: 404, geocode: "ZERO_RESULTS" },
+        { kind: "geocodeReply", status: 400, geocode: "INVALID_REQUEST" }, { kind: "geocodeReply", status: 400, geocode: "OVER_QUERY_LIMIT" }
+      ))
+      const providerError = try geocode("geo-provider-error")
+      const nothingFound = try geocode("geo-nothing-found")
+      const invalidRequest = try geocode("geo-invalid-request")
+      const quotaAt400 = try geocode("geo-quota-400")
       const keptFirst = try geocode("geo-kept")
       const keptAgain = try geocode("geo-kept")
       try sync(() => clock.set(now + 15 * 60_000))
       const keptExpired = try geocode("geo-kept")
       for (const sweep of mapsSweeps) try cloud.inside(sweep.run)
       const keptRows = try sql(cloud, "SELECT count(*)::int AS n FROM maps_requests WHERE result IS NOT NULL", [])
-      const usage = try sql(cloud, "SELECT r.status, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key JOIN holds h ON h.key = r.hold_key WHERE h.organization_id = $1 ORDER BY r.status", [keeping.organizationId])
+      const usage = try sql(cloud, "SELECT r.status, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key JOIN holds h ON h.key = r.hold_key WHERE h.organization_id = $1 ORDER BY r.status, u.charged", [keeping.organizationId])
 
       try check(() => assert.deepStrictEqual(
         {
@@ -1616,6 +1693,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           credential: [busyStatuses.length, busyStatuses.every((status) => status === 200), credentialLimited.status, errorOf(credentialLimited.body), typeof credentialLimited.headers["retry-after"], Number(busyPlan[0]?.n)],
           plan: [freeStatuses.length, freeStatuses.every((status) => status === 200), planLimited.status, errorOf(planLimited.body), typeof planLimited.headers["retry-after"], tileStill.status, Number(freePlan[0]?.n)],
           oversized: [oversized.status, errorOf(oversized.body)],
+          geocodeReplies: [providerError.status, errorOf(providerError.body), nothingFound.status, (nothingFound.body as { readonly places: ReadonlyArray<unknown> }).places, invalidRequest.status, errorOf(invalidRequest.body), quotaAt400.status, errorOf(quotaAt400.body)],
           kept: [keptFirst.status, keptAgain.status, keptAgain.body, keptExpired.status, errorOf(keptExpired.body), Number(keptRows[0]?.n)],
           usage: usage.map((row) => [row.status, Number(row.charged), row.outcome]),
           upstream: [maps.count("viewport"), maps.count("tile"), maps.count("geocode")]
@@ -1625,9 +1703,10 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           credential: [59, true, 429, "rate_limited", "string", 60],
           plan: [30, true, 429, "rate_limited", "string", 200, 30],
           oversized: [503, "provider_unavailable"],
+          geocodeReplies: [503, "provider_unavailable", 200, [], 502, "provider_invalid_response", 503, "provider_unavailable"],
           kept: [200, 200, keptFirst.body, 409, "idempotency_conflict", 0],
-          usage: [["answered", 5_000, "known"], ["refused", 5_000, "known"]],
-          upstream: [1, 1, 2]
+          usage: [["answered", 5_000, "known"], ["answered", 5_000, "known"], ["lost", 5_000, "unknown"], ["refused", 0, "known"], ["refused", 0, "known"], ["refused", 5_000, "known"]],
+          upstream: [1, 1, 6]
         }
       ))
     }

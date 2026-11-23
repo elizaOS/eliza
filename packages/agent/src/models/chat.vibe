@@ -1,18 +1,22 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A host may shorten how long a rate limit holds the account, never past the provider's retry time"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { chatReturn, failureOf, outcomeOf, retryAtOf, type ChatAsk, type ChatReturn, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
+import {
+  cacheKeySent, capSent, chatReturn, effortFor, failureOf, outcomeOf, retryAtOf, shellOutcome, streamIdleSeconds, usageAsked,
+  type CapAsk, type ChatAsk, type ChatReturn, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
+} from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 
 export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
 
-export type Binding = Pick<BoundModels, "credential" | "startCall" | "answerCall" | "refuseCall">
+export type Binding = Pick<BoundModels, "credential" | "startCall" | "answerCall" | "refuseCall" | "state">
 
 export interface Endpoint {
   readonly url: string
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
   readonly maxTokensField: "max_tokens" | "max_completion_tokens"
+  readonly reasoningHints: boolean
 }
 
 interface Sink {
@@ -28,9 +32,18 @@ interface Reply {
   readonly reasoning: string
 }
 
-export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind; retryAt: number | undefined }
+export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind; retryAt: number | undefined; retryAfterMs: number | undefined }
 
 export error Refused { cloud: CloudFailure }
+
+interface Hold {
+  readonly retryAt: number | undefined
+  readonly retryAfterMs: number | undefined
+}
+
+const unheld: Hold = { retryAt: undefined, retryAfterMs: undefined }
+
+export error ShellRefused { refusal: ShellRefusal }
 
 error StreamConsumerFailed { cause: unknown }
 
@@ -77,9 +90,11 @@ const ProviderFields = Schema.Struct({
   message: Schema.optionalKey(Schema.Unknown),
   type: Schema.optionalKey(Schema.Unknown),
   code: Schema.optionalKey(Schema.Unknown),
+  param: Schema.optionalKey(Schema.Unknown),
 })
 const decodeNestedError = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ error: ProviderFields })))
 const decodeFlatError = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ message: Schema.String, type: Schema.optionalKey(Schema.Unknown), code: Schema.optionalKey(Schema.Unknown) })))
+const decodeFlatFields = Schema.decodeUnknownOption(Schema.fromJsonString(ProviderFields))
 schema Listing { data: { id: string }[] }
 const decodeListing = Schema.decodeUnknownOption(Listing)
 
@@ -268,11 +283,9 @@ module edge {
 }
 import { run } from edge
 
-function refusalOf(cloud: CloudFailure): ModelRefusal {
-  const failure = failureOf(cloud, 0)
-  const failureKind = failureKindName(failure)
-  const retryAt = retryAtOf(failure)
-  const refused = (message: string, status?: number, code?: string) => new ModelRefusal({ message, code, status, failureKind, retryAt: retryAt > 0 ? retryAt : undefined })
+function refusalOf(cloud: CloudFailure, hold: Hold = unheld): ModelRefusal {
+  const failureKind = failureKindName(failureOf(cloud, 0))
+  const refused = (message: string, status?: number, code?: string) => new ModelRefusal({ message, code, status, failureKind, ...hold })
   const outcome = outcomeOf(cloud)
   switch (outcome) {
     case "RefusedConnection": return refused("The model connection failed", undefined, "ECONNRESET")
@@ -288,6 +301,17 @@ function refusalOf(cloud: CloudFailure): ModelRefusal {
   }
 }
 
+const shellRefusals: Record<ShellRefusal, { message: string; code: string }> = {
+  ToolCallUnparsed: { message: "The model provider could not read the model's tool call", code: "PROVIDER_TOOL_CALL_PARSE_FAILED" },
+  SilentStream: { message: "The model provider sent nothing for a minute", code: "MODEL_ATTEMPT_IDLE_TIMEOUT" },
+}
+
+function shellRefusalOf(refusal: ShellRefusal): ModelRefusal {
+  const { message, code } = shellRefusals[refusal]
+  const status = shellOutcome(refusal) === "BadRequest" ? 400 : undefined
+  return new ModelRefusal({ message, code, status, failureKind: "provider_issue", ...unheld })
+}
+
 function providerWords(raw: string): string | undefined {
   const nested = decodeNestedError(raw)
   const fields = nested._tag === "Some" ? nested.value.error : Option.getOrUndefined(decodeFlatError(raw))
@@ -295,17 +319,25 @@ function providerWords(raw: string): string | undefined {
   return [fields.message, fields.type, fields.code].filter((word) => typeof word === "string").join(" ").toLowerCase()
 }
 
+function toolCallUnparsed(status: number, raw: string): boolean {
+  if (status !== 400) return false
+  const nested = decodeNestedError(raw)
+  const fields = nested._tag === "Some" ? nested.value.error : Option.getOrUndefined(decodeFlatFields(raw))
+  return fields !== undefined && (fields.code === "parser_error" || (fields.type === "generation_error" && fields.param === "tool_calls"))
+}
+
 function providerRefusal(status: number, words: string): CloudFailure | undefined {
   if (status === 429 && words.includes("insufficient_quota")) return { tag: "CloudInsufficientCredits" }
   if (status === 408 || status === 409) return { tag: "CloudProviderIssue" }
   if (status === 400 && !/invalid|unsupported|must be|required|malformed|not allowed|schema/.test(words)
-    && /server error|server_error|try again|overload|capacity|temporarily|busy/.test(words)) return { tag: "CloudProviderIssue" }
+    && /server error|server_error|try again|overload|capacity|temporarily|busy|\brate\b|rate.?limit/.test(words)) return { tag: "CloudProviderIssue" }
   return undefined
 }
 
 effect function refusalFrom(result: HttpClientResponse.HttpClientResponse) {
   const now = try Clock.currentTimeMillis
   const raw = timeout(result.text, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
+  if (toolCallUnparsed(result.status, raw)) return new ShellRefused({ refusal: "ToolCallUnparsed" })
   const words = providerWords(raw)
   const classified = words === undefined ? undefined : providerRefusal(result.status, words)
   if (classified !== undefined) return new Refused({ cloud: classified })
@@ -343,7 +375,8 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
   let usage: TokenUsage | undefined
   let argumentBytes = 0
   const calls: { id: string; name: string; arguments: string }[] = []
-  const lines = result.stream.pipe(Stream.decodeText(), Stream.splitLines)
+  const silent = () => Stream.fail(new ShellRefused({ refusal: "SilentStream" }))
+  const lines = Stream.timeoutOrElse(result.stream, { duration: Duration.seconds(streamIdleSeconds), orElse: silent }).pipe(Stream.decodeText(), Stream.splitLines)
   const collect = Stream.runForEach(lines, effect (line) => {
     if (line.length > 262144) throw providerIssue()
     if (!line.startsWith("data:") || terminal) return
@@ -375,8 +408,8 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
     if (text.length > 32768) throw providerIssue()
     if (sink.onStreamChunk) try tryPromise({ try: async () => sink.onStreamChunk?.(delta, undefined, text), catch: (cause) => new StreamConsumerFailed({ cause }) })
   })
-  timeout(collect, "90 seconds") catch effect (failure) => {
-    if (failure instanceof Refused || failure instanceof StreamConsumerFailed) throw failure
+  collect catch effect (failure) => {
+    if (failure instanceof Refused || failure instanceof ShellRefused || failure instanceof StreamConsumerFailed) throw failure
     throw new Refused({ cloud: { tag: "CloudNetwork" } })
   }
   if (!terminal) throw providerIssue()
@@ -391,7 +424,11 @@ effect function send(url: string, credential: Redacted.Redacted<string>, body: o
     HttpClientRequest.post(url), "authorization", "Bearer " + Redacted.value(credential),
   ), encoded, "application/json")
   const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" })
-  const result = timeout(response, "90 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
+  const streamed = sink.stream === true
+  const result = timeout(response, streamed ? Duration.seconds(streamIdleSeconds) : "90 seconds") catch effect (failure) => {
+    if (streamed && Cause.isTimeoutError(failure)) throw new ShellRefused({ refusal: "SilentStream" })
+    throw new Refused({ cloud: { tag: "CloudNetwork" } })
+  }
   if (result.status < 200 || result.status >= 300) throw try refusalFrom(result)
   if (sink.stream && result.headers["content-type"]?.startsWith("text/event-stream")) return try collectStream(result, sink, ask)
   const raw = timeout(result.json, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
@@ -409,32 +446,80 @@ effect function send(url: string, credential: Redacted.Redacted<string>, body: o
   }, ask)
 }
 
+function holdAt(retryAt: number, now: number): Hold {
+  return { retryAt: retryAt > 0 ? retryAt : undefined, retryAfterMs: retryAt < 0 ? undefined : Math.max(0, retryAt - now) }
+}
+
+function heldFor(state: ModelBinding, now: number): Hold {
+  return holdAt(state.accountState.tag === "Failing" ? retryAtOf(state.accountState.failure) : -1, now)
+}
+
 effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, fields: object | undefined, sink: Sink, ask: ChatAsk) {
   const began = try Clock.currentTimeMillis
   const started = try binding.startCall(handler, began)
-  if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil })
-  const body = fields === undefined ? undefined : { model: endpoint.models[handler], stream: sink.stream === true, ...fields }
+  if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil }, holdAt(started.limitedUntil, began))
+  const streamed = sink.stream === true
+  const body = fields === undefined ? undefined : { model: endpoint.models[handler], stream: streamed, ...(usageAsked(streamed) ? { stream_options: { include_usage: true } } : {}), ...fields }
   const answer = send(endpoint.url, binding.credential(), body, sink, ask) catch effect (failure) => {
-    if (!(failure instanceof Refused)) throw failure
     const refused = try Clock.currentTimeMillis
+    if (failure instanceof ShellRefused) {
+      try binding.refuseCall(started, refused, { tag: "CloudProviderIssue" })
+      throw shellRefusalOf(failure.refusal)
+    }
+    if (!(failure instanceof Refused)) throw failure
     try binding.refuseCall(started, refused, failure.cloud)
-    throw refusalOf(failure.cloud)
+    throw refusalOf(failure.cloud, failure.cloud.tag === "CloudRateLimited" ? heldFor(try binding.state(), refused) : unheld)
   }
   const at = try Clock.currentTimeMillis
   try binding.answerCall(started, at)
   return answer
 }
 
-function requestOf(endpoint: Endpoint, params: GenerateTextParams): object | undefined {
+const cerebrasModelPrefix = /^(?:cerebras[:/]|openai\/)/
+
+function familyOf(model: string | undefined): ReasoningFamily {
+  const id = (model ?? "").trim().toLowerCase().replace(cerebrasModelPrefix, "").replace(/:(?!free$).+$/, "")
+  if (id === "qwen-3.8-27b") return "QwenReasoning"
+  if (id === "gpt-oss-120b") return "GptOssReasoning"
+  if (id === "zai-glm-4.7" || id === "gemma-4-31b") return "OffOnlyReasoning"
+  return "OtherReasoning"
+}
+
+function hintOf(params: GenerateTextParams): ThinkingHint {
+  const eliza = params.providerOptions?.eliza
+  const thinking = typeof eliza === "object" && eliza !== null ? (eliza as { thinking?: unknown }).thinking : undefined
+  return thinking === "low" ? "ThinkingLow" : thinking === "off" ? "ThinkingOff" : "NoThinkingHint"
+}
+
+function cacheKeyOf(params: GenerateTextParams): string | undefined {
+  const cerebras = params.providerOptions?.cerebras
+  const key = typeof cerebras === "object" && cerebras !== null ? (cerebras as { promptCacheKey?: unknown }).promptCacheKey : undefined
+  return typeof key === "string" && key.trim() !== "" ? key : undefined
+}
+
+const efforts: Record<ReasoningEffort, string | undefined> = { ProviderDefault: undefined, EffortLow: "low", EffortNone: "none" }
+
+function capOf(params: GenerateTextParams): CapAsk {
+  const asked: CapAsk = params.maxTokens === undefined ? { tag: "NoCapAsked" } : { tag: "CapAsked", tokens: params.maxTokens }
+  return capSent(asked, params.omitMaxTokens === true)
+}
+
+function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTextParams): object | undefined {
   const messages = conversation(params)
   if (messages === undefined) return undefined
-  const max = params.omitMaxTokens ? undefined : params.maxTokens
+  const cap = capOf(params)
+  const family = familyOf(endpoint.models[handler])
+  const effort = endpoint.reasoningHints ? efforts[effortFor(family, hintOf(params))] : undefined
+  const named = cacheKeyOf(params)
+  const cacheKey = cacheKeySent(family, endpoint.reasoningHints, named !== undefined) ? named : undefined
   const tools = toolsOf(params.tools)
   const toolChoice = toolChoiceOf(params.toolChoice)
   const format = responseFormatOf(params)
   return {
     messages,
-    ...(max === undefined ? {} : { [endpoint.maxTokensField]: max }),
+    ...(cap.tag === "CapAsked" ? { [endpoint.maxTokensField]: cap.tokens } : {}),
+    ...(effort === undefined ? {} : { reasoning_effort: effort }),
+    ...(cacheKey === undefined ? {} : { prompt_cache_key: cacheKey }),
     ...(params.temperature === undefined ? {} : { temperature: params.temperature }),
     ...(params.topP === undefined ? {} : { top_p: params.topP }),
     ...(params.stopSequences === undefined || params.stopSequences.length === 0 ? {} : { stop: params.stopSequences }),
@@ -469,7 +554,7 @@ function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProvi
 
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
   return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
-    Effect.provide(Effect.map(serve(binding, handler, endpoint, requestOf(endpoint, params), params, askOf(params)), returned), FetchHttpClient.layer),
+    Effect.provide(Effect.map(serve(binding, handler, endpoint, requestOf(endpoint, handler, params), params, askOf(params)), returned), FetchHttpClient.layer),
     params.signal,
   )
 }

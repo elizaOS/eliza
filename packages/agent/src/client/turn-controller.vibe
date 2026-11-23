@@ -5,7 +5,8 @@ import {
 } from "../../gen/agent__client__turns.effect.vibe"
 import type { RuntimeStream } from "./index.vibe"
 import type { TaskPresentation } from "../tasks/chat-task.vibe"
-import { ActionResultFrame, PlanAction, ProviderWait } from "./reply-frame.schema.vibe" // eslint-disable-line @typescript-eslint/consistent-type-imports -- BufferedReply uses these Vibe schemas as runtime codecs.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- the schema declarations below read these schemas as values
+import { ActionResultFrame, PlanAction, ProviderWait } from "./reply-frame.schema.vibe"
 import { readReplyStream, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
 import { newClientMessageId, type ClientMessageId } from "./stopped-turn.vibe"
 
@@ -159,11 +160,13 @@ function guarded(hooks: ReplyStreamHooks, signal: AbortSignal): ReplyStreamHooks
   const live = <A extends unknown[]>(hook: ((...args: A) => void) | undefined) =>
     hook === undefined ? undefined : (...args: A) => { if (!signal.aborted) hook(...args) }
   const preview = live(hooks.onPreview)
+  const acknowledgment = live(hooks.onAcknowledgment)
   const status = live(hooks.onStatus)
   const tool = live(hooks.onTool)
   const ready = live(hooks.onReady)
   return {
-    ...(preview === undefined ? {} : { onPreview: preview }), ...(status === undefined ? {} : { onStatus: status }),
+    ...(preview === undefined ? {} : { onPreview: preview }), ...(acknowledgment === undefined ? {} : { onAcknowledgment: acknowledgment }),
+    ...(status === undefined ? {} : { onStatus: status }),
     ...(tool === undefined ? {} : { onTool: tool }), ...(ready === undefined ? {} : { onReady: ready }),
   }
 }

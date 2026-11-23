@@ -1,4 +1,4 @@
-// spec/maps/routing.md, "A plain Maps request of the owner's own chat turn goes to the Maps action for its shape"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"
+// spec/maps/routing.md, "A plain Maps request of the owner's own chat turn goes to the Maps action for its shape"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"
 import { containsResourceAddress, registerDirectActionRoutingRule, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { choiceBinds, mapsRouteOf, type RequestShape, type RoutedTo } from "../gen/maps__routing.effect.vibe"
 import type { AgentPlaceRef } from "./client/device-navigation.vibe"
@@ -22,20 +22,23 @@ const goToRequest = new RegExp(String.raw`^\s*${courtesy}(?:let(?:'s|’s|\s+us)
 const goToNotAPlace = /^(?:(?:my|your|our|his|her|their|its|this|that|these|those)\b|(?:next|previous|prev|last|first|top|bottom|end|beginning|start|middle|same|other|point|sleep|bed|definition|declaration|implementation|references?|symbol|usages?|line|page|slide|chapter|section|step|level|tab|item|row|column|cell|sheet|folder|file|message|email|thread|inbox|chat|settings?|preferences|google|gmail|youtube|facebook|instagram|twitter|reddit|wikipedia|amazon|netflix|spotify|github|slack|discord|whatsapp|tiktok|linkedin|chrome|safari|firefox|outlook|today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b)/iu
 const streetAddress = /^\d+[a-z]?\s+\S+(?:\s+\S+)*\s+(?:st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|way|ct|court|pl|place|sq|square|pkwy|parkway|hwy|highway)\b/iu
 const properName = /^\p{Lu}[\p{Ll}'’]/u
-const placeCode = /^(?!(?:PDF|FAQ|URL|API|TODO|HTML|CSS|JSON|XML|SQL|CSV|USB|TV|AM|PM|OK|ASAP|FYI|AI|ML|UI|UX|IT|HR|PR|CI|QA|SDK|CLI|GUI|OS|AWS|VPN|DNS|SSH|IDE|DM|DMS|SMS|MMS|BIOS)\b)\p{Lu}{2,5}\b(?!['’.-])/u
-const spokenIdiom = /^(?:sleep|bed|work|school|church|war|waste|town|pieces|great\s+lengths)\b/u
-const spokenFirstWord = /^(?:right|wrong|left|new|old|main|current|latest|original|default|following|above|below|more|less|all|any|some|every|each|no|one|two|three|second|third|fourth|fifth|see|watch|pick|check|look|find|buy|grab|eat|drink|meet|visit|help|talk|ask|tell|say|take|bring|go|come|stay|lunch|dinner|breakfast|brunch|class|practice|rehearsal|apple|microsoft|app|apps|play|android|iphone|ios|windows|mac|phone|device|system|control|bing|yahoo|duckduckgo)\b/u
-const spokenWord = /\b(?:i|me|my|mine|you|your|yours|we|us|our|he|him|his|she|her|they|them|their|it|its|this|that|these|those|today|tomorrow|tonight|yesterday|now|later|soon|morning|afternoon|evening|weekend|with|for|and|or|but|so|to|about|after|before|without|because|until|while)\b/u
-const spokenLastWord = /\b(?:branch|commit|function|method|class|error|warning|bug|issue|test|log|result|answer|question|topic|point|problem|one|ones|side|way|thing|things|list|table|chart|graph|image|picture|photo|video|song|track|playlist|album|episode|verse|note|notes|reminder|event|meeting|call|comment|post|story|profile|account|app|game|room|channel|server|repo|repository|directory|dashboard)$/u
 const appDestination = /\b(?:page|screen|tab|menu|view|section|step|level|folder|file|settings?|options?|line|slide|chapter|stage|part|item|message|email|thread|inbox|chat|conversation|document|doc|link|website|site)$/iu
 const compoundRequest = /\b(?:then|if|unless|when|once)\b/iu
+const businessNames = new Set(["7-eleven", "albertsons", "aldi", "applebees", "arbys", "arco", "carrefour", "chevron", "chilis", "chipotle", "costco", "dennys", "dunkin", "exxon", "familymart", "h&m", "hilton", "hyatt", "ikea", "in-n-out", "kmart", "kohls", "kroger", "lawson", "lidl", "lowes", "macys", "marriott", "mcdonalds", "meijer", "nordstrom", "panera", "peets", "petco", "petsmart", "popeyes", "publix", "safeway", "sephora", "sheraton", "staples", "starbucks", "target", "tesco", "texaco", "ulta", "uniqlo", "valero", "walgreens", "walmart", "wegmans", "wendys", "westin", "yodobashi", "zara"])
+const placeCode = /^(?!(?:PDF|FAQ|URL|API|TODO|HTML|CSS|JSON|XML|SQL|CSV|USB|TV|AM|PM|OK|ASAP|FYI|AI|ML|UI|UX|IT|HR|PR|CI|QA|SDK|CLI|GUI|OS|AWS|VPN|DNS|SSH|IDE|DM|DMS|SMS|MMS|BIOS)\b)\p{Lu}{2,5}(?=\s|$)/u
+const streetName = /\p{L}\s+(?:street|st|avenue|ave|boulevard|blvd|road|rd|lane|ln|parkway|pkwy|highway|hwy)\.?(?:,|$)/iu
+const placeNameCue = /^(?:cathedral|college|museum|university)\s+of\s+\p{L}|\b(?:airport|aquarium|beach|bridge|building|caf[eé]|cathedral|center|centre|cinema|clinic|college|court|garden|hospital|hotel|library|market|museum|park|pharmacy|pier|plaza|restaurant|shop|square|stadium|station|store|terminal|theat(?:er|re)|tower|trail|university|zoo)(?:\s+\d+[a-z]?)?$/iu
+const spokenIdiom = /^(?:sleep|bed|work|school|church|war|waste|town|pieces|great\s+lengths)\b/u
+const spokenFirstWord = /^(?:right|wrong|left|main|current|latest|original|default|following|above|below|more|less|all|any|some|every|each|no|one|two|three|second|third|fourth|fifth|see|watch|pick|check|look|find|buy|grab|eat|drink|meet|visit|help|talk|ask|tell|say|take|bring|go|come|stay|lunch|dinner|breakfast|brunch|class|practice|rehearsal|apple|microsoft|app|apps|play|android|iphone|ios|windows|mac|phone|device|system|control|bing|yahoo|duckduckgo)\b/u
+const spokenNotAPlace = /\b(?:i|me|my|mine|you|your|yours|we|us|our|he|him|his|she|her|they|them|their|it|its|this|that|these|those|today|tomorrow|tonight|yesterday|now|later|soon|morning|afternoon|evening|weekend|with|for|and|or|but|so|to|about|after|before|without|because|until|while)\b/u
+const spokenNearest = /^(?:nearest|closest)\b/u
 const addressWithLocality = /^\d+[a-z]?\s+[^,]+(?:,\s*[\p{Lu}\d][\p{L}\d.'’ -]*)+$/u
 const notAPlaceKind = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`
-const nearestPlace = new RegExp(String.raw`^(?:(?:nearest|closest)\s+${notAPlaceKind}|(?!nearest|closest))`, "u")
 const findVerb = String.raw`(?:(?:find|show|locate|get|search\s+for|look\s+(?:for|up))\s+(?:me\s+)?|where(?:'s|’s|\s+is|\s+are)\s+|what(?:'s|’s|\s+is)\s+)`
 const notASearchKind = String.raw`(?!(?:(?:the|a|an|some|any|today['’]?s|current|live)\s+)?(?:weather|forecasts?|traffic|news|temperatures?|prices?)\b)`
 const placeKind = String.raw`${notASearchKind}(?:(?:a|an|some|any)\s+)?[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3}`
 const nearby = String.raw`(?:near\s+(?:me|here|by)|nearby|around\s+here|close\s+by)`
+const spokenNearestPlace = new RegExp(String.raw`^(?:nearest|closest)\s+${notAPlaceKind}`, "u")
 const notAThere = String.raw`(?!(?:anyone|anybody|someone|somebody|no\s?one|nobody|one|(?:a|any)\s+(?:way|chance|reason|problem|issue|bug|error|difference|need|point))\b)`
 const nearestRequest = new RegExp(String.raw`^\s*${courtesy}${findVerb}?(?:(?:the|a|my)\s+)?(?:nearest|closest)\s+${notAPlaceKind}[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,4}${end}`, "iu")
 const nearMeRequest = new RegExp([
@@ -46,7 +49,17 @@ const nearMeRequest = new RegExp([
   String.raw`^\s*${courtesy}(?!(?:stay|sit|come|be|keep|stand|get|move|go|walk|park|i|i'm|i’m|im|you|he|she|they|we|it|is|are|was|were)\b)${placeKind}\s+near\s+me${end}`,
 ].join("|"), "iu")
 const kindNearNamedRequest = new RegExp(String.raw`^\s*${courtesy}(?:${findVerb}|(?:is|are)\s+there\s+${notAThere})(${placeKind})\s+(?:near|around|close\s+to|next\s+to)\s+((?:the\s+)?\p{Lu}[\p{L}\p{N}'’&.-]*(?:\s+[\p{L}\p{N}'’&.-]+){0,5})${end}`, "u")
-const ownPosition = /^(?:me|here|us|by|my\s+(?:location|position|current\s+location)|where\s+(?:i|we)\s+(?:am|are))$/iu
+const ownPosition = /^(?:me|here|us|by|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:me|here|us|myself)\b(?=[,\s]+(?:that|which|who|where|for|to|with|and|so|if|in|at|on|by|open|right|now|tonight|today|please|thanks|thank)\b)|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu
+const ownPositionQuery = /^(?:(?:from|at)\s+)?(?:me|here|right\s+here|us|myself|(?:my|our)\s+(?:current\s+|present\s+|gps\s+)?(?:location|position)|(?:my\s+)?current\s+(?:location|position)|where\s+(?:i|we)\s+(?:am|are)(?:\s+(?:right\s+)?now)?|(?:my|the)\s+phone(?:(?:'s|’s)\s+location)?)$/iu
+const anchorTail = /(?:,?\s+(?:please|thanks|thank\s+you|for\s+me|right\s+now|now|today|tonight|(?:(?:that|which)(?:'s|’s|\s+(?:is|are))\s+)?open(?:\s+(?:now|late|today|tonight))?))+$/iu
+const placeKindWords = new RegExp(String.raw`^${notAPlaceKind}`, "iu")
+const leadingKindWords = /^(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?/iu
+const nearestKind = /^(?:(?:the|a|an|any)\s+)?(?:nearest|closest)\s+(?!to\b)(\S.{0,79})$/iu
+const nearestToPoint = /^(.+?)\s+(?:to|near|around|close\s+to|next\s+to|in|at|by|on)\s+(\S.*)$/iu
+const nearbyKind = /^(\S.{0,79}?)\s+(?:nearby|around\s+here|close\s+by)$/iu
+const anchoredQuery = new RegExp(String.raw`^\s*${courtesy}(?:${findVerb})?(?:(?:is|are)\s+there\s+${notAThere})?(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?(\S.{0,79}?)\s+(?:near|around|close\s+to|next\s+to)\s+(\S.{0,119}?)${end}`, "iu")
+const nearNotAPlace = /^(?:home|work|the\s+office|(?:my|our)\s+.+|(?:the\s+)?(?:top|bottom|end|beginning|start|middle|deadline|weekend|holidays?)|midnight|noon|midday|dawn|dusk|sunrise|sunset|lunch(?:time)?|dinner(?:time)?|breakfast|christmas(?:\s+eve)?|thanksgiving|easter|halloween|new\s+year(?:'s|’s)?(?:\s+(?:eve|day))?|(?:mon|tues|wednes|thurs|fri|satur|sun)day|january|february|march|april|june|july|august|september|october|november|december|line\s+\d+|page\s+\d+|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.?|p\.m\.?|o'?clock)?|\d[\d,.]*\s*(?:dollars?|bucks|euros?|pounds?)(?:\s+(?:a|per)\s+(?:night|day|week|month))?|\d[\d,.]*\s+(?:a|per)\s+(?:night|day|week|month))$/iu
+const nearNotAPlaceKind = /\b(?:photos?|pictures?|pics?|images?|videos?|clips?|selfies?|screenshots?|e-?mails?|mail|messages?|texts?|chats?|notes?|files?|documents?|docs?|songs?|music|tracks?|albums?|playlists?|podcasts?|events?|meetings?|appointments?|reminders?|alarms?|contacts?|tasks?|to-?dos?|bugs?|issues?|errors?|lines?|comments?|posts?|tweets?|results?|calls?|voicemails?|weather|forecasts?|traffic|news)$/iu
 const choiceReply = /^\s*(?:(?:yes|yeah|yep|ok(?:ay)?|sure|um+|uh+|so|hmm+|let'?s\s+(?:go\s+with|do)|i\s+(?:meant?|want|mean)|go\s+with|pick|choose|use|take)[,\s]+)*(?:(?:the|number|no\.?|#|option|item)\s*)*(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th|one|two|three|four|five|six|seven|eight|nine|ten|last|top|\d{1,2})(?:\s+(?:one|option|place|result|choice))?(?:[,\s]+(?:one|please|thanks|thank\s+you))*\s*[.!?]*\s*$/iu
 const ordinals: Readonly<Record<string, number>> = {
   first: 1, "1st": 1, one: 1, second: 2, "2nd": 2, two: 2, third: 3, "3rd": 3, three: 3, fourth: 4, "4th": 4, four: 4, fifth: 5, "5th": 5, five: 5,
@@ -55,7 +68,7 @@ const ordinals: Readonly<Record<string, number>> = {
 const maxRequestLength = 160
 const ownerChannels: ReadonlySet<unknown> = new Set([undefined, "DM", "VOICE_DM"])
 
-export const choiceActions = { route: "MAPS_ROUTE", select: "MAPS_SELECT", save: "MAPS_SAVE", "navigation-start": "MAPS_NAVIGATION_START" } as const
+export const choiceActions = { place: "MAPS_PLACE", route: "MAPS_ROUTE", select: "MAPS_SELECT", save: "MAPS_SAVE", share: "MAPS_SHARE", "navigation-start": "MAPS_NAVIGATION_START" } as const
 export type ChoiceOperation = keyof typeof choiceActions
 
 export interface PlaceChoice {
@@ -105,10 +118,52 @@ function compound(destination: string): boolean {
   return compoundRequest.test(destination) || (destination.includes(",") && !addressWithLocality.test(destination))
 }
 
+function spokenPlaceName(name: string): boolean {
+  return /^\p{Ll}/u.test(name) && /\s/u.test(name) && placeNameCue.test(name) && !spokenIdiom.test(name) && !spokenFirstWord.test(name)
+    && !spokenNotAPlace.test(name) && (!spokenNearest.test(name) || spokenNearestPlace.test(name))
+}
+
 function goToPlace(destination: string): boolean {
   const name = destination.replace(/^the\s+/iu, "")
-  const spoken = /^\p{Ll}/u.test(name) && /\s/u.test(name) && !spokenIdiom.test(destination) && !spokenFirstWord.test(name) && !spokenWord.test(name) && !spokenLastWord.test(name) && nearestPlace.test(name)
-  return !goToNotAPlace.test(name) && (streetAddress.test(name) || placeCode.test(name) || spoken || (properName.test(name) && (name !== destination || /\s/u.test(name))))
+  const code = placeCode.exec(name)?.[0]
+  return !goToNotAPlace.test(name) && (businessNames.has(name.toLowerCase().replace(/['’]/gu, ""))
+    || (properName.test(name) && (name !== destination || /\s/u.test(name)))
+    || (code !== undefined && (code === name || (placeNameCue.test(name) && !spokenNotAPlace.test(name.toLowerCase()))))
+    || streetAddress.test(name) || streetName.test(name) || spokenPlaceName(name))
+}
+
+function withoutTail(words: string): string {
+  return words.trim().replace(/[\s?.!]+$/u, "").replace(anchorTail, "").trim()
+}
+
+function kindOf(words: string | undefined): string | undefined {
+  const kind = words?.replace(leadingKindWords, "").trim()
+  return kind === undefined || kind === "" || !placeKindWords.test(kind) ? undefined : kind
+}
+
+export function namesOwnPosition(words: string): boolean {
+  return ownPositionQuery.test(withoutTail(words))
+}
+
+export function nearbyPlaceKind(query: string): string | undefined {
+  const trimmed = withoutTail(query)
+  const nearest = nearestKind.exec(trimmed)?.[1]
+  if (nearest !== undefined) {
+    const split = nearestToPoint.exec(nearest)
+    return split === null ? kindOf(nearest) : ownPosition.test(withoutTail(split[2] ?? "")) ? kindOf(split[1]) : undefined
+  }
+  const nearby = nearbyKind.exec(trimmed)?.[1]
+  if (nearby !== undefined) return kindOf(nearby)
+  const match = anchoredQuery.exec(trimmed)
+  return match?.[2] !== undefined && ownPosition.test(withoutTail(match[2])) ? kindOf(match[1]) : undefined
+}
+
+export function anchoredPlace(query: string): { readonly kind: string; readonly anchor: string } | undefined {
+  const match = anchoredQuery.exec(query)
+  const kind = match?.[1]?.trim()
+  const anchor = match?.[2] === undefined ? undefined : withoutTail(match[2])
+  if (kind === undefined || kind === "" || anchor === undefined || anchor === "" || ownPosition.test(anchor) || nearNotAPlace.test(anchor) || nearNotAPlaceKind.test(kind)) return undefined
+  return { kind, anchor: anchor.replace(/^the\s+/iu, "") }
 }
 
 export function requestShape(text: string, openChoiceAnswered: boolean): { readonly shape: RequestShape; readonly destination?: string } {
@@ -122,14 +177,21 @@ export function requestShape(text: string, openChoiceAnswered: boolean): { reado
   if (goTo !== undefined && goToPlace(goTo)) return { shape: "GoToNamedPlace", destination: goTo }
   if (nearestRequest.test(text) || nearMeRequest.test(text)) return { shape: "NearbyKind" }
   const named = kindNearNamedRequest.exec(text.replace(/^(\s*)(\p{Lu})/u, (_, space: string, first: string) => space + first.toLowerCase()))
-  if (named?.[2] !== undefined && !ownPosition.test(named[2].trim())) return { shape: "KindNearNamedPlace", destination: named[2].trim() }
+  const kind = named?.[1]?.trim()
+  const anchor = named?.[2]?.trim()
+  if (kind !== undefined && anchor !== undefined && !ownPosition.test(anchor) && !nearNotAPlace.test(anchor) && !nearNotAPlaceKind.test(kind)) {
+    return { shape: "KindNearNamedPlace", destination: anchor }
+  }
   return { shape: "OtherRequest" }
 }
 
 export function routeOf(text: string, message: Memory | undefined, openChoiceAnswered: boolean, namesView: (destination: string) => boolean): RoutedTo {
   const { shape, destination } = requestShape(text, openChoiceAnswered)
   return mapsRouteOf({
-    ownerTurn: message?.content.source === "device" && ownerChannels.has(message.content.channelType),
+    ownerTurn: message !== undefined && (
+      (message.content.source === "device" && ownerChannels.has(message.content.channelType))
+      || (message.content.source === "client_chat" && (message.content.channelType === "DM" || message.content.channelType === "VOICE_DM"))
+    ),
     shape,
     compound: destination !== undefined && compound(destination),
     webAddress: destination !== undefined && containsResourceAddress(destination),

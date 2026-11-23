@@ -67,7 +67,7 @@ export class FakeAudioContext implements CaptureContext<FakeMicrophone> {
   readonly audioWorklet = {
     addModule: async (url: string): Promise<void> => {
       if (this.workletFails) throw new Error("worklet refused")
-      await import(/* @vite-ignore */ url)
+      await import(url)
     },
   }
 
@@ -84,17 +84,13 @@ export class FakeAudioContext implements CaptureContext<FakeMicrophone> {
   }
 
   resume(): Promise<void> {
-    return new Promise((resolve) => {
-      this.resumed = true
-      resolve()
-    })
+    this.resumed = true
+    return Promise.resolve()
   }
 
   close(): Promise<void> {
-    return new Promise((resolve) => {
-      this.closed = true
-      resolve()
-    })
+    this.closed = true
+    return Promise.resolve()
   }
 }
 
@@ -151,14 +147,14 @@ export function fakeClipAudio(duration: number, decoded: () => void = () => unde
   const rendered: number[] = []
   return {
     rendered,
-    decode: () => new Promise((resolve) => {
+    decode: () => {
       decoded()
-      resolve({ duration })
-    }),
-    render: (_clip, length) => new Promise((resolve) => {
+      return Promise.resolve({ duration })
+    },
+    render: (_clip, length) => {
       rendered.push(length)
-      resolve(new Float32Array(length))
-    }),
+      return Promise.resolve(new Float32Array(length))
+    },
   }
 }
 
@@ -238,8 +234,9 @@ export class FakeSpeechSource implements ProgressiveSpeechSource<SpeechAudioFram
     this.#end.resolve({ type: "done" })
   }
 
-  async cancel(): Promise<void> {
+  cancel(): Promise<void> {
     this.cancelled = true
     this.finish()
+    return Promise.resolve()
   }
 }

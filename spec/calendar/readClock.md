@@ -78,12 +78,23 @@ pure val utcMinuteValues = Set(0, 1439)
 
 ### A stated year wins, a wrong extracted year is corrected, and a past start asks first
 
-When a create names a date, a trailing year wins. Otherwise a stated
-numeric year or "next" chooses the coming year, and a date with no year
-or "this year" chooses the current year. The year the extractor guessed
-is never used on its own. The wall clock and duration stay as
-extracted. A start that is already past must be confirmed by the owner
-before anything is stored; a future start is ready.
+When a create's request names a date or a year, the year comes from the
+owner's words, never from the year the extractor guessed: a trailing
+year wins. Otherwise "next year" chooses the coming year, and so does
+"next" before a month or a date that is not later than today, as in
+"next March 3" said in June or "next November" said in November. A
+stated numeric year comes next, and a date with no year or "this year"
+chooses the current year. "next" before anything else is no year cue:
+"next Friday on March 3" names March 3 of the current year. A year named
+before the month or a numeric date counts the same way: "2027년" and
+"2027年" state 2027, "내년" and "明年" say next year, and "올해" and
+"今年" say this year. A marker inside a longer word or number, as in
+"국내년" or "12027년", is no cue. A create that names neither a date
+nor a year, as "tomorrow" or "next Friday", keeps the date the extractor
+resolved from those words. The wall clock and duration stay as
+extracted, and only the year moves. A start that is already past in the
+create's zone must be confirmed by the owner before anything is stored;
+a future start is ready.
 
 ```quint
 type YearCue = NoYearCue | ThisYearCue | NextYearCue | StatedYearCue
@@ -92,16 +103,33 @@ pure def correctedYear(cue: YearCue, statedYear: int, trailingYear: int, current
   else if (cue == StatedYearCue) statedYear
   else if (cue == NextYearCue) currentYear + 1
   else currentYear
+pure def nextMeansNextYear(namesNextYear: bool, nextNamesDate: bool, datePassed: bool): bool =
+  namesNextYear or (nextNamesDate and datePassed)
+pure def yearCueFrom(saysNextYear: bool, statesYear: bool, saysThisYear: bool): YearCue =
+  if (saysNextYear) NextYearCue else if (statesYear) StatedYearCue else if (saysThisYear) ThisYearCue else NoYearCue
+pure def yearCorrectionApplies(cue: YearCue, trailingYear: int, namesDate: bool): bool =
+  cue != NoYearCue or trailingYear > 0 or namesDate
+pure def createStartYear(cue: YearCue, statedYear: int, trailingYear: int, currentYear: int, namesDate: bool, extractedYear: int): int =
+  if (yearCorrectionApplies(cue, trailingYear, namesDate)) correctedYear(cue, statedYear, trailingYear, currentYear) else extractedYear
 pure def mustAskBeforeCreate(startYear: int, currentYear: int, dayPassed: bool): bool =
   startYear < currentYear or (startYear == currentYear and dayPassed)
 pure def lawTrailingYearWins(cue: YearCue, statedYear: int, trailingYear: int, currentYear: int): bool =
   trailingYear > 0 implies correctedYear(cue, statedYear, trailingYear, currentYear) == trailingYear
 pure def lawYearlessUsesCurrentYear(statedYear: int, currentYear: int): bool =
   correctedYear(NoYearCue, statedYear, 0, currentYear) == currentYear
+pure def lawNextWeekdayIsNoYearCue(datePassed: bool): bool =
+  not(nextMeansNextYear(false, false, datePassed))
+pure def lawNextUpcomingDateKeepsYear(namesNextYear: bool): bool =
+  nextMeansNextYear(namesNextYear, true, false) == namesNextYear
+pure def lawDatedCreateIgnoresExtractedYear(cue: YearCue, statedYear: int, trailingYear: int, currentYear: int, extractedYear: int): bool =
+  createStartYear(cue, statedYear, trailingYear, currentYear, true, extractedYear) == correctedYear(cue, statedYear, trailingYear, currentYear)
+pure def lawUndatedCreateKeepsExtractedYear(statedYear: int, currentYear: int, extractedYear: int): bool =
+  createStartYear(NoYearCue, statedYear, 0, currentYear, false, extractedYear) == extractedYear
 pure def lawFutureStartIsReady(startYear: int, currentYear: int, dayPassed: bool): bool =
   (startYear > currentYear or (startYear == currentYear and not(dayPassed))) implies not(mustAskBeforeCreate(startYear, currentYear, dayPassed))
 pure val statedYearValues = Set(2026, 2027, 2028)
 pure val currentYearValues = Set(2026)
 pure val trailingYearValues = Set(0, 2028)
 pure val startYearValues = Set(2025, 2026, 2027)
+pure val extractedYearValues = Set(2025, 2026, 2030)
 ```

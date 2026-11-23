@@ -1,6 +1,7 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
-import { Refused, generateText, listModels, registerTwice, type Binding } from "./chat.vibe"
+import type { HttpClient } from "effect/http"
+import { Refused, generateText, listModels, registerTwice, type Binding, type ShellRefused } from "./chat.vibe"
 
 export interface OwnKeyModels {
   readonly baseUrl: string
@@ -8,15 +9,21 @@ export interface OwnKeyModels {
   readonly large: string
 }
 
+function onCerebras(baseUrl: string): boolean {
+  return /(?:^|\.)cerebras\.ai$/i.test(URL.parse(baseUrl)?.hostname ?? "")
+}
+
 export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, own: OwnKeyModels): void {
-  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large }, maxTokensField: "max_completion_tokens" } as const
+  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large }, maxTokensField: "max_completion_tokens", reasoningHints: onCerebras(own.baseUrl) } as const
   registerTwice(runtime, "@elizaos/agent/own-key", {
     [ModelType.TEXT_SMALL]: generateText(binding, endpoint, "TextSmall"),
     [ModelType.TEXT_LARGE]: generateText(binding, endpoint, "TextLarge"),
   }, { streamable: true })
 }
 
-export effect function probeOwnKey(own: OwnKeyModels, key: Redacted.Redacted<string>) {
+type ProbeFailure = Refused | ShellRefused
+
+export effect function probeOwnKey(own: OwnKeyModels, key: Redacted.Redacted<string>): string[]!ProbeFailure!HttpClient.HttpClient {
   const listed = try listModels(own.baseUrl, key)
   if (!listed.includes(own.small) || !listed.includes(own.large)) throw new Refused({ cloud: { tag: "CloudProviderIssue" } })
   return listed

@@ -4,7 +4,7 @@ import type { FailCode } from "../../../gen/os__agentService__channel.ts";
 
 export type AgentFailCode = FailCode;
 
-export type AgentFailure = "payload" | "storage" | "config" | "credential" | "agent" | "crashed" | "runtime";
+export type AgentFailure = "payload" | "storage" | "config" | "credential" | "agent" | "runtime";
 
 export type AgentStatus = { available: boolean; epoch: number; requestBodyLimit: number } & (
   | { state: "unavailable" | "stopped" | "starting" | "running" }

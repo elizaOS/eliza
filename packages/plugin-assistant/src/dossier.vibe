@@ -58,7 +58,7 @@ export effect function presentDossier() {
   const zone = try ownerClockAt(at)
   const date = civilDate(at, zone)
   const { facts } = try collectFacts(at, zone)
-  const said = (try Model).complete(`Prepare the owner's day for ${longDate(date)} in their zone ${zone}. Use only the facts given, in five to eight short lines.`, facts, 500) catch () => ""
+  const said = (try Model).complete(`Prepare the owner's day for ${longDate(date)} in their zone ${zone}. Use only the facts given, in five to eight short lines.`, facts) catch () => ""
   const body = said.trim() || facts
   const presentation = Effect.try({ try: () => createReminderPresentation(body, body, "Your day"), catch: () => "unpresentable" }) catch () => undefined
   if (presentation === undefined) return false

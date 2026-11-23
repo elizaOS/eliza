@@ -36,6 +36,55 @@ pure def lawNoOfferWithoutCurrentSource(offer: DigestOffer, now: int): bool = of
 pure def lawLaterResultsSupersedeOffer(offer: DigestOffer, now: int): bool = offer.newerResult implies not(offersMissedRun(offer, now))
 ```
 
+## Story: Get my on-demand dossier in chat from the phone source I chose
+
+> As the owner, I want to ask chat for today's dossier and get the briefing
+> itself, read from the reviewed phone source I chose, once for each time I
+> ask.
+
+### A chat dossier reads only the one current reviewed phone source the owner chose
+
+A source counts when it is a native phone source that is neither revoked
+nor past its expiry. A source the request names is used only when it is one
+of those; with no name, the one current source is used when there is
+exactly one. Otherwise nothing runs: with several current sources the owner
+is asked which one, and with none, or a named source that is not current,
+the owner is asked to choose sources in the phone's digest settings first.
+Either refusal lists the current sources by ID, label, review time and
+expiry.
+
+```quint
+type DossierSource = NamedSource | OnlySource | ChooseSource | ReviewSourceFirst
+pure def dossierSource(named: bool, namedCurrent: bool, currentCount: int): DossierSource =
+  if (named and namedCurrent) NamedSource
+  else if (not(named) and currentCount == 1) OnlySource
+  else if (currentCount > 1) ChooseSource
+  else ReviewSourceFirst
+pure val currentCountValues = Set(0, 1, 2)
+pure def lawSeveralSourcesAreNeverGuessed(namedCurrent: bool, currentCount: int): bool =
+  currentCount > 1 implies dossierSource(false, namedCurrent, currentCount) == ChooseSource
+pure def lawANamedSourceIsNeverReplaced(currentCount: int): bool =
+  dossierSource(true, false, currentCount) != NamedSource and dossierSource(true, false, currentCount) != OnlySource
+```
+
+### A chat dossier is one run for each owner message and answers with its finished briefing
+
+The run's mutation ID is derived from the owner and the ID of the owner's
+message, so a retried or replayed action for the same message returns the
+same run and never starts and bills another; a request without a message ID
+starts nothing. The reply waits for the run and is the briefing it wrote.
+A run that did not finish with its briefing says that the selected phone
+sources could not be read and no dossier was completed.
+
+```quint
+type DossierReply = DossierBriefing | DossierUnread
+pure def dossierStarts(messageGiven: bool, source: DossierSource): bool =
+  messageGiven and (source == NamedSource or source == OnlySource)
+pure def dossierReply(finished: bool, briefed: bool): DossierReply = if (finished and briefed) DossierBriefing else DossierUnread
+pure def lawNoMessageStartsNoDossier(source: DossierSource): bool = not(dossierStarts(false, source))
+pure def lawOnlyAFinishedBriefingIsTheReply(finished: bool, briefed: bool): bool = dossierReply(finished, briefed) == DossierBriefing iff (finished and briefed)
+```
+
 ## Story: Keep a terminal digest result when the provisional cancellation returns again
 
 > As the owner, I want a digest that finished to stay finished when an earlier

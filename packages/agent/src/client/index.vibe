@@ -154,7 +154,7 @@ module node {
     return close
   }
 
-  async function connect(input: StreamRequest, route: Route, signal: AbortSignal, httpOrigin: string | undefined): Promise<Wire> {
+  async function connectStream(httpOrigin: string | undefined, input: StreamRequest, route: Route, signal: AbortSignal): Promise<Wire> {
     const body = input.body === undefined ? {} : { body: input.body }
     if (route === "Bridge" && input.bridge) {
       if (!input.bridge.requestStream) throw new Error("NoRoute")
@@ -395,7 +395,7 @@ module node {
       const deadline = AbortSignal.any([live, AbortSignal.timeout(options.requestTimeoutMs)])
       let wire: Wire | undefined
       try {
-        const connected = await abortable(deadline, () => connect(input, route, live, httpOrigin))
+        const connected = await abortable(deadline, () => connectStream(httpOrigin, input, route, live))
         wire = connected
         if (wire.status >= 200 && wire.status < 300) {
           input.opened = { status: wire.status, headers: wire.headers, body: body(id, wire, live, stop) }
@@ -487,4 +487,4 @@ export { createSurfaceClient, SurfaceProtocol, SurfaceTransport, type SurfaceCli
 export { TASK_ID_PATTERN } from "@elizaos/core/task-events"
 
 export { TurnController, ConversationRecord, InvalidConversation, findStoppedUserTurn, type ClientMessageId, type HistoryMessage, type StopResult, type StoppedConversationTurn, type TurnMessage, type TurnOptions, type TurnRefusal, type TurnReply, type TurnResult, type TurnTransport } from "./turn-controller.vibe"
-export { decodeLocationObservation, decodeObservation, decodeVoiceUiContext, encodeTurnContext, Observation, ObservationDropped, parseVoiceUiContext, VoiceUiContext, VoiceUiContextInvalid, type LocationObservation, type TurnContext } from "../conversation/turn-context.schema.vibe"
+export { BrowserPage, BrowserPageDropped, decodeBrowserPage, decodeLocationObservation, decodeObservation, decodeVoiceUiContext, encodeTurnContext, Observation, ObservationDropped, parseVoiceUiContext, VoiceUiContext, VoiceUiContextInvalid, type LocationObservation, type TurnContext } from "../conversation/turn-context.schema.vibe"

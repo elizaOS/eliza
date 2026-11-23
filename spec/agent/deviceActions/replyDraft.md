@@ -137,10 +137,12 @@ pure def lawNoMessageUnitCanEndItsStringOrTheBlock(u: TextUnit): bool = endsStri
 
 ### The answer is one draft of at most 320 units, or none, and nothing is sent
 
-The call sets no output cap, even when a default or small-model cap
-is configured, since a model's reasoning counts inside one
-and a small cap can end the call before any reply text, and it carries the
-caller's cancellation.
+The call sends no output cap, even when a default or small-model cap is
+configured (no setting caps output, see [models](../../core/models.md)), since
+a model's reasoning counts inside a cap and a small one can end the call before
+any reply text. It asks the model to draft with thinking off
+(`providerOptions.eliza.thinking` `off`, see [binding](../models/binding.md)),
+and carries the caller's cancellation.
 Each run of whitespace in the model's text becomes one space and
 surrounding quotation marks are removed. A longer text is cut to its first
 320 UTF-16 units, less a split surrogate half and trailing space. `NONE`

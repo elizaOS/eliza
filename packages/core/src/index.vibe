@@ -997,7 +997,6 @@ export {
   parseSecretSwapExemptValues,
   SECRET_SWAP_ENABLED_SETTING,
   SECRET_SWAP_EXEMPT_VALUES_SETTING,
-  SECRET_SWAP_STABLE_REFERENCES_SETTING,
   SECRET_SWAP_UNBOUNDED,
   createSecretSwapStableKey,
   pseudonymSaltFromStableKey,

@@ -1,19 +1,24 @@
-// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"
 import { assert, it } from "@effect/vitest"
-import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core"
+import type { ActionResult, AgentRuntime, IAgentRuntime, Memory } from "@elizaos/core"
+import { offeredActions } from "@elizaos/agent"
+import { registerDeviceProposalFamily, type DeviceOperation } from "@elizaos/agent/device-actions"
 import {
-  BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY, browserControlCapabilityAvailable,
-  browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable, parseBrowserControl, parseBrowserNavigate,
+  BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_NO_TABS_TO_CLOSE_NOTICE, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY,
+  BROWSER_TABS_CLOSE_ALL_CAPABILITY, BROWSER_TABS_UNLISTED_NOTICE, browserCloseAllApprovable, browserCloseAllNotice, browserControlCapabilityAvailable,
+  browserControlFormAvailable, browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable, describeBrowserControl, parseBrowserControl,
+  parseBrowserNavigate,
 } from "../src/contract.vibe"
 import {
   browserDestinationMatches, browserSearchQueryMatches, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination,
   groundBrowserSearchQuery, spokenBrowserDestination,
 } from "../src/grounding.vibe"
 import { browserPlugin } from "../src/index.vibe"
+import { browserProposalFamily } from "../src/proposal.vibe"
 import type { BrowserViewAsked, BrowserViewAsker, BrowserViewWait } from "../src/native-browser.vibe"
 import { observedTabCurrent, parseNativeHistoryCommand } from "../src/native-command.vibe"
 
-it.effect('Open only a destination the owner wrote in this message, spelled as written (spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal")', effect () => {
+it.effect('Open only a destination the owner wrote in this message, spelled as written, or an exact link of its page (spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review")', effect () => {
   const grounded = [
     groundBrowserDestination("open example.com/docs please", "https://example.com/docs"),
     groundBrowserDestination("don't open example.com", "https://example.com/"),
@@ -25,6 +30,9 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
     groundBrowserDestination("open example dot com", "https://example.com"),
     groundBrowserDestination("open example.com", "https://other.com"),
   ]
+  const links = ["https://one.example/story", "https://two.example/post?id=2"]
+  const linked = ["https://two.example/post?id=2", "https://one.example/story#top", "https://two.example/post?id=3", "https://two.example/post", "https://one.example/story/",
+    "http://one.example:8080/story", "javascript:alert(1)", ""].map((proposed) => groundBrowserDestination("Open the second story.", proposed, "Eliza", links))
   const direct = [
     directBrowserDestination("open example.com"),
     directBrowserDestination("Alpha, can you pull up example.com?", "Alpha"),
@@ -32,6 +40,13 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
     spokenBrowserDestination("open example dot com"),
     directBrowserDestination("open example dot com"),
   ]
+  const world = "https://nytimes.com/section/world"
+  const marked = [
+    ["open nytimes.com/section/world.", world], ["Hey Eliza, open nytimes.com/section/world.", world], ["nytimes.com/section/world.", world],
+    ["https://example.com/path!", "https://example.com/path"], ["example.com?!", "https://example.com/"], ["example.com.", "https://example.com/"],
+  ].map(([text, proposed]) => [directBrowserDestination(text), groundBrowserDestination(text, proposed)])
+  const unmarked = ["nytimes.com/section/world", "https://example.com/a?", "Open Reddit.com!", "open example.com/a, please", "open example.com?!", "example.com?"]
+    .map((text) => directBrowserDestination(text))
   const searched = [
     directBrowserSearchQuery("search the web for cheap flights please"),
     groundBrowserSearchQuery("find me cheap   flights", "Cheap flights"),
@@ -42,7 +57,15 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
       "https://example.com/docs", undefined, undefined, "https://www.example.com/", "https://example.com/",
       "https://example.com/", undefined, "https://example.com/", undefined,
     ])
+    assert.deepStrictEqual(linked, ["https://two.example/post?id=2", "https://one.example/story", undefined, undefined, undefined, undefined, undefined, undefined])
+    assert.deepStrictEqual(
+      [groundBrowserDestination("Do not open https://two.example/post?id=2.", "https://two.example/post?id=2", "Eliza", links), groundBrowserDestination("Open the second story.", "https://one.example/story")],
+      [undefined, undefined])
     assert.deepStrictEqual(direct, ["https://example.com/", "https://example.com/", undefined, "https://example.com/", undefined])
+    assert.deepStrictEqual(marked, [
+      [undefined, world], [undefined, world], [undefined, world], [undefined, "https://example.com/path"], [undefined, "https://example.com/"], [undefined, "https://example.com/"],
+    ])
+    assert.deepStrictEqual(unmarked, [world, "https://example.com/a", "https://reddit.com/", "https://example.com/a", "https://example.com/", "https://example.com/"])
     assert.deepStrictEqual(searched, ["cheap flights", "cheap flights", undefined])
     assert.isTrue(browserSearchQueryMatches("\"Cheap Flights\"", searched[0]))
     assert.isTrue(browserDestinationMatches({ type: "browser_navigate", url: "example.com" }, direct[0]))
@@ -50,7 +73,7 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
   })
 })
 
-it.effect(`Offer a Browser control only as negotiated and review it only on the unlocked phone (spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review")`, effect () => {
+it.effect(`Offer a Browser control only as negotiated and review it only on the unlocked phone (spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "Closing every tab is its own negotiated form, refused rather than narrowed, and reviewed only on a card that lists those tabs"; spec/browser/control.md, "A control is reviewed only on the unlocked phone, and closing a tab always waits for that review")`, effect () => {
   const tabsOnly = [BROWSER_TABS_CAPABILITY]
   try Effect.try(() => {
     assert.deepStrictEqual(parseBrowserControl({ type: "browser_search", query: "  cheap   flights " }), { ok: true, operation: { type: "browser_search", query: "cheap flights" } })
@@ -82,6 +105,22 @@ it.effect(`Offer a Browser control only as negotiated and review it only on the 
       [false, false, true, false])
     assert.isDefined(browserControlReviewNotice({ sensitive: true }))
     assert.isUndefined(browserControlReviewNotice({ sensitive: false }))
+    const closeAll = { type: "browser_tab_close", all: true } as const
+    const tabs = [{ title: "News", host: "news.example" }, { title: "Docs", host: "Docs" }, { title: "Secret", private: true }]
+    assert.deepStrictEqual(
+      [parseBrowserControl({ type: "browser_tab_close", all: true }), parseBrowserControl({ type: "browser_tab_close", all: true, target: "News" }).ok, parseBrowserControl({ type: "browser_tab_close", all: false }).ok],
+      [{ ok: true, operation: closeAll }, false, false])
+    assert.deepStrictEqual(
+      [browserControlFormAvailable(closeAll, tabsOnly), browserControlFormAvailable(closeAll, [BROWSER_TABS_CLOSE_ALL_CAPABILITY]),
+        browserControlFormAvailable(closeAll, [BROWSER_TABS_CAPABILITY, BROWSER_TABS_CLOSE_ALL_CAPABILITY]), browserControlFormAvailable({ type: "browser_tab_close" }, tabsOnly)],
+      [false, false, true, true])
+    assert.deepStrictEqual(describeBrowserControl(closeAll, tabs), {
+      title: "Close 3 tabs",
+      description: "• News (news.example)\n• Docs\n• 1 private tab\n\nCloses every tab listed here. The agent does not see your tabs.",
+    })
+    assert.deepStrictEqual(
+      [browserCloseAllNotice(tabs), browserCloseAllNotice(null), browserCloseAllNotice([]), browserCloseAllApprovable(tabs), browserCloseAllApprovable(undefined), browserCloseAllApprovable([])],
+      [undefined, BROWSER_TABS_UNLISTED_NOTICE, BROWSER_NO_TABS_TO_CLOSE_NOTICE, true, false, false])
   })
 })
 
@@ -116,7 +155,7 @@ const failureKind = (result: ActionResult) => {
   return typeof failure === "object" && failure !== null && "kind" in failure ? failure.kind : undefined
 }
 
-it.effect('Go back on the tab the turn observed and say only that the browser was asked (spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain")', effect () => {
+it.effect('Go back on the tab the turn observed and say only that the browser was asked (spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form")', effect () => {
   const back = browserPlugin.actions?.find((action) => action.name === "BROWSER_BACK")
   const reload = browserPlugin.actions?.find((action) => action.name === "BROWSER_RELOAD")
   try Effect.try(() => assert.isTrue(back !== undefined && reload !== undefined))
@@ -130,6 +169,12 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
     { kind: "refused" },
   ])
   const run = (message: Memory, action = back) => promise(() => action!.handler(device.runtime, message, undefined, {}))
+  const commandOffered = try promise(() => back!.validate(device.runtime, turn(browserTab)))
+  const commandWithoutBrowser = try promise(() => back!.validate({ getService: () => null } as unknown as IAgentRuntime, turn(browserTab)))
+  const toolsOffered = (getService: IAgentRuntime["getService"]) =>
+    offeredActions({ actions: browserPlugin.actions ?? [], getService } as unknown as AgentRuntime, turn(browserTab), () => undefined).map(({ name }) => name).toSorted()
+  const offeredWithBrowser = toolsOffered(device.runtime.getService)
+  const offeredWithoutBrowser = toolsOffered(() => null)
   const observed = try run(turn(browserTab))
   const sensitive = try run(turn({ ...browserTab, sensitive: true, selectedObject: undefined }), reload)
   const completed = try run(turn(browserTab))
@@ -146,6 +191,8 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
       { command: { subaction: "reload" } },
     ])
     assert.strictEqual(device.asks.length, 8)
+    assert.deepStrictEqual([commandOffered, commandWithoutBrowser], [true, false])
+    assert.deepStrictEqual([offeredWithBrowser, offeredWithoutBrowser], [["BROWSER", "BROWSER_BACK", "BROWSER_FORWARD", "BROWSER_RELOAD"], []])
     assert.deepStrictEqual([observed.success, observed.turnComplete, observed.verifiedUserFacing, observed.data?.executionStatus], [true, true, true, "dispatched"])
     assert.deepStrictEqual(JSON.parse(observed.text ?? "").value, { dispatched: true, completed: false, requiresReadback: false })
     assert.isTrue(sensitive.success)
@@ -159,5 +206,154 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
       [observedTabCurrent({ id: "tab-a", revision: "r1" }, { id: "tab-a", revision: "r1" }), observedTabCurrent({ id: "tab-a", revision: "r1" }, { id: "tab-a", revision: "r2" }),
         observedTabCurrent({ id: "tab-a", revision: "r1" }, { id: "tab-b", revision: "r1" }), observedTabCurrent(undefined, { id: "tab-b", revision: "r9" })],
       [true, false, false, true])
+  })
+})
+
+module node {
+  import { Effect } from "effect"
+  import type { IAgentRuntime } from "@elizaos/core"
+  import { negotiation, readOperation, validate, type DeviceTurn } from "@elizaos/agent/device-actions"
+  import { browserProposalFamily } from "../src/proposal.vibe"
+
+  export const everyBrowserCapability = ["browser.search.v1", "browser.tabs.v1", "browser.tabs.close-all.v1", "browser.find.v1", "browser.history.v1", "browser.open-new-tab.v1"]
+  export const pageObservation = { view: "browser", revision: 1, sensitive: false, selectedObject: { kind: "browser-tab", id: "session:tab", revision: "4" } }
+  export const pageLinks = [{ text: "The first story", url: "https://one.example/story" }, { text: "The second story", url: "https://two.example/post?id=2" }]
+  /** @throws {never} */
+  export function frontPage(revision = "4") {
+    return {
+      tabId: "session:tab", revision, url: "https://news.example/", title: "Front page", capturedAt: 1,
+      text: "1. The first story\n2. The second story", truncated: false, links: pageLinks,
+    }
+  }
+
+  /** @throws {never} */
+  export function ownerTurn(ownerText: string, capabilities: readonly string[], browserPage?: unknown, observation: unknown = pageObservation): DeviceTurn {
+    const negotiated = negotiation(true, capabilities.join(","))
+    return {
+      runtime: {} as IAgentRuntime, by: {} as DeviceTurn["by"], negotiation: negotiated, capabilities,
+      message: {
+        id: "00000000-0000-4000-8000-000000000010", entityId: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002",
+        content: { text: ownerText, ...(browserPage === undefined ? {} : { metadata: { observation, browserPage } }) },
+      } as DeviceTurn["message"],
+      ownerText, observation: (browserPage === undefined ? undefined : observation) as DeviceTurn["observation"],
+      completedActionNavigation: false, completesReads: false, conversationId: "conversation", requestId: "request", assistantName: "Eliza", swapped: [], startedAt: 0, timeZone: undefined,
+      signal: new AbortController().signal,
+      admit: (operation) => validate(operation, negotiated, "NoBinding"),
+      earlier: () => Effect.succeed([]),
+    }
+  }
+
+  export function checked(operation: unknown) {
+    const read = readOperation(operation)
+    if (read === undefined) throw new Error(`Not a device operation: ${JSON.stringify(operation)}`)
+    return read
+  }
+
+  /** @throws {never} */
+  export function offeredForms(turn: DeviceTurn) {
+    return browserProposalFamily.forms.filter((form) => form.offered(turn)).map((form) => [form.types[0], ...Object.keys(form.schema.properties ?? {}).filter((key) => key !== "type")].join(" "))
+  }
+}
+
+import { checked, everyBrowserCapability, frontPage, offeredForms, ownerTurn, pageObservation } from node
+
+it.effect(`Ground a Browser proposal in the owner's own words or an exact page link, bind only a whole-message request, or offer nothing (spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "My whole-message open command opens the address without waiting on the model's choice"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished")`, effect () => {
+  const tabsOnly = ["browser.tabs.v1"]
+  const propose = effect (ownerText: string, operation: unknown, capabilities: readonly string[] = everyBrowserCapability, page?: unknown, observation: unknown = pageObservation) => {
+    const proposed = try Effect.try(() => checked(operation))
+    const grounding = try browserProposalFamily.ground(proposed, ownerTurn(ownerText, capabilities, page, observation))
+    return grounding.kind === "Grounded" ? { operation: grounding.operation, reviewed: grounding.grounding === "GroundedForReview" } : grounding.code
+  }
+  const navigate = (url: string, newTab?: true): DeviceOperation => ({ type: "browser_navigate", url, ...(newTab === undefined ? {} : { newTab }) })
+  const direct = (operation: DeviceOperation) => ({ operation, reviewed: false })
+  const reviewed = (operation: DeviceOperation) => ({ operation, reviewed: true })
+  const notRequested = "DEVICE_BROWSER_NOT_REQUESTED"
+  const opened = [
+    try propose("can you open wikipedia.org in a new tab?", navigate("wikipedia.org")),
+    try propose("open example.com/docs please", navigate("https://example.com/docs", true), tabsOnly),
+    try propose("I read example.com yesterday", navigate("https://example.com")),
+    try propose("open example dot com", navigate("https://example.com")),
+    try propose("open example dot com in a new tab", navigate("https://example.com")),
+    try propose("open example.com", navigate("https://evil.example/")),
+    try propose("do that in the browser", navigate("https://example.com/")),
+  ]
+  const emptyTab: DeviceOperation = { type: "browser_tab_new" }
+  const tabbed = [
+    try propose("open wikipedia.org in a new tab", emptyTab),
+    try propose("open example dot com in a new tab", emptyTab),
+    try propose("open wikipedia.org in a new tab", emptyTab, tabsOnly),
+    try propose("open wikipedia.org in a new tab", { type: "browser_tab_new", private: true }),
+    try propose("open a new tab", emptyTab),
+  ]
+  const linked = [
+    try propose("Open the second story.", navigate("https://two.example/post?id=2"), everyBrowserCapability, frontPage()),
+    try propose("Open the second story.", navigate("https://one.example/story#top"), everyBrowserCapability, frontPage()),
+    try propose("Open the second story.", navigate("https://evil.example/"), everyBrowserCapability, frontPage()),
+    try propose("Open the second story.", navigate("https://one.example/story/"), everyBrowserCapability, frontPage()),
+    try propose("Open the second story.", navigate("https://two.example/post?id=2"), everyBrowserCapability, frontPage("5")),
+    try propose("Open the second story.", navigate("https://two.example/post?id=2"), everyBrowserCapability, frontPage(), { ...pageObservation, view: "home" }),
+    try propose("Do not open https://two.example/post?id=2.", navigate("https://two.example/post?id=2"), everyBrowserCapability, frontPage()),
+    try propose("Open the second story.", navigate("https://two.example/post?id=2")),
+  ]
+  const controls = [
+    try propose("search the web for cheap flights please", { type: "browser_search", query: "Cheap  flights" }),
+    try propose("find me cheap flights", { type: "browser_search", query: "cheap flights" }),
+    try propose("search for cheap flights", { type: "browser_search", query: "cheap hotels" }),
+    try propose("switch to the bbc tab", { type: "browser_tab_switch", target: "bbc" }),
+    try propose("switch to the bbc tab", { type: "browser_tab_switch", target: "BBC News" }),
+    try propose("find price on this page", { type: "browser_find", text: "price" }),
+    try propose("find price on this page", { type: "browser_find", text: "cost" }),
+    try propose("open a new private tab", { type: "browser_tab_new", private: true }),
+    try propose("close all the browser tabs", { type: "browser_tab_close", all: true }, tabsOnly),
+    try propose("close all the browser tabs", { type: "browser_tab_close", all: true }),
+    try propose("close the bbc tab", { type: "browser_tab_close", target: "bbc" }, tabsOnly),
+    try propose("go back", { type: "browser_history", action: "back" }),
+  ]
+  const outright = [
+    ...["open example.com in a new tab", "Hey Eliza, visit wikipedia.org.", "can you open example.com?", "example.com", "open example dot com", "don't open example.com"]
+      .map((text) => ownerTurn(text, everyBrowserCapability)),
+    ownerTurn("open example.com", []),
+  ].map((turn) => browserProposalFamily.wholeMessageOperation?.(turn))
+  const asked = try propose("open example.com in a new tab", outright[0])
+  const wikipedia = (try Effect.try(() => checked(navigate("https://wikipedia.org/", true)))).operation
+  const told = [
+    browserProposalFamily.proposedText(wikipedia, { direct: true, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" })?.forOwner,
+    browserProposalFamily.proposedText(wikipedia, { direct: false, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" }),
+    browserProposalFamily.settledText(wikipedia, { outcome: "applied" }, undefined),
+  ]
+  const runtime = {} as IAgentRuntime
+  try promise(() => Promise.resolve(browserPlugin.init?.({}, runtime)))
+  const again = try Effect.result(registerDeviceProposalFamily(runtime, browserProposalFamily))
+  const rival = try Effect.result(registerDeviceProposalFamily(runtime, { ...browserProposalFamily, name: "files" }))
+  try Effect.try(() => {
+    assert.deepStrictEqual(opened, [
+      direct(navigate("https://wikipedia.org/", true)), direct(navigate("https://example.com/docs")), reviewed(navigate("https://example.com/")),
+      reviewed(navigate("https://example.com/")), reviewed(navigate("https://example.com/")), notRequested, notRequested,
+    ])
+    assert.deepStrictEqual(tabbed, [
+      direct(navigate("https://wikipedia.org/", true)), reviewed(navigate("https://example.com/", true)), direct(navigate("https://wikipedia.org/")),
+      direct({ type: "browser_tab_new", private: true }), direct(emptyTab),
+    ])
+    assert.deepStrictEqual(linked, [
+      reviewed(navigate("https://two.example/post?id=2")), reviewed(navigate("https://one.example/story")),
+      notRequested, notRequested, notRequested, notRequested, notRequested, notRequested,
+    ])
+    assert.deepStrictEqual(controls, [
+      direct({ type: "browser_search", query: "cheap flights" }), reviewed({ type: "browser_search", query: "cheap flights" }), notRequested,
+      direct({ type: "browser_tab_switch", target: "bbc" }), reviewed({ type: "browser_tab_switch", target: "BBC News" }),
+      direct({ type: "browser_find", text: "price" }), reviewed({ type: "browser_find", text: "cost" }),
+      direct({ type: "browser_tab_new", private: true }),
+      "DEVICE_BROWSER_CLOSE_ALL_UNAVAILABLE", direct({ type: "browser_tab_close", all: true }), direct({ type: "browser_tab_close", target: "bbc" }),
+      direct({ type: "browser_history", action: "back" }),
+    ])
+    assert.deepStrictEqual(told, ["Opening wikipedia.org.", undefined, undefined])
+    assert.deepStrictEqual(outright, [navigate("https://example.com/"), navigate("https://wikipedia.org/"), undefined, undefined, undefined, undefined, undefined])
+    assert.deepStrictEqual(asked, direct(navigate("https://example.com/", true)))
+    assert.deepStrictEqual(offeredForms(ownerTurn("", everyBrowserCapability)), [
+      "browser_navigate url newTab", "browser_search query", "browser_tab_new private", "browser_tab_switch target", "browser_tab_close target all", "browser_find text", "browser_history action",
+    ])
+    assert.deepStrictEqual(offeredForms(ownerTurn("", tabsOnly)), ["browser_navigate url", "browser_tab_new private", "browser_tab_switch target", "browser_tab_close target all"])
+    assert.deepStrictEqual(offeredForms(ownerTurn("", [])), [])
+    assert.deepStrictEqual([Result.isSuccess(again), Result.isFailure(rival) ? rival.failure._tag : "registered"], [true, "FamilyConflict"])
   })
 })

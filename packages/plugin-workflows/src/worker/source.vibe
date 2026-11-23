@@ -6,6 +6,7 @@ export const SOURCE_WAIT_MS = 5000
 export error SourceRefused { reason: string }
 
 module node {
+  import { Effect } from "effect"
   import { constants } from "node:fs"
   import { lstat, mkdir, open, readFile, realpath, rename, rm, rmdir, stat } from "node:fs/promises"
   import { randomUUID } from "node:crypto"
@@ -124,6 +125,14 @@ module node {
     }
   }
 
+  export async function waitForPeer(file: string, bytes: Uint8Array, deadline: number): Promise<boolean> {
+    while (Date.now() < deadline) {
+      if (await existing(file, bytes) === "exact") return true
+      await Effect.runPromise(Effect.sleep(50))
+    }
+    return await existing(file, bytes) === "exact"
+  }
+
   export async function readExact(file: string, maximum: number): Promise<Uint8Array | undefined> {
     try {
       const info = await stat(file)
@@ -138,20 +147,10 @@ module node {
     return join(directory, name)
   }
 }
-import { discard, existing, parentAdmitted, publish, readExact, release, reservationIntact, reserve, sourceFile, stage, stillAbsent, syncDirectory } from node
+import { discard, existing, parentAdmitted, publish, readExact, release, reservationIntact, reserve, sourceFile, stage, stillAbsent, syncDirectory, waitForPeer } from node
 
 effect function io<A>(call: () => Promise<A>): A!! {
   return try promise(call)
-}
-
-effect function waitForPeer(file: string, bytes: Uint8Array, deadline: number): boolean!! {
-  while ((try Clock.currentTimeMillis) < deadline) {
-    if ((try io(() => existing(file, bytes))) === "exact") return true
-    const remaining = deadline - (try Clock.currentTimeMillis)
-    if (remaining <= 0) break
-    try sleep(Math.min(50, remaining))
-  }
-  return (try io(() => existing(file, bytes))) === "exact"
 }
 
 export effect function sourcePublication() {
@@ -176,7 +175,7 @@ export effect function publishWorkflowSource(directory: string, name: string, by
   const held = try io(() => reserve(directory, name))
   if (held === undefined) {
     const deadline = (try Clock.currentTimeMillis) + SOURCE_WAIT_MS
-    if (!(try waitForPeer(file, bytes, deadline))) throw new SourceRefused({ reason: "Another publisher holds this source" })
+    if (!(try io(() => waitForPeer(file, bytes, deadline)))) throw new SourceRefused({ reason: "Another publisher holds this source" })
     if (!(try io(() => syncDirectory(directory)))) throw new SourceRefused({ reason: "The source directory could not be synchronized" })
     return "existing"
   }

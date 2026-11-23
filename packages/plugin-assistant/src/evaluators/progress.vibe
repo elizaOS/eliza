@@ -73,3 +73,21 @@ export effect function commitEvaluatorProgress(scope: ProgressScope, effectsSucc
     return committed
   }
 }
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the shell path for the spec's retireReducers event, which no caller reaches yet
+effect function reconcileEvaluatorEvidence(scope: ProgressScope, observed: readonly SourceRevision[], retire: (reprocess: readonly string[]) => boolean!unknown) {
+  provide stored(progressKey(scope)) {
+    const progress = try Machine
+    const refreshed = try orDie(progress.send({ type: "refreshSources", observed: [...observed] }))
+    if (!canPrepareReconciliation(refreshed)) return { kind: "kept", state: refreshed } satisfies ProgressAnswer
+    const affected = [...new Set(staleObserved(refreshed).map((source) => source.sourceId))]
+    const prepared = try orDie(progress.send({ type: "prepareReconciliation", durable: true }))
+    if (prepared.failure !== "NoProgressFailure" || !canRetireReducers(prepared, affected)) return answer(prepared)
+    const effectsSucceeded = retire(affected) catch () => false
+    const reduced = try orDie(progress.send({ type: "retireReducers", reprocess: affected, effectsSucceeded }))
+    if (!canRetireProgress(reduced)) return answer(reduced)
+    const retired = try orDie(progress.send({ type: "retireProgress", durable: true }))
+    if (!canFinishReconciliation(retired)) return answer(retired)
+    return answer(try orDie(progress.send({ type: "finishReconciliation", durable: true })))
+  }
+}

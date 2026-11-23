@@ -417,6 +417,12 @@ existing windows finish settlement. Closing waits for every admitted
 window's receipt. The metering owner decides each direction's known,
 unknown or released settlement and keeps that receipt idempotent.
 
+A renewal keeps the socket: the relay that admitted the next window goes on
+serving it. When the relay ends it retires the session first and then waits
+for a renewal it already started, so a window admitted while the relay was
+ending is among the windows it settles; that window carried no speech and
+is released at zero.
+
 ```quint
 pure def canSettleWindow(s: Session, window: int): bool =
   (s.phase == Active or s.phase == Retiring) and window >= 1 and window <= s.admittedWindows and not(s.settledWindows.contains(window))

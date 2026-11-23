@@ -17,9 +17,9 @@ import { mapsObservation } from "../src/client/observation.vibe"
 import { routeProgress } from "../src/client/route-distance.vibe"
 import { savedPlaces } from "../src/client/saved-places.vibe"
 import { mapsPlugin } from "../src/index.vibe"
-import { createMapsPlugin, nearbyPlaceKind, phonePositionProvider } from "../src/plugin.vibe"
+import { addressArea, createMapsPlugin, phonePositionProvider } from "../src/plugin.vibe"
 import { mapsNavigationRelay } from "../src/relay.vibe"
-import { routeOf } from "../src/routing.vibe"
+import { nearbyPlaceKind, routeOf } from "../src/routing.vibe"
 import type { AgentSavedPlaceStore } from "../src/saves.vibe"
 import type { MapsCloudLink } from "../src/service.vibe"
 
@@ -452,21 +452,33 @@ function linkFake() {
     async request(request) {
       bodies.push({ path: request.path, body: request.body, key: request.idempotencyKey !== undefined })
       const at = Date.now()
-      const place = (id: string, name: string, coordinate: { readonly latitude: number; readonly longitude: number }) => ({ providerId: "google", id, name, coordinate, attribution: "Google", fetchedAt: at })
+      const place = (id: string, name: string, coordinate: { readonly latitude: number; readonly longitude: number }, address?: string) => ({ providerId: "google", id, name, coordinate, attribution: "Google", fetchedAt: at, ...(address === undefined ? {} : { address }) })
+      const chicagoUnion = place("union-chicago", "Union Station", { latitude: 41.8787, longitude: -87.6403 }, "225 S Canal St, Chicago, IL 60606, USA")
+      const washingtonUnion = place("union-dc", "Union Station", { latitude: 38.8971, longitude: -77.0064 }, "50 Massachusetts Ave NE, Washington, DC 20002, USA")
       switch (request.path) {
         case "/api/v1/maps/capabilities": return { kind: "answered", status: 200, body: offer }
         case "/api/v1/maps/places/search": {
           const query = (request.body as { readonly query: string }).query
+          if (query === "Golden Gate Park") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("park", "Golden Gate Park", { latitude: 37.7694, longitude: -122.4862 }, "San Francisco, CA, USA"), place("district", "Golden Gate Park", { latitude: 37.77, longitude: -122.47 }, "Golden Gate Park, San Francisco, CA, USA")] } }
+          if (query === "Starbucks") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("market", "Starbucks", ferry, "1 Market St, San Francisco, CA, USA"), place("powell", "Starbucks", here, "201 Powell St, San Francisco, CA, USA")] } }
           if (query === "pharmacy") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry)] } }
           if (query === "Ferry Building") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("ferry", "Ferry Building", ferry)] } }
+          if (query === "Union Station, Washington, DC") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [chicagoUnion, washingtonUnion] } }
+          if (query === "Union Square") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("union-nyc", "Union Square", { latitude: 40.7359, longitude: -73.9911 }, "New York, NY 10003, USA"), place("union-sf", "Union Square", { latitude: 37.788, longitude: -122.4075 }, "San Francisco, CA 94108, USA")] } }
+          if (query === "Union Station in Washington") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [chicagoUnion] } }
+          if (query === "Nowhere Plaza") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [] } }
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("tower", "Coit Tower", tower)] } }
         }
         case "/api/v1/maps/places/details": {
           const id = (request.body as { readonly id: string }).id
-          const known = [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry), place("tower", "Coit Tower", tower)].find((item) => item.id === id)
+          const known = [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry), place("tower", "Coit Tower", tower), place("union-sf", "Union Square", { latitude: 37.788, longitude: -122.4075 }, "San Francisco, CA 94108, USA")].find((item) => item.id === id)
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: known ?? null } }
         }
-        case "/api/v1/maps/reverse": return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: { ...place("sun", "The Sun Building", here), address: "278 W Broadway, New York, NY 10006, USA" } } }
+        case "/api/v1/maps/reverse": {
+          const at = (request.body as { readonly coordinate: { readonly latitude: number } }).coordinate
+          const sun = place("sun", "The Sun Building", { latitude: 40.7128, longitude: -74.006 }, "278 W Broadway, New York, NY 10006, USA")
+          return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: at.latitude === 40.7128 ? sun : at.latitude === 0 ? place("sea", "Gulf of Guinea", { latitude: 0, longitude: 0 }, "12345") : null } }
+        }
         case "/api/v1/maps/routes": {
           const planned = (id: string, minutes: number) => ({ providerId: "google", id, from: ferry, to: tower, mode: "walk", geometry: [ferry, tower], distanceMeters: minutes * 80, durationSeconds: minutes * 60, steps: [], attribution: "Google", fetchedAt: at, traffic: "none" })
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google Maps Platform via Eliza Cloud", routes: [planned("best", 20), planned("other", 24)] } }
@@ -478,11 +490,22 @@ function linkFake() {
   return { link, bodies }
 }
 
-function messageWith(location: unknown): Memory {
-  return { entityId: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002", content: { text: "coffee near me", metadata: { clientDevice: { context: location === undefined ? {} : { location } } } } } as unknown as Memory
+function locateCard(result: { readonly text?: string }) {
+  const card = recognizedMapsCards(result.text ?? "")[0]?.card
+  return card?.kind === "locate" ? [card.intent, card.query, card.destination?.name, card.travelMode] : card?.kind
 }
 
-it.live('Search near me with where my phone is now: a recent reported position searches around the phone, an old one asks the phone for its location, routes keep their alternatives and attribution, and the card stays recognizable outside a fence, and "where am I" names only the area from a rough position (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/phonePosition.md, "Story: Tell me where I am from where my phone is now"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at")', effect () => {
+function nearPlace(result: { readonly text?: string }) {
+  const card = recognizedMapsCards(result.text ?? "")[0]?.card
+  return card?.kind === "places" ? card.near?.name : undefined
+}
+
+function messageWith(location: unknown, text = "coffee near me"): Memory {
+  const observation = { view: "maps", revision: 1, sensitive: false, ...(location === undefined ? {} : { location }) }
+  return { entityId: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002", content: { text, metadata: { observation } } } as unknown as Memory
+}
+
+it.live('Search near me with where my phone is now: a recent reported position searches around the phone at any accuracy, an old one asks the phone for its location, routes keep their alternatives and attribution, a route from here goes to the phone with its destination, a place named with its locality is never a namesake elsewhere, a landmark and its same-named area are one place while same-named branches still ask, a kind of place near a named place is searched around that place even when only the owner\'s words name it, a place not found or not one is said or asked, coordinates are looked up or searched around, a destination is searched around the start, and the card stays recognizable outside a fence (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Coordinates the owner names are looked up or searched around as given, never the phone\'s position"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "A route\'s destination that names no locality is taken from within 100 km of its start when any result is there"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes")', effect () => {
   const { link, bodies } = linkFake()
   const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
   const runtime = {} as IAgentRuntime
@@ -499,15 +522,32 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const nearBy = try act("MAPS_PLACE", old, { query: "pharmacy near by" })
   const route = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Coit Tower", travelMode: "walk" })
   const fromHere = try act("MAPS_ROUTE", recent, { origin: "here", destination: "Coit Tower" })
+  const park = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Golden Gate Park", travelMode: "walk" })
+  const chain = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Starbucks", travelMode: "walk" })
   const handoff = try act("MAPS_NAVIGATION_START", recent, { destination: "Coit Tower", travelMode: "walk" })
-  const rough = try act("MAPS_WHERE_AM_I", messageWith({ latitude: here.latitude, longitude: here.longitude, accuracyMeters: 25_000, capturedAt: now - 60_000 }), {})
-  const precise = try act("MAPS_WHERE_AM_I", recent, {})
-  const unknown = try act("MAPS_WHERE_AM_I", old, {})
+  const toLocality = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Union Station, Washington, DC", travelMode: "walk" })
+  const namesake = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Union Station in Washington", travelMode: "walk" })
+  const anchored = try act("MAPS_PLACE", old, { query: "pharmacy near the Ferry Building", useCurrentLocation: true })
+  const aroundStart = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Union Square", travelMode: "walk" })
+  const anywhere = try act("MAPS_SELECT", recent, { query: "Union Square" })
   const provider = try promise(() => phonePositionProvider.get(runtime, recent, {} as never))
+  const rough = try act("MAPS_PLACE", messageWith({ latitude: here.latitude, longitude: here.longitude, accuracyMeters: 25_000, capturedAt: now - 60_000 }), { query: "pharmacy", useCurrentLocation: true })
+  const tail = try act("MAPS_PLACE", recent, { query: "coffee near me right now" })
+  const ownWords = try act("MAPS_PLACE", messageWith({ latitude: here.latitude, longitude: here.longitude, capturedAt: now - 31 * 60_000 }, "pharmacy near the Ferry Building"), { query: "pharmacy", useCurrentLocation: true })
+  const notFound = try act("MAPS_PLACE", old, { query: "pharmacy near Nowhere Plaza" })
+  const pointAt = try act("MAPS_PLACE", old, { latitude: 40.7128, longitude: -74.006 })
+  const pointNear = try act("MAPS_PLACE", old, { query: "pharmacy", latitude: tower.latitude, longitude: tower.longitude })
+  const outOfRange = try act("MAPS_PLACE", old, { latitude: 95, longitude: 0 })
+  const nearestFromHere = try act("MAPS_ROUTE", old, { destination: "nearest pharmacy", travelMode: "walk" })
+  const namesakeFromHere = try act("MAPS_ROUTE", old, { origin: "my current location", destination: "Union Square" })
+  const whichAnchor = try act("MAPS_PLACE", recent, { query: "pharmacy near Union Square" })
+  const second = try act("MAPS_PLACE", messageWith(undefined, "the second one"), {})
   const routeText = route.text ?? ""
   const nearByCard = recognizedMapsCards(nearBy.text ?? "")[0]?.card
   const fenced = `\`\`\`\n${appendMapsCard("", { kind: "place", place: { name: "X", latitude: 1, longitude: 1, provider: "p", providerPlaceId: "x", categories: [] }, attribution: null })}\n\`\`\``
   const searched = bodies.find((made) => made.path === "/api/v1/maps/places/search")
+  const searchedNear = (query: string) => bodies.filter((made) => made.path === "/api/v1/maps/places/search" && (made.body as { readonly query: string }).query === query)
+    .map((made) => (made.body as { readonly near?: unknown }).near)
   try Effect.try(() => assert.deepStrictEqual({
     nearby: [nearby.success, (nearby.data as { readonly places: ReadonlyArray<{ readonly providerPlaceId: string }> }).places.map((item) => item.providerPlaceId)],
     searchedNear: (searched?.body as { readonly near?: unknown } | undefined)?.near, keyed: searched?.key,
@@ -515,12 +555,28 @@ it.live('Search near me with where my phone is now: a recent reported position s
     nearBy: [nearBy.success, nearByCard?.kind, nearByCard?.kind === "locate" ? nearByCard.query : undefined],
     route: [route.success, routeText.includes("Alternatives: 1. 20 min"), routeText.includes("Google Maps Platform via Eliza Cloud"), recognizedMapsCards(routeText).map((found) => found.card.kind)],
     plain: withoutMapsCards(routeText).includes("MAPSCARD"),
-    fromHere: [fromHere.success, (fromHere.data as { readonly origin: string }).origin],
+    fromHere: [fromHere.success, locateCard(fromHere)],
+    landmark: [park.success, chain.success, (chain.data as { readonly choice?: string }).choice],
     handoff: recognizedMapsCards(handoff.text ?? "")[0]?.card.kind,
+    localities: [
+      [toLocality.success, (toLocality.data as { readonly destination?: { readonly providerPlaceId: string } }).destination?.providerPlaceId],
+      [namesake.success, (namesake.data as { readonly choice?: string }).choice],
+    ],
+    anchored: [anchored.success, (anchored.text ?? "").startsWith("Near Ferry Building:"), searchedNear("pharmacy")[1], nearPlace(anchored)],
+    aroundStart: [aroundStart.success, (aroundStart.data as { readonly destination?: { readonly providerPlaceId: string } }).destination?.providerPlaceId, searchedNear("Union Square")[0]],
+    anywhere: [anywhere.success, (anywhere.data as { readonly choice?: string }).choice],
     provider: provider.values,
     fenced: recognizedMapsCards(fenced).length,
-    whereAmI: [rough.text, recognizedMapsCards(rough.text ?? "").length, recognizedMapsCards(precise.text ?? "")[0]?.card.kind, withoutMapsCards(precise.text ?? "").startsWith("You're at The Sun Building"), unknown.success, bodies.filter((made) => made.path === "/api/v1/maps/reverse").length],
-    kinds: [nearbyPlaceKind("the nearest pharmacy"), nearbyPlaceKind("round to the nearest dollar"), nearbyPlaceKind("coffee near me")],
+    kinds: [nearbyPlaceKind("the nearest pharmacy"), nearbyPlaceKind("round to the nearest dollar"), nearbyPlaceKind("coffee near me"), nearbyPlaceKind("coffee near me, thanks"),
+      nearbyPlaceKind("gas near where I am right now"), nearbyPlaceKind("food near my phone"), nearbyPlaceKind("the nearest pharmacy to me"), nearbyPlaceKind("the nearest pharmacy to the Ferry Building")],
+    rough: [rough.success, searchedNear("pharmacy")[2]],
+    tail: [tail.success, searchedNear("coffee")],
+    ownWords: [ownWords.success, (ownWords.text ?? "").startsWith("Near Ferry Building:"), searchedNear("pharmacy")[3]],
+    notFound: [notFound.success, notFound.text],
+    points: [pointAt.success, withoutMapsCards(pointAt.userFacingText ?? ""), pointNear.success, searchedNear("pharmacy")[4], outOfRange.success],
+    fromHereCards: [locateCard(nearestFromHere), locateCard(namesakeFromHere)],
+    whichAnchor: [whichAnchor.success, (whichAnchor.data as { readonly choice?: string }).choice],
+    second: [second.success, (second.text ?? "").startsWith("Near Union Square:"), searchedNear("pharmacy")[5]],
   }, {
     nearby: [true, ["near", "far"]],
     searchedNear: { latitude: here.latitude, longitude: here.longitude }, keyed: true,
@@ -528,12 +584,57 @@ it.live('Search near me with where my phone is now: a recent reported position s
     nearBy: [false, "locate", "pharmacy"],
     route: [true, true, true, ["route"]],
     plain: false,
-    fromHere: [false, "own-position"],
+    fromHere: [false, ["route-origin", undefined, "Coit Tower", undefined]],
+    landmark: [true, false, "destination"],
     handoff: "handoff",
+    localities: [[true, "union-dc"], [false, "destination"]],
+    anchored: [true, true, ferry, "Ferry Building"],
+    aroundStart: [true, "union-sf", ferry],
+    anywhere: [false, "place"],
     provider: { phonePositionAvailable: true },
     fenced: 0,
-    whereAmI: ["Your phone's position is approximate (within about 25.0 km): somewhere around New York, NY, USA.", 0, "place", true, false, 2],
-    kinds: ["pharmacy", undefined, "coffee"],
+    kinds: ["pharmacy", undefined, "coffee", "coffee", "gas", "food", "pharmacy", undefined],
+    rough: [true, { latitude: here.latitude, longitude: here.longitude }],
+    tail: [true, [{ latitude: here.latitude, longitude: here.longitude }]],
+    ownWords: [true, true, ferry],
+    notFound: [false, "I couldn't find “Nowhere Plaza” to search near. Name another place or area to search near."],
+    points: [true, "The Sun Building — 278 W Broadway, New York, NY 10006, USA", true, tower, false],
+    fromHereCards: [["route-origin", "nearest pharmacy", undefined, "walk"], ["route-origin", "Union Square", undefined, undefined]],
+    whichAnchor: [false, "place to search near"],
+    second: [true, true, { latitude: 37.788, longitude: -122.4075 }],
+  }))
+})
+
+it.live('Ask where I am: a recent precise position names the place there, a rough one names only its area with no card, and an old one looks nothing up (spec/maps/phonePosition.md, "Story: Ask where I am"; spec/maps/phonePosition.md, "Where I am is the place at my phone\'s recent position, and only its area when that position is rough")', effect () => {
+  const { link, bodies } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+  const action = plugin.actions?.find((found) => found.name === "MAPS_PLACE")
+  const ask = (location: unknown) => promise(async () => {
+    if (action === undefined) throw new Error("MAPS_PLACE is not registered")
+    return await action.handler({} as IAgentRuntime, messageWith(location), undefined, { parameters: { useCurrentLocation: true } })
+  })
+  const now = Date.now()
+  const nyc = { latitude: 40.7128, longitude: -74.006 }
+  const rough = try ask({ ...nyc, accuracyMeters: 25_000, capturedAt: now - 60_000 })
+  const precise = try ask({ ...nyc, accuracyMeters: 20, capturedAt: now - 60_000 })
+  const unknownArea = try ask({ latitude: 0, longitude: 0, accuracyMeters: 1_500, capturedAt: now })
+  const nothing = try ask({ latitude: 1, longitude: 1, capturedAt: now })
+  const before = bodies.length
+  const old = try ask({ ...nyc, accuracyMeters: 20, capturedAt: now - 31 * 60_000 })
+  const missing = try ask(undefined)
+  const shown = (result: { readonly userFacingText?: string; readonly text?: string }) => [result.userFacingText, recognizedMapsCards(result.text ?? "").map((found) => found.card.kind)]
+  try Effect.try(() => assert.deepStrictEqual({
+    rough: [...shown(rough), rough.data], precise: [precise.success, withoutMapsCards(precise.userFacingText ?? ""), recognizedMapsCards(precise.text ?? "").map((found) => found.card.kind)],
+    unknownArea: shown(unknownArea), nothing: shown(nothing), lookups: bodies.length - before,
+    old: [old.success, old.text], missing: [missing.success, missing.data],
+    areas: [addressArea("278 W Broadway, New York, NY 10006, USA"), addressArea("Unter den Linden 77, 10117 Berlin, Germany"), addressArea("Paris, France"), addressArea("12345")],
+  }, {
+    rough: ["Your phone's position is approximate (within about 25 km): somewhere around New York, NY, USA.", [], { status: "approximate", accuracyMeters: 25_000, area: "New York, NY, USA", place: null }],
+    precise: [true, "The Sun Building — 278 W Broadway, New York, NY 10006, USA", ["place"]],
+    unknownArea: ["Your phone's position is approximate (within about 1.5 km), and no area is known there.", []],
+    nothing: ["No named place is known where your phone is.", []], lookups: 0,
+    old: [false, "Your phone didn't report a recent position with this message, so I can't tell where you are."], missing: [false, { state: "no-position" }],
+    areas: ["New York, NY, USA", "Berlin, Germany", "Paris, France", undefined],
   }))
 })
 
@@ -632,10 +733,22 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
     routeOf("find the nearest pharmacy", ownerTurn("x"), false, () => false),
     routeOf("directions to Coit Tower", { ...ownerTurn("x"), content: { text: "x", source: "discord", channelType: "GROUP" } } as unknown as Memory, false, () => false),
     routeOf("directions to assemble the shelf", ownerTurn("x"), false, () => false),
+    ...["go to coit tower", "go to the ferry building", "go to SFO", "go to UCSF Medical Center", "go to Starbucks", "go to the Presidio",
+      "go to Sam", "go to Notion", "go to sleep", "go to the PDF", "go to my inbox", "go to the right place"]
+      .map((text) => routeOf(text, ownerTurn(text), false, () => false)),
+    routeOf("how do I get to see the Eiffel Tower", ownerTurn("x"), false, () => false),
+    routeOf("how do I get to See's Candies?", ownerTurn("x"), false, () => false),
+    routeOf("how do I get to talk to a real person?", ownerTurn("x"), false, () => false),
+    routeOf("How can I get to see my test results?", ownerTurn("x"), false, () => false),
+    routeOf("find a pharmacy near the Ferry Building", ownerTurn("x"), false, () => false),
+    routeOf("what's the weather near Austin", ownerTurn("x"), false, () => false),
+    routeOf("is there traffic near the Bay Bridge", ownerTurn("x"), false, () => false),
+    routeOf("show me photos near the Ferry Building", ownerTurn("x"), false, () => false),
+    routeOf("find a hotel around Christmas", ownerTurn("x"), false, () => false),
     routeOf("show me the route to the settings page", ownerTurn("x"), false, () => false),
     routeOf("what's the weather near Times Square", ownerTurn("x"), false, () => false),
     routeOf("find coffee near Union Square", ownerTurn("x"), false, () => false),
-    ...["go to coit tower", "go to SFO", "how do I get to see the Eiffel Tower", "go to bed", "how do I get to see my results"].map((said) => routeOf(said, ownerTurn("x"), false, () => false)),
+    routeOf("what's the weather near me", ownerTurn("x"), false, () => false),
   ]
   const receipt = (result: { readonly effectReceipts?: ReadonlyArray<{ readonly outcome: string }> }) => result.effectReceipts?.[0]?.outcome
   try Effect.try(() => assert.deepStrictEqual({
@@ -651,6 +764,48 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
     asked: [false, "destination"],
     answered: [true, "near"],
     elsewhere: false,
-    routes: ["ToDirections", "ToTravel", "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToTravel", "ToTravel", "ToTravel", "ToPlanner", "ToPlanner"],
+    routes: ["ToDirections", "ToTravel", "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner", "ToPlanner",
+      "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel", "ToTravel",
+      "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner",
+      "ToTravel", "ToTravel", "ToPlanner", "ToPlanner",
+      "ToPlaceSearch", "ToPlanner", "ToPlanner", "ToPlanner", "ToPlanner",
+      "ToPlanner", "ToPlanner", "ToPlaceSearch", "ToPlanner"],
+  }))
+})
+
+it.live('Share a place only once I agree, and hear where Maps works: the asking turn shares nothing, my later yes shares its map links, a no shares nothing, and coverage states only what Cloud reports (spec/maps/routing.md, "Story: Share a place only once I agree, and hear where Maps works"; spec/maps/routing.md, "A place\'s location is shared only after the owner\'s own later yes to sharing that place"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports")', effect () => {
+  const { link } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+  const cache = new Map<string, unknown>()
+  const runtime = {
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value)
+      return true
+    },
+    deleteCache: async (key: string) => cache.delete(key),
+  } as unknown as IAgentRuntime
+  const act = (name: string, text: string, id: string, parameters: JsonObject) => promise(async () => {
+    const action = plugin.actions?.find((found) => found.name === name)
+    if (action === undefined) throw new Error(`${name} is not registered`)
+    return await action.handler(runtime, { ...ownerTurn(text), id } as Memory, undefined, { parameters })
+  })
+  const ferryBuilding = { query: "Ferry Building" }
+  const asked = try act("MAPS_SHARE", "share the Ferry Building", "00000000-0000-4000-8000-0000000000a1", ferryBuilding)
+  const yes = try act("MAPS_SHARE", "yes", "00000000-0000-4000-8000-0000000000a2", ferryBuilding)
+  const again = try act("MAPS_SHARE", "share the Ferry Building", "00000000-0000-4000-8000-0000000000a3", ferryBuilding)
+  const no = try act("MAPS_SHARE", "no", "00000000-0000-4000-8000-0000000000a4", ferryBuilding)
+  const coverage = try act("MAPS_COVERAGE", "where does Maps work?", "00000000-0000-4000-8000-0000000000a5", {})
+  const shared = recognizedMapsCards(yes.text ?? "")[0]?.card
+  try Effect.try(() => assert.deepStrictEqual({
+    asked: [asked.success, asked.text, (asked.data as { readonly state?: string }).state],
+    yes: [yes.success, shared?.kind === "handoff" ? [shared.handoffKind, shared.geoUri, shared.webUri] : shared?.kind],
+    again: again.success, no: [no.success, no.text],
+    coverage: [coverage.success, coverage.text],
+  }, {
+    asked: [false, "Share the location of Ferry Building?", "confirmation-required"],
+    yes: [true, ["share", "geo:37.7955,-122.3937?q=37.7955,-122.3937(Ferry%20Building)", "https://www.openstreetmap.org/?mlat=37.7955&mlon=-122.3937#map=17/37.7955/-122.3937"]],
+    again: false, no: [false, "Not shared."],
+    coverage: [true, "Maps covers World (dataset 2026-11). Routes: driving and walking, with alternatives. No transit schedules or offline use. Searches, search areas and route points are sent to Eliza Cloud and Google Maps Platform for search, operated by Google. Data: Google Maps Platform via Eliza Cloud"],
   }))
 })

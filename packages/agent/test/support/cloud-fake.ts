@@ -1,5 +1,6 @@
 // spec/agent/host/launch.md, "Text goes to the owner's cloud account, the owner's own key, or nowhere"
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:https";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -10,7 +11,7 @@ import tls from "node:tls";
 import { promisify } from "node:util";
 
 export type CloudReply =
-  | { readonly kind: "text"; readonly chunks: readonly string[] }
+  | { readonly kind: "text"; readonly chunks: readonly string[]; readonly cachedTokens?: number }
   | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: number | string; readonly resetsAt?: number; readonly retryAfterSeconds?: number }
   | { readonly kind: "images" }
   | { readonly kind: "drop" }
@@ -47,6 +48,7 @@ export interface CloudFake {
 }
 
 export const text = (...chunks: string[]): CloudReply => ({ kind: "text", chunks });
+export const cachedText = (cachedTokens: number, ...chunks: string[]): CloudReply => ({ kind: "text", chunks, cachedTokens });
 
 export const refusal = (status: number, error: string, more: { retryable?: boolean; reason?: string; retryAt?: number | string; resetsAt?: number; retryAfterSeconds?: number } = {}): CloudReply =>
   ({
@@ -79,7 +81,7 @@ async function selfSigned(directory: string): Promise<{ key: string; cert: strin
   const caFile = join(directory, "leaf.pem");
   await writeFile(config, [
     "[req]", "prompt = no", "distinguished_name = subject", "x509_extensions = ext",
-    "[subject]", "CN = localhost",
+    "[subject]", `CN = cloud-fake-${randomUUID()}`,
     "[ext]", "basicConstraints = critical, CA:TRUE", "keyUsage = critical, digitalSignature, keyCertSign",
     "extendedKeyUsage = serverAuth", "subjectAltName = DNS:localhost, IP:127.0.0.1", "",
   ].join("\n"));
@@ -110,6 +112,17 @@ function json(response: ServerResponse, status: number, body: unknown): void {
 
 function streams(body: unknown): boolean {
   return typeof body === "object" && body !== null && (body as { stream?: unknown }).stream === true;
+}
+
+function usageAsked(body: unknown): boolean {
+  const options = typeof body === "object" && body !== null ? (body as { stream_options?: { include_usage?: unknown } }).stream_options : undefined;
+  return options?.include_usage === true;
+}
+
+function endStream(response: ServerResponse, body: unknown, model: string, finishReason: string, usage: object): void {
+  response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: {}, finish_reason: finishReason }] })}\n\n`);
+  if (usageAsked(body)) response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [], usage })}\n\n`);
+  response.end("data: [DONE]\n\n");
 }
 
 function modelOf(body: unknown): string {
@@ -159,7 +172,12 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
     case "text": {
       const model = modelOf(body);
       const content = reply.chunks.join("");
-      const usage = { prompt_tokens: 1, completion_tokens: Math.max(1, Math.ceil(content.length / 4)), total_tokens: 1 + Math.max(1, Math.ceil(content.length / 4)) };
+      const cached = reply.cachedTokens ?? 0;
+      const completion = Math.max(1, Math.ceil(content.length / 4));
+      const usage = {
+        prompt_tokens: 1 + cached, completion_tokens: completion, total_tokens: 1 + cached + completion,
+        ...(cached > 0 ? { prompt_tokens_details: { cached_tokens: cached } } : {}),
+      };
       if (!streams(body)) {
         return json(response, 200, {
           id: "chatcmpl-fake", object: "chat.completion", model,
@@ -170,9 +188,7 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       for (const chunk of reply.chunks) {
         response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: chunk }, finish_reason: null }] })}\n\n`);
       }
-      response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage })}\n\n`);
-      response.end("data: [DONE]\n\n");
-      return;
+      return endStream(response, body, model, "stop", usage);
     }
     case "tools": {
       const model = modelOf(body);
@@ -187,9 +203,7 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store" });
       if (reply.content) response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: reply.content }, finish_reason: null }] })}\n\n`);
       response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { tool_calls: calls.map((call, index) => ({ index, ...call })) }, finish_reason: null }] })}\n\n`);
-      response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }], usage })}\n\n`);
-      response.end("data: [DONE]\n\n");
-      return;
+      return endStream(response, body, model, "tool_calls", usage);
     }
     default: {
       const unhandled: never = reply;

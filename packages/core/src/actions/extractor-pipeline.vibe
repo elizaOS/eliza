@@ -1,10 +1,16 @@
-// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more"
 import { errorText } from "../utils/errors.vibe"
 import { type Foreign, foreign, foreignSync, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
+import { extractorResendWait, type ExtractorRefusal } from "../../gen/core__models.effect.vibe"
+import { isInsufficientCreditsError } from "../security/model-failure.vibe"
+import { getStreamingContext } from "../streaming-context.vibe"
 import { runWithTrajectoryPurpose } from "../trajectory-context.vibe"
 import { type GenerateTextParams, ModelType } from "../types/model.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
+import { modelProviderErrorStatus } from "../utils/model-errors.vibe"
+import { isPermanentQuotaError, providerRateLimitRetryAt, readProviderRateLimit } from "../utils/model-retry.vibe"
+import { sleepWithAbort } from "../utils/retry.vibe"
 
 type ModelTypeValue = (typeof ModelType)[keyof typeof ModelType]
 
@@ -24,6 +30,8 @@ export interface RunExtractorPipelineArgs<TParsed> {
 
   responseFormat?: GenerateTextParams["responseFormat"]
 
+  providerOptions?: GenerateTextParams["providerOptions"]
+
   parser: (raw: string) => TParsed | null
 
   buildRepairPrompt?: (rawFirstPass: string) => string
@@ -39,13 +47,40 @@ effect function asString(value: unknown) {
   })
 }
 
+function extractorRefusalOf(error: unknown, now: number): ExtractorRefusal {
+  const reported = readProviderRateLimit(error)
+  const retryAt = providerRateLimitRetryAt(error, now)
+  const hint = retryAt === undefined ? reported?.retryAfterMs : retryAt - now
+  return {
+    status: modelProviderErrorStatus(error) ?? 0,
+    hinted: hint !== undefined,
+    hintMs: hint === undefined ? 0 : Math.ceil(hint),
+    spent: isInsufficientCreditsError(error) || isPermanentQuotaError(error),
+    period: reported?.scope === "period",
+  }
+}
+
 effect function generate(
   runtime: IAgentRuntime,
   modelType: ModelTypeValue,
   purpose: string,
   params: () => GenerateTextParams,
 ) {
-  return try asString(try foreign(() => runWithTrajectoryPurpose(purpose, () => runtime.useModel(modelType, params()))))
+  const send = () => foreign(() => runWithTrajectoryPurpose(purpose, () => runtime.useModel(modelType, params())))
+  const sent = send() catch effect (failure) => {
+    const now = try Clock.currentTimeMillis
+    const wait = extractorResendWait(extractorRefusalOf(thrownValue(failure), now))
+    if (wait < 0) throw failure
+    try foreignSync(() =>
+      runtime.logger.warn(
+        { src: "lifeops:extractor-pipeline", purpose, delayMs: wait },
+        "Extractor pipeline model call is rate limited; waiting before one re-send",
+      )
+    )
+    try sleepWithAbort(wait, getStreamingContext()?.abortSignal)
+    return try send()
+  }
+  return try asString(sent)
 }
 
 effect function extract<TParsed>(args: RunExtractorPipelineArgs<TParsed>, modelType: ModelTypeValue) {
@@ -54,6 +89,9 @@ effect function extract<TParsed>(args: RunExtractorPipelineArgs<TParsed>, modelT
     ...(args.system !== undefined ? { system: args.system } : {}),
     ...(args.responseFormat !== undefined
       ? { responseFormat: args.responseFormat }
+      : {}),
+    ...(args.providerOptions !== undefined
+      ? { providerOptions: args.providerOptions }
       : {}),
   }
 

@@ -1,16 +1,21 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"
-import { Service, type EvaluatorRunResult, type IAgentRuntime, type Provider } from "@elizaos/core"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/checkin.md, "Story: Check in on me at the times I chose"; spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"
+import { Service, type EvaluatorRunResult, type IAgentRuntime, type Provider, type RegisteredEvaluator } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent"
-import { checkinKind, deliverCheckin } from "./checkin.vibe"
+import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { briefAction } from "./brief.vibe"
+import { checkinKind, checkinRoutes, deliverCheckin, followOwnerClock } from "./checkin.vibe"
+import { reminderProposalFamily } from "./device-proposals.vibe"
 import { dossierRoutes } from "./dossier.vibe"
+import { deliverEscalation, escalationKind } from "./escalation.vibe"
 import { runEvaluators, type EvaluatorRun } from "./evaluators/runner.vibe"
 import { deliverFollowupTick, followupTickCron, followupTickKind } from "./followups.vibe"
 import { deliverGoalCheckin, goalCheckinKind, ownerGoalsAction, ownerGoalsProvider } from "./goals.vibe"
 import { Facts, Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminderKind } from "./reminders.vibe"
-import { deliverRoutine, routineKind, routineRoutes } from "./routines.vibe"
-import { ownerClockAt, ownerTimezoneEvaluator } from "./timezone.vibe"
+import { deliverRoutine, deliverRoutineNudge, ownerRoutinesAction, ownerRoutinesProvider, routineKind, routineNudgeKind, routineRoutes } from "./routines.vibe"
+import { ownerClockAt, stateOwnerZone, statedZone } from "./timezone.vibe"
 import { currentTodosProvider, todosAction } from "./todos.vibe"
+import { ownerTravelEvaluator } from "./travel.vibe"
 
 export { heardReply, replyKind, proven, turnResults, type Attempt, type Proven, type ReplyKind, type TurnResult, type WorkPhase } from "./replies.vibe"
 export { runtimeLayer, onAgent, type AssistantPorts } from "./host.vibe"
@@ -18,6 +23,7 @@ export { runEvaluators, orderedEntries, type EvaluatorRun } from "./evaluators/r
 export { restoreEarlier, evidenceRows, type Restoration } from "./evaluators/pages.vibe"
 export { followupTick, type TickReport } from "./followups.vibe"
 export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
+export { reminderProposalFamily } from "./device-proposals.vibe"
 
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
 
@@ -25,42 +31,28 @@ type Deliverer = (task: TaskRow) => DeliveryAnswer!unknown!AssistantPorts
 
 const deliverers: ReadonlyArray<readonly [string, Deliverer]> = [
   [reminderKind, deliverReminder],
+  [escalationKind, deliverEscalation],
   [goalCheckinKind, deliverGoalCheckin],
   [routineKind, deliverRoutine],
+  [routineNudgeKind, deliverRoutineNudge],
   [checkinKind, deliverCheckin],
-  [followupTickKind, () => effect {
-    followOwnerClock() catch effect (failure) => {
-      try annotateLogs(logWarning("the owner's clock could not be read for the standing tasks"), { failure: failure._tag })
+  [followupTickKind, (task) => effect {
+    const now = try (try Facts).now()
+    followOwnerClock(`tick:${task.taskId}:${now}`) catch effect (failure) => {
+      try annotateLogs(logWarning("the owner's clock could not be followed for the standing tasks"), { failure: failure._tag })
     }
     return try deliverFollowupTick()
   }],
 ]
 
-const ownerClockKinds = new Set([checkinKind, goalCheckinKind, routineKind])
-
-export effect function followOwnerClock() {
-  const zone = try ownerClockAt(try (try Facts).now())
-  const scheduler = try Scheduler
-  for (const task of try scheduler.list()) {
-    if (!ownerClockKinds.has(task.kind) || task.trigger.kind !== "cron" || task.trigger.tz === zone || task.status === "Dismissed") continue
-    scheduler.retrigger(task.taskId, { ...task.trigger, tz: zone }, `clock:${task.taskId}:${task.revision}:${zone}`) catch effect (failure) => {
-      try annotateLogs(logWarning("a standing task could not move to the owner's zone"), { taskId: task.taskId, zone, failure: failure._tag })
-    }
-  }
-}
-
 effect function scheduleStandingTasks() {
-  const zone = try ownerClockAt(try Clock.currentTimeMillis)
+  const now = try Clock.currentTimeMillis
+  const zone = try followOwnerClock(`start:${now}`)
   const scheduler = try Scheduler
-  try scheduler.create({
-    kind: checkinKind, ownerVisible: true, promptInstructions: "Morning check-in",
-    trigger: { kind: "cron", expression: "0 8 * * *", tz: zone }, metadata: { checkin: "morning" }, idempotencyKey: "checkin:morning",
-  })
   try scheduler.create({
     kind: followupTickKind, ownerVisible: false, promptInstructions: "Follow up on approvals left open",
     trigger: { kind: "cron", expression: followupTickCron, tz: zone }, metadata: {}, idempotencyKey: "followups:tick",
   })
-  try followOwnerClock()
 }
 
 export class PersonalAssistantService extends Service {
@@ -108,19 +100,39 @@ const ownerClockProvider: Provider = {
   },
 }
 
+const ownerTimezoneEvaluator: RegisteredEvaluator = {
+  name: "PERSONAL_ASSISTANT_OWNER_TIMEZONE",
+  description: "Keeps the time zone the owner states, such as \"my timezone is America/New_York\", for reminders, check-ins, routines and the calendar, and reschedules them on it.",
+  schema: { type: "object", properties: { zone: { type: "string" } }, required: ["zone"] },
+  inputScope: "current_message",
+  shouldRun: async ({ runtime, message }) => message.entityId !== runtime.agentId && typeof message.content.text === "string" && statedZone(message.content.text) !== undefined,
+  resolveOutputWhen: () => true,
+  resolveOutput: ({ message }) => ({ zone: statedZone(message.content.text ?? "") ?? "" }),
+  prompt: () => "",
+  processors: [{
+    name: "keep-owner-zone",
+    process: async ({ runtime, message }) => {
+      const kept = await onAgent(runtime, stateOwnerZone(message.content.text ?? ""))
+      const followed = kept.changed ? await onAgent(runtime, Effect.orElseSucceed(Effect.as(followOwnerClock(`zone:${message.id ?? kept.zone}`), true), () => false)) : false
+      return { success: true, text: `Owner time zone is ${kept.zone}${kept.changed && !followed ? "; what fires on it moves over when the assistant next starts" : ""}.`, data: { zone: kept.zone, changed: kept.changed, rescheduled: followed } }
+    },
+  }],
+}
+
 let running: IAgentRuntime | undefined
 
 export const personalAssistantPlugin = {
   name: personalAssistantPluginName,
   description: "Personal assistance: reminders, time zones, check-ins, goals, to-dos and routines, kept in the owner's agent.",
-  init: (_config: Record<string, string>, runtime: IAgentRuntime) => {
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     running = runtime
+    await runPromise(registerDeviceProposalFamily(runtime, reminderProposalFamily))
   },
-  actions: [ownerRemindersAction, ownerGoalsAction, todosAction],
-  providers: [ownerRemindersProvider, ownerGoalsProvider, currentTodosProvider, ownerClockProvider],
-  evaluators: [ownerTimezoneEvaluator],
+  actions: [ownerRemindersAction, ownerGoalsAction, todosAction, ownerRoutinesAction, briefAction],
+  providers: [ownerRemindersProvider, ownerGoalsProvider, currentTodosProvider, ownerRoutinesProvider, ownerClockProvider],
+  evaluators: [ownerTimezoneEvaluator, ownerTravelEvaluator],
   services: [PersonalAssistantService, PersonalAssistantEvaluators],
-  routes: [...routineRoutes(() => running), ...dossierRoutes(() => running)],
+  routes: [...routineRoutes(() => running), ...dossierRoutes(() => running), ...checkinRoutes(() => running)],
 } satisfies AgentPlugin
 
 export default personalAssistantPlugin
