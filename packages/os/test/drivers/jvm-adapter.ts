@@ -175,7 +175,13 @@ function compilerInputs() {
     if (probe.status !== 0 || !reported) throw new Error(`Cannot determine the JDK used by ${launcher}`);
     home = reported;
   }
-  const files = [launcher, path.join(home, "bin", name), path.join(home, "release"), path.join(home, "lib", "modules"), path.join(home, "lib", "ct.sym")];
+  const files = [
+    command,
+    path.join(home, "bin", name),
+    path.join(home, "release"),
+    path.join(home, "lib", "modules"),
+    path.join(home, "lib", "ct.sym"),
+  ];
   return { command, inputs: files.map((file) => ({ file, stamp: fileStamp(file) })) };
 }
 
@@ -187,7 +193,13 @@ export function compileAdapter(main: string, found: Sources = sources(), depende
   const jars = classpath.map(identifyJar);
   const compiler = compilerInputs();
   const inputs = [...compiler.inputs, ...jars];
-  const key = [compiler.inputs.map((input) => input.stamp), jars.map((jar) => jar.digest), process.env.JDK_JAVAC_OPTIONS, process.env.JAVA_TOOL_OPTIONS, process.env._JAVA_OPTIONS];
+  const key = [
+    compiler.inputs.map((input) => input.stamp),
+    jars.map((jar) => jar.digest),
+    process.env.JDK_JAVAC_OPTIONS,
+    process.env.JAVA_TOOL_OPTIONS,
+    process.env._JAVA_OPTIONS,
+  ];
   const dependencyKey = createHash("sha256").update(JSON.stringify(key)).digest("hex");
   const classes = path.join(CACHE, `${found.digest}-${main}-${dependencyKey}`);
   if (existsSync(classes)) {
