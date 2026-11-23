@@ -169,9 +169,10 @@ it.effect('Propose on my phone only the Calendar request I made (spec/calendar/r
   const create = (words: string, fields = proposedFields) => grounded({ type: "calendar_create_local", fields }, phoneTurn(words, onHome))
   assert.deepStrictEqual([try create("Add lunch with Sam every Monday at noon"), try create("Add lunch with Sam soon"), try create("Add lunch with Sam tomorrow at 3pm Tokyo time"),
     try create("Add lunch tomorrow at noon", { ...proposedFields, title: "Lunch with the board" }), try create("Add lunch with Sam on 2027-03-28 from 1am to 2:30am"),
-    try create("Add lunch with Sam at noon"), try create("Add lunch with Sam at 6pm")],
+    try create("Add lunch with Sam at noon"), try create("Add lunch with Sam at 6pm"), try create("Add lunch with Sam 2027年3/5 at 3pm"), try create("Add lunch with Sam 明年 3/5 at 3pm")],
     ["CALENDAR_CREATE_UNSUPPORTED", "CALENDAR_CREATE_ORIGINAL_UNAVAILABLE", "CALENDAR_OTHER_ZONE_NAMED", "CALENDAR_TITLE_NOT_STATED", "CALENDAR_LOCAL_TIME_AMBIGUOUS",
-      "CALENDAR_CREATE_PAST_START", { type: "calendar_create_local", fields: { ...proposedFields, start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T18:00:00.000Z", timeZone: "Europe/Berlin" } }])
+      "CALENDAR_CREATE_PAST_START", { type: "calendar_create_local", fields: { ...proposedFields, start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T18:00:00.000Z", timeZone: "Europe/Berlin" } },
+      ...Array.from({ length: 2 }, () => ({ type: "calendar_create_local", fields: { ...proposedFields, start: "2027-03-05T14:00:00.000Z", end: "2027-03-05T15:00:00.000Z", timeZone: "Europe/Berlin" } }))])
 
   const window = { type: "calendar_availability", start: "2026-11-23T00:00:00.000Z", end: "2026-11-24T00:00:00.000Z", timeZone: "UTC" }
   const free = (words: string, proposed = window) => grounded(proposed, phoneTurn(words, onHome))
@@ -198,9 +199,10 @@ it.effect('A change after a shared read is the one edit the owner asked for (spe
   assert.deepStrictEqual([try after("Reschedule this meeting for tomorrow at 10am"), try after("Move this meeting to tomorrow at 10am for 2 hours"), try after("Move this meeting to 10am")], [
     moved("2026-11-23T09:00:00.000Z", "2026-11-23T09:30:00.000Z"), moved("2026-11-23T09:00:00.000Z", "2026-11-23T11:00:00.000Z"), moved("2026-11-22T09:00:00.000Z", "2026-11-22T09:30:00.000Z"),
   ])
-  assert.deepStrictEqual([try after("Push this meeting back an hour"), try after("Move this meeting two days earlier"), try after("Move it half an hour later"), try after("Move this meeting to Friday")], [
+  assert.deepStrictEqual([try after("Push this meeting back an hour"), try after("Move this meeting two days earlier"), try after("Move it half an hour later"), try after("Move this meeting to Friday"),
+    try after("Push it back an hour and a half"), try after("Move it one and a half hours earlier")], [
     moved("2026-11-22T17:00:00.000Z", "2026-11-22T17:30:00.000Z"), moved("2026-11-20T16:00:00.000Z", "2026-11-20T16:30:00.000Z"), moved("2026-11-22T16:30:00.000Z", "2026-11-22T17:00:00.000Z"),
-    moved("2026-11-27T16:00:00.000Z", "2026-11-27T16:30:00.000Z"),
+    moved("2026-11-27T16:00:00.000Z", "2026-11-27T16:30:00.000Z"), moved("2026-11-22T17:30:00.000Z", "2026-11-22T18:00:00.000Z"), moved("2026-11-22T14:30:00.000Z", "2026-11-22T15:00:00.000Z"),
   ])
   assert.deepStrictEqual([try after("Rename this to “Team sync”"), try after("Change the location to Room 4"), try after("Please set the notes for this meeting to Bring the slides.")],
     [edited({ title: "Team sync" }), edited({ location: "Room 4" }), edited({ description: "Bring the slides" })])

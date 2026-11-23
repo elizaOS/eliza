@@ -250,8 +250,8 @@ not name:
 - A shift moves the event by the one amount the owner stated, with no
   destination: later ("later", "back", "delay", "postpone", "push") or
   earlier ("earlier", "sooner", "up"), never both. Minutes and hours
-  ("push it back an hour", "half an hour earlier") move its start and end
-  by that much; days and weeks move it to the same clock time that many
+  ("push it back an hour", "half an hour earlier", "an hour and a half
+  later", which is ninety minutes) move its start and end by that much; days and weeks move it to the same clock time that many
   days away. Its length stays.
 
 Every time is placed on the clock the phone reported for the original
