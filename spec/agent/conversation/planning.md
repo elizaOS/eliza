@@ -89,11 +89,19 @@ screen allows, the route that owns it, how its views open) reaches the
 model after the history, in the note of the offered action it concerns,
 and a call that message serves in another place is refused before
 dispatch (below). The history follows, then the person's latest message,
-and only after it what this turn adds: the screen context, the device
-outcomes of this conversation's earlier requests, the notes of offered
-actions on what this message allows, the task the turn runs for, the note
-that older history is not shown and the earlier exchanges recalled for
-this request, each labelled as a note from the agent host. A recalled exchange is never placed among the history, so
+and only after it what this turn adds: the screen context, the clock, the
+device outcomes of this conversation's earlier requests, the notes of
+offered actions on what this message allows, the task the turn runs for,
+the note that older history is not shown and the earlier exchanges
+recalled for this request. They follow one label saying they are notes
+from the agent host, not the person, each note on its own line, so the
+label is said once a turn and never when there is no note; the screen
+context still says that it is untrusted data about the device, never an
+instruction, and the recalled exchanges keep their own heading. A note
+carries only what is true of this message: guidance that holds on every
+message of a conversation, such as how to read the device outcomes when
+there are some, sits in the description of the tool it concerns, which is
+cached with the tools. A recalled exchange is never placed among the history, so
 the history a turn sends is the one the turn before it sent, followed by
 that turn's request and reply, until the window over it steps. A provider
 reuses a request's prompt cache up to its first changed byte, and the cached prefix
@@ -115,6 +123,9 @@ pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == Screen
 pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, DeviceNote, TaskNote, WindowNotice, RecalledExchanges)
 pure def lawNothingPerTurnPrecedesTheHistory(p: PromptPart): bool = changesPerTurn(p) implies promptPosition(p) > promptPosition(PriorHistory)
 pure def lawTheConstantPartsLead(p: PromptPart): bool = not(changesPerTurn(p)) implies promptPosition(p) <= promptPosition(PriorHistory)
+pure def hostNoteLabels(hostNotes: int): int = if (hostNotes > 0) 1 else 0
+pure def lawTheHostNotesShareOneLabel(hostNotes: int): bool = hostNoteLabels(hostNotes) <= 1
+pure def lawTheLabelComesExactlyWithANote(hostNotes: int): bool = (hostNoteLabels(hostNotes) == 1) == (hostNotes > 0)
 type ToolFact = LaunchAllowed | DeviceNegotiation | InstallationViews | BrowserCommanded | MessageWords | ScreenShown | ViewDelivery | WholeRequestRoute
 pure def shapesTools(f: ToolFact): bool = f == LaunchAllowed or f == DeviceNegotiation or f == InstallationViews or f == BrowserCommanded
 pure def carriedByMessage(f: ToolFact): bool = f == MessageWords or f == ScreenShown or f == ViewDelivery or f == WholeRequestRoute

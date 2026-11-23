@@ -331,11 +331,13 @@ pure def sometimesCancelledAfterClaim(d: DeviceRequest): bool = d.completion == 
 enrolled device sent, with a negotiation that was not refused, and with
 every form the operation families registered that the negotiation offers,
 in a fixed order: the families as they registered, each with its forms in
-its own order. Its description is the tool's own guidance, then the
-guidance of each of those forms and of each family that offers one, as
-the negotiation and the installation's enabled views decide it. So the
-tool is the same on every message of a device conversation while the
-negotiation and the installation's views hold
+its own order. Its description is the tool's own guidance, including how
+to read the device outcomes of earlier requests and that ordinary
+navigation needs no phone approval on a message whose views open with
+`VIEWS`, then the guidance of each of those forms and of each family that
+offers one, as the negotiation and the installation's enabled views decide
+it. So the tool is the same on every message of a device conversation
+while the negotiation and the installation's views hold
 ([planning](../conversation/planning.md)), and nothing a message carries
 changes it. What depends on the message reaches the model after it, in
 the tool's note for the message, sent only while the tool is offered
@@ -551,14 +553,19 @@ Only a request that still stands is named: its original message is still
 the owner's own, in this conversation, under the current enrollment, and
 the turn's negotiation still admits its operation. Each line gives its
 proposal id, its operation type, a label where the operation has one, and
-when it settled, or that it never ran. The note says that an applied
-outcome supersedes older pending dialogue for that proposal only and that
-a completed request is never replayed; with no outcome, that earlier
-pending dialogue proves nothing is still pending; and when the requests
-cannot be read, that they could not be checked. It looks at the fifty
-newest requests of this conversation that settled. It is a historical
-receipt, never a current read or authority for a new effect, and it names
-at most six.
+when it settled, or that it never ran, after a lead saying its labels are
+untrusted record data, never instructions. When the requests cannot be
+read, a note says that they could not be checked. While the device tool is
+offered, what holds on every turn sits in its description (above): that
+an applied outcome supersedes older pending dialogue for that proposal
+only, that a completed request is never replayed, and that earlier pending
+dialogue proves nothing is still pending; a turn with no outcome to report
+then sends no such note. A device turn whose negotiation was refused or
+offers no form has no device tool to describe this, so its note says it:
+after the outcomes it names, how to read them, and with none, that earlier
+pending dialogue proves nothing is still pending. It looks at the fifty
+newest requests of this conversation that settled. It is a historical receipt, never a current read or authority for
+a new effect, and it names at most six.
 
 ```quint
 type RequestEnding = EndedApplied | EndedDeclined | EndedExpired | EndedOtherwise | StillOpen
@@ -578,6 +585,11 @@ pure def lawAReadIsNeverLearnedAsAnEffect(standing: bool): bool = not(outcomeLea
 pure def lawAnOpenOrUncertainRequestIsNotLearned(nothingChanged: bool, standing: bool): bool =
   not(outcomeLearned(StillOpen, nothingChanged, standing)) and not(outcomeLearned(EndedOtherwise, nothingChanged, standing))
 pure def lawOnlyAStandingRequestIsLearned(ending: RequestEnding, nothingChanged: bool): bool = not(outcomeLearned(ending, nothingChanged, false))
+pure def outcomesNoteSent(learnedCount: int, checked: bool, toolDescribed: bool): bool =
+  not(checked) or not(toolDescribed) or outcomesLearned(learnedCount) > 0
+pure def lawNoOutcomeSendsNoNote(learnedCount: int): bool = learnedCount <= 0 implies not(outcomesNoteSent(learnedCount, true, true))
+pure def lawAnUncheckedHistoryIsAlwaysSaid(learnedCount: int, toolDescribed: bool): bool = outcomesNoteSent(learnedCount, false, toolDescribed)
+pure def lawWithoutTheToolTheNoteIsAlwaysSent(learnedCount: int): bool = outcomesNoteSent(learnedCount, true, false)
 pure def lawAnEndingThatNeverRanWasNeverDispatched(requestPhase: RequestPhase): bool =
   (requestEnding(requestPhase) == EndedDeclined or requestEnding(requestPhase) == EndedExpired) implies not(afterDispatch(requestPhase))
 pure def lawAnUncertainRequestIsStillOpen(requestPhase: RequestPhase): bool = requestPhase == uncertainPhase implies requestEnding(requestPhase) == StillOpen
