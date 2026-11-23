@@ -797,6 +797,22 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.equal(result.traces[0]?.at(-1)?.state, 38);
   });
 
+  test("a goal evaluated by a retained Quint probe supplies a journey and deeper goals still search", async () => {
+    const root = oneRule("route", "Take one step and then continue", `pure val initial: int = 0
+pure def advance(n: int): int = n + 1
+pure def sometimesStarted(n: int): bool = n > 0
+pure def sometimesLate(n: int): bool = n == 38`);
+    const spec = readSpecs(root)[0];
+    const model = await gen(root, spec);
+    const domain = await import(pathToFileURL(path.join(root, "gen", "route.ts")).href);
+    const { said, tested } = await simulation({ root, fresh: true, used: new Set() }, spec, [spec], model, domain, 1);
+    assert.ok(said.every((r) => r.ok), JSON.stringify(said));
+    assert.deepEqual(tested?.journeys.map(({ events }) => events.length), [1, 38]);
+    const actions = fs.readdirSync(path.join(root, "gen", "traces"));
+    assert.ok(actions.some((name) => name.startsWith("route.never_sometimesLate.")));
+    assert.ok(actions.every((name) => !name.startsWith("route.never_sometimesStarted.")));
+  });
+
   test("simulation and probes preserve guarded transitions and outputs when only the state enables an event", async () => {
     const root = oneRule("counter", "Open and commit", `type Change = { state: int, out: List[str] }
 pure val initial: int = 0

@@ -307,6 +307,18 @@ const COULD_NOT_RUN = "the simulator could not run";
 /** What simulating a spec found: the `always`, `sometimes` and `replay` results, and what the traces stage checks programs against. */
 export interface Simulation { said: Result[]; tested?: Simulated }
 
+function witnessedIn(traces: Step[][], goals: string[]): Map<string, Step[]> {
+  const pending = new Set(goals);
+  const found = new Map<string, Step[]>();
+  if (!pending.size) return found;
+  for (const trace of traces) for (const [index, { evaluated }] of trace.entries()) {
+    if (evaluated?.result !== true || !pending.has(evaluated.name)) continue;
+    const earlier = found.get(evaluated.name);
+    if (!earlier || earlier.length > index + 1) found.set(evaluated.name, trace.slice(0, index + 1));
+  }
+  return found;
+}
+
 const SPECS_AT_ONCE = 2 * os.availableParallelism();
 let specsSimulating = 0;
 const specsWaiting: (() => void)[] = [];
@@ -375,20 +387,26 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // The usual starting states each get a whole bounded interval after them.
       const sim = await simulate(harness, "inv", model.leadsTo.length ? LASSO_TRACES : REPLAYED, SAMPLES, "step", true, simulationSteps, seed);
       if (broke([sim])) return { said, tested };
-      const [probe, ...searches] = await allDone([
+      const paths = model.sometimes.map((w) => ({ w, length: model.witness?.lengths.get(w) }));
+      const demonstrations = paths.flatMap(({ w, length }) => guided && length !== undefined
+        ? [{ w, run: simulate(guided, `never_${w}`, 1, 1, witnessAction(w), false, length + 1 + Number(!!model.opaques.length), seed) }]
+        : []);
+      const [probe, ...examples] = await allDone([
         simulate(harness, "inv", REPLAYED, COMPARED_SAMPLES, "probe", true, STEPS, seed),
-        ...model.sometimes.map(async (w) => {
-          const invariant = `never_${w}`;
-          const length = model.witness?.lengths.get(w);
-          if (guided && length !== undefined) {
-            const run = await simulate(guided, invariant, 1, 1, witnessAction(w), false, length + 1 + Number(!!model.opaques.length), seed);
-            if (run.broken) return run;
-          }
-          return search(harness, invariant, "step", DEPTHS, WITNESS_SAMPLES, seed);
-        }),
+        ...demonstrations.map(({ run }) => run),
       ]);
-      const witnesses = model.sometimes.map((w, i) => ({ w, run: searches[i] }));
-      const runs = [sim, probe, ...searches.filter((run) => run.broken)];
+      if (broke([probe, ...examples.filter((run) => run.broken)])) return { said, tested };
+      const retained = witnessedIn(probe.traces, paths.filter(({ length }) => length === undefined).map(({ w }) => w));
+      const byGoal = new Map(demonstrations.map(({ w }, i) => [w, examples[i]]));
+      const witnesses = await allDone(paths.map(async ({ w }) => {
+        const example = byGoal.get(w);
+        const trace = retained.get(w);
+        const run = example?.broken ? example : trace ? undefined
+          : await search(harness, `never_${w}`, "step", DEPTHS, WITNESS_SAMPLES, seed);
+        return { w, run, trace };
+      }));
+      const searches = witnesses.flatMap(({ run }) => run?.broken ? [run] : []);
+      const runs = [sim, probe, ...searches];
       if (broke(runs)) return { said, tested };
       if (sim.broken || probe.broken) throw new Error(`the simulator reports a broken rule that no trace shows (${sim.again})`);
       if (!sim.traces.length && !probe.traces.length) {
@@ -445,11 +463,13 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       const loops = runsOf.reduce((n, r) => n + r.loops, 0);
       say(true, "always", `no rule broken in ${SAMPLES + COMPARED_SAMPLES} simulated traces`
         + (model.leadsTo.length ? `, and no fair run that stops or loops in ${sim.traces.length} of them breaks a \`leadsTo\` rule (${loops} loops found)` : ""));
-      for (const { w, run } of witnesses) {
-        const reached = run.broken && run.traces.some((t) => standIn(domain, t)[w](t.at(-1)?.state));
-        say(reached, "sometimes", reached ? `${w} is reachable`
-          : `${cite(w)} was not reached in ${SEARCHED}: a guard is too strict, a transition is missing, or the goal needs values the simulator does not try`, reached ? "" : `      ${run.again}`);
-      }
+      const journeys = witnesses.flatMap(({ w, run, trace }) => {
+        const candidates = run?.broken ? run.traces : trace ? [trace] : [];
+        const goal = candidates.filter((t) => standIn(domain, t)[w](t.at(-1)?.state) === true).sort((a, b) => a.length - b.length)[0];
+        say(!!goal, "sometimes", goal ? `${w} is reachable`
+          : `${cite(w)} was not reached in ${SEARCHED}: a guard is too strict, a transition is missing, or the goal needs values the simulator does not try`, goal || !run ? "" : `      ${run.again}`);
+        return goal ? [{ w, trace: goal }] : [];
+      });
       for (const { t, again } of neverAllowed) {
         const causes = ["the guard is too strict", "a transition that leads to the states it needs is missing", `the event becomes possible only after more than ${DEPTHS.at(-1)} events`,
           ...(t.guardParams.length ? [`it needs values the simulator does not try (define ${t.guardParams.map((p) => `${p}Values`).join(" or ")})`] : [])];
@@ -463,8 +483,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       const missed = [...model.evals.map((v) => v.name).filter((n) => !compared.has(n)), ...model.uncompared];
       say(true, "replay", `generated TypeScript agrees with Quint on ${traces.length} traces: every state${model.laws.length ? ", every law" : ""}, and ${compared.size} definitions evaluated on them`
         + (missed.length ? `; not compared on their own, because the simulator had no arguments for them: ${missed.join(", ")}` : ""));
-      if (model.stateType) tested = conformanceFound(model, spec, traces, witnesses.flatMap(({ w, run }) =>
-        run.traces.filter((trace) => standIn(domain, trace)[w](trace.at(-1)?.state)).sort((a, b) => a.length - b.length).slice(0, 1).map((trace) => ({ w, trace }))));
+      if (model.stateType) tested = conformanceFound(model, spec, traces, journeys);
     } catch (e) {
       const mismatch = (e as Error).message.startsWith("TypeScript and Quint disagree");
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));

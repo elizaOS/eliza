@@ -120,6 +120,8 @@ from its name and signature:
 | `pure val within_leadsToPaid = 3` | a bound for a `leadsTo` rule: every run meets it within 3 events, from 1 to 100 | a search of simulated traces for a run that does not ("Liveness", below) |
 | any other `pure val` or `pure def` | a constant or helper | the same constant or function |
 
+When a retained probe already shows Quint evaluating a goal to true, its
+trace provides the witness and goes through the usual TypeScript replay.
 When a reachability search uses multiple trace lengths, it tries short,
 single-threaded batches before spending the full search budgets. Give a
 `eval_witness_<rule>` for a goal that needs a rare sequence or specific values.
