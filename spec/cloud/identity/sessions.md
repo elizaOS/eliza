@@ -476,6 +476,14 @@ pure def lawOnlyAnActiveCredentialReachesProtectedRoutes(view: CredentialView, r
   admitRequest(view, route, now) == CredentialAccepted implies credentialRefusal(view, now) == NoReason
 ```
 
+A standalone deployment serving the original device endpoints can configure
+a 32-byte base64 `DEVICE_LEASE_SEAL_KEY`. With it, an interrupted initial
+exchange can recover the same key and lease with the original unacknowledged
+proof. An interrupted renewal returns the same pending successor to that
+lease. Acknowledgment or expiry clears the saved response. An installation
+without that optional binding can continue to issue its original device keys.
+The canonical mobile endpoints use the deployment's existing sealing keyring.
+
 ### A mail or calendar route admits a session or a device lease, and refuses the device key
 
 The Google status, accounts, and Google mail and calendar content reads use

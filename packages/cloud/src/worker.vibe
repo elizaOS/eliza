@@ -7,13 +7,13 @@ import { refusalResponse, refused, Refused } from "./http/refusal.vibe"
 import { matchRoute } from "./http/routes.vibe"
 import { respond } from "./http/transport.vibe"
 import { leaseRoutes } from "./identity/sessions.vibe"
-import { accessCookie, readCookie } from "./identity-store.vibe"
+import { accessCookie, browserAccessBearer, readCookie } from "./identity-store.vibe"
 import { routes as deviceKeyRoutes } from "./native-clients/device-keys.vibe"
 import { deploymentLayer, parseProfile } from "./profile/profile.vibe"
 import { Store } from "./store/connection.vibe"
 import { clientStore, withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { sweepUsage } from "./worker-metering.vibe"
-import { cloudCredential, identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
+import { cloudCredential, identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, sweepDeviceOffers, type IdentityEnv } from "./identity.vibe"
 import { nativeAssetLinks } from "./native-registry.vibe"
 import { ownsPasswordBackupPath } from "./password-backup.vibe"
 export { nativeAssetLinks }
@@ -74,7 +74,7 @@ function managedGoogleRead(request: Request, env: CloudBindings, db: Client, pro
   const authorization = request.headers.get("authorization") ?? undefined
   const read = effect {
     const caller = try authenticate(authorization, "MailAccess")
-    if (caller.kind === "anonymous") throw refused("AuthenticationRequired", "CredentialUnknown")
+    if (caller.kind !== "lease") throw refused("AuthenticationRequired", "CredentialUnknown")
     const answer = try promise(() => googleRequest(request, env, db, caller.userId, providerFetch))
     if (answer.ok) try recheckAccess(authorization, caller, "MailAccess")
     return answer
@@ -128,9 +128,11 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
       current: async () => await inferenceAccount(request, db, env) === owner,
     })
   }
-  if (request.method === "GET" && managedGoogleReadPaths.has(path) && request.headers.has("authorization")) {
-    return managedGoogleRead(request, env, db, providerFetch)
-  }
+  const managedRead = request.method === "GET" && managedGoogleReadPaths.has(path)
+  const explicitCredential = request.headers.has("authorization")
+  const browserBearer = managedRead && browserAccessBearer(request) !== undefined
+  if (managedRead && explicitCredential && !browserBearer) return managedGoogleRead(request, env, db, providerFetch)
+  const session = () => sessionAccount(request, db, browserBearer ? "bearer" : "cookie")
   const decisions = path === CLEF_DECISIONS_PATH
   const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"
   if (path === speechRoute + "/ws") return speechWebSocket(request, env, db)
@@ -140,10 +142,10 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   const google = path.startsWith("/api/v1/eliza/google/")
   const nativeConnect = path === "/api/v1/eliza/google/connect/native"
   if (!reminders && !decisions && !inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
-  if (google && !nativeConnect && request.headers.has("authorization")) {
+  if (google && !nativeConnect && explicitCredential && !browserBearer) {
     return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
   }
-  const account = reminders || decisions || inference || speech || nativeConnect ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
+  const account = reminders || decisions || inference || speech || nativeConnect ? await inferenceAccount(request, db, env) : await session()
   if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
   if ((reminders || nativeConnect) && !request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 403 })
   if (reminders) return reminderSchedule(request, env, db, account)
@@ -153,7 +155,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   if (inference) return inferenceRequest(request, env, db, account, workerFetch, lifetime)
   if (google) {
     const response = await googleRequest(request, env, db, account, providerFetch)
-    if (response.ok && request.method === "GET" && path.startsWith("/api/v1/eliza/google/gmail/") && await sessionAccount(request, db) !== account)
+    if (response.ok && (managedRead || (request.method === "GET" && path.startsWith("/api/v1/eliza/google/gmail/"))) && await session() !== account)
       return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
     return response
   }
@@ -168,6 +170,7 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
       return withCloudDatabase(env, async (db) => {
         await sweepUsage(db)
         await sweepSubscriptions(env, db)
+        await sweepDeviceOffers(db)
       })
     },
     async fetch(request: Request, env: E, lifetime?: WorkerLifetime): Promise<Response> {

@@ -135,7 +135,7 @@ effect function leaseCaller(token: string, routeClass: RouteClass, countRequest:
     const presented = row.current === true ? family.generation : offeredGeneration(family)
     const reason = sessionRefusal(presented, family, epoch)
     if (reason !== "NoReason") throw refused("AuthenticationRequired", reason)
-    if (row.grant_phase === null || row.grant_phase === "ended" || toInt(row.grant_epoch) !== toInt(row.account_epoch)) throw refused("AuthenticationRequired", "CredentialRevoked")
+    if ((row.grant_phase !== "active" && row.grant_phase !== "expired") || toInt(row.grant_epoch) !== toInt(row.account_epoch)) throw refused("AuthenticationRequired", "CredentialRevoked")
     try verdict(admitPrincipal({ accountStatus: status(row), credential: { tag: "LeasePrincipal" } }, routeClass, now))
     const sessionKey = toText(row.key) ?? ""
     if (presented !== family.generation) {

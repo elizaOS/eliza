@@ -4017,6 +4017,7 @@ module node {
         NATIVE_CLIENT_REGISTRY: JSON.stringify([{ clientId, androidPackage: clientId, environment: "staging", displayName: "Attachment", signInReturn: redirectUri,
           billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AA").join(":")], enabled: true }]),
         GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret", GOOGLE_CONNECT_TOKEN_KEY: key,
+        DEVICE_LEASE_SEAL_KEY: "A".repeat(43) + "=",
       } satisfies CloudBindings
       const worker = cloudWorker(undefined, providerFetch)
       const get = (path: string, cookie?: string) => worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + path, {
@@ -4248,8 +4249,12 @@ module node {
       const challenge = createHash("sha256").update(verifier).digest("base64url")
       const granted = await deviceOperation("authorize", { challenge, state: "s".repeat(43), expectedAccountId: owner.account.id }, webHeaders)
       const { redirectUrl } = Schema.decodeUnknownSync(Schema.Struct({ redirectUrl: Schema.String }))(await granted.json())
-      const exchanged = await deviceOperation("exchange", { code: new URL(redirectUrl).searchParams.get("code"), verifier })
-      const tablet = Schema.decodeUnknownSync(Schema.Struct({ token: Schema.String, lease: Schema.Struct({ refresh: Schema.String }) }))(await exchanged.json())
+      const exchangeProof = { code: new URL(redirectUrl).searchParams.get("code"), verifier }
+      const exchanged = await deviceOperation("exchange", exchangeProof)
+      const replayedExchange = await deviceOperation("exchange", exchangeProof)
+      const enrollment = Schema.Struct({ token: Schema.String, lease: Schema.Struct({ refresh: Schema.String }) })
+      const tablet = Schema.decodeUnknownSync(enrollment)(await exchanged.json())
+      const repeatedTablet = Schema.decodeUnknownSync(enrollment)(await replayedExchange.json())
       const bearerHeaders = (token: string) => ({ authorization: "Bearer " + token })
       const beforeAcknowledgement = await deviceOperation("lease", {}, bearerHeaders(tablet.lease.refresh))
       const acknowledged = await deviceOperation("ack", {}, bearerHeaders(tablet.token))
@@ -4269,6 +4274,12 @@ module node {
       const forbiddenWrite = await worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/trash", {
         method: "POST", headers: { ...webHeaders, ...tabletHeaders, "content-type": "application/json" }, body: "{}",
       }), env)
+      const renewal = Schema.Struct({ token: Schema.String, credentialId: Schema.String })
+      const renewed = await deviceOperation("renew", {}, bearerHeaders(pair.refresh))
+      const repeatedRenewed = await deviceOperation("renew", {}, bearerHeaders(pair.refresh))
+      const replacement = Schema.decodeUnknownSync(renewal)(await renewed.json())
+      const repeatedReplacement = Schema.decodeUnknownSync(renewal)(await repeatedRenewed.json())
+      const confirmedReplacement = await deviceOperation("ack", {}, bearerHeaders(replacement.token))
       const closedLease = await deviceOperation("revoke", {}, bearerHeaders(pair.refresh))
       const afterSignOut = [await readTablet(mailPath, tabletHeaders), await readTablet(calendarPath, tabletHeaders)]
       const stagingProfile = testProfile(api)
@@ -4296,7 +4307,10 @@ module node {
       const officialAfter = await readTablet(mailPath, bearerHeaders(officialPair.access))
       const tabletReads = {
         canonical: [begin.status, mint.status, officialAcknowledged.status, officialRefresh.status, officialRead.status, officialClosed.status, officialAfter.status],
-        enrollment: [granted.status, exchanged.status, beforeAcknowledgement.status, acknowledged.status, lease.status],
+        enrollment: [granted.status, exchanged.status, replayedExchange.status, tablet.token === repeatedTablet.token,
+          tablet.lease.refresh === repeatedTablet.lease.refresh, beforeAcknowledgement.status, acknowledged.status, lease.status],
+        renewal: [renewed.status, repeatedRenewed.status, replacement.token === repeatedReplacement.token,
+          replacement.credentialId === repeatedReplacement.credentialId, confirmedReplacement.status],
         mail: [tabletMessage.status, messageBody.accountId === owner.account.id, messageBody.bodyText],
         calendar: [tabletCalendar.status, calendarBody.accountId === owner.account.id, calendarBody.events],
         refused: [deviceAndCookie.status, forbiddenWrite.status, closedLease.status, ...afterSignOut.map((answer) => answer.status)],
@@ -4373,7 +4387,8 @@ it.live('Read complete mail text, open an attachment, watch for new mail and rea
       },
       tablet: {
         canonical: [200, 200, 200, 200, 200, 204, 401],
-        enrollment: [200, 200, 401, 204, 200],
+        enrollment: [200, 200, 200, true, true, 401, 204, 200],
+        renewal: [200, 200, true, true, 204],
         mail: [200, true, "hello"],
         calendar: [200, true, [{ externalId: "fixture-appointment", title: "Library visit" }]],
         refused: [403, 401, 204, 401, 401],
