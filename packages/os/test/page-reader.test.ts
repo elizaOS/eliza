@@ -188,9 +188,9 @@ const surface = async () => {
   await evaluate(channel, executionContextId);
   const documentId = text(fields(await evaluate("elizaSurfaceControl.replies.find((reply) => reply.ready)", executionContextId)).documentId);
   let count = 0;
-  return async (command: Fields) => {
+  return async (command: Fields, claimedDocument = documentId) => {
     const number = ++count;
-    await evaluate(`elizaSurfaceControl.onmessage({ data: ${JSON.stringify(JSON.stringify({ documentId, sequence: number, command }))} })`, executionContextId);
+    await evaluate(`elizaSurfaceControl.onmessage({ data: ${JSON.stringify(JSON.stringify({ documentId: claimedDocument, sequence: number, command }))} })`, executionContextId);
     await expect.poll(() => evaluate(`elizaSurfaceControl.replies.some((reply) => reply.sequence === ${number})`, executionContextId)).toBe(true);
     return fields(fields(await evaluate(`elizaSurfaceControl.replies.find((reply) => reply.sequence === ${number})`, executionContextId)).result);
   };
@@ -245,6 +245,7 @@ describe('The WebView runs the page reader Chromium runs (spec/os/browser/pageCo
       regions: Schema.Array(Schema.Struct({ key: Schema.NonEmptyString, fragments: Schema.Array(Schema.String) })),
     });
     expect((await send({ subaction: "snapshot" })).statementRegions).toBeUndefined();
+    expect(await send(request, "prior-document")).toMatchObject({ error: { kind: "STALE_REF" } });
     const grouped = await send(request);
     const complete = Schema.decodeUnknownSync(Regions)(grouped.statementRegions);
     expect(grouped.text).toBe("");
