@@ -1,0 +1,334 @@
+// spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response"
+import { ModelType, type ChatMessage, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TextStreamResult, type TokenUsage } from "@elizaos/core"
+import { Cause, Exit, Queue, Schema, Stream } from "effect"
+import * as Sse from "effect/encoding/Sse"
+import { Machine, anthropicOutputBudget, anthropicSampling, anthropicTransport, machine, type AnthropicAuth, type AnthropicFinish, type AnthropicOutputCap } from "../gen/anthropic.effect.vibe"
+
+module node {
+  import { execFile, spawn } from "node:child_process"
+  import { createInterface } from "node:readline"
+  import { promisify } from "node:util"
+  import { fetchWithConfidentialInference } from "@elizaos/core"
+  const runCli = promisify(execFile)
+
+  export async function claudeText(model: string, prompt: string, signal: AbortSignal): Promise<string> {
+    const output = await runCli("claude", ["-p", "--output-format", "text", "--model", model, "--tools", "", "--", prompt], {
+      signal, timeout: 120000, maxBuffer: 4194304,
+    })
+    return output.stdout.trim()
+  }
+
+  export function claudeEvents(model: string, prompt: string, signal: AbortSignal): Response {
+    const child = spawn("claude", ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--model", model, "--tools", "", "--", prompt], {
+      signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]),
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+    const ended = new Promise<boolean>((resolve) => {
+      child.once("error", () => resolve(false))
+      child.once("close", (code) => resolve(code === 0))
+    })
+    const lines = createInterface({ input: child.stdout, crlfDelay: Infinity })
+    const encoder = new TextEncoder()
+    const events = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        let terminal: string | undefined
+        let completed = false
+        let bytes = 0
+        try {
+          for await (const line of lines) {
+            bytes += line.length
+            if (line.length > 1048576 || bytes > 16777216) throw new Error("The CLI exceeded its stream budget")
+            if (!line.startsWith("{")) continue
+            const value: unknown = JSON.parse(line)
+            if (typeof value !== "object" || value === null || !("type" in value)) continue
+            if (value.type === "result") {
+              completed = "subtype" in value && value.subtype === "success" && (!("is_error" in value) || value.is_error === false)
+              continue
+            }
+            if (value.type !== "stream_event" || !("event" in value) || typeof value.event !== "object" || value.event === null || !("type" in value.event)) continue
+            const data = "data: " + JSON.stringify(value.event) + "\n\n"
+            if (value.event.type === "message_stop") terminal = data
+            else controller.enqueue(encoder.encode(data))
+          }
+          if (!(await ended) || !completed || terminal === undefined) throw new Error("The CLI stream did not complete")
+          controller.enqueue(encoder.encode(terminal))
+          controller.close()
+        } catch (cause) {
+          controller.error(cause)
+        } finally {
+          lines.close()
+          if (child.exitCode === null) child.kill()
+        }
+      },
+      cancel() {
+        lines.close()
+        if (child.exitCode === null) child.kill()
+      },
+    })
+    return new Response(events, { headers: { "Content-Type": "text/event-stream" } })
+  }
+
+  export function anthropicPost(base: string, secret: string, payload: object, signal: AbortSignal): Promise<Response> {
+    return fetchWithConfidentialInference(base.replace(/\/+$/, "") + "/messages", {
+      method: "POST", redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]),
+      headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": secret },
+      body: JSON.stringify(payload),
+    }, globalThis.fetch)
+  }
+}
+import { anthropicPost, claudeEvents, claudeText } from node
+
+export error AnthropicFailed { reason: string }
+
+const answerSchema = Schema.Struct({
+  content: Schema.Array(Schema.Struct({
+    type: Schema.String, text: Schema.optionalKey(Schema.String), id: Schema.optionalKey(Schema.String),
+    name: Schema.optionalKey(Schema.String), input: Schema.optionalKey(Schema.Unknown),
+  })),
+  stop_reason: Schema.NullOr(Schema.String),
+  usage: Schema.optionalKey(Schema.Struct({
+    input_tokens: Schema.Int, output_tokens: Schema.Int,
+    cache_read_input_tokens: Schema.optionalKey(Schema.Int), cache_creation_input_tokens: Schema.optionalKey(Schema.Int),
+  })),
+})
+
+function setting(runtime: IAgentRuntime, key: string): string {
+  const value = runtime.getSetting(key)
+  return typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : ""
+}
+
+function endReason(reason: string | null): AnthropicFinish {
+  if (reason === "end_turn") return "EndTurn"
+  if (reason === "tool_use") return "EndTool"
+  if (reason === "stop_sequence") return "EndStop"
+  if (reason === "max_tokens") return "EndLimit"
+  if (reason === "refusal") return "EndRefusal"
+  return "EndFailure"
+}
+
+function messageWire(message: ChatMessage) {
+  if (message.role === "tool") return { role: "user", content: [{ type: "tool_result", tool_use_id: message.toolCallId, content: message.content }] }
+  if (message.toolCalls?.length) return {
+    role: "assistant",
+    content: [
+      ...(typeof message.content === "string" && message.content !== "" ? [{ type: "text", text: message.content }] : []),
+      ...message.toolCalls.map((call) => ({ type: "tool_use", id: call.id, name: call.name, input: call.arguments })),
+    ],
+  }
+  return { role: message.role === "assistant" ? "assistant" : "user", content: message.content ?? "" }
+}
+
+effect function sdkResponse(runtime: IAgentRuntime, secret: string, body: object) {
+  const response = try tryPromise({
+    try: (signal) => anthropicPost(setting(runtime, "ANTHROPIC_BASE_URL") || "https://api.anthropic.com/v1", secret, body, signal),
+    catch: () => new AnthropicFailed({ reason: "The Anthropic endpoint could not be reached." }),
+  })
+  if (!response.ok) {
+    try Effect.ignore(tryPromise(async () => { await response.body?.cancel() }))
+    throw new AnthropicFailed({ reason: `Anthropic returned HTTP ${response.status}.` })
+  }
+  return response
+}
+
+effect function sdkAnswer(runtime: IAgentRuntime, secret: string, body: object) {
+  const response = try sdkResponse(runtime, secret, body)
+  const raw = try tryPromise((): Promise<unknown> => response.json())
+  return Schema.decodeUnknownEffect(answerSchema)(raw) catch effect () => {
+    throw new AnthropicFailed({ reason: "The Anthropic reply was malformed." })
+  }
+}
+
+const tokenFields = Schema.Struct({
+  input_tokens: Schema.optionalKey(Schema.Int),
+  output_tokens: Schema.optionalKey(Schema.Int),
+  cache_read_input_tokens: Schema.optionalKey(Schema.Int),
+  cache_creation_input_tokens: Schema.optionalKey(Schema.Int),
+})
+const events = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Struct({
+  type: Schema.String,
+  message: Schema.optionalKey(Schema.Struct({ usage: Schema.optionalKey(tokenFields) })),
+  usage: Schema.optionalKey(tokenFields),
+  delta: Schema.optionalKey(Schema.Struct({
+    type: Schema.optionalKey(Schema.String),
+    text: Schema.optionalKey(Schema.String),
+    stop_reason: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  })),
+})))
+
+function tracked<T>(promise: Promise<T>): Promise<T> {
+  void promise.catch(() => undefined)
+  return promise
+}
+
+effect function streamAnthropic(response: Response, run: Machine.Shape, signal?: AbortSignal) {
+  if (response.body === null || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "text/event-stream") {
+    try Effect.ignore(tryPromise(async () => { await response.body?.cancel() }))
+    throw new AnthropicFailed({ reason: "Anthropic did not return a completion event stream." })
+  }
+  const body = response.body
+  const input = Stream.fromReadableStream({ evaluate: () => body, onError: () => new AnthropicFailed({ reason: "Anthropic event stream disconnected." }) })
+    .pipe(Stream.decodeText(), Stream.pipeThroughChannel(Sse.decode({ maxEventSize: 1048576 })))
+  const out = try Queue.unbounded<string, AnthropicFailed | Cause.Done>()
+  const read = effect {
+    let text = ""
+    let terminal: string | null = null
+    let stopped = false
+    let counts: typeof tokenFields.Type = {}
+    let hasUsage = false
+    for try (const event of input) {
+      const frame = try events(event.data)
+      if (event.event !== "message" && event.event !== frame.type) throw new AnthropicFailed({ reason: "Anthropic event and payload names differed." })
+      if (frame.type === "error") throw new AnthropicFailed({ reason: "Anthropic reported a stream failure." })
+      if (frame.type === "message_stop") {
+        stopped = true
+        break
+      }
+      const usage = frame.type === "message_start" ? frame.message?.usage : frame.usage
+      if (usage !== undefined) {
+        counts = { ...counts, ...usage }
+        hasUsage = true
+      }
+      if (frame.type === "message_delta") terminal = frame.delta?.stop_reason ?? terminal
+      if (frame.type !== "content_block_delta" || frame.delta?.type !== "text_delta" || !frame.delta.text) continue
+      const part = frame.delta.text
+      if (text.length + part.length > 4194304) throw new AnthropicFailed({ reason: "Anthropic exceeded the response text budget." })
+      text += part
+      try Queue.offer(out, part)
+    }
+    const reason = stopped ? endReason(terminal) : "EndFailure"
+    const snapshot = try run.send({ type: "finishAnthropic", reason, nativeShapeValid: false, usageAvailable: hasUsage })
+    if (snapshot.phase !== "AnthropicComplete") throw new AnthropicFailed({ reason: "Anthropic ended without completing the event stream." })
+    const promptTokens = counts.input_tokens ?? 0
+    const completionTokens = counts.output_tokens ?? 0
+    const usage: TokenUsage | undefined = hasUsage ? {
+      promptTokens, completionTokens, totalTokens: promptTokens + completionTokens,
+      cacheReadInputTokens: counts.cache_read_input_tokens, cacheCreationInputTokens: counts.cache_creation_input_tokens,
+    } : undefined
+    return { text, reason: terminal ?? undefined, usage }
+  }
+  const result = tracked(runPromise(Effect.onExit(read, (exit) => Exit.isSuccess(exit)
+    ? Queue.end(out)
+    : Queue.fail(out, new AnthropicFailed({ reason: "Anthropic did not complete the event stream." }))), { signal }))
+  return {
+    textStream: Stream.toAsyncIterable(Stream.fromQueue(out)),
+    text: tracked(result.then((finish) => finish.text)),
+    usage: tracked(result.then((finish) => finish.usage)),
+    finishReason: tracked(result.then((finish) => finish.reason)),
+  } satisfies TextStreamResult
+}
+
+effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, tier: string) {
+  const secret = setting(runtime, "ANTHROPIC_API_KEY")
+  const auth: AnthropicAuth = setting(runtime, "ANTHROPIC_AUTH_MODE") === "cli" ? "AnthropicCli" : secret === "" ? "NoAnthropicAuth" : "AnthropicApi"
+  const input = {
+    hasNativeMessages: params.messages !== undefined, hasTools: (params.tools?.length ?? 0) > 0, hasToolChoice: params.toolChoice !== undefined,
+    hasSchema: params.responseSchema !== undefined, wantsStream: params.stream === true, streamingAllowed: setting(runtime, "ELIZA_ANTHROPIC_DISABLE_STREAM") !== "true",
+  }
+  const model = params.model || setting(runtime, "ANTHROPIC_" + tier + "_MODEL") || setting(runtime, "ANTHROPIC_MODEL") || "claude-sonnet-4-6"
+  const capacity = Number(setting(runtime, "ANTHROPIC_MAX_OUTPUT_TOKENS") || 8192)
+  const cap: AnthropicOutputCap = params.maxTokens === undefined || params.omitMaxTokens ? { tag: "AutoCap" } : { tag: "AskedCap", tokens: params.maxTokens }
+  const maxTokens = anthropicOutputBudget(capacity, cap)
+  const transport = anthropicTransport(auth, input)
+  if (!Number.isSafeInteger(capacity) || !Number.isSafeInteger(maxTokens) || maxTokens <= 0 || transport === "RefuseAnthropic") {
+    throw new AnthropicFailed({ reason: "The selected Anthropic transport cannot honor this request." })
+  }
+  provide machine() {
+    const run = try Machine
+    try run.send({ type: "beginAnthropic", auth, input, capacity, cap })
+    if (transport === "CliWhole" || transport === "CliStream") {
+      if (cap.tag === "AskedCap") throw new AnthropicFailed({ reason: "The Anthropic CLI cannot honor an explicit output bound." })
+      const prompt = [params.system, params.prompt].filter((part) => part !== undefined).join("\n\n")
+      if (transport === "CliStream") {
+        const response = try tryPromise({
+          try: async (signal) => claudeEvents(model, prompt, params.signal === undefined ? signal : AbortSignal.any([signal, params.signal])),
+          catch: () => new AnthropicFailed({ reason: "The Anthropic CLI could not start." }),
+        })
+        return try streamAnthropic(response, run, params.signal)
+      }
+      const text = try tryPromise({
+        try: (signal) => claudeText(model, prompt, signal),
+        catch: () => new AnthropicFailed({ reason: "The Anthropic CLI did not complete the request." }),
+      })
+      if (text === "") throw new AnthropicFailed({ reason: "The Anthropic CLI returned no output." })
+      try run.send({ type: "finishAnthropic", reason: "EndTurn", nativeShapeValid: false, usageAvailable: false })
+      return text
+    }
+    const sampling = anthropicSampling(params.temperature !== undefined, params.topP !== undefined, model.includes("opus-4"), false)
+    const choice = params.toolChoice
+    const toolChoice = typeof choice === "string" ? { type: choice === "required" ? "any" : choice }
+      : choice === undefined ? undefined : { type: "tool", name: "function" in choice ? choice.function.name : choice.name }
+    const system = [params.system, ...(params.messages ?? []).flatMap((message) =>
+      (message.role === "system" || message.role === "developer") && typeof message.content === "string" ? [message.content] : [])]
+      .filter((part) => part !== undefined).join("\n\n")
+    const messages = params.messages?.filter((message) => message.role !== "system" && message.role !== "developer").map(messageWire)
+      ?? [{ role: "user", content: params.prompt ?? "" }]
+    const wire = {
+      model, system: system === "" ? undefined : system, messages, max_tokens: maxTokens,
+      temperature: sampling === "TemperatureOne" ? 1 : sampling === "RequestedTemperature" ? params.temperature : sampling === "DefaultSampling" ? 0.7 : undefined,
+      top_p: sampling === "RequestedTopP" ? params.topP : undefined,
+      stream: transport === "SdkStream", stop_sequences: params.stopSequences,
+      tools: params.tools?.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.parameters ?? { type: "object" } })),
+      tool_choice: toolChoice,
+      output_config: params.responseSchema === undefined ? undefined : { format: { type: "json_schema", schema: params.responseSchema } },
+    }
+    if (transport === "SdkStream") return try streamAnthropic(try sdkResponse(runtime, secret, wire), run, params.signal)
+    const reply = try sdkAnswer(runtime, secret, wire)
+    const text = reply.content.flatMap((part) => part.type === "text" && part.text !== undefined ? [part.text] : []).join("")
+    const nativeShapeValid = !input.hasSchema || (Effect.try(() => { const parsed: unknown = JSON.parse(text); return typeof parsed === "object" && parsed !== null }) catch () => false)
+    const validShape = typeof nativeShapeValid === "boolean" ? nativeShapeValid : try nativeShapeValid
+    const snapshot = try run.send({ type: "finishAnthropic", reason: endReason(reply.stop_reason), nativeShapeValid: validShape, usageAvailable: reply.usage !== undefined })
+    if (snapshot.phase !== "AnthropicComplete") throw new AnthropicFailed({ reason: "Anthropic ended without a complete response." })
+    const calls = reply.content.flatMap((part) => part.type === "tool_use" && part.id !== undefined && part.name !== undefined
+      ? [{ id: part.id, name: part.name, arguments: part.input }] : [])
+    if (!params.stream && calls.length === 0) return text
+    const usage = reply.usage
+    return {
+      textStream: (async function* () { if (text !== "") yield text })(),
+      text: Promise.resolve(text),
+      finishReason: Promise.resolve(reply.stop_reason ?? undefined),
+      usage: Promise.resolve(usage && { promptTokens: usage.input_tokens, completionTokens: usage.output_tokens, totalTokens: usage.input_tokens + usage.output_tokens, cacheReadInputTokens: usage.cache_read_input_tokens, cacheCreationInputTokens: usage.cache_creation_input_tokens }),
+      toolCalls: calls,
+    } satisfies TextStreamResult
+  }
+}
+
+function textHandler(tier: string) {
+  return (runtime: IAgentRuntime, params: GenerateTextParams) => runPromise(inference(runtime, params, tier), { signal: params.signal })
+}
+
+function describe(runtime: IAgentRuntime, input: ImageDescriptionParams | string) {
+  const params = typeof input === "string" ? { imageUrl: input } : input
+  return runPromise(effect {
+    const secret = setting(runtime, "ANTHROPIC_API_KEY")
+    if (secret === "") throw new AnthropicFailed({ reason: "Anthropic image description requires an API connection." })
+    const candidate = /^data:(image\/(?:png|jpeg|gif|webp));base64,(.+)$/.exec(params.imageUrl)
+    const source = candidate === null ? { type: "url", url: params.imageUrl } : { type: "base64", media_type: candidate[1], data: candidate[2] }
+    const answer = try sdkAnswer(runtime, secret, {
+      model: setting(runtime, "ANTHROPIC_IMAGE_MODEL") || "claude-sonnet-4-6", max_tokens: 4096,
+      messages: [{ role: "user", content: [{ type: "image", source }, { type: "text", text: params.prompt ?? "Describe this image." }] }],
+    })
+    if (!["end_turn", "stop_sequence"].includes(answer.stop_reason ?? "")) throw new AnthropicFailed({ reason: "Anthropic image description did not complete." })
+    const description = answer.content.flatMap((part) => part.type === "text" && part.text !== undefined ? [part.text] : []).join("")
+    if (description === "") throw new AnthropicFailed({ reason: "Anthropic returned no image description." })
+    return { title: "", description }
+  }, { signal: "signal" in params ? params.signal : undefined })
+}
+
+export const plugin: Plugin = {
+  name: "@elizaos/plugin-anthropic",
+  description: "Anthropic text tiers, tool replies and image description.",
+  models: {
+    [ModelType.TEXT_NANO]: textHandler("NANO"),
+    [ModelType.TEXT_SMALL]: textHandler("SMALL"),
+    [ModelType.TEXT_MEDIUM]: textHandler("MEDIUM"),
+    [ModelType.TEXT_LARGE]: textHandler("LARGE"),
+    [ModelType.TEXT_MEGA]: textHandler("MEGA"),
+    [ModelType.RESPONSE_HANDLER]: textHandler("SMALL"),
+    [ModelType.ACTION_PLANNER]: textHandler("LARGE"),
+    [ModelType.TEXT_REASONING_SMALL]: textHandler("REASONING_SMALL"),
+    [ModelType.TEXT_REASONING_LARGE]: textHandler("REASONING_LARGE"),
+    [ModelType.IMAGE_DESCRIPTION]: describe,
+  },
+}
+
+export default plugin

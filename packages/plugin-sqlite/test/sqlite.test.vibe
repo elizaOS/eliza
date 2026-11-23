@@ -1,0 +1,25 @@
+// spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { openSqlite } from "../src/index.vibe"
+
+it.effect('Reopen my agent\'s SQLite database in the owning runtime (spec/sqlite/index.md, "Story: Reopen my agent\'s SQLite database in the owning runtime")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const fs = try FileSystem.FileSystem
+      const path = try Path.Path
+      const folder = try fs.makeTempDirectoryScoped()
+      const databasePath = path.join(folder, "agent.sqlite")
+      const lease = { processKey: "fixture", leaseGeneration: 1 }
+      const firstMigration = { revision: 1, sql: "CREATE TABLE todo (id integer primary key, body text not null)" }
+      const secondMigration = { revision: 2, sql: "ALTER TABLE todo ADD COLUMN completed integer not null default 0" }
+      const first = try openSqlite(databasePath, "agent-a", lease, [firstMigration])
+      try ensuring(Effect.try(() => first.prepare("INSERT INTO todo (id, body) VALUES (?, ?)").run(1, "renew")), orDie(Effect.try(() => first.close())))
+      const rejected = try exit(openSqlite(databasePath, "agent-b", lease, [firstMigration]))
+      try Effect.try(() => assert.isTrue(Exit.isFailure(rejected)))
+      const second = try openSqlite(databasePath, "agent-a", lease, [firstMigration, secondMigration])
+      const row = try ensuring(Effect.try(() => second.prepare("SELECT body, completed FROM todo WHERE id = 1").get()), orDie(Effect.try(() => second.close())))
+      try Effect.try(() => assert.deepStrictEqual(row && { ...row }, { body: "renew", completed: 0 }))
+    })
+  }
+})

@@ -18,6 +18,8 @@ export { runEvaluators, orderedEntries, type EvaluatorRun } from "./evaluators/r
 export { restoreEarlier, evidenceRows, type Restoration } from "./evaluators/pages.vibe"
 export { followupTick, type TickReport } from "./followups.vibe"
 export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
+export { BriefSources, PriorityModel, ownerBrief, rankOwnerEntries } from "./owner-brief.vibe"
+export { BillEvidencePort, keepObservedBill, findBillReceipt } from "./bill-evidence.vibe"
 
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
 

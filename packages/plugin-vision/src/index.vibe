@@ -1,0 +1,168 @@
+// spec/vision/index.md, "Story: Control which of my visual sources the assistant can use"; spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
+import { ModelType, Service, type Action, type IAgentRuntime, type Memory, type Plugin } from "@elizaos/core"
+import { Machine, machine, releaseVisionImage, sourceAllowed, type CapturePurpose, type CaptureSource, type VisionMode } from "../gen/vision.effect.vibe"
+
+module node {
+  import { execFile } from "node:child_process"
+  import { randomUUID } from "node:crypto"
+  import { mkdtemp, readFile, rm } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
+  import { platform } from "node:process"
+  import { promisify } from "node:util"
+  import sharp from "sharp"
+  import type { CaptureSource } from "../gen/vision.ts"
+
+  const run = promisify(execFile)
+  export const captureIdentity = randomUUID
+
+  export function hasDesktopCapture(): boolean {
+    return platform === "darwin"
+  }
+
+  export async function captureNative(source: CaptureSource, camera: string, ocr: boolean, signal: AbortSignal) {
+    const directory = await mkdtemp(join(tmpdir(), "eliza-vision-"))
+    const file = join(directory, "capture.png")
+    try {
+      const limits = { signal, timeout: 20000, maxBuffer: 2097152 }
+      if (source === "ScreenSource") {
+        await run("/usr/sbin/screencapture", ["-x", "-t", "png", file], limits)
+      } else {
+        const [format, input] = platform === "darwin" ? ["avfoundation", camera] : ["v4l2", camera]
+        await run("ffmpeg", ["-nostdin", "-f", format, "-i", input, "-frames:v", "1", file], limits)
+      }
+      const bytes = await readFile(file)
+      const image = await sharp(bytes, { limitInputPixels: 33554432 }).resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+        .png().toBuffer({ resolveWithObject: true })
+      const words = ocr ? await run("tesseract", [file, "stdout", "tsv"], limits) : undefined
+      return { dataUrl: "data:image/png;base64," + image.data.toString("base64"), width: image.info.width, height: image.info.height, controlTable: words?.stdout ?? "" }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+}
+import { captureIdentity, captureNative, hasDesktopCapture } from node
+
+export error VisionRefused { reason: string }
+
+interface ScreenProtection extends Service {
+  isScreenProtected(): Promise<boolean>
+}
+
+function protectionService(runtime: IAgentRuntime) {
+  const service = runtime.getService<ScreenProtection>("screen-capture-protection")
+  return service !== null && typeof service.isScreenProtected === "function" ? service : undefined
+}
+
+function readSetting(runtime: IAgentRuntime, key: string): string {
+  const value = runtime.getSetting(key)
+  return typeof value === "string" ? value.trim() : ""
+}
+
+function visionMode(runtime: IAgentRuntime): VisionMode {
+  const mode = readSetting(runtime, "VISION_MODE")
+  if (mode === "camera") return "CameraOnly"
+  if (mode === "screen") return "ScreenOnly"
+  if (mode === "both") return "CameraAndScreen"
+  return "VisionOff"
+}
+
+effect function screenIsProtected(runtime: IAgentRuntime) {
+  const protection = protectionService(runtime)
+  return protection === undefined || (try tryPromise({
+    try: () => protection.isScreenProtected(),
+    catch: () => new VisionRefused({ reason: "Screen capture protection could not be checked." }),
+  }))
+}
+
+function words(table: string) {
+  return table.split(/\r?\n/).slice(1).flatMap((entry) => {
+    const fields = entry.split("\t")
+    const [level, left, top, width, height, text] = [fields[0], Number(fields[6]), Number(fields[7]), Number(fields[8]), Number(fields[9]), fields.slice(11).join("\t").trim()]
+    if (level !== "5" || text === "" || ![left, top, width, height].every((value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0)) return []
+    return typeof left === "number" && typeof top === "number" && typeof width === "number" && typeof height === "number"
+      ? [{ left, top, width, height, text }] : []
+  })
+}
+
+export effect function observeVision(runtime: IAgentRuntime, source: CaptureSource, purpose: CapturePurpose, includeImage: boolean, prompt: string) {
+  const mode = visionMode(runtime)
+  const camera = readSetting(runtime, "VISION_CAMERA_INPUT")
+  const cameraConnected = camera !== ""
+  const screenConnected = hasDesktopCapture()
+  const protectedScreen = source === "ScreenSource" ? try screenIsProtected(runtime) : false
+  if (!sourceAllowed(mode, source, cameraConnected, screenConnected, protectedScreen)) {
+    throw new VisionRefused({ reason: "The selected visual source is disabled, unavailable, or protected." })
+  }
+  const captureId = captureIdentity()
+  const revision = 1
+  provide machine() {
+    const run = try Machine
+    try run.send({ type: "configureVision", mode, cameraConnected, screenConnected, protectedScreen, revision })
+    try run.send({ type: "requestCapture", captureId, source, purpose, includeImage })
+    const captured = try tryPromise({
+      try: (signal) => captureNative(source, camera, purpose === "ReadControls" || purpose === "ReadText", signal),
+      catch: () => new VisionRefused({ reason: "The device could not capture and process the selected source." }),
+    })
+    if (mode !== visionMode(runtime) || camera !== readSetting(runtime, "VISION_CAMERA_INPUT") || (source === "ScreenSource" && (try screenIsProtected(runtime)))) {
+      throw new VisionRefused({ reason: "The capture authorization changed while the device was processing it." })
+    }
+    const snapshot = try run.send({ type: "acceptCameraOrScreen", captureId, source, revision, frameRef: captureId })
+    const elements = words(captured.controlTable)
+    const ocr = elements.map((word) => word.text).join(" ")
+    const title = purpose === "DescribeScene" ? (try tryPromise({
+      try: (signal) => runtime.useModel(ModelType.IMAGE_DESCRIPTION, { imageUrl: captured.dataUrl, prompt: prompt || "Describe the current scene.", signal, stream: false }),
+      catch: () => new VisionRefused({ reason: "No image description provider could answer this capture." }),
+    })).description : ocr
+    if (mode !== visionMode(runtime) || camera !== readSetting(runtime, "VISION_CAMERA_INPUT") || (source === "ScreenSource" && (try screenIsProtected(runtime)))) {
+      throw new VisionRefused({ reason: "The capture authorization changed while its result was being prepared." })
+    }
+    return {
+      text: title,
+      width: captured.width,
+      height: captured.height,
+      elements,
+      image: releaseVisionImage(snapshot, revision) ? captured.dataUrl : undefined,
+    }
+  }
+}
+
+function parameter(options: unknown, key: string): unknown {
+  if (typeof options !== "object" || options === null) return undefined
+  const params = "parameters" in options ? options.parameters : options
+  return typeof params === "object" && params !== null ? Object.getOwnPropertyDescriptor(params, key)?.value : undefined
+}
+
+function owner(runtime: IAgentRuntime, message: Memory): boolean {
+  return runtime.character.ownerEntityId === message.entityId
+}
+
+export const visionAction: Action = {
+  name: "VISION",
+  similes: ["GET_SCREEN", "DESCRIBE_SCENE"],
+  description: "Capture an authorized device camera still, describe a scene, or read a screen as OCR text and coordinates.",
+  parameters: [
+    { name: "subaction", description: "Vision operation.", required: true, schema: { type: "string", enum: ["capture", "get_screen", "describe"] } },
+    { name: "source", description: "The source to describe.", schema: { type: "string", enum: ["camera", "screen"] } },
+    { name: "includeImage", description: "Include a screen image in the result.", schema: { type: "boolean" } },
+    { name: "prompt", description: "What to describe about the scene.", schema: { type: "string" } },
+  ],
+  validate: (runtime, message) => Promise.resolve(owner(runtime, message)),
+  handler: (runtime, message, _state, options) => runPromise(effect {
+    if (!owner(runtime, message)) throw new VisionRefused({ reason: "Only the device owner may request visual capture." })
+    const requested = parameter(options, "subaction")
+    if (requested !== "capture" && requested !== "get_screen" && requested !== "describe") throw new VisionRefused({ reason: "Select camera capture, screen read, or scene description." })
+    const purpose = requested === "capture" ? "CameraStill" : requested === "get_screen" ? "ReadControls" : "DescribeScene"
+    const source = requested === "get_screen" || (requested === "describe" && parameter(options, "source") === "screen") ? "ScreenSource" : "CameraSource"
+    const prompt = parameter(options, "prompt")
+    const result = try observeVision(runtime, source, purpose, parameter(options, "includeImage") === true, typeof prompt === "string" ? prompt : "")
+    return { success: true, text: result.text || (purpose === "CameraStill" ? "Camera capture completed." : "The source showed no readable text."), data: result }
+  }),
+}
+
+export const plugin: Plugin = {
+  name: "@elizaos/plugin-vision",
+  description: "Owner-authorized camera and desktop vision with OCR and grounded text coordinates.",
+  actions: [visionAction],
+}
+export default plugin

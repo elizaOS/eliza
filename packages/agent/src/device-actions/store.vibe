@@ -22,6 +22,7 @@ module node {
 
   export type EnrollmentEvent = Extract<Event, { type: "registerDevice" | "revokeEnrollment" }>
   export type OfferEvent = Extract<Event, { type: "offer" }>
+  export type ProposalReviewScope = "workflow" | "agenda-and-workflow"
 
   const WorkflowId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/))
   const WorkflowDigest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
@@ -196,14 +197,17 @@ module node {
     })
   }
 
-  async function requestIn(sql: Sql, proposalId: string, lock = false): Promise<RequestRow | undefined> {
-    const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE proposal_id = $1${lock ? " FOR UPDATE" : ""}`, [proposalId])
+  const reviewFilter = (scope?: ProposalReviewScope) =>
+    scope === "workflow" ? " AND binding = 'WorkflowBinding' AND binding_authority IS NOT NULL" : ""
+
+  async function requestIn(sql: Sql, proposalId: string, lock = false, scope?: ProposalReviewScope): Promise<RequestRow | undefined> {
+    const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE proposal_id = $1${reviewFilter(scope)}${lock ? " FOR UPDATE" : ""}`, [proposalId])
     const row = found.rows[0]
     return row === undefined ? undefined : request(row)
   }
 
-  export function readRequest(adapter: IDatabaseAdapter, proposalId: string): Promise<RequestRow | undefined> {
-    return within(adapter, (sql) => requestIn(sql, proposalId))
+  export function readRequest(adapter: IDatabaseAdapter, proposalId: string, scope?: ProposalReviewScope): Promise<RequestRow | undefined> {
+    return within(adapter, (sql) => requestIn(sql, proposalId, false, scope))
   }
 
   export type ReceiptEvent = Extract<Event, { type: "receipt" }>
@@ -404,12 +408,13 @@ module node {
     })
   }
 
-  export function reviewRows(adapter: IDatabaseAdapter, by: SessionOwner): Promise<RequestRow[]> {
+  export function reviewRows(adapter: IDatabaseAdapter, by: SessionOwner, scope: ProposalReviewScope): Promise<RequestRow[]> {
     return within(adapter, async (sql) => {
+      const filter = reviewFilter(scope)
       const found = await sql.query<Row>(
-        `SELECT ${columns} FROM device_requests WHERE NOT settled
+        `SELECT ${columns} FROM device_requests WHERE NOT settled${filter}
          UNION ALL
-         (SELECT ${columns} FROM device_requests WHERE settled ORDER BY created_at DESC, proposal_id DESC LIMIT 50)
+         (SELECT ${columns} FROM device_requests WHERE settled${filter} ORDER BY created_at DESC, proposal_id DESC LIMIT 50)
          ORDER BY created_at DESC, proposal_id DESC`,
       )
       return found.rows.map(request).flatMap((row) => {
@@ -448,10 +453,10 @@ module node {
 }
 import {
   readEnrollment, readRequest, readViewProfile, requestRows, retireAbandonedAgendaRows, retireTurnRequest, reviewRows, seedRequest, writeClaim, writeDecision, writeEnrollment, writeReceipt, writeRequest, writeReview, writeViewProfile,
-  type AdmittedRequestReceipt, type ClaimBinding, type ClaimCommit, type DecisionCommit, type EnrollmentEvent, type EnrollmentRow, type OfferEvent, type ProfileChange,
+  type AdmittedRequestReceipt, type ClaimBinding, type ClaimCommit, type DecisionCommit, type EnrollmentEvent, type EnrollmentRow, type OfferEvent, type ProfileChange, type ProposalReviewScope,
   type ReceiptCommit, type RequestClaim, type RequestDecision, type RequestEvent, type RequestReview, type RequestRow, type RequestTerms, type RetainedRequestTerms, type ReviewCommit, type Settled,
 } from node
-export type { AdmittedRequestReceipt, ClaimCommit, DecisionCommit, EnrollmentEvent, OfferEvent, ProfileChange, ReceiptCommit, RequestClaim, RequestDecision, RequestEvent, RequestReview, RequestRow, RequestTerms, RetainedRequestTerms, ReviewCommit, Settled } from node
+export type { AdmittedRequestReceipt, ClaimCommit, DecisionCommit, EnrollmentEvent, OfferEvent, ProfileChange, ProposalReviewScope, ReceiptCommit, RequestClaim, RequestDecision, RequestEvent, RequestReview, RequestRow, RequestTerms, RetainedRequestTerms, ReviewCommit, Settled } from node
 export { commitReadCompletion, readCompletionPublication, withReadCompletionPublication, workflowAuthority } from node
 
 type RequestMachine = Effect.Success<ReturnType<typeof machineOver>>
@@ -514,8 +519,8 @@ export effect function changeEnrollment(adapter: IDatabaseAdapter, event: Enroll
   return try machine.send(event, by)
 }
 
-export effect function requestSnapshot(adapter: IDatabaseAdapter, proposalId: string): (RequestRow | undefined)!DeviceStoreUnavailable {
-  const row = try stored("read a device request", () => readRequest(adapter, proposalId))
+export effect function requestSnapshot(adapter: IDatabaseAdapter, proposalId: string, scope?: ProposalReviewScope): (RequestRow | undefined)!DeviceStoreUnavailable {
+  const row = try stored("read a device request", () => readRequest(adapter, proposalId, scope))
   return row === undefined ? undefined : { ...row, state: try caughtUp(row.state) }
 }
 
@@ -556,8 +561,8 @@ export effect function retireRequest(adapter: IDatabaseAdapter, offer: RequestCl
   return try stored("retire the turn's device offer", () => retireTurnRequest(adapter, offer))
 }
 
-export effect function deviceReviewRows(adapter: IDatabaseAdapter, by: SessionOwner): RequestRow[]!DeviceStoreUnavailable {
-  return try stored("list the device's proposals", () => reviewRows(adapter, by))
+export effect function deviceReviewRows(adapter: IDatabaseAdapter, by: SessionOwner, scope: ProposalReviewScope): RequestRow[]!DeviceStoreUnavailable {
+  return try stored("list the device's proposals", () => reviewRows(adapter, by, scope))
 }
 
 export effect function recordRequestDecision(adapter: IDatabaseAdapter, decision: RequestDecision): DecisionCommit!DeviceStoreUnavailable {

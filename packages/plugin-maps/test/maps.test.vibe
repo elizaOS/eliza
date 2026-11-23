@@ -117,13 +117,13 @@ it.live('Keep Cloud Maps on the account that requested it: coverage installs the
 
 it.live('Show the right copyright for the map I am looking at: a view inside the attributed area keeps its copyright and a reply for a view I left is never shown (spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at")', effect () => {
   const replies = try Queue.unbounded<Deferred.Deferred<string>>()
-  let asked = 0
+  const asked: number[] = []
   const basemap: CloudMapsBasemap = {
     kind: "cloud-raster", attribution: "Google", minZoom: 0, maxZoom: 20, tileSize: 256,
     tile: () => succeed(new Uint8Array()),
-    effect copyright() {
+    copyright: (view) => effect {
       const reply = try Deferred.make<string>()
-      asked++
+      asked.push(view.north)
       try Queue.offer(replies, reply)
       return try Deferred.await(reply)
     },
@@ -152,7 +152,7 @@ it.live('Show the right copyright for the map I am looking at: a view inside the
   try attribution.dispose()
   const disposed = try attribution.current()
   try Effect.try(() => assert.deepStrictEqual({ shown, within, hidden, asked, late, current, disposed },
-    { shown: "Map data ©2026 Google", within: "Map data ©2026 Google", hidden: "", asked: 3, late: "", current: "Map data ©2026 Google, INEGI", disposed: "" }))
+    { shown: "Map data ©2026 Google", within: "Map data ©2026 Google", hidden: "", asked: [38, 41, 42], late: "", current: "Map data ©2026 Google, INEGI", disposed: "" }))
 })
 
 function screenFake() {

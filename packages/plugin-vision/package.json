@@ -1,0 +1,30 @@
+{
+  "private": true,
+  "version": "4.0.0-alpha.0",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "typecheck": "vibelang --noEmit -p ."
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13"
+  },
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "name": "@elizaos/plugin-vision"
+}

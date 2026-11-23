@@ -1,0 +1,6 @@
+{"ts":1714000000000,"event":"activate","bundleId":"com.apple.TextEdit","appName":"TextEdit","windowTitle":"Untitled"}
+{"ts":1714000010000,"event":"hid_idle","idleSeconds":-1}
+{broken
+{"ts":1714000020000,"event":"hid_idle","idleSeconds":1.25}
+{"ts":1714000030000,"event":"deactivate","bundleId":"","appName":""}
+{"ts":1714000040000,"event":"activate","bundleId":"com.apple.Safari"}

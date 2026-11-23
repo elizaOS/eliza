@@ -1,6 +1,6 @@
 // spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"
 import { assert, it } from "@effect/vitest"
-import { attestAuthenticatedApiDeliveryAudience, canActionRun, disclosureGateFailure, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+import { attestAuthenticatedApiDeliveryAudience, bindIncomingMessagePersistence, canActionRun, disclosureGateFailure, stringToUuid, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
 import {
   calendarAction, calendarHost, calendarProvider, calendarRoutes, CalendarWriteNotAccepted, runCalendarAction,
   type CalendarAccount, type CalendarApprovalRow, type CalendarCache, type CalendarEvent, type CalendarProviderPort, type CalendarRouteInput,
@@ -87,10 +87,10 @@ effect function ownerTurn(participants: readonly UUID[]) {
   return message
 }
 
-it.effect(`Change my calendar only as I asked and know it happened (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A calendar the active account does not list never narrows a read"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all")`, effect () => {
+it.effect(`Change my calendar only as I asked and know it happened (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A calendar the active account does not list never narrows a read"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "A chat delete runs directly only for the exact one-off event the owner named"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all")`, effect () => {
   const filed: CalendarApprovalRow[] = []
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => ({ request: async (row) => { filed.push(row); return { id: row.id, state: "pending" } } }) })
-  const ask = { by: "owner-entity", id: "message-1" }
+  const ask = { by: try Effect.try(() => stringToUuid("owner-entity")), id: "message-1" }
   const dentist = { subaction: "create_event", title: "Dentist", location: "Main St", startAt: "2030-03-04T09:00:00-08:00", endAt: "2030-03-04T10:00:00-08:00", timeZone: "America/Los_Angeles", reviewBeforeCreate: false }
 
   const created = try runCalendarAction(host, ask, dentist)
@@ -112,19 +112,70 @@ it.effect(`Change my calendar only as I asked and know it happened (spec/calenda
   assert.notStrictEqual(changedEtag, etag)
   assert.deepStrictEqual([at(updated.effectReceipts?.[0], "operation"), at(updated.effectReceipts?.[0], "outcome"), at(updated.effectReceipts?.[0], "resource", "version")], ["calendar.event.update", "applied", changedEtag])
 
-  const deleted = try runCalendarAction(host, { ...ask, id: "message-3" }, { subaction: "delete_event", query: "moved", ...march })
+  effect function deleteTurn(key: string, words: string, parameters: Record<string, unknown>, routedWords = words) {
+    const message: Memory = try Effect.try(() => ({
+      id: stringToUuid(key), entityId: ask.by, agentId: stringToUuid("agent"), roomId: stringToUuid("calendar-chat"),
+      content: { text: routedWords, source: "device" },
+    }))
+    try Effect.try(() => bindIncomingMessagePersistence(message, { ...message, content: { text: words, source: "device" } }))
+    return try runCalendarAction(host, { by: message.entityId, id: message.id ?? key }, { subaction: "delete_event", ...parameters }, message)
+  }
+
+  const deleteDentist = { eventId: id, query: "Dentist moved", ...march }
+  const unbound = try runCalendarAction(host, ask, { subaction: "delete_event", ...deleteDentist })
+  const declined = try deleteTurn("declined-delete", "Don't delete Dentist moved", deleteDentist, "Delete Dentist moved")
+  const declinedReplay = try deleteTurn("declined-delete", "Don't delete Dentist moved", { eventId: id })
+  const unrelated = try deleteTurn("unrelated-delete", "Show Dentist moved", deleteDentist)
+  const wrongTitle = try deleteTurn("wrong-title-delete", "Delete Dentist", deleteDentist)
+  const wrongHint = try deleteTurn("wrong-hint-delete", "Delete Dentist moved", { eventId: "different-event" })
+  const broadScope = try deleteTurn("broad-delete", "Delete Dentist moved", { ...deleteDentist, recurrenceScope: "series" })
+  assert.deepEqual([unbound, declined, declinedReplay, unrelated, wrongTitle, wrongHint, broadScope].map((answer) => [answer.success, answer.effectReceipts]),
+    Array.from({ length: 7 }, () => [false, undefined]))
+  assert.strictEqual((try host.find(String(id)))?.event.id, id)
+
+  const deleted = try deleteTurn("named-delete", "Delete Dentist moved", deleteDentist, "Show a different event")
   assert.deepStrictEqual([at(deleted.data, "deleted"), at(deleted.data, "targetEvent", "id"), at(deleted.data, "targetEvent", "metadata", "etag")], [true, id, changedEtag])
   assert.deepStrictEqual([at(deleted.effectReceipts?.[0], "operation"), at(deleted.effectReceipts?.[0], "resource", "kind"), at(deleted.effectReceipts?.[0], "resource", "version")], ["calendar.event.delete", "calendar.event", `deleted:${changedEtag}`])
   assert.strictEqual(at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length"), 0)
+
   const past = try runCalendarAction(host, { ...ask, id: "message-4" }, { ...dentist, startAt: "1969-12-31T09:00:00Z", endAt: "1969-12-31T10:00:00Z" })
   assert.deepStrictEqual([past.success, at(past.data, "needsConfirmation")], [false, "past_start"])
   const pointDay = try runCalendarAction(host, { ...ask, id: "message-4b" }, { ...dentist, isAllDay: true, startAt: "2030-03-04T00:00:00Z", endAt: "2030-03-04T00:00:00Z" })
   assert.deepStrictEqual([pointDay.success, pointDay.text, at((try runCalendarAction(host, ask, { subaction: "search_events", ...march })).data, "events", "length")],
     [false, "A new event needs a title and a start before its end.", 0])
 
+  const replacement = try runCalendarAction(host, { ...ask, id: "delete-replay-replacement" }, { ...dentist, title: "Dentist moved" })
+  const replacementId = at(replacement.data, "event", "id")
+  const replayDelete = try deleteTurn("named-delete", "Delete Dentist moved", { query: "Dentist moved", ...march })
+  assert.deepEqual([replayDelete.success, replayDelete.effectReceipts, (try host.find(String(replacementId)))?.event.id], [false, undefined, replacementId])
+  const duplicate = try runCalendarAction(host, { ...ask, id: "named-duplicate" },
+    { ...dentist, title: "Dentist moved", startAt: "2030-10-04T09:00:00-08:00", endAt: "2030-10-04T10:00:00-08:00" })
+  const ambiguous = try deleteTurn("ambiguous-delete", "Delete Dentist moved", { eventId: replacementId, ...march })
+  assert.deepEqual([duplicate.success, ambiguous.success, ambiguous.effectReceipts, (try host.find(String(replacementId)))?.event.id], [true, false, undefined, replacementId])
+
+  const recurring = try runCalendarAction(host, { ...ask, id: "recurring-delete-event" }, { ...dentist, title: "Piano", repeat: "weekly" })
+  const heldSeriesId = at(recurring.data, "event", "id")
+  const recurringDelete = try deleteTurn("named-recurring-delete", "Delete Piano", { eventId: heldSeriesId })
+  assert.deepEqual([recurring.success, recurringDelete.success, recurringDelete.effectReceipts, (try host.find(String(heldSeriesId)))?.event.id], [true, false, undefined, heldSeriesId])
+
+  for (const [title, words] of [["歯医者", "歯医者を削除して"], ["牙医预约", "删除牙医预约"], ["치과", "치과를 삭제해줘"]] as const) {
+    const made = try runCalendarAction(host, { ...ask, id: `create-${title}` }, { ...dentist, title })
+    const targetId = at(made.data, "event", "id")
+    const removed = try deleteTurn(`delete-${title}`, words, { eventId: targetId })
+    assert.deepEqual([made.success, removed.success, at(removed.data, "targetEvent", "id"), try host.find(String(targetId))], [true, true, targetId, undefined])
+  }
+
   const google = googleCalendar()
   try host.register(google.port)
   try host.bindAccount(owner)
+  const localAppointment = try runCalendarAction(host, { ...ask, id: "two-sources-local" }, { ...dentist, title: "Local appointment" })
+  const localAppointmentId = at(localAppointment.data, "event", "id")
+  const unnamedSource = try deleteTurn("unnamed-source-delete", "Delete Local appointment", { eventId: localAppointmentId })
+  assert.deepEqual([unnamedSource.success, unnamedSource.effectReceipts, (try host.find(String(localAppointmentId)))?.event.id], [false, undefined, localAppointmentId])
+  const wrongSource = try deleteTurn("wrong-source-delete", 'Delete "Local appointment" from my Eliza calendar', { calendarId: "work", eventId: localAppointmentId })
+  assert.deepEqual([wrongSource.success, wrongSource.effectReceipts, (try host.find(String(localAppointmentId)))?.event.id], [false, undefined, localAppointmentId])
+  const namedSource = try deleteTurn("named-source-delete", 'Delete "Local appointment" from my Eliza calendar', { eventId: localAppointmentId })
+  assert.deepEqual([namedSource.success, try host.find(String(localAppointmentId))], [true, undefined])
   const standup = { subaction: "create_event", calendarId: "work", title: "Standup", startAt: "2030-03-05T16:00:00Z", endAt: "2030-03-05T16:15:00Z", timeZone: "UTC" }
   const queued = try runCalendarAction(host, { ...ask, id: "message-5" }, standup)
   assert.deepStrictEqual([queued.success, at(queued.data, "approvalRequestId"), google.events.size], [true, filed[0]?.id, 0])
