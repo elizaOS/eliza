@@ -1,9 +1,9 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A change waiting for approval expires a day after it was asked"
 import { sha256Hex } from "@elizaos/core"
 import { FetchHttpClient } from "effect/http"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import {
-  attendeeNotice, eventVisible, invitationVerdict, readScope, slotChecked, sourceRead, writeRoute, writeSlot, type AttendeeNotice, type SourceRead,
+  approvalExpiry, attendeeNotice, eventVisible, invitationVerdict, readScope, slotChecked, sourceRead, writeRoute, writeSlot, type AttendeeNotice, type SourceRead,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import type { ManagedCalendarBroker } from "../feed/broker.vibe"
@@ -108,7 +108,6 @@ export interface CalendarHostOptions {
   readonly managed?: ManagedCalendarBroker
 }
 
-const approvalLifetimeMs = 24 * 60 * 60 * 1000
 const dayMs = 86_400_000
 const decodePayload = Schema.decodeUnknownOption(PayloadRecord, { onExcessProperty: "error" })
 const decodeQuestion = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ eventId: Schema.String, askedIn: Schema.String, askedAt: Schema.Number })))
@@ -310,7 +309,7 @@ export effect function calendarHost(options: CalendarHostOptions) {
     const filed = tryPromise(() => approvals.request({
       id: request.id, subjectUserId: asked.askedBy, requestedBy: options.agentId, action: approvalAction(payload),
       payload: { change: payload, digest }, reason: `Calendar ${payload.action.replace("_", " ")} reviewed in chat${noticeReason[notice]}`,
-      expiresAt: new Date(now + approvalLifetimeMs).toISOString(),
+      expiresAt: new Date(approvalExpiry(now)).toISOString(),
     })) catch () => undefined
     return filed === undefined ? { kind: "refused", reason: "approvals_unavailable" } : { kind: "queued", request, approvalId: filed.id, notice, overlapsUnchecked }
   }

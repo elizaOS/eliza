@@ -401,6 +401,19 @@ pure def lawAClientChangeIsNotChecked(timed: bool, movesTime: bool, alreadyAppli
 pure val overlappingValues = Set(0, 1, 2)
 ```
 
+### A change waiting for approval expires a day after it was asked
+
+A change queued for the owner's approval carries the instant it expires:
+24 hours after it was asked. The agent's upcoming-events context reads
+the same length of time ahead of now.
+
+```quint
+pure val approvalLifetime: int = 86400000
+pure val contextLookahead: int = 86400000
+pure def approvalExpiry(askedAt: int): int = askedAt + approvalLifetime
+pure def lawAnApprovalExpiresAfterItWasAsked(askedAt: int): bool = approvalExpiry(askedAt) > askedAt
+```
+
 ### A write goes to the active account's writable calendar, at once only for the resident calendar
 
 A write needs the active account and a calendar that account can write.
