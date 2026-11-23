@@ -56,7 +56,8 @@ public class DeepLinksPlugin extends Plugin {
 
   private static String uncaptured(Intent intent) {
     sieve(intent);
-    if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction()) || intent.hasExtra(EXTRA_RECEIPT)) return null;
+    if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction()) || intent.hasExtra(EXTRA_RECEIPT)
+        || (intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return null;
     Uri data = intent.getData();
     String url = data == null ? null : data.toString();
     return DeepLinkCapture.admissible(url) ? url : null;
