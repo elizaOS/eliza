@@ -1,4 +1,5 @@
-// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"; spec/core/models.md, "A failed dispatch tells its caller how many provider attempts it made"
+import { MODEL_PROVIDER_ATTEMPTS, type ModelProviderAttempt } from "../types/model.vibe"
 import { readHttpStatus } from "./model-errors.vibe"
 
 function* retryEvidenceNodes(error: unknown): Generator<object> {
@@ -32,6 +33,18 @@ function* retryEvidenceNodes(error: unknown): Generator<object> {
       }
     }
   }
+}
+
+export function carryDispatchAttempts(error: unknown, attempts: readonly ModelProviderAttempt[]): void {
+  if (typeof error === "object" && error !== null) Reflect.defineProperty(error, MODEL_PROVIDER_ATTEMPTS, { value: attempts, configurable: true })
+}
+
+export function dispatchAttemptsOf(error: unknown): number {
+  for (const node of retryEvidenceNodes(error)) {
+    const attempts = (node as { [MODEL_PROVIDER_ATTEMPTS]?: unknown })[MODEL_PROVIDER_ATTEMPTS]
+    if (Array.isArray(attempts)) return attempts.length
+  }
+  return 0
 }
 
 export function providerRetryAfterMs(
