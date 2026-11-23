@@ -293,20 +293,64 @@ pure def lawOneTabClosesAreProposedAsAsked(form: TabCloseForm, negotiated: Negot
 A refused open answers the owner with how to ask for an address, as the
 open command it takes such as "open nytimes.com", when the message has
 none, and only that the address was not opened when it has one; a refused search asks for the words to search for; a refused close of
-every tab says the phone closes one tab at a time and nothing closed. The
+every tab says the phone closes one tab at a time and nothing closed; a
+refused reload of a page the phone withheld says the page was not reloaded
+because reloading would not let the agent read it. The
 model learns that no proposal was created and nothing ran.
 
 ```quint
-type BrowserRefusal = DestinationNotRequested | SearchNotTyped | CloseEveryUnavailable
-type RefusalReply = AskForAddress | SayAddressNotOpened | AskForSearchWords | SayOneTabAtATime
+type BrowserRefusal = DestinationNotRequested | SearchNotTyped | CloseEveryUnavailable | ReloadNotRequested
+type RefusalReply = AskForAddress | SayAddressNotOpened | AskForSearchWords | SayOneTabAtATime | SayPageNotReloaded
 pure def refusalReply(refusal: BrowserRefusal, addressInWords: bool): RefusalReply =
   match refusal {
     | DestinationNotRequested => if (addressInWords) SayAddressNotOpened else AskForAddress
     | SearchNotTyped => AskForSearchWords
     | CloseEveryUnavailable => SayOneTabAtATime
+    | ReloadNotRequested => SayPageNotReloaded
   }
 pure def lawARefusedOpenAsksOnlyWithoutAnAddress(addressInWords: bool): bool =
   (refusalReply(DestinationNotRequested, addressInWords) == AskForAddress) iff not(addressInWords)
 pure def lawOnlyARefusedOpenSpeaksOfAnAddress(refusal: BrowserRefusal, addressInWords: bool): bool =
   (refusalReply(refusal, addressInWords) == AskForAddress or refusalReply(refusal, addressInWords) == SayAddressNotOpened) implies refusal == DestinationNotRequested
+```
+
+## Story: Tell me you cannot read my page, and never reload it unasked
+
+> As the owner, I want the agent to tell me when it cannot read the page I
+> am on, and never to reload it unless I ask, because a reload can send a
+> form again and still leaves the page unreadable.
+
+### A reload of a page my phone withheld runs only when my message asked for it
+
+Where the owner's current message carried a Browser page whose text the
+phone withheld, because it could not read it or because it may hold
+sign-in details, a reload of the tab, as the Browser history control or
+the BROWSER command, goes ahead only when the owner's own message asks to
+reload, refresh or reopen it, as a command or a "can you" request that
+starts a sentence or clause, and says nowhere not to; a mention, a
+question about reloading or a reload the owner says they will do is no
+request, and neither is a bare "yes". Any other reload on
+that turn is refused before anything is sent: the model learns that the
+phone shares no text of that page, only its title and address, that
+reloading does not change that and nothing was reloaded, and that it should
+answer the owner instead, without offering a reload the owner did not ask
+for. Back, forward and stop, a page the phone read and
+a message that carried no page are unchanged. An open of the page's own
+address already needs the owner's words ([request grounding](./requestGrounding.md)):
+a withheld page carries no links to ground one.
+
+```quint
+type CarriedPage = NoPageCarried | PageTextRead | PageTextUnreadable | PageTextSensitive
+type HistoryMove = MoveBack | MoveForward | MoveReload | MoveStop
+pure def pageWithheld(page: CarriedPage): bool = page == PageTextUnreadable or page == PageTextSensitive
+pure def historyMoveRefused(move: HistoryMove, page: CarriedPage, ownerAskedReload: bool): bool =
+  move == MoveReload and pageWithheld(page) and not(ownerAskedReload)
+pure def lawAnUnaskedReloadOfAWithheldPageIsRefused(page: CarriedPage): bool =
+  pageWithheld(page) implies historyMoveRefused(MoveReload, page, false)
+pure def lawAReloadTheOwnerAskedForGoesAhead(move: HistoryMove, page: CarriedPage): bool =
+  not(historyMoveRefused(move, page, true))
+pure def lawOnlyAReloadOfAWithheldPageIsRefused(move: HistoryMove, page: CarriedPage, ownerAskedReload: bool): bool =
+  historyMoveRefused(move, page, ownerAskedReload) implies (move == MoveReload and pageWithheld(page))
+pure def lawAReadablePageIsNeverRefusedAReload(move: HistoryMove, ownerAskedReload: bool): bool =
+  not(historyMoveRefused(move, PageTextRead, ownerAskedReload)) and not(historyMoveRefused(move, NoPageCarried, ownerAskedReload))
 ```
