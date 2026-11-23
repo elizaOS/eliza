@@ -141,11 +141,16 @@ pure val viewIdValues = Set("chat", "notes", "files")
 ### Preparing again supersedes the client's unclaimed navigation and is refused while one is claimed
 
 A navigation the renderer already claimed is being applied, so a second
-one could commit out of order; the client must wait for its result. The
-superseded navigation's wait ends with the outcome `Superseded`. A client's
-only pending navigation is therefore its latest.
+one could commit out of order; the client must wait for its result. A
+preparation first waits up to `navigationBusyWaitMs`, under the show
+action's own deadline, for the client's claimed navigation to end, and
+then prepares against the state that one left, so a turn that arrives just
+after a renderer's report is queued rather than refused. The superseded
+navigation's wait ends with the outcome `Superseded`. A client's only
+pending navigation is therefore its latest.
 
 ```quint
+pure val navigationBusyWaitMs = 4000
 pure def openNavigationOf(h: ViewHost, clientId: str): str =
   if (h.openNavigation.keys().contains(clientId)) h.openNavigation.get(clientId) else ""
 pure def busy(h: ViewHost, clientId: str): bool = {
@@ -297,11 +302,16 @@ pure val grantValues = Set(
 ### A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again
 
 The shell abandons the request when its wait ends, its client's renderer
-disconnects, or publishing its frame throws. The agent's wait then sees the
-outcome `Unknown`, never a failure or a success, and the request is not
-offered again.
+disconnects, or publishing its frame throws. A claimed navigation's wait
+also ends `navigationClaimLeaseMs` after its claim: the renderer may have
+lost the claim reply, and nobody else can answer that claim, so it would
+otherwise keep the client busy for the whole `navigationWaitMs`. The
+agent's wait then sees the outcome `Unknown`, never a failure or a
+success, and the request is not offered again; a late result for it is not
+accepted.
 
 ```quint
+pure val navigationClaimLeaseMs = 10000
 pure def canAbandonRequest(h: ViewHost, requestId: str): bool = known(h, requestId) and isOpen(h, waiterAt(h, requestId))
 pure def abandonRequest(h: ViewHost, requestId: str): ViewHost = {
   val w = waiterAt(h, requestId)
