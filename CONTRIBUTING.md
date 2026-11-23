@@ -495,9 +495,8 @@ results.
 The default branch's `verify` job publishes the pnpm store after the frozen
 install. All jobs can restore it by the same lockfile key. This cache holds
 public packages only because fork pull requests can read it.
-Verification and release install both Chromium executables. In CI and nightly
-runs, shard A needs full Chromium for Bombadil. The other self-test shards
-run without a browser.
+Hosted verification installs Chromium's headless shell during setup. It fetches
+full Chrome when Bombadil runs a fresh exploration or replays a saved failure.
 The precompute jobs skip the root install’s build and generation during the
 canonical `ci.yml` preparation in its workspace. Other workflows, manual
 commands and nested packages keep their declared install work.
@@ -520,7 +519,10 @@ root and Studio tests. In CI, the verify job runs those integration tests once.
 Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
 Fixture selftests on a pull request first restore an archive scoped to its PR number and lockfile. A complete cached task reuses it only when setup preserves its evaluator; inherited archives, evaluator changes and actual fixture execution retain normal publication.
 
-The canonical nightly install builds the tools and defers application generation to its unchanged nightly task graph. Verification and release install full Chromium and its headless shell. Hosted shard A installs Chromium when its Bombadil journey runs; nightly setup still provisions it, and other tool shards need no browser.
+The canonical nightly install builds the tools and defers application generation
+to its task graph. Nightly and release install both Chromium executables. Hosted
+shard A fetches full Chrome when its Bombadil journey runs. The other tool shards
+need no browser.
 
 All three tool shards skip workspace generation. The two fixture shards use their scratch inputs, and the packaged CLI test builds its workspace copy.
 Release materializes the prerequisites before running the isolated shards.

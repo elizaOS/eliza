@@ -324,11 +324,14 @@ runs:
     - name: Install Chromium
       if: inputs.verification == 'true' && inputs.job != 'selftest-b' && inputs.job != 'selftest-rest' && !startsWith(inputs.job, 'simulate-')
       run: |
-        node --input-type=module - "${{ inputs.job == 'selftest-a' }}" "${{ inputs.cache-verification == 'true' }}" <<'JS'
-        import { hostedCachedFixture, installChromium } from "./vibestack/selftests/install.ts";
-        const [fullOnly, cacheVerification] = process.argv.slice(2);
-        if (fullOnly !== "true" || cacheVerification !== "true" || !hostedCachedFixture()) {
-          await installChromium(fullOnly === "true");
+        node --input-type=module - "${{ inputs.job == 'selftest-a' }}" "${{ inputs.job == 'verify' }}" "${{ inputs.cache-verification == 'true' }}" <<'JS'
+        import { installChromium, prepareChromiumShell } from "./vibestack/chromium.ts";
+        import { hostedCachedFixture } from "./vibestack/selftests/install.ts";
+        const [fullOnly, verify, cacheVerification] = process.argv.slice(2);
+        if (fullOnly === "true") {
+          if (cacheVerification !== "true" || !hostedCachedFixture()) await installChromium("full");
+        } else if (verify !== "true" || cacheVerification !== "true" || !await prepareChromiumShell()) {
+          await installChromium("both");
         }
         JS
       shell: bash
