@@ -227,8 +227,8 @@ public final class DeviceCredentialStore implements CredentialReader {
   public Kept leaseRotated(int version, String refresh, long accessExpiresAt, long refreshExpiresAt) {
     synchronized (lock) {
       advance();
-      if (!CredentialPolicy.canLeaseRefreshAnswered(state) || CredentialPolicy.leaseVersionOf(state.lease()) != version) return Kept.REFUSED;
-      boolean fits = accessExpiresAt > state.now() && refreshExpiresAt > state.now();
+      if (!CredentialPolicy.canLeaseRefreshAnswered(state)) return Kept.REFUSED;
+      boolean fits = CredentialPolicy.leaseVersionOf(state.lease()) == version && accessExpiresAt > state.now() && refreshExpiresAt > state.now();
       Stored stored = fits ? writeLease(version, refresh) : Stored.REFUSED;
       LeaseAnswer rotation = new LeaseAnswer.Rotated(accessExpiresAt, refreshExpiresAt, stored);
       boolean taken = CredentialPolicy.rotationTaken(state, rotation);
@@ -318,6 +318,13 @@ public final class DeviceCredentialStore implements CredentialReader {
       advance();
       if (!(state.attempt() instanceof Attempt.Acknowledging k)) return null;
       return new Pending(k.attempt(), k.credentialId(), keyOf(k.version()));
+    }
+  }
+
+  public Pending pendingRenewal() {
+    synchronized (lock) {
+      advance();
+      return CredentialPolicy.isRenewal(state.attempt()) ? pending() : null;
     }
   }
 

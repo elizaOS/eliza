@@ -239,15 +239,12 @@ public final class CredentialPolicy {
   }
 
   public static Step rejected(State s, int version, Reason reason, RejectedOn on) {
+    if (isRenewal(s.attempt()) && pendingVersion(s) >= 1) return new Step(s.with(NO_SESSION), List.of(new Notice.RenewKey()));
     if (reason == Reason.CREDENTIAL_EXPIRED && leaseVersionOf(s.lease()) == version)
       return new Step(s.with(NO_SESSION), s.attempt() instanceof Attempt.NoAttempt ? List.of(new Notice.RenewKey()) : List.of());
     if (reason == Reason.CREDENTIAL_EXPIRED) return new Step(s.with(new Custody.Expired(accountOf(s))).with(NO_SESSION).with(NO_LEASE), List.of(new Notice.ExpiredNotice()));
-    if (on == RejectedOn.ACCOUNT_READ) {
-      boolean renewing = isRenewal(s.attempt());
-      State next = s.with(SIGNED_OUT).with(NO_SESSION).with(NO_LEASE).with(renewing ? NO_ATTEMPT : s.attempt())
-        .withDuties(renewing ? concat(s.duties(), pendingDuty(s.attempt(), SIGN_OUT_ATTEMPTS)) : s.duties());
-      return new Step(next, List.of(new Notice.SignedOutNotice()));
-    }
+    if (on == RejectedOn.ACCOUNT_READ)
+      return new Step(s.with(SIGNED_OUT).with(NO_SESSION).with(NO_LEASE).with(isRenewal(s.attempt()) ? NO_ATTEMPT : s.attempt()), List.of(new Notice.SignedOutNotice()));
     return new Step(s, List.of(new Notice.VerifyAccount()));
   }
 

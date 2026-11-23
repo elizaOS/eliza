@@ -41,18 +41,25 @@ public final class DeviceLease {
     }
     if (mine == null) return theirs == null ? null : await(theirs);
     int version = CredentialPolicy.leaseVersionOf(store.state().lease());
-    Answer<Rotated> answer = client.rotateLease();
+    Answer<Rotated> answer = new Answer.Unanswered<>();
     boolean taken = false;
-    synchronized (this) {
-      if (answer instanceof Answer.Answered<Rotated> answered) {
-        Rotated next = answered.value();
-        taken = store.leaseRotated(version, next.refresh(), next.accessExpiresAt(), next.refreshExpiresAt()) == DeviceCredentialStore.Kept.KEPT;
-        access = taken ? next.access() : access;
-      } else {
-        store.leaseUnanswered();
+    try {
+      answer = client.rotateLease();
+    } finally {
+      synchronized (this) {
+        try {
+          if (answer instanceof Answer.Answered<Rotated> answered) {
+            Rotated next = answered.value();
+            taken = store.leaseRotated(version, next.refresh(), next.accessExpiresAt(), next.refreshExpiresAt()) == DeviceCredentialStore.Kept.KEPT;
+            access = taken ? next.access() : access;
+          } else {
+            store.leaseUnanswered();
+          }
+        } finally {
+          if (inFlight == mine) inFlight = null;
+          mine.complete(null);
+        }
       }
-      if (inFlight == mine) inFlight = null;
-      mine.complete(null);
     }
     if (taken) rotated.run();
     synchronized (this) { return store.leaseUsable() ? bound() : null; }

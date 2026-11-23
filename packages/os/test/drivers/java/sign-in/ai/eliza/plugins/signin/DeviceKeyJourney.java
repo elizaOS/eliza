@@ -68,6 +68,7 @@ public final class DeviceKeyJourney {
     final Map<String, Renewal> renewals = new ConcurrentHashMap<>();
     final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>();
     volatile boolean offline, leases, dropNextRotation;
+    volatile int dropAcks;
     final HttpServer server;
 
     FakeCloud(AtomicLong clock) throws IOException {
@@ -182,6 +183,7 @@ public final class DeviceKeyJourney {
             renewed.lease().grant = credentialId;
           }
           live.put(secret, credentialId);
+          if (dropAcks > 0) { dropAcks--; x.close(); return; }
           answer(x, 200, "{\"status\":\"acknowledged\",\"credentialId\":\"" + credentialId + "\",\"expiresAt\":\"" + iso(now + 30 * DAY_MS) + "\"}");
         }
         case "DELETE " + DeviceKeyClient.REVOKE -> {
@@ -303,6 +305,20 @@ public final class DeviceKeyJourney {
     seen.add(take("replacedKeyEnded", !cloud.live.containsValue(leased) && store.owed().isEmpty()));
     clock.addAndGet(16 * 60_000L);
     seen.add(take("leaseKeptByRenewal", lease.accessToken() != null));
+    int beforeLostAck = store.current().version();
+    cloud.dropAcks = DeviceKeyClient.ASKS;
+    clock.addAndGet(15 * DAY_MS);
+    lease.accessToken();
+    boolean stranded = store.pendingRenewal() != null && store.current().version() == beforeLostAck;
+    store.report401(beforeLostAck, "credential_revoked");
+    seen.add(take("lostRenewalAckAskedAgain", stranded && store.pendingRenewal() == null && store.current().version() == beforeLostAck + 1 ? held() : "stranded"));
+    client.settleDuties();
+    clock.addAndGet(16 * 60_000L);
+    int beforeRace = store.current().version();
+    boolean racing = store.readLease() == DeviceCredentialStore.SessionRead.START_REFRESH && client.renew() == DeviceKeyClient.Exchange.SIGNED_IN;
+    DeviceCredentialStore.Kept late = store.leaseRotated(beforeRace, "eliza_lease_refresh_" + "s".repeat(54), clock.get() + 900_000, clock.get() + 90 * DAY_MS);
+    seen.add(take("rotationAfterRenewalAck", racing + "/" + late + "/" + (lease.accessToken() != null)));
+    client.settleDuties();
     String renewed = store.current().credentialId();
     cloud.families.get(cloud.families.size() - 1).ended = true;
     clock.addAndGet(16 * 60_000L);

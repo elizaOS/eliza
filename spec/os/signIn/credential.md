@@ -161,13 +161,16 @@ pure def sometimesKeptKeyAfterEndedSignIn(s: DeviceCredential): bool = isSignedI
 
 A `401` for the active key arrives here with its reason, from any cloud
 request of the device (`cloudRequests`, `cloudSpeech`, the agent), and is
-not retried. `credential_expired` on a key that holds a lease asks the shell
+not retried. While a renewed key awaits acknowledgement, any of these asks
+the shell to ask about that acknowledgement again (`RenewKey`) and nothing
+else: an acknowledgement whose reply was lost has already ended the old key
+on the cloud, so the old key's `401` is the renewal landing, not a sign-out.
+Otherwise `credential_expired` on a key that holds a lease asks the shell
 to renew the key through the lease (`RenewKey`), unless a sign-in or
 renewal is already under way; on a key without a lease it keeps the account
 and the local data and asks for a new sign-in. `credential_revoked` or
 `credential_unknown` from `GET /api/v1/user` signs out and clears the stored
-credential and its lease, owing no revoke but for a renewed key awaiting
-acknowledgement; from any other request it only
+credential and its lease, owing no revoke; from any other request it only
 asks the shell to read `GET /api/v1/user`. A `401` for a key already
 replaced changes nothing.
 
@@ -175,10 +178,10 @@ replaced changes nothing.
 pure def canRejected(s: DeviceCredential, version: int, reason: RefusalReason): bool = version >= 1 and activeVersion(s) == version and isCredentialReason(reason)
 type RejectedOn = AccountRead | OtherRequest
 pure def rejected(s: DeviceCredential, version: int, reason: RefusalReason, on: RejectedOn): CredentialStep =
-  if (reason == CredentialExpired and leaseVersionOf(s.lease) == version) { state: { ...s, session: NoSession }, out: if (s.attempt == NoAttempt) List(RenewKey) else List() }
+  if (isRenewal(s.attempt) and pendingVersion(s) >= 1) { state: { ...s, session: NoSession }, out: List(RenewKey) }
+  else if (reason == CredentialExpired and leaseVersionOf(s.lease) == version) { state: { ...s, session: NoSession }, out: if (s.attempt == NoAttempt) List(RenewKey) else List() }
   else if (reason == CredentialExpired) { state: { ...s, custody: Expired({ account: accountOf(s) }), session: NoSession, lease: NoLease }, out: List(ExpiredNotice) }
-  else if (on == AccountRead) { state: { ...s, custody: SignedOut, session: NoSession, lease: NoLease, attempt: if (isRenewal(s.attempt)) NoAttempt else s.attempt,
-      duties: s.duties.concat(if (isRenewal(s.attempt)) pendingDuty(s.attempt, signOutAttempts) else List()) }, out: List(SignedOutNotice) }
+  else if (on == AccountRead) { state: { ...s, custody: SignedOut, session: NoSession, lease: NoLease, attempt: if (isRenewal(s.attempt)) NoAttempt else s.attempt }, out: List(SignedOutNotice) }
   else { state: s, out: List(VerifyAccount) }
 pure val versionValues = Set(1, 2)
 pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
@@ -215,7 +218,10 @@ keeps the old secret valid until the new one is first presented, so a lost
 or unwritten answer leaves the device on the old secret, and a later refresh
 is answered with the same new pair; presenting an older secret after the new
 one is theft, which ends this device's key and lease. No answer keeps the
-lease for the next reader.
+lease for the next reader. Every refresh ends with an answer: one that lands
+after a renewal moved the lease to a new key is not written, and a refresh
+the shell cannot finish counts as unanswered, so no reader waits on a
+refresh that is gone.
 
 ```quint
 type LeaseAnswer = LeaseRotated({ accessExpiresAt: Millis, refreshExpiresAt: Millis, stored: S::ExchangeOutcome }) | LeaseUnanswered
@@ -291,8 +297,10 @@ refresh secret: after any lease refresh or at a daily job once half the
 key's life is gone (`renewDue`), and at once when the cloud says the key
 expired (`RenewKey`). The answer is a new key of the same account, kept and
 acknowledged as a sign-in's is; the acknowledgement moves the lease to it
-and the replaced key leaves with a revoke duty. A renewal the cloud refuses
-ends as a refused sign-in does.
+and the replaced key leaves with a revoke duty. A renewed key whose
+acknowledgement went unanswered is asked about again at the next start, lease
+refresh or `RenewKey`, before any new renewal, so a lost reply never strands
+the device. A renewal the cloud refuses ends as a refused sign-in does.
 
 ```quint
 pure def renewAtOf(l: DeviceLease): Millis = match l { | Lease(x) => x.renewAt | NoLease => 0 }

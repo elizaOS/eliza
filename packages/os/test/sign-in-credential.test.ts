@@ -37,7 +37,12 @@ describe("Keep me signed in without a second copy of my key", () => {
     const seen = journey();
     expect([seen.leasedSignIn, seen.lostRotation, seen.rotatedAfterLostReply, seen.rotationsAsked, seen.leaseReuses]).toEqual(["SIGNED_IN", "null", true, 3, 0]);
     expect([seen.renewedBeforeHalfLife, seen.owedAfterRenewal, seen.replacedKeyEnded, seen.leaseKeptByRenewal]).toEqual(["7/cred-13/user-1", true, true, true]);
-    expect(seen.leaseNotices).toEqual([announce(6), announce(7), { tag: "SignedOutNotice" }]);
+    expect(seen.leaseNotices).toEqual([announce(6), announce(7), announce(8), announce(9), { tag: "SignedOutNotice" }]);
+  });
+
+  it("asks a renewal's lost acknowledgement again instead of stranding or signing out, and ends a lease refresh a renewal overtook", () => {
+    const seen = journey();
+    expect([seen.lostRenewalAckAskedAgain, seen.rotationAfterRenewalAck]).toEqual(["8/cred-14/user-1", "true/NOT_KEPT/true"]);
   });
 });
 

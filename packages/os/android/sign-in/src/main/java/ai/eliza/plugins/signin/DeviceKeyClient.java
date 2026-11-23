@@ -159,6 +159,8 @@ public final class DeviceKeyClient {
   }
 
   public Exchange renew() {
+    Pending unacknowledged = store.pendingRenewal();
+    if (unacknowledged != null) return acknowledge(unacknowledged);
     int attempt = store.beginRenewal();
     if (attempt == 0) return Exchange.SUPERSEDED;
     Account account = store.account();
@@ -172,7 +174,7 @@ public final class DeviceKeyClient {
   }
 
   public void renewIfDue() {
-    if (store.renewDue()) renew();
+    if (store.renewDue() || store.pendingRenewal() != null) renew();
   }
 
   public Answer<Acknowledgement> ack(String credentialId, String secret) {
@@ -225,11 +227,6 @@ public final class DeviceKeyClient {
     if (pending == null) return Exchange.UNANSWERED;
     if (pending.attempt() != attempt) return Exchange.SUPERSEDED;
     return acknowledge(pending);
-  }
-
-  public Exchange resume() {
-    Pending pending = store.pending();
-    return pending == null ? Exchange.SUPERSEDED : acknowledge(pending);
   }
 
   public void settleDuties() {
