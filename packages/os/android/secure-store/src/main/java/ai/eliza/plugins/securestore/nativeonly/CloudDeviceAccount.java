@@ -282,9 +282,11 @@ public final class CloudDeviceAccount {
   }
   if (!offersMailLease(upgrade)) throw new IllegalStateException("The host does not offer mail leases");
   synchronized (LOCK) {
+   LeaseUpgradeStatus status = leaseUpgradeStatus();
    if (!matchesUpgrade(stored(), upgrade) || slots.read(ACK) != null)
     throw new IllegalStateException("The device account changed");
-   if (leaseUpgradeStatus() == LeaseUpgradeStatus.SIGN_IN_PENDING) return existingLeaseUpgrade(upgrade);
+   if (status == LeaseUpgradeStatus.SIGN_IN_PENDING) return existingLeaseUpgrade(upgrade);
+   if (status != LeaseUpgradeStatus.REQUIRED) throw new IllegalStateException("The device account changed");
    JSONObject pending = newPending("browser", PENDING_MS).put("upgrade", upgrade);
    slots.write(PENDING, pending.toString());
    return browserStart(pending);

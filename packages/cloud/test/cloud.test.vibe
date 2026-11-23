@@ -4022,7 +4022,7 @@ module node {
       } satisfies CloudBindings
       const worker = cloudWorker(undefined, providerFetch)
       const configPath = (id: string, redirect: string) => api + "/api/v1/app-auth/mobile/config?" +
-        new URLSearchParams({ clientId: id, environment: "staging", redirectUri: redirect })
+        new URLSearchParams({ clientId: id, environment: "staging", redirectUri: redirect }).toString()
       const offersMailLease = async (binding: CloudBindings, id = clientId, redirect = redirectUri) => {
         const response = await worker.fetch(new Request(configPath(id, redirect)), binding)
         const config = Schema.decodeUnknownSync(Schema.Struct({ mailLease: Schema.Boolean }))(await response.json())
