@@ -1463,7 +1463,10 @@ export function pageCommand(
         policy ||
         window !== window.top ||
         document.readyState !== "complete" ||
-        blockers.some(({ kind, covers }) => kind === "captcha" || covers !== "partial") ||
+        blockers.some(({ kind, covers, overlay }) =>
+          kind === "captcha" || covers !== "partial" ||
+          (overlay && ["login-wall", "modal", "paywall"].includes(kind)),
+        ) ||
         elements.some(({ tag, type, role, sensitive, edited, focused, hasInput }) =>
           sensitive || hasInput || edited || tag === "textarea" || role === "textbox" ||
           (tag !== "input" && tag !== "select" && edited !== undefined) ||
