@@ -83,7 +83,7 @@ export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string
   const isolated = installed?.isolated;
   const selected = script ? isolated?.script ?? script : isolated?.entry;
   const env = isolated ? { ...process.env, NODE_PATH: undefined, NODE_OPTIONS: undefined, NODE_PRESERVE_SYMLINKS: undefined, NODE_PRESERVE_SYMLINKS_MAIN: undefined } : undefined;
-  const r = await exec(selected ? process.execPath : exe, selected ? [...isolated ? ["--no-global-search-paths"] : [], selected, ...args] : args, where, env).catch((e: Error) => { throw new Error(`${tool} could not be run (${exe}): ${e.message}; ${tool === "dafny" ? NEEDS_DAFNY : "run pnpm install"}`); });
+  const r = await exec(selected ? process.execPath : exe, selected ? [...isolated ? ["--no-global-search-paths"] : [], selected, ...args] : args, where, env, undefined, memory.actionSignal).catch((e: Error) => { throw new Error(`${tool} could not be run (${exe}): ${e.message}; ${tool === "dafny" ? NEEDS_DAFNY : "run pnpm install"}`); });
   const written = fs.readdirSync(where, { withFileTypes: true }).filter((f) => f.isFile() && !Object.hasOwn(files, f.name)).map((f) => f.name).sort();
   const ran: Ran = { ok: r.status === 0 && !r.stopped, status: r.status, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}`, stderr: r.stderr, stopped: r.stopped,
     files: Object.fromEntries(written.map((f) => [f, fs.readFileSync(path.join(where, f), "utf8")])) };
