@@ -629,6 +629,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
     | "stopped"
 
   getStopSignal?(): AbortSignal
+  isFastStopRequested?(): boolean
   messageService: IMessageService | null
   providers: Provider[]
   actions: Action[]
