@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `5f25987`](https://github.com/lalalune/vibestack/commit/5f259878cd436c3d7cdc3cec5e3955c5130a19ac).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `75ef17f`](https://github.com/lalalune/vibestack/commit/75ef17f3e16dc92f7ce7fa80f9bae6614b3f8cad).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -467,7 +467,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue`, over eight jobs: `simulate-1` to `simulate-4` each pass the specs whose files hash to that shard to `precomputeSimulations`, starting from the spec cache `verify` saved; `verify` starts once they finish, adds the simulation results they wrote, not those they restored, to its `.spec-cache`, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each pass the specs whose files hash to that shard to `precomputeSimulations`, starting from the spec cache `verify` saved; `verify` starts once they finish, adds the simulation results they wrote, not those they restored, to its `.spec-cache`, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
