@@ -76,6 +76,41 @@ pure def lawMutationDefaultsToInline(knownRequest: bool, uniqueBinding: bool, ca
   not(historicalEvidenceMayFollowRequest(knownRequest, uniqueBinding, canonicalReceipt, true, false, settledOnly, committedOutcome, trustedTerminal))
 ```
 
+### A recorded outcome is printed with only the fields a later step reads, under a legend fixed by its record kind
+
+Only an exact canonical record the runtime wrote (historical navigation,
+effects or observations, with a normalized receipt) is reprinted; anything
+else stays as it is. An effect receipt keeps what was done (operation,
+outcome, a no-op's reason, a failure, a commit's kind and its id when it
+differs from the resource's) and what it was done to (the resource's kind
+and id, each artifact's kind and id). Retry keys, observation times, store
+versions and receipt identities bound proof inside the turn that made them,
+so they are dropped, except that a request holding a rollback keeps its
+receipt ids, which the rollback names. A navigation receipt drops its effect
+name, step and handoff identities. A receipt in one of four fixed shapes
+(the base, or the base with a reason, a commit kind or a failure) is printed
+as `[shape, values]`; any other receipt is printed as an object. Each record
+kind has one legend, which depends only on the kind, its columns and its
+scope, never on which records are shown, and says each rule once: a row
+depends only on its record and the label of its request, so the same input
+gives the same bytes. A request inside the current dialogue window is named
+`history:hN`, the label the request already carries, as are its
+interruption and read-continuation notes. A later proposal state takes the
+place of the one preview it supersedes, in that preview's own row.
+
+```quint
+type ReceiptField = OperationField | ResourceField | ArtifactsField | OutcomeField | ReasonField | CommitField | FailureField | RollbackField | ReceiptIdField | IdempotencyField | ObservedAtField
+pure def slimKeeps(field: ReceiptField, rolledBack: bool): bool =
+  if (field == IdempotencyField or field == ObservedAtField) false
+  else if (field == ReceiptIdField) rolledBack
+  else true
+pure val fieldValues = Set(OperationField, ResourceField, ArtifactsField, OutcomeField, ReasonField, CommitField, FailureField, RollbackField, ReceiptIdField, IdempotencyField, ObservedAtField)
+pure def lawRetryKeysAndTimesNeverReachTheWire(rolledBack: bool): bool = not(slimKeeps(IdempotencyField, rolledBack)) and not(slimKeeps(ObservedAtField, rolledBack))
+pure def lawAReceiptIdStaysOnlyBesideARollback(rolledBack: bool): bool = slimKeeps(ReceiptIdField, rolledBack) iff rolledBack
+pure def lawWhatWasDoneAndToWhatIsKept(field: ReceiptField, rolledBack: bool): bool =
+  (field != ReceiptIdField and field != IdempotencyField and field != ObservedAtField) implies slimKeeps(field, rolledBack)
+```
+
 ### Provider discovery preserves originals and requires source-bound review before selection
 
 Only providers which explicitly publish an index may use discovery text. A restored source body can then participate in review. Discovery availability and selected relevance do not claim that an external operation ran.
