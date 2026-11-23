@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `ed55453`](https://github.com/lalalune/vibestack/commit/ed55453d0da56f135e79b5fc15563b256288dbec).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `bfbab787`](https://github.com/lalalune/vibestack/commit/bfbab787a26c59ef183fb8a19b7df786c2e75a79).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -256,7 +256,8 @@ the same module, the check renders that module once for each name prefix and cit
 A unit offered
 what the units it imports proved is proved once when their results are
 remembered, and meanwhile, to be proved again if they fail, only while one of
-them is still being proved. A test run
+them is still being proved. The first attempt starts no further checks of failed
+assertions once a finished import removes one of its assumptions. A test run
 may run any tool, as Studio's do, so it is keyed by all of them, and with a
 typecheck, a driver's run and an exploration by VibeLang's version and bytes.
 An exploration is keyed by the code that explores and what its page reads
