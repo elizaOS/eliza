@@ -12,7 +12,7 @@ import { CALENDAR_AVAILABILITY_CAPABILITY } from "../availability/projection.vib
 import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, namedCalendarReadTarget } from "../client/named-read.vibe"
 import { addDaysToLocalDate, getZonedDateParts, knownTimeZone, startOfCivilDay, type LocalDate } from "../clock.vibe"
 import {
-  asksToDeleteInWords, compiled, declinesInWords, deleteWords, eventNamedInWords, localInstant, namesAZone, parseExplicitLocalDate, parseStatedClockTimes, statedLengths, statedShift,
+  asksToDeleteInWords, compiled, declinesInWords, deleteWords, eventNamedInWords, localInstant, namesAZone, parseExplicitLocalDate, parseStatedClockTimes, residentCalendarWords, statedLengths, statedShift,
   wordsInWords, zoneNamedIn,
   type StatedClockTime, type StatedClockTimes, type StatedShift,
 } from "../request-time.vibe"
@@ -119,9 +119,14 @@ const needOf: Readonly<Record<FormKey, readonly string[]>> = {
 function admitted(turn: DeviceTurn, key: FormKey): boolean {
   const screen = screenOf(turn)
   if (screen === undefined || !has(turn, ...needOf[key])) return false
+  if (key === "availability" && residentCalendarWords.test(turn.ownerText)) return false
   const unnamedLocalCreate = key === "createLocal" && turn.runtime.actions.some(({ name }) => name === calendarActionName) && !phoneCalendarWords.test(turn.ownerText)
   const selectionFits = key === "create" ? screen.calendar !== undefined : key === "readSelected" || key === "delete" ? screen.event !== undefined : true
   return selectionFits && calendarProposalAdmitted(reachOf[key], screen.view, screen.source, screen.appSelected, unnamedLocalCreate)
+}
+
+export function phoneAvailabilityOffered(turn: DeviceTurn): boolean {
+  return turn.completesReads && admitted(turn, "availability")
 }
 
 function keyOf(operation: DeviceOperation): FormKey | undefined {

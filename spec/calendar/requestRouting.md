@@ -67,3 +67,41 @@ pure def calendarAnswerAdmitted(answerRecognized: bool, liveQuestion: bool, same
 pure def lawAnotherPromptDoesNotAdmitTheAnswer(answerRecognized: bool, liveQuestion: bool, sameOrigin: bool, promptPresent: bool): bool =
   (not(sameOrigin) or not(promptPresent)) implies not(calendarAnswerAdmitted(answerRecognized, liveQuestion, sameOrigin, promptPresent))
 ```
+
+## Story: Check my calendar availability from the view I am using
+
+> As the owner, I want to check whether an interval is free or find an
+> opening of the length I asked for while I keep using another view.
+
+### A private availability request adds Calendar relevance for its own read
+
+A first-person free-time question with a date or time can admit an
+aggregate resident Calendar check. A request for an opening with one
+stated length admits only a slot search of that length. A request to
+find an opening without its length asks for that detail. A duration
+from a separate requested task does not become the opening length.
+An explicit phone Calendar request, or one served by the current live
+phone Calendar availability proposal, does not add resident relevance.
+Relevance never adds Calendar context for a write or a narrowed
+Calendar source. The ordinary availability action checks the time
+window and requires a complete read.
+
+```quint
+type AvailabilityIntent = NoAvailability | CheckInterval | FindOpening({ minutes: int }) | NeedOpeningLength
+pure val askedValues = Set(NoAvailability, CheckInterval, FindOpening({ minutes: 4 }), FindOpening({ minutes: 5 }), FindOpening({ minutes: 20 }), FindOpening({ minutes: 30 }), FindOpening({ minutes: 480 }), FindOpening({ minutes: 481 }), NeedOpeningLength)
+pure val calledValues = askedValues
+pure def residentAvailabilityIntent(asked: AvailabilityIntent, phoneOwns: bool): AvailabilityIntent =
+  if (phoneOwns) NoAvailability else asked
+pure def availabilityCallAdmitted(asked: AvailabilityIntent, called: AvailabilityIntent, scoped: bool): bool =
+  not(scoped) and match asked {
+    | CheckInterval => called == CheckInterval
+    | FindOpening(n) => called == FindOpening(n) and n.minutes >= 5 and n.minutes <= 480
+    | _ => false
+  }
+pure def lawPhoneAvailabilityDoesNotAdmitAResidentRead(asked: AvailabilityIntent): bool =
+  residentAvailabilityIntent(asked, true) == NoAvailability
+pure def lawAvailabilityDoesNotAddASourceOrOtherOperation(asked: AvailabilityIntent, called: AvailabilityIntent, scoped: bool): bool =
+  availabilityCallAdmitted(asked, called, scoped) implies not(scoped) and asked == called and called != NoAvailability and called != NeedOpeningLength
+pure def lawAnOpeningNeedsTheOwnersDuration(minutes: int, proposed: int): bool =
+  availabilityCallAdmitted(FindOpening({ minutes: minutes }), FindOpening({ minutes: proposed }), false) implies proposed == minutes
+```

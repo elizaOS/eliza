@@ -1,7 +1,7 @@
-// spec/calendar/requestRouting.md, "An explicit event change adds Calendar relevance only to its admitted action"
+// spec/calendar/requestRouting.md, "An explicit event change adds Calendar relevance only to its admitted action"; spec/calendar/requestRouting.md, "A private availability request adds Calendar relevance for its own read"
 import { assert, it } from "@effect/vitest"
 import { calendarPlugin } from "../src/index.vibe"
-import { calendarEventRequest } from "../src/plugin/request-routing.vibe"
+import { calendarAvailabilityRequest, calendarEventRequest } from "../src/plugin/request-routing.vibe"
 import type { AgentPlugin } from "../../agent/src/host/module.vibe"
 import { toolCalls, text } from "../../agent/test/support/cloud-fake.ts"
 import { call, cloudFake, deviceKey, startInProcess } from "../../agent/test/support/kernel.vibe"
@@ -20,9 +20,17 @@ it.effect('Recognize current Calendar words and keep other records out (spec/cal
     calendarEventRequest("Delete the meeting notes."),
   ], ["CreateEventIntent", "UpdateEventIntent", "DeleteEventIntent", "DeleteEventIntent", "DeleteEventIntent", "DeleteEventIntent",
     "NoEventIntent", "NoEventIntent", "NoEventIntent", "NoEventIntent"]))
+  try Effect.try(() => assert.deepStrictEqual([
+    calendarAvailabilityRequest("Am I free tomorrow morning and set a 20-minute timer?"),
+    calendarAvailabilityRequest("Do I have 20 minutes tomorrow morning?"),
+    calendarAvailabilityRequest("Is Friday or tomorrow morning free?"),
+    calendarAvailabilityRequest("Find me time for a call tomorrow morning"),
+    calendarAvailabilityRequest("Is Chrome free tomorrow?"),
+    calendarAvailabilityRequest("Am I free tomorrow on my phone's calendar?"),
+  ], ["CheckInterval", { tag: "FindOpening", minutes: 20 }, "CheckInterval", "NeedOpeningLength", "NoAvailability", "NoAvailability"]))
 })
 
-it.live('Create a resident event and keep the other work while Contacts is open (spec/calendar/requestRouting.md, "Story: Change a calendar event from the view I am using")', effect () => {
+it.live('Use resident Calendar and keep the other work while Contacts is open (spec/calendar/requestRouting.md, "Story: Change a calendar event from the view I am using"; spec/calendar/requestRouting.md, "Story: Check my calendar availability from the view I am using")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const calendar = calendarPlugin()
   const other: AgentPlugin = {
@@ -75,16 +83,29 @@ it.live('Create a resident event and keep the other work while Contacts is open 
   } }), text("I saved the Vet consultation.")))
   const seeded = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`,
     body: { text: "Add an event called Vet consultation on March 4, 2035 at 9am UTC and save it now." } })
+  const availabilityFrom = cloud.calls.length
+  try Effect.sync(() => cloud.script(toolCalls("",
+    { name: "CALENDAR", arguments: { subaction: "propose_times", durationMinutes: 30,
+      timeMin: "2035-03-04T09:00:00Z", timeMax: "2035-03-04T11:00:00Z", timeZone: "UTC" } },
+    { name: "CALENDAR", arguments: { subaction: "create_event", title: "Unexpected event", startAt, endAt, reviewBeforeCreate: false } },
+    { name: "CALENDAR", arguments: { subaction: "propose_times", durationMinutes: 20,
+      timeMin: "2035-03-04T09:00:00Z", timeMax: "2035-03-04T11:00:00Z", timeZone: "UTC" } },
+    { name: "READ_EXTRA_FIXTURE", arguments: {} },
+  ), text("There is a 20-minute opening starting at 10 AM UTC. The other fixture is ready.")))
+  const availability = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`,
+    body: { text: "Do I have 20 minutes on March 4, 2035 from 9am to 11am UTC, and check the other fixture?",
+      metadata: { observation: { view: "contacts", revision: 3, sensitive: false } } } })
+  const availabilityPlan = cloud.calls.slice(availabilityFrom).find(({ path }) => path.endsWith("/chat/completions"))
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALENDAR", arguments: {
     subaction: "delete_event", query: "vet", timeMin: "2035-03-04T00:00:00Z", timeMax: "2035-03-05T00:00:00Z",
   } }), text("I found the Vet consultation.")))
   const pending = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`,
-    body: { text: "Cancel the animal appointment.", metadata: { observation: { view: "contacts", revision: 3, sensitive: false } } } })
+    body: { text: "Cancel the animal appointment.", metadata: { observation: { view: "contacts", revision: 4, sensitive: false } } } })
   const beforeAnswer = cloud.calls.length
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALENDAR", arguments: { subaction: "answer_delete" } }),
     text("I deleted the Vet consultation.")))
   const confirmed = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`,
-    body: { text: "Yes, delete it.", metadata: { observation: { view: "contacts", revision: 4, sensitive: false } } } })
+    body: { text: "Yes, delete it.", metadata: { observation: { view: "contacts", revision: 5, sensitive: false } } } })
   const afterAnswer = try call(agent, { method: "GET", path: `/api/lifeops/calendar/feed?${window}` })
   const answerPlan = cloud.calls.slice(beforeAnswer).find(({ path }) => path.endsWith("/chat/completions"))
   try Effect.try(() => {
@@ -113,5 +134,18 @@ it.live('Create a resident event and keep the other work while Contacts is open 
     assert.isTrue(confirmation.actionResults.some(({ action, data }) => action === "CALENDAR" && data.deleted === true))
     assert.strictEqual(afterAnswer.status, 200)
     assert.notInclude(JSON.stringify(afterAnswer.json), confirmationTitle)
+    assert.notInclude(JSON.stringify(afterAnswer.json), "Unexpected event")
+    if (!("status" in availability)) throw new Error("The Calendar availability fixture route refused")
+    assert.strictEqual(availability.status, 200)
+    assert.include(JSON.stringify(availabilityPlan?.body), "Use CALENDAR's propose_times for that length")
+    const availabilityActions = (availability.json as { actionResults: readonly { action: string; data: {
+      slots?: readonly { startAt: string; durationMinutes: number }[]; executionStatus?: string
+    } }[] }).actionResults
+    assert.includeMembers(availabilityActions.map(({ action }) => action), ["CALENDAR", "READ_EXTRA_FIXTURE"])
+    const calendarSteps = availabilityActions.filter(({ action }) => action === "CALENDAR")
+    assert.strictEqual(calendarSteps.filter(({ data }) => data.executionStatus === "not_started").length, 2)
+    assert.deepInclude(calendarSteps.find(({ data }) => data.slots !== undefined)?.data.slots ?? [], {
+      startAt: "2035-03-04T10:00:00.000Z", endAt: "2035-03-04T10:20:00.000Z", durationMinutes: 20, timeZone: "UTC",
+    })
   })
 }, 120_000)

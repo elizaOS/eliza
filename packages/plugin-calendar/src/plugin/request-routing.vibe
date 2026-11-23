@@ -1,8 +1,11 @@
-// spec/calendar/requestRouting.md, "An explicit event change adds Calendar relevance only to its admitted action"
+// spec/calendar/requestRouting.md, "An explicit event change adds Calendar relevance only to its admitted action"; spec/calendar/requestRouting.md, "A private availability request adds Calendar relevance for its own read"
 import type { IAgentRuntime, Memory } from "@elizaos/core"
-import { canAddEventContext, denseCalendarDeleteContext, type CalendarIntent } from "../../gen/calendar__requestRouting.ts"
+import { deviceTurnFor } from "@elizaos/agent/device-actions"
+import { availabilityCallAdmitted, canAddEventContext, denseCalendarDeleteContext, residentAvailabilityIntent, type AvailabilityIntent, type CalendarIntent } from "../../gen/calendar__requestRouting.ts"
+import { namesCalendarDate } from "../clock.vibe"
+import { denseDeleteTarget, statedLengths } from "../request-time.vibe"
 import { bindCalendarDeleteAnswer, calendarAsk, isDeleteAnswerCall } from "./actions.vibe"
-import { denseDeleteTarget } from "../request-time.vibe"
+import { phoneAvailabilityOffered } from "./device-proposals.vibe"
 
 // "please", "can you", "hey, could you please".
 const COURTESY = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
@@ -86,6 +89,27 @@ function subjectMatch(pattern: RegExp, request: string): boolean {
 const PHONE_CALENDAR =
   /\b(?:phone|device|android|system|os)(?:['’]s)?\s+(?:own\s+)?calendar\b|\bcalendar\s+(?:app\s+)?on\s+(?:this|my|the)\s+(?:phone|device)\b/iu
 
+const PERIOD = String.raw`(?:${DAY}|this\s+(?:morning|afternoon|evening|week)|${CLOCK})`
+const LENGTH = String.raw`\d+(?:\.\d+)?\s*(?:minutes?|mins?|hours?|hrs?)`
+const availabilityCheck = new RegExp(String.raw`${COURTESY}(?:am\s+i\s+(?:free|available|busy)\b|do\s+i\s+have\s+(?:any\s+)?time\b|do\s+i\s+have\s+(?:anything|a\s+conflict)\s+(?:on|in)\b|check\s+(?:if|whether)\s+i(?:['’]m|\s+am)\s+(?:free|available|busy)\b|is\s+${PERIOD}\b[^!?]*\b(?:free|open|available)\b)`, "iu")
+const asksForOpening = new RegExp(String.raw`${COURTESY}(?:(?:find|suggest|look\s+for)\s+(?:me\s+)?(?:some\s+time|time|(?:an?|some)\s+(?:openings?|slots?)|${LENGTH})|do\s+i\s+have\s+(?:${LENGTH}|(?:any\s+)?time\s+for))\b`, "iu")
+const hasTimeWindow = new RegExp(String.raw`\b${PERIOD}\b`, "iu")
+const separateTask = /(?:[.!?]\s+|\s*,?\s+and\s+(?:also\s+|then\s+)?|\s*,?\s+then\s+)(?=(?:add|am|check|create|do|find|is|look|open|read|send|set|show|start|suggest)\b)/iu
+
+export function calendarAvailabilityRequest(text: string): AvailabilityIntent {
+  if (PHONE_CALENDAR.test(text) || text.length > 300) return "NoAvailability"
+  for (const part of text.trim().split(separateTask)) {
+    if (!hasTimeWindow.test(part) && !namesCalendarDate(part)) continue
+    const lengths = statedLengths(part)
+    if (asksForOpening.test(part)) {
+      const minutes = lengths?.length === 1 ? (lengths[0] ?? 0) / 60_000 : 0
+      return Number.isInteger(minutes) && minutes >= 5 && minutes <= 480 ? { tag: "FindOpening", minutes } : "NeedOpeningLength"
+    }
+    if (availabilityCheck.test(part)) return "CheckInterval"
+  }
+  return "NoAvailability"
+}
+
 /**
  * Which Calendar event operation the owner's current message asks for, read
  * from their own words. Requests about other records or the phone's own
@@ -139,8 +163,28 @@ export async function calendarRequestRelevance(runtime: IAgentRuntime, message: 
     context: "calendar" as const,
     matches: isDeleteAnswerCall,
   }
-  const intent = calendarEventRequest(calendarAsk(message).text)
-  if (intent === "NoEventIntent") return undefined
+  const words = calendarAsk(message).text ?? ""
+  const intent = calendarEventRequest(words)
+  if (intent === "NoEventIntent") {
+    const turn = deviceTurnFor(runtime, message)
+    const read = residentAvailabilityIntent(calendarAvailabilityRequest(words), turn !== undefined && phoneAvailabilityOffered(turn))
+    if (read === "NoAvailability") return undefined
+    const note = read === "NeedOpeningLength"
+      ? "The owner asked for a Calendar opening. Ask how long the opening should be."
+      : read === "CheckInterval"
+        ? "The owner asked about Calendar availability. Use CALENDAR's check_availability for the requested interval."
+        : `The owner asked for a ${read.minutes}-minute Calendar opening. Use CALENDAR's propose_times for that length in the requested window.`
+    return {
+      note,
+      context: "calendar" as const,
+      matches: (params: Readonly<Record<string, unknown>>) => {
+        const called = params.subaction === "check_availability" ? "CheckInterval"
+          : params.subaction === "propose_times" && typeof params.durationMinutes === "number"
+            ? { tag: "FindOpening" as const, minutes: params.durationMinutes } : "NoAvailability"
+        return availabilityCallAdmitted(read, called, params.calendarId !== undefined)
+      },
+    }
+  }
   const operation = requestedOperation[intent]
   return {
     note: `The owner asked to ${operation.purpose}. Use CALENDAR's ${operation.subaction} for this part of the request and keep the other requested work. The open view is a relevance hint.`,
