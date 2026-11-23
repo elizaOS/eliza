@@ -4,6 +4,7 @@ lemma begin_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canBegin(s) ==> alwaysOnlyALiveSessionCaptures(begin(s).state))
   ensures (inv(s) ==> canBegin(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(begin(s).state))
   ensures (inv(s) ==> canBegin(s) ==> alwaysAnEndingSaysWhetherAudioStarted(begin(s).state))
+  ensures (inv(s) ==> canBegin(s) ==> alwaysADeviceEndIsAFailure(begin(s).state))
   ensures (inv(s) ==> canBegin(s) ==> alwaysBatchRequestsAreDistinct(begin(s).state))
   ensures (inv(s) ==> canBegin(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "begin", begin(s).state, begin(s).out))
   ensures (inv(s) ==> canBegin(s) ==> stepTheSessionOpensInOrder(s, begin(s).state))
@@ -16,7 +17,7 @@ lemma begin_ensures(s: CloudSpeech)
   reveal inv, canBegin, begin, isOpen, asksOf, waitedOf, turnOwner, hasEnded;
   reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
   reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
-  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysBatchRequestsAreDistinct;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
   reveal stepARefusedKeyIsReportedOnceAndEndsItsRequest, keyReportVersion;
   reveal stepTheSessionOpensInOrder, openingRank;
   reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
@@ -44,6 +45,7 @@ lemma consentDismissed_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canConsentDismissed(s) ==> alwaysOnlyALiveSessionCaptures(consentDismissed(s).state))
   ensures (inv(s) ==> canConsentDismissed(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(consentDismissed(s).state))
   ensures (inv(s) ==> canConsentDismissed(s) ==> alwaysAnEndingSaysWhetherAudioStarted(consentDismissed(s).state))
+  ensures (inv(s) ==> canConsentDismissed(s) ==> alwaysADeviceEndIsAFailure(consentDismissed(s).state))
   ensures (inv(s) ==> canConsentDismissed(s) ==> alwaysBatchRequestsAreDistinct(consentDismissed(s).state))
   ensures (inv(s) ==> canConsentDismissed(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "consentDismissed", consentDismissed(s).state, consentDismissed(s).out))
   ensures (inv(s) ==> canConsentDismissed(s) ==> stepTheSessionOpensInOrder(s, consentDismissed(s).state))
@@ -73,6 +75,7 @@ lemma unmute_ensures(s: CloudSpeech, recordAudio: bool)
   ensures (inv(s) ==> canUnmute(s, recordAudio) ==> alwaysOnlyALiveSessionCaptures(unmute(s, recordAudio).state))
   ensures (inv(s) ==> canUnmute(s, recordAudio) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(unmute(s, recordAudio).state))
   ensures (inv(s) ==> canUnmute(s, recordAudio) ==> alwaysAnEndingSaysWhetherAudioStarted(unmute(s, recordAudio).state))
+  ensures (inv(s) ==> canUnmute(s, recordAudio) ==> alwaysADeviceEndIsAFailure(unmute(s, recordAudio).state))
   ensures (inv(s) ==> canUnmute(s, recordAudio) ==> alwaysBatchRequestsAreDistinct(unmute(s, recordAudio).state))
   ensures (inv(s) ==> canUnmute(s, recordAudio) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "unmute", unmute(s, recordAudio).state, unmute(s, recordAudio).out))
   ensures (inv(s) ==> canUnmute(s, recordAudio) ==> stepTheSessionOpensInOrder(s, unmute(s, recordAudio).state))
@@ -101,6 +104,7 @@ lemma mute_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canMute(s) ==> alwaysOnlyALiveSessionCaptures(mute(s).state))
   ensures (inv(s) ==> canMute(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(mute(s).state))
   ensures (inv(s) ==> canMute(s) ==> alwaysAnEndingSaysWhetherAudioStarted(mute(s).state))
+  ensures (inv(s) ==> canMute(s) ==> alwaysADeviceEndIsAFailure(mute(s).state))
   ensures (inv(s) ==> canMute(s) ==> alwaysBatchRequestsAreDistinct(mute(s).state))
   ensures (inv(s) ==> canMute(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "mute", mute(s).state, mute(s).out))
   ensures (inv(s) ==> canMute(s) ==> stepTheSessionOpensInOrder(s, mute(s).state))
@@ -168,6 +172,7 @@ lemma stop_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canStop(s) ==> alwaysOnlyALiveSessionCaptures(stop(s).state))
   ensures (inv(s) ==> canStop(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(stop(s).state))
   ensures (inv(s) ==> canStop(s) ==> alwaysAnEndingSaysWhetherAudioStarted(stop(s).state))
+  ensures (inv(s) ==> canStop(s) ==> alwaysADeviceEndIsAFailure(stop(s).state))
   ensures (inv(s) ==> canStop(s) ==> alwaysBatchRequestsAreDistinct(stop(s).state))
   ensures (inv(s) ==> canStop(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "stop", stop(s).state, stop(s).out))
   ensures (inv(s) ==> canStop(s) ==> stepTheSessionOpensInOrder(s, stop(s).state))
@@ -187,6 +192,7 @@ lemma relayLost_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canRelayLost(s) ==> alwaysOnlyALiveSessionCaptures(relayLost(s).state))
   ensures (inv(s) ==> canRelayLost(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(relayLost(s).state))
   ensures (inv(s) ==> canRelayLost(s) ==> alwaysAnEndingSaysWhetherAudioStarted(relayLost(s).state))
+  ensures (inv(s) ==> canRelayLost(s) ==> alwaysADeviceEndIsAFailure(relayLost(s).state))
   ensures (inv(s) ==> canRelayLost(s) ==> alwaysBatchRequestsAreDistinct(relayLost(s).state))
   ensures (inv(s) ==> canRelayLost(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "relayLost", relayLost(s).state, relayLost(s).out))
   ensures (inv(s) ==> canRelayLost(s) ==> stepTheSessionOpensInOrder(s, relayLost(s).state))
@@ -294,6 +300,7 @@ lemma batchRequested_ensures(s: CloudSpeech, requestId: int, direction: cloud__s
   ensures (inv(s) ==> canBatchRequested(s, requestId, direction) ==> alwaysOnlyALiveSessionCaptures(batchRequested(s, requestId, direction)))
   ensures (inv(s) ==> canBatchRequested(s, requestId, direction) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(batchRequested(s, requestId, direction)))
   ensures (inv(s) ==> canBatchRequested(s, requestId, direction) ==> alwaysAnEndingSaysWhetherAudioStarted(batchRequested(s, requestId, direction)))
+  ensures (inv(s) ==> canBatchRequested(s, requestId, direction) ==> alwaysADeviceEndIsAFailure(batchRequested(s, requestId, direction)))
   ensures (inv(s) ==> canBatchRequested(s, requestId, direction) ==> alwaysBatchRequestsAreDistinct(batchRequested(s, requestId, direction)))
   ensures (inv(s) ==> canBatchRequested(s, requestId, direction) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "batchRequested", batchRequested(s, requestId, direction), []))
   ensures (inv(s) ==> canBatchRequested(s, requestId, direction) ==> stepTheSessionOpensInOrder(s, batchRequested(s, requestId, direction)))
@@ -328,6 +335,7 @@ lemma batchCancelled_ensures(s: CloudSpeech, requestId: int)
   ensures (inv(s) ==> canBatchCancelled(s, requestId) ==> alwaysOnlyALiveSessionCaptures(batchCancelled(s, requestId).state))
   ensures (inv(s) ==> canBatchCancelled(s, requestId) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(batchCancelled(s, requestId).state))
   ensures (inv(s) ==> canBatchCancelled(s, requestId) ==> alwaysAnEndingSaysWhetherAudioStarted(batchCancelled(s, requestId).state))
+  ensures (inv(s) ==> canBatchCancelled(s, requestId) ==> alwaysADeviceEndIsAFailure(batchCancelled(s, requestId).state))
   ensures (inv(s) ==> canBatchCancelled(s, requestId) ==> alwaysBatchRequestsAreDistinct(batchCancelled(s, requestId).state))
   ensures (inv(s) ==> canBatchCancelled(s, requestId) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "batchCancelled", batchCancelled(s, requestId).state, batchCancelled(s, requestId).out))
   ensures (inv(s) ==> canBatchCancelled(s, requestId) ==> stepTheSessionOpensInOrder(s, batchCancelled(s, requestId).state))
@@ -352,6 +360,7 @@ lemma batchAnswered_ensures(s: CloudSpeech, requestId: int, answer: CloudAnswer)
   ensures (inv(s) ==> canBatchAnswered(s, requestId) ==> alwaysOnlyALiveSessionCaptures(batchAnswered(s, requestId, answer).state))
   ensures (inv(s) ==> canBatchAnswered(s, requestId) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(batchAnswered(s, requestId, answer).state))
   ensures (inv(s) ==> canBatchAnswered(s, requestId) ==> alwaysAnEndingSaysWhetherAudioStarted(batchAnswered(s, requestId, answer).state))
+  ensures (inv(s) ==> canBatchAnswered(s, requestId) ==> alwaysADeviceEndIsAFailure(batchAnswered(s, requestId, answer).state))
   ensures (inv(s) ==> canBatchAnswered(s, requestId) ==> alwaysBatchRequestsAreDistinct(batchAnswered(s, requestId, answer).state))
   ensures (inv(s) ==> canBatchAnswered(s, requestId) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "batchAnswered", batchAnswered(s, requestId, answer).state, batchAnswered(s, requestId, answer).out))
   ensures (inv(s) ==> canBatchAnswered(s, requestId) ==> stepTheSessionOpensInOrder(s, batchAnswered(s, requestId, answer).state))
@@ -466,6 +475,7 @@ lemma frameArrived_ensures(s: CloudSpeech, frame: cloud__services__speechRelay_S
   ensures (inv(s) ==> canFrameArrived(s) ==> alwaysOnlyALiveSessionCaptures(frameArrived(s, frame).state))
   ensures (inv(s) ==> canFrameArrived(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(frameArrived(s, frame).state))
   ensures (inv(s) ==> canFrameArrived(s) ==> alwaysAnEndingSaysWhetherAudioStarted(frameArrived(s, frame).state))
+  ensures (inv(s) ==> canFrameArrived(s) ==> alwaysADeviceEndIsAFailure(frameArrived(s, frame).state))
   ensures (inv(s) ==> canFrameArrived(s) ==> alwaysBatchRequestsAreDistinct(frameArrived(s, frame).state))
   ensures (inv(s) ==> canFrameArrived(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "frameArrived", frameArrived(s, frame).state, frameArrived(s, frame).out))
   ensures (inv(s) ==> canFrameArrived(s) ==> stepTheSessionOpensInOrder(s, frameArrived(s, frame).state))
@@ -486,6 +496,7 @@ lemma audioArrived_ensures(s: CloudSpeech, utteranceId: string, audioMs: int)
   ensures (inv(s) ==> canAudioArrived(s, utteranceId, audioMs) ==> alwaysOnlyALiveSessionCaptures(audioArrived(s, utteranceId, audioMs).state))
   ensures (inv(s) ==> canAudioArrived(s, utteranceId, audioMs) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(audioArrived(s, utteranceId, audioMs).state))
   ensures (inv(s) ==> canAudioArrived(s, utteranceId, audioMs) ==> alwaysAnEndingSaysWhetherAudioStarted(audioArrived(s, utteranceId, audioMs).state))
+  ensures (inv(s) ==> canAudioArrived(s, utteranceId, audioMs) ==> alwaysADeviceEndIsAFailure(audioArrived(s, utteranceId, audioMs).state))
   ensures (inv(s) ==> canAudioArrived(s, utteranceId, audioMs) ==> alwaysBatchRequestsAreDistinct(audioArrived(s, utteranceId, audioMs).state))
   ensures (inv(s) ==> canAudioArrived(s, utteranceId, audioMs) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "audioArrived", audioArrived(s, utteranceId, audioMs).state, audioArrived(s, utteranceId, audioMs).out))
   ensures (inv(s) ==> canAudioArrived(s, utteranceId, audioMs) ==> stepTheSessionOpensInOrder(s, audioArrived(s, utteranceId, audioMs).state))
@@ -506,6 +517,7 @@ lemma played_ensures(s: CloudSpeech, playedMs: int)
   ensures (inv(s) ==> canPlayed(s, playedMs) ==> alwaysOnlyALiveSessionCaptures(played(s, playedMs).state))
   ensures (inv(s) ==> canPlayed(s, playedMs) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(played(s, playedMs).state))
   ensures (inv(s) ==> canPlayed(s, playedMs) ==> alwaysAnEndingSaysWhetherAudioStarted(played(s, playedMs).state))
+  ensures (inv(s) ==> canPlayed(s, playedMs) ==> alwaysADeviceEndIsAFailure(played(s, playedMs).state))
   ensures (inv(s) ==> canPlayed(s, playedMs) ==> alwaysBatchRequestsAreDistinct(played(s, playedMs).state))
   ensures (inv(s) ==> canPlayed(s, playedMs) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "played", played(s, playedMs).state, played(s, playedMs).out))
   ensures (inv(s) ==> canPlayed(s, playedMs) ==> stepTheSessionOpensInOrder(s, played(s, playedMs).state))
@@ -559,6 +571,7 @@ lemma cancelReply_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canCancelReply(s) ==> alwaysOnlyALiveSessionCaptures(cancelReply(s).state))
   ensures (inv(s) ==> canCancelReply(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(cancelReply(s).state))
   ensures (inv(s) ==> canCancelReply(s) ==> alwaysAnEndingSaysWhetherAudioStarted(cancelReply(s).state))
+  ensures (inv(s) ==> canCancelReply(s) ==> alwaysADeviceEndIsAFailure(cancelReply(s).state))
   ensures (inv(s) ==> canCancelReply(s) ==> alwaysBatchRequestsAreDistinct(cancelReply(s).state))
   ensures (inv(s) ==> canCancelReply(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "cancelReply", cancelReply(s).state, cancelReply(s).out))
   ensures (inv(s) ==> canCancelReply(s) ==> stepTheSessionOpensInOrder(s, cancelReply(s).state))
@@ -578,6 +591,7 @@ lemma outputNotice_ensures(s: CloudSpeech, notice: os__voice__speechOutput_Outpu
   ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysOnlyALiveSessionCaptures(outputNotice(s, notice).state))
   ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(outputNotice(s, notice).state))
   ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysAnEndingSaysWhetherAudioStarted(outputNotice(s, notice).state))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysADeviceEndIsAFailure(outputNotice(s, notice).state))
   ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysBatchRequestsAreDistinct(outputNotice(s, notice).state))
   ensures (inv(s) ==> canOutputNotice(s, notice) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "outputNotice", outputNotice(s, notice).state, outputNotice(s, notice).out))
   ensures (inv(s) ==> canOutputNotice(s, notice) ==> stepTheSessionOpensInOrder(s, outputNotice(s, notice).state))
@@ -597,6 +611,7 @@ lemma captureAnswered_ensures(s: CloudSpeech, slot: os__voice__microphone_Refusa
   ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysOnlyALiveSessionCaptures(captureAnswered(s, slot).state))
   ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(captureAnswered(s, slot).state))
   ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysAnEndingSaysWhetherAudioStarted(captureAnswered(s, slot).state))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysADeviceEndIsAFailure(captureAnswered(s, slot).state))
   ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysBatchRequestsAreDistinct(captureAnswered(s, slot).state))
   ensures (inv(s) ==> canCaptureAnswered(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "captureAnswered", captureAnswered(s, slot).state, captureAnswered(s, slot).out))
   ensures (inv(s) ==> canCaptureAnswered(s) ==> stepTheSessionOpensInOrder(s, captureAnswered(s, slot).state))
@@ -627,6 +642,7 @@ lemma minted_ensures(s: CloudSpeech, answer: CloudAnswer)
   ensures (inv(s) ==> canMinted(s) ==> alwaysOnlyALiveSessionCaptures(minted(s, answer).state))
   ensures (inv(s) ==> canMinted(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(minted(s, answer).state))
   ensures (inv(s) ==> canMinted(s) ==> alwaysAnEndingSaysWhetherAudioStarted(minted(s, answer).state))
+  ensures (inv(s) ==> canMinted(s) ==> alwaysADeviceEndIsAFailure(minted(s, answer).state))
   ensures (inv(s) ==> canMinted(s) ==> alwaysBatchRequestsAreDistinct(minted(s, answer).state))
   ensures (inv(s) ==> canMinted(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "minted", minted(s, answer).state, minted(s, answer).out))
   ensures (inv(s) ==> canMinted(s) ==> stepTheSessionOpensInOrder(s, minted(s, answer).state))
@@ -685,6 +701,7 @@ lemma credentialChanged_ensures(s: CloudSpeech, version: int)
   ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysOnlyALiveSessionCaptures(credentialChanged(s, version).state))
   ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(credentialChanged(s, version).state))
   ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysAnEndingSaysWhetherAudioStarted(credentialChanged(s, version).state))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysADeviceEndIsAFailure(credentialChanged(s, version).state))
   ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysBatchRequestsAreDistinct(credentialChanged(s, version).state))
   ensures (inv(s) ==> canCredentialChanged(s, version) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "credentialChanged", credentialChanged(s, version).state, credentialChanged(s, version).out))
   ensures (inv(s) ==> canCredentialChanged(s, version) ==> stepTheSessionOpensInOrder(s, credentialChanged(s, version).state))
@@ -738,6 +755,7 @@ lemma credentialChanged_ensures(s: CloudSpeech, version: int)
       reveal closeWith, asksOf, waitedOf, endingOf, hasEnded, failedAfterAudio, failedBeforeAudio, failureOfEnding, turnOwner;
       reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
       reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio, alwaysAnEndingSaysWhetherAudioStarted;
+      reveal alwaysADeviceEndIsAFailure;
     }
     assert stepTheSessionOpensInOrder(s, actual.state) by {
       reveal closeWith, stepTheSessionOpensInOrder, openingRank;
@@ -870,4 +888,42 @@ lemma KeyChangeSettlesWaitingBatches(before: CloudSpeech, after: CloudSpeech, wa
     ProofLib.FilterNone(settles, suffix);
     FilterSpeechNoticeConcat(settles, receipts, suffix);
   }
+}
+
+// A device end fails the open session as any failure closes it, and records its cause.
+lemma deviceEnded_ensures(s: CloudSpeech, cause: DeviceCause)
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> alwaysConsentIsAskedAtMostTwiceWithinItsDeadline(deviceEnded(s, cause).state))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> alwaysOpenWorkUsesTheCurrentKey(deviceEnded(s, cause).state))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> alwaysOnlyALiveSessionCaptures(deviceEnded(s, cause).state))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(deviceEnded(s, cause).state))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> alwaysAnEndingSaysWhetherAudioStarted(deviceEnded(s, cause).state))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> alwaysADeviceEndIsAFailure(deviceEnded(s, cause).state))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> alwaysBatchRequestsAreDistinct(deviceEnded(s, cause).state))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "deviceEnded", deviceEnded(s, cause).state, deviceEnded(s, cause).out))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> stepTheSessionOpensInOrder(s, deviceEnded(s, cause).state))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> stepOnlyTheCaptureATurnBeganInPublishesIt(s, "deviceEnded", deviceEnded(s, cause).state, deviceEnded(s, cause).out))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> stepAReplySettlesOnce(s, "deviceEnded", deviceEnded(s, cause).state, deviceEnded(s, cause).out))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "deviceEnded", deviceEnded(s, cause).state, deviceEnded(s, cause).out))
+  ensures (inv(s) ==> canDeviceEnded(s, cause) ==> stepABatchRequestSettlesOnce(s, "deviceEnded", deviceEnded(s, cause).state, deviceEnded(s, cause).out))
+{
+  if inv(s) && canDeviceEnded(s, cause) {
+    var failure := deviceFailure(cause);
+    var ending := if s.audioStarted then FailedAfterAudio(failure) else FailedBeforeAudio(failure);
+    var closed := closeWith(ending, s, [], cloud__shared__types_WaitTime.NoWait);
+    assert isOpen(s.phase);
+    assert deviceEnded(s, cause) == SpeechStep(closed.state.(endedBy := cause), closed.out);
+    CloseSpeechReceipts(s, ending, "deviceEnded");
+    DeviceEndKeepsBatchSettlements(s, closed, deviceEnded(s, cause).state, "deviceEnded");
+  }
+}
+
+// Recording a device cause on a closed session keeps what the close settled of its batch requests.
+lemma DeviceEndKeepsBatchSettlements(before: CloudSpeech, closed: SpeechStep, after: CloudSpeech, via: string)
+  requires after == closed.state.(endedBy := after.endedBy)
+  requires stepABatchRequestSettlesOnce(before, via, closed.state, closed.out)
+  ensures stepABatchRequestSettlesOnce(before, via, after, closed.out)
+{
+  hide *;
+  reveal stepABatchRequestSettlesOnce, pending;
+  assert after.batches == closed.state.batches;
 }
