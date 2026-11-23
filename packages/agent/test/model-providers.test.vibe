@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
-import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, textWithoutEof, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, textWithoutEof, toolCalls, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
@@ -242,6 +242,19 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
     options: [{ include_usage: true }, false],
     logged: { promptTokens: 49, completionTokens: 2, cacheReadInputTokens: 48 },
   })
+
+  const long = "A long answer.".repeat(4_000)
+  const longArgument = "7".repeat(70_000)
+  try Effect.sync(() => scripted.script(text(long, long), text(long), toolCalls("", { name: "CALCULATE", arguments: { expression: longArgument } })))
+  const longStreamed = try host("long streamed answer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "At length.", stream: true, onStreamChunk: () => undefined }))
+  const longWhole = try host("long whole answer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "At length again." }))
+  const longCall = try host("long streamed tool call", () => streaming.runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
+    tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto",
+    messages: [{ role: "user", content: "Count." }], stream: true, onStreamChunk: () => undefined,
+  }))
+  assert.deepStrictEqual<unknown>(
+    [longStreamed === long + long, longWhole === long, typeof longCall === "string" ? longCall : longCall.toolCalls?.map((made) => made.arguments)],
+    [true, true, [{ expression: longArgument }]])
 })
 
 it.effect('A tool is offered without its pattern constraints, and the rest of its schema is sent as declared (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
