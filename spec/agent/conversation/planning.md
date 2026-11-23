@@ -310,26 +310,32 @@ A step's model call refused with a temporary rate limit waits for the time
 the refusal names, at most five seconds and five seconds when it names
 none, and is sent once more; a call the provider refused because it could
 not parse the model's tool call is sent once more at once. The wait ends
-with the turn's cancellation. A second refusal, spent credit, a used-up
-allowance and every other failure end the call as they are. A call that
-stopped at the model's own output limit is never sent again: it ran to the
-model's whole maximum, and a second try would stop the same way at the
-same cost.
+with the turn's cancellation. A call already sent to the provider more
+than once, whether the turn sent it again or its dispatch tried the
+provider again on another registration as after an outage, is never sent
+again: its refusal ends the call as it is, as do spent credit, a used-up
+allowance and every other failure. A call that stopped at the model's own
+output limit is never sent again: it ran to the model's whole maximum, and
+a second try would stop the same way at the same cost.
 
 ```quint
+import models as M from "../../core/models"
 type CallFailure = RateLimitedFor({ hintMs: int }) | RateLimitedWithoutHint | ToolCallUnparsed | OutputLimitReached | OtherFailure
 pure val resendWaitMaxMs = 5000
-pure def resendWait(failure: CallFailure, resent: bool): int = if (resent) -1 else match failure {
+pure def resendWait(failure: CallFailure, sends: int): int = if (M::triedAgain(sends)) -1 else match failure {
   | RateLimitedFor(x) => if (x.hintMs < 0) 0 else if (x.hintMs > resendWaitMaxMs) resendWaitMaxMs else x.hintMs
   | RateLimitedWithoutHint => resendWaitMaxMs
   | ToolCallUnparsed => 0
   | _ => -1
 }
-pure def resends(failure: CallFailure, resent: bool): bool = resendWait(failure, resent) >= 0
+pure def resends(failure: CallFailure, sends: int): bool = resendWait(failure, sends) >= 0
 pure val failureValues = Set(RateLimitedFor({ hintMs: 1200 }), RateLimitedFor({ hintMs: 59000 }), RateLimitedFor({ hintMs: -5 }), RateLimitedWithoutHint, ToolCallUnparsed, OutputLimitReached, OtherFailure)
-pure def lawACallIsSentAgainAtMostOnce(failure: CallFailure): bool = not(resends(failure, true))
-pure def lawAResendWaitsAtMostFiveSeconds(failure: CallFailure, resent: bool): bool = resendWait(failure, resent) <= resendWaitMaxMs
-pure def lawAnOutputLimitOrAnotherFailureIsNeverSentAgain(resent: bool): bool = not(resends(OutputLimitReached, resent)) and not(resends(OtherFailure, resent))
+pure val sendsValues = Set(0, 1, 2, 4)
+pure def lawACallIsSentAgainAtMostOnce(failure: CallFailure, sends: int): bool = sends > 1 implies not(resends(failure, sends))
+pure def lawAResendWaitsAtMostFiveSeconds(failure: CallFailure, sends: int): bool = resendWait(failure, sends) <= resendWaitMaxMs
+pure def lawAnOutputLimitOrAnotherFailureIsNeverSentAgain(sends: int): bool = not(resends(OutputLimitReached, sends)) and not(resends(OtherFailure, sends))
+pure def lawARefusalOfOneRequestIsSentAgain(failure: CallFailure): bool =
+  (failure == RateLimitedWithoutHint or failure == ToolCallUnparsed) implies resends(failure, 1)
 ```
 
 ### A response with competing terminal decisions runs no sibling action and can be repaired once

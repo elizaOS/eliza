@@ -5,7 +5,7 @@
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, MODEL_PROVIDER_ATTEMPTS, ModelType, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import { tagsMayProduceEffects } from "@elizaos/core/protocol"
@@ -309,6 +309,11 @@ function callFailureOf(error: unknown): CallFailure {
   return stoppedAtOutputLimit(error) ? { tag: "OutputLimitReached" } : { tag: "OtherFailure" }
 }
 
+function providerAttemptsOf(error: unknown): number {
+  const attempts = typeof error === "object" && error !== null ? (error as { [MODEL_PROVIDER_ATTEMPTS]?: unknown })[MODEL_PROVIDER_ATTEMPTS] : undefined
+  return Array.isArray(attempts) ? attempts.length : 0
+}
+
 export function conversationCache(runtime: IAgentRuntime, roomId: string, stage: "planner" | "evaluator"): GenerateTextParams["providerOptions"] {
   return { cerebras: { promptCacheKey: `eliza-workflow-v1:${sha256Hex(`${JSON.stringify([runtime.agentId, roomId])}:${stage}`)}` } }
 }
@@ -317,7 +322,7 @@ export async function sentAtMostTwice<T>(send: () => Promise<T>, signal: AbortSi
   try {
     return await send()
   } catch (error: unknown) {
-    const wait = resendWait(callFailureOf(error), false)
+    const wait = resendWait(callFailureOf(error), providerAttemptsOf(error))
     if (wait < 0 || signal.aborted) throw error
     await sleepWithAbort(wait, signal)
     signal.throwIfAborted()

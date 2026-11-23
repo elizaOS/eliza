@@ -1,7 +1,7 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
-import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+import { answerJson, held, insufficientCredits, rateLimited, refusal, text, toolCalls, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
@@ -409,7 +409,7 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   }))
 }, 120_000)
 
-it.live(`Each call keeps the system prompt and puts the turn's notes after the history, a contact keeps its reference from turn to turn, a host notice is not read back, a rate limit, one that names no wait after five seconds, or an unparsed tool call is sent once more, and a cut-off ends the turn (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; ${planning}, "The model reads what was said in the conversation, in a window taken once for the whole turn"; ${planning}, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; ${planning}, "A call that stopped at the model's own output limit ends planning")`, effect () => {
+it.live(`Each call keeps the system prompt and puts the turn's notes after the history, a contact keeps its reference from turn to turn, a host notice is not read back, a rate limit, one that names no wait after five seconds, or an unparsed tool call is sent once more, a refusal after an outage was retried is not, and a cut-off ends the turn (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; ${planning}, "The model reads what was said in the conversation, in a window taken once for the whole turn"; ${planning}, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; ${planning}, "A call that stopped at the model's own output limit ends planning"; spec/core/models.md, "A failed dispatch tells its caller how many provider attempts it made")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const actions = { load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }
   const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin }, ...actions }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
@@ -456,6 +456,11 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   const hintless = replyOf(try send(own, ownConversation.id, { text: "Are you busy?" }))
   const [refusedAt = 0, resentAt = 0] = try host("hintless arrivals", () => hintlessAt)
 
+  try Effect.sync(() => cloud.script(unavailable(1), refusal(429, "queue_exceeded")))
+  const beforeStacked = completions(cloud)
+  const stacked = replyOf(try send(own, ownConversation.id, { text: "And now?" }))
+  const stackedCalls = completions(cloud) - beforeStacked
+
   try Effect.try(() => assert.deepStrictEqual({
     first: first.text,
     sameSystem: opening?.messages[0]?.role === "system" && textOf(opening.messages[0].content) === textOf(latest?.messages[0]?.content),
@@ -469,12 +474,14 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     cut: cut.text, cutCalls,
     parsed: parsed.text, parseCalls,
     hintless: [hintless.text, resentAt - refusedAt >= 5_000],
+    stacked: [stacked.failureKind, stackedCalls],
   }, {
     first: "First answer.", sameSystem: true, screenNoteLast: true, hostLabels: 1, screenNoteOutOfSystem: true, uncapped: true,
     waited: "After the wait.", waitedCalls: 2, noticeUnread: true, stableReference: [false, true, true],
     cut: cutOffReply, cutCalls: 1,
     parsed: "Read on the second try.", parseCalls: 2,
     hintless: ["Answered after five seconds.", true],
+    stacked: ["limit_reached", 2],
   }))
 }, 120_000)
 

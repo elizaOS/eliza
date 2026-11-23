@@ -1669,8 +1669,8 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
   }))
 }), 60_000)
 
-// spec/core/models.md, "Story: Get a whole answer from a busy provider"; spec/core/models.md, "A model call takes no output cap from settings"; spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more"
-it.live("Get a whole answer from a busy provider: no setting caps output, an older character loads without its cap, and each extractor pass waits out a rate limit once (spec/core/models.md, \"Story: Get a whole answer from a busy provider\")", () => scoped(effect {
+// spec/core/models.md, "Story: Get a whole answer from a busy provider"; spec/core/models.md, "A model call takes no output cap from settings"; spec/core/models.md, "An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more"; spec/core/models.md, "A failed dispatch tells its caller how many provider attempts it made"
+it.live("Get a whole answer from a busy provider: no setting caps output, an older character loads without its cap, each extractor pass waits out a rate limit once, and a rate limit after an outage was retried is not sent again (spec/core/models.md, \"Story: Get a whole answer from a busy provider\")", () => scoped(effect {
   const limited = () => Object.assign(new Error("Too many requests"), { status: 429, retryAfterMs: 200 })
   const models = try Effect.try(() => scriptedModels("busy", 10, {
     [ModelType.TEXT_LARGE]: [{ fail: limited() }, { reply: "unreadable" }, { fail: limited() }, { reply: "ok" }, { fail: limited() }, { fail: limited() }],
@@ -1683,11 +1683,17 @@ it.live("Get a whole answer from a busy provider: no setting caps output, an old
   const repaired = try host(() => runExtractorPipeline({ runtime, prompt: "Plan the reminder.", providerOptions, parser, buildRepairPrompt: () => "Repair it." }))
   const waited = Date.now() - began
   const refused = try host(() => runExtractorPipeline({ runtime, prompt: "Plan another.", parser }).then(() => "resolved", (error: unknown) => (error as { status?: unknown }).status))
+  const outage = try Effect.try(() => scriptedModels("outage", 10, { [ModelType.TEXT_LARGE]: [{ fail: providerError("retry") }] }))
+  const spare = try Effect.try(() => scriptedModels("spare", 5, { [ModelType.TEXT_LARGE]: [{ fail: limited() }, { reply: "ok" }] }))
+  const stacked = try kernel({})
+  try Effect.sync(() => [outage, spare].forEach((provider) => provider.register(stacked)))
+  const afterOutage = try host(() => runExtractorPipeline({ runtime: stacked, prompt: "Plan after an outage.", parser }).then(() => "resolved", (error: unknown) => (error as { status?: unknown }).status))
   const sent = models.seen.map(({ params }) => params as { prompt?: unknown; maxTokens?: unknown; temperature?: unknown; providerOptions?: { eliza?: { modelInputBudget?: unknown } } })
   const legacy = parseAndValidateCharacter(JSON.stringify({ name: "legacy-character", settings: { defaultMaxTokens: 16, defaultTemperature: 0.25 } }))
   try Effect.try(() => assert.deepStrictEqual({
     legacy: { success: legacy.success, settings: legacy.data?.settings },
     repaired, refused, waitedForBoth: waited >= 400,
+    afterOutage, stackedSends: [outage.seen.length, spare.seen.length],
     sent: sent.map(({ prompt, maxTokens, temperature, providerOptions: options }) => {
       const { modelInputBudget: _budget, ...eliza } = options?.eliza ?? {}
       return { prompt, capped: maxTokens !== undefined, temperature, options: Object.keys(eliza).length ? { ...options, eliza } : undefined }
@@ -1695,6 +1701,7 @@ it.live("Get a whole answer from a busy provider: no setting caps output, an old
   }, {
     legacy: { success: true, settings: { defaultTemperature: 0.25 } },
     repaired: { parsed: "ok", raw: "ok", repaired: true }, refused: 429, waitedForBoth: true,
+    afterOutage: 429, stackedSends: [1, 1],
     sent: [
       { prompt: "Plan the reminder.", capped: false, temperature: 0.2, options: providerOptions },
       { prompt: "Plan the reminder.", capped: false, temperature: 0.2, options: providerOptions },

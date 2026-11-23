@@ -178,6 +178,23 @@ pure def lawNoSettingCapsOutput(setting: ModelSetting): bool = setting == MaxTok
 pure def lawSamplingSettingsStillMerge(setting: ModelSetting): bool = setting != MaxTokensSetting implies mergedFromSettings(setting)
 ```
 
+### A failed dispatch tells its caller how many provider attempts it made
+
+The error a dispatch ends with carries the number of provider attempts the
+dispatch made, one for each registration it called. A caller that sends a
+refused call once more can then tell a refusal of the call's one request
+from one that came after the dispatch had already tried the provider again
+on another registration, as after an outage or a dropped connection. An
+error that carries no count reports none, which is not a second attempt.
+
+```quint
+pure def attemptsCarried(s: Dispatch): int = s.attempts.length()
+pure def triedAgain(attempts: int): bool = attempts > 1
+pure val attemptsValues = Set(0, 1, 2, 4)
+pure def lawOneAttemptIsNotATryAgain(attempts: int): bool = attempts <= 1 implies not(triedAgain(attempts))
+pure def sometimesAFailureFollowsAnotherAttempt(s: Dispatch): bool = s.phase == DispatchFailed and triedAgain(attemptsCarried(s))
+```
+
 ### An extractor pass refused with a temporary rate limit waits it out, at most five seconds, and is sent once more
 
 The extractor pipeline's first pass and its repair pass each have one
@@ -185,27 +202,32 @@ re-send. A pass whose call is refused with a 429 waits for the refusal's own
 retry time or hint, at most five seconds and five seconds when it names
 none, and sends the same call once more; the wait ends with the turn's
 cancellation. Spent credit, a permanent quota and a used-up period
-allowance get no re-send, nor does a rate limit named only in prose; a
-second refusal and every other failure propagate unchanged. Both passes
-carry the caller's provider options, such as the reasoning hint
-`eliza.thinking`, and none when the caller gives none.
+allowance get no re-send, nor does a rate limit named only in prose, nor a
+refusal whose dispatch had already tried the provider again; a second
+refusal and every other failure propagate unchanged. Both passes carry the
+caller's provider options, such as the reasoning hint `eliza.thinking`, and
+none when the caller gives none.
 
 ```quint
-type ExtractorRefusal = { status: int, hinted: bool, hintMs: int, spent: bool, period: bool }
+type ExtractorRefusal = { status: int, hinted: bool, hintMs: int, spent: bool, period: bool, attempts: int }
 pure val extractorResendMaxMs = 5000
 pure def extractorResendWait(refusal: ExtractorRefusal): int =
-  if (refusal.status != 429 or refusal.spent or refusal.period) -1
+  if (refusal.status != 429 or refusal.spent or refusal.period or triedAgain(refusal.attempts)) -1
   else if (not(refusal.hinted) or refusal.hintMs > extractorResendMaxMs) extractorResendMaxMs
   else if (refusal.hintMs < 0) 0
   else refusal.hintMs
 pure val refusalValues = Set(
-  { status: 429, hinted: true, hintMs: 1200, spent: false, period: false },
-  { status: 429, hinted: true, hintMs: 59000, spent: false, period: false },
-  { status: 429, hinted: false, hintMs: 0, spent: false, period: false },
-  { status: 429, hinted: true, hintMs: 1200, spent: true, period: false },
-  { status: 429, hinted: true, hintMs: 1200, spent: false, period: true },
-  { status: 503, hinted: false, hintMs: 0, spent: false, period: false })
+  { status: 429, hinted: true, hintMs: 1200, spent: false, period: false, attempts: 1 },
+  { status: 429, hinted: true, hintMs: 59000, spent: false, period: false, attempts: 1 },
+  { status: 429, hinted: false, hintMs: 0, spent: false, period: false, attempts: 1 },
+  { status: 429, hinted: false, hintMs: 0, spent: false, period: false, attempts: 2 },
+  { status: 429, hinted: true, hintMs: 1200, spent: true, period: false, attempts: 1 },
+  { status: 429, hinted: true, hintMs: 1200, spent: false, period: true, attempts: 1 },
+  { status: 503, hinted: false, hintMs: 0, spent: false, period: false, attempts: 1 })
 pure def lawAnExtractorWaitsAtMostFiveSeconds(refusal: ExtractorRefusal): bool = extractorResendWait(refusal) <= extractorResendMaxMs
 pure def lawOnlyATemporaryRateLimitIsSentAgain(refusal: ExtractorRefusal): bool =
   extractorResendWait(refusal) >= 0 implies (refusal.status == 429 and not(refusal.spent) and not(refusal.period))
+pure def lawARefusalAfterAnotherAttemptIsNotSentAgain(refusal: ExtractorRefusal): bool = triedAgain(refusal.attempts) implies extractorResendWait(refusal) < 0
+pure def lawAnExtractorRefusalOfOneRequestIsSentAgain(refusal: ExtractorRefusal): bool =
+  (refusal.status == 429 and not(refusal.spent) and not(refusal.period) and not(triedAgain(refusal.attempts))) implies extractorResendWait(refusal) >= 0
 ```
