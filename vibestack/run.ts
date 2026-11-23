@@ -17,6 +17,7 @@ const OUTPUT_LIMIT = 1 << 28;
 const TOOL_TIMEOUT = 60 * 60 * 1000;
 /** How often a running tool's processor time is read: each minute. */
 const WATCH = 60 * 1000;
+const ACCOUNTING_TIMEOUT = 5_000;
 
 /** The executable named `name` that the PATH finds first. */
 export const onPath = (name: string) => (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
@@ -56,7 +57,7 @@ const processTable = (output: string) => output.trim().split("\n").filter(Boolea
   const [pid, parent, group, time] = line.trim().split(/\s+/);
   return [Number(pid), Number(parent), Number(group), seconds(time)];
 });
-const processes = () => WINDOWS ? [] : processTable(spawnSync("ps", psArgs, { encoding: "utf8", timeout: WATCH, killSignal: "SIGKILL" }).stdout ?? "");
+const processes = () => WINDOWS ? [] : processTable(spawnSync("ps", psArgs, { encoding: "utf8", timeout: ACCOUNTING_TIMEOUT, killSignal: "SIGKILL" }).stdout ?? "");
 
 const execFileAsync = promisify(execFile);
 async function readCounters(command: string, args: string[], signal?: AbortSignal) {
@@ -67,11 +68,18 @@ async function readCounters(command: string, args: string[], signal?: AbortSigna
 /** The processes in `table` that `child` started, itself included. */
 function startedBy(child: ChildProcess, table: number[][]) {
   const started = new Set([child.pid]);
+  const ordered = table.filter(([pid]) => pid === child.pid);
   for (let grew = true; grew; ) {
     grew = false;
-    for (const [pid, parent] of table) if (started.has(parent) && !started.has(pid)) { started.add(pid); grew = true; }
+    for (const row of table) {
+      const [pid, parent] = row;
+      if (!started.has(parent) || started.has(pid)) continue;
+      started.add(pid);
+      ordered.push(row);
+      grew = true;
+    }
   }
-  return table.filter(([pid]) => started.has(pid));
+  return ordered;
 }
 
 const darwinCpu = `ObjC.import("Foundation");
@@ -109,40 +117,42 @@ async function cpuCounters(pids: number[], table: number[][], signal?: AbortSign
       linuxTicksPerSecond = rate;
     }
     const rate = linuxTicksPerSecond;
-    await Promise.all(pids.map(async (pid) => {
+    for (const pid of pids) {
       try {
         const stat = await fs.promises.readFile(`/proc/${pid}/stat`, { encoding: "utf8", signal });
         const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
         const ticks = fields.slice(11, 15).map(Number);
         if (ticks.length === 4 && ticks.every(Number.isFinite)) readings.set(pid, ticks.reduce((sum, n) => sum + n, 0) / rate);
-      } catch { return; }
-    }));
+      } catch { continue; }
+    }
   } else {
     for (const [pid, , , time] of table) readings.set(pid, time);
   }
   return readings;
 }
 
-type CpuReading = { seconds: number; complete: boolean };
+type CpuReading = { seconds: number; complete: true } | { seconds: number; complete: false; known: Map<number, number> };
 
 export async function toolCpuSeconds(children: ChildProcess[], signal?: AbortSignal): Promise<(CpuReading | undefined)[]> {
-  const table = processTable(await readCounters("ps", psArgs, signal));
+  const deadline = AbortSignal.timeout(WATCH);
+  const observation = signal ? AbortSignal.any([signal, deadline]) : deadline;
+  const table = processTable(await readCounters("ps", psArgs, observation));
   const trees = children.map(child => startedBy(child, table).map(([pid]) => pid));
-  const counters = await cpuCounters([...new Set(trees.flat())], table, signal);
+  const counters = await cpuCounters([...new Set(trees.flat())], table, observation);
   return trees.map((tree, index) => {
     const root = children[index].pid;
     const reapedAndOwn = root === undefined ? undefined : counters.get(root);
     if (reapedAndOwn === undefined) return undefined;
-    let seconds = 0, lowerBound = reapedAndOwn, complete = true;
+    const known = new Map<number, number>();
+    let seconds = 0, lowerBound = reapedAndOwn;
     for (const pid of tree) {
       const used = counters.get(pid);
-      if (used === undefined) complete = false;
-      else {
-        seconds += used;
-        lowerBound = Math.max(lowerBound, used);
-      }
+      if (used === undefined) continue;
+      known.set(pid, used);
+      seconds += used;
+      lowerBound = Math.max(lowerBound, used);
     }
-    return { seconds: complete ? seconds : lowerBound, complete };
+    return known.size === tree.length ? { seconds, complete: true } : { seconds: lowerBound, complete: false, known };
   });
 }
 
@@ -225,24 +235,32 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
       const minutes = TOOL_TIMEOUT / 60_000;
       let lastComplete: { seconds: number; since: number } | undefined;
       let observedAt = started;
+      let previous = new Map<number, number>();
+      const observe = (sample: CpuReading | undefined, now: number) => {
+        if (!sample) return;
+        if (sample.complete) {
+          observedAt = now;
+          previous.clear();
+        } else {
+          if ([...sample.known].some(([pid, used]) => used > (previous.get(pid) ?? 0))) observedAt = now;
+          previous = sample.known;
+        }
+      };
       unwatch = watchCpu(child, async (reading, signal) => {
         const now = Date.now(), ran = now - started;
-        const sample = WINDOWS ? { seconds: ran / 1000, complete: true } : reading;
-        if (!sample) {
-          lastComplete = undefined;
-          if (now - observedAt > TOOL_TIMEOUT) stop(`had no readable processor accounting for ${minutes} minutes`);
-          return;
-        }
-        observedAt = now;
-        if (!sample.complete) lastComplete = undefined;
+        const sample: CpuReading | undefined = WINDOWS ? { seconds: ran / 1000, complete: true } : reading;
+        observe(sample, now);
+        if (!sample?.complete) lastComplete = undefined;
         else if (lastComplete?.seconds !== sample.seconds) lastComplete = { seconds: sample.seconds, since: now };
-        const over = sample.seconds * 1000 > TOOL_TIMEOUT;
+        const over = (sample?.seconds ?? 0) * 1000 > TOOL_TIMEOUT;
         const idle = ran > TOOL_TIMEOUT && lastComplete !== undefined && now - lastComplete.since >= WATCH;
-        if (!over && !idle) return;
+        if (!over && !idle && now - observedAt <= TOOL_TIMEOUT) return;
         const confirmed = WINDOWS ? sample : (await toolCpuSeconds([child], signal))[0];
-        if (!confirmed || !watched.has(child) || child.exitCode !== null || child.signalCode !== null) return;
-        if (over && confirmed.seconds * 1000 > TOOL_TIMEOUT) stop(`used more than ${minutes} minutes of processor time`);
-        else if (idle && confirmed.complete && confirmed.seconds === sample.seconds) stop(`ran for more than ${minutes} minutes, the last minute without the processor,`);
+        if (!watched.has(child) || child.exitCode !== null || child.signalCode !== null) return;
+        observe(confirmed, Date.now());
+        if (over && confirmed && confirmed.seconds * 1000 > TOOL_TIMEOUT) stop(`used more than ${minutes} minutes of processor time`);
+        else if (idle && confirmed?.complete && confirmed.seconds === sample?.seconds) stop(`ran for more than ${minutes} minutes, the last minute without the processor,`);
+        else if (Date.now() - observedAt > TOOL_TIMEOUT) stop(`had no complete processor accounting or measurable progress for ${minutes} minutes`);
       });
       for (const stream of ["stdout", "stderr"] as const) child[stream].setEncoding("utf8").on("data", (chunk: string) => {
         if (output[stream].length > OUTPUT_LIMIT) return;

@@ -379,7 +379,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 | When | Runs |
 |---|---|
 | Pull request or push to `main` | The tasks of `pnpm verify`, with `--continue=dependencies-successful`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
-| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `main`. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
+| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1` read from the shared cache, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
@@ -389,8 +389,10 @@ The run summary lists Turbo task times, cache status and exit codes.
 
 Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
-tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job and
-the commit: what a job of the same name last saved, or else another job's that holds the same.
+tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job, the
+lockfile and the commit. A job tries both key layouts for its own name and current lockfile, then tries the current
+layout for another lockfile. Each entry is named by the tools and inputs that produced it, so a job reads only the
+entries that still apply.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
 The default branch's `verify` job publishes the pnpm store after the frozen
@@ -411,7 +413,11 @@ instead, which only that pull request reads, so its next push reuses them. Newer
 When `TURBO_TOKEN` is unavailable, CI uses Turborepo's local cache. Branch
 pushes also restore and save that cache in GitHub Actions, so a new template
 repository can reuse completed tasks before configuring a remote cache.
-Every pushed commit can finish. Completed tasks are shared through the cache.
+A job restores only the Turborepo results a job of its name saved.
+Pushes to one branch run one at a time. A run that has started finishes and
+shares its completed tasks through the cache, and the newest pushed commit
+replaces any run still waiting. Re-run a specific commit when you need the
+results for that revision; a re-run starts at once.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.
