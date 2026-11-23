@@ -42,6 +42,11 @@ export type Grounding =
   | { readonly kind: "Grounded"; readonly operation: DeviceOperation }
   | { readonly kind: "Refused"; readonly code: string; readonly forModel: string; readonly forOwner: string }
 
+export interface ReadContinuation {
+  readonly operation?: DeviceOperation
+  readonly text?: string
+}
+
 export interface ProposalForm {
   readonly types: readonly [DeviceOperationType, ...DeviceOperationType[]]
   readonly schema: ActionParameterSchema
@@ -57,7 +62,7 @@ export interface DeviceProposalFamily {
   ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable
   proposedText(operation: DeviceOperation): string
   settledText(operation: DeviceOperation, result: unknown): string | undefined
-  continueAfterRead?(read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "message" | "negotiation" | "startedAt" | "timeZone">): (DeviceOperation | undefined)!DeviceStoreUnavailable
+  continueAfterRead?(read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "message" | "negotiation" | "startedAt" | "timeZone">): (ReadContinuation | undefined)!DeviceStoreUnavailable
 }
 
 export function unoffered(name: FamilyName): DeviceProposalFamily {
