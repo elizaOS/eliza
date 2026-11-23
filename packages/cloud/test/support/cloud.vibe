@@ -10,6 +10,7 @@ import { startFakeServer, stripeCatalog, type CatalogPrice, type FakeServer } fr
 import { callCloud, type Answer, type CallInit } from "./http.ts"
 import { catalogPrices, secrets, testProfile } from "./profile.ts"
 import type { StripeFake } from "./fakes/stripe.ts"
+import { CloudError } from "../../src/client/index.vibe"
 
 export type { Answer, FakeServer, StripeFake }
 
@@ -92,4 +93,15 @@ export effect function serveOnStore(cloud: TestCloud, routes: ReadonlyArray<Rout
   ))
   const { address } = Context.get(built, HttpServer.HttpServer)
   return "port" in address ? `http://127.0.0.1:${address.port}` : ""
+}
+
+export effect function outcomeTag<A, E extends { readonly _tag: string }, R>(program: A!E!R, succeeded: (value: A) => string = () => "ok"): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success(let value): succeeded(value);
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag), Option.getOrElse(() => "defect"));
+  }
+}
+
+export effect function clientFailure(run: () => Promise<unknown>) {
+  return try promise(() => run().then(() => "succeeded", (error: unknown) => error instanceof CloudError ? error.failure : `threw ${String(error)}`))
 }

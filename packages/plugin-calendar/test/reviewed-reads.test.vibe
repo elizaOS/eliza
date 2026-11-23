@@ -1,7 +1,8 @@
 // spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/readClock.md, "Story: See and create times in the zone I am asking about"
 import { assert, it } from "@effect/vitest"
 import type { IAgentRuntime, UUID } from "@elizaos/core"
-import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
+import { readOperation, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
+import { negotiatedOwnerTurn } from "@elizaos/agent/testing"
 import { calendarProposalFamily } from "../src/plugin/device-proposals.vibe"
 import { machine } from "../gen/calendar__reviewedReads.effect.vibe"
 import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
@@ -101,14 +102,12 @@ const phoneCapabilities = ["calendar.local-event.v1", "calendar.create.v1", "cal
 const turnStarted = Date.UTC(2026, 10, 22, 15, 0)
 
 function phoneTurn(ownerText: string, observation: DeviceTurn["observation"], actions: readonly string[] = [], completesReads = true): DeviceTurn {
-  const negotiated = negotiation(true, phoneCapabilities.join(","))
-  return {
-    runtime: { actions: actions.map((name) => ({ name })) } as unknown as IAgentRuntime, by: {} as DeviceTurn["by"], negotiation: negotiated,
-    capabilities: phoneCapabilities, message: { id: "00000000-0000-4000-8000-000000000001" as UUID, content: { text: ownerText } } as DeviceTurn["message"],
-    ownerText, observation, completedActionNavigation: false, completesReads, conversationId: "c1", requestId: "r1", assistantName: "Eliza", swapped: [],
-    startedAt: turnStarted, timeZone: observation?.timeZone, signal: new AbortController().signal,
-    admit: (operation) => validate(operation, negotiated, "NoBinding"), earlier: () => succeed([]),
-  }
+  return negotiatedOwnerTurn(phoneCapabilities, {
+    runtime: { actions: actions.map((name) => ({ name })) } as unknown as IAgentRuntime, by: {} as DeviceTurn["by"],
+    message: { id: "00000000-0000-4000-8000-000000000001" as UUID, content: { text: ownerText } } as DeviceTurn["message"],
+    ownerText, observation, completedActionNavigation: false, completesReads, conversationId: "c1", requestId: "r1",
+    startedAt: turnStarted, timeZone: observation?.timeZone,
+  })
 }
 
 const unzonedCalendar = { view: "calendar", revision: 1, sensitive: false, selectedObject: selected }

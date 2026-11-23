@@ -1,22 +1,17 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { assert, describe, it } from "@effect/vitest"
 import { Store } from "../src/store/store.vibe"
-import { check, testCloud, type TestCloud } from "./support/cloud.vibe"
+import { check, testCloud } from "./support/cloud.vibe"
 import { testProfile } from "./support/profile.ts"
 import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
-import { scopeFor, storeGrant, type Owner } from "../src/services/google/grant-access.vibe"
+import { scopeFor, type Owner } from "../src/services/google/grant-access.vibe"
+import { linkedGrant } from "./support/google-mail.vibe"
 import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
 import { signedCaller } from "./support/caller.vibe"
 
-effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string, refreshToken: string, scopes: ReadonlyArray<string>, expiresAt: number) {
-  try cloud.store.transaction((tx) => storeGrant(tx, {
-    connectionId, owner, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, grantedScopes: scopes,
-    tokens: { refreshToken, accessToken: `stale-${connectionId}`, expiresAt }, now: expiresAt - 1
-  }))
-}
 describe("WP8 tmp", () => {
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
