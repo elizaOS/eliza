@@ -68,7 +68,7 @@ export function describeMaps(settings: MapsSettings | undefined, operator: strin
     },
     regions: [{ id: settings.coverage, name: settings.coverage, bounds: world }],
     capabilities: {
-      map: offer.map, search: true, placeDetails: true, geocode: true, reverseGeocode: true, placeLookup: offer.placeLookup,
+      map: offer.map, search: true, placeDetails: true, geocode: true, reverseGeocode: true, placeLookup: offer.placeLookup, distanceRank: offer.distanceRank,
       modes: ["drive", ...(["walk", "bicycle", "transit"] as const).filter((mode) => supportsMode(kind, specModeOf[mode]))], alternatives: true, traffic: offer.liveTraffic ? "live" : "none", transit: offer.scheduledTransit ? "scheduled" : "none",
       offline: { map: false, search: false, routing: false },
     },
