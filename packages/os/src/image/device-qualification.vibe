@@ -72,6 +72,8 @@ error RequirementsInvalid { reason: string }
 error QualificationRefused { reason: string }
 export error QualificationUsage { reason: string }
 
+export type { RequirementsInvalid, QualificationRefused }
+
 function modelRequirements(requirements: DeviceRequirements): ModelRequirement[] {
   return [
     ...requirements.requirements.map((rule) => ({ id: rule.id, level: levelName[rule.level], mode: "AdbProbe" as const, wellFormed: !Schema.is(BootloaderCheck)(rule.check) })),

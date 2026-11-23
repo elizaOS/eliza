@@ -24,6 +24,8 @@ export type { HostRefusal }
 
 error HostProfileRefused { refusal: HostRefusal; detail: string }
 
+export type { HostProfileRefused }
+
 const NAME = /^[a-zA-Z][a-zA-Z0-9_-]*$/
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/
 const CONSTANT = /^[A-Z][A-Z0-9_]*$/

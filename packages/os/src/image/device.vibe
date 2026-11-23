@@ -167,6 +167,13 @@ export error InstrumentationRefused { reason: string }
 error FixtureRefused { reason: string }
 error IsolatedTestFailed { reason: string; report: string }
 
+export type {
+  DeviceLeased,
+  LeaseLockAbandoned,
+  LeaseLockTimedOut,
+  LeaseLockConflict,
+}
+
 export type AdbFailure = AdbFailed | AdbTimedOut
 export type AdbRun = (...args: readonly string[]) => string!AdbFailure
 

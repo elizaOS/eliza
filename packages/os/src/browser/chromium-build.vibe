@@ -147,6 +147,13 @@ error ChromiumSourceRefused { reason: string }
 error ChromiumBuildFailed { reason: string }
 error BrowserExtensionInvalid { reason: string }
 
+export type {
+  ChromiumInputInvalid,
+  ChromiumSourceRefused,
+  ChromiumBuildFailed,
+  BrowserExtensionInvalid,
+}
+
 const DEFAULT_APPLICATION = "ai.elizaos.app"
 const HEX64 = /^[a-fA-F0-9]{64}$/
 const COMMIT = /^[a-f0-9]{40}$/
