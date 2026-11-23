@@ -2,7 +2,7 @@
 import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -121,27 +121,60 @@ function sources(): Sources {
   return { digest: digest.digest("hex").slice(0, 24), roots: [...roots], adapters };
 }
 
+interface JarIdentity {
+  readonly file: string;
+  readonly stamp: string;
+  readonly digest: string;
+}
+
+const jarIdentities = new Map<string, JarIdentity>();
+
+function jarStamp(file: string): string {
+  const { dev, ino, size, mtimeNs, ctimeNs } = statSync(file, { bigint: true });
+  return `${dev}:${ino}:${size}:${mtimeNs}:${ctimeNs}`;
+}
+
+function identifyJar(file: string): JarIdentity {
+  const stamp = jarStamp(file);
+  const cached = jarIdentities.get(file);
+  if (cached?.stamp === stamp) return cached;
+  const digest = createHash("sha256").update(readFileSync(file)).digest("hex");
+  const identity = { file, stamp, digest };
+  assertClasspath([identity]);
+  jarIdentities.set(file, identity);
+  return identity;
+}
+
+function assertClasspath(jars: readonly JarIdentity[]) {
+  for (const { file, stamp } of jars)
+    if (jarStamp(file) !== stamp) throw new Error(`JVM classpath changed while using ${file}`);
+}
+
 export function compileAdapter(main: string, found: Sources = sources(), dependencies: readonly string[] = []): string {
   const adapter = found.adapters.get(main);
   if (adapter === undefined) throw new Error(`no JVM adapter ${main} under ${ADAPTERS}`);
   const tools = androidTools();
   const classpath = [...dependencies, ...(tools.kind === "present" ? [tools.androidJar] : [])];
-  const dependencyKey = dependencies.length
-    ? createHash("sha256").update(JSON.stringify(classpath.map((jar) => createHash("sha256").update(readFileSync(jar)).digest("hex")))).digest("hex")
-    : "";
-  const classes = path.join(CACHE, `${found.digest}-${main}${dependencyKey ? "-" + dependencyKey : ""}`);
-  if (existsSync(classes)) return classes;
+  const jars = classpath.map(identifyJar);
+  const dependencyKey = createHash("sha256").update(JSON.stringify(jars.map((jar) => jar.digest))).digest("hex");
+  const classes = path.join(CACHE, `${found.digest}-${main}-${dependencyKey}`);
+  if (existsSync(classes)) {
+    assertClasspath(jars);
+    return classes;
+  }
   mkdirSync(CACHE, { recursive: true });
   const staging = mkdtempSync(path.join(CACHE, ".compiling-"));
   try {
     execFileSync(javaTool("javac"), [
       "--release", "21", "-encoding", "UTF-8", "-nowarn", "-implicit:class", "-d", staging,
-      ...(classpath.length ? ["-classpath", classpath.join(path.delimiter)] : []),
+      "-classpath", classpath.length ? classpath.join(path.delimiter) : staging,
       "-sourcepath", found.roots.join(path.delimiter), adapter,
     ], { stdio: ["ignore", "ignore", "pipe"] });
+    assertClasspath(jars);
     renameSync(staging, classes);
   } catch (error) {
     rmSync(staging, { recursive: true, force: true });
+    assertClasspath(jars);
     if (existsSync(classes)) return classes;
     const stderr = (error as { stderr?: Buffer }).stderr?.toString("utf8") ?? "";
     throw new Error(`javac could not compile ${main}:\n${stderr || String(error)}`, { cause: error });
