@@ -1,5 +1,5 @@
-// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/services/models.md, "A side has at most 2,000,000 tokens, so every side's price arithmetic stays a safe integer"
-import { outputLimit, quoteCounts, type TokenAsk } from "../../gen/cloud__services__inference.effect.vibe"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/services/models.md, "A side has at most 2,000,000 tokens, so every side's price arithmetic stays a safe integer"; spec/cloud/services/inference.md, "A request is admitted only for a live caller under its plan limit, held under the policy's lane at its quote, and otherwise refused well formed"
+import { forwardedCap, outputLimit, quoteCounts, type TokenAsk } from "../../gen/cloud__services__inference.effect.vibe"
 import { callCost, countsInBound, type Model, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import type { RouteContext } from "../http/routes.vibe"
@@ -72,6 +72,12 @@ function textChars(message: ChatMessage): number {
 
 function asked(tokens: number | undefined): TokenAsk {
   return tokens === undefined ? { tag: "NoAsk" } : { tag: "AskFor", tokens }
+}
+
+export function providerBody({ max_tokens, max_completion_tokens, ...body }: ChatRequest, upstreamModel: string) {
+  const cap = forwardedCap(asked(max_completion_tokens), asked(max_tokens))
+  const named = cap.tag === "NoAsk" ? {} : max_completion_tokens === undefined ? { max_tokens: cap.tokens } : { max_completion_tokens: cap.tokens }
+  return { ...body, model: upstreamModel, ...named }
 }
 
 export effect function quote(body: ChatRequest, model: Model): Quote!Refused {
