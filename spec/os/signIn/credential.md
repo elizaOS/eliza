@@ -411,8 +411,8 @@ again for mail and calendar. The device binds the attempt to its current key
 version, user and organization. It uses the existing browser sign-in to check
 the account and ends the attempt if the browser returns a different account.
 Neither the owner nor the key version comes from the renderer. A new key can
-replace the old one only after acknowledgement of a pending grant for that
-same owner with an unexpired lease offer. The host can cancel its current
+replace the old one only after acknowledgement of a newer pending grant for
+that same owner with an unexpired lease offer. The host can cancel its current
 upgrade with `cancelMailLeaseUpgrade`. A cancelled or stale attempt
 cannot replace the key. A rejected pending grant is retired through the
 existing revoke duties. The previous key continues to serve its routes.
@@ -424,7 +424,13 @@ pure def mailLeaseUpgradeAdmits(s: DeviceCredential, expected: MailLeaseUpgrade)
 pure def mailLeaseUpgradeMayAcknowledge(s: DeviceCredential, expected: MailLeaseUpgrade): bool = {
   val pending = s.attempt
   mailLeaseUpgradeAdmits(s, expected) and (match pending {
-    | Acknowledging(p) => p.account == expected.account and p.lapsesAt > s.now and offerLapse(p.lease) > s.now
+    | Acknowledging(p) => {
+      val offer = p.lease
+      p.version > expected.version and p.account == expected.account and p.lapsesAt > s.now and (match offer {
+        | Offered(o) => o.refreshExpiresAt > s.now
+        | _ => false
+      })
+    }
     | _ => false
   })
 }

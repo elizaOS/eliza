@@ -1,3 +1,20 @@
+lemma lawMailLeaseUpgradeKeepsTheOwner_ensures(s: DeviceCredential, expected: MailLeaseUpgrade, attempt: int, credentialId: string, keyExpiresAt: int)
+  ensures lawMailLeaseUpgradeKeepsTheOwner(s, expected, attempt, credentialId, keyExpiresAt)
+{
+  var after := mailLeaseUpgradeAcknowledged(expected, attempt, credentialId, keyExpiresAt, s);
+  if mailLeaseUpgradeMayAcknowledge(s, expected) && canAcknowledged(s, attempt, credentialId, keyExpiresAt) {
+    assert s.attempt.Acknowledging?;
+    assert s.attempt.account == expected.account && accountOf(s) == expected.account;
+    assert s.attempt.lease.Offered?;
+    assert s.attempt.version > expected.version >= 1;
+    assert accountOf(after.state) == s.attempt.account;
+    assert leaseVersionOf(after.state.lease) == s.attempt.version;
+  } else {
+    assert after.state.custody == s.custody;
+    assert after.out == [];
+  }
+}
+
 lemma revokeAnswered_ensures(s: DeviceCredential, version: int, reply: RevokeReply)
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> alwaysCountersAreNatural(revokeAnswered(s, version, reply)))
   ensures (inv(s) ==> canRevokeAnswered(s, version) ==> alwaysSignInIsTheNewestAction(revokeAnswered(s, version, reply)))
