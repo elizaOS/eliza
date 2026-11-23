@@ -179,7 +179,7 @@ export interface RuntimeModelDispatchHost {
 	invokePipelineHooks(
 		...args: Parameters<RuntimePipelineHooks["invokePipelineHooks"]>
 	): ReturnType<RuntimePipelineHooks["invokePipelineHooks"]>;
-	/** `conversation` is the turn's room. Stable references and pseudonyms need one; see SECRET_SWAP_STABLE_REFERENCES_SETTING. */
+	/** `conversation` is the turn's room. With secret swap on, references and pseudonyms stay stable within it; a call without one gets fresh ones. */
 	createSecretSwapSession(conversation?: string): SecretSwapSession;
 	createPiiSwapSession(conversation?: string): PseudonymSession;
 	initResolver(): ((value?: void | PromiseLike<void>) => void) | undefined;
@@ -724,6 +724,10 @@ export class RuntimeModelDispatch {
 	 * 1. Model-specific settings (e.g., TEXT_SMALL_TEMPERATURE)
 	 * 2. Default settings (e.g., DEFAULT_TEMPERATURE)
 	 *
+	 * Output is never capped from settings: a `<model type>_MAX_TOKENS` or
+	 * `DEFAULT_MAX_TOKENS` setting is not read, so a call that names no cap
+	 * reaches the adapter without one and gets the model's own maximum.
+	 *
 	 * @param modelType The specific model type to get settings for
 	 * @returns Object containing model parameters if they exist, or null if no settings are configured
 	 */
@@ -733,7 +737,6 @@ export class RuntimeModelDispatch {
 		// Helper to get a setting value with fallback chain
 		const getSettingWithFallback = (
 			param:
-				| "MAX_TOKENS"
 				| "TEMPERATURE"
 				| "TOP_P"
 				| "TOP_K"
@@ -769,7 +772,6 @@ export class RuntimeModelDispatch {
 		};
 
 		// Get settings with proper fallback chain
-		const maxTokens = getSettingWithFallback("MAX_TOKENS");
 		const temperature = getSettingWithFallback("TEMPERATURE");
 		const topP = getSettingWithFallback("TOP_P");
 		const topK = getSettingWithFallback("TOP_K");
@@ -780,7 +782,6 @@ export class RuntimeModelDispatch {
 		const presencePenalty = getSettingWithFallback("PRESENCE_PENALTY");
 
 		// Add settings if they exist
-		if (maxTokens !== null) modelSettings.maxTokens = maxTokens;
 		if (temperature !== null) modelSettings.temperature = temperature;
 		if (topP !== null) modelSettings.topP = topP;
 		if (topK !== null) modelSettings.topK = topK;

@@ -111,7 +111,6 @@ import {
   historicalRequestSourceIds,
   inflectionTermKeys,
   isDiscoveryActionName,
-  isLocalProvider,
   isModelOutputLimitFinishReason,
   isModelProviderError,
   isObjectRecord,
@@ -121,7 +120,6 @@ import {
   isRateLimitError,
   type JSONSchema,
   MODEL_CANONICAL_CONTEXT,
-  type ModelAttemptContext,
   ModelType,
   mergeChainingLoopConfig,
   modelOutputIncompleteEvidence,
@@ -324,94 +322,6 @@ export function resolvePositivePlannerInt(
     );
   }
   return Number(rawValue);
-}
-
-/**
- * Host value for a planner output ceiling meaning "the model's own maximum":
- * the planner sends no cap, so the provider's output limit applies.
- */
-const PLANNER_MAX_TOKENS_MODEL = "model";
-
-/**
- * Resolve an explicitly configured planner output ceiling. A set override is
- * sent to every provider; a set-but-malformed one throws rather than silently
- * defaulting. Unset returns undefined: non-coding planning rounds then take
- * the per-attempt default from {@link plannerDefaultMaxTokens}, and coding
- * planners and reply-only synthesis rounds stay uncapped (the provider owns
- * its real output boundary). The exact value `model` opts a host out of that
- * default: no planner round sends a cap, so a round that stops at the model's
- * own limit is not re-sent (a rate-limit re-send still is).
- */
-function resolvePlannerMaxTokens(
-  codingMode: boolean,
-): number | typeof PLANNER_MAX_TOKENS_MODEL | undefined {
-  const envVarName = codingMode
-    ? "ELIZA_CODING_PLANNER_MAX_TOKENS"
-    : "ELIZA_PLANNER_MAX_TOKENS";
-  const rawValue = process.env[envVarName];
-  if (rawValue === undefined || rawValue === "") return undefined;
-  if (rawValue === PLANNER_MAX_TOKENS_MODEL) return PLANNER_MAX_TOKENS_MODEL;
-  if (!CANONICAL_POSITIVE_INTEGER.test(rawValue)) {
-    throw new ElizaError(
-      `${envVarName} must be a positive decimal integer (e.g. "8192") or "${PLANNER_MAX_TOKENS_MODEL}", got: ${JSON.stringify(
-        rawValue,
-      )}`,
-      {
-        code: "PLANNER_BUDGET_ENV_INVALID",
-        severity: "fatal",
-        context: { setting: envVarName, received: rawValue },
-      },
-    );
-  }
-  return Number(rawValue);
-}
-
-const PLANNER_DEFAULT_MAX_TOKENS = 8192;
-
-/**
- * Default output cap for one resolved non-coding planner attempt, or
- * undefined to send that attempt uncapped exactly as before the default
- * existed. The default bounds runaway generations on remote API providers:
- * live 2026-10-30, an uncapped calendar create streamed 40,960 tokens in 29s
- * on Cerebras before failing, and a sibling call carried 5,786 empty attendee
- * objects. 8192 still fits a complete tool call or REPLY and stops a runaway
- * in about 6s; the dispatch retries a capped generation once.
- *
- * The default never reduces availability elsewhere:
- * - Local and on-device registrations (declared `metadata.local`, else the
- *   core provider-name heuristic) and eliza-router, which can front them, get
- *   no default. Their adapters treat an explicit cap unlike an omitted one:
- *   AOSP rejects a cap above the remaining context (4096-token default), the
- *   older capacitor bridge rejects any cap above 256, and the iOS bridge
- *   forwards it past its context window.
- * - A registered `maxOutputTokens` below 8192 lowers the default to it.
- * - Anthropic gets no default. Adaptive thinking spends max_tokens, so it
- *   would share the 8192 with the answer, and it is not the planner's to
- *   predict: an effort setting turns it on, claude-opus-5-5 and claude-fable-5
- *   always think adaptively and turn an `ANTHROPIC_COT_BUDGET` into adaptive
- *   thinking, and the model id is resolved inside plugin-anthropic. An
- *   `ANTHROPIC_MAX_OUTPUT_TOKENS` below 8192 would also make the plugin reject
- *   the explicit cap before dispatch.
- *
- * A host opts out with `ELIZA_PLANNER_MAX_TOKENS=model`: no attempt gets the
- * default, and a runaway then runs to the model's own output limit with no
- * re-send.
- */
-function plannerDefaultMaxTokens(
-  attempt: ModelAttemptContext,
-): number | undefined {
-  if (
-    attempt.provider === "eliza-router" ||
-    attempt.provider === "anthropic" ||
-    (attempt.metadata?.local ?? isLocalProvider(attempt.provider))
-  )
-    return undefined;
-  const registered = attempt.metadata?.maxOutputTokens;
-  return typeof registered === "number" &&
-    Number.isFinite(registered) &&
-    registered >= 1
-    ? Math.min(PLANNER_DEFAULT_MAX_TOKENS, Math.floor(registered))
-    : PLANNER_DEFAULT_MAX_TOKENS;
 }
 
 /**
@@ -5422,11 +5332,6 @@ async function dispatchPlannerModelCall(params: {
     responseSkeleton?: ResponseSkeleton;
     grammar?: string;
     spanSamplerPlan?: SpanSamplerPlan;
-    maxTokens?: number;
-    prepareModelAttempt?: (
-      attempt: ModelAttemptContext,
-      request: { maxTokens?: number },
-    ) => void;
     stream?: boolean;
     signal?: AbortSignal;
   } = {
@@ -5446,33 +5351,6 @@ async function dispatchPlannerModelCall(params: {
         : params.trajectoryId,
     }),
   };
-  const plannerCap = resolvePlannerMaxTokens(
-    params.trajectory.codingMode === true,
-  );
-  const configuredMaxTokens =
-    typeof plannerCap === "number" ? plannerCap : undefined;
-  if (configuredMaxTokens !== undefined) {
-    modelParams.maxTokens = configuredMaxTokens;
-  }
-  // The planner-owned cap carried by the latest dispatched attempt; only a
-  // generation stopped at this cap is retried.
-  let attemptMaxTokens = configuredMaxTokens;
-  if (
-    plannerCap === undefined &&
-    params.trajectory.codingMode !== true &&
-    params.allowReplyContextProjection !== true
-  ) {
-    // The runtime prepares a fresh request for every resolved registration,
-    // including failover, so each attempt gets the default its provider can
-    // honor. A cap already merged from model settings is left untouched.
-    modelParams.prepareModelAttempt = (attempt, request) => {
-      attemptMaxTokens =
-        request.maxTokens === undefined
-          ? plannerDefaultMaxTokens(attempt)
-          : undefined;
-      if (attemptMaxTokens !== undefined) request.maxTokens = attemptMaxTokens;
-    };
-  }
   modelParams.providerOptions = {
     ...modelParams.providerOptions,
     eliza: {
@@ -5774,7 +5652,6 @@ async function dispatchPlannerModelCall(params: {
     // runtime otherwise fills this from the streaming context; setting it
     // here is a no-op for adapters that ignore it.
     if (signal) modelParams.signal = signal;
-    attemptMaxTokens = configuredMaxTokens;
     return runWithStreamingContext(
       streamingContext
         ? {
@@ -5826,43 +5703,26 @@ async function dispatchPlannerModelCall(params: {
         logger: params.runtime.logger,
         providerAttributionState: params.providerAttributionState,
       });
-      // A non-coding generation that reached its output cap is usually
-      // degenerate, not long. Sample the identical request once more; a
-      // second cap or any other failure keeps the existing failure path.
-      // A temporary rate limit gets the same single re-send after a short
-      // wait, so a turn does not fail after its earlier calls were paid for.
+      // A temporary rate limit gets a single re-send after a short wait, so a
+      // turn does not fail after its earlier calls were paid for. Any other
+      // failure keeps the existing failure path. Planner rounds send no output
+      // cap, so a generation that stops at an output limit stopped at the
+      // model's own maximum: the same request would stop there again, and the
+      // turn ends instead of paying for a second runaway.
       if (retryIdx !== undefined || params.trajectory.codingMode === true)
         throw error;
       const rateLimitWaitMs = rateLimitRetryWaitMs(error);
-      if (
-        rateLimitWaitMs === undefined &&
-        (attemptMaxTokens === undefined ||
-          !isModelOutputLimitFinishReason(
-            modelOutputIncompleteEvidence(error)?.finishReason,
-          ))
-      )
-        throw error;
+      if (rateLimitWaitMs === undefined) throw error;
       streamingContext?.abortSignal?.throwIfAborted();
-      if (rateLimitWaitMs === undefined) {
-        params.runtime.logger?.warn?.(
-          {
-            src: "planner-loop",
-            iteration: params.iteration,
-            maxTokens: attemptMaxTokens,
-          },
-          "[planner-loop] planner output reached its token cap; retrying the generation once",
-        );
-      } else {
-        params.runtime.logger?.warn?.(
-          {
-            src: "planner-loop",
-            iteration: params.iteration,
-            delayMs: rateLimitWaitMs,
-          },
-          "[planner-loop] planner inference is rate limited; waiting before one re-send",
-        );
-        await sleepWithAbort(rateLimitWaitMs, streamingContext?.abortSignal);
-      }
+      params.runtime.logger?.warn?.(
+        {
+          src: "planner-loop",
+          iteration: params.iteration,
+          delayMs: rateLimitWaitMs,
+        },
+        "[planner-loop] planner inference is rate limited; waiting before one re-send",
+      );
+      await sleepWithAbort(rateLimitWaitMs, streamingContext?.abortSignal);
       retryIdx = 1;
       startedAt = Date.now();
     }

@@ -24,19 +24,17 @@ import { SENSITIVE_TEXT_REGEXPS } from "./log-redaction";
 import { detectPii } from "./pii-detectors";
 import { isRuntimeAbortSignal } from "./runtime-abort-signal";
 
-export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED";
 /**
- * Keeps a value's reference the same in every turn of one conversation, so text
- * an earlier turn sent stays byte-identical and a provider can reuse the prompt
- * prefix. A request with a user message then carries the same reference
- * guidance in its system prompt every time, and the kinds of its contact
- * references follow its newest user message. With PII swap on, a value's
- * pseudonym is kept for the conversation too. A host turns this on; the
- * default draws a fresh nonce and pseudonym salt per session and lists the
- * kinds in the system prompt.
+ * Turns secret swap on. A value's reference then stays the same in every turn
+ * of one conversation, so text an earlier turn sent stays byte-identical and a
+ * provider can reuse the prompt prefix. A request with a user message carries
+ * the same reference guidance in its system prompt every time, and the kinds of
+ * its contact references follow its newest user message. With PII swap on, a
+ * value's pseudonym is kept for the conversation too. A call outside a
+ * conversation draws a fresh nonce and pseudonym salt and lists the kinds in
+ * the system prompt.
  */
-export const SECRET_SWAP_STABLE_REFERENCES_SETTING =
-	"ELIZA_SECRET_SWAP_STABLE_REFERENCES";
+export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED";
 export const SECRET_SWAP_EXEMPT_VALUES_SETTING =
 	"ELIZA_SECRET_SWAP_EXEMPT_VALUES";
 
@@ -129,7 +127,8 @@ const PLACEHOLDER_PATTERN =
  * (`__ELIZA_SECRET_<nonce>_<n>__`). Without it, a user message or model output
  * could contain a literal `__ELIZA_SECRET_1__` that collides with a real
  * mapping, hijacking restore to leak the secret into an unintended position —
- * the nonce makes placeholders unforgeable and unguessable per turn.
+ * the nonce makes placeholders unforgeable and unguessable; inside a conversation
+ * they stay the same from turn to turn, and outside one they are fresh per call.
  */
 /** A fresh key for stable references. The host keeps it in memory only. */
 export function createSecretSwapStableKey(): string {

@@ -8,7 +8,6 @@ import {
   isDeliveredNavigationOnlyTurn,
   requiredViewNavigationStatus,
 } from "./nav-evaluator-eligibility";
-import { EVALUATOR_MAX_TOKENS_ENV, hostOutputCap } from "./output-cap.ts";
 import { recordGatedEvaluationStage } from "./record-gated-evaluation";
 import {
   applyTypedReadReply,
@@ -168,28 +167,17 @@ const EVALUATOR_ENVELOPE_KEYS = new Set([
 ]);
 
 /**
- * Whether the provider reports an incomplete evaluator result. Core does not
- * impose an evaluator output cap; a provider length stop is therefore a typed
- * failure rather than a partial envelope that may be parsed as a decision.
+ * Whether the provider reports an incomplete evaluator result. The evaluator
+ * sends no output cap, so a provider length stop is the model's own maximum
+ * and a typed failure rather than a partial envelope that may be parsed as a
+ * decision.
  */
 export function evaluatorHitCompletionLimit(
   raw: EvaluatorModelResult,
-  requestedMaxTokens?: number,
 ): boolean {
   if (typeof raw === "string") return false;
-  const finishReason = raw.finishReason?.toLowerCase() ?? "";
-  if (
-    /(?:^|[^a-z0-9])(?:length|max(?:imum)?(?:[-_\s]completion)?[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)(?:$|[^a-z0-9])/u.test(
-      finishReason,
-    )
-  ) {
-    return true;
-  }
-  return (
-    requestedMaxTokens !== undefined &&
-    typeof raw.usage?.completionTokens === "number" &&
-    Number.isFinite(raw.usage.completionTokens) &&
-    raw.usage.completionTokens >= requestedMaxTokens
+  return /(?:^|[^a-z0-9])(?:length|max(?:imum)?(?:[-_\s]completion)?[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)(?:$|[^a-z0-9])/u.test(
+    raw.finishReason?.toLowerCase() ?? "",
   );
 }
 
@@ -1447,10 +1435,8 @@ async function runEvaluatorWithSelectedModel(
             }
           : undefined,
         () => {
-          const hostCap = hostOutputCap(EVALUATOR_MAX_TOKENS_ENV);
           const modelRequest = {
             ...(model ? { model } : {}),
-            ...(hostCap === undefined ? {} : { maxTokens: hostCap }),
             messages: callInput.messages,
             responseSchema,
             promptSegments: callInput.promptSegments,

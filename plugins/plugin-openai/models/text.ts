@@ -2630,8 +2630,11 @@ function isProviderToolCallParseFailure(error: unknown): boolean {
  * bucket further and delays failover. A runtime never inherits another
  * runtime's cooldown. Endpoint, credential and model each retain independent
  * buckets, so interleaved credentials never erase another account's hold.
- * Entries expire at the provider's Retry-After, or sooner where the host
- * capped the hold (rateLimitMaxHoldMs), and never block another model.
+ * Entries expire at the provider's Retry-After (on direct Cerebras, after
+ * {@link RATE_LIMIT_MAX_HOLD_MS} if that is sooner), and never block
+ * another model. A request refused by a hold still reports the provider's
+ * whole remaining delay, so background work scheduled from it waits for the
+ * window the provider stated.
  */
 const rateLimitCooldowns = new WeakMap<
   IAgentRuntime,
@@ -2651,25 +2654,22 @@ class ProviderRateLimitCooldownError extends Error {
 }
 
 /**
- * The longest a rate-limited model is held, where the host sets
- * `OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS` (alias
- * `CEREBRAS_RATE_LIMIT_MAX_HOLD_SECONDS`). A provider's Retry-After can be far
- * longer than its limit needs. Cerebras refills a per-minute allowance all the
- * time and does not charge a refused request: three requests it refused with
- * Retry-After 59 were admitted 5, 14 and 27 seconds later. Holding the model
- * for the stated minute fails every request made in it. Unset, blank or not a
- * positive number keeps the provider's whole delay.
+ * The longest a rate-limited model is held locally on the direct Cerebras route;
+ * every other route holds it for the provider's whole Retry-After, because a
+ * provider such as OpenAI counts refused requests against its limit. Cerebras's
+ * Retry-After is far longer than its limit needs. Cerebras
+ * refills a per-minute allowance all the time and does not charge a refused
+ * request: three requests it refused with Retry-After 59 were admitted 5, 14
+ * and 27 seconds later. Holding the model for the stated minute failed every
+ * request made in it, the runtime's own re-send included. The runtime waits at
+ * most 5 s before its one re-send of a refused chat request (plugin-assistant
+ * `RATE_LIMIT_RETRY_MAX_WAIT_MS`, core `RATE_LIMIT_RESEND_MAX_WAIT_MS`), so the
+ * hold ends before that re-send and the re-send reaches the provider.
  */
-function rateLimitMaxHoldMs(runtime: IAgentRuntime): number | undefined {
-  const raw =
-    getSetting(runtime, "OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS") ??
-    getSetting(runtime, "CEREBRAS_RATE_LIMIT_MAX_HOLD_SECONDS");
-  const seconds = raw?.trim() ? Number(raw) : Number.NaN;
-  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
-}
+export const RATE_LIMIT_MAX_HOLD_MS = 4_000;
 
-/** A cooldown map's cap on one hold, as its runtime's host last set it. */
-const rateLimitHoldCaps = new WeakMap<Map<string, number>, number>();
+/** When each held model's provider window resets, as its Retry-After stated. */
+const providerWindowResets = new WeakMap<Map<string, number>, Map<string, number>>();
 
 function runtimeRateLimitCooldowns(
   runtime: IAgentRuntime,
@@ -2694,21 +2694,24 @@ function runtimeRateLimitCooldowns(
   for (const [model, until] of models) {
     if (until <= Date.now()) models.delete(model);
   }
-  const maxHoldMs = rateLimitMaxHoldMs(runtime);
-  if (maxHoldMs === undefined) rateLimitHoldCaps.delete(models);
-  else rateLimitHoldCaps.set(models, maxHoldMs);
+  const resets = providerWindowResets.get(models);
+  for (const [model, resetAt] of resets ?? []) {
+    if (resetAt <= Date.now()) resets?.delete(model);
+  }
   return models;
 }
 
 function assertModelNotCoolingDown(models: Map<string, number>, modelName: string): void {
   const until = models.get(modelName);
   if (until === undefined) return;
-  const remaining = until - Date.now();
+  const now = Date.now();
+  const remaining = until - now;
   if (remaining <= 0) {
     models.delete(modelName);
     return;
   }
-  throw new ProviderRateLimitCooldownError(modelName, remaining);
+  const resetAt = providerWindowResets.get(models)?.get(modelName) ?? until;
+  throw new ProviderRateLimitCooldownError(modelName, Math.max(remaining, resetAt - now));
 }
 
 function isModelCoolingDown(models: Map<string, number>, modelName: string): boolean {
@@ -2741,7 +2744,7 @@ function resolveFallbackModelName(
  * The concrete model a request should use: the primary unless it is cooling
  * down after a 429 and a distinct fallback is configured and not itself
  * cooling down. Every slot keeps its primary model; fallback applies only
- * for the duration of the provider's Retry-After.
+ * while the primary is held locally.
  */
 function selectRequestModelName(
   models: Map<string, number>,
@@ -2775,7 +2778,8 @@ function stampStreamError(
 function noteRateLimitCooldown(
   models: Map<string, number>,
   modelName: string,
-  error: unknown
+  error: unknown,
+  boundHold: boolean
 ): void {
   const status =
     (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
@@ -2783,13 +2787,20 @@ function noteRateLimitCooldown(
   if (status !== 429 || isPermanentQuotaError(error)) return;
   const retryAfterMs = providerRetryAfterMs(error);
   if (retryAfterMs === undefined || retryAfterMs <= TRANSIENT_LANE_MAX_BACKOFF_MS) return;
-  // The cooldown is a timestamp, not an awaited retry. Preserve the provider's
-  // whole delay so a later alias cannot resend before the stated reset, unless
-  // the host capped the hold for a provider whose delay overstates its limit.
-  const holdMs = Math.min(retryAfterMs, rateLimitHoldCaps.get(models) ?? retryAfterMs);
+  // The cooldown is a timestamp, not an awaited retry. It keeps a sibling or
+  // fallback alias from re-sending at once, and ends before the runtime's own
+  // re-send so a provider whose delay overstates its limit is asked again.
+  const holdMs = boundHold ? Math.min(retryAfterMs, RATE_LIMIT_MAX_HOLD_MS) : retryAfterMs;
   const untilMs = Date.now() + holdMs;
   const existing = models.get(modelName) ?? 0;
   if (untilMs > existing) models.set(modelName, untilMs);
+  let resets = providerWindowResets.get(models);
+  if (!resets) {
+    resets = new Map();
+    providerWindowResets.set(models, resets);
+  }
+  const resetAt = Date.now() + retryAfterMs;
+  if (resetAt > (resets.get(modelName) ?? 0)) resets.set(modelName, resetAt);
   logger.warn(
     {
       src: "plugin:openai",
@@ -2797,7 +2808,7 @@ function noteRateLimitCooldown(
       retryAfterSeconds: retryAfterMs / 1000,
       ...(holdMs < retryAfterMs ? { heldSeconds: holdMs / 1000 } : {}),
     },
-    "[OpenAI] provider rate limit reached; holding this model until the window resets"
+    "[OpenAI] provider rate limit reached; holding this model locally for a moment"
   );
 }
 
@@ -3448,6 +3459,9 @@ async function generateTextAtEndpoint(
   // Keep retries and their failures bound to this call's endpoint/credential,
   // even if runtime settings change while the HTTP request is in flight.
   const modelCooldowns = runtimeRateLimitCooldowns(runtime, endpoint?.baseURL, endpoint?.apiKey);
+  // Only direct Cerebras is measured to admit a refused request seconds later; other providers
+  // (OpenAI counts refused requests against the limit) keep the whole stated window.
+  const boundRateLimitHold = !endpoint && isCerebrasMode(runtime);
   const primaryModelName =
     endpoint?.modelName ?? resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
   const fallbackModelName = endpoint
@@ -3880,7 +3894,7 @@ async function generateTextAtEndpoint(
             details.response = stalledOutput.text;
             stampStreamError(runtime, details, stalledOutput.error);
           }
-          noteRateLimitCooldown(modelCooldowns, modelName, error);
+          noteRateLimitCooldown(modelCooldowns, modelName, error, boundRateLimitHold);
           throw stalledOutput?.error ?? error;
         });
         const text = restoreResponseText(result.text);
@@ -3997,14 +4011,14 @@ async function generateTextAtEndpoint(
           ...generateParams,
           onError: ({ error }: { error: unknown }) => {
             capturedStreamError = error;
-            noteRateLimitCooldown(modelCooldowns, modelName, error);
+            noteRateLimitCooldown(modelCooldowns, modelName, error, boundRateLimitHold);
           },
           ...(attemptTiming ? { onChunk: attemptTiming.onChunk, includeRawChunks: true } : {}),
         });
       } catch (error) {
         // error-policy:J2 retain the provider failure and its cooldown even
         // when dispatch rejects before exposing an iterable or onError event.
-        noteRateLimitCooldown(modelCooldowns, modelName, error);
+        noteRateLimitCooldown(modelCooldowns, modelName, error, boundRateLimitHold);
         throw error;
       }
       // Companion promises can reject at the same instant as the first stream
@@ -4034,7 +4048,7 @@ async function generateTextAtEndpoint(
         // rethrown by the stream boundary when recovery is not permitted.
         firstItem = undefined;
         if (capturedStreamError === undefined) {
-          noteRateLimitCooldown(modelCooldowns, modelName, error);
+          noteRateLimitCooldown(modelCooldowns, modelName, error, boundRateLimitHold);
         }
         capturedStreamError ??= error;
       }
@@ -4286,7 +4300,7 @@ async function generateTextAtEndpoint(
           // error so `finally` can finalize telemetry, then rethrow it below.
           streamIterationError = error;
           if (error !== capturedStreamError) {
-            noteRateLimitCooldown(modelCooldowns, modelName, error);
+            noteRateLimitCooldown(modelCooldowns, modelName, error, boundRateLimitHold);
           }
         } finally {
           await finalizeStreamingTelemetry(streamIterationError);
@@ -4298,7 +4312,7 @@ async function generateTextAtEndpoint(
             companionStreamError
         );
         if (streamError && !streamIterationError && !capturedStreamError) {
-          noteRateLimitCooldown(modelCooldowns, modelName, streamError);
+          noteRateLimitCooldown(modelCooldowns, modelName, streamError, boundRateLimitHold);
         }
         settleStructuredText(streamError);
         if (streamError) throw streamError;
@@ -4337,7 +4351,7 @@ async function generateTextAtEndpoint(
       onExhausted,
       beforeAttempt: () => assertPreparedAttempt(details),
     }).catch((error: unknown) => {
-      noteRateLimitCooldown(modelCooldowns, modelName, error);
+      noteRateLimitCooldown(modelCooldowns, modelName, error, boundRateLimitHold);
       if (NoObjectGeneratedError.isInstance(error)) {
         // generateText parses `output` itself and throws before this lane sees
         // the result. The provider billed the answer anyway: report its usage,

@@ -1,8 +1,8 @@
 /**
  * A fresh salt per turn gave a name or address a new pseudonym on every turn,
  * so a line of history was sent with different bytes each time and a
- * provider's prompt cache missed from that message on. A host that keeps
- * references stable for a conversation keeps its pseudonyms too.
+ * provider's prompt cache missed from that message on. With secret swap on,
+ * references stay stable for a conversation and its pseudonyms do too.
  */
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
@@ -54,11 +54,11 @@ async function sentHistoryLine(
 	return sent;
 }
 
-it("keeps a value's pseudonym for a conversation when the host keeps references stable", async () => {
+it("keeps a value's pseudonym for a conversation when secret swap is on", async () => {
 	const [first, again, otherRoom, noRoom, noRoomAgain] = await sentHistoryLine(
 		{
 			ELIZA_PII_SWAP_ENABLED: "true",
-			ELIZA_SECRET_SWAP_STABLE_REFERENCES: "true",
+			ELIZA_SECRET_SWAP_ENABLED: "true",
 		},
 		["room-a", "room-a", "room-b", undefined, undefined],
 	);
@@ -71,7 +71,7 @@ it("keeps a value's pseudonym for a conversation when the host keeps references 
 	expect(noRoomAgain).not.toBe(noRoom);
 });
 
-it("draws new pseudonyms every turn unless the host turns stable references on", async () => {
+it("draws new pseudonyms every turn when only PII swap is on", async () => {
 	const [first, again] = await sentHistoryLine(
 		{ ELIZA_PII_SWAP_ENABLED: "true" },
 		["room-a", "room-a"],

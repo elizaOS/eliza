@@ -352,12 +352,13 @@ describe("Stage 1 rate-limit re-send through model dispatch", () => {
     for (const dispatcher of dispatchers.splice(0)) await dispatcher.stop();
   });
 
-  it("streams the reply once, from the re-sent request only, under the host's cap", async () => {
+  it("streams the reply once, from the re-sent request only, with no output cap", async () => {
     const dispatcher = new AgentRuntime({
       character: {
         name: "stage1-rate-limit-resend",
         bio: [],
-        settings: { RESPONSE_HANDLER_MAX_TOKENS: "2048" },
+        // A former cap setting: ignored, so neither attempt sends a cap.
+        settings: { RESPONSE_HANDLER_MAX_TOKENS: "16" },
       },
       logLevel: "fatal",
     });
@@ -435,9 +436,9 @@ describe("Stage 1 rate-limit re-send through model dispatch", () => {
 
     expect(received).toHaveLength(2);
     expect(JSON.parse(received[0] as string)).toMatchObject({
-      maxTokens: 2048,
-      omitMaxTokens: false,
+      omitMaxTokens: true,
     });
+    expect(JSON.parse(received[0] as string)).not.toHaveProperty("maxTokens");
     expect(received[1]).toBe(received[0]);
     // Nothing of the refused attempt reached the stream, and the re-sent
     // attempt's text arrives once, growing, under a single revision.

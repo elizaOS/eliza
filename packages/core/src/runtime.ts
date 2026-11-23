@@ -88,7 +88,6 @@ import {
 	pseudonymSaltFromStableKey,
 	SECRET_SWAP_ENABLED_SETTING,
 	SECRET_SWAP_EXEMPT_VALUES_SETTING,
-	SECRET_SWAP_STABLE_REFERENCES_SETTING,
 	SecretSwapSession,
 } from "./security/secret-swap";
 import { deriveKnownSecrets } from "./security/secrets";
@@ -847,23 +846,15 @@ export class AgentRuntime implements IAgentRuntime {
 
 	/**
 	 * The key that keeps a conversation's references and pseudonyms the same
-	 * across its turns, when the host turned stable references on. A call outside
-	 * a conversation gets none: there is no later turn whose prompt it could
-	 * match.
+	 * across its turns whenever secret swap is enabled, so an earlier turn's text
+	 * is resent byte for byte and a provider can reuse the prompt prefix. A call
+	 * outside a conversation gets none: there is no later turn whose prompt it
+	 * could match. The key lives only in this runtime's memory, so a fresh
+	 * process draws a fresh one, and restore resolves only references the
+	 * session itself wrote.
 	 */
 	private swapStableKey(conversation?: string): string | undefined {
-		if (
-			conversation === undefined ||
-			!(
-				parseBooleanValue(
-					this.getSetting(SECRET_SWAP_STABLE_REFERENCES_SETTING),
-				) ??
-				parseBooleanValue(
-					swapEnvSetting(SECRET_SWAP_STABLE_REFERENCES_SETTING),
-				) ??
-				false
-			)
-		)
+		if (conversation === undefined || !this.isSecretSwapEnabled())
 			return undefined;
 		this.secretSwapStableKey ??= createSecretSwapStableKey();
 		return `${this.secretSwapStableKey}:${conversation}`;

@@ -6,12 +6,15 @@
 import { createServer, type Server } from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { handleResponseHandler, handleTextSmall } from "../models/text";
+import { RATE_LIMIT_RETRY_MAX_WAIT_MS } from "../../plugin-assistant/src/runtime/evaluator.ts";
+import { handleResponseHandler, handleTextSmall, RATE_LIMIT_MAX_HOLD_MS } from "../models/text";
 
 let server: Server;
 let baseUrl: string;
 let requests = 0;
 let permanent = false;
+/** The provider's delay headers on each refusal. */
+let delayHeaders: Record<string, string> = { "retry-after": "60" };
 
 beforeAll(async () => {
   server = createServer((request, response) => {
@@ -20,7 +23,7 @@ beforeAll(async () => {
       requests++;
       response.writeHead(429, {
         "content-type": "application/json",
-        "retry-after": "60",
+        ...delayHeaders,
       });
       response.end(
         JSON.stringify({
@@ -47,6 +50,7 @@ afterAll(async () => {
 beforeEach(() => {
   requests = 0;
   permanent = false;
+  delayHeaders = { "retry-after": "60" };
   vi.stubEnv("ELIZA_PROVIDER", "cerebras");
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
   vi.stubEnv("OPENAI_API_KEY", "loopback-only-key");
@@ -174,53 +178,44 @@ describe("rate-limit cooldown at the HTTP boundary", () => {
 
   // Measured on Cerebras, whose per-minute allowance refills all the time: three
   // requests refused with Retry-After 59 were admitted 5, 14 and 27 seconds
-  // later, re-sent each second. A host that knows this caps the hold.
-  it.each(["OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS", "CEREBRAS_RATE_LIMIT_MAX_HOLD_SECONDS"])(
-    "holds a model no longer than the host's %s",
-    async (setting) => {
-      vi.stubEnv(setting, "5");
-      const agent = runtime();
-      const now = Date.now();
-      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
-      const invoke = () =>
-        handleTextSmall(agent, { prompt: "Probe", model: "qwen-3.8-27b", stream: false });
-      await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
-      clock.mockReturnValue(now + 4_999);
-      await expect(invoke()).rejects.toMatchObject({ name: "ProviderRateLimitCooldownError" });
-      expect(requests).toBe(1);
-      // The provider said 60 seconds; the request goes out again after five.
-      clock.mockReturnValue(now + 5_001);
-      await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
-      expect(requests).toBe(2);
-    }
-  );
-
-  it.each(["", "soon", "0", "-5"])(
-    "keeps the provider's whole delay when the cap is %j",
-    async (value) => {
-      vi.stubEnv("OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS", value);
-      const agent = runtime();
-      const now = Date.now();
-      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
-      const invoke = () =>
-        handleTextSmall(agent, { prompt: "Probe", model: "qwen-3.8-27b", stream: false });
-      await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
-      clock.mockReturnValue(now + 59_000);
-      await expect(invoke()).rejects.toMatchObject({ name: "ProviderRateLimitCooldownError" });
-      expect(requests).toBe(1);
-    }
-  );
-
-  it("never holds a model longer than the provider asked", async () => {
+  // later. The hold ends before the runtime's own 5 s re-send.
+  it("holds a model for at most 4 s whatever the provider's delay or the former settings", async () => {
     vi.stubEnv("OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS", "600");
+    vi.stubEnv("CEREBRAS_RATE_LIMIT_MAX_HOLD_SECONDS", "600");
     const agent = runtime();
     const now = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(now);
     const invoke = () =>
       handleTextSmall(agent, { prompt: "Probe", model: "qwen-3.8-27b", stream: false });
     await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
-    clock.mockReturnValue(now + 60_001);
+    clock.mockReturnValue(now + RATE_LIMIT_MAX_HOLD_MS - 1);
+    await expect(invoke()).rejects.toMatchObject({ name: "ProviderRateLimitCooldownError" });
+    expect(requests).toBe(1);
+    // The provider said 60 seconds; the request goes out again after four.
+    clock.mockReturnValue(now + RATE_LIMIT_MAX_HOLD_MS + 1);
     await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
     expect(requests).toBe(2);
+  });
+
+  it("ends the hold before the runtime's rate-limit re-send", () => {
+    expect(RATE_LIMIT_MAX_HOLD_MS).toBe(4_000);
+    expect(RATE_LIMIT_MAX_HOLD_MS).toBeLessThan(RATE_LIMIT_RETRY_MAX_WAIT_MS);
+  });
+
+  it("never holds a model longer than the provider asked", async () => {
+    delayHeaders = { "retry-after-ms": "3500" };
+    const agent = runtime();
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    const invoke = () =>
+      handleTextSmall(agent, { prompt: "Probe", model: "qwen-3.8-27b", stream: false });
+    await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
+    const sent = requests;
+    clock.mockReturnValue(now + 3_499);
+    await expect(invoke()).rejects.toMatchObject({ name: "ProviderRateLimitCooldownError" });
+    expect(requests).toBe(sent);
+    clock.mockReturnValue(now + 3_501);
+    await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
+    expect(requests).toBeGreaterThan(sent);
   });
 });

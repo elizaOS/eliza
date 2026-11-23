@@ -235,17 +235,18 @@ it("sends the same tool definitions on every turn and lists only the contacts th
 		tools(),
 	]);
 	// The copies of the definitions add no contact and stay as written, like
-	// the definitions, whatever the conversation carries.
-	expect(sent[0].system).toBe("Be brief.");
+	// the definitions, whatever the conversation carries. References are stable
+	// for the conversation, so the system prompt is the same on every turn.
+	expect(new Set(sent.map((request) => request.system)).size).toBe(1);
+	expect(sent[0].messages[0].content).toBe("what can you do?");
 	for (const request of sent)
 		expect(request.providerOptions.eliza.plannerActionSchemas).toEqual(tools());
 	// One contact in each later request, the number the owner gave, even when
 	// it is the number the tool uses as its example.
 	for (const request of sent.slice(1)) {
 		expect(request.messages[0].content).toMatch(
-			/^call __ELIZA_CONTACT_[0-9a-f]{16}_\d+__$/,
+			/^call (__ELIZA_CONTACT_[0-9a-f]{16}_\d+__)\n\nCurrent contact reference kinds: \1: phone\.$/,
 		);
-		expect(request.system?.match(/__ELIZA_CONTACT_/g)).toHaveLength(2);
 	}
 });
 
@@ -257,10 +258,7 @@ it("lists no contact for a tool's example the model repeated in a reply", async 
 		character: {
 			name: "A",
 			bio: "t",
-			settings: {
-				ELIZA_SECRET_SWAP_ENABLED: "true",
-				ELIZA_SECRET_SWAP_STABLE_REFERENCES: "true",
-			},
+			settings: { ELIZA_SECRET_SWAP_ENABLED: "true" },
 		} as Character,
 		logLevel: "fatal",
 	});

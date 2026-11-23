@@ -4,8 +4,10 @@
  * re-send the provider never answers fails the call within that limit instead
  * of holding the turn until the caller's chat deadline, and is not re-sent. A
  * non-streamed attempt gets its headers only when generation ends, so the limit
- * never cuts it; the caller's signal bounds it. Drives the real text handlers
- * and AI SDK against a local provider.
+ * never cuts it; the caller's signal bounds it. The limit is a fixed 60 s on
+ * the direct Cerebras route and there is no setting for it; cases that reach
+ * it run on a fake clock. Drives the real text handlers and AI SDK against a
+ * local provider.
  */
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -41,9 +43,10 @@ interface Script {
   delayMs?: number;
   /** "chunked": how many pieces the answer arrives in. */
   pieces?: number;
-  /** OPENAI_ATTEMPT_IDLE_TIMEOUT_SECONDS; "" keeps the route's default. */
-  idleSeconds?: string;
 }
+
+/** The direct Cerebras route's fixed idle limit. */
+const IDLE_MS = 60_000;
 
 let server: Server | undefined;
 afterEach(async () => {
@@ -148,7 +151,6 @@ async function provider(script: Script) {
   vi.stubEnv("OPENAI_BASE_URL", baseURL);
   vi.stubEnv("CEREBRAS_API_KEY", "");
   vi.stubEnv("ELIZA_PROVIDER", "cerebras");
-  vi.stubEnv("OPENAI_ATTEMPT_IDLE_TIMEOUT_SECONDS", script.idleSeconds ?? "1");
   for (const slot of [
     "OPENAI_SMALL_MODEL",
     "OPENAI_LARGE_MODEL",
@@ -228,6 +230,9 @@ async function runOnFakeClock(work: Promise<unknown>, limitMs: number) {
   return settled ? fakeMs : undefined;
 }
 
+/** Fake setTimeout only: the provider's delays and the idle limit share it. */
+const useFakeClock = () => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
 describe("idle-bounded streamed attempts (planner live stream)", () => {
   it("re-sends a failed attempt and returns the answered re-send", async () => {
     const test = await provider({ firstFails: true, answer: "answer" });
@@ -238,92 +243,122 @@ describe("idle-bounded streamed attempts (planner live stream)", () => {
 
   it("fails at the idle limit when headers never come, and does not re-send", async () => {
     const test = await provider({ answer: "silent" });
-    const result = await call(test.runtime, "stream", AbortSignal.timeout(10_000));
+    useFakeClock();
+    const work = call(test.runtime, "stream", new AbortController().signal);
+    const settledAtMs = await runOnFakeClock(work, IDLE_MS + 30_000);
+    const result = await work;
     expect(idleCode(result.error)).toBe("MODEL_ATTEMPT_IDLE_TIMEOUT");
-    expect(result.elapsedMs).toBeGreaterThanOrEqual(900);
-    expect(result.elapsedMs).toBeLessThan(3_000);
+    expect(settledAtMs).toBeGreaterThanOrEqual(IDLE_MS);
+    expect(settledAtMs).toBeLessThanOrEqual(IDLE_MS + 1_000);
     expect(test.requests()).toBe(1);
-  }, 20_000);
+  }, 60_000);
 
   it("fails the call at the idle limit when the re-send is never answered", async () => {
     const test = await provider({ firstFails: true, answer: "silent" });
-    const result = await call(test.runtime, "stream", AbortSignal.timeout(10_000));
+    useFakeClock();
+    const work = call(test.runtime, "stream", new AbortController().signal);
+    const settledAtMs = await runOnFakeClock(work, IDLE_MS + 30_000);
+    const result = await work;
     expect(idleCode(result.error)).toBe("MODEL_ATTEMPT_IDLE_TIMEOUT");
-    // One prompt re-send plus one idle second, far inside the caller's 10 s deadline.
-    expect(result.elapsedMs).toBeLessThan(5_000);
+    // One prompt re-send plus one idle limit.
+    expect(settledAtMs).toBeGreaterThanOrEqual(IDLE_MS);
+    expect(settledAtMs).toBeLessThan(IDLE_MS + 5_000);
     expect(test.requests()).toBe(2);
-  }, 20_000);
+  }, 60_000);
 
   it("waits for a slow first byte that comes inside the idle limit", async () => {
-    const test = await provider({ firstFails: true, answer: "slow", delayMs: 400 });
-    const result = await call(test.runtime, "stream", AbortSignal.timeout(10_000));
+    const test = await provider({ firstFails: true, answer: "slow", delayMs: IDLE_MS - 5_000 });
+    useFakeClock();
+    const work = call(test.runtime, "stream", new AbortController().signal);
+    expect(await runOnFakeClock(work, IDLE_MS + 30_000)).toBeDefined();
+    const result = await work;
     expect(result.text).toBe("Recovered");
     expect(test.requests()).toBe(2);
-  }, 20_000);
+  }, 60_000);
 
   it("fails the call when a slow first byte outlasts the idle limit", async () => {
-    const test = await provider({ firstFails: true, answer: "slow", delayMs: 3_000 });
-    const result = await call(test.runtime, "stream", AbortSignal.timeout(10_000));
+    const test = await provider({ firstFails: true, answer: "slow", delayMs: IDLE_MS + 20_000 });
+    useFakeClock();
+    const work = call(test.runtime, "stream", new AbortController().signal);
+    const settledAtMs = await runOnFakeClock(work, IDLE_MS + 30_000);
+    const result = await work;
     expect(idleCode(result.error)).toBe("MODEL_ATTEMPT_IDLE_TIMEOUT");
-    expect(result.elapsedMs).toBeLessThan(3_000);
+    expect(settledAtMs).toBeLessThan(IDLE_MS + 5_000);
     expect(test.requests()).toBe(2);
-  }, 20_000);
+  }, 60_000);
 
   it("fails the call when a re-send sends headers and then no body", async () => {
     const test = await provider({ firstFails: true, answer: "headers-only" });
-    const result = await call(test.runtime, "stream", AbortSignal.timeout(10_000));
+    useFakeClock();
+    const work = call(test.runtime, "stream", new AbortController().signal);
+    const settledAtMs = await runOnFakeClock(work, IDLE_MS + 30_000);
+    const result = await work;
     expect(idleCode(result.error)).toBe("MODEL_ATTEMPT_IDLE_TIMEOUT");
-    expect(result.elapsedMs).toBeLessThan(5_000);
+    expect(settledAtMs).toBeLessThan(IDLE_MS + 5_000);
     expect(test.requests()).toBe(2);
-  }, 20_000);
+  }, 60_000);
 
-  it("keeps a body whose chunks arrive every 0.5 s for 3 s with a 1 s limit", async () => {
-    const test = await provider({ answer: "chunked", pieces: 6, delayMs: 500 });
-    const result = await call(test.runtime, "stream", AbortSignal.timeout(10_000));
+  it("keeps a body whose chunks arrive every 30 s for 3 minutes", async () => {
+    const test = await provider({ answer: "chunked", pieces: 6, delayMs: IDLE_MS / 2 });
+    useFakeClock();
+    const work = call(test.runtime, "stream", new AbortController().signal);
+    const settledAtMs = await runOnFakeClock(work, 6 * IDLE_MS);
+    const result = await work;
     expect(result.error).toBeUndefined();
     expect(result.text).toBe("123456");
-    expect(result.elapsedMs).toBeGreaterThanOrEqual(2_500);
+    expect(settledAtMs).toBeGreaterThanOrEqual(5 * (IDLE_MS / 2));
     expect(test.requests()).toBe(1);
-  }, 20_000);
+  }, 60_000);
 
   it("does not count the consumer's pauses between reads", async () => {
-    const test = await provider({ answer: "chunked", pieces: 4, delayMs: 300 });
-    const result = await call(test.runtime, "stream", AbortSignal.timeout(15_000), 1_500);
+    const test = await provider({ answer: "chunked", pieces: 4, delayMs: IDLE_MS / 5 });
+    useFakeClock();
+    // Each pause is longer than the limit, while the provider's gaps are a fifth of it.
+    const pauseMs = IDLE_MS + 30_000;
+    const work = call(test.runtime, "stream", new AbortController().signal, pauseMs);
+    const settledAtMs = await runOnFakeClock(work, 6 * pauseMs);
+    const result = await work;
     expect(result.error).toBeUndefined();
     expect(result.text).toBe("1234");
-    expect(result.elapsedMs).toBeGreaterThanOrEqual(4 * 1_500);
+    expect(settledAtMs).toBeGreaterThanOrEqual(4 * pauseMs);
     expect(test.requests()).toBe(1);
-  }, 30_000);
+  }, 60_000);
 
   it("does not count a direct reader's pauses between the wrapper's reads", async () => {
-    const test = await provider({ answer: "chunked", pieces: 4, delayMs: 300 });
+    const test = await provider({ answer: "chunked", pieces: 4, delayMs: IDLE_MS / 5 });
     createOpenAIClient(test.runtime);
     const send = clientFetch.latest;
     if (!send) throw new Error("the client did not hand the AI SDK a fetch");
-    const response = await send(`${test.baseURL}/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model: "qwen-3.8-27b", stream: true, messages: [] }),
-    });
-    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
-    const decoder = new TextDecoder();
-    let text = "";
-    const startedAt = performance.now();
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) break;
-      text += decoder.decode(next.value, { stream: true });
-      // Longer than the 1 s limit, while the provider's gaps are 0.3 s.
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
-    }
-    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(1_500);
+    useFakeClock();
+    const pauseMs = IDLE_MS + 30_000;
+    const read = (async () => {
+      const response = await send(`${test.baseURL}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "qwen-3.8-27b", stream: true, messages: [] }),
+      });
+      const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+      const decoder = new TextDecoder();
+      let text = "";
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) break;
+        text += decoder.decode(next.value, { stream: true });
+        // Longer than the limit, while the provider's gaps are a fifth of it.
+        await new Promise((resolve) => setTimeout(resolve, pauseMs));
+      }
+      return text;
+    })();
+    const settledAtMs = await runOnFakeClock(read, 8 * pauseMs);
+    const text = await read;
+    expect(settledAtMs).toBeGreaterThanOrEqual(pauseMs);
     for (const piece of ["1", "2", "3", "4"]) expect(text).toContain(`"content":"${piece}"`);
     expect(text).toContain("data: [DONE]");
     expect(test.requests()).toBe(1);
-  }, 30_000);
+  }, 60_000);
 
   it("ends a silent re-send with the caller's own abort before the idle limit", async () => {
-    const test = await provider({ firstFails: true, answer: "silent", idleSeconds: "30" });
+    const test = await provider({ firstFails: true, answer: "silent" });
     const reason = new Error("caller deadline");
     const owner = new AbortController();
     setTimeout(() => owner.abort(reason), 1_500);
@@ -343,14 +378,17 @@ describe("non-streamed attempts are not idle-bounded (Stage 1 generate)", () => 
     expect(test.requests()).toBe(2);
   }, 20_000);
 
-  it("waits past the idle limit for an answer that comes only when generation ends", async () => {
-    const test = await provider({ answer: "slow", delayMs: 2_500 });
-    const result = await call(test.runtime, "generate", AbortSignal.timeout(10_000));
+  it("lets a non-streamed answer take longer than the idle limit", async () => {
+    const test = await provider({ answer: "slow", delayMs: IDLE_MS + 1_000 });
+    useFakeClock();
+    const work = call(test.runtime, "generate", new AbortController().signal);
+    const settledAtMs = await runOnFakeClock(work, IDLE_MS + 30_000);
+    const result = await work;
     expect(result.error).toBeUndefined();
     expect(result.text).toBe("Recovered");
-    expect(result.elapsedMs).toBeGreaterThanOrEqual(2_400);
+    expect(settledAtMs).toBeGreaterThanOrEqual(IDLE_MS + 1_000);
     expect(test.requests()).toBe(1);
-  }, 20_000);
+  }, 60_000);
 
   it("keeps a body whose pieces arrive every 0.5 s for 3 s", async () => {
     const test = await provider({ answer: "chunked", pieces: 6, delayMs: 500 });
@@ -372,38 +410,32 @@ describe("non-streamed attempts are not idle-bounded (Stage 1 generate)", () => 
   }, 20_000);
 });
 
-describe("direct Cerebras route defaults (fake clock)", () => {
-  it("bounds a streamed attempt at 60 s and does not re-send it", async () => {
-    const test = await provider({ answer: "silent", idleSeconds: "" });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const work = call(test.runtime, "stream", new AbortController().signal);
-    const settledAtMs = await runOnFakeClock(work, 90_000);
-    const result = await work;
-    expect(idleCode(result.error)).toBe("MODEL_ATTEMPT_IDLE_TIMEOUT");
-    expect(settledAtMs).toBeGreaterThanOrEqual(60_000);
-    expect(settledAtMs).toBeLessThanOrEqual(61_000);
-    expect(test.requests()).toBe(1);
-  }, 60_000);
+describe("the fixed limit", () => {
+  it.each(["0", "1", "600"])(
+    "ignores the former OPENAI_ATTEMPT_IDLE_TIMEOUT_SECONDS=%s",
+    async (value) => {
+      const test = await provider({ answer: "silent" });
+      vi.stubEnv("OPENAI_ATTEMPT_IDLE_TIMEOUT_SECONDS", value);
+      useFakeClock();
+      const work = call(test.runtime, "stream", new AbortController().signal);
+      const settledAtMs = await runOnFakeClock(work, IDLE_MS + 30_000);
+      const result = await work;
+      expect(idleCode(result.error)).toBe("MODEL_ATTEMPT_IDLE_TIMEOUT");
+      expect(settledAtMs).toBeGreaterThanOrEqual(IDLE_MS);
+      expect(settledAtMs).toBeLessThanOrEqual(IDLE_MS + 1_000);
+      expect(test.requests()).toBe(1);
+    },
+    60_000
+  );
 
-  it("lets a non-streamed answer take longer than 60 s", async () => {
-    const test = await provider({ answer: "slow", delayMs: 61_000, idleSeconds: "" });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const work = call(test.runtime, "generate", new AbortController().signal);
-    const settledAtMs = await runOnFakeClock(work, 90_000);
-    const result = await work;
-    expect(result.error).toBeUndefined();
-    expect(result.text).toBe("Recovered");
-    expect(settledAtMs).toBeGreaterThanOrEqual(61_000);
-    expect(test.requests()).toBe(1);
-  }, 60_000);
-
-  it("turns the bound off when OPENAI_ATTEMPT_IDLE_TIMEOUT_SECONDS is 0", async () => {
-    const test = await provider({ answer: "silent", idleSeconds: "0" });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  it("leaves a streamed attempt off the direct Cerebras route unbounded", async () => {
+    const test = await provider({ answer: "silent" });
+    vi.stubEnv("ELIZA_PROVIDER", "openai");
+    useFakeClock();
     const reason = new Error("caller deadline");
     const owner = new AbortController();
     const work = call(test.runtime, "stream", owner.signal);
-    expect(await runOnFakeClock(work, 120_000)).toBeUndefined();
+    expect(await runOnFakeClock(work, 2 * IDLE_MS)).toBeUndefined();
     owner.abort(reason);
     const result = await work;
     expect(result.error).toBe(reason);

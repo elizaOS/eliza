@@ -58,10 +58,6 @@ import {
 import { rateLimitRetryWaitMs } from "../../runtime/evaluator.ts";
 import { windowHistoryRetention } from "../../runtime/history-retention.ts";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
-import {
-  hostOutputCap,
-  STAGE1_MAX_TOKENS_ENV,
-} from "../../runtime/output-cap.ts";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
 import { isProviderToolCallParseFailure } from "../../runtime/tool-call-parse-failure.ts";
 import {
@@ -856,40 +852,17 @@ export async function generateStage1Decision(
       {}),
     thinking: "off",
   };
-  // Stage 1 packs the complete structured response and user-visible answer
-  // into one generation on every channel, so it is uncapped by default: the
-  // adapter uses the selected provider/model maximum, and an application
-  // ceiling could turn a valid long answer into an incomplete envelope. Only
-  // the non-coding planner's planning rounds take a default cap, on remote
-  // providers, after a live runaway tool call streamed 40,960 tokens (see
-  // plannerDefaultMaxTokens).
-  const stage1HostCap = hostOutputCap(STAGE1_MAX_TOKENS_ENV);
-  const stage1OutputCap: { maxTokens?: number; omitMaxTokens?: boolean } =
-    stage1HostCap === undefined
-      ? { omitMaxTokens: true }
-      : { maxTokens: stage1HostCap, omitMaxTokens: false };
   let stage1ModelParams = {
     messages: messageHandlerInput.messages,
     promptSegments: messageHandlerInput.promptSegments,
     tools: messageHandlerTools,
     toolChoice: "required" as const,
-    ...stage1OutputCap,
-    // A host bounds Stage 1 with ELIZA_STAGE1_MAX_TOKENS in its environment,
-    // or with the RESPONSE_HANDLER_MAX_TOKENS or DEFAULT_MAX_TOKENS setting,
-    // for a provider that reserves the output cap against a rate limit at
-    // admission. The runtime merges those settings under these params before
-    // each attempt; a merged cap is sent instead of omitted. A blank setting
-    // merges as 0 and stays uncapped.
-    prepareModelAttempt: (
-      _attempt: unknown,
-      request: typeof stage1OutputCap,
-    ): void => {
-      if (typeof request.maxTokens !== "number" || request.maxTokens <= 0)
-        return;
-      request.omitMaxTokens = false;
-      // Completion-limit handling compares usage against the cap that was sent.
-      stage1ModelParams.maxTokens = request.maxTokens;
-    },
+    // Stage 1 packs the complete structured response and user-visible answer
+    // into one generation on every channel, so it sends no output cap: the
+    // adapter uses the selected provider/model maximum, and an application
+    // ceiling could turn a valid long answer into an incomplete envelope. A
+    // generation that stops at that maximum gets the completion-limit reply.
+    omitMaxTokens: true,
     // Streamed structured generation: the provider streams the
     // HANDLE_RESPONSE envelope and the runtime parses it incrementally. Only
     // `replyText` reaches the user's stream, and only when the routing fields
@@ -954,9 +927,9 @@ export async function generateStage1Decision(
     } catch (error) {
       outcome = { error };
       // The runtime rejects a generation that stopped at its output limit
-      // instead of returning it. Under a host cap, or at the model's own
-      // maximum when no cap is sent, that is a cut-off envelope: it takes the
-      // completion-limit handling rather than failing the turn.
+      // instead of returning it. Stage 1 sends no cap, so that is the model's
+      // own maximum and a cut-off envelope: it takes the completion-limit
+      // handling rather than failing the turn.
       if (
         isModelOutputLimitFinishReason(
           modelOutputIncompleteEvidence(error)?.finishReason,
@@ -1131,11 +1104,7 @@ export async function generateStage1Decision(
   while (
     !args.codingMode &&
     stage1RetryCount < stage1RetryLimit &&
-    shouldRetryStage1Generation(
-      stage1RetryReason,
-      rawMessageHandler,
-      stage1ModelParams.maxTokens,
-    )
+    shouldRetryStage1Generation(stage1RetryReason, rawMessageHandler)
   ) {
     stage1RetryCount += 1;
     args.runtime.logger?.warn?.(
@@ -1276,7 +1245,7 @@ export async function generateStage1Decision(
           "CONTEXT_DISCOVERY_INVALID_REQUEST",
           "CONTEXT_DISCOVERY_INVALID_READ",
         ].includes(error.code) ||
-        stage1HitCompletionLimit(rawMessageHandler, stage1ModelParams.maxTokens)
+        stage1HitCompletionLimit(rawMessageHandler)
       )
         throw error;
       // Nothing from an invalid control call can authorize a provider read,
@@ -1900,10 +1869,7 @@ export async function generateStage1Decision(
     )
   )
     messageHandler.plan.completionContext = undefined;
-  const stage1CompletionLimitHit = stage1HitCompletionLimit(
-    rawMessageHandler,
-    stage1ModelParams.maxTokens,
-  );
+  const stage1CompletionLimitHit = stage1HitCompletionLimit(rawMessageHandler);
   if (stage1CompletionLimitHit) {
     args.runtime.logger?.warn?.(
       {
@@ -1913,7 +1879,6 @@ export async function generateStage1Decision(
           typeof rawMessageHandler === "string"
             ? undefined
             : rawMessageHandler.usage,
-        maxTokens: stage1ModelParams.maxTokens,
         recovered: Boolean(messageHandler),
       },
       "[message] Stage 1 hit the completion-token limit",
