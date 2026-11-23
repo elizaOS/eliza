@@ -1,4 +1,4 @@
-// spec/os/android/media/trash.md, "Story: Delete only the trash I confirmed"; spec/os/android/media/catalog.md, "Story: Page my photos without repeats"; spec/os/android/media/editCopy.md, "Story: Save an edited copy exactly once"; spec/os/android/files/documentGrants.md, "Story: Keep only the documents I selected"; spec/os/browser/tabHost/storage.md, "Story: Keep my bookmarks whole"
+// spec/os/android/media/trash.md, "Story: Delete only the trash I confirmed"; spec/os/android/media/catalog.md, "Story: Page my photos without repeats"; spec/os/android/media/editCopy.md, "Story: Save an edited copy exactly once"; spec/os/android/files/documentGrants.md, "Story: Keep only the documents I selected"; spec/os/browser/tabHost/storage.md, "Story: Keep my bookmarks whole"; spec/os/android/camera.md, "Story: Capture with the camera only from the live view"
 import { assert, it } from "@effect/vitest"
 
 module node {
@@ -10,6 +10,7 @@ module node {
     | "media.TrashDeleteRequestTest" | "media.PermittedMediaTest" | "media.PhotoCropTest" | "media.SelectedDocumentsTest"
     | "media.PhotoLibraryAccessTest" | "media.OwnedMediaTest" | "media.RecordingStoreTest" | "media.FolderSessionTest"
     | "media.DocumentExportTest" | "media.OwnedCapturesTest" | "browsersurface.BrowserBookmarkRecordTest"
+    | "camera.CapturedLibraryIdTest"
 
   const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
 
@@ -70,4 +71,8 @@ it.effect('A capture is admitted only as a bounded JPEG and owned-media selectio
 
 it.effect('A bookmark record keeps each address with the title last saved with it, reads an earlier record without titles and refuses a damaged one whole (spec/os/browser/tabHost/storage.md, "A bookmark list is read whole, and a damaged record is never replaced"; spec/os/browser/tabHost/storage.md, "A bookmark change moves its address to the front or removes it, keeps at most 100, and is kept only when its commit succeeded"; spec/os/browser/tabHost/storage.md, "A bookmark keeps the title last saved with it until a new one replaces it, a blank one removes it, or the bookmark is removed")', effect () => {
   try checked("browsersurface.BrowserBookmarkRecordTest")
+}, 180_000)
+
+it.effect('A saved photo\'s library id names the saved row\'s own volume and row, never an aggregate volume (spec/os/android/camera.md, "A saved photo names its library id only by its own storage volume and row")', effect () => {
+  try checked("camera.CapturedLibraryIdTest")
 }, 180_000)
