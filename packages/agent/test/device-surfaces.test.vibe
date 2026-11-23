@@ -39,6 +39,7 @@ module node {
 
   const propose = (operation: { readonly type: string } & Readonly<Record<string, unknown>>) => ({ name: proposeTool, arguments: { operation } })
   const capture = propose({ type: "camera_capture_photo" })
+  const incomplete = propose({ type: "photos_open" })
   const savedPhoto = { version: 1, kind: "camera_capture_photo", operationId: "capture-1", mediaId: "41", libraryId: "lib:i:41:2", width: 10, height: 10, mime: "image/jpeg" }
 
   function offered(cloud: CloudFake, offset: number) {
@@ -57,10 +58,17 @@ module node {
     }
   }
 
-  function lastToolText(cloud: CloudFake): string {
+  function toolMessages(cloud: CloudFake) {
     const asked = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
-    const messages = (asked.at(-1)?.body as Completion | undefined)?.messages ?? []
-    return JSON.stringify(messages.filter(({ role }) => role === "tool").at(-1)?.content ?? "")
+    return ((asked.at(-1)?.body as Completion | undefined)?.messages ?? []).filter(({ role }) => role === "tool")
+  }
+
+  function lastToolText(cloud: CloudFake): string {
+    return JSON.stringify(toolMessages(cloud).at(-1)?.content ?? "")
+  }
+
+  function lastToolTexts(cloud: CloudFake): string {
+    return JSON.stringify(toolMessages(cloud).map(({ content }) => content))
   }
 
   async function settle(client: DeviceClient, proposal: Proposal | undefined, receipt: unknown): Promise<string | undefined> {
@@ -83,7 +91,7 @@ module node {
     const settledAgain = async (words: string, metadata: object, call: ReturnType<typeof propose>, receipt: unknown) => {
       const before = new Set((await proposals()).map(({ id }) => id))
       const gate = Promise.withResolvers<void>()
-      cloud.script(toolCalls("", call), held(gate.promise, toolCalls("", call)), text("Okay."))
+      cloud.script(toolCalls("", call, incomplete), held(gate.promise, toolCalls("", call)), text("Okay."))
       const pending = turn(words, metadata)
       pending.catch(() => undefined)
       const deadline = Date.now() + 25_000
@@ -98,23 +106,23 @@ module node {
       return { state, told: told.includes(settledText) && !told.includes("already") }
     }
 
-    cloud.script(toolCalls("", capture), text("Okay."))
+    cloud.script(toolCalls("", capture))
     const unasked = await say("Summarize the page I have open")
-    const firstOffer = offered(cloud, 2)
-    cloud.script(toolCalls("", capture), text("Okay."))
+    const firstOffer = offered(cloud, 1)
+    cloud.script(toolCalls("", capture))
     const asked = await turn("Take a picture", direct)
     const photo = asked.text
-    const routed = offered(cloud, 2)
-    cloud.script(toolCalls("", capture, capture), text("Okay."))
+    const routed = offered(cloud, 1)
+    cloud.script(toolCalls("", capture, capture))
     const selfie = await say("Hey Eliza, could you please take a selfie?", direct)
-    cloud.script(toolCalls("", capture), text("Okay."))
+    cloud.script(toolCalls("", capture))
     const whiteboard = await say("Take a photo of the whiteboard", direct)
-    const unrouted = offered(cloud, 2)
+    const unrouted = offered(cloud, 1)
     const captures = (await proposals()).filter(({ payload }) => payload.operation.type === "camera_capture_photo").length
     const taken = await settle(client, (await proposals()).find(({ payload }) => payload.requestMessageId === asked.userMessageId), {
       outcome: "applied", operationId: savedPhoto.operationId, result: savedPhoto,
     })
-    cloud.script(toolCalls("", propose({ type: "photos_share", ids: [savedPhoto.libraryId] })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "photos_share", ids: [savedPhoto.libraryId] })))
     const justTaken = await say("Share the photo you just took")
     const retaken = await settledAgain("Take a picture", direct, capture, {
       outcome: "applied", operationId: "capture-2", result: { ...savedPhoto, operationId: "capture-2", mediaId: "42", libraryId: "lib:i:42:2" },
@@ -125,19 +133,19 @@ module node {
     const staleMaps = await say("How far is this place?", onMaps)
     cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), text("Okay."))
     const hiddenMaps = await say("How far is this place?", { observation: { ...onMaps.observation, sensitive: true, selectedObject: undefined } })
-    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })))
     await say("How far is this place?", onMaps)
 
     cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), text("Okay."))
     const notShown = await say("Share this photo", { observation: { view: "home", revision: 3, sensitive: false } })
-    cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })))
     await say("Share this photo", onPhotos)
     cloud.script(toolCalls("", propose({ type: "photos_share", ids: ["lib:i:99:1"] })), text("Okay."))
     const guessed = await say("Share my latest photo")
-    cloud.script(toolCalls("", propose({ type: "photos_open", id: openPhoto.id })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "photos_open", id: openPhoto.id })))
     await say("Open this one full screen", onPhotos)
 
-    cloud.script(toolCalls("", propose({ type: "photo_library_search", kind: "image", limit: 1 })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "photo_library_search", kind: "image", limit: 1 })))
     await say("Find my latest photo")
     const search = (await proposals()).find(({ payload }) => payload.operation.type === "photo_library_search")
     const searched = await settle(client, search, {
@@ -145,13 +153,13 @@ module node {
     })
     cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: "rev-a1-2" }] })), text("Okay."))
     const staleRevision = await say("Favorite it")
-    cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: found.revision }] })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: found.revision }] })))
     await say("Favorite it")
 
     cloud.script(text("Opening Files."))
     await say("Show my files", direct)
     const navigating = offered(cloud, 1)
-    cloud.script(toolCalls("", propose({ type: "open_view", view: "files" })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "open_view", view: "files" })))
     await say("Open Files")
 
     cloud.script(toolCalls("", propose({ type: "create_note", title: "Milk", body: "Buy milk" })), text("Okay."))
@@ -160,7 +168,7 @@ module node {
     const homeTold = lastToolText(cloud)
     const saved = await settledAgain("Make a note to buy milk", { ...direct, ...onNotes }, propose({ type: "create_note", title: "Milk", body: "Buy milk" }), { outcome: "applied", operationId: "note-1" })
     const notesOffer = offered(cloud, 1)
-    cloud.script(toolCalls("", propose({ type: "create_note", title: "Summary", body: "The page lists three deadlines in March." })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "create_note", title: "Summary", body: "The page lists three deadlines in March." })))
     const summarized = await say("Summarize this page into a note", { ...direct, ...onNotes })
     cloud.script(text("You saved a note called Milk."))
     await say("What did I just save?")
@@ -211,26 +219,27 @@ module node {
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
     const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
     const proposals = async () => ((await client.call("GET", "/api/client-devices/proposals")).json as { proposals: readonly Proposal[] }).proposals
-    const say = async (calls: readonly { readonly name: string; readonly arguments: unknown }[], metadata?: object) => {
+    const say = async (calls: readonly { readonly name: string; readonly arguments: unknown }[], metadata: object | undefined, ...after: CloudReply[]) => {
       const before = (await proposals()).length
-      cloud.script(toolCalls("", ...calls), text("Which view?"))
+      const earlier = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length
+      cloud.script(toolCalls("", ...calls), ...after)
       const turn = (await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: "Open my files", ...(metadata === undefined ? {} : { metadata }) })).json as Turn
-      const seen = offered(cloud, 2)
-      const asked = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
-      const told = JSON.stringify(((asked.at(-1)?.body as Completion | undefined)?.messages ?? []).filter(({ role }) => role === "tool").map(({ content }) => content))
+      const modelCalls = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length - earlier
+      const seen = offered(cloud, modelCalls)
+      const told = modelCalls < 2 ? "[]" : lastToolTexts(cloud)
       return {
         tools: seen.tools, viewsHere: seen.note.includes("Open app views with VIEWS (mode show) on this message"),
         viewsNotHere: seen.note.includes("VIEWS cannot show a view on this message"), proposed: (await proposals()).length - before,
         refused: [told.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW") ? ["open_view"] : [], told.includes("VIEWS_NOT_ON_THIS_MESSAGE") ? ["VIEWS"] : []].flat(),
-        reply: turn.text,
+        reply: turn.text, modelCalls,
       }
     }
     const views = { name: "VIEWS", arguments: { action: "show", view: "files" } }
     const openView = propose({ type: "open_view", view: "files" })
-    const { tools: typedTools, ...typed } = await say([views])
-    const { tools: deliveredTools, ...delivered } = await say([openView], direct)
-    const { tools: againTools, ...typedAgain } = await say([openView])
-    const { tools: bothTools, ...wrongHomeFirst } = await say([{ name: "VIEWS", arguments: { action: "show", view: "photos" } }, propose({ type: "open_view", view: "photos" })])
+    const { tools: typedTools, ...typed } = await say([views], undefined, text("Which view?"))
+    const { tools: deliveredTools, ...delivered } = await say([openView], direct, text("Which view?"))
+    const { tools: againTools, ...typedAgain } = await say([openView], undefined)
+    const { tools: bothTools, ...wrongHomeFirst } = await say([{ name: "VIEWS", arguments: { action: "show", view: "photos" } }, propose({ type: "open_view", view: "photos" })], undefined, text("Which view?"))
     return { sameTools: new Set([typedTools, deliveredTools, againTools, bothTools]).size === 1, typed, delivered, typedAgain, wrongHomeFirst }
   }
 
@@ -364,7 +373,7 @@ it.live(`Take a photo, open a view, read a Maps place, find and share photos and
   }))
 }, 120_000)
 
-it.live(`A device message opens a view in one place under the same tools: VIEWS where views arrive as completed actions, open_view otherwise, and the other is refused before dispatch (spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch")`, effect () => {
+it.live(`A device message opens a view in one place under the same tools: VIEWS where views arrive as completed actions, open_view otherwise, and the other is refused before dispatch; a reply that only proposed ends the turn, and one with a call refused before dispatch asks the model again (spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/conversation/planning.md, "A model reply whose every call left an open proposal ends planning, and keeps every proposal it made")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -377,10 +386,10 @@ it.live(`A device message opens a view in one place under the same tools: VIEWS 
   const observed = try host("offer device navigation", () => navigationHomes(agent.agent.runtime, socket, agent.frame.token, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed, {
     sameTools: true,
-    typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: ["VIEWS"], reply: "Which view?" },
-    delivered: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: ["open_view"], reply: "Which view?" },
-    typedAgain: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: "Review this request on your phone before it can run." },
-    wrongHomeFirst: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: ["VIEWS"], reply: "Review this request on your phone before it can run." },
+    typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: ["VIEWS"], reply: "Which view?", modelCalls: 2 },
+    delivered: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: ["open_view"], reply: "Which view?", modelCalls: 2 },
+    typedAgain: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: "Review this request on your phone before it can run.", modelCalls: 1 },
+    wrongHomeFirst: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: ["VIEWS"], reply: "Review this request on your phone before it can run.", modelCalls: 2 },
   }))
 }, 120_000)
 
