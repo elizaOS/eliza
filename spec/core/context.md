@@ -128,7 +128,7 @@ pure def lawUnloadedProviderCannotBeReviewed(hasIndex: bool, uniqueSources: bool
 > unrelated old messages crowding out what this request needs, so that every
 > turn stays fast and still sees the facts and instructions it depends on.
 
-A host where no history reviewer runs, such as the phone, still bounds the history each model call carries. Once more than `maxSources` originals follow the reviewed boundary, the boundary moves to the first user message at or after the newest multiple of `maxSources - keepSources` that leaves `keepSources` originals after it. It depends only on how many messages the conversation stores and where the user messages are among them, counting the older messages a turn does not read as reviewed and counting every stored message, even a notice or an empty failed reply the history never shows, so it moves only in steps as the conversation grows, never with each turn's read or with which messages that read leaves out. While the latest exchange and the most recent originals lie past it, the history shown starts at the boundary, so between two moves it only grows at its end and a provider can reuse the prompt prefix. The boundary starts on a user message, so a reply is never shown without its request. It is a deferral by position, never a review: the deferred originals keep every byte, stay readable through the history references, and the model is told how many are not shown. User messages worded as standing instructions stay in the history. Up to three earlier exchanges that share distinctive words with the current request are recalled for that turn alone: they follow the latest message, after the notice, labelled as recalled and in their original order, the notice tells the model to answer from them as from the messages shown, and they never enter the history, so what a request says never changes the history before it. Word and wording matches are external judgments of the shell.
+A host where no history reviewer runs, such as the phone, still bounds the history each model call carries. Once more than `maxSources` originals follow the reviewed boundary, the boundary moves to the first user message at or after the newest multiple of `maxSources - keepSources` that leaves `keepSources` originals after it. It depends only on how many messages the conversation stores and where the user messages are among them, counting the older messages a turn does not read as reviewed and counting every stored message, even a notice or an empty failed reply the history never shows, so it moves only in steps as the conversation grows, never with each turn's read or with which messages that read leaves out. While the latest exchange and the most recent originals lie past it, the history shown starts at the boundary, so between two moves it only grows at its end and a provider can reuse the prompt prefix. The boundary starts on a user message, so a reply is never shown without its request. It is a deferral by position, never a review: the deferred originals keep every byte, stay readable through a search of the conversation, and the model is told how many are not shown. User messages worded as standing instructions stay in the history. Up to three earlier exchanges that share distinctive words with the current request are recalled for that turn alone: they follow the latest message, after the notice, labelled as recalled and in their original order, the notice tells the model to answer from them as from the messages shown, and they never enter the history, so what a request says never changes the history before it. Word and wording matches are external judgments of the shell.
 
 ### A host with no reviewer defers old history by position, in fixed steps from a user message
 
@@ -159,6 +159,30 @@ pure def lawRecentContinuityIsShown(count: int, boundary: int, exchangeStart: in
   shownFrom(count, boundary, exchangeStart, maxSources, continuitySources) <= (if (count < continuitySources) 0 else count - continuitySources)
 pure def lawTheShownHistoryStartsAtTheBoundary(count: int, boundary: int, exchangeStart: int, maxSources: int, continuitySources: int): bool =
   (exchangeStart >= boundary and count >= continuitySources and count - continuitySources >= boundary) implies shownFrom(count, boundary, exchangeStart, maxSources, continuitySources) == boundary
+```
+
+### A search of the conversation finds what it holds as written, else what best shares the words of the query
+
+Originals that hold the query as written, ignoring case, are its matches.
+Only when none does are the originals that best share its words the
+matches, marked as matched by words, so a subject searched in other words
+than it was said in is not read as never said. A search returns at most
+five matches, those not in view first, then the newest, in their original
+order.
+
+```quint
+type HistoryMatch = MatchedAsWritten | MatchedByWords | MatchedNothing
+pure val searchMatchesShown = 5
+pure def historyMatch(literalHits: int, wordHits: int): HistoryMatch =
+  if (literalHits > 0) MatchedAsWritten else if (wordHits > 0) MatchedByWords else MatchedNothing
+pure def matchesShown(hits: int): int = if (hits < 0) 0 else if (hits > searchMatchesShown) searchMatchesShown else hits
+pure val literalHitsValues = Set(0, 1, 7)
+pure val wordHitsValues = Set(0, 2, 6)
+pure def lawWordsMatchOnlyWhatNothingHoldsAsWritten(literalHits: int, wordHits: int): bool =
+  historyMatch(literalHits, wordHits) == MatchedByWords implies literalHits <= 0
+pure def lawAMatchAsWrittenWins(literalHits: int, wordHits: int): bool =
+  literalHits > 0 implies historyMatch(literalHits, wordHits) == MatchedAsWritten
+pure def lawASearchReturnsAtMostFive(hits: int): bool = matchesShown(hits) <= searchMatchesShown and matchesShown(hits) >= 0
 ```
 
 ### A note about one request leaves the view with that request

@@ -429,29 +429,42 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   }))
 }, 120_000)
 
-it.live(`A long conversation sends the same history turn after turn, and the exchanges a request's words recall follow its latest message (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message")`, effect () => {
+it.live(`A long conversation sends the same history turn after turn, the exchanges a request's words recall follow its latest message, and the model finds by search what the window defers (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; ${planning}, "The model may search what this conversation said, and a windowed history asks it to search before it answers that something was not said"; spec/core/context.md, "A search of the conversation finds what it holds as written, else what best shares the words of the query")`, effect () => {
   const cloud = try cloudFake(deviceKey)
-  const agent = try cloudAgent(cloud)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true, allowed: ["REPLY", "IGNORE", "NONE", "SEARCH_CONVERSATION"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+  })
   const { id } = try conversation(agent)
   try Effect.sync(() => cloud.script(text("Hello.")))
   const opened = replyOf(try send(agent, id, { text: "Hi" }))
   const locker = "My riverside gym locker number is 4417."
   const boiler = "Ortega repairs the basement boiler on Fridays."
+  const garage = ["My garage door code is 7291.", "Garage door code 7291, noted."] as const
+  const wifi = ["The wifi password at the cabin is fernhill-42.", "Cabin wifi fernhill-42, noted."] as const
   const exchanges = Array.from({ length: 104 }, (_, index): readonly [string, string] =>
-    index === 30 ? [locker, "Riverside gym locker 4417, noted."]
-      : index === 60 ? [boiler, "Ortega fixes the basement boiler, noted."]
-        : [`Errand ${index} is done.`, `Good, errand ${index} is off the list.`])
+    index === 3 ? garage : index === 10 ? wifi
+      : index === 30 ? [locker, "Riverside gym locker 4417, noted."]
+        : index === 60 ? [boiler, "Ortega fixes the basement boiler, noted."]
+          : [`Errand ${index} is done.`, `Good, errand ${index} is off the list.`])
   try host("long history", () => seedHistory(agent.agent.runtime, opened.userMessageId as UUID, exchanges))
   try Effect.sync(() => cloud.script(text("It is 4417."), text("Ortega does.")))
   const lockerAsk = "Which locker number at the riverside gym?"
   const boilerAsk = "Who repairs the basement boiler?"
   try send(agent, id, { text: lockerAsk })
   try send(agent, id, { text: boilerAsk })
+  const wifiAsk = "What did I tell you about the wifi?"
+  try Effect.sync(() => cloud.script(
+    toolCalls("", { name: "SEARCH_CONVERSATION", arguments: { query: "cabin wifi password" } }, { name: "SEARCH_CONVERSATION", arguments: { query: "garage door code" } }),
+    text("The cabin wifi password is fernhill-42.")))
+  const found = replyOf(try send(agent, id, { text: wifiAsk }))
   const textOf = (content: unknown) => typeof content === "string" ? content : JSON.stringify(content)
-  const turnFor = (asked: string) => cloud.calls.map(({ body }) => (body as { messages?: { role: string; content?: unknown }[] } | undefined)?.messages ?? [])
-    .find((messages) => textOf(messages.at(-1)?.content).startsWith(asked)) ?? []
+  const bodies = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { tools?: unknown; messages?: { role: string; content?: unknown }[] })
+  const turnFor = (asked: string) => bodies.map(({ messages }) => messages ?? []).find((messages) => textOf(messages.at(-1)?.content).startsWith(asked)) ?? []
   const first = turnFor(lockerAsk)
   const second = turnFor(boilerAsk)
+  const searching = turnFor(wifiAsk)
+  const searched = (bodies.at(-1)?.messages ?? []).filter(({ role }) => role === "tool").map(({ content }) => textOf(content))
   const before = (messages: readonly { content?: unknown }[]) => messages.slice(0, -1).map(({ content }) => textOf(content)).join("\n")
   try Effect.try(() => assert.deepStrictEqual({
     windowed: first.length < 60,
@@ -461,6 +474,11 @@ it.live(`A long conversation sends the same history turn after turn, and the exc
     recalledLabelled: [first, second].map((messages) => textOf(messages.at(-1)?.content).includes("Recalled earlier exchanges, oldest first")),
     hostLabels: [first, second].map((messages) => textOf(messages.at(-1)?.content).split("Note from the agent host").length - 1),
     neverInHistory: [before(first).includes(locker), before(second).includes(locker), before(second).includes(boiler)],
+    searchOffered: [new Set(bodies.map(({ tools }) => JSON.stringify(tools))).size, JSON.stringify(bodies[0]?.tools).includes('"SEARCH_CONVERSATION"')],
+    noticeAsksToSearch: [textOf(searching.at(-1)?.content).includes("read first through SEARCH_CONVERSATION: search the subject's main words"), textOf(searching.at(-1)?.content).includes("recorded outcomes")],
+    deferred: [before(searching).includes(wifi[0]), textOf(searching.at(-1)?.content).includes(wifi[0])],
+    searched: searched.map((told) => JSON.parse(told) as { text?: string; data?: { messages?: unknown } }).map(({ text: said, data }) => [said?.includes("as written; these best share its words") === true, data?.messages]),
+    answered: found.text,
   }, {
     windowed: true,
     samePrefix: true,
@@ -469,6 +487,14 @@ it.live(`A long conversation sends the same history turn after turn, and the exc
     recalledLabelled: [true, true],
     hostLabels: [1, 1],
     neverInHistory: [false, false, false],
+    searchOffered: [1, true],
+    noticeAsksToSearch: [true, false],
+    deferred: [false, false],
+    searched: [
+      [true, [{ role: "user", text: wifi[0] }]],
+      [false, [{ role: "user", text: garage[0] }, { role: "assistant", text: garage[1] }]],
+    ],
+    answered: "The cabin wifi password is fernhill-42.",
   }))
 }, 240_000)
 

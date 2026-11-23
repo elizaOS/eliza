@@ -91,7 +91,7 @@ names each plugin once and never names the product plugin in the load list,
 so no plugin is planned twice.
 
 ```quint
-pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
+pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE", "SEARCH_CONVERSATION")
 pure def distinct(xs: List[str]): bool = xs.every(x => xs.select(y => y == x).length() == 1)
 pure def planOrder(load: List[str], privacyOn: bool): List[str] =
   List(storagePlugin, cloudLinkPlugin).concat(if (privacyOn) List(privacyPlugin) else List()).concat(load)
@@ -186,7 +186,8 @@ pure def sometimesProductRouteRefused(s: PluginPlan): bool = s.phase == Refused(
 
 When the last plugin has registered, the launch's allowlist goes through
 core's boot check against every registered action, the message service's
-`REPLY`, `IGNORE` and `NONE` included; a stale allowlist refuses boot.
+`REPLY`, `IGNORE`, `NONE` and `SEARCH_CONVERSATION` included; a stale
+allowlist refuses boot.
 
 ```quint
 pure def allowlistAdmitted(s: PluginPlan): bool =
