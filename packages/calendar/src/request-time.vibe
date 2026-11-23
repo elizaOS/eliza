@@ -1,4 +1,5 @@
-// spec/calendar/reviewedReads.md, "A new phone event starts at the day and time the owner stated, in the phone's zone"; spec/calendar/reviewedReads.md, "A change after a shared read moves the event to the day and time the owner gave it, keeping its length unless the owner gave one"; spec/calendar/availability.md, "An availability window is the day and time the owner asked about, in the phone's zone"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A delete is proposed only when the owner's own words ask for it, and a no keeps the event"
+// spec/calendar/reviewedReads.md, "A new phone event starts at the day and time the owner stated, in the phone's zone"; spec/calendar/reviewedReads.md, "A change after a shared read is the one edit the owner's words gave, keeping every other field"; spec/calendar/availability.md, "An availability window is the day and time the owner asked about, in the phone's zone"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A delete is proposed only when the owner's own words ask for it, and a no keeps the event"
+import { nameSaid } from "../gen/calendar__reviewedReads.effect.vibe"
 import { addDaysToLocalDate, buildUtcDateFromLocalParts, getZonedDateParts, type LocalDate } from "./clock.vibe"
 
 export interface StatedClockTime {
@@ -203,6 +204,33 @@ export function statedLengths(value: string): readonly number[] | undefined {
   return found.map(([, amount, unit]) => Math.round(Number(amount) * (/^h/i.test(unit ?? "") ? 3_600_000 : 60_000)))
 }
 
+export type StatedShift =
+  | { readonly kind: "span"; readonly ms: number }
+  | { readonly kind: "days"; readonly days: number }
+
+const shiftAmount = /\bhalf\s+an?\s+hour\b|\b(\d+(?:\.\d+)?|an?|one|two|three|four|five|six|seven|eight|nine|ten)\s*(minutes?|mins?|hours?|hrs?|days?|weeks?)\b/giu
+const laterShift = /\b(?:later|back|delay(?:ed)?|postpone(?:d)?|push(?:ed)?)\b/iu
+const earlierShift = /\b(?:earlier|sooner|up)\b/iu
+
+export function statedShift(value: string): StatedShift | "unclear" | undefined {
+  const text = normalized(value)
+  const amounts = [...text.matchAll(shiftAmount)]
+  const later = laterShift.test(text), earlier = earlierShift.test(text)
+  const [only] = amounts
+  if (only === undefined || (!later && !earlier)) return undefined
+  if (amounts.length > 1 || (later && earlier)) return "unclear"
+  const sign = later ? 1 : -1
+  if (only[1] === undefined) return { kind: "span", ms: sign * 1_800_000 }
+  const amount = /^\d/.test(only[1]) ? Number(only[1]) : count(only[1]) ?? 0
+  const unit = only[2] ?? ""
+  if (/^(?:day|week)/i.test(unit)) {
+    const days = amount * (/^week/i.test(unit) ? 7 : 1)
+    return Number.isInteger(days) && days > 0 ? { kind: "days", days: sign * days } : "unclear"
+  }
+  const ms = Math.round(amount * (/^h/i.test(unit) ? 3_600_000 : 60_000))
+  return Number.isSafeInteger(ms) && ms > 0 ? { kind: "span", ms: sign * ms } : "unclear"
+}
+
 export function localInstant(zone: string, date: LocalDate, clock: StatedClockTime): number | undefined {
   return buildUtcDateFromLocalParts(zone, { ...date, hour: clock.hour, minute: clock.minute, second: 0 }, "reject")?.getTime()
 }
@@ -216,6 +244,27 @@ export function declinesInWords(text: string, verbs: RegExp): boolean {
 
 export function namedInWords(name: string, text: string): boolean {
   return folded(name) !== "" && ` ${folded(text)} `.includes(` ${folded(name)} `)
+}
+
+const denseScript = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u
+const denseDeletes = [
+  /^(?:(?:请|請)\s*)?(?:删除|刪除)\s*(.+)$/u,
+  /^(.+?)\s*を\s*削除して(?:ください)?$/u,
+  /^(.+?)\s*(?:을|를)\s*(?:삭제해줘|삭제해\s*주세요)$/u,
+]
+
+export function denseDeleteTarget(text: string): string | undefined {
+  const spoken = folded(text)
+  for (const pattern of denseDeletes) {
+    const target = pattern.exec(spoken)?.[1]?.trim()
+    if (target !== undefined && target !== "") return target
+  }
+  return undefined
+}
+
+export function eventNamedInWords(name: string, text: string): boolean {
+  const said = folded(name)
+  return said !== "" && nameSaid(namedInWords(name, text), denseScript.test(said), denseDeleteTarget(text) === said)
 }
 
 export function wordsInWords(value: string, text: string): boolean {

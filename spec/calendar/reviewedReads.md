@@ -143,22 +143,34 @@ A selected read or delete names exactly the event selected on the phone
 screen, by source and event with their revisions, and a new event in a
 chosen calendar names exactly the selected calendar; a target the model
 wrote that differs offers nothing. A named delete or change names an event
-whose name is in the owner's own words. The agent never proposes a named
-read of its own: a named read is offered only as the first step of a change
-the owner asked for.
+whose name is in the owner's own words: its words appear whole and in order
+among theirs, so "dentist" is not named in "dentistry". Chinese and
+Japanese write no space between words and Korean joins a particle to the
+word, so a name in Han, Hiragana, Katakana or Hangul script is also named
+when the owner's whole request is that exact name with the delete verb
+("删除牙医预约", "歯医者を削除して", "치과를 삭제해줘"); a longer name that only
+holds it ("小児歯医者を削除して") does not name it. The agent never proposes a
+named read of its own: a named read is offered only as the first step of a
+change the owner asked for.
 
 ```quint
 pure def targetGrounded(selectionKnown: bool, sameAsSelected: bool): bool = selectionKnown and sameAsSelected
+pure def nameSaid(wholeWordsSaid: bool, denseScriptName: bool, wholeDenseDelete: bool): bool =
+  wholeWordsSaid or (denseScriptName and wholeDenseDelete)
 pure def namedGrounded(nameInOwnerWords: bool, ownerAskedTheChange: bool): bool = nameInOwnerWords and ownerAskedTheChange
 pure def lawAnUnselectedTargetIsNeverProposed(sameAsSelected: bool): bool = not(targetGrounded(false, sameAsSelected))
 pure def lawAnUnnamedEventIsNeverProposed(ownerAskedTheChange: bool): bool = not(namedGrounded(false, ownerAskedTheChange))
+pure def lawASpacedNameNeedsItsWholeWords(wholeDenseDelete: bool): bool = not(nameSaid(false, false, wholeDenseDelete))
+pure def lawADenseNameIsNamedByItsWholeDelete(wholeWordsSaid: bool): bool = nameSaid(wholeWordsSaid, true, true)
 ```
 
 ### A delete is proposed only when the owner's own words ask for it, and a no keeps the event
 
 An owner who turns a delete down has asked for nothing, so no delete is
 proposed from those words, even when the model proposes one; a delete the
-owner declined on the phone stays declined. A decline is a reply that opens
+owner declined on the phone stays declined. A request asks to delete when
+it says delete, remove, cancel, clear, drop, erase, get rid of or take off,
+or is one of the whole Chinese, Japanese or Korean delete requests above. A decline is a reply that opens
 by turning the request down ("no, keep it", "never mind", "wait"), the whole
 reply "cancel that", or a negation of the delete itself ("don't delete
 it"). Other negative words in a request that asks to delete ("delete my
@@ -172,11 +184,13 @@ pure def lawADeclineIsNeverADelete(asksToDelete: bool): bool = not(deleteAsked(a
 
 ### A new phone event starts at the day and time the owner stated, in the phone's zone
 
-A new event is proposed only when the owner's words state its day and one
-clock time, the phone reported its zone, the owner named no other zone or
-offset ("3pm Tokyo time", "15:00 UTC"), the title is in the owner's own
-words, and the request asks for nothing one timed event cannot hold: a
-repeat, guests or an all-day event. Its start is that day and time on the
+A new event is proposed only when the owner's words state one clock time,
+the phone reported its zone, the owner named no other zone or offset
+("3pm Tokyo time", "15:00 UTC"), the title is in the owner's own words, and
+the request asks for nothing one timed event cannot hold: a repeat, guests
+or an all-day event. Its day is the day the owner stated, else today on the
+phone's clock; a request that states no day and a time already past today
+offers nothing and asks for the day. Its start is that day and time on the
 phone's clock, and a time the clock skips or repeats, at its start or at
 the end of a stated range, offers nothing. Its end is the end of a stated
 range, else the start plus a stated length, else the start plus the length
@@ -186,8 +200,8 @@ owner's words state it, and is otherwise left empty.
 
 ```quint
 type StatedClock = NoClock | OneClock | SeveralClocks
-pure def newEventStated(dayStated: bool, clock: StatedClock, phoneZoneKnown: bool, otherZoneNamed: bool, unsupportedAsked: bool, wallTimeExists: bool, titleInOwnerWords: bool): bool =
-  dayStated and clock == OneClock and phoneZoneKnown and not(otherZoneNamed) and not(unsupportedAsked) and wallTimeExists and titleInOwnerWords
+pure def newEventStated(dayStated: bool, startPassed: bool, clock: StatedClock, phoneZoneKnown: bool, otherZoneNamed: bool, unsupportedAsked: bool, wallTimeExists: bool, titleInOwnerWords: bool): bool =
+  (dayStated or not(startPassed)) and clock == OneClock and phoneZoneKnown and not(otherZoneNamed) and not(unsupportedAsked) and wallTimeExists and titleInOwnerWords
 pure def statedEnd(startsAt: int, rangeEnd: int, statedLength: int, proposedLength: int): int =
   if (rangeEnd > startsAt) rangeEnd
   else if (statedLength > 0) startsAt + statedLength
@@ -196,74 +210,111 @@ pure def statedEnd(startsAt: int, rangeEnd: int, statedLength: int, proposedLeng
 pure def ownerWordsKept(stated: bool, proposed: str): str = if (stated) proposed else ""
 pure def lawAStatedEventEndsAfterItStarts(startsAt: int, rangeEnd: int, statedLength: int, proposedLength: int): bool =
   statedEnd(startsAt, rangeEnd, statedLength, proposedLength) > startsAt
-pure def lawSeveralClocksAreNeverAStart(dayStated: bool, phoneZoneKnown: bool, otherZoneNamed: bool, unsupportedAsked: bool, wallTimeExists: bool, titleInOwnerWords: bool): bool =
-  not(newEventStated(dayStated, SeveralClocks, phoneZoneKnown, otherZoneNamed, unsupportedAsked, wallTimeExists, titleInOwnerWords))
-pure def lawAnotherZoneIsNeverAStart(dayStated: bool, clock: StatedClock, phoneZoneKnown: bool, unsupportedAsked: bool, wallTimeExists: bool, titleInOwnerWords: bool): bool =
-  not(newEventStated(dayStated, clock, phoneZoneKnown, true, unsupportedAsked, wallTimeExists, titleInOwnerWords))
+pure def lawSeveralClocksAreNeverAStart(dayStated: bool, startPassed: bool, phoneZoneKnown: bool, otherZoneNamed: bool, unsupportedAsked: bool, wallTimeExists: bool, titleInOwnerWords: bool): bool =
+  not(newEventStated(dayStated, startPassed, SeveralClocks, phoneZoneKnown, otherZoneNamed, unsupportedAsked, wallTimeExists, titleInOwnerWords))
+pure def lawAnotherZoneIsNeverAStart(dayStated: bool, startPassed: bool, clock: StatedClock, phoneZoneKnown: bool, unsupportedAsked: bool, wallTimeExists: bool, titleInOwnerWords: bool): bool =
+  not(newEventStated(dayStated, startPassed, clock, phoneZoneKnown, true, unsupportedAsked, wallTimeExists, titleInOwnerWords))
+pure def lawAnUnstatedDayIsNeverAPastStart(clock: StatedClock, phoneZoneKnown: bool, otherZoneNamed: bool, unsupportedAsked: bool, wallTimeExists: bool, titleInOwnerWords: bool): bool =
+  not(newEventStated(false, true, clock, phoneZoneKnown, otherZoneNamed, unsupportedAsked, wallTimeExists, titleInOwnerWords))
 pure def lawUnstatedWordsAreNeverKept(proposed: str): bool = ownerWordsKept(false, proposed) == ""
 ```
 
-### A change after a shared read moves the event to the day and time the owner gave it, keeping its length unless the owner gave one
+### A change after a shared read is the one edit the owner's words gave, keeping every other field
 
 A change to an event is proposed in two steps: a read of the selected or
 named event, which the owner shares, and then the edit, prepared from the
 shared record and the owner's original words with no model call. The
 change is read from the owner's words when the read is proposed, and the
 edit after it is the same change. A change is asked only when the request
-opens with the change itself ("move", "reschedule", "change", "rename",
-"call it", after "please", "can you" or "I want to"); "don't rename it",
-"how do I move this event?" or "what is this meeting about?" ask for none.
-A selected read that asks for no change is shared as a read and prepares
-no edit; a named read is proposed only for a change.
+opens with the change itself ("move", "reschedule", "change", "push",
+"delay", "rename", "call it", after "please", "can you" or "I want to");
+"don't rename it", "how do I move this event?" or "what is this meeting
+about?" ask for none. A selected read that asks for no change is shared as
+a read and prepares no edit; a named read is proposed only for a change.
 
-A change is either a new title or a new time, one at a time. A rename takes
-the new title exactly as the owner wrote it and keeps every other field. A
-time change takes its clock time from the words after the destination
-marker ("to", or "for", "until" or "till" before a day or time), and its
-day from those words too, else the event keeps its own day on the phone's
-clock: "reschedule the standup for tomorrow at 10am" moves the standup to
-tomorrow and never looks for a standup tomorrow, and "move my 3pm to 4pm"
-keeps its day. It keeps the event's length unless the owner states exactly
-one length, and it is placed on the clock the phone reported for the
-original turn, never on the event's own zone.
+A change is one of five edits, one at a time, and keeps every field it does
+not name:
+
+- A rename takes the new title exactly as the owner wrote it.
+- A new place takes the words after "location", "place", "venue" or
+  "address" and "to" or "as" ("change the location to Room 4"); new notes
+  take the words after "description", "notes" or "note" and "to" or "as".
+- A time change takes its clock time from the words after the destination
+  marker ("to", or "for", "until" or "till" before a day or time), and its
+  day from those words too, else the event keeps its own day on the phone's
+  clock: "reschedule the standup for tomorrow at 10am" moves the standup to
+  tomorrow and never looks for a standup tomorrow, and "move my 3pm to 4pm"
+  keeps its day. It keeps the event's length unless the owner states
+  exactly one length.
+- A shift moves the event by the one amount the owner stated, with no
+  destination: later ("later", "back", "delay", "postpone", "push") or
+  earlier ("earlier", "sooner", "up"), never both. Minutes and hours
+  ("push it back an hour", "half an hour earlier") move its start and end
+  by that much; days and weeks move it to the same clock time that many
+  days away. Its length stays.
+
+Every time is placed on the clock the phone reported for the original
+turn, never on the event's own zone.
 
 The read is refused before it is proposed, with words telling the owner
-what to say, when the phone reported no zone for the turn, when the request
-asks for a rename and a time change together, when it is compound or
-conditional, names a zone, a calendar or a part beyond the title and time
-(location, description, notes, guests, repeats), or when a time change
-states no single clock time, several lengths, or a day and time the clock
-skips or repeats. An edit that the shared record still cannot hold, such as
-a named read that matched no event or a kept day whose time the clock skips,
-offers nothing.
+what to say, when the phone reported no zone for the turn, when the phone
+cannot finish a read for this turn so no edit could follow it, when the
+request asks for two edits together, when it is compound or conditional,
+names a zone, a calendar or a part no edit holds (guests, repeats), names a
+place or notes with no new value after "to", or when a time change or a
+shift states no single clock time or amount, several lengths, or a day and
+time the clock skips or repeats. An edit that the shared record still
+cannot hold offers nothing and answers the owner in fixed words instead of
+the model's: a named read that matched no event, a time the clock skips or
+repeats, an end not after its start, or an edit that changes nothing. A
+prepared edit answers that it is ready for its review and that nothing has
+changed yet.
 
 ```quint
-type ChangeAsked = NoChangeAsked | RenameAsked | TimeChangeAsked | SeveralChangesAsked | OtherChangeAsked
-pure def changeOf(leadsWithChange: bool, renameAsked: bool, moveAsked: bool, otherAsked: bool): ChangeAsked =
+type ChangeAsked = NoChangeAsked | RenameAsked | TimeChangeAsked | ShiftAsked | PlaceChangeAsked | NotesChangeAsked | SeveralChangesAsked | OtherChangeAsked
+pure def editsAsked(renameAsked: bool, moveAsked: bool, shiftAsked: bool, placeAsked: bool, notesAsked: bool): int =
+  (if (renameAsked) 1 else 0) + (if (moveAsked) 1 else 0) + (if (shiftAsked) 1 else 0) + (if (placeAsked) 1 else 0) + (if (notesAsked) 1 else 0)
+pure def changeOf(leadsWithChange: bool, renameAsked: bool, moveAsked: bool, shiftAsked: bool, placeAsked: bool, notesAsked: bool, otherAsked: bool): ChangeAsked =
   if (not(leadsWithChange)) NoChangeAsked
   else if (otherAsked) OtherChangeAsked
-  else if (renameAsked and moveAsked) SeveralChangesAsked
+  else if (editsAsked(renameAsked, moveAsked, shiftAsked, placeAsked, notesAsked) > 1) SeveralChangesAsked
   else if (renameAsked) RenameAsked
   else if (moveAsked) TimeChangeAsked
+  else if (shiftAsked) ShiftAsked
+  else if (placeAsked) PlaceChangeAsked
+  else if (notesAsked) NotesChangeAsked
   else OtherChangeAsked
 pure def timeChangeStated(clock: StatedClock, lengthsStated: int, wallTimeExists: bool): bool =
   clock == OneClock and lengthsStated <= 1 and wallTimeExists
 pure def editAfterRead(change: ChangeAsked, timeStated: bool): bool =
-  change == RenameAsked or (change == TimeChangeAsked and timeStated)
-pure def changeReadAdmitted(change: ChangeAsked, timeStated: bool, phoneZoneKnown: bool, byName: bool): bool =
-  if (change == NoChangeAsked) not(byName) else editAfterRead(change, timeStated) and phoneZoneKnown
+  change == RenameAsked or change == PlaceChangeAsked or change == NotesChangeAsked
+  or ((change == TimeChangeAsked or change == ShiftAsked) and timeStated)
+pure def changeReadAdmitted(change: ChangeAsked, timeStated: bool, phoneZoneKnown: bool, readsComplete: bool, byName: bool): bool =
+  if (change == NoChangeAsked) not(byName) else editAfterRead(change, timeStated) and phoneZoneKnown and readsComplete
 pure def changedEnd(newStart: int, oldStart: int, oldEnd: int, statedLength: int): int =
   if (statedLength > 0) newStart + statedLength else newStart + (oldEnd - oldStart)
+type EditPrepared = EditReady | NoEventMatched | TimeNotOnTheClock | EndNotAfterStart | NothingToChange
+pure def preparedEdit(eventMatched: bool, wallTimeExists: bool, endAfterStart: bool, changesSomething: bool): EditPrepared =
+  if (not(eventMatched)) NoEventMatched
+  else if (not(wallTimeExists)) TimeNotOnTheClock
+  else if (not(endAfterStart)) EndNotAfterStart
+  else if (not(changesSomething)) NothingToChange
+  else EditReady
 pure def lawAnUnstatedLengthIsKept(newStart: int, oldStart: int, oldEnd: int): bool =
   changedEnd(newStart, oldStart, oldEnd, 0) - newStart == oldEnd - oldStart
-pure def lawACompoundRequestIsNeverAnEdit(leadsWithChange: bool, renameAsked: bool, moveAsked: bool, timeStated: bool): bool =
-  not(editAfterRead(changeOf(leadsWithChange, renameAsked, moveAsked, true), timeStated))
-pure def lawARenameAndAMoveAreNeverOneEdit(timeStated: bool): bool =
-  not(editAfterRead(changeOf(true, true, true, false), timeStated))
-pure def lawAnUnaskedChangeIsNeverAnEdit(renameAsked: bool, moveAsked: bool, otherAsked: bool, timeStated: bool): bool =
-  not(editAfterRead(changeOf(false, renameAsked, moveAsked, otherAsked), timeStated))
-pure def lawAChangeReadNeedsThePhoneZone(change: ChangeAsked, timeStated: bool, byName: bool): bool =
-  changeReadAdmitted(change, timeStated, false, byName) implies change == NoChangeAsked
-pure def lawANamedReadIsAlwaysAChange(change: ChangeAsked, timeStated: bool, phoneZoneKnown: bool): bool =
-  changeReadAdmitted(change, timeStated, phoneZoneKnown, true) implies editAfterRead(change, timeStated)
+pure def lawACompoundRequestIsNeverAnEdit(leadsWithChange: bool, renameAsked: bool, moveAsked: bool, shiftAsked: bool, placeAsked: bool, notesAsked: bool, timeStated: bool): bool =
+  not(editAfterRead(changeOf(leadsWithChange, renameAsked, moveAsked, shiftAsked, placeAsked, notesAsked, true), timeStated))
+pure def lawTwoEditsAreNeverOneEdit(renameAsked: bool, moveAsked: bool, shiftAsked: bool, placeAsked: bool, notesAsked: bool, timeStated: bool): bool =
+  (editsAsked(renameAsked, moveAsked, shiftAsked, placeAsked, notesAsked) > 1) implies
+    not(editAfterRead(changeOf(true, renameAsked, moveAsked, shiftAsked, placeAsked, notesAsked, false), timeStated))
+pure def lawAnUnaskedChangeIsNeverAnEdit(renameAsked: bool, moveAsked: bool, shiftAsked: bool, placeAsked: bool, notesAsked: bool, otherAsked: bool, timeStated: bool): bool =
+  not(editAfterRead(changeOf(false, renameAsked, moveAsked, shiftAsked, placeAsked, notesAsked, otherAsked), timeStated))
+pure def lawAChangeReadNeedsThePhoneZoneAndACompletedRead(change: ChangeAsked, timeStated: bool, phoneZoneKnown: bool, readsComplete: bool, byName: bool): bool =
+  (changeReadAdmitted(change, timeStated, phoneZoneKnown, readsComplete, byName) and not(phoneZoneKnown and readsComplete)) implies change == NoChangeAsked
+pure def lawANamedReadIsAlwaysAChange(change: ChangeAsked, timeStated: bool, phoneZoneKnown: bool, readsComplete: bool): bool =
+  changeReadAdmitted(change, timeStated, phoneZoneKnown, readsComplete, true) implies editAfterRead(change, timeStated)
+pure def lawAnUnstatedTimeIsNeverAnEdit(change: ChangeAsked): bool =
+  (change == TimeChangeAsked or change == ShiftAsked) implies not(editAfterRead(change, false))
+pure def lawOnlyAHoldableEditIsReady(eventMatched: bool, wallTimeExists: bool, endAfterStart: bool, changesSomething: bool): bool =
+  (preparedEdit(eventMatched, wallTimeExists, endAfterStart, changesSomething) == EditReady) iff (eventMatched and wallTimeExists and endAfterStart and changesSomething)
 ```
