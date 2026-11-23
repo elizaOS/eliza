@@ -7,8 +7,8 @@ import {
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import {
-  acceptsPlannedReply, acknowledges, actionNoteSent, callAdmission, callRunsFirst, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, receiptlessFailure, resendWait, toolActivity,
-  turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome,
+  acceptsPlannedReply, acknowledges, actionNoteSent, callAdmission, callRunsFirst, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, receiptlessFailure, restoreDisposition, resendWait, toolActivity,
+  turnNarrowed, refusedByRoute, unavailableNotice, type CallFailure, type PlanStep, type RestoreIntent, type StepOutcome,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
 import { composeReply, draftOf, requestIsInstruction } from "./reply-text.vibe"
@@ -19,7 +19,19 @@ type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 const toolNamePattern = /^[A-Za-z0-9_-]{1,64}$/
 const toolMessageLimit = 4_000
 const answerNow = "Note from the agent host, not the person: no further work will run in this turn. Answer the person's latest message now with what this turn holds."
-const messageServiceActions = new Set(["REPLY", "IGNORE", "NONE"])
+const restoreContext = "RESTORE_CONTEXT"
+const messageServiceActions = new Set(["REPLY", "IGNORE", "NONE", restoreContext])
+const restoreTool = {
+  name: restoreContext,
+  description: "Read deferred original context that the host names in this request. Restore history only when it is needed, use full for all deferred sources, and always call this alone before planning actions.",
+  parameters: {
+    type: "object", required: ["reason"], additionalProperties: false,
+    properties: {
+      scope: { type: "string", enum: ["history", "providers", "full"] },
+      reason: { type: "string", minLength: 1 },
+    },
+  },
+} satisfies ToolDefinition
 
 export interface PlannedStep {
   readonly action: string
@@ -43,6 +55,7 @@ export interface PlanInput {
   readonly actionGate: (action: { name: string }) => string | undefined
   readonly system: string
   readonly messages: readonly ChatMessage[]
+  readonly deferredHistory?: { readonly count: number; readonly originals: readonly ChatMessage[] }
   readonly signal: AbortSignal
   readonly actionContext: (action: Action | undefined) => Promise<{ state: State; activeContexts: readonly AgentContext[] }>
   readonly onStreamChunk?: StreamChunkCallback
@@ -209,6 +222,16 @@ function paramsOf(call: ToolCall): Record<string, unknown> {
   }
 }
 
+function restoreIntent(calls: readonly ToolCall[]): RestoreIntent {
+  const requested = calls.map(paramsOf)
+  if (requested.some((params) => typeof params.reason !== "string" || params.reason.trim() === ""
+    || (params.scope !== undefined && params.scope !== "history" && params.scope !== "providers" && params.scope !== "full")
+    || Object.keys(params).some((key) => key !== "reason" && key !== "scope"))) return "MalformedRestore"
+  const readHistory = requested.some(({ scope }) => scope !== "providers")
+  const readProviders = requested.some(({ scope }) => scope !== "history")
+  return readHistory ? (readProviders ? "RestoreAll" : "RestoreHistory") : "RestoreProviders"
+}
+
 function errorText(error: ActionResult["error"]): string | undefined {
   if (error === undefined) return undefined
   return typeof error === "string" ? error : error.message
@@ -368,7 +391,11 @@ function settleReply(attempts: readonly PlannedStep[], prose: string | undefined
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
   const { runtime, message, roles, signal } = input
   const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions.toSorted(byName).map((action) => forTurn(runtime, message, action)))
-  const conversation: ChatMessage[] = [...input.messages]
+  let prefix = input.messages
+  const tail: ChatMessage[] = []
+  let deferred = input.deferredHistory
+  let correctedRestore = false
+  let refusedRestore = false
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))
   const refused = routedAway(runtime, message, actions)
@@ -385,7 +412,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const elsewhere = routedTo === undefined ? elsewhereOf(runtime, message, named.get(call.name), params) : undefined
     const refusal = routedTo !== undefined ? routeRefusal(call.name, routedTo) : elsewhere === undefined ? undefined : elsewhereRefusal(elsewhere)
     if (refusal !== undefined && !isTurnStep(callAdmission(routedTo !== undefined, elsewhere !== undefined))) {
-      conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(refusal) })
+      tail.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(refusal) })
       return refusal
     }
     await input.onActivityStatus?.({ actionName: call.name, label: toolLabel(runtime, named.get(call.name)) })
@@ -403,12 +430,12 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       await input.onStepResult?.(result)
       steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
     }
-    conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
+    tail.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
     return result
   }
   const first = firstCall(runtime, message, actions)
   if (first !== undefined) {
-    conversation.push({ role: "assistant", content: null, toolCalls: [first] })
+    tail.push({ role: "assistant", content: null, toolCalls: [first] })
     await execute(first)
   }
   plan: while (true) {
@@ -416,13 +443,16 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const restartFirst = displayed
     let restarted = false
     streamed = ""
-    const reviewPending = needsReplyReview(steps)
-    const onStreamChunk = reviewPending ? undefined : input.onStreamChunk
+    const finalRound = taken === maxPlanSteps - 1
+    const restoreOffered = !finalRound && (tools.length > 0 || input.deferredHistory !== undefined)
+    const offeredTools = restoreOffered ? [restoreTool, ...tools] : tools
+    const holdDraft = offeredTools.length > 0 || needsReplyReview(steps)
+    const onStreamChunk = holdDraft ? undefined : input.onStreamChunk
     let said: unknown
     try {
       const infer = () => runtime.useModel(ModelType.TEXT_LARGE, {
-        system: input.system, messages: conversation, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
-        ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
+        system: input.system, messages: [...prefix, ...tail], reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
+        ...(offeredTools.length === 0 ? {} : { tools: offeredTools, toolChoice: finalRound ? "none" as const : "auto" as const }),
         ...(onStreamChunk === undefined ? {} : {
           stream: true,
           onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
@@ -436,7 +466,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
           },
         }),
       })
-      said = await sentAtMostTwice(() => reviewPending ? runWithSuppressedModelStream(infer) : infer(), signal)
+      said = await sentAtMostTwice(() => holdDraft ? runWithSuppressedModelStream(infer) : infer(), signal)
     } catch (error: unknown) {
       if (signal.aborted || !stoppedAtOutputLimit(error)) throw error
       prose = cutOffReply
@@ -447,8 +477,30 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     taken += 1
     if (restartFirst && !restarted) input.onReplyRestart?.("")
     displayed = streamed.length > 0
+    const restores = answered.toolCalls.filter(({ name }) => name === restoreContext)
+    if (restores.length > 0) {
+      const intent = restoreIntent(restores)
+      const disposition = restoreDisposition(intent, deferred !== undefined, restoreOffered, correctedRestore, taken < maxPlanSteps)
+      if (disposition === "EndRestore") {
+        refusedRestore = true
+        break plan
+      }
+      if (disposition === "UseOriginalHistory" && deferred !== undefined) {
+        prefix = deferred.originals
+        deferred = undefined
+        tail.push({ role: "user", content: "Note from the agent host, not the person: deferred original history was restored. No tool from the restoration response executed. Plan from the restored conversation and any settled results." })
+      } else {
+        correctedRestore = true
+        const why = intent === "MalformedRestore"
+          ? "A restore names scope history, providers or full and gives a nonempty reason."
+          : "No requested context was deferred in that request."
+        tail.push({ role: "user", content: `Note from the agent host, not the person: context restore did not run. ${why} No tool from that response executed. Continue from the supplied context and settled results.` })
+      }
+      continue plan
+    }
     const reply = answered.toolCalls.find(({ name }) => name === "REPLY")
     const work = answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name))
+    if (finalRound && work.length > 0) break plan
     const draft = draftOf(answered.text, instruction, work.length)
     let cutOff = false
     let coaching = false
@@ -458,7 +510,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         input.onReplyRestart?.("")
         displayed = false
       }
-      conversation.push({ role: "assistant", content: answered.text || null, toolCalls: work })
+      tail.push({ role: "assistant", content: answered.text || null, toolCalls: work })
       for (const call of work) {
         const result = await execute(call)
         coaching ||= coachingResult(result)
@@ -471,15 +523,18 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       prose = replyText(reply) ?? (draft === "Answer" ? answered.text : undefined)
       break plan
     }
-    if (plansOn(cutOff, taken, work.length, false)) continue plan
+    if (plansOn(cutOff, taken, work.length, false)) {
+      correctedRestore = false
+      continue plan
+    }
     if (work.length > 0) break plan
     switch (nextMove(draft, 0, maxPlanSteps - taken)) {
       case "Deliver":
         prose = answered.text
         break plan
       case "AskAgain":
-        conversation.push({ role: "assistant", content: answered.text })
-        conversation.push({ role: "user", content: answerNow })
+        tail.push({ role: "assistant", content: answered.text })
+        tail.push({ role: "user", content: answerNow })
         continue plan
       case "GiveUp":
       case "RunTools":
@@ -487,7 +542,9 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     }
   }
   const needsReview = prose !== undefined && needsReplyReview(steps)
-  const reviewed = needsReview && prose !== undefined ? await reviewRecoveredProse(runtime, prose, conversation, steps, signal) : prose
+  const reviewed = needsReview && prose !== undefined ? await reviewRecoveredProse(runtime, prose, [...prefix, ...tail], steps, signal) : prose
   const reply = settleReply(steps, reviewed)
-  return { reply: reply || (needsReview ? "I couldn’t verify a reply about what happened." : coached ? "I couldn’t complete that request." : ""), steps, streamed }
+  const fallback = refusedRestore ? "I couldn’t restore additional context for that reply."
+    : needsReview ? "I couldn’t verify a reply about what happened." : coached ? "I couldn’t complete that request." : ""
+  return { reply: reply || fallback, steps, streamed }
 }

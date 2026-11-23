@@ -187,12 +187,17 @@ async function respond(
         }))).flat()
         const earlier = recent.length < historyReadCount ? 0 : await runtime.countMemories(message.roomId, false, "messages") - recent.length
         const window = windowHistory(sources, asked, { earlier, readCount: recent.length, positions: sources.map(({ position }) => position) })
-        const history: ChatMessage[] = window.shown.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
+        const historyOf = (entries: readonly (typeof sources)[number][]): ChatMessage[] =>
+          entries.map(({ fromUser, text }) => ({ role: fromUser ? "user" : "assistant", content: text }))
+        const history = historyOf(window.shown)
         const actions = offeredActions(runtime, message, actionGate)
-        const messages: ChatMessage[] = [...history, said(message, asked, [
-          contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext,
-          window.windowed ? historyWindowNotice(window) : undefined,
-        ])]
+        const notes = [contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext]
+        const notice = window.windowed ? historyWindowNotice(window, window.deferred.length > 0 ? "RESTORE_CONTEXT" : undefined) : undefined
+        const messages: ChatMessage[] = [...history, said(message, asked, [...notes, notice])]
+        const deferredHistory = window.deferred.length === 0 ? undefined : {
+          count: window.deferred.length,
+          originals: [...historyOf(sources), said(message, asked, notes)],
+        }
         const character = runtime.character
         const examples = (character.messageExamples ?? []).map(({ examples }) =>
           examples.flatMap(({ name, content }) => content.text ? [`${name}: ${content.text}`] : []).join("\n"))
@@ -209,6 +214,7 @@ async function respond(
         })
         const planned = await planTurn({
           runtime, message, state, roles, actionGate, system, messages, signal, actionContext,
+          ...(deferredHistory === undefined ? {} : { deferredHistory }),
           onStepResult: (result) => Effect.runPromise(Effect.try({
             try: () => terminal.recordActionResult(result),
             catch: toElizaError,
