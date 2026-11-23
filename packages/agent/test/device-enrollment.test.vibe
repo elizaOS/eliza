@@ -88,11 +88,12 @@ it.live('Enroll my device under its own key, read its context, revoke it and enr
   const reEnrolledContext = try device(second, agentId, context)
   const replaced = try device(second, agentId, register(1), otherKey)
   const replacedContext = try device(second, agentId, context)
+  const replacedRevoke = try device(second, agentId, revoke)
   const refusedReplacement = try device(second, agentId, register(6))
   const current = try device(second, agentId, context, otherKey)
   assert.deepStrictEqual(
-    [reEnrolled.status, reEnrolledContext.status, replaced.status, replacedContext.status, refusedReplacement.status, current.status, current.json.enrollmentId],
-    [200, 200, 200, 401, 409, 200, replaced.json.enrollmentId],
+    [reEnrolled.status, reEnrolledContext.status, replaced.status, replacedContext.status, replacedRevoke.status, refusedReplacement.status, current.status, current.json.enrollmentId],
+    [200, 200, 200, 401, 401, 409, 200, replaced.json.enrollmentId],
   )
   assert.notStrictEqual(replaced.json.enrollmentId, enrollmentId)
 }, 180_000)
