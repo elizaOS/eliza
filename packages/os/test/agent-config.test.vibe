@@ -3,6 +3,7 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { decodeLaunchDocument, decodeLaunchFrame } from "@elizaos/agent/launch"
 import { AGENT_ASSETS, AgentConfigRefused, admitAgentBytes, admitAgentData, type AgentFile } from "../src/build/agent-config.vibe"
+import { peerTrusted } from "../gen/os__agentService__channel.effect.vibe"
 import { scratch, writeTree } from "./support/scratch.vibe"
 
 module node {
@@ -56,8 +57,21 @@ module node {
     const out = execFileSync(java, ["-cp", compileAdapter(main), main], { input: events.map((event) => JSON.stringify({ event })).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
     return out.trim().split("\n").map((line) => JSON.parse(line) as LifecycleStep)
   }
+
+  export interface PeerAnswer {
+    readonly peer: number | null
+    readonly appUid: number
+    readonly trusted: boolean
+  }
+
+  /** @throws {Error} */
+  export function peerAnswers(): PeerAnswer[] {
+    const main = "ai.eliza.os.agent.PeerCheck"
+    const out = execFileSync(java, ["-cp", compileAdapter(main), main], { encoding: "utf8", timeout: 120_000 })
+    return out.trim().split("\n").map((line) => JSON.parse(line) as PeerAnswer)
+  }
 }
-import { lifecycle, project, type Answer, type Ask } from node
+import { lifecycle, peerAnswers, project, type Answer, type Ask } from node
 
 type Files = Readonly<Record<AgentFile, string>>
 
@@ -235,4 +249,10 @@ it.effect('A launch that never answers ready, or exits before it does, is restar
     ["accepted", { tag: "Starting", stage: "Checking" }, 3, 2, [{ tag: "Check", epoch: 3, account: "account-a", delayMs: 2000 }]],
     ["accepted", { tag: "Failed", cause: "Config" }, 3, 2, []],
   ])
+}, 120_000)
+
+it.effect('The service writes to the agent socket only when the kernel names this app as its peer, as the rule decides for every peer (spec/os/agentService/channel.md, "The token is written only to a socket whose peer is this app")', effect () => {
+  const answers = try Effect.try(() => peerAnswers())
+  assert.deepStrictEqual(answers.map((answer) => [answer.peer, answer.appUid, answer.trusted]), [[1, 1, true], [1, 2, false], [2, 1, false], [2, 2, true], [null, 1, false], [null, 2, false]])
+  assert.deepStrictEqual(answers.map((answer) => peerTrusted(answer.peer === null ? { tag: "PeerUnread" } : { tag: "PeerOfUser", uid: answer.peer }, answer.appUid)), answers.map((answer) => answer.trusted))
 }, 120_000)

@@ -92,7 +92,9 @@ public final class AgentSocketClient {
     LocalSocket socket = new LocalSocket();
     try {
       socket.connect(new LocalSocketAddress(path.toString(), LocalSocketAddress.Namespace.FILESYSTEM));
-      if (socket.getPeerCredentials().getUid() != android.os.Process.myUid()) throw new IOException("The agent socket's peer is not this app");
+      Integer peer;
+      try { peer = socket.getPeerCredentials().getUid(); } catch (IOException unread) { peer = null; }
+      if (!ChannelPolicy.peerTrusted(peer, android.os.Process.myUid())) throw new IOException("The agent socket's peer is not this app");
     } catch (IOException refused) {
       socket.close();
       throw refused;

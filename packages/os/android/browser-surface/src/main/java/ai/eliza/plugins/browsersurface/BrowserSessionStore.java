@@ -1,10 +1,7 @@
 package ai.eliza.plugins.browsersurface;
 
 import android.content.SharedPreferences;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
@@ -33,41 +30,7 @@ public final class BrowserSessionStore {
 
   /** Canonical restorable form with optional visit times on the retained history URLs. */
   public static JSONObject normalize(JSONObject input) throws Exception {
-    List<String> history = new ArrayList<>();
-    List<BrowserSessionPolicy.Tab> tabs = new ArrayList<>();
-    JSONArray rawHistory = input.optJSONArray("history"), rawTabs = input.optJSONArray("tabs");
-    if (rawHistory != null)
-      for (int i = 0; i < rawHistory.length(); i++) history.add(rawHistory.optString(i, null));
-    if (rawTabs != null)
-      for (int i = 0; i < rawTabs.length(); i++) {
-        JSONObject tab = rawTabs.optJSONObject(i);
-        if (tab == null) continue;
-        tabs.add(new BrowserSessionPolicy.Tab(tab.optString("id", null), tab.optString("url", null),
-            tab.optString("title", ""), tab.optBoolean("private", false)));
-      }
-    BrowserSessionPolicy.Snapshot saved =
-        BrowserSessionPolicy.restore(tabs, history, input.optString("cur", ""));
-    JSONArray rows = new JSONArray();
-    for (BrowserSessionPolicy.Tab tab : saved.tabs)
-      rows.put(new JSONObject().put("id", tab.id).put("url", tab.url).put("title", tab.title));
-    JSONObject result = new JSONObject()
-        .put("history", new JSONArray(saved.history))
-        .put("tabs", rows)
-        .put("cur", saved.current);
-    JSONObject visitTimes = input.optJSONObject("visitTimes");
-    if (visitTimes != null) {
-      JSONObject retained = new JSONObject();
-      for (String url : saved.history) {
-        Object rawTime = visitTimes.opt(url);
-        if (rawTime instanceof Number) {
-          double time = ((Number) rawTime).doubleValue();
-          if (time > 0 && time <= 9_007_199_254_740_991d && time == Math.floor(time))
-            retained.put(url, (long) time);
-        }
-      }
-      if (retained.length() > 0) result.put("visitTimes", retained);
-    }
-    return result;
+    return BrowserSessionRecord.normalize(input);
   }
 
   public synchronized JSONObject read() throws Exception {

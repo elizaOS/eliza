@@ -100,10 +100,9 @@ pure val keptVisit: VisitTime = { visited: "https://example.test/", millis: 5 }
 pure val hrefsValues = Set(List(), List("https://example.test/"))
 pure val keptTimesValues = Set(List(), List(keptVisit))
 pure val stampValues = Set(keptVisit, { ...keptVisit, millis: 0 }, { ...keptVisit, visited: "https://other.test/" })
-pure val stampsValues = Set(List(), List(keptVisit, { ...keptVisit, millis: 6 }, { ...keptVisit, visited: "https://other.test/" }, { ...keptVisit, millis: 0 }))
 pure def lawOnlyATimeOfKeptHistoryIsKept(hrefs: List[str], keptTimes: List[VisitTime], stamp: VisitTime): bool =
   keepVisitTime(hrefs, keptTimes, stamp) != keptTimes implies (hrefs.includes(stamp.visited) and stamp.millis > 0 and stamp.millis <= maxVisitMillis)
-pure def lawNoHistoryKeepsNoVisitTime(stamps: List[VisitTime]): bool = retainedVisitTimes(List(), stamps) == List()
+pure def lawNoHistoryKeepsNoVisitTime(keptTimes: List[VisitTime], stamp: VisitTime): bool = keepVisitTime(List(), keptTimes, stamp) == keptTimes
 pure def lawTheFirstTimeOfAnAddressWins(hrefs: List[str], keptTimes: List[VisitTime], stamp: VisitTime): bool =
   keptTimes.some(k => k.visited == stamp.visited) implies keepVisitTime(hrefs, keptTimes, stamp) == keptTimes
 ```
