@@ -122,8 +122,83 @@ jobs:
         uses: ./.github/actions/setup
         with:
           job: ${{ matrix.name }}
+      - id: tool-selftest-cache
+        if: startsWith(matrix.name, 'selftest-') && (env.TURBO_CACHE == 'local:rw' || github.event_name == 'push')
+        continue-on-error: true
+        shell: bash
+        env:
+          TASK: ${{ matrix.tasks }}
+          JOB: ${{ matrix.name }}
+        run: |
+          hash=$(node vibestack/spec.ts tasks "$TASK" --only --dry=json | jq -er --arg task "$TASK" '
+            .tasks | select(length == 1) | .[0]
+            | select(.taskId == $task and .resolvedTaskDefinition.cache == true and .resolvedTaskDefinition.outputs == [])
+            | .hash
+          ')
+          [[ $hash =~ ^[0-9a-f]{16}$ ]] || exit 0
+          archive=".turbo/cache/$hash.tar.zst"
+          meta=".turbo/cache/$hash-meta.json"
+          if [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] &&
+            jq -e --arg hash "$hash" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null; then
+            [[ $GITHUB_EVENT_NAME == push ]] || exit 0
+            echo 'lookup=true' >> "$GITHUB_OUTPUT"
+          fi
+          printf 'hash=%s\nkey=turbo-tool-selftest-v1-%s-%s-%s-%s\n' "$hash" "$RUNNER_OS" "$RUNNER_ARCH" "$JOB" "$hash" >> "$GITHUB_OUTPUT"
+      - id: restore-tool-selftest
+        if: steps.tool-selftest-cache.outputs.key != ''
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          key: ${{ steps.tool-selftest-cache.outputs.key }}
+          path: |
+            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}.tar.zst
+            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}-meta.json
+          lookup-only: ${{ steps.tool-selftest-cache.outputs.lookup == 'true' }}
+      - if: steps.restore-tool-selftest.outputs.cache-hit == 'true' && steps.tool-selftest-cache.outputs.lookup != 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          HASH: ${{ steps.tool-selftest-cache.outputs.hash }}
+        run: |
+          archive=".turbo/tool-selftest-cache/$HASH.tar.zst"
+          meta=".turbo/tool-selftest-cache/$HASH-meta.json"
+          [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] || exit 0
+          jq -e --arg hash "$HASH" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null || exit 0
+          mkdir -p .turbo/cache
+          rm -f ".turbo/cache/$HASH-manifest.json"
+          mv "$archive" "$meta" .turbo/cache/
       - id: verify-tasks
         run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
+      - id: publish-tool-selftest
+        if: >-
+          github.event_name == 'push' && steps.tool-selftest-cache.outputs.key != '' &&
+          steps.restore-tool-selftest.outputs.cache-hit != 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          TASK: ${{ matrix.tasks }}
+          HASH: ${{ steps.tool-selftest-cache.outputs.hash }}
+        run: |
+          jq -e -s --arg task "$TASK" --arg hash "$HASH" '
+            map(select(.version == "1" and .execution.exitCode == 0 and (.tasks | length == 1)))
+            | map(.tasks[0] | select(.taskId == $task and .hash == $hash and .execution.exitCode == 0))
+            | length == 1
+          ' .turbo/runs/*.json >/dev/null || exit 0
+          archive=".turbo/cache/$HASH.tar.zst"
+          meta=".turbo/cache/$HASH-meta.json"
+          [[ -f $archive && ! -L $archive && -s $archive && -f $meta && ! -L $meta && -s $meta ]] || exit 0
+          jq -e --arg hash "$HASH" '.hash == $hash and (.duration | type == "number" and . >= 0 and floor == .)' "$meta" >/dev/null || exit 0
+          mkdir -p .turbo/tool-selftest-cache
+          cp "$archive" "$meta" .turbo/tool-selftest-cache/
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+      - if: steps.publish-tool-selftest.outputs.ready == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          key: ${{ steps.tool-selftest-cache.outputs.key }}
+          path: |
+            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}.tar.zst
+            .turbo/tool-selftest-cache/${{ steps.tool-selftest-cache.outputs.hash }}-meta.json
       - name: Report Turbo task timings
         id: task-timings
         if: ${{ !cancelled() }}
