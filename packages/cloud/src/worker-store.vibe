@@ -1,5 +1,6 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { Client } from "pg"
+import { storeOver, type Connection } from "./store/connection.vibe"
 
 export type WorkerDatabase = {
   CLOUD_IDENTITY_DIGEST: string
@@ -20,4 +21,13 @@ export async function withCloudDatabase<T>(env: WorkerDatabase, action: (db: Cli
   } finally {
     await db.end().catch(() => undefined)
   }
+}
+
+export function clientStore(db: Client) {
+  const connection: Connection = {
+    query: async (sql, params) => (await db.query(sql, [...params])).rows,
+    script: async (sql) => { await db.query(sql) },
+    release: async () => {}
+  }
+  return storeOver({ kind: "connected-pg" }, { permits: 1, connect: async () => connection, close: async () => {} })
 }

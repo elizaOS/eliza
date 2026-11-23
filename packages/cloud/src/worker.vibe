@@ -1,7 +1,17 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "Story: Sign in to the Cloud"
 import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch, type WorkerLifetime } from "./worker-platform.ts"
 import type { Client } from "pg"
-import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
+import { FetchHttpClient, HttpEffect, HttpServerRequest } from "effect/http"
+import { authenticate, recheckAccess } from "./http/request-auth.vibe"
+import { refusalResponse, refused, Refused } from "./http/refusal.vibe"
+import { matchRoute } from "./http/routes.vibe"
+import { respond } from "./http/transport.vibe"
+import { leaseRoutes } from "./identity/sessions.vibe"
+import { accessCookie, readCookie } from "./identity-store.vibe"
+import { routes as deviceKeyRoutes } from "./native-clients/device-keys.vibe"
+import { deploymentLayer, parseProfile } from "./profile/profile.vibe"
+import { Store } from "./store/connection.vibe"
+import { clientStore, withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { sweepUsage } from "./worker-metering.vibe"
 import { cloudCredential, identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
 import { nativeAssetLinks } from "./native-registry.vibe"
@@ -16,8 +26,66 @@ import { CLEF_DECISIONS_PATH } from "./clef-decisions.vibe"
 import { clefRequest, type ClefEnv } from "./clef-worker.vibe"
 import { inferenceRequest, limitedBody, type InferenceEnv } from "./inference.vibe"
 
-export type CloudBindings = ClefEnv & IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase
+export type CloudBindings = ClefEnv & IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase & { readonly CLOUD_PROFILE?: string }
+const mobileRoutes = [...deviceKeyRoutes, ...leaseRoutes]
+const connectPath = "/api/v1/app-auth/connect"
+const leasedGoogleReads: ReadonlySet<string> = new Set([
+  "/api/v1/eliza/google/status",
+  "/api/v1/eliza/google/gmail/triage",
+  "/api/v1/eliza/google/gmail/search",
+  "/api/v1/eliza/google/gmail/read",
+  "/api/v1/eliza/google/calendar/feed",
+])
+
 type DeploymentExtension<E extends CloudBindings> = (request: Request, env: E, db: Client, account: string) => Promise<Response>
+
+function mobileRequest(request: Request, env: CloudBindings, db: Client, providerFetch: typeof fetch): Promise<Response> {
+  const dispatchMobile = effect {
+    const value = env.CLOUD_PROFILE
+    if (value === undefined) throw refused("ServiceUnavailable")
+    const parsed = Effect.try(() => JSON.parse(value) as unknown) catch effect () => { throw refused("ServiceUnavailable") }
+    const profile = parseProfile(parsed) catch effect () => { throw refused("ServiceUnavailable") }
+    const settings = profile.environments[env.CLOUD_ENVIRONMENT]
+    if (settings.api !== env.PUBLIC_API_ORIGIN || settings.web !== env.WEB_ORIGIN || settings.databaseIdentity !== env.CLOUD_IDENTITY_DIGEST) {
+      throw refused("ServiceUnavailable")
+    }
+    const source = try HttpServerRequest.HttpServerRequest
+    const access = new URL(request.url).pathname === connectPath && !request.headers.has("authorization")
+      ? readCookie(request, accessCookie) : null
+    const forwarded = request.headers.get("cf-connecting-ip")
+    const seen = source.modify({
+      headers: access === null ? source.headers : { ...source.headers, authorization: "Bearer " + access },
+      remoteAddress: forwarded === null ? source.remoteAddress : Option.some(forwarded)
+    })
+    const bindings = Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+    const context = Layer.mergeAll(
+      Layer.effect(Store, clientStore(db)),
+      deploymentLayer(profile, env.CLOUD_ENVIRONMENT).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(bindings)))),
+      FetchHttpClient.layer
+    )
+    return try provideService(Effect.provide(provideService(respond(mobileRoutes), HttpServerRequest.HttpServerRequest, seen), context), FetchHttpClient.Fetch, providerFetch)
+  }
+  return HttpEffect.toWebHandler(effect {
+    return dispatchMobile catch effect (failure) => refusalResponse(failure.refusal, try Clock.currentTimeMillis)
+  })(request)
+}
+
+function leasedGoogleRequest(request: Request, env: CloudBindings, db: Client, providerFetch: typeof fetch): Promise<Response> {
+  const authorization = request.headers.get("authorization") ?? undefined
+  const read = effect {
+    const caller = try authenticate(authorization, "MailAccess")
+    if (caller.kind !== "lease") throw refused("AuthenticationRequired", "CredentialUnknown")
+    const answer = try promise(() => googleRequest(request, env, db, caller.userId, providerFetch))
+    if (answer.ok) try recheckAccess(authorization, caller, "MailAccess")
+    return answer
+  }
+  return runPromise(Effect.provide(effect {
+    return read catch effect (failure) => {
+      const refusal = failure instanceof Refused ? failure : refused("ServiceUnavailable")
+      return HttpServerResponse.toWeb(refusalResponse(refusal.refusal, try Clock.currentTimeMillis))
+    }
+  }, Layer.effect(Store, clientStore(db))), { signal: request.signal })
+}
 
 async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension: DeploymentExtension<E> | undefined, providerFetch: typeof fetch, lifetime?: WorkerLifetime) {
   const path = new URL(request.url).pathname
@@ -29,6 +97,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
     await db.query("SELECT 1 FROM accounts, sessions, device_grants, subscriptions, holds, usage_records LIMIT 0")
     return WorkerResponse.json({ status: "ready" })
   }
+  if (matchRoute(mobileRoutes, request.method, path).kind === "route") return mobileRequest(request, env, db, providerFetch)
   if (ownsPasswordBackupPath(path)) return identityRequest(request, env, db)
   if (path.startsWith("/api/auth/") || path === "/api/v1/app-auth/mobile/config" || nativeGooglePath(path)) {
     if (request.method === "POST") {
@@ -59,6 +128,9 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
       current: async () => await inferenceAccount(request, db, env) === owner,
     })
   }
+  if (request.method === "GET" && leasedGoogleReads.has(path) && request.headers.has("authorization")) {
+    return leasedGoogleRequest(request, env, db, providerFetch)
+  }
   const decisions = path === CLEF_DECISIONS_PATH
   const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"
   if (path === speechRoute + "/ws") return speechWebSocket(request, env, db)
@@ -68,6 +140,9 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   const google = path.startsWith("/api/v1/eliza/google/")
   const nativeConnect = path === "/api/v1/eliza/google/connect/native"
   if (!reminders && !decisions && !inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
+  if (google && !nativeConnect && request.headers.has("authorization")) {
+    return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+  }
   const account = reminders || decisions || inference || speech || nativeConnect ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
   if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
   if ((reminders || nativeConnect) && !request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 403 })
@@ -115,7 +190,8 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
         return new WorkerResponse(null, { status: 204, headers: cors })
       }
       if (request.method !== "GET" && !origin && !request.headers.has("authorization") &&
-          path !== stripeWebhookRoute && path !== "/api/auth/device/exchange" && !nativeGooglePath(path) && !ownsPasswordBackupPath(path)) {
+          path !== stripeWebhookRoute && path !== "/api/auth/device/exchange" && !nativeGooglePath(path) &&
+          !ownsPasswordBackupPath(path) && !mobileRoutes.some((entry) => entry.path === path && entry.auth === "Public")) {
         return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })
       }
       try {

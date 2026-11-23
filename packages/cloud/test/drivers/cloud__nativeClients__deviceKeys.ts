@@ -1,4 +1,4 @@
-// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Cause, Clock, ConfigProvider, Effect, Exit, Layer, ManagedRuntime, Option, Schema } from "effect";
 import { FetchHttpClient, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -10,9 +10,9 @@ import { respond } from "../../src/http/server.vibe";
 import { landAccount } from "../../src/identity/accounts.vibe";
 import { routes as federatedRoutes } from "../../src/identity/federated.vibe";
 import { routes as factorRoutes } from "../../src/identity/second-factor.vibe";
-import { issueSession } from "../../src/identity/sessions.vibe";
-import { acknowledgeGrant, exchangeGrant, openGrant, retireGrant, routes } from "../../src/native-clients/device-keys.vibe";
-import { observeGrant } from "../../src/native-clients/grants.vibe";
+import { activateLease, endLease, issueSession, offerLease } from "../../src/identity/sessions.vibe";
+import { acknowledgeGrant, exchangeGrant, openGrant, renewGrant, retireGrant, routes } from "../../src/native-clients/device-keys.vibe";
+import { cancelLegacySuccessor, endGrantForLeaseTheft, observeGrant, phaseColumn, supersedeGrant } from "../../src/native-clients/grants.vibe";
 import { signInDevice } from "../../src/native-clients/mobile-google.vibe";
 import { decodeRegistration, readClient, registerClient, updateClient } from "../../src/native-clients/registry.vibe";
 import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe";
@@ -41,6 +41,7 @@ interface Device {
   readonly binding?: ClientBinding;
   readonly code?: string;
   readonly minted?: { readonly credentialId: string; readonly secret: string; readonly logicalId: string };
+  readonly renewedFrom?: { readonly grantKey: string; readonly logicalKey: string };
 }
 
 const time = manualClock();
@@ -249,6 +250,38 @@ async function ack(key: string, event: Extract<Event, { type: "ack" }>) {
   return "accepted" as const;
 }
 
+async function renew(key: string, event: Extract<Event, { type: "renew" }>) {
+  const held = await device(key);
+  const predecessorKey = randomUUID();
+  const binding = event.predecessor.client.tag === "BoundClient" ? event.predecessor.client : originalBinding;
+  await epoch(held.person, event.deviceEpoch);
+  await configureClient({ clientId: binding.clientId, environment: binding.environment, signInReturn: binding.signInReturn }, event.credentialTtl, { tag: "ClientAdmitted" });
+  const predecessor: Grant = { ...event.predecessor, now: Math.min(event.predecessor.now, now) };
+  const refresh = await run(within((tx) => Effect.gen(function* () {
+    yield* tx.query("INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, code_expires_at, device_epoch, issued_at, updated_at, key_expires_at) VALUES ($1, $2::jsonb, 1, $3, $4, $5, $6, $7, $8, $8, $9)", [
+      predecessorKey, JSON.stringify(predecessor), held.person.userId, binding.clientId, phaseColumn(predecessor), predecessor.codeExpiresAt, predecessor.epoch, now,
+      predecessor.phase.tag === "Active" || predecessor.phase.tag === "LegacyActive" ? predecessor.phase.keyExpiresAt : 0,
+    ]);
+    const offered = yield* offerLease(tx, { userId: held.person.userId, grantKey: predecessorKey, now });
+    if (event.leaseLive) yield* activateLease(tx, predecessorKey, now);
+    else yield* endLease(tx, predecessorKey, now);
+    return offered.refresh;
+  })));
+  const answer = await attempt(within((tx) => renewGrant(tx, refresh)));
+  if (!answer.accepted || answer.value.kind !== "done") return "refused" as const;
+  const renewed = (await run(within((tx) => tx.query("SELECT key FROM device_grants WHERE renewed_from = $1", [predecessorKey]))))[0]?.key;
+  if (typeof renewed !== "string") throw new Error("the renewal answered without a renewed grant");
+  devices.set(key, { ...held, grantKey: renewed, binding, renewedFrom: { grantKey: predecessorKey, logicalKey: event.fromKey }, minted: { credentialId: answer.value.value.credentialId, secret: answer.value.value.secret, logicalId: event.credentialId } });
+  outputs.set(key, ["MintSealedKey"]);
+  return "accepted" as const;
+}
+
+async function endedByLease(key: string, ending: "supersede" | "endForLeaseTheft") {
+  const held = await device(key);
+  const ended = await run(within((tx) => ending === "supersede" ? supersedeGrant(tx, held.grantKey) : endGrantForLeaseTheft(tx, held.grantKey)));
+  return ended ? "accepted" as const : "refused" as const;
+}
+
 async function observe(key: string): Promise<Grant> {
   const held = await device(key);
   const grant = await run(within((tx) => observeGrant(tx, held.grantKey)));
@@ -259,7 +292,8 @@ async function observe(key: string): Promise<Grant> {
     if ((grant.phase.tag === "Active" || grant.phase.tag === "LegacyActive") && Number(stored.key_expires_at) !== grant.phase.keyExpiresAt) throw new Error("the active key expiry differs from the stored expiry");
     if (grant.phase.tag === "Exchanged" ? typeof stored.sealed_copy !== "string" : stored.sealed_copy !== null) throw new Error("the recoverable key copy disagrees with the stored phase");
   }
-  return { ...grant, credentialId: grant.credentialId === "" ? "" : held.minted?.logicalId ?? grant.credentialId };
+  const origin = grant.origin.tag === "Renewed" && held.renewedFrom?.grantKey === grant.origin.fromKey ? { tag: "Renewed" as const, fromKey: held.renewedFrom.logicalKey } : grant.origin;
+  return { ...grant, origin, credentialId: grant.credentialId === "" ? "" : held.minted?.logicalId ?? grant.credentialId };
 }
 
 async function dispatch(key: string, event: Event) {
@@ -278,12 +312,26 @@ async function dispatch(key: string, event: Event) {
     case "signInNatively": return native(key, event);
     case "token": return token(key, event);
     case "ack": return ack(key, event);
+    case "renew": return renew(key, event);
+    case "cancelLegacySuccessor": {
+      const held = await device(key);
+      const answer = await attempt(within((tx) => Effect.gen(function* () {
+        yield* tx.query("UPDATE device_grants SET sign_in_at = $2 WHERE key = $1", [held.grantKey, event.legacy ? now : null]);
+        return yield* cancelLegacySuccessor(tx, held.grantKey);
+      })));
+      if (!answer.accepted) return "refused" as const;
+      outputs.set(key, answer.value.out.out);
+      return "accepted" as const;
+    }
+    case "supersede": case "endForLeaseTheft": return endedByLease(key, event.type);
     case "selfRevoke": {
       const held = await device(key);
       await epoch(held.person, event.deviceEpoch);
       const request = HttpServerRequest.fromWeb(new Request("https://api.staging.example.com/api/v1/api-keys/current", { method: "DELETE", headers: { authorization: `Bearer ${held.minted?.secret ?? `eliza_mobile_${hex(32)}`}` } }));
       const response = await run(Effect.provideService(respond(routes), HttpServerRequest.HttpServerRequest, request));
-      return response.status === 204 ? "accepted" as const : "refused" as const;
+      if (response.status !== 204) return "refused" as const;
+      outputs.set(key, ["EndLease"]);
+      return "accepted" as const;
     }
     case "lapse": case "expire": {
       const held = await device(key);

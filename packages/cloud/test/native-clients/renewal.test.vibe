@@ -1,0 +1,124 @@
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/deviceKeys.md, "A renewed key's acknowledgement ends the key it replaces and moves its lease to it"
+import { assert, describe, it } from "@effect/vitest"
+import { seedClients } from "../../src/operator/clients.vibe"
+import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
+import { Store } from "../../src/store/store.vibe"
+import fixtureSeed from "../fixtures/seed.json" with { type: "json" }
+import { testCloud, type TestCloud } from "../support/cloud.vibe"
+import { manualClock } from "../support/clock.ts"
+import { s256, signedIn } from "../support/identity-fixture.ts"
+import { testProfile } from "../support/profile.ts"
+
+const binding = { clientId: "com.example.fixture", environment: "staging", redirectUri: "https://www.staging.example.com/apps/fixture/sign-in" }
+const day = 86_400_000
+const start = 1_000_000
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+function bearer(token: string) {
+  return { authorization: `Bearer ${token}` }
+}
+
+function failure(body: unknown): unknown {
+  const refusal = body as { readonly error?: string; readonly reason?: string }
+  return [refusal.error, refusal.reason]
+}
+
+interface Key {
+  readonly credentialId: string
+  readonly secret: string
+}
+
+effect function seeded(cloud: TestCloud) {
+  const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+  const now = try Clock.currentTimeMillis
+  provide Store = cloud.store, deploymentLayer(profile, "staging") {
+    try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))
+  }
+}
+
+effect function signedInTablet(cloud: TestCloud, accessToken: string) {
+  const state = "s".repeat(43)
+  const verifier = "v".repeat(43)
+  const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: "Ada's tablet" } })
+  const minted = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: (connected.body as { readonly code: string }).code, state, codeVerifier: verifier } })
+  const key = minted.body as Key & { readonly lease: { readonly refresh: string } }
+  try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: key.credentialId, secret: key.secret } })
+  return { key: { credentialId: key.credentialId, secret: key.secret }, refresh: key.lease.refresh }
+}
+
+effect function renew(cloud: TestCloud, bearerToken: string) {
+  return try cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(bearerToken) })
+}
+
+effect function acknowledge(cloud: TestCloud, key: Key) {
+  return (try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: key.credentialId, secret: key.secret } })).status
+}
+
+effect function rotated(cloud: TestCloud, refresh: string) {
+  return ((try cloud.call("/api/v1/app-auth/mobile/lease", { method: "POST", headers: bearer(refresh) })).body as { readonly refresh: string }).refresh
+}
+
+effect function usable(cloud: TestCloud, secret: string) {
+  return (try cloud.call("/api/v1/user", { headers: bearer(secret) })).status
+}
+
+describe("Device key renewal through the lease (spec/cloud/nativeClients/deviceKeys.md, \"Story: Keep a tablet's key without signing in again\")", () => {
+  it.live("Only the lease renews a key, a renewed key replaces the old one at its acknowledgement, and renewal has no cap while the lease is used (spec/cloud/nativeClients/deviceKeys.md, \"Only a live lease renews a key, and only while the key it replaces is live or merely expired and of the person's current device epoch\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(start))
+    provide Clock.Clock = clock.clock {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const signed = try signedIn(cloud, "renewal@example.com")
+    const tablet = try signedInTablet(cloud, signed.accessToken)
+    const bySession = try renew(cloud, signed.accessToken)
+    const byKey = try renew(cloud, tablet.key.secret)
+    let refresh = tablet.refresh
+    let held: Key = tablet.key
+    const rounds: Array<unknown> = []
+    for (const after of [70, 140, 210]) {
+      try sync(() => clock.set(start + after * day))
+      refresh = try rotated(cloud, refresh)
+      const answer = try renew(cloud, refresh)
+      const successor = answer.body as Key
+      const acked = try acknowledge(cloud, successor)
+      rounds.push([answer.status, acked, try usable(cloud, held.secret), try usable(cloud, successor.secret)])
+      held = successor
+    }
+    try check(() => assert.deepStrictEqual({
+      bySession: [bySession.status, failure(bySession.body)],
+      byKey: [byKey.status, failure(byKey.body)],
+      rounds
+    }, {
+      bySession: [401, ["authentication_required", "credential_unknown"]],
+      byKey: [401, ["authentication_required", "credential_unknown"]],
+      rounds: [[200, 200, 401, 200], [200, 200, 401, 200], [200, 200, 401, 200]]
+    }))
+    }
+  }))
+
+  it.live("Renewing again before the acknowledgement mints another successor, and only the one acknowledged replaces the key (spec/cloud/nativeClients/deviceKeys.md, \"A renewed key's acknowledgement ends the key it replaces and moves its lease to it\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(start))
+    provide Clock.Clock = clock.clock {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const signed = try signedIn(cloud, "twice@example.com")
+    const tablet = try signedInTablet(cloud, signed.accessToken)
+    const first = (try renew(cloud, tablet.refresh)).body as Key
+    const second = (try renew(cloud, tablet.refresh)).body as Key
+    const beforeAck = [try usable(cloud, tablet.key.secret), try usable(cloud, first.secret), try usable(cloud, second.secret)]
+    const secondAck = try acknowledge(cloud, second)
+    const firstAck = try acknowledge(cloud, first)
+    const after = [try usable(cloud, tablet.key.secret), try usable(cloud, first.secret), try usable(cloud, second.secret)]
+    try check(() => assert.deepStrictEqual({ beforeAck, acks: [secondAck, firstAck], after }, {
+      beforeAck: [200, 401, 401],
+      acks: [200, 401],
+      after: [401, 401, 200]
+    }))
+    }
+  }))
+})
