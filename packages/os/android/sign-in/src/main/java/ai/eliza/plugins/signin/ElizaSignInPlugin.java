@@ -452,10 +452,14 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   private void connectGoogle(Attempt attempt, SecretServerCode code) {
-    Held held = custody.held(attempt.environment);
-    boolean connected = held != null && google.connectNative(attempt.environment, held.key(), code);
-    if (code != null) code.drop();
-    dispatch(new Event.GoogleConnected(attempt.number, connected));
+    boolean connected = false;
+    try {
+      Held held = custody.held(attempt.environment);
+      connected = held != null && google.connectNative(attempt.environment, held.key(), code);
+    } finally {
+      if (code != null) code.drop();
+      dispatch(new Event.GoogleConnected(attempt.number, connected));
+    }
   }
 
   private int begin(SignInRegistration.Environment environment) {
