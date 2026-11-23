@@ -103,7 +103,7 @@ func verifyNodeRuntime(entries map[string]*zip.File, artifact releaseArtifact) e
 	trees := map[string]bool{"agent": true}
 	var total int64
 	for _, row := range rows {
-		if !runtimePath(row.Path) || listed[row.Path] != "" || !validHex(row.SHA256) || row.Size < 1 || row.Size > maxNodeFileSize {
+		if !runtimePath(row.Path) || listed[row.Path] != "" || !validHex(row.SHA256) || row.Size < 0 || row.Size > maxNodeFileSize {
 			return errors.New("invalid or duplicate Node runtime inventory row")
 		}
 		total += row.Size
