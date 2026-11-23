@@ -1,9 +1,9 @@
 // spec/cloud/client.md, "Story: Use the cloud from the device as configured"
 import type { AuthClass, DeviceRoute, HttpMethod, RouteLookup, Segment } from "../../gen/cloud__client.ts"
-import { admitsHeader as tableAdmitsHeader, baseHeaders, deviceRoutes, idempotencyKey, ifMatch, renewedCredential, routeFor } from "../../gen/cloud__client.effect.vibe"
+import { admitsHeader as tableAdmitsHeader, baseHeaders, deviceRoutes, idempotencyKey, ifMatch, routeFor } from "../../gen/cloud__client.effect.vibe"
 
 export type { AuthClass, DeviceRoute, HttpMethod, RouteLookup, Segment }
-export { baseHeaders, deviceRoutes, idempotencyKey, ifMatch, renewedCredential }
+export { baseHeaders, deviceRoutes, idempotencyKey, ifMatch }
 
 type SegmentParam<S extends string> = S extends `:${infer Name}` ? Name : never
 

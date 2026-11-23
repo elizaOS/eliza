@@ -1,4 +1,4 @@
-// spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or end my other sessions"; spec/cloud/identity/sessions.md, "Story: Confirm it is me before a sensitive change"
+// spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or end my other sessions"; spec/cloud/identity/sessions.md, "Story: Confirm it is me before a sensitive change"; spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"
 import type { Driver, Options } from "../../gen/cloud__identity__sessions.conformance.ts";
 import type { Event, Family } from "../../gen/cloud__identity__sessions.ts";
 import { familyRows, stepFamily } from "../../src/identity/sessions.vibe";
@@ -12,7 +12,7 @@ const person = (key: string) => `person-${key}`;
 const emitted = new Map<string, unknown>();
 
 async function dispatch(key: string, event: Event) {
-  const done = await cloud.run(within((tx) => stepFamily(tx, family(key), event, 0, () => ({ user_id: person(key), access_digest: `${key}-access`, refresh_digest: `${key}-refresh` }))));
+  const done = await cloud.run(within((tx) => stepFamily(tx, family(key), event, 0, (next) => ({ user_id: person(key), access_digest: `${key}-access`, refresh_digest: `${key}-refresh`, ...(next.kind.tag === "DeviceLease" ? { kind: "device_lease", grant_key: next.kind.grantKey } : {}) }))));
   emitted.set(key, done.kind === "done" ? done.value.out : []);
   if (done.kind === "done") return "accepted" as const;
   if (done.tag === "Rejected") return "refused" as const;
