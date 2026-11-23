@@ -160,7 +160,7 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
 
 const planning = "spec/agent/conversation/planning.md"
 
-it.live(`Hear that the agent heard me once before it works, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges once, with its first cue that comes with tool calls, and bare assent is a cue only after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results")`, effect () => {
+it.live(`Hear that the agent heard me once before it works, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -171,13 +171,16 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
   })
   const id = try conversation(agent)
   const agenda = { name: "AGENDA_READ", arguments: {} }
+  const modelCalls = () => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
   const turn = (request: string) => effect {
+    const before = modelCalls()
     const chunks = try streamed(agent, id, { text: request })
+    const asked = modelCalls() - before
     const whole = try read(chunks, 0)
     const split = try read(chunks, 9)
     const acknowledged = whole.seen.findIndex((entry) => entry.startsWith("acknowledgment:"))
     return {
-      done: summary(whole.outcome),
+      done: summary(whole.outcome), asked,
       acknowledgments: whole.seen.filter((entry) => entry.startsWith("acknowledgment:")),
       tools: whole.seen.filter((entry) => entry.startsWith("tool:")),
       acknowledgedBeforeTools: acknowledged < 0 || whole.seen.findIndex((entry) => entry.startsWith("tool:")) > acknowledged,
@@ -194,18 +197,21 @@ it.live(`Hear that the agent heard me once before it works, and see which app it
   const politeAsk = try turn("Can you text Sam")
   try Effect.sync(() => cloud.script(text("Hello.")))
   const answer = try turn("Hi")
+  try Effect.sync(() => cloud.script(text("Sure.")))
+  const assentWithoutWork = try turn("Remember that I like tea")
 
   const done = (reply: string) => ({ kind: "Done", text: reply, failureKind: undefined, keyed: true })
-  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer }, {
+  try Effect.try(() => assert.deepStrictEqual({ instruction, question, politeAsk, answer, assentWithoutWork }, {
     instruction: {
-      done: done("Sent."), acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
+      done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
-    question: { done: done("You're free Friday."), acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    question: { done: done("You're free Friday."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     politeAsk: {
-      done: done("Sam is in your contacts."), acknowledgments: ["acknowledgment:Let me check."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:AGENDA_READ:Using Agenda"],
-      acknowledgedBeforeTools: false, cueLeftTheText: true, sameWhenSplit: true,
+      done: done("Sam is in your contacts."), asked: 3, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda", "tool:AGENDA_READ:Using Agenda"],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
-    answer: { done: done("Hello."), acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    assentWithoutWork: { done: done("Sure."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
   }))
 }, 120_000)

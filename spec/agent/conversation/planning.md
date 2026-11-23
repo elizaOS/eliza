@@ -265,9 +265,10 @@ grammar has no past-tense verb, negation or completion word, so a cue never
 claims that an effect happened or that the owner's tracked work is empty.
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
-`Answer`. A cue that comes with a tool call is the turn's acknowledgment
-(below); whatever text streamed with tool calls is restarted to empty
-before they run, so a cue is never part of the reply's text. A cue with no
+`Answer`. A cue that comes with the turn's first tool calls is the turn's
+acknowledgment (below); whatever text streamed with tool calls is
+restarted to empty before they run, so a cue is never part of the reply's
+text. A cue with no
 tool call is not an answer: the model is asked once more to answer with
 what the turn holds, and if steps run out the turn's failure fallback is
 the reply.
@@ -275,7 +276,7 @@ the reply.
 ```quint
 type Draft = Cue | Answer | Silent
 type PlanMove = RunTools | Deliver | AskAgain | GiveUp
-pure def acknowledges(draft: Draft, calls: int, acknowledged: bool): bool = draft == Cue and calls > 0 and not(acknowledged)
+pure def acknowledges(draft: Draft, calls: int, earlierCalls: int): bool = draft == Cue and calls > 0 and earlierCalls == 0
 pure def nextMove(draft: Draft, calls: int, stepsLeft: int): PlanMove =
   if (calls > 0) RunTools
   else if (draft == Answer) Deliver
@@ -284,34 +285,43 @@ pure def nextMove(draft: Draft, calls: int, stepsLeft: int): PlanMove =
 pure val stepsLeftValues = Set(0, 1, 3)
 pure def lawAnAnswerIsDeliveredWhole(stepsLeft: int): bool = nextMove(Answer, 0, stepsLeft) == Deliver
 pure def lawACueIsNeverTheReply(calls: int, stepsLeft: int): bool = nextMove(Cue, calls, stepsLeft) != Deliver
-pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, acknowledged: bool): bool = acknowledges(draft, calls, acknowledged) implies (calls > 0 and draft == Cue)
+pure val earlierCallsValues = Set(0, 1, 2)
+pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, earlierCalls: int): bool =
+  acknowledges(draft, calls, earlierCalls) implies (calls > 0 and draft == Cue and earlierCalls == 0)
 ```
 
-### A turn acknowledges once, with its first cue that comes with tool calls, and bare assent is a cue only after an instruction
+### A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction
 
 `Sure` or `Yeah`, alone or followed by a comma, dash, colon, semicolon or
 sentence break and one or two sentences of the grammar (`Sure, one sec.`,
-`Yeah. Let me check your calendar.`), says yes, so it is a cue only when
-the owner's message is an instruction: after fillers (`hey`, `ok`, `so`,
-`please`, …), a name and comma, or a greeting and a wake name, it opens
-with a command verb (`text`, `set`, `call`, `remind`, …), it has no
+`Yeah. Let me check your calendar.`), says yes, so it is a cue only when it
+comes with tool calls and the owner's message is an instruction: after
+fillers (`hey`, `ok`, `so`, `please`, …), a name and comma, or a greeting
+and a wake name, it opens with a command verb (`text`, `set`, `call`, `remind`, …), it has no
 question mark, and no sentence or comma clause opens with a question word
 or an auxiliary (`am`, `is`, `can`, `what`, …). `Can you text Sam`, `Am I
 free Friday` and `Any meetings today` are not instructions, so a bare
-`Sure.` after them is an answer. `Sure!` before a lead form (`Sure! Let me
+`Sure.` after them is an answer. With no tool call, assent is the answer
+after any message: `Sure.` to `Call me Bob` or `Remember that I like tea`
+is delivered, never asked again. `Sure!` before a lead form (`Sure! Let me
 check your calendar.`) is a cue after any message. The acknowledgment is
-delivered once per turn, as the [reply stream](./replyStream.md)'s
-`acknowledgment` frame; a cue at a later step is dropped with the rest of
-that step's text.
+delivered at most once per turn, as the [reply stream](./replyStream.md)'s
+`acknowledgment` frame, and only while no tool of the turn has run, a call
+the whole message asked for outright included; a cue at a later step is
+dropped with the rest of that step's text.
 
 ```quint
 type DraftShape = Blank | GrammarCue | AssentCue | OtherText
-pure def readDraft(shape: DraftShape, instruction: bool): Draft = match shape {
-  | Blank => Silent | GrammarCue => Cue | AssentCue => if (instruction) Cue else Answer | OtherText => Answer
+pure def readDraft(shape: DraftShape, instruction: bool, calls: int): Draft = match shape {
+  | Blank => Silent | GrammarCue => Cue | AssentCue => if (instruction and calls > 0) Cue else Answer | OtherText => Answer
 }
-pure def lawBareAssentIsACueOnlyAfterAnInstruction(instruction: bool): bool = (readDraft(AssentCue, instruction) == Cue) iff instruction
-pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool): bool = readDraft(GrammarCue, instruction) == Cue
-pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int): bool = not(acknowledges(draft, calls, true))
+pure def lawBareAssentIsACueOnlyWithWorkAfterAnInstruction(instruction: bool, calls: int): bool =
+  (readDraft(AssentCue, instruction, calls) == Cue) iff (instruction and calls > 0)
+pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int): bool =
+  nextMove(readDraft(AssentCue, instruction, 0), 0, stepsLeft) == Deliver
+pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool, calls: int): bool = readDraft(GrammarCue, instruction, calls) == Cue
+pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: int, laterDraft: Draft, laterCalls: int): bool =
+  acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
 ```
 
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
@@ -322,7 +332,11 @@ contexts (core's catalog when it declares none) other than the catch-all
 `general` and `simple` and any `system` context, exactly one applies and
 the runtime's context registry gives it a label, and `Working` otherwise.
 Contexts with the same label count once; an unlabelled context counts by
-its id, so an action that may also reach an unnamed app is `Working`.
+its id, so an action that may also reach an unnamed app is `Working`. The
+registry starts empty: an app is named only once it registers its own
+labelled context when it loads (Notes registers `Notes`) and its actions
+declare that context; an action that declares no context, or only contexts
+nobody labelled, is `Working`.
 
 ```quint
 type ToolActivity = UsingApp | Working
