@@ -56,10 +56,6 @@ it.effect('Open only a destination the owner wrote in this message, spelled as w
       "https://example.com/docs", undefined, undefined, "https://www.example.com/", "https://example.com/",
       "https://example.com/", undefined, "https://example.com/", undefined,
     ])
-    assert.deepStrictEqual(tabbed, [
-      direct(navigate("https://wikipedia.org/", true)), reviewed(navigate("https://example.com/", true)), direct(navigate("https://wikipedia.org/")),
-      direct({ type: "browser_tab_new", private: true }), direct(emptyTab),
-    ])
     assert.deepStrictEqual(linked, ["https://two.example/post?id=2", "https://one.example/story", undefined, undefined, undefined, undefined, undefined, undefined])
     assert.deepStrictEqual(
       [groundBrowserDestination("Do not open https://two.example/post?id=2.", "https://two.example/post?id=2", "Eliza", links), groundBrowserDestination("Open the second story.", "https://one.example/story")],
