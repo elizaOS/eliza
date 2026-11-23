@@ -277,7 +277,7 @@ module node {
 
 import { checked, everyBrowserCapability, frontPage, offeredForms, ownerTurn, pageObservation } from node
 
-it.effect(`Ground a Browser proposal in the owner's own words or an exact page link, bind only a whole-message request, or offer nothing (spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "My whole-message open command opens the address without waiting on the model's choice"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice")`, effect () => {
+it.effect(`Ground a Browser proposal in the owner's own words or an exact page link, bind only a whole-message request, or offer nothing (spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "My whole-message open command opens the address without waiting on the model's choice"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice")`, effect () => {
   const tabsOnly = ["browser.tabs.v1"]
   const propose = effect (ownerText: string, operation: unknown, capabilities: readonly string[] = everyBrowserCapability, page?: unknown, observation: unknown = pageObservation) => {
     const proposed = try Effect.try(() => checked(operation))
@@ -296,6 +296,14 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     try propose("open example dot com in a new tab", navigate("https://example.com")),
     try propose("open example.com", navigate("https://evil.example/")),
     try propose("do that in the browser", navigate("https://example.com/")),
+  ]
+  const refusedOpen = effect (ownerText: string, operation: unknown) => {
+    const grounding = try browserProposalFamily.ground(try Effect.try(() => checked(operation)), ownerTurn(ownerText, everyBrowserCapability))
+    return grounding.kind === "Refused" ? { code: grounding.code, userFacingText: grounding.forOwner } : grounding.kind
+  }
+  const refusedOpens = [
+    try refusedOpen("do that in the browser", navigate("https://example.com/")),
+    try refusedOpen("open example.com", navigate("https://evil.example/")),
   ]
   const emptyTab: DeviceOperation = { type: "browser_tab_new" }
   const tabbed = [
@@ -374,6 +382,10 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     assert.deepStrictEqual(opened, [
       direct(navigate("https://wikipedia.org/", true)), direct(navigate("https://example.com/docs")), reviewed(navigate("https://example.com/")),
       reviewed(navigate("https://example.com/")), reviewed(navigate("https://example.com/")), notRequested, notRequested,
+    ])
+    assert.deepStrictEqual(refusedOpens, [
+      { code: notRequested, userFacingText: "Tell me the address, like example.com." },
+      { code: notRequested, userFacingText: "I didn't open that address." },
     ])
     assert.deepStrictEqual(tabbed, [
       direct(navigate("https://wikipedia.org/", true)), reviewed(navigate("https://example.com/", true)), direct(navigate("https://wikipedia.org/")),
