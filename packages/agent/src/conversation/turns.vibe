@@ -137,6 +137,7 @@ module node {
     readonly restart: (fullText: string) => void
     readonly acknowledge: (text: string) => void
     readonly tool: (name: string, label: string) => void
+    readonly ready: (fullText: string, ran: TurnReply["actionResults"]) => void
   }
 
   export interface TurnOptions {
@@ -294,7 +295,9 @@ module node {
             onReplyRestart: options.display.restart, onPlanningAcknowledgment: options.display.acknowledge,
             onActivityStatus: ({ actionName, label }: { actionName: string; label: string }) => options.display?.tool(actionName, label),
           }),
-          ...(options.taskPresentation === undefined ? {} : { taskContext: options.taskPresentation.context }),
+          ...(options.taskPresentation === undefined
+            ? { onReplyStored: (fullText: string, ran: readonly ActionResult[]) => options.display?.ready(fullText, turnActions(ran)) }
+            : { taskContext: options.taskPresentation.context }),
         }
         const handle = () => service.handleMessage(runtime, input, storeReply, processing)
         const result = await (session === undefined ? handle() : session.run(handle))
@@ -433,6 +436,7 @@ module node {
             display: {
               restart: (fullText: string) => attached.writer.restart(fullText, true), acknowledge: (cue: string) => attached.writer.acknowledge(cue),
               tool: (name: string, label: string) => attached.writer.tool(name, label),
+              ready: attached.writer.ready,
             },
           }),
           ...(deviceTurn === undefined ? {} : { device: deviceTurn }),

@@ -12,7 +12,7 @@ framing and its heartbeats. The frames are:
 | `acknowledgment` | `{text}`: the turn's brief cue that it heard the request ([planning](./planning.md)), at most once, never part of the text; shown and spoken |
 | `status` | `{activity}`: what the turn is doing, display only |
 | `tool` | `{name, label}`: a tool the turn runs and its label for the owner, `Using <app>` or `Working` ([planning](./planning.md)), display only |
-| `reply_ready` | `{fullText, actionResults}`: the settled reply before it is stored |
+| `reply_ready` | `{fullText, actionResults}`: the stored reply ahead of the terminal frame |
 | `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, planAction?, retryAfterMs?, cutOffEffect?}`, with the fix, live wait and negotiated effect marker of [turns](./turns.md) |
 | `error` | `{code, message}`: the turn left no reply |
 
@@ -252,9 +252,11 @@ pure def sometimesAcknowledgedThenTool(s: ReplyStream): bool = s.ack == AckSent 
 
 ### The early reply is written at most once, and a stream that announced it ends with an answered done carrying the same action results
 
-`reply_ready` lets a voice client speak a plain reply with no action
-results before it is stored, so a failed turn never announces one, and an
-announcement still waiting when the terminal comes is never written.
+`reply_ready` lets a voice client speak a stored plain reply with no action
+results while delivery cleanup settles. A reply whose write failed has no
+announcement. Task presentations wait for the terminal because their
+choices and revision are checked again after storage. An announcement
+still waiting when the terminal comes is never written.
 
 ```quint
 pure def announcedResults(r: Readiness): int = match r { | ReadyPending(x) => x.results | ReadySent(x) => x.results | NotReady => -1 }
