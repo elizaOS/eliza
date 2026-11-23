@@ -102,7 +102,7 @@ export effect function createReminder(request: ReminderRequest) {
     if (at === undefined) return { kind: "badTime", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
     if (at <= now) return { kind: "past", intent: try send({ type: "cancelReminder" }) } satisfies ReminderOutcome
     const destination = destinationOf(recoveredChoice(checked.plannedDestination, checked.extractedDestination))
-    const key = `reminder:${request.messageId}:${stringToUuid(JSON.stringify([plan.title, plan.due]))}`
+    const key = `reminder:${request.messageId}:${try Effect.orDie(Effect.try(() => stringToUuid(JSON.stringify([plan.title, plan.due]))))}`
     const facts = { operation: "reminder.create", kind: "reminder", id: key, key }
     const scheduler = try Scheduler
     const task = {

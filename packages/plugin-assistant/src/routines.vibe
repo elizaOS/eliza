@@ -57,7 +57,7 @@ effect function routineState(routineId: string) {
 export effect function createRoutine(input: RoutineCreate) {
   const index = try routineIndex()
   const known = index.keys[input.idempotencyKey]
-  const routineId = known ?? `routine-${stringToUuid(input.idempotencyKey)}`
+  const routineId = known ?? `routine-${try Effect.orDie(Effect.try(() => stringToUuid(input.idempotencyKey)))}`
   if (known === undefined) {
     const scheduler = try Scheduler
     const zone = try ownerClockAt(try (try Facts).now())
