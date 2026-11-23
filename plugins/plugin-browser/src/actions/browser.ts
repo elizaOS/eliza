@@ -22,10 +22,8 @@ import {
   isBrowserDispatchFailure,
 } from "../dispatch-types.js";
 import { isNativeBrowserRequest } from "../native-browser-request.js";
-import {
-  observedNativeHistorySelection,
-  withheldPageReloadRefusal,
-} from "../native-client-command.js";
+import { observedNativeHistorySelection } from "../native-client-command.js";
+import { withheldPageReloadRefusal } from "../withheld-page-reload.js";
 import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
