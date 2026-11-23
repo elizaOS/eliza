@@ -152,6 +152,16 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
     }))
   })
 
+  it.live('A frame type the reader does not know is skipped, a tool frame without a label is read, and an unknown field on a known frame still fails (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")', effect () => {
+    const done = `{"type":"done","fullText":"Sent.","messageId":"m","userMessageId":"u","agentName":"agent","actionResults":[]}`
+    const later = try read(frames(`{"type":"tool","name":"CALCULATE"}`, `{"type":"heard","at":3}`, `{"type":"acknowledgment","text":"Sure."}`, done), 5)
+    const extraField = try read(frames(`{"type":"tool","name":"CALCULATE","label":"Working","app":"x"}`, done), 5)
+    try Effect.try(() => assert.deepStrictEqual({ later: [later.outcome.kind, later.seen], extraField: extraField.outcome }, {
+      later: ["Done", ["tool:CALCULATE:undefined", "acknowledgment:Sure."]],
+      extraField: { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame does not match the reply protocol" },
+    }))
+  })
+
   it.live('Leaving a read rejects it with the reason instead of a Dropped outcome (spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId")', effect () => {
     const rejectedWithReason = try host("left read", () => leftRead())
     try Effect.try(() => assert.isTrue(rejectedWithReason))
