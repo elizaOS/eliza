@@ -264,11 +264,11 @@ it.live(`Competing terminal decisions run no sibling tool and get one repair rou
   const cloud = try cloudFake(deviceKey)
   const agent = try cloudAgent(cloud)
   const { id } = try conversation(agent)
-  const ambiguous = toolCalls("This draft should be cleared.",
+  const ambiguous = try Effect.sync(() => toolCalls("This draft should be cleared.",
     { name: "REPLY", arguments: { text: "First terminal copy." } },
     { name: "REPLY", arguments: { text: "Second terminal copy." } },
     { name: "CALCULATE", arguments: { expression: "23 * 19" } },
-  )
+  ))
   const original = completions(cloud)
   try Effect.sync(() => cloud.script(ambiguous, text("One clear answer.")))
   const repaired = try send(agent, id, { text: "Give me one clear answer." })
