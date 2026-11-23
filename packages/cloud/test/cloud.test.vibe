@@ -25,7 +25,7 @@ import { seedClients } from "../src/operator/clients.vibe"
 import { deviceKey, openAccount, printed } from "./support/operator.vibe"
 import { operator } from "./support/operator.vibe"
 import { chooseFor } from "../src/services/models.vibe"
-import { forwardScriptHash } from "../src/pages/forward-script.ts"
+import { forwardScript, forwardScriptHash } from "../src/pages/forward-script.ts"
 import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
@@ -245,6 +245,10 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
     const signIn = try cloud.call("/apps/fixture/sign-in?code=private-code&state=private-state", { headers: web })
     const html = String(signIn.body)
     const connect = try cloud.call("/apps/fixture/connect", { headers: web })
+    const billingPage = String((try cloud.call("/apps/fixture/billing", { headers: web })).body)
+    const billingReturn = "https://www.staging.example.com/apps/fixture/billing"
+    const forwarded = [`${billingReturn}?session_id=cs_test_a1&result=success`, `${billingReturn}?result=cancel`, `${billingReturn}?result=elsewhere&cancelled=1`]
+      .map((address) => forwardedHref(forwardScript, billingPage, address))
     const elsewhere = try cloud.call("/apps/fixture/elsewhere", { headers: web })
     const onApi = try cloud.call("/apps/fixture/sign-in")
     const paid = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=paid")
@@ -261,6 +265,7 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
         script: /script-src '(sha256-[^']+)'/.exec(signIn.headers["content-security-policy"] ?? "")?.[1],
         framing: /frame-ancestors 'none'/.test(signIn.headers["content-security-policy"] ?? ""),
         connect: [connect.status, /data-purpose="([^"]*)"/.exec(String(connect.body))?.[1]],
+        forwarded,
         missing: [elsewhere.status, (elsewhere.body as { readonly error?: string }).error, onApi.status, payerOnWeb.status],
         payer: [paid.status, String(paid.body).includes("Check the subscription"), other.status, String(other.body).includes("Checkout closed")],
         payerScript: [/script-src/.test(paid.headers["content-security-policy"] ?? ""), /<script/.test(String(paid.body)), paid.headers["cache-control"]]
@@ -275,6 +280,11 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
         script: forwardScriptHash,
         framing: true,
         connect: [200, "ConnectPurpose"],
+        forwarded: [
+          "intent://www.staging.example.com/apps/fixture/billing?session_id=cs_test_a1&result=success#Intent;scheme=https;package=com.example.fixture;end",
+          "intent://www.staging.example.com/apps/fixture/billing?result=cancel#Intent;scheme=https;package=com.example.fixture;end",
+          "intent://www.staging.example.com/apps/fixture/billing#Intent;scheme=https;package=com.example.fixture;end"
+        ],
         missing: [404, "not_found", 404, 404],
         payer: [200, true, 200, true],
         payerScript: [false, false, "no-store"]
@@ -3588,6 +3598,17 @@ module node {
   import { openBackupDatabase } from "./support/password-backup.ts"
   import { registerClients, workerBindings } from "./support/worker.ts"
 
+  export function forwardedHref(script: string, html: string, address: string): string {
+    const attributes: Record<string, string> = {
+      "data-purpose": /data-purpose="([^"]*)"/.exec(html)?.[1] ?? "",
+      href: (/href="(intent:[^"]*)"/.exec(html)?.[1] ?? "").replaceAll("&amp;", "&")
+    }
+    const link = { getAttribute: (name: string) => attributes[name] ?? null, setAttribute: (name: string, value: string) => { attributes[name] = value } }
+    const at = new URL(address)
+    new Function("document", "location", "history", script)({ getElementById: () => link }, { hash: at.hash, search: at.search, pathname: at.pathname }, { replaceState: () => undefined })
+    return attributes.href ?? ""
+  }
+
   export async function readMailThroughClient(baseUrl: string, token: string, messageId: string) {
     const client = (beforeTheField: boolean) => createCloudClient({ baseUrl, credential: () => token, fetch: async (input, init) => {
       const answer = await fetch(input, init)
@@ -4105,7 +4126,7 @@ module node {
   }
 
 }
-import { decideForSignedInAccount, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment } from node
+import { decideForSignedInAccount, forwardedHref, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment } from node
 
 it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideForSignedInAccount())
