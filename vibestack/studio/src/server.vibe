@@ -12,7 +12,7 @@ import type { Event, Session } from "../gen/index.ts"
 import { promptFor } from "./doc.ts"
 import {
   NODE, PUBLIC, SPEC, checkCommand, createServer, finder, interactive, manifestFile, opener, ownedFiles, buildPage, appScript, servedAt, buildable, buildCommand, componentsOf,
-  planPublish, projectName, readManifest, readTree, skillPath, specStamp, stateFile, studioRoot, verdictOf, type Check, type JobView, type Publish, type Snapshot,
+  planPublish, projectName, readTree, readManifest, skillPath, specStamp, stateFile, studioRoot, verdictOf, type Check, type JobView, type ProjectTree, type Publish, type Snapshot,
 } from "./project.ts"
 
 const DEEPLINK_LIMIT = 5000 // characters of a prompt a claude-cli:// link carries
@@ -75,7 +75,7 @@ const json = (status: number, body: unknown) => HttpServerResponse.jsonUnsafe(bo
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" }
 
 /** One project's studio: its session, its jobs, and the HTTP handler its page talks to. Lives as long as the scope. */
-effect function studio(project: Project, agents: Record<string, Agent>) {
+effect function studio(project: Project, agents: Record<string, Agent>, tree: ProjectTree) {
   const { root } = project
   const files = try FileSystem.FileSystem
   const path = try Path.Path
@@ -206,7 +206,7 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
   effect function snapshot(): Snapshot!(PlatformError.PlatformError | Error) {
     // The specs; what is wrong if they cannot be read.
     const read: Pick<Snapshot, "manifest" | "specs" | "review" | "problem"> =
-      effect { return { manifest: readManifest(root), ...readTree(root) } } catch (e) => ({ problem: e.message, specs: [], review: [] })
+      effect { return { manifest: readManifest(root), ...readTree(tree) } } catch (e) => ({ problem: e.message, specs: [], review: [] })
     const context = { skill: skillPath(root), check: checkCommand(root) }
     const shown = []
     for (const [id, a] of Object.entries(agents)) shown.push({
@@ -375,7 +375,7 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
 /** The studio's HTTP server on 127.0.0.1, at `port` or the next free one after it. `open` is the project shown first. */
 export effect function startStudio({ projects, open = projects[0].id, port = 4321, agents = AGENTS }: { projects: Project[]; open?: string; port?: number; agents?: Record<string, Agent> }) {
   const lives = new Map<string, Effect.Success<ReturnType<typeof studio>>>()
-  for (const p of projects) lives.set(p.id, try studio(p, agents))
+  for (const p of projects) lives.set(p.id, try studio(p, agents, { root: p.root }))
   const files = try FileSystem.FileSystem
   const path = try Path.Path
   try tryPromise({ try: () => buildPage(), catch: (e) => new Refused({ status: 500, message: `the page did not build: ${messageOf(e)}` }) })

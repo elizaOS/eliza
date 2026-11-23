@@ -1,4 +1,3 @@
-
 type PluginListenerHandle = { remove(): Promise<void> };
 
 export type SurfaceProcessSharing = "isolated" | "shared";

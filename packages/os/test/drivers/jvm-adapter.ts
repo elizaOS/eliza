@@ -6,7 +6,6 @@ import { copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import { Effect, Option } from "effect";
 import type { Driver, Outcome } from "../../gen/_conformance.ts";
 import { androidTools } from "../support/android-tools.ts";
 
@@ -210,8 +209,7 @@ async function start(classes: string, main: string, args: string[]): Promise<Ses
   const answers = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]();
   const ask = async (request: Request): Promise<Answer> => {
     child.stdin.write(`${JSON.stringify(wire(request))}\n`);
-    const answer = Effect.tryPromise({ try: () => answers.next(), catch: (cause) => cause });
-    const next = Option.getOrUndefined(await Effect.runPromise(Effect.timeoutOption(answer, ANSWER_WITHIN_MS)));
+    const next = await Promise.race([answers.next(), once(AbortSignal.timeout(ANSWER_WITHIN_MS), "abort").then(() => undefined)]);
     if (next === undefined) throw new Error(`${main} did not answer ${JSON.stringify(request)} within ${ANSWER_WITHIN_MS / 1000} seconds${stderr ? `; stderr: ${stderr}` : ""}`);
     if (next.done) throw new Error(`${main} ended without answering ${JSON.stringify(request)}${stderr ? `; stderr: ${stderr}` : ""}`);
     return parseAnswer(next.value, request);

@@ -588,7 +588,6 @@ export function parseXmlTree(tree: string, options: { readonly decodeAttribute?:
   return root
 }
 
-/** One AAPT attribute value as Android reads it: the raw string, the quoted string, a typed boolean as true or false, or another typed value in decimal. */
 export function parseAaptAttributeValue(encoded: string): string {
   const raw = /\(Raw: "([^"]*)"\)\s*$/.exec(encoded)?.[1]
   if (raw !== undefined) return raw
@@ -600,7 +599,6 @@ export function parseAaptAttributeValue(encoded: string): string {
   return String(Number.parseInt(typed[2] ?? "", 16))
 }
 
-/** The runner and target package of each `instrumentation` element directly under a test APK's `manifest`. */
 export function instrumentationDeclarations(tree: string): { readonly name: string; readonly targetPackage: string }[] {
   const manifests = parseXmlTree(tree, { decodeAttribute: parseAaptAttributeValue }).children.filter((node) => node.name === "manifest")
   return manifests.flatMap((manifest) => manifest.children.filter((node) => node.name === "instrumentation"))
