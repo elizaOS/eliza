@@ -1,304 +1,81 @@
-name: ci
-
-# Every run is the tasks of `pnpm verify`, the tools' own self-test included,
-# split over jobs that run side by side: the self-test of the tools in three,
-# the root check's simulations in four shards, and everything else in one,
-# which starts once the shards have simulated and checks with what they found.
-# Turborepo and spec skip what the change does not reach, from the cache of the
-# last run. The fixed normal profile is the
-# same locally and in CI. The self-test also installs and checks each
-# standalone example.
+name: Measure compact receipts on Eliza shard two
 on:
-  pull_request:
-    branches: [vibestack, develop, main]
   push:
-    branches: [vibestack, develop, main]
-
-concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_attempt == '1' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-env:
-  TURBO_TELEMETRY_DISABLED: "1"
-
+    branches: [codex/measure-compact-simulation-shard-2-1123-v2]
 permissions:
   contents: read
-
+  actions: read
 jobs:
-  android-node-lock:
-    name: Verify published Android Node lock
+  vibestack-precompute-simulations:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ee559a9d98ffa80d73a634d454ea75559b60ed10
           persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            .github/workflows/ci.yml
-            packages/os/aosp/runtime/node.lock.json
-            packages/os/android/android-runtime-inventory.mjs
-      - id: changed
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && git fetch --no-tags --depth=1 origin "$BASE_SHA" &&
-            git diff --quiet "$BASE_SHA" HEAD -- .github/workflows/ci.yml packages/os/aosp/runtime/node.lock.json packages/os/android/android-runtime-inventory.mjs; then
-            exit 0
-          fi
-          echo 'verify=true' >> "$GITHUB_OUTPUT"
-      - if: steps.changed.outputs.verify == 'true'
-        uses: actions/setup-node@v6
+      - uses: actions/download-artifact@v8
         with:
-          node-version: '26'
-      - if: steps.changed.outputs.verify == 'true'
-        name: Verify the two released ABI archives and producer manifests
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          node --input-type=module <<'JS'
-          import assert from 'node:assert/strict';
-          import { execFileSync } from 'node:child_process';
-          import { createHash } from 'node:crypto';
-          import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-          import { tmpdir } from 'node:os';
-          import { join } from 'node:path';
-          import { isAndroidExecutableForAbi } from './packages/os/android/android-runtime-inventory.mjs';
-
-          const lock = JSON.parse(readFileSync('packages/os/aosp/runtime/node.lock.json', 'utf8'));
-          const { version, ndk, apiLevel, buildCommit, sourceSha256, entries } = lock;
-          const sha256 = /^[0-9a-f]{64}$/;
-          assert.ok(Array.isArray(entries) && entries.length === 2, 'Pin both released Android Node ABIs');
-          assert.match(version, /^26\.\d+\.\d+$/);
-          assert.match(ndk, /^\d+\.\d+\.\d+$/);
-          assert.ok(Number.isSafeInteger(apiLevel) && apiLevel > 0, 'Invalid Android API level');
-          assert.match(buildCommit, /^[0-9a-f]{40}$/);
-          assert.match(sourceSha256, sha256);
-          assert.deepEqual(entries.map(entry => entry.abi).sort(), ['arm64-v8a', 'x86_64']);
-
-          const repo = 'elizaOS/eliza';
-          const tag = `android-node-v${version}-ndk-${ndk}`;
-          const assetName = abi => `node-v${version}-android-${abi}.zip`;
-          for (const entry of entries) {
-            assert.match(entry.sha256, sha256);
-            assert.match(entry.archiveSha256, sha256);
-            assert.equal(entry.url, `https://github.com/${repo}/releases/download/${tag}/${assetName(entry.abi)}`);
-          }
-          const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-          const archiveDir = mkdtempSync(join(tmpdir(), 'android-node-lock-'));
-          try {
-            for (const { abi, sha256, archiveSha256 } of entries) {
-              const name = assetName(abi);
-              execFileSync('gh', ['release', 'download', tag, '--repo', repo, '--pattern', name, '--dir', archiveDir], { stdio: 'inherit' });
-              const archive = join(archiveDir, name);
-              assert.equal(hash(readFileSync(archive)), archiveSha256, `${abi} archive digest does not match the lock`);
-              const manifest = JSON.parse(execFileSync('unzip', ['-p', archive, 'manifest.json'], { encoding: 'utf8', maxBuffer: 64 * 1024 }));
-              assert.deepEqual({
-                schema: manifest.schema, abi: manifest.abi, version: manifest.version, ndk: manifest.ndk,
-                apiLevel: manifest.apiLevel, buildCommit: manifest.buildCommit, sourceSha256: manifest.sourceSha256, sha256: manifest.sha256,
-              }, { schema: 1, abi, version, ndk, apiLevel, buildCommit, sourceSha256, sha256 });
-              const binary = execFileSync('unzip', ['-p', archive, 'libeliza_node.so'], { maxBuffer: 512 * 1024 * 1024 });
-              assert.ok(isAndroidExecutableForAbi(binary, abi), `${abi} archive contains the wrong executable`);
-              assert.equal(hash(binary), sha256, `${abi} executable digest does not match the lock`);
-            }
-          } finally { rmSync(archiveDir, { recursive: true, force: true }); }
-          console.log('Both released Android Node ABIs match the runtime lock.');
-          JS
-
-  verify:
-    name: ${{ matrix.name }}
-    needs: simulate
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: verify
-            tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
-    env: &cache-env
-      TURBO_CACHE: local:rw
-    steps: &verification-steps
-      - uses: actions/checkout@v7
-      - id: setup
-        uses: ./.github/actions/setup
-        with:
-          job: ${{ matrix.name }}
-      - id: simulations
-        if: matrix.name == 'verify'
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          pattern: simulations-*
-          path: .spec-cache
-          merge-multiple: true
-      - if: steps.simulations.outcome == 'failure'
-        run: echo "::warning::The simulate shards' results did not download; this check simulates every module itself."
-      - id: verify-tasks
-        run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
-      - name: Report Turbo task timings
-        id: task-timings
-        if: ${{ !cancelled() }}
-        env:
-          RESTORED_FIXTURE_EVALUATOR: ${{ steps.setup.outputs.spec-evaluator-restored == 'true' && steps.verify-tasks.outcome == 'success' }}
-          TASK: ${{ matrix.tasks }}
-        run: |
-          for report in .turbo/runs/*.json; do
-            [[ -f "$report" ]] || continue
-            jq -r '
-              select(.version == "1" and (.tasks | type == "array"))
-              | .execution as $run
-              | select([$run.startTime, $run.endTime, $run.cached, $run.attempted] | all(type == "number"))
-              | "### Turbo task timings", "",
-                "Wall time \(($run.endTime - $run.startTime) / 1000) s. Cache hits \($run.cached) of \($run.attempted) attempted tasks.",
-                "",
-                "| Task | Wall time (s) | Cache | Exit code |",
-                "| --- | ---: | --- | ---: |",
-                ([.tasks[]
-                  | select([.execution.startTime, .execution.endTime] | all(type == "number"))
-                  | {id: .taskId, elapsed: ((.execution.endTime - .execution.startTime) / 1000), cache: .cache.status, exit: .execution.exitCode}]
-                  | sort_by(-.elapsed) | .[]
-                  | "| \(.id) | \(.elapsed) | \(.cache // "-") | \(.exit // "-") |"),
-                ""
-            ' "$report" >> "$GITHUB_STEP_SUMMARY" || echo "::warning::Could not read the Turbo run summary"
-          done
-          [[ $RESTORED_FIXTURE_EVALUATOR == true ]] || exit 0
-          shopt -s nullglob
-          reports=(.turbo/runs/*.json)
-          (( ${#reports[@]} )) || exit 0
-          jq -es --arg task "$TASK" '
-            map(select(.version == "1" and any(.tasks[]?; .taskId == $task)))
-            | length == 1 and
-              (.[0] | .execution.exitCode == 0 and .execution.attempted == 1 and .execution.cached == 1 and
-                (.tasks | length == 1 and (.[0] | .taskId == $task and .cache.status == "HIT" and
-                  .execution.exitCode == 0 and .resolvedTaskDefinition.outputs == [])))
-          ' "${reports[@]}" >/dev/null || exit 0
-          echo 'skip-spec-cache=true' >> "$GITHUB_OUTPUT"
-          echo 'Skipping the spec cache upload after a full fixture replay.'
-      - id: superseded-spec-cache
-        if: >-
-          cancelled() && matrix.name == 'verify' && steps.verify-tasks.conclusion == 'cancelled' &&
-          steps.setup.outputs.spec-cache-key != '' &&
-          github.event_name == 'push' && github.run_attempt == '1' &&
-          github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        shell: bash
-        run: |
-          current=$(GIT_TERMINAL_PROMPT=0 timeout 4s git ls-remote --refs --exit-code origin "$GITHUB_REF") || exit 0
-          [[ $current != *$'\n'* ]] || exit 0
-          IFS=$'\t' read -r tip ref <<< "$current"
-          [[ $tip =~ ^[0-9a-f]{40}$ && $ref == "$GITHUB_REF" && $tip != "$GITHUB_SHA" ]] || exit 0
-          echo 'skip=true' >> "$GITHUB_OUTPUT"
-          echo "Skipping the spec cache upload for superseded commit $GITHUB_SHA."
-      - if: >-
-          always() && steps.setup.outputs.spec-cache-key != '' &&
-          steps.superseded-spec-cache.outputs.skip != 'true' && steps.task-timings.outputs.skip-spec-cache != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ steps.setup.outputs.spec-cache-path }}
-          key: ${{ steps.setup.outputs.spec-cache-key }}
-      - id: prune-turbo-cache
-        if: always() && steps.setup.outputs.turbo-cache-key != ''
-        run: |
-          [[ -d .turbo/cache ]] || exit 0
-          cat .turbo/runs/*.json 2>/dev/null | jq -r '.tasks[] | select(.cache.status == "HIT") | .hash' | while read -r hash; do find .turbo/cache -name "$hash*" -exec touch {} +; done
-          find .turbo/cache -type f -mtime +7 -delete
-          for archive in .turbo/cache/*.tar.zst; do
-            metadata="${archive%.tar.zst}-meta.json"
-            [[ -f "$archive" && -s "$archive" && -f "$metadata" && -s "$metadata" ]] || continue
-            echo "populated=true" >> "$GITHUB_OUTPUT"
-            break
-          done
-      - if: always() && steps.prune-turbo-cache.outputs.populated == 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: .turbo/cache
-          key: ${{ steps.setup.outputs.turbo-cache-key }}
-      - if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: proof-${{ matrix.name }}
-          path: |
-            gen/proof/
-            vibestack/studio/gen/proof/
-          if-no-files-found: ignore
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: failures-${{ matrix.name }}
-          path: |
-            test/counterexamples/
-            test/__traces__/
-            apps/*/test/counterexamples/
-            apps/*/test/__traces__/
-            packages/*/test/counterexamples/
-            packages/*/test/__traces__/
-            apps/*/.cache/vitest/attachments/
-            packages/*/.cache/vitest/attachments/
-            vibestack/studio/test/counterexamples/
-            vibestack/studio/test/__traces__/
-            vibestack/examples/*/test/counterexamples/
-            vibestack/examples/*/test/__traces__/
-          if-no-files-found: ignore
-          include-hidden-files: true
-
-  simulate:
-    name: simulate-${{ matrix.shard }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v7
+          name: simulations-2
+          run-id: 45131678339
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/historic-2
       - uses: ./.github/actions/setup
         with:
-          job: simulate-${{ matrix.shard }}
-      - name: Simulate the specs whose files hash to this shard
-        env:
-          SHARD: ${{ matrix.shard }}
-          SHARDS: 4
+          job: simulate-2
+          cache-verification: 'false'
+      - name: Compare the ordinary and compact paths and replay the complete transfer
+        shell: bash
         run: |
-          node --input-type=module <<'JS'
-          import { createHash } from "node:crypto";
-          import fs from "node:fs";
-          import { precomputeSimulations, readSpecs } from "./vibestack/formal.ts";
-          const simulations = () => fs.existsSync(".spec-cache") ? fs.readdirSync(".spec-cache").filter((name) => name.startsWith("simulate-")) : [];
-          const restored = new Set(simulations());
-          const specs = readSpecs(process.cwd());
-          const inShard = ({ file }) => parseInt(createHash("sha256").update(file).digest("hex").slice(0, 8), 16) % Number(process.env.SHARDS) === Number(process.env.SHARD) - 1;
-          const names = specs.filter(inShard).map(({ name }) => name);
-          const results = await precomputeSimulations(process.cwd(), specs, names);
-          fs.mkdirSync(".simulations", { recursive: true });
-          const written = simulations().filter((name) => !restored.has(name));
-          for (const name of written) fs.copyFileSync(`.spec-cache/${name}`, `.simulations/${name}`);
-          const failed = results.filter(({ ok }) => !ok);
-          for (const { stage, summary, detail, where } of failed) console.log(`✗ ${stage} ${where ?? ""}: ${summary}\n${detail}`);
-          console.log(`shard ${process.env.SHARD} of ${process.env.SHARDS}: ${names.length} specs, ${results.length} results, ${written.length} new entries, ${failed.length} failed`);
-          process.exitCode = failed.length ? 1 : 0;
-          JS
+          set -euo pipefail
+          cat > .qualify-compact.mjs <<'JAVASCRIPT'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { zstdDecompressSync } from 'node:zlib';
+          import { prepareSimulationReceipts, precomputeSimulations, readSpecs } from './vibestack/formal.ts';
+          const base=process.env.RUNNER_TEMP;
+          const parent=path.join(base,'simulation-handoff-cost');
+          const evidence=path.join(base,'simulation-handoff-evidence');
+          const historic=path.join(base,'historic-2');
+          fs.mkdirSync(parent,{recursive:true});fs.mkdirSync(evidence,{recursive:true});
+          const historicNames=fs.readdirSync(historic).sort();
+          const digest=(v)=>createHash('sha256').update(v).digest('hex');
+          const orderedRows=(a)=>a.map(r=>JSON.stringify(r)).sort().join('\n');
+          const expected=historicNames.flatMap(f=>JSON.parse(zstdDecompressSync(fs.readFileSync(path.join(historic,f)))).result.said);
+          assert.equal(historicNames.length,109);assert.equal(expected.length,688);assert(expected.every(r=>r.ok));
+          const expectedRows=digest(orderedRows(expected));
+          const checks=[];const result={artifact:14801636223,run:45131678339,selected:109,expectedRows,checks};
+          const save=()=>fs.writeFileSync(path.join(evidence,'results.json'),JSON.stringify(result,null,2)+'\n');
+          const snapshot=(dir)=>Object.fromEntries(fs.readdirSync(dir).sort().map(n=>{const b=fs.readFileSync(path.join(dir,n));return[n,[b.byteLength,digest(b)]]}));
+          const old=snapshot(historic);
+          function init(dir,source){
+           fs.mkdirSync(dir,{recursive:true});fs.cpSync('spec',path.join(dir,'spec'),{recursive:true});fs.copyFileSync('package.json',path.join(dir,'package.json'));fs.symlinkSync(fs.realpathSync('node_modules'),path.join(dir,'node_modules'),'dir');fs.cpSync(source,path.join(dir,'.spec-cache'),{recursive:true});
+          }
+          const shard=(root)=>{const specs=readSpecs(root);assert.equal(specs.length,439);const names=specs.filter(({file})=>parseInt(digest(file).slice(0,8),16)%4===1).map(s=>s.name);assert.equal(names.length,109);return [specs,names]};
+          let compact;
+          async function observe(tag,dir,capture){
+           const [specs,names]=shard(dir);const start=performance.now(),cpu=process.cpuUsage();const prepared=capture?await prepareSimulationReceipts(dir,specs,names,parent):{results:await precomputeSimulations(dir,specs,names)};
+           const elapsed=performance.now()-start,load=process.cpuUsage(cpu),rows=prepared.results;
+           const row={tag,elapsed_ms:elapsed,wrapper_cpu_ms:(load.user+load.system)/1000,rows:rows.length,failures:rows.filter(r=>!r.ok).length,rowsHash:digest(orderedRows(rows)),nativeTraceDirs:fs.existsSync(path.join(dir,'gen/traces'))?fs.readdirSync(path.join(dir,'gen/traces')).length:0};checks.push(row);save();
+           assert.equal(row.rowsHash,expectedRows);assert.equal(row.nativeTraceDirs,0);assert.equal(row.failures,0);
+           if(capture){assert(prepared.seedDirectory);const files=snapshot(prepared.seedDirectory);for(const [k,v] of Object.entries(old))assert.deepEqual(files[k],v);
+           const actionNames=Object.keys(files).filter(k=>/^action-/.test(k));assert(actionNames.length>=109);assert.equal(Object.keys(files).length,109+actionNames.length);
+           if(!compact){compact=prepared.seedDirectory;result.compact={files:Object.keys(files).length,simulations:109,actions:actionNames.length,bytes:Object.values(files).reduce((n,[b])=>n+b,0),aggregateBytes:Object.values(old).reduce((n,[b])=>n+b,0),sha256:digest(JSON.stringify(files))}}
+           else assert.deepEqual(files,snapshot(compact));}
+           save();console.log(JSON.stringify(row));
+          }
+          const producer=path.join(parent,'worker');init(producer,historic);await observe('historical-aggregates-only',producer,false);
+          for(let i=0;i<5;i++)for(const capture of (i%2?[true,false]:[false,true]))await observe(i+'-'+(capture?'compact':'ordinary'),producer,capture);
+          const receiver=path.join(parent,'receiver');init(receiver,compact);await observe('receiver-with-only-compact',receiver,false);result.completed=true;save();
+          JAVASCRIPT
+          /usr/bin/time -v node .qualify-compact.mjs
+          test -s "$RUNNER_TEMP/simulation-handoff-evidence/results.json"
       - if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: simulations-${{ matrix.shard }}
-          path: .simulations
-          if-no-files-found: ignore
-          include-hidden-files: true
-          retention-days: 1
-
-  vibestack-fixture-selftests:
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: selftest-a
-            tasks: //#selftest:tools:a
-          - name: selftest-b
-            tasks: //#selftest:tools:b
-          - name: selftest-rest
-            tasks: //#selftest:tools:rest
-    env: *cache-env
-    steps: *verification-steps
+          name: compact-simulation-cost
+          path: ${{ runner.temp }}/simulation-handoff-evidence/
+          retention-days: 5
+          if-no-files-found: error
