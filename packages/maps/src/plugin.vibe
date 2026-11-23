@@ -367,7 +367,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
   return [
     {
       name: "MAPS_PLACE",
-      description: "Find places by name, category or address. For near me, nearby or nearest, set useCurrentLocation; the phone's reported position for this turn is used when it is recent, and otherwise the phone is asked for its location. Asked where the owner is, set useCurrentLocation and leave query out: the place at the phone's reported position is looked up, and only its area when that position is rough.",
+      description: "Find places by name, category or address. For near me, nearby or nearest, set useCurrentLocation; the phone's reported position for this turn is used when it is recent, and otherwise the phone is asked for its location. For a kind of place near a named place (pharmacy near the Ferry Building), put the whole phrase in query. Asked where the owner is, set useCurrentLocation and leave query out: the place at the phone's reported position is looked up, and only its area when that position is rough.",
       similes: ["FIND_PLACE", "NEARBY", "NEAREST", "NEAR_ME"],
       tags: ["domain:maps", "capability:read"],
       roleGate: ownerOnly,
