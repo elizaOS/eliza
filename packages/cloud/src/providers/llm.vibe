@@ -23,7 +23,7 @@ export const maxReplyBytes = 16 * 1024 * 1024
 
 type LlmContext = Deployment | HttpClient.HttpClient
 
-export function retryAfter(header: string | undefined): Millis | undefined {
+function retryAfter(header: string | undefined): Millis | undefined {
   return header !== undefined && /^\d{1,9}$/.test(header) ? Number(header) * 1000 : undefined
 }
 
