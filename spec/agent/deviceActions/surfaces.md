@@ -77,6 +77,33 @@ pure def lawAPhotoNobodyAskedForKeepsItsCard(words: CameraWords): bool = not(wor
 pure def lawALongOrControlMessageAsksForNoPhoto(words: CameraWords): bool =
   (words.units > cameraWordsMaxUnits or words.hasControl) implies not(asksForPhotoNow(words))
 pure def lawAFrontAndBackCameraAsksForNoPhoto(words: CameraWords): bool = (words.front and words.back) implies not(asksForPhotoNow(words))
+pure val wordsValues = Set(
+  { units: 13, hasControl: false, commanded: true, front: false, back: false },
+  { units: 40, hasControl: false, commanded: false, front: false, back: false },
+  { units: 513, hasControl: false, commanded: true, front: false, back: false },
+  { units: 512, hasControl: false, commanded: true, front: false, back: true },
+  { units: 14, hasControl: true, commanded: true, front: false, back: false },
+  { units: 15, hasControl: false, commanded: true, front: true, back: false },
+  { units: 45, hasControl: false, commanded: true, front: true, back: true })
+```
+
+### A whole-message photo command is routed to the capture, never to opening Camera
+
+Opening the Camera view takes no photo, so on an owner chat turn (a direct
+or voice message of the phone's client chat) of the enrolled phone that is
+offered the capture, a message that asks for a photo now (the rule above)
+owns the whole request: the turn's device tool offers only the capture and
+says so first, and the [planner](../conversation/planning.md) withdraws the
+view navigation it would otherwise offer. Any other message, including one
+that only mentions a photo, is planned as usual.
+
+```quint
+pure def photoCommandRouted(ownerChat: bool, captureOffered: bool, words: CameraWords): bool =
+  ownerChat and captureOffered and asksForPhotoNow(words)
+pure def lawARoutedPhotoIsOneTheOwnerAskedForNow(ownerChat: bool, captureOffered: bool, words: CameraWords): bool =
+  photoCommandRouted(ownerChat, captureOffered, words) implies captureVerdict(words) == SurfaceGrounded
+pure def lawNoRouteWithoutTheCapture(ownerChat: bool, words: CameraWords): bool = not(photoCommandRouted(ownerChat, false, words))
+pure def lawOnlyAnOwnerChatIsRouted(captureOffered: bool, words: CameraWords): bool = not(photoCommandRouted(false, captureOffered, words))
 ```
 
 ### An app view is offered only without completed-action navigation, and proposed only when the installation's profile enables it
@@ -104,13 +131,30 @@ sensitive with a phone note source (`note-source`, its ID and revision) or
 a phone note (`note`, with its account, source revision, ID and revision)
 selected, each of a valid form. On any other turn, including one with no
 observation or a canonical Notes selection, a note request belongs to the
-canonical Notes service and the model is told so.
+canonical Notes service, and whenever this family's guidance reaches the
+model it is told so.
 
 ```quint
 pure def noteOffered(notesView: bool, sensitive: bool, phoneNotesSelected: bool): bool = notesView and not(sensitive) and phoneNotesSelected
 pure def lawANoteNeedsThePhoneNotesSelected(notesView: bool, sensitive: bool, phoneNotesSelected: bool): bool =
   noteOffered(notesView, sensitive, phoneNotesSelected) implies (notesView and phoneNotesSelected)
 pure def lawASensitiveScreenOffersNoNote(notesView: bool, phoneNotesSelected: bool): bool = not(noteOffered(notesView, true, phoneNotesSelected))
+```
+
+### A new note runs without its card only when its title and body are the owner's own words
+
+The phone writes the note's title and body as the model proposed them. A
+note is grounded as the owner asked only when its title and its body each
+appear in the owner's message, ignoring case, runs of spaces and a final
+full stop, exclamation or question mark; so a note whose text the model
+took from a page, an email or a summary of its own is grounded for review,
+and the owner reads it on the phone's card before it is saved. A note is
+never refused for its words.
+
+```quint
+pure def noteVerdict(ownerWords: bool): SurfaceVerdict = if (ownerWords) SurfaceGrounded else SurfaceReviewed
+pure def lawANoteTheOwnerDidNotSayKeepsItsCard(directRequests: bool): bool = not(surfaceBound(directRequests, noteVerdict(false)))
+pure def lawANoteIsNeverRefusedForItsWords(ownerWords: bool): bool = noteVerdict(ownerWords) != SurfaceRefused
 ```
 
 ### A Maps read names exactly the place or route selected on the owner's Maps screen

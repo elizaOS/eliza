@@ -99,6 +99,29 @@ pure def lawAParameterTheTurnDoesNotNameKeepsItsRegisteredSchema(params: Set[str
   params.forall(p => not(narrowed.contains(p)) implies not(turnNarrowed(params, narrowed).contains(p)))
 ```
 
+### A route that owns the whole request withdraws the actions it replaces while its own actions are offered
+
+A plugin may register a direct route ([routing registries](../../core/registries.md))
+that owns the whole request. When the turn's message matches such a route
+and every action it routes to is offered this turn, the actions it names as
+replaced are not offered, so the model cannot plan that request another
+way, such as opening the Camera view for "take a picture"
+([device surfaces](../deviceActions/surfaces.md)). A route that does not own
+the whole request, does not match, or routes to an action this turn does
+not offer withdraws nothing, and no route withdraws an action it does not
+name.
+
+```quint
+pure def withdrawnByRoute(ownsWholeRequest: bool, matched: bool, routedOffered: bool, replaced: bool): bool =
+  ownsWholeRequest and matched and routedOffered and replaced
+pure def lawARouteWhoseActionsAreNotOfferedWithdrawsNothing(ownsWholeRequest: bool, matched: bool, replaced: bool): bool =
+  not(withdrawnByRoute(ownsWholeRequest, matched, false, replaced))
+pure def lawARouteWithdrawsOnlyWhatItReplaces(ownsWholeRequest: bool, matched: bool, routedOffered: bool): bool =
+  not(withdrawnByRoute(ownsWholeRequest, matched, routedOffered, false))
+pure def lawARouteThatDoesNotOwnTheRequestWithdrawsNothing(matched: bool, routedOffered: bool, replaced: bool): bool =
+  not(withdrawnByRoute(false, matched, routedOffered, replaced))
+```
+
 ### The model reads what was said in the conversation, in a window taken once for the whole turn
 
 A host notice the agent process stored in the conversation (a message of
