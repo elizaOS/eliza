@@ -36,6 +36,8 @@ module node {
       if (observation?.view !== "calendar" || observation.sensitive || observation.calendarDay === undefined) return undefined
       const by = await Effect.runPromise(sender(input))
       if (by === undefined) return undefined
+      const enrolled = await Effect.runPromise(enrollment(runtime.adapter))
+      if (!enrolled.bridge.devices.some(({ id, capabilities }) => id === by.connector && capabilities.includes(capability))) return undefined
       const { date, timeZone } = observation.calendarDay
       const wallDay = Date.parse(`${date}T00:00:00.000Z`)
       const operation: AgendaOperation = {
@@ -60,7 +62,6 @@ module node {
       const intent = decision(classification)
       if (intent._tag !== "Some" || intent.value.kind !== "read_agenda") return undefined
       signal.throwIfAborted()
-      const enrolled = await Effect.runPromise(enrollment(runtime.adapter))
       const proposalId = stringToUuid(`agenda:${message.id}`)
       const expiresAt = Date.now() + 600_000
       const payload = devicePayload({ operation, scope: { calendarAgendaSource } }, by, enrollmentId(enrolled), message.id)
